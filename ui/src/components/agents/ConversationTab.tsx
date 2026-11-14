@@ -1,4 +1,6 @@
-import { type ReactNode, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+
+import { useLocation, useNavigate } from 'react-router-dom'
 
 import {
   Bot,
@@ -29,6 +31,7 @@ import {
   MessageScrollerItem,
   MessageScrollerProvider,
   MessageScrollerViewport,
+  useMessageScroller,
 } from '@/components/ui/message-scroller'
 import {
   Trace,
@@ -65,7 +68,9 @@ import {
 import {
   entryKey,
   type ProcessGroup,
+  revealSeqOf,
   type Turn,
+  turnForSeq,
   turns,
 } from './conversationTurns'
 import { Prose, Todos, ToolReadable } from './taskEntryViews'
@@ -118,6 +123,10 @@ const FAMILY_ICON: Record<Family, ReactNode> = {
 }
 
 const ASK_PREVIEW = 600
+
+const FLASH_MS = 1600
+
+type RevealTarget = NonNullable<ReturnType<typeof turnForSeq>>
 
 const MODES: ToolbarOption<ConversationMode>[] = [
   {
@@ -203,9 +212,22 @@ export function ConversationTab({
     }),
     [isOpen, mode, orgSlug, requests, searching, setOpen, task],
   )
+  const [flash, setFlash] = useState<null | { id: string }>(null)
+  useEffect(() => {
+    if (!flash) return
+    const done = window.setTimeout(() => setFlash(null), FLASH_MS)
+    return () => window.clearTimeout(done)
+  }, [flash])
+  const reveal = (target: RevealTarget) => {
+    if (searching && !shown.includes(target.turn)) setQuery('')
+    if (canCollapseTurn(target.turn)) setOpen(target.turn.id, true)
+    if (target.group) setOpen(target.group, true)
+    setFlash({ id: target.turn.id })
+  }
 
   return (
     <MessageScrollerProvider autoScroll defaultScrollPosition="end">
+      <RevealTurn list={list} onReveal={reveal} />
       <div className="flex min-h-0 flex-1 flex-col" ref={root}>
         <TaskToolbar label="Conversation">
           <ToolbarChoice
@@ -250,7 +272,12 @@ export function ConversationTab({
                   </ActivityEmpty>
                 ) : (
                   shown.map((turn) => (
-                    <TurnView ctx={ctx} key={turn.id} turn={turn} />
+                    <TurnView
+                      ctx={ctx}
+                      flash={flash?.id === turn.id}
+                      key={turn.id}
+                      turn={turn}
+                    />
                   ))
                 )}
               </MessageScrollerContent>
@@ -429,6 +456,52 @@ function RequestItem({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
   )
 }
 
+/**
+ * Shows the turn another view asked for through the router state: the
+ * turn that holds that event opens, scrolls into view, and flashes. The
+ * state is cleared, so a reload or Back does not show it again.
+ */
+function RevealTurn({
+  list,
+  onReveal,
+}: {
+  list: Turn[]
+  onReveal: (target: RevealTarget) => void
+}) {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const { scrollToMessage } = useMessageScroller()
+  const seq = revealSeqOf(location.state)
+  const handled = useRef<null | string>(null)
+  const [target, setTarget] = useState<null | { id: string }>(null)
+
+  useEffect(() => {
+    if (seq === null || handled.current === location.key) return
+    const found = turnForSeq(list, seq)
+    if (!found) return
+    handled.current = location.key
+    onReveal(found)
+    setTarget({ id: found.turn.id })
+    const { hash, pathname, search } = location
+    navigate({ hash, pathname, search }, { replace: true, state: null })
+  }, [list, location, navigate, onReveal, seq])
+
+  useEffect(() => {
+    if (!target) return
+    let tries = 0
+    let frame = 0
+    const tick = () => {
+      tries++
+      if (scrollToMessage(target.id, { align: 'start' }) || tries > 30) return
+      frame = requestAnimationFrame(tick)
+    }
+    frame = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(frame)
+  }, [scrollToMessage, target])
+
+  return null
+}
+
 function searchText(entry: TimelineEntry): string {
   return [
     ...values(entry.event?.payload ?? {}),
@@ -539,7 +612,15 @@ function turnText(turn: Turn): string {
   ].join(' ')
 }
 
-function TurnView({ ctx, turn }: { ctx: Ctx; turn: Turn }) {
+function TurnView({
+  ctx,
+  flash,
+  turn,
+}: {
+  ctx: Ctx
+  flash: boolean
+  turn: Turn
+}) {
   const open =
     !canCollapseTurn(turn) ||
     ctx.isOpen(turn.id, turnOpenByDefault(turn, ctx.mode))
@@ -548,7 +629,15 @@ function TurnView({ ctx, turn }: { ctx: Ctx; turn: Turn }) {
   const footer = turnFooter(turn)
   const firstReply = turn.items.find((i) => i.kind === 'reply')?.id
   return (
-    <MessageScrollerItem messageId={turn.id} scrollAnchor>
+    <MessageScrollerItem
+      className={cn(
+        '-mx-3 -my-1.5 rounded-2xl px-3 py-1.5 transition-[background-color,box-shadow] duration-700 motion-reduce:transition-none',
+        flash && 'bg-action/8 inset-ring-2 inset-ring-action/40 duration-200',
+      )}
+      data-flash={flash || undefined}
+      messageId={turn.id}
+      scrollAnchor
+    >
       <div className="flex flex-col gap-4">
         {turn.opening.map((entry) => (
           <PersonMessage ctx={ctx} entry={entry} key={entry.id} />

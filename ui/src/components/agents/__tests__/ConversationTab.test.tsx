@@ -1,5 +1,5 @@
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { act, render, screen, within } from '@/test/utils'
 import type { AgentTask } from '@/types'
@@ -12,13 +12,10 @@ vi.mock('@/hooks/useHasPermission', () => ({
   useHasPermission: () => false,
 }))
 
+const HUMAN = { actor_id: 'dev', actor_kind: 'human' } as const
+
 const LOG = [
-  event(
-    1,
-    'turn',
-    { body: 'fix it' },
-    { actor_id: 'dev', actor_kind: 'human' },
-  ),
+  event(1, 'turn', { body: 'fix it' }, HUMAN),
   event(2, 'turn', { body: 'Looking at the build.', kind: 'thinking' }),
   event(3, 'tool.called', {
     arguments: { command: 'make test' },
@@ -100,6 +97,69 @@ describe('ConversationTab', () => {
     expect(
       screen.queryByRole('button', { name: /Bash make test/ }),
     ).not.toBeInTheDocument()
+  })
+
+  describe('a turn another view asks for', () => {
+    const TWO = [
+      ...LOG,
+      event(5, 'turn', { body: 'now test it' }, HUMAN),
+      event(6, 'tool.called', {
+        arguments: { command: 'make check' },
+        call_id: 'c6',
+        result: 'checked',
+        tool: 'Bash',
+      }),
+      event(7, 'turn', { body: 'tested' }),
+    ]
+    const flashed = () => document.querySelector('[data-flash]')
+
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+      window.history.replaceState(null, '', '/')
+    })
+
+    it('opens the turn and its work, flashes it, then fades', () => {
+      window.history.replaceState(
+        { idx: 0, key: 'reveal', usr: { revealSeq: 3 } },
+        '',
+        '/',
+      )
+      renderTab('closed', TWO)
+      expect(flashed()).toHaveTextContent('fix it')
+      expect(flashed()).not.toHaveTextContent('now test it')
+      expect(flashed()).toHaveClass('bg-action/8')
+      const [first, second] = screen.getAllByRole('button', {
+        name: /Worked for/,
+      })
+      expect(first).toHaveAttribute('aria-expanded', 'true')
+      expect(second).toHaveAttribute('aria-expanded', 'false')
+      expect(
+        screen.getByRole('button', { name: /Bash make test/ }),
+      ).toBeInTheDocument()
+      expect(window.history.state?.usr).toBeNull()
+      act(() => {
+        vi.advanceTimersByTime(1600)
+      })
+      expect(flashed()).toBeNull()
+    })
+
+    it('flashes the turn of a later event', () => {
+      window.history.replaceState(
+        { idx: 0, key: 'reveal', usr: { revealSeq: 6 } },
+        '',
+        '/',
+      )
+      renderTab('closed', TWO)
+      expect(flashed()).toHaveTextContent('now test it')
+    })
+
+    it('flashes nothing without a request', () => {
+      renderTab('closed', TWO)
+      expect(flashed()).toBeNull()
+    })
   })
 
   it('keeps a turn the reader opened open across a mode change', async () => {

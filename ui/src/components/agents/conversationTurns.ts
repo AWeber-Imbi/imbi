@@ -62,12 +62,54 @@ const NOTE_TYPES = new Set([
   'state.changed',
 ])
 
+/** The router state that asks the conversation to show an event's turn. */
+export interface RevealState {
+  revealSeq: number
+}
+
 /**
  * A key that survives a call being written: a still-running subagent call
  * is a placeholder until its own event lands with a new id.
  */
 export function entryKey(entry: TimelineEntry): string {
   return entry.parentOf ? `call:${entry.parentOf}` : entry.id
+}
+
+/** The event seq a view asked the conversation to show, if any. */
+export function revealSeqOf(state: unknown): null | number {
+  if (!state || typeof state !== 'object' || !('revealSeq' in state))
+    return null
+  const { revealSeq } = state
+  return typeof revealSeq === 'number' ? revealSeq : null
+}
+
+/**
+ * Where an event shows in the conversation: the turn that holds it, with
+ * a subagent's events in the turn of their Agent call, and the work group
+ * it sits in. An event the conversation leaves out, such as a usage
+ * report, belongs to the last turn that started before it.
+ */
+export function turnForSeq(
+  list: Turn[],
+  seq: number,
+): null | { group: null | string; turn: Turn } {
+  let before: Turn | undefined
+  for (const turn of list) {
+    if (turn.opening.flatMap(eventsOf).some((e) => e.seq === seq))
+      return { group: null, turn }
+    for (const item of turn.items)
+      if (
+        entriesOf([item])
+          .flatMap(eventsOf)
+          .some((e) => e.seq === seq)
+      )
+        return { group: item.kind === 'group' ? item.id : null, turn }
+    const seqs = [...turn.opening, ...entriesOf(turn.items)]
+      .flatMap(eventsOf)
+      .map((e) => e.seq)
+    if (seqs.length && Math.min(...seqs) <= seq) before = turn
+  }
+  return before ? { group: null, turn: before } : null
 }
 
 /**
@@ -122,16 +164,18 @@ export function turns(
   return list
 }
 
+function entriesOf(items: TurnItem[]): TimelineEntry[] {
+  return items.flatMap((item) =>
+    item.kind === 'group' ? item.entries : [item.entry],
+  )
+}
+
 function eventsOf(entry: TimelineEntry): TimelineEntry[] {
   return [entry, ...entry.children.flatMap(eventsOf)]
 }
 
 function finish(turn: Turn) {
   const work = turn.items.filter(isWork)
-  const entriesOf = (items: TurnItem[]) =>
-    items.flatMap((item) =>
-      item.kind === 'group' ? item.entries : [item.entry],
-    )
   const all = [...turn.opening, ...entriesOf(turn.items)].flatMap(eventsOf)
   const timed = [...turn.opening, ...entriesOf(work)].flatMap(eventsOf)
   for (const entry of all) {

@@ -252,6 +252,7 @@ The **Activity** tab shows the task as a conversation. A turn starts with a pers
 - **Narrow** and **Wide** set the reading width.
 - The search field matches any text in the view and marks each match.
 - The copy button copies the conversation loaded so far as Markdown, or the task and its events as JSON.
+- When another view shows an event in the conversation, the turn that holds it opens, scrolls into view, and flashes for a moment. A subagent's event shows in the turn of the call that started it.
 
 Old links to the **Actions taken** and **Conversation** tabs open the **Activity** tab.
 

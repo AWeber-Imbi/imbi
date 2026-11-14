@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { type Turn, turns } from '../conversationTurns'
+import { revealSeqOf, type Turn, turnForSeq, turns } from '../conversationTurns'
 import { timeline } from '../taskTimeline'
 import { event } from './taskFixtures'
 
@@ -210,5 +210,62 @@ describe('turns', () => {
     const [turn] = turns(timeline([human(1, 'Go.')]), { live: true })
     expect(turn.stats.durationMs).toBeNull()
     expect(turn.status).toBe('running')
+  })
+})
+
+describe('turnForSeq', () => {
+  const list = turns(
+    timeline([
+      human(1, 'Look around.'),
+      bash(2, { parent_call_id: 'task-1' }),
+      event(3, 'usage.reported', { tokens_in: 5, tokens_out: 1 }),
+      event(4, 'tool.called', {
+        arguments: { subagent_type: 'search' },
+        call_id: 'task-1',
+        result: 'Found it.',
+        tool: 'Task',
+      }),
+      reply(5, 'Found it.'),
+      human(6, 'Now fix it.'),
+      bash(7),
+      event(8, 'usage.reported', { tokens_in: 9, tokens_out: 2 }),
+      reply(9, 'Fixed.'),
+    ]),
+    { live: false },
+  )
+
+  it('finds the turn and the work group that hold an event', () => {
+    expect(turnForSeq(list, 7)).toEqual({
+      group: list[1].items[0].id,
+      turn: list[1],
+    })
+    expect(turnForSeq(list, 6)).toEqual({ group: null, turn: list[1] })
+    expect(turnForSeq(list, 5)).toEqual({ group: null, turn: list[0] })
+  })
+
+  it('shows a subagent event in the turn of its Agent call', () => {
+    expect(turnForSeq(list, 2)).toEqual({
+      group: list[0].items[0].id,
+      turn: list[0],
+    })
+  })
+
+  it('puts an event the conversation leaves out in the turn before it', () => {
+    expect(turnForSeq(list, 8)?.turn).toBe(list[1])
+    expect(turnForSeq(list, 3)?.turn).toBe(list[0])
+  })
+
+  it('finds nothing before the first turn', () => {
+    expect(turnForSeq([], 1)).toBeNull()
+    expect(turnForSeq(list, 0)).toBeNull()
+  })
+})
+
+describe('revealSeqOf', () => {
+  it('reads a numeric seq from the router state', () => {
+    expect(revealSeqOf({ revealSeq: 4 })).toBe(4)
+    expect(revealSeqOf({ revealSeq: '4' })).toBeNull()
+    expect(revealSeqOf(null)).toBeNull()
+    expect(revealSeqOf('x')).toBeNull()
   })
 })
