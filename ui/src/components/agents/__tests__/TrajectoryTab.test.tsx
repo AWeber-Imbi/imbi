@@ -143,6 +143,19 @@ describe('TrajectoryTab ledger', () => {
     expect(rows()).toHaveLength(2 + 3)
   })
 
+  it('keeps a folded turn folded when its first row is clicked', async () => {
+    renderTab()
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Collapse turns' }),
+    )
+    expect(rows()).toHaveLength(4)
+    await userEvent.click(rows()[2])
+    expect(rows()[2]).toHaveAttribute('aria-selected', 'true')
+    expect(rows()).toHaveLength(4)
+    await userEvent.dblClick(rows()[2])
+    expect(rows()).toHaveLength(2 + 3)
+  })
+
   it('selects the record of a #e link, falling back to the one before', () => {
     window.history.replaceState(
       null,
@@ -623,6 +636,82 @@ describe('TrajectoryTab overview', () => {
     } finally {
       Element.prototype.scrollTo = original
     }
+  })
+
+  it('moves a range with its records when live rows land before it', () => {
+    const t = task({ status: 'running' }) as unknown as AgentTask
+    const sub = (seq: number, id: string) =>
+      event(
+        seq,
+        'tool.called',
+        { call_id: id, duration_ms: 5, parent_call_id: 'a1', tool: 'Grep' },
+        { actor_kind: 'subagent' },
+      )
+    const base = [
+      ...LOG,
+      sub(12, 's1'),
+      event(13, 'usage.reported', { tokens_in: 2, tokens_out: 5 }),
+      event(14, 'turn', { body: 'Still going', kind: 'text' }),
+    ]
+    const ui = (events: typeof LOG) => (
+      <div className="flex h-150 flex-col">
+        <TrajectoryTab events={events} task={t} />
+      </div>
+    )
+    const view = render(ui(base))
+    vi.spyOn(track(), 'getBoundingClientRect').mockReturnValue({
+      bottom: 50,
+      height: 50,
+      left: 0,
+      right: 900,
+      toJSON: () => ({}),
+      top: 0,
+      width: 900,
+      x: 0,
+      y: 0,
+    })
+    const last = () => spanBars()[spanBars().length - 1]
+    fireEvent.pointerDown(track(), { button: 0, clientX: 850 })
+    fireEvent.pointerMove(track(), { button: 0, clientX: 900 })
+    fireEvent.pointerUp(track(), { button: 0, clientX: 900 })
+    const band = () =>
+      track().querySelector<HTMLElement>('[data-range="committed"]')!
+    const edges = () => [
+      parseFloat(band().style.left),
+      parseFloat(band().style.left) + parseFloat(band().style.width),
+    ]
+    expect(last()).not.toHaveAttribute('data-dim')
+    const before = edges()
+    const count = spanBars().length
+    view.rerender(ui([...base, sub(15, 's2')]))
+    expect(spanBars().length).toBe(count + 1)
+    expect(last()).not.toHaveAttribute('data-dim')
+    const [from, to] = edges()
+    expect(from).toBeGreaterThan(before[0])
+    expect(to).toBeCloseTo(100)
+  })
+
+  it('drops a drag on the strip when the browser cancels it', () => {
+    renderTab()
+    vi.spyOn(track(), 'getBoundingClientRect').mockReturnValue({
+      bottom: 50,
+      height: 50,
+      left: 0,
+      right: 900,
+      toJSON: () => ({}),
+      top: 0,
+      width: 900,
+      x: 0,
+      y: 0,
+    })
+    fireEvent.pointerDown(track(), { button: 0, clientX: 0 })
+    fireEvent.pointerMove(track(), { button: 0, clientX: 150 })
+    expect(track().querySelector('[data-range="draft"]')).not.toBeNull()
+    fireEvent.pointerCancel(track())
+    expect(track().querySelector('[data-range]')).toBeNull()
+    fireEvent.pointerMove(track(), { clientX: 300 })
+    expect(track().querySelector('[data-range]')).toBeNull()
+    expect(rows()[0]).not.toHaveAttribute('data-timeline-focus')
   })
 
   it('selects a request on a double-click of its dot without folding', async () => {

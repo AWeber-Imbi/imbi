@@ -223,6 +223,11 @@ export function TrajectoryOverview({
       d.startView.start + ((d.x - rect.left) / rect.width) * d.startView.size
     setDraft([from, toDomain(e.clientX)])
   }
+  const onPointerCancel = () => {
+    drag.current = null
+    setDraft(null)
+    setPanning(false)
+  }
   const onPointerUp = (e: ReactPointerEvent) => {
     const d = drag.current
     drag.current = null
@@ -274,6 +279,8 @@ export function TrajectoryOverview({
         onKeyDown={(e) => {
           if (e.key === 'Escape') onRange(null)
         }}
+        onLostPointerCapture={onPointerCancel}
+        onPointerCancel={onPointerCancel}
         onPointerDown={onPointerDown}
         onPointerLeave={() => setHoverX(null)}
         onPointerMove={onPointerMove}

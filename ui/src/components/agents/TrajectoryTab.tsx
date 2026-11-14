@@ -22,6 +22,7 @@ import {
   spansOf,
   type Trajectory,
   type TrajectoryRecord,
+  type TrajectorySpan,
 } from './trajectoryModel'
 import {
   focusedBy,
@@ -30,6 +31,13 @@ import {
 } from './TrajectoryOverview'
 import { TrajectoryToolbar, useTrajectoryDuration } from './TrajectoryToolbar'
 import type { TrajectoryWindow } from './trajectoryWindow'
+
+/** The records a range covered when picked, and its edges from theirs. */
+interface Picked {
+  ids: Set<string>
+  lead: number
+  tail: number
+}
 
 /**
  * The Trajectory tab, after the DeepSeek Harness trajectory view: a
@@ -61,10 +69,7 @@ export function TrajectoryTab({
   const root = useRef<HTMLDivElement>(null)
   useSearchHighlight(root, query)
   const [duration, setDuration] = useTrajectoryDuration()
-  const [picked, setPicked] = useState<null | {
-    ids: Set<string>
-    range: TrajectoryRange
-  }>(null)
+  const [picked, setPicked] = useState<null | Picked>(null)
   const [tab, setTab] = useState<InspectorTab>('Summary')
 
   const { records, requests, turns } = trajectory
@@ -77,12 +82,17 @@ export function TrajectoryTab({
     () => spansOf(records, mode),
     [records, mode],
   )
-  const range = picked?.range ?? null
-  const focused = picked?.ids ?? null
+  const range = useMemo(() => rangeOf(spans, picked), [spans, picked])
+  const focused = range ? picked!.ids : null
   const setRange = useCallback(
     (next: null | TrajectoryRange) => {
       const ids = focusedBy(spans, next)
-      setPicked(next && ids ? { ids, range: next } : null)
+      const hull = ids && hullOf(spans, ids)
+      setPicked(
+        next && ids && hull
+          ? { ids, lead: next[0] - hull[0], tail: next[1] - hull[1] }
+          : null,
+      )
     },
     [spans],
   )
@@ -346,25 +356,48 @@ function flip<T>(set: Set<T>, key: T) {
   else set.add(key)
 }
 
+function hullOf(
+  spans: TrajectorySpan[],
+  ids: Set<string>,
+): null | TrajectoryRange {
+  const mine = spans.filter((s) => ids.has(s.id))
+  if (!mine.length) return null
+  return [
+    Math.min(...mine.map((s) => s.start)),
+    Math.max(...mine.map((s) => s.end)),
+  ]
+}
+
+function rangeOf(
+  spans: TrajectorySpan[],
+  picked: null | Picked,
+): null | TrajectoryRange {
+  const hull = picked && hullOf(spans, picked.ids)
+  return hull ? [hull[0] + picked!.lead, hull[1] + picked!.tail] : null
+}
+
 /** The folds with the ones that hide a record opened. */
 function unfoldFor(
   folds: Folds,
   record: TrajectoryRecord,
   trajectory: Trajectory,
 ): Folds {
-  const assistant = trajectory.records.find(
-    (r) => r.kind === 'assistant' && r.request === record.request,
-  )
-  const hidden =
-    folds.turns.has(record.turn) ||
-    (!!assistant &&
-      record.kind !== 'assistant' &&
-      folds.calls.has(assistant.id)) ||
-    (!!record.parent && folds.subcalls.has(record.parent))
-  if (!hidden) return folds
+  const turn = trajectory.turns.find((t) => t.number === record.turn)
+  const byTurn = folds.turns.has(record.turn)
+  if (byTurn && turn?.first === record.id) return folds
+  const call = record.kind === 'tool' || record.kind === 'subtool'
+  const assistant = call
+    ? trajectory.records.find(
+        (r) => r.kind === 'assistant' && r.request === record.request,
+      )
+    : undefined
+  const byCalls = !!assistant && folds.calls.has(assistant.id)
+  const parent = call ? record.parent : null
+  const bySubcalls = !!parent && folds.subcalls.has(parent)
+  if (!byTurn && !byCalls && !bySubcalls) return folds
   const next = copyFolds(folds)
-  next.turns.delete(record.turn)
-  if (assistant) next.calls.delete(assistant.id)
-  if (record.parent) next.subcalls.delete(record.parent)
+  if (byTurn) next.turns.delete(record.turn)
+  if (byCalls) next.calls.delete(assistant.id)
+  if (bySubcalls) next.subcalls.delete(parent)
   return next
 }
