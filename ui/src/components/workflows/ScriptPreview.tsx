@@ -33,6 +33,14 @@ export function ScriptPreview({
   const run = useMutation({
     mutationFn: (body: ScriptPreviewRequest) => previewScript(orgSlug, body),
   })
+  const body: ScriptPreviewRequest = {
+    ...(node.params as Omit<ScriptPreviewRequest, 'inputs'>),
+    inputs: inputs ?? {},
+  }
+  // A result shows only while the step still matches what was run.
+  const stale =
+    run.variables !== undefined &&
+    JSON.stringify(run.variables) !== JSON.stringify(body)
   const id = `workflow-node-${node.id}-sample`
   return (
     <div className="border-tertiary flex flex-col gap-3 border-t pt-4">
@@ -59,12 +67,7 @@ export function ScriptPreview({
       <Button
         className="self-start"
         disabled={!inputs || run.isPending}
-        onClick={() =>
-          run.mutate({
-            ...(node.params as Omit<ScriptPreviewRequest, 'inputs'>),
-            inputs: inputs ?? {},
-          })
-        }
+        onClick={() => run.mutate(body)}
         size="sm"
         type="button"
         variant="secondary"
@@ -72,12 +75,18 @@ export function ScriptPreview({
         <Play />
         {run.isPending ? 'Running…' : 'Run script'}
       </Button>
-      {run.isError && (
+      {stale && (run.isPending || run.data || run.isError) && (
+        <p className="text-tertiary text-xs">
+          The step changed after you ran it. Run the script again to see a
+          current result.
+        </p>
+      )}
+      {!stale && run.isError && (
         <p className="text-danger text-xs" role="alert">
           {extractApiErrorDetail(run.error)}
         </p>
       )}
-      {run.data?.error && (
+      {!stale && run.data?.error && (
         <dl className="grid grid-cols-[90px_1fr] gap-x-3 gap-y-1.5 text-sm">
           <dt className="text-tertiary">Error</dt>
           <dd className="text-danger font-mono text-xs">{run.data.error}</dd>
@@ -91,7 +100,7 @@ export function ScriptPreview({
           )}
         </dl>
       )}
-      {run.data?.output && (
+      {!stale && run.data?.output && (
         <>
           {run.data.output.branch && (
             <dl className="grid grid-cols-[90px_1fr] gap-x-3 text-sm">

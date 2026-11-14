@@ -72,6 +72,28 @@ describe('ScriptPreview', () => {
     )
   })
 
+  it('hides a result when the step changes during the run', async () => {
+    let finish = (_: unknown) => {}
+    vi.mocked(previewScript).mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    const step = (code: string) =>
+      node({ params: { code, inputs: {} }, type: 'script' })
+    const { rerender } = render(
+      <ScriptPreview node={step('1')} orgSlug="acme" />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Run script' }))
+    rerender(<ScriptPreview node={step('2')} orgSlug="acme" />)
+    finish({ output: { branch: 'old', result: 1 } })
+    await screen.findByRole('button', { name: 'Run script' })
+    expect(
+      screen.getByText(/The step changed after you ran it/),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('old')).not.toBeInTheDocument()
+  })
+
   it('follows the step inputs until the sample is edited', () => {
     const step = (inputs: Record<string, unknown>) =>
       node({ params: { code: 'n', inputs }, type: 'script' })
