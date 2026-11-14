@@ -95,7 +95,7 @@ export function TaskUsageCard({
   return (
     <StatCard
       icon={<Coins className="text-secondary size-3.5" />}
-      label={`${formatTokens(total)} tokens, ${formatMoney(task.cost_total)}`}
+      label={`${formatTokens(total)} tokens, ${formatMoney(task.cost_total)}${budget === null ? '' : ` of ${formatMoney(budget)}`}`}
       trigger={
         <span className="text-primary text-sm">
           {formatTokens(total)} tok · {formatMoney(task.cost_total)}

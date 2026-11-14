@@ -28,6 +28,13 @@ describe('TaskUsageCard', () => {
     ).toHaveAttribute('aria-valuenow', '25')
   })
 
+  it('names the budget to a screen reader', () => {
+    renderCard({ budget: '5.000000', cost_total: '1.250000' })
+    expect(
+      screen.getByRole('button', { name: /tokens, \$1\.25 of \$5\.00$/ }),
+    ).toBeInTheDocument()
+  })
+
   it('treats a zero budget as a budget', () => {
     renderCard({ budget: '0', cost_total: '0.120000' })
     expect(screen.getByText('Over budget')).toHaveClass('text-danger')
