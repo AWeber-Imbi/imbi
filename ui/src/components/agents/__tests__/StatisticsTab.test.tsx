@@ -294,6 +294,26 @@ describe('StatisticsTab', () => {
     expect(screen.getByRole('table')).toBeInTheDocument()
   })
 
+  it('keeps the step count of a turn while a search hides steps', async () => {
+    const user = userEvent.setup()
+    const t = task({ status: 'closed' }) as unknown as AgentTask
+    render(
+      <div className="flex h-150 flex-col">
+        <StatisticsTab events={LOG} task={t} />
+      </div>,
+    )
+    const search = screen.getByRole('searchbox', { name: 'Search statistics' })
+    await user.type(search, 'All done')
+    const turn = screen.getByRole('button', {
+      name: 'Turn 1: hide its 2 steps',
+    })
+    expect(turn).toHaveTextContent(/· 1 of 2 steps$/)
+    await user.clear(search)
+    expect(screen.getByRole('button', { name: /^Turn 1: / })).toHaveTextContent(
+      /· 2 steps$/,
+    )
+  })
+
   it('opens the only turn once its events load', () => {
     const t = task({ status: 'closed' }) as unknown as AgentTask
     const view = render(

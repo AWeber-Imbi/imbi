@@ -143,15 +143,15 @@ export function StatisticsTab({
   const shown = useMemo(
     () =>
       searching
-        ? stats.turns.flatMap((t) => {
-            const steps = t.steps.filter((s) =>
+        ? stats.turns.flatMap((turn) => {
+            const steps = turn.steps.filter((s) =>
               matches(`${s.did} ${s.answer}`, query),
             )
-            return steps.length || matches(t.trigger.text, query)
-              ? [{ ...t, steps: steps.length ? steps : t.steps }]
+            return steps.length || matches(turn.trigger.text, query)
+              ? [{ steps: steps.length ? steps : turn.steps, turn }]
               : []
           })
-        : stats.turns,
+        : stats.turns.map((turn) => ({ steps: turn.steps, turn })),
     [query, searching, stats.turns],
   )
   const maxTurn = Math.max(0, ...stats.turns.map((t) => t.totalMs ?? 0))
@@ -210,7 +210,7 @@ export function StatisticsTab({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {shown.map((turn) => {
+              {shown.map(({ steps, turn }) => {
                 const expanded = searching || open.has(turn.number)
                 const maxStep = Math.max(
                   0,
@@ -223,10 +223,11 @@ export function StatisticsTab({
                       expanded={expanded}
                       max={maxTurn}
                       onToggle={() => setOpen((s) => toggled(s, turn.number))}
+                      shownSteps={steps.length}
                       turn={turn}
                     />
                     {expanded &&
-                      turn.steps.map((step) => {
+                      steps.map((step) => {
                         const key = `${turn.number}:${step.number}`
                         const shown = answers.has(key)
                         return (
@@ -466,20 +467,23 @@ function TurnRow({
   expanded,
   max,
   onToggle,
+  shownSteps,
   turn,
 }: {
   delta: boolean
   expanded: boolean
   max: number
   onToggle: () => void
+  shownSteps: number
   turn: StatsTurn
 }) {
+  const count = plural(turn.steps.length, 'step')
   return (
     <TableRow className="cursor-pointer font-medium" onClick={onToggle}>
       <TableCell className="whitespace-nowrap">
         <button
           aria-expanded={expanded}
-          aria-label={`Turn ${turn.number}: ${expanded ? 'hide' : 'show'} its ${plural(turn.steps.length, 'step')}`}
+          aria-label={`Turn ${turn.number}: ${expanded ? 'hide' : 'show'} its ${count}`}
           className="flex items-center gap-1 outline-none focus-visible:underline"
           onClick={(e) => {
             e.stopPropagation()
@@ -495,7 +499,10 @@ function TurnRow({
           />
           Turn {turn.number}
           <span className="text-tertiary font-normal">
-            · {plural(turn.steps.length, 'step')}
+            ·{' '}
+            {shownSteps < turn.steps.length
+              ? `${shownSteps} of ${count}`
+              : count}
           </span>
         </button>
       </TableCell>
