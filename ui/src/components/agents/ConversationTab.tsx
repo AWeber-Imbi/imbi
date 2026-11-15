@@ -43,6 +43,7 @@ import {
   TraceLine,
   TraceTitle,
 } from '@/components/ui/trace'
+import { markdownText } from '@/lib/markdown-text'
 import { cn } from '@/lib/utils'
 import type { AgentTask, AgentTaskEvent } from '@/types'
 
@@ -296,7 +297,11 @@ export function ConversationTab({
       new Map<string, string>([
         [
           'ask',
-          ask ? askShown(taskAsk(task, list[0]) ?? '', askAll, askMatches) : '',
+          ask
+            ? markdownText(
+                askShown(taskAsk(task, list[0]) ?? '', askAll, askMatches),
+              )
+            : '',
         ],
         ...shown.map((turn): [string, string] => [
           turn.id,
@@ -494,13 +499,7 @@ function CallRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
   const args = isRecord(p.arguments) ? p.arguments : {}
   const ms = typeof p.duration_ms === 'number' ? p.duration_ms : null
   const running = ctx.task.status === 'running'
-  const summary = e
-    ? (argsText?.slice(0, 200) ?? toolSummary(tool, args))
-    : running
-      ? 'Running…'
-      : ctx.task.status === 'closed'
-        ? 'Did not finish'
-        : 'Not finished yet'
+  const summary = callSummary(entry, ctx)
   const status = isError(entry)
     ? 'error'
     : !e && running
@@ -566,6 +565,21 @@ function CallRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
       </TraceCollapsibleContent>
     </TraceCollapsible>
   )
+}
+
+/** What a call's row shows after the tool's name. */
+function callSummary(entry: TimelineEntry, ctx: Ctx): string {
+  const e = entry.event
+  if (!e)
+    return ctx.task.status === 'running'
+      ? 'Running…'
+      : ctx.task.status === 'closed'
+        ? 'Did not finish'
+        : 'Not finished yet'
+  const { arguments: args, tool } = e.payload
+  return typeof args === 'string'
+    ? args.slice(0, 200)
+    : toolSummary(String(tool ?? 'tool'), isRecord(args) ? args : {})
 }
 
 function GroupView({
@@ -763,15 +777,18 @@ function turnFindText(turn: Turn, ctx: Ctx, query: string): string {
     const e = entry.event
     const key = entryKey(entry)
     if (e && e.type !== 'tool.called') return workText(entry, ctx)
-    if (!ctx.isOpen(key, false)) return []
+    const tool = e ? String(e.payload.tool ?? 'tool') : 'Task'
+    const title = `${toolLabel(tool)} ${callSummary(entry, ctx)}`
+    if (!ctx.isOpen(key, false)) return [title]
     const p = e?.payload ?? {}
     return [
+      title,
       ...(e
         ? readableText({
             args: isRecord(p.arguments) ? p.arguments : {},
             argsText: typeof p.arguments === 'string' ? p.arguments : null,
             error: p.is_error === true,
-            family: familyOf(String(p.tool ?? 'tool')),
+            family: familyOf(tool),
             isWhole: (part) => ctx.isWhole(`${key}:${part}`),
             query,
             result: p.result == null ? '' : label(p.result),
@@ -785,13 +802,17 @@ function turnFindText(turn: Turn, ctx: Ctx, query: string): string {
     ctx.isOpen(turn.id, turnOpenByDefault(turn, ctx.mode))
   const calls = open
     ? turn.items.flatMap((item) =>
-        item.kind === 'group' &&
-        ctx.isOpen(item.id, groupOpenByDefault(item, turn, ctx.mode))
-          ? item.entries.flatMap(shown)
+        item.kind === 'group'
+          ? [
+              groupSummary(item),
+              ...(ctx.isOpen(item.id, groupOpenByDefault(item, turn, ctx.mode))
+                ? item.entries.flatMap(shown)
+                : []),
+            ]
           : [],
       )
     : []
-  return [turnMarkdown(turn), ...calls].filter(Boolean).join('\n')
+  return [...turnShownText(turn), ...calls].filter(Boolean).join('\n')
 }
 
 function TurnHeader({
@@ -841,6 +862,41 @@ function turnMarkdown(turn: Turn): string {
     /^# x\s+## Turn 1\s+/,
     '',
   )
+}
+
+/** What a turn shows outside its work groups, as plain text. */
+function turnShownText(turn: Turn): string[] {
+  const said = (entry: TimelineEntry): string[] => {
+    const e = entry.event
+    if (!e) return []
+    if (e.type === 'request.opened') return [systemText(e)]
+    const body =
+      typeof e.payload.body === 'string' && e.payload.body
+        ? e.payload.body
+        : systemText(e)
+    const { answer, constraints } = resolution(e)
+    return [
+      markdownText(body),
+      ...(answer ? [markdownText(answer)] : []),
+      ...constraints,
+    ]
+  }
+  const header =
+    turn.items.some((item) => item.kind === 'group') || turn.status !== 'done'
+  return [
+    ...turn.opening.flatMap(said),
+    ...(header ? [turnTitle(turn)] : []),
+    ...turn.items.flatMap((item): string[] => {
+      if (item.kind === 'group') return []
+      const e = item.entry.event
+      if (!e) return []
+      if (item.kind === 'reply')
+        return [markdownText(String(e.payload.body ?? ''))]
+      if (item.kind === 'note') return quiet(e) ? [] : [systemText(e)]
+      return said(item.entry)
+    }),
+    turnFooter(turn) ?? '',
+  ]
 }
 
 /** The turn as Markdown plus every value its events hold, for search. */
@@ -1011,6 +1067,6 @@ function workText(entry: TimelineEntry, ctx: Ctx): string[] {
   const first = body.split('\n')[0]
   return [
     e.payload.kind === 'thinking' ? `Thought: ${first}` : first,
-    ...(open ? [body] : []),
+    ...(open ? [markdownText(body)] : []),
   ]
 }

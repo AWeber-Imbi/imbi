@@ -990,6 +990,50 @@ describe('ConversationTab with many turns', () => {
     expect(findStub('the hidden end')).toBe(findStub('word'))
   })
 
+  it('lets the browser find formatted text as it reads once rendered', async () => {
+    const user = userEvent.setup()
+    const t = task({
+      description: 'Hi, *Pluto*!',
+      status: 'closed',
+    }) as unknown as AgentTask
+    const events = [
+      event(1, 'turn', { body: 'ask **0**' }, HUMAN),
+      event(2, 'turn', {
+        body: 'Weighing the build.\nthe **second** thought',
+        kind: 'thinking',
+      }),
+      event(3, 'turn', { body: 'reply 0 says `make` [it](https://x.io)' }),
+      ...MANY.slice(2).map((e) => ({ ...e, seq: e.seq + 1 })),
+    ]
+    render(
+      <div className="flex h-150 flex-col">
+        <ConversationTab
+          events={events}
+          orgSlug="acme"
+          requests={[]}
+          task={t}
+        />
+      </div>,
+    )
+    await screen.findByText('reply 79')
+    expect(findStub('Hi, Pluto!').textContent).toBe('Hi, Pluto!')
+    const turn = findStub('reply 0 says make it')
+    expect(findStub('ask 0')).toBe(turn)
+    expect(turn.textContent).not.toMatch(/[*`[\]]/)
+    scrollPane(pane(), 0)
+    await user.click(await screen.findByRole('button', { name: /Worked/ }))
+    await user.click(screen.getByRole('button', { name: /^Thought$/ }))
+    await user.click(
+      await screen.findByRole('button', { name: /Thought: Weighing/ }),
+    )
+    scrollPane(pane(), content(pane()) - 600)
+    const last = await screen.findByText('reply 79')
+    last.tabIndex = -1
+    act(() => last.focus())
+    await waitFor(() => expect(screen.queryByText(/^reply 0/)).toBeNull())
+    expect(findStub('the second thought')).toBe(findStub('ask 0'))
+  })
+
   it('keeps a turn with selected text rendered while it is out of view', async () => {
     render(view('closed'))
     const last = await screen.findByText('reply 79')
