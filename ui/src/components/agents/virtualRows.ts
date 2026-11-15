@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
   defaultRangeExtractor,
@@ -60,7 +60,13 @@ export function useVirtualRows({
   scroller,
 }: Options) {
   const unlaid = useRef(false)
-  const kept = keep.join(',')
+  const [selected, setSelected] = useState('')
+  useEffect(() => {
+    const update = () => setSelected(selectedSpan(scroller.current))
+    document.addEventListener('selectionchange', update)
+    return () => document.removeEventListener('selectionchange', update)
+  }, [scroller])
+  const kept = [...keep, ...spanIndexes(selected)].join(',')
   const rangeExtractor = useCallback(
     (range: Range) => {
       if (unlaid.current)
@@ -100,4 +106,31 @@ function growsAbove(
   instance: Virtualizer<HTMLDivElement, Element>,
 ) {
   return item.end <= (instance.scrollOffset ?? 0)
+}
+
+/**
+ * The first and last row of `pane` the text selection touches, as
+ * `first-last`, so those rows and the ones between stay rendered and
+ * the selection can still be copied after they scroll out of view.
+ */
+function selectedSpan(pane: HTMLElement | null): string {
+  const selection = document.getSelection()
+  if (!pane || !selection || selection.isCollapsed || !selection.rangeCount)
+    return ''
+  const range = selection.getRangeAt(0)
+  const rowOf = (node: Node) => {
+    const host = node instanceof Element ? node : node.parentElement
+    const row = host?.closest<HTMLElement>('[data-index]')
+    return row && pane.contains(row) ? Number(row.dataset.index) : -1
+  }
+  const ends = [rowOf(range.startContainer), rowOf(range.endContainer)]
+  const found = ends.filter((i) => i >= 0)
+  if (!found.length) return ''
+  return `${Math.min(...found)}-${Math.max(...found)}`
+}
+
+function spanIndexes(span: string): number[] {
+  if (!span) return []
+  const [first, last] = span.split('-').map(Number)
+  return Array.from({ length: last - first + 1 }, (_, i) => first + i)
 }
