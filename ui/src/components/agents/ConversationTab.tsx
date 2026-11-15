@@ -109,10 +109,12 @@ import { useVirtualRows } from './virtualRows'
 
 interface Ctx {
   isOpen: (id: string, byDefault: boolean) => boolean
+  isWhole: (id: string) => boolean
   mode: ConversationMode
   orgSlug: string
   requests: TaskRequestView[]
   setOpen: (id: string, open: boolean) => void
+  showWhole: (id: string) => void
   task: AgentTask
 }
 
@@ -213,9 +215,11 @@ export function ConversationTab({
     searching && matches((task.description || task.title || '').trim(), query)
   const showAsk = !searching || askMatches || shown.length > 0
   const follow = useRef(true)
+  const [whole, setWhole] = useState<ReadonlySet<string>>(() => new Set())
   const ctx: Ctx = useMemo(
     () => ({
       isOpen: searching ? () => true : isOpen,
+      isWhole: (id: string) => whole.has(id),
       mode: searching ? 'verbose' : mode,
       orgSlug,
       requests,
@@ -225,9 +229,13 @@ export function ConversationTab({
             follow.current = false
             setOpen(id, open)
           },
+      showWhole: (id: string) => {
+        follow.current = false
+        setWhole((prev) => new Set(prev).add(id))
+      },
       task,
     }),
-    [isOpen, mode, orgSlug, requests, searching, setOpen, task],
+    [isOpen, mode, orgSlug, requests, searching, setOpen, task, whole],
   )
   const [flash, setFlash] = useState<null | { id: string }>(null)
   const [revealed, setRevealed] = useState<null | { id: string }>(null)
@@ -485,6 +493,8 @@ function CallRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
             argsText={argsText}
             error={p.is_error === true}
             family={family}
+            isWhole={(part) => ctx.isWhole(`${key}:${part}`)}
+            onWhole={(part) => ctx.showWhole(`${key}:${part}`)}
             result={p.result == null ? '' : label(p.result)}
           />
         )}

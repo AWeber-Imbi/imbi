@@ -717,6 +717,44 @@ describe('ConversationTab with many turns', () => {
     await waitFor(() => expect(pane().scrollTop).toBe(content(pane()) - 600))
   })
 
+  it('keeps a long tool output shown in full after it scrolls out of view', async () => {
+    const user = userEvent.setup()
+    const result = Array.from({ length: 60 }, (_, i) => `line ${i}`).join('\n')
+    const events = [
+      event(1, 'turn', { body: 'ask 0' }, HUMAN),
+      event(2, 'tool.called', {
+        arguments: { command: 'make test' },
+        call_id: 'c1',
+        result,
+        tool: 'Bash',
+      }),
+      event(3, 'turn', { body: 'reply 0' }),
+      ...MANY.slice(2).map((e) => ({ ...e, seq: e.seq + 1 })),
+    ]
+    render(view('closed', events))
+    await waitFor(() =>
+      expect(screen.getByText('reply 79')).toBeInTheDocument(),
+    )
+    scrollPane(pane(), 0)
+    await user.click(await screen.findByRole('button', { name: /Worked for/ }))
+    await user.click(screen.getByRole('button', { name: /Ran a command/ }))
+    await user.click(screen.getByRole('button', { name: /Bash make test/ }))
+    await user.click(screen.getByRole('button', { name: 'Show all 61 lines' }))
+    expect(screen.getByText(/line 59$/)).toBeInTheDocument()
+    scrollPane(pane(), content(pane()) - 600)
+    const last = await screen.findByText('reply 79')
+    last.tabIndex = -1
+    act(() => last.focus())
+    await waitFor(() =>
+      expect(screen.queryByText(/line 59$/)).not.toBeInTheDocument(),
+    )
+    scrollPane(pane(), 0)
+    expect(await screen.findByText(/line 59$/)).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /^Show all \d+ lines$/ }),
+    ).not.toBeInTheDocument()
+  })
+
   it('keeps a long ask shown in full after it scrolls out of view', async () => {
     const user = userEvent.setup()
     const description = `${'word '.repeat(150)}the end`
