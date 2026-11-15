@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   render,
   screen,
@@ -20,6 +21,7 @@ import {
 import { event, task } from './taskFixtures'
 import {
   captureHighlights,
+  findStub,
   layout,
   scrollPane,
   tableHeight,
@@ -594,6 +596,17 @@ describe('StatisticsTab with many turns', () => {
     const cols = [...table.querySelectorAll<HTMLElement>('colgroup > col')]
     expect(cols).toHaveLength(9)
     expect(cols.filter((c) => c.style.width !== '')).toHaveLength(8)
+  })
+
+  it('lets the browser find a turn out of view and scrolls to it', async () => {
+    render(<StatisticsTab events={MANY} task={t} />)
+    const stub = findStub('ask 90')
+    expect(stub).toHaveAttribute('hidden', 'until-found')
+    expect(screen.queryByText('ask 90')).toBeNull()
+    act(() => {
+      stub.dispatchEvent(new Event('beforematch'))
+    })
+    expect(await screen.findByText('ask 90')).toBeInTheDocument()
   })
 
   it('cuts off a value too long for its column with an ellipsis', () => {

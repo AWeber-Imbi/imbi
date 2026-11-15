@@ -75,6 +75,7 @@ import {
   turnForSeq,
   turns,
 } from './conversationTurns'
+import { FindStub } from './FindStub'
 import { Prose, Todos, ToolReadable } from './taskEntryViews'
 import {
   formatElapsed,
@@ -105,7 +106,7 @@ import {
   toolLabel,
   toolSummary,
 } from './toolCalls'
-import { useVirtualRows } from './virtualRows'
+import { scrollToFound, useVirtualRows } from './virtualRows'
 
 interface Ctx {
   isOpen: (id: string, byDefault: boolean) => boolean
@@ -289,6 +290,23 @@ export function ConversationTab({
     scroller,
   })
   const total = virtualizer.getTotalSize()
+  const findTexts = useMemo(
+    () =>
+      new Map<string, string>([
+        ['ask', ask ? (taskAsk(task, list[0]) ?? '') : ''],
+        ...shown.map((turn): [string, string] => [turn.id, turnMarkdown(turn)]),
+      ]),
+    [ask, list, shown, task],
+  )
+  const onFound = useCallback(
+    (index: number) => {
+      pinned.current = false
+      scrollToFound(virtualizer, index, 'start')
+    },
+    [virtualizer],
+  )
+  const drawn = new Set(virtualizer.getVirtualItems().map((item) => item.index))
+  const unrendered = rows.flatMap((_, i) => (drawn.has(i) ? [] : [i]))
 
   useLayoutEffect(() => {
     const el = scroller.current
@@ -403,6 +421,19 @@ export function ConversationTab({
                       </div>
                     )
                   })}
+                  {unrendered.map((i) => (
+                    <FindStub
+                      index={i}
+                      key={rows[i]}
+                      onFound={onFound}
+                      style={{
+                        insetInline: 0,
+                        position: 'absolute',
+                        top: virtualizer.measurementsCache[i]?.start ?? 0,
+                      }}
+                      text={findTexts.get(rows[i]) ?? ''}
+                    />
+                  ))}
                 </div>
                 {shown.length === 0 && !searching && (
                   <ActivityEmpty
@@ -740,6 +771,14 @@ function TurnHeader({
   )
 }
 
+/** A turn as Markdown, without the task and turn headings. */
+function turnMarkdown(turn: Turn): string {
+  return conversationMarkdown({ title: 'x' }, [turn]).replace(
+    /^# x\s+## Turn 1\s+/,
+    '',
+  )
+}
+
 /** The turn as Markdown plus every value its events hold, for search. */
 function turnText(turn: Turn): string {
   const entries = [
@@ -748,13 +787,7 @@ function turnText(turn: Turn): string {
       item.kind === 'group' ? item.entries : [item.entry],
     ),
   ]
-  return [
-    conversationMarkdown({ title: 'x' }, [turn]).replace(
-      /^# x\s+## Turn 1\s+/,
-      '',
-    ),
-    ...entries.map(searchText),
-  ].join(' ')
+  return [turnMarkdown(turn), ...entries.map(searchText)].join(' ')
 }
 
 function TurnView({

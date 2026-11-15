@@ -20,6 +20,7 @@ import { frameOf, sameWindow, windowOf } from '../trajectoryWindow'
 import { event, task } from './taskFixtures'
 import {
   captureHighlights,
+  findStub,
   layout,
   scrollPane,
   tableHeight,
@@ -1276,6 +1277,17 @@ describe('TrajectoryTab with many rows', () => {
     await waitFor(() =>
       expect(rows()[rows().length - 1]).toHaveAttribute('aria-rowindex', '302'),
     )
+  })
+
+  it('lets the browser find a row out of view and scrolls to it', async () => {
+    renderTab('closed', LONG)
+    const stub = findStub('needle 75')
+    expect(stub).toHaveAttribute('hidden', 'until-found')
+    expect(screen.queryByText('needle 75')).toBeNull()
+    act(() => {
+      stub.dispatchEvent(new Event('beforematch'))
+    })
+    expect(await screen.findByText('needle 75')).toBeInTheDocument()
   })
 
   it('scrolls to a record a late #e link points at', () => {

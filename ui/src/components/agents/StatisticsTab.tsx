@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useMemo, useRef, useState } from 'react'
 
 import {
   ArrowRightToLine,
@@ -25,6 +25,7 @@ import { cn } from '@/lib/utils'
 import type { AgentTask, AgentTaskEvent } from '@/types'
 
 import { ActivityEmpty, NoMatches } from './ActivityEmpty'
+import { FindStub } from './FindStub'
 import {
   type ContextBasis,
   type StatsCells,
@@ -49,7 +50,7 @@ import {
 } from './TaskToolbar'
 import { buildTrajectory, formatDuration } from './trajectoryModel'
 import { useStoredState } from './useStoredState'
-import { gapsOf, useVirtualRows } from './virtualRows'
+import { gapsOf, scrollToFound, useVirtualRows } from './virtualRows'
 
 const ANSWER_CAP = 16_000
 
@@ -244,10 +245,28 @@ export function StatisticsTab({
     keep: [focusRow],
     scroller,
   })
-  const { after, rows: rendered } = gapsOf(
+  const {
+    after,
+    afterSkipped,
+    rows: rendered,
+  } = gapsOf(
     virtualizer.getVirtualItems(),
     virtualizer.getTotalSize(),
+    flat.length,
   )
+  const found = useCallback(
+    (index: number) => scrollToFound(virtualizer, index),
+    [virtualizer],
+  )
+  const stubs = (indexes: number[]) =>
+    indexes.map((i) => (
+      <FindStub
+        index={i}
+        key={keyOf(i)}
+        onFound={found}
+        text={findText(flat[i])}
+      />
+    ))
 
   const renderRow = (row: StatsRow, index: number) => {
     const measure = {
@@ -384,13 +403,19 @@ export function StatisticsTab({
                 if (index !== undefined) setFocusKey(keyOf(Number(index)))
               }}
             >
-              {rendered.flatMap(({ before, item }) => [
-                ...(before > 0
-                  ? [<Gap height={before} key={`gap-${item.key}`} />]
+              {rendered.flatMap(({ before, item, skipped }) => [
+                ...(before > 0 || skipped.length
+                  ? [
+                      <Gap height={before} key={`gap-${item.key}`}>
+                        {stubs(skipped)}
+                      </Gap>,
+                    ]
                   : []),
                 renderRow(flat[item.index], item.index),
               ])}
-              {after > 0 && <Gap height={after} />}
+              {(after > 0 || afterSkipped.length > 0) && (
+                <Gap height={after}>{stubs(afterSkipped)}</Gap>
+              )}
             </TableBody>
             <TableFooter className="bg-secondary sticky bottom-0">
               <TableRow
@@ -434,10 +459,20 @@ function clock(ms: null | number): string | undefined {
   return `Started ${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`
 }
 
-function Gap({ height }: { height: number }) {
+/** The text of a row as it renders, for the browser's find. */
+function findText(row: StatsRow): string {
+  if (row.kind === 'turn')
+    return `Turn ${row.turn.number} ${row.turn.trigger.text}`
+  if (row.kind === 'step') return `Step ${row.step.number} ${row.step.did}`
+  return row.step.answer.slice(0, ANSWER_CAP)
+}
+
+function Gap({ children, height }: { children?: ReactNode; height: number }) {
   return (
     <tr aria-hidden style={{ height }}>
-      <td className="p-0!" colSpan={COLUMNS.length} />
+      <td className="p-0! align-top" colSpan={COLUMNS.length}>
+        {children}
+      </td>
     </tr>
   )
 }

@@ -1,5 +1,6 @@
 import {
   type KeyboardEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -11,6 +12,7 @@ import { Info, Settings, Sparkle, User, Wrench } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 
+import { FindStub } from './FindStub'
 import {
   type Fold,
   KIND_LABEL,
@@ -20,7 +22,7 @@ import {
   type TrajectoryRow,
 } from './trajectoryModel'
 import { sameWindow, type TrajectoryWindow, windowOf } from './trajectoryWindow'
-import { gapsOf, unlaidOf, useVirtualRows } from './virtualRows'
+import { gapsOf, scrollToFound, unlaidOf, useVirtualRows } from './virtualRows'
 
 export type TrajectorySelection =
   | null
@@ -241,7 +243,24 @@ export function TrajectoryLedger({
     target?.focus({ preventScroll: true })
   }
 
-  const { after, rows: shownRows } = gapsOf(items, virtualizer.getTotalSize())
+  const {
+    after,
+    afterSkipped,
+    rows: shownRows,
+  } = gapsOf(items, virtualizer.getTotalSize(), rows.length)
+  const found = useCallback(
+    (index: number) => scrollToFound(virtualizer, index),
+    [virtualizer],
+  )
+  const stubs = (indexes: number[]) =>
+    indexes.map((i) => (
+      <FindStub
+        index={i}
+        key={keyOf(i)}
+        onFound={found}
+        text={findText(rows[i])}
+      />
+    ))
 
   return (
     <div
@@ -278,12 +297,16 @@ export function TrajectoryLedger({
           }}
           onKeyDown={onKeyDown}
         >
-          {shownRows.flatMap(({ before, item }) => {
+          {shownRows.flatMap(({ before, item, skipped }) => {
             const row = rows[item.index]
             const i = item.index
             return [
-              ...(before > 0
-                ? [<Gap height={before} key={`gap-${item.key}`} />]
+              ...(before > 0 || skipped.length
+                ? [
+                    <Gap height={before} key={`gap-${item.key}`}>
+                      {stubs(skipped)}
+                    </Gap>,
+                  ]
                 : []),
               row.kind === 'summary' ? (
                 <SummaryRow
@@ -324,7 +347,9 @@ export function TrajectoryLedger({
               ),
             ]
           })}
-          {after > 0 && <Gap height={after} />}
+          {(after > 0 || afterSkipped.length > 0) && (
+            <Gap height={after}>{stubs(afterSkipped)}</Gap>
+          )}
         </tbody>
       </table>
     </div>
@@ -377,10 +402,21 @@ function Content({ record }: { record: TrajectoryRecord }) {
   )
 }
 
-function Gap({ height }: { height: number }) {
+/** The text of a row as it renders, for the browser's find. */
+function findText(row: LedgerProps['rows'][number]): string {
+  if (row.kind === 'summary') return row.text
+  const { record } = row
+  if (!record.tool) return record.text
+  const { args, name, result } = record.tool
+  return `${name} ${args} → ${result || 'No output'}`
+}
+
+function Gap({ children, height }: { children?: ReactNode; height: number }) {
   return (
     <tr aria-hidden style={{ height }}>
-      <td colSpan={2} />
+      <td className="p-0 align-top" colSpan={2}>
+        {children}
+      </td>
     </tr>
   )
 }

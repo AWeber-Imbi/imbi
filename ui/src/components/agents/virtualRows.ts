@@ -23,18 +23,42 @@ interface Options {
   scroller: React.RefObject<HTMLDivElement | null>
 }
 
-/** Each rendered row with the empty space before it, and the space after. */
+/**
+ * Each rendered row with the empty space before it and the rows that
+ * space stands for, and the space and rows after the last one.
+ */
 export function gapsOf(
   items: VirtualItem[],
   total: number,
-): { after: number; rows: { before: number; item: VirtualItem }[] } {
+  count = 0,
+): {
+  after: number
+  afterSkipped: number[]
+  rows: { before: number; item: VirtualItem; skipped: number[] }[]
+} {
   let end = 0
+  let next = 0
   const rows = items.map((item) => {
     const before = Math.max(0, item.start - end)
+    const skipped = between(next, item.index)
     end = item.end
-    return { before, item }
+    next = item.index + 1
+    return { before, item, skipped }
   })
-  return { after: Math.max(0, total - end), rows }
+  return {
+    after: Math.max(0, total - end),
+    afterSkipped: between(next, count),
+    rows,
+  }
+}
+
+/** Brings a row the browser's find matched while unrendered into view. */
+export function scrollToFound(
+  virtualizer: Virtualizer<HTMLDivElement, Element>,
+  index: number,
+  align: 'center' | 'start' = 'center',
+) {
+  requestAnimationFrame(() => virtualizer.scrollToIndex(index, { align }))
 }
 
 /** Whether the scroller has no layout, so every row renders. */
@@ -101,6 +125,10 @@ export function useVirtualRows({
   })
   virtualizer.shouldAdjustScrollPositionOnItemSizeChange = growsAbove
   return virtualizer
+}
+
+function between(from: number, to: number): number[] {
+  return Array.from({ length: Math.max(0, to - from) }, (_, i) => from + i)
 }
 
 /** Keep the view still unless a row that changed size ends above it. */

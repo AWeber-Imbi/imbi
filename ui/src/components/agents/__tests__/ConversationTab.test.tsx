@@ -9,7 +9,12 @@ import { ConversationTab } from '../ConversationTab'
 import type { TaskRequestView } from '../taskEvents'
 import { TaskSearchProvider } from '../taskSearch'
 import { event, task } from './taskFixtures'
-import { captureHighlights, layout, scrollPane } from './virtualLayout'
+import {
+  captureHighlights,
+  findStub,
+  layout,
+  scrollPane,
+} from './virtualLayout'
 
 vi.mock('@/hooks/useHasPermission', () => ({
   useHasPermission: () => false,
@@ -845,6 +850,21 @@ describe('ConversationTab with many turns', () => {
       selection.removeAllRanges()
       document.dispatchEvent(new Event('selectionchange'))
     })
+  })
+
+  it('lets the browser find a turn out of view and scrolls to it', async () => {
+    render(view('closed'))
+    await screen.findByText('reply 79')
+    const stub = findStub('reply 0')
+    expect(stub).toHaveAttribute('hidden', 'until-found')
+    expect(screen.queryByText('reply 0')).toBeNull()
+    scrollTo.mockClear()
+    act(() => {
+      stub.dispatchEvent(new Event('beforematch'))
+    })
+    await waitFor(() => expect(scrollTo).toHaveBeenCalled())
+    const [{ top }] = scrollTo.mock.calls.at(-1) as [{ top: number }]
+    expect(top).toBeLessThan(600)
   })
 
   it('keeps every selected turn rendered when the selection spans the pane', async () => {

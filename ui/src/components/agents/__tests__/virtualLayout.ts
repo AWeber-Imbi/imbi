@@ -58,6 +58,15 @@ export function captureHighlights() {
   return { marked, mutate }
 }
 
+/** The row text kept for the browser's find, hidden until it matches. */
+export function findStub(text: string) {
+  const stub = [
+    ...document.querySelectorAll<HTMLElement>('[hidden="until-found"]'),
+  ].find((el) => wholeWords(text).test(el.textContent ?? ''))
+  if (!stub) throw new Error(`No find stub holds ${text}`)
+  return stub
+}
+
 /**
  * Gives a scroll pane and its virtual rows a height and a scroll
  * position, as a browser would, so the virtualizer renders a window
@@ -127,4 +136,9 @@ export function tableHeight(row: number) {
   return (pane: HTMLElement) =>
     Number(pane.querySelector('table')?.getAttribute('aria-rowcount') ?? 0) *
     row
+}
+
+function wholeWords(text: string) {
+  const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`(^|\\W)${escaped}(\\W|$)`)
 }
