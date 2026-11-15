@@ -651,6 +651,36 @@ describe('ConversationTab with many turns', () => {
   }
   const replies = () => screen.queryAllByText(/^reply \d+$/)
   const flashed = () => document.querySelector<HTMLElement>('[data-flash]')
+  const observeResizes = () => {
+    const observers: { els: Set<Element>; fire: ResizeObserverCallback }[] = []
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        els = new Set<Element>()
+        constructor(fire: ResizeObserverCallback) {
+          observers.push({ els: this.els, fire })
+        }
+        disconnect() {
+          this.els.clear()
+        }
+        observe(el: Element) {
+          this.els.add(el)
+        }
+        unobserve(el: Element) {
+          this.els.delete(el)
+        }
+      },
+    )
+    return (row: Element) =>
+      act(() => {
+        for (const o of observers)
+          if (o.els.has(row))
+            o.fire(
+              [{ target: row } as unknown as ResizeObserverEntry],
+              o as unknown as ResizeObserver,
+            )
+      })
+  }
   const scrollTo = vi.fn()
   const original = Element.prototype.scrollTo
   let spy: ReturnType<typeof layout>
@@ -875,6 +905,41 @@ describe('ConversationTab with many turns', () => {
     expect(findStub('the pending clue')).toBe(findStub('reply 0'))
   })
 
+  it('lets the browser find what an open thought shows out of view', async () => {
+    const user = userEvent.setup()
+    const events = [
+      event(1, 'turn', { body: 'ask 0' }, HUMAN),
+      event(2, 'turn', {
+        body: 'Weighing the build.\nthe second thought',
+        kind: 'thinking',
+      }),
+      event(3, 'turn', { body: 'reply 0' }),
+      ...MANY.slice(2).map((e) => ({ ...e, seq: e.seq + 1 })),
+    ]
+    const away = async () => {
+      scrollPane(pane(), content(pane()) - 600)
+      const last = await screen.findByText('reply 79')
+      last.tabIndex = -1
+      act(() => last.focus())
+      await waitFor(() => expect(screen.queryByText('reply 0')).toBeNull())
+    }
+    render(view('closed', events))
+    await screen.findByText('reply 79')
+    expect(findStub('reply 0').textContent).not.toContain('Weighing')
+    scrollPane(pane(), 0)
+    await user.click(await screen.findByRole('button', { name: /Worked/ }))
+    await user.click(screen.getByRole('button', { name: /^Thought$/ }))
+    await away()
+    expect(findStub('Weighing the build.')).toBe(findStub('reply 0'))
+    expect(findStub('reply 0').textContent).not.toContain('the second thought')
+    scrollPane(pane(), 0)
+    await user.click(
+      await screen.findByRole('button', { name: /Thought: Weighing/ }),
+    )
+    await away()
+    expect(findStub('the second thought')).toBe(findStub('reply 0'))
+  })
+
   it('keeps a long ask shown in full after it scrolls out of view', async () => {
     const user = userEvent.setup()
     const description = `${'word '.repeat(150)}the end`
@@ -900,6 +965,29 @@ describe('ConversationTab with many turns', () => {
     scrollPane(pane(), 0)
     expect(await screen.findByText(/the end$/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Show less' })).toBeVisible()
+  })
+
+  it('lets the browser find only the part of a long ask it shows', async () => {
+    const user = userEvent.setup()
+    const description = `${'word '.repeat(150)}the hidden end`
+    const t = task({ description, status: 'closed' }) as unknown as AgentTask
+    render(
+      <div className="flex h-150 flex-col">
+        <ConversationTab events={MANY} orgSlug="acme" requests={[]} task={t} />
+      </div>,
+    )
+    await screen.findByText('reply 79')
+    expect(findStub('word').textContent).not.toContain('the hidden end')
+    scrollPane(pane(), 0)
+    await user.click(await screen.findByRole('button', { name: 'Show all' }))
+    scrollPane(pane(), content(pane()) - 600)
+    const last = await screen.findByText('reply 79')
+    last.tabIndex = -1
+    act(() => last.focus())
+    await waitFor(() =>
+      expect(screen.queryByText(/the hidden end$/)).not.toBeInTheDocument(),
+    )
+    expect(findStub('the hidden end')).toBe(findStub('word'))
   })
 
   it('keeps a turn with selected text rendered while it is out of view', async () => {
@@ -1075,25 +1163,7 @@ describe('ConversationTab with many turns', () => {
 
   it('stays where the reader opens a fold at the bottom', async () => {
     const user = userEvent.setup()
-    const observers: { els: Set<Element>; fire: ResizeObserverCallback }[] = []
-    vi.stubGlobal(
-      'ResizeObserver',
-      class {
-        els = new Set<Element>()
-        constructor(fire: ResizeObserverCallback) {
-          observers.push({ els: this.els, fire })
-        }
-        disconnect() {
-          this.els.clear()
-        }
-        observe(el: Element) {
-          this.els.add(el)
-        }
-        unobserve(el: Element) {
-          this.els.delete(el)
-        }
-      },
-    )
+    const resize = observeResizes()
     spy.mockRestore()
     spy = layout({
       content,
@@ -1135,22 +1205,44 @@ describe('ConversationTab with many turns', () => {
     await waitFor(() => expect(pane().scrollTop).toBe(content(pane()) - 600))
     const before = pane().scrollTop
     await user.click(screen.getByRole('button', { name: /Worked for/ }))
-    const row = screen
-      .getByText('reply 80')
-      .closest<HTMLElement>('[data-index]')!
-    act(() => {
-      for (const o of observers)
-        if (o.els.has(row))
-          o.fire(
-            [{ target: row } as unknown as ResizeObserverEntry],
-            o as unknown as ResizeObserver,
-          )
-    })
+    resize(screen.getByText('reply 80').closest<HTMLElement>('[data-index]')!)
     expect(content(pane()) - 600).toBeGreaterThan(before)
     expect(pane().scrollTop).toBe(before)
     const latest = screen.getByRole('button', { name: 'Scroll to end' })
     expect(latest).toHaveAttribute('data-active', 'true')
     expect(latest).not.toHaveAttribute('tabindex', '-1')
+  })
+
+  it('stays where the reader shows all of a long ask at the bottom', async () => {
+    const user = userEvent.setup()
+    const resize = observeResizes()
+    spy.mockRestore()
+    spy = layout({
+      content,
+      isPane,
+      pane: 600,
+      row: (el) => 100 + Math.round((el.textContent ?? '').length / 2),
+    })
+    const description = `${'word '.repeat(150)}the end`
+    const t = task({ description, status: 'closed' }) as unknown as AgentTask
+    render(
+      <div className="flex h-150 flex-col">
+        <ConversationTab
+          events={MANY.slice(0, 10)}
+          orgSlug="acme"
+          requests={[]}
+          task={t}
+        />
+      </div>,
+    )
+    await waitFor(() => expect(screen.getByText('reply 4')).toBeInTheDocument())
+    await waitFor(() => expect(pane().scrollTop).toBe(content(pane()) - 600))
+    const before = pane().scrollTop
+    expect(before).toBeGreaterThan(0)
+    await user.click(screen.getByRole('button', { name: 'Show all' }))
+    resize(screen.getByText(/the end$/).closest<HTMLElement>('[data-index]')!)
+    expect(content(pane()) - 600).toBeGreaterThan(before)
+    expect(pane().scrollTop).toBe(before)
   })
 
   it('scrolls to a far turn another view asks for, and flashes it', async () => {

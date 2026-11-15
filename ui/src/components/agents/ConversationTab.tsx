@@ -294,13 +294,16 @@ export function ConversationTab({
   const findTexts = useMemo(
     () =>
       new Map<string, string>([
-        ['ask', ask ? (taskAsk(task, list[0]) ?? '') : ''],
+        [
+          'ask',
+          ask ? askShown(taskAsk(task, list[0]) ?? '', askAll, askMatches) : '',
+        ],
         ...shown.map((turn): [string, string] => [
           turn.id,
           turnFindText(turn, ctx, query),
         ]),
       ]),
-    [ask, ctx, list, query, shown, task],
+    [ask, askAll, askMatches, ctx, list, query, shown, task],
   )
   const onFound = useCallback(
     (index: number) => {
@@ -418,7 +421,10 @@ export function ConversationTab({
                             all={askAll}
                             ctx={ctx}
                             first={list[0]}
-                            onAll={setAskAll}
+                            onAll={(all) => {
+                              follow.current = false
+                              setAskAll(all)
+                            }}
                             reveal={askMatches}
                           />
                         )}
@@ -465,6 +471,13 @@ export function ConversationTab({
       </div>
     </>
   )
+}
+
+/** The part of the ask its message shows: a preview, unless shown in full. */
+function askShown(body: string, all: boolean, reveal: boolean): string {
+  return body.length > ASK_PREVIEW && !reveal && !all
+    ? `${body.slice(0, ASK_PREVIEW)}…`
+    : body
 }
 
 /** The pane is scrolled to within END_SLACK of its end. */
@@ -720,9 +733,7 @@ function TaskAsk({
             : source}
         </MessageHeader>
         <div className="bg-secondary flex max-w-[85%] flex-col items-start gap-1 self-end rounded-xl px-3.5 py-2.5">
-          <Prose>
-            {long && !all ? `${body.slice(0, ASK_PREVIEW)}…` : body}
-          </Prose>
+          <Prose>{askShown(body, all, reveal)}</Prose>
           {long && (
             <Button onClick={() => onAll(!all)} size="sm" variant="link">
               {all ? 'Show less' : 'Show all'}
@@ -751,7 +762,8 @@ function turnFindText(turn: Turn, ctx: Ctx, query: string): string {
   const shown = (entry: TimelineEntry): string[] => {
     const e = entry.event
     const key = entryKey(entry)
-    if ((e && e.type !== 'tool.called') || !ctx.isOpen(key, false)) return []
+    if (e && e.type !== 'tool.called') return workText(entry, ctx)
+    if (!ctx.isOpen(key, false)) return []
     const p = e?.payload ?? {}
     return [
       ...(e
@@ -979,4 +991,26 @@ function WorkRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
       <TraceTitle>{systemText(e)}</TraceTitle>
     </TraceLine>
   )
+}
+
+/** What a step other than a call shows in an open work group. */
+function workText(entry: TimelineEntry, ctx: Ctx): string[] {
+  const e = entry.event
+  if (!e || e.type === 'usage.reported') return []
+  const open = ctx.isOpen(entry.id, false)
+  if (e.type === 'todos.updated') {
+    const todos = (e.payload.todos ?? []) as { title?: string }[]
+    return [
+      'Updated the plan',
+      ...(open ? todos.map((t) => t.title ?? '') : []),
+    ]
+  }
+  if (e.type !== 'turn') return [systemText(e)]
+  const body = String(e.payload.body ?? '')
+  if (e.payload.kind === 'warning') return [body]
+  const first = body.split('\n')[0]
+  return [
+    e.payload.kind === 'thinking' ? `Thought: ${first}` : first,
+    ...(open ? [body] : []),
+  ]
 }
