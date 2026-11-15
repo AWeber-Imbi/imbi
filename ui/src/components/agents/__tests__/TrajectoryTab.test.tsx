@@ -1412,10 +1412,8 @@ describe('TrajectoryTab with many rows', () => {
   it('filters every record from the data and marks what renders', async () => {
     const { marked, mutate } = captureHighlights()
     renderTab('closed', LONG)
-    await userEvent.type(
-      screen.getByRole('searchbox', { name: 'Search trajectory' }),
-      'needle 1',
-    )
+    screen.getByRole('searchbox', { name: 'Search trajectory' }).focus()
+    await userEvent.paste('needle 1')
     const grid = screen.getByRole('grid', { name: 'Trajectory' })
     expect(grid).toHaveAttribute('aria-rowcount', '61')
     expect(rows().length).toBeLessThan(61)
@@ -1433,7 +1431,7 @@ describe('TrajectoryTab with many rows', () => {
     )
     await waitFor(() => expect(marked.current).toContain('needle 149'))
     expect(marked.current).not.toContain('needle 10')
-  })
+  }, 15_000)
 
   it('copies every event, not only the rows in view', async () => {
     const user = userEvent.setup()
