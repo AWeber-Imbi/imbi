@@ -703,6 +703,70 @@ describe('TrajectoryTab overview', () => {
     expect(to).toBeCloseTo(100)
   })
 
+  it('keeps a range ordered when its subagent requests leave', () => {
+    const t = task({ status: 'running' }) as unknown as AgentTask
+    const base = [
+      event(1, 'task.created', { title: 'T' }),
+      event(2, 'usage.reported', { message_id: 'm1', tokens_in: 1 }),
+      event(3, 'usage.reported', { message_id: 's1', tokens_in: 2 }),
+      event(4, 'usage.reported', { message_id: 's2', tokens_in: 2 }),
+      event(5, 'usage.reported', { message_id: 'm2', tokens_in: 3 }),
+      event(6, 'turn', { body: 'Done', kind: 'text', message_id: 'm2' }),
+    ]
+    const sub = (seq: number, id: string, message: string) =>
+      event(
+        seq,
+        'tool.called',
+        {
+          call_id: id,
+          message_id: message,
+          parent_call_id: 'c1',
+          tool: 'Read',
+        },
+        { actor_kind: 'subagent' },
+      )
+    const ui = (events: typeof LOG) => (
+      <div className="flex h-150 flex-col">
+        <TrajectoryTab events={events} task={t} />
+      </div>
+    )
+    const view = render(ui(base))
+    vi.spyOn(track(), 'getBoundingClientRect').mockReturnValue({
+      bottom: 50,
+      height: 50,
+      left: 0,
+      right: 900,
+      toJSON: () => ({}),
+      top: 0,
+      width: 900,
+      x: 0,
+      y: 0,
+    })
+    const ids = spanBars().map((b) => b.dataset.span)
+    const first = ids.indexOf(base[1].event_id)
+    expect(ids.slice(first, first + 3)).toEqual(
+      base.slice(1, 4).map((e) => e.event_id),
+    )
+    const unit = 900 / ids.length
+    fireEvent.pointerDown(track(), {
+      button: 0,
+      clientX: (first + 0.9) * unit,
+    })
+    fireEvent.pointerMove(track(), {
+      button: 0,
+      clientX: (first + 2.1) * unit,
+    })
+    fireEvent.pointerUp(track(), { button: 0, clientX: (first + 2.1) * unit })
+    view.rerender(ui([...base, sub(7, 'r1', 's1'), sub(8, 'r2', 's2')]))
+    expect(spanBars().map((b) => b.dataset.span)).not.toContain(
+      base[2].event_id,
+    )
+    const band = track().querySelector<HTMLElement>('[data-range="committed"]')!
+    const n = spanBars().length
+    expect(parseFloat(band.style.left)).toBeCloseTo((first / n) * 100)
+    expect(parseFloat(band.style.width)).toBeCloseTo(100 / n)
+  })
+
   it('drops a drag on the strip when the browser cancels it', () => {
     renderTab()
     vi.spyOn(track(), 'getBoundingClientRect').mockReturnValue({

@@ -373,7 +373,11 @@ function rangeOf(
   picked: null | Picked,
 ): null | TrajectoryRange {
   const hull = picked && hullOf(spans, picked.ids)
-  return hull ? [hull[0] + picked!.lead, hull[1] + picked!.tail] : null
+  if (!hull) return null
+  const kept = spans.filter((s) => picked!.ids.has(s.id)).length
+  const start = hull[0] + picked!.lead
+  const end = hull[1] + picked!.tail
+  return kept === picked!.ids.size && start <= end ? [start, end] : hull
 }
 
 /** The folds with the ones that hide a record opened. */
