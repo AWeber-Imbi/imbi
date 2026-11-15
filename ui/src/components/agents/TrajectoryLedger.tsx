@@ -258,7 +258,7 @@ export function TrajectoryLedger({
         index={i}
         key={keyOf(i)}
         onFound={found}
-        text={findText(rows[i])}
+        text={findText(rows[i], turnStarts)}
       />
     ))
 
@@ -402,13 +402,30 @@ function Content({ record }: { record: TrajectoryRecord }) {
   )
 }
 
+function contentText(record: TrajectoryRecord): string {
+  if (record.tool) {
+    const { args, name, result } = record.tool
+    return `${name} ${args} → ${result || 'No output'}`
+  }
+  if (record.kind === 'assistant' && !record.text) return '(tool call only)'
+  return record.text
+}
+
 /** The text of a row as it renders, for the browser's find. */
-function findText(row: LedgerProps['rows'][number]): string {
+function findText(
+  row: LedgerProps['rows'][number],
+  turnStarts: Map<string, number>,
+): string {
   if (row.kind === 'summary') return row.text
   const { record } = row
-  if (!record.tool) return record.text
-  const { args, name, result } = record.tool
-  return `${name} ${args} → ${result || 'No output'}`
+  const turn = turnStarts.get(record.id)
+  return [
+    turn === undefined ? null : `Turn ${turn}`,
+    KIND_LABEL[record.kind],
+    contentText(record),
+  ]
+    .filter(Boolean)
+    .join(' ')
 }
 
 function Gap({ children, height }: { children?: ReactNode; height: number }) {

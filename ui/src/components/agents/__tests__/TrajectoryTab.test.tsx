@@ -1290,6 +1290,31 @@ describe('TrajectoryTab with many rows', () => {
     expect(await screen.findByText('needle 75')).toBeInTheDocument()
   })
 
+  it('lets the browser find a turn label out of view', () => {
+    const turns = Array.from({ length: 100 }, (_, i) => [
+      event(
+        3 + i * 3,
+        'turn',
+        { body: `ask ${i}` },
+        { actor_id: 'dev', actor_kind: 'human' },
+      ),
+      event(4 + i * 3, 'usage.reported', {
+        message_id: `m${i}`,
+        tokens_in: 1,
+      }),
+      event(5 + i * 3, 'turn', {
+        body: `reply ${i}`,
+        kind: 'text',
+        message_id: `m${i}`,
+      }),
+    ]).flat()
+    renderTab('closed', [...LONG.slice(0, 2), ...turns])
+    expect(screen.queryByText('ask 74')).toBeNull()
+    const stub = findStub('ask 74')
+    expect(stub.textContent).toBe('Turn 76 USER ask 74')
+    expect(findStub('Turn 76')).toBe(stub)
+  })
+
   it('scrolls to a record a late #e link points at', () => {
     const scrollTo = vi.fn()
     window.history.replaceState(

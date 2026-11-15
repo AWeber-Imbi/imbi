@@ -294,9 +294,12 @@ export function ConversationTab({
     () =>
       new Map<string, string>([
         ['ask', ask ? (taskAsk(task, list[0]) ?? '') : ''],
-        ...shown.map((turn): [string, string] => [turn.id, turnMarkdown(turn)]),
+        ...shown.map((turn): [string, string] => [
+          turn.id,
+          turnFindText(turn, ctx.isOpen),
+        ]),
       ]),
-    [ask, list, shown, task],
+    [ask, ctx.isOpen, list, shown, task],
   )
   const onFound = useCallback(
     (index: number) => {
@@ -730,6 +733,32 @@ function TaskAsk({
   )
 }
 
+function turnEntries(turn: Turn): TimelineEntry[] {
+  return [
+    ...turn.opening,
+    ...turn.items.flatMap((item) =>
+      item.kind === 'group' ? item.entries : [item.entry],
+    ),
+  ]
+}
+
+/** The turn as Markdown plus what its open tool calls show, for the browser's find. */
+function turnFindText(turn: Turn, isOpen: Ctx['isOpen']): string {
+  const opened = (entry: TimelineEntry): string[] => {
+    const e = entry.event
+    if (e?.type !== 'tool.called' || !isOpen(entryKey(entry), false)) return []
+    const p = e.payload
+    return [
+      ...values(p.arguments ?? {}),
+      p.result == null ? '' : label(p.result),
+      ...entry.children.flatMap(opened),
+    ]
+  }
+  return [turnMarkdown(turn), ...turnEntries(turn).flatMap(opened)]
+    .filter(Boolean)
+    .join('\n')
+}
+
 function TurnHeader({
   ctx,
   open,
@@ -781,13 +810,7 @@ function turnMarkdown(turn: Turn): string {
 
 /** The turn as Markdown plus every value its events hold, for search. */
 function turnText(turn: Turn): string {
-  const entries = [
-    ...turn.opening,
-    ...turn.items.flatMap((item) =>
-      item.kind === 'group' ? item.entries : [item.entry],
-    ),
-  ]
-  return [turnMarkdown(turn), ...entries.map(searchText)].join(' ')
+  return [turnMarkdown(turn), ...turnEntries(turn).map(searchText)].join(' ')
 }
 
 function TurnView({

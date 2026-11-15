@@ -462,8 +462,9 @@ function clock(ms: null | number): string | undefined {
 /** The text of a row as it renders, for the browser's find. */
 function findText(row: StatsRow): string {
   if (row.kind === 'turn')
-    return `Turn ${row.turn.number} ${row.turn.trigger.text}`
-  if (row.kind === 'step') return `Step ${row.step.number} ${row.step.did}`
+    return `Turn ${row.turn.number} ${row.turn.trigger.text} ${numbersText(row.turn)}`
+  if (row.kind === 'step')
+    return `Step ${row.step.number} ${row.step.did} ${numbersText(row.step)}`
   return row.step.answer.slice(0, ANSWER_CAP)
 }
 
@@ -520,6 +521,19 @@ function Numbers({
       </TableCell>
     </>
   )
+}
+
+/** The numbers a row's cells show, as they show them. */
+function numbersText(cells: StatsCells): string {
+  return [
+    tokens(cells.context),
+    tokens(cells.output),
+    percent(cells.cacheHit),
+    time(cells.modelMs),
+    time(cells.toolMs),
+    speed(cells.outputPerSecond),
+    time(cells.totalMs),
+  ].join(' ')
 }
 
 function percent(share: null | number): string {

@@ -609,6 +609,17 @@ describe('StatisticsTab with many turns', () => {
     expect(await screen.findByText('ask 90')).toBeInTheDocument()
   })
 
+  it('lets the browser find a number a row out of view shows', () => {
+    const events = MANY.map((e) =>
+      e.seq === 3 + 90 * 3
+        ? event(e.seq, 'usage.reported', { tokens_in: 987654, tokens_out: 10 })
+        : e,
+    )
+    render(<StatisticsTab events={events} task={t} />)
+    expect(screen.queryByText('ask 90')).toBeNull()
+    expect(findStub('988k')).toBe(findStub('ask 90'))
+  })
+
   it('cuts off a value too long for its column with an ellipsis', () => {
     render(<StatisticsTab events={MANY} task={t} />)
     const [first] = screen.getAllByRole('button', {
