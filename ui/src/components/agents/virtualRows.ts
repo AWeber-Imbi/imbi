@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   defaultRangeExtractor,
@@ -62,11 +62,15 @@ export function useVirtualRows({
   const unlaid = useRef(false)
   const [selected, setSelected] = useState('')
   useEffect(() => {
-    const update = () => setSelected(selectedSpan(scroller.current))
+    const update = () => setSelected(selectedSpan(scroller.current, getItemKey))
     document.addEventListener('selectionchange', update)
     return () => document.removeEventListener('selectionchange', update)
-  }, [scroller])
-  const kept = [...keep, ...spanIndexes(selected)].join(',')
+  }, [getItemKey, scroller])
+  const span = useMemo(
+    () => spanIndexes(selected, count, getItemKey),
+    [count, getItemKey, selected],
+  )
+  const kept = [...keep, ...span].join(',')
   const rangeExtractor = useCallback(
     (range: Range) => {
       if (unlaid.current)
@@ -109,11 +113,15 @@ function growsAbove(
 }
 
 /**
- * The first and last row of `pane` the text selection touches, as
- * `first-last`, so those rows and the ones between stay rendered and
- * the selection can still be copied after they scroll out of view.
+ * The keys of the first and last row of `pane` the text selection
+ * touches, so those rows and the ones between stay rendered, even as
+ * rows land above them, and the selection can still be copied after
+ * they scroll out of view.
  */
-function selectedSpan(pane: HTMLElement | null): string {
+function selectedSpan(
+  pane: HTMLElement | null,
+  getItemKey: (index: number) => number | string,
+): string {
   const selection = document.getSelection()
   if (!pane || !selection || selection.isCollapsed || !selection.rangeCount)
     return ''
@@ -122,11 +130,26 @@ function selectedSpan(pane: HTMLElement | null): string {
     (row) => (range.intersectsNode(row) ? [Number(row.dataset.index)] : []),
   )
   if (!found.length) return ''
-  return `${Math.min(...found)}-${Math.max(...found)}`
+  return JSON.stringify([
+    getItemKey(Math.min(...found)),
+    getItemKey(Math.max(...found)),
+  ])
 }
 
-function spanIndexes(span: string): number[] {
+function spanIndexes(
+  span: string,
+  count: number,
+  getItemKey: (index: number) => number | string,
+): number[] {
   if (!span) return []
-  const [first, last] = span.split('-').map(Number)
-  return Array.from({ length: last - first + 1 }, (_, i) => first + i)
+  const ends = JSON.parse(span) as (number | string)[]
+  const found: number[] = []
+  for (let i = 0; i < count; i++)
+    if (ends.includes(getItemKey(i))) found.push(i)
+  if (!found.length) return []
+  const first = Math.min(...found)
+  return Array.from(
+    { length: Math.max(...found) - first + 1 },
+    (_, i) => first + i,
+  )
 }

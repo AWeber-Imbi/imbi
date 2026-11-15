@@ -803,6 +803,50 @@ describe('ConversationTab with many turns', () => {
     )
   })
 
+  it('keeps a selected turn rendered when turns land above it', async () => {
+    const later = MANY.map((e) => ({ ...e, seq: e.seq + 40 }))
+    const earlier = Array.from({ length: 20 }, (_, i) => [
+      event(1 + i * 2, 'turn', { body: `early ask ${i}` }, HUMAN),
+      event(2 + i * 2, 'turn', { body: `early reply ${i}` }),
+    ]).flat()
+    const { rerender } = render(view('closed', later))
+    const last = await screen.findByText('reply 79')
+    const selection = document.getSelection()!
+    act(() => {
+      selection.selectAllChildren(last)
+      document.dispatchEvent(new Event('selectionchange'))
+    })
+    scrollPane(pane(), 0)
+    expect(await screen.findByText('reply 0')).toBeInTheDocument()
+    rerender(view('closed', [...earlier, ...later]))
+    expect(await screen.findByText('early reply 0')).toBeInTheDocument()
+    expect(screen.getByText('reply 79')).toBeInTheDocument()
+    expect(selection.toString()).toBe('reply 79')
+    act(() => {
+      selection.removeAllRanges()
+      document.dispatchEvent(new Event('selectionchange'))
+    })
+  })
+
+  it('keeps the turns between a selection and the pane edge rendered', async () => {
+    render(view('closed'))
+    const from = await screen.findByText('reply 77')
+    const selection = document.getSelection()!
+    act(() => {
+      selection.setBaseAndExtent(from, 0, pane(), pane().childNodes.length)
+      document.dispatchEvent(new Event('selectionchange'))
+    })
+    scrollPane(pane(), 0)
+    expect(await screen.findByText('reply 0')).toBeInTheDocument()
+    expect(screen.getByText('reply 77')).toBeInTheDocument()
+    expect(screen.getByText('reply 78')).toBeInTheDocument()
+    expect(screen.getByText('reply 79')).toBeInTheDocument()
+    act(() => {
+      selection.removeAllRanges()
+      document.dispatchEvent(new Event('selectionchange'))
+    })
+  })
+
   it('keeps every selected turn rendered when the selection spans the pane', async () => {
     render(view('closed'))
     await screen.findByText('reply 79')
