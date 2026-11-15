@@ -803,6 +803,28 @@ describe('ConversationTab with many turns', () => {
     )
   })
 
+  it('keeps every selected turn rendered when the selection spans the pane', async () => {
+    render(view('closed'))
+    await screen.findByText('reply 79')
+    const selection = document.getSelection()!
+    act(() => {
+      selection.selectAllChildren(pane())
+      document.dispatchEvent(new Event('selectionchange'))
+    })
+    scrollPane(pane(), 0)
+    expect(await screen.findByText('reply 0')).toBeInTheDocument()
+    expect(screen.getByText('reply 78')).toBeInTheDocument()
+    expect(screen.getByText('reply 79')).toBeInTheDocument()
+    expect(selection.toString()).toContain('reply 79')
+    act(() => {
+      selection.removeAllRanges()
+      document.dispatchEvent(new Event('selectionchange'))
+    })
+    await waitFor(() =>
+      expect(screen.queryByText('reply 79')).not.toBeInTheDocument(),
+    )
+  })
+
   it('keeps a turn with an open request rendered while it is out of view', async () => {
     const events = [
       event(1, 'turn', { body: 'ask 0' }, HUMAN),

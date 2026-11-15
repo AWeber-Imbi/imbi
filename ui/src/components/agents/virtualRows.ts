@@ -118,13 +118,9 @@ function selectedSpan(pane: HTMLElement | null): string {
   if (!pane || !selection || selection.isCollapsed || !selection.rangeCount)
     return ''
   const range = selection.getRangeAt(0)
-  const rowOf = (node: Node) => {
-    const host = node instanceof Element ? node : node.parentElement
-    const row = host?.closest<HTMLElement>('[data-index]')
-    return row && pane.contains(row) ? Number(row.dataset.index) : -1
-  }
-  const ends = [rowOf(range.startContainer), rowOf(range.endContainer)]
-  const found = ends.filter((i) => i >= 0)
+  const found = [...pane.querySelectorAll<HTMLElement>('[data-index]')].flatMap(
+    (row) => (range.intersectsNode(row) ? [Number(row.dataset.index)] : []),
+  )
   if (!found.length) return ''
   return `${Math.min(...found)}-${Math.max(...found)}`
 }
