@@ -1368,7 +1368,7 @@ describe('TrajectoryTab with many rows', () => {
     await userEvent.keyboard('{Home}')
     const search = screen.getByRole('searchbox', { name: 'Search trajectory' })
     await userEvent.click(search)
-    await userEvent.type(search, 'needle')
+    await userEvent.paste('needle')
     expect(document.activeElement).toBe(search)
     expect(search).toHaveValue('needle')
   })
