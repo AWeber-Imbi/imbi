@@ -1,5 +1,6 @@
 import {
   type KeyboardEvent,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -131,10 +132,13 @@ export function TrajectoryLedger({
         (selection?.type === 'request' &&
           selection.assistant === row.record.id)),
   )
-  const keyOf = (i: number) => {
-    const row = rows[i]
-    return row.kind === 'summary' ? row.id : row.record.id
-  }
+  const keyOf = useCallback(
+    (i: number) => {
+      const row = rows[i]
+      return row.kind === 'summary' ? row.id : row.record.id
+    },
+    [rows],
+  )
   const focusRow =
     focusKey === null ? -1 : rows.findIndex((_, i) => keyOf(i) === focusKey)
   const report = (v: typeof virtualizer) => {

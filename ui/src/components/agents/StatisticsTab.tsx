@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 
 import {
   ArrowRightToLine,
@@ -215,10 +215,13 @@ export function StatisticsTab({
   )
   const scroller = useRef<HTMLDivElement>(null)
   const [focusKey, setFocusKey] = useState<null | string>(null)
-  const keyOf = (i: number) => {
-    const row = flat[i]
-    return row.kind === 'turn' ? `turn:${row.turn.number}` : row.key
-  }
+  const keyOf = useCallback(
+    (i: number) => {
+      const row = flat[i]
+      return row.kind === 'turn' ? `turn:${row.turn.number}` : row.key
+    },
+    [flat],
+  )
   const focusRow =
     focusKey === null ? -1 : flat.findIndex((_, i) => keyOf(i) === focusKey)
   const virtualizer = useVirtualRows({

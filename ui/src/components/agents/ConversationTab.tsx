@@ -1,5 +1,6 @@
 import {
   type ReactNode,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -272,7 +273,7 @@ export function ConversationTab({
     count: rows.length,
     estimateSize: (i) => (rows[i] === 'ask' ? 120 : 240),
     gap: TURN_GAP,
-    getItemKey: (i) => rows[i],
+    getItemKey: useCallback((i: number) => rows[i], [rows]),
     keep: [flashRow, focusRow, ...asking],
     overscan: 4,
     paddingEnd: 20,
