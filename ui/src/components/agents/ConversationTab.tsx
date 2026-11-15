@@ -106,6 +106,7 @@ import {
   toolLabel,
   toolSummary,
 } from './toolCalls'
+import { readableText } from './toolText'
 import { scrollToFound, useVirtualRows } from './virtualRows'
 
 interface Ctx {
@@ -296,10 +297,10 @@ export function ConversationTab({
         ['ask', ask ? (taskAsk(task, list[0]) ?? '') : ''],
         ...shown.map((turn): [string, string] => [
           turn.id,
-          turnFindText(turn, ctx.isOpen),
+          turnFindText(turn, ctx, query),
         ]),
       ]),
-    [ask, ctx.isOpen, list, shown, task],
+    [ask, ctx, list, query, shown, task],
   )
   const onFound = useCallback(
     (index: number) => {
@@ -742,21 +743,43 @@ function turnEntries(turn: Turn): TimelineEntry[] {
   ]
 }
 
-/** The turn as Markdown plus what its open tool calls show, for the browser's find. */
-function turnFindText(turn: Turn, isOpen: Ctx['isOpen']): string {
-  const opened = (entry: TimelineEntry): string[] => {
+/**
+ * The turn as Markdown plus what its open tool calls show, as far as the
+ * turn and its work groups are open, for the browser's find.
+ */
+function turnFindText(turn: Turn, ctx: Ctx, query: string): string {
+  const shown = (entry: TimelineEntry): string[] => {
     const e = entry.event
-    if (e?.type !== 'tool.called' || !isOpen(entryKey(entry), false)) return []
-    const p = e.payload
+    const key = entryKey(entry)
+    if ((e && e.type !== 'tool.called') || !ctx.isOpen(key, false)) return []
+    const p = e?.payload ?? {}
     return [
-      ...values(p.arguments ?? {}),
-      p.result == null ? '' : label(p.result),
-      ...entry.children.flatMap(opened),
+      ...(e
+        ? readableText({
+            args: isRecord(p.arguments) ? p.arguments : {},
+            argsText: typeof p.arguments === 'string' ? p.arguments : null,
+            error: p.is_error === true,
+            family: familyOf(String(p.tool ?? 'tool')),
+            isWhole: (part) => ctx.isWhole(`${key}:${part}`),
+            query,
+            result: p.result == null ? '' : label(p.result),
+          })
+        : []),
+      ...entry.children.flatMap(shown),
     ]
   }
-  return [turnMarkdown(turn), ...turnEntries(turn).flatMap(opened)]
-    .filter(Boolean)
-    .join('\n')
+  const open =
+    !canCollapseTurn(turn) ||
+    ctx.isOpen(turn.id, turnOpenByDefault(turn, ctx.mode))
+  const calls = open
+    ? turn.items.flatMap((item) =>
+        item.kind === 'group' &&
+        ctx.isOpen(item.id, groupOpenByDefault(item, turn, ctx.mode))
+          ? item.entries.flatMap(shown)
+          : [],
+      )
+    : []
+  return [turnMarkdown(turn), ...calls].filter(Boolean).join('\n')
 }
 
 function TurnHeader({

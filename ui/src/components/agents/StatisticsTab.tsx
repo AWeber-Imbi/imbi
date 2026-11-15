@@ -264,7 +264,7 @@ export function StatisticsTab({
         index={i}
         key={keyOf(i)}
         onFound={found}
-        text={findText(flat[i])}
+        text={findText(flat[i], delta)}
       />
     ))
 
@@ -452,6 +452,12 @@ export function StatisticsTab({
   )
 }
 
+/** The context change a cell shows beside the context, if any. */
+function changeText(delta?: null | number): string {
+  if (delta === undefined || delta === null || delta === 0) return ''
+  return `${delta > 0 ? '+' : '−'}${formatTokens(Math.abs(delta))}`
+}
+
 function clock(ms: null | number): string | undefined {
   if (ms === null) return undefined
   const d = new Date(ms)
@@ -460,11 +466,11 @@ function clock(ms: null | number): string | undefined {
 }
 
 /** The text of a row as it renders, for the browser's find. */
-function findText(row: StatsRow): string {
+function findText(row: StatsRow, delta: boolean): string {
   if (row.kind === 'turn')
-    return `Turn ${row.turn.number} ${row.turn.trigger.text} ${numbersText(row.turn)}`
+    return `Turn ${row.turn.number} ${row.turn.trigger.text} ${numbersText(row.turn, delta)}`
   if (row.kind === 'step')
-    return `Step ${row.step.number} ${row.step.did} ${numbersText(row.step)}`
+    return `Step ${row.step.number} ${row.step.did} ${numbersText(row.step, delta)}`
   return row.step.answer.slice(0, ANSWER_CAP)
 }
 
@@ -488,19 +494,19 @@ function Numbers({
   speedTitle?: string
 }) {
   const cell = 'truncate text-right tabular-nums'
+  const change = changeText(delta)
   return (
     <>
       <TableCell className={cell}>
         {tokens(cells.context)}
-        {delta !== undefined && delta !== null && delta !== 0 && (
+        {change && (
           <span
             className={cn(
               'ml-1.5 text-xs',
-              delta < 0 ? 'text-danger' : 'text-tertiary',
+              (delta ?? 0) < 0 ? 'text-danger' : 'text-tertiary',
             )}
           >
-            {delta > 0 ? '+' : '−'}
-            {formatTokens(Math.abs(delta))}
+            {change}
           </span>
         )}
       </TableCell>
@@ -524,9 +530,12 @@ function Numbers({
 }
 
 /** The numbers a row's cells show, as they show them. */
-function numbersText(cells: StatsCells): string {
+function numbersText(
+  cells: StatsCells & { contextDelta: null | number },
+  delta: boolean,
+): string {
   return [
-    tokens(cells.context),
+    `${tokens(cells.context)}${changeText(delta ? cells.contextDelta : undefined)}`,
     tokens(cells.output),
     percent(cells.cacheHit),
     time(cells.modelMs),

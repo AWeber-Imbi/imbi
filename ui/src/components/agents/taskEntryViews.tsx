@@ -4,10 +4,9 @@ import { RichMarkdown } from '@/components/ui/rich-markdown'
 import { cn } from '@/lib/utils'
 import type { AgentTaskEvent } from '@/types'
 
-import { matches, useTaskSearch } from './taskSearch'
+import { useTaskSearch } from './taskSearch'
 import { type Family, label, OUTPUT_LINES } from './toolCalls'
-
-export type ToolPart = 'input' | 'output'
+import { cutAt, cutText, diffPath, diffRows, type ToolPart } from './toolText'
 
 interface OutputProps extends Whole {
   dark?: boolean
@@ -117,43 +116,18 @@ export function ToolReadable({
  * Write, cut at {@link OUTPUT_LINES} until the reader asks.
  */
 function Diff({ all, args, onAll }: Whole & { args: Record<string, unknown> }) {
-  const edits: { new_string?: unknown; old_string?: unknown }[] = Array.isArray(
-    args.edits,
+  const rows = diffRows(args)
+  const [query] = useTaskSearch()
+  const cut = cutAt(
+    rows.map((row) => row.text),
+    all,
+    query,
   )
-    ? (args.edits as { new_string?: unknown; old_string?: unknown }[])
-    : [
-        {
-          new_string: args.new_string ?? args.content ?? args.new_source,
-          old_string: args.old_string,
-        },
-      ]
-  const lines = (v: unknown) => (typeof v === 'string' ? v.split('\n') : [])
-  const rows: { className: string; key: string; text: string }[] = []
-  edits.forEach((edit, i) => {
-    if (i > 0)
-      rows.push({ className: 'text-tertiary', key: `s${i}`, text: '⋯' })
-    lines(edit.old_string).forEach((l, j) =>
-      rows.push({
-        className: 'bg-danger text-danger',
-        key: `o${i}-${j}`,
-        text: `- ${l}`,
-      }),
-    )
-    lines(edit.new_string).forEach((l, j) =>
-      rows.push({
-        className: 'bg-success text-success',
-        key: `n${i}-${j}`,
-        text: `+ ${l}`,
-      }),
-    )
-  })
-  const hit = useSearchHit(rows.slice(OUTPUT_LINES).map((row) => row.text))
-  const cut = !all && !hit && rows.length > OUTPUT_LINES
   return (
     <>
       <div className="border-tertiary overflow-x-auto rounded-md border">
         <div className="bg-secondary text-secondary px-3 py-1.5 font-mono text-xs">
-          {String(args.file_path ?? args.notebook_path ?? '')}
+          {diffPath(args)}
         </div>
         <pre className="py-1 font-mono text-xs leading-relaxed whitespace-pre-wrap">
           {(cut ? rows.slice(0, OUTPUT_LINES) : rows).map((row) => (
@@ -174,8 +148,8 @@ function Diff({ all, args, onAll }: Whole & { args: Record<string, unknown> }) {
  */
 function Output({ all, dark, error, onAll, text }: OutputProps) {
   const lines = text.split('\n')
-  const hit = useSearchHit(lines.slice(OUTPUT_LINES))
-  const cut = !all && !hit && lines.length > OUTPUT_LINES
+  const [query] = useTaskSearch()
+  const cut = cutAt(lines, all, query)
   return (
     <>
       <Pane dark={dark}>
@@ -184,7 +158,7 @@ function Output({ all, dark, error, onAll, text }: OutputProps) {
             error && (dark ? 'text-terminal-danger' : 'text-danger'),
           )}
         >
-          {cut ? lines.slice(0, OUTPUT_LINES).join('\n') : text}
+          {cut ? cutText(lines) : text}
         </span>
       </Pane>
       {cut && <ShowAll count={lines.length} onClick={onAll} />}
@@ -238,12 +212,5 @@ function ShowAll({ count, onClick }: { count: number; onClick: () => void }) {
     >
       Show all {count} lines
     </button>
-  )
-}
-
-function useSearchHit(lines: string[]): boolean {
-  const [query] = useTaskSearch()
-  return (
-    query.trim() !== '' && lines.length > 0 && matches(lines.join('\n'), query)
   )
 }

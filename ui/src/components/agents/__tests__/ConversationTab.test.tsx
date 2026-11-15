@@ -760,7 +760,7 @@ describe('ConversationTab with many turns', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('lets the browser find the output of an open call out of view', async () => {
+  it('lets the browser find the output an open call shows out of view', async () => {
     const user = userEvent.setup()
     const result = Array.from({ length: 60 }, (_, i) =>
       i === 59 ? 'the open clue' : `line ${i}`,
@@ -776,19 +776,103 @@ describe('ConversationTab with many turns', () => {
       event(3, 'turn', { body: 'reply 0' }),
       ...MANY.slice(2).map((e) => ({ ...e, seq: e.seq + 1 })),
     ]
+    const away = async () => {
+      scrollPane(pane(), content(pane()) - 600)
+      const last = await screen.findByText('reply 79')
+      last.tabIndex = -1
+      act(() => last.focus())
+      await waitFor(() => expect(screen.queryByText('reply 0')).toBeNull())
+    }
     render(view('closed', events))
     await screen.findByText('reply 79')
-    expect(findStub('reply 0').textContent).not.toContain('the open clue')
+    expect(findStub('reply 0').textContent).not.toContain('line 38')
     scrollPane(pane(), 0)
     await user.click(await screen.findByRole('button', { name: /Worked for/ }))
     await user.click(screen.getByRole('button', { name: /Ran a command/ }))
     await user.click(screen.getByRole('button', { name: /Bash make test/ }))
+    await away()
+    expect(findStub('line 38')).toBe(findStub('reply 0'))
+    expect(findStub('reply 0').textContent).not.toContain('line 39')
+    expect(findStub('reply 0').textContent).not.toContain('the open clue')
+    scrollPane(pane(), 0)
+    await user.click(
+      await screen.findByRole('button', { name: 'Show all 61 lines' }),
+    )
+    await away()
+    expect(findStub('the open clue')).toBe(findStub('reply 0'))
+  })
+
+  it('leaves the output of an open call under a closed fold out of find', async () => {
+    const user = userEvent.setup()
+    const events = [
+      event(1, 'turn', { body: 'ask 0' }, HUMAN),
+      event(2, 'tool.called', {
+        arguments: { command: 'make test' },
+        call_id: 'c1',
+        result: 'the folded clue',
+        tool: 'Bash',
+      }),
+      event(3, 'turn', { body: 'reply 0' }),
+      ...MANY.slice(2).map((e) => ({ ...e, seq: e.seq + 1 })),
+    ]
+    const away = async () => {
+      scrollPane(pane(), content(pane()) - 600)
+      const last = await screen.findByText('reply 79')
+      last.tabIndex = -1
+      act(() => last.focus())
+      await waitFor(() => expect(screen.queryByText('reply 0')).toBeNull())
+    }
+    render(view('closed', events))
+    await screen.findByText('reply 79')
+    scrollPane(pane(), 0)
+    await user.click(await screen.findByRole('button', { name: /Worked for/ }))
+    await user.click(screen.getByRole('button', { name: /Ran a command/ }))
+    await user.click(screen.getByRole('button', { name: /Bash make test/ }))
+    await away()
+    expect(findStub('the folded clue')).toBe(findStub('reply 0'))
+    scrollPane(pane(), 0)
+    await user.click(
+      await screen.findByRole('button', { name: /Ran a command/ }),
+    )
+    await away()
+    expect(findStub('reply 0').textContent).not.toContain('the folded clue')
+    scrollPane(pane(), 0)
+    await user.click(
+      await screen.findByRole('button', { name: /Ran a command/ }),
+    )
+    await user.click(screen.getByRole('button', { name: /Worked for/ }))
+    await away()
+    expect(findStub('reply 0').textContent).not.toContain('the folded clue')
+  })
+
+  it('lets the browser find the output of an open call under an unwritten subagent', async () => {
+    const user = userEvent.setup()
+    const events = [
+      event(1, 'turn', { body: 'ask 0' }, HUMAN),
+      event(2, 'tool.called', {
+        arguments: { command: 'ls' },
+        call_id: 'c2',
+        parent_call_id: 'task-1',
+        result: 'the pending clue',
+        tool: 'Bash',
+      }),
+      event(3, 'turn', { body: 'reply 0' }),
+      ...MANY.slice(2).map((e) => ({ ...e, seq: e.seq + 1 })),
+    ]
+    render(view('closed', events))
+    await screen.findByText('reply 79')
+    scrollPane(pane(), 0)
+    await user.click(await screen.findByRole('button', { name: /Worked for/ }))
+    await user.click(screen.getByRole('button', { name: /Ran a subagent/ }))
+    await user.click(screen.getByRole('button', { name: /Did not finish/ }))
+    await user.click(screen.getByRole('button', { name: /Bash ls/ }))
+    expect(screen.getByText(/the pending clue/)).toBeInTheDocument()
     scrollPane(pane(), content(pane()) - 600)
     const last = await screen.findByText('reply 79')
     last.tabIndex = -1
     act(() => last.focus())
     await waitFor(() => expect(screen.queryByText('reply 0')).toBeNull())
-    expect(findStub('the open clue')).toBe(findStub('reply 0'))
+    expect(findStub('the pending clue')).toBe(findStub('reply 0'))
   })
 
   it('keeps a long ask shown in full after it scrolls out of view', async () => {
