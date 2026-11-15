@@ -26,8 +26,7 @@ export type TrajectorySelection =
   | { id: string; type: 'record' }
 
 const TAG: Record<TrajectoryKind, string> = {
-  assistant:
-    'w-full justify-center bg-(--tj-assistant-bg) text-(--tj-assistant)',
+  assistant: 'justify-center bg-(--tj-assistant-bg) text-(--tj-assistant)',
   context: 'bg-(--tj-success-3) text-(--tj-context)',
   subtool: 'bg-(--tj-subtool-bg) text-(--tj-subtool)',
   system: 'bg-(--tj-bg-module) text-(--tj-label-2)',
@@ -64,13 +63,20 @@ interface LedgerProps {
 }
 
 /** The kind tag of a record: a label, or an icon when the table is narrow. */
-export function KindTag({ kind }: { kind: TrajectoryKind }) {
+export function KindTag({
+  className,
+  kind,
+}: {
+  className?: string
+  kind: TrajectoryKind
+}) {
   const Icon = ICON[kind]
   return (
     <span
       className={cn(
         'inline-flex h-5 shrink-0 items-center rounded-[4px] px-1.5 text-[11px] leading-4 font-[650] tracking-[.035em] uppercase @max-[620px]/tj:w-5 @max-[620px]/tj:justify-center @max-[620px]/tj:px-0',
         TAG[kind],
+        className,
       )}
     >
       <span className="@max-[620px]/tj:hidden">{KIND_LABEL[kind]}</span>
@@ -401,7 +407,10 @@ function RecordRow({
         )}
         <span className="flex justify-end">
           <span className="flex w-22 justify-end @max-[620px]/tj:w-auto">
-            <KindTag kind={record.kind} />
+            <KindTag
+              className={record.kind === 'assistant' ? 'w-full' : undefined}
+              kind={record.kind}
+            />
           </span>
         </span>
       </td>

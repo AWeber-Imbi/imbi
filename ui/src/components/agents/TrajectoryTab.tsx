@@ -308,7 +308,7 @@ export function TrajectoryTab({
             turnStarts={turnStarts}
           />
         )}
-        {(selectedRecord || selectedRequest) && (
+        {rows.length > 0 && (selectedRecord || selectedRequest) && (
           <TrajectoryInspector
             inspected={
               selectedRecord

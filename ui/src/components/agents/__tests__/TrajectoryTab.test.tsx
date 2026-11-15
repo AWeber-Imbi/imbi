@@ -390,6 +390,18 @@ describe('TrajectoryTab empty states', () => {
     expect(rows().length).toBeGreaterThan(0)
   })
 
+  it('hides the inspector while nothing matches', async () => {
+    renderTab()
+    await userEvent.click(rows()[3])
+    expect(inspector()).toBeInTheDocument()
+    const search = screen.getByRole('searchbox', { name: 'Search trajectory' })
+    await userEvent.type(search, 'zzqx-no-match')
+    expect(screen.getByText('No matches')).toBeInTheDocument()
+    expect(screen.queryByRole('complementary')).toBeNull()
+    await userEvent.clear(search)
+    expect(inspector()).toBeInTheDocument()
+  })
+
   it('says when there is no activity yet', () => {
     renderTab('running', [])
     expect(screen.getByText('No activity yet')).toBeInTheDocument()
@@ -787,6 +799,18 @@ describe('TrajectoryTab inspector', () => {
       within(inspector()).getByRole('button', { name: 'Close inspector' }),
     )
     expect(screen.queryByRole('complementary')).not.toBeInTheDocument()
+  })
+
+  it('fits the assistant tag to its label in the header', async () => {
+    renderTab()
+    const row = rows().find((r) => within(r).queryByText('ASSISTANT'))!
+    expect(within(row).getByText('ASSISTANT').parentElement).toHaveClass(
+      'w-full',
+    )
+    await userEvent.click(row)
+    expect(
+      within(inspector()).getByText('ASSISTANT').parentElement,
+    ).not.toHaveClass('w-full')
   })
 
   it('shows the tool tabs, summary and payload', async () => {
