@@ -726,6 +726,9 @@ class TaskRun:
         #: The newest task state from imbi-api.
         self.state: Body = {}
         self.seq = 0
+        #: Request outcomes read by any wait, by request id, so a wait
+        #: running beside another still sees its own.
+        self.outcomes: dict[str, Body] = {}
         self.result_text: str | None = None
         #: The structured output of a task with an output schema.
         self.structured_output: Body | None = None
@@ -1969,21 +1972,27 @@ class TaskRun:
         """Read the task events until the request is resolved or
         expired, or the task stops. Return the event payload."""
         while not self.stopped:
+            if request_id in self.outcomes:
+                return self.outcomes.pop(request_id)
             try:
                 found = await self.api.events(self.seq)
             except (api.Refused, httpx.HTTPError) as err:
                 LOGGER.warning('Events of %s: %s', self.api.short_id, err)
                 found = []
             for event in found:
-                self.seq = max(self.seq, int(event.get('seq') or 0))
+                seq = int(event.get('seq') or 0)
+                self.seq = max(self.seq, seq)
                 payload: Body = event.get('payload') or {}
-                if payload.get('request_id') != request_id:
+                answered = payload.get('request_id')
+                if answered is None:
                     continue
                 if event.get('type') == 'request.resolved':
-                    self.recorder.saw_input(int(event.get('seq') or 0))
-                    return payload
-                if event.get('type') == 'request.expired':
-                    return {'status': 'expired'}
+                    self.recorder.saw_input(seq)
+                    self.outcomes[str(answered)] = payload
+                elif event.get('type') == 'request.expired':
+                    self.outcomes[str(answered)] = {'status': 'expired'}
+            if request_id in self.outcomes:
+                return self.outcomes.pop(request_id)
             if not found:
                 await self.nap()
         return {'status': 'stopped'}

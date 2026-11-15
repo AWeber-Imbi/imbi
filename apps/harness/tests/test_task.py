@@ -2188,6 +2188,36 @@ class PolicyHookTestCase(RoutedTestCase):
             self.run_task.control = 'cancel'
             self.assertEqual(await waiting, {'status': 'stopped'})
 
+    async def test_wait_keeps_the_outcomes_of_other_waits(self) -> None:
+        self.pages = [
+            [
+                {
+                    'seq': 5,
+                    'type': 'request.resolved',
+                    'payload': {'request_id': 'q2', 'status': 'approved'},
+                },
+                {
+                    'seq': 6,
+                    'type': 'request.expired',
+                    'payload': {'request_id': 'q3'},
+                },
+                {
+                    'seq': 7,
+                    'type': 'request.resolved',
+                    'payload': {'request_id': 'q1', 'status': 'denied'},
+                },
+            ]
+        ]
+        first = await asyncio.wait_for(self.run_task.wait_request('q1'), 1)
+        self.assertEqual(first['status'], 'denied')
+        second = await asyncio.wait_for(self.run_task.wait_request('q2'), 1)
+        self.assertEqual(second['status'], 'approved')
+        self.assertEqual(
+            await asyncio.wait_for(self.run_task.wait_request('q3'), 1),
+            {'status': 'expired'},
+        )
+        self.assertEqual(self.run_task.outcomes, {})
+
 
 class RequestInputTestCase(RoutedTestCase):
     async def test_answer(self) -> None:
