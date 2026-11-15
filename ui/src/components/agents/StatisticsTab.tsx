@@ -79,11 +79,17 @@ const BASES: ToolbarOption<ContextBasis>[] = [
   },
 ]
 
-const COLUMNS: { label: string; number?: boolean; title: string }[] = [
+const COLUMNS: {
+  label: string
+  number?: boolean
+  title: string
+  width?: string
+}[] = [
   {
     label: 'Turn / step',
     title:
       'A turn row holds the turn total. Click a turn to show or hide its steps, and a step to read its answer.',
+    width: '11.5rem',
   },
   {
     label: 'Trigger / execution',
@@ -94,36 +100,43 @@ const COLUMNS: { label: string; number?: boolean; title: string }[] = [
     label: 'Context',
     number: true,
     title: 'Uncached input + cache read + cache write of the model request.',
+    width: '6.5rem',
   },
   {
     label: 'Output',
     number: true,
     title: 'Output tokens of the model request.',
+    width: '4.5rem',
   },
   {
     label: 'Cache',
     number: true,
     title: 'Cache read ÷ context: the share of the prompt served from cache.',
+    width: '4.5rem',
   },
   {
     label: 'Model',
     number: true,
     title: 'Model time: from the start of the step to the model’s reply.',
+    width: '5rem',
   },
   {
     label: 'Tools',
     number: true,
     title: 'Tool time: every tool call in the step, added up.',
+    width: '5rem',
   },
   {
     label: 'Speed',
     number: true,
     title: 'Output speed: output tokens ÷ model seconds.',
+    width: '5.25rem',
   },
   {
     label: 'Total',
     title:
       'Total time. Purple is model time, amber is tool time, grey is everything else. Bar length uses a square-root scale: steps compare with steps of the same turn, turns with turns.',
+    width: '8.5rem',
   },
 ]
 
@@ -337,14 +350,22 @@ export function StatisticsTab({
         <div className="min-h-0 flex-1 overflow-auto" ref={scroller}>
           <Table
             aria-rowcount={flat.length + 2}
-            className="text-sm [&_td]:px-2.5 [&_td]:py-1.5 [&_th]:px-2.5"
+            className="min-w-264 table-fixed text-sm [&_td]:px-2.5 [&_td]:py-1.5 [&_th]:px-2.5"
           >
+            <colgroup>
+              {COLUMNS.map((c) => (
+                <col
+                  key={c.label}
+                  style={c.width ? { width: c.width } : undefined}
+                />
+              ))}
+            </colgroup>
             <TableHeader className="bg-tertiary sticky top-0 z-1">
               <TableRow aria-rowindex={1}>
                 {COLUMNS.map((c) => (
                   <TableHead
                     className={cn(
-                      'h-9 text-xs whitespace-nowrap text-secondary',
+                      'h-9 truncate text-xs text-secondary',
                       c.number && 'text-right',
                     )}
                     key={c.label}
@@ -377,12 +398,12 @@ export function StatisticsTab({
                 className="hover:bg-transparent"
               >
                 <TableCell
-                  className="font-medium whitespace-nowrap"
+                  className="truncate font-medium"
                   title="Totals for the whole task, subagent tokens included. Total time adds up the time of each turn, without the gaps between turns."
                 >
                   Task total
                 </TableCell>
-                <TableCell className="text-secondary whitespace-nowrap">
+                <TableCell className="text-secondary truncate">
                   {plural(stats.totals.turns, 'turn')} ·{' '}
                   {plural(stats.totals.steps, 'step')}
                 </TableCell>
@@ -394,7 +415,7 @@ export function StatisticsTab({
                       : undefined
                   }
                 />
-                <TableCell className="text-right whitespace-nowrap tabular-nums">
+                <TableCell className="truncate text-right tabular-nums">
                   {time(stats.totals.totalMs)}
                 </TableCell>
               </TableRow>
@@ -430,7 +451,7 @@ function Numbers({
   delta?: null | number
   speedTitle?: string
 }) {
-  const cell = 'text-right tabular-nums whitespace-nowrap'
+  const cell = 'truncate text-right tabular-nums'
   return (
     <>
       <TableCell className={cell}>
@@ -500,10 +521,7 @@ function StepRow({
       onClick={onToggle}
       {...measure}
     >
-      <TableCell
-        className="pl-9! whitespace-nowrap"
-        title={clock(step.startedAt)}
-      >
+      <TableCell className="truncate pl-9!" title={clock(step.startedAt)}>
         {onToggle ? (
           <button
             aria-expanded={shown}
@@ -521,7 +539,7 @@ function StepRow({
           `Step ${step.number}`
         )}
       </TableCell>
-      <TableCell className="max-w-64">
+      <TableCell>
         <span className="block truncate" title={step.did}>
           {step.did || '—'}
         </span>
@@ -610,8 +628,8 @@ function TurnRow({
       onClick={onToggle}
       {...measure}
     >
-      <TableCell className="whitespace-nowrap">
-        <div className="flex items-center gap-1">
+      <TableCell>
+        <div className="flex min-w-0 items-center gap-1">
           <button
             aria-expanded={expanded}
             aria-label={
@@ -619,7 +637,7 @@ function TurnRow({
                 ? `Turn ${turn.number}: ${expanded ? 'hide' : 'show'} its ${count}`
                 : `Turn ${turn.number}: its ${count}, open while searching`
             }
-            className="flex items-center gap-1 outline-none focus-visible:underline disabled:cursor-default"
+            className="flex min-w-0 items-center gap-1 outline-none focus-visible:underline disabled:cursor-default"
             disabled={!onToggle}
             onClick={(e) => {
               e.stopPropagation()
@@ -629,23 +647,25 @@ function TurnRow({
           >
             <ChevronRight
               className={cn(
-                'size-3.5 text-tertiary transition-transform',
+                'size-3.5 shrink-0 text-tertiary transition-transform',
                 expanded && 'rotate-90',
               )}
             />
-            Turn {turn.number}
-            <span className="text-tertiary font-normal">
-              ·{' '}
-              {shownSteps < turn.steps.length
-                ? `${shownSteps} of ${count}`
-                : count}
+            <span className="truncate">
+              Turn {turn.number}{' '}
+              <span className="text-tertiary font-normal">
+                ·{' '}
+                {shownSteps < turn.steps.length
+                  ? `${shownSteps} of ${count}`
+                  : count}
+              </span>
             </span>
           </button>
           {onShow && (
             <IconTooltip label="Show in conversation">
               <Button
                 aria-label={`Turn ${turn.number}: show in conversation`}
-                className="text-tertiary hover:text-primary size-6"
+                className="text-tertiary hover:text-primary size-6 shrink-0"
                 onClick={(e) => {
                   e.stopPropagation()
                   onShow()
@@ -659,9 +679,15 @@ function TurnRow({
           )}
         </div>
       </TableCell>
-      <TableCell className="max-w-64 font-normal">
+      <TableCell className="font-normal">
         {turn.trigger.badge ? (
-          <Badge variant="info">{turn.trigger.text}</Badge>
+          <Badge
+            className="max-w-full"
+            title={turn.trigger.text}
+            variant="info"
+          >
+            <span className="truncate">{turn.trigger.text}</span>
+          </Badge>
         ) : (
           <span className="block truncate" title={turn.trigger.text}>
             {turn.trigger.text}

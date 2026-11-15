@@ -586,4 +586,28 @@ describe('StatisticsTab with many turns', () => {
     await waitFor(() => expect(marked.current).toContain('answer 79'))
     expect(marked.current).not.toContain('answer 7')
   })
+
+  it('keeps its column widths fixed as rows mount', () => {
+    render(<StatisticsTab events={MANY} task={t} />)
+    const table = screen.getByRole('table')
+    expect(table).toHaveClass('table-fixed')
+    const cols = [...table.querySelectorAll<HTMLElement>('colgroup > col')]
+    expect(cols).toHaveLength(9)
+    expect(cols.filter((c) => c.style.width !== '')).toHaveLength(8)
+  })
+
+  it('cuts off a value too long for its column with an ellipsis', () => {
+    render(<StatisticsTab events={MANY} task={t} />)
+    const [first] = screen.getAllByRole('button', {
+      name: /^Turn \d+: show its/,
+    })
+    const turn = first.closest('tr')!
+    const total = screen.getByText('Task total').closest('tr')!
+    for (const row of [turn, total])
+      for (const cell of [...row.cells].slice(0, -1))
+        expect(
+          cell.classList.contains('truncate') ||
+            cell.querySelector('.truncate') !== null,
+        ).toBe(true)
+  })
 })
