@@ -285,7 +285,9 @@ export function ConversationTab({
     const el = scroller.current
     if (seen.current !== events.length) follow.current = true
     seen.current = events.length
-    if (el && pinned.current && follow.current) el.scrollTop = el.scrollHeight
+    if (!el) return
+    if (pinned.current && follow.current) el.scrollTop = el.scrollHeight
+    setAtEnd(atBottom(el))
   }, [events.length, rows.length, total])
 
   const scrolled = useRef<typeof revealed>(null)
@@ -347,8 +349,7 @@ export function ConversationTab({
               }}
               onScroll={(e) => {
                 const el = e.currentTarget
-                const end =
-                  el.scrollHeight - el.clientHeight - el.scrollTop <= END_SLACK
+                const end = atBottom(el)
                 if (end) pinned.current = true
                 else if (el.scrollTop < lastTop.current) pinned.current = false
                 lastTop.current = el.scrollTop
@@ -420,6 +421,11 @@ export function ConversationTab({
       </div>
     </>
   )
+}
+
+/** The pane is scrolled to within END_SLACK of its end. */
+function atBottom(el: HTMLElement): boolean {
+  return el.scrollHeight - el.clientHeight - el.scrollTop <= END_SLACK
 }
 
 function CallRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {

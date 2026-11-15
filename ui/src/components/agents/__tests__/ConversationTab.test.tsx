@@ -864,6 +864,9 @@ describe('ConversationTab with many turns', () => {
     })
     expect(content(pane()) - 600).toBeGreaterThan(before)
     expect(pane().scrollTop).toBe(before)
+    const latest = screen.getByRole('button', { name: 'Scroll to end' })
+    expect(latest).toHaveAttribute('data-active', 'true')
+    expect(latest).not.toHaveAttribute('tabindex', '-1')
   })
 
   it('scrolls to a far turn another view asks for, and flashes it', async () => {
