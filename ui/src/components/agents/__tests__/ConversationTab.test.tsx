@@ -852,6 +852,30 @@ describe('ConversationTab with many turns', () => {
     })
   })
 
+  it('keeps the turn with the caret so a shift+click selects every turn between', async () => {
+    render(view('closed'))
+    const last = await screen.findByText('reply 79')
+    const selection = document.getSelection()!
+    act(() => {
+      selection.collapse(last.firstChild, 3)
+      document.dispatchEvent(new Event('selectionchange'))
+    })
+    scrollPane(pane(), 0)
+    const first = await screen.findByText('reply 0')
+    expect(screen.getByText('reply 79')).toBe(last)
+    act(() => {
+      selection.extend(first.firstChild!, 0)
+      document.dispatchEvent(new Event('selectionchange'))
+    })
+    expect(await screen.findByText('reply 40')).toBeInTheDocument()
+    expect(last.contains(selection.anchorNode)).toBe(true)
+    expect(selection.toString()).toContain('reply 40')
+    act(() => {
+      selection.removeAllRanges()
+      document.dispatchEvent(new Event('selectionchange'))
+    })
+  })
+
   it('lets the browser find a turn out of view and scrolls to it', async () => {
     render(view('closed'))
     await screen.findByText('reply 79')

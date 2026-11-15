@@ -144,15 +144,15 @@ function growsAbove(
  * The keys of the first and last row of `pane` the text selection
  * touches, so those rows and the ones between stay rendered, even as
  * rows land above them, and the selection can still be copied after
- * they scroll out of view.
+ * they scroll out of view. A caret keeps its row too, so a shift+click
+ * far away extends from it.
  */
 function selectedSpan(
   pane: HTMLElement | null,
   getItemKey: (index: number) => number | string,
 ): string {
   const selection = document.getSelection()
-  if (!pane || !selection || selection.isCollapsed || !selection.rangeCount)
-    return ''
+  if (!pane || !selection?.rangeCount) return ''
   const range = selection.getRangeAt(0)
   const found = [...pane.querySelectorAll<HTMLElement>('[data-index]')].flatMap(
     (row) => (range.intersectsNode(row) ? [Number(row.dataset.index)] : []),
