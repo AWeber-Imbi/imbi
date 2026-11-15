@@ -147,13 +147,8 @@ export function turns(
       turn = newTurn([], entry)
       list.push(turn)
     }
-    const keyed = turnOfInput(list, entry)
-    const previous = list[list.length - 2]
-    if (keyed) {
-      if (keyed === turn) add(turn, entry)
-      else addEarlier(keyed, entry)
-    } else if (previous && stampedBefore(entry, turn.opening[0]))
-      addEarlier(previous, entry)
+    const keyed = turnOfInput(list, entry) ?? turnStampedIn(list, entry)
+    if (keyed && keyed !== turn) addEarlier(keyed, entry)
     else add(turn, entry)
   }
 
@@ -365,6 +360,18 @@ function turnOfInput(list: Turn[], entry: TimelineEntry): Turn | undefined {
     const opening = list[i].opening[0]
     if (opening && seqOf(opening) <= seq) return list[i]
   }
+  return list[0]
+}
+
+/**
+ * For an older harness that names no input: the latest earlier turn an
+ * entry stamped before the last turn's opening was done in.
+ */
+function turnStampedIn(list: Turn[], entry: TimelineEntry): Turn | undefined {
+  if (list.length < 2 || !stampedBefore(entry, last(list)?.opening[0]))
+    return undefined
+  for (let i = list.length - 2; i > 0; i--)
+    if (!stampedBefore(entry, list[i].opening[0])) return list[i]
   return list[0]
 }
 

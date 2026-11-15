@@ -246,6 +246,33 @@ describe('turns', () => {
     expect(list[1].stats.durationMs).toBe(30_000)
   })
 
+  it('sends unkeyed late work back past every turn opened after it', () => {
+    const at = (time: string) => ({ at: `2026-10-08T${time}Z` })
+    const person = (seq: number, time: string) =>
+      event(
+        seq,
+        'turn',
+        { body: 'Go.' },
+        { ...at(time), actor_id: 'dev', actor_kind: 'human' },
+      )
+    const list = turns(
+      timeline([
+        person(1, '12:00:00'),
+        event(2, 'turn', { body: 'One.' }, at('12:00:02')),
+        person(3, '12:00:03'),
+        event(4, 'turn', { body: 'Two.' }, at('12:00:04')),
+        person(5, '12:00:05'),
+        event(6, 'turn', { body: 'Hmm.', kind: 'thinking' }, at('12:00:01')),
+      ]),
+      { live: false },
+    )
+    expect(shape(list).map((t) => t.items)).toEqual([
+      ['group:1', 'reply'],
+      ['reply'],
+      [],
+    ])
+  })
+
   it('leaves the time a task waited to resume out of the turn', () => {
     const at = (time: string) => ({ at: `2026-10-08T${time}Z` })
     const list = turns(
