@@ -3,6 +3,8 @@ import { fromMarkdown } from 'mdast-util-from-markdown'
 import { gfmFromMarkdown } from 'mdast-util-gfm'
 import { gfm } from 'micromark-extension-gfm'
 
+import { formatFrontmatterValue, splitFrontmatter } from '@/lib/frontmatter'
+
 const INLINE = new Set([
   'delete',
   'emphasis',
@@ -15,10 +17,23 @@ const INLINE = new Set([
 ])
 
 /**
- * The text GFM Markdown shows once rendered: no syntax, no raw HTML, a
- * line per block, and a deferred image's button label.
+ * The text `RichMarkdown` shows once rendered: no syntax, raw HTML as
+ * literal text, the frontmatter table's keys and values, a line per block,
+ * and a deferred image's button label.
  */
 export function markdownText(markdown: string): string {
+  const { body, meta } = splitFrontmatter(markdown)
+  if (!meta) return parse(body)
+  return [
+    ...Object.entries(meta).flatMap(([key, value]) => [
+      key,
+      parse(formatFrontmatterValue(value)),
+    ]),
+    parse(body),
+  ].join('\n')
+}
+
+function parse(markdown: string): string {
   return text(
     fromMarkdown(markdown, {
       extensions: [gfm()],
@@ -31,8 +46,6 @@ function text(node: Nodes): string {
   switch (node.type) {
     case 'break':
       return '\n'
-    case 'html':
-      return ''
     case 'image':
       return `Show image: ${node.alt || node.url || 'image'}`
     case 'imageReference':

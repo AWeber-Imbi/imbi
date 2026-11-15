@@ -17,10 +17,24 @@ describe('markdownText', () => {
     ).toBe('Title\nquoted\none\ntwo\nfenced')
   })
 
-  it('keeps table cells and drops raw HTML', () => {
+  it('keeps table cells and raw HTML as the literal text it shows', () => {
     expect(
-      markdownText('| a | b |\n| - | - |\n| c | d |\n\n<div>x</div>'),
-    ).toBe('a\nb\nc\nd\n')
+      markdownText(
+        '| a | b |\n| - | - |\n| c | d |\n\n<div>x</div>\n\nan <b>bold</b> tag',
+      ),
+    ).toBe('a\nb\nc\nd\n<div>x</div>\nan <b>bold</b> tag')
+  })
+
+  it('reads frontmatter as the table of keys and formatted values', () => {
+    expect(
+      markdownText(
+        '---\nchecks:\n  - lint\n  - test\nowner: "**ops**"\n---\nThe body',
+      ),
+    ).toBe('checks\nlint, test\nowner\nops\nThe body')
+  })
+
+  it('reads a block that is not a YAML mapping as Markdown', () => {
+    expect(markdownText('---\n- a\n---\nThe body')).toBe('\na\n\nThe body')
   })
 
   it('reads an image as the button that loads it', () => {

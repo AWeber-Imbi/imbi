@@ -1034,6 +1034,29 @@ describe('ConversationTab with many turns', () => {
     expect(findStub('the second thought')).toBe(findStub('ask 0'))
   })
 
+  it('lets the browser find raw HTML and frontmatter as a reply shows them', async () => {
+    const events = [
+      MANY[0],
+      event(2, 'turn', {
+        body: '---\nchecks:\n  - lint\n  - test\n---\n<div>deployment finished</div>',
+      }),
+      ...MANY.slice(2),
+    ]
+    render(view('closed', events))
+    await screen.findByText('reply 79')
+    await waitFor(() =>
+      expect(screen.queryByText(/deployment finished/)).toBeNull(),
+    )
+    const turn = findStub('ask 0')
+    expect(findStub('<div>deployment finished</div>')).toBe(turn)
+    expect(findStub('lint, test')).toBe(turn)
+    scrollPane(pane(), 0)
+    expect(
+      await screen.findByText('<div>deployment finished</div>'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('lint, test')).toBeInTheDocument()
+  })
+
   it('keeps a turn with selected text rendered while it is out of view', async () => {
     render(view('closed'))
     const last = await screen.findByText('reply 79')
