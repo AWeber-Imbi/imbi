@@ -23,6 +23,7 @@ import { PlatformPage } from './PlatformPage'
 import { useWaitingTaskCount } from './taskQueries'
 import { TasksPage } from './TasksPage'
 import { UsagePage } from './UsagePage'
+import { useResizableWidth } from './useResizableWidth'
 
 /**
  * The Agents area: its own sidebar (Agentic platform, Settings) and the
@@ -86,13 +87,23 @@ function AgentsSidebar({
   const { data: agents } = useAgentList(selectedOrganization?.slug)
   const { data: waiting } = useWaitingTaskCount(selectedOrganization?.slug)
   const groups = ['Agentic platform', 'Settings'] as const
+  const { dragging, handleProps, width } = useResizableWidth(
+    'imbi:agents:sidebar-width',
+    250,
+    // The label "Egress Destinations" goes to a second line below 220.
+    220,
+    480,
+  )
 
+  // No transition during a drag: the width must follow the pointer.
   return (
     <aside
       className={cn(
-        'sticky top-16 flex h-[calc(100vh-4rem)] shrink-0 flex-col border-r border-tertiary bg-primary transition-all duration-300',
-        open ? 'w-62.5' : 'w-16',
+        'sticky top-16 flex h-[calc(100vh-4rem)] shrink-0 flex-col border-r border-tertiary bg-primary',
+        !dragging && 'transition-all duration-300',
+        !open && 'w-16',
       )}
+      style={open ? { width } : undefined}
     >
       <nav
         aria-label="Agents"
@@ -167,6 +178,7 @@ function AgentsSidebar({
           {open && <span>Collapse</span>}
         </button>
       </div>
+      {open && <div {...handleProps} />}
     </aside>
   )
 }
