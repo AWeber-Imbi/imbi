@@ -87,7 +87,7 @@ function AgentsSidebar({
   const { data: agents } = useAgentList(selectedOrganization?.slug)
   const { data: waiting } = useWaitingTaskCount(selectedOrganization?.slug)
   const groups = ['Agentic platform', 'Settings'] as const
-  const { dragging, handleProps, width } = useResizableWidth(
+  const { cancel, dragging, handleProps, width } = useResizableWidth(
     'imbi:agents:sidebar-width',
     250,
     // The label "Egress Destinations" goes to a second line below 220.
@@ -167,7 +167,11 @@ function AgentsSidebar({
             'flex h-10 w-full items-center gap-3 rounded-md text-sm text-secondary hover:bg-secondary hover:text-primary',
             open ? 'px-3' : 'justify-center',
           )}
-          onClick={() => setOpen(!open)}
+          onClick={() => {
+            // The collapse removes the handle, so a drag must stop here.
+            cancel()
+            setOpen(!open)
+          }}
           type="button"
         >
           {open ? (

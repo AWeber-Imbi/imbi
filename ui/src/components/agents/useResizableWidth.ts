@@ -21,10 +21,13 @@ export function useResizableWidth(
   const [width, setWidth] = useStoredState(key, fallback, (raw) =>
     typeof raw === 'number' ? clamp(raw) : undefined,
   )
-  // The width less the pointer position at the start of a drag.
-  const [grab, setGrab] = useState<null | number>(null)
+  // The pointer that does the drag, and the width less its position at the
+  // start of the drag. Events from other pointers do not change the drag.
+  const [grab, setGrab] = useState<null | { id: number; offset: number }>(null)
 
   return {
+    /** Stop the drag. Call it before you remove the handle. */
+    cancel: () => setGrab(null),
     dragging: grab !== null,
     handleProps: {
       'aria-label': 'Resize sidebar',
@@ -38,13 +41,16 @@ export function useResizableWidth(
         if (e.key === 'ArrowLeft') setWidth(clamp(width - STEP))
         if (e.key === 'ArrowRight') setWidth(clamp(width + STEP))
       },
-      onLostPointerCapture: () => setGrab(null),
+      onLostPointerCapture: (e: PointerEvent) => {
+        if (grab?.id === e.pointerId) setGrab(null)
+      },
       onPointerDown: (e: PointerEvent) => {
+        if (grab !== null) return
         e.currentTarget.setPointerCapture(e.pointerId)
-        setGrab(width - e.clientX)
+        setGrab({ id: e.pointerId, offset: width - e.clientX })
       },
       onPointerMove: (e: PointerEvent) => {
-        if (grab !== null) setWidth(clamp(e.clientX + grab))
+        if (grab?.id === e.pointerId) setWidth(clamp(e.clientX + grab.offset))
       },
       role: 'separator',
       tabIndex: 0,

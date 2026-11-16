@@ -43,6 +43,18 @@ describe('useResizableWidth', () => {
     expect(handle).toHaveAttribute('aria-valuenow', '200')
   })
 
+  it('ignores a second pointer during a drag', () => {
+    render(<Sidebar />)
+    const handle = screen.getByRole('separator', { name: 'Resize sidebar' })
+    handle.setPointerCapture = () => {}
+    fireEvent.pointerDown(handle, { clientX: 250, pointerId: 1 })
+    fireEvent.pointerDown(handle, { clientX: 100, pointerId: 2 })
+    fireEvent.pointerMove(handle, { clientX: 100, pointerId: 2 })
+    fireEvent.lostPointerCapture(handle, { pointerId: 2 })
+    fireEvent.pointerMove(handle, { clientX: 230, pointerId: 1 })
+    expect(handle).toHaveAttribute('aria-valuenow', '230')
+  })
+
   it('puts a stored width that is out of range back in range', () => {
     vi.mocked(window.localStorage.getItem).mockReturnValueOnce('9000')
     render(<Sidebar />)
