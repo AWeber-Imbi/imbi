@@ -152,6 +152,9 @@ Differences from the CLI, on purpose:
 - A push with no pull request goes to the default branch of the
   repository. The CLI pushes to `main` by name.
 - A dry run gives a patch and a diff stat, not a saved directory.
+- A dry run writes to no external system. In the CLI a dry run skips
+  only the push and the pull request, and `imbi` and `jira` actions
+  still write.
 - `docker build`, `pull`, and `push` fail with a clear message. The pod
   has no Docker daemon. `docker extract` uses a daemonless tool.
 - There is no local configuration: no token fields, no `.env` file, no
@@ -243,10 +246,15 @@ The GitHub App of an automation agent must hold these permissions.
   definition has such an action.
 - The runner does the push itself: a fixed remote URL, a fixed refspec,
   no hooks, and a git configuration that the workspace cannot change.
-  It records the head that it pushes. Before a push or a branch delete
-  it compares the remote head with the recorded heads. A head that Imbi
-  did not record ends the project run as `conflict`.
+  It records the head of each branch when it makes the clone, and each
+  head that it pushes. Before a push or a branch delete it compares the
+  remote head with the recorded heads. A head that Imbi did not record
+  ends the project run as `conflict`.
 - The planner task gets the read operations only.
+- A dry run makes no external write. Its project runs get the read
+  operations and the model call only. The broker does not do a write;
+  it records it as "would write", and the action continues. This
+  includes the dry run of a draft.
 - The accountable principal of each Imbi API request is the person who
   activated the version. Each project run checks that person again at
   its start.
