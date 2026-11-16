@@ -57,6 +57,8 @@ class FakeApi:
         self.slacks: list[str] = []
         #: The Slack error code that the Slack endpoint reports.
         self.slack_error: str | None = None
+        #: Answer the Slack endpoint with ``502 slack_unreachable``.
+        self.slack_unreachable = False
         #: The raw path of every request.
         self.paths: list[str] = []
         #: Takes the agent task calls when set.
@@ -101,6 +103,11 @@ class FakeApi:
         if path.endswith(('/email', '/failure-notice')):
             return self._once(request, lambda: self._email(request))
         if path.endswith('/slack'):
+            if self.slack_unreachable:
+                self.slacks.append(path)
+                return httpx.Response(
+                    502, json={'detail': {'error': 'slack_unreachable'}}
+                )
             return self._once(request, lambda: self._slack(request))
         if path.endswith('/auth/token'):
             return httpx.Response(
@@ -1026,6 +1033,19 @@ class CrashTestCase(EngineTestCase):
         self.assertEqual(run['status'], 'failed')
         tell = run['steps']['tell']
         self.assertEqual(tell['error'], 'slack_failed: not_in_channel')
+        self.assertEqual(tell['attempt'], 1)
+        self.assertEqual(len(self.api.slacks), 1)
+
+    async def test_slack_unreachable_is_outcome_unknown(self) -> None:
+        """Slack may have posted, so an operator can recover the step."""
+        self.api.slack_unreachable = True
+        run = await self._drive(
+            await self._start(await self._slack_workflow())
+        )
+        self.assertEqual(run['status'], 'failed')
+        self.assertEqual(run['error'], 'outcome_unknown')
+        tell = run['steps']['tell']
+        self.assertEqual(tell['error'], 'outcome_unknown')
         self.assertEqual(tell['attempt'], 1)
         self.assertEqual(len(self.api.slacks), 1)
 

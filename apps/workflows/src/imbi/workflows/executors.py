@@ -400,21 +400,28 @@ class Executors:
     async def _slack(self, call: Call) -> Outcome:
         _params(slack.Params, call)
         org = await self.org_slug(call.organization_id)
-        posted = await self.api.request(
-            'POST',
-            _path(
-                'organizations',
-                org,
-                'workflows',
-                call.workflow_slug,
-                'runs',
-                call.run_id,
-                'steps',
-                call.node.id,
-                'slack',
-            ),
-            headers={'Idempotency-Key': call.idempotency_key},
-        )
+        try:
+            posted = await self.api.request(
+                'POST',
+                _path(
+                    'organizations',
+                    org,
+                    'workflows',
+                    call.workflow_slug,
+                    'runs',
+                    call.run_id,
+                    'steps',
+                    call.node.id,
+                    'slack',
+                ),
+                headers={'Idempotency-Key': call.idempotency_key},
+            )
+        except StepError as e:
+            if e.code != 'slack_unreachable':
+                raise
+            # Slack may have posted: fail the step so that an operator
+            # can mark it done or run it again.
+            raise StepError('outcome_unknown', retry=False) from e
         if posted.get('error'):
             # Not retried: imbi-api stored this result with the key.
             raise StepError(f'slack_failed: {posted["error"]}', retry=False)

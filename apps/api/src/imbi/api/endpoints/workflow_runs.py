@@ -511,6 +511,12 @@ _SLACK_TRANSPORT_ERRORS = (
     TimeoutError,
 )
 
+#: Slack errors that can come after part of the call succeeded, so
+#: the message may be posted: treated as a transport error.
+_SLACK_AMBIGUOUS = frozenset(
+    {'fatal_error', 'internal_error', 'request_timeout', 'service_unavailable'}
+)
+
 # slack_sdk's AsyncWebClient is only loosely typed (``**kwargs`` and
 # untyped responses), so it is Any here, as in imbi-slackbot.
 SlackClient = typing.Any
@@ -521,8 +527,9 @@ async def _post_slack(token: str, channel: str, text: str) -> SlackResult:
 
     The client does not retry: a retry after a lost response could post
     the message two times. A refusal from Slack posted nothing, so it is
-    a result with ``error``. A transport error may come after Slack
-    posted, so it is a ``502`` and the idempotency key stays.
+    a result with ``error``. A transport error, or a Slack error in
+    :data:`_SLACK_AMBIGUOUS`, may come after Slack posted, so it is a
+    ``502`` and the idempotency key stays.
     """
     client: SlackClient = slack_client.AsyncWebClient(
         token=token, retry_handlers=[]
@@ -533,9 +540,12 @@ async def _post_slack(token: str, channel: str, text: str) -> SlackResult:
         )
     except slack_errors.SlackApiError as e:
         response: SlackClient = e.response
-        return SlackResult(
-            channel=channel, error=str(response.get('error') or 'unknown')
-        )
+        error = str(response.get('error') or 'unknown')
+        if error not in _SLACK_AMBIGUOUS:
+            return SlackResult(channel=channel, error=error)
+        raise fastapi.HTTPException(
+            status_code=502, detail={'error': 'slack_unreachable'}
+        ) from None
     except _SLACK_TRANSPORT_ERRORS:
         raise fastapi.HTTPException(
             status_code=502, detail={'error': 'slack_unreachable'}

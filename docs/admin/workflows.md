@@ -399,7 +399,7 @@ Errors:
 | `slack_failed: not_in_channel` | The bot is not a member of the channel. Invite it |
 | `slack_failed: channel_not_found` | No channel has this ID, or the bot cannot see it |
 | `slack_failed: <code>` | Slack refused the message with another [error code](https://docs.slack.dev/reference/methods/chat.postMessage#errors) |
-| `slack_unreachable` | The call to Slack failed. Slack may have posted the message, so the call has an [unknown outcome](#calls-with-an-unknown-outcome) |
+| `outcome_unknown` | The call to Slack failed, or Slack answered `internal_error`, `fatal_error`, `request_timeout`, or `service_unavailable`. Slack may have posted the message. See [unknown outcome](#calls-with-an-unknown-outcome) |
 | `invalid_params`, `invalid_channel` | The rendered channel is not a channel ID |
 
 Imbi does not retry a failed post. When Slack refuses a message, it posts

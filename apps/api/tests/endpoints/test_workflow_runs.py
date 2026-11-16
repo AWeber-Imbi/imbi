@@ -993,6 +993,21 @@ class EngineSlackTestCase(WorkflowRunTestCase):
         self.assertEqual(response.json()['detail']['error'], 'outcome_unknown')
         self.slack.chat_postMessage.assert_awaited_once()
 
+    async def test_ambiguous_slack_error_keeps_the_key(self) -> None:
+        """``internal_error`` can come after Slack posted."""
+        self.slack.chat_postMessage.side_effect = slack_errors.SlackApiError(
+            'failed', {'ok': False, 'error': 'internal_error'}
+        )
+        response = await self.client.post(self.post_url, headers=self.headers)
+        self.assertEqual(response.status_code, 502, response.text)
+        self.assertEqual(
+            response.json()['detail'], {'error': 'slack_unreachable'}
+        )
+        response = await self.client.post(self.post_url, headers=self.headers)
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(response.json()['detail']['error'], 'outcome_unknown')
+        self.slack.chat_postMessage.assert_awaited_once()
+
     async def test_not_configured(self) -> None:
         self.token = ''
         response = await self.client.post(self.post_url, headers=self.headers)
