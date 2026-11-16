@@ -60,8 +60,8 @@ reason. The reason is a short slug, for example `project_not_found`.
 | Outcome | Label | When |
 |---|---|---|
 | `done_acted` | Completed | The agent changed something |
-| `done_nothing_to_act_on` | Nothing to do | The agent found nothing to do. With the reason `no_mutating_tool_call`, the agent did not report an outcome and called no tool that changes data |
-| `failed_external` | Failed | The agent reports that it could not do the work, or the model or the runner failed. See [Task failure reasons](../deployment/agent-runners.md#task-failure-reasons) |
+| `done_nothing_to_act_on` | Nothing to do | The agent found nothing to do |
+| `failed_external` | Failed | The agent reports that it could not do the work, the agent stopped without a report (`no_outcome_reported`), or the model or the runner failed. See [Task failure reasons](../deployment/agent-runners.md#task-failure-reasons) |
 | `failed_at_gate` | Failed | The agent reports that it could not do the work |
 | `partial_capped` | Partly done | The agent used all of its turns (`max_turns`) |
 | `exceeded_ceiling` | Over budget | The cost went over the budget (`budget`), or the task ran longer than the task timeout (`task_timeout`) |
@@ -71,7 +71,11 @@ reason. The reason is a short slug, for example `project_not_found`.
 
 The agent reports its own outcome with the `report_outcome` tool:
 `done_acted`, `done_nothing_to_act_on`, `failed_external`, or
-`failed_at_gate`. The last report wins.
+`failed_at_gate`. The last report wins. A task whose agent stops without
+a report fails with `failed_external` and the reason
+`no_outcome_reported`, even when the agent changed something: Imbi cannot
+tell whether the work is done. Tell the agent to call `report_outcome` in
+its prompt if it often forgets.
 
 ## Create a task
 

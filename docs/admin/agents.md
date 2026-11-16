@@ -153,7 +153,9 @@ or `Agent` with `tool_not_allowed`. The base configuration still applies:
   off. `Task`, the earlier name of `Agent`, denies `Agent` too.
 
 A subagent and the tools that a skill uses are checked like every other
-tool call of the agent.
+tool call of the agent. A subagent runs in the foreground: the agent
+waits for its result before it goes on, and the task does not close
+while a subagent runs.
 
 To give the agent a tool:
 

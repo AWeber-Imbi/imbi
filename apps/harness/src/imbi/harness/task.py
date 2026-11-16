@@ -75,6 +75,8 @@ ANTHROPIC_API = 'https://api.anthropic.com'
 #: The error code of an outcome that imbi-api refused for its
 #: structured output. The harness then ends the task without it.
 _OUTPUT_REFUSED = 'invalid_structured_output'
+#: The outcome reason of a run that ended without ``report_outcome``.
+NO_OUTCOME = 'no_outcome_reported'
 #: The built-in tools when the organization allows all of them. The
 #: runner uses ``dontAsk``, so a tool must be listed to run: the CLI's
 #: default mode sends ``Bash`` to a classifier (P5a).
@@ -94,6 +96,11 @@ BUILTIN_TOOLS = (
 IMBI_TOOLS = tuple(
     f'mcp__imbi__{name}' for name in sorted(policy.HARNESS_TOOLS)
 )
+#: The task types whose end wakes the agent for another turn: a
+#: subagent or a workflow that the CLI runs in the background. The SDK's
+#: own list (``DEFERRING_TASK_TYPES``); background shells are left out,
+#: since one can run for ever.
+BACKGROUND_TASK_TYPES = frozenset({'local_agent', 'local_workflow'})
 #: How often the runner reads the task events while it waits for a
 #: person.
 REQUEST_POLL = 3.0
@@ -312,21 +319,17 @@ class Layout:
 def outcome(
     result: sdk.ResultMessage | None,
     reported: tuple[str, str] | None = None,
-    *,
-    mutated: bool = False,
 ) -> tuple[str, str | None]:
     """The ADR 0020 outcome of an SDK result.
 
     For a ``success`` result: the outcome that the model reported, else
-    ``done_acted`` when a mutating tool call ran, else
-    ``done_nothing_to_act_on``.
+    ``failed_external`` with ``no_outcome_reported``: the agent stopped
+    without saying whether it did the work.
     """
     if result is None:
         return 'failed_external', 'no_result'
     if not result.is_error and result.subtype == 'success':
-        if mutated:
-            return reported or ('done_acted', None)
-        return reported or ('done_nothing_to_act_on', 'no_mutating_tool_call')
+        return reported or ('failed_external', NO_OUTCOME)
     if result.subtype == 'error_max_turns':
         return 'partial_capped', 'max_turns'
     if result.api_error_status is not None:
@@ -728,6 +731,14 @@ class TaskRun:
         self.structured_output: Body | None = None
         #: The last ``report_outcome`` of the model: (outcome, reason).
         self.reported: tuple[str, str] | None = None
+        #: The ids of the background subagents and workflows that have
+        #: not ended. Each end wakes the agent for another turn.
+        self.background: set[str] = set()
+        #: Reads the SDK messages; :meth:`stop` cancels it while the
+        #: agent waits on background work.
+        self.reader: asyncio.Task[None] | None = None
+        #: The newest SDK result.
+        self.result: sdk.ResultMessage | None = None
         #: Set when the control or the status changes, so a wait for a
         #: person ends at once on a cancel.
         self.changed = asyncio.Event()
@@ -772,10 +783,17 @@ class TaskRun:
             result = await self._work()
             self.structured_output = structured_output(result)
             done = require_output(
-                outcome(result, self.reported, mutated=self.recorder.mutated),
+                outcome(result, self.reported),
                 self.task,
                 self.structured_output,
             )
+            if done == ('failed_external', NO_OUTCOME):
+                LOGGER.warning(
+                    'Task %s ended without report_outcome (mutating tool '
+                    'calls: %s)',
+                    self.api.short_id,
+                    self.recorder.mutated,
+                )
         except Failed as err:
             done = ('failed_external', err.reason)
         except Exception:
@@ -902,6 +920,17 @@ class TaskRun:
             self.stopping = self.loop.create_task(self._interrupt())
 
     async def _interrupt(self) -> None:
+        if self.background and self.reader is not None:
+            # Between turns an interrupt has no turn to end. Stop
+            # reading: leaving the client ends the CLI and its
+            # background tasks.
+            LOGGER.info(
+                'Stopping task %s and %d background tasks',
+                self.api.short_id,
+                len(self.background),
+            )
+            self.reader.cancel()
+            return
         if self.client is not None:
             LOGGER.info('Stopping task %s', self.api.short_id)
             try:
@@ -1615,6 +1644,10 @@ class TaskRun:
                 # TodoWrite, not the Task* tools: the todos.updated event
                 # holds the whole list (plan section 6.6).
                 'CLAUDE_CODE_ENABLE_TASKS': '0',
+                # Subagents and commands run in the foreground, so their
+                # results come back in the turn that started them. A
+                # background subagent can outlive the turn's result.
+                'CLAUDE_CODE_DISABLE_BACKGROUND_TASKS': '1',
                 'MCP_TOOL_TIMEOUT': str(MCP_TOOL_TIMEOUT),
                 'HOME': str(self.home / 'home'),
                 'CLAUDE_CONFIG_DIR': str(self.home / '.claude'),
@@ -1675,42 +1708,92 @@ class TaskRun:
 
     async def run_sdk(self, proxy_url: str) -> sdk.ResultMessage | None:
         """Run the SDK session. Each SDK message goes to a transcript
-        file that only ``runner`` can read, and to the recorder."""
+        file that only ``runner`` can read, and to the recorder.
+
+        A result ends one turn. While a background subagent or workflow
+        runs, the session goes on: its end starts another turn, in which
+        the agent reads its result. A stop or the task timeout ends the
+        wait (:meth:`_interrupt`).
+        """
         options = self.options(proxy_url)
         self.transcripts.mkdir(mode=0o700, exist_ok=True)
         path = self.transcripts / f'{self.task["id"]}.jsonl'
         LOGGER.info('Running task %s', self.api.short_id)
         transport = AgentTransport(prompt=_no_prompt(), options=options)
         self.client = sdk.ClaudeSDKClient(options, transport=transport)
-        result: sdk.ResultMessage | None = None
         with path.open('a', encoding='utf-8') as transcript:
             async with self.client:
                 if self.stopping is not None:
                     return None
                 await self.client.query(self.instruction())
-                async for message in self.client.receive_response():
-                    transcript.write(
-                        json.dumps(
-                            {
-                                'type': type(message).__name__,
-                                **dataclasses.asdict(message),
-                            },
-                            default=str,
-                        )
-                        + '\n'
-                    )
-                    transcript.flush()
-                    self._check_plugins(message)
-                    self.recorder.message(message)
-                    if isinstance(message, sdk.ResultMessage):
-                        result = message
-                        self.result_text = message.result
-                    if isinstance(
-                        message, (sdk.UserMessage, sdk.ResultMessage)
-                    ):
-                        await self.flush()
+                self.reader = asyncio.create_task(
+                    self._receive(self.client, transcript)
+                )
+                try:
+                    await self.reader
+                except asyncio.CancelledError:
+                    current = asyncio.current_task()
+                    if current is not None and current.cancelling():
+                        raise
         self.client = None
-        return result
+        return self.result
+
+    async def _receive(
+        self, client: sdk.ClaudeSDKClient, transcript: typing.TextIO
+    ) -> None:
+        async for message in client.receive_messages():
+            transcript.write(
+                json.dumps(
+                    {
+                        'type': type(message).__name__,
+                        **dataclasses.asdict(message),
+                    },
+                    default=str,
+                )
+                + '\n'
+            )
+            transcript.flush()
+            self._check_plugins(message)
+            self._track_background(message)
+            self.recorder.message(message)
+            if isinstance(message, sdk.ResultMessage):
+                self.result = message
+                self.result_text = message.result
+            if isinstance(message, (sdk.UserMessage, sdk.ResultMessage)):
+                await self.flush()
+            if isinstance(message, sdk.ResultMessage) and not self._waits(
+                message
+            ):
+                return
+
+    def _track_background(self, message: typing.Any) -> None:
+        """Keep the ids of the background tasks that have not ended."""
+        if isinstance(message, sdk.TaskStartedMessage):
+            if message.task_type in BACKGROUND_TASK_TYPES:
+                self.background.add(message.task_id)
+        elif isinstance(message, sdk.TaskNotificationMessage) or (
+            isinstance(message, sdk.TaskUpdatedMessage)
+            and message.patch.get('status') in sdk.TERMINAL_TASK_STATUSES
+        ):
+            self.background.discard(message.task_id)
+
+    def _waits(self, result: sdk.ResultMessage) -> bool:
+        """The session goes on after a ``success`` result: a background
+        task runs and the task is not stopping. An error result ends
+        the session: no turn follows it to merge the background work."""
+        if (
+            result.is_error
+            or result.subtype != 'success'
+            or not self.background
+            or self.stopping is not None
+        ):
+            return False
+        LOGGER.info(
+            'Task %s waits for %d background tasks',
+            self.api.short_id,
+            len(self.background),
+        )
+        return True
 
     def _check_plugins(self, message: typing.Any) -> None:
         """Fail the task when a pinned plugin did not load (plan 5.2)."""
@@ -1738,6 +1821,9 @@ class TaskRun:
 
         - A network error puts the unsent events back for the next
           flush.
+        - A cancel puts them back too, then goes on: a stop cancels the
+          reader in the middle of a flush, and the last flush of
+          :meth:`run` sends them.
         - A batch that imbi-api refuses as too large (413) is sent again
           one event at a time, so only the event that fails is lost.
         - Any other refusal drops the batch.
@@ -1753,6 +1839,9 @@ class TaskRun:
                 )
                 self.recorder.requeue([e for b in [batch, *queue] for e in b])
                 return
+            except asyncio.CancelledError:
+                self.recorder.requeue([e for b in [batch, *queue] for e in b])
+                raise
             except api.Refused as err:
                 if err.status == http.HTTPStatus.REQUEST_ENTITY_TOO_LARGE and (
                     len(batch) > 1
