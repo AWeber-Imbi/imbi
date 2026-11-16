@@ -1747,6 +1747,18 @@ class RunTestCase(TaskTestCase):
             [{'outcome': 'done_nothing_to_act_on', 'reason': 'clean'}],
         )
 
+    async def test_events_have_the_session_input_seq(self) -> None:
+        self.responses['/sessions']['task']['last_seq'] = 6
+        await self.run_task.run()
+        events = [
+            event
+            for batch in self.posted('/events')
+            for event in batch['events']
+        ]
+        self.assertEqual(
+            [event['payload']['input_seq'] for event in events], [6, 6]
+        )
+
     async def test_posts_the_structured_output(self) -> None:
         result = FakeClient.messages[-1]
         assert isinstance(result, sdk.ResultMessage)
@@ -2069,6 +2081,7 @@ class PolicyHookTestCase(RoutedTestCase):
         self.assertTrue(body['artifact_digests'][0].startswith('sha256:'))
         self.assertEqual(subject.recorder.decisions['tu1']['request_id'], 'q1')
         self.assertEqual(subject.seq, 5)
+        self.assertEqual(subject.recorder.input_seq, 5)
 
     async def test_rejected(self) -> None:
         subject = self.with_tools({'tickets.close': {'approval': True}})
@@ -2092,6 +2105,7 @@ class PolicyHookTestCase(RoutedTestCase):
             ]
         ]
         output = await self.hook(subject, 'mcp__tickets__close')
+        self.assertIsNone(subject.recorder.input_seq)
         self.assertIn(
             'approval_expired',
             output['hookSpecificOutput']['permissionDecisionReason'],
@@ -2173,6 +2187,36 @@ class PolicyHookTestCase(RoutedTestCase):
             await asyncio.sleep(0.01)
             self.run_task.control = 'cancel'
             self.assertEqual(await waiting, {'status': 'stopped'})
+
+    async def test_wait_keeps_the_outcomes_of_other_waits(self) -> None:
+        self.pages = [
+            [
+                {
+                    'seq': 5,
+                    'type': 'request.resolved',
+                    'payload': {'request_id': 'q2', 'status': 'approved'},
+                },
+                {
+                    'seq': 6,
+                    'type': 'request.expired',
+                    'payload': {'request_id': 'q3'},
+                },
+                {
+                    'seq': 7,
+                    'type': 'request.resolved',
+                    'payload': {'request_id': 'q1', 'status': 'denied'},
+                },
+            ]
+        ]
+        first = await asyncio.wait_for(self.run_task.wait_request('q1'), 1)
+        self.assertEqual(first['status'], 'denied')
+        second = await asyncio.wait_for(self.run_task.wait_request('q2'), 1)
+        self.assertEqual(second['status'], 'approved')
+        self.assertEqual(
+            await asyncio.wait_for(self.run_task.wait_request('q3'), 1),
+            {'status': 'expired'},
+        )
+        self.assertEqual(self.run_task.outcomes, {})
 
 
 class RequestInputTestCase(RoutedTestCase):

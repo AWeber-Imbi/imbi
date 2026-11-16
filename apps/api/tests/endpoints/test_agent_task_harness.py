@@ -431,6 +431,25 @@ class ConcurrencyTests(HarnessTestCase):
 
 
 class EventTests(HarnessTestCase):
+    async def test_input_seq_is_kept_in_the_payload(self) -> None:
+        session = (await self.open_session())['session']
+        keyed = {'body': 'Looking.', 'kind': 'thinking', 'input_seq': 3}
+        old = {'body': 'Done.', 'kind': 'text'}
+        response = await self.post(
+            'events',
+            {
+                'session_id': session['id'],
+                'events': [
+                    {'event_id': new_id(), 'type': 'turn', 'payload': keyed},
+                    {'event_id': new_id(), 'type': 'turn', 'payload': old},
+                ],
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        written = response.json()['written']
+        self.assertEqual([e['payload'] for e in written], [keyed, old])
+        self.assertEqual(written, (await self.events())[-2:])
+
     async def test_harness_events_are_written_in_order(self) -> None:
         session = (await self.open_session())['session']
         at = '2026-10-07T12:00:00.123456+00:00'

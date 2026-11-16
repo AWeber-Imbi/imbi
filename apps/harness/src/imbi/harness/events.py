@@ -8,7 +8,11 @@
 | Subagent output | the same, with ``parent_call_id`` |
 | ``TodoWrite`` | ``todos.updated`` |
 
-Each payload is redacted before it is queued. A ``turn`` or
+Each payload has ``input_seq``, the seq of the newest person input the
+harness had when it recorded the event, once it has one: the session's
+first task seq, then each ``request.resolved`` it reads. An event sent
+late, after a person answers, still has the input of the turn it was
+done in. Each payload is redacted before it is queued. A ``turn`` or
 ``tool.called`` payload over :data:`PAYLOAD_LIMIT` is split into
 continuation events: the same ``call_id``, with ``part`` and ``parts``.
 The first part has every field; each part has a piece of the large
@@ -200,12 +204,20 @@ class Recorder:
         #: The CLI names of the relayed Imbi tools that write (not
         #: read only): a call that does not fail is a mutation.
         self.writes: set[str] = set()
+        #: The seq of the newest person input, for ``input_seq``.
+        self.input_seq: int | None = None
+
+    def saw_input(self, seq: int) -> None:
+        """Record a person input that the agent now has."""
+        self.input_seq = max(self.input_seq or 0, seq)
 
     def _add(
         self, kind: str, payload: dict[str, typing.Any], parent: str | None
     ) -> None:
         if parent is not None:
             payload['parent_call_id'] = parent
+        if self.input_seq is not None:
+            payload['input_seq'] = self.input_seq
         self.pending.extend(
             split(
                 {

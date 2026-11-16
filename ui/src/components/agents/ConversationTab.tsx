@@ -1,91 +1,177 @@
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 
-import { ChevronRight, Search, TriangleAlert } from 'lucide-react'
+import { useLocation, useNavigate } from 'react-router-dom'
 
-import { Badge } from '@/components/ui/badge'
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible'
-import { Input } from '@/components/ui/input'
-import { RichMarkdown } from '@/components/ui/rich-markdown'
+  Bot,
+  Brain,
+  ChevronRight,
+  FilePen,
+  FileText,
+  FoldHorizontal,
+  List,
+  ListCollapse,
+  ListTodo,
+  ListTree,
+  MessageSquare,
+  Plug,
+  Search,
+  SquareTerminal,
+  TriangleAlert,
+  UnfoldHorizontal,
+} from 'lucide-react'
+
+import { Button } from '@/components/ui/button'
+import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker'
+import { Message, MessageContent, MessageHeader } from '@/components/ui/message'
 import {
-  SegmentedControl,
-  SegmentedControlItem,
-} from '@/components/ui/segmented-control'
-import { UserIdentity } from '@/components/ui/user-identity'
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+  useMessageScroller,
+} from '@/components/ui/message-scroller'
+import {
+  Trace,
+  TraceCollapsible,
+  TraceCollapsibleContent,
+  TraceCollapsibleTrigger,
+  TraceDescription,
+  TraceIcon,
+  TraceLine,
+  TraceTitle,
+} from '@/components/ui/trace'
 import { cn } from '@/lib/utils'
 import type { AgentTask, AgentTaskEvent } from '@/types'
 
-import { formatElapsed, type TaskRequestView } from './taskEvents'
-import { RequestCard } from './TaskTabs'
-import { clock, systemText, useActorName } from './taskText'
+import { ActivityEmpty, NoMatches } from './ActivityEmpty'
 import {
-  categoryOf,
-  countTimeline,
-  DEFAULT_FILTERS,
-  filterTimeline,
-  isDenied,
-  isError,
-  timeline,
-  type TimelineEntry,
-  type TimelineFilters,
-} from './taskTimeline'
+  conversationMarkdown,
+  resolution,
+  taskAsk,
+  turnFooter,
+} from './conversationMarkdown'
+import {
+  canCollapseTurn,
+  type ConversationMode,
+  type ConversationWidth,
+  groupErrors,
+  groupOpenByDefault,
+  groupSummary,
+  turnOpenByDefault,
+  turnTitle,
+  useConversationMode,
+  useConversationWidth,
+  useFoldState,
+} from './conversationMode'
+import {
+  entryKey,
+  hashSeqOf,
+  type ProcessGroup,
+  revealSeqOf,
+  type Turn,
+  turnForSeq,
+  turns,
+} from './conversationTurns'
+import { Prose, Todos, ToolReadable } from './taskEntryViews'
+import {
+  formatElapsed,
+  isFailed,
+  type TaskRequestView,
+  TRIGGERS,
+} from './taskEvents'
+import {
+  matches,
+  ToolbarSearch,
+  useSearchHighlight,
+  useTaskSearch,
+} from './taskSearch'
+import { RequestCard } from './TaskTabs'
+import { systemText, useActorName } from './taskText'
+import { isDenied, isError, timeline, type TimelineEntry } from './taskTimeline'
+import {
+  TaskCopyMenu,
+  TaskToolbar,
+  ToolbarChoice,
+  type ToolbarOption,
+} from './TaskToolbar'
+import {
+  type Family,
+  familyOf,
+  isRecord,
+  label,
+  toolLabel,
+  toolSummary,
+} from './toolCalls'
 
-/** The filter chips, in order. */
-type ChipKey = 'messages' | 'subagents' | 'system' | 'thinking' | 'tools'
-
-type Family = 'agent' | 'edit' | 'mcp' | 'read' | 'shell'
-
-interface OutputProps {
-  dark?: boolean
-  error?: boolean
-  text: string
-}
-
-interface RowContext {
-  isOpen: (id: string) => boolean
+interface Ctx {
+  isOpen: (id: string, byDefault: boolean) => boolean
+  mode: ConversationMode
   orgSlug: string
   requests: TaskRequestView[]
+  setOpen: (id: string, open: boolean) => void
   task: AgentTask
-  toggle: (id: string) => void
 }
 
-/** The tag colors of each tool family. */
-const FAMILY_TAG: Record<Family, string> = {
-  agent: 'bg-accent text-accent',
-  edit: 'bg-teal text-teal',
-  mcp: 'bg-accent text-accent',
-  read: 'bg-info text-info',
-  shell: 'bg-secondary text-primary',
+const FAMILY_ICON: Record<Family, ReactNode> = {
+  agent: <Bot />,
+  edit: <FilePen />,
+  mcp: <Plug />,
+  read: <FileText />,
+  search: <Search />,
+  shell: <SquareTerminal />,
 }
 
-/** The spine dot color of each kind of entry. */
-const DOT: Record<string, string> = {
-  error: 'text-danger',
-  human: 'text-info',
-  message: 'text-action',
-  system: 'text-tertiary',
-  thinking: 'text-amber-text-mid',
-  tool: 'text-teal',
-  warning: 'text-warning',
-}
+const ASK_PREVIEW = 600
 
-const CHIPS: { dot: string; key: ChipKey; label: string }[] = [
-  { dot: DOT.message, key: 'messages', label: 'Messages' },
-  { dot: DOT.thinking, key: 'thinking', label: 'Thinking' },
-  { dot: DOT.tool, key: 'tools', label: 'Tools' },
-  { dot: 'text-accent', key: 'subagents', label: 'Subagents' },
-  { dot: DOT.system, key: 'system', label: 'System' },
+const FLASH_MS = 1600
+
+type RevealTarget = NonNullable<ReturnType<typeof turnForSeq>>
+
+/** While a search holds every row open, a fold click is not kept. */
+function ignoreFold() {}
+
+const MODES: ToolbarOption<ConversationMode>[] = [
+  {
+    hint: 'Compact: replies, with the work folded',
+    icon: ListCollapse,
+    label: 'Compact',
+    value: 'compact',
+  },
+  {
+    hint: 'Standard: replies and work summaries',
+    icon: List,
+    label: 'Standard',
+    value: 'standard',
+  },
+  {
+    hint: 'Verbose: every work group open',
+    icon: ListTree,
+    label: 'Verbose',
+    value: 'verbose',
+  },
 ]
-/** Lines of output shown before "Show all". */
-const OUTPUT_LINES = 40
+
+const WIDTHS: ToolbarOption<ConversationWidth>[] = [
+  {
+    hint: 'Narrow: a readable column',
+    icon: FoldHorizontal,
+    label: 'Narrow',
+    value: 'narrow',
+  },
+  {
+    hint: 'Wide: the full pane',
+    icon: UnfoldHorizontal,
+    label: 'Wide',
+    value: 'wide',
+  },
+]
 
 /**
- * The task log as one timeline (O5): turns, tool calls, requests, and
- * state changes in order, with subagent work nested under its call,
- * filters by kind, and a compact or full level of detail.
+ * The task as a transcript: one turn per exchange, its work folded under
+ * a "Worked for" line, and the agent's replies always in view.
  */
 export function ConversationTab({
   events,
@@ -93,725 +179,587 @@ export function ConversationTab({
   requests,
   task,
 }: {
-  events: AgentTaskEvent[]
+  events: Parameters<typeof timeline>[0]
   orgSlug: string
   requests: TaskRequestView[]
   task: AgentTask
 }) {
-  const [filters, setFilters] = useState<TimelineFilters>(DEFAULT_FILTERS)
-  const [full, setFull] = useState(true)
-  // Rows that the reader opened or closed, over the density default.
-  const [toggled, setToggled] = useState(new Map<string, boolean>())
-  const all = useMemo(() => timeline(events), [events])
-  const shown = useMemo(() => filterTimeline(all, filters), [all, filters])
-  const counts = useMemo(() => countTimeline(all), [all])
-
-  const isOpen = (id: string) => toggled.get(id) ?? full
-  const toggle = (id: string) =>
-    setToggled(new Map(toggled).set(id, !isOpen(id)))
-  const setDensity = (value: boolean) => {
-    setFull(value)
-    setToggled(new Map())
-  }
-  const ctx: RowContext = {
-    isOpen,
-    orgSlug,
-    requests,
-    task,
-    toggle,
-  }
-
-  useScrollToHash(shown.length > 0)
-
-  return (
-    <div className="bg-tertiary flex min-h-full flex-col">
-      <div className="border-tertiary bg-primary sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b px-6 py-2.5">
-        {CHIPS.map((chip) => (
-          <Chip
-            count={counts[chip.key]}
-            dot={chip.dot}
-            key={chip.key}
-            label={chip.label}
-            onClick={() =>
-              setFilters({ ...filters, [chip.key]: !filters[chip.key] })
-            }
-            pressed={filters[chip.key]}
-          />
-        ))}
-        <span className="h-5 w-px bg-(--ds-border-tertiary)" />
-        <Chip
-          count={counts.errors}
-          danger
-          dot={DOT.error}
-          label="Errors only"
-          onClick={() =>
-            setFilters({ ...filters, errorsOnly: !filters.errorsOnly })
-          }
-          pressed={filters.errorsOnly}
-        />
-        <SegmentedControl
-          ariaLabel="Detail"
-          onValueChange={(v) => setDensity(v === 'full')}
-          value={full ? 'full' : 'compact'}
-        >
-          <SegmentedControlItem value="compact">Compact</SegmentedControlItem>
-          <SegmentedControlItem value="full">Full</SegmentedControlItem>
-        </SegmentedControl>
-        <div className="relative ml-auto">
-          <Search className="text-tertiary pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
-          <Input
-            aria-label="Search this task"
-            className="h-8 w-48 pl-8 text-xs"
-            onChange={(e) => setFilters({ ...filters, query: e.target.value })}
-            placeholder="Search this task"
-            type="search"
-            value={filters.query}
-          />
-        </div>
-      </div>
-      <ol className="flex-1 py-4">
-        {all.length === 0 && (
-          <li className="text-tertiary px-6 py-4 text-sm">
-            No conversation yet.
-          </li>
-        )}
-        {all.length > 0 && shown.length === 0 && (
-          <li className="text-tertiary px-6 py-4 text-sm">
-            Nothing matches these filters.
-          </li>
-        )}
-        {shown.map((entry, i) => (
-          <Row
-            ctx={ctx}
-            entry={entry}
-            first={i === 0}
-            key={entry.id}
-            last={i === shown.length - 1}
-          />
-        ))}
-      </ol>
-    </div>
-  )
-}
-
-/** `Bash`, `Edit`, `github · get_pr`, `Subagent`. */
-export function toolLabel(tool: string): string {
-  if (tool.startsWith('mcp__')) {
-    const [, server, ...name] = tool.split('__')
-    return `${server} · ${name.join('__')}`
-  }
-  if (tool === 'Task' || tool === 'Agent') return 'Subagent'
-  return tool
-}
-
-/** The one-line summary of a call's arguments. */
-export function toolSummary(tool: string, args: unknown): string {
-  const a = (args ?? {}) as Record<string, unknown>
-  const str = (v: unknown) => (typeof v === 'string' ? v : '')
-  switch (tool) {
-    case 'Agent':
-    case 'Task':
-      return [str(a.subagent_type), str(a.description)]
-        .filter(Boolean)
-        .join(' · ')
-    case 'Bash':
-      return str(a.command)
-    case 'Edit':
-    case 'MultiEdit':
-    case 'NotebookEdit':
-    case 'Read':
-    case 'Write':
-      return str(a.file_path) || str(a.notebook_path)
-    case 'Glob':
-    case 'Grep':
-      return [str(a.pattern), str(a.path)].filter(Boolean).join('  in ')
-    case 'WebFetch':
-      return str(a.url)
-    case 'WebSearch':
-      return str(a.query)
-  }
-  const first = Object.values(a).find((v) => typeof v === 'string')
-  return typeof first === 'string' ? first : JSON.stringify(a)
-}
-
-function AgentMessage({ body, name }: { body: string; name: string }) {
-  return (
-    <div className="border-tertiary bg-primary flex flex-col gap-2 rounded-lg border px-4 pt-3 pb-3.5 shadow-xs">
-      <div className="flex items-center gap-2">
-        <span className="bg-action text-action-foreground grid size-5 place-items-center rounded-full text-[10px] font-semibold">
-          {name.slice(0, 1).toUpperCase()}
-        </span>
-        <span className="text-sm font-semibold">{name}</span>
-        <Badge variant="neutral">Agent</Badge>
-      </div>
-      <Prose>{body}</Prose>
-    </div>
-  )
-}
-
-function Chip({
-  count,
-  danger,
-  dot,
-  label,
-  onClick,
-  pressed,
-}: {
-  count: number
-  danger?: boolean
-  dot: string
-  label: string
-  onClick: () => void
-  pressed: boolean
-}) {
-  return (
-    <button
-      aria-pressed={pressed}
-      className={cn(
-        'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs',
-        pressed
-          ? danger
-            ? 'border-transparent bg-danger text-danger'
-            : 'border-transparent bg-secondary text-primary'
-          : 'border-secondary text-tertiary',
-      )}
-      onClick={onClick}
-      type="button"
-    >
-      <span
-        className={cn(
-          'size-2 rounded-full bg-current',
-          dot,
-          !pressed && 'opacity-40',
-        )}
-      />
-      {label}
-      <span className="text-tertiary text-[11px] tabular-nums">{count}</span>
-    </button>
-  )
-}
-
-/**
- * Old text above new text, for an Edit, MultiEdit, NotebookEdit, or
- * Write, cut at {@link OUTPUT_LINES} until the reader asks.
- */
-function Diff({ args }: { args: Record<string, unknown> }) {
-  const [all, setAll] = useState(false)
-  const edits: { new_string?: unknown; old_string?: unknown }[] = Array.isArray(
-    args.edits,
-  )
-    ? (args.edits as { new_string?: unknown; old_string?: unknown }[])
-    : [
-        {
-          new_string: args.new_string ?? args.content ?? args.new_source,
-          old_string: args.old_string,
-        },
-      ]
-  const lines = (v: unknown) => (typeof v === 'string' ? v.split('\n') : [])
-  const rows: { className: string; key: string; text: string }[] = []
-  edits.forEach((edit, i) => {
-    if (i > 0)
-      rows.push({ className: 'text-tertiary', key: `s${i}`, text: '⋯' })
-    lines(edit.old_string).forEach((l, j) =>
-      rows.push({
-        className: 'bg-danger text-danger',
-        key: `o${i}-${j}`,
-        text: `- ${l}`,
+  const [mode, setMode] = useConversationMode()
+  const [width, setWidth] = useConversationWidth()
+  const [isOpen, setOpen] = useFoldState()
+  const list = useMemo(
+    () =>
+      turns(timeline(events), {
+        failed: isFailed(task),
+        live: task.status === 'running',
       }),
-    )
-    lines(edit.new_string).forEach((l, j) =>
-      rows.push({
-        className: 'bg-success text-success',
-        key: `n${i}-${j}`,
-        text: `+ ${l}`,
-      }),
-    )
-  })
-  const cut = !all && rows.length > OUTPUT_LINES
-  return (
-    <>
-      <div className="border-tertiary overflow-x-auto rounded-md border">
-        <div className="bg-secondary text-secondary px-3 py-1.5 font-mono text-xs">
-          {String(args.file_path ?? args.notebook_path ?? '')}
-        </div>
-        <pre className="py-1 font-mono text-xs leading-relaxed whitespace-pre-wrap">
-          {(cut ? rows.slice(0, OUTPUT_LINES) : rows).map((row) => (
-            <span className={cn('block px-3', row.className)} key={row.key}>
-              {row.text}
-            </span>
-          ))}
-        </pre>
-      </div>
-      {cut && <ShowAll count={rows.length} onClick={() => setAll(true)} />}
-    </>
+    [events, task],
   )
-}
-
-function dotOf(entry: TimelineEntry): string {
-  const e = entry.event
-  if (isError(entry)) return DOT.error
-  if (!e || e.type === 'tool.called') return DOT.tool
-  if (e.type === 'turn') {
-    if (e.actor_kind === 'human') return DOT.human
-    if (e.payload.kind === 'thinking') return DOT.thinking
-    if (e.payload.kind === 'warning') return DOT.warning
-    return DOT.message
+  const [query, setQuery] = useTaskSearch()
+  const root = useRef<HTMLDivElement>(null)
+  useSearchHighlight(root, query)
+  const searching = query.trim() !== ''
+  const shown = useMemo(
+    () => (searching ? list.filter((t) => matches(turnText(t), query)) : list),
+    [list, query, searching],
+  )
+  const askMatches =
+    searching && matches((task.description || task.title || '').trim(), query)
+  const showAsk = !searching || askMatches || shown.length > 0
+  const ctx: Ctx = useMemo(
+    () => ({
+      isOpen: searching ? () => true : isOpen,
+      mode: searching ? 'verbose' : mode,
+      orgSlug,
+      requests,
+      setOpen: searching ? ignoreFold : setOpen,
+      task,
+    }),
+    [isOpen, mode, orgSlug, requests, searching, setOpen, task],
+  )
+  const [flash, setFlash] = useState<null | { id: string }>(null)
+  useEffect(() => {
+    if (!flash) return
+    const done = window.setTimeout(() => setFlash(null), FLASH_MS)
+    return () => window.clearTimeout(done)
+  }, [flash])
+  const reveal = (target: RevealTarget) => {
+    if (searching && !shown.includes(target.turn)) setQuery('')
+    if (canCollapseTurn(target.turn)) setOpen(target.turn.id, true)
+    if (target.group) setOpen(target.group, true)
+    for (const key of target.calls) setOpen(key, true)
+    setFlash({ id: target.turn.id })
   }
-  if (e.type === 'request.opened') return DOT.warning
-  return DOT.system
-}
 
-function EntryBody({ ctx, entry }: { ctx: RowContext; entry: TimelineEntry }) {
-  const actorName = useActorName(ctx.orgSlug)
-  const e = entry.event
-  if (!e || e.type === 'tool.called')
-    return <ToolCall ctx={ctx} entry={entry} />
-  const body = String(e.payload.body ?? '')
-  if (e.type === 'turn') {
-    if (e.actor_kind === 'human') return <HumanMessage body={body} event={e} />
-    if (e.payload.kind === 'thinking')
-      return <Thinking ctx={ctx} id={entry.id} text={body} />
-    if (e.payload.kind === 'warning')
-      return (
-        <div className="border-warning bg-warning text-warning flex max-w-[74ch] items-start gap-2 rounded-lg border px-3 py-2 text-sm">
-          <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-          {body}
-        </div>
-      )
-    return <AgentMessage body={body} name={actorName(e.actor_id)} />
-  }
-  if (e.type === 'request.opened') {
-    const request = ctx.requests.find((r) => r.id === e.payload.request_id)
-    if (request?.status === 'open')
-      return (
-        <div className="max-w-2xl">
-          <RequestCard
-            orgSlug={ctx.orgSlug}
-            request={request}
-            task={ctx.task}
+  return (
+    <MessageScrollerProvider autoScroll defaultScrollPosition="end">
+      <RevealTurn list={list} onReveal={reveal} />
+      <div className="flex min-h-0 flex-1 flex-col" ref={root}>
+        <TaskToolbar label="Conversation">
+          <ToolbarChoice
+            label="Detail"
+            onChange={setMode}
+            options={MODES}
+            value={mode}
           />
-        </div>
-      )
-  }
-  if (e.type === 'todos.updated') return <Todos event={e} />
-  return (
-    <span className="bg-secondary text-secondary inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs">
-      {systemText(e)}
-    </span>
-  )
-}
-
-function familyOf(tool: string): Family {
-  if (tool === 'Bash') return 'shell'
-  if (['Edit', 'MultiEdit', 'NotebookEdit', 'Write'].includes(tool))
-    return 'edit'
-  if (tool === 'Task' || tool === 'Agent') return 'agent'
-  if (tool.startsWith('mcp__')) return 'mcp'
-  return 'read'
-}
-
-function HumanMessage({
-  body,
-  event,
-}: {
-  body: string
-  event: AgentTaskEvent
-}) {
-  return (
-    <div className="border-info/40 bg-info flex flex-col gap-2 rounded-lg border px-4 pt-3 pb-3.5">
-      <div className="flex items-center gap-2">
-        <UserIdentity email={event.actor_id ?? ''} size="small" />
-        <Badge variant="info">Person</Badge>
-        {!['harness', 'web'].includes(event.channel) && (
-          <span className="text-tertiary text-xs">via {event.channel}</span>
+          <ToolbarChoice
+            label="Width"
+            onChange={setWidth}
+            options={WIDTHS}
+            value={width}
+          />
+          <div className="ml-auto flex min-w-40 flex-1 items-center justify-end gap-2">
+            <ToolbarSearch
+              label="Search conversation"
+              onChange={setQuery}
+              value={query}
+            />
+            <TaskCopyMenu events={events} task={task} />
+          </div>
+        </TaskToolbar>
+        {!showAsk ? (
+          <NoMatches onClear={() => setQuery('')} query={query} />
+        ) : (
+          <MessageScroller className="flex-1">
+            <MessageScrollerViewport aria-label="Conversation">
+              <MessageScrollerContent
+                className={cn(
+                  'w-full px-10 py-5',
+                  width === 'narrow' && 'mx-auto max-w-3xl',
+                )}
+              >
+                <TaskAsk ctx={ctx} first={list[0]} reveal={askMatches} />
+                {shown.length === 0 && !searching ? (
+                  <ActivityEmpty
+                    icon={<MessageSquare />}
+                    title="No activity yet"
+                  >
+                    No conversation yet.
+                  </ActivityEmpty>
+                ) : (
+                  shown.map((turn) => (
+                    <TurnView
+                      ctx={ctx}
+                      flash={flash?.id === turn.id}
+                      key={turn.id}
+                      turn={turn}
+                    />
+                  ))
+                )}
+              </MessageScrollerContent>
+            </MessageScrollerViewport>
+            <MessageScrollerButton />
+          </MessageScroller>
         )}
       </div>
-      <Prose>{body}</Prose>
-      {typeof event.payload.decision === 'string' && (
-        <p className="text-secondary text-sm">{event.payload.decision}</p>
-      )}
-    </div>
+    </MessageScrollerProvider>
   )
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-/** A string as is; anything else as JSON. */
-function label(value: unknown): string {
-  return typeof value === 'string' ? value : JSON.stringify(value, null, 2)
-}
-
-/** Output text, cut at {@link OUTPUT_LINES} until the reader asks. */
-function Output({ dark, error, text }: OutputProps) {
-  const [all, setAll] = useState(false)
-  const lines = text.split('\n')
-  const cut = !all && lines.length > OUTPUT_LINES
-  return (
-    <>
-      <Pane dark={dark}>
-        <span
-          className={cn(
-            error && (dark ? 'text-terminal-danger' : 'text-danger'),
-          )}
-        >
-          {cut ? lines.slice(0, OUTPUT_LINES).join('\n') : text}
-        </span>
-      </Pane>
-      {cut && <ShowAll count={lines.length} onClick={() => setAll(true)} />}
-    </>
-  )
-}
-
-function Pane({ children, dark }: { children: ReactNode; dark?: boolean }) {
-  return (
-    <div
-      className={cn(
-        'overflow-x-auto rounded-md',
-        dark ? 'bg-terminal' : 'border border-tertiary bg-tertiary',
-      )}
-    >
-      <pre
-        className={cn(
-          'px-3 py-2 font-mono text-xs leading-relaxed wrap-break-word whitespace-pre-wrap',
-          dark && 'text-terminal',
-        )}
-      >
-        {children}
-      </pre>
-    </div>
-  )
-}
-
-function Prose({ children }: { children: string }) {
-  return (
-    <div className="document-markdown max-w-[74ch] text-sm">
-      <RichMarkdown deferImages>{children}</RichMarkdown>
-    </div>
-  )
-}
-
-/** The labeled output of a call, when it has one. */
-function ResultOutput({ error, result }: { error: boolean; result: string }) {
-  if (!result) return null
-  return (
-    <>
-      <span className="text-tertiary text-[10.5px] font-semibold tracking-wide uppercase">
-        Output
-      </span>
-      <Output error={error} text={result} />
-    </>
-  )
-}
-
-/** One entry on the spine: time, a dot colored by kind, and its body. */
-function Row({
-  ctx,
-  entry,
-  first,
-  last,
-}: {
-  ctx: RowContext
-  entry: TimelineEntry
-  first: boolean
-  last: boolean
-}) {
-  const e = entry.event
-  const small = categoryOf(entry) === 'system'
-  return (
-    <li
-      className="grid grid-cols-[4.5rem_1.5rem_minmax(0,1fr)] pr-6 pl-2"
-      id={e ? `e${e.seq}` : undefined}
-    >
-      <a
-        className="text-tertiary hover:text-info pt-3 pr-1.5 text-right font-mono text-[11px] tabular-nums"
-        href={e ? `#e${e.seq}` : undefined}
-        title="Link to this event"
-      >
-        {e ? clock(e.at) : ''}
-      </a>
-      <div className="relative">
-        <span
-          className={cn(
-            'absolute left-tab-y w-0.5 bg-(--ds-border-tertiary)',
-            first ? 'top-4' : 'top-0',
-            last ? 'h-4' : 'bottom-0',
-          )}
-        />
-        <span
-          className={cn(
-            'absolute rounded-full bg-current ring-3 ring-(--ds-bg-tertiary)',
-            small ? 'top-tab-y left-2 size-2' : 'top-3.25 left-1.5 size-3',
-            dotOf(entry),
-          )}
-        />
-      </div>
-      <div className={cn('min-w-0 pl-2', small ? 'py-1' : 'py-1.5')}>
-        <EntryBody ctx={ctx} entry={entry} />
-      </div>
-    </li>
-  )
-}
-
-function ShowAll({ count, onClick }: { count: number; onClick: () => void }) {
-  return (
-    <button
-      className="text-info self-start text-xs hover:underline"
-      onClick={onClick}
-      type="button"
-    >
-      Show all {count} lines
-    </button>
-  )
-}
-
-function Thinking({
-  ctx,
-  id,
-  text,
-}: {
-  ctx: RowContext
-  id: string
-  text: string
-}) {
-  const open = ctx.isOpen(id)
-  return (
-    <Collapsible
-      className="border-amber-border/50 bg-amber-bg/50 rounded-lg border"
-      onOpenChange={() => ctx.toggle(id)}
-      open={open}
-    >
-      <CollapsibleTrigger className="text-amber-text flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs">
-        <ChevronRight
-          className={cn('size-3.5 transition-transform', open && 'rotate-90')}
-        />
-        <span className="font-semibold">Thinking</span>
-        <span className="text-tertiary">
-          {text.split(/\s+/).filter(Boolean).length} words
-        </span>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <p className="text-secondary max-w-[80ch] px-4 pb-3 pl-8 text-[13px] leading-relaxed whitespace-pre-wrap italic">
-          {text}
-        </p>
-      </CollapsibleContent>
-    </Collapsible>
-  )
-}
-
-function Todos({ event }: { event: AgentTaskEvent }) {
-  const todos = (event.payload.todos ?? []) as {
-    done?: boolean
-    title?: string
-  }[]
-  return (
-    <div className="border-tertiary bg-primary inline-flex flex-col gap-1 rounded-lg border px-3 py-2">
-      <span className="text-tertiary text-[10.5px] font-semibold tracking-wide uppercase">
-        Plan · {todos.filter((t) => t.done).length} of {todos.length} done
-      </span>
-      <ul className="flex flex-col gap-0.5 text-xs">
-        {todos.map((t, i) => (
-          <li className={cn(t.done && 'text-tertiary line-through')} key={i}>
-            <span
-              className={cn(
-                'inline-block w-4',
-                t.done ? 'text-success' : 'text-tertiary',
-              )}
-            >
-              {t.done ? '✓' : '○'}
-            </span>
-            {t.title}
-          </li>
-        ))}
-      </ul>
-    </div>
-  )
-}
-
-/** A tool call: one line, and its input and output when open. */
-function ToolCall({ ctx, entry }: { ctx: RowContext; entry: TimelineEntry }) {
-  const [json, setJson] = useState(false)
+function CallRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
   const e = entry.event
   const p = e?.payload ?? {}
   const tool = e ? String(p.tool ?? 'tool') : 'Task'
   const family = familyOf(tool)
-  const open = e != null && ctx.isOpen(entry.id)
-  // The harness cuts oversized arguments to a JSON string preview.
   const argsText = typeof p.arguments === 'string' ? p.arguments : null
   const args = isRecord(p.arguments) ? p.arguments : {}
   const ms = typeof p.duration_ms === 'number' ? p.duration_ms : null
-  const denied = isDenied(p)
-  const result = p.result == null ? '' : label(p.result)
+  const running = ctx.task.status === 'running'
+  const summary = e
+    ? (argsText?.slice(0, 200) ?? toolSummary(tool, args))
+    : running
+      ? 'Running…'
+      : ctx.task.status === 'closed'
+        ? 'Did not finish'
+        : 'Not finished yet'
+  const status = isError(entry)
+    ? 'error'
+    : !e && running
+      ? 'running'
+      : undefined
+  const key = entryKey(entry)
+  const steps = entry.children.filter(
+    (child) => child.event?.type !== 'usage.reported',
+  ).length
+  const agent =
+    typeof args.subagent_type === 'string' && args.subagent_type
+      ? `${args.subagent_type} subagent`
+      : 'Subagent'
   return (
-    <Collapsible
-      className={cn(
-        'overflow-hidden rounded-lg border bg-primary shadow-xs',
-        isError(entry) ? 'border-danger' : 'border-tertiary',
-      )}
-      disabled={!e}
-      onOpenChange={() => ctx.toggle(entry.id)}
-      open={open}
+    <TraceCollapsible
+      onOpenChange={(open) => ctx.setOpen(key, open)}
+      open={ctx.isOpen(key, false)}
     >
-      <CollapsibleTrigger className="hover:bg-tertiary flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm">
-        <ChevronRight
-          className={cn(
-            'size-3.5 shrink-0 text-tertiary transition-transform',
-            open && 'rotate-90',
-            !e && 'invisible',
+      <TraceCollapsibleTrigger>
+        <TraceLine status={status}>
+          <TraceIcon>{FAMILY_ICON[family]}</TraceIcon>
+          <TraceTitle>
+            <span className="font-medium">{toolLabel(tool)}</span>{' '}
+            <span className="font-mono text-xs">{summary}</span>
+          </TraceTitle>
+          {isDenied(p) && <TraceDescription>denied by policy</TraceDescription>}
+          {ms != null && (
+            <TraceDescription>
+              {ms < 1000 ? `${ms}ms` : formatElapsed(ms)}
+            </TraceDescription>
           )}
-        />
-        <span
-          className={cn(
-            'shrink-0 rounded px-1.5 py-0.5 font-mono text-[11px] font-medium',
-            FAMILY_TAG[family],
-          )}
-        >
-          {toolLabel(tool)}
-        </span>
-        <span className="min-w-0 flex-1 truncate font-mono text-xs">
-          {e
-            ? (argsText?.slice(0, 200) ?? toolSummary(tool, args))
-            : ctx.task.status === 'closed'
-              ? 'Did not finish'
-              : 'Running…'}
-        </span>
-        {p.is_error === true && !denied && (
-          <Badge variant="danger">failed</Badge>
-        )}
-        {denied && <Badge variant="danger">denied by policy</Badge>}
-        {p.mutating === true && !denied && (
-          <Badge variant="warning">writes</Badge>
-        )}
-        {entry.children.length > 0 && (
-          <Badge variant="accent">{entry.children.length} steps</Badge>
-        )}
-        <span className="text-tertiary font-mono text-[11px] whitespace-nowrap tabular-nums">
-          {ms == null ? '' : ms < 1000 ? `${ms}ms` : formatElapsed(ms)}
-        </span>
-      </CollapsibleTrigger>
-      <CollapsibleContent className="border-tertiary flex flex-col gap-2 border-t px-3 pt-2.5 pb-3">
-        {denied && (
-          <p className="bg-danger text-danger rounded-md px-2.5 py-1.5 text-xs">
-            {label(
-              (p.policy as { reason?: unknown }).reason ??
-                'Denied by policy before it ran.',
-            )}
-          </p>
-        )}
-        <div className="flex items-center gap-2">
-          <span className="text-tertiary text-[10.5px] font-semibold tracking-wide uppercase">
-            {json ? 'Raw event' : family === 'shell' ? 'Terminal' : 'Input'}
-          </span>
-          <SegmentedControl
-            ariaLabel="View"
-            className="ml-auto"
-            onValueChange={(v) => setJson(v === 'json')}
-            value={json ? 'json' : 'readable'}
-          >
-            <SegmentedControlItem value="readable">
-              Readable
-            </SegmentedControlItem>
-            <SegmentedControlItem value="json">JSON</SegmentedControlItem>
-          </SegmentedControl>
-        </div>
-        {json ? (
-          <Pane>{JSON.stringify(p, null, 2)}</Pane>
-        ) : (
+        </TraceLine>
+      </TraceCollapsibleTrigger>
+      <TraceCollapsibleContent className="flex flex-col gap-2">
+        {e && (
           <ToolReadable
             args={args}
             argsText={argsText}
             error={p.is_error === true}
             family={family}
-            result={result}
+            result={p.result == null ? '' : label(p.result)}
           />
         )}
-      </CollapsibleContent>
-      {entry.children.length > 0 && (
-        <div className="border-accent/40 mx-3 mb-3 ml-6 flex flex-col gap-2 border-l-2 pt-1 pl-3.5">
-          <span className="text-accent text-[10.5px] font-semibold tracking-wide uppercase">
-            {String(args.subagent_type ?? 'Subagent')}
-          </span>
-          {entry.children.map((child) => (
-            <div
-              id={child.event ? `e${child.event.seq}` : undefined}
-              key={child.id}
-            >
-              {child.event?.type === 'turn' ? (
-                child.event.payload.kind === 'thinking' ? (
-                  <Thinking
-                    ctx={ctx}
-                    id={child.id}
-                    text={String(child.event.payload.body ?? '')}
-                  />
-                ) : (
-                  <div className="text-secondary">
-                    <Prose>{String(child.event.payload.body ?? '')}</Prose>
-                  </div>
-                )
-              ) : !child.event || child.event.type === 'tool.called' ? (
-                <ToolCall ctx={ctx} entry={child} />
-              ) : (
-                <EntryBody ctx={ctx} entry={child} />
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </Collapsible>
+        {entry.children.length > 0 && (
+          <div className="border-accent/40 flex flex-col gap-2 border-l-2 pl-3">
+            <Marker className="text-accent text-xs">
+              <MarkerIcon>
+                <Bot />
+              </MarkerIcon>
+              <MarkerContent>
+                {`${agent} · ${steps} ${steps === 1 ? 'step' : 'steps'}`}
+              </MarkerContent>
+            </Marker>
+            <Trace>
+              {entry.children.map((child) => (
+                <WorkRow ctx={ctx} entry={child} key={entryKey(child)} />
+              ))}
+            </Trace>
+          </div>
+        )}
+      </TraceCollapsibleContent>
+    </TraceCollapsible>
   )
 }
 
-function ToolReadable({
-  args,
-  argsText,
-  error,
-  family,
-  result,
+function GroupView({
+  ctx,
+  group,
+  turn,
 }: {
-  args: Record<string, unknown>
-  argsText: null | string
-  error: boolean
-  family: Family
-  result: string
+  ctx: Ctx
+  group: ProcessGroup
+  turn: Turn
 }) {
-  if (argsText != null)
-    return (
-      <>
-        <Output text={argsText} />
-        <ResultOutput error={error} result={result} />
-      </>
-    )
-  if (family === 'shell')
-    return (
-      <Output
-        dark
-        error={error}
-        text={`$ ${String(args.command ?? '')}${result ? `\n${result}` : ''}`}
-      />
-    )
-  if (family === 'edit' && !error) return <Diff args={args} />
+  const failed = groupErrors(group) > 0
   return (
-    <>
-      <Pane>
-        {Object.entries(args).map(([k, v], i) => (
-          <span key={k}>
-            {i > 0 && '\n'}
-            <span className="text-tertiary">{k}</span> {label(v)}
-          </span>
-        ))}
-      </Pane>
-      <ResultOutput error={error} result={result} />
-    </>
+    <Trace>
+      <TraceCollapsible
+        onOpenChange={(open) => ctx.setOpen(group.id, open)}
+        open={ctx.isOpen(group.id, groupOpenByDefault(group, turn, ctx.mode))}
+      >
+        <TraceCollapsibleTrigger>
+          <TraceLine status={failed ? 'error' : undefined}>
+            <TraceTitle>{groupSummary(group)}</TraceTitle>
+          </TraceLine>
+        </TraceCollapsibleTrigger>
+        <TraceCollapsibleContent>
+          <Trace>
+            {group.entries.map((entry) => (
+              <WorkRow ctx={ctx} entry={entry} key={entryKey(entry)} />
+            ))}
+          </Trace>
+        </TraceCollapsibleContent>
+      </TraceCollapsible>
+    </Trace>
   )
 }
 
-/** Scroll to the `#e<seq>` of the URL once the timeline has rows. */
-function useScrollToHash(ready: boolean) {
+function PersonMessage({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
+  const actorName = useActorName(ctx.orgSlug)
+  const e = entry.event
+  if (!e) return null
+  const body =
+    typeof e.payload.body === 'string' && e.payload.body
+      ? e.payload.body
+      : systemText(e)
+  const { answer, constraints } = resolution(e)
+  return (
+    <Message align="end">
+      <MessageContent>
+        <MessageHeader>{actorName(e.actor_id)}</MessageHeader>
+        <div className="bg-secondary max-w-[85%] self-end rounded-xl px-3.5 py-2.5">
+          <Prose>{body}</Prose>
+          {answer && <Prose>{answer}</Prose>}
+          {constraints.length > 0 && (
+            <ul className="text-secondary mt-1 list-disc pl-5 text-sm">
+              {constraints.map((c, i) => (
+                <li key={i}>{c}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </MessageContent>
+    </Message>
+  )
+}
+
+/** The start and the close are said by the footer and the outcome. */
+function quiet(e: AgentTaskEvent | null | undefined): boolean {
+  if (e?.type !== 'state.changed') return false
+  const { from, to } = e.payload
+  return to === 'closed' || (from === 'queued' && to === 'running')
+}
+
+function RequestItem({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
+  const e = entry.event
+  const request = ctx.requests.find((r) => r.id === e?.payload.request_id)
+  if (request?.status === 'open')
+    return (
+      <RequestCard orgSlug={ctx.orgSlug} request={request} task={ctx.task} />
+    )
+  return (
+    <Trace>
+      <TraceLine>
+        <TraceTitle>{e ? systemText(e) : ''}</TraceTitle>
+      </TraceLine>
+    </Trace>
+  )
+}
+
+/**
+ * Shows the turn another view asked for through the router state, or an
+ * `#e<seq>` permalink asked for: the turn that holds that event opens,
+ * scrolls into view, and flashes. The state and the permalink are
+ * cleared, so a reload or Back does not show it again.
+ */
+function RevealTurn({
+  list,
+  onReveal,
+}: {
+  list: Turn[]
+  onReveal: (target: RevealTarget) => void
+}) {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const { scrollToMessage } = useMessageScroller()
+  const seq = revealSeqOf(location.state) ?? hashSeqOf(location.hash)
+  const handled = useRef<null | string>(null)
+  const [target, setTarget] = useState<null | { id: string }>(null)
+
   useEffect(() => {
-    if (!ready || !window.location.hash.startsWith('#e')) return
-    document
-      .getElementById(window.location.hash.slice(1))
-      ?.scrollIntoView?.({ block: 'center' })
-  }, [ready])
+    if (seq === null || handled.current === location.key) return
+    const found = turnForSeq(list, seq)
+    if (!found) return
+    handled.current = location.key
+    onReveal(found)
+    setTarget({ id: found.turn.id })
+    const { hash, pathname, search } = location
+    navigate(
+      { hash: hashSeqOf(hash) === null ? hash : '', pathname, search },
+      { replace: true, state: null },
+    )
+  }, [list, location, navigate, onReveal, seq])
+
+  useEffect(() => {
+    if (!target) return
+    let tries = 0
+    let frame = 0
+    const tick = () => {
+      tries++
+      if (scrollToMessage(target.id, { align: 'start' }) || tries > 30) return
+      frame = requestAnimationFrame(tick)
+    }
+    frame = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(frame)
+  }, [scrollToMessage, target])
+
+  return null
+}
+
+function searchText(entry: TimelineEntry): string {
+  return [
+    ...values(entry.event?.payload ?? {}),
+    ...entry.children.map(searchText),
+  ].join(' ')
+}
+
+/** What started the task, as the first message, unless a person already said it. */
+function TaskAsk({
+  ctx,
+  first,
+  reveal,
+}: {
+  ctx: Ctx
+  first?: Turn
+  reveal: boolean
+}) {
+  const actorName = useActorName(ctx.orgSlug)
+  const [all, setAll] = useState(false)
+  const { task } = ctx
+  const body = taskAsk(task, first)
+  if (!body) return null
+  const source = TRIGGERS[task.origin.kind].label
+  const long = body.length > ASK_PREVIEW && !reveal
+  return (
+    <Message align="end" className="mb-4">
+      <MessageContent>
+        <MessageHeader>
+          {task.origin.user
+            ? `${source} · ${actorName(task.origin.user)}`
+            : source}
+        </MessageHeader>
+        <div className="bg-secondary flex max-w-[85%] flex-col items-start gap-1 self-end rounded-xl px-3.5 py-2.5">
+          <Prose>
+            {long && !all ? `${body.slice(0, ASK_PREVIEW)}…` : body}
+          </Prose>
+          {long && (
+            <Button onClick={() => setAll(!all)} size="sm" variant="link">
+              {all ? 'Show less' : 'Show all'}
+            </Button>
+          )}
+        </div>
+      </MessageContent>
+    </Message>
+  )
+}
+
+function TurnHeader({
+  ctx,
+  open,
+  turn,
+}: {
+  ctx: Ctx
+  open: boolean
+  turn: Turn
+}) {
+  const status =
+    turn.status === 'running'
+      ? 'running'
+      : turn.status === 'failed'
+        ? 'error'
+        : undefined
+  const line = (
+    <TraceLine status={status}>
+      <TraceTitle>{turnTitle(turn)}</TraceTitle>
+    </TraceLine>
+  )
+  return (
+    <Trace>
+      {canCollapseTurn(turn) ? (
+        <button
+          aria-expanded={open}
+          className="group/trace-collapsible-trigger text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 has-[[data-status=error]]:text-destructive flex w-fit max-w-full min-w-0 cursor-pointer items-center gap-1 rounded-md text-left transition-colors outline-none focus-visible:ring-3"
+          onClick={() => ctx.setOpen(turn.id, !open)}
+          type="button"
+        >
+          {line}
+          <TraceIcon className="transition-transform group-aria-expanded/trace-collapsible-trigger:rotate-90">
+            <ChevronRight />
+          </TraceIcon>
+        </button>
+      ) : (
+        <div>{line}</div>
+      )}
+    </Trace>
+  )
+}
+
+/** The turn as Markdown plus every value its events hold, for search. */
+function turnText(turn: Turn): string {
+  const entries = [
+    ...turn.opening,
+    ...turn.items.flatMap((item) =>
+      item.kind === 'group' ? item.entries : [item.entry],
+    ),
+  ]
+  return [
+    conversationMarkdown({ title: 'x' }, [turn]).replace(
+      /^# x\s+## Turn 1\s+/,
+      '',
+    ),
+    ...entries.map(searchText),
+  ].join(' ')
+}
+
+function TurnView({
+  ctx,
+  flash,
+  turn,
+}: {
+  ctx: Ctx
+  flash: boolean
+  turn: Turn
+}) {
+  const open =
+    !canCollapseTurn(turn) ||
+    ctx.isOpen(turn.id, turnOpenByDefault(turn, ctx.mode))
+  const actorName = useActorName(ctx.orgSlug)
+  const hasWork = turn.items.some((i) => i.kind === 'group')
+  const footer = turnFooter(turn)
+  const firstReply = turn.items.find((i) => i.kind === 'reply')?.id
+  return (
+    <MessageScrollerItem
+      className={cn(
+        '-mx-3 -my-1.5 rounded-2xl px-3 py-1.5 transition-[background-color,box-shadow] duration-700 motion-reduce:transition-none',
+        flash && 'bg-action/8 inset-ring-2 inset-ring-action/40 duration-200',
+      )}
+      data-flash={flash || undefined}
+      messageId={turn.id}
+      scrollAnchor
+    >
+      <div className="flex flex-col gap-4">
+        {turn.opening.map((entry) => (
+          <PersonMessage ctx={ctx} entry={entry} key={entry.id} />
+        ))}
+        {(hasWork || turn.status !== 'done') && (
+          <TurnHeader ctx={ctx} open={open} turn={turn} />
+        )}
+        {turn.items.map((item) => {
+          switch (item.kind) {
+            case 'group':
+              return open ? (
+                <GroupView ctx={ctx} group={item} key={item.id} turn={turn} />
+              ) : null
+            case 'input':
+              return item.entry.event?.type === 'request.opened' ? (
+                <RequestItem ctx={ctx} entry={item.entry} key={item.id} />
+              ) : (
+                <PersonMessage ctx={ctx} entry={item.entry} key={item.id} />
+              )
+            case 'note':
+              return quiet(item.entry.event) ? null : (
+                <Trace key={item.id}>
+                  <TraceLine>
+                    <TraceTitle>
+                      {item.entry.event ? systemText(item.entry.event) : ''}
+                    </TraceTitle>
+                  </TraceLine>
+                </Trace>
+              )
+            case 'reply':
+              return (
+                <Message key={item.id}>
+                  <MessageContent>
+                    {item.id === firstReply && (
+                      <MessageHeader className="px-0">
+                        {actorName(ctx.task.agent_id)} v{ctx.task.agent_version}
+                      </MessageHeader>
+                    )}
+                    <Prose>
+                      {String(item.entry.event?.payload.body ?? '')}
+                    </Prose>
+                  </MessageContent>
+                </Message>
+              )
+          }
+        })}
+        {footer && (
+          <Marker className="text-xs">
+            <MarkerContent>{footer}</MarkerContent>
+          </Marker>
+        )}
+      </div>
+    </MessageScrollerItem>
+  )
+}
+
+function values(value: unknown): string[] {
+  if (typeof value === 'string') return [value]
+  if (typeof value === 'number') return [String(value)]
+  if (Array.isArray(value)) return value.flatMap(values)
+  if (value && typeof value === 'object')
+    return Object.values(value).flatMap(values)
+  return []
+}
+
+/** One step inside a process group: a call, a thought, a plan, a note. */
+function WorkRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
+  const e = entry.event
+  if (!e || e.type === 'tool.called') return <CallRow ctx={ctx} entry={entry} />
+  if (e.type === 'usage.reported') return null
+  const body = String(e.payload.body ?? '')
+  const thought = e.payload.kind === 'thinking'
+  if (e.type === 'turn' && e.payload.kind === 'warning')
+    return (
+      <TraceLine className="items-start" status="error">
+        <TraceIcon className="mt-0.5">
+          <TriangleAlert />
+        </TraceIcon>
+        <TraceTitle className="wrap-break-word text-clip whitespace-pre-wrap">
+          {body}
+        </TraceTitle>
+      </TraceLine>
+    )
+  if (e.type === 'turn' || e.type === 'todos.updated')
+    return (
+      <TraceCollapsible
+        onOpenChange={(open) => ctx.setOpen(entry.id, open)}
+        open={ctx.isOpen(entry.id, false)}
+      >
+        <TraceCollapsibleTrigger>
+          <TraceLine>
+            <TraceIcon>
+              {e.type !== 'turn' ? (
+                <ListTodo />
+              ) : thought ? (
+                <Brain />
+              ) : (
+                <MessageSquare />
+              )}
+            </TraceIcon>
+            <TraceTitle>
+              {e.type !== 'turn'
+                ? 'Updated the plan'
+                : thought
+                  ? `Thought: ${body.split('\n')[0]}`
+                  : body.split('\n')[0]}
+            </TraceTitle>
+          </TraceLine>
+        </TraceCollapsibleTrigger>
+        <TraceCollapsibleContent>
+          {e.type === 'turn' ? <Prose>{body}</Prose> : <Todos event={e} />}
+        </TraceCollapsibleContent>
+      </TraceCollapsible>
+    )
+  return (
+    <TraceLine>
+      <TraceTitle>{systemText(e)}</TraceTitle>
+    </TraceLine>
+  )
 }

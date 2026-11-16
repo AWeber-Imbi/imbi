@@ -234,32 +234,27 @@ of the task.
 |---|---|
 | Overview | The description, the latest todo list, the owner, the budget, the cost, the tokens, the prompt version, and the outcome |
 | Input required | The requests of the agent. See [Answer a request](#answer-a-request) |
-| Conversation | The whole task log in order: messages, thinking, tool calls, requests, and state changes. See [Read the conversation](#read-the-conversation) |
+| Activity | The task as a conversation: each person's input, the agent's work folded under one line, and its reply. See [Read the activity](#read-the-activity) |
 | Signals and checks | The latest report of each check, with its value, baseline, and verdict. The tab count shows the failing checks |
 | Related tasks | Dependencies, the parent task, and child tasks |
 | Associated projects | The projects of the task |
 
-### Read the conversation
+### Read the activity
 
-The **Conversation** tab shows every event of the task on one timeline.
-A colored dot marks the kind of each event.
+The **Activity** tab shows the task as a conversation. A turn starts with a person's input, then the agent's work, then the agent's reply.
 
-- Tool calls show the tool, a summary of the input, and the duration. A
-  call that failed or that policy denied has a red border. Bash calls
-  show the command and output in a terminal pane. Edit and Write calls
-  show a diff.
+- The work of a turn folds under one line, such as **Worked for 37s**. Click the line to open or close it.
+- Inside a turn, the work is grouped by kind, such as "ran 3 commands" or "read 2 files". A group with a failed or denied call is red.
+- Each tool call shows the tool, a summary of its input, and its duration. Open a call to see its input and output. Bash calls show the command and output in a terminal pane, and Edit and Write calls show a diff.
 - The work of a subagent shows under the call that started it.
 - An open request shows where the agent asked it, with its buttons.
-- Use the chips to show or hide messages, thinking, tools, subagents,
-  and system events. **Errors only** keeps the failed and denied calls.
-  The search field matches any text in the events.
-- **Full** opens every tool call and thinking block. **Compact** shows
-  one line for each. Click a line to open or close it.
-- Each call has a **Readable** and a **JSON** view. **JSON** shows the
-  raw event.
-- Click the time of an event to get a link to it.
+- **Compact**, **Standard**, and **Verbose** set how much work shows open. The browser remembers the choice.
+- **Narrow** and **Wide** set the reading width.
+- The search field matches any text in the view and marks each match.
+- The copy button copies the conversation loaded so far as Markdown, or the task and its events as JSON.
+- When another view shows an event in the conversation, the turn that holds it opens, scrolls into view, and flashes for a moment. A subagent's event shows in the turn of the call that started it.
 
-Old links to the **Actions taken** tab open the **Conversation** tab.
+Old links to the **Actions taken** and **Conversation** tabs open the **Activity** tab.
 
 ### Pause, resume, cancel, and reassign
 
