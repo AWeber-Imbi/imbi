@@ -472,7 +472,8 @@ Parking writes `work_item.parked` with:
 
 | Field | Holds |
 |---|---|
-| `workflow` | Slug and version of the workflow that parked it |
+| `workflow` | Slug of the workflow that parked it, as a string |
+| `workflow_version` | Version number of that workflow, as an integer |
 | `run_id`, `node` | The run and the Park step's key |
 | `outcome` | The Park step's outcome |
 | `stage` | The Park step's stage label |
@@ -512,7 +513,10 @@ fields), such as `event.label == "ready-for-release"`.
 - Parking registers a fact watch for each fact that a matching
   follow-on workflow's `fact.changed` trigger names. Claiming,
   closing, or cancelling the work item removes those watches (Facts,
-  below).
+  below). Activating, pausing, linking, or unlinking a follow-on, and
+  saving a type, recompute the watches on every parked work item of
+  the types it is linked to, so a follow-on linked after a work item
+  parked can still claim it.
 
 When the workflow already knows what comes next, it does not park. It
 waits with a Gate on the change, then branches to a Hand off. The Gate
@@ -528,7 +532,8 @@ cannot, so one workflow never both drives and observes. It fires on matching
 events on any open work item in the organization, parked or driven, and
 starts a run with `drives_work_item` false. An observer run can add
 comments, add or remove labels, link pull requests, and write custom
-fields. It cannot open turns, set stage or status, change roles, hand
+fields that the work item's type declares. A write to a field the type
+does not declare fails the step with `unknown_field`. It cannot open turns, set stage or status, change roles, hand
 off, or park, and validation refuses those steps in an observer
 workflow. An event written by an observer run never starts another
 observer run, of the same workflow or any other, so observers cannot
