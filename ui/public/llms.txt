@@ -1,6 +1,8 @@
 # Imbi
 
-> Imbi is a DevOps service management platform. This file documents the URL
+> Imbi is the open-source service catalog that tracks every service's
+> ownership, deployments, and health, and runs the AI agents and workflows
+> that fix them. This file documents the URL
 > patterns of the Imbi web UI so AI assistants can construct deep links to
 > resources. Form a full link by appending one of the paths below to the Imbi
 > UI base URL — for example, base `https://imbi.example.com` + `/projects/42`

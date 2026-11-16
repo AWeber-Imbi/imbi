@@ -1,6 +1,6 @@
 apiVersion: v2
 name: imbi
-description: DevOps Service Management Platform
+description: The open-source service catalog that tracks every service's ownership, deployments, and health, and runs the AI agents and workflows that fix them
 type: application
 version: 2.0.0
 appVersion: "2.0.0"

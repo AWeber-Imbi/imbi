@@ -8,6 +8,6 @@
 
 {% block footer %}
 --------------------------------------------------------------------------------
-This email was sent by Imbi, your DevOps Service Management Platform.
+This email was sent by Imbi, your service catalog.
 If you have questions, please contact your administrator.
 {% endblock %}

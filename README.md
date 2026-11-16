@@ -1,22 +1,49 @@
 # Imbi
 
-Imbi is a DevOps Service Management Platform for managing large environments
-containing many services and applications. It provides a centralized service
-catalog with metadata management, dependency tracking, ownership hierarchy,
-and AI-powered features.
+Imbi is the open-source service catalog that tracks every service's
+ownership, deployments, and health, and runs the AI agents and workflows
+that fix them.
 
 ## Features
 
-- **Service Catalog**: Centralized inventory of all services and applications
-- **Dependency Tracking**: Graph-based dependency visualization using PostgreSQL + Apache AGE
-- **Blueprint System**: Customizable metadata schemas for extending project fields
-- **Ownership Hierarchy**: Organization, team, and user-based ownership model
-- **AI Assistant**: Conversational AI powered by Claude for service queries
-- **MCP Server**: Model Context Protocol server for AI agent access
-- **Webhook Gateway**: Inbound event processing from GitHub, PagerDuty, etc.
-- **Scheduled Tasks**: Cron, interval, and one-shot triggers that call the API
-  or the gateway as a service account, with run history in ClickHouse
-- **Analytics**: Operations logs and time-series data via ClickHouse
+### Catalog
+
+- **Service Catalog**: One record for each service and application, with
+  its dependencies in a graph (PostgreSQL + Apache AGE)
+- **Blueprints**: Metadata schemas that add fields to each project type
+- **Ownership**: Organizations and teams own the projects, with roles for
+  each organization
+
+### Delivery and quality
+
+- **Releases and Deployments**: Deploy, promote a release to the next
+  environment, block a release, and stop a deploy of a commit with failed CI
+- **Drift**: See where environments run different code, and which commits
+  are not released
+- **Scoring and Doctor**: A score for each project from scoring policies,
+  and checks that find problems and offer fixes
+- **Operations Log and SBOM**: A record of changes, and the software
+  components of each release, in ClickHouse
+
+### Agents and automation
+
+- **AI Agents**: Agents that do work against your projects in agent tasks.
+  Each task has a budget and an event log, and asks a person for feedback
+  and approvals. Tasks run in Kubernetes runner pools that you deploy
+- **Workflows**: Graphs of steps (deploy, rollback, agent task, decision,
+  script, email, wait) that start manually, on a schedule, or from a webhook
+- **Scheduled Tasks**: Cron, interval, and one-shot triggers that call the
+  API or the gateway as a service account, with run history in ClickHouse
+- **Prompts, AI Models, and Secrets**: Versioned prompts, a model catalog
+  for each organization, and short-lived secrets for agents
+- **AI Assistant, MCP Server, and Slack Bot**: Ask about the catalog in the
+  UI, from MCP clients, and from Slack
+
+### Platform
+
+- **Integrations**: Plugins for GitHub, PagerDuty, SonarQube, Sentry, AWS,
+  Logz.io, Google, OIDC providers, Anthropic, and OpenAI
+- **Webhook Gateway**: Receives events and runs actions from webhook rules
 - **Authentication**: OAuth2/OIDC (Google, GitHub, Keycloak) + local auth
 
 ## Architecture
@@ -44,7 +71,9 @@ imbi-ui   imbi-api  imbi-assistant  imbi-gateway   imbi-mcp  imbi-scheduler
 ```
 
 `imbi-slackbot` runs alongside these, connecting out to Slack over socket
-mode rather than being proxied.
+mode rather than being proxied. `imbi-workflows`, the workflow engine, also
+has no public route. `imbi-harness`, the agent runner, is not in this
+image: it has its own image and Helm chart (`helm/imbi-harness`).
 
 All services run behind [Caddy](https://caddyserver.com/), a powerful and
 extensible reverse proxy with automatic HTTPS. The Docker image packages
@@ -281,13 +310,16 @@ imbi/
 │   ├── api/           # imbi-api — core REST API (imbi.api)
 │   ├── assistant/     # imbi-assistant — AI assistant (imbi.assistant)
 │   ├── gateway/       # imbi-gateway — webhook gateway (imbi.gateway)
+│   ├── harness/       # imbi-harness — agent runner and executor
+│   │                  #   (imbi.harness)
 │   ├── mcp/           # imbi-mcp — MCP server (imbi.mcp)
 │   ├── scheduler/     # imbi-scheduler — scheduled task triggering
 │   │                  #   (imbi.scheduler)
 │   ├── slackbot/      # imbi-slackbot — Slack bot (imbi.slackbot)
 │   └── workflows/     # imbi-workflows — workflow engine (imbi.workflows)
 ├── plugins/           # imbi-plugin-* — first-party plugins (imbi.plugins.*)
-│   ├── aws/  github/  google/  logzio/  oidc/  pagerduty/  sonarqube/
+│   ├── anthropic/  aws/  github/  google/  logzio/  oidc/  openai/
+│   ├── pagerduty/  sentry/  sonarqube/
 ├── ui/                # React frontend (npm, not a uv member)
 ├── docs/              # unified Zensical site
 ├── pyproject.toml     # workspace root + the `imbi` meta-package
