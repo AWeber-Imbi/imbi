@@ -503,6 +503,26 @@ Adds the `script` workflow step: a Python snippet that runs in the pydantic-mont
 
 ---
 
+#### [ADR 0028: Tasks Become Tickets](adr/0028-tasks-become-tickets.md)
+
+*Date: 2026-11-16 | Status: Proposed*
+
+An alternative to ADR 0024 and ADR 0025. Extends agent tasks so a task is assigned to an agent or a person and can hand off between them, and renames tasks to tickets, as in Jira. No new entity.
+
+**Key Decisions:**
+
+- Tasks are renamed tickets everywhere: UI, API, MCP tools, permissions, workflow triggers, Postgres, harness columns, ClickHouse, Iggy, and stored values; short ids stay `T-<n>`
+- The rename ships without downtime: old and new names work side by side until no pod uses the old ones
+- `assignee_kind` is `agent` or `person`; the agent columns become nullable and a check ties them to the kind
+- Statuses differ by kind: agents keep `queued`, `running`, `paused`; people get `open` and `in_progress`; both share `held`, `blocked`, and `closed`
+- `parent_id`, separate from `chain_id`, groups a piece of work as a tree under a root ticket; a ticket can be reparented, and cycles are refused
+- A gating dependency holds a task until its prerequisites close with a `done` outcome
+- A closed ticket can be reopened; an agent ticket then starts a new chain, and its log reads from ClickHouse and Postgres
+- A task hands off between an agent and a person in either direction; open requests close as `withdrawn`
+- ADR 0021 does not change; the harness gives a new session the task history. What creates the next task is not decided here
+
+---
+
 ## ADR Format
 
 Our ADRs follow this structure:
