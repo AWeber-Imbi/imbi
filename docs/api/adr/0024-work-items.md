@@ -421,7 +421,8 @@ becomes its driving run.
 **One driving run at a time.** The driving run opens turns, sets stage
 and status, and changes roles. No other run does. Every path to the end
 of a work item workflow must do one of three things, and the editor
-refuses a path that does none:
+refuses a path that does none (an observer workflow is not a work item
+workflow, so this rule does not apply to it):
 
 - close the work item as `done` or `cancelled`;
 - hand it off to another workflow (Hand off, below);
@@ -478,6 +479,13 @@ and a CEL filter over the event and the work item, such as
   start.
 - A workflow that is not linked to the work item's type never claims
   it.
+- A claim counts as a hand-off to the claiming workflow for the type's
+  hand-off cap. Past the cap, the change does not claim the work item.
+  It stays parked, and Imbi reminds its turn holders at once.
+- Parking registers a fact watch for each fact that a matching
+  follow-on workflow's `fact.changed` trigger names. Claiming,
+  closing, or cancelling the work item removes those watches (Facts,
+  below).
 
 When the workflow already knows what comes next, it does not park. It
 waits with a Gate on the change, then branches to a Hand off. The Gate
@@ -485,16 +493,18 @@ holds no lease, so a wait of weeks costs nothing. Parking and change
 triggers are for when the next part belongs to another team and the
 first workflow should not have to name it.
 
-**Observer runs.** Any workflow, not only a work item workflow, can use
-a Work item change trigger marked **observe**. It fires on matching
+**Observer runs.** A workflow that is not a work item workflow can use
+a Work item change trigger marked **observe**. A work item workflow
+cannot, so one workflow never both drives and observes. It fires on matching
 events on any open work item in the organization, parked or driven, and
 starts a run with `drives_work_item` false. An observer run can add
 comments, add or remove labels, link pull requests, and write custom
 fields. It cannot open turns, set stage or status, change roles, hand
 off, or park, and validation refuses those steps in an observer
-workflow. An event written by a run never starts a run of the same
-workflow, so an observer that adds a label it also watches does not
-loop. Posting to `#releases` when a work item reaches production is an
+workflow. An event written by an observer run never starts another
+observer run, of the same workflow or any other, so observers cannot
+trigger each other in a loop. Such an event can still claim a parked
+work item; the hand-off cap bounds that. Posting to `#releases` when a work item reaches production is an
 observer.
 
 **Long runs.** A driving run can last weeks. Max run time accepts "No
@@ -558,7 +568,8 @@ the work item post back to the thread.
 
 **Facts** are named, typed values about a work item. Imbi computes a
 fact when a step reads it, and recomputes it when its data changes if a
-parked step watches it:
+parked step or a parked work item (Work item change triggers, above)
+watches it:
 
 | Group | Examples |
 |---|---|
