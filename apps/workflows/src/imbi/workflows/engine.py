@@ -659,13 +659,18 @@ def _scope(
 
 
 def _escaped[T](value: T, escape: abc.Callable[[str], str]) -> T:
-    """Return ``value`` with ``escape`` applied to each string in it."""
+    """Return ``value`` with ``escape`` applied to each string in it.
+
+    Keys are escaped too: a template can print them with ``for`` or
+    ``tojson``.
+    """
     if isinstance(value, str):
         return typing.cast('T', escape(value))
     if isinstance(value, dict):
         mapping = typing.cast('dict[str, typing.Any]', value)
         return typing.cast(
-            'T', {k: _escaped(v, escape) for k, v in mapping.items()}
+            'T',
+            {escape(k): _escaped(v, escape) for k, v in mapping.items()},
         )
     if isinstance(value, list):
         items = typing.cast('list[typing.Any]', value)

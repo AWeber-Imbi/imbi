@@ -1048,6 +1048,18 @@ class EngineSlackTestCase(WorkflowRunTestCase):
         self.assertEqual(response.json()['ts'], '1.2')
         self.assertEqual(self.slack.chat_postMessage.await_count, 2)
 
+    async def test_429_without_a_code_releases_the_key(self) -> None:
+        response = mock.Mock(status_code=429)
+        response.get.return_value = None
+        self.slack.chat_postMessage.side_effect = slack_errors.SlackApiError(
+            'limited', response
+        )
+        response = await self.client.post(self.post_url, headers=self.headers)
+        self.assertEqual(response.status_code, 429, response.text)
+        self.assertEqual(
+            response.json()['detail'], {'error': 'slack_ratelimited'}
+        )
+
     async def test_not_configured(self) -> None:
         self.token = ''
         response = await self.client.post(self.post_url, headers=self.headers)

@@ -528,18 +528,22 @@ SlackClient = typing.Any
 _SLACK_TIMEOUT = 20
 _SLACK_PERMALINK_TIMEOUT = 5.0
 _HTTP_SERVER_ERROR = 500
+_HTTP_TOO_MANY_REQUESTS = 429
 
 
 def _slack_refusal(error: slack_errors.SlackApiError) -> str | None:
     """Return the code of a refusal that posted nothing, or ``None``.
 
-    ``None`` when Slack may have posted: a 5xx (slack_sdk gives a 5xx
+    A ``429`` is ``ratelimited`` with or without a code. ``None`` when
+    Slack may have posted: a 5xx (slack_sdk gives a 5xx
     with an HTML body no error code), a missing code, or a code in
     :data:`_SLACK_AMBIGUOUS`. On a body that is not JSON, slack_sdk
     passes the raw HTTP response, which has no ``get``.
     """
     response: SlackClient = error.response
     status = getattr(response, 'status_code', None)
+    if status == _HTTP_TOO_MANY_REQUESTS:
+        return 'ratelimited'
     if isinstance(status, int) and status >= _HTTP_SERVER_ERROR:
         return None
     get = getattr(response, 'get', None)

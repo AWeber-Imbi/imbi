@@ -2063,7 +2063,11 @@ class RenderTestCase(unittest.IsolatedAsyncioTestCase):
                         'output': {'summary': '<https://x|ok>'},
                     }
                 },
-                {'title': '<!channel> a & b', 'pr': {'labels': ['<x>']}},
+                {
+                    'title': '<!channel> a & b',
+                    'pr': {'labels': ['<x>']},
+                    'tags': {'<!channel>': 'v'},
+                },
                 engine.slack_step.escape,
             )
             rendered = await engine._render(
@@ -2072,6 +2076,7 @@ class RenderTestCase(unittest.IsolatedAsyncioTestCase):
                     'whole': '{{ trigger.title }}',
                     'nested': '{{ trigger.pr.labels[0] }}',
                     'step': '{{ a.summary }}',
+                    'keys': '{% for k in trigger.tags %}{{ k }}{% endfor %}',
                 },
                 steps,
                 payload,
@@ -2084,6 +2089,7 @@ class RenderTestCase(unittest.IsolatedAsyncioTestCase):
                 'whole': '&lt;!channel&gt; a &amp; b',
                 'nested': '&lt;x&gt;',
                 'step': '&lt;https://x|ok&gt;',
+                'keys': '&lt;!channel&gt;',
             },
         )
 

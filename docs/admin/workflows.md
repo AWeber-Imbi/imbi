@@ -412,6 +412,8 @@ after that.
 A value that a template puts in `text` is escaped (`&`, `<`, and `>`), so
 a value from a webhook payload cannot add a mention such as `<!channel>`
 or a link. Mentions and links that you write in `text` yourself work.
+Keys are escaped too, so a key that holds one of those characters is
+looked up by its escaped form (`trigger['a &amp; b']`).
 
 **Output:** `channel`, `ts` (the message timestamp), and `permalink` (a
 link to the message, or empty when Slack did not return one).
