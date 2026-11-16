@@ -301,6 +301,29 @@ class CheckTestCase(unittest.TestCase):
                 with self.assertRaisesRegex(rendering.RenderError, 'allowed'):
                     rendering.check_syntax({'system': source})
 
+    def test_declared_variables(self) -> None:
+        schema = {'name': models.PromptVariable(type='str')}
+        rendering.check_declared(
+            {
+                'system': (
+                    '{{ name }} {{ project(1) }} {{ range(2) | list }}'
+                    '{% set local = 1 %}{{ local }}'
+                    '{% for item in [1] %}{{ item }}{% endfor %}'
+                )
+            },
+            schema,
+            {'project'},
+        )
+        with self.assertRaisesRegex(
+            rendering.RenderError,
+            'messages\\[0\\]: undeclared variables: other, task',
+        ):
+            rendering.check_declared(
+                {'messages[0]': '{{ task }} {{ other }} {{ name }}'},
+                schema,
+                set(),
+            )
+
     def test_variable_names(self) -> None:
         with self.assertRaises(rendering.RenderError):
             rendering.check_variable_schema(

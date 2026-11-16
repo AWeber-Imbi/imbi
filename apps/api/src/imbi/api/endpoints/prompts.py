@@ -488,6 +488,9 @@ def _check_templates(content: PromptVersionContent) -> None:
         rendering.check_variable_schema(
             content.variable_schema, _PROVIDER_NAMES
         )
+        rendering.check_declared(
+            sources, content.variable_schema, _PROVIDER_NAMES
+        )
     except rendering.RenderError as e:
         raise _unprocessable(str(e)) from e
 
