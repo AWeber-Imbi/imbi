@@ -329,6 +329,19 @@ class CheckTestCase(unittest.TestCase):
             rendering.check_declared(
                 {'system': '{{ name | nope }}'}, schema, set()
             )
+        for source, message in (
+            (
+                '{% if true %}{{ name | nope }}{% endif %}',
+                "filter named 'nope'",
+            ),
+            (
+                '{% if true %}{{ name is nope }}{% endif %}',
+                "test named 'nope'",
+            ),
+        ):
+            with self.subTest(source=source):
+                with self.assertRaisesRegex(rendering.RenderError, message):
+                    rendering.check_declared({'system': source}, schema, set())
 
     def test_variable_names(self) -> None:
         with self.assertRaises(rendering.RenderError):
