@@ -117,7 +117,8 @@ A new Postgres schema, `work_items`, managed with the same tooling as
 
 | Table | Holds |
 |---|---|
-| `work_items` | One row per work item: identity, status, stage, owner, dates, origin, external issue, driving run |
+| `work_items` | One row per work item: identity, type, status, stage, owner, dates, origin, external issue, driving run |
+| `types` | One row per work item type: key, label, entry workflow, the follow-on workflows in order, roles, custom fields, hand-off cap, parked reminder |
 | `turns` | One row per turn: work item, run step, holder (a person or an agent), on behalf of, role, opened and closed times |
 | `work_item_projects` | One row per work item and project, with what added it first: an agent task, a pull request link, the external issue, or a person. The pull requests themselves are in `pull_request_links` |
 | `role_members` | One row per work item, role, and person set on the item or mapped from an external field |
@@ -147,8 +148,10 @@ item can be reopened, so there is no archive sweep in v1.
   work item starts with none. The work finds them (Projects come from
   the work, below).
 - `type`: one of the organization's work item types, such as `bug`,
-  `story`, or `ask`. The type picks the workflow (Workflows, below).
+  `story`, or `ask`. The type picks the workflows and declares the roles
+  and custom fields (Work item types, below).
 - `title`, `description`, `labels`, `due_on`, `priority`.
+- `fields`: values of the custom fields the type declares.
 - `status`: see States.
 - `stage`: the label of the step the driving run is on, such as
   `PR review`. Set by the engine. Empty on a work item with no
@@ -159,8 +162,8 @@ item can be reopened, so there is no archive sweep in v1.
 - Turns: who must act next, in `turns`. A work item can have several
   open turns (Turns, below). A done or cancelled work item has none.
 - `driving_run_id`: the workflow run in charge of the work item. It opens
-  turns and sets stage and roles. Empty only on a work item with no
-  workflow. See Workflows.
+  turns and sets stage and roles. Empty on a work item with no workflow
+  and on a parked work item. See Workflows.
 - `origin`: how the work item was created. Set at creation and
   immutable. One of:
     - `human`: a person created it. Holds the user id and the channel
@@ -179,9 +182,10 @@ item can be reopened, so there is no archive sweep in v1.
 - `closed_at`, `closed_by`.
 
 **Roles.** A role is a named list of people on one work item, such as
-`product_owner`, `testers`, or `dba`. A workflow declares any number of
-roles, and each role has an ordered list of **resolvers** that decide who
-is in it. Imbi tries them in order and uses the first that names
+`product_owner`, `testers`, or `dba`. The work item type declares any
+number of roles, and each role has an ordered list of **resolvers** that
+decide who is in it. Workflows refer to the type's roles by key, so a
+role means the same thing in every workflow that drives the work item. Imbi tries them in order and uses the first that names
 someone:
 
 | Resolver | Who it names |
@@ -227,7 +231,10 @@ fallback.
 | `fact.changed` | Fact, from, to |
 | `agent_task.started` | Task short id, agent, run, node |
 | `agent_task.closed` | Task short id, outcome, the task's result summary, artifact links |
-| `run.started` / `run.finished` | Workflow, run id, result |
+| `run.started` / `run.finished` | Workflow, run id, result, whether the run drives the work item |
+| `run.handed_off` | From run, to workflow, to run, node |
+| `work_item.parked` | Run, node, turn holders |
+| `work_item.claimed` | Workflow, run, the event that matched its trigger |
 | `live.reached` | Environment, the deploys that made it live |
 | `released` | Project, version, the release tag |
 | `external.synced` | The external fields that changed |
@@ -243,8 +250,8 @@ Readers ignore types they do not know.
   or a step does.
 - `done` or `cancelled` back to `open`: someone reopens it. Reopening
   writes a `status.changed` event with a reason and clears `closed_at`.
-  A work item with a workflow starts a new run of that workflow from the
-  beginning.
+  It starts a new run of the type's entry workflow, or of a follow-on
+  workflow the person picks from the type's list.
 
 Status is coarse on purpose. It has to mean the same thing on every work
 item, whatever workflow drives it and whatever system backs it, so the
@@ -293,7 +300,9 @@ their own Waiting on me.
 - A work item a person creates for themself can have no workflow, like
   a to-do. They hold its turn until they close it or start a workflow on
   it. Every other work item has a driving run from the moment it is
-  created.
+  created, until a run parks it.
+- A parked work item has the turns its Park step opened (Parking,
+  below). They close when a run claims the work item.
 - A person with `work_item:write` can hand one turn to someone else.
   That closes the turn and opens one for the new holder on the same step.
   The step keeps waiting for its outcome.
@@ -306,7 +315,10 @@ their own Waiting on me.
 ### Agent tasks and runs link to the work item
 
 `agent_runtime.tasks` and `workflow_runtime.runs` each gain a nullable
-`work_item_id`, set at creation and immutable.
+`work_item_id`, set at creation and immutable. `runs` also gains
+`drives_work_item`, true for a driving run and false for an observer
+(Workflows, below). A work item has many runs over its life, but at
+most one drives it at a time.
 
 - A run started for a work item records it. Every agent task the run
   creates copies it. A person can start an agent task from a work item
@@ -370,33 +382,120 @@ view.
 
 ### Workflows drive work items
 
-**Roles are declared on the workflow.** Workflow settings list the roles
-the workflow uses. Each has a label, a key, its resolvers in order
-(Roles, above), and whether a run can start without it.
+The work on one work item can span several workflows: a triage
+workflow that one team owns, a delivery workflow that another owns, and
+a release workflow that a third owns. Each is versioned and activated on
+its own. One run drives the work item at a time, and the work moves
+between workflows by hand-off, or by parking and a later change.
 
-**Every work item has a workflow.** Each work item type names a
-workflow, and the organization sets a default type. Creating a work item
-starts a run of its type's workflow at once and records it in
-`driving_run_id`. When a work item is created or reopened, by anyone
-or anything, Imbi looks up the workflow its type names and starts it
-with that work item. This is not a trigger. ADR 0021 requires every
-workflow to begin with one; this ADR amends it so a workflow marked as a
-work item workflow has none, and Imbi starts it directly. Only a work
-item workflow can be named by a type. Imbi ships no workflows and no types; an organization
-sets up at least the default before people can create work items. The
-issues plugin maps the external issue type to a work item type
-(`type_map`). The one exception is a work item a person creates for
-themself with no workflow (Turns, above). They can start a workflow on
-it later, and that run becomes its driving run.
+**Work item types.** A type has:
 
-**One run per work item.** A work item has one workflow run at a time,
-its driving run. It opens turns and sets stage and roles. No other run
-acts on the work item. Every path to the end of the workflow must
-close the work item as `done` or `cancelled`; the editor refuses one that
-does not, so a run never ends while its work item is open. Waiting for
-something to happen, such as a Jira label that hands the work to
-WorkerBee, is a Gate inside the workflow, not a new run. Reminders and
-alerts are settings on Turn steps.
+| Setting | Holds |
+|---|---|
+| Entry workflow | The workflow that starts when a work item of this type is created or reopened |
+| Follow-on workflows | The other workflows that may drive a work item of this type, in order |
+| Roles | Each with a label, a key, its resolvers in order (Roles, above), and whether a run can start without it |
+| Custom fields | Each with a key, a label, and a type (text, number, boolean, choice, person). Values are in `fields` |
+| Hand-off cap | The number of hand-offs to one workflow a work item takes before Hand off takes `Too many rounds`. Default 3 |
+| Parked reminder | Days a work item can stay parked before its turn holders are reminded |
+
+A workflow refers to the type's roles and fields by key. Linking a
+workflow to a type, as its entry or as a follow-on, and activating a
+linked workflow both check that every role and field the workflow
+uses exists on each type it is linked to.
+
+**Every work item has a workflow.** The organization sets a default
+type. Creating or reopening a work item, by anyone or anything, starts a
+run of its type's entry workflow with that work item and records it in
+`driving_run_id`. This is not a trigger. ADR 0021 requires every
+workflow to begin with one; this ADR amends it so a work item workflow
+has no trigger or only Work item change triggers (below), and Imbi
+starts it directly. Only a work item workflow can be linked to a type.
+Imbi ships no workflows and no types; an organization sets up at least
+the default before people can create work items. The issues plugin
+maps the external issue type to a work item type (`type_map`). The one
+exception is a work item a person creates for themself with no workflow
+(Turns, above). They can start a workflow on it later, and that run
+becomes its driving run.
+
+**One driving run at a time.** The driving run opens turns, sets stage
+and status, and changes roles. No other run does. Every path to the end
+of a work item workflow must do one of three things, and the editor
+refuses a path that does none:
+
+- close the work item as `done` or `cancelled`;
+- hand it off to another workflow (Hand off, below);
+- park it (Parking, below).
+
+A run therefore never ends and leaves an open work item with no driver
+and no turn. Waiting for something to happen, such as a Jira label that
+hands the work to WorkerBee, is a Gate inside the workflow. Reminders
+and alerts are settings on Turn steps.
+
+**Hand off.** A Hand off step names a workflow from the type's entry or
+follow-on list. In one transaction it starts a run of that workflow for
+the work item, moves `driving_run_id` to it, writes `run.handed_off`,
+and closes the current run's open turns. The current run then ends as
+`succeeded`.
+
+- The new run runs under its own workflow's activation (ADR 0021,
+  Principal and authority). Handing off does not lend it the first
+  workflow's authority.
+- The target must be active. When it is not, Hand off takes `Failed`.
+- A send-back stays inside one run. To send work back to an earlier
+  workflow, such as a verify workflow that finds the fix does not
+  hold, Hand off to it. Imbi counts hand-offs to each workflow on the
+  work item since it was last opened or reopened. Past the type's
+  hand-off cap, Hand off takes `Too many rounds`, so two workflows
+  cannot hand a work item back and forth forever.
+- Step outputs do not cross runs. Whatever the next workflow needs goes
+  on the work item first: an Update work item step writes custom
+  fields, labels, or roles, and the next workflow reads them as facts.
+
+**Parking.** A Park step ends the driving run and leaves the work item
+open with no driving run, until a change to it starts the next part.
+It has the stage label and the "turn goes to" list of a Turn step,
+with no outcomes. It opens turns for those people, defaulting to the
+owner, so a parked work item is always on someone's Waiting on me. It
+writes `work_item.parked`. The type's parked reminder reminds the turn
+holders when nothing has claimed the work item in time.
+
+**Work item change triggers.** A follow-on workflow can declare a Work
+item change trigger: a list of work item event types, such as
+`field.changed`, `label.added`, `status.changed`, or `fact.changed`,
+and a CEL filter over the event and the work item, such as
+`event.label == "ready-for-release"`.
+
+- It fires only on a parked work item, and only on events written after
+  the work item was parked. A change made while a run drives the work
+  item starts nothing, so a run cannot start its own next part by
+  updating the work item just before it parks.
+- When an event matches, the first follow-on workflow in the type's
+  order whose trigger matches claims the work item. In the transaction
+  that writes the event, Imbi locks the work item row, starts the run,
+  sets `driving_run_id`, closes the parked turns, and writes
+  `work_item.claimed`. Other workflows that match the same event do not
+  start.
+- A workflow that is not linked to the work item's type never claims
+  it.
+
+When the workflow already knows what comes next, it does not park. It
+waits with a Gate on the change, then branches to a Hand off. The Gate
+holds no lease, so a wait of weeks costs nothing. Parking and change
+triggers are for when the next part belongs to another team and the
+first workflow should not have to name it.
+
+**Observer runs.** Any workflow, not only a work item workflow, can use
+a Work item change trigger marked **observe**. It fires on matching
+events on any open work item in the organization, parked or driven, and
+starts a run with `drives_work_item` false. An observer run can add
+comments, add or remove labels, link pull requests, and write custom
+fields. It cannot open turns, set stage or status, change roles, hand
+off, or park, and validation refuses those steps in an observer
+workflow. An event written by a run never starts a run of the same
+workflow, so an observer that adds a label it also watches does not
+loop. Posting to `#releases` when a work item reaches production is an
+observer.
 
 **Long runs.** A driving run can last weeks. Max run time accepts "No
 limit" for driving workflows. A step that is waiting holds no lease. The
@@ -411,10 +510,12 @@ timer.
 | Gate | Waits until a condition over facts is true, such as "PR approved and checks green" or "live in testing". Gives no turn | `Met`, `Timed out` |
 | Branch | Picks a port from conditions over facts and fields, in order, with no model call ([R1][req-r-deterministic-decisioning-and-routing]). Records which condition matched | One per case, plus `Else` |
 | Update work item | Sets status, stage, labels, roles, or fields. Writes through the plugin on a backed item | `Done` |
+| Hand off | Starts a run of another work item workflow for the work item and makes it the driving run. Ends the current run | `Failed`, `Too many rounds` |
+| Park | Opens turns for the people who wait, ends the driving run, and leaves the work item open until a change trigger claims it | None |
 
 The `agent` step gains two parameters on runs for a work item:
 
-- **On behalf of**, one of the workflow's roles. The task owner is the
+- **On behalf of**, one of the type's roles. The task owner is the
   first person that role resolves to, and the role's members are
   watchers. A request the agent opens ([I1][req-i-human-gates]) becomes
   a turn for that owner (Turns, above).
@@ -436,7 +537,7 @@ listed for the work item's owner under My roles.
 **Asks.** An ask from Slack or the web is a native work item with origin
 `human`, channel `slack` or `web`, the asker as reporter, and the person
 asked as owner. Its type is the one the organization uses for asks, and
-that type's workflow gives the owner the turn and reminds them.
+that type's entry workflow gives the owner the turn and reminds them.
 
 **From Slack.** The slackbot creates a work item three ways:
 
@@ -464,7 +565,7 @@ parked step watches it:
 | Pull requests | `pr.open`, `pr.approved`, `pr.changes_requested`, `pr.checks`, `pr.merged`, `pr.ready` (the readiness judge). Each is true when it holds for every linked pull request not closed without merging; `pr.<repository>#<number>.*` reads one |
 | Deploys and releases | `live_in.<environment>`, `live_in.<environment>.<project>`, `deployed_sha.<environment>.<project>`, `released`, `released.<project>`, `released_version.<project>` |
 | Checks | `check.<name>.status` for a named CI check or preview |
-| Work item | Status, labels, fields, roles |
+| Work item | Status, labels, custom fields (`field.<key>`), roles |
 
 A change to a fact that a parked step watches writes `fact.changed` and
 wakes the step. Facts come from data Imbi already has (pr-sync,
@@ -537,6 +638,8 @@ fix does not hold, a reviewer of the triage asks for more. This ADR amends ADR
   connects like any other port.
 - The idempotency key becomes `<run_id>:<node_key>:<round>`.
 - Validation refuses a send-back to a node that is not upstream.
+- A send-back never crosses runs. Sending work back to another
+  workflow is a Hand off, capped per work item (Hand off, above).
 
 ### External issues come in through a plugin capability
 
@@ -708,12 +811,28 @@ publish to `user:<user_id>`.
       a work item event, a fact change, or a timer wakes it.
     - **No limit.** Max run time accepts "No limit", since a driving
       run can last weeks.
-    - **Four step types.** Turn, Gate, Branch, and Update work item.
-    - **Work item workflows.** A new kind of workflow with no trigger.
-      Creating or reopening a work item starts one.
+    - **Six step types.** Turn, Gate, Branch, Update work item, Hand
+      off, and Park.
+    - **Work item workflows.** A new kind of workflow with no trigger,
+      or only Work item change triggers. Creating or reopening a work
+      item starts its type's entry workflow; a hand-off or a change to
+      a parked work item starts a follow-on workflow.
+    - **Work item change trigger.** A new trigger type. On a work item
+      workflow it claims a parked work item. On any workflow, marked
+      observe, it starts a run that does not drive the work item.
     - **Agent step.** It gains "on behalf of", the role that owns the
       task, and verdicts, the named outcomes the agent reports, each a
       port.
+- Roles and custom fields belong to the work item type, not the
+  workflow. Changing a type's roles can break the workflows linked to
+  it, so saving a type re-runs the link check, and a type that a linked
+  workflow no longer fits cannot be saved.
+- A work item's history spans several runs of several workflows. The
+  work item log ties them together with `run.started`,
+  `run.handed_off`, `work_item.parked`, and `work_item.claimed`; each
+  run's own history stays in `workflow_runtime`.
+- A parked work item can wait forever if nothing changes it. Its turn
+  holders and the parked reminder are the only backstop.
 - The task owner can change after creation, when someone hands the
   agent's turn to another person. ADR 0020 already allows reassignment;
   the `owner.changed` event names the work item turn as the reason.
