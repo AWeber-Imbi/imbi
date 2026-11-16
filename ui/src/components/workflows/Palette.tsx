@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import { ChevronDown, ChevronRight, PanelLeftClose, Search } from 'lucide-react'
 
+import { useResizableWidth } from '@/components/agents/useResizableWidth'
 import { cn } from '@/lib/utils'
 
 import { STEP_MIME } from './Canvas'
@@ -26,9 +27,18 @@ export function Palette({
   const [query, setQuery] = useState('')
   const [collapsed, setCollapsed] = useState<Set<StepCategory>>(new Set())
   const q = query.trim().toLowerCase()
+  const { handleProps, width } = useResizableWidth(
+    'imbi:workflows:palette-width',
+    248,
+    200,
+    480,
+  )
 
   return (
-    <aside className="border-tertiary bg-primary flex w-62 shrink-0 flex-col border-r">
+    <aside
+      className="border-tertiary bg-primary relative flex shrink-0 flex-col border-r"
+      style={{ width }}
+    >
       <div className="border-tertiary flex items-center gap-2 border-b p-3">
         <div className="relative flex-1">
           <Search className="text-tertiary absolute top-2.25 left-2.25 size-3.5" />
@@ -114,6 +124,7 @@ export function Palette({
           )
         })}
       </div>
+      <div {...handleProps} />
     </aside>
   )
 }
