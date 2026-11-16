@@ -8,8 +8,6 @@ import {
   Box,
   Check,
   Circle,
-  Clock,
-  Coins,
   Pause,
   Play,
   RotateCcw,
@@ -57,7 +55,6 @@ import { StatisticsTab } from './StatisticsTab'
 import {
   checksFrom,
   formatElapsed,
-  formatTokens,
   isFailed,
   phaseTimeline,
   requestsFrom,
@@ -75,6 +72,7 @@ import { AssociatedProjectsTab, RelatedTasksTab } from './TaskRelations'
 import { TaskSearchProvider } from './taskSearch'
 import { ChecksTab, Composer, InputRequiredTab } from './TaskTabs'
 import { ToolbarLead } from './TaskToolbar'
+import { TaskActivityCard, TaskUsageCard } from './TaskUsageCards'
 import { buildTrajectory } from './trajectoryModel'
 import { TrajectoryTab } from './TrajectoryTab'
 import { useStoredState } from './useStoredState'
@@ -635,11 +633,6 @@ function TaskHeader({
   const agent = agents?.find((a) => a.id === task.agent_id)
   const trigger = TRIGGERS[task.origin.kind]
   const TriggerIcon = trigger.icon
-  const tokens =
-    task.tokens_in +
-    task.tokens_out +
-    task.cache_read_tokens +
-    task.cache_write_tokens
   const phases = phaseTimeline(events, end)
   return (
     <div className="border-tertiary flex shrink-0 flex-col gap-3 border-b px-6 pt-5 pb-4">
@@ -690,21 +683,12 @@ function TaskHeader({
           {trigger.label}
           {task.origin.user && ` · ${task.origin.user}`}
         </Fact>
-        <Fact icon={<Clock className="size-3.5" />}>
-          <span className="font-mono text-xs tabular-nums">
-            {formatElapsed(end - Date.parse(task.created_at))}
-          </span>
-        </Fact>
-        <span className="text-primary flex items-center gap-1.5 font-mono text-sm tabular-nums">
-          <Coins className="text-secondary size-3.5" />
-          {formatTokens(tokens)} tok · {formatMoney(task.cost_total)}
-          {task.budget != null && (
-            <span className="text-tertiary">
-              {' '}
-              of {formatMoney(task.budget)}
-            </span>
-          )}
-        </span>
+        <TaskActivityCard
+          elapsedMs={end - Date.parse(task.created_at)}
+          events={events}
+          task={task}
+        />
+        <TaskUsageCard events={events} task={task} />
       </div>
       {phases.length > 0 && (
         <ol aria-label="Phases" className="flex flex-wrap gap-x-6 gap-y-2">
