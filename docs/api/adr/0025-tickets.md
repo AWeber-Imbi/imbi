@@ -473,15 +473,15 @@ They differ here:
 
 | | ADR 0024 | This ADR |
 |---|---|---|
-| What moves the work | One workflow run per work item, lasting as long as the work item | A manager agent that runs briefly on each event |
-| ADR 0021 | Amended: send-backs, for each, parked steps, no run limit, four step types, workflows with no trigger | Not changed |
+| What moves the work | One driving workflow run at a time, handed off or parked between workflows | A manager agent that runs briefly on each event |
+| ADR 0021 | Amended: send-backs, for each, parked steps, no run limit, six step types, work item workflows and a work item change trigger | Not changed |
 | Rework | The same task is woken | A new task on the same ticket |
-| Reopen | The workflow starts again from the beginning | The manager reads the log and picks the stage |
+| Reopen | The type's entry workflow, or a follow-on a person picks, starts from the beginning | The manager reads the log and picks the stage |
 | Waiting on a person | Turns, roles, and role resolvers | Asks, with the holder chosen by the manager |
 | Work only people do | Supported | Out of scope |
 | Jira | Synced through an `issues` capability | Not synced |
 | Where the process is defined | A drawn workflow per work item type | The manager agent's prompt |
-| New tables | 10 | 6 |
+| New tables | 11 | 6 |
 
 ### Not decided here
 
