@@ -110,6 +110,17 @@ spec:
                   name: {{ include "imbi.secretName" . }}
                   key: slack-app-token
             {{- end }}
+            {{- if and (has .Values.service.mode (list "all" "api")) (or .Values.slackbot.botToken .Values.existingSecret) }}
+            {{- /* imbi-api posts the messages of workflow slack steps with
+                   the Slack bot's token. Optional: without it, a slack
+                   step fails with slack_not_configured. */}}
+            - name: IMBI_SLACK_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imbi.secretName" . }}
+                  key: slack-bot-token
+                  optional: true
+            {{- end }}
             {{- if and (or .Values.assistant.enabled (include "imbi.slackbotEnabled" .)) (or .Values.assistant.anthropicApiKey .Values.existingSecret) }}
             - name: ANTHROPIC_API_KEY
               valueFrom:

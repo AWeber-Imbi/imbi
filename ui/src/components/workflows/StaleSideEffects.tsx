@@ -27,6 +27,7 @@ const ACTION: Record<string, string> = {
   deployment: 'Deployment',
   'failure-notice': 'Failure notice',
   'step-email': 'Step email',
+  'step-slack': 'Step Slack message',
 }
 
 /**

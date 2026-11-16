@@ -5,12 +5,13 @@ Each executor runs one call of one step and returns an
 rolls out) returns ``resume_at`` and its progress in ``state``; the
 engine calls it again with that state when the run is due.
 
-Deploy, rollback, and email go through imbi-api as the
+Deploy, rollback, email, and Slack go through imbi-api as the
 ``imbi-workflows`` service account, so the bounds of ADR 0017 apply to
-deployments, and imbi-api sends email only to users and teams of the
-organization. They send the idempotency key ``<run_id>:<node_key>``:
-after a crash the engine calls them again, and imbi-api returns the
-first result instead of acting again, or ``409 outcome_unknown``.
+deployments, imbi-api sends email only to users and teams of the
+organization, and only imbi-api holds the Slack bot token. They send
+the idempotency key ``<run_id>:<node_key>``: after a crash the engine
+calls them again, and imbi-api returns the first result instead of
+acting again, or ``409 outcome_unknown``.
 
 An agent step asks imbi-api for the agent task of the step: imbi-api
 makes it with the key ``<run_id>:<node_key>`` the first time, and
@@ -45,6 +46,7 @@ from imbi.common.workflows.registry import (
     model_decision,
     rollback,
     script,
+    slack,
     wait,
 )
 from imbi.workflows import settings
@@ -254,6 +256,8 @@ class Executors:
                 return await self._script(call)
             case 'email':
                 return await self._email(call)
+            case 'slack':
+                return await self._slack(call)
             case 'deploy':
                 return await self._deploy(call)
             case 'rollback':
@@ -392,6 +396,35 @@ class Executors:
             # the other recipients already have the message.
             raise StepError('email_failed: ' + ', '.join(failed), retry=False)
         return Outcome(output={'recipients': sent['recipients']})
+
+    async def _slack(self, call: Call) -> Outcome:
+        _params(slack.Params, call)
+        org = await self.org_slug(call.organization_id)
+        posted = await self.api.request(
+            'POST',
+            _path(
+                'organizations',
+                org,
+                'workflows',
+                call.workflow_slug,
+                'runs',
+                call.run_id,
+                'steps',
+                call.node.id,
+                'slack',
+            ),
+            headers={'Idempotency-Key': call.idempotency_key},
+        )
+        if posted.get('error'):
+            # Not retried: imbi-api stored this result with the key.
+            raise StepError(f'slack_failed: {posted["error"]}', retry=False)
+        return Outcome(
+            output={
+                'channel': posted['channel'],
+                'ts': posted.get('ts'),
+                'permalink': posted.get('permalink'),
+            }
+        )
 
     async def _agent(self, call: Call) -> Outcome:
         params = _params(agent.Params, call)

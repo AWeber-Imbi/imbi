@@ -53,6 +53,10 @@ class FakeApi:
         self.emails: list[str] = []
         #: Addresses that the email endpoint reports as failed.
         self.failed: list[str] = []
+        #: The bodies of the Slack calls that posted.
+        self.slacks: list[str] = []
+        #: The Slack error code that the Slack endpoint reports.
+        self.slack_error: str | None = None
         #: The raw path of every request.
         self.paths: list[str] = []
         #: Takes the agent task calls when set.
@@ -76,6 +80,17 @@ class FakeApi:
         self.emails.append(request.url.path)
         return {'recipients': [self.recipient], 'failed': self.failed}
 
+    def _slack(self, request: httpx.Request) -> dict[str, typing.Any]:
+        self.slacks.append(request.url.path)
+        if self.slack_error:
+            return {'channel': 'C0123456789', 'error': self.slack_error}
+        return {
+            'channel': 'C0123456789',
+            'ts': '1700000000.000100',
+            'permalink': 'https://example.slack.com/archives/x',
+            'error': None,
+        }
+
     def __call__(
         self, request: httpx.Request
     ) -> httpx.Response | abc.Awaitable[httpx.Response]:
@@ -85,6 +100,8 @@ class FakeApi:
             return self.agent(request)
         if path.endswith(('/email', '/failure-notice')):
             return self._once(request, lambda: self._email(request))
+        if path.endswith('/slack'):
+            return self._once(request, lambda: self._slack(request))
         if path.endswith('/auth/token'):
             return httpx.Response(
                 200, json={'access_token': 'token', 'expires_in': 900}
@@ -965,6 +982,76 @@ class CrashTestCase(EngineTestCase):
         self.assertEqual(tell['error'], 'email_failed: gone@example.com')
         self.assertEqual(tell['attempt'], 1)
         self.assertEqual(len(self.api.emails), 1)
+
+    async def _slack_workflow(self) -> uuid.UUID:
+        return await self._workflow(
+            [
+                _node('start', 'manual'),
+                _node(
+                    'tell',
+                    'slack',
+                    {'channel': 'C0123456789', 'text': '*Hello*'},
+                ),
+            ],
+            [_edge('start', 'tell')],
+            {'on_failure': 'none'},
+        )
+
+    async def test_slack_posts_once(self) -> None:
+        run_id = await self._start(await self._slack_workflow())
+        await self._crash_on(run_id, 'tell')
+        run = await self._drive(run_id, runner=self._engine('worker-b'))
+        self.assertEqual(run['status'], 'succeeded', run)
+        self.assertEqual(
+            run['steps']['tell']['output'],
+            {
+                'channel': 'C0123456789',
+                'ts': '1700000000.000100',
+                'permalink': 'https://example.slack.com/archives/x',
+            },
+        )
+        self.assertEqual(
+            self.api.slacks,
+            [
+                f'/organizations/{self.org}/workflows/{self.slug}'
+                f'/runs/{run_id}/steps/tell/slack'
+            ],
+        )
+
+    async def test_slack_error_fails_the_step(self) -> None:
+        self.api.slack_error = 'not_in_channel'
+        run = await self._drive(
+            await self._start(await self._slack_workflow())
+        )
+        self.assertEqual(run['status'], 'failed')
+        tell = run['steps']['tell']
+        self.assertEqual(tell['error'], 'slack_failed: not_in_channel')
+        self.assertEqual(tell['attempt'], 1)
+        self.assertEqual(len(self.api.slacks), 1)
+
+    async def test_slack_rendered_channel_is_checked(self) -> None:
+        workflow_id = await self._workflow(
+            [
+                _node(
+                    'start',
+                    'manual',
+                    {'inputs': [{'name': 'channel', 'type': 'string'}]},
+                ),
+                _node(
+                    'tell',
+                    'slack',
+                    {'channel': '{{ trigger.channel }}', 'text': 'Hello'},
+                ),
+            ],
+            [_edge('start', 'tell')],
+            {'on_failure': 'none'},
+        )
+        run = await self._drive(
+            await self._start(workflow_id, {'channel': '#general'})
+        )
+        self.assertEqual(run['status'], 'failed')
+        self.assertEqual(run['steps']['tell']['error'], 'invalid_params')
+        self.assertEqual(self.api.slacks, [])
 
     async def test_unknown_outcome_fails_without_retry(self) -> None:
         workflow_id = await self._workflow(

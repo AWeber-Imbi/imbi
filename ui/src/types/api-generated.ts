@@ -6296,6 +6296,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/workflows/{slug}/runs/{run_id}/steps/{node_id}/slack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Step Slack
+         * @description Post the message of a running slack step. Engine only.
+         *
+         *     Raises:
+         *         404: No such workflow, run, or step.
+         *         409: The step is not a running slack step, or
+         *             ``outcome_unknown``: a call with the key did not finish.
+         *         422: ``invalid_channel``: the channel is not a Slack channel id.
+         *         502: ``slack_unreachable``: the call to Slack failed, and Slack
+         *             may have posted the message.
+         *         503: ``slack_not_configured``: imbi-api has no bot token.
+         *
+         *     A refusal from Slack is not an error here: the response has its
+         *     code in ``error``, and the engine fails the step.
+         */
+        post: operations["send_step_slack_api_organizations__org_slug__workflows__slug__runs__run_id__steps__node_id__slack_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/workflows/{slug}/runs/{run_id}/failure-notice": {
         parameters: {
             query?: never;
@@ -20665,6 +20697,17 @@ export interface components {
              */
             deployment_run_id?: string | null;
         };
+        /** SlackResult */
+        SlackResult: {
+            /** Channel */
+            channel: string;
+            /** Ts */
+            ts?: string | null;
+            /** Permalink */
+            permalink?: string | null;
+            /** Error */
+            error?: string | null;
+        };
         /**
          * StaleSideEffect
          * @description A side effect of a run that started and did not finish.
@@ -32671,6 +32714,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EmailResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_step_slack_api_organizations__org_slug__workflows__slug__runs__run_id__steps__node_id__slack_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                slug: string;
+                run_id: string;
+                node_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SlackResult"];
                 };
             };
             /** @description Validation Error */

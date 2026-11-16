@@ -4,6 +4,7 @@ import {
   Code,
   type LucideIcon,
   Mail,
+  MessageSquare,
   Play,
   Rocket,
   RotateCcw,
@@ -25,6 +26,7 @@ const ICONS: Record<string, LucideIcon> = {
   rollback: RotateCcw,
   schedule: Clock,
   script: Code,
+  slack: MessageSquare,
   wait: Timer,
   webhook: Webhook,
 }
