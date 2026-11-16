@@ -323,6 +323,12 @@ class CheckTestCase(unittest.TestCase):
                 schema,
                 set(),
             )
+        with self.assertRaisesRegex(
+            rendering.RenderError, "system: line 1: No filter named 'nope'"
+        ):
+            rendering.check_declared(
+                {'system': '{{ name | nope }}'}, schema, set()
+            )
 
     def test_variable_names(self) -> None:
         with self.assertRaises(rendering.RenderError):

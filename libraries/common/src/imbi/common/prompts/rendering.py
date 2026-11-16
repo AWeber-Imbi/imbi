@@ -782,13 +782,19 @@ def check_declared(
     so an undeclared one is always undefined and the render always fails.
 
     Raises:
-        RenderError: A template reads an undeclared name.
+        RenderError: A template reads an undeclared name, or uses a
+            filter or test that does not exist.
 
     """
     known = {*schema, *provider_names, *_ENV.globals}
     for label, source in version_fields.items():
-        tree = _ENV.parse(source)
-        if missing := jinja2.meta.find_undeclared_variables(tree) - known:
+        try:
+            # The analysis compiles the template, which also checks the
+            # filters and tests that parsing does not.
+            names = jinja2.meta.find_undeclared_variables(_ENV.parse(source))
+        except jinja2.TemplateSyntaxError as e:
+            raise RenderError(f'{label}: line {e.lineno}: {e.message}') from e
+        if missing := names - known:
             raise RenderError(
                 f'{label}: undeclared variables: '
                 f'{", ".join(sorted(missing))}. Add them to the variable '
