@@ -559,8 +559,8 @@ async def _pinned_agent_ids(
     Raises:
         422: ``agent_params_not_literal``: the agent id is a template.
             ``trigger_project_missing``: the run's origin has no project.
-            ``project_not_rendered``: the rendered project is not a
-            string, or is still a template.
+            ``project_not_rendered``: the rendered project is empty, not
+            a string, or still a template.
 
     """
     wf_graph, _ = await _version_graph(store, org_id, slug, run['version'])
@@ -581,11 +581,11 @@ async def _pinned_agent_ids(
     elif isinstance(project_id, str) and _is_template(project_id):
         step_input: dict[str, typing.Any] = step['input'] or {}
         rendered = step_input.get('project_id')
-        if not isinstance(rendered, str) or _is_template(rendered):
+        project_id = rendered.strip() if isinstance(rendered, str) else ''
+        if not project_id or _is_template(project_id):
             raise fastapi.HTTPException(
                 status_code=422, detail={'error': 'project_not_rendered'}
             )
-        project_id = rendered.strip() or None
     return agent_id, project_id
 
 

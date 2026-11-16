@@ -1213,13 +1213,15 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
             'instruction': 'Go.',
             'project_id': '{{ review.result.project }}',
         }
-        # The engine did not render it.
-        await self._agent_run(pinned)
-        response = await self.client.post(self.step_url)
-        self.assertEqual(response.status_code, 422, response.text)
-        self.assertEqual(
-            response.json()['detail'], {'error': 'project_not_rendered'}
-        )
+        # The engine did not render it, or it rendered to nothing.
+        for rendered in (pinned, {**pinned, 'project_id': ' '}):
+            await self._agent_run(pinned, rendered)
+            response = await self.client.post(self.step_url)
+            self.assertEqual(response.status_code, 422, response.text)
+            self.assertEqual(
+                response.json()['detail'], {'error': 'project_not_rendered'}
+            )
+        self.assertEqual(await self._count(), 0)
         # It rendered to a project that is not in the org.
         await self._agent_run(pinned, {**pinned, 'project_id': 'p-missing'})
         response = await self.client.post(self.step_url)
