@@ -516,7 +516,7 @@ fields), such as `event.label == "ready-for-release"`.
   below). Activating, pausing, linking, or unlinking a follow-on, and
   saving a type, recompute the watches on every parked work item of
   the types it is linked to, so a follow-on linked after a work item
-  parked can still claim it. Parking and recomputing both take a shared
+  parked can still claim it. Parking and recomputing both take a
   lock on the work item type row, parking in shared mode and
   recomputing in exclusive mode, so a park never commits watches from a
   configuration that a recompute has already replaced.
