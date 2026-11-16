@@ -18,6 +18,20 @@ _CHANNEL = (
     r'|\{\{\s*[a-z][a-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+\s*\}\})$'
 )
 
+
+def escape(value: str) -> str:
+    """Escape the control characters of Slack mrkdwn in ``value``.
+
+    The engine applies it to each value that a template puts in a slack
+    step, so a value from a webhook cannot add a mention such as
+    ``<!channel>`` or a link with a false label. Text that the author
+    writes is kept as written.
+    """
+    return (
+        value.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+    )
+
+
 #: The longest ``text`` that Slack accepts.
 MAX_TEXT = 40000
 
@@ -58,4 +72,6 @@ STEP = step_type.StepType(
     },
     side_effect=True,
     timeout_seconds=120,
+    # Only ``slack_ratelimited`` is retried: nothing posted.
+    retries=3,
 )

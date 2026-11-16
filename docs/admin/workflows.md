@@ -144,7 +144,8 @@ count:
 | `model_decision` | 60 seconds | 2 |
 | `condition` | 10 seconds | 0 |
 | `script` | 30 seconds. The script itself stops at 5 seconds | 0 |
-| `email`, `slack` | 2 minutes | 0 |
+| `email` | 2 minutes | 0 |
+| `slack` | 2 minutes | 3, for a Slack rate limit only |
 | `deploy`, `rollback` | 1 hour | 2 |
 | `agent` | None. The max run time limits it | 2 |
 
@@ -399,11 +400,18 @@ Errors:
 | `slack_failed: not_in_channel` | The bot is not a member of the channel. Invite it |
 | `slack_failed: channel_not_found` | No channel has this ID, or the bot cannot see it |
 | `slack_failed: <code>` | Slack refused the message with another [error code](https://docs.slack.dev/reference/methods/chat.postMessage#errors) |
-| `outcome_unknown` | The call to Slack failed, or Slack answered `internal_error`, `fatal_error`, `request_timeout`, or `service_unavailable`. Slack may have posted the message. See [unknown outcome](#calls-with-an-unknown-outcome) |
+| `slack_ratelimited` | Slack rate-limited the post after every retry |
+| `outcome_unknown` | The call to Slack failed, Slack answered with a 5xx, or Slack answered `internal_error`, `fatal_error`, `request_timeout`, or `service_unavailable`. Slack may have posted the message. See [unknown outcome](#calls-with-an-unknown-outcome) |
 | `invalid_params`, `invalid_channel` | The rendered channel is not a channel ID |
 
-Imbi does not retry a failed post. When Slack refuses a message, it posts
-nothing.
+When Slack refuses a message, it posts nothing, and Imbi does not retry
+it. The one exception is a rate limit (`ratelimited`): the step tries
+again up to 3 times, with a backoff, and fails with `slack_ratelimited`
+after that.
+
+A value that a template puts in `text` is escaped (`&`, `<`, and `>`), so
+a value from a webhook payload cannot add a mention such as `<!channel>`
+or a link. Mentions and links that you write in `text` yourself work.
 
 **Output:** `channel`, `ts` (the message timestamp), and `permalink` (a
 link to the message, or empty when Slack did not return one).
@@ -510,10 +518,15 @@ different organization:
 | Parameter | Allowed |
 |---|---|
 | `webhook_id`, and `agent_id` and `project_id` of an agent step | A literal id only |
-| `project_id` of deploy and rollback, email recipient ids, the Slack `channel` | A literal id, or one plain reference such as `{{ trigger.project }}` |
+| `project_id` of deploy and rollback, email recipient ids | A literal id, or one plain reference such as `{{ trigger.project }}` |
 
 A literal id must exist in the organization. Otherwise validation shows
 `resource_not_in_organization`.
+
+The Slack `channel` takes a literal channel ID or one plain reference, but
+a channel is not a resource of an organization, so Imbi does not check it.
+The bot can post only to the channels that it was invited to. Invite it
+only to the channels that workflows may post to.
 
 ## Joins
 

@@ -59,6 +59,8 @@ class FakeApi:
         self.slack_error: str | None = None
         #: Answer the Slack endpoint with ``502 slack_unreachable``.
         self.slack_unreachable = False
+        #: Answer this many Slack calls with ``429 slack_ratelimited``.
+        self.slack_ratelimited = 0
         #: The raw path of every request.
         self.paths: list[str] = []
         #: Takes the agent task calls when set.
@@ -103,6 +105,12 @@ class FakeApi:
         if path.endswith(('/email', '/failure-notice')):
             return self._once(request, lambda: self._email(request))
         if path.endswith('/slack'):
+            if self.slack_ratelimited:
+                self.slack_ratelimited -= 1
+                self.slacks.append(path)
+                return httpx.Response(
+                    429, json={'detail': {'error': 'slack_ratelimited'}}
+                )
             if self.slack_unreachable:
                 self.slacks.append(path)
                 return httpx.Response(
@@ -1048,6 +1056,26 @@ class CrashTestCase(EngineTestCase):
         self.assertEqual(tell['error'], 'outcome_unknown')
         self.assertEqual(tell['attempt'], 1)
         self.assertEqual(len(self.api.slacks), 1)
+
+    async def test_slack_rate_limit_is_retried(self) -> None:
+        self.api.slack_ratelimited = 1
+        with mock.patch.object(engine, 'RETRY_BACKOFF', 0):
+            run = await self._drive(
+                await self._start(await self._slack_workflow())
+            )
+        self.assertEqual(run['status'], 'succeeded', run)
+        self.assertEqual(run['steps']['tell']['attempt'], 2)
+        self.assertEqual(len(self.api.slacks), 2)
+
+    async def test_slack_rate_limit_fails_after_retries(self) -> None:
+        self.api.slack_ratelimited = 10
+        with mock.patch.object(engine, 'RETRY_BACKOFF', 0):
+            run = await self._drive(
+                await self._start(await self._slack_workflow())
+            )
+        self.assertEqual(run['status'], 'failed')
+        self.assertEqual(run['steps']['tell']['error'], 'slack_ratelimited')
+        self.assertEqual(len(self.api.slacks), 4)
 
     async def test_slack_rendered_channel_is_checked(self) -> None:
         workflow_id = await self._workflow(
@@ -2018,6 +2046,44 @@ class RenderTestCase(unittest.IsolatedAsyncioTestCase):
                 'loop': 'Hi;Bye;',
                 'nested': 'a@example.com',
                 'skipped': '[]',
+            },
+        )
+
+    async def test_escape_applies_to_values_only(self) -> None:
+        """A value cannot add Slack markup; the template's own can."""
+        with mock.patch.dict(
+            'os.environ', {'IMBI_PROMPT_RENDER_INPROCESS': 'true'}
+        ):
+            steps, payload = engine._escaped_inputs(
+                {
+                    'a': {
+                        'node_key': 'a',
+                        'node_type': 'agent',
+                        'status': 'succeeded',
+                        'output': {'summary': '<https://x|ok>'},
+                    }
+                },
+                {'title': '<!channel> a & b', 'pr': {'labels': ['<x>']}},
+                engine.slack_step.escape,
+            )
+            rendered = await engine._render(
+                {
+                    'text': '<!here> {{ trigger.title }}',
+                    'whole': '{{ trigger.title }}',
+                    'nested': '{{ trigger.pr.labels[0] }}',
+                    'step': '{{ a.summary }}',
+                },
+                steps,
+                payload,
+                {},
+            )
+        self.assertEqual(
+            rendered,
+            {
+                'text': '<!here> &lt;!channel&gt; a &amp; b',
+                'whole': '&lt;!channel&gt; a &amp; b',
+                'nested': '&lt;x&gt;',
+                'step': '&lt;https://x|ok&gt;',
             },
         )
 

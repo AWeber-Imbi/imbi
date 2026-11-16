@@ -943,7 +943,7 @@ class EngineSlackTestCase(WorkflowRunTestCase):
                 },
             )
         self.client_class.assert_called_once_with(
-            token='xoxb-test', retry_handlers=[]
+            token='xoxb-test', timeout=20, retry_handlers=[]
         )
         self.slack.chat_postMessage.assert_awaited_once_with(
             channel='C0123456789', text='*Shipped* 1', unfurl_links=False
@@ -1007,6 +1007,46 @@ class EngineSlackTestCase(WorkflowRunTestCase):
         self.assertEqual(response.status_code, 409, response.text)
         self.assertEqual(response.json()['detail']['error'], 'outcome_unknown')
         self.slack.chat_postMessage.assert_awaited_once()
+
+    async def test_slack_5xx_keeps_the_key(self) -> None:
+        """slack_sdk gives a 5xx with an HTML body no error code."""
+        response = mock.Mock(status_code=503)
+        response.get.return_value = None
+        self.slack.chat_postMessage.side_effect = slack_errors.SlackApiError(
+            'failed', response
+        )
+        response = await self.client.post(self.post_url, headers=self.headers)
+        self.assertEqual(response.status_code, 502, response.text)
+        self.assertEqual(
+            response.json()['detail'], {'error': 'slack_unreachable'}
+        )
+        response = await self.client.post(self.post_url, headers=self.headers)
+        self.assertEqual(response.status_code, 409, response.text)
+
+    async def test_slack_raw_response_keeps_the_key(self) -> None:
+        """A body that is not JSON comes with the raw HTTP response."""
+        self.slack.chat_postMessage.side_effect = slack_errors.SlackApiError(
+            'failed', object()
+        )
+        response = await self.client.post(self.post_url, headers=self.headers)
+        self.assertEqual(response.status_code, 502, response.text)
+
+    async def test_rate_limit_releases_the_key(self) -> None:
+        self.slack.chat_postMessage.side_effect = [
+            slack_errors.SlackApiError(
+                'limited', {'ok': False, 'error': 'ratelimited'}
+            ),
+            {'ok': True, 'channel': 'C0123456789', 'ts': '1.2'},
+        ]
+        response = await self.client.post(self.post_url, headers=self.headers)
+        self.assertEqual(response.status_code, 429, response.text)
+        self.assertEqual(
+            response.json()['detail'], {'error': 'slack_ratelimited'}
+        )
+        response = await self.client.post(self.post_url, headers=self.headers)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['ts'], '1.2')
+        self.assertEqual(self.slack.chat_postMessage.await_count, 2)
 
     async def test_not_configured(self) -> None:
         self.token = ''

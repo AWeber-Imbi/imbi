@@ -28,6 +28,7 @@ Every route needs the caller to be a member of the organization
 (``MEMBER_OF``): see :mod:`imbi.api.auth.organizations`.
 """
 
+import asyncio
 import datetime
 import typing
 import uuid
@@ -522,27 +523,57 @@ _SLACK_AMBIGUOUS = frozenset(
 SlackClient = typing.Any
 
 
+#: Seconds that each call to Slack may take. The post and the
+#: permalink together stay well under the engine's 60-second timeout.
+_SLACK_TIMEOUT = 20
+_SLACK_PERMALINK_TIMEOUT = 5.0
+_HTTP_SERVER_ERROR = 500
+
+
+def _slack_refusal(error: slack_errors.SlackApiError) -> str | None:
+    """Return the code of a refusal that posted nothing, or ``None``.
+
+    ``None`` when Slack may have posted: a 5xx (slack_sdk gives a 5xx
+    with an HTML body no error code), a missing code, or a code in
+    :data:`_SLACK_AMBIGUOUS`. On a body that is not JSON, slack_sdk
+    passes the raw HTTP response, which has no ``get``.
+    """
+    response: SlackClient = error.response
+    status = getattr(response, 'status_code', None)
+    if isinstance(status, int) and status >= _HTTP_SERVER_ERROR:
+        return None
+    get = getattr(response, 'get', None)
+    code: typing.Any = get('error') if callable(get) else None
+    if not code or code in _SLACK_AMBIGUOUS:
+        return None
+    return str(code)
+
+
 async def _post_slack(token: str, channel: str, text: str) -> SlackResult:
     """Post ``text`` to ``channel``, then ask for its permalink.
 
     The client does not retry: a retry after a lost response could post
     the message two times. A refusal from Slack posted nothing, so it is
-    a result with ``error``. A transport error, or a Slack error in
-    :data:`_SLACK_AMBIGUOUS`, may come after Slack posted, so it is a
+    a result with ``error``, except ``ratelimited``: a ``429`` releases
+    the key, and the engine tries again. A transport error, or a Slack
+    answer that may come after it posted (:func:`_slack_refusal`), is a
     ``502`` and the idempotency key stays.
     """
     client: SlackClient = slack_client.AsyncWebClient(
-        token=token, retry_handlers=[]
+        token=token, timeout=_SLACK_TIMEOUT, retry_handlers=[]
     )
     try:
         posted = await client.chat_postMessage(
             channel=channel, text=text, unfurl_links=False
         )
     except slack_errors.SlackApiError as e:
-        response: SlackClient = e.response
-        error = str(response.get('error') or 'unknown')
-        if error not in _SLACK_AMBIGUOUS:
-            return SlackResult(channel=channel, error=error)
+        refusal = _slack_refusal(e)
+        if refusal == 'ratelimited':
+            raise fastapi.HTTPException(
+                status_code=429, detail={'error': 'slack_ratelimited'}
+            ) from None
+        if refusal is not None:
+            return SlackResult(channel=channel, error=refusal)
         raise fastapi.HTTPException(
             status_code=502, detail={'error': 'slack_unreachable'}
         ) from None
@@ -565,7 +596,10 @@ async def _slack_permalink(
     """Return the permalink of a message, or ``None``: the message is
     posted, so a failure here does not fail the step."""
     try:
-        found = await client.chat_getPermalink(channel=channel, message_ts=ts)
+        found = await asyncio.wait_for(
+            client.chat_getPermalink(channel=channel, message_ts=ts),
+            _SLACK_PERMALINK_TIMEOUT,
+        )
     except _SLACK_TRANSPORT_ERRORS:
         return None
     permalink: typing.Any = found.get('permalink')

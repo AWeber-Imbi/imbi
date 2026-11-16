@@ -417,6 +417,9 @@ class Executors:
                 headers={'Idempotency-Key': call.idempotency_key},
             )
         except StepError as e:
+            if e.code == 'slack_ratelimited':
+                # Nothing posted, and imbi-api released the key.
+                raise StepError(e.code, retry=True) from e
             if e.code != 'slack_unreachable':
                 raise
             # Slack may have posted: fail the step so that an operator
