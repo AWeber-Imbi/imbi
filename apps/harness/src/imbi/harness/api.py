@@ -2,6 +2,7 @@
 
 import http
 import typing
+import urllib.parse
 
 import httpx
 
@@ -271,6 +272,16 @@ class TaskApi:
     async def create_child(self, body: Body) -> Body:
         response = await self.client.post(
             f'/harness/tasks/{self.short_id}/children', self.token, json=body
+        )
+        return _body(response)
+
+    async def attach_project(self, project: str) -> Body:
+        """Associate a project, by id or slug, with this task."""
+        response = await self.client.request(
+            'PUT',
+            f'/harness/tasks/{self.short_id}/projects/'
+            f'{urllib.parse.quote(project, safe="")}',
+            self.token,
         )
         return _body(response)
 

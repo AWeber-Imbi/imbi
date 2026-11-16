@@ -303,6 +303,11 @@ class RunnerFinished(pydantic.BaseModel):
     chain_state: harness_store.ChainState | None = None
 
 
+class AttachedProject(pydantic.BaseModel):
+    project_id: str
+    project_slug: str
+
+
 class ChildTaskCreate(pydantic.BaseModel):
     agent_slug: str = pydantic.Field(min_length=1)
     title: str = pydantic.Field(min_length=1)
@@ -1669,6 +1674,51 @@ async def list_harness_task_events(
     if task['log_archived_at'] is not None:
         return await agent_tasks.log.archived_events(task, after_seq, limit)
     return await store.events(task['id'], after_seq, limit)
+
+
+@harness_router.put(
+    '/tasks/{short_id}/projects/{project}', response_model=AttachedProject
+)
+async def attach_harness_task_project(
+    short_id: str,
+    project: str,
+    caller: harness_auth.AgentCaller,
+    db: graph.Pool,
+    store: agent_tasks.Store,
+) -> dict[str, str]:
+    """Associate a project of the org with a task of the chain.
+
+    ``project`` is a project id or slug. The task gets a
+    ``project.associated`` event, with the agent as the actor. A secret
+    resolution reads the task's projects when it is made, so the next
+    one covers the project. When the project is associated, nothing
+    changes.
+
+    Raises:
+        401: Not a current agent token.
+        403: Another chain or another agent.
+        404: No such task.
+        409: ``task_closed`` or ``task_archived``.
+        422: The project is not in the org, or the slug is not unique.
+
+    """
+    task = await _chain_task(caller, short_id, db, store)
+    if task['status'] == 'closed':
+        raise _conflict('task_closed', f'Task {task["short_id"]} is closed')
+    org_id = task['organization_id']
+    org_slug = (await organization_slugs(db, [org_id])).get(org_id, '')
+    [(project_id, slug)] = await tasks_api.project_slugs(
+        db, org_slug, [project]
+    )
+    with tasks_api.relation_errors():
+        await store.associate_project(
+            org_id,
+            task['short_id'],
+            project_id,
+            slug,
+            agent_tasks.Actor('agent', task['agent_id'], 'harness'),
+        )
+    return {'project_id': project_id, 'project_slug': slug}
 
 
 @harness_router.post(

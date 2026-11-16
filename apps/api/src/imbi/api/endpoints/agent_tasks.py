@@ -98,7 +98,7 @@ class AgentTaskCreate(pydantic.BaseModel):
     project_ids: list[_ShortText] = pydantic.Field(
         default_factory=list,
         max_length=50,
-        description='The projects of the task.',
+        description='The projects of the task, by id or slug.',
     )
     budget: decimal.Decimal | None = pydantic.Field(
         default=None,
@@ -394,7 +394,7 @@ _PROJECTS_QUERY: typing.LiteralString = """
 MATCH (p:Project)
       -[:OWNED_BY]->(:Team)
       -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
-WHERE p.id IN {ids}
+WHERE p.id IN {ids} OR p.slug IN {ids}
 RETURN p.id AS id, p.slug AS slug, p.name AS name
 """
 
@@ -755,31 +755,42 @@ async def _owner(
     return str(creator)
 
 
-async def _project_slugs(
-    db: graph.Graph, org_slug: str, project_ids: list[str]
+async def project_slugs(
+    db: graph.Graph, org_slug: str, projects: list[str]
 ) -> list[tuple[str, str]]:
     """Return the ``(id, slug)`` of each project in the org, in the
-    order of ``project_ids`` with no repeats, or raise 422."""
-    ids = list(dict.fromkeys(project_ids))
-    if not ids:
+    order of ``projects`` with no repeats, or raise 422.
+
+    Each entry is a project id or slug. An id wins over a slug, and a
+    slug that more than one project in the org has is refused.
+    """
+    refs = list(dict.fromkeys(projects))
+    if not refs:
         return []
     records = await db.execute(
         _PROJECTS_QUERY,
-        {'org_slug': org_slug, 'ids': ids},
+        {'org_slug': org_slug, 'ids': refs},
         ['id', 'slug', 'name'],
     )
-    slugs = {
-        str(graph.parse_agtype(r['id'])): str(graph.parse_agtype(r['slug']))
+    rows = [
+        (str(graph.parse_agtype(r['id'])), str(graph.parse_agtype(r['slug'])))
         for r in records
-    }
-    for project_id in ids:
-        if project_id not in slugs:
-            raise _unprocessable(f'Project {project_id!r} not found')
-    return [(project_id, slugs[project_id]) for project_id in ids]
+    ]
+    found: list[tuple[str, str]] = []
+    for ref in refs:
+        matches = [row for row in rows if row[0] == ref] or [
+            row for row in rows if row[1] == ref
+        ]
+        if len(matches) > 1:
+            raise _unprocessable(f'Project slug {ref!r} is not unique')
+        if not matches:
+            raise _unprocessable(f'Project {ref!r} not found')
+        found.append(matches[0])
+    return list(dict.fromkeys(found))
 
 
 @contextlib.contextmanager
-def _relation_errors() -> abc.Generator[None]:
+def relation_errors() -> abc.Generator[None]:
     """Map the errors of a relation change to HTTP errors."""
     try:
         yield
@@ -979,7 +990,7 @@ async def make_task(
         else models.AgentSettings.model_validate(raw_settings)
     )
     budget = task_budget(settings, data.budget)
-    projects = await _project_slugs(db, org_slug, data.project_ids)
+    projects = await project_slugs(db, org_slug, data.project_ids)
     agent_id = str(agent['id'])
     service_account_id = await agents.ensure_service_account(
         db, agent_id, str(agent.get('name', data.agent_slug))
@@ -1639,7 +1650,7 @@ async def add_agent_task_dependency(
 
     """
     _ = auth.require_user  # raises 403 for a caller that is not a person
-    with _relation_errors():
+    with relation_errors():
         await store.add_dependency(
             org_id, short_id.upper(), prerequisite.upper(), _actor(auth)
         )
@@ -1669,7 +1680,7 @@ async def remove_agent_task_dependency(
 
     """
     _ = auth.require_user  # raises 403 for a caller that is not a person
-    with _relation_errors():
+    with relation_errors():
         await store.remove_dependency(
             org_id, short_id.upper(), prerequisite.upper(), _actor(auth)
         )
@@ -1738,8 +1749,8 @@ async def associate_agent_task_project(
 
     """
     _ = auth.require_user  # raises 403 for a caller that is not a person
-    [(_, slug)] = await _project_slugs(db, org_slug, [project_id])
-    with _relation_errors():
+    [(project_id, slug)] = await project_slugs(db, org_slug, [project_id])
+    with relation_errors():
         await store.associate_project(
             org_id, short_id.upper(), project_id, slug, _actor(auth)
         )
@@ -1769,7 +1780,7 @@ async def dissociate_agent_task_project(
 
     """
     _ = auth.require_user  # raises 403 for a caller that is not a person
-    with _relation_errors():
+    with relation_errors():
         await store.dissociate_project(
             org_id, short_id.upper(), project_id, _actor(auth)
         )

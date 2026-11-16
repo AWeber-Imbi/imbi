@@ -545,38 +545,52 @@ async def _pinned_agent_ids(
     org_id: str,
     slug: str,
     run: workflows.Row,
-    node_id: str,
+    step: workflows.Row,
 ) -> tuple[str, str | None]:
-    """Return the agent id and project id of the node in the run's version.
+    """Return the agent id and project of the step in the run's version.
 
-    They come from the pinned version, not from the rendered step
-    input, so run input cannot choose the agent or the project. A
-    pinned :data:`agent_step.TRIGGER_PROJECT` is the project in the
-    run's origin, which only the gateway sets.
+    The agent comes from the pinned version, so run input cannot choose
+    it. A pinned :data:`agent_step.TRIGGER_PROJECT` is the project in
+    the run's origin, which only the gateway sets. Any other pinned
+    reference, such as the output of an earlier agent step, is the
+    value that the engine rendered into the step input: a project id or
+    slug, which :func:`agent_tasks.make_task` checks is in the org.
 
     Raises:
-        422: ``agent_params_not_literal``: an id is a template.
+        422: ``agent_params_not_literal``: the agent id is a template.
             ``trigger_project_missing``: the run's origin has no project.
+            ``project_not_rendered``: the rendered project is not a
+            string, or is still a template.
 
     """
     wf_graph, _ = await _version_graph(store, org_id, slug, run['version'])
+    node_id = step['node_id']
     node = next((n for n in wf_graph.nodes if n.id == node_id), None)
     params = node.params if node is not None else {}
     agent_id, project_id = params.get('agent_id'), params.get('project_id')
+    if not isinstance(agent_id, str) or _is_template(agent_id):
+        raise fastapi.HTTPException(
+            status_code=422, detail={'error': 'agent_params_not_literal'}
+        )
     if project_id == agent_step.TRIGGER_PROJECT:
         project_id = run['origin'].get('project_id')
         if not project_id:
             raise fastapi.HTTPException(
                 status_code=422, detail={'error': 'trigger_project_missing'}
             )
-    if not isinstance(agent_id, str) or any(
-        isinstance(value, str) and ('{{' in value or '{%' in value)
-        for value in (agent_id, project_id)
-    ):
-        raise fastapi.HTTPException(
-            status_code=422, detail={'error': 'agent_params_not_literal'}
-        )
+    elif isinstance(project_id, str) and _is_template(project_id):
+        step_input: dict[str, typing.Any] = step['input'] or {}
+        rendered = step_input.get('project_id')
+        if not isinstance(rendered, str) or _is_template(rendered):
+            raise fastapi.HTTPException(
+                status_code=422, detail={'error': 'project_not_rendered'}
+            )
+        project_id = rendered.strip() or None
     return agent_id, project_id
+
+
+def _is_template(value: str) -> bool:
+    return '{{' in value or '{%' in value
 
 
 def _made_by_step(
@@ -1210,16 +1224,18 @@ async def step_agent_task(
     workflow owns the task, and must still be able to make agent tasks
     in the org. The engine polls this route until the task is closed.
 
-    The agent and the project come from the pinned version (see
-    :func:`_pinned_agent_ids`). A task with the key that this step did
-    not make, or that has another agent, is refused.
+    The agent comes from the pinned version, and the project from the
+    pinned version or the step input (see :func:`_pinned_agent_ids`).
+    A task with the key that this step did not make, or that has
+    another agent, is refused.
 
     Raises:
         403: ``owner_forbidden``: the activator cannot make agent tasks.
         404: No such workflow, run, or step.
         409: The step is not a running agent step, the agent is
             disabled, or ``task_key_conflict``.
-        422: ``agent_not_found``, ``agent_params_not_literal``, or the
+        422: ``agent_not_found``, ``agent_params_not_literal``,
+            ``trigger_project_missing``, ``project_not_rendered``, or the
             project or the budget is not valid (see
             :func:`agent_tasks.make_task`).
 
@@ -1227,7 +1243,7 @@ async def step_agent_task(
     workflow = await _workflow(store, org_id, slug)
     run, step, origin, key = await _agent_step(runs, workflow, run_id, node_id)
     agent_id, project_id = await _pinned_agent_ids(
-        store, org_id, slug, run, node_id
+        store, org_id, slug, run, step
     )
     task = await tasks.find_by_idempotency_key(
         org_id, origin.kind, origin.id, key

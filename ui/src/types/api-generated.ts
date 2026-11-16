@@ -1731,6 +1731,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/harness/tasks/{short_id}/projects/{project}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Attach Harness Task Project
+         * @description Associate a project of the org with a task of the chain.
+         *
+         *     ``project`` is a project id or slug. The task gets a
+         *     ``project.associated`` event, with the agent as the actor. A secret
+         *     resolution reads the task's projects when it is made, so the next
+         *     one covers the project. When the project is associated, nothing
+         *     changes.
+         *
+         *     Raises:
+         *         401: Not a current agent token.
+         *         403: Another chain or another agent.
+         *         404: No such task.
+         *         409: ``task_closed`` or ``task_archived``.
+         *         422: The project is not in the org, or the slug is not unique.
+         */
+        put: operations["attach_harness_task_project_api_harness_tasks__short_id__projects__project__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/harness/tasks/{short_id}/children": {
         parameters: {
             query?: never;
@@ -6341,16 +6374,18 @@ export interface paths {
          *     workflow owns the task, and must still be able to make agent tasks
          *     in the org. The engine polls this route until the task is closed.
          *
-         *     The agent and the project come from the pinned version (see
-         *     :func:`_pinned_agent_ids`). A task with the key that this step did
-         *     not make, or that has another agent, is refused.
+         *     The agent comes from the pinned version, and the project from the
+         *     pinned version or the step input (see :func:`_pinned_agent_ids`).
+         *     A task with the key that this step did not make, or that has
+         *     another agent, is refused.
          *
          *     Raises:
          *         403: ``owner_forbidden``: the activator cannot make agent tasks.
          *         404: No such workflow, run, or step.
          *         409: The step is not a running agent step, the agent is
          *             disabled, or ``task_key_conflict``.
-         *         422: ``agent_not_found``, ``agent_params_not_literal``, or the
+         *         422: ``agent_not_found``, ``agent_params_not_literal``,
+         *             ``trigger_project_missing``, ``project_not_rendered``, or the
          *             project or the budget is not valid (see
          *             :func:`agent_tasks.make_task`).
          */
@@ -11108,7 +11143,7 @@ export interface components {
             description: string;
             /**
              * Project Ids
-             * @description The projects of the task.
+             * @description The projects of the task, by id or slug.
              */
             project_ids?: string[];
             /**
@@ -11742,6 +11777,13 @@ export interface components {
             added_by?: string | null;
             /** Added At */
             added_at?: string | null;
+        };
+        /** AttachedProject */
+        AttachedProject: {
+            /** Project Id */
+            project_id: string;
+            /** Project Slug */
+            project_slug: string;
         };
         /**
          * AttachmentRef
@@ -24914,6 +24956,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentTaskEventResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    attach_harness_task_project_api_harness_tasks__short_id__projects__project__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachedProject"];
                 };
             };
             /** @description Validation Error */

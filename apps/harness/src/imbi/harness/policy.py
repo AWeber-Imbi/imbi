@@ -24,7 +24,13 @@ import typing
 
 #: The tools of the in-process ``imbi`` MCP server.
 HARNESS_TOOLS = frozenset(
-    {'create_child_task', 'report_outcome', 'request_input', 'run_with_secret'}
+    {
+        'attach_project',
+        'create_child_task',
+        'report_outcome',
+        'request_input',
+        'run_with_secret',
+    }
 )
 
 #: The model must always be able to report the outcome of its task: no

@@ -199,6 +199,11 @@ A missing purpose shows a **Grant** button. Click it to make a grant for
 this agent, this binding, and that purpose. For the App setup, see the
 [GitHub App Runbook](github-app-runbook.md).
 
+A running agent can add a project of the organization to its own task with
+the `attach_project` tool, by id or slug. The task gets a
+`project.associated` event, and the next secret that the agent requests
+covers the project's repository.
+
 **Secrets** lists the secrets that the agent can request with
 `run_with_secret`. Each secret goes into the environment of one command.
 The agent sees the description and the allowed fields of each binding, so

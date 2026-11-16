@@ -415,7 +415,7 @@ Gives an agent a task and waits for its outcome. See
 |---|---|---|
 | `agent_id` | An agent of the organization. It must be a literal id | Required |
 | `instruction` | What the agent must do. Templates are allowed | Required |
-| `project_id` | The project of the task. It must be a literal id | None |
+| `project_id` | The project of the task: a literal id, or one plain reference such as `{{ trigger.project }}` or `{{ review.result.project }}`. A reference can render to a project id or slug | None |
 | `budget` | A limit in USD. It cannot be more than the task budget of the agent | The task budget of the agent |
 
 The step takes `Succeeded` when the outcome is `done_acted`,
@@ -424,6 +424,10 @@ The step takes `Succeeded` when the outcome is `done_acted`,
 
 The person who activated the workflow owns the task. That person must still
 be able to make agent tasks when the step runs.
+
+When `project_id` is a reference, the step fails with `project_not_rendered`
+if it renders to nothing, and with `422` if no project of the organization
+has that id or slug.
 
 When you cancel the run, or the run passes its max run time, Imbi cancels
 the task. A step timeout does not cancel the task.
@@ -466,8 +470,8 @@ different organization:
 
 | Parameter | Allowed |
 |---|---|
-| `webhook_id`, and `agent_id` and `project_id` of an agent step | A literal id only |
-| `project_id` of deploy and rollback, email recipient ids | A literal id, or one plain reference such as `{{ trigger.project }}` |
+| `webhook_id`, and `agent_id` of an agent step | A literal id only |
+| `project_id` of agent, deploy, and rollback steps, email recipient ids | A literal id, or one plain reference such as `{{ trigger.project }}` |
 
 A literal id must exist in the organization. Otherwise validation shows
 `resource_not_in_organization`.

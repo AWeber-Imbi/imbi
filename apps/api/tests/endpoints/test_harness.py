@@ -1121,6 +1121,88 @@ class ChildTaskTests(RunnerTestCase):
         self.assertEqual(response.status_code, 204, response.text)
 
 
+class AttachProjectTests(RunnerTestCase):
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        claim = await self.claim(await self.register())
+        assert claim is not None
+        self.token: str = claim['agent_token']
+        suffix = uuid.uuid4().hex[:8]
+        self.extra = {
+            'id': f'px-{suffix}',
+            'slug': f'coderabbit-{suffix}',
+            'dup_a': f'pa-{suffix}',
+            'dup_b': f'pb-{suffix}',
+            'dup': f'dup-{suffix}',
+        }
+        await self.graph.execute(
+            """
+            MATCH (t:Team {{id: {team}}})
+            CREATE (p:Project {{id: {id}, slug: {slug}, name: 'CR'}})
+            CREATE (p)-[:OWNED_BY]->(t)
+            CREATE (a:Project {{id: {dup_a}, slug: {dup}, name: 'A'}})
+            CREATE (a)-[:OWNED_BY]->(t)
+            CREATE (b:Project {{id: {dup_b}, slug: {dup}, name: 'B'}})
+            CREATE (b)-[:OWNED_BY]->(t)
+            RETURN p.id AS id
+            """,
+            {'team': self.team_id, **self.extra},
+            ['id'],
+        )
+        self.addAsyncCleanup(
+            self.graph.execute,
+            'MATCH (p:Project) WHERE p.id IN {ids} DETACH DELETE p'
+            ' RETURN 1 AS ok',
+            {'ids': [self.extra[k] for k in ('id', 'dup_a', 'dup_b')]},
+            ['ok'],
+        )
+
+    async def attach(self, project: str) -> httpx.Response:
+        return await self.client.put(
+            f'/harness/tasks/T-1/projects/{project}',
+            headers={'Authorization': f'Bearer {self.token}'},
+        )
+
+    async def test_attach_by_slug_or_id(self) -> None:
+        response = await self.attach(self.extra['slug'])
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            response.json(),
+            {
+                'project_id': self.extra['id'],
+                'project_slug': self.extra['slug'],
+            },
+        )
+        # A repeat by id changes nothing.
+        response = await self.attach(self.extra['id'])
+        self.assertEqual(response.status_code, 200, response.text)
+        task = await self.store.get(self.org, 'T-1')
+        assert task is not None
+        self.assertEqual(
+            [p['project_id'] for p in task['projects']].count(
+                self.extra['id']
+            ),
+            1,
+        )
+        events = [
+            e
+            for e in await self.store.events(task['id'], 0, 1000)
+            if e['type'] == 'project.associated'
+        ]
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]['actor_kind'], 'agent')
+        self.assertEqual(events[0]['actor_id'], task['agent_id'])
+
+    async def test_unknown_or_ambiguous_project_is_422(self) -> None:
+        for project in ('p-missing', self.extra['dup']):
+            with self.subTest(project=project):
+                response = await self.attach(project)
+                self.assertEqual(response.status_code, 422, response.text)
+        # An id wins over a slug that other projects share.
+        response = await self.attach(self.extra['dup_a'])
+        self.assertEqual(response.status_code, 200, response.text)
+
+
 class RateLimitTests(RunnerTestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()

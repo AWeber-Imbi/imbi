@@ -2337,6 +2337,46 @@ class ChildTaskTestCase(RoutedTestCase):
         self.assertIn('runner_label_missing', result['content'][0]['text'])
 
 
+class AttachProjectTestCase(TaskTestCase):
+    async def test_attaches_by_id_or_slug(self) -> None:
+        response = mock.Mock()
+        response.json.return_value = {
+            'project_id': 'p1',
+            'project_slug': 'web-applications-coderabbit',
+        }
+        self.client.request.return_value = response
+        result = await self.run_task.attach_project_tool().handler(
+            {'project': ' web-applications-coderabbit '}
+        )
+        self.assertNotIn('is_error', result)
+        self.assertIn(
+            'web-applications-coderabbit (p1)', result['content'][0]['text']
+        )
+        method, path, _token = self.client.request.await_args.args
+        self.assertEqual(method, 'PUT')
+        self.assertTrue(
+            path.endswith('/projects/web-applications-coderabbit'), path
+        )
+
+    async def test_errors(self) -> None:
+        for args in ({}, {'project': ' '}, {'project': 1}):
+            result = await self.run_task.attach_project(args)
+            self.assertTrue(result['is_error'], args)
+        self.client.request.assert_not_awaited()
+        self.client.request.side_effect = api.Refused(422, '422')
+        result = await self.run_task.attach_project({'project': 'nope'})
+        self.assertIn("No project 'nope'", result['content'][0]['text'])
+        self.client.request.side_effect = api.Refused(409, 'task_closed')
+        result = await self.run_task.attach_project({'project': 'nope'})
+        self.assertIn('task_closed', result['content'][0]['text'])
+        self.client.request.side_effect = httpx.ConnectError('down')
+        result = await self.run_task.attach_project({'project': 'nope'})
+        self.assertIn('not available', result['content'][0]['text'])
+
+    def test_rules_name_the_tool(self) -> None:
+        self.assertIn('`attach_project`', self.run_task.instructions())
+
+
 class UntrustedTestCase(TaskTestCase):
     def test_webhook_text_is_wrapped(self) -> None:
         self.run_task.task['origin'] = {'kind': 'webhook'}
