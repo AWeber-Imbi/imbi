@@ -233,7 +233,7 @@ fallback.
 | `agent_task.closed` | Task short id, outcome, the task's result summary, artifact links |
 | `run.started` / `run.finished` | Workflow, run id, result, whether the run drives the work item |
 | `run.handed_off` | From run, to workflow, to run, node |
-| `work_item.parked` | Run, node, turn holders |
+| `work_item.parked` | Workflow and version, run, node, outcome, stage, reason, turn holders, the chain of earlier runs (Parking, below) |
 | `work_item.claimed` | Workflow, run, the event that matched its trigger |
 | `live.reached` | Environment, the deploys that made it live |
 | `released` | Project, version, the release tag |
@@ -455,22 +455,49 @@ and closes the current run's open turns. The current run then ends as
 
 **Parking.** A Park step ends the driving run and leaves the work item
 open with no driving run, until a change to it starts the next part.
-It has the stage label and the "turn goes to" list of a Turn step,
-with no outcomes. It opens turns for those people, defaulting to the
-owner, so a parked work item is always on someone's Waiting on me. It
-writes `work_item.parked`. The type's parked reminder reminds the turn
-holders when nothing has claimed the work item in time.
+It has the stage label and the "turn goes to" list of a Turn step. It
+opens turns for those people, defaulting to the owner, so a parked work
+item is always on someone's Waiting on me. The type's parked reminder
+reminds the turn holders when nothing has claimed the work item in
+time.
+
+A Park step also sets an **outcome**, a key such as `ready_for_release`
+or `needs_design`, and an optional **reason** rendered from step
+references. A workflow can have several Park steps with different
+outcomes. The outcome is the contract between the workflow that parks
+and the workflows that pick the work item up. It does not change when
+someone renames a stage label, so change triggers match on it.
+
+Parking writes `work_item.parked` with:
+
+| Field | Holds |
+|---|---|
+| `workflow` | Slug and version of the workflow that parked it |
+| `run_id`, `node` | The run and the Park step's key |
+| `outcome` | The Park step's outcome |
+| `stage` | The Park step's stage label |
+| `reason` | The rendered reason, or empty |
+| `turn_holders` | The people who hold the parked turns |
+| `previous_runs` | Each earlier driving run since the work item was last opened or reopened, oldest first: workflow, run, and how it ended (hand-off target, or park outcome) |
 
 **Work item change triggers.** A follow-on workflow can declare a Work
 item change trigger: a list of work item event types, such as
-`field.changed`, `label.added`, `status.changed`, or `fact.changed`,
-and a CEL filter over the event and the work item, such as
-`event.label == "ready-for-release"`.
+`work_item.parked`, `field.changed`, `label.added`, `status.changed`,
+or `fact.changed`, and a CEL filter. The filter sees `event` (the
+event's payload) and `work_item` (its fields, labels, roles, and custom
+fields), such as `event.label == "ready-for-release"`.
 
-- It fires only on a parked work item, and only on events written after
-  the work item was parked. A change made while a run drives the work
-  item starts nothing, so a run cannot start its own next part by
-  updating the work item just before it parks.
+- **Chaining by event.** A trigger on `work_item.parked` fires on the
+  park itself, in the transaction that writes it. A workflow that
+  should follow another subscribes to its park outcome, for example
+  `event.workflow == "delivery" && event.outcome ==
+  "ready_for_release"`. The parking workflow does not name the next
+  one. When it should, it uses Hand off.
+- Every other event type fires only on a parked work item, and only on
+  events written after the work item was parked. A change made while a
+  run drives the work item starts nothing, so a run cannot start its
+  own next part by updating the work item just before it parks; it
+  parks with an outcome instead.
 - When an event matches, the first follow-on workflow in the type's
   order whose trigger matches claims the work item. In the transaction
   that writes the event, Imbi locks the work item row, starts the run,
@@ -491,7 +518,9 @@ When the workflow already knows what comes next, it does not park. It
 waits with a Gate on the change, then branches to a Hand off. The Gate
 holds no lease, so a wait of weeks costs nothing. Parking and change
 triggers are for when the next part belongs to another team and the
-first workflow should not have to name it.
+first workflow should not have to name it. A park outcome that some
+follow-on subscribes to chains at once; one that none does waits for a
+later change.
 
 **Observer runs.** A workflow that is not a work item workflow can use
 a Work item change trigger marked **observe**. A work item workflow
@@ -521,7 +550,7 @@ timer.
 | Branch | Picks a port from conditions over facts and fields, in order, with no model call ([R1][req-r-deterministic-decisioning-and-routing]). Records which condition matched | One per case, plus `Else` |
 | Update work item | Sets status, stage, labels, roles, or fields. Writes through the plugin on a backed item | `Done` |
 | Hand off | Starts a run of another work item workflow for the work item and makes it the driving run. Ends the current run | `Failed`, `Too many rounds` |
-| Park | Opens turns for the people who wait, ends the driving run, and leaves the work item open until a change trigger claims it | None |
+| Park | Opens turns for the people who wait, ends the driving run with an outcome, and leaves the work item open until a change trigger claims it, which can be at once on the park event | None |
 
 The `agent` step gains two parameters on runs for a work item:
 
