@@ -53,6 +53,7 @@ import { useAgentList } from './agentQueries'
 import { agentsPath } from './agentsNav'
 import { ConversationTab } from './ConversationTab'
 import type { RevealState } from './conversationTurns'
+import { StatisticsTab } from './StatisticsTab'
 import {
   checksFrom,
   formatElapsed,
@@ -228,6 +229,12 @@ export function TaskDetail({
             />
           ) : view === 'trajectory' ? (
             <TrajectoryTab
+              events={log}
+              onShowInConversation={showInConversation}
+              task={t}
+            />
+          ) : view === 'statistics' ? (
+            <StatisticsTab
               events={log}
               onShowInConversation={showInConversation}
               task={t}
