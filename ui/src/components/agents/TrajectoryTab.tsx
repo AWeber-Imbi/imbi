@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import { useLocation, useNavigate } from 'react-router-dom'
 
@@ -31,6 +38,7 @@ import {
 } from './TrajectoryOverview'
 import { TrajectoryToolbar, useTrajectoryDuration } from './TrajectoryToolbar'
 import type { TrajectoryWindow } from './trajectoryWindow'
+import { useStoredState } from './useStoredState'
 
 /** The records a range covered when picked, and its edges from theirs. */
 interface Picked {
@@ -44,6 +52,8 @@ interface Picked {
  * toolbar, a timing overview, and a ledger of every record the task
  * produced.
  */
+const FOLD_BUTTONS: readonly FoldButton[] = ['turns', 'calls', 'subcalls']
+
 export function TrajectoryTab({
   events,
   onShowInConversation,
@@ -62,6 +72,15 @@ export function TrajectoryTab({
     [events, live],
   )
   const [folds, setFolds] = useState<Folds>(emptyFolds)
+  const [foldPrefs, setFoldPrefs] = useStoredState<FoldButton[]>(
+    'imbi.trajectory.folds',
+    [],
+    (v) =>
+      Array.isArray(v)
+        ? v.filter((b): b is FoldButton => FOLD_BUTTONS.includes(b))
+        : undefined,
+  )
+  const seen = useRef<Set<string>>(new Set())
   const [selection, setSelection] = useState<TrajectorySelection>(null)
   const [scrollTo, setScrollTo] = useState<null | { id: string }>(null)
   const [visible, setVisible] = useState<null | TrajectoryWindow>(null)
@@ -126,11 +145,41 @@ export function TrajectoryTab({
     }),
     [trajectory],
   )
+  const linked = /^#e(\d+)$/.exec(hash)?.[1]
+  const handled = useRef<null | { exact: boolean; id: string; seq: string }>(
+    null,
+  )
+  useLayoutEffect(() => {
+    let fresh = emptyFolds()
+    let any = false
+    for (const button of FOLD_BUTTONS) {
+      for (const k of keys[button]) {
+        const id = `${button}:${k}`
+        if (seen.current.has(id)) continue
+        seen.current.add(id)
+        if (!foldPrefs.includes(button)) continue
+        ;(fresh[button] as Set<number | string>).add(k)
+        any = true
+      }
+    }
+    if (!any) return
+    const target =
+      linked && handled.current?.seq === linked
+        ? byId.get(handled.current.id)
+        : undefined
+    if (target) fresh = unfoldFor(fresh, target, trajectory)
+    setFolds((prev) => {
+      const next = copyFolds(prev)
+      for (const button of FOLD_BUTTONS)
+        for (const k of fresh[button] as Set<number | string>)
+          (next[button] as Set<number | string>).add(k)
+      return next
+    })
+  }, [byId, foldPrefs, keys, linked, trajectory])
+
   const folded = Object.fromEntries(
     (['turns', 'calls', 'subcalls'] as const).map((button) => {
-      const set = folds[button] as Set<number | string>
-      const list = keys[button]
-      return [button, list.length ? list.every((k) => set.has(k)) : null]
+      return [button, keys[button].length ? foldPrefs.includes(button) : null]
     }),
   ) as Record<FoldButton, boolean | null>
 
@@ -151,10 +200,6 @@ export function TrajectoryTab({
     [trajectory],
   )
 
-  const linked = /^#e(\d+)$/.exec(hash)?.[1]
-  const handled = useRef<null | { exact: boolean; id: string; seq: string }>(
-    null,
-  )
   useEffect(() => {
     if (!linked) {
       handled.current = null
@@ -210,6 +255,11 @@ export function TrajectoryTab({
 
   const foldAll = (button: FoldButton) => {
     const all = folded[button] === true
+    setFoldPrefs(
+      all
+        ? foldPrefs.filter((b) => b !== button)
+        : [...new Set([...foldPrefs, button])],
+    )
     setFolds((prev) => {
       const next = copyFolds(prev)
       const set = next[button] as Set<number | string>

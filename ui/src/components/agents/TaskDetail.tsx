@@ -77,6 +77,7 @@ import { ChecksTab, Composer, InputRequiredTab } from './TaskTabs'
 import { ToolbarLead } from './TaskToolbar'
 import { buildTrajectory } from './trajectoryModel'
 import { TrajectoryTab } from './TrajectoryTab'
+import { useStoredState } from './useStoredState'
 
 /** A tab, or one view of the Activity tab: what the URL names. */
 type RouteKey = ActivityView | TabKey
@@ -114,12 +115,36 @@ export function TaskDetail({
   const live = !!task.data && task.data.status !== 'closed'
   const events = useAgentTaskEvents(orgSlug, shortId, live)
   const now = useNow(live)
+  const [lastTab, setLastTab] = useStoredState<RouteKey>(
+    'imbi.task.tab',
+    'overview',
+    (raw) => (isRouteKey(raw) ? raw : undefined),
+  )
+  const [lastView, setLastView] = useStoredState<ActivityView>(
+    'imbi.task.view',
+    'conversation',
+    (raw) => (isActivityView(raw) ? raw : undefined),
+  )
+  useEffect(() => {
+    const shown = legacyRoute(tab)
+    if (isRouteKey(shown)) setLastTab(shown)
+    if (isActivityView(shown)) setLastView(shown)
+  }, [setLastTab, setLastView, tab])
   const trajectoryCount = useMemo(
     () => buildTrajectory(events.data ?? [], false).records.length,
     [events.data],
   )
   useEffect(() => {
     const linked = /^#e\d+$/.test(hash)
+    if (tab === undefined) {
+      navigate(
+        linked
+          ? `${agentsPath('tasks', orgSlug, shortId, 'trajectory')}${hash}`
+          : agentsPath('tasks', orgSlug, shortId, lastTab),
+        { replace: true },
+      )
+      return
+    }
     const old =
       tab === 'log' ||
       (linked &&
@@ -129,7 +154,7 @@ export function TaskDetail({
       `${agentsPath('tasks', orgSlug, shortId, 'trajectory')}${linked ? hash : ''}`,
       { replace: true },
     )
-  }, [hash, navigate, orgSlug, shortId, tab])
+  }, [hash, lastTab, navigate, orgSlug, shortId, tab])
 
   if (task.isLoading) {
     return <p className="text-tertiary p-6 text-sm">Loading…</p>
@@ -164,13 +189,16 @@ export function TaskDetail({
     { key: 'related', label: 'Related tasks' },
     { key: 'projects', label: 'Associated projects' },
   ]
-  const wanted =
-    tab === 'actions' ? 'conversation' : tab === 'log' ? 'trajectory' : tab
-  const route: RouteKey = isRouteKey(wanted) ? wanted : 'overview'
+  const wanted = legacyRoute(tab)
+  const route: RouteKey = isRouteKey(wanted)
+    ? wanted
+    : tab === undefined
+      ? lastTab
+      : 'overview'
   const view: ActivityView | null = isActivityView(route)
     ? route
     : route === 'activity'
-      ? 'conversation'
+      ? lastView
       : null
   const current: TabKey = view ? 'activity' : (route as TabKey)
   const go = (key: RouteKey) =>
@@ -198,7 +226,7 @@ export function TaskDetail({
               x.key === 'input' && open > 0 && 'text-amber-text',
             )}
             key={x.key}
-            onClick={() => go(x.key === 'activity' ? 'conversation' : x.key)}
+            onClick={() => go(x.key === 'activity' ? lastView : x.key)}
             role="tab"
             type="button"
           >
@@ -278,6 +306,11 @@ function Fact({ children, icon }: { children: ReactNode; icon?: ReactNode }) {
 
 function isRouteKey(value: unknown): value is RouteKey {
   return TAB_KEYS.includes(value as TabKey) || isActivityView(value)
+}
+
+/** The route an old tab name now opens. */
+function legacyRoute(tab: string | undefined): string | undefined {
+  return tab === 'actions' ? 'conversation' : tab === 'log' ? 'trajectory' : tab
 }
 
 function OverviewTab({

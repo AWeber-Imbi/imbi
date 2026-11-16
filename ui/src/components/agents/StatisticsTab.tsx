@@ -48,6 +48,7 @@ import {
   ToolbarToggle,
 } from './TaskToolbar'
 import { buildTrajectory, formatDuration } from './trajectoryModel'
+import { useStoredState } from './useStoredState'
 
 const ANSWER_CAP = 16_000
 
@@ -124,8 +125,16 @@ export function StatisticsTab({
   onShowInConversation?: (seq: number) => void
   task: AgentTask
 }) {
-  const [basis, setBasis] = useState<ContextBasis>('latest')
-  const [delta, setDelta] = useState(false)
+  const [basis, setBasis] = useStoredState<ContextBasis>(
+    'imbi.statistics.basis',
+    'latest',
+    (v) => (v === 'latest' || v === 'cumulative' ? v : undefined),
+  )
+  const [delta, setDelta] = useStoredState(
+    'imbi.statistics.delta',
+    false,
+    (v) => (typeof v === 'boolean' ? v : undefined),
+  )
   const live = task.status !== 'closed'
   const trajectory = useMemo(
     () => buildTrajectory(events, live),

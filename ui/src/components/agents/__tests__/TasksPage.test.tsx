@@ -242,6 +242,72 @@ describe('Tasks', () => {
     )
   })
 
+  it('opens a task on the tab used last', async () => {
+    vi.mocked(window.localStorage.getItem).mockImplementation((key) =>
+      key === 'imbi.task.tab' ? '"statistics"' : null,
+    )
+    try {
+      renderAt('/agents/tasks/acme/T-3')
+      expect(
+        await screen.findByRole('tab', { name: /^Activity/, selected: true }),
+      ).toBeInTheDocument()
+      expect(screen.getByRole('radio', { name: 'Statistics' })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      )
+    } finally {
+      vi.mocked(window.localStorage.getItem).mockReturnValue(null)
+    }
+  })
+
+  it('names the remembered tab in the address', async () => {
+    vi.mocked(window.localStorage.getItem).mockImplementation((key) =>
+      key === 'imbi.task.tab' ? '"trajectory"' : null,
+    )
+    try {
+      renderAt('/agents/tasks/acme/T-3')
+      await waitFor(() =>
+        expect(window.location.pathname).toBe(
+          '/agents/tasks/acme/T-3/trajectory',
+        ),
+      )
+    } finally {
+      vi.mocked(window.localStorage.getItem).mockReturnValue(null)
+    }
+  })
+
+  it('sends an event link with no tab to the Trajectory', async () => {
+    renderAt('/agents/tasks/acme/T-3#e6')
+    await waitFor(() =>
+      expect(window.location.pathname).toBe(
+        '/agents/tasks/acme/T-3/trajectory',
+      ),
+    )
+    expect(window.location.hash).toBe('#e6')
+  })
+
+  it('remembers the view an old Actions link opens', async () => {
+    renderAt('/agents/tasks/acme/T-3/actions')
+    await screen.findByRole('tab', { name: /^Activity/, selected: true })
+    expect(window.localStorage.setItem).toHaveBeenCalledWith(
+      'imbi.task.tab',
+      '"conversation"',
+    )
+    expect(window.localStorage.setItem).toHaveBeenCalledWith(
+      'imbi.task.view',
+      '"conversation"',
+    )
+  })
+
+  it('remembers the tab a task was opened on', async () => {
+    renderAt('/agents/tasks/acme/T-3/trajectory')
+    await screen.findByRole('tab', { name: /^Activity/, selected: true })
+    expect(window.localStorage.setItem).toHaveBeenCalledWith(
+      'imbi.task.tab',
+      '"trajectory"',
+    )
+  })
+
   it('does not open a task in an org that is not yours', async () => {
     renderAt('/agents/tasks/zeta/T-3')
     expect(
@@ -638,6 +704,23 @@ describe('Tasks', () => {
       )
     })
 
+    it('opens Activity on the view used last', async () => {
+      vi.mocked(window.localStorage.getItem).mockImplementation((key) =>
+        key === 'imbi.task.view' ? '"statistics"' : null,
+      )
+      try {
+        renderAt('/agents/tasks/acme/T-3/overview')
+        fireEvent.click(await screen.findByRole('tab', { name: /^Activity/ }))
+        await waitFor(() =>
+          expect(window.location.pathname).toBe(
+            '/agents/tasks/acme/T-3/statistics',
+          ),
+        )
+      } finally {
+        vi.mocked(window.localStorage.getItem).mockReturnValue(null)
+      }
+    })
+
     it('switches the Activity view from the toolbar', async () => {
       renderAt('/agents/tasks/acme/T-3/conversation')
       fireEvent.click(await screen.findByRole('radio', { name: /^Trajectory/ }))
@@ -645,6 +728,10 @@ describe('Tasks', () => {
         expect(window.location.pathname).toBe(
           '/agents/tasks/acme/T-3/trajectory',
         ),
+      )
+      expect(window.localStorage.setItem).toHaveBeenCalledWith(
+        'imbi.task.view',
+        '"trajectory"',
       )
     })
   })
@@ -898,7 +985,7 @@ describe('Tasks', () => {
       }),
     )
     await waitFor(() =>
-      expect(window.location.pathname).toBe('/agents/tasks/acme/T-9'),
+      expect(window.location.pathname).toBe('/agents/tasks/acme/T-9/overview'),
     )
   })
 })

@@ -1,5 +1,5 @@
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { act, fireEvent, render, screen, waitFor, within } from '@/test/utils'
 import type { AgentTask } from '@/types'
@@ -1329,5 +1329,78 @@ describe('inspector helpers', () => {
   it('formats the start time with milliseconds', () => {
     const ms = new Date(2026, 9, 8, 12, 0, 5, 250).getTime()
     expect(startedText(ms)).toBe('2026-10-08 12:00:05.250')
+  })
+})
+
+describe('TrajectoryTab folds across tasks', () => {
+  afterEach(() => {
+    vi.mocked(window.localStorage.getItem).mockReturnValue(null)
+  })
+
+  it('opens a task with the turns folded when that was the last choice', () => {
+    vi.mocked(window.localStorage.getItem).mockImplementation((key: string) =>
+      key === 'imbi.trajectory.folds' ? '["turns"]' : null,
+    )
+    renderTab()
+    expect(rows()).toHaveLength(4)
+    expect(
+      screen.getByRole('button', { name: 'Expand turns' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('keeps a linked record in view when its turn becomes foldable', () => {
+    vi.mocked(window.localStorage.getItem).mockImplementation((key: string) =>
+      key === 'imbi.trajectory.folds' ? '["turns"]' : null,
+    )
+    window.history.replaceState(
+      null,
+      '',
+      '/agents/tasks/acme/T-1/trajectory#e2',
+    )
+    const t = task({ status: 'running' }) as unknown as AgentTask
+    const view = render(
+      <div className="flex h-150 flex-col">
+        <TrajectoryTab events={LOG.slice(0, 2)} task={t} />
+      </div>,
+    )
+    const selected = () =>
+      rows().filter((r) => r.getAttribute('aria-selected') === 'true')
+    expect(selected()).toHaveLength(1)
+    view.rerender(
+      <div className="flex h-150 flex-col">
+        <TrajectoryTab events={LOG.slice(0, 4)} task={t} />
+      </div>,
+    )
+    expect(selected()).toHaveLength(1)
+  })
+
+  it('clears a remembered fold with one click after a row was unfolded', async () => {
+    vi.mocked(window.localStorage.getItem).mockImplementation((key: string) =>
+      key === 'imbi.trajectory.folds' ? '["turns"]' : null,
+    )
+    renderTab()
+    expect(rows()).toHaveLength(4)
+    await userEvent.click(rows()[1])
+    expect(rows().length).toBeGreaterThan(4)
+    const button = screen.getByRole('button', { name: 'Expand turns' })
+    expect(button).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(button)
+    expect(vi.mocked(window.localStorage.setItem)).toHaveBeenLastCalledWith(
+      'imbi.trajectory.folds',
+      '[]',
+    )
+  })
+
+  it('remembers a fold button for the next task', async () => {
+    renderTab()
+    const setItem = vi.mocked(window.localStorage.setItem)
+    setItem.mockClear()
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Collapse turns' }),
+    )
+    expect(setItem).toHaveBeenCalledExactlyOnceWith(
+      'imbi.trajectory.folds',
+      '["turns"]',
+    )
   })
 })
