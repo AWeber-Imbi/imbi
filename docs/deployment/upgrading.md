@@ -74,7 +74,7 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
-## Next release
+## 2.51.0
 
 1. A task whose agent stops without calling `report_outcome` now fails
    with `failed_external` and the reason `no_outcome_reported`. Before,
