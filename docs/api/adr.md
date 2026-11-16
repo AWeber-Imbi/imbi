@@ -523,6 +523,24 @@ An alternative to ADR 0024 and ADR 0025. Extends agent tasks so a task is assign
 
 ---
 
+#### [ADR 0029: Automations](adr/0029-automations.md)
+
+*Date: 2026-11-16 | Status: Accepted*
+
+Runs `imbi-automations` definitions on the server. An automation is a new entity whose definition is a `workflow.toml` directory; a run selects projects as the CLI does and makes one agent task for each.
+
+**Key Decisions:**
+
+- The engine code of `imbi-automations` moves into this repository, and the harness runs it as a second engine (`AutomationRun`, derived from `TaskRun`); the CLI becomes a client in `imbi-cli`
+- The scope of behavior is that of the CLI: all action types, all stages, and a push with no pull request
+- Definitions are stored in Postgres as validated JSON, with their files; a sourced version keeps its files in git at a pinned SHA
+- A planner task selects the projects; each selected project gets a project run, which is an agent task of the origin kind `automation_run`
+- The engine holds no token: a broker in the runner does each GitHub, Imbi, Jira, and model operation inside the scope of the task
+- A new token purpose, `automation_write`, adds `workflows: write`
+- A sourced automation is read-only, and a person activates each new version after a review of the diff
+
+---
+
 ## ADR Format
 
 Our ADRs follow this structure:
