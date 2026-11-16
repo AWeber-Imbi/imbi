@@ -12,7 +12,9 @@ Each payload has ``input_seq``, the seq of the newest person input the
 harness had when it recorded the event, once it has one: the session's
 first task seq, then each ``request.resolved`` it reads. An event sent
 late, after a person answers, still has the input of the turn it was
-done in. Each payload is redacted before it is queued. A ``turn`` or
+done in. Each payload is redacted before it is queued. Every event from
+an assistant message has its ``message_id``, which the usage report of
+that model call also has. A ``turn`` or
 ``tool.called`` payload over :data:`PAYLOAD_LIMIT` is split into
 continuation events: the same ``call_id``, with ``part`` and ``parts``.
 The first part has every field; each part has a piece of the large
@@ -194,9 +196,11 @@ class Recorder:
         ) = None
         #: Tool use id to the tool policy decision (plan section 6.5).
         self.decisions: dict[str, dict[str, typing.Any]] = {}
-        #: Tool use id to (name, input, start, parent call id).
+        #: Tool use id to (name, input, start, parent call id, message
+        #: id).
         self.calls: dict[
-            str, tuple[str, dict[str, typing.Any], float, str | None]
+            str,
+            tuple[str, dict[str, typing.Any], float, str | None, str | None],
         ] = {}
         #: The tool use ids of the mutating calls that the policy did
         #: not refuse.
@@ -256,6 +260,7 @@ class Recorder:
 
     def _assistant(self, message: sdk.AssistantMessage) -> None:
         parent = message.parent_tool_use_id
+        message_id = message.message_id
         texts: list[str] = []
         for block in message.content:
             if isinstance(block, sdk.TextBlock):
@@ -263,7 +268,11 @@ class Recorder:
             elif isinstance(block, sdk.ThinkingBlock) and block.thinking:
                 self._add(
                     'turn',
-                    {'kind': 'thinking', 'body': block.thinking},
+                    {
+                        'kind': 'thinking',
+                        'body': block.thinking,
+                        'message_id': message_id,
+                    },
                     parent,
                 )
             elif isinstance(block, sdk.ToolUseBlock):
@@ -272,21 +281,27 @@ class Recorder:
                     block.input,
                     time.monotonic(),
                     parent,
+                    message_id,
                 )
                 if block.name == 'TodoWrite':
-                    self._todos(block.input, parent)
+                    self._todos(block.input, parent, message_id)
         if texts:
             self._add(
                 'turn',
                 {
                     'kind': 'text',
                     'body': '\n'.join(texts),
-                    'message_id': message.message_id,
+                    'message_id': message_id,
                 },
                 parent,
             )
 
-    def _todos(self, raw: dict[str, typing.Any], parent: str | None) -> None:
+    def _todos(
+        self,
+        raw: dict[str, typing.Any],
+        parent: str | None,
+        message_id: str | None,
+    ) -> None:
         items = typing.cast(
             'list[dict[str, typing.Any]]', raw.get('todos') or []
         )
@@ -298,11 +313,15 @@ class Recorder:
             }
             for item in items
         ]
-        self._add('todos.updated', {'todos': todos}, parent)
+        self._add(
+            'todos.updated',
+            {'todos': todos, 'message_id': message_id},
+            parent,
+        )
 
     def _result(self, block: sdk.ToolResultBlock) -> None:
-        name, arguments, started, parent = self.calls.pop(
-            block.tool_use_id, ('unknown', {}, time.monotonic(), None)
+        name, arguments, started, parent, message_id = self.calls.pop(
+            block.tool_use_id, ('unknown', {}, time.monotonic(), None, None)
         )
         decision = self.decisions.pop(block.tool_use_id, None)
         mutating = name in MUTATING or name in self.writes
@@ -323,6 +342,7 @@ class Recorder:
                 'result': _text(block.content),
                 'is_error': bool(block.is_error),
                 'duration_ms': int((time.monotonic() - started) * 1000),
+                **({'message_id': message_id} if message_id else {}),
                 **({'policy': decision} if decision is not None else {}),
                 **(
                     {'relay': audit}

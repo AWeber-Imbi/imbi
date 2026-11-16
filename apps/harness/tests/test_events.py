@@ -171,6 +171,22 @@ class RecorderTestCase(unittest.TestCase):
         self.assertEqual(found[4]['payload']['result'], '')
         self.assertNotIn('delivered-secret-value', json.dumps(found))
         self.assertEqual({e['actor_kind'] for e in found}, {'agent'})
+        self.assertEqual(
+            [e['payload'].get('message_id') for e in found],
+            ['msg_1', 'msg_1', 'msg_1', 'msg_1', 'msg_1'],
+        )
+
+    def test_unknown_message_id_is_left_off_the_call(self) -> None:
+        self.recorder.message(
+            sdk.AssistantMessage(
+                content=[sdk.ToolUseBlock('t1', 'Read', {})], model='m'
+            )
+        )
+        self.recorder.message(
+            sdk.UserMessage(content=[sdk.ToolResultBlock('t1', 'r', False)])
+        )
+        (call,) = self.recorder.take()
+        self.assertNotIn('message_id', call['payload'])
 
     def test_subagent_calls_have_a_parent(self) -> None:
         self.recorder.message(
@@ -178,6 +194,7 @@ class RecorderTestCase(unittest.TestCase):
                 content=[sdk.ToolUseBlock('t9', 'Read', {})],
                 model='m',
                 parent_tool_use_id='t1',
+                message_id='msg_sub',
             )
         )
         self.recorder.message(
@@ -189,6 +206,7 @@ class RecorderTestCase(unittest.TestCase):
         (call,) = self.recorder.take()
         self.assertEqual(call['actor_kind'], 'subagent')
         self.assertEqual(call['payload']['parent_call_id'], 't1')
+        self.assertEqual(call['payload']['message_id'], 'msg_sub')
         self.assertTrue(call['payload']['is_error'])
 
     def test_events_have_the_newest_input_seq(self) -> None:

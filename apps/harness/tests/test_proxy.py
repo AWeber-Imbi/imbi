@@ -1,8 +1,12 @@
+import asyncio
 import concurrent.futures
 import datetime
 import http.client
 import http.server
 import json
+import pathlib
+import secrets
+import tempfile
 import threading
 import time
 import typing
@@ -10,6 +14,8 @@ import unittest
 import unittest.mock
 import urllib.error
 import urllib.request
+
+import claude_agent_sdk as sdk
 
 from imbi.harness import proxy
 
@@ -204,6 +210,7 @@ class _Model(http.server.BaseHTTPRequestHandler):
                 {
                     'type': 'message_start',
                     'message': {
+                        'id': 'msg_stream',
                         'model': 'claude-x-20260101',
                         'usage': {
                             'input_tokens': 100,
@@ -221,6 +228,7 @@ class _Model(http.server.BaseHTTPRequestHandler):
             kind = 'application/json'
             data = json.dumps(
                 {
+                    'id': 'msg_json',
                     'model': 'claude-y',
                     'usage': {'input_tokens': 5, 'output_tokens': 6},
                 }
@@ -240,14 +248,14 @@ class MeterTestCase(unittest.TestCase):
         self.addCleanup(upstream.shutdown)
         host, port = upstream.server_address[:2]
         self.upstream = f'http://{host!s}:{port}'
-        self.metered: list[tuple[str, dict[str, typing.Any]]] = []
+        self.metered: list[tuple[str, dict[str, typing.Any], str | None]] = []
         self.budget = True
 
     def start(self, **kwargs: typing.Any) -> str:
         return proxy.start(
             self.upstream,
             kwargs.pop('key', lambda: REAL),
-            meter=lambda model, usage: self.metered.append((model, usage)),
+            meter=lambda *call: self.metered.append(call),
             allowed=lambda: self.budget,
             **kwargs,
         )
@@ -279,15 +287,18 @@ class MeterTestCase(unittest.TestCase):
                         'cache_read_input_tokens': 7,
                         'output_tokens': 42,
                     },
+                    'msg_stream',
                 )
             ],
         )
 
     def test_concurrent_calls_overshoot_by_one_call_at_most(self) -> None:
-        def meter(model: str, usage: dict[str, typing.Any]) -> None:
+        def meter(
+            model: str, usage: dict[str, typing.Any], message_id: str | None
+        ) -> None:
             # A slow usage report that spends the budget.
             time.sleep(0.3)
-            self.metered.append((model, usage))
+            self.metered.append((model, usage, message_id))
             self.budget = False
 
         url = proxy.start(
@@ -308,7 +319,13 @@ class MeterTestCase(unittest.TestCase):
         self.post(self.start(), {'model': 'm'})
         self.assertEqual(
             self.metered,
-            [('claude-y', {'input_tokens': 5, 'output_tokens': 6})],
+            [
+                (
+                    'claude-y',
+                    {'input_tokens': 5, 'output_tokens': 6},
+                    'msg_json',
+                )
+            ],
         )
 
     def test_count_tokens_is_not_metered(self) -> None:
@@ -404,7 +421,142 @@ class MeterTestCase(unittest.TestCase):
         self.assertEqual(self.metered, [])
 
 
+class _Replies(http.server.BaseHTTPRequestHandler):
+    """A Messages API whose replies each have a new message id and a
+    text that names it."""
+
+    served: typing.ClassVar[list[str]] = []
+
+    def log_message(self, format: str, *args: typing.Any) -> None:
+        pass
+
+    def do_POST(self) -> None:
+        body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+        if self.path.startswith('/v1/messages/count_tokens'):
+            data, kind = b'{"input_tokens": 3}', 'application/json'
+        else:
+            message_id = f'msg_{secrets.token_hex(8)}'
+            self.served.append(message_id)
+            data, kind = _reply(body, message_id)
+        self.send_response(200)
+        self.send_header('Content-Type', kind)
+        self.send_header('Content-Length', str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+
+def _reply(body: dict[str, typing.Any], message_id: str) -> tuple[bytes, str]:
+    message = {
+        'id': message_id,
+        'type': 'message',
+        'role': 'assistant',
+        'model': body.get('model') or 'claude-x',
+        'content': [],
+        'stop_reason': None,
+        'stop_sequence': None,
+        'usage': {'input_tokens': 10, 'output_tokens': 1},
+    }
+    text = f'reply {message_id}'
+    if not body.get('stream'):
+        return json.dumps(
+            {
+                **message,
+                'content': [{'type': 'text', 'text': text}],
+                'stop_reason': 'end_turn',
+            }
+        ).encode(), 'application/json'
+    return _sse(
+        {'type': 'message_start', 'message': message},
+        {
+            'type': 'content_block_start',
+            'index': 0,
+            'content_block': {'type': 'text', 'text': ''},
+        },
+        {
+            'type': 'content_block_delta',
+            'index': 0,
+            'delta': {'type': 'text_delta', 'text': text},
+        },
+        {'type': 'content_block_stop', 'index': 0},
+        {
+            'type': 'message_delta',
+            'delta': {'stop_reason': 'end_turn', 'stop_sequence': None},
+            'usage': {'output_tokens': 5},
+        },
+        {'type': 'message_stop'},
+    ), 'text/event-stream'
+
+
+@unittest.skipUnless(
+    (pathlib.Path(sdk.__file__).parent / '_bundled' / 'claude').exists(),
+    'the SDK wheel has no bundled CLI',
+)
+class MessageIdTestCase(unittest.IsolatedAsyncioTestCase):
+    """The real CLI and SDK, through the proxy, to a fake upstream."""
+
+    async def test_sdk_message_id_is_the_api_message_id(self) -> None:
+        _Replies.served = []
+        upstream = http.server.ThreadingHTTPServer(('127.0.0.1', 0), _Replies)
+        threading.Thread(target=upstream.serve_forever, daemon=True).start()
+        self.addCleanup(upstream.shutdown)
+        host, port = upstream.server_address[:2]
+        metered: list[str | None] = []
+        url = proxy.start(
+            f'http://{host!s}:{port}',
+            lambda: REAL,
+            meter=lambda _model, _usage, message_id: metered.append(
+                message_id
+            ),
+        )
+        home = tempfile.TemporaryDirectory()
+        self.addCleanup(home.cleanup)
+        options = sdk.ClaudeAgentOptions(
+            env={
+                'ANTHROPIC_BASE_URL': url,
+                'ANTHROPIC_API_KEY': 'placeholder',
+                'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': '1',
+                'HOME': home.name,
+                'CLAUDE_CONFIG_DIR': f'{home.name}/.claude',
+            },
+            cwd=home.name,
+            max_turns=1,
+            tools=[],
+        )
+        replies: list[sdk.AssistantMessage] = []
+        async with asyncio.timeout(120):
+            async for message in sdk.query(prompt='hi', options=options):
+                if isinstance(message, sdk.AssistantMessage):
+                    replies.append(message)
+        self.assertTrue(replies)
+        for reply in replies:
+            (block,) = reply.content
+            assert isinstance(block, sdk.TextBlock)
+            self.assertIn(reply.message_id, _Replies.served)
+            self.assertEqual(block.text, f'reply {reply.message_id}')
+            self.assertIn(reply.message_id, metered)
+        self.assertEqual(metered, _Replies.served)
+
+
 class UsageTestCase(unittest.TestCase):
+    def test_message_id_from_the_stream(self) -> None:
+        usage = proxy._Usage(b'{}', True)
+        usage.feed(
+            _sse(
+                {'type': 'message_start', 'message': {'id': 'msg_1'}},
+                {'type': 'message_delta', 'usage': {'output_tokens': 1}},
+            )
+        )
+        usage.finish()
+        self.assertEqual(usage.message_id, 'msg_1')
+
+    def test_no_message_id(self) -> None:
+        for raw in (b'{}', b'{"id": ""}', b'{"id": 5}'):
+            with self.subTest(raw=raw):
+                usage = proxy._Usage(b'{}', False)
+                usage.feed(raw)
+                usage.finish()
+                self.assertIsNone(usage.message_id)
+
     def test_bad_request_body_and_bad_events(self) -> None:
         usage = proxy._Usage(b'not json', True)
         usage.feed(b'data: {broken\n\ndata: [1]\n\n')

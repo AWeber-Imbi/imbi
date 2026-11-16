@@ -65,6 +65,9 @@ SESSION_HEARTBEAT = 10
 #: The largest CLI message line that the SDK reads.
 SDK_BUFFER = 64 * 1024 * 1024
 RESOLUTION_TTL = 300
+#: The longest reply id the API takes on a usage report; a longer one
+#: is left out, so the report and its cost still count.
+MESSAGE_ID_MAX = 200
 #: The longest refresh lead of a model access token (WIF plan 4.6).
 KEY_REFRESH_LEAD = 300.0
 #: The longest wait between two failed refreshes.
@@ -962,11 +965,15 @@ class TaskRun:
             self.remaining is None or self.remaining > 0
         )
 
-    def meter(self, model: str, usage: Body) -> None:
+    def meter(
+        self, model: str, usage: Body, message_id: str | None = None
+    ) -> None:
         """Report one model call (proxy thread). Wait for the reply, so
         the next call sees the new budget."""
         self._wait_on_loop(
-            self.report(model, usage), 'Usage report', cancel=False
+            self.report(model, usage, message_id),
+            'Usage report',
+            cancel=False,
         )
 
     def _wait_on_loop(
@@ -989,9 +996,13 @@ class TaskRun:
                 future.cancel()
             LOGGER.warning('%s of %s failed', what, self.api.short_id)
 
-    async def report(self, model: str, usage: Body) -> None:
+    async def report(
+        self, model: str, usage: Body, message_id: str | None = None
+    ) -> None:
         """Send the ADR 0020 usage report. A missing cache field is 0;
-        no usage at all is an unmeasured report."""
+        no usage at all is an unmeasured report. ``message_id`` is the
+        model's id for the reply, which the task events of that reply
+        also carry."""
         measured = bool(usage)
 
         def count(name: str) -> int | None:
@@ -1009,6 +1020,8 @@ class TaskRun:
             'cache_write_tokens': count('cache_creation_input_tokens'),
             'session_id': self.session_id,
         }
+        if message_id and len(message_id) <= MESSAGE_ID_MAX:
+            body['message_id'] = message_id
         for attempt in range(3):
             try:
                 reply = await self.api.report_usage(body)

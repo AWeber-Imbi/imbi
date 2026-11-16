@@ -115,7 +115,7 @@ export function ToolbarSearch({
       {value && (
         <button
           aria-label="Clear search"
-          className="text-tertiary hover:bg-tertiary hover:text-primary flex size-6 shrink-0 items-center justify-center rounded-md"
+          className="text-tertiary hover:text-primary hover:bg-tertiary flex size-6 shrink-0 items-center justify-center rounded-md"
           onClick={() => onChange('')}
           type="button"
         >

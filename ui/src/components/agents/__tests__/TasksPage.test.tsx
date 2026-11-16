@@ -469,22 +469,166 @@ describe('Tasks', () => {
     ).toHaveAttribute('aria-selected', 'true')
   })
 
-  describe('Activity', () => {
-    it('shows the conversation on the Activity tab', async () => {
-      renderAt('/agents/tasks/acme/T-3/activity')
-      expect(
-        await screen.findByRole('tab', { name: 'Activity', selected: true }),
-      ).toBeInTheDocument()
-      expect(
-        screen.getByRole('toolbar', { name: 'Conversation' }),
-      ).toBeInTheDocument()
+  describe('Trajectory', () => {
+    const log = [
+      ...LOG,
+      event(4, 'usage.reported', { tokens_in: 3, tokens_out: 40 }),
+      event(5, 'turn', { body: 'Look first.', kind: 'thinking' }),
+      event(6, 'tool.called', {
+        arguments: { command: 'uv run pytest -q' },
+        call_id: 'bash-1',
+        duration_ms: 900,
+        is_error: true,
+        result: '1 failed, 3 passed',
+        tool: 'Bash',
+      }),
+      event(
+        7,
+        'tool.called',
+        { call_id: 'grep-1', parent_call_id: 'task-1', tool: 'Grep' },
+        { actor_kind: 'subagent' },
+      ),
+      event(8, 'tool.called', {
+        arguments: { description: 'Find calls', subagent_type: 'search' },
+        call_id: 'task-1',
+        result: 'Two call sites.',
+        tool: 'Task',
+      }),
+      event(9, 'phase.changed', { phase: 'fix' }),
+    ]
+
+    beforeEach(() => {
+      vi.mocked(endpoints.listAgentTaskEvents).mockImplementation(
+        async (_org, _id, afterSeq) => log.filter((e) => e.seq > afterSeq),
+      )
     })
 
-    it('opens an old Actions taken link on the Activity tab', async () => {
+    async function ledgerRows() {
+      const grid = await screen.findByRole('grid', { name: 'Trajectory' })
+      await within(grid).findByText('Phase fix')
+      return within(grid).getAllByRole('row')
+    }
+
+    it('shows every record with its DSH kind', async () => {
+      renderAt('/agents/tasks/acme/T-3/trajectory')
+      const rows = await ledgerRows()
+      expect(rows.map((r) => r.dataset.kind)).toEqual([
+        'user',
+        'assistant',
+        'context',
+        'assistant',
+        'tool',
+        'tool',
+        'subtool',
+        'system',
+      ])
+      expect(within(rows[1]).getByText('I read the task.')).toBeInTheDocument()
+      expect(
+        within(rows[4]).getByText('1 failed, 3 passed'),
+      ).toBeInTheDocument()
+      expect(screen.getByRole('radio', { name: 'Trajectory' })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      )
+      expect(
+        screen.getByRole('tab', { name: `Activity${rows.length}` }),
+      ).toHaveAttribute('aria-selected', 'true')
+    })
+
+    it('searches the trajectory', async () => {
+      renderAt('/agents/tasks/acme/T-3/trajectory')
+      await ledgerRows()
+      fireEvent.change(
+        screen.getByRole('searchbox', { name: 'Search trajectory' }),
+        { target: { value: 'pytest' } },
+      )
+      const grid = screen.getByRole('grid', { name: 'Trajectory' })
+      expect(within(grid).getAllByRole('row')).toHaveLength(1)
+    })
+
+    it('selects the record of a #e link and opens the inspector', async () => {
+      renderAt('/agents/tasks/acme/T-3/trajectory#e6')
+      const rows = await ledgerRows()
+      await waitFor(() =>
+        expect(rows[4]).toHaveAttribute('aria-selected', 'true'),
+      )
+      expect(
+        screen.getByRole('complementary', { name: 'Inspector' }),
+      ).toHaveTextContent('Failed')
+    })
+
+    it('sends an old Log link to the Trajectory', async () => {
+      renderAt('/agents/tasks/acme/T-3/log#e6')
+      expect(
+        await screen.findByRole('radio', { name: /^Trajectory/ }),
+      ).toHaveAttribute('aria-checked', 'true')
+      await waitFor(() =>
+        expect(window.location.pathname).toBe(
+          '/agents/tasks/acme/T-3/trajectory',
+        ),
+      )
+      expect(window.location.hash).toBe('#e6')
+    })
+
+    it('sends an old Conversation event link to the Trajectory', async () => {
+      renderAt('/agents/tasks/acme/T-3/conversation#e2')
+      await waitFor(() =>
+        expect(window.location.pathname).toBe(
+          '/agents/tasks/acme/T-3/trajectory',
+        ),
+      )
+      expect(window.location.hash).toBe('#e2')
+    })
+
+    it('sends an Activity event link to the Trajectory', async () => {
+      renderAt('/agents/tasks/acme/T-3/activity#e6')
+      await waitFor(() =>
+        expect(window.location.pathname).toBe(
+          '/agents/tasks/acme/T-3/trajectory',
+        ),
+      )
+      expect(window.location.hash).toBe('#e6')
+      const rows = await ledgerRows()
+      await waitFor(() =>
+        expect(rows[4]).toHaveAttribute('aria-selected', 'true'),
+      )
+    })
+
+    it('opens an old Actions taken link on the Conversation', async () => {
       renderAt('/agents/tasks/acme/T-3/actions')
       expect(
-        await screen.findByRole('tab', { name: 'Activity', selected: true }),
-      ).toBeInTheDocument()
+        await screen.findByRole('radio', { name: /^Conversation/ }),
+      ).toHaveAttribute('aria-checked', 'true')
+    })
+
+    it('shows a Trajectory event in the Conversation', async () => {
+      renderAt('/agents/tasks/acme/T-3/trajectory#e6')
+      const rows = await ledgerRows()
+      await waitFor(() =>
+        expect(rows[4]).toHaveAttribute('aria-selected', 'true'),
+      )
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Show in conversation' }),
+      )
+      await waitFor(() =>
+        expect(window.location.pathname).toBe(
+          '/agents/tasks/acme/T-3/conversation',
+        ),
+      )
+      expect(window.location.hash).toBe('')
+      await waitFor(() =>
+        expect(document.querySelector('[data-flash]')).toBeInTheDocument(),
+      )
+    })
+
+    it('switches the Activity view from the toolbar', async () => {
+      renderAt('/agents/tasks/acme/T-3/conversation')
+      fireEvent.click(await screen.findByRole('radio', { name: /^Trajectory/ }))
+      await waitFor(() =>
+        expect(window.location.pathname).toBe(
+          '/agents/tasks/acme/T-3/trajectory',
+        ),
+      )
     })
   })
 

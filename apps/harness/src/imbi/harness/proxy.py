@@ -15,10 +15,10 @@ key opens only these routes.
 There is one proxy for each task. For a ``POST /v1/messages`` it reads
 ``usage`` from the response (the ``message_start`` and
 ``message_delta`` events of a stream, or the JSON body) and gives the
-model and the counts to ``meter`` before the response ends, so the
-next call sees the new budget. When ``allowed`` returns false (the
-budget is spent), it refuses a new call with no upstream call. The
-overshoot is one model call (ADR 0020).
+model, the counts, and the message id to ``meter`` before the response
+ends, so the next call sees the new budget. When ``allowed`` returns
+false (the budget is spent), it refuses a new call with no upstream
+call. The overshoot is one model call (ADR 0020).
 
 The credential comes from ``key`` on each call, so a refresh replaces
 it and a call in progress keeps the old one. A vendor access token
@@ -37,9 +37,10 @@ import threading
 import typing
 import urllib.parse
 
-#: ``meter(model, usage)``: the model id and the ``usage`` fields of one
-#: call; ``usage`` is empty when the response had none.
-type Meter = typing.Callable[[str, dict[str, typing.Any]], None]
+#: ``meter(model, usage, message_id)``: the model id, the ``usage``
+#: fields, and the message id of one call. ``usage`` is empty and
+#: ``message_id`` is ``None`` when the response had none.
+type Meter = typing.Callable[[str, dict[str, typing.Any], str | None], None]
 
 
 class Credential(typing.NamedTuple):
@@ -102,6 +103,7 @@ class _Usage:
 
     def __init__(self, request: bytes, stream: bool) -> None:
         self.model = ''
+        self.message_id: str | None = None
         self.counts: dict[str, typing.Any] = {}
         self.stream = stream
         self.buffer = b''
@@ -142,6 +144,8 @@ class _Usage:
 
     def _message(self, message: dict[str, typing.Any]) -> None:
         self.model = str(message.get('model') or self.model)
+        if isinstance(message_id := message.get('id'), str) and message_id:
+            self.message_id = message_id
         self._add(message.get('usage'))
 
     def _add(self, usage: typing.Any) -> None:
@@ -298,7 +302,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                 self.wfile.flush()
             if metered and response.status == http.client.OK and server.meter:
                 usage.finish()
-                server.meter(usage.model, usage.counts)
+                server.meter(usage.model, usage.counts, usage.message_id)
             self.wfile.write(b'0\r\n\r\n')
         finally:
             upstream.close()

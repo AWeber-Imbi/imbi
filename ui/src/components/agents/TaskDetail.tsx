@@ -1,6 +1,6 @@
-import { type ReactNode, useEffect, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -43,10 +43,16 @@ import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
 import type { AgentTask, AgentTaskEvent } from '@/types'
 
+import {
+  type ActivityView,
+  ActivityViewSwitch,
+  isActivityView,
+} from './activityView'
 import { formatMoney } from './agentDraft'
 import { useAgentList } from './agentQueries'
 import { agentsPath } from './agentsNav'
 import { ConversationTab } from './ConversationTab'
+import type { RevealState } from './conversationTurns'
 import {
   checksFrom,
   formatElapsed,
@@ -67,9 +73,12 @@ import {
 import { AssociatedProjectsTab, RelatedTasksTab } from './TaskRelations'
 import { TaskSearchProvider } from './taskSearch'
 import { ChecksTab, Composer, InputRequiredTab } from './TaskTabs'
+import { ToolbarLead } from './TaskToolbar'
+import { buildTrajectory } from './trajectoryModel'
+import { TrajectoryTab } from './TrajectoryTab'
 
-/** A tab, or the Conversation view of the Activity tab: what the URL names. */
-type RouteKey = 'conversation' | TabKey
+/** A tab, or one view of the Activity tab: what the URL names. */
+type RouteKey = ActivityView | TabKey
 
 type TabKey =
   | 'activity'
@@ -99,10 +108,27 @@ export function TaskDetail({
   tab?: string
 }) {
   const navigate = useNavigate()
+  const { hash } = useLocation()
   const task = useAgentTask(orgSlug, shortId)
   const live = !!task.data && task.data.status !== 'closed'
   const events = useAgentTaskEvents(orgSlug, shortId, live)
   const now = useNow(live)
+  const trajectoryCount = useMemo(
+    () => buildTrajectory(events.data ?? [], false).records.length,
+    [events.data],
+  )
+  useEffect(() => {
+    const linked = /^#e\d+$/.test(hash)
+    const old =
+      tab === 'log' ||
+      (linked &&
+        (tab === 'activity' || tab === 'conversation' || tab === 'actions'))
+    if (!old) return
+    navigate(
+      `${agentsPath('tasks', orgSlug, shortId, 'trajectory')}${linked ? hash : ''}`,
+      { replace: true },
+    )
+  }, [hash, navigate, orgSlug, shortId, tab])
 
   if (task.isLoading) {
     return <p className="text-tertiary p-6 text-sm">Loading…</p>
@@ -128,7 +154,7 @@ export function TaskDetail({
   const tabs: { count?: number | string; key: TabKey; label: string }[] = [
     { key: 'overview', label: 'Overview' },
     { count: open, key: 'input', label: 'Input required' },
-    { key: 'activity', label: 'Activity' },
+    { count: trajectoryCount, key: 'activity', label: 'Activity' },
     {
       count: failing ? `${failing} failing` : undefined,
       key: 'checks',
@@ -137,11 +163,21 @@ export function TaskDetail({
     { key: 'related', label: 'Related tasks' },
     { key: 'projects', label: 'Associated projects' },
   ]
-  const wanted = tab === 'actions' || tab === 'log' ? 'conversation' : tab
+  const wanted =
+    tab === 'actions' ? 'conversation' : tab === 'log' ? 'trajectory' : tab
   const route: RouteKey = isRouteKey(wanted) ? wanted : 'overview'
-  const current: TabKey = route === 'conversation' ? 'activity' : route
+  const view: ActivityView | null = isActivityView(route)
+    ? route
+    : route === 'activity'
+      ? 'conversation'
+      : null
+  const current: TabKey = view ? 'activity' : (route as TabKey)
   const go = (key: RouteKey) =>
     navigate(agentsPath('tasks', orgSlug, shortId, key))
+  const showInConversation = (seq: number) =>
+    navigate(agentsPath('tasks', orgSlug, shortId, 'conversation'), {
+      state: { revealSeq: seq } satisfies RevealState,
+    })
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -180,34 +216,44 @@ export function TaskDetail({
         </p>
       )}
       <TaskSearchProvider key={t.id}>
-        {current === 'activity' ? (
-          <ConversationTab
-            events={log}
-            orgSlug={orgSlug}
-            requests={requests}
-            task={t}
-          />
-        ) : (
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {current === 'overview' && (
-              <OverviewTab end={end} events={log} task={t} />
-            )}
-            {current === 'input' && (
-              <InputRequiredTab
-                orgSlug={orgSlug}
-                requests={requests}
-                task={t}
-              />
-            )}
-            {current === 'checks' && <ChecksTab events={log} />}
-            {current === 'related' && (
-              <RelatedTasksTab orgSlug={orgSlug} task={t} />
-            )}
-            {current === 'projects' && (
-              <AssociatedProjectsTab orgSlug={orgSlug} task={t} />
-            )}
-          </div>
-        )}
+        <ToolbarLead.Provider
+          value={view && <ActivityViewSwitch onChange={go} value={view} />}
+        >
+          {view === 'conversation' ? (
+            <ConversationTab
+              events={log}
+              orgSlug={orgSlug}
+              requests={requests}
+              task={t}
+            />
+          ) : view === 'trajectory' ? (
+            <TrajectoryTab
+              events={log}
+              onShowInConversation={showInConversation}
+              task={t}
+            />
+          ) : (
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {current === 'overview' && (
+                <OverviewTab end={end} events={log} task={t} />
+              )}
+              {current === 'input' && (
+                <InputRequiredTab
+                  orgSlug={orgSlug}
+                  requests={requests}
+                  task={t}
+                />
+              )}
+              {current === 'checks' && <ChecksTab events={log} />}
+              {current === 'related' && (
+                <RelatedTasksTab orgSlug={orgSlug} task={t} />
+              )}
+              {current === 'projects' && (
+                <AssociatedProjectsTab orgSlug={orgSlug} task={t} />
+              )}
+            </div>
+          )}
+        </ToolbarLead.Provider>
       </TaskSearchProvider>
       {t.status !== 'closed' && <Composer orgSlug={orgSlug} task={t} />}
     </div>
@@ -224,7 +270,7 @@ function Fact({ children, icon }: { children: ReactNode; icon?: ReactNode }) {
 }
 
 function isRouteKey(value: unknown): value is RouteKey {
-  return TAB_KEYS.includes(value as TabKey) || value === 'conversation'
+  return TAB_KEYS.includes(value as TabKey) || isActivityView(value)
 }
 
 function OverviewTab({

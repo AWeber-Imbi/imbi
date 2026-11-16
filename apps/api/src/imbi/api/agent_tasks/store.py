@@ -258,6 +258,8 @@ class Usage:
     """One model call that a harness reports.
 
     ``None`` for a token count means the harness did not measure it.
+    ``message_id`` is the model's id for the reply; the task events of
+    that reply have it too.
     """
 
     idempotency_key: str
@@ -267,6 +269,7 @@ class Usage:
     cache_read_tokens: int | None
     cache_write_tokens: int | None
     session_id: uuid.UUID | None
+    message_id: str | None = None
 
 
 #: Each token count of a usage report, and the price column for it.
@@ -1854,6 +1857,11 @@ class TaskStore:
                         'cost': None if cost is None else str(cost),
                         'budget_remaining': (
                             None if remaining is None else str(remaining)
+                        ),
+                        **(
+                            {'message_id': usage.message_id}
+                            if usage.message_id is not None
+                            else {}
                         ),
                     },
                     actor,
