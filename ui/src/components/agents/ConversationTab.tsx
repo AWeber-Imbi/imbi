@@ -1,8 +1,17 @@
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import { useLocation, useNavigate } from 'react-router-dom'
 
 import {
+  ArrowDown,
   Bot,
   Brain,
   ChevronRight,
@@ -25,15 +34,6 @@ import { Button } from '@/components/ui/button'
 import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker'
 import { Message, MessageContent, MessageHeader } from '@/components/ui/message'
 import {
-  MessageScroller,
-  MessageScrollerButton,
-  MessageScrollerContent,
-  MessageScrollerItem,
-  MessageScrollerProvider,
-  MessageScrollerViewport,
-  useMessageScroller,
-} from '@/components/ui/message-scroller'
-import {
   Trace,
   TraceCollapsible,
   TraceCollapsibleContent,
@@ -43,6 +43,7 @@ import {
   TraceLine,
   TraceTitle,
 } from '@/components/ui/trace'
+import { markdownText } from '@/lib/markdown-text'
 import { cn } from '@/lib/utils'
 import type { AgentTask, AgentTaskEvent } from '@/types'
 
@@ -75,6 +76,7 @@ import {
   turnForSeq,
   turns,
 } from './conversationTurns'
+import { FindStub } from './FindStub'
 import { Prose, Todos, ToolReadable } from './taskEntryViews'
 import {
   formatElapsed,
@@ -105,13 +107,17 @@ import {
   toolLabel,
   toolSummary,
 } from './toolCalls'
+import { readableText } from './toolText'
+import { scrollToFound, useVirtualRows } from './virtualRows'
 
 interface Ctx {
   isOpen: (id: string, byDefault: boolean) => boolean
+  isWhole: (id: string) => boolean
   mode: ConversationMode
   orgSlug: string
   requests: TaskRequestView[]
   setOpen: (id: string, open: boolean) => void
+  showWhole: (id: string) => void
   task: AgentTask
 }
 
@@ -127,6 +133,11 @@ const FAMILY_ICON: Record<Family, ReactNode> = {
 const ASK_PREVIEW = 600
 
 const FLASH_MS = 1600
+
+const TURN_GAP = 24
+
+/** How close to the end still counts as at the end, in pixels. */
+const END_SLACK = 8
 
 type RevealTarget = NonNullable<ReturnType<typeof turnForSeq>>
 
@@ -206,18 +217,31 @@ export function ConversationTab({
   const askMatches =
     searching && matches((task.description || task.title || '').trim(), query)
   const showAsk = !searching || askMatches || shown.length > 0
+  const follow = useRef(true)
+  const [whole, setWhole] = useState<ReadonlySet<string>>(() => new Set())
   const ctx: Ctx = useMemo(
     () => ({
       isOpen: searching ? () => true : isOpen,
+      isWhole: (id: string) => whole.has(id),
       mode: searching ? 'verbose' : mode,
       orgSlug,
       requests,
-      setOpen: searching ? ignoreFold : setOpen,
+      setOpen: searching
+        ? ignoreFold
+        : (id: string, open: boolean) => {
+            follow.current = false
+            setOpen(id, open)
+          },
+      showWhole: (id: string) => {
+        follow.current = false
+        setWhole((prev) => new Set(prev).add(id))
+      },
       task,
     }),
-    [isOpen, mode, orgSlug, requests, searching, setOpen, task],
+    [isOpen, mode, orgSlug, requests, searching, setOpen, task, whole],
   )
   const [flash, setFlash] = useState<null | { id: string }>(null)
+  const [revealed, setRevealed] = useState<null | { id: string }>(null)
   useEffect(() => {
     if (!flash) return
     const done = window.setTimeout(() => setFlash(null), FLASH_MS)
@@ -229,10 +253,102 @@ export function ConversationTab({
     if (target.group) setOpen(target.group, true)
     for (const key of target.calls) setOpen(key, true)
     setFlash({ id: target.turn.id })
+    setRevealed({ id: target.turn.id })
+  }
+
+  const ask = showAsk && !!taskAsk(task, list[0])
+  const [askAll, setAskAll] = useState(false)
+  const rows = useMemo(
+    () => [...(ask ? ['ask'] : []), ...shown.map((turn) => turn.id)],
+    [ask, shown],
+  )
+  const asking = useMemo(() => {
+    const open = new Set(
+      requests.flatMap((r) => (r.status === 'open' ? [r.id] : [])),
+    )
+    if (!open.size) return []
+    const offset = ask ? 1 : 0
+    return shown.flatMap((turn, i) =>
+      holdsRequest(turn, open) ? [i + offset] : [],
+    )
+  }, [ask, requests, shown])
+  const scroller = useRef<HTMLDivElement>(null)
+  const pinned = useRef(true)
+  const seen = useRef(events.length)
+  const lastTop = useRef(0)
+  const [atEnd, setAtEnd] = useState(true)
+  const [focusKey, setFocusKey] = useState<null | string>(null)
+  const focusRow = focusKey === null ? -1 : rows.indexOf(focusKey)
+  const flashRow = flash ? rows.indexOf(flash.id) : -1
+  const virtualizer = useVirtualRows({
+    count: rows.length,
+    estimateSize: (i) => (rows[i] === 'ask' ? 120 : 240),
+    gap: TURN_GAP,
+    getItemKey: useCallback((i: number) => rows[i], [rows]),
+    keep: [flashRow, focusRow, ...asking],
+    overscan: 4,
+    paddingEnd: 20,
+    paddingStart: 20,
+    scroller,
+  })
+  const total = virtualizer.getTotalSize()
+  const findTexts = useMemo(
+    () =>
+      new Map<string, string>([
+        [
+          'ask',
+          ask
+            ? markdownText(
+                askShown(taskAsk(task, list[0]) ?? '', askAll, askMatches),
+              )
+            : '',
+        ],
+        ...shown.map((turn): [string, string] => [
+          turn.id,
+          turnFindText(turn, ctx, query),
+        ]),
+      ]),
+    [ask, askAll, askMatches, ctx, list, query, shown, task],
+  )
+  const onFound = useCallback(
+    (index: number) => {
+      pinned.current = false
+      scrollToFound(virtualizer, index, 'start')
+    },
+    [virtualizer],
+  )
+  const drawn = new Set(virtualizer.getVirtualItems().map((item) => item.index))
+  const unrendered = rows.flatMap((_, i) => (drawn.has(i) ? [] : [i]))
+
+  useLayoutEffect(() => {
+    const el = scroller.current
+    if (seen.current !== events.length) follow.current = true
+    seen.current = events.length
+    if (!el) return
+    if (pinned.current && follow.current) el.scrollTop = el.scrollHeight
+    setAtEnd(atBottom(el))
+  }, [events.length, rows.length, total])
+
+  const scrolled = useRef<typeof revealed>(null)
+  useEffect(() => {
+    if (!revealed || scrolled.current === revealed) return
+    const index = rows.indexOf(revealed.id)
+    if (index < 0) return
+    scrolled.current = revealed
+    pinned.current = false
+    virtualizer.scrollToIndex(index, { align: 'start' })
+  }, [revealed, rows, virtualizer])
+
+  const toLatest = () => {
+    const el = scroller.current
+    if (!el) return
+    pinned.current = true
+    follow.current = true
+    el.scrollTop = el.scrollHeight
   }
 
   return (
-    <MessageScrollerProvider autoScroll defaultScrollPosition="end">
+    <>
       <RevealTurn list={list} onReveal={reveal} />
       <div className="flex min-h-0 flex-1 flex-col" ref={root}>
         <TaskToolbar label="Conversation">
@@ -260,40 +376,118 @@ export function ConversationTab({
         {!showAsk ? (
           <NoMatches onClear={() => setQuery('')} query={query} />
         ) : (
-          <MessageScroller className="flex-1">
-            <MessageScrollerViewport aria-label="Conversation">
-              <MessageScrollerContent
+          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div
+              aria-label="Conversation"
+              className="scroll-fade-b size-full min-h-0 min-w-0 scrollbar-thin scrollbar-gutter-stable overflow-y-auto overscroll-contain contain-content"
+              onFocus={(e) => {
+                const index = (e.target as HTMLElement).closest<HTMLElement>(
+                  '[data-index]',
+                )?.dataset.index
+                if (index !== undefined) setFocusKey(rows[Number(index)])
+              }}
+              onScroll={(e) => {
+                const el = e.currentTarget
+                const end = atBottom(el)
+                if (end) pinned.current = true
+                else if (el.scrollTop < lastTop.current) pinned.current = false
+                lastTop.current = el.scrollTop
+                setAtEnd(end)
+              }}
+              ref={scroller}
+              role="region"
+            >
+              <div
                 className={cn(
-                  'w-full px-10 py-5',
+                  'flex min-h-full w-full flex-col px-10',
                   width === 'narrow' && 'mx-auto max-w-3xl',
                 )}
               >
-                <TaskAsk ctx={ctx} first={list[0]} reveal={askMatches} />
-                {shown.length === 0 && !searching ? (
+                <div className="relative w-full" style={{ height: total }}>
+                  {virtualizer.getVirtualItems().map((item) => {
+                    const id = rows[item.index]
+                    const turn = shown.find((t) => t.id === id)
+                    return (
+                      <div
+                        className="absolute inset-x-0 top-0 flow-root"
+                        data-index={item.index}
+                        key={item.key}
+                        ref={virtualizer.measureElement}
+                        style={{ transform: `translateY(${item.start}px)` }}
+                      >
+                        {turn ? (
+                          <TurnView
+                            ctx={ctx}
+                            flash={flash?.id === turn.id}
+                            turn={turn}
+                          />
+                        ) : (
+                          <TaskAsk
+                            all={askAll}
+                            ctx={ctx}
+                            first={list[0]}
+                            onAll={(all) => {
+                              follow.current = false
+                              setAskAll(all)
+                            }}
+                            reveal={askMatches}
+                          />
+                        )}
+                      </div>
+                    )
+                  })}
+                  {unrendered.map((i) => (
+                    <FindStub
+                      index={i}
+                      key={rows[i]}
+                      onFound={onFound}
+                      style={{
+                        insetInline: 0,
+                        position: 'absolute',
+                        top: virtualizer.measurementsCache[i]?.start ?? 0,
+                      }}
+                      text={findTexts.get(rows[i]) ?? ''}
+                    />
+                  ))}
+                </div>
+                {shown.length === 0 && !searching && (
                   <ActivityEmpty
                     icon={<MessageSquare />}
                     title="No activity yet"
                   >
                     No conversation yet.
                   </ActivityEmpty>
-                ) : (
-                  shown.map((turn) => (
-                    <TurnView
-                      ctx={ctx}
-                      flash={flash?.id === turn.id}
-                      key={turn.id}
-                      turn={turn}
-                    />
-                  ))
                 )}
-              </MessageScrollerContent>
-            </MessageScrollerViewport>
-            <MessageScrollerButton />
-          </MessageScroller>
+              </div>
+            </div>
+            <Button
+              className="border-border bg-background text-foreground hover:bg-muted absolute bottom-4 left-1/2 -translate-x-1/2 transition-[translate,scale,opacity] duration-200 data-[active=false]:pointer-events-none data-[active=false]:translate-y-full data-[active=false]:scale-95 data-[active=false]:opacity-0 data-[active=true]:translate-y-0 data-[active=true]:scale-100 data-[active=true]:opacity-100"
+              data-active={!atEnd}
+              onClick={toLatest}
+              size="icon-sm"
+              tabIndex={atEnd ? -1 : undefined}
+              variant="secondary"
+            >
+              <ArrowDown />
+              <span className="sr-only">Scroll to end</span>
+            </Button>
+          </div>
         )}
       </div>
-    </MessageScrollerProvider>
+    </>
   )
+}
+
+/** The part of the ask its message shows: a preview, unless shown in full. */
+function askShown(body: string, all: boolean, reveal: boolean): string {
+  return body.length > ASK_PREVIEW && !reveal && !all
+    ? `${body.slice(0, ASK_PREVIEW)}…`
+    : body
+}
+
+/** The pane is scrolled to within END_SLACK of its end. */
+function atBottom(el: HTMLElement): boolean {
+  return el.scrollHeight - el.clientHeight - el.scrollTop <= END_SLACK
 }
 
 function CallRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
@@ -305,13 +499,7 @@ function CallRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
   const args = isRecord(p.arguments) ? p.arguments : {}
   const ms = typeof p.duration_ms === 'number' ? p.duration_ms : null
   const running = ctx.task.status === 'running'
-  const summary = e
-    ? (argsText?.slice(0, 200) ?? toolSummary(tool, args))
-    : running
-      ? 'Running…'
-      : ctx.task.status === 'closed'
-        ? 'Did not finish'
-        : 'Not finished yet'
+  const summary = callSummary(entry, ctx)
   const status = isError(entry)
     ? 'error'
     : !e && running
@@ -352,6 +540,8 @@ function CallRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
             argsText={argsText}
             error={p.is_error === true}
             family={family}
+            isWhole={(part) => ctx.isWhole(`${key}:${part}`)}
+            onWhole={(part) => ctx.showWhole(`${key}:${part}`)}
             result={p.result == null ? '' : label(p.result)}
           />
         )}
@@ -375,6 +565,21 @@ function CallRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
       </TraceCollapsibleContent>
     </TraceCollapsible>
   )
+}
+
+/** What a call's row shows after the tool's name. */
+function callSummary(entry: TimelineEntry, ctx: Ctx): string {
+  const e = entry.event
+  if (!e)
+    return ctx.task.status === 'running'
+      ? 'Running…'
+      : ctx.task.status === 'closed'
+        ? 'Did not finish'
+        : 'Not finished yet'
+  const { arguments: args, tool } = e.payload
+  return typeof args === 'string'
+    ? args.slice(0, 200)
+    : toolSummary(String(tool ?? 'tool'), isRecord(args) ? args : {})
 }
 
 function GroupView({
@@ -407,6 +612,16 @@ function GroupView({
         </TraceCollapsibleContent>
       </TraceCollapsible>
     </Trace>
+  )
+}
+
+function holdsRequest(turn: Turn, open: Set<string>): boolean {
+  const holds = (entry: TimelineEntry): boolean =>
+    (entry.event?.type === 'request.opened' &&
+      open.has(String(entry.event.payload.request_id))) ||
+    entry.children.some(holds)
+  return turn.items.some((item) =>
+    (item.kind === 'group' ? item.entries : [item.entry]).some(holds),
   )
 }
 
@@ -477,10 +692,8 @@ function RevealTurn({
 }) {
   const location = useLocation()
   const navigate = useNavigate()
-  const { scrollToMessage } = useMessageScroller()
   const seq = revealSeqOf(location.state) ?? hashSeqOf(location.hash)
   const handled = useRef<null | string>(null)
-  const [target, setTarget] = useState<null | { id: string }>(null)
 
   useEffect(() => {
     if (seq === null || handled.current === location.key) return
@@ -488,26 +701,12 @@ function RevealTurn({
     if (!found) return
     handled.current = location.key
     onReveal(found)
-    setTarget({ id: found.turn.id })
     const { hash, pathname, search } = location
     navigate(
       { hash: hashSeqOf(hash) === null ? hash : '', pathname, search },
       { replace: true, state: null },
     )
   }, [list, location, navigate, onReveal, seq])
-
-  useEffect(() => {
-    if (!target) return
-    let tries = 0
-    let frame = 0
-    const tick = () => {
-      tries++
-      if (scrollToMessage(target.id, { align: 'start' }) || tries > 30) return
-      frame = requestAnimationFrame(tick)
-    }
-    frame = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(frame)
-  }, [scrollToMessage, target])
 
   return null
 }
@@ -521,16 +720,19 @@ function searchText(entry: TimelineEntry): string {
 
 /** What started the task, as the first message, unless a person already said it. */
 function TaskAsk({
+  all,
   ctx,
   first,
+  onAll,
   reveal,
 }: {
+  all: boolean
   ctx: Ctx
   first?: Turn
+  onAll: (all: boolean) => void
   reveal: boolean
 }) {
   const actorName = useActorName(ctx.orgSlug)
-  const [all, setAll] = useState(false)
   const { task } = ctx
   const body = taskAsk(task, first)
   if (!body) return null
@@ -545,11 +747,9 @@ function TaskAsk({
             : source}
         </MessageHeader>
         <div className="bg-secondary flex max-w-[85%] flex-col items-start gap-1 self-end rounded-xl px-3.5 py-2.5">
-          <Prose>
-            {long && !all ? `${body.slice(0, ASK_PREVIEW)}…` : body}
-          </Prose>
+          <Prose>{askShown(body, all, reveal)}</Prose>
           {long && (
-            <Button onClick={() => setAll(!all)} size="sm" variant="link">
+            <Button onClick={() => onAll(!all)} size="sm" variant="link">
               {all ? 'Show less' : 'Show all'}
             </Button>
           )}
@@ -557,6 +757,62 @@ function TaskAsk({
       </MessageContent>
     </Message>
   )
+}
+
+function turnEntries(turn: Turn): TimelineEntry[] {
+  return [
+    ...turn.opening,
+    ...turn.items.flatMap((item) =>
+      item.kind === 'group' ? item.entries : [item.entry],
+    ),
+  ]
+}
+
+/**
+ * The turn as Markdown plus what its open tool calls show, as far as the
+ * turn and its work groups are open, for the browser's find.
+ */
+function turnFindText(turn: Turn, ctx: Ctx, query: string): string {
+  const shown = (entry: TimelineEntry): string[] => {
+    const e = entry.event
+    const key = entryKey(entry)
+    if (e && e.type !== 'tool.called') return workText(entry, ctx)
+    const tool = e ? String(e.payload.tool ?? 'tool') : 'Task'
+    const title = `${toolLabel(tool)} ${callSummary(entry, ctx)}`
+    if (!ctx.isOpen(key, false)) return [title]
+    const p = e?.payload ?? {}
+    return [
+      title,
+      ...(e
+        ? readableText({
+            args: isRecord(p.arguments) ? p.arguments : {},
+            argsText: typeof p.arguments === 'string' ? p.arguments : null,
+            error: p.is_error === true,
+            family: familyOf(tool),
+            isWhole: (part) => ctx.isWhole(`${key}:${part}`),
+            query,
+            result: p.result == null ? '' : label(p.result),
+          })
+        : []),
+      ...entry.children.flatMap(shown),
+    ]
+  }
+  const open =
+    !canCollapseTurn(turn) ||
+    ctx.isOpen(turn.id, turnOpenByDefault(turn, ctx.mode))
+  const calls = open
+    ? turn.items.flatMap((item) =>
+        item.kind === 'group'
+          ? [
+              groupSummary(item),
+              ...(ctx.isOpen(item.id, groupOpenByDefault(item, turn, ctx.mode))
+                ? item.entries.flatMap(shown)
+                : []),
+            ]
+          : [],
+      )
+    : []
+  return [...turnShownText(turn), ...calls].filter(Boolean).join('\n')
 }
 
 function TurnHeader({
@@ -600,21 +856,52 @@ function TurnHeader({
   )
 }
 
+/** A turn as Markdown, without the task and turn headings. */
+function turnMarkdown(turn: Turn): string {
+  return conversationMarkdown({ title: 'x' }, [turn]).replace(
+    /^# x\s+## Turn 1\s+/,
+    '',
+  )
+}
+
+/** What a turn shows outside its work groups, as plain text. */
+function turnShownText(turn: Turn): string[] {
+  const said = (entry: TimelineEntry): string[] => {
+    const e = entry.event
+    if (!e) return []
+    if (e.type === 'request.opened') return [systemText(e)]
+    const body =
+      typeof e.payload.body === 'string' && e.payload.body
+        ? e.payload.body
+        : systemText(e)
+    const { answer, constraints } = resolution(e)
+    return [
+      markdownText(body),
+      ...(answer ? [markdownText(answer)] : []),
+      ...constraints,
+    ]
+  }
+  const header =
+    turn.items.some((item) => item.kind === 'group') || turn.status !== 'done'
+  return [
+    ...turn.opening.flatMap(said),
+    ...(header ? [turnTitle(turn)] : []),
+    ...turn.items.flatMap((item): string[] => {
+      if (item.kind === 'group') return []
+      const e = item.entry.event
+      if (!e) return []
+      if (item.kind === 'reply')
+        return [markdownText(String(e.payload.body ?? ''))]
+      if (item.kind === 'note') return quiet(e) ? [] : [systemText(e)]
+      return said(item.entry)
+    }),
+    turnFooter(turn) ?? '',
+  ]
+}
+
 /** The turn as Markdown plus every value its events hold, for search. */
 function turnText(turn: Turn): string {
-  const entries = [
-    ...turn.opening,
-    ...turn.items.flatMap((item) =>
-      item.kind === 'group' ? item.entries : [item.entry],
-    ),
-  ]
-  return [
-    conversationMarkdown({ title: 'x' }, [turn]).replace(
-      /^# x\s+## Turn 1\s+/,
-      '',
-    ),
-    ...entries.map(searchText),
-  ].join(' ')
+  return [turnMarkdown(turn), ...turnEntries(turn).map(searchText)].join(' ')
 }
 
 function TurnView({
@@ -634,14 +921,12 @@ function TurnView({
   const footer = turnFooter(turn)
   const firstReply = turn.items.find((i) => i.kind === 'reply')?.id
   return (
-    <MessageScrollerItem
+    <div
       className={cn(
-        '-mx-3 -my-1.5 rounded-2xl px-3 py-1.5 transition-[background-color,box-shadow] duration-700 motion-reduce:transition-none',
+        '-mx-3 -my-1.5 min-w-0 rounded-2xl px-3 py-1.5 transition-[background-color,box-shadow] duration-700 motion-reduce:transition-none',
         flash && 'bg-action/8 inset-ring-2 inset-ring-action/40 duration-200',
       )}
       data-flash={flash || undefined}
-      messageId={turn.id}
-      scrollAnchor
     >
       <div className="flex flex-col gap-4">
         {turn.opening.map((entry) => (
@@ -695,7 +980,7 @@ function TurnView({
           </Marker>
         )}
       </div>
-    </MessageScrollerItem>
+    </div>
   )
 }
 
@@ -762,4 +1047,26 @@ function WorkRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
       <TraceTitle>{systemText(e)}</TraceTitle>
     </TraceLine>
   )
+}
+
+/** What a step other than a call shows in an open work group. */
+function workText(entry: TimelineEntry, ctx: Ctx): string[] {
+  const e = entry.event
+  if (!e || e.type === 'usage.reported') return []
+  const open = ctx.isOpen(entry.id, false)
+  if (e.type === 'todos.updated') {
+    const todos = (e.payload.todos ?? []) as { title?: string }[]
+    return [
+      'Updated the plan',
+      ...(open ? todos.map((t) => t.title ?? '') : []),
+    ]
+  }
+  if (e.type !== 'turn') return [systemText(e)]
+  const body = String(e.payload.body ?? '')
+  if (e.payload.kind === 'warning') return [body]
+  const first = body.split('\n')[0]
+  return [
+    e.payload.kind === 'thinking' ? `Thought: ${first}` : first,
+    ...(open ? [markdownText(body)] : []),
+  ]
 }

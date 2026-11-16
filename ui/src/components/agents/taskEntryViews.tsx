@@ -1,16 +1,23 @@
-import { memo, type ReactNode, useState } from 'react'
+import { memo, type ReactNode } from 'react'
 
 import { RichMarkdown } from '@/components/ui/rich-markdown'
 import { cn } from '@/lib/utils'
 import type { AgentTaskEvent } from '@/types'
 
-import { matches, useTaskSearch } from './taskSearch'
+import { useTaskSearch } from './taskSearch'
 import { type Family, label, OUTPUT_LINES } from './toolCalls'
+import { cutAt, cutText, diffPath, diffRows, type ToolPart } from './toolText'
 
-interface OutputProps {
+interface OutputProps extends Whole {
   dark?: boolean
   error?: boolean
   text: string
+}
+
+/** Whether the reader asked to see a cut part in full. */
+interface Whole {
+  all: boolean
+  onAll: () => void
 }
 
 export const Prose = memo(function Prose({ children }: { children: string }) {
@@ -55,19 +62,27 @@ export function ToolReadable({
   argsText,
   error,
   family,
+  isWhole,
+  onWhole,
   result,
 }: {
   args: Record<string, unknown>
   argsText: null | string
   error: boolean
   family: Family
+  isWhole: (part: ToolPart) => boolean
+  onWhole: (part: ToolPart) => void
   result: string
 }) {
+  const whole = (part: ToolPart) => ({
+    all: isWhole(part),
+    onAll: () => onWhole(part),
+  })
   if (argsText != null)
     return (
       <>
-        <Output text={argsText} />
-        <ResultOutput error={error} result={result} />
+        <Output text={argsText} {...whole('input')} />
+        <ResultOutput error={error} result={result} {...whole('output')} />
       </>
     )
   if (family === 'shell')
@@ -76,9 +91,11 @@ export function ToolReadable({
         dark
         error={error}
         text={`$ ${String(args.command ?? '')}${result ? `\n${result}` : ''}`}
+        {...whole('output')}
       />
     )
-  if (family === 'edit' && !error) return <Diff args={args} />
+  if (family === 'edit' && !error)
+    return <Diff args={args} {...whole('input')} />
   return (
     <>
       <Pane>
@@ -89,7 +106,7 @@ export function ToolReadable({
           </span>
         ))}
       </Pane>
-      <ResultOutput error={error} result={result} />
+      <ResultOutput error={error} result={result} {...whole('output')} />
     </>
   )
 }
@@ -98,45 +115,19 @@ export function ToolReadable({
  * Old text above new text, for an Edit, MultiEdit, NotebookEdit, or
  * Write, cut at {@link OUTPUT_LINES} until the reader asks.
  */
-function Diff({ args }: { args: Record<string, unknown> }) {
-  const [all, setAll] = useState(false)
-  const edits: { new_string?: unknown; old_string?: unknown }[] = Array.isArray(
-    args.edits,
+function Diff({ all, args, onAll }: Whole & { args: Record<string, unknown> }) {
+  const rows = diffRows(args)
+  const [query] = useTaskSearch()
+  const cut = cutAt(
+    rows.map((row) => row.text),
+    all,
+    query,
   )
-    ? (args.edits as { new_string?: unknown; old_string?: unknown }[])
-    : [
-        {
-          new_string: args.new_string ?? args.content ?? args.new_source,
-          old_string: args.old_string,
-        },
-      ]
-  const lines = (v: unknown) => (typeof v === 'string' ? v.split('\n') : [])
-  const rows: { className: string; key: string; text: string }[] = []
-  edits.forEach((edit, i) => {
-    if (i > 0)
-      rows.push({ className: 'text-tertiary', key: `s${i}`, text: '⋯' })
-    lines(edit.old_string).forEach((l, j) =>
-      rows.push({
-        className: 'bg-danger text-danger',
-        key: `o${i}-${j}`,
-        text: `- ${l}`,
-      }),
-    )
-    lines(edit.new_string).forEach((l, j) =>
-      rows.push({
-        className: 'bg-success text-success',
-        key: `n${i}-${j}`,
-        text: `+ ${l}`,
-      }),
-    )
-  })
-  const hit = useSearchHit(rows.slice(OUTPUT_LINES).map((row) => row.text))
-  const cut = !all && !hit && rows.length > OUTPUT_LINES
   return (
     <>
       <div className="border-tertiary overflow-x-auto rounded-md border">
         <div className="bg-secondary text-secondary px-3 py-1.5 font-mono text-xs">
-          {String(args.file_path ?? args.notebook_path ?? '')}
+          {diffPath(args)}
         </div>
         <pre className="py-1 font-mono text-xs leading-relaxed whitespace-pre-wrap">
           {(cut ? rows.slice(0, OUTPUT_LINES) : rows).map((row) => (
@@ -146,7 +137,7 @@ function Diff({ args }: { args: Record<string, unknown> }) {
           ))}
         </pre>
       </div>
-      {cut && <ShowAll count={rows.length} onClick={() => setAll(true)} />}
+      {cut && <ShowAll count={rows.length} onClick={onAll} />}
     </>
   )
 }
@@ -155,11 +146,10 @@ function Diff({ args }: { args: Record<string, unknown> }) {
  * Output text, cut at {@link OUTPUT_LINES} until the reader asks, or a
  * search matches the part that is cut.
  */
-function Output({ dark, error, text }: OutputProps) {
-  const [all, setAll] = useState(false)
+function Output({ all, dark, error, onAll, text }: OutputProps) {
   const lines = text.split('\n')
-  const hit = useSearchHit(lines.slice(OUTPUT_LINES))
-  const cut = !all && !hit && lines.length > OUTPUT_LINES
+  const [query] = useTaskSearch()
+  const cut = cutAt(lines, all, query)
   return (
     <>
       <Pane dark={dark}>
@@ -168,10 +158,10 @@ function Output({ dark, error, text }: OutputProps) {
             error && (dark ? 'text-terminal-danger' : 'text-danger'),
           )}
         >
-          {cut ? lines.slice(0, OUTPUT_LINES).join('\n') : text}
+          {cut ? cutText(lines) : text}
         </span>
       </Pane>
-      {cut && <ShowAll count={lines.length} onClick={() => setAll(true)} />}
+      {cut && <ShowAll count={lines.length} onClick={onAll} />}
     </>
   )
 }
@@ -197,14 +187,18 @@ function Pane({ children, dark }: { children: ReactNode; dark?: boolean }) {
 }
 
 /** The labeled output of a call, when it has one. */
-function ResultOutput({ error, result }: { error: boolean; result: string }) {
+function ResultOutput({
+  error,
+  result,
+  ...whole
+}: Whole & { error: boolean; result: string }) {
   if (!result) return null
   return (
     <>
       <span className="text-tertiary text-[10.5px] font-semibold tracking-wide uppercase">
         Output
       </span>
-      <Output error={error} text={result} />
+      <Output error={error} text={result} {...whole} />
     </>
   )
 }
@@ -218,12 +212,5 @@ function ShowAll({ count, onClick }: { count: number; onClick: () => void }) {
     >
       Show all {count} lines
     </button>
-  )
-}
-
-function useSearchHit(lines: string[]): boolean {
-  const [query] = useTaskSearch()
-  return (
-    query.trim() !== '' && lines.length > 0 && matches(lines.join('\n'), query)
   )
 }

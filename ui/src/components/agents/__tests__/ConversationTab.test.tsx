@@ -1,13 +1,20 @@
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { act, render, screen, within } from '@/test/utils'
+import { act, cleanup, render, screen, waitFor, within } from '@/test/utils'
 import type { AgentTask } from '@/types'
 
 import { MODE_KEY } from '../conversationMode'
 import { ConversationTab } from '../ConversationTab'
+import type { TaskRequestView } from '../taskEvents'
 import { TaskSearchProvider } from '../taskSearch'
 import { event, task } from './taskFixtures'
+import {
+  captureHighlights,
+  findStub,
+  layout,
+  scrollPane,
+} from './virtualLayout'
 
 vi.mock('@/hooks/useHasPermission', () => ({
   useHasPermission: () => false,
@@ -614,5 +621,766 @@ describe('ConversationTab', () => {
     ])
     expect(screen.getByText('Use the staging database')).toBeInTheDocument()
     expect(screen.getByText('No writes')).toBeInTheDocument()
+  })
+})
+
+describe('ConversationTab with many turns', () => {
+  const MANY = Array.from({ length: 80 }, (_, i) => [
+    event(1 + i * 2, 'turn', { body: `ask ${i}` }, HUMAN),
+    event(2 + i * 2, 'turn', { body: `reply ${i}` }),
+  ]).flat()
+  const isPane = (el: HTMLElement) =>
+    el.getAttribute('aria-label') === 'Conversation'
+  const pane = () => screen.getByRole('region', { name: 'Conversation' })
+  const content = (el: HTMLElement) =>
+    parseFloat(
+      el.querySelector<HTMLElement>('[style*="height"]')?.style.height ?? '0',
+    )
+  const view = (status: AgentTask['status'], events = MANY) => {
+    const t = task({ status }) as unknown as AgentTask
+    return (
+      <div className="flex h-150 flex-col">
+        <ConversationTab
+          events={events}
+          orgSlug="acme"
+          requests={[]}
+          task={t}
+        />
+      </div>
+    )
+  }
+  const replies = () => screen.queryAllByText(/^reply \d+$/)
+  const flashed = () => document.querySelector<HTMLElement>('[data-flash]')
+  const observeResizes = () => {
+    const observers: { els: Set<Element>; fire: ResizeObserverCallback }[] = []
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        els = new Set<Element>()
+        constructor(fire: ResizeObserverCallback) {
+          observers.push({ els: this.els, fire })
+        }
+        disconnect() {
+          this.els.clear()
+        }
+        observe(el: Element) {
+          this.els.add(el)
+        }
+        unobserve(el: Element) {
+          this.els.delete(el)
+        }
+      },
+    )
+    return (row: Element) =>
+      act(() => {
+        for (const o of observers)
+          if (o.els.has(row))
+            o.fire(
+              [{ target: row } as unknown as ResizeObserverEntry],
+              o as unknown as ResizeObserver,
+            )
+      })
+  }
+  const scrollTo = vi.fn()
+  const original = Element.prototype.scrollTo
+  let spy: ReturnType<typeof layout>
+  beforeEach(() => {
+    spy = layout({ content, isPane, pane: 600, row: 100 })
+    scrollTo.mockReset()
+    Element.prototype.scrollTo = scrollTo
+  })
+  afterEach(() => {
+    cleanup()
+    spy.mockRestore()
+    Element.prototype.scrollTo = original
+    vi.unstubAllGlobals()
+    window.history.replaceState(null, '', '/')
+  })
+
+  it('renders only the turns in view and opens at the latest', async () => {
+    render(view('closed'))
+    await waitFor(() =>
+      expect(screen.getByText('reply 79')).toBeInTheDocument(),
+    )
+    expect(screen.queryByText('reply 0')).not.toBeInTheDocument()
+    expect(replies().length).toBeLessThan(20)
+  })
+
+  it('follows the bottom while the task runs, until the reader scrolls up', async () => {
+    const { rerender } = render(view('running', MANY.slice(0, 100)))
+    await waitFor(() =>
+      expect(screen.getByText('reply 49')).toBeInTheDocument(),
+    )
+    const latest = screen.getByRole('button', { name: 'Scroll to end' })
+    expect(latest).toHaveAttribute('data-active', 'false')
+    rerender(view('running', MANY.slice(0, 102)))
+    await waitFor(() =>
+      expect(screen.getByText('reply 50')).toBeInTheDocument(),
+    )
+    expect(pane().scrollTop).toBe(content(pane()) - 600)
+    scrollPane(pane(), 0)
+    expect(latest).toHaveAttribute('data-active', 'true')
+    rerender(view('running', MANY.slice(0, 104)))
+    expect(pane().scrollTop).toBe(0)
+    expect(screen.queryByText('reply 51')).not.toBeInTheDocument()
+  })
+
+  it('jumps to the latest turn and keeps following it', async () => {
+    const user = userEvent.setup()
+    scrollTo.mockImplementation(function (
+      this: Element,
+      options: ScrollToOptions,
+    ) {
+      this.scrollTop =
+        options.behavior === 'smooth'
+          ? this.scrollTop + 100
+          : (options.top ?? 0)
+    })
+    const { rerender } = render(view('running', MANY.slice(0, 100)))
+    await waitFor(() =>
+      expect(screen.getByText('reply 49')).toBeInTheDocument(),
+    )
+    scrollPane(pane(), 0)
+    const latest = screen.getByRole('button', { name: 'Scroll to end' })
+    await waitFor(() => expect(latest).toHaveAttribute('data-active', 'true'))
+    await user.click(latest)
+    await waitFor(() => expect(pane().scrollTop).toBe(content(pane()) - 600))
+    rerender(view('running', MANY.slice(0, 102)))
+    await waitFor(() =>
+      expect(screen.getByText('reply 50')).toBeInTheDocument(),
+    )
+    await waitFor(() => expect(pane().scrollTop).toBe(content(pane()) - 600))
+  })
+
+  it('keeps a long tool output shown in full after it scrolls out of view', async () => {
+    const user = userEvent.setup()
+    const result = Array.from({ length: 60 }, (_, i) => `line ${i}`).join('\n')
+    const events = [
+      event(1, 'turn', { body: 'ask 0' }, HUMAN),
+      event(2, 'tool.called', {
+        arguments: { command: 'make test' },
+        call_id: 'c1',
+        result,
+        tool: 'Bash',
+      }),
+      event(3, 'turn', { body: 'reply 0' }),
+      ...MANY.slice(2).map((e) => ({ ...e, seq: e.seq + 1 })),
+    ]
+    render(view('closed', events))
+    await waitFor(() =>
+      expect(screen.getByText('reply 79')).toBeInTheDocument(),
+    )
+    scrollPane(pane(), 0)
+    await user.click(await screen.findByRole('button', { name: /Worked for/ }))
+    await user.click(screen.getByRole('button', { name: /Ran a command/ }))
+    await user.click(screen.getByRole('button', { name: /Bash make test/ }))
+    await user.click(screen.getByRole('button', { name: 'Show all 61 lines' }))
+    expect(screen.getByText(/line 59$/)).toBeInTheDocument()
+    scrollPane(pane(), content(pane()) - 600)
+    const last = await screen.findByText('reply 79')
+    last.tabIndex = -1
+    act(() => last.focus())
+    await waitFor(() =>
+      expect(screen.queryByText(/line 59$/)).not.toBeInTheDocument(),
+    )
+    scrollPane(pane(), 0)
+    expect(await screen.findByText(/line 59$/)).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /^Show all \d+ lines$/ }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('lets the browser find the output an open call shows out of view', async () => {
+    const user = userEvent.setup()
+    const result = Array.from({ length: 60 }, (_, i) =>
+      i === 59 ? 'the open clue' : `line ${i}`,
+    ).join('\n')
+    const events = [
+      event(1, 'turn', { body: 'ask 0' }, HUMAN),
+      event(2, 'tool.called', {
+        arguments: { command: 'make test' },
+        call_id: 'c1',
+        result,
+        tool: 'Bash',
+      }),
+      event(3, 'turn', { body: 'reply 0' }),
+      ...MANY.slice(2).map((e) => ({ ...e, seq: e.seq + 1 })),
+    ]
+    const away = async () => {
+      scrollPane(pane(), content(pane()) - 600)
+      const last = await screen.findByText('reply 79')
+      last.tabIndex = -1
+      act(() => last.focus())
+      await waitFor(() => expect(screen.queryByText('reply 0')).toBeNull())
+    }
+    render(view('closed', events))
+    await screen.findByText('reply 79')
+    expect(findStub('reply 0').textContent).not.toContain('line 38')
+    scrollPane(pane(), 0)
+    await user.click(await screen.findByRole('button', { name: /Worked for/ }))
+    await user.click(screen.getByRole('button', { name: /Ran a command/ }))
+    await user.click(screen.getByRole('button', { name: /Bash make test/ }))
+    await away()
+    expect(findStub('line 38')).toBe(findStub('reply 0'))
+    expect(findStub('reply 0').textContent).not.toContain('line 39')
+    expect(findStub('reply 0').textContent).not.toContain('the open clue')
+    scrollPane(pane(), 0)
+    await user.click(
+      await screen.findByRole('button', { name: 'Show all 61 lines' }),
+    )
+    await away()
+    expect(findStub('the open clue')).toBe(findStub('reply 0'))
+  })
+
+  it('leaves the output of an open call under a closed fold out of find', async () => {
+    const user = userEvent.setup()
+    const events = [
+      event(1, 'turn', { body: 'ask 0' }, HUMAN),
+      event(2, 'tool.called', {
+        arguments: { command: 'make test' },
+        call_id: 'c1',
+        result: 'the folded clue',
+        tool: 'Bash',
+      }),
+      event(3, 'turn', { body: 'reply 0' }),
+      ...MANY.slice(2).map((e) => ({ ...e, seq: e.seq + 1 })),
+    ]
+    const away = async () => {
+      scrollPane(pane(), content(pane()) - 600)
+      const last = await screen.findByText('reply 79')
+      last.tabIndex = -1
+      act(() => last.focus())
+      await waitFor(() => expect(screen.queryByText('reply 0')).toBeNull())
+    }
+    render(view('closed', events))
+    await screen.findByText('reply 79')
+    scrollPane(pane(), 0)
+    await user.click(await screen.findByRole('button', { name: /Worked for/ }))
+    await user.click(screen.getByRole('button', { name: /Ran a command/ }))
+    await user.click(screen.getByRole('button', { name: /Bash make test/ }))
+    await away()
+    expect(findStub('the folded clue')).toBe(findStub('reply 0'))
+    scrollPane(pane(), 0)
+    await user.click(
+      await screen.findByRole('button', { name: /Ran a command/ }),
+    )
+    await away()
+    expect(findStub('reply 0').textContent).not.toContain('the folded clue')
+    scrollPane(pane(), 0)
+    await user.click(
+      await screen.findByRole('button', { name: /Ran a command/ }),
+    )
+    await user.click(screen.getByRole('button', { name: /Worked for/ }))
+    await away()
+    expect(findStub('reply 0').textContent).not.toContain('the folded clue')
+  })
+
+  it('lets the browser find the output of an open call under an unwritten subagent', async () => {
+    const user = userEvent.setup()
+    const events = [
+      event(1, 'turn', { body: 'ask 0' }, HUMAN),
+      event(2, 'tool.called', {
+        arguments: { command: 'ls' },
+        call_id: 'c2',
+        parent_call_id: 'task-1',
+        result: 'the pending clue',
+        tool: 'Bash',
+      }),
+      event(3, 'turn', { body: 'reply 0' }),
+      ...MANY.slice(2).map((e) => ({ ...e, seq: e.seq + 1 })),
+    ]
+    render(view('closed', events))
+    await screen.findByText('reply 79')
+    scrollPane(pane(), 0)
+    await user.click(await screen.findByRole('button', { name: /Worked for/ }))
+    await user.click(screen.getByRole('button', { name: /Ran a subagent/ }))
+    await user.click(screen.getByRole('button', { name: /Did not finish/ }))
+    await user.click(screen.getByRole('button', { name: /Bash ls/ }))
+    expect(screen.getByText(/the pending clue/)).toBeInTheDocument()
+    scrollPane(pane(), content(pane()) - 600)
+    const last = await screen.findByText('reply 79')
+    last.tabIndex = -1
+    act(() => last.focus())
+    await waitFor(() => expect(screen.queryByText('reply 0')).toBeNull())
+    expect(findStub('the pending clue')).toBe(findStub('reply 0'))
+  })
+
+  it('lets the browser find what an open thought shows out of view', async () => {
+    const user = userEvent.setup()
+    const events = [
+      event(1, 'turn', { body: 'ask 0' }, HUMAN),
+      event(2, 'turn', {
+        body: 'Weighing the build.\nthe second thought',
+        kind: 'thinking',
+      }),
+      event(3, 'turn', { body: 'reply 0' }),
+      ...MANY.slice(2).map((e) => ({ ...e, seq: e.seq + 1 })),
+    ]
+    const away = async () => {
+      scrollPane(pane(), content(pane()) - 600)
+      const last = await screen.findByText('reply 79')
+      last.tabIndex = -1
+      act(() => last.focus())
+      await waitFor(() => expect(screen.queryByText('reply 0')).toBeNull())
+    }
+    render(view('closed', events))
+    await screen.findByText('reply 79')
+    expect(findStub('reply 0').textContent).not.toContain('Weighing')
+    scrollPane(pane(), 0)
+    await user.click(await screen.findByRole('button', { name: /Worked/ }))
+    await user.click(screen.getByRole('button', { name: /^Thought$/ }))
+    await away()
+    expect(findStub('Weighing the build.')).toBe(findStub('reply 0'))
+    expect(findStub('reply 0').textContent).not.toContain('the second thought')
+    scrollPane(pane(), 0)
+    await user.click(
+      await screen.findByRole('button', { name: /Thought: Weighing/ }),
+    )
+    await away()
+    expect(findStub('the second thought')).toBe(findStub('reply 0'))
+  })
+
+  it('keeps a long ask shown in full after it scrolls out of view', async () => {
+    const user = userEvent.setup()
+    const description = `${'word '.repeat(150)}the end`
+    const t = task({ description, status: 'closed' }) as unknown as AgentTask
+    render(
+      <div className="flex h-150 flex-col">
+        <ConversationTab events={MANY} orgSlug="acme" requests={[]} task={t} />
+      </div>,
+    )
+    await waitFor(() =>
+      expect(screen.getByText('reply 79')).toBeInTheDocument(),
+    )
+    scrollPane(pane(), 0)
+    await user.click(await screen.findByRole('button', { name: 'Show all' }))
+    expect(screen.getByText(/the end$/)).toBeInTheDocument()
+    scrollPane(pane(), content(pane()) - 600)
+    const last = await screen.findByText('reply 79')
+    last.tabIndex = -1
+    act(() => last.focus())
+    await waitFor(() =>
+      expect(screen.queryByText(/the end$/)).not.toBeInTheDocument(),
+    )
+    scrollPane(pane(), 0)
+    expect(await screen.findByText(/the end$/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Show less' })).toBeVisible()
+  })
+
+  it('lets the browser find only the part of a long ask it shows', async () => {
+    const user = userEvent.setup()
+    const description = `${'word '.repeat(150)}the hidden end`
+    const t = task({ description, status: 'closed' }) as unknown as AgentTask
+    render(
+      <div className="flex h-150 flex-col">
+        <ConversationTab events={MANY} orgSlug="acme" requests={[]} task={t} />
+      </div>,
+    )
+    await screen.findByText('reply 79')
+    expect(findStub('word').textContent).not.toContain('the hidden end')
+    scrollPane(pane(), 0)
+    await user.click(await screen.findByRole('button', { name: 'Show all' }))
+    scrollPane(pane(), content(pane()) - 600)
+    const last = await screen.findByText('reply 79')
+    last.tabIndex = -1
+    act(() => last.focus())
+    await waitFor(() =>
+      expect(screen.queryByText(/the hidden end$/)).not.toBeInTheDocument(),
+    )
+    expect(findStub('the hidden end')).toBe(findStub('word'))
+  })
+
+  it('lets the browser find formatted text as it reads once rendered', async () => {
+    const user = userEvent.setup()
+    const t = task({
+      description: 'Hi, *Pluto*!',
+      status: 'closed',
+    }) as unknown as AgentTask
+    const events = [
+      event(1, 'turn', { body: 'ask **0**' }, HUMAN),
+      event(2, 'turn', {
+        body: 'Weighing the build.\nthe **second** thought',
+        kind: 'thinking',
+      }),
+      event(3, 'turn', { body: 'reply 0 says `make` [it](https://x.io)' }),
+      ...MANY.slice(2).map((e) => ({ ...e, seq: e.seq + 1 })),
+    ]
+    render(
+      <div className="flex h-150 flex-col">
+        <ConversationTab
+          events={events}
+          orgSlug="acme"
+          requests={[]}
+          task={t}
+        />
+      </div>,
+    )
+    await screen.findByText('reply 79')
+    expect(findStub('Hi, Pluto!').textContent).toBe('Hi, Pluto!')
+    const turn = findStub('reply 0 says make it')
+    expect(findStub('ask 0')).toBe(turn)
+    expect(turn.textContent).not.toMatch(/[*`[\]]/)
+    scrollPane(pane(), 0)
+    await user.click(await screen.findByRole('button', { name: /Worked/ }))
+    await user.click(screen.getByRole('button', { name: /^Thought$/ }))
+    await user.click(
+      await screen.findByRole('button', { name: /Thought: Weighing/ }),
+    )
+    scrollPane(pane(), content(pane()) - 600)
+    const last = await screen.findByText('reply 79')
+    last.tabIndex = -1
+    act(() => last.focus())
+    await waitFor(() => expect(screen.queryByText(/^reply 0/)).toBeNull())
+    expect(findStub('the second thought')).toBe(findStub('ask 0'))
+  })
+
+  it('lets the browser find raw HTML and frontmatter as a reply shows them', async () => {
+    const events = [
+      MANY[0],
+      event(2, 'turn', {
+        body: '---\nchecks:\n  - lint\n  - test\n---\n<div>deployment finished</div>',
+      }),
+      ...MANY.slice(2),
+    ]
+    render(view('closed', events))
+    await screen.findByText('reply 79')
+    await waitFor(() =>
+      expect(screen.queryByText(/deployment finished/)).toBeNull(),
+    )
+    const turn = findStub('ask 0')
+    expect(findStub('<div>deployment finished</div>')).toBe(turn)
+    expect(findStub('lint, test')).toBe(turn)
+    scrollPane(pane(), 0)
+    expect(
+      await screen.findByText('<div>deployment finished</div>'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('lint, test')).toBeInTheDocument()
+  })
+
+  it('keeps a turn with selected text rendered while it is out of view', async () => {
+    render(view('closed'))
+    const last = await screen.findByText('reply 79')
+    const selection = document.getSelection()!
+    act(() => {
+      selection.selectAllChildren(last)
+      document.dispatchEvent(new Event('selectionchange'))
+    })
+    scrollPane(pane(), 0)
+    expect(await screen.findByText('reply 0')).toBeInTheDocument()
+    expect(screen.getByText('reply 79')).toBeInTheDocument()
+    expect(selection.toString()).toBe('reply 79')
+    act(() => {
+      selection.removeAllRanges()
+      document.dispatchEvent(new Event('selectionchange'))
+    })
+    await waitFor(() =>
+      expect(screen.queryByText('reply 79')).not.toBeInTheDocument(),
+    )
+  })
+
+  it('keeps a selected turn rendered when turns land above it', async () => {
+    const later = MANY.map((e) => ({ ...e, seq: e.seq + 40 }))
+    const earlier = Array.from({ length: 20 }, (_, i) => [
+      event(1 + i * 2, 'turn', { body: `early ask ${i}` }, HUMAN),
+      event(2 + i * 2, 'turn', { body: `early reply ${i}` }),
+    ]).flat()
+    const { rerender } = render(view('closed', later))
+    const last = await screen.findByText('reply 79')
+    const selection = document.getSelection()!
+    act(() => {
+      selection.selectAllChildren(last)
+      document.dispatchEvent(new Event('selectionchange'))
+    })
+    scrollPane(pane(), 0)
+    expect(await screen.findByText('reply 0')).toBeInTheDocument()
+    rerender(view('closed', [...earlier, ...later]))
+    expect(await screen.findByText('early reply 0')).toBeInTheDocument()
+    expect(screen.getByText('reply 79')).toBeInTheDocument()
+    expect(selection.toString()).toBe('reply 79')
+    act(() => {
+      selection.removeAllRanges()
+      document.dispatchEvent(new Event('selectionchange'))
+    })
+  })
+
+  it('keeps the turns between a selection and the pane edge rendered', async () => {
+    render(view('closed'))
+    const from = await screen.findByText('reply 77')
+    const selection = document.getSelection()!
+    act(() => {
+      selection.setBaseAndExtent(from, 0, pane(), pane().childNodes.length)
+      document.dispatchEvent(new Event('selectionchange'))
+    })
+    scrollPane(pane(), 0)
+    expect(await screen.findByText('reply 0')).toBeInTheDocument()
+    expect(screen.getByText('reply 77')).toBeInTheDocument()
+    expect(screen.getByText('reply 78')).toBeInTheDocument()
+    expect(screen.getByText('reply 79')).toBeInTheDocument()
+    act(() => {
+      selection.removeAllRanges()
+      document.dispatchEvent(new Event('selectionchange'))
+    })
+  })
+
+  it('keeps the turn with the caret so a shift+click selects every turn between', async () => {
+    render(view('closed'))
+    const last = await screen.findByText('reply 79')
+    const selection = document.getSelection()!
+    act(() => {
+      selection.collapse(last.firstChild, 3)
+      document.dispatchEvent(new Event('selectionchange'))
+    })
+    scrollPane(pane(), 0)
+    const first = await screen.findByText('reply 0')
+    expect(screen.getByText('reply 79')).toBe(last)
+    act(() => {
+      selection.extend(first.firstChild!, 0)
+      document.dispatchEvent(new Event('selectionchange'))
+    })
+    expect(await screen.findByText('reply 40')).toBeInTheDocument()
+    expect(last.contains(selection.anchorNode)).toBe(true)
+    expect(selection.toString()).toContain('reply 40')
+    act(() => {
+      selection.removeAllRanges()
+      document.dispatchEvent(new Event('selectionchange'))
+    })
+  })
+
+  it('lets the browser find a turn out of view and scrolls to it', async () => {
+    render(view('closed'))
+    await screen.findByText('reply 79')
+    const stub = findStub('reply 0')
+    expect(stub).toHaveAttribute('hidden', 'until-found')
+    expect(screen.queryByText('reply 0')).toBeNull()
+    scrollTo.mockClear()
+    act(() => {
+      stub.dispatchEvent(new Event('beforematch'))
+    })
+    await waitFor(() => expect(scrollTo).toHaveBeenCalled())
+    const [{ top }] = scrollTo.mock.calls.at(-1) as [{ top: number }]
+    expect(top).toBeLessThan(600)
+  })
+
+  it('keeps every selected turn rendered when the selection spans the pane', async () => {
+    render(view('closed'))
+    await screen.findByText('reply 79')
+    const selection = document.getSelection()!
+    act(() => {
+      selection.selectAllChildren(pane())
+      document.dispatchEvent(new Event('selectionchange'))
+    })
+    scrollPane(pane(), 0)
+    expect(await screen.findByText('reply 0')).toBeInTheDocument()
+    expect(screen.getByText('reply 78')).toBeInTheDocument()
+    expect(screen.getByText('reply 79')).toBeInTheDocument()
+    expect(selection.toString()).toContain('reply 79')
+    act(() => {
+      selection.removeAllRanges()
+      document.dispatchEvent(new Event('selectionchange'))
+    })
+    await waitFor(() =>
+      expect(screen.queryByText('reply 79')).not.toBeInTheDocument(),
+    )
+  })
+
+  it('keeps a turn with an open request rendered while it is out of view', async () => {
+    const events = [
+      event(1, 'turn', { body: 'ask 0' }, HUMAN),
+      event(2, 'request.opened', {
+        kind: 'feedback',
+        request_id: 'r1',
+        title: 'Pick a database',
+      }),
+      event(3, 'turn', { body: 'reply 0' }),
+      ...MANY.slice(2).map((e) => ({ ...e, seq: e.seq + 1 })),
+    ]
+    const request: TaskRequestView = {
+      answer: null,
+      artifact_digests: null,
+      artifacts: [],
+      expires_at: null,
+      id: 'r1',
+      kind: 'feedback',
+      opened_at: '2026-10-08T12:00:02Z',
+      opened_by: null,
+      options: [],
+      resolved_at: null,
+      resolved_by: null,
+      status: 'open',
+      title: 'Pick a database',
+      why: null,
+    }
+    const t = task({ status: 'running' }) as unknown as AgentTask
+    render(
+      <div className="flex h-150 flex-col">
+        <ConversationTab
+          events={events}
+          orgSlug="acme"
+          requests={[request]}
+          task={t}
+        />
+      </div>,
+    )
+    await waitFor(() =>
+      expect(screen.getByText('reply 79')).toBeInTheDocument(),
+    )
+    expect(screen.getByText('ask 0')).toBeInTheDocument()
+    expect(screen.queryByText('ask 1')).not.toBeInTheDocument()
+  })
+
+  it('stays where the reader opens a fold at the bottom', async () => {
+    const user = userEvent.setup()
+    const resize = observeResizes()
+    spy.mockRestore()
+    spy = layout({
+      content,
+      isPane,
+      pane: 600,
+      row: (el) => 100 + 10 * el.querySelectorAll('*').length,
+    })
+    render(
+      view('closed', [
+        ...MANY,
+        event(
+          161,
+          'turn',
+          { body: 'ask 80' },
+          { ...HUMAN, at: '2026-10-08T12:05:00Z' },
+        ),
+        event(
+          162,
+          'tool.called',
+          {
+            arguments: { command: 'make test' },
+            call_id: 'c162',
+            result: 'tests passed',
+            tool: 'Bash',
+          },
+          { at: '2026-10-08T12:05:01Z' },
+        ),
+        event(
+          163,
+          'turn',
+          { body: 'reply 80' },
+          { at: '2026-10-08T12:05:09Z' },
+        ),
+      ]),
+    )
+    await waitFor(() =>
+      expect(screen.getByText('reply 80')).toBeInTheDocument(),
+    )
+    await waitFor(() => expect(pane().scrollTop).toBe(content(pane()) - 600))
+    const before = pane().scrollTop
+    await user.click(screen.getByRole('button', { name: /Worked for/ }))
+    resize(screen.getByText('reply 80').closest<HTMLElement>('[data-index]')!)
+    expect(content(pane()) - 600).toBeGreaterThan(before)
+    expect(pane().scrollTop).toBe(before)
+    const latest = screen.getByRole('button', { name: 'Scroll to end' })
+    expect(latest).toHaveAttribute('data-active', 'true')
+    expect(latest).not.toHaveAttribute('tabindex', '-1')
+  })
+
+  it('stays where the reader shows all of a long ask at the bottom', async () => {
+    const user = userEvent.setup()
+    const resize = observeResizes()
+    spy.mockRestore()
+    spy = layout({
+      content,
+      isPane,
+      pane: 600,
+      row: (el) => 100 + Math.round((el.textContent ?? '').length / 2),
+    })
+    const description = `${'word '.repeat(150)}the end`
+    const t = task({ description, status: 'closed' }) as unknown as AgentTask
+    render(
+      <div className="flex h-150 flex-col">
+        <ConversationTab
+          events={MANY.slice(0, 10)}
+          orgSlug="acme"
+          requests={[]}
+          task={t}
+        />
+      </div>,
+    )
+    await waitFor(() => expect(screen.getByText('reply 4')).toBeInTheDocument())
+    await waitFor(() => expect(pane().scrollTop).toBe(content(pane()) - 600))
+    const before = pane().scrollTop
+    expect(before).toBeGreaterThan(0)
+    await user.click(screen.getByRole('button', { name: 'Show all' }))
+    resize(screen.getByText(/the end$/).closest<HTMLElement>('[data-index]')!)
+    expect(content(pane()) - 600).toBeGreaterThan(before)
+    expect(pane().scrollTop).toBe(before)
+  })
+
+  it('scrolls to a far turn another view asks for, and flashes it', async () => {
+    window.history.replaceState(
+      { idx: 0, key: 'reveal', usr: { revealSeq: 3 } },
+      '',
+      '/',
+    )
+    render(view('closed'))
+    await waitFor(() => expect(flashed()).toHaveTextContent('ask 1'))
+    expect(flashed()).not.toHaveTextContent('ask 2')
+    const item = flashed()!.closest<HTMLElement>('[data-index]')!
+    await waitFor(() =>
+      expect(scrollTo).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          top: Number(
+            /translateY\(([\d.]+)px\)/.exec(item.style.transform)?.[1],
+          ),
+        }),
+      ),
+    )
+    expect(screen.queryByText('reply 79')).toBeInTheDocument()
+  })
+
+  it('scrolls to an event link once the events load', async () => {
+    window.history.replaceState(null, '', '/#e150')
+    const { rerender } = render(view('running', []))
+    expect(flashed()).toBeNull()
+    expect(window.location.hash).toBe('#e150')
+    rerender(view('running'))
+    await waitFor(() => expect(flashed()).toHaveTextContent('reply 74'))
+    expect(window.location.hash).toBe('')
+    expect(scrollTo).toHaveBeenCalled()
+  })
+
+  it('filters every turn from the data and marks what renders', async () => {
+    const { marked, mutate } = captureHighlights()
+    const user = userEvent.setup()
+    render(view('closed'))
+    await user.type(
+      screen.getByRole('searchbox', { name: 'Search conversation' }),
+      'reply 7',
+    )
+    expect(screen.queryByText('reply 8')).not.toBeInTheDocument()
+    expect(screen.queryByText('ask 8')).not.toBeInTheDocument()
+    scrollPane(pane(), 1_000_000)
+    mutate()
+    await waitFor(() => expect(marked.current).toContain('reply 79'))
+    expect(marked.current).not.toContain('reply 7')
+    scrollPane(pane(), 0)
+    mutate()
+    await waitFor(() => expect(marked.current).toContain('reply 7'))
+    expect(marked.current.every((text) => /^reply 7\d?$/.test(text))).toBe(true)
+  })
+
+  it('copies every turn, not only the ones in view', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.fn((_: string) => Promise.resolve())
+    render(view('closed'))
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+    await waitFor(() =>
+      expect(screen.getByText('reply 79')).toBeInTheDocument(),
+    )
+    expect(screen.queryByText('reply 0')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /^Copy/ }))
+    await user.click(screen.getByRole('menuitem', { name: 'Copy as Markdown' }))
+    const copied = writeText.mock.calls[0][0]
+    expect(copied).toContain('reply 0')
+    expect(copied).toContain('reply 79')
   })
 })

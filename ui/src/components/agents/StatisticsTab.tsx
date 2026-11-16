@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useMemo, useRef, useState } from 'react'
 
 import {
   ArrowRightToLine,
@@ -25,6 +25,7 @@ import { cn } from '@/lib/utils'
 import type { AgentTask, AgentTaskEvent } from '@/types'
 
 import { ActivityEmpty, NoMatches } from './ActivityEmpty'
+import { FindStub } from './FindStub'
 import {
   type ContextBasis,
   type StatsCells,
@@ -49,8 +50,20 @@ import {
 } from './TaskToolbar'
 import { buildTrajectory, formatDuration } from './trajectoryModel'
 import { useStoredState } from './useStoredState'
+import { gapsOf, scrollToFound, useVirtualRows } from './virtualRows'
 
 const ANSWER_CAP = 16_000
+
+interface Measure {
+  'aria-rowindex': number
+  'data-index': number
+  ref: (row: HTMLElement | null) => void
+}
+
+type StatsRow =
+  | { expanded: boolean; kind: 'turn'; steps: number; turn: StatsTurn }
+  | { key: string; kind: 'answer'; step: StatsStep }
+  | { key: string; kind: 'step'; max: number; shown: boolean; step: StatsStep }
 
 const BASES: ToolbarOption<ContextBasis>[] = [
   {
@@ -67,11 +80,17 @@ const BASES: ToolbarOption<ContextBasis>[] = [
   },
 ]
 
-const COLUMNS: { label: string; number?: boolean; title: string }[] = [
+const COLUMNS: {
+  label: string
+  number?: boolean
+  title: string
+  width?: string
+}[] = [
   {
     label: 'Turn / step',
     title:
       'A turn row holds the turn total. Click a turn to show or hide its steps, and a step to read its answer.',
+    width: '11.5rem',
   },
   {
     label: 'Trigger / execution',
@@ -82,36 +101,43 @@ const COLUMNS: { label: string; number?: boolean; title: string }[] = [
     label: 'Context',
     number: true,
     title: 'Uncached input + cache read + cache write of the model request.',
+    width: '6.5rem',
   },
   {
     label: 'Output',
     number: true,
     title: 'Output tokens of the model request.',
+    width: '4.5rem',
   },
   {
     label: 'Cache',
     number: true,
     title: 'Cache read ÷ context: the share of the prompt served from cache.',
+    width: '4.5rem',
   },
   {
     label: 'Model',
     number: true,
     title: 'Model time: from the start of the step to the model’s reply.',
+    width: '5rem',
   },
   {
     label: 'Tools',
     number: true,
     title: 'Tool time: every tool call in the step, added up.',
+    width: '5rem',
   },
   {
     label: 'Speed',
     number: true,
     title: 'Output speed: output tokens ÷ model seconds.',
+    width: '5.25rem',
   },
   {
     label: 'Total',
     title:
       'Total time. Purple is model time, amber is tool time, grey is everything else. Bar length uses a square-root scale: steps compare with steps of the same turn, turns with turns.',
+    width: '8.5rem',
   },
 ]
 
@@ -170,6 +196,140 @@ export function StatisticsTab({
     [query, searching, stats.turns],
   )
   const maxTurn = Math.max(0, ...stats.turns.map((t) => t.totalMs ?? 0))
+  const flat = useMemo(
+    () =>
+      shown.flatMap(({ steps, turn }): StatsRow[] => {
+        const expanded = searching || open.has(turn.number)
+        const head: StatsRow = {
+          expanded,
+          kind: 'turn',
+          steps: steps.length,
+          turn,
+        }
+        if (!expanded) return [head]
+        const max = Math.max(0, ...turn.steps.map((s) => s.totalMs ?? 0))
+        return [
+          head,
+          ...steps.flatMap((step): StatsRow[] => {
+            const key = `${turn.number}:${step.number}`
+            const row: StatsRow = {
+              key,
+              kind: 'step',
+              max,
+              shown: answers.has(key),
+              step,
+            }
+            return answers.has(key)
+              ? [row, { key: `${key}:answer`, kind: 'answer', step }]
+              : [row]
+          }),
+        ]
+      }),
+    [answers, open, searching, shown],
+  )
+  const scroller = useRef<HTMLDivElement>(null)
+  const [focusKey, setFocusKey] = useState<null | string>(null)
+  const keyOf = useCallback(
+    (i: number) => {
+      const row = flat[i]
+      return row.kind === 'turn' ? `turn:${row.turn.number}` : row.key
+    },
+    [flat],
+  )
+  const focusRow =
+    focusKey === null ? -1 : flat.findIndex((_, i) => keyOf(i) === focusKey)
+  const virtualizer = useVirtualRows({
+    count: flat.length,
+    estimateSize: (i) => (flat[i]?.kind === 'answer' ? 160 : 37),
+    getItemKey: keyOf,
+    keep: [focusRow],
+    scroller,
+  })
+  const {
+    after,
+    afterSkipped,
+    rows: rendered,
+  } = gapsOf(
+    virtualizer.getVirtualItems(),
+    virtualizer.getTotalSize(),
+    flat.length,
+  )
+  const found = useCallback(
+    (index: number) => scrollToFound(virtualizer, index),
+    [virtualizer],
+  )
+  const stubs = (indexes: number[]) =>
+    indexes.map((i) => (
+      <FindStub
+        index={i}
+        key={keyOf(i)}
+        onFound={found}
+        text={findText(flat[i], delta)}
+      />
+    ))
+
+  const renderRow = (row: StatsRow, index: number) => {
+    const measure = {
+      'aria-rowindex': index + 2,
+      'data-index': index,
+      ref: virtualizer.measureElement,
+    }
+    if (row.kind === 'turn') {
+      const { seq } = row.turn
+      return (
+        <TurnRow
+          delta={delta}
+          expanded={row.expanded}
+          key={`turn:${row.turn.number}`}
+          max={maxTurn}
+          measure={measure}
+          onShow={
+            onShowInConversation && seq !== null
+              ? () => onShowInConversation(seq)
+              : undefined
+          }
+          onToggle={
+            searching
+              ? undefined
+              : () => setOpen((s) => toggled(s, row.turn.number))
+          }
+          shownSteps={row.steps}
+          turn={row.turn}
+        />
+      )
+    }
+    if (row.kind === 'step')
+      return (
+        <StepRow
+          delta={delta}
+          key={row.key}
+          max={row.max}
+          measure={measure}
+          onToggle={
+            row.step.answer
+              ? () => setAnswers((s) => toggled(s, row.key))
+              : undefined
+          }
+          shown={row.shown}
+          step={row.step}
+        />
+      )
+    return (
+      <TableRow className="hover:bg-transparent" key={row.key} {...measure}>
+        <TableCell
+          className="bg-secondary py-3! pl-9!"
+          colSpan={COLUMNS.length}
+        >
+          <Prose>{row.step.answer.slice(0, ANSWER_CAP)}</Prose>
+          {row.step.answer.length > ANSWER_CAP && (
+            <p className="text-tertiary mt-2 text-xs">
+              The answer is cut off at {ANSWER_CAP.toLocaleString()} characters.
+            </p>
+          )}
+        </TableCell>
+      </TableRow>
+    )
+  }
 
   return (
     <div
@@ -206,14 +366,25 @@ export function StatisticsTab({
       ) : shown.length === 0 ? (
         <NoMatches onClear={() => setQuery('')} query={query} />
       ) : (
-        <div className="min-h-0 flex-1 overflow-auto">
-          <Table className="text-sm [&_td]:px-2.5 [&_td]:py-1.5 [&_th]:px-2.5">
+        <div className="min-h-0 flex-1 overflow-auto" ref={scroller}>
+          <Table
+            aria-rowcount={flat.length + 2}
+            className="min-w-264 table-fixed text-sm [&_td]:px-2.5 [&_td]:py-1.5 [&_th]:px-2.5"
+          >
+            <colgroup>
+              {COLUMNS.map((c) => (
+                <col
+                  key={c.label}
+                  style={c.width ? { width: c.width } : undefined}
+                />
+              ))}
+            </colgroup>
             <TableHeader className="bg-tertiary sticky top-0 z-1">
-              <TableRow>
+              <TableRow aria-rowindex={1}>
                 {COLUMNS.map((c) => (
                   <TableHead
                     className={cn(
-                      'h-9 text-xs whitespace-nowrap text-secondary',
+                      'h-9 truncate text-xs text-secondary',
                       c.number && 'text-right',
                     )}
                     key={c.label}
@@ -224,84 +395,40 @@ export function StatisticsTab({
                 ))}
               </TableRow>
             </TableHeader>
-            <TableBody>
-              {shown.map(({ steps, turn }) => {
-                const { seq } = turn
-                const expanded = searching || open.has(turn.number)
-                const maxStep = Math.max(
-                  0,
-                  ...turn.steps.map((s) => s.totalMs ?? 0),
-                )
-                return (
-                  <Fragment key={turn.number}>
-                    <TurnRow
-                      delta={delta}
-                      expanded={expanded}
-                      max={maxTurn}
-                      onShow={
-                        onShowInConversation && seq !== null
-                          ? () => onShowInConversation(seq)
-                          : undefined
-                      }
-                      onToggle={
-                        searching
-                          ? undefined
-                          : () => setOpen((s) => toggled(s, turn.number))
-                      }
-                      shownSteps={steps.length}
-                      turn={turn}
-                    />
-                    {expanded &&
-                      steps.map((step) => {
-                        const key = `${turn.number}:${step.number}`
-                        const shown = answers.has(key)
-                        return (
-                          <Fragment key={key}>
-                            <StepRow
-                              delta={delta}
-                              max={maxStep}
-                              onToggle={
-                                step.answer
-                                  ? () => setAnswers((s) => toggled(s, key))
-                                  : undefined
-                              }
-                              shown={shown}
-                              step={step}
-                            />
-                            {shown && (
-                              <TableRow className="hover:bg-transparent">
-                                <TableCell
-                                  className="bg-secondary py-3! pl-9!"
-                                  colSpan={COLUMNS.length}
-                                >
-                                  <Prose>
-                                    {step.answer.slice(0, ANSWER_CAP)}
-                                  </Prose>
-                                  {step.answer.length > ANSWER_CAP && (
-                                    <p className="text-tertiary mt-2 text-xs">
-                                      The answer is cut off at{' '}
-                                      {ANSWER_CAP.toLocaleString()} characters.
-                                    </p>
-                                  )}
-                                </TableCell>
-                              </TableRow>
-                            )}
-                          </Fragment>
-                        )
-                      })}
-                  </Fragment>
-                )
-              })}
+            <TableBody
+              onFocus={(e) => {
+                const index = (e.target as HTMLElement).closest<HTMLElement>(
+                  '[data-index]',
+                )?.dataset.index
+                if (index !== undefined) setFocusKey(keyOf(Number(index)))
+              }}
+            >
+              {rendered.flatMap(({ before, item, skipped }) => [
+                ...(before > 0 || skipped.length
+                  ? [
+                      <Gap height={before} key={`gap-${item.key}`}>
+                        {stubs(skipped)}
+                      </Gap>,
+                    ]
+                  : []),
+                renderRow(flat[item.index], item.index),
+              ])}
+              {(after > 0 || afterSkipped.length > 0) && (
+                <Gap height={after}>{stubs(afterSkipped)}</Gap>
+              )}
             </TableBody>
             <TableFooter className="bg-secondary sticky bottom-0">
-              <TableRow className="hover:bg-transparent">
+              <TableRow
+                aria-rowindex={flat.length + 2}
+                className="hover:bg-transparent"
+              >
                 <TableCell
-                  className="font-medium whitespace-nowrap"
+                  className="truncate font-medium"
                   title="Totals for the whole task, subagent tokens included. Total time adds up the time of each turn, without the gaps between turns."
                 >
                   Task total
                 </TableCell>
-                <TableCell className="text-secondary whitespace-nowrap">
+                <TableCell className="text-secondary truncate">
                   {plural(stats.totals.turns, 'turn')} ·{' '}
                   {plural(stats.totals.steps, 'step')}
                 </TableCell>
@@ -313,7 +440,7 @@ export function StatisticsTab({
                       : undefined
                   }
                 />
-                <TableCell className="text-right whitespace-nowrap tabular-nums">
+                <TableCell className="truncate text-right tabular-nums">
                   {time(stats.totals.totalMs)}
                 </TableCell>
               </TableRow>
@@ -325,11 +452,36 @@ export function StatisticsTab({
   )
 }
 
+/** The context change a cell shows beside the context, if any. */
+function changeText(delta?: null | number): string {
+  if (delta === undefined || delta === null || delta === 0) return ''
+  return `${delta > 0 ? '+' : '−'}${formatTokens(Math.abs(delta))}`
+}
+
 function clock(ms: null | number): string | undefined {
   if (ms === null) return undefined
   const d = new Date(ms)
   const pad = (n: number, w = 2) => String(n).padStart(w, '0')
   return `Started ${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`
+}
+
+/** The text of a row as it renders, for the browser's find. */
+function findText(row: StatsRow, delta: boolean): string {
+  if (row.kind === 'turn')
+    return `Turn ${row.turn.number} ${row.turn.trigger.text} ${numbersText(row.turn, delta)}`
+  if (row.kind === 'step')
+    return `Step ${row.step.number} ${row.step.did} ${numbersText(row.step, delta)}`
+  return row.step.answer.slice(0, ANSWER_CAP)
+}
+
+function Gap({ children, height }: { children?: ReactNode; height: number }) {
+  return (
+    <tr aria-hidden style={{ height }}>
+      <td className="p-0! align-top" colSpan={COLUMNS.length}>
+        {children}
+      </td>
+    </tr>
+  )
 }
 
 function Numbers({
@@ -341,20 +493,20 @@ function Numbers({
   delta?: null | number
   speedTitle?: string
 }) {
-  const cell = 'text-right tabular-nums whitespace-nowrap'
+  const cell = 'truncate text-right tabular-nums'
+  const change = changeText(delta)
   return (
     <>
       <TableCell className={cell}>
         {tokens(cells.context)}
-        {delta !== undefined && delta !== null && delta !== 0 && (
+        {change && (
           <span
             className={cn(
               'ml-1.5 text-xs',
-              delta < 0 ? 'text-danger' : 'text-tertiary',
+              (delta ?? 0) < 0 ? 'text-danger' : 'text-tertiary',
             )}
           >
-            {delta > 0 ? '+' : '−'}
-            {formatTokens(Math.abs(delta))}
+            {change}
           </span>
         )}
       </TableCell>
@@ -377,6 +529,22 @@ function Numbers({
   )
 }
 
+/** The numbers a row's cells show, as they show them. */
+function numbersText(
+  cells: StatsCells & { contextDelta: null | number },
+  delta: boolean,
+): string {
+  return [
+    `${tokens(cells.context)}${changeText(delta ? cells.contextDelta : undefined)}`,
+    tokens(cells.output),
+    percent(cells.cacheHit),
+    time(cells.modelMs),
+    time(cells.toolMs),
+    speed(cells.outputPerSecond),
+    time(cells.totalMs),
+  ].join(' ')
+}
+
 function percent(share: null | number): string {
   return share === null ? '—' : `${Math.round(share * 100)}%`
 }
@@ -393,12 +561,14 @@ function speed(perSecond: null | number): string {
 function StepRow({
   delta,
   max,
+  measure,
   onToggle,
   shown,
   step,
 }: {
   delta: boolean
   max: number
+  measure: Measure
   onToggle?: () => void
   shown: boolean
   step: StatsStep
@@ -407,11 +577,9 @@ function StepRow({
     <TableRow
       className={cn('text-secondary', onToggle && 'cursor-pointer')}
       onClick={onToggle}
+      {...measure}
     >
-      <TableCell
-        className="pl-9! whitespace-nowrap"
-        title={clock(step.startedAt)}
-      >
+      <TableCell className="truncate pl-9!" title={clock(step.startedAt)}>
         {onToggle ? (
           <button
             aria-expanded={shown}
@@ -429,7 +597,7 @@ function StepRow({
           `Step ${step.number}`
         )}
       </TableCell>
-      <TableCell className="max-w-64">
+      <TableCell>
         <span className="block truncate" title={step.did}>
           {step.did || '—'}
         </span>
@@ -496,6 +664,7 @@ function TurnRow({
   delta,
   expanded,
   max,
+  measure,
   onShow,
   onToggle,
   shownSteps,
@@ -504,6 +673,7 @@ function TurnRow({
   delta: boolean
   expanded: boolean
   max: number
+  measure: Measure
   onShow?: () => void
   onToggle?: () => void
   shownSteps: number
@@ -514,9 +684,10 @@ function TurnRow({
     <TableRow
       className={cn('font-medium', onToggle && 'cursor-pointer')}
       onClick={onToggle}
+      {...measure}
     >
-      <TableCell className="whitespace-nowrap">
-        <div className="flex items-center gap-1">
+      <TableCell>
+        <div className="flex min-w-0 items-center gap-1">
           <button
             aria-expanded={expanded}
             aria-label={
@@ -524,7 +695,7 @@ function TurnRow({
                 ? `Turn ${turn.number}: ${expanded ? 'hide' : 'show'} its ${count}`
                 : `Turn ${turn.number}: its ${count}, open while searching`
             }
-            className="flex items-center gap-1 outline-none focus-visible:underline disabled:cursor-default"
+            className="flex min-w-0 items-center gap-1 outline-none focus-visible:underline disabled:cursor-default"
             disabled={!onToggle}
             onClick={(e) => {
               e.stopPropagation()
@@ -534,23 +705,25 @@ function TurnRow({
           >
             <ChevronRight
               className={cn(
-                'size-3.5 text-tertiary transition-transform',
+                'size-3.5 shrink-0 text-tertiary transition-transform',
                 expanded && 'rotate-90',
               )}
             />
-            Turn {turn.number}
-            <span className="text-tertiary font-normal">
-              ·{' '}
-              {shownSteps < turn.steps.length
-                ? `${shownSteps} of ${count}`
-                : count}
+            <span className="truncate">
+              Turn {turn.number}{' '}
+              <span className="text-tertiary font-normal">
+                ·{' '}
+                {shownSteps < turn.steps.length
+                  ? `${shownSteps} of ${count}`
+                  : count}
+              </span>
             </span>
           </button>
           {onShow && (
             <IconTooltip label="Show in conversation">
               <Button
                 aria-label={`Turn ${turn.number}: show in conversation`}
-                className="text-tertiary hover:text-primary size-6"
+                className="text-tertiary hover:text-primary size-6 shrink-0"
                 onClick={(e) => {
                   e.stopPropagation()
                   onShow()
@@ -564,9 +737,15 @@ function TurnRow({
           )}
         </div>
       </TableCell>
-      <TableCell className="max-w-64 font-normal">
+      <TableCell className="font-normal">
         {turn.trigger.badge ? (
-          <Badge variant="info">{turn.trigger.text}</Badge>
+          <Badge
+            className="max-w-full"
+            title={turn.trigger.text}
+            variant="info"
+          >
+            <span className="truncate">{turn.trigger.text}</span>
+          </Badge>
         ) : (
           <span className="block truncate" title={turn.trigger.text}>
             {turn.trigger.text}

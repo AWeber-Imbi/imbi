@@ -1,6 +1,13 @@
-import { render, screen, within } from '@testing-library/react'
+import {
+  act,
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { AgentTask } from '@/types'
 
@@ -12,6 +19,13 @@ import {
   type TrajectoryRecord,
 } from '../trajectoryModel'
 import { event, task } from './taskFixtures'
+import {
+  captureHighlights,
+  findStub,
+  layout,
+  scrollPane,
+  tableHeight,
+} from './virtualLayout'
 
 const LOG = [
   event(1, 'task.created', { description: 'Check', title: 'T' }),
@@ -469,5 +483,172 @@ describe('StatisticsTab', () => {
     expect(
       screen.queryByRole('button', { name: /show in conversation/ }),
     ).toBeNull()
+  })
+})
+
+describe('StatisticsTab with many turns', () => {
+  const MANY = [
+    event(1, 'task.created', { description: 'Check', title: 'T' }),
+    ...Array.from({ length: 100 }, (_, i) => [
+      event(
+        2 + i * 3,
+        'turn',
+        { body: `ask ${i}` },
+        { actor_id: 'dev', actor_kind: 'human' },
+      ),
+      event(3 + i * 3, 'usage.reported', { tokens_in: 100, tokens_out: 10 }),
+      event(4 + i * 3, 'turn', { body: `answer ${i}` }),
+    ]).flat(),
+  ]
+  const isPane = (el: HTMLElement) => !!el.querySelector(':scope > div > table')
+  const pane = () => screen.getByRole('table').parentElement!.parentElement!
+  const t = task({ status: 'closed' }) as unknown as AgentTask
+  let spy: ReturnType<typeof layout>
+  beforeEach(() => {
+    spy = layout({
+      content: tableHeight(37),
+      isPane,
+      pane: 370,
+      row: 37,
+    })
+  })
+  afterEach(() => {
+    cleanup()
+    spy.mockRestore()
+    vi.unstubAllGlobals()
+  })
+
+  it('renders only the turns in view and counts them all', () => {
+    render(<StatisticsTab events={MANY} task={t} />)
+    expect(screen.getByRole('table')).toHaveAttribute('aria-rowcount', '102')
+    const turns = screen.getAllByRole('button', { name: /^Turn \d+: show/ })
+    expect(turns.length).toBeLessThan(40)
+    expect(screen.getByText('Task total')).toBeInTheDocument()
+  })
+
+  it('numbers the rows it renders for screen readers', async () => {
+    render(<StatisticsTab events={MANY} task={t} />)
+    const all = () => within(screen.getByRole('table')).getAllByRole('row')
+    expect(all()[0]).toHaveAttribute('aria-rowindex', '1')
+    expect(all().at(-1)).toHaveAttribute('aria-rowindex', '102')
+    scrollPane(pane(), 37 * 60)
+    await waitFor(() =>
+      expect(Number(all()[1].getAttribute('aria-rowindex'))).toBeGreaterThan(
+        40,
+      ),
+    )
+    const indexes = all().map((r) => Number(r.getAttribute('aria-rowindex')))
+    expect(indexes.every((n, i) => i === 0 || n > indexes[i - 1])).toBe(true)
+  })
+
+  it('shows a far turn in the conversation', async () => {
+    const user = userEvent.setup()
+    const onShow = vi.fn()
+    render(
+      <StatisticsTab events={MANY} onShowInConversation={onShow} task={t} />,
+    )
+    const { turns } = taskStatistics(t, buildTrajectory(MANY, false), 'latest')
+    const last = turns[turns.length - 1]
+    const name = `Turn ${last.number}: show in conversation`
+    expect(screen.queryByRole('button', { name })).toBeNull()
+    scrollPane(pane(), 100 * 37)
+    await user.click(await screen.findByRole('button', { name }))
+    expect(onShow).toHaveBeenCalledExactlyOnceWith(last.seq)
+  })
+
+  it('keeps the focused turn while it scrolls out of view', async () => {
+    render(<StatisticsTab events={MANY} task={t} />)
+    const [first] = screen.getAllByRole('button', {
+      name: /^Turn \d+: show its/,
+    })
+    first.focus()
+    scrollPane(pane(), 100 * 37)
+    await screen.findByRole('button', { name: /^Turn 101: show/ })
+    expect(first).toBeInTheDocument()
+    expect(document.activeElement).toBe(first)
+    await userEvent.keyboard('{Enter}')
+    expect(first).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('filters every turn from the data and marks what renders', async () => {
+    const { marked, mutate } = captureHighlights()
+    const user = userEvent.setup()
+    render(<StatisticsTab events={MANY} task={t} />)
+    await user.type(
+      screen.getByRole('searchbox', { name: 'Search statistics' }),
+      'answer 7',
+    )
+    expect(screen.getByRole('table')).toHaveAttribute('aria-rowcount', '24')
+    scrollPane(pane(), 0)
+    mutate()
+    await waitFor(() => expect(marked.current).toContain('answer 7'))
+    expect(marked.current).not.toContain('answer 79')
+    scrollPane(pane(), 24 * 37)
+    mutate()
+    await waitFor(() => expect(marked.current).toContain('answer 79'))
+    expect(marked.current).not.toContain('answer 7')
+  })
+
+  it('keeps its column widths fixed as rows mount', () => {
+    render(<StatisticsTab events={MANY} task={t} />)
+    const table = screen.getByRole('table')
+    expect(table).toHaveClass('table-fixed')
+    const cols = [...table.querySelectorAll<HTMLElement>('colgroup > col')]
+    expect(cols).toHaveLength(9)
+    expect(cols.filter((c) => c.style.width !== '')).toHaveLength(8)
+  })
+
+  it('lets the browser find a turn out of view and scrolls to it', async () => {
+    render(<StatisticsTab events={MANY} task={t} />)
+    const stub = findStub('ask 90')
+    expect(stub).toHaveAttribute('hidden', 'until-found')
+    expect(screen.queryByText('ask 90')).toBeNull()
+    act(() => {
+      stub.dispatchEvent(new Event('beforematch'))
+    })
+    expect(await screen.findByText('ask 90')).toBeInTheDocument()
+  })
+
+  it('lets the browser find a number a row out of view shows', () => {
+    const events = MANY.map((e) =>
+      e.seq === 3 + 90 * 3
+        ? event(e.seq, 'usage.reported', { tokens_in: 987654, tokens_out: 10 })
+        : e,
+    )
+    render(<StatisticsTab events={events} task={t} />)
+    expect(screen.queryByText('ask 90')).toBeNull()
+    expect(findStub('988k')).toBe(findStub('ask 90'))
+  })
+
+  it('lets the browser find a context change a row out of view shows', async () => {
+    const user = userEvent.setup()
+    const events = MANY.map((e) =>
+      e.seq === 3 + 90 * 3
+        ? event(e.seq, 'usage.reported', { tokens_in: 987654, tokens_out: 10 })
+        : e,
+    )
+    render(<StatisticsTab events={events} task={t} />)
+    expect(findStub('ask 90').textContent).not.toContain('988k+988k')
+    await user.click(
+      screen.getByRole('button', { name: 'Show context change' }),
+    )
+    expect(screen.queryByText('ask 90')).toBeNull()
+    expect(findStub('ask 90').textContent).toContain('988k+988k')
+    expect(findStub('ask 91').textContent).toContain('100−988k')
+  })
+
+  it('cuts off a value too long for its column with an ellipsis', () => {
+    render(<StatisticsTab events={MANY} task={t} />)
+    const [first] = screen.getAllByRole('button', {
+      name: /^Turn \d+: show its/,
+    })
+    const turn = first.closest('tr')!
+    const total = screen.getByText('Task total').closest('tr')!
+    for (const row of [turn, total])
+      for (const cell of [...row.cells].slice(0, -1))
+        expect(
+          cell.classList.contains('truncate') ||
+            cell.querySelector('.truncate') !== null,
+        ).toBe(true)
   })
 })
