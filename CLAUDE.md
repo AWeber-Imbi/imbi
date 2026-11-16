@@ -8,8 +8,11 @@ with code in this repository.
 The Imbi platform monorepo — a [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/)
 containing every Imbi service, library, and first-party plugin, plus the
 production Docker image, Helm chart, and docs site. (Per-developer
-remote-dev orchestration, e.g. Okteto, lives outside this repo.) Imbi is a DevOps Service Management Platform (FastAPI,
-PostgreSQL + Apache AGE graph, ClickHouse analytics, React UI).
+remote-dev orchestration, e.g. Okteto, lives outside this repo.) Imbi is
+the open-source service catalog that tracks every service's ownership,
+deployments, and health, and runs the AI agents and workflows that fix
+them (FastAPI, PostgreSQL + Apache AGE graph, ClickHouse analytics, React
+UI).
 
 ## Layout
 

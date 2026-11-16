@@ -1,5 +1,5 @@
 site_name: Imbi Documentation
-site_description: DevOps Service Management Platform
+site_description: The open-source service catalog that tracks every service's ownership, deployments, and health, and runs the AI agents and workflows that fix them
 site_url: https://aweber-imbi.github.io/imbi/
 
 repo_name: AWeber-Imbi/imbi

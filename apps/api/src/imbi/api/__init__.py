@@ -2,8 +2,9 @@
 Imbi
 ====
 
-Imbi is a DevOps Service Management Platform designed to provide an efficient
-way to manage a large environment that contains many services and applications.
+Imbi is the open-source service catalog that tracks every service's
+ownership, deployments, and health, and runs the AI agents and workflows
+that fix them.
 
 """
 

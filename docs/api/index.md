@@ -1,6 +1,6 @@
 # Imbi Documentation
 
-> A DevOps Service Management Platform for managing complex service ecosystems
+> The open-source service catalog that tracks every service's ownership, deployments, and health, and runs the AI agents and workflows that fix them
 
 ## Overview
 

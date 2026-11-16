@@ -1,7 +1,7 @@
 [project]
 name = "imbi"
 version = "2.50.0"
-description = "Imbi is a DevOps Service Management Platform designed to provide an efficient way to manage a large environment that contains many services and applications."
+description = "Imbi is the open-source service catalog that tracks every service's ownership, deployments, and health, and runs the AI agents and workflows that fix them."
 readme = "README.md"
 requires-python = ">=3.14"
 license = "BSD-3-Clause"
