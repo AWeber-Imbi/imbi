@@ -4,7 +4,9 @@ Date: 2026-10-07
 
 ## Status
 
-Accepted
+Accepted. Amended by [ADR 0028](0028-tasks-become-tickets.md): agent
+tasks are renamed tickets, a ticket can be assigned to a person, and
+`closed` is no longer final.
 
 The plan for this work lives in the dev-environment repository's
 `docs/agent-runtime-plan.md`. Behavioral requirements are in

@@ -4,14 +4,14 @@ Date: 2026-11-16
 
 ## Status
 
-Proposed
+Accepted
 
 This ADR renames agent tasks to **tickets**, as in Jira, and lets a ticket
 be assigned to an agent or a person. The Context section uses the current
 name, agent task. Every later section uses ticket.
 
-This ADR is an alternative to [ADR 0024](0024-work-items.md) and
-[ADR 0025](0025-tickets.md). Accept one of the three.
+This ADR was accepted instead of [ADR 0024](0024-work-items.md) and
+[ADR 0025](0025-tickets.md). Both are rejected.
 
 Related: [ADR 0020](0020-agent-task-contract.md) (agent tasks, extended
 and renamed here; `closed` is no longer final), [ADR 0021](0021-workflow-contract.md) (workflows, not
@@ -288,8 +288,7 @@ reasons, such as `prerequisites_done` and `started`.
   names that clients call, role grants, and workflow triggers. MCP clients
   must update before the old names go.
 - ADR 0025 also uses the name ticket, with `TK-<n>` ids and a `tickets`
-  schema. Accepting this ADR means rejecting ADR 0025, so the two meanings
-  never both apply.
+  schema. ADR 0025 is rejected, so the two meanings never both apply.
 - An agent still cannot wait days on a request. The harness waits inside
   the pod, and transcripts stay in the pod. For a long wait, the agent
   hands the ticket to the person instead of opening a request.

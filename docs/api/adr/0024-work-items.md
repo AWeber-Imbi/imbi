@@ -4,7 +4,8 @@ Date: 2026-11-06
 
 ## Status
 
-Proposed
+Rejected. [ADR 0028](0028-tasks-become-tickets.md) was accepted
+instead (2026-11-16).
 
 Related: [ADR 0008](0008-plugin-system-architecture.md) (plugins),
 [ADR 0020](0020-agent-task-contract.md) (agent tasks),

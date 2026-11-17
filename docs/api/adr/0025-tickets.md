@@ -4,10 +4,11 @@ Date: 2026-11-12
 
 ## Status
 
-Proposed
+Rejected. [ADR 0028](0028-tasks-become-tickets.md) was accepted
+instead (2026-11-16). ADR 0028 uses the name ticket for extended agent
+tasks, not for the entity that this ADR defines.
 
-This ADR is an alternative to [ADR 0024](0024-work-items.md). Both solve
-the same problem. Accept one of them, not both.
+This ADR was an alternative to [ADR 0024](0024-work-items.md).
 
 Related: [ADR 0020](0020-agent-task-contract.md) (agent tasks),
 [ADR 0021](0021-workflow-contract.md) (workflows, not changed here),

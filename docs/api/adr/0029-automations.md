@@ -10,7 +10,7 @@ Related: [ADR 0020](0020-agent-task-contract.md) (agent tasks; a project
 run is an agent task), [ADR 0021](0021-workflow-contract.md) (workflows;
 one new step), [ADR 0022](0022-agent-harness-and-secrets-broker.md)
 (harness and secrets broker; a second engine and new token purposes),
-[ADR 0028](0028-tasks-become-tickets.md) (if accepted, read "agent task"
+[ADR 0028](0028-tasks-become-tickets.md) (accepted; read "agent task"
 below as "ticket").
 
 ## Context
