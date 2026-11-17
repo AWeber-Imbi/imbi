@@ -15,7 +15,9 @@ Keys (all under ``imbi:maintenance:{slug}:``):
 - ``lock`` -- run id via ``SET NX EX``; existence means "running".
 - ``pending`` -- SET of project ids awaiting execution.
 - ``processing`` -- HASH of ``project_id -> claimed_at`` (epoch seconds)
-  for checked-out ids; its size is the run's ``in_flight``.
+  for checked-out ids; its size is the run's ``in_flight``. The
+  ``claimed_at`` value is also the claim token: only the holder of the
+  current claim can record an outcome for the id or requeue it.
 - ``run`` -- HASH of run metadata and outcome counters.
 - ``failures`` -- HASH of ``project_id -> error`` for failed items.
 """
@@ -63,14 +65,24 @@ redis.call('HSET', KEYS[2], id, ARGV[1])
 redis.call('EXPIRE', KEYS[2], ARGV[2])
 return id
 """
-# Counts the outcome only while the lease is still held; once reclaim
-# has handed the id back, the retry's outcome is the one that counts.
+# Counts the outcome only while this claim still holds the lease; once
+# reclaim has handed the id back, the retry's outcome is the one that
+# counts, and a former holder cannot remove its replacement's lease.
 _RECORD_OUTCOME = """
-if redis.call('HDEL', KEYS[2], ARGV[1]) == 0 then return 0 end
+if redis.call('HGET', KEYS[2], ARGV[1]) ~= ARGV[5] then return 0 end
+redis.call('HDEL', KEYS[2], ARGV[1])
 redis.call('HINCRBY', KEYS[1], ARGV[2], 1)
 if ARGV[3] ~= '' and redis.call('HLEN', KEYS[3]) < tonumber(ARGV[4]) then
   redis.call('HSET', KEYS[3], ARGV[1], ARGV[3])
 end
+return 1
+"""
+# Same claim check: a requeue after an outcome that committed (but whose
+# reply was lost) or after a reclaim does nothing.
+_REQUEUE = """
+if redis.call('HGET', KEYS[2], ARGV[1]) ~= ARGV[2] then return 0 end
+redis.call('HDEL', KEYS[2], ARGV[1])
+redis.call('SADD', KEYS[1], ARGV[1])
 return 1
 """
 _RECLAIM = """
@@ -233,32 +245,39 @@ async def read_run_meta(client: valkey.Valkey, slug: str) -> tuple[str, str]:
     )
 
 
-async def checkout(client: valkey.Valkey, slug: str) -> str | None:
-    """Move one pending project id onto the processing hash."""
+async def checkout(client: valkey.Valkey, slug: str) -> tuple[str, str] | None:
+    """Move one pending project id onto the processing hash.
+
+    Returns ``(project_id, token)``; pass the token to
+    :func:`record_outcome` or :func:`requeue`.
+    """
+    token = str(time.time())
     popped = await _resolve(
         client.eval(  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
             _CHECKOUT,
             2,
             _key(slug, 'pending'),
             _key(slug, 'processing'),
-            str(time.time()),
+            token,
             str(PENDING_TTL_SECONDS),
         )
     )
-    return None if popped is None else _decode(popped)
+    return None if popped is None else (_decode(popped), token)
 
 
 async def record_outcome(
     client: valkey.Valkey,
     slug: str,
     project_id: str,
+    token: str,
     outcome: Outcome,
     error: str = '',
 ) -> bool:
     """Record a checked-out project's outcome on the run hash.
 
-    Returns ``False`` when the lease was already reclaimed: the outcome
-    is not counted, because the retry records its own.
+    Returns ``False`` when *token* no longer holds the lease (it was
+    reclaimed): the outcome is not counted, because the retry records
+    its own.
     """
     detail = error[:MAX_ERROR_LEN] if outcome == 'failed' else ''
     recorded = await _resolve(
@@ -272,21 +291,31 @@ async def record_outcome(
             outcome,
             detail,
             str(MAX_FAILURE_DETAILS),
+            token,
         )
     )
     return bool(_opt_int(recorded))
 
 
-async def requeue(client: valkey.Valkey, slug: str, project_id: str) -> None:
-    """Return a checked-out id to the pending set (rate limit/shutdown)."""
-    async with client.pipeline(transaction=True) as pipe:
-        pipe.sadd(  # pyright: ignore[reportUnknownMemberType]
-            _key(slug, 'pending'), project_id
+async def requeue(
+    client: valkey.Valkey, slug: str, project_id: str, token: str
+) -> bool:
+    """Return a checked-out id to the pending set (rate limit/shutdown).
+
+    Returns ``False`` when *token* no longer holds the lease: the outcome
+    was already recorded, or the lease was reclaimed.
+    """
+    requeued = await _resolve(
+        client.eval(  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
+            _REQUEUE,
+            2,
+            _key(slug, 'pending'),
+            _key(slug, 'processing'),
+            project_id,
+            token,
         )
-        pipe.hdel(  # pyright: ignore[reportUnknownMemberType]
-            _key(slug, 'processing'), project_id
-        )
-        await pipe.execute()  # pyright: ignore[reportUnknownMemberType]
+    )
+    return bool(_opt_int(requeued))
 
 
 async def reclaim(client: valkey.Valkey, slug: str) -> int:
@@ -313,9 +342,10 @@ async def maybe_finalize(client: valkey.Valkey, slug: str) -> bool:
 
     Safe to call from any instance after every outcome; the benign race
     where two instances both pass the check is idempotent (both write
-    ``state=completed``).
+    ``state=completed``). The reads run in one MULTI/EXEC so a
+    concurrent :func:`reclaim` cannot move an id between them.
     """
-    async with client.pipeline(transaction=False) as pipe:
+    async with client.pipeline(transaction=True) as pipe:
         pipe.scard(  # pyright: ignore[reportUnknownMemberType]
             _key(slug, 'pending')
         )

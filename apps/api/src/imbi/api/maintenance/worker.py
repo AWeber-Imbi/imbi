@@ -139,8 +139,8 @@ async def _tick_operation(
         # Another instance may drain to zero while we're paused.
         await state.maybe_finalize(client, operation.slug)
         return False
-    project_id = await state.checkout(client, operation.slug)
-    if project_id is None:
+    claim = await state.checkout(client, operation.slug)
+    if claim is None:
         if reclaimed := await state.reclaim(client, operation.slug):
             LOGGER.warning(
                 'maintenance %s reclaimed %d expired lease(s)',
@@ -150,6 +150,7 @@ async def _tick_operation(
             return True
         await state.maybe_finalize(client, operation.slug)
         return False
+    project_id, token = claim
     ctx = await _item_context(client, db, operation, project_id)
     started = time.monotonic()
     outcome: state.Outcome
@@ -158,10 +159,10 @@ async def _tick_operation(
         outcome = await operation.execute(db, client, project_id, ctx=ctx)
     except asyncio.CancelledError:
         # Graceful shutdown: hand the project back so nothing is lost.
-        await state.requeue(client, operation.slug, project_id)
+        await state.requeue(client, operation.slug, project_id, token)
         raise
     except PluginRateLimited as exc:
-        await state.requeue(client, operation.slug, project_id)
+        await state.requeue(client, operation.slug, project_id, token)
         if operation.pause_key:
             await pause_until(client, operation.pause_key, exc.retry_at)
         retry_in = max(0.0, exc.retry_at - time.time())
@@ -199,17 +200,19 @@ async def _tick_operation(
         error = 'Operation failed. See server logs for details.'
     try:
         recorded = await state.record_outcome(
-            client, operation.slug, project_id, outcome, error
+            client, operation.slug, project_id, token, outcome, error
         )
     except Exception:
         # Hand the project back now rather than waiting out its lease;
-        # its outcome is recorded on the retry.
+        # its outcome is recorded on the retry. If the record committed
+        # and only its reply was lost, the claim is gone and the requeue
+        # does nothing.
         LOGGER.exception(
             'maintenance %s failed to record outcome for %s; requeueing',
             operation.slug,
             project_id,
         )
-        await state.requeue(client, operation.slug, project_id)
+        await state.requeue(client, operation.slug, project_id, token)
         recorded = False
     disposition: log.Disposition = outcome
     if not recorded:

@@ -88,8 +88,11 @@ class CheckoutTests(unittest.IsolatedAsyncioTestCase):
     async def test_leases_the_popped_id(self) -> None:
         client = mock.AsyncMock()
         client.eval = mock.AsyncMock(return_value=b'p1')
-        self.assertEqual('p1', await state.checkout(client, 'op'))
+        with mock.patch.object(state.time, 'time', return_value=10_000.0):
+            claim = await state.checkout(client, 'op')
+        self.assertEqual(('p1', '10000.0'), claim)
         args = client.eval.await_args.args
+        self.assertEqual('10000.0', args[4])
         self.assertEqual(
             (
                 2,
@@ -110,22 +113,25 @@ class RecordOutcomeTests(unittest.IsolatedAsyncioTestCase):
         client = mock.AsyncMock()
         client.eval = mock.AsyncMock(return_value=1)
         self.assertTrue(
-            await state.record_outcome(client, 'op', 'p1', 'succeeded')
+            await state.record_outcome(client, 'op', 'p1', 't1', 'succeeded')
         )
         args = client.eval.await_args.args
         self.assertEqual(('p1', 'succeeded', ''), args[5:8])
+        self.assertEqual('t1', args[9])
 
     async def test_reports_a_reclaimed_lease(self) -> None:
         client = mock.AsyncMock()
         client.eval = mock.AsyncMock(return_value=0)
         self.assertFalse(
-            await state.record_outcome(client, 'op', 'p1', 'succeeded')
+            await state.record_outcome(client, 'op', 'p1', 't1', 'succeeded')
         )
 
     async def test_failure_detail_is_truncated(self) -> None:
         client = mock.AsyncMock()
         client.eval = mock.AsyncMock(return_value=1)
-        await state.record_outcome(client, 'op', 'p1', 'failed', 'x' * 600)
+        await state.record_outcome(
+            client, 'op', 'p1', 't1', 'failed', 'x' * 600
+        )
         args = client.eval.await_args.args
         self.assertEqual(state.MAX_ERROR_LEN, len(args[7]))
         self.assertEqual(str(state.MAX_FAILURE_DETAILS), args[8])
@@ -133,15 +139,24 @@ class RecordOutcomeTests(unittest.IsolatedAsyncioTestCase):
 
 class RequeueTests(unittest.IsolatedAsyncioTestCase):
     async def test_moves_the_id_back_to_pending(self) -> None:
-        client, pipe = _client_with_pipeline()
-        await state.requeue(client, 'op', 'p1')
+        client = mock.AsyncMock()
+        client.eval = mock.AsyncMock(return_value=1)
+        self.assertTrue(await state.requeue(client, 'op', 'p1', 't1'))
         self.assertEqual(
-            ('imbi:maintenance:op:pending', 'p1'), pipe.sadd.call_args.args
+            (
+                2,
+                'imbi:maintenance:op:pending',
+                'imbi:maintenance:op:processing',
+                'p1',
+                't1',
+            ),
+            client.eval.await_args.args[1:],
         )
-        self.assertEqual(
-            ('imbi:maintenance:op:processing', 'p1'),
-            pipe.hdel.call_args.args,
-        )
+
+    async def test_skips_a_claim_it_no_longer_holds(self) -> None:
+        client = mock.AsyncMock()
+        client.eval = mock.AsyncMock(return_value=0)
+        self.assertFalse(await state.requeue(client, 'op', 'p1', 't1'))
 
 
 class ReclaimTests(unittest.IsolatedAsyncioTestCase):
@@ -160,6 +175,7 @@ class MaybeFinalizeTests(unittest.IsolatedAsyncioTestCase):
         with mock.patch.object(state, '_finish', mock.AsyncMock()) as finish:
             result = await state.maybe_finalize(client, 'op')
         self.assertTrue(result)
+        client.pipeline.assert_called_once_with(transaction=True)
         finish.assert_awaited_once_with(client, 'op', 'completed')
 
     async def test_skips_when_pending_remain(self) -> None:

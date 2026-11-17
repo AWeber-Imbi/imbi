@@ -49,7 +49,7 @@ class TickOperationTests(unittest.IsolatedAsyncioTestCase):
             self.state[name] = patcher.start()
             self.addCleanup(patcher.stop)
         self.state['has_active_run'].return_value = True
-        self.state['checkout'].return_value = 'p1'
+        self.state['checkout'].return_value = ('p1', 't1')
         self.state['record_outcome'].return_value = True
         self.state['reclaim'].return_value = 0
         self.state['maybe_finalize'].return_value = False
@@ -87,7 +87,7 @@ class TickOperationTests(unittest.IsolatedAsyncioTestCase):
         result = await worker._tick_operation(self.client, self.db, operation)
         self.assertTrue(result)
         self.state['record_outcome'].assert_awaited_once_with(
-            self.client, 'op', 'p1', 'succeeded', ''
+            self.client, 'op', 'p1', 't1', 'succeeded', ''
         )
         self.state['maybe_finalize'].assert_awaited()
 
@@ -96,7 +96,9 @@ class TickOperationTests(unittest.IsolatedAsyncioTestCase):
         operation = _operation(mock.AsyncMock(return_value='succeeded'))
         result = await worker._tick_operation(self.client, self.db, operation)
         self.assertTrue(result)
-        self.state['requeue'].assert_awaited_once_with(self.client, 'op', 'p1')
+        self.state['requeue'].assert_awaited_once_with(
+            self.client, 'op', 'p1', 't1'
+        )
 
     async def test_log_context_failure_does_not_strand_the_claim(
         self,
@@ -107,7 +109,7 @@ class TickOperationTests(unittest.IsolatedAsyncioTestCase):
         result = await worker._tick_operation(self.client, self.db, operation)
         self.assertTrue(result)
         self.state['record_outcome'].assert_awaited_once_with(
-            self.client, 'op', 'p1', 'succeeded', ''
+            self.client, 'op', 'p1', 't1', 'succeeded', ''
         )
         row = self.written_rows()[0]
         self.assertEqual('', row.run_id)
@@ -153,7 +155,7 @@ class TickOperationTests(unittest.IsolatedAsyncioTestCase):
         result = await worker._tick_operation(self.client, self.db, operation)
         self.assertTrue(result)
         self.state['record_outcome'].assert_awaited_once_with(
-            self.client, 'op', 'p1', 'failed', 'boom'
+            self.client, 'op', 'p1', 't1', 'failed', 'boom'
         )
 
     async def test_app_not_installed_records_message_with_a_warning(
@@ -170,7 +172,7 @@ class TickOperationTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertTrue(result)
         self.state['record_outcome'].assert_awaited_once_with(
-            self.client, 'op', 'p1', 'failed', 'not installed'
+            self.client, 'op', 'p1', 't1', 'failed', 'not installed'
         )
         self.assertEqual(['WARNING'], [r.levelname for r in logs.records])
 
@@ -180,7 +182,7 @@ class TickOperationTests(unittest.IsolatedAsyncioTestCase):
         )
         result = await worker._tick_operation(self.client, self.db, operation)
         self.assertTrue(result)
-        error = self.state['record_outcome'].await_args.args[4]
+        error = self.state['record_outcome'].await_args.args[5]
         self.assertNotIn('secret detail', error)
 
     async def test_rate_limited_requeues_and_pauses(self) -> None:
@@ -196,7 +198,9 @@ class TickOperationTests(unittest.IsolatedAsyncioTestCase):
                 self.client, self.db, operation
             )
         self.assertFalse(result)
-        self.state['requeue'].assert_awaited_once_with(self.client, 'op', 'p1')
+        self.state['requeue'].assert_awaited_once_with(
+            self.client, 'op', 'p1', 't1'
+        )
         self.state['record_outcome'].assert_not_awaited()
         pause.assert_awaited_once_with(
             self.client, 'imbi:test:paused-until', retry_at
@@ -224,7 +228,9 @@ class TickOperationTests(unittest.IsolatedAsyncioTestCase):
         )
         with self.assertRaises(asyncio.CancelledError):
             await worker._tick_operation(self.client, self.db, operation)
-        self.state['requeue'].assert_awaited_once_with(self.client, 'op', 'p1')
+        self.state['requeue'].assert_awaited_once_with(
+            self.client, 'op', 'p1', 't1'
+        )
 
     async def test_success_writes_an_attempt_row(self) -> None:
         operation = _operation(mock.AsyncMock(return_value='succeeded'))
@@ -290,7 +296,7 @@ class TickOperationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([], self.written_rows())
 
     async def test_a_non_project_item_has_no_project_id(self) -> None:
-        self.state['checkout'].return_value = 'Project:n1'
+        self.state['checkout'].return_value = ('Project:n1', 't1')
         operation = _operation(
             mock.AsyncMock(return_value='succeeded'), items_are_projects=False
         )
