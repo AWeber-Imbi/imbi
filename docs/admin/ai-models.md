@@ -210,9 +210,14 @@ Imbi asks for the structured answer in the form of the driver:
 | OpenAI, OpenAI-compatible | A strict `json_schema` response format |
 | Google Vertex AI | A JSON response schema (Gemini) |
 
-Turn the switch off when the provider refuses the request. A step with
-output fields that runs on a model with the switch off fails with
-`model_no_structured_output`.
+Turn the switch off when the provider refuses the request. Imbi checks
+the switch at two times:
+
+- **Save.** Imbi does not save a workflow that has an LLM Call step
+  with output fields on a model with the switch off. The `422` error
+  says that the model does not support structured output.
+- **Run.** When you turn the switch off after you save the workflow,
+  the step fails at run time with `model_no_structured_output`.
 
 !!! note
     An LLM Call step on Google Vertex AI calls Gemini models only, and

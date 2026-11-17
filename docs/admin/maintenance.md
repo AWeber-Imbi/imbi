@@ -67,7 +67,8 @@ The page has two tabs: **Operations** and **Activity**.
 <!-- END GENERATED -->
 
 The descriptions come from the code. Imbi runs only **Sync Agent
-Marketplaces** and **Sync CVE Catalog** on a schedule, as system jobs
+Marketplaces**, **Sync CVE Catalog**, and **Prune AI Model Calls** on a
+schedule, as system jobs
 (see [Scheduled jobs](scheduled-jobs.md)). It runs no other operation
 on a schedule, **Close Out Stuck Deployments** included. Deployments stay
 `pending` until an administrator runs it or schedules it. See
@@ -110,8 +111,8 @@ A run has one of these states: `idle`, `running`, `completed`,
 The API endpoint is `POST /maintenance/operations/{slug}/run`. The
 caller needs `admin:maintenance:manage`, or `admin:maintenance:<slug>`
 for that one operation. The `imbi-scheduler` role has only
-`admin:maintenance:marketplace-sync` and `admin:maintenance:cve-sync`,
-for its system jobs. To run
+`admin:maintenance:marketplace-sync`, `admin:maintenance:cve-sync`, and
+`admin:maintenance:ai-model-calls-prune`, for its system jobs. To run
 another operation on a schedule, an administrator makes a scheduled job
 that calls this endpoint: a scheduled job runs with the permissions of
 the person accountable for it, so the job works only when that person
