@@ -14,6 +14,9 @@ import { Search, X } from 'lucide-react'
 const HIGHLIGHT = 'task-search'
 const MAX_MARKS = 2000
 
+/** Marks an element whose text matched a search on the server. */
+export const SEARCH_MATCH = 'data-search-match'
+
 /** Marks an element whose text the search highlighter leaves alone. */
 export const SKIP_HIGHLIGHT = 'data-search-skip'
 
@@ -115,7 +118,7 @@ export function ToolbarSearch({
       {value && (
         <button
           aria-label="Clear search"
-          className="text-tertiary hover:text-primary hover:bg-tertiary flex size-6 shrink-0 items-center justify-center rounded-md"
+          className="text-tertiary hover:bg-tertiary hover:text-primary flex size-6 shrink-0 items-center justify-center rounded-md"
           onClick={() => onChange('')}
           type="button"
         >
@@ -126,33 +129,72 @@ export function ToolbarSearch({
   )
 }
 
+/**
+ * Marks the text of every element with SEARCH_MATCH inside the element,
+ * for matches that the server found, in the same style as the search.
+ */
+export function useMatchHighlight(
+  ref: RefObject<HTMLElement | null>,
+  name: string,
+) {
+  useHighlight(ref, name, SEARCH_MATCH, matchedRanges)
+}
+
 /** Marks every match of the query inside the element, and keeps the marks as it changes. */
 export function useSearchHighlight(
   ref: RefObject<HTMLElement | null>,
   query: string,
 ) {
+  useHighlight(ref, HIGHLIGHT, query.trim().toLowerCase(), searchRanges)
+}
+
+/** The task's shared query, or a query of its own when the view stands alone. */
+export function useTaskSearch(): SearchState {
+  const shared = useContext(TaskSearchContext)
+  const local = useState('')
+  return shared ?? local
+}
+
+function matchedRanges(root: HTMLElement): Range[] {
+  return [...root.querySelectorAll(`[${SEARCH_MATCH}]`)]
+    .slice(0, MAX_MARKS)
+    .map((element) => {
+      const range = new Range()
+      range.selectNodeContents(element)
+      return range
+    })
+}
+
+function searchRanges(root: HTMLElement, q: string): Range[] {
+  const ranges: Range[] = []
+  for (const n of highlightable(root)) {
+    for (const [start, end] of matchRanges(n.textContent ?? '', q)) {
+      if (ranges.length >= MAX_MARKS) return ranges
+      const range = new Range()
+      range.setStart(n, start)
+      range.setEnd(n, end)
+      ranges.push(range)
+    }
+  }
+  return ranges
+}
+
+function useHighlight(
+  ref: RefObject<HTMLElement | null>,
+  name: string,
+  key: string,
+  collect: (root: HTMLElement, key: string) => Range[],
+) {
   useEffect(() => {
     const root = ref.current
-    const q = query.trim().toLowerCase()
     if (typeof CSS === 'undefined' || !('highlights' in CSS) || !root) return
-    if (!q) {
-      CSS.highlights.delete(HIGHLIGHT)
+    if (!key) {
+      CSS.highlights.delete(name)
       return
     }
     let frame = 0
-    const mark = () => {
-      const ranges: Range[] = []
-      for (const n of highlightable(root)) {
-        for (const [start, end] of matchRanges(n.textContent ?? '', q)) {
-          if (ranges.length >= MAX_MARKS) break
-          const range = new Range()
-          range.setStart(n, start)
-          range.setEnd(n, end)
-          ranges.push(range)
-        }
-      }
-      CSS.highlights.set(HIGHLIGHT, new Highlight(...ranges))
-    }
+    const mark = () =>
+      CSS.highlights.set(name, new Highlight(...collect(root, key)))
     mark()
     const observer = new MutationObserver(() => {
       cancelAnimationFrame(frame)
@@ -166,14 +208,7 @@ export function useSearchHighlight(
     return () => {
       observer.disconnect()
       cancelAnimationFrame(frame)
-      CSS.highlights.delete(HIGHLIGHT)
+      CSS.highlights.delete(name)
     }
-  }, [query, ref])
-}
-
-/** The task's shared query, or a query of its own when the view stands alone. */
-export function useTaskSearch(): SearchState {
-  const shared = useContext(TaskSearchContext)
-  const local = useState('')
-  return shared ?? local
+  }, [collect, key, name, ref])
 }

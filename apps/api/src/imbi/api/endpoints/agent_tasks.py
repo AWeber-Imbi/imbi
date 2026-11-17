@@ -227,10 +227,30 @@ class AgentTaskResponse(pydantic.BaseModel):
     structured_output: dict[str, typing.Any] | None = None
 
 
+class HighlightPart(pydantic.BaseModel):
+    text: str
+    match: bool
+
+
+class TaskHighlight(pydantic.BaseModel):
+    """A field of a task that the text query matched."""
+
+    field: typing.Literal['agent', 'project', 'short_id', 'title']
+    #: The id of the agent or project, for those fields.
+    id: str | None = None
+    #: The whole value of the field, in order, split around each match.
+    parts: list[HighlightPart]
+
+
 class AgentTaskListItem(AgentTaskResponse):
     #: When the oldest open request opened, for a task that waits on a
     #: person; ``null`` when the task is closed or has none open.
     blocked_since: datetime.datetime | None = None
+    #: What ``q`` matched; empty without ``q``.
+    highlights: list[TaskHighlight] = pydantic.Field(default_factory=list)
+    #: The icon of each project of the task that has one, by project id:
+    #: the project's own icon, else the icon of its project type.
+    project_icons: dict[str, str] = pydantic.Field(default_factory=dict)
 
 
 class AgentTaskWaiting(pydantic.BaseModel):
@@ -372,10 +392,11 @@ _TEXT_QUERY: typing.LiteralString = """
 MATCH (o:Organization {{slug: {org_slug}}})
 OPTIONAL MATCH (a:Agent)-[:BELONGS_TO]->(o)
 WHERE toLower(a.name) CONTAINS {text}
-WITH o, collect(a.id) AS agent_ids
+WITH o, collect(a.id) AS agent_ids, collect(a.name) AS agent_names
 OPTIONAL MATCH (p:Project)-[:OWNED_BY]->(:Team)-[:BELONGS_TO]->(o)
 WHERE toLower(p.slug) CONTAINS {text}
-RETURN agent_ids, collect(p.id) AS project_ids
+RETURN agent_ids, agent_names, collect(p.id) AS project_ids,
+       collect(p.slug) AS project_slugs
 """
 
 _AGENT_QUERY: typing.LiteralString = """
@@ -396,6 +417,18 @@ MATCH (p:Project)
       -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
 WHERE p.id IN {ids} OR p.slug IN {ids}
 RETURN p.id AS id, p.slug AS slug, p.name AS name
+"""
+
+_ICONS_QUERY: typing.LiteralString = """
+MATCH (p:Project)
+      -[:OWNED_BY]->(:Team)
+      -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+WHERE p.id IN {ids}
+OPTIONAL MATCH (p)-[:TYPE]->(pt:ProjectType)
+WITH p, pt
+ORDER BY pt.slug
+WITH p, collect(pt.icon) AS type_icons
+RETURN p.id AS id, p.icon AS icon, type_icons[0] AS type_icon
 """
 
 _WEBHOOK_QUERY: typing.LiteralString = """
@@ -479,6 +512,86 @@ def _ids(value: typing.Any) -> list[str]:
     """Return the ids in an agtype list."""
     items = typing.cast('list[typing.Any]', graph.parse_agtype(value) or [])
     return [str(item) for item in items]
+
+
+def _pairs(ids: typing.Any, values: typing.Any) -> dict[str, str]:
+    """Pair two agtype lists that one ``collect`` pass built."""
+    keys, names = _ids(ids), _ids(values)
+    if len(keys) != len(names):
+        return dict.fromkeys(keys, '')
+    return dict(zip(keys, names, strict=True))
+
+
+def _parts(value: str, text: str) -> list[dict[str, typing.Any]]:
+    """Split ``value`` around each case-blind match of ``text``."""
+    parts: list[dict[str, typing.Any]] = []
+    end = 0
+    for found in re.finditer(re.escape(text), value, re.IGNORECASE):
+        if found.start() > end:
+            parts.append({'text': value[end : found.start()], 'match': False})
+        parts.append({'text': found.group(), 'match': True})
+        end = found.end()
+    if parts and end < len(value):
+        parts.append({'text': value[end:], 'match': False})
+    return parts
+
+
+def _highlights(
+    row: dict[str, typing.Any],
+    text: str,
+    agents: dict[str, str],
+    projects: dict[str, str],
+) -> list[dict[str, typing.Any]]:
+    """Return each field of the task that ``text`` matched.
+
+    The agent and project values are the current name and slug from
+    the graph, which the search matched, not the slug the task stored.
+    """
+    found: list[dict[str, typing.Any]] = []
+    for field in ('short_id', 'title'):
+        if parts := _parts(row[field], text):
+            found.append({'field': field, 'parts': parts})
+    if parts := _parts(agents.get(row['agent_id'], ''), text):
+        found.append({'field': 'agent', 'id': row['agent_id'], 'parts': parts})
+    for project in _projects_of(row):
+        project_id = project['project_id']
+        if parts := _parts(projects.get(project_id, ''), text):
+            found.append(
+                {'field': 'project', 'id': project_id, 'parts': parts}
+            )
+    return found
+
+
+def _projects_of(row: dict[str, typing.Any]) -> list[dict[str, str]]:
+    return typing.cast('list[dict[str, str]]', row['projects'] or [])
+
+
+async def _project_icons(
+    db: graph.Graph, org_slug: str, rows: list[dict[str, typing.Any]]
+) -> dict[str, str]:
+    """Return the icon of each project of ``rows`` that has one."""
+    ids = sorted(
+        {
+            project['project_id']
+            for row in rows
+            for project in _projects_of(row)
+        }
+    )
+    if not ids:
+        return {}
+    records = await db.execute(
+        _ICONS_QUERY,
+        {'org_slug': org_slug, 'ids': ids},
+        ['id', 'icon', 'type_icon'],
+    )
+    icons: dict[str, str] = {}
+    for record in records:
+        icon: typing.Any = graph.parse_agtype(
+            record['icon']
+        ) or graph.parse_agtype(record['type_icon'])
+        if icon:
+            icons[str(graph.parse_agtype(record['id']))] = str(icon)
+    return icons
 
 
 def task_budget(
@@ -1040,8 +1153,8 @@ async def list_agent_tasks(
         fastapi.Depends(permissions.require_permission('agent_task:read')),
     ],
     status: typing.Annotated[list[Status] | None, fastapi.Query()] = None,
-    agent_id: str | None = None,
-    owner: str | None = None,
+    agent_id: typing.Annotated[list[str] | None, fastapi.Query()] = None,
+    owner: typing.Annotated[list[str] | None, fastapi.Query()] = None,
     mine: bool = False,
     q: str | None = None,
     limit: typing.Annotated[int, fastapi.Query(ge=1, le=100)] = 50,
@@ -1050,10 +1163,12 @@ async def list_agent_tasks(
     """List the tasks in an organization, newest first.
 
     ``q`` matches the title, the short id, the agent name, or the
-    project slug. ``mine`` keeps the tasks that the caller owns. The
-    ``Link`` header has the URL of the next page. Each task has
-    ``blocked_since`` when it waits on a person, so a client can sort
-    that queue oldest block first (O2).
+    project slug, and ``highlights`` says where. ``agent_id`` and
+    ``owner`` repeat to match any of their values, and ``mine`` adds
+    the caller to the owners. The ``Link`` header has the URL of the
+    next page. Each task has ``project_icons``, and ``blocked_since``
+    when it waits on a person, so a client can sort that queue oldest
+    block first (O2).
 
     Raises:
         400: The cursor is not valid.
@@ -1062,17 +1177,18 @@ async def list_agent_tasks(
 
     """
     text = (q or '').strip().lower()
-    agent_ids: list[str] = []
-    project_ids: list[str] = []
+    agents: dict[str, str] = {}
+    projects: dict[str, str] = {}
     if text:
         records = await db.execute(
             _TEXT_QUERY,
             {'org_slug': org_slug, 'text': text},
-            ['agent_ids', 'project_ids'],
+            ['agent_ids', 'agent_names', 'project_ids', 'project_slugs'],
         )
         if records:
-            agent_ids = _ids(records[0]['agent_ids'])
-            project_ids = _ids(records[0]['project_ids'])
+            record = records[0]
+            agents = _pairs(record['agent_ids'], record['agent_names'])
+            projects = _pairs(record['project_ids'], record['project_slugs'])
     before: tuple[datetime.datetime, uuid.UUID] | None = None
     if cursor is not None:
         decoded = decode_cursor(cursor)
@@ -1084,14 +1200,15 @@ async def list_agent_tasks(
             raise fastapi.HTTPException(
                 status_code=400, detail='Invalid cursor'
             )
+    owners = [*(owner or []), *([auth.principal_name] if mine else [])]
     rows = await store.search(
         org_id,
         statuses=status,
-        agent_id=agent_id,
-        owner=auth.principal_name if mine else owner,
+        agent_ids=agent_id,
+        owners=owners,
         text=text or None,
-        text_agent_ids=agent_ids,
-        text_project_ids=project_ids,
+        text_agent_ids=list(agents),
+        text_project_ids=list(projects),
         before=before,
         limit=limit + 1,
     )
@@ -1102,7 +1219,21 @@ async def list_agent_tasks(
             rows[-1]['created_at'], str(rows[-1]['id'])
         )
     response.headers['Link'] = build_link_header(request, next_cursor)
-    return rows
+    icons = await _project_icons(db, org_slug, rows)
+    return [
+        {
+            **row,
+            'highlights': (
+                _highlights(row, text, agents, projects) if text else []
+            ),
+            'project_icons': {
+                project['project_id']: icons[project['project_id']]
+                for project in _projects_of(row)
+                if project['project_id'] in icons
+            },
+        }
+        for row in rows
+    ]
 
 
 @agent_tasks_router.get('/waiting', response_model=AgentTaskWaiting)

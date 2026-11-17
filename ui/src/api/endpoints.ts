@@ -3828,8 +3828,10 @@ const agentTaskPath = (orgSlug: string, shortId: string) =>
   `${agentTasksPath(orgSlug)}/${encodeURIComponent(shortId)}`
 
 export interface AgentTaskListParams {
+  agent_id?: string[]
   limit?: number
   mine?: boolean
+  owner?: string[]
   q?: string
   status?: AgentTaskStatus[]
 }

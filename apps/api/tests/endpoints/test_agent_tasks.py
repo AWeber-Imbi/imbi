@@ -848,10 +848,13 @@ class ReadTaskTests(AgentTaskTestCase):
         )
         await self.create_task(title='Rotate keys')
 
-    async def list_ids(self, **params: typing.Any) -> list[str]:
+    async def list_tasks(self, **params: typing.Any) -> list[typing.Any]:
         response = await self.client.get(self.url(), params=params)
         self.assertEqual(response.status_code, 200, response.text)
-        return [task['short_id'] for task in response.json()]
+        return typing.cast('list[typing.Any]', response.json())
+
+    async def list_ids(self, **params: typing.Any) -> list[str]:
+        return [task['short_id'] for task in await self.list_tasks(**params)]
 
     async def test_get_by_short_id(self) -> None:
         response = await self.client.get(self.url('t-2'))
@@ -882,6 +885,100 @@ class ReadTaskTests(AgentTaskTestCase):
         self.assertEqual(await self.list_ids(q=self.project_id), ['T-2'])
         self.assertEqual(await self.list_ids(q='%'), [])
 
+    async def test_text_query_highlights(self) -> None:
+        def highlights() -> typing.Any:
+            return [task['highlights'] for task in found]
+
+        found = await self.list_tasks(q='BUILD')
+        self.assertEqual(
+            highlights(),
+            [
+                [
+                    {
+                        'field': 'title',
+                        'id': None,
+                        'parts': [
+                            {'text': 'Fix the ', 'match': False},
+                            {'text': 'build', 'match': True},
+                        ],
+                    }
+                ]
+            ],
+        )
+        found = await self.list_tasks(q='deployer')
+        self.assertEqual(
+            highlights(),
+            [
+                [
+                    {
+                        'field': 'agent',
+                        'id': found[0]['agent_id'],
+                        'parts': [{'text': 'Deployer', 'match': True}],
+                    }
+                ]
+            ],
+        )
+        found = await self.list_tasks(q=self.project_id)
+        self.assertEqual(
+            highlights(),
+            [
+                [
+                    {
+                        'field': 'project',
+                        'id': self.project_id,
+                        'parts': [{'text': self.project_id, 'match': True}],
+                    }
+                ]
+            ],
+        )
+        found = await self.list_tasks(q='t')
+        self.assertEqual(
+            found[0]['highlights'][0],
+            {
+                'field': 'short_id',
+                'id': None,
+                'parts': [
+                    {'text': 'T', 'match': True},
+                    {'text': '-3', 'match': False},
+                ],
+            },
+        )
+        found = await self.list_tasks()
+        self.assertEqual(highlights(), [[], [], []])
+
+    async def test_project_icons(self) -> None:
+        async def icons() -> list[typing.Any]:
+            return [task['project_icons'] for task in await self.list_tasks()]
+
+        self.assertEqual(await icons(), [{}, {}, {}])
+        type_id = f'type-{self.project_id}'
+        await self.graph.execute(
+            'MATCH (p:Project {{id: {project}}})'
+            ' CREATE (t:ProjectType {{id: {type}, slug: {type},'
+            ' icon: {icon}}})'
+            ' CREATE (p)-[:TYPE]->(t)'
+            ' RETURN t.id AS id',
+            {'project': self.project_id, 'type': type_id, 'icon': 'server'},
+            ['id'],
+        )
+        self.addAsyncCleanup(
+            self.graph.execute,
+            'MATCH (t:ProjectType {{id: {id}}}) DETACH DELETE t'
+            ' RETURN 1 AS ok',
+            {'id': type_id},
+            ['ok'],
+        )
+        self.assertEqual(await icons(), [{}, {self.project_id: 'server'}, {}])
+        await self.graph.execute(
+            'MATCH (p:Project {{id: {project}}}) SET p.icon = {icon}'
+            ' RETURN p.id AS id',
+            {'project': self.project_id, 'icon': 'si-github'},
+            ['id'],
+        )
+        self.assertEqual(
+            await icons(), [{}, {self.project_id: 'si-github'}, {}]
+        )
+
     async def test_filters(self) -> None:
         await self.client.post(self.url('T-1/pause'))
         await self.client.post(self.url('T-2/cancel'))
@@ -896,6 +993,22 @@ class ReadTaskTests(AgentTaskTestCase):
         )
         self.assertEqual(await self.list_ids(owner=self.member), ['T-3'])
         self.assertEqual(await self.list_ids(mine='true'), ['T-2', 'T-1'])
+        builder = (await self.client.get(self.url('T-1'))).json()['agent_id']
+        self.assertEqual(
+            await self.list_ids(agent_id=[deploy, builder]),
+            ['T-3', 'T-2', 'T-1'],
+        )
+        self.assertEqual(
+            await self.list_ids(owner=[self.member, self.email]),
+            ['T-3', 'T-2', 'T-1'],
+        )
+        self.assertEqual(
+            await self.list_ids(owner=self.member, mine='true'),
+            ['T-3', 'T-2', 'T-1'],
+        )
+        self.assertEqual(
+            await self.list_ids(owner=self.member, agent_id=deploy), []
+        )
 
     async def test_projects(self) -> None:
         response = await self.client.get(self.url('T-2'))

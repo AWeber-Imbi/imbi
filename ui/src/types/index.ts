@@ -1506,6 +1506,7 @@ export interface PluginEdgePut {
   target_id: string
   target_label: string
 }
+
 // Generic plugin entity (a graph node declared by a plugin's
 // vertex_labels manifest entry).  Shape varies per plugin model_ref;
 // the host returns whatever Pydantic.model_dump() produced.
@@ -1513,7 +1514,6 @@ export type PluginEntity = Record<string, unknown> & { id: string }
 export interface PluginEntityCreate {
   [key: string]: unknown
 }
-
 export interface PluginOptionDef {
   choices?: null | string[]
   default?: boolean | null | number | string
@@ -1552,16 +1552,17 @@ export interface PluginVertexLabel {
     nav_label?: null | string
   }
 }
+
 // `deprecated` is surfaced on the neighbour summary by the relationships
 // endpoint so the UI can flag deprecated dependencies.
 export type ProblemPackageRow = Schemas['ProblemPackageRow']
-
 export type ProblemPackagesResponse = Schemas['ProblemPackagesResponse']
 
 export type ProjectRelationship = Schemas['ProjectRelationship']
 
 export type ProjectRelationshipsResponse =
   Schemas['ProjectRelationshipsResponse']
+
 // Releases tab (build-and-release-only projects). Commit/tag data is read
 // from ClickHouse; release notes come from the graph Release nodes.
 export interface RecentCommit {
@@ -1606,7 +1607,6 @@ export interface ReleaseBlocker {
   status: 'open' | 'resolved'
   type: BlockerType
 }
-
 export interface ReleaseBlockerCreateRequest {
   description: string
   external_ref?: null | string
@@ -1624,6 +1624,7 @@ export interface ReleaseBlockResponse {
   blocked_reason?: null | string
   tag: string
 }
+
 /**
  * A release's CI status, which has one state a commit's does not:
  * `not_applicable`, for a project with no environments and therefore no
@@ -1633,7 +1634,6 @@ export interface ReleaseBlockResponse {
  * (#211).
  */
 export type ReleaseCiStatus = 'not_applicable' | DeploymentCommitCiStatus
-
 export interface ReleaseDependenciesResponse {
   components: ReleaseDependencyComponent[]
   release_id: string
@@ -1738,6 +1738,7 @@ export interface RoleCreate {
   priority?: number
   slug: string
 }
+
 export interface RoleDetail extends Role {
   is_system: boolean
   parent_role?: null | Role
@@ -1756,7 +1757,6 @@ export interface RoleUser {
   is_service_account: boolean
   last_login?: null | string
 }
-
 // `SchemaProperty` is UI-only — a form-builder projection derived from a
 // JSON Schema property descriptor.
 export interface SchemaProperty {
@@ -1803,6 +1803,8 @@ export type Tag = Schemas['TagResponse']
 export type TagFormat = Schemas['TagFormat']
 
 export type TagRef = Schemas['TagRef']
+
+export type TaskHighlight = Schemas['TaskHighlight']
 
 // Team types
 export type Team = Schemas['TeamBlueprintResponse']

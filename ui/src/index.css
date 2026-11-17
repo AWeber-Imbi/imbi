@@ -846,7 +846,8 @@
   display: none;
 }
 
-::highlight(task-search) {
+::highlight(task-search),
+::highlight(task-list-search) {
   background-color: color-mix(in srgb, var(--ds-action-bg) 40%, transparent);
   color: inherit;
 }

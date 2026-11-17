@@ -638,8 +638,8 @@ class TaskStore:
         organization_id: str,
         *,
         statuses: list[Status] | None = None,
-        agent_id: str | None = None,
-        owner: str | None = None,
+        agent_ids: list[str] | None = None,
+        owners: list[str] | None = None,
         text: str | None = None,
         text_agent_ids: list[str] | None = None,
         text_project_ids: list[str] | None = None,
@@ -662,12 +662,12 @@ class TaskStore:
         if statuses:
             conditions.append(sql.SQL('status = ANY(%s)'))
             params.append(list(statuses))
-        if agent_id is not None:
-            conditions.append(sql.SQL('agent_id = %s'))
-            params.append(agent_id)
-        if owner is not None:
-            conditions.append(sql.SQL('owner = %s'))
-            params.append(owner)
+        if agent_ids:
+            conditions.append(sql.SQL('agent_id = ANY(%s)'))
+            params.append(list(agent_ids))
+        if owners:
+            conditions.append(sql.SQL('owner = ANY(%s)'))
+            params.append(list(owners))
         if text:
             pattern = '%' + _escape_like(text) + '%'
             conditions.append(
