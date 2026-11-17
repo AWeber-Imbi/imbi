@@ -12,7 +12,7 @@ its context and consequences. Each ADR describes:
 
 - **Context**: The issue or requirement that prompted the decision
 - **Decision**: The change or approach being proposed or adopted
-- **Status**: Whether the decision is proposed, accepted, deprecated, or superseded
+- **Status**: Whether the decision is proposed, accepted, rejected, deprecated, or superseded
 - **Consequences**: The positive and negative outcomes of the decision
 
 ## ADR Index
@@ -440,9 +440,9 @@ Adds one WebSocket per browser tab so open pages learn about changes made by oth
 
 #### [ADR 0024: Work Items](adr/0024-work-items.md)
 
-*Date: 2026-11-06 | Status: Proposed*
+*Date: 2026-11-06 | Status: Rejected*
 
-Defines work items: the subject that people and agents move to done, native to Imbi or backed by an external system such as Jira. Replaces HandoffBee's board, turns, and asks, and amends ADR 0021.
+Rejected in favor of ADR 0028. Defined work items: the subject that people and agents move to done, native to Imbi or backed by an external system such as Jira. Replaces HandoffBee's board, turns, and asks, and amends ADR 0021.
 
 **Key Decisions:**
 
@@ -457,9 +457,9 @@ Defines work items: the subject that people and agents move to done, native to I
 
 #### [ADR 0025: Tickets](adr/0025-tickets.md)
 
-*Date: 2026-11-12 | Status: Proposed*
+*Date: 2026-11-12 | Status: Rejected*
 
-An alternative to ADR 0024. Defines tickets: the record of one piece of work that agents carry from report to verified change, moved forward by a manager agent. ADR 0021 is not changed.
+Rejected in favor of ADR 0028. Was an alternative to ADR 0024. Defined tickets: the record of one piece of work that agents carry from report to verified change, moved forward by a manager agent. ADR 0021 is not changed.
 
 **Key Decisions:**
 
@@ -505,9 +505,9 @@ Adds the `script` workflow step: a Python snippet that runs in the pydantic-mont
 
 #### [ADR 0028: Tasks Become Tickets](adr/0028-tasks-become-tickets.md)
 
-*Date: 2026-11-16 | Status: Proposed*
+*Date: 2026-11-16 | Status: Accepted*
 
-An alternative to ADR 0024 and ADR 0025. Extends agent tasks so a task is assigned to an agent or a person and can hand off between them, and renames tasks to tickets, as in Jira. No new entity.
+Accepted instead of ADR 0024 and ADR 0025. Extends agent tasks so a task is assigned to an agent or a person and can hand off between them, and renames tasks to tickets, as in Jira. No new entity.
 
 **Key Decisions:**
 
@@ -552,7 +552,7 @@ Date: YYYY-MM-DD
 
 ## Status
 
-[Proposed | Accepted | Deprecated | Superseded]
+[Proposed | Accepted | Rejected | Deprecated | Superseded]
 
 ## Context
 
