@@ -550,7 +550,10 @@ export function WorkflowEditor({
               types={types}
             />
           </Panel>
-          <Separator className="hover:after:bg-amber-border focus-visible:after:bg-amber-border relative w-1.5 cursor-col-resize bg-transparent outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-(--ds-border-primary) after:transition-colors" />
+          <Separator
+            aria-label="Resize workflow canvas"
+            className="hover:after:bg-amber-border focus-visible:after:bg-amber-border relative w-1.5 cursor-col-resize bg-transparent outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-(--ds-border-primary) after:transition-colors"
+          />
           <Panel
             className="bg-primary flex min-h-0 flex-col"
             defaultSize="320px"

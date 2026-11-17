@@ -31,6 +31,7 @@ export function ManualInputsField({
     >
       {value.map((input, index) => {
         const error = nameError(input, value)
+        const errorId = `${id}-${index}-name-error`
         return (
           <div
             className="border-tertiary flex flex-col gap-2 rounded-md border p-2"
@@ -38,6 +39,7 @@ export function ManualInputsField({
           >
             <div className="flex items-center gap-1.5">
               <Input
+                aria-describedby={error ? errorId : undefined}
                 aria-invalid={error !== undefined}
                 aria-label={`Input ${index + 1} name`}
                 className="font-mono text-xs"
@@ -64,7 +66,11 @@ export function ManualInputsField({
                 <X className="size-3.5" />
               </button>
             </div>
-            {error && <p className="text-danger text-xs">{error}</p>}
+            {error && (
+              <p className="text-danger text-xs" id={errorId}>
+                {error}
+              </p>
+            )}
           </div>
         )
       })}
