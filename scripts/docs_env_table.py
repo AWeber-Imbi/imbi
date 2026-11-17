@@ -71,6 +71,7 @@ SECTIONS: list[tuple[str, list[type], list[str], list[Row]]] = [
             api_settings.ServerConfig,
             api_settings.Auth,
             api_settings.Email,
+            api_settings.Slack,
             api_settings.Storage,
             api_settings.IggyConnectors,
             api_settings.InternalServices,
@@ -367,6 +368,9 @@ DESCRIPTIONS: dict[str, str] = {
     'IMBI_EMAIL_INITIAL_RETRY_DELAY': 'First retry delay in seconds',
     'IMBI_EMAIL_MAX_RETRY_DELAY': 'Maximum retry delay in seconds',
     'IMBI_EMAIL_RETRY_BACKOFF_FACTOR': 'Retry delay multiplier',
+    'IMBI_SLACK_BOT_TOKEN': 'Slack bot token (`xoxb-...`) that workflow '
+    '`slack` steps post with. Empty: those steps fail with '
+    '`slack_not_configured`.',
     'MAILPIT_SMTP_PORT': 'In development, with the default SMTP host and '
     'port, use this port and no TLS (Mailpit)',
     'S3_ENDPOINT_URL': 'S3-compatible endpoint. Unset: AWS S3.',

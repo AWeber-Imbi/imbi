@@ -241,7 +241,7 @@ unset.
 | `IMBI_EMAIL_INITIAL_RETRY_DELAY` | float | `1.0` | First retry delay in seconds |
 | `IMBI_EMAIL_MAX_RETRY_DELAY` | float | `60.0` | Maximum retry delay in seconds |
 | `IMBI_EMAIL_RETRY_BACKOFF_FACTOR` | float | `2.0` | Retry delay multiplier |
-| `IMBI_SLACK_BOT_TOKEN` | str | `''` | Slack bot token (`xoxb-...`) that workflow `slack` steps post with. Empty: those steps fail with `slack_not_configured`. |
+| `IMBI_SLACK_BOT_TOKEN` | SecretStr | `''` | Slack bot token (`xoxb-...`) that workflow `slack` steps post with. Empty: those steps fail with `slack_not_configured`. |
 | `S3_ENDPOINT_URL` | str | none | S3-compatible endpoint. Unset: AWS S3. |
 | `S3_ACCESS_KEY` | str | none | Access key ID. Unset: the default AWS credential chain. |
 | `S3_SECRET_KEY` | str | none | Secret access key |
