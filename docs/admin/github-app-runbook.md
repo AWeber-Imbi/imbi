@@ -281,8 +281,11 @@ The tab shows a row for `workspace_checkout`, `github_read`,
 grant allows it. A read-only agent leaves the `github_write` row without
 a check.
 
-You can also do this step right after step 6. Then click **Grant** on
-each row that has no check. Imbi adds the purpose to the agent's grant
+You can also do this step right after step 6. Then click **Grant** only
+on the rows for purposes the agent needs. A read-only agent skips the
+`github_write` row: if the App has write permissions, that grant lets
+the agent get a write-capable token. Imbi adds the purpose to the
+agent's grant
 that has the same binding and delivery mode, or makes a new grant. The
 result is the grants of steps 7 and 8.
 
