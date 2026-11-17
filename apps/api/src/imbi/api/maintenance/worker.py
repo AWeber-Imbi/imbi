@@ -73,11 +73,10 @@ async def _item_context(
     not projects (``search-reindex``), so a reader can trust the column
     rather than having to know which operations are project-scoped.
 
-    The caller has already claimed *item_id* and incremented
-    ``in_flight``, so this cannot raise: the lookups below are log
-    metadata, and letting one fail would strand the claim until the
-    run lock expires. A failure costs the row its context, nothing
-    more.
+    The caller has already leased *item_id*, so this cannot raise:
+    the lookups below are log metadata, and letting one fail would
+    strand the claim until its lease expires. A failure costs the row
+    its context, nothing more.
     """
     # Imported here, not at module scope: ``imbi.api.endpoints`` pulls in
     # the maintenance router, which imports this module back.
@@ -140,10 +139,18 @@ async def _tick_operation(
         # Another instance may drain to zero while we're paused.
         await state.maybe_finalize(client, operation.slug)
         return False
-    project_id = await state.checkout(client, operation.slug)
-    if project_id is None:
+    claim = await state.checkout(client, operation.slug)
+    if claim is None:
+        if reclaimed := await state.reclaim(client, operation.slug):
+            LOGGER.warning(
+                'maintenance %s reclaimed %d expired lease(s)',
+                operation.slug,
+                reclaimed,
+            )
+            return True
         await state.maybe_finalize(client, operation.slug)
         return False
+    project_id, token = claim
     ctx = await _item_context(client, db, operation, project_id)
     started = time.monotonic()
     outcome: state.Outcome
@@ -152,10 +159,10 @@ async def _tick_operation(
         outcome = await operation.execute(db, client, project_id, ctx=ctx)
     except asyncio.CancelledError:
         # Graceful shutdown: hand the project back so nothing is lost.
-        await state.requeue(client, operation.slug, project_id)
+        await state.requeue(client, operation.slug, project_id, token)
         raise
     except PluginRateLimited as exc:
-        await state.requeue(client, operation.slug, project_id)
+        await state.requeue(client, operation.slug, project_id, token)
         if operation.pause_key:
             await pause_until(client, operation.pause_key, exc.retry_at)
         retry_in = max(0.0, exc.retry_at - time.time())
@@ -192,27 +199,28 @@ async def _tick_operation(
         outcome = 'failed'
         error = 'Operation failed. See server logs for details.'
     try:
-        await state.record_outcome(
-            client, operation.slug, project_id, outcome, error
+        recorded = await state.record_outcome(
+            client, operation.slug, project_id, token, outcome, error
         )
     except Exception:
-        # Compensate so in_flight cannot stay stuck until the lock TTL:
-        # hand the project back; its outcome is recorded on the retry.
+        # Hand the project back now rather than waiting out its lease;
+        # its outcome is recorded on the retry. If the record committed
+        # and only its reply was lost, the claim is gone and the requeue
+        # does nothing.
         LOGGER.exception(
             'maintenance %s failed to record outcome for %s; requeueing',
             operation.slug,
             project_id,
         )
-        await state.requeue(client, operation.slug, project_id)
-        # The run counters never saw this outcome, so the log must not
-        # claim it did either; the retry writes the real one.
-        ctx.log.attempt(
-            'deferred',
-            'Outcome could not be recorded; requeued.',
-            _elapsed_ms(started),
-        )
-    else:
-        ctx.log.attempt(outcome, error, _elapsed_ms(started))
+        await state.requeue(client, operation.slug, project_id, token)
+        recorded = False
+    disposition: log.Disposition = outcome
+    if not recorded:
+        # The run counters never saw this outcome (the record failed or
+        # the lease expired mid-run), so the log must not claim it did
+        # either; the retry writes the real one.
+        disposition, error = 'deferred', 'Outcome not recorded; retried.'
+    ctx.log.attempt(disposition, error, _elapsed_ms(started))
     await ctx.log.flush()
     if await state.maybe_finalize(client, operation.slug):
         LOGGER.info('maintenance %s run completed', operation.slug)

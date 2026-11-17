@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import typing
 import unittest
+import uuid
 from unittest import mock
 
+from valkey import asyncio as valkey_asyncio
+
 from imbi.api.maintenance import log, state
+from imbi.common import settings as imbi_settings
 
 
 def _client_with_pipeline(
@@ -20,7 +24,8 @@ def _client_with_pipeline(
         'sadd',
         'hset',
         'expire',
-        'hincrby',
+        'hdel',
+        'hlen',
         'scard',
         'hget',
         'hgetall',
@@ -84,69 +89,195 @@ class StartRunTests(unittest.IsolatedAsyncioTestCase):
 
 
 class CheckoutTests(unittest.IsolatedAsyncioTestCase):
-    async def test_pops_and_marks_in_flight(self) -> None:
+    async def test_leases_the_popped_id(self) -> None:
         client = mock.AsyncMock()
-        client.spop = mock.AsyncMock(return_value=b'p1')
-        client.hincrby = mock.AsyncMock()
-        result = await state.checkout(client, 'op')
-        self.assertEqual('p1', result)
-        client.hincrby.assert_awaited_once_with(
-            'imbi:maintenance:op:run', 'in_flight', 1
+        client.eval = mock.AsyncMock(return_value=b'p1')
+        with mock.patch.object(state.time, 'time', return_value=10_000.0):
+            claim = await state.checkout(client, 'op')
+        self.assertEqual(('p1', '10000.0'), claim)
+        args = client.eval.await_args.args
+        self.assertEqual('10000.0', args[4])
+        self.assertEqual(
+            (
+                2,
+                'imbi:maintenance:op:pending',
+                'imbi:maintenance:op:processing',
+            ),
+            args[1:4],
         )
 
     async def test_returns_none_when_drained(self) -> None:
         client = mock.AsyncMock()
-        client.spop = mock.AsyncMock(return_value=None)
-        client.hincrby = mock.AsyncMock()
+        client.eval = mock.AsyncMock(return_value=None)
         self.assertIsNone(await state.checkout(client, 'op'))
-        client.hincrby.assert_not_awaited()
 
 
 class RecordOutcomeTests(unittest.IsolatedAsyncioTestCase):
-    async def test_success_moves_counters(self) -> None:
-        client, pipe = _client_with_pipeline()
-        await state.record_outcome(client, 'op', 'p1', 'succeeded')
-        calls = pipe.hincrby.call_args_list
-        self.assertEqual(
-            ('imbi:maintenance:op:run', 'in_flight', -1), calls[0].args
+    async def test_counts_while_the_lease_is_held(self) -> None:
+        client = mock.AsyncMock()
+        client.eval = mock.AsyncMock(return_value=1)
+        self.assertTrue(
+            await state.record_outcome(client, 'op', 'p1', 't1', 'succeeded')
         )
-        self.assertEqual(
-            ('imbi:maintenance:op:run', 'succeeded', 1), calls[1].args
-        )
-        pipe.hset.assert_not_called()
+        args = client.eval.await_args.args
+        self.assertEqual(('p1', 'succeeded', ''), args[5:8])
+        self.assertEqual('t1', args[9])
 
-    async def test_failure_records_truncated_detail(self) -> None:
-        client, pipe = _client_with_pipeline()
-        client.hlen = mock.AsyncMock(return_value=0)
-        await state.record_outcome(client, 'op', 'p1', 'failed', 'x' * 600)
-        args = pipe.hset.call_args.args
-        self.assertEqual('imbi:maintenance:op:failures', args[0])
-        self.assertEqual('p1', args[1])
-        self.assertEqual(state.MAX_ERROR_LEN, len(args[2]))
-
-    async def test_failure_detail_capped(self) -> None:
-        client, pipe = _client_with_pipeline()
-        client.hlen = mock.AsyncMock(return_value=state.MAX_FAILURE_DETAILS)
-        await state.record_outcome(client, 'op', 'p1', 'failed', 'boom')
-        pipe.hset.assert_not_called()
-        # The counter still moves even without the detail.
-        self.assertEqual(
-            ('imbi:maintenance:op:run', 'failed', 1),
-            pipe.hincrby.call_args_list[1].args,
+    async def test_reports_a_reclaimed_lease(self) -> None:
+        client = mock.AsyncMock()
+        client.eval = mock.AsyncMock(return_value=0)
+        self.assertFalse(
+            await state.record_outcome(client, 'op', 'p1', 't1', 'succeeded')
         )
+
+    async def test_failure_detail_is_truncated(self) -> None:
+        client = mock.AsyncMock()
+        client.eval = mock.AsyncMock(return_value=1)
+        await state.record_outcome(
+            client, 'op', 'p1', 't1', 'failed', 'x' * 600
+        )
+        args = client.eval.await_args.args
+        self.assertEqual(state.MAX_ERROR_LEN, len(args[7]))
+        self.assertEqual(str(state.MAX_FAILURE_DETAILS), args[8])
 
 
 class RequeueTests(unittest.IsolatedAsyncioTestCase):
-    async def test_returns_id_and_decrements(self) -> None:
-        client, pipe = _client_with_pipeline()
-        await state.requeue(client, 'op', 'p1')
+    async def test_moves_the_id_back_to_pending(self) -> None:
+        client = mock.AsyncMock()
+        client.eval = mock.AsyncMock(return_value=1)
+        self.assertTrue(await state.requeue(client, 'op', 'p1', 't1'))
         self.assertEqual(
-            ('imbi:maintenance:op:pending', 'p1'), pipe.sadd.call_args.args
+            (
+                2,
+                'imbi:maintenance:op:pending',
+                'imbi:maintenance:op:processing',
+                'p1',
+                't1',
+            ),
+            client.eval.await_args.args[1:],
+        )
+
+    async def test_skips_a_claim_it_no_longer_holds(self) -> None:
+        client = mock.AsyncMock()
+        client.eval = mock.AsyncMock(return_value=0)
+        self.assertFalse(await state.requeue(client, 'op', 'p1', 't1'))
+
+
+class ClaimFencingValkeyTests(unittest.IsolatedAsyncioTestCase):
+    """Run the claim-token Lua scripts against the real test Valkey."""
+
+    async def asyncSetUp(self) -> None:
+        self.client = valkey_asyncio.Valkey.from_url(
+            str(imbi_settings.Valkey().url)
+        )
+        self.slug = f'test-{uuid.uuid4().hex}'
+        await state.start_run(self.client, self.slug, ['p1'], 'alice')
+
+    async def asyncTearDown(self) -> None:
+        await self.client.delete(
+            *(
+                state._key(self.slug, part)
+                for part in (
+                    'lock',
+                    'pending',
+                    'processing',
+                    'run',
+                    'failures',
+                )
+            )
+        )
+        await self.client.aclose()
+
+    async def _replaced_claim(self) -> tuple[str, str]:
+        """Check p1 out with an expired lease, reclaim, and check out again."""
+        with mock.patch.object(state.time, 'time', return_value=1_000.0):
+            old = await state.checkout(self.client, self.slug)
+        self.assertEqual(('p1', '1000.0'), old)
+        self.assertEqual(1, await state.reclaim(self.client, self.slug))
+        new = await state.checkout(self.client, self.slug)
+        assert new is not None
+        return '1000.0', new[1]
+
+    async def _holder(self) -> object:
+        return await self.client.hget(
+            state._key(self.slug, 'processing'), 'p1'
+        )
+
+    async def test_former_holder_cannot_record_an_outcome(self) -> None:
+        old, new = await self._replaced_claim()
+        self.assertFalse(
+            await state.record_outcome(
+                self.client, self.slug, 'p1', old, 'succeeded'
+            )
+        )
+        self.assertEqual(new.encode(), await self._holder())
+        self.assertTrue(
+            await state.record_outcome(
+                self.client, self.slug, 'p1', new, 'succeeded'
+            )
+        )
+        status = await state.read_status(self.client, self.slug)
+        self.assertEqual(1, status.succeeded)
+        self.assertEqual(0, status.in_flight)
+
+    async def test_former_holder_cannot_requeue(self) -> None:
+        old, new = await self._replaced_claim()
+        self.assertFalse(
+            await state.requeue(self.client, self.slug, 'p1', old)
+        )
+        self.assertEqual(new.encode(), await self._holder())
+        status = await state.read_status(self.client, self.slug)
+        self.assertEqual(0, status.remaining)
+
+    async def test_reclaim_returns_only_expired_leases(self) -> None:
+        now = 10_000.0
+        cutoff = now - state.LEASE_SECONDS
+        with mock.patch.object(state.time, 'time', return_value=cutoff - 1):
+            await state.checkout(self.client, self.slug)
+        processing = state._key(self.slug, 'processing')
+        await self.client.hset(
+            processing, mapping={'p2': str(cutoff), 'p3': str(now - 1)}
+        )
+        with mock.patch.object(state.time, 'time', return_value=now):
+            self.assertEqual(1, await state.reclaim(self.client, self.slug))
+        self.assertEqual(
+            {b'p2': str(cutoff).encode(), b'p3': str(now - 1).encode()},
+            await self.client.hgetall(processing),
         )
         self.assertEqual(
-            ('imbi:maintenance:op:run', 'in_flight', -1),
-            pipe.hincrby.call_args.args,
+            [b'p1'],
+            await self.client.smembers(state._key(self.slug, 'pending')),
         )
+
+    async def test_requeue_after_a_committed_outcome_is_a_no_op(
+        self,
+    ) -> None:
+        # The outcome committed but its reply was lost, so the worker
+        # falls back to requeueing with the same token.
+        claim = await state.checkout(self.client, self.slug)
+        assert claim is not None
+        self.assertTrue(
+            await state.record_outcome(
+                self.client, self.slug, 'p1', claim[1], 'succeeded'
+            )
+        )
+        self.assertFalse(
+            await state.requeue(self.client, self.slug, 'p1', claim[1])
+        )
+        status = await state.read_status(self.client, self.slug)
+        self.assertEqual(1, status.succeeded)
+        self.assertEqual(0, status.remaining)
+        self.assertEqual(0, status.in_flight)
+
+
+class ReclaimTests(unittest.IsolatedAsyncioTestCase):
+    async def test_reclaims_leases_older_than_the_ttl(self) -> None:
+        client = mock.AsyncMock()
+        client.eval = mock.AsyncMock(return_value=2)
+        with mock.patch.object(state.time, 'time', return_value=10_000.0):
+            self.assertEqual(2, await state.reclaim(client, 'op'))
+        args = client.eval.await_args.args
+        self.assertEqual(str(10_000.0 - state.LEASE_SECONDS), args[4])
 
 
 class MaybeFinalizeTests(unittest.IsolatedAsyncioTestCase):
@@ -155,6 +286,7 @@ class MaybeFinalizeTests(unittest.IsolatedAsyncioTestCase):
         with mock.patch.object(state, '_finish', mock.AsyncMock()) as finish:
             result = await state.maybe_finalize(client, 'op')
         self.assertTrue(result)
+        client.pipeline.assert_called_once_with(transaction=True)
         finish.assert_awaited_once_with(client, 'op', 'completed')
 
     async def test_skips_when_pending_remain(self) -> None:
@@ -194,9 +326,9 @@ class CancelRunTests(unittest.IsolatedAsyncioTestCase):
 
 
 class FinishTests(unittest.IsolatedAsyncioTestCase):
-    #: hset, delete (1 = this instance removed the lock), expire, expire
-    WON: typing.ClassVar[list[int]] = [1, 1, 1, 1]
-    LOST: typing.ClassVar[list[int]] = [1, 0, 1, 1]
+    #: hset, delete (1 = this instance removed the lock), expire x3
+    WON: typing.ClassVar[list[int]] = [1, 1, 1, 1, 1]
+    LOST: typing.ClassVar[list[int]] = [1, 0, 1, 1, 1]
 
     async def test_run_row_carries_the_final_counters(self) -> None:
         client, _ = _client_with_pipeline(self.WON)
@@ -311,29 +443,33 @@ class ReadStatusTests(unittest.IsolatedAsyncioTestCase):
             b'started_at': b'2026-07-13T00:00:00+00:00',
             b'started_by': b'alice',
             b'state': run_state,
-            b'in_flight': b'1',
             b'succeeded': b'4',
             b'failed': b'1',
             b'skipped': b'2',
         }
 
     async def test_running(self) -> None:
-        client, _ = _client_with_pipeline([1, self._run_hash(b'running'), 2])
+        client, _ = _client_with_pipeline(
+            [1, self._run_hash(b'running'), 2, 1]
+        )
         status = await state.read_status(client, 'op')
         self.assertEqual('running', status.state)
         self.assertEqual(10, status.total)
         self.assertEqual(2, status.remaining)
+        self.assertEqual(1, status.in_flight)
         self.assertEqual(4, status.succeeded)
         self.assertEqual('alice', status.started_by)
 
     async def test_abandoned_when_running_without_lock(self) -> None:
-        client, _ = _client_with_pipeline([0, self._run_hash(b'running'), 2])
+        client, _ = _client_with_pipeline(
+            [0, self._run_hash(b'running'), 2, 1]
+        )
         status = await state.read_status(client, 'op')
         self.assertEqual('abandoned', status.state)
 
     async def test_idle_when_no_run_hash(self) -> None:
         client, _ = _client_with_pipeline(
-            [0, typing.cast('dict[bytes, bytes]', {}), 0]
+            [0, typing.cast('dict[bytes, bytes]', {}), 0, 0]
         )
         status = await state.read_status(client, 'op')
         self.assertEqual('idle', status.state)
