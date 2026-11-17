@@ -723,7 +723,7 @@ export function ConfigurationTab({
           )}
         </Panel>
 
-        <Separator className="hover:after:bg-amber-border focus-visible:after:bg-amber-border relative w-1.5 cursor-col-resize bg-transparent outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-(--ds-border-primary) after:transition-colors" />
+        <Separator className="hover:after:bg-amber-border focus-visible:after:bg-amber-border relative z-20 -mx-0.75 w-1.5 cursor-col-resize bg-transparent outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-(--ds-border-primary) after:transition-colors" />
 
         {/* RIGHT pane */}
         <Panel
