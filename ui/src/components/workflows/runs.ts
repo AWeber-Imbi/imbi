@@ -1,5 +1,6 @@
 import { portsOf, type StepTypes } from './graph'
 import type {
+  OrgRun,
   RunStatus,
   StepRun,
   StepRunStatus,
@@ -26,6 +27,18 @@ export const STATUS: Record<
   timed_out: { label: 'Timed out', variant: 'warning' },
 }
 
+/** The runs that failed with one reason. */
+export interface FailureCause {
+  count: number
+  /** When the newest run with the reason started. */
+  last: string
+  outcome: null | string
+  reason: string
+  /** The failed steps, by title, with a count when there are more. */
+  steps: string
+  workflows: string[]
+}
+
 export interface ManualInput {
   name: string
   type: 'boolean' | 'number' | 'string'
@@ -40,6 +53,17 @@ export interface StepResult {
   input: null | Record<string, unknown>
   output: null | Record<string, unknown>
   status: StepRunStatus
+}
+
+/** The failed runs of a workflow. */
+export interface WorkflowFailures {
+  failed: number
+  /** How many other reasons than the top one. */
+  others: number
+  top: string
+  topCount: number
+  /** Runs that were not skipped. */
+  total: number
 }
 
 /** The id of the earlier run that a skipped run repeats. */
@@ -58,6 +82,57 @@ export function durationMs(
   return Math.max(0, Date.parse(end) - Date.parse(start))
 }
 
+/** Failed runs grouped by reason, the most frequent first. */
+export function failureCauses(runs: OrgRun[]): FailureCause[] {
+  const found = new Map<
+    string,
+    FailureCause & { titles: Map<string, number> }
+  >()
+  for (const run of runs) {
+    const reason = failureReason(run)
+    if (!reason) continue
+    const cause = found.get(reason) ?? {
+      count: 0,
+      last: run.created_at,
+      outcome: run.failure?.outcome ?? null,
+      reason,
+      steps: '',
+      titles: new Map<string, number>(),
+      workflows: [],
+    }
+    cause.count += 1
+    if (run.created_at > cause.last) cause.last = run.created_at
+    if (!cause.workflows.includes(run.workflow_name)) {
+      cause.workflows.push(run.workflow_name)
+    }
+    const title = run.failure?.title
+    if (title) cause.titles.set(title, (cause.titles.get(title) ?? 0) + 1)
+    found.set(reason, cause)
+  }
+  return [...found.values()]
+    .map(({ titles, ...cause }) => ({
+      ...cause,
+      steps: [...titles]
+        .map(([title, n]) => (titles.size > 1 ? `${title} ×${n}` : title))
+        .join(', '),
+    }))
+    .sort((a, b) => b.count - a.count || b.last.localeCompare(a.last))
+}
+
+/**
+ * Why a run failed: the reason of the agent task of the failed step,
+ * the error of the step, or the error of the run. `null` for a run
+ * that did not fail.
+ */
+export function failureReason(run: {
+  error: null | string
+  failure?: null | { error: null | string; reason?: null | string }
+  status: RunStatus
+}): null | string {
+  if (!isFailed(run.status)) return null
+  return run.failure?.reason ?? run.failure?.error ?? run.error ?? run.status
+}
+
 export function formatDuration(ms: null | number): string {
   if (ms === null) return '—'
   if (ms < 1000) return `${ms} ms`
@@ -67,6 +142,9 @@ export function formatDuration(ms: null | number): string {
   if (m < 60) return `${m} m ${s % 60} s`
   return `${Math.floor(m / 60)} h ${m % 60} m`
 }
+
+export const isFailed = (status: RunStatus) =>
+  status === 'failed' || status === 'timed_out'
 
 export const isOpen = (status: RunStatus) =>
   status === 'queued' || status === 'running'
@@ -86,6 +164,20 @@ export function manualTrigger(
       .filter((i) => !!i.name)
       .map((i) => ({ name: i.name!, type: i.type ?? 'string' })),
   }
+}
+
+/** Who or what started a run. */
+export function originLabel(run: {
+  origin: Record<string, unknown>
+  origin_id: string
+  origin_kind: string
+}): string {
+  if (run.origin_kind === 'human') {
+    return `Manual run by ${String(run.origin.user ?? run.origin_id)}`
+  }
+  if (run.origin_kind === 'schedule') return 'Scheduled run'
+  if (run.origin_kind === 'webhook') return 'Webhook run'
+  return run.origin_kind
 }
 
 /** The step results of a run, by node id. */
@@ -156,4 +248,29 @@ export function windowSeconds(days: string): null | number | undefined {
   const value = Number(days)
   if (!(value > 0)) return undefined
   return Math.max(1, Math.round(value * DAY_SECONDS))
+}
+
+/** The failed runs of each workflow, by slug. Skipped runs not counted. */
+export function workflowFailures(
+  runs: OrgRun[],
+): Record<string, WorkflowFailures> {
+  const bySlug: Record<string, OrgRun[]> = {}
+  for (const run of runs) {
+    if (run.status !== 'skipped') {
+      ;(bySlug[run.workflow_slug] ??= []).push(run)
+    }
+  }
+  const found: Record<string, WorkflowFailures> = {}
+  for (const [slug, mine] of Object.entries(bySlug)) {
+    const causes = failureCauses(mine)
+    if (causes.length === 0) continue
+    found[slug] = {
+      failed: causes.reduce((n, c) => n + c.count, 0),
+      others: causes.length - 1,
+      top: causes[0].reason,
+      topCount: causes[0].count,
+      total: mine.length,
+    }
+  }
+  return found
 }

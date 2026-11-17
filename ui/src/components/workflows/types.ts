@@ -2,8 +2,6 @@ import type { components } from '@/types/api-generated'
 
 // Workflow API types (ADR 0021), from the generated OpenAPI schema.
 
-export type AttentionRun = Schemas['AttentionRun']
-
 /** A JSON Schema object. The API types the step schemas as `dict[str, Any]`. */
 export interface JsonSchema {
   $defs?: Record<string, JsonSchema>
@@ -18,6 +16,7 @@ export interface JsonSchema {
   title?: string
   type?: string
 }
+export type OrgRun = Schemas['OrgRun']
 export type RunStatus = WorkflowRun['status']
 
 export type ScriptPreviewRequest = Schemas['ScriptPreview']

@@ -19,7 +19,7 @@ import type {
   WorkloadIdentityPut,
 } from '@/components/admin/secrets/types'
 import type {
-  AttentionRun,
+  OrgRun,
   ScriptPreviewRequest,
   ScriptPreviewResult,
   SideEffectResolve,
@@ -4119,14 +4119,15 @@ export const previewScript = (orgSlug: string, body: ScriptPreviewRequest) =>
 export const testRunWorkflow = (orgSlug: string, slug: string) =>
   apiClient.post<TestRunResult>(`${workflowPath(orgSlug, slug)}/test-runs`, {})
 
-/** Failed runs of the last 7 days and runs that no engine works on. */
-export const listWorkflowAttention = async (
+/** The runs of every workflow made in the last `days` days, and the stuck runs. */
+export const listWorkflowOrgRuns = async (
   orgSlug: string,
+  days: number,
   signal?: AbortSignal,
-): Promise<AttentionRun[]> => {
-  const response = await apiClient.get<AttentionRun[]>(
-    `/organizations/${encodeURIComponent(orgSlug)}/workflow-runs/attention`,
-    undefined,
+): Promise<OrgRun[]> => {
+  const response = await apiClient.get<OrgRun[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/workflow-runs/`,
+    { days },
     signal,
   )
   return Array.isArray(response) ? response : []
