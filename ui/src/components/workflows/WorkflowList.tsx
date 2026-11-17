@@ -24,8 +24,13 @@ const OUTCOME_TONE: Record<string, string> = {
 
 interface WorkflowListProps {
   error: unknown
-  /** The failed runs of the last 7 days, by workflow slug. */
-  failures: Record<string, WorkflowFailures>
+  /**
+   * The failed runs of the last 7 days, by workflow slug. `null` while
+   * the run history is not loaded.
+   */
+  failures: null | Record<string, WorkflowFailures>
+  /** Why the run history did not load. */
+  failuresError: unknown
   loading: boolean
   stepTypes: StepType[]
   workflows: WorkflowSummary[]
@@ -34,6 +39,7 @@ interface WorkflowListProps {
 export function WorkflowList({
   error,
   failures,
+  failuresError,
   loading,
   stepTypes,
   workflows,
@@ -114,9 +120,14 @@ export function WorkflowList({
             header: 'Failed 7d',
             interactive: true,
             key: 'failed',
-            render: (w) => (
-              <FailedCell failures={failures[w.slug]} slug={w.slug} />
-            ),
+            render: (w) =>
+              failures ? (
+                <FailedCell failures={failures[w.slug]} slug={w.slug} />
+              ) : failuresError ? (
+                <span className="text-danger text-sm">Unavailable</span>
+              ) : (
+                <span className="text-tertiary text-sm">—</span>
+              ),
           },
           {
             header: 'Status',

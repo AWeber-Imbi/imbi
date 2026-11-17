@@ -91,14 +91,23 @@ WHERE organization_id = {organization_id:String}
 ORDER BY seq
 """
 
-# The last failed step of each run: the step record of its newest
-# ``step.failed`` event.
+# The last failed step of each run. The last step event of a node holds
+# its record (:func:`steps`), so a node counts only when that event is
+# ``step.failed``: a retry that succeeded supersedes the failure.
 _FAILED_STEPS_QUERY = """
-SELECT run_id, argMax(payload, seq) AS step
-FROM imbi.workflow_run_events
-WHERE organization_id = {organization_id:String}
-  AND run_id IN {run_ids:Array(String)}
-  AND type = 'step.failed'
+SELECT run_id, argMax(last_payload, last_seq) AS step
+FROM (
+    SELECT run_id,
+           argMax(type, seq) AS last_type,
+           argMax(payload, seq) AS last_payload,
+           max(seq) AS last_seq
+    FROM imbi.workflow_run_events
+    WHERE organization_id = {organization_id:String}
+      AND run_id IN {run_ids:Array(String)}
+      AND startsWith(type, 'step.')
+    GROUP BY run_id, JSONExtractString(payload, 'node_id')
+)
+WHERE last_type = 'step.failed'
 GROUP BY run_id
 """
 

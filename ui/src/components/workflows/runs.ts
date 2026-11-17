@@ -254,14 +254,18 @@ export function windowSeconds(days: string): null | number | undefined {
 export function workflowFailures(
   runs: OrgRun[],
 ): Record<string, WorkflowFailures> {
-  const bySlug: Record<string, OrgRun[]> = {}
+  // A Map: a slug such as `constructor` must not find an inherited value.
+  const bySlug = new Map<string, OrgRun[]>()
   for (const run of runs) {
     if (run.status !== 'skipped') {
-      ;(bySlug[run.workflow_slug] ??= []).push(run)
+      const mine = bySlug.get(run.workflow_slug) ?? []
+      mine.push(run)
+      bySlug.set(run.workflow_slug, mine)
     }
   }
-  const found: Record<string, WorkflowFailures> = {}
-  for (const [slug, mine] of Object.entries(bySlug)) {
+  // Prototype-free, so that a lookup by such a slug finds nothing.
+  const found: Record<string, WorkflowFailures> = Object.create(null)
+  for (const [slug, mine] of bySlug) {
     const causes = failureCauses(mine)
     if (causes.length === 0) continue
     found[slug] = {

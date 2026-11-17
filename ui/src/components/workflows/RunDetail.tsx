@@ -150,7 +150,9 @@ export function RunDetail({
           )}
           {detail.origin_kind === 'human' &&
             !isOpen(detail.status) &&
-            workflow.data.status === 'active' && (
+            workflow.data.status === 'active' &&
+            // Retry starts the active version with this run's inputs.
+            detail.version === workflow.data.active_version && (
               <RetryButton orgSlug={orgSlug} run={detail} slug={slug} />
             )}
         </div>
@@ -160,6 +162,17 @@ export function RunDetail({
         <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-5">
           {isFailed(detail.status) && (
             <WhyCard failed={failed} output={output} run={detail} />
+          )}
+          {version.error && (
+            <div className="flex flex-col items-start gap-2">
+              <ErrorBanner
+                error={version.error}
+                title="Failed to load the workflow version: steps that the run did not reach are not shown"
+              />
+              <Button onClick={() => version.refetch()} variant="outline">
+                Try again
+              </Button>
+            </div>
           )}
           <StepsCard lines={lines} types={types} />
         </div>
@@ -243,7 +256,13 @@ function History({
   return (
     <Card
       note={
-        summary ? (
+        !recent.data ? (
+          recent.error ? (
+            <span className="text-danger">Failed to load the runs</span>
+          ) : (
+            'Loading…'
+          )
+        ) : summary ? (
           <span className="text-danger">
             {summary.failed} of {summary.total} runs failed,{' '}
             {summary.others + 1}{' '}

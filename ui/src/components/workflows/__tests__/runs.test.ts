@@ -85,6 +85,14 @@ describe('runs', () => {
     })
   })
 
+  it('finds no inherited value for a slug such as constructor', () => {
+    const found = workflowFailures([
+      orgRun('checkout_refused', { workflow_slug: 'constructor' }),
+    ])
+    expect(found.constructor.failed).toBe(1)
+    expect(workflowFailures([])['toString']).toBeUndefined()
+  })
+
   it('converts the dedupe window between days and seconds', () => {
     expect(windowDays(null)).toBe('')
     expect(windowDays(1_209_600)).toBe('14')

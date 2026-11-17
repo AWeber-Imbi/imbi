@@ -324,7 +324,7 @@ class RunStore:
         """
         return await self._all(
             'SELECT r.*, w.slug AS workflow_slug, w.name AS workflow_name,'  # noqa: S608
-            f' {_STUCK} AS stuck'
+            f' COALESCE({_STUCK}, FALSE) AS stuck'
             ' FROM workflow_runtime.runs AS r'
             ' JOIN workflows.workflows AS w ON w.id = r.workflow_id'
             ' LEFT JOIN workflow_runtime.leases AS l ON l.run_id = r.id'

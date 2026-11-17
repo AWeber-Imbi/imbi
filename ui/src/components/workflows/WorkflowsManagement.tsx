@@ -43,8 +43,9 @@ export function WorkflowsManagement() {
   const list = useWorkflowList(orgSlug)
   const stepTypes = useStepTypes(orgSlug)
   const recent = useOrgRuns(orgSlug, 7)
+  // `null` until the run history loads: no history is not "no failures".
   const failures = useMemo(
-    () => workflowFailures(recent.data ?? []),
+    () => (recent.data ? workflowFailures(recent.data) : null),
     [recent.data],
   )
 
@@ -105,6 +106,7 @@ export function WorkflowsManagement() {
         <WorkflowList
           error={list.error}
           failures={failures}
+          failuresError={recent.error}
           loading={list.isLoading}
           stepTypes={stepTypes.data ?? []}
           workflows={list.data ?? []}

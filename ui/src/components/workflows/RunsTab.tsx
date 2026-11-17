@@ -74,7 +74,7 @@ export function RunsTab({
   const [trigger, setTrigger] = useState('')
   const [search, setSearch] = useState('')
   const [segment, setSegment] = useState<Segment>('failed')
-  const [cause, setCause] = useState<null | string>(null)
+  const [picked, setCause] = useState<null | string>(null)
   const runs = useOrgRuns(orgSlug, days)
 
   const base = useMemo(() => {
@@ -98,6 +98,8 @@ export function RunsTab({
     )
   }, [runs.data, search, trigger, workflow])
   const causes = useMemo(() => failureCauses(base), [base])
+  // A picked cause that the other filters left out filters nothing.
+  const cause = causes.some((c) => c.reason === picked) ? picked : null
   const counts = useMemo(() => {
     const found: Partial<Record<Segment, number>> = {}
     for (const r of base) {

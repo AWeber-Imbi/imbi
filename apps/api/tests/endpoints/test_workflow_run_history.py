@@ -383,6 +383,59 @@ class OrgRunsTestCase(RunHistoryTestCase):
             self.assertEqual(found[run_id]['workflow_slug'], 'deploy-guard')
             self.assertFalse(found[run_id]['stuck'])
 
+    async def test_retried_step_is_not_the_failure(self) -> None:
+        """A step that failed, was retried, and succeeded is not the
+        failure of a run that times out after it, also when archived."""
+
+        async def fail_retry_time_out(run_id: str) -> None:
+            await self._fail(run_id)
+            async with self.pool.connection() as conn, conn.transaction():
+                cur = await conn.execute(
+                    'UPDATE workflow_runtime.step_runs SET status ='
+                    " 'succeeded', finished_at = NOW() WHERE run_id = %s"
+                    " RETURNING to_jsonb(step_runs) - ARRAY['run_id',"
+                    " 'state', 'call_started_at']",
+                    (run_id,),
+                )
+                row = await cur.fetchone()
+                assert row is not None
+                await runtime.append_event(
+                    conn, uuid.UUID(run_id), 'step.succeeded', row[0]
+                )
+                await conn.execute(
+                    "UPDATE workflow_runtime.runs SET status = 'timed_out',"
+                    ' closed_at = NOW() WHERE id = %s',
+                    (run_id,),
+                )
+                await runtime.append_event(
+                    conn,
+                    uuid.UUID(run_id),
+                    'run.closed',
+                    {'status': 'timed_out'},
+                )
+
+        url = await self._workflow()
+        with support.sink_to_clickhouse():
+            live, archived = [await self._start(url) for _ in range(2)]
+            await fail_retry_time_out(archived)
+            with mock.patch.object(
+                sweeper, '_try_sweep_lock', return_value=True
+            ):
+                await sweeper.sweep_once(self.runs)
+                await sweeper.sweep_once(self.runs)
+            await fail_retry_time_out(live)
+
+        found = await self._list()
+        self.assertIsNotNone(found[archived]['log_archived_at'])
+        self.assertIsNone(found[live]['log_archived_at'])
+        for run_id in (live, archived):
+            self.assertIsNone(found[run_id]['failure'], run_id)
+
+    async def test_queued_run_without_lease_is_not_stuck(self) -> None:
+        url = await self._workflow()
+        run_id = await self._start(url)
+        self.assertIs((await self._list())[run_id]['stuck'], False)
+
     async def test_agent_task_readers_get_the_reason(self) -> None:
         url = await self._workflow()
         run_id = await self._start(url)
