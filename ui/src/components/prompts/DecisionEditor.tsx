@@ -310,6 +310,7 @@ export function RunPanel({
           slug: prompt.slug,
           version: content,
         },
+        output_fields: [],
         variables: vars,
       }),
     onError: (err) => toast.error(extractApiErrorDetail(err)),

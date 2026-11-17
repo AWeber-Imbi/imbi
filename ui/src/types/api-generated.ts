@@ -2993,20 +2993,35 @@ export interface paths {
         put?: never;
         /**
          * Run Prompt
-         * @description Run a decision prompt against its model and return the answers.
+         * @description Run a prompt against its model and return the answer.
          *
          *     Renders the saved version ``ref``, or the unsaved ``draft``, then
-         *     calls the version's decision model with its provider's stored key.
-         *     Only prompt authors (``prompt:update``) may run a prompt, because a
-         *     run spends provider credit.
+         *     calls the version's model. A run spends provider credit, so it needs
+         *     ``prompt:update`` (prompt authors), or ``prompt:run`` (the workflows
+         *     service) for a saved version of a generative prompt.
+         *
+         *     A decision prompt goes to its TypeSafe model with the provider's
+         *     stored key.
+         *
+         *     A generative prompt goes to its catalog model (see
+         *     :mod:`imbi.api.llm.generate` for the credentials). Each call is
+         *     recorded in ``ai_runtime.ai_model_calls``. With an
+         *     ``Idempotency-Key`` header (``<run_id>:<node_id>:<attempt>``), a
+         *     repeat of the key gets the answer of the first call and makes no
+         *     new call. An error has ``detail={'error': <code>, 'retry': <bool>}``
+         *     (see :data:`CALL_ERRORS`).
          *
          *     Raises:
-         *         403: A template calls ``project()`` without ``project:read``.
-         *         404: No such prompt, version, label, or project.
-         *         409: The model's provider has no stored credentials.
-         *         422: The prompt is not a decision prompt, has no questions or no
-         *             model, the model cannot run it, or the render fails.
-         *         502: The decision model rejected or failed the call.
+         *         403: No permission, or a template calls ``project()`` without
+         *             ``project:read``.
+         *         404: No such prompt, version, label, project, or organization.
+         *         409: The provider has no usable credentials, a call with the key
+         *             is still running (``call_in_progress``), or one did not
+         *             finish (``outcome_unknown``).
+         *         422: The prompt has no model or no questions, the model cannot
+         *             run it, or the render fails.
+         *         502: The model rejected or failed the call.
+         *         503: The provider is unavailable or rate limited; try again.
          */
         post: operations["run_prompt_api_organizations__org_slug__prompts_run_post"];
         delete?: never;
@@ -8547,8 +8562,8 @@ export interface paths {
          * Delete Organization
          * @description Delete an empty organization.
          *
-         *     Its memberships, agent tasks, workflow runs, secret grants, and
-         *     settled secret resolutions go with it.
+         *     Its memberships, agent tasks, workflow runs, AI model calls, secret
+         *     grants, and settled secret resolutions go with it.
          *
          *     Parameters:
          *         slug: Organization slug to delete.
@@ -19598,7 +19613,7 @@ export interface components {
         };
         /**
          * RunRequest
-         * @description Run a decision prompt: a saved version (``ref``) or a draft.
+         * @description Run a prompt: a saved version (``ref``) or a draft.
          */
         RunRequest: {
             /** Ref */
@@ -19611,6 +19626,11 @@ export interface components {
             variables: {
                 [key: string]: unknown;
             };
+            /**
+             * Output Fields
+             * @default []
+             */
+            output_fields: components["schemas"]["OutputField"][];
         };
         /**
          * RunRequestBody
@@ -19626,7 +19646,11 @@ export interface components {
         };
         /**
          * RunResponse
-         * @description The typed answers of one decision run.
+         * @description The result of one run.
+         *
+         *     A decision run fills ``request`` and ``answers``. A generative run
+         *     fills ``text``, ``result`` (with ``output_fields`` only),
+         *     ``content_sha256``, ``cost_usd``, and ``call_id``.
          */
         RunResponse: {
             /** Ref */
@@ -19637,8 +19661,11 @@ export interface components {
             model: string;
             /** Model Id */
             model_id: string;
-            request: components["schemas"]["RunRequestBody"];
-            /** Answers */
+            request?: components["schemas"]["RunRequestBody"] | null;
+            /**
+             * Answers
+             * @default {}
+             */
             answers: {
                 [key: string]: unknown;
             };
@@ -19646,6 +19673,18 @@ export interface components {
             usage: {
                 [key: string]: unknown;
             };
+            /** Content Sha256 */
+            content_sha256?: string | null;
+            /** Text */
+            text?: string | null;
+            /** Result */
+            result?: {
+                [key: string]: unknown;
+            } | null;
+            /** Cost Usd */
+            cost_usd?: number | null;
+            /** Call Id */
+            call_id?: string | null;
         };
         /**
          * RunnerChain
@@ -26746,7 +26785,9 @@ export interface operations {
     run_prompt_api_organizations__org_slug__prompts_run_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 org_slug: string;
             };

@@ -259,6 +259,7 @@ imbi-api as the scheduler's service account.
 | --- | --- | --- |
 | `marketplace-sync` | Every 6 hours | `POST /maintenance/operations/marketplace-sync/run` |
 | `cve-sync` | Daily at 01:30 UTC | `POST /maintenance/operations/cve-sync/run` |
+| `ai-model-calls-prune` | Daily at 02:30 UTC | `POST /maintenance/operations/ai-model-calls-prune/run` |
 
 At startup the scheduler creates each system task that does not exist. It
 never changes a task that exists, so a changed schedule or a pause stays after

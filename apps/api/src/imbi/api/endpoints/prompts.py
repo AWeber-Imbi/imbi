@@ -16,16 +16,20 @@ a convention only.
 """
 
 import datetime
+import decimal
 import hashlib
 import json
 import logging
 import re
 import typing
+import uuid
 
 import fastapi
 import pydantic
 import slugify
 
+from imbi.api import model_calls, secret_broker
+from imbi.api.agent_tasks import store as task_store
 from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import ai_providers, projects
 from imbi.api.endpoints._helpers import (
@@ -33,13 +37,15 @@ from imbi.api.endpoints._helpers import (
     conflict_on_unique_violation,
 )
 from imbi.api.graph_sql import escape_prop, props_template, set_clause
+from imbi.api.llm import generate as model_generate
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
 from imbi.common.auth.encryption import decrypt_config_value
 from imbi.common.graph import cypher as graph_cypher
-from imbi.common.llm import drivers, typesafe
+from imbi.common.llm import drivers, generate, typesafe
 from imbi.common.prompts import rendering
 from imbi.common.prompts import resolve as prompt_resolve
+from imbi.common.workflows.registry import agent
 
 LOGGER = logging.getLogger(__name__)
 
@@ -256,11 +262,22 @@ class RunDraft(pydantic.BaseModel):
 
 
 class RunRequest(pydantic.BaseModel):
-    """Run a decision prompt: a saved version (``ref``) or a draft."""
+    """Run a prompt: a saved version (``ref``) or a draft."""
 
     ref: str | None = None
     draft: RunDraft | None = None
     variables: dict[str, typing.Any] = {}
+    #: Generative prompts: the fields of a structured answer.
+    output_fields: list[agent.OutputField] = pydantic.Field(
+        default=[], max_length=agent.MAX_FIELDS
+    )
+
+    @pydantic.field_validator('output_fields')
+    @classmethod
+    def _check_output_fields(
+        cls, fields: list[agent.OutputField]
+    ) -> list[agent.OutputField]:
+        return agent.check_output_fields(fields)
 
     @pydantic.model_validator(mode='after')
     def _one_source(self) -> typing.Self:
@@ -277,7 +294,12 @@ class RunRequestBody(pydantic.BaseModel):
 
 
 class RunResponse(pydantic.BaseModel):
-    """The typed answers of one decision run."""
+    """The result of one run.
+
+    A decision run fills ``request`` and ``answers``. A generative run
+    fills ``text``, ``result`` (with ``output_fields`` only),
+    ``content_sha256``, ``cost_usd``, and ``call_id``.
+    """
 
     model_config = pydantic.ConfigDict(protected_namespaces=())
 
@@ -286,9 +308,19 @@ class RunResponse(pydantic.BaseModel):
     n: int | None
     model: str
     model_id: str
-    request: RunRequestBody
-    answers: dict[str, typing.Any]
+    request: RunRequestBody | None = None
+    answers: dict[str, typing.Any] = {}
+    #: Generative runs: ``input_tokens`` and ``output_tokens``, each
+    #: ``None`` when the provider did not tell.
     usage: dict[str, typing.Any]
+    content_sha256: str | None = None
+    text: str | None = None
+    result: dict[str, typing.Any] | None = None
+    #: From the catalog prices; ``None`` when a price or a count is
+    #: unknown.
+    cost_usd: float | None = None
+    #: The ``ai_runtime.ai_model_calls`` row of the call.
+    call_id: uuid.UUID | None = None
 
 
 # --- Queries -----------------------------------------------------------
@@ -323,7 +355,10 @@ RETURN m.model_id AS model_id, m.enabled AS enabled,
 _RUN_MODEL_QUERY: typing.LiteralString = """
 MATCH (m:AIModel {{slug: {slug}}})-[:SERVED_BY]->(p:AIProvider)
 RETURN m.model_id AS model_id, m.enabled AS enabled,
-       m.model_type AS model_type, p.id AS provider_id
+       m.model_type AS model_type, p.id AS provider_id,
+       m.supports_structured_output AS structured,
+       m.input_cost_per_million AS input_cost,
+       m.output_cost_per_million AS output_cost
 """
 
 _DELETE_VERSIONS_QUERY: typing.LiteralString = """
@@ -1050,39 +1085,125 @@ async def _run_target(
     return prompt, version, None
 
 
+#: Seconds one generative model call may take.
+CALL_TIMEOUT = 120.0
+
+#: A ``running`` call older than this did not finish: a repeat of its
+#: idempotency key sets it to ``outcome_unknown``. The call timeout plus
+#: time for the render and a workload identity token.
+STALE_AFTER = CALL_TIMEOUT + 60
+
+#: The HTTP status and the ``retry`` flag of each error code of a
+#: generative run (``detail={'error': <code>, 'retry': <bool>}``).
+CALL_ERRORS: dict[str, tuple[int, bool]] = {
+    'model_answer_invalid': (502, True),
+    'provider_refused': (502, False),
+    'credentials_failed': (502, False),
+    'rate_limited': (503, True),
+    'provider_unavailable': (503, True),
+    'provider_unreachable': (503, True),
+    'credentials_unavailable': (503, True),
+    'provider_misconfigured': (409, False),
+    'call_in_progress': (409, True),
+    'outcome_unknown': (409, False),
+    'model_unsupported': (422, False),
+    'model_no_structured_output': (422, False),
+}
+
+
+def _call_error(code: str) -> fastapi.HTTPException:
+    status, retry = CALL_ERRORS.get(code, (502, False))
+    return fastapi.HTTPException(
+        status_code=status, detail={'error': code, 'retry': retry}
+    )
+
+
+def _check_run_permission(
+    auth: permissions.AuthContext,
+    data: RunRequest,
+    kind: models.PromptKind,
+) -> None:
+    """``prompt:update`` may run anything; ``prompt:run`` only a saved
+    version of a generative prompt."""
+    if auth.is_admin or 'prompt:update' in auth.permissions:
+        return
+    if (
+        'prompt:run' in auth.permissions
+        and data.ref is not None
+        and kind == 'generative'
+    ):
+        return
+    raise fastapi.HTTPException(
+        status_code=403,
+        detail='Permission denied: prompt:update or prompt:run required',
+    )
+
+
 @prompt_render_router.post('/run', response_model=RunResponse)
 async def run_prompt(
     org_slug: str,
     data: RunRequest,
     request: fastapi.Request,
     db: graph.Pool,
+    secrets: secret_broker.Store,
+    calls: model_calls.Store,
     auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('prompt:update')),
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
     ],
+    idempotency_key: typing.Annotated[
+        str | None,
+        fastapi.Header(alias='Idempotency-Key', min_length=1, max_length=200),
+    ] = None,
 ) -> RunResponse:
-    """Run a decision prompt against its model and return the answers.
+    """Run a prompt against its model and return the answer.
 
     Renders the saved version ``ref``, or the unsaved ``draft``, then
-    calls the version's decision model with its provider's stored key.
-    Only prompt authors (``prompt:update``) may run a prompt, because a
-    run spends provider credit.
+    calls the version's model. A run spends provider credit, so it needs
+    ``prompt:update`` (prompt authors), or ``prompt:run`` (the workflows
+    service) for a saved version of a generative prompt.
+
+    A decision prompt goes to its TypeSafe model with the provider's
+    stored key.
+
+    A generative prompt goes to its catalog model (see
+    :mod:`imbi.api.llm.generate` for the credentials). Each call is
+    recorded in ``ai_runtime.ai_model_calls``. With an
+    ``Idempotency-Key`` header (``<run_id>:<node_id>:<attempt>``), a
+    repeat of the key gets the answer of the first call and makes no
+    new call. An error has ``detail={'error': <code>, 'retry': <bool>}``
+    (see :data:`CALL_ERRORS`).
 
     Raises:
-        403: A template calls ``project()`` without ``project:read``.
-        404: No such prompt, version, label, or project.
-        409: The model's provider has no stored credentials.
-        422: The prompt is not a decision prompt, has no questions or no
-            model, the model cannot run it, or the render fails.
-        502: The decision model rejected or failed the call.
+        403: No permission, or a template calls ``project()`` without
+            ``project:read``.
+        404: No such prompt, version, label, project, or organization.
+        409: The provider has no usable credentials, a call with the key
+            is still running (``call_in_progress``), or one did not
+            finish (``outcome_unknown``).
+        422: The prompt has no model or no questions, the model cannot
+            run it, or the render fails.
+        502: The model rejected or failed the call.
+        503: The provider is unavailable or rate limited; try again.
 
     """
     prompt, version, n = await _run_target(db, data, auth)
+    _check_run_permission(auth, data, prompt.kind)
     ref = f'{prompt.namespace}/{prompt.slug}' + (
         f'@{n}' if n is not None else ' (draft)'
     )
-    if prompt.kind != 'decision':
-        raise _unprocessable('Only decision prompts can be run')
+    if prompt.kind == 'generative':
+        return await _run_generative(
+            org_slug,
+            data,
+            request,
+            db,
+            secrets,
+            calls,
+            auth,
+            version,
+            ref,
+            idempotency_key,
+        )
     if not version.questions:
         raise _unprocessable('The prompt has no questions to ask')
     if version.model is None:
@@ -1157,6 +1278,194 @@ async def run_prompt(
         request=RunRequestBody(state=decision.state, questions=questions),
         answers=result['answers'],
         usage=result['usage'],
+    )
+
+
+def _key_context(key: str | None) -> dict[str, typing.Any]:
+    """The workflow context in a key ``<run_id>:<node_id>:<attempt>``."""
+    if key is None:
+        return {
+            'origin': 'preview',
+            'run_id': None,
+            'node_id': None,
+            'attempt': None,
+        }
+    run_id, _, rest = key.partition(':')
+    node_id, _, attempt = rest.rpartition(':')
+    return {
+        'origin': 'workflow',
+        'run_id': run_id,
+        'node_id': node_id or None,
+        'attempt': int(attempt) if attempt.isdigit() else None,
+    }
+
+
+def _price(value: object) -> decimal.Decimal | None:
+    """A catalog price as AGE returns it (a number or a string)."""
+    return None if value is None else decimal.Decimal(str(value))
+
+
+def _call_response(row: dict[str, typing.Any]) -> RunResponse:
+    return RunResponse(
+        ref=row['prompt_ref'],
+        n=row['prompt_version'],
+        model=row['model'],
+        model_id=row['model_id'],
+        usage=row['usage'],
+        content_sha256=row['content_sha256'],
+        text=row['text'],
+        result=row['result'],
+        cost_usd=row['cost_usd'],
+        call_id=row['id'],
+    )
+
+
+def _repeat(row: dict[str, typing.Any]) -> RunResponse:
+    """The answer to a repeat of an idempotency key."""
+    match row['status']:
+        case 'succeeded':
+            return _call_response(row)
+        case 'running':
+            raise _call_error('call_in_progress')
+        case 'failed':
+            raise _call_error(str(row['error']))
+        case _:
+            raise _call_error('outcome_unknown')
+
+
+async def _run_generative(
+    org_slug: str,
+    data: RunRequest,
+    request: fastapi.Request,
+    db: graph.Graph,
+    secrets: secret_broker.store.SecretStore,
+    calls: model_calls.ModelCallStore,
+    auth: permissions.AuthContext,
+    version: models.PromptVersion,
+    ref: str,
+    idempotency_key: str | None,
+) -> RunResponse:
+    """Run a generative prompt; see :func:`run_prompt`."""
+    if version.model is None:
+        raise _unprocessable('Choose a generative model to run the prompt')
+    records = await db.execute(
+        _RUN_MODEL_QUERY,
+        {'slug': version.model},
+        [
+            'model_id',
+            'enabled',
+            'model_type',
+            'provider_id',
+            'structured',
+            'input_cost',
+            'output_cost',
+        ],
+    )
+    if not records:
+        raise _unprocessable(
+            f'AI model {version.model!r} is not in the catalog'
+        )
+    record = {k: graph.parse_agtype(v) for k, v in records[0].items()}
+    if record['enabled'] is False:
+        raise _unprocessable(f'AI model {version.model!r} is disabled')
+    # A missing value predates model_type, when every model was
+    # generative.
+    if (record.get('model_type') or 'generative') != 'generative':
+        raise _unprocessable(
+            f'AI model {version.model!r} is not a generative model'
+        )
+    provider = await ai_providers.fetch_provider(
+        db, str(record['provider_id'])
+    )
+    if not provider.enabled:
+        raise _unprocessable(f'AI provider {provider.slug!r} is disabled')
+    if data.output_fields and not record.get('structured'):
+        raise _call_error('model_no_structured_output')
+    org_id = await organizations.check_member(org_slug, db, auth)
+    try:
+        rendered = await rendering.render(
+            version,
+            data.variables,
+            _providers(auth, db, org_slug, request),
+        )
+    except rendering.RenderError as e:
+        raise _unprocessable(str(e)) from e
+    model_id = str(record['model_id'])
+    call = generate.Request(
+        driver=provider.driver,
+        model_id=model_id,
+        messages=rendered.messages,
+        system=rendered.system,
+        params=version.params,
+        output_fields=data.output_fields,
+        base_url=drivers.resolve_base_url(provider.driver, provider.base_url),
+        region=provider.region,
+        project_id=provider.project_id,
+        timeout=CALL_TIMEOUT,
+    )
+    row, new = await calls.start(
+        {
+            'organization_id': org_id,
+            'principal': auth.principal_name,
+            **_key_context(idempotency_key),
+            'idempotency_key': idempotency_key,
+            'prompt_ref': ref,
+            'prompt_version': version.n if data.ref is not None else None,
+            'content_sha256': version.content_sha256,
+            'model': version.model,
+            'model_id': model_id,
+            'driver': provider.driver,
+            'system': rendered.system,
+            'messages': [m.model_dump() for m in rendered.messages],
+            'output_schema': agent.output_schema(data.output_fields),
+        },
+        STALE_AFTER,
+    )
+    if not new:
+        return _repeat(row)
+    try:
+        answer = await model_generate.call(secrets, provider, call)
+    except generate.GenerateError as e:
+        await calls.finish(row['id'], 'failed', error=e.code)
+        raise _call_error(e.code) from None
+    usage = dict(answer.usage)
+    cost = task_store.usage_cost(
+        {
+            'tokens_in': answer.usage['input_tokens'],
+            'tokens_out': answer.usage['output_tokens'],
+            'cache_read_tokens': None,
+            'cache_write_tokens': None,
+        },
+        {
+            'input_cost_per_million': _price(record.get('input_cost')),
+            'output_cost_per_million': _price(record.get('output_cost')),
+            'cache_read_cost_per_million': None,
+            'cache_write_cost_per_million': None,
+        },
+    )
+    await calls.finish(
+        row['id'],
+        'succeeded',
+        text=answer.text,
+        result=answer.result,
+        usage=usage,
+        cost_usd=cost,
+        provider_request_id=answer.request_id,
+    )
+    LOGGER.info(
+        'Ran generative prompt %s with %s for %s',
+        ref,
+        model_id,
+        auth.principal_name,
+    )
+    return _call_response(
+        {
+            **row,
+            'text': answer.text,
+            'result': answer.result,
+            'usage': usage,
+            'cost_usd': cost,
+        }
     )
 
 

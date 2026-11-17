@@ -759,6 +759,7 @@ _ORG_OWNED_TABLES: tuple[tuple[str, str], ...] = (
     ('agent_runtime', 'tasks'),
     ('agent_runtime', 'task_id_sequences'),
     ('workflow_runtime', 'runs'),
+    ('ai_runtime', 'ai_model_calls'),
     ('secrets', 'grants'),
     ('secrets', 'resolutions'),
 )
@@ -777,8 +778,8 @@ async def delete_organization(
 ) -> None:
     """Delete an empty organization.
 
-    Its memberships, agent tasks, workflow runs, secret grants, and
-    settled secret resolutions go with it.
+    Its memberships, agent tasks, workflow runs, AI model calls, secret
+    grants, and settled secret resolutions go with it.
 
     Parameters:
         slug: Organization slug to delete.

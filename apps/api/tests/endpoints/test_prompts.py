@@ -7,6 +7,7 @@ from unittest import mock
 import psycopg.errors
 
 from apps.api.tests.endpoints import test_ai_providers as provider_tests
+from imbi.api import model_calls
 from imbi.api.endpoints import projects, prompts
 
 ORG = provider_tests.ORG
@@ -120,7 +121,14 @@ MODEL_ROW = [{'model_id': 'claude-opus-5', 'enabled': True}]
 
 
 class PromptTestBase(provider_tests.AIProviderTestBase):
-    """Admin principal and a mocked graph."""
+    """Admin principal, a mocked graph, and a mocked call record."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.calls = mock.AsyncMock()
+        self.test_app.dependency_overrides[model_calls._inject_store] = (
+            lambda: self.calls
+        )
 
     def route(self, *rules: tuple[str, typing.Any]) -> Router:
         router = Router(*rules)
