@@ -15,11 +15,9 @@ import { toast } from 'sonner'
 import { ApiError } from '@/api/client'
 import {
   activateWorkflow,
-  createWorkflow,
   pauseWorkflow,
   startWorkflowRun,
   testRunWorkflow,
-  updateWorkflow,
   validateWorkflow,
 } from '@/api/endpoints'
 import { agentsPath } from '@/components/agents/agentsNav'
@@ -28,7 +26,9 @@ import { Switch } from '@/components/ui/switch'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { queryKeys } from '@/lib/queryKeys'
+import { slugify } from '@/lib/utils'
 
+import { pinNodes, saveWorkflow, type StepPrompt } from './analysisPrompt'
 import { Canvas, type Selection } from './Canvas'
 import type { NodeSummary } from './CanvasNode'
 import {
@@ -114,6 +114,9 @@ export function WorkflowEditor({
     owner_team_slug: workflow?.owner_team_slug ?? '',
     settings: workflow?.version.settings ?? NEW_SETTINGS,
   }))
+  // The edited prompts of analysis steps, by node id. They are written
+  // to the Prompt CMS on save.
+  const [prompts, setPrompts] = useState<Record<string, StepPrompt>>({})
   const [dirty, setDirty] = useState(false)
   const [selection, setSelection] = useState<Selection>(null)
   const [paletteOpen, setPaletteOpen] = useState(true)
@@ -226,15 +229,13 @@ export function WorkflowEditor({
   }
 
   const save = useMutation({
-    mutationFn: () =>
-      slug
-        ? updateWorkflow(orgSlug, slug, draft)
-        : createWorkflow(orgSlug, draft),
+    mutationFn: () => saveWorkflow(orgSlug, slug, draft, prompts),
     onError: (error) =>
       toast.error(
         `Failed to save the workflow: ${extractApiErrorDetail(error)}`,
       ),
-    onSuccess: (saved) => {
+    onSuccess: ({ pins, saved }) => {
+      setDraft((d) => ({ ...d, graph: pinNodes(d.graph, pins) }))
       stored(saved)
       setDirty(false)
       setIssues(saved.version.validation.issues)
@@ -577,6 +578,10 @@ export function WorkflowEditor({
                   updateGraph((g) => ({ ...g, nodes: [...g.nodes, copy] }))
                   setSelection({ id: copy.id, kind: 'node' })
                 }}
+                onPromptChange={(prompt) => {
+                  setPrompts((p) => ({ ...p, [selectedNode.id]: prompt }))
+                  setDirty(true)
+                }}
                 onRemoveItem={(name, index) =>
                   updateGraph((g) =>
                     name === 'branches' &&
@@ -594,11 +599,14 @@ export function WorkflowEditor({
                 }
                 onTab={setInspectorTab}
                 orgSlug={orgSlug}
+                prompt={prompts[selectedNode.id]}
                 readOnly={readOnly}
                 result={results[selectedNode.id] ?? null}
                 resultSource={resultSource}
                 tab={inspectorTab}
                 types={types}
+                workflowName={draft.name}
+                workflowSlug={slug ?? slugify(draft.name)}
               />
             ) : selection?.kind === 'edge' ? (
               <EdgePanel

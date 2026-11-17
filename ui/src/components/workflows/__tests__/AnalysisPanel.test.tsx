@@ -1,0 +1,184 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { ApiError } from '@/api/client'
+import * as endpoints from '@/api/endpoints'
+import { fireEvent, render, screen, waitFor } from '@/test/utils'
+import type {
+  AIModel,
+  Prompt,
+  PromptResolution,
+  PromptRunResponse,
+} from '@/types'
+
+import { AnalysisPanel } from '../AnalysisPanel'
+import type { StepPrompt } from '../analysisPrompt'
+import type { WorkflowNode } from '../types'
+import { node } from './fixtures'
+
+// fallow-ignore-next-line unresolved-import
+vi.mock('@/api/endpoints', () => ({
+  createPrompt: vi.fn(),
+  listAIModels: vi.fn(),
+  resolvePrompt: vi.fn(),
+  runPrompt: vi.fn(),
+}))
+
+const MODEL = {
+  enabled: true,
+  id: 'm1',
+  model_id: 'claude-x',
+  model_type: 'generative',
+  slug: 'claude',
+  supports_structured_output: true,
+} as AIModel
+
+const PROMPT: StepPrompt = {
+  max_tokens: null,
+  model: 'claude',
+  system: 'Be brief.',
+  temperature: null,
+  user: 'Summarize {{ log }}',
+}
+
+function renderPanel(
+  params: Record<string, unknown>,
+  prompt?: StepPrompt,
+): WorkflowNode {
+  const step = node({
+    id: 'n1',
+    key: 'summarize',
+    params,
+    title: 'Summarize',
+    type: 'analysis',
+  })
+  render(
+    <AnalysisPanel
+      node={step}
+      onChange={vi.fn()}
+      onPromptChange={vi.fn()}
+      orgSlug="acme"
+      prompt={prompt}
+      references={[]}
+      workflowName="Deploy guard"
+      workflowSlug="deploy-guard"
+    />,
+  )
+  return step
+}
+
+describe('AnalysisPanel', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(endpoints.listAIModels).mockResolvedValue([
+      MODEL,
+      { ...MODEL, id: 'm2', slug: 'plain', supports_structured_output: false },
+    ])
+  })
+
+  it('loads the pinned prompt version of an existing node', async () => {
+    vi.mocked(endpoints.resolvePrompt).mockResolvedValue({
+      version: {
+        messages: [{ content: 'Summarize {{ log }}', role: 'user' }],
+        model: 'claude',
+        params: { max_tokens: 800, stop_sequences: [] },
+        system: 'Be brief.',
+      },
+    } as unknown as PromptResolution)
+    renderPanel({
+      prompt_ref: 'workflows/acme.deploy-guard.summarize',
+      prompt_version: 2,
+    })
+    expect(await screen.findByLabelText('System prompt')).toHaveValue(
+      'Be brief.',
+    )
+    expect(screen.getByLabelText('User message *')).toHaveValue(
+      'Summarize {{ log }}',
+    )
+    expect(screen.getByLabelText('Max tokens')).toHaveValue(800)
+    expect(endpoints.resolvePrompt).toHaveBeenCalledWith(
+      'workflows/acme.deploy-guard.summarize@2',
+      expect.anything(),
+    )
+  })
+
+  it('disables the output fields for a model with no structured output', async () => {
+    renderPanel({}, { ...PROMPT, model: 'plain' })
+    expect(
+      await screen.findByText(/The model does not support structured output/),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add field' })).toBeDisabled()
+  })
+
+  it('enables the output fields for a model with structured output', async () => {
+    renderPanel({}, PROMPT)
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Add field' })).toBeEnabled(),
+    )
+  })
+
+  it('creates the prompt of a new node, then runs the draft', async () => {
+    vi.mocked(endpoints.createPrompt).mockResolvedValue({} as Prompt)
+    vi.mocked(endpoints.runPrompt).mockResolvedValue({
+      cost_usd: 0.0012,
+      model: 'claude',
+      model_id: 'claude-x',
+      text: 'All good.',
+      usage: { input_tokens: 12, output_tokens: 3 },
+    } as PromptRunResponse)
+    renderPanel({ inputs: { log: '{{ fetch.result }}' } }, PROMPT)
+
+    fireEvent.change(screen.getByLabelText('Sample inputs'), {
+      target: { value: '{"log": "a line"}' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Run prompt' }))
+
+    expect(await screen.findByText('All good.')).toBeInTheDocument()
+    expect(screen.getByText('$0.0012')).toBeInTheDocument()
+    const version = {
+      messages: [{ content: 'Summarize {{ log }}', role: 'user' }],
+      model: 'claude',
+      params: { max_tokens: null, stop_sequences: [], temperature: null },
+      questions: {},
+      state: '',
+      system: 'Be brief.',
+      tools: [],
+      variable_schema: { log: { required: true, type: 'str' } },
+    }
+    expect(endpoints.createPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        namespace: 'workflows',
+        slug: 'acme.deploy-guard.summarize',
+        version,
+      }),
+    )
+    expect(endpoints.runPrompt).toHaveBeenCalledWith('acme', {
+      draft: {
+        namespace: 'workflows',
+        slug: 'acme.deploy-guard.summarize',
+        version,
+      },
+      output_fields: [],
+      variables: { log: 'a line' },
+    })
+  })
+
+  it('runs the draft of a saved node without a new prompt', async () => {
+    vi.mocked(endpoints.runPrompt).mockRejectedValue(
+      new ApiError(422, 'Unprocessable', {
+        detail: { error: 'model_no_structured_output', retry: false },
+      }),
+    )
+    renderPanel(
+      {
+        prompt_ref: 'workflows/acme.deploy-guard.summarize',
+        prompt_version: 2,
+      },
+      PROMPT,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Run prompt' }))
+    expect(
+      await screen.findByText('Model no structured output'),
+    ).toBeInTheDocument()
+    expect(endpoints.createPrompt).not.toHaveBeenCalled()
+  })
+})
