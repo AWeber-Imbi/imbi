@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog'
 import { FormField } from '@/components/ui/form-field'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 
 import type { ManualInput } from './runs'
 
@@ -82,13 +83,23 @@ export function StartRunDialog({
                 </label>
               ) : (
                 <FormField htmlFor={id} key={id} label={input.name} required>
-                  <Input
-                    id={id}
-                    onChange={(e) => set(input.name, e.target.value)}
-                    required
-                    type={input.type === 'number' ? 'number' : 'text'}
-                    value={String(values[input.name] ?? '')}
-                  />
+                  {input.type === 'text' ? (
+                    <Textarea
+                      id={id}
+                      onChange={(e) => set(input.name, e.target.value)}
+                      required
+                      rows={6}
+                      value={String(values[input.name] ?? '')}
+                    />
+                  ) : (
+                    <Input
+                      id={id}
+                      onChange={(e) => set(input.name, e.target.value)}
+                      required
+                      type={input.type === 'number' ? 'number' : 'text'}
+                      value={String(values[input.name] ?? '')}
+                    />
+                  )}
                 </FormField>
               )
             })}

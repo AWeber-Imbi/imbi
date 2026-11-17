@@ -161,7 +161,7 @@ A person starts a run with the **Run** button.
 
 | Parameter | What to enter | Default |
 |---|---|---|
-| `inputs` | The inputs that the person must enter. Each has a `name` (a key) and a `type`: `string`, `number`, or `boolean` | None |
+| `inputs` | The inputs that the person must enter. Each has a `name` (a key) and a `type`: `string`, `text` (a string entered in a text area), `number`, or `boolean` | None |
 | `who` | Who can start and cancel runs: `owner_team`, `admins`, or `anyone` | `owner_team` |
 
 The inspector shows `inputs` as JSON, for example:

@@ -67,8 +67,8 @@ export function isStringValued(field: OutputField): boolean {
 }
 
 export function nameError(
-  field: OutputField,
-  siblings: OutputField[],
+  field: Pick<OutputField, 'name'>,
+  siblings: Pick<OutputField, 'name'>[],
 ): string | undefined {
   if (!KEY_PATTERN.test(field.name)) {
     return 'Use lower case letters, digits, and _, starting with a letter.'

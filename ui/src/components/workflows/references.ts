@@ -106,7 +106,7 @@ function manualInputs(node: WorkflowNode): Reference[] {
   if (!Array.isArray(inputs)) return []
   return (inputs as { name: string; type?: string }[]).map((input) => ({
     path: `trigger.${input.name}`,
-    type: input.type ?? 'string',
+    type: input.type === 'text' ? 'string' : (input.type ?? 'string'),
   }))
 }
 
