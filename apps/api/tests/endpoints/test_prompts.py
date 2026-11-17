@@ -814,6 +814,25 @@ class WorkflowPromptTestCase(PromptTestBase):
         self.assertEqual(response.status_code, 201, response.text)
         self.assertEqual(response.json()['n'], 2)
 
+    def test_workflow_read_reads(self) -> None:
+        # The step editor loads the pinned version of the node.
+        self.as_principal('workflow:read')
+        self.route(
+            (GET_PROMPT, prompt_row(1, **self.WF)),
+            (GET_VERSION, version_row(1)),
+            (LIST_VERSIONS, version_row(1)),
+        )
+        for url in (
+            self.URL,
+            self.URL + '/versions',
+            self.URL + '/versions/1',
+            f'{BASE}/resolve?ref=workflows/{self.SLUG}@1',
+        ):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200, url)
+        response = self.client.get(BASE + '/mender/core')
+        self.assertEqual(response.status_code, 403)
+
     def test_workflow_write_is_not_enough_elsewhere(self) -> None:
         self.as_principal('prompt:read', 'workflow:write')
         self.route((GET_PROMPT, prompt_row(1)))

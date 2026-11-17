@@ -608,8 +608,22 @@ async def _is_owner(
 ) -> bool:
     """Whether the caller has the owner permission of an organization's
     prompt (see :data:`_ORG_NAMESPACES`) in that organization."""
+    return namespace in _ORG_NAMESPACES and await _has_org_permission(
+        db, auth, namespace, slug, _ORG_NAMESPACES[namespace]
+    )
+
+
+async def _has_org_permission(
+    db: graph.Graph,
+    auth: permissions.AuthContext,
+    namespace: str,
+    slug: str,
+    permission: str,
+) -> bool:
+    """Whether the caller has ``permission`` in the organization of an
+    organization's prompt."""
     org = _prompt_org(namespace, slug)
-    return org is not None and _ORG_NAMESPACES[namespace] in (
+    return org is not None and permission in (
         await organizations.org_permissions(db, auth, org)
     )
 
@@ -635,27 +649,38 @@ async def can_promote(
     return await _is_owner(db, auth, namespace, slug)
 
 
-async def _require_write(
+async def _require_permission(
     db: graph.Graph,
     auth: permissions.AuthContext,
     permission: str,
     namespace: str,
     slug: str,
+    workflow_permission: str = 'workflow:write',
 ) -> None:
     """Raise 403 unless the caller has ``permission``.
 
-    A workflow prompt is part of the workflow, so ``workflow:write`` in
-    its organization is also enough: the workflow editor creates the
-    prompt and adds its versions.
+    A workflow prompt is part of the workflow, so
+    ``workflow_permission`` in its organization is also enough: the
+    workflow editor reads the prompt, creates it, and adds its
+    versions.
     """
     if auth.is_admin or permission in auth.permissions:
         return
-    if namespace == WORKFLOWS_NAMESPACE and await _is_owner(
-        db, auth, namespace, slug
+    if namespace == WORKFLOWS_NAMESPACE and await _has_org_permission(
+        db, auth, namespace, slug, workflow_permission
     ):
         return
     raise fastapi.HTTPException(
         status_code=403, detail=f'Permission denied: {permission} required'
+    )
+
+
+async def _require_read(
+    db: graph.Graph, auth: permissions.AuthContext, namespace: str, slug: str
+) -> None:
+    """Raise 403 unless the caller may read the prompt."""
+    await _require_permission(
+        db, auth, 'prompt:read', namespace, slug, 'workflow:read'
     )
 
 
@@ -968,7 +993,7 @@ async def create_prompt(
     """
     slug = data.slug or ''
     await _require_access(db, auth, data.namespace, slug)
-    await _require_write(db, auth, 'prompt:create', data.namespace, slug)
+    await _require_permission(db, auth, 'prompt:create', data.namespace, slug)
     return await insert_prompt(
         db,
         data,
@@ -1081,8 +1106,7 @@ async def resolve_prompt(
     ref: str,
     db: graph.Pool,
     auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('prompt:read')),
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
     ],
 ) -> Resolution:
     """Resolve ``namespace/slug@label`` or ``@n`` to one version.
@@ -1092,7 +1116,8 @@ async def resolve_prompt(
         422: The reference is not valid.
 
     """
-    _ = auth
+    namespace, slug, _selector = parse_ref(ref)
+    await _require_read(db, auth, namespace, slug)
     prompt, version, label = await _resolve(db, ref, auth)
     return Resolution(
         ref=ref, label=label, version=_version_response(version, prompt)
@@ -1617,12 +1642,11 @@ async def get_prompt(
     slug: str,
     db: graph.Pool,
     auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('prompt:read')),
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
     ],
 ) -> PromptResponse:
     """Get one prompt with its labels."""
-    _ = auth
+    await _require_read(db, auth, namespace, slug)
     prompt, latest = await _fetch_prompt(db, namespace, slug, auth)
     return _prompt_response(prompt, latest)
 
@@ -1731,12 +1755,11 @@ async def list_prompt_versions(
     slug: str,
     db: graph.Pool,
     auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('prompt:read')),
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
     ],
 ) -> list[PromptVersionResponse]:
     """List every version of a prompt, newest first."""
-    _ = auth
+    await _require_read(db, auth, namespace, slug)
     prompt, _latest = await _fetch_prompt(db, namespace, slug, auth)
     records = await db.execute(
         _VERSIONS_QUERY, {'prompt_id': prompt.id}, ['v']
@@ -1760,12 +1783,11 @@ async def get_prompt_version(
     n: int,
     db: graph.Pool,
     auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('prompt:read')),
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
     ],
 ) -> PromptVersionResponse:
     """Get one version of a prompt."""
-    _ = auth
+    await _require_read(db, auth, namespace, slug)
     prompt, _latest = await _fetch_prompt(db, namespace, slug, auth)
     version = await _fetch_version(db, prompt, n)
     return _version_response(version, prompt)
@@ -1806,7 +1828,7 @@ async def create_prompt_version(
             catalog, or a workflows prompt has tools.
 
     """
-    await _require_write(db, auth, 'prompt:update', namespace, slug)
+    await _require_permission(db, auth, 'prompt:update', namespace, slug)
     prompt, latest = await _fetch_prompt(db, namespace, slug, auth)
     if prompt.namespace != WORKFLOWS_NAMESPACE:
         _check_not_archived(prompt)
