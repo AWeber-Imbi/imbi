@@ -206,3 +206,23 @@ class InitializeTestCase(unittest.IsolatedAsyncioTestCase):
         )
         names = {row[0] for row in await cursor.fetchall()}
         self.assertNotIn('items_name_key', names)
+
+    async def test_step_after_tables_sees_a_new_table(self) -> None:
+        # On a new install the table does not exist before the tables
+        # are created, so a step that changes it runs after them.
+        step = {
+            'name': 'comment-on-items',
+            'after_tables': True,
+            'when': (
+                f"SELECT to_regclass('{SCHEMA}.items') IS NOT NULL"
+                f" AND obj_description('{SCHEMA}.items'::regclass) IS NULL"
+            ),
+            'sql': f"COMMENT ON TABLE {SCHEMA}.items IS 'done'",
+        }
+        await relational.initialize(
+            SCHEMA, {**SCHEMATA, 'steps': [step]}, 'test.relational'
+        )
+        cursor = await self.conn.execute(
+            'SELECT obj_description(%s::regclass)', (f'{SCHEMA}.items',)
+        )
+        self.assertEqual(await cursor.fetchone(), ('done',))
