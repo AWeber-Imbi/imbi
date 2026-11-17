@@ -101,6 +101,9 @@ How a run works:
   Requests**, Imbi puts the project back in the set and pauses the
   operation until the limit resets. The activity log shows these
   projects as `deferred`.
+- If an instance stops while it works on a project, another instance
+  takes the project again after 15 minutes. The run does not lose the
+  project.
 - If all the instances stop during a run, the run shows as `abandoned`
   after 12 hours.
 - The row shows the result of the last run for 7 days.

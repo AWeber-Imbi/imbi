@@ -50,6 +50,7 @@ import {
 } from '@/lib/deployment-drift'
 import { sortByPipelineOrder } from '@/lib/environment-chains'
 import { absTime, parseServerTs, relTime } from '@/lib/formatDate'
+import { storage } from '@/lib/storage'
 import type { DeploymentStatus, LatestDeployment } from '@/types'
 
 import { NewProjectDialog } from './NewProjectDialog'
@@ -208,11 +209,7 @@ export function ProjectsView() {
     [user, orgSlug],
   )
 
-  const [storedView] = useState(() =>
-    typeof window === 'undefined'
-      ? null
-      : window.localStorage.getItem(VIEW_MODE_STORAGE_KEY),
-  )
+  const [storedView] = useState(() => storage.getItem(VIEW_MODE_STORAGE_KEY))
   const rawView = searchParams.get('view')
   const viewMode = resolveViewMode(rawView, storedView)
   // ``inputQuery`` drives the controlled <Input>; ``debouncedQuery``
@@ -240,9 +237,7 @@ export function ProjectsView() {
   const hasMyTeams = searchParams.get('has_my_teams') === '1'
 
   const setViewMode = (v: 'grid' | 'list') => {
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(VIEW_MODE_STORAGE_KEY, v)
-    }
+    storage.setItem(VIEW_MODE_STORAGE_KEY, v)
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev)

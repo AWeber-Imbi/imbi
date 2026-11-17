@@ -9,7 +9,7 @@ import { fireEvent, render, screen, waitFor, within } from '@/test/utils'
 import { agent } from '../../agents/__tests__/fixtures'
 import type { Workflow } from '../types'
 import { WorkflowsManagement } from '../WorkflowsManagement'
-import { node, RUN, STEP_TYPES, stepType, workflow } from './fixtures'
+import { node, orgRun, RUN, STEP_TYPES, stepType, workflow } from './fixtures'
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', () => ({
@@ -26,7 +26,7 @@ vi.mock('@/api/endpoints', () => ({
   listAIModels: vi.fn(),
   listStaleSideEffects: vi.fn(),
   listTeams: vi.fn(),
-  listWorkflowAttention: vi.fn(),
+  listWorkflowOrgRuns: vi.fn(),
   listWorkflowRuns: vi.fn(),
   listWorkflows: vi.fn(),
   listWorkflowStepTypes: vi.fn(),
@@ -62,7 +62,7 @@ function renderAt(path: string) {
     <Routes>
       <Route
         element={<WorkflowsManagement />}
-        path="/agents/:section?/:slug?/:action?"
+        path="/agents/:section?/:slug?/:action?/:tab?"
       />
     </Routes>,
   )
@@ -92,7 +92,7 @@ describe('WorkflowsManagement', () => {
     vi.mocked(endpoints.listAgents).mockResolvedValue([])
     vi.mocked(endpoints.listTeams).mockResolvedValue([])
     vi.mocked(endpoints.validateWorkflow).mockResolvedValue({ issues: [] })
-    vi.mocked(endpoints.listWorkflowAttention).mockResolvedValue([])
+    vi.mocked(endpoints.listWorkflowOrgRuns).mockResolvedValue([])
     vi.mocked(endpoints.listWorkflowRuns).mockResolvedValue([])
     vi.mocked(endpoints.listStaleSideEffects).mockResolvedValue([])
   })
@@ -113,7 +113,7 @@ describe('WorkflowsManagement', () => {
     expect(screen.getByText('Dependency sweep')).toBeInTheDocument()
   })
 
-  it('shows runs in 30 days, the last outcome, and runs to look at', async () => {
+  it('shows runs in 30 days, the last outcome, and failures in 7 days', async () => {
     const { version: _version, ...summary } = workflow()
     vi.mocked(endpoints.listWorkflows).mockResolvedValue([
       {
@@ -123,17 +123,9 @@ describe('WorkflowsManagement', () => {
         runs_30d: 12,
       },
     ])
-    vi.mocked(endpoints.listWorkflowAttention).mockResolvedValue([
-      {
-        ...RUN,
-        error: 'activator_lacks_permission',
-        lease_expires_at: null,
-        reason: 'failed',
-        status: 'failed',
-        worker_id: null,
-        workflow_name: 'Deploy guard',
-        workflow_slug: 'deploy-guard',
-      },
+    vi.mocked(endpoints.listWorkflowOrgRuns).mockResolvedValue([
+      orgRun('model_key_unavailable'),
+      orgRun('model_key_unavailable', { id: 'other' }),
     ])
     renderAt('/agents/workflows')
     const row = (await screen.findByText('Ships and checks a deploy.')).closest(
@@ -141,12 +133,119 @@ describe('WorkflowsManagement', () => {
     )!
     await waitFor(() => expect(row).toHaveTextContent('12'))
     expect(row).toHaveTextContent('Failed')
+    await waitFor(() => expect(row).toHaveTextContent('2 of 2 failed'))
+    expect(row).toHaveTextContent('model_key_unavailable ×2')
+    expect(endpoints.listWorkflowOrgRuns).toHaveBeenCalledWith(
+      'acme',
+      7,
+      expect.anything(),
+    )
+  })
+
+  it('groups failed runs by cause and filters the runs by one', async () => {
+    vi.mocked(endpoints.listWorkflowOrgRuns).mockResolvedValue([
+      orgRun('logzio_api_unauthorized', { id: 'run-aaaa-1' }),
+      orgRun('marketplace_fetch_failed', { id: 'run-bbbb-1' }),
+      orgRun('marketplace_fetch_failed', { id: 'run-bbbb-2' }),
+      orgRun(null, { id: 'run-cccc-1', status: 'succeeded' }),
+    ])
+    renderAt('/agents/workflows?view=runs')
+    expect(await screen.findByText('Failure causes')).toBeInTheDocument()
+    expect(screen.getByText('3 failed runs, 2 causes.', { exact: false }))
+    expect(screen.getByText('3 in the last 7 days')).toBeInTheDocument()
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /^logzio_api_unauthorized/ }),
+    )
     expect(
-      await screen.findByText('activator_lacks_permission'),
+      screen.getByText('1 failed with logzio_api_unauthorized'),
     ).toBeInTheDocument()
+    expect(screen.getByText('run-aaaa')).toBeInTheDocument()
+    expect(screen.queryByText('run-bbbb')).not.toBeInTheDocument()
     expect(
-      screen.getByText('activator_lacks_permission').closest('a'),
-    ).toHaveAttribute('href', `/agents/workflows/deploy-guard?run=${RUN.id}`)
+      screen.getByRole('link', { name: 'Open Run run-aaaa of Deploy guard' }),
+    ).toHaveAttribute('href', '/agents/workflows/deploy-guard/runs/run-aaaa-1')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show all causes' }))
+    expect(screen.getAllByText('run-bbbb')).toHaveLength(2)
+
+    // Another status drops the cause filter.
+    fireEvent.click(
+      screen.getByRole('button', { name: /^logzio_api_unauthorized/ }),
+    )
+    fireEvent.click(screen.getByRole('radio', { name: /^Succeeded/ }))
+    expect(await screen.findByText('run-cccc')).toBeInTheDocument()
+    expect(screen.queryByText('Failure causes')).not.toBeInTheDocument()
+  })
+
+  it('shows why a run failed, the steps it did not reach, and retries it', async () => {
+    const active = workflow({ active_version: 2, status: 'active' })
+    vi.mocked(endpoints.getWorkflow).mockResolvedValue(active)
+    vi.mocked(endpoints.getWorkflowVersion).mockResolvedValue({
+      ...active.version,
+      graph: {
+        edges: [],
+        nodes: [
+          node({ id: 'a', key: 'start', title: 'Start', type: 'manual' }),
+          node({ id: 'b', key: 'review', title: 'Review', type: 'agent' }),
+          node({ id: 'c', key: 'ship', title: 'Ship it', type: 'deploy' }),
+        ],
+      },
+    })
+    const step = {
+      attempt: 1,
+      error: null,
+      finished_at: '2026-10-12T00:01:00Z',
+      input: { agent_id: 'agt-1' },
+      node_id: 'b',
+      node_key: 'review',
+      node_type: 'agent',
+      output: {
+        outcome: 'failed_external',
+        reason: 'logzio_api_unauthorized',
+        summary: 'Logz.io **refused** every request.',
+        task_id: 'T-9',
+      },
+      port: 1,
+      started_at: '2026-10-12T00:00:00Z',
+      status: 'failed' as const,
+      title: 'Review',
+    }
+    vi.mocked(endpoints.getWorkflowRun).mockResolvedValue({
+      ...RUN,
+      closed_at: '2026-10-12T00:01:00Z',
+      payload: { release: '1.2.3' },
+      status: 'failed',
+      steps: [step],
+    })
+    vi.mocked(endpoints.startWorkflowRun).mockResolvedValue({
+      ...RUN,
+      id: 'next',
+    })
+    renderAt(`/agents/workflows/deploy-guard/runs/${RUN.id}`)
+    expect(await screen.findByText('Why it failed')).toBeInTheDocument()
+    expect(
+      screen.getAllByText('logzio_api_unauthorized').length,
+    ).toBeGreaterThan(0)
+    expect(screen.getByText('refused').tagName).toBe('STRONG')
+    expect(screen.getByRole('link', { name: 'Open task T-9' })).toHaveAttribute(
+      'href',
+      '/agents/tasks/acme/T-9',
+    )
+    expect(await screen.findByText('Ship it')).toBeInTheDocument()
+    expect(screen.getByText('Not reached')).toBeInTheDocument()
+    expect(
+      screen.getByText('2 steps: 1 failed, 1 not reached'),
+    ).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry run' }))
+    await waitFor(() =>
+      expect(endpoints.startWorkflowRun).toHaveBeenCalledWith(
+        'acme',
+        'deploy-guard',
+        { release: '1.2.3' },
+      ),
+    )
   })
 
   it('resolves a call with an unknown outcome and retries the step', async () => {

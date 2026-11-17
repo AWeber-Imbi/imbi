@@ -12,6 +12,7 @@ things:
 
 | Capability | Label | Default | Scope |
 |---|---|---|---|
+| `lifecycle` | Project lifecycle | On | Project-scoped |
 | `webhook-actions` | Webhook actions | On | Project-scoped |
 | `analysis` | Project doctor | On | Project-scoped |
 
@@ -46,7 +47,7 @@ Give the account of the token these SonarQube permissions:
 |---|---|
 | Browse, on the projects | All reads |
 | Create Projects | The Doctor fix that creates a missing SonarQube project |
-| Administer, on the project | The Doctor fix that changes the main branch |
+| Administer, on the project | The Doctor fix that changes the main branch, and the lifecycle delete |
 
 ## Component key
 
@@ -129,8 +130,47 @@ Doctor shows `warn` findings. It does not fail.
 
 ## Lifecycle
 
-None. The plugin does not create or delete SonarQube projects when you
-create or delete an Imbi project. Only the Doctor fix creates them.
+| Event | What it does |
+|---|---|
+| Archive | Deletes the SonarQube project |
+| Delete | Deletes the SonarQube project |
+
+!!! warning "Archiving deletes the SonarQube project for good"
+
+    Lifecycle is on by default, and archiving an Imbi project deletes
+    its SonarQube project along with every analysis, issue, and metric
+    history. Unarchiving the Imbi project or creating the SonarQube
+    project again does not bring that history back. Decide whether you
+    need it before you archive.
+
+Both events call `POST /api/projects/delete` with the component key. The
+key is the identifier on the `EXISTS_IN` edge. A project without an edge
+is skipped: the plugin never deletes by the `<owning team slug>:<project
+slug>` convention that the Doctor uses, because that key is a guess.
+After the call, the plugin removes the edge and the `sonarqube` project
+link, so Imbi does not point at a project that is gone.
+
+The result of the event:
+
+| Result | When |
+|---|---|
+| `ok` | SonarQube deleted the project |
+| `skipped` | SonarQube has no project with the key. The edge and link are still removed. Also when the project has no `EXISTS_IN` edge, or the integration has no `service_url` or `api_token` |
+| `failed` | SonarQube refused the call, for example `403` when the token account lacks Administer on the project. On archive, the edge and link stay. On delete, Imbi has already removed the project node, so nothing is left to keep them on: the SonarQube project remains and you delete it in SonarQube yourself |
+
+The plugin does not create SonarQube projects when you create an Imbi
+project, and does not create one again when you unarchive it. Only an
+analysis or the Doctor fix creates them.
+
+After an archive or delete the project has no `EXISTS_IN` edge, so the
+Doctor falls back to the `<owning team slug>:<project slug>` convention.
+If the scanner reports under a custom key, say `legacy-key`, the fix
+**Create / link the SonarQube project** creates a *different* project
+under the convention key and the scanner keeps reporting to
+`legacy-key`, where Imbi no longer looks. Before you run the fix after
+an unarchive, either set the custom key on the edge again by hand (see
+[Component key](#component-key)) or point the scanner at the convention
+key. Only then use **Create / link the SonarQube project**.
 
 ## Known limits
 

@@ -869,15 +869,35 @@ started.
 To cancel, you need `workflow:run` and the same `who` as the trigger that
 started the run. A schedule or webhook run allows the owner team.
 
-### Runs that need attention
+### Runs of every workflow
 
-Admins see **Runs that need attention** on the workflow list:
+The **Runs** tab of the Workflows page lists the runs of every workflow,
+newest first. Filter by status, workflow, trigger, and time window (24
+hours, 7 days, or 30 days). The status filter shows a count for each
+status:
 
-- **Failed**: a run that failed or timed out in the last 7 days.
-- **Stuck: no engine has picked it up**: an open run that no engine works
-  on.
+- **Failed**: a run that failed or timed out.
+- **Stuck**: an open run that no engine works on. A stuck run shows at
+  any age.
+- **Running**: a queued or running run that is not stuck.
 
-The list comes from `GET /organizations/{org}/workflow-runs/attention`.
+**Failure causes** groups the failed runs by reason. Click a reason to show
+only its runs. The reason comes from the failed step, not from the error of
+the run: the reason of the agent task of an agent step, else the error of
+the step, else the error of the run. Only people with `agent_task:read`
+see the reason and summary of an agent task.
+
+The **Definitions** tab shows **Failed 7d** for each workflow: the failed
+runs of the last 7 days and the most frequent reason.
+
+Click a run to open its page. **Why it failed** shows the failed step, the
+reason, the outcome, and the summary of the agent. The steps list also
+shows the steps that the run did not reach. **Retry run** starts a new run
+with the same inputs. Only a manual run can be retried.
+
+The list comes from `GET /organizations/{org}/workflow-runs/`. If
+ClickHouse is not available, the archived runs in the list have no failed
+step.
 
 ### Failures, timeouts, and retries
 

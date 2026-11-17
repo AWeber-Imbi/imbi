@@ -30,6 +30,7 @@ Every route needs the caller to be a member of the organization
 
 import asyncio
 import datetime
+import logging
 import typing
 import uuid
 
@@ -53,6 +54,8 @@ from imbi.common.workflows import history, registry, validation, walk
 from imbi.common.workflows.registry import agent as agent_step
 from imbi.common.workflows.registry import email as email_step
 from imbi.common.workflows.registry import slack as slack_step
+
+LOGGER = logging.getLogger(__name__)
 
 OrgId = organizations.MemberOrgId
 
@@ -146,6 +149,36 @@ class AttentionRun(Run):
     reason: typing.Literal['failed', 'stuck']
     worker_id: str | None
     lease_expires_at: datetime.datetime | None
+
+
+class RunFailure(pydantic.BaseModel):
+    """The failed step of a run that finished last.
+
+    ``task_id``, ``outcome``, ``reason``, and ``summary`` come from the
+    agent task of an ``agent`` step. ``reason`` and ``summary`` are
+    ``None`` for a caller who cannot read agent tasks.
+    """
+
+    node_key: str
+    title: str
+    node_type: str
+    attempt: int
+    error: str | None
+    task_id: str | None = None
+    outcome: str | None = None
+    reason: str | None = None
+    summary: str | None = None
+
+
+class OrgRun(Run):
+    workflow_slug: str
+    workflow_name: str
+    stuck: bool
+    failure: RunFailure | None = pydantic.Field(
+        description='``None`` when the run did not fail, when no step '
+        'failed (a timeout), or when the archived step records are not '
+        'available.'
+    )
 
 
 class StaleSideEffect(pydantic.BaseModel):
@@ -1052,6 +1085,75 @@ async def list_attention_runs(
     :meth:`imbi.api.workflows.RunStore.attention`.
     """
     return await runs.attention(org_id)
+
+
+@workflow_attention_router.get('/', response_model=list[OrgRun])
+async def list_org_runs(
+    org_id: OrgId,
+    runs: workflows.Runs,
+    auth: ReadAuth,
+    days: typing.Annotated[int, fastapi.Query(ge=1, le=90)] = 7,
+    limit: typing.Annotated[int, fastapi.Query(ge=1, le=1000)] = 500,
+) -> list[dict[str, typing.Any]]:
+    """Return the runs of every workflow made in the last ``days``
+    days, and the stuck runs, newest first.
+
+    A failed or timed-out run has the failed step that finished last.
+    Its step records come from Postgres, or from ClickHouse when the
+    run's log is archived. When ClickHouse is not available, an archived
+    run has no ``failure``.
+    """
+    found = await runs.org_runs(org_id, days, limit)
+    failed = [r for r in found if r['status'] in ('failed', 'timed_out')]
+    live = [r['id'] for r in failed if r['log_archived_at'] is None]
+    archived = [str(r['id']) for r in failed if r['log_archived_at']]
+    steps, from_archive = await asyncio.gather(
+        runs.failed_steps(live) if live else _no_steps(),
+        history.archived_failed_steps(org_id, archived)
+        if archived
+        else _no_steps(),
+        return_exceptions=True,
+    )
+    if isinstance(steps, BaseException):
+        raise steps
+    if isinstance(from_archive, BaseException):
+        LOGGER.error(
+            'Could not read archived failed steps', exc_info=from_archive
+        )
+    else:
+        steps |= from_archive
+    task_content = auth.is_admin or 'agent_task:read' in auth.permissions
+    return [
+        {**r, 'failure': _failure(steps.get(str(r['id'])), task_content)}
+        for r in found
+    ]
+
+
+async def _no_steps() -> dict[str, dict[str, typing.Any]]:
+    return {}
+
+
+def _failure(
+    step: dict[str, typing.Any] | None, task_content: bool
+) -> dict[str, typing.Any] | None:
+    if step is None:
+        return None
+    output: dict[str, typing.Any] = (
+        step['output']
+        if step['node_type'] == 'agent' and step['output']
+        else {}
+    )
+    return {
+        'node_key': step['node_key'],
+        'title': step['title'],
+        'node_type': step['node_type'],
+        'attempt': step['attempt'],
+        'error': step['error'],
+        'task_id': output.get('task_id'),
+        'outcome': output.get('outcome'),
+        'reason': output.get('reason') if task_content else None,
+        'summary': output.get('summary') if task_content else None,
+    }
 
 
 @workflow_attention_router.get(

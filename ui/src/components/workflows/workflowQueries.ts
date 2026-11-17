@@ -10,12 +10,11 @@ import {
   listEnvironments,
   listTeams,
   listWebhooks,
-  listWorkflowAttention,
+  listWorkflowOrgRuns,
   listWorkflowRuns,
   listWorkflows,
   listWorkflowStepTypes,
 } from '@/api/endpoints'
-import { useAuth } from '@/hooks/useAuth'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { queryKeys } from '@/lib/queryKeys'
 
@@ -24,6 +23,24 @@ import type { FieldSource } from './schemaFields'
 
 /** How often an open run refreshes. Live views read Postgres (ADR 0021). */
 const LIVE_MS = 2000
+/** How often the runs of every workflow refresh while one is open. */
+const LIST_MS = 15_000
+
+/** The runs of every workflow of the org in the last `days` days.
+ * Refreshes while one is open and not stuck. */
+export function useOrgRuns(orgSlug: string | undefined, days: number) {
+  const canRead = useHasPermission('workflow:read', orgSlug)
+  return useQuery({
+    enabled: !!orgSlug && canRead,
+    queryFn: ({ signal }) => listWorkflowOrgRuns(orgSlug!, days, signal),
+    queryKey: queryKeys.workflowOrgRuns(orgSlug ?? '', days),
+    // A stuck run is open but does not change.
+    refetchInterval: (query) =>
+      query.state.data?.some((r) => isOpen(r.status) && !r.stuck)
+        ? LIST_MS
+        : false,
+  })
+}
 
 /** Options for a live-data select, loaded only when a field needs them. */
 export function useSourceOptions(orgSlug: string, source: FieldSource) {
@@ -94,16 +111,6 @@ export function useWorkflow(orgSlug: string | undefined, slug: string) {
     enabled: !!orgSlug && canRead && slug !== 'new',
     queryFn: ({ signal }) => getWorkflow(orgSlug!, slug, signal),
     queryKey: queryKeys.workflow(orgSlug ?? '', slug),
-  })
-}
-
-/** Failed and stuck runs of the org. Loaded for admins only. */
-export function useWorkflowAttention(orgSlug: string | undefined) {
-  const { user } = useAuth()
-  return useQuery({
-    enabled: !!orgSlug && !!user?.is_admin,
-    queryFn: ({ signal }) => listWorkflowAttention(orgSlug!, signal),
-    queryKey: queryKeys.workflowAttention(orgSlug ?? ''),
   })
 }
 

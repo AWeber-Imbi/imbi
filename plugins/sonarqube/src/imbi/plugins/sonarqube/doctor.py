@@ -63,7 +63,7 @@ _SET_MAIN_BRANCH = 'set-main-branch'
 
 #: SonarQube's dashboard link uses the integration slug as its key (unlike
 #: GitHub's bespoke ``github-repository`` key).
-_LINK_KEY = 'sonarqube'
+LINK_KEY = 'sonarqube'
 
 #: Finding slug for "the expected branch is not the one SonarQube tracks",
 #: which ``_SET_MAIN_BRANCH`` fixes.
@@ -243,7 +243,7 @@ def _tracked_phrase(branches: abc.Sequence[dict[str, typing.Any]]) -> str:
     return 'no branch is flagged as its main branch'
 
 
-class _Unconfigured(Exception):
+class Unconfigured(Exception):
     """Raised when the Integration lacks something a remediation needs."""
 
 
@@ -256,10 +256,10 @@ class _Target(typing.NamedTuple):
     connection: ServiceConnection | None
 
 
-def _remediation_target(
+def remediation_target(
     ctx: PluginContext, credentials: dict[str, str]
 ) -> _Target:
-    """Resolve the SonarQube target, or raise :class:`_Unconfigured`.
+    """Resolve the SonarQube target, or raise :class:`Unconfigured`.
 
     The message carried by the exception is the one the Doctor panel shows,
     so each guard explains what to configure rather than that something is
@@ -267,17 +267,17 @@ def _remediation_target(
     """
     slug = ctx.integration_slug
     if slug is None:
-        raise _Unconfigured('Capability is not bound to an Integration.')
+        raise Unconfigured('Capability is not bound to an Integration.')
     base_url = _service_url(ctx)
     if not base_url:
-        raise _Unconfigured('The Integration has no service_url configured.')
+        raise Unconfigured('The Integration has no service_url configured.')
     api_token = credentials.get('api_token')
     if not api_token:
-        raise _Unconfigured('No api_token credential configured.')
+        raise Unconfigured('No api_token credential configured.')
     connection = _find_connection(ctx, slug)
     key = _component_key(ctx, connection)
     if key is None:
-        raise _Unconfigured(
+        raise Unconfigured(
             'Cannot derive the SonarQube component key: no EXISTS_IN edge '
             'and no owning team.'
         )
@@ -480,14 +480,14 @@ class SonarQubeDoctor(AnalysisCapability):
                 )
             )
         dashboard = _dashboard_url(base_url, key)
-        link = ctx.project_links.get(_LINK_KEY)
+        link = ctx.project_links.get(LINK_KEY)
         if link == dashboard:
             results.append(
                 _item(
                     'dashboard-link',
                     'Dashboard link',
                     'pass',
-                    f'{_LINK_KEY} link matches the project dashboard.',
+                    f'{LINK_KEY} link matches the project dashboard.',
                 )
             )
         else:
@@ -496,7 +496,7 @@ class SonarQubeDoctor(AnalysisCapability):
                     'dashboard-link',
                     'Dashboard link',
                     'fail' if link else 'warn',
-                    f'{_LINK_KEY} link {link!r} does not match the expected '
+                    f'{LINK_KEY} link {link!r} does not match the expected '
                     f'dashboard {dashboard!r}. Use the Fix action to set it.',
                     _reconcile_offer(),
                 )
@@ -556,10 +556,10 @@ class SonarQubeDoctor(AnalysisCapability):
         ):
             return await super().remediate(ctx, credentials, remediation_id)
         try:
-            base_url, api_token, key, connection = _remediation_target(
+            base_url, api_token, key, connection = remediation_target(
                 ctx, credentials
             )
-        except _Unconfigured as exc:
+        except Unconfigured as exc:
             return RemediationResult(status='failed', message=str(exc))
         if remediation_id == _SET_MAIN_BRANCH:
             return await self._set_main_branch(
@@ -601,7 +601,7 @@ class SonarQubeDoctor(AnalysisCapability):
             and connection is not None
             and connection.identifier == key
             and connection.canonical_url == canonical
-            and ctx.project_links.get(_LINK_KEY) == dashboard
+            and ctx.project_links.get(LINK_KEY) == dashboard
         )
         if already:
             return RemediationResult(
@@ -611,7 +611,7 @@ class SonarQubeDoctor(AnalysisCapability):
         ctx.service_writeback = ServiceWriteback(
             identifier=key,
             canonical_url=canonical,
-            dashboard_links={_LINK_KEY: dashboard},
+            dashboard_links={LINK_KEY: dashboard},
         )
         if created:
             verb = 'Created SonarQube project and linked'

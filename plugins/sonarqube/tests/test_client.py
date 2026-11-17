@@ -380,3 +380,80 @@ class SetMainBranchTests(unittest.IsolatedAsyncioTestCase):
                 key='team:demo',
                 branch='main',
             )
+
+
+class DeleteProjectTests(unittest.IsolatedAsyncioTestCase):
+    url = 'https://sonarqube.example.com/api/projects/delete'
+
+    @respx.mock
+    async def test_posts_form_encoded_project_key(self) -> None:
+        route = respx.post(self.url).mock(return_value=httpx.Response(204))
+        deleted = await client.delete_project(
+            base_url='https://sonarqube.example.com/',
+            api_token='t',
+            key='backend*offline-unsubscribe-processor',
+        )
+        self.assertTrue(deleted)
+        request = route.calls.last.request
+        self.assertEqual(
+            'application/x-www-form-urlencoded',
+            request.headers['content-type'],
+        )
+        self.assertEqual(
+            b'project=backend%2Aoffline-unsubscribe-processor',
+            request.read(),
+        )
+        self.assertEqual('Bearer t', request.headers['authorization'])
+        self.assertEqual('', str(request.url.query, 'ascii'))
+
+    @respx.mock
+    async def test_404_returns_false(self) -> None:
+        respx.post(self.url).mock(
+            return_value=httpx.Response(
+                404, json={'errors': [{'msg': "Project 'x' not found"}]}
+            )
+        )
+        deleted = await client.delete_project(
+            base_url='https://sonarqube.example.com',
+            api_token='t',
+            key='team:demo',
+        )
+        self.assertFalse(deleted)
+
+    @respx.mock
+    async def test_other_non_2xx_raises(self) -> None:
+        respx.post(self.url).mock(
+            return_value=httpx.Response(403, text='Insufficient privileges')
+        )
+        with pytest.raises(client.SonarqubeClientError):
+            await client.delete_project(
+                base_url='https://sonarqube.example.com',
+                api_token='t',
+                key='team:demo',
+            )
+
+    @respx.mock
+    async def test_redirect_raises(self) -> None:
+        # A proxy bouncing to a login page is not a deletion; httpx
+        # does not follow redirects, so a 3xx must not read as success.
+        respx.post(self.url).mock(
+            return_value=httpx.Response(
+                302, headers={'location': 'https://sso.example.com/login'}
+            )
+        )
+        with pytest.raises(client.SonarqubeClientError):
+            await client.delete_project(
+                base_url='https://sonarqube.example.com',
+                api_token='t',
+                key='team:demo',
+            )
+
+    @respx.mock
+    async def test_transport_error_raises(self) -> None:
+        respx.post(self.url).mock(side_effect=httpx.ConnectError('refused'))
+        with pytest.raises(client.SonarqubeClientError):
+            await client.delete_project(
+                base_url='https://sonarqube.example.com',
+                api_token='t',
+                key='team:demo',
+            )

@@ -23,6 +23,17 @@ from imbi.common.workflows import history, runtime
 #: stopped (ADR 0021, unknown-outcome reconciliation).
 STALE_AFTER = '15 minutes'
 
+#: An open run that no engine works on: its lease expired and no worker
+#: took it again, or it is overdue by 5 minutes when nothing (no other
+#: run of its concurrency key) holds it back. A closed run can keep a
+#: stale lease row: it is not stuck. ``r`` is the run, ``l`` its lease.
+_STUCK = (
+    "((l.expires_at < NOW() AND r.status IN ('queued', 'running'))"
+    " OR (r.due_at < NOW() - INTERVAL '5 minutes'"
+    "     AND (r.status = 'running'"
+    "          OR (r.status = 'queued' AND r.concurrency_key IS NULL))))"
+)
+
 #: The principal of the engine: the slug of its service account
 #: (``auth/internal_services.py``).
 ENGINE_PRINCIPAL = permissions.WORKFLOWS_ACCOUNT
@@ -288,7 +299,7 @@ class RunStore:
         nothing (no other run of its concurrency key) holds it back.
         """
         return await self._all(
-            'SELECT r.*, w.slug AS workflow_slug, w.name AS workflow_name,'
+            'SELECT r.*, w.slug AS workflow_slug, w.name AS workflow_name,'  # noqa: S608
             ' l.worker_id, l.expires_at AS lease_expires_at,'
             " CASE WHEN r.status IN ('failed', 'timed_out')"
             " THEN 'failed' ELSE 'stuck' END AS reason"
@@ -298,15 +309,52 @@ class RunStore:
             ' WHERE r.organization_id = %s AND ('
             "  (r.status IN ('failed', 'timed_out')"
             "   AND r.closed_at > NOW() - INTERVAL '7 days')"
-            # A closed run can keep a stale lease row: it is not stuck.
-            " OR (l.expires_at < NOW() AND r.status IN ('queued', 'running'))"
-            " OR (r.due_at < NOW() - INTERVAL '5 minutes'"
-            "     AND (r.status = 'running'"
-            "          OR (r.status = 'queued'"
-            '              AND r.concurrency_key IS NULL))))'
+            f' OR {_STUCK})'
             ' ORDER BY COALESCE(r.closed_at, r.created_at) DESC LIMIT 100',
             (organization_id,),
         )
+
+    async def org_runs(
+        self, organization_id: str, days: int, limit: int
+    ) -> list[store.Row]:
+        """Return the runs of an organization made in the last ``days``
+        days, and its stuck runs of any age, newest first.
+
+        ``stuck`` is as in :meth:`attention`. ``limit`` applies only to
+        the runs that are not stuck, so an old stuck run is always in
+        the result.
+        """
+        return await self._all(
+            'SELECT * FROM ('  # noqa: S608
+            'SELECT r.*, w.slug AS workflow_slug, w.name AS workflow_name,'
+            f' COALESCE({_STUCK}, FALSE) AS stuck,'
+            f' ROW_NUMBER() OVER (PARTITION BY COALESCE({_STUCK}, FALSE)'
+            ' ORDER BY r.created_at DESC, r.id) AS n'
+            ' FROM workflow_runtime.runs AS r'
+            ' JOIN workflows.workflows AS w ON w.id = r.workflow_id'
+            ' LEFT JOIN workflow_runtime.leases AS l ON l.run_id = r.id'
+            ' WHERE r.organization_id = %s'
+            ' AND (r.created_at > NOW() - make_interval(days => %s)'
+            f' OR {_STUCK})'
+            ') AS x WHERE x.stuck OR x.n <= %s'
+            ' ORDER BY x.created_at DESC, x.id',
+            (organization_id, days, limit),
+        )
+
+    async def failed_steps(
+        self, run_ids: list[uuid.UUID]
+    ) -> dict[str, store.Row]:
+        """Return the failed step that finished last, by run id.
+
+        Only a run whose log is not archived has step rows.
+        """
+        found = await self._all(
+            'SELECT DISTINCT ON (run_id) * FROM workflow_runtime.step_runs'
+            " WHERE run_id = ANY(%s) AND status = 'failed'"
+            ' ORDER BY run_id, finished_at DESC NULLS LAST',
+            (run_ids,),
+        )
+        return {str(row['run_id']): row for row in found}
 
     # --- Archive sweep (ADR 0021, Run history) ---------------------------
 

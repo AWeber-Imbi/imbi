@@ -50,6 +50,7 @@ import {
 } from '@/components/ui/tooltip'
 import { useTheme } from '@/contexts/ThemeContext'
 import { deriveChipColors } from '@/lib/chip-colors'
+import { storage } from '@/lib/storage'
 import { sortEnvironments } from '@/lib/utils'
 import type { Environment, LogEntryResponse } from '@/types'
 
@@ -203,7 +204,7 @@ export function LogsTab({
 
   const [config] = useState<LogsConfig>(() => {
     try {
-      const saved = localStorage.getItem(storageKey)
+      const saved = storage.getItem(storageKey)
       return saved ? (JSON.parse(saved) as LogsConfig) : { ...DEFAULT_CONFIG }
     } catch {
       return { ...DEFAULT_CONFIG }
@@ -213,7 +214,7 @@ export function LogsTab({
   // ``storageKey``. The plugin-defaults effect below needs the *true*
   // first-visit signal -- reading localStorage at runtime would always
   // look like a saved config exists once the persistence effect runs.
-  const [hadSavedConfig] = useState(() => !!localStorage.getItem(storageKey))
+  const [hadSavedConfig] = useState(() => !!storage.getItem(storageKey))
 
   const [range, setRange] = useState<RelativeRange>(() => {
     const p = searchParams.get('range')
@@ -230,7 +231,7 @@ export function LogsTab({
   // gets filtered out for this render would still be rehydrated on the
   // next visit.
   useEffect(() => {
-    localStorage.setItem(storageKey, JSON.stringify({ ...config, envs }))
+    storage.setItem(storageKey, JSON.stringify({ ...config, envs }))
   }, [config, envs, storageKey])
   // Once we know the project's actual environments, intersect the
   // selection with them and pick a project-derived default when the

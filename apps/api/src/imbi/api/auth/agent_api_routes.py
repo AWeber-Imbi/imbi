@@ -133,6 +133,7 @@ ALLOWED_ROUTES: frozenset[str] = frozenset(
         'GET /organizations/{org_slug}/users/{email}/documents/',
         'GET /organizations/{org_slug}/webhooks/',
         'GET /organizations/{org_slug}/webhooks/{webhook}',
+        'GET /organizations/{org_slug}/workflow-runs/',
         'GET /organizations/{org_slug}/workflow-runs/attention',
         'GET /organizations/{org_slug}/workflow-runs/side-effects',
         'GET /organizations/{org_slug}/workflow-step-types/',

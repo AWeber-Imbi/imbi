@@ -1,5 +1,7 @@
 import { useCallback, useState } from 'react'
 
+import { storage } from '@/lib/storage'
+
 import type { ProcessGroup, Turn } from './conversationTurns'
 import { isError, type TimelineEntry } from './taskTimeline'
 
@@ -93,20 +95,12 @@ export function useConversationMode(): [
   (mode: ConversationMode) => void,
 ] {
   const [mode, setMode] = useState<ConversationMode>(() => {
-    try {
-      const saved = window.localStorage.getItem(MODE_KEY)
-      return isConversationMode(saved) ? saved : 'standard'
-    } catch {
-      return 'standard'
-    }
+    const saved = storage.getItem(MODE_KEY)
+    return isConversationMode(saved) ? saved : 'standard'
   })
   const update = useCallback((next: ConversationMode) => {
     setMode(next)
-    try {
-      window.localStorage.setItem(MODE_KEY, next)
-    } catch {
-      // Storage can be full or blocked; the mode still applies to this page.
-    }
+    storage.setItem(MODE_KEY, next)
   }, [])
   return [mode, update]
 }
@@ -179,22 +173,12 @@ export function useConversationWidth(): [
   ConversationWidth,
   (width: ConversationWidth) => void,
 ] {
-  const [width, setWidth] = useState<ConversationWidth>(() => {
-    try {
-      return window.localStorage.getItem(WIDTH_KEY) === 'wide'
-        ? 'wide'
-        : 'narrow'
-    } catch {
-      return 'narrow'
-    }
-  })
+  const [width, setWidth] = useState<ConversationWidth>(() =>
+    storage.getItem(WIDTH_KEY) === 'wide' ? 'wide' : 'narrow',
+  )
   const update = useCallback((next: ConversationWidth) => {
     setWidth(next)
-    try {
-      window.localStorage.setItem(WIDTH_KEY, next)
-    } catch {
-      // Storage can be full or blocked; the width still applies to this page.
-    }
+    storage.setItem(WIDTH_KEY, next)
   }, [])
   return [width, update]
 }

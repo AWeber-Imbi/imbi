@@ -4,6 +4,8 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 
 import { Toaster } from 'sonner'
 
+import { session } from '@/lib/storage'
+
 import { BootstrapGate } from './components/BootstrapGate'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Sk } from './components/ui/skeleton'
@@ -271,7 +273,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 function savePostLoginRedirect() {
   const { pathname, search } = window.location
   if (pathname === '/login' || pathname === '/auth/callback') return
-  sessionStorage.setItem('imbi_redirect_after_login', pathname + search)
+  session.setItem('imbi_redirect_after_login', pathname + search)
 }
 
 export default App

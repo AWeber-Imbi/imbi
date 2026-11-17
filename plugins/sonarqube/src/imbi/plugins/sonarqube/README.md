@@ -8,9 +8,12 @@ module-level `PLUGIN` attribute. Its manifest declares:
 
 - a `service_url` integration-level option (the SonarQube base URL),
 - an `api_token` credential (the integration's only credential) holding a
-  SonarQube **user** token, and
+  SonarQube **user** token,
 - one `webhook-actions` capability cataloging the
-  `update_project_from_webhook` action.
+  `update_project_from_webhook` action,
+- an `analysis` capability (the Project Doctor), and
+- a `lifecycle` capability that deletes the SonarQube project when the
+  Imbi project is archived or deleted.
 
 When a SonarQube webhook arrives at `imbi-gateway` and a matching
 `WebhookRule` dispatches to `sonarqube#update_project_from_webhook`, the
@@ -35,7 +38,21 @@ restriction rides on the token *type*, so issuing an analysis token from an
 administrator account does not help. Grant the token's account Browse on the
 projects being read, plus Create Projects if the Project Doctor should create
 missing SonarQube projects and Administer on a project whose main branch it
-should switch.
+should switch or that the lifecycle capability should delete.
+
+## Lifecycle
+
+The `lifecycle` capability handles two events, `archived` and `deleted`, and
+does the same thing for both: `POST /api/projects/delete` with the
+`EXISTS_IN` edge's identifier as the component key, then asks the host to
+drop the edge and the `sonarqube` dashboard link. A project with no edge is
+`skipped` -- the `<team-slug>:<project-slug>` convention the Doctor falls
+back on is a guess, and a delete must not act on one. A project SonarQube
+no longer has is also `skipped` (the edge and
+link are still removed); a refused call -- `403` when the token's account
+lacks Administer on the project -- is `failed` and leaves the edge in place.
+There is no create hook, and an unarchived project is not re-created: an
+analysis or the Project Doctor's repair creates it again.
 
 ## Project Doctor
 

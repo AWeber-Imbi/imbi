@@ -12,6 +12,7 @@ import {
 import { useQuery } from '@tanstack/react-query'
 
 import { listOrganizations } from '@/api/endpoints'
+import { storage } from '@/lib/storage'
 import { useAuthStore } from '@/stores/authStore'
 import type { Organization } from '@/types'
 
@@ -32,7 +33,7 @@ const OrganizationContext = createContext<null | OrganizationContextValue>(null)
 
 export function OrganizationProvider({ children }: { children: ReactNode }) {
   const [selectedSlug, setSelectedSlug] = useState<null | string>(() =>
-    localStorage.getItem(ORG_STORAGE_KEY),
+    storage.getItem(ORG_STORAGE_KEY),
   )
 
   const accessToken = useAuthStore((s) => s.accessToken)
@@ -56,7 +57,7 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
     const current = organizations.find((o) => o.slug === selectedSlug)
     if (!current) {
       const firstOrg = organizations[0]
-      localStorage.setItem(ORG_STORAGE_KEY, firstOrg.slug)
+      storage.setItem(ORG_STORAGE_KEY, firstOrg.slug)
       setSelectedSlug(firstOrg.slug)
     }
   }, [organizations, selectedSlug])
@@ -65,7 +66,7 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
     organizations.find((o) => o.slug === selectedSlug) || null
 
   const setSelectedOrganization = useCallback((org: Organization) => {
-    localStorage.setItem(ORG_STORAGE_KEY, org.slug)
+    storage.setItem(ORG_STORAGE_KEY, org.slug)
     setSelectedSlug(org.slug)
   }, [])
 
