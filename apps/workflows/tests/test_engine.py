@@ -2109,6 +2109,21 @@ class LLMCallStepTestCase(EngineTestCase):
         self.assertEqual(self._keys()[:2], ['sum:1', 'sum:1'])
         self.assertEqual(run['steps']['sum']['attempt'], 1)
 
+    async def test_error_without_a_code_asks_again_with_the_same_key(
+        self,
+    ) -> None:
+        # A 5xx with no error code, such as a failed record of the
+        # answer or a proxy page, does not tell whether the call ran.
+        self.answers = [
+            httpx.Response(500, text='Internal Server Error'),
+            httpx.Response(502, text='<html>Bad Gateway</html>'),
+            self._answer(),
+        ]
+        run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(self._keys()[:3], ['sum:1', 'sum:1', 'sum:1'])
+        self.assertEqual(run['steps']['sum']['attempt'], 1)
+
     async def test_wait_ends_before_the_engine_cancels_the_call(
         self,
     ) -> None:

@@ -9,7 +9,7 @@ import unittest
 import uuid
 from unittest import mock
 
-from imbi.api import model_calls
+from imbi.api import model_calls, workflows
 from imbi.api.maintenance import operations
 from imbi.common import relational
 
@@ -139,6 +139,37 @@ class ModelCallStoreTestCase(unittest.IsolatedAsyncioTestCase):
             )
             left = [row[0] for row in await cur.fetchall()]
         self.assertEqual(left, [recent['id']])
+
+    async def test_prune_keeps_the_calls_of_an_open_run(self) -> None:
+        # A run has no upper time limit, and its steps reuse their keys.
+        await workflows.initialize()
+        run_id = uuid.uuid4()
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'INSERT INTO workflow_runtime.runs (id, organization_id,'
+                ' workflow_id, version, trigger_node_id, origin_kind,'
+                " origin_id, activated_by) VALUES (%s, %s, %s, 1, 'n',"
+                " 'human', 'u', 'u')",
+                (run_id, self.org, uuid.uuid4()),
+            )
+        self.addAsyncCleanup(self._delete_runs)
+        row, _ = await self.store.start(
+            {**_call(self.org, f'{run_id}:n:1'), 'run_id': str(run_id)}, 60
+        )
+        await self._age(row['id'], '91 days')
+        await self.store.prune()
+        self.assertIsNotNone(
+            await self.store.repeat(
+                self.org, 'imbi-workflows', f'{run_id}:n:1', 60
+            )
+        )
+
+    async def _delete_runs(self) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'DELETE FROM workflow_runtime.runs WHERE organization_id = %s',
+                (self.org,),
+            )
 
 
 class PruneOperationTestCase(unittest.IsolatedAsyncioTestCase):

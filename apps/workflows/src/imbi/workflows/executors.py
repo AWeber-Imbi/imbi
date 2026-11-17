@@ -212,7 +212,16 @@ class Api:
         if response.status_code == HTTP_FORBIDDEN:
             raise StepError('forbidden', retry=False)
         if response.status_code >= HTTP_CLIENT_ERROR:
-            detail: typing.Any = response.json().get('detail')
+            try:
+                body: typing.Any = response.json()
+            except ValueError:
+                # For example, an HTML 502 page of a proxy.
+                body = None
+            detail: typing.Any = (
+                typing.cast('dict[str, typing.Any]', body).get('detail')
+                if isinstance(body, dict)
+                else None
+            )
             if isinstance(detail, dict):
                 found = typing.cast('dict[str, typing.Any]', detail)
                 if found.get('error'):
@@ -546,9 +555,12 @@ class Executors:
         except TimeoutError:
             return ask_again
         except StepError as e:
-            if e.code != 'call_in_progress' and not isinstance(
+            # A 5xx with no error code, such as a failed record of the
+            # answer, does not tell whether imbi-api made the call.
+            unknown = (e.retry and e.code.startswith('http_')) or isinstance(
                 e.__cause__, httpx.HTTPError
-            ):
+            )
+            if e.code != 'call_in_progress' and not unknown:
                 raise
             return ask_again
         if answer.get('n') != params.prompt_version:

@@ -395,11 +395,12 @@ each input. Save a new workflow before you run a prompt: the button is
 off until the workflow exists. The run needs `workflow:write` or
 `prompt:update`, and it costs provider credit.
 
-Imbi records each model call, also a preview, for 90 days. The record
-holds the prompt as sent and the answer. See
-[Maintenance](maintenance.md). When the engine asks again for the same
-attempt, for example after a restart, Imbi returns the recorded answer
-and does not call the model again. A retry is a new call.
+Imbi records each model call, also a preview, for 90 days, or longer
+while its workflow run is open. The record holds the prompt as sent and
+the answer. See [Maintenance](maintenance.md). When the engine asks
+again for the same attempt, for example after a restart, a lost
+response, or a `5xx` without an error code, Imbi returns the recorded
+answer and does not call the model again. A retry is a new call.
 
 The step fails with one of these errors:
 
@@ -414,7 +415,7 @@ The step fails with one of these errors:
 
 **Output:** `text`, `result` (with output fields), `model`, `model_id`,
 `prompt_version`, `usage` (`input_tokens`, `output_tokens`), and
-`cost_usd`.
+`cost_usd` (`null` when the provider did not report a token count).
 
 ### Send email
 

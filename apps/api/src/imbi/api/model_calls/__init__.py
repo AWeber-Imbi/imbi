@@ -26,6 +26,7 @@ from psycopg.types import json as pg_json
 
 from imbi.api.agent_tasks import create_pool
 from imbi.common import lifespan, relational
+from imbi.common.workflows import runtime
 
 type Pool = psycopg_pool.AsyncConnectionPool[
     psycopg.AsyncConnection[typing.Any]
@@ -35,8 +36,9 @@ type Row = dict[str, typing.Any]
 SCHEMA = 'ai_runtime'
 SCHEMATA_PATH = pathlib.Path(__file__).parent / 'schemata.toml'
 
-#: Rows older than this are deleted by ``ai-model-calls-prune``. Far more
-#: than the longest workflow run, so a prune never removes a live key.
+#: Rows older than this are deleted by ``ai-model-calls-prune``, except
+#: the rows of a workflow run that is still open: a run has no upper
+#: time limit, and its steps reuse their keys.
 RETENTION = '90 days'
 
 _INSERT: typing.LiteralString = """
@@ -177,13 +179,16 @@ class ModelCallStore:
             )
 
     async def prune(self) -> int:
-        """Delete the calls older than :data:`RETENTION`; return the
-        count."""
+        """Delete the calls older than :data:`RETENTION`, except those
+        of an open workflow run; return the count."""
         async with self._pool.connection() as conn:
             cur = await conn.execute(
-                'DELETE FROM ai_runtime.ai_model_calls'
-                ' WHERE started_at < NOW() - %s::interval',
-                (RETENTION,),
+                'DELETE FROM ai_runtime.ai_model_calls c'
+                ' WHERE c.started_at < NOW() - %s::interval'
+                ' AND NOT EXISTS (SELECT 1 FROM workflow_runtime.runs r'
+                ' WHERE r.id::text = c.run_id'
+                ' AND NOT (r.status = ANY(%s)))',
+                (RETENTION, list(runtime.CLOSED)),
             )
             return cur.rowcount
 
