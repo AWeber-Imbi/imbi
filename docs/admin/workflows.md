@@ -129,6 +129,7 @@ with one output port has no port name.
 | `model_decision` | Model decision | Logic | One for each branch |
 | `condition` | Condition | Logic | `True`, `False` |
 | `script` | Script | Logic | One, or one for each branch |
+| `analysis` | Analysis | Logic | One |
 | `email` | Send email | Actions | One |
 | `slack` | Slack message | Actions | One |
 | `deploy` | Deploy | Actions | `Succeeded`, `Failed` |
@@ -144,6 +145,7 @@ count:
 | `model_decision` | 60 seconds | 2 |
 | `condition` | 10 seconds | 0 |
 | `script` | 30 seconds. The script itself stops at 5 seconds | 0 |
+| `analysis` | 5 minutes. One model call stops at 2 minutes | 2 |
 | `email` | 2 minutes | 0 |
 | `slack` | 2 minutes | 3, for a Slack rate limit only |
 | `deploy`, `rollback` | 1 hour | 2 |
@@ -344,6 +346,75 @@ error is one of these:
 
 **Output:** `result` (use `{{ <key>.result.<field> }}`), `branch`, and
 `stdout`: the first 8 KiB of the text that the script printed.
+
+### Analysis
+
+Sends a prompt to a generative model from the AI Model catalog and
+returns the answer. Use it to summarize, classify, or extract data from
+earlier steps, or to write the brief of a later agent task. See
+[ADR 0030](../api/adr/0030-workflow-analysis-step.md).
+
+The inspector has these fields:
+
+| Field | What to enter | Default |
+|---|---|---|
+| Model | A generative model from the AI Model catalog | Required |
+| System prompt | Instructions for the model. Jinja2 | None |
+| User message | The request to the model. Jinja2 | Required |
+| Max tokens, Temperature | The limits of the answer | The model defaults |
+| Inputs | Up to 20 names and values. Each name becomes a variable of the prompt. A value can be a template | None |
+| Output fields | The fields of a structured answer, as for an agent step | None |
+
+Use each input in the prompt as `{{ name }}`. Imbi renders the inputs
+first, then the prompt. For example, with the input `diff` set to
+`{{ trigger.payload.diff }}`, the user message can be
+`Summarize this diff: {{ diff }}`. An input name cannot be `true`,
+`false`, `none`, `not`, or `self`, because Jinja2 reads them as other
+things.
+
+**Where the prompt is stored.** When you save the workflow, the editor
+writes the model and the prompt to the [Prompt CMS](prompts.md), as
+`workflows/<org>.<workflow>.<step key>`. The step holds that reference
+and a version number. An edit to the prompt makes a new version when you
+save, so an older workflow version keeps its prompt. When you delete the
+step or the workflow, Imbi archives the prompt. You cannot delete or
+rename a `workflows` prompt on the Prompts page.
+
+**Output fields.** Without output fields, later steps use the answer as
+`{{ <key>.text }}`. With output fields, the model must return a
+structured answer, and later steps use each field as
+`{{ <key>.result.<field> }}`. The model must have **Structured output**
+set in [AI Models](ai-models.md#structured-output). For other models, the
+editor disables the output fields, and Imbi refuses the save.
+
+**Run prompt.** Below the fields, the inspector has **Sample inputs** and
+a **Run prompt** button. The button sends the prompt, as it is in the
+editor, to the model with the sample values, and shows the answer, the
+tokens, and the cost. It renders no reference: write a sample value for
+each input. Save a new workflow before you run a prompt: the button is
+off until the workflow exists. The run needs `workflow:write` or
+`prompt:update`, and it costs provider credit.
+
+Imbi records each model call, also a preview, for 90 days. The record
+holds the prompt as sent and the answer. See
+[Maintenance](maintenance.md). When the engine asks again for the same
+attempt, for example after a restart, Imbi returns the recorded answer
+and does not call the model again. A retry is a new call.
+
+The step fails with one of these errors:
+
+| Error | Cause | Retry |
+|---|---|---|
+| `model_answer_invalid` | The answer does not match the output fields | Yes |
+| `rate_limited`, `provider_unavailable`, `provider_unreachable` | The provider is busy, down, or not reachable | Yes |
+| `provider_refused` | The provider refused the request | No |
+| `provider_misconfigured`, `credentials_failed` | The provider has no usable credentials or settings | No |
+| `model_no_structured_output` | The step has output fields and the model does not support structured output | No |
+| `outcome_unknown` | An earlier call of the attempt did not finish. Imbi does not know if the model answered | No |
+
+**Output:** `text`, `result` (with output fields), `model`, `model_id`,
+`prompt_version`, `usage` (`input_tokens`, `output_tokens`), and
+`cost_usd`.
 
 ### Send email
 
@@ -694,6 +765,7 @@ only. The permissions that steps need:
 | Webhook | `webhook:update` |
 | Deploy, Rollback | `project:deployment:write` |
 | Agent task | `agent_task:create` |
+| Analysis | `prompt:run` |
 
 Imbi records who activated the workflow. A workflow cannot do more than
 that person can do. When a run starts, the engine checks the person again.

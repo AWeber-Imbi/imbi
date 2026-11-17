@@ -177,6 +177,7 @@ two steps.
 | Output cost / 1M tokens | USD per one million output tokens. |
 | Default temperature | Between 0 and 2. Generative models only. |
 | Default top_p | Between 0 and 1. Generative models only. |
+| Structured output | The model can return JSON that matches a schema. See [Structured output](#structured-output). |
 | Monthly spend cap | USD per month. |
 | Allowed teams | See [Team access](#team-access). |
 | Enable immediately | Makes the model selectable as soon as it is created. |
@@ -193,6 +194,30 @@ unknown or set by contract. Enter `0` for a self-hosted model.
 Two rules apply within the catalog. A model's display name must produce a slug
 that is unique in the catalog. A model identifier must be unique within
 its provider. Imbi returns `409` when either rule fails.
+
+## Structured output
+
+Set **Structured output** on a model that can return JSON that matches a
+schema. A workflow [analysis step](workflows.md#analysis) with output
+fields can use only such a model. The switch is off by default, and
+discovery does not set it, so set it on each model that supports it.
+
+Imbi asks for the structured answer in the form of the driver:
+
+| Driver | Form |
+|---|---|
+| Anthropic, AWS Bedrock | One forced tool call |
+| OpenAI, OpenAI-compatible | A strict `json_schema` response format |
+| Google Vertex AI | A JSON response schema (Gemini) |
+
+Turn the switch off when the provider refuses the request. A step with
+output fields that runs on a model with the switch off fails with
+`model_no_structured_output`.
+
+!!! note
+    An analysis step on Google Vertex AI calls Gemini models only, and
+    needs an API key on the provider. The runtime IAM role does not work
+    for these calls.
 
 ## Discover and import models
 

@@ -541,6 +541,22 @@ Runs `imbi-automations` definitions on the server. An automation is a new entity
 
 ---
 
+#### [ADR 0030: Workflow Analysis Step](adr/0030-workflow-analysis-step.md)
+
+*Date: 2026-11-17 | Status: Accepted*
+
+Adds the `analysis` workflow step: it sends a saved prompt to a generative model from the AI model catalog and returns the answer as text, or as a structured result.
+
+**Key Decisions:**
+
+- The prompt is stored in the Prompt CMS as `workflows/<org>.<workflow>.<node>`; the step pins a version, and a removed node archives its prompt
+- imbi-api makes the model call, not the engine: workload identity tokens, Bedrock SigV4, and the CMS render are there, and the preview uses the same path
+- Every call is recorded in `ai_runtime.ai_model_calls` with an idempotency key, so a repeat of an attempt makes no second call; rows are pruned after 90 days
+- Each catalog model records `supports_structured_output`; a step with output fields cannot use a model without it
+- Drivers: Anthropic, OpenAI, OpenAI-compatible, Bedrock, and Vertex (Gemini only, with a key)
+
+---
+
 ## ADR Format
 
 Our ADRs follow this structure:
