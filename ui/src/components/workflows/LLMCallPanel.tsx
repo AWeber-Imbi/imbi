@@ -81,6 +81,8 @@ export function LLMCallPanel({
   const structured = models.data?.some(
     (m) => m.slug === current.model && m.supports_structured_output,
   )
+  // Only a loaded catalog can tell that the model has no structured output.
+  const unsupported = models.isSuccess && !structured
   const id = `workflow-node-${node.id}`
   const slug = promptSlug(orgSlug, workflowSlug ?? '', node.key)
   return (
@@ -148,7 +150,7 @@ export function LLMCallPanel({
       </FormField>
       <FormField
         description={
-          structured || outputFields.length
+          !unsupported || outputFields.length
             ? 'The structured answer. Later steps use {{ <key>.result.<field> }}.'
             : 'The model does not support structured output. Later steps use {{ <key>.text }}.'
         }
@@ -164,7 +166,7 @@ export function LLMCallPanel({
             value={outputFields}
           />
         </fieldset>
-        {!structured && outputFields.length > 0 && (
+        {unsupported && outputFields.length > 0 && (
           <p className="text-danger mt-1 text-xs">
             The model does not support structured output. Remove the fields or
             choose another model.

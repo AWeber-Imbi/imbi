@@ -110,6 +110,14 @@ describe('LLMCallPanel', () => {
     expect(screen.getByRole('button', { name: 'Add field' })).toBeDisabled()
   })
 
+  it('does not report missing structured output before the catalog loads', () => {
+    vi.mocked(endpoints.listAIModels).mockReturnValue(new Promise(() => {}))
+    renderPanel({ output_fields: [{ name: 'risk', type: 'string' }] }, PROMPT)
+    expect(
+      screen.queryByText(/does not support structured output/),
+    ).not.toBeInTheDocument()
+  })
+
   it('enables the output fields for a model with structured output', async () => {
     renderPanel({}, PROMPT)
     await waitFor(() =>
