@@ -12,7 +12,7 @@ how to configure an integration of it, and what its Doctor checks.
 | [OIDC](oidc.md) | `oidc` | Sign in with any OpenID Connect provider |
 | [PagerDuty](pagerduty.md) | `pagerduty` | One PagerDuty service for each project, incidents, escalation policy, and service dependency sync |
 | [Sentry](sentry.md) | `sentry` | Sentry projects for new projects, issue-count facts, and Doctor checks |
-| [SonarQube](sonarqube.md) | `sonarqube` | Project facts from SonarQube measures, and component Doctor checks |
+| [SonarQube](sonarqube.md) | `sonarqube` | Project facts from SonarQube measures, component Doctor checks, and project deletion on archive or delete |
 
 To enable a plugin and add an integration, see
 [Integrations and Plugins](../admin/integrations-and-plugins.md). To write
