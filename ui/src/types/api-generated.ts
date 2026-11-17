@@ -6020,6 +6020,8 @@ export interface paths {
          * @description Make a workflow in ``draft`` with its version 1.
          *
          *     Raises:
+         *         403: The graph has an LLM Call step and the caller does not
+         *             have ``workflow:write``.
          *         409: The slug is in use in the org.
          *         422: The graph is too large, the team is not in the org, the
          *             name gives an empty slug and no slug is supplied, or the
@@ -6051,7 +6053,8 @@ export interface paths {
          *     owner team, because the owner team controls the runs.
          *
          *     The CMS prompt of each LLM Call node that the save removes is
-         *     archived.
+         *     archived, and an archived prompt of a node of the graph is
+         *     restored.
          *
          *     Raises:
          *         403: ``owner_team_forbidden``: the caller changes the owner team
@@ -8597,7 +8600,8 @@ export interface paths {
          * Delete Organization
          * @description Delete an empty organization.
          *
-         *     Its memberships, agent tasks, workflow runs, AI model calls, secret
+         *     Its memberships, agent tasks, workflow runs, AI model calls,
+         *     ``workflows/<org>.*`` and ``agents/<org>.*`` prompts, secret
          *     grants, and settled secret resolutions go with it.
          *
          *     Parameters:
