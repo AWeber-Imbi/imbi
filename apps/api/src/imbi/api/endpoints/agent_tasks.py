@@ -264,6 +264,14 @@ class AgentTaskCounts(pydantic.BaseModel):
     closed: int = 0
 
 
+class AgentTaskPosition(pydantic.BaseModel):
+    """Where a task is in the task list."""
+
+    group: Group
+    #: The index of the task in its group, from 0.
+    index: int
+
+
 class AgentTaskWaiting(pydantic.BaseModel):
     #: The number of tasks in the organization that wait on a person (O1).
     count: int
@@ -1291,6 +1299,54 @@ async def count_agent_tasks(
         text_agent_ids=list(agents),
         text_project_ids=list(projects),
     )
+
+
+@agent_tasks_router.get(
+    '/{short_id}/position', response_model=AgentTaskPosition
+)
+async def get_agent_task_position(
+    org_slug: str,
+    org_id: OrgId,
+    short_id: str,
+    db: graph.Pool,
+    store: agent_tasks.Store,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('agent_task:read')),
+    ],
+    status: typing.Annotated[list[Status] | None, fastapi.Query()] = None,
+    agent_id: typing.Annotated[list[str] | None, fastapi.Query()] = None,
+    owner: typing.Annotated[list[str] | None, fastapi.Query()] = None,
+    mine: bool = False,
+    q: str | None = None,
+) -> dict[str, typing.Any]:
+    """Find where a task is in the task list with the same filters: its
+    inbox group and its index in that group, so a client can scroll to
+    it before it reads that part of the list.
+
+    Raises:
+        403: The caller is not a member of the org.
+        404: No such organization, or the filters do not find the task.
+
+    """
+    text = (q or '').strip().lower()
+    agents, projects = await _text_matches(db, org_slug, text)
+    owners = [*(owner or []), *([auth.principal_name] if mine else [])]
+    found = await store.position(
+        org_id,
+        short_id,
+        statuses=status,
+        agent_ids=agent_id,
+        owners=owners,
+        text=text or None,
+        text_agent_ids=list(agents),
+        text_project_ids=list(projects),
+    )
+    if found is None:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'{short_id} is not in the list'
+        )
+    return {'group': found[0], 'index': found[1]}
 
 
 async def _text_matches(

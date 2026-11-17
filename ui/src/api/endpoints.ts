@@ -56,6 +56,7 @@ import type {
   AgentTaskCreate,
   AgentTaskEvent,
   AgentTaskListItem,
+  AgentTaskPosition,
   AgentTaskProject,
   AgentTaskRelations,
   AgentTaskResolve,
@@ -3861,6 +3862,17 @@ export const countAgentTasks = (
     `${agentTasksPath(orgSlug)}/counts`,
     { ...params },
     signal,
+  )
+
+/** The inbox group of a task and its index there, with the same filters. */
+export const getAgentTaskPosition = (
+  orgSlug: string,
+  shortId: string,
+  params: Omit<AgentTaskListParams, 'group' | 'limit' | 'offset'>,
+) =>
+  apiClient.get<AgentTaskPosition>(
+    `${agentTaskPath(orgSlug, shortId)}/position`,
+    { ...params },
   )
 
 /** The number of blocked tasks in the org (the "waiting on you" badge). */

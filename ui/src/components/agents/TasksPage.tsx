@@ -15,6 +15,7 @@ import {
   useParams,
 } from 'react-router-dom'
 
+import { useQueryClient } from '@tanstack/react-query'
 import {
   Bot,
   ChevronRight,
@@ -24,6 +25,7 @@ import {
   Hand,
   Inbox,
   Loader,
+  LocateFixed,
   type LucideIcon,
   Pause,
   Plus,
@@ -36,7 +38,10 @@ import {
   Separator,
   useDefaultLayout,
 } from 'react-resizable-panels'
+import { toast } from 'sonner'
 
+import { ApiError } from '@/api/client'
+import { getAgentTaskPosition } from '@/api/endpoints'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -49,6 +54,7 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAuth } from '@/hooks/useAuth'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useHasPermission } from '@/hooks/useHasPermission'
+import { queryKeys } from '@/lib/queryKeys'
 import { storage } from '@/lib/storage'
 import { cn } from '@/lib/utils'
 import type { AgentTaskCounts, AgentTaskListItem, TaskHighlight } from '@/types'
@@ -341,6 +347,7 @@ function TaskInbox({
     parseGroupList,
   )
   const listRef = useRef<HTMLDivElement>(null)
+  const queryClient = useQueryClient()
   useMatchHighlight(listRef, 'task-list-search')
   const canCreate = useHasPermission('agent_task:create', orgSlug)
   const q = useDebouncedValue(text.trim(), 250) || undefined
@@ -373,6 +380,43 @@ function TaskInbox({
     scroller: listRef,
   })
   const items = virtualizer.getVirtualItems()
+  const [revealing, setRevealing] = useState<{
+    group: InboxGroupId
+    index: number
+    smooth: boolean
+  }>()
+  const revealRequest = useRef(0)
+  const revealScope = useRef([paramsKey, selected])
+  useEffect(() => {
+    const [shownKey, shownSelected] = revealScope.current
+    if (shownKey === paramsKey && shownSelected === selected) return
+    revealScope.current = [paramsKey, selected]
+    revealRequest.current += 1
+    setRevealing(undefined)
+  }, [paramsKey, selected])
+  useEffect(() => {
+    if (!revealing) return
+    const at = rows.findIndex(
+      (r) =>
+        r.kind === 'task' &&
+        r.group === revealing.group &&
+        r.index === revealing.index,
+    )
+    if (at < 0) {
+      if (counts.data && !collapsed.includes(revealing.group))
+        setRevealing(undefined)
+      return
+    }
+    setRevealing(undefined)
+    virtualizer.scrollToIndex(at, {
+      align: 'center',
+      behavior:
+        revealing.smooth &&
+        !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+          ? 'smooth'
+          : 'auto',
+    })
+  }, [collapsed, counts.data, revealing, rows, virtualizer])
   const scrollTop = useScrollTop(listRef)
   const headers = useMemo(
     () => rows.flatMap((row, i) => (row.kind === 'group' ? [i] : [])),
@@ -429,6 +473,54 @@ function TaskInbox({
         ? collapsed.filter((g) => g !== id)
         : [...collapsed, id],
     )
+  const selectedId = selected?.toUpperCase()
+  const viewTop = scrollTop + (stuck ? HEADER_HEIGHT + stuck.push : 0)
+  const viewBottom = scrollTop + (virtualizer.scrollRect?.height ?? 0)
+  const selectedInView = items.some((item) => {
+    const row = rows[item.index]
+    return (
+      row?.kind === 'task' &&
+      loaded
+        .get(pageOf(row))
+        ?.[row.index % TASK_PAGE]?.short_id.toUpperCase() === selectedId &&
+      item.start >= viewTop &&
+      item.end <= viewBottom
+    )
+  })
+  const reveal = async (onLoad = false) => {
+    if (!selected) return
+    const request = ++revealRequest.current
+    try {
+      const at = await getAgentTaskPosition(orgSlug, selected, params)
+      const { group } = at
+      const offset = Math.floor(at.index / TASK_PAGE) * TASK_PAGE
+      await Promise.all([
+        counts.refetch(),
+        queryClient.refetchQueries({
+          exact: true,
+          queryKey: queryKeys.agentTasks(orgSlug, { ...params, group, offset }),
+        }),
+      ])
+      if (request !== revealRequest.current) return
+      setCollapsed((current) =>
+        current.includes(group) ? current.filter((g) => g !== group) : current,
+      )
+      setRevealing({ ...at, smooth: !onLoad })
+    } catch (err) {
+      if (onLoad || request !== revealRequest.current) return
+      toast.error(
+        err instanceof ApiError && err.status === 404
+          ? `The filters hide ${selected}.`
+          : `Could not find ${selected} in the list.`,
+      )
+    }
+  }
+  const revealOnLoad = useRef(selected !== undefined)
+  useEffect(() => {
+    if (!revealOnLoad.current) return
+    revealOnLoad.current = false
+    void reveal(true)
+  })
   // A header that collapses its group from the top keeps its place.
   const toggleSticky = (index: number, id: InboxGroupId) => {
     toggle(id)
@@ -441,19 +533,33 @@ function TaskInbox({
     <>
       <TaskFilterBar
         action={
-          canCreate && (
-            <IconTooltip label="New task">
+          <>
+            <IconTooltip label="Reveal in list">
               <Button
-                aria-label="New task"
+                aria-label="Reveal in list"
                 className="border-input size-8 shrink-0"
-                onClick={() => setCreating(true)}
+                disabled={!selected || selectedInView}
+                onClick={() => void reveal()}
                 size="icon"
                 variant="outline"
               >
-                <Plus />
+                <LocateFixed />
               </Button>
             </IconTooltip>
-          )
+            {canCreate && (
+              <IconTooltip label="New task">
+                <Button
+                  aria-label="New task"
+                  className="border-input size-8 shrink-0"
+                  onClick={() => setCreating(true)}
+                  size="icon"
+                  variant="outline"
+                >
+                  <Plus />
+                </Button>
+              </IconTooltip>
+            )}
+          </>
         }
         agents={agents}
         filters={filters}
@@ -553,7 +659,7 @@ function TaskInbox({
                   />
                 ) : task ? (
                   <TaskRow
-                    active={task.short_id === selected}
+                    active={task.short_id.toUpperCase() === selectedId}
                     agent={agentsById.get(task.agent_id)}
                     group={row.group}
                     orgSlug={orgSlug}

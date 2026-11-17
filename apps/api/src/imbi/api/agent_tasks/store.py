@@ -767,6 +767,55 @@ class TaskStore:
             await cursor.execute(statement, params)
             return await cursor.fetchall()
 
+    async def position(
+        self,
+        organization_id: str,
+        short_id: str,
+        *,
+        statuses: list[Status] | None = None,
+        agent_ids: list[str] | None = None,
+        owners: list[str] | None = None,
+        text: str | None = None,
+        text_agent_ids: list[str] | None = None,
+        text_project_ids: list[str] | None = None,
+    ) -> tuple[str, int] | None:
+        """Return the inbox group of the task ``short_id`` and its index
+        in that group, in the order of :meth:`search` with the same
+        filters; ``None`` when the filters do not find the task.
+        """
+        conditions, params = _search_filters(
+            organization_id,
+            statuses,
+            agent_ids,
+            owners,
+            text,
+            text_agent_ids,
+            text_project_ids,
+        )
+        statement = sql.SQL(
+            'SELECT inbox_group, n FROM (SELECT t.short_id,'
+            ' {group} AS inbox_group, row_number() OVER (PARTITION BY {group}'
+            ' ORDER BY CASE WHEN {group} = {input} THEN {waiting} END'
+            ' ASC NULLS LAST, CASE WHEN {group} = {closed} THEN t.closed_at'
+            ' END DESC NULLS LAST, CASE WHEN {group} <> {closed}'
+            ' THEN t.created_at END DESC, t.id DESC) - 1 AS n'
+            ' FROM agent_runtime.tasks AS t WHERE {where}) AS s'
+            ' WHERE short_id = %s'
+        ).format(
+            group=_GROUP,
+            input=sql.Literal('input'),
+            closed=sql.Literal('closed'),
+            waiting=sql.SQL(
+                "CASE WHEN t.status <> 'closed' THEN"
+                ' (SELECT min(r.opened_at) {open}) END'
+            ).format(open=_OPEN_REQUESTS),
+            where=sql.SQL(' AND ').join(conditions),
+        )
+        async with self._pool.connection() as conn:
+            cursor = await conn.execute(statement, [*params, short_id.upper()])
+            found = await cursor.fetchone()
+        return (str(found[0]), int(found[1])) if found else None
+
     async def count_groups(
         self,
         organization_id: str,

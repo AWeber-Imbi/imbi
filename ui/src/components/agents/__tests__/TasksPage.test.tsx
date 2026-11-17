@@ -22,6 +22,7 @@ vi.mock('@/api/endpoints', () => ({
   createAgentTask: vi.fn(),
   deleteAgentTask: vi.fn(),
   getAgentTask: vi.fn(),
+  getAgentTaskPosition: vi.fn(),
   getAgentToolCatalog: vi.fn(),
   getProjectsSlim: vi.fn(),
   listAdminUsers: vi.fn(),
@@ -109,6 +110,8 @@ const TASKS = [
     title: 'Waiting longest',
   }),
 ]
+
+type Position = Awaited<ReturnType<typeof endpoints.getAgentTaskPosition>>
 
 function closedTask(n: number) {
   return task({
@@ -431,6 +434,108 @@ describe('Tasks', () => {
     await waitFor(() =>
       expect(document.querySelector('[data-sticky]')).toBeNull(),
     )
+  })
+
+  it('reveals the selected task when the page opens', async () => {
+    vi.mocked(window.localStorage.getItem).mockImplementation((key) =>
+      key === 'imbi.tasks.collapsed' ? '["input"]' : null,
+    )
+    vi.mocked(endpoints.getAgentTaskPosition).mockResolvedValue({
+      group: 'input',
+      index: 1,
+    })
+    try {
+      renderAt('/agents/tasks/acme/T-3?agent=agt-1')
+      await waitFor(() => expect(inboxTitles()).toContain('Apply the fix'))
+      expect(endpoints.getAgentTaskPosition).toHaveBeenCalledTimes(1)
+      expect(endpoints.getAgentTaskPosition).toHaveBeenCalledWith(
+        'acme',
+        'T-3',
+        expect.objectContaining({ agent_id: ['agt-1'] }),
+      )
+    } finally {
+      vi.mocked(window.localStorage.getItem).mockReturnValue(null)
+    }
+  })
+
+  it('reveals the selected task on demand, opening its group', async () => {
+    vi.mocked(endpoints.getAgentTaskPosition).mockResolvedValue({
+      group: 'input',
+      index: 1,
+    })
+    renderAt('/agents/tasks/acme/T-3')
+    await waitFor(() => expect(inboxTitles()).toContain('Apply the fix'))
+    fireEvent.click(
+      screen.getByRole('button', { expanded: true, name: /Human input/i }),
+    )
+    await waitFor(() => expect(inboxTitles()).not.toContain('Apply the fix'))
+    fireEvent.click(screen.getByRole('button', { name: 'Reveal in list' }))
+    await waitFor(() => expect(inboxTitles()).toContain('Apply the fix'))
+    expect(endpoints.getAgentTaskPosition).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps collapse changes made while a reveal waits', async () => {
+    vi.mocked(window.localStorage.getItem).mockImplementation((key) =>
+      key === 'imbi.tasks.collapsed' ? '["input"]' : null,
+    )
+    let found!: (at: Position) => void
+    vi.mocked(endpoints.getAgentTaskPosition).mockReturnValue(
+      new Promise((resolve) => {
+        found = resolve
+      }),
+    )
+    try {
+      renderAt('/agents/tasks/acme/T-3')
+      await screen.findByText('Old work')
+      fireEvent.click(screen.getByRole('button', { name: /Recently closed/ }))
+      await waitFor(() =>
+        expect(screen.queryByText('Old work')).not.toBeInTheDocument(),
+      )
+      await act(async () => found({ group: 'input', index: 1 }))
+      await waitFor(() => expect(inboxTitles()).toContain('Apply the fix'))
+      expect(screen.queryByText('Old work')).not.toBeInTheDocument()
+      expect(window.localStorage.setItem).toHaveBeenLastCalledWith(
+        'imbi.tasks.collapsed',
+        '["closed"]',
+      )
+    } finally {
+      vi.mocked(window.localStorage.getItem).mockReturnValue(null)
+    }
+  })
+
+  it('ignores a reveal for a task no longer selected', async () => {
+    vi.mocked(window.localStorage.getItem).mockImplementation((key) =>
+      key === 'imbi.tasks.collapsed' ? '["input"]' : null,
+    )
+    let found!: (at: Position) => void
+    vi.mocked(endpoints.getAgentTaskPosition).mockReturnValue(
+      new Promise((resolve) => {
+        found = resolve
+      }),
+    )
+    try {
+      renderAt('/agents/tasks/acme/T-3')
+      fireEvent.click(await screen.findByText('Busy'))
+      await waitFor(() =>
+        expect(window.location.pathname).toMatch(/^\/agents\/tasks\/acme\/T-4/),
+      )
+      await act(async () => found({ group: 'input', index: 1 }))
+      expect(inboxTitles()).not.toContain('Apply the fix')
+      expect(
+        screen.getByRole('button', { name: /Human input/i }),
+      ).toHaveAttribute('aria-expanded', 'false')
+    } finally {
+      vi.mocked(window.localStorage.getItem).mockReturnValue(null)
+    }
+  })
+
+  it('does not reveal on load without a selected task', async () => {
+    renderAt('/agents/tasks')
+    await screen.findByText('Busy')
+    expect(endpoints.getAgentTaskPosition).not.toHaveBeenCalled()
+    expect(
+      screen.getByRole('button', { name: 'Reveal in list' }),
+    ).toBeDisabled()
   })
 
   it('opens with the groups collapsed last time', async () => {
