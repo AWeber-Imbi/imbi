@@ -317,7 +317,8 @@ checked with Claude Agent SDK 0.2.164 and Claude Code 2.1.292:
 - A person can see every server of a plugin before enabling it.
 - Results of relayed servers reach the model in `<untrusted>` tags.
   Results of a plugin server that the CLI connects to itself do not.
-- A revoked grant does not stop a running task.
+- A revoked grant does not stop a running task that uses a static
+  secret. A credential with an expiry stops at its next refresh.
 - The CLI does not know a relayed server's URL, so two relayed servers
   with the same URL both load. Only the checkboxes prevent this.
 - A server that needs `headersHelper`, OAuth, or a URL variable still
