@@ -164,11 +164,8 @@ A person starts a run with the **Run** button.
 | `inputs` | The inputs that the person must enter. Each has a `name` (a key) and a `type`: `string`, `text` (a string entered in a text area), `number`, or `boolean` | None |
 | `who` | Who can start and cancel runs: `owner_team`, `admins`, or `anyone` | `owner_team` |
 
-The inspector shows `inputs` as JSON, for example:
-
-```json
-[{"name": "service", "type": "string"}, {"name": "dry_run", "type": "boolean"}]
-```
+The inspector shows `inputs` as rows. Each row has a name and a type. Click
+**Add input** to add a row, and click the remove button on a row to remove it.
 
 Every input is required. Imbi refuses an input that is not declared, and a
 value of the wrong type.
