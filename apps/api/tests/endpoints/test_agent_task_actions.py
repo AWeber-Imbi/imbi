@@ -19,7 +19,7 @@ from apps.api.tests.endpoints import (
 )
 from imbi.api import models, tickets
 from imbi.api.auth import permissions
-from scripts import agent_task_client
+from scripts import ticket_client
 
 FEEDBACK = {'kind': 'feedback', 'title': 'Which repo?', 'options': ['a']}
 APPROVAL = {
@@ -85,7 +85,7 @@ class ResolveTests(ActionTestCase):
         self.assertEqual(body['task']['status'], 'queued')
 
         # The harness reads the answer by seq, as its service account.
-        harness = agent_task_client.HarnessClient(self.client, self.org, 'T-1')
+        harness = ticket_client.HarnessClient(self.client, self.org, 'T-1')
         event = await harness.wait_for_answer(
             request_id, opened['task']['last_seq'], interval=0.01
         )
@@ -334,7 +334,7 @@ class ReplyTests(ActionTestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()['status'], 'running')
         self.assertEqual(response.json()['control'], 'run')
-        harness = agent_task_client.HarnessClient(self.client, self.org, 'T-1')
+        harness = ticket_client.HarnessClient(self.client, self.org, 'T-1')
         (turn,) = await harness.events(last_seq)
         self.assertEqual(turn['type'], 'turn')
         self.assertEqual(turn['actor_kind'], 'human')
@@ -384,7 +384,7 @@ class ClientWaitTests(ActionTestCase):
     async def test_client_waits_for_the_answer_and_finishes(self) -> None:
         slug = f'opus-{uuid.uuid4().hex[:8]}'
         await self.make_model(slug, slug)
-        harness = agent_task_client.HarnessClient(self.client, self.org, 'T-1')
+        harness = ticket_client.HarnessClient(self.client, self.org, 'T-1')
 
         async def answer() -> None:
             while True:
@@ -408,7 +408,7 @@ class ClientWaitTests(ActionTestCase):
 
         state, _ = await asyncio.wait_for(
             asyncio.gather(
-                agent_task_client.run_task(
+                ticket_client.run_task(
                     harness, model_id=slug, ask=True, wait=True, interval=0.01
                 ),
                 answer(),
@@ -440,10 +440,10 @@ class ClientWaitTests(ActionTestCase):
     async def run_client(self, person: typing.Any) -> dict[str, typing.Any]:
         slug = f'opus-{uuid.uuid4().hex[:8]}'
         await self.make_model(slug, slug)
-        harness = agent_task_client.HarnessClient(self.client, self.org, 'T-1')
+        harness = ticket_client.HarnessClient(self.client, self.org, 'T-1')
         state, _ = await asyncio.wait_for(
             asyncio.gather(
-                agent_task_client.run_task(
+                ticket_client.run_task(
                     harness, model_id=slug, ask=True, wait=True, interval=0.01
                 ),
                 person(),

@@ -22,7 +22,7 @@ from imbi.api import tickets
 from imbi.api.tickets import log, sweeper
 from imbi.common import clickhouse, iggy
 from imbi.common.clickhouse import client
-from scripts import agent_task_client
+from scripts import ticket_client
 
 
 class ClickHouseTestCase(test_agent_tasks.AgentTaskTestCase):
@@ -273,8 +273,8 @@ class ReferenceClientTests(
         await self.make_model(self.slug, self.slug)
 
     async def test_run_task_end_to_end(self) -> None:
-        harness = agent_task_client.HarnessClient(self.client, self.org, 'T-1')
-        state = await agent_task_client.run_task(harness, model_id=self.slug)
+        harness = ticket_client.HarnessClient(self.client, self.org, 'T-1')
+        state = await ticket_client.run_task(harness, model_id=self.slug)
         self.assertEqual(state['status'], 'closed')
         self.assertEqual(state['outcome'], 'done_acted')
         self.assertEqual(state['phase'], 'done')
@@ -329,8 +329,8 @@ class ReferenceClientTests(
         self.assertGreater(task['cost_total'], 0)
 
     async def test_run_task_with_a_request_leaves_it_blocked(self) -> None:
-        harness = agent_task_client.HarnessClient(self.client, self.org, 'T-1')
-        state = await agent_task_client.run_task(
+        harness = ticket_client.HarnessClient(self.client, self.org, 'T-1')
+        state = await ticket_client.run_task(
             harness, model_id=self.slug, ask=True
         )
         self.assertEqual(state['status'], 'blocked')
@@ -339,10 +339,8 @@ class ReferenceClientTests(
     async def test_run_task_rich_writes_every_conversation_event(
         self,
     ) -> None:
-        harness = agent_task_client.HarnessClient(self.client, self.org, 'T-1')
-        state = await agent_task_client.run_rich_task(
-            harness, model_id=self.slug
-        )
+        harness = ticket_client.HarnessClient(self.client, self.org, 'T-1')
+        state = await ticket_client.run_rich_task(harness, model_id=self.slug)
         self.assertEqual(state['status'], 'closed')
         events = await self.postgres_events(self.task['id'])
         payloads = [e['payload'] for e in events]
