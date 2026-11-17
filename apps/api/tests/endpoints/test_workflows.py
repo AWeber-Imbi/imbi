@@ -860,7 +860,9 @@ class AnalysisStepTestCase(WorkflowTestCase):
                 name=key,
                 slug=self._ref(key).partition('/')[2],
                 version=prompts.PromptVersionCreate(
-                    system='Summarize {{ diff }}.', model=model
+                    system='Summarize {{ diff }}.',
+                    model=model,
+                    variable_schema={'diff': {'type': 'any'}},
                 ),
             ),
             self.email,
