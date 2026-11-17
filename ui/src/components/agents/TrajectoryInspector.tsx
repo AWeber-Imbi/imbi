@@ -3,13 +3,22 @@ import {
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
   useId,
+  useMemo,
   useRef,
   useState,
 } from 'react'
 
-import { Check, ChevronRight, Copy, MessageSquareText, X } from 'lucide-react'
+import {
+  Braces,
+  Check,
+  ChevronRight,
+  Copy,
+  MessageSquareText,
+  X,
+} from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { JsonView } from '@/components/ui/json-view'
 import { useClipboard } from '@/hooks/useClipboard'
 import { cn } from '@/lib/utils'
 import type { AgentTaskEvent } from '@/types'
@@ -260,6 +269,11 @@ export function TrajectoryInspector({
       >
         <TabBody
           inspected={inspected}
+          key={
+            inspected.type === 'request'
+              ? `request:${inspected.request.number}`
+              : inspected.record.id
+          }
           live={live}
           onSelect={onSelect}
           onTab={onTab}
@@ -329,6 +343,20 @@ function json(value: unknown): string {
   return JSON.stringify(value ?? null, null, 2)
 }
 
+function jsonTree(value: unknown): object | undefined {
+  let parsed = value
+  if (typeof value === 'string') {
+    const text = value.trim()
+    if (!text.startsWith('{') && !text.startsWith('[')) return undefined
+    try {
+      parsed = JSON.parse(text)
+    } catch {
+      return undefined
+    }
+  }
+  return typeof parsed === 'object' && parsed !== null ? parsed : undefined
+}
+
 function LinkButton({
   children,
   onClick,
@@ -353,20 +381,48 @@ function location(inspected: Inspected): string {
   return step ? `Turn ${turn} · Step ${step}` : `Turn ${turn}`
 }
 
-function Payload({ error, text }: { error?: boolean; text: string }) {
+function Payload({ error, value }: { error?: boolean; value: unknown }) {
+  const [original, setOriginal] = useState(false)
+  const text = useMemo(() => json(value), [value])
+  const tree = useMemo(
+    () => (error ? undefined : jsonTree(value)),
+    [error, value],
+  )
   return (
     <div className="relative">
-      <div className="absolute top-2 right-2">
+      <div className="absolute top-2 right-2 z-10 flex gap-0.5">
+        {tree && (
+          <button
+            aria-label="Show original text"
+            aria-pressed={original}
+            className={cn(
+              'flex h-4 w-5 items-center justify-center rounded-[4px] text-(--tj-label-2) hover:bg-(--tj-hover)',
+              original && 'bg-(--tj-active) text-(--tj-label-1)',
+            )}
+            onClick={() => setOriginal(!original)}
+            title="Show original text"
+            type="button"
+          >
+            <Braces className="size-3" strokeWidth={1.75} />
+          </button>
+        )}
         <CopyButton text={text} />
       </div>
-      <pre
-        className={cn(
-          'overflow-x-auto bg-(--tj-code-bg) p-3.5 pr-9 font-tj-code text-[12px] leading-4.75 wrap-break-word whitespace-pre-wrap',
-          error && 'text-(--tj-error)',
-        )}
-      >
-        {text || 'No output'}
-      </pre>
+      {tree && !original ? (
+        <JsonView
+          className="font-tj-code bg-(--tj-code-bg) p-3.5 pr-14 text-[12px] leading-4.75"
+          data={tree}
+        />
+      ) : (
+        <pre
+          className={cn(
+            'overflow-x-auto bg-(--tj-code-bg) p-3.5 pr-14 font-tj-code text-[12px] leading-4.75 wrap-break-word whitespace-pre-wrap',
+            error && 'text-(--tj-error)',
+          )}
+        >
+          {text || 'No output'}
+        </pre>
+      )}
     </div>
   )
 }
@@ -414,7 +470,7 @@ function Raw({ record }: { record: TrajectoryRecord }) {
           <div className="font-tj-code px-3.5 pb-1 text-[11px] leading-4 text-(--tj-label-3)">
             Block #{i + 1} {e.type} · e{e.seq}
           </div>
-          <Payload text={json(e.payload)} />
+          <Payload value={e.payload} />
         </div>
       ))}
     </div>
@@ -534,14 +590,10 @@ function TabBody({
   const parent = record.parent
     ? trajectory.records.find((r) => r.id === record.parent)
     : undefined
-  if (tab === 'Payload')
-    return <Payload text={json(record.tool?.arguments ?? {})} />
+  if (tab === 'Payload') return <Payload value={record.tool?.arguments ?? {}} />
   if (tab === 'Result')
     return (
-      <Payload
-        error={record.error}
-        text={record.tool ? json(record.tool.resultValue ?? '') : ''}
-      />
+      <Payload error={record.error} value={record.tool?.resultValue ?? ''} />
     )
   if (tab === 'Timing') return <Timing record={record} />
   if (tab === 'Preview') return <Preview record={record} />
@@ -587,12 +639,12 @@ function TabBody({
       {record.tool ? (
         <>
           <Section onOpen={() => onTab('Payload')} title="Payload">
-            <Payload text={json(record.tool.arguments ?? {})} />
+            <Payload value={record.tool.arguments ?? {}} />
           </Section>
           <Section onOpen={() => onTab('Result')} title="Result">
             <Payload
               error={record.error}
-              text={json(record.tool.resultValue ?? '')}
+              value={record.tool.resultValue ?? ''}
             />
           </Section>
           <Section onOpen={() => onTab('Timing')} title="Timing">
