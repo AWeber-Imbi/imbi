@@ -20,6 +20,7 @@ import {
   resolvePostLoginTarget,
 } from '@/lib/postLoginRedirect'
 import { queryKeys } from '@/lib/queryKeys'
+import { session, storage } from '@/lib/storage'
 import type { LoginRequest } from '@/types'
 
 const REMEMBERED_EMAIL_KEY = 'imbi_remembered_email'
@@ -51,7 +52,7 @@ export function LoginPage() {
 
   // Load remembered email on mount
   useEffect(() => {
-    const saved = localStorage.getItem(REMEMBERED_EMAIL_KEY)
+    const saved = storage.getItem(REMEMBERED_EMAIL_KEY)
     if (saved) {
       setRememberedEmail(saved)
     }
@@ -76,9 +77,9 @@ export function LoginPage() {
       // sent; relative paths stay in-SPA.
       const target = resolvePostLoginTarget(
         searchParams.get('return_to'),
-        sessionStorage.getItem('imbi_redirect_after_login'),
+        session.getItem('imbi_redirect_after_login'),
       )
-      sessionStorage.removeItem('imbi_redirect_after_login')
+      session.removeItem('imbi_redirect_after_login')
       performPostLoginRedirect(target, navigate)
     }
   }, [isAuthenticated, navigate, searchParams])
@@ -88,7 +89,7 @@ export function LoginPage() {
       setLoginError('')
       await login(credentials)
       // Remember email on successful login
-      localStorage.setItem(REMEMBERED_EMAIL_KEY, credentials.email)
+      storage.setItem(REMEMBERED_EMAIL_KEY, credentials.email)
     } catch (error: unknown) {
       if (isMfaRequiredError(error)) {
         setMfaCredentials(credentials)

@@ -25,6 +25,7 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAuth } from '@/hooks/useAuth'
 import { useExpandedKeys } from '@/hooks/useExpandedKeys'
 import { queryKeys } from '@/lib/queryKeys'
+import { storage } from '@/lib/storage'
 import type {
   ComponentSearchResult,
   ComponentUsage,
@@ -637,7 +638,7 @@ function PackageSearch({
           onMouseDown={(e) => e.preventDefault()}
           role="listbox"
         >
-          <p className="text-tertiary text-overline px-4 pb-2 tracking-wide uppercase">
+          <p className="text-overline text-tertiary px-4 pb-2 tracking-wide uppercase">
             {browsing
               ? 'Recently viewed'
               : isSearching
@@ -700,7 +701,7 @@ function PackageSearch({
  */
 function readRecent(): RecentPackage[] {
   try {
-    const raw = localStorage.getItem(RECENT_KEY)
+    const raw = storage.getItem(RECENT_KEY)
     if (!raw) return []
     const parsed: unknown = JSON.parse(raw)
     if (!Array.isArray(parsed)) return []
@@ -725,7 +726,7 @@ function Stat({
 }) {
   return (
     <div>
-      <div className="text-tertiary text-overline tracking-wide uppercase">
+      <div className="text-overline text-tertiary tracking-wide uppercase">
         {label}
       </div>
       <div
@@ -929,7 +930,7 @@ function VersionTable({
     <div className="border-tertiary bg-primary overflow-x-auto rounded-lg border">
       <table className="w-full min-w-260">
         <thead>
-          <tr className="bg-secondary text-secondary text-overline text-left tracking-wide uppercase">
+          <tr className="bg-secondary text-overline text-secondary text-left tracking-wide uppercase">
             <th className="w-37.5 px-[18px] py-2.5 font-medium">Version</th>
             <th className="px-4 py-2.5 font-medium">Projects deployed</th>
             <th className="w-50 px-4 py-2.5 font-medium">Status</th>
@@ -961,10 +962,5 @@ function VersionTable({
 }
 
 function writeRecent(entries: RecentPackage[]): void {
-  try {
-    localStorage.setItem(RECENT_KEY, JSON.stringify(entries))
-  } catch {
-    // A full or disabled localStorage costs the reader their recents
-    // list, nothing more — never the screen.
-  }
+  storage.setItem(RECENT_KEY, JSON.stringify(entries))
 }

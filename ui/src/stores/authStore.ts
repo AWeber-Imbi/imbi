@@ -1,6 +1,8 @@
 import { jwtDecode } from 'jwt-decode'
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { createJSONStorage, persist } from 'zustand/middleware'
+
+import { storage } from '@/lib/storage'
 
 interface AuthStore {
   accessToken: null | string
@@ -72,6 +74,7 @@ export const useAuthStore = create<AuthStore>()(
     }),
     {
       name: 'imbi-auth-storage',
+      storage: createJSONStorage(() => storage),
     },
   ),
 )

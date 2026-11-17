@@ -19,6 +19,7 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll'
+import { storage } from '@/lib/storage'
 import { cn } from '@/lib/utils'
 import type { AgentTaskListItem, AgentTaskStatus } from '@/types'
 
@@ -76,7 +77,7 @@ export function TasksPage() {
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: 'imbi:agent-tasks:split',
     panelIds: ['list', 'detail'],
-    storage: typeof window === 'undefined' ? undefined : window.localStorage,
+    storage,
   })
 
   if (!orgSlug || !canRead) {

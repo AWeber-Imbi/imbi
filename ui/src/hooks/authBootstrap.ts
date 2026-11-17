@@ -1,3 +1,4 @@
+import { session } from '@/lib/storage'
 import type { TokenResponse } from '@/types'
 
 export interface BootstrapDeps {
@@ -32,9 +33,6 @@ export async function bootstrapAuth(deps: BootstrapDeps): Promise<void> {
 
 function triggerRedirect(deps: BootstrapDeps): void {
   if (deps.pathname === '/login') return
-  sessionStorage.setItem(
-    'imbi_redirect_after_login',
-    deps.pathname + deps.search,
-  )
+  session.setItem('imbi_redirect_after_login', deps.pathname + deps.search)
   deps.onRedirect()
 }

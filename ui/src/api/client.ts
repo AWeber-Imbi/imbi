@@ -1,3 +1,4 @@
+import { session } from '@/lib/storage'
 import { useAuthStore } from '@/stores/authStore'
 import type { TokenResponse } from '@/types'
 
@@ -366,7 +367,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
 function redirectToLogin(): void {
   const currentPath = window.location.pathname + window.location.search
   if (currentPath !== '/login') {
-    sessionStorage.setItem('imbi_redirect_after_login', currentPath)
+    session.setItem('imbi_redirect_after_login', currentPath)
     window.location.href = '/login'
   }
 }

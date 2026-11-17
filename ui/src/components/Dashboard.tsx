@@ -33,6 +33,7 @@ import { Sk } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useConnectableIdentities } from '@/hooks/useConnectableIdentities'
 import { useRecentDeployments } from '@/hooks/useRecentDeployments'
+import { storage } from '@/lib/storage'
 import type { IdentityConnectionResponse, PluginPackage } from '@/types'
 
 import { AgentPullRequestsToDeployWidget } from './dashboard/widgets/AgentPullRequestsToDeployWidget'
@@ -189,7 +190,7 @@ const isWidgetId = (value: unknown): value is WidgetId =>
 
 const loadDismissedIntegrations = (): string[] => {
   try {
-    const stored = localStorage.getItem(DISMISSED_INTEGRATIONS_KEY)
+    const stored = storage.getItem(DISMISSED_INTEGRATIONS_KEY)
     if (!stored) return []
     const parsed: unknown = JSON.parse(stored)
     return Array.isArray(parsed)
@@ -265,7 +266,7 @@ export function Dashboard({ onProjectSelect, onViewChange }: DashboardProps) {
 
   const [selectedWidgets, setSelectedWidgets] = useState<WidgetId[]>(() => {
     try {
-      const stored = localStorage.getItem(WIDGET_STORAGE_KEY)
+      const stored = storage.getItem(WIDGET_STORAGE_KEY)
       if (stored) {
         const parsed: unknown = JSON.parse(stored)
         if (Array.isArray(parsed)) {
@@ -273,7 +274,7 @@ export function Dashboard({ onProjectSelect, onViewChange }: DashboardProps) {
         }
       }
     } catch {
-      // Blocked/unavailable storage or malformed value — fall back.
+      // Malformed value — fall back.
     }
     return defaultWidgets
   })
@@ -326,22 +327,14 @@ export function Dashboard({ onProjectSelect, onViewChange }: DashboardProps) {
 
   // Persist selections
   useEffect(() => {
-    try {
-      localStorage.setItem(WIDGET_STORAGE_KEY, JSON.stringify(selectedWidgets))
-    } catch {
-      // Ignore persistence failures (blocked/quota-limited storage)
-    }
+    storage.setItem(WIDGET_STORAGE_KEY, JSON.stringify(selectedWidgets))
   }, [selectedWidgets])
 
   useEffect(() => {
-    try {
-      localStorage.setItem(
-        DISMISSED_INTEGRATIONS_KEY,
-        JSON.stringify(dismissedIntegrations),
-      )
-    } catch {
-      // Ignore persistence failures (blocked/quota-limited storage)
-    }
+    storage.setItem(
+      DISMISSED_INTEGRATIONS_KEY,
+      JSON.stringify(dismissedIntegrations),
+    )
   }, [dismissedIntegrations])
 
   const handleToggleWidget = (widgetId: string) => {

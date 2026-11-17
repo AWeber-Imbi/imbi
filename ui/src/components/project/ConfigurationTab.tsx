@@ -45,6 +45,7 @@ import { useTheme } from '@/contexts/ThemeContext'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { deriveChipColors } from '@/lib/chip-colors'
 import { parseServerTs } from '@/lib/formatDate'
+import { storage } from '@/lib/storage'
 import { cn, sortEnvironments } from '@/lib/utils'
 import type { ConfigKeyResponse, Environment } from '@/types'
 
@@ -176,7 +177,7 @@ export function ConfigurationTab({
     // pixels by react-resizable-panels v4, locking the list pane to ~28px.
     id: 'imbi:config-tab:split:v2',
     panelIds: ['list', 'detail'],
-    storage: typeof window === 'undefined' ? undefined : window.localStorage,
+    storage,
   })
 
   // Fit the editor to the space below its top edge, so Save stays on

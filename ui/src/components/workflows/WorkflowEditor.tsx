@@ -28,6 +28,7 @@ import { Switch } from '@/components/ui/switch'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { queryKeys } from '@/lib/queryKeys'
+import { storage } from '@/lib/storage'
 
 import { Canvas, type Selection } from './Canvas'
 import type { NodeSummary } from './CanvasNode'
@@ -130,7 +131,7 @@ export function WorkflowEditor({
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: 'imbi:workflow-editor:split',
     panelIds: ['canvas', 'inspector'],
-    storage: typeof window === 'undefined' ? undefined : window.localStorage,
+    storage,
   })
   const [panel, setPanel] = useState<{ open: boolean; tab: PanelTab }>({
     open: !!runId,

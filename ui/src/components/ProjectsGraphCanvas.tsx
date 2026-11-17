@@ -35,6 +35,7 @@ import {
   EDGE_COLOR_DEPENDED_UPON,
   EDGE_COLOR_DEPENDS_ON,
 } from '@/lib/relationship-edges'
+import { storage } from '@/lib/storage'
 
 export interface GraphProject {
   id: string
@@ -73,12 +74,12 @@ export function ProjectsGraphCanvas({
   const ref = useRef<GraphCanvasRef | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [layout, setLayoutState] = useState<LayoutTypes>(() => {
-    const stored = localStorage.getItem('imbi-graph-layout')
+    const stored = storage.getItem('imbi-graph-layout')
     const valid = LAYOUT_OPTIONS.some((o) => o.value === stored)
     return valid ? (stored as LayoutTypes) : 'forceDirected2d'
   })
   const setLayout = (v: LayoutTypes) => {
-    localStorage.setItem('imbi-graph-layout', v)
+    storage.setItem('imbi-graph-layout', v)
     setLayoutState(v)
   }
   const [isFullscreen, setIsFullscreen] = useState(false)

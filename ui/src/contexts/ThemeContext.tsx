@@ -6,8 +6,11 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
+
+import { storage } from '@/lib/storage'
 
 type Theme = 'dark' | 'light'
 
@@ -25,6 +28,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(
     () => readStoredTheme() ?? readSystemTheme(),
   )
+  // Remembers a toggle in this session when storage is blocked.
+  const explicitChoice = useRef(false)
 
   useLayoutEffect(() => {
     const root = document.documentElement
@@ -35,7 +40,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const mq = window.matchMedia('(prefers-color-scheme: dark)')
     const handleChange = (e: MediaQueryListEvent) => {
-      if (readStoredTheme() === null) {
+      if (!explicitChoice.current && readStoredTheme() === null) {
         setTheme(e.matches ? 'dark' : 'light')
       }
     }
@@ -48,9 +53,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       isDarkMode: theme === 'dark',
       theme,
       toggleTheme: () => {
+        explicitChoice.current = true
         setTheme((prev) => {
           const next = prev === 'dark' ? 'light' : 'dark'
-          window.localStorage.setItem(THEME_STORAGE_KEY, next)
+          storage.setItem(THEME_STORAGE_KEY, next)
           return next
         })
       },
@@ -70,8 +76,7 @@ export function useTheme() {
 }
 
 function readStoredTheme(): null | Theme {
-  if (typeof window === 'undefined') return null
-  const stored = window.localStorage.getItem(THEME_STORAGE_KEY)
+  const stored = storage.getItem(THEME_STORAGE_KEY)
   return stored === 'dark' || stored === 'light' ? stored : null
 }
 

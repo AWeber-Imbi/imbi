@@ -3,6 +3,7 @@ import { type ReactNode, useCallback, useState } from 'react'
 import { Bot, MessagesSquare, Timer, Wrench } from 'lucide-react'
 
 import { ButtonGroup } from '@/components/ui/button-group'
+import { storage } from '@/lib/storage'
 
 import { ToolbarSearch } from './taskSearch'
 import { TaskToolbar, ToolbarToggle } from './TaskToolbar'
@@ -94,20 +95,10 @@ export function TrajectoryToolbar({
 
 /** The Duration toggle, kept per browser; off by default. */
 export function useTrajectoryDuration(): [boolean, (on: boolean) => void] {
-  const [on, setOn] = useState(() => {
-    try {
-      return window.localStorage.getItem(DURATION_KEY) === 'true'
-    } catch {
-      return false
-    }
-  })
+  const [on, setOn] = useState(() => storage.getItem(DURATION_KEY) === 'true')
   const update = useCallback((next: boolean) => {
     setOn(next)
-    try {
-      window.localStorage.setItem(DURATION_KEY, String(next))
-    } catch {
-      // Storage can be full or blocked; the toggle still applies to this page.
-    }
+    storage.setItem(DURATION_KEY, String(next))
   }, [])
   return [on, update]
 }
