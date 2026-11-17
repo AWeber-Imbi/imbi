@@ -121,6 +121,7 @@ settings, GitHub Apps, New GitHub App**.
 | Repository permissions: Contents | Read and write |
 | Repository permissions: Pull requests | Read and write |
 | Repository permissions: Issues | Read and write |
+| Repository permissions: Actions | Read-only, for every App used with `github_read`. Each `github_read` token asks for `actions: read` |
 | Repository permissions: Metadata | Read-only (GitHub adds it) |
 | Where can this GitHub App be installed? | **Any account**. A private App can only be installed in the organization that owns it |
 
@@ -134,7 +135,11 @@ token with more permissions than the App has.
 |---|---|
 | `workspace_checkout` | `contents: read` |
 | `marketplace_fetch` | `contents: read` |
+| `github_read` | `actions: read`, `contents: read`, `issues: read`, `pull_requests: read` |
 | `github_write` | `contents: write`, `pull_requests: write`, `issues: write` |
+
+For an agent that only reads, such as a check, set every permission above
+to Read-only and grant `github_read`, not `github_write` (step 8).
 
 ## Step 2: Generate the private key
 
@@ -231,10 +236,10 @@ Open **Admin, Secrets, Grants** and click **New grant**.
 | Delivery modes | `file_descriptor` only |
 | Projects | All, or the selected projects |
 
-## Step 8: Grant the write purpose
+## Step 8: Grant the GitHub purpose
 
-The agent uses this token to push and to open pull requests and issues
-with `run_with_secret`.
+An agent that writes uses `github_write` to push and to open pull
+requests and issues with `run_with_secret`.
 
 | Field | Value |
 |---|---|
@@ -243,6 +248,22 @@ with `run_with_secret`.
 | Purposes | `github_write` |
 | Delivery modes | `environment` only |
 | Projects | All, or the selected projects |
+
+An agent that only reads uses `github_read` instead. It reads pull
+requests, review comments, issues, and CI run logs with
+`run_with_secret`:
+
+| Field | Value |
+|---|---|
+| Agents | `reviewer` |
+| Bindings | `ghe/reviewer` |
+| Purposes | `github_read` |
+| Delivery modes | `environment` only |
+| Projects | All, or the selected projects |
+
+An agent that writes and also reads CI run logs needs both purposes. Put
+`github_read` and `github_write` in the one grant of this step, since
+they use the same delivery mode.
 
 Keep the grants of steps 7 and 8 separate. A grant allows each of its
 purposes with each of its delivery modes, and exactly one grant must
@@ -255,13 +276,21 @@ Open **Agents**, the agent, **Edit**, then the **Access** tab. Select
 `ghe/reviewer` as the **GitHub App** and save. See
 [Agents, Access](agents.md#access).
 
-The tab shows a row for `workspace_checkout`, `github_write`, and
-`marketplace_fetch`. Each row shows a check when a grant allows it.
+The tab shows a row for `workspace_checkout`, `github_read`,
+`github_write`, and `marketplace_fetch`. Each row shows a check when a
+grant allows it. A read-only agent leaves the `github_write` row without
+a check.
 
-You can also do this step right after step 6. Then click **Grant** on
-each row that has no check. Imbi adds the purpose to the agent's grant
-that has the same binding and delivery mode, or makes a new grant. The
-result is the grants of steps 7 and 8.
+You can also do this step right after step 6. Then click **Grant** only
+on the rows for purposes the agent needs. A read-only agent skips the
+`github_write` row: if the App has write permissions, that grant lets
+the agent get a write-capable token. Imbi adds the purpose to the
+agent's grant that has the same binding and delivery mode, or makes a
+new grant. The result is the grants of steps 7 and 8.
+
+A grant that **Grant** makes covers all projects. To limit the agent to
+selected projects, set **Projects** in the grants of steps 7 and 8
+instead.
 
 ## Check
 
@@ -273,7 +302,7 @@ Open **Admin, Secrets, Resolutions** to see the token reads, and
 |---|---|
 | `installation_not_found` | Install the App in the GitHub organization of the repository (step 3) |
 | `permission_or_repository_not_granted` | Give the App the permission (step 1), or add the repository to the installation (step 3) |
-| `no_grant` | Check the grant's agents, binding, purposes, delivery modes, and projects (steps 7 and 8) |
+| `no_grant` | Check the grant's agents, binding, purposes, delivery modes, and projects (steps 7 and 8). Step 8 covers both `github_write` and `github_read` |
 | `ambiguous_grants` | Remove the overlap, so that one grant matches (steps 7 and 8) |
 | `repositories_span_installations` | Use repositories of one GitHub organization for each task, or separate bindings |
 

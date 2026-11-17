@@ -192,6 +192,7 @@ each purpose:
 | Purpose | Used for | Delivery |
 |---|---|---|
 | `workspace_checkout` | Clone the project repositories | `file_descriptor` |
+| `github_read` | Read pull requests, issues, and CI run logs | `environment` |
 | `github_write` | Push, and open pull requests and issues | `environment` |
 | `marketplace_fetch` | Fetch plugins from private marketplaces | `file_descriptor` |
 
