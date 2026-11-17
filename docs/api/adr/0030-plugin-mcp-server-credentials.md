@@ -251,8 +251,10 @@ error as the result of the call instead.
 
 The relay keeps one session per server for the life of the task. It
 opens the session again after a connection error, for example when the
-server closes an idle session. A revoked grant takes effect at the next
-task.
+server closes an idle session. When it refreshes a credential with an
+expiry, it opens the session again with the new headers before the old
+credential expires. A static secret is not resolved again, so a revoked
+grant takes effect at the next task.
 
 The SDK bridge to an in-process server has these limits:
 
@@ -361,8 +363,10 @@ The relay would open a new session for each call, as the Imbi relay
 does, so a renewed token would apply at once.
 
 Not chosen. A third-party session costs a handshake for each call, and
-some servers keep state in a session. A secret here is resolved once
-per task, so there is no renewal to pick up.
+some servers keep state in a session. A static secret is resolved once
+per task. A credential with an expiry is refreshed on a known schedule,
+and the relay opens a new session when it refreshes one. So a new
+session for each call adds nothing.
 
 ### Resolve the secrets again on a fixed interval
 
