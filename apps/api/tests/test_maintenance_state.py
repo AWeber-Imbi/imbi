@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import typing
 import unittest
+import uuid
 from unittest import mock
 
+from valkey import asyncio as valkey_asyncio
+
 from imbi.api.maintenance import log, state
+from imbi.common import settings as imbi_settings
 
 
 def _client_with_pipeline(
@@ -157,6 +161,93 @@ class RequeueTests(unittest.IsolatedAsyncioTestCase):
         client = mock.AsyncMock()
         client.eval = mock.AsyncMock(return_value=0)
         self.assertFalse(await state.requeue(client, 'op', 'p1', 't1'))
+
+
+class ClaimFencingValkeyTests(unittest.IsolatedAsyncioTestCase):
+    """Run the claim-token Lua scripts against the real test Valkey."""
+
+    async def asyncSetUp(self) -> None:
+        self.client = valkey_asyncio.Valkey.from_url(
+            str(imbi_settings.Valkey().url)
+        )
+        self.slug = f'test-{uuid.uuid4().hex}'
+        await state.start_run(self.client, self.slug, ['p1'], 'alice')
+
+    async def asyncTearDown(self) -> None:
+        await self.client.delete(
+            *(
+                state._key(self.slug, part)
+                for part in (
+                    'lock',
+                    'pending',
+                    'processing',
+                    'run',
+                    'failures',
+                )
+            )
+        )
+        await self.client.aclose()
+
+    async def _replaced_claim(self) -> tuple[str, str]:
+        """Check p1 out with an expired lease, reclaim, and check out again."""
+        with mock.patch.object(state.time, 'time', return_value=1_000.0):
+            old = await state.checkout(self.client, self.slug)
+        self.assertEqual(('p1', '1000.0'), old)
+        self.assertEqual(1, await state.reclaim(self.client, self.slug))
+        new = await state.checkout(self.client, self.slug)
+        assert new is not None
+        return '1000.0', new[1]
+
+    async def _holder(self) -> object:
+        return await self.client.hget(
+            state._key(self.slug, 'processing'), 'p1'
+        )
+
+    async def test_former_holder_cannot_record_an_outcome(self) -> None:
+        old, new = await self._replaced_claim()
+        self.assertFalse(
+            await state.record_outcome(
+                self.client, self.slug, 'p1', old, 'succeeded'
+            )
+        )
+        self.assertEqual(new.encode(), await self._holder())
+        self.assertTrue(
+            await state.record_outcome(
+                self.client, self.slug, 'p1', new, 'succeeded'
+            )
+        )
+        status = await state.read_status(self.client, self.slug)
+        self.assertEqual(1, status.succeeded)
+        self.assertEqual(0, status.in_flight)
+
+    async def test_former_holder_cannot_requeue(self) -> None:
+        old, new = await self._replaced_claim()
+        self.assertFalse(
+            await state.requeue(self.client, self.slug, 'p1', old)
+        )
+        self.assertEqual(new.encode(), await self._holder())
+        status = await state.read_status(self.client, self.slug)
+        self.assertEqual(0, status.remaining)
+
+    async def test_requeue_after_a_committed_outcome_is_a_no_op(
+        self,
+    ) -> None:
+        # The outcome committed but its reply was lost, so the worker
+        # falls back to requeueing with the same token.
+        claim = await state.checkout(self.client, self.slug)
+        assert claim is not None
+        self.assertTrue(
+            await state.record_outcome(
+                self.client, self.slug, 'p1', claim[1], 'succeeded'
+            )
+        )
+        self.assertFalse(
+            await state.requeue(self.client, self.slug, 'p1', claim[1])
+        )
+        status = await state.read_status(self.client, self.slug)
+        self.assertEqual(1, status.succeeded)
+        self.assertEqual(0, status.remaining)
+        self.assertEqual(0, status.in_flight)
 
 
 class ReclaimTests(unittest.IsolatedAsyncioTestCase):
