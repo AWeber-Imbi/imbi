@@ -149,14 +149,20 @@ class ModelCallStore:
         cost_usd: decimal.Decimal | None = None,
         provider_request_id: str | None = None,
     ) -> None:
-        """Close the call, unless it is no longer ``running``."""
+        """Close the call, unless it is no longer ``running``.
+
+        A success also replaces ``outcome_unknown``: a repeat can mark
+        the call stale while its finish waits for the database, and the
+        answer must stay available by its idempotency key.
+        """
         async with self._pool.connection() as conn:
             await conn.execute(
                 'UPDATE ai_runtime.ai_model_calls'
                 ' SET status = %s, error = %s, text = %s, result = %s,'
                 ' usage = %s, cost_usd = %s, provider_request_id = %s,'
                 ' finished_at = NOW()'
-                " WHERE id = %s AND status = 'running'",
+                " WHERE id = %s AND (status = 'running'"
+                " OR (status = 'outcome_unknown' AND %s = 'succeeded'))",
                 (
                     status,
                     error,
@@ -166,6 +172,7 @@ class ModelCallStore:
                     cost_usd,
                     provider_request_id,
                     call_id,
+                    status,
                 ),
             )
 

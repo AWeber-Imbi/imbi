@@ -116,10 +116,15 @@ class ModelCallStoreTestCase(unittest.IsolatedAsyncioTestCase):
         await self._age(first['id'], '2 minutes')
         again, _ = await self.store.start(_call(self.org, 'r:n:2'), 60)
         self.assertEqual(again['status'], 'outcome_unknown')
-        # A late finish does not change it.
-        await self.store.finish(first['id'], 'succeeded', text='late')
+        # A late failure does not change it.
+        await self.store.finish(first['id'], 'failed', error='x')
         again, _ = await self.store.start(_call(self.org, 'r:n:2'), 60)
         self.assertEqual(again['status'], 'outcome_unknown')
+        # A late success replaces it: the answer stays available.
+        await self.store.finish(first['id'], 'succeeded', text='late')
+        again, _ = await self.store.start(_call(self.org, 'r:n:2'), 60)
+        self.assertEqual(again['status'], 'succeeded')
+        self.assertEqual(again['text'], 'late')
 
     async def test_prune_deletes_old_calls(self) -> None:
         old, _ = await self.store.start(_call(self.org, 'r:n:old'), 60)
