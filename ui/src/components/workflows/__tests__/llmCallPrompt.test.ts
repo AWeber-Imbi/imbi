@@ -134,6 +134,9 @@ describe('saveWorkflow', () => {
   })
 
   it('writes nothing for an unchanged prompt that the node owns', async () => {
+    vi.mocked(endpoints.resolvePrompt).mockResolvedValue({
+      version: { variable_schema: { log: {} } },
+    } as unknown as PromptResolution)
     const params = {
       prompt_ref: 'workflows/acme.deploy-guard.summarize',
       prompt_version: 2,
@@ -141,6 +144,38 @@ describe('saveWorkflow', () => {
     await saveWorkflow('acme', 'deploy-guard', draft(params), {})
     expect(endpoints.createPromptVersion).not.toHaveBeenCalled()
     expect(savedParams()).toMatchObject(params)
+  })
+
+  it('writes a new version when only the inputs changed', async () => {
+    vi.mocked(endpoints.resolvePrompt).mockResolvedValue({
+      version: {
+        messages: [{ content: 'Summarize {{ log }}', role: 'user' }],
+        model: 'claude',
+        params: { max_tokens: 500, stop_sequences: [] },
+        system: 'Be brief.',
+        variable_schema: { old: { required: true, type: 'any' } },
+      },
+    } as unknown as PromptResolution)
+    vi.mocked(endpoints.createPromptVersion).mockResolvedValue({
+      n: 3,
+    } as PromptVersion)
+
+    await saveWorkflow(
+      'acme',
+      'deploy-guard',
+      draft({
+        prompt_ref: 'workflows/acme.deploy-guard.summarize',
+        prompt_version: 2,
+      }),
+      {},
+    )
+
+    expect(endpoints.createPromptVersion).toHaveBeenCalledWith(
+      'workflows',
+      'acme.deploy-guard.summarize',
+      VERSION_BODY,
+    )
+    expect(savedParams().prompt_version).toBe(3)
   })
 
   it('copies the pinned prompt to the slug of a renamed node key', async () => {

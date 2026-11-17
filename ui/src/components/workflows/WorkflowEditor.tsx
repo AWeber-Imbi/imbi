@@ -117,6 +117,13 @@ export function WorkflowEditor({
   // to the Prompt CMS on save.
   const [prompts, setPrompts] = useState<Record<string, StepPrompt>>({})
   const [dirty, setDirty] = useState(false)
+  // Counts the edits. A save clears `dirty` only when no edit came
+  // while it was pending.
+  const revision = useRef(0)
+  const markDirty = () => {
+    revision.current += 1
+    setDirty(true)
+  }
   const [selection, setSelection] = useState<Selection>(null)
   const [paletteOpen, setPaletteOpen] = useState(true)
   const [view, setView] = useState<View>({ x: 80, y: 80, zoom: 1 })
@@ -145,11 +152,11 @@ export function WorkflowEditor({
 
   const change = (patch: Partial<WorkflowWrite>) => {
     setDraft((d) => ({ ...d, ...patch }))
-    setDirty(true)
+    markDirty()
   }
   const updateGraph = (fn: (graph: WorkflowGraph) => WorkflowGraph) => {
     setDraft((d) => ({ ...d, graph: fn(d.graph) }))
-    setDirty(true)
+    markDirty()
   }
 
   useLayoutEffect(() => {
@@ -229,15 +236,20 @@ export function WorkflowEditor({
 
   const save = useMutation({
     // A retry after a failed save of a new workflow updates it.
-    mutationFn: () => saveWorkflow(orgSlug, slug, draft, prompts, stored),
+    mutationFn: () => {
+      const saving = revision.current
+      return saveWorkflow(orgSlug, slug, draft, prompts, stored).then(
+        (result) => ({ ...result, saving }),
+      )
+    },
     onError: (error) =>
       toast.error(
         `Failed to save the workflow: ${extractApiErrorDetail(error)}`,
       ),
-    onSuccess: ({ pins, saved }) => {
+    onSuccess: ({ pins, saved, saving }) => {
       setDraft((d) => ({ ...d, graph: pinNodes(d.graph, pins) }))
       stored(saved)
-      setDirty(false)
+      if (saving === revision.current) setDirty(false)
       setIssues(saved.version.validation.issues)
       // Not `slug`: `stored` sets it when the save creates the workflow.
       if (!workflow) {
@@ -577,11 +589,13 @@ export function WorkflowEditor({
                   const copy = duplicateNode(draft.graph, selectedNode.id).node
                   if (!copy) return
                   updateGraph((g) => ({ ...g, nodes: [...g.nodes, copy] }))
+                  const edited = prompts[selectedNode.id]
+                  if (edited) setPrompts((p) => ({ ...p, [copy.id]: edited }))
                   setSelection({ id: copy.id, kind: 'node' })
                 }}
                 onPromptChange={(prompt) => {
                   setPrompts((p) => ({ ...p, [selectedNode.id]: prompt }))
-                  setDirty(true)
+                  markDirty()
                 }}
                 onRemoveItem={(name, index) =>
                   updateGraph((g) =>

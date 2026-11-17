@@ -151,13 +151,20 @@ export async function saveWorkflow(
       const slug = promptSlug(orgSlug, workflowSlug, node.key)
       const ref = `${NAMESPACE}/${slug}`
       const pinned = pinnedRef(node)
-      // An unchanged prompt that is already the node's own needs no write.
-      if (!prompts[node.id] && (!pinned || node.params.prompt_ref === ref))
-        return
-      const content =
-        prompts[node.id] ??
-        // A copied node or a new key: copy the content of the old pin.
-        draftFromVersion((await resolvePrompt(pinned!)).version)
+      let content = prompts[node.id]
+      if (!content) {
+        if (!pinned) return
+        const { version } = await resolvePrompt(pinned)
+        // An unchanged prompt that is already the node's own needs no
+        // write, unless the step's inputs no longer match its variables.
+        if (
+          node.params.prompt_ref === ref &&
+          sameNames(version.variable_schema, node.params.inputs)
+        )
+          return
+        // A copied node, a new key, or changed inputs: copy the pin.
+        content = draftFromVersion(version)
+      }
       pins[node.id] = {
         prompt_ref: ref,
         prompt_version: await writePrompt(
@@ -186,6 +193,13 @@ function createNodePrompt(
     slug,
     version,
   })
+}
+
+/** Whether the variables of a version are the step's input names. */
+function sameNames(schema: object, inputs: unknown): boolean {
+  const names = Object.keys(isRecord(inputs) ? inputs : {})
+  const vars = Object.keys(schema)
+  return names.length === vars.length && names.every((n) => n in schema)
 }
 
 /** Remove the pins of the graph's LLM Call nodes. */
