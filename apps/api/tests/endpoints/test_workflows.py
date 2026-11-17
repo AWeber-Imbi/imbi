@@ -18,6 +18,7 @@ from imbi.api.auth import permissions
 from imbi.api.endpoints import prompts
 from imbi.api.endpoints import workflows as workflows_endpoints
 from imbi.common import graph
+from imbi.common import models as common_models
 from imbi.common.workflows import script_runner
 
 ALL_PERMISSIONS = frozenset(
@@ -826,6 +827,7 @@ class AnalysisStepTestCase(WorkflowTestCase):
         self.addAsyncCleanup(self._cleanup_prompts)
         await self._prompt('sum', self.structured)
         await self._prompt('plain', self.plain)
+        await self._prompt('ask', self.plain, kind='decision')
 
     async def _cleanup_prompts(self) -> None:
         await self.graph.execute(
@@ -852,16 +854,24 @@ class AnalysisStepTestCase(WorkflowTestCase):
     def _ref(self, key: str) -> str:
         return f'workflows/{self.org}.deploy-guard.{key}'
 
-    async def _prompt(self, key: str, model: str) -> None:
+    async def _prompt(
+        self,
+        key: str,
+        model: str,
+        kind: common_models.PromptKind = 'generative',
+    ) -> None:
         await prompts.insert_prompt(
             self.graph,
             prompts.PromptCreate(
                 namespace='workflows',
                 name=key,
+                kind=kind,
                 slug=self._ref(key).partition('/')[2],
                 version=prompts.PromptVersionCreate(
-                    system='Summarize {{ diff }}.',
-                    model=model,
+                    system='Summarize {{ diff }}.'
+                    if kind == 'generative'
+                    else '',
+                    model=model if kind == 'generative' else None,
                     variable_schema={'diff': {'type': 'any'}},
                 ),
             ),
@@ -908,6 +918,7 @@ class AnalysisStepTestCase(WorkflowTestCase):
             ),
             ({'sum': {'prompt_version': 9}}, 'no version 9'),
             ({'gone': {}}, 'not found'),
+            ({'ask': {}}, 'must be generative'),
             ({'plain': {'output_fields': fields}}, 'structured output'),
         ):
             with self.subTest(message):

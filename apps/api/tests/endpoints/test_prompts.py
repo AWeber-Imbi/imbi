@@ -127,6 +127,7 @@ class PromptTestBase(provider_tests.AIProviderTestBase):
     def setUp(self) -> None:
         super().setUp()
         self.calls = mock.AsyncMock()
+        self.calls.repeat.return_value = None
         self.test_app.dependency_overrides[model_calls._inject_store] = (
             lambda: self.calls
         )

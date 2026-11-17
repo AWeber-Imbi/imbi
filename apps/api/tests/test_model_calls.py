@@ -11,6 +11,7 @@ from unittest import mock
 
 from imbi.api import model_calls
 from imbi.api.maintenance import operations
+from imbi.common import relational
 
 
 def _call(org: str, key: str | None) -> dict[str, typing.Any]:
@@ -76,6 +77,31 @@ class ModelCallStoreTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(again['status'], 'succeeded')
         self.assertEqual(again['text'], 'Done')
         self.assertEqual(again['usage']['output_tokens'], 2)
+
+    async def test_repeat_finds_the_call_by_key(self) -> None:
+        self.assertIsNone(
+            await self.store.repeat(self.org, 'imbi-workflows', 'r:n:3', 60)
+        )
+        first, _ = await self.store.start(_call(self.org, 'r:n:3'), 60)
+        await self._age(first['id'], '2 minutes')
+        row = await self.store.repeat(self.org, 'imbi-workflows', 'r:n:3', 60)
+        assert row is not None
+        self.assertEqual(row['id'], first['id'])
+        self.assertEqual(row['status'], 'outcome_unknown')
+
+    async def test_start_rejects_a_deleted_organization(self) -> None:
+        async with self.pool.connection() as conn:
+            await relational.mark_organization_deleted(conn, self.org)
+        self.addAsyncCleanup(self._undelete)
+        with self.assertRaises(relational.OrganizationDeleted):
+            await self.store.start(_call(self.org, 'r:n:4'), 60)
+
+    async def _undelete(self) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'DELETE FROM organizations.deleted WHERE organization_id = %s',
+                (self.org,),
+            )
 
     async def test_previews_never_conflict(self) -> None:
         _, first = await self.store.start(_call(self.org, None), 60)

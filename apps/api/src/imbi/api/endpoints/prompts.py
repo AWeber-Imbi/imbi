@@ -363,6 +363,15 @@ RETURN m.model_id AS model_id, m.enabled AS enabled,
        m.input_cost_per_million AS input_cost,
        m.output_cost_per_million AS output_cost
 """
+_RUN_MODEL_COLUMNS = [
+    'model_id',
+    'enabled',
+    'model_type',
+    'provider_id',
+    'structured',
+    'input_cost',
+    'output_cost',
+]
 
 _DELETE_VERSIONS_QUERY: typing.LiteralString = """
 MATCH (v:PromptVersion)-[:VERSION_OF]->(p:Prompt {{id: {id}}})
@@ -1381,7 +1390,7 @@ async def run_prompt(
     records = await db.execute(
         _RUN_MODEL_QUERY,
         {'slug': version.model},
-        ['model_id', 'enabled', 'model_type', 'provider_id'],
+        _RUN_MODEL_COLUMNS,
     )
     if not records:
         raise _unprocessable(
@@ -1516,20 +1525,21 @@ async def _run_generative(
     idempotency_key: str | None,
 ) -> RunResponse:
     """Run a generative prompt; see :func:`run_prompt`."""
+    org_id = await organizations.check_member(org_slug, db, auth)
+    # A repeated key returns the first outcome, even when the model is
+    # no longer usable.
+    if idempotency_key is not None:
+        row = await calls.repeat(
+            org_id, auth.principal_name, idempotency_key, STALE_AFTER
+        )
+        if row is not None:
+            return _repeat(row)
     if version.model is None:
         raise _unprocessable('Choose a generative model to run the prompt')
     records = await db.execute(
         _RUN_MODEL_QUERY,
         {'slug': version.model},
-        [
-            'model_id',
-            'enabled',
-            'model_type',
-            'provider_id',
-            'structured',
-            'input_cost',
-            'output_cost',
-        ],
+        _RUN_MODEL_COLUMNS,
     )
     if not records:
         raise _unprocessable(
@@ -1551,7 +1561,6 @@ async def _run_generative(
         raise _unprocessable(f'AI provider {provider.slug!r} is disabled')
     if data.output_fields and not record.get('structured'):
         raise _call_error('model_no_structured_output')
-    org_id = await organizations.check_member(org_slug, db, auth)
     try:
         rendered = await rendering.render(
             version,

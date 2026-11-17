@@ -253,6 +253,7 @@ class GenerativeRunTestCase(base.PromptTestBase):
         )
 
     def _repeat(self, **row: typing.Any) -> httpx.Response:
+        enabled = row.pop('model_enabled', True)
         stored = {
             'id': CALL_ID,
             'prompt_ref': 'mender/core@1',
@@ -267,9 +268,8 @@ class GenerativeRunTestCase(base.PromptTestBase):
             'error': None,
             **row,
         }
-        self.calls.start.side_effect = None
-        self.calls.start.return_value = (stored, False)
-        self.route_run()
+        self.calls.repeat.return_value = stored
+        self.route_run(enabled=enabled)
         return self.run_ref(headers={'Idempotency-Key': 'run-1:node-a:1'})
 
     def test_repeat_returns_the_stored_answer(self) -> None:
@@ -277,7 +277,16 @@ class GenerativeRunTestCase(base.PromptTestBase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()['text'], 'Stored')
         self.generate.assert_not_awaited()
+        self.calls.start.assert_not_awaited()
         self.calls.finish.assert_not_awaited()
+        self.calls.repeat.assert_awaited_once_with(
+            'org-1', mock.ANY, 'run-1:node-a:1', prompts.STALE_AFTER
+        )
+
+    def test_repeat_after_the_model_is_disabled(self) -> None:
+        response = self._repeat(status='succeeded', model_enabled=False)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['text'], 'Stored')
 
     def test_repeat_while_running_is_409(self) -> None:
         response = self._repeat(status='running')

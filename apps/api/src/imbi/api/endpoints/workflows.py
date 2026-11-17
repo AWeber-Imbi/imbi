@@ -408,8 +408,8 @@ async def _check_analysis(
 ) -> None:
     """Check the prompt of each analysis node.
 
-    The prompt is the node's own (see :func:`_analysis_ref`), the
-    pinned version exists, and with ``output_fields`` its model
+    The prompt is the node's own (see :func:`_analysis_ref`) and is
+    generative, the pinned version exists, and with ``output_fields`` its model
     supports structured output. Invalid params are left to the
     validation issues of the version.
 
@@ -428,11 +428,13 @@ async def _check_analysis(
         if params.prompt_ref != ref:
             raise _analysis_error(node, f'the prompt must be {ref!r}')
         try:
-            _, version, _ = await prompt_resolve.resolve(
+            prompt, version, _ = await prompt_resolve.resolve(
                 db, f'{ref}@{params.prompt_version}'
             )
         except prompt_resolve.PromptError as e:
             raise _analysis_error(node, str(e)) from e
+        if prompt.kind != 'generative':
+            raise _analysis_error(node, 'the prompt must be generative')
         if not params.output_fields:
             continue
         records = await db.execute(

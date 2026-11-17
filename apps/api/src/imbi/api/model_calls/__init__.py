@@ -61,6 +61,20 @@ END
 RETURNING *, (xmax = 0) AS inserted
 """
 
+_REPEAT: typing.LiteralString = """
+UPDATE ai_runtime.ai_model_calls
+SET status = CASE
+    WHEN status = 'running'
+     AND started_at < NOW() - make_interval(secs => %(stale)s)
+    THEN 'outcome_unknown'
+    ELSE status
+END
+WHERE organization_id = %(organization_id)s
+  AND principal = %(principal)s
+  AND idempotency_key = %(idempotency_key)s
+RETURNING *
+"""
+
 
 class ModelCallStore:
     """Reads and writes ``ai_runtime.ai_model_calls``."""
@@ -85,11 +99,43 @@ class ModelCallStore:
         }
         async with (
             self._pool.connection() as conn,
+            conn.transaction(),
             conn.cursor(row_factory=rows.dict_row) as cur,
         ):
+            await relational.lock_organization_shared(
+                conn, str(call['organization_id'])
+            )
             await cur.execute(_INSERT, {**values, 'stale': stale_after})
             row = typing.cast('Row', await cur.fetchone())
         return row, bool(row.pop('inserted'))
+
+    async def repeat(
+        self,
+        organization_id: str,
+        principal: str,
+        idempotency_key: str,
+        stale_after: float,
+    ) -> Row | None:
+        """Return the row of an earlier call with the idempotency key.
+
+        Return ``None`` when no call has the key. Set a stale
+        ``running`` row to ``outcome_unknown`` first, as :meth:`start`
+        does.
+        """
+        async with (
+            self._pool.connection() as conn,
+            conn.cursor(row_factory=rows.dict_row) as cur,
+        ):
+            await cur.execute(
+                _REPEAT,
+                {
+                    'organization_id': organization_id,
+                    'principal': principal,
+                    'idempotency_key': idempotency_key,
+                    'stale': stale_after,
+                },
+            )
+            return await cur.fetchone()
 
     async def finish(
         self,
@@ -140,6 +186,7 @@ _store: ModelCallStore | None = None
 
 async def initialize() -> None:
     """Create the ``ai_runtime`` schema, tables, and indexes."""
+    await relational.initialize_deleted_organizations()
     await relational.initialize(
         SCHEMA,
         relational.load_schemata(SCHEMATA_PATH),
