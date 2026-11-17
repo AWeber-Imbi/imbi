@@ -10264,6 +10264,11 @@ export interface components {
             default_top_p?: number | null;
             /** Monthly Spend Cap */
             monthly_spend_cap?: number | string | null;
+            /**
+             * Supports Structured Output
+             * @default false
+             */
+            supports_structured_output: boolean;
         };
         /**
          * AIModelResponse
@@ -10329,6 +10334,11 @@ export interface components {
             default_top_p?: number | null;
             /** Monthly Spend Cap */
             monthly_spend_cap?: string | null;
+            /**
+             * Supports Structured Output
+             * @default false
+             */
+            supports_structured_output: boolean;
             /** Created At */
             created_at?: string | null;
             /** Updated At */

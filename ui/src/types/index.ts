@@ -59,6 +59,7 @@ export interface AIModel {
   provider_id: string
   provider_name: string
   slug: string
+  supports_structured_output: boolean
   updated_at?: null | string
 }
 
@@ -85,6 +86,7 @@ export interface AIModelCreate {
   output_cost_per_million?: null | number
   provider_id: string
   slug?: string
+  supports_structured_output?: boolean
 }
 
 export interface AIModelImport {

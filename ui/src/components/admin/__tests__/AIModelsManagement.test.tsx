@@ -105,6 +105,7 @@ const model: AIModel = {
   provider_id: 'prov-1',
   provider_name: 'Anthropic',
   slug: 'claude-fable-5-1',
+  supports_structured_output: false,
 }
 
 const typesafe: AIProvider = {
@@ -388,6 +389,25 @@ describe('AIModelsManagement', () => {
       expect(endpoints.updateAIModel).toHaveBeenCalledWith('model-1', [
         { op: 'replace', path: '/cache_read_cost_per_million', value: 0.3 },
         { op: 'replace', path: '/cache_write_cost_per_million', value: 3.75 },
+      ]),
+    )
+  })
+
+  it('patches the structured output flag of a model', async () => {
+    const endpoints = await import('@/api/endpoints')
+    await mountAt('/admin/ai-models/model-1/edit')
+
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    await waitFor(() =>
+      expect(screen.getByLabelText('Structured output')).toBeInTheDocument(),
+    )
+    fireEvent.click(screen.getByLabelText('Structured output'))
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() =>
+      expect(endpoints.updateAIModel).toHaveBeenCalledWith('model-1', [
+        { op: 'replace', path: '/supports_structured_output', value: true },
       ]),
     )
   })

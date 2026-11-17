@@ -55,6 +55,7 @@ export interface ModelFormValues {
   name: string
   output_cost_per_million: null | number
   provider_id: string
+  supports_structured_output: boolean
 }
 
 interface ModelDialogProps {
@@ -383,6 +384,24 @@ export function ModelDialog({
                       value={text.default_top_p}
                     />
                   </div>
+                  <div className="border-tertiary flex items-center justify-between rounded-md border p-3">
+                    <div>
+                      <div className="text-primary text-sm font-medium">
+                        Structured output
+                      </div>
+                      <p className="text-tertiary text-sm">
+                        The model can return JSON that matches a schema.
+                        Workflow analysis steps with output fields need it.
+                      </p>
+                    </div>
+                    <Switch
+                      aria-label="Structured output"
+                      checked={values.supports_structured_output}
+                      onCheckedChange={(on) =>
+                        set('supports_structured_output', on)
+                      }
+                    />
+                  </div>
                 </>
               )}
               <NumberField
@@ -550,6 +569,7 @@ function initialValues(
       name: '',
       output_cost_per_million: null,
       provider_id: defaultProviderId ?? '',
+      supports_structured_output: false,
     }
   }
   return {
@@ -574,6 +594,7 @@ function initialValues(
     name: model.name,
     output_cost_per_million: decimalToNumber(model.output_cost_per_million),
     provider_id: model.provider_id,
+    supports_structured_output: model.supports_structured_output,
   }
 }
 

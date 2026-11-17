@@ -860,6 +860,9 @@ class AIModel(Node):
     monthly_spend_cap: decimal.Decimal | None = pydantic.Field(
         default=None, ge=0
     )
+    #: Set by an admin. ``False`` means an unknown model: a workflow
+    #: ``analysis`` step with output fields does not use it.
+    supports_structured_output: bool = False
 
 
 #: Namespaces, prompt slugs, and label names share one shape, so a
