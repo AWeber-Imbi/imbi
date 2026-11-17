@@ -385,6 +385,23 @@ DETACH DELETE p
 RETURN 1 AS deleted
 """
 
+#: The prompts of an organization that is deleted go with it, so that
+#: a later organization with the same slug does not get them. The
+#: slug is read in the delete transaction, matched by id.
+_DELETE_ORG_VERSIONS_QUERY: typing.LiteralString = """
+MATCH (o:Organization {{id: {org_id}}})
+MATCH (v:PromptVersion)-[:VERSION_OF]->(p:Prompt)
+WHERE p.namespace IN {namespaces} AND p.slug STARTS WITH (o.slug + '.')
+DETACH DELETE v
+"""
+
+_DELETE_ORG_PROMPTS_QUERY: typing.LiteralString = """
+MATCH (o:Organization {{id: {org_id}}})
+MATCH (p:Prompt)
+WHERE p.namespace IN {namespaces} AND p.slug STARTS WITH (o.slug + '.')
+DETACH DELETE p
+"""
+
 #: Labels change by read, modify, write. The ``updated_at`` match makes
 #: the write fail when another write came first, instead of losing it.
 _SET_LABELS_QUERY: typing.LiteralString = """
@@ -756,6 +773,19 @@ async def archive_prompts_except(
         },
         ['slug'],
     )
+
+
+async def delete_org_prompts(
+    execute: graph.CypherExecute, org_id: str
+) -> None:
+    """Delete the prompts of an organization and their versions.
+
+    Call this in the transaction that deletes the organization, before
+    the organization node is deleted.
+    """
+    params = {'org_id': org_id, 'namespaces': list(_ORG_NAMESPACES)}
+    await execute(_DELETE_ORG_VERSIONS_QUERY, params, [])
+    await execute(_DELETE_ORG_PROMPTS_QUERY, params, [])
 
 
 async def _require_access(
@@ -1861,27 +1891,31 @@ async def create_prompt_version(
     _check_kind(prompt.kind, data)
     _check_tools(prompt.namespace, data)
     _check_templates(data)
-    if prompt.archived_at is not None:
-        await db.execute(
-            _UNARCHIVE_QUERY,
-            {
-                'id': prompt.id,
-                'now': _DATETIME.dump_python(_now(), mode='json'),
-            },
-            ['p'],
-        )
+    archived = prompt.archived_at is not None
+    now = _DATETIME.dump_python(_now(), mode='json')
     if latest:
         newest = await _fetch_version(db, prompt, latest)
         if newest.content_sha256 == content_sha256(data):
+            if archived:
+                await db.execute(
+                    _UNARCHIVE_QUERY, {'id': prompt.id, 'now': now}, ['p']
+                )
             response.status_code = 200
             return _version_response(newest, prompt)
     model_id = await _model_id_for(db, data.model, prompt.kind)
     version, props = _version_props(
         prompt, latest + 1, data, model_id, auth.principal_name
     )
+    # The prompt is un-archived in the same statement, so a failed
+    # write leaves it archived.
     query = (
         'MATCH (p:Prompt {{id: {prompt_id}}})'
-        f' CREATE (v:PromptVersion {props_template(props)})'
+        + (
+            ' SET p.archived_at = NULL, p.updated_at = {now}'
+            if archived
+            else ''
+        )
+        + f' CREATE (v:PromptVersion {props_template(props)})'
         ' CREATE (v)-[:VERSION_OF]->(p)'
         ' RETURN v'
     )
@@ -1889,7 +1923,7 @@ async def create_prompt_version(
         f'Version {latest + 1} of {namespace}/{slug} was saved by another '
         'request; reload the prompt and try again'
     ):
-        records = await db.execute(query, props, ['v'])
+        records = await db.execute(query, {**props, 'now': now}, ['v'])
     if not records:
         raise fastapi.HTTPException(
             status_code=404, detail=f'Prompt {namespace}/{slug} not found'

@@ -277,9 +277,11 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
 
     def test_delete_organization(self) -> None:
         """An empty organization is deleted."""
-        # org id, contents, delete
+        # org id, contents, prompt versions, prompts, delete
         self.mock_db.execute.side_effect = [
             [{'id': 'org-1'}],
+            [],
+            [],
             [],
             [{'deleted': 1}],
         ]
@@ -298,10 +300,28 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(
             self.mock_db.execute.await_args.args[1], {'org_id': 'org-1'}
         )
+        # The organization's prompts go with it, so that a later
+        # organization with the same slug does not get them.
+        prompt_calls = self.mock_db.execute.await_args_list[2:4]
+        for call, needle in zip(
+            prompt_calls, ('DETACH DELETE v', 'DETACH DELETE p'), strict=True
+        ):
+            self.assertIn(needle, call.args[0])
+            self.assertIn("p.slug STARTS WITH (o.slug + '.')", call.args[0])
+            self.assertEqual(
+                call.args[1],
+                {'org_id': 'org-1', 'namespaces': ['agents', 'workflows']},
+            )
 
     def test_delete_organization_changed_during_delete(self) -> None:
         """A delete that matches no node is refused, not reported done."""
-        self.mock_db.execute.side_effect = [[{'id': 'org-1'}], [], []]
+        self.mock_db.execute.side_effect = [
+            [{'id': 'org-1'}],
+            [],
+            [],
+            [],
+            [],
+        ]
 
         response = self.client.delete('/organizations/engineering')
 
@@ -743,6 +763,51 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
             ['id'],
         )
         self.assertEqual(records, [])
+
+    async def test_prompts_of_the_organization_are_deleted(self) -> None:
+        # A later organization with the same slug must not get them.
+        # The prompt of another organization whose slug starts with
+        # this slug stays.
+        other = f'{self.org}x.wf.step'
+        for slug in (f'{self.org}.wf.step', other):
+            await self.graph.execute(
+                "CREATE (p:Prompt {{id: {slug}, namespace: 'workflows',"
+                ' slug: {slug}}})'
+                ' CREATE (:PromptVersion {{prompt_id: {slug}, n: 1}})'
+                '-[:VERSION_OF]->(p) RETURN p.id AS id',
+                {'slug': slug},
+                ['id'],
+            )
+        for label in ('Prompt', 'PromptVersion'):
+            self.addAsyncCleanup(
+                self.graph.execute,
+                f'MATCH (n:{label}) WHERE n.id = {{slug}}'
+                ' OR n.prompt_id = {slug} DETACH DELETE n',
+                {'slug': other},
+                [],
+            )
+
+        response = await self.client.delete(f'/organizations/{self.org}')
+
+        self.assertEqual(response.status_code, 204, response.text)
+        records = await self.graph.execute(
+            'MATCH (p:Prompt) WHERE p.slug STARTS WITH {org}'
+            ' RETURN p.slug AS slug',
+            {'org': self.org},
+            ['slug'],
+        )
+        self.assertEqual(
+            [graph.parse_agtype(r['slug']) for r in records], [other]
+        )
+        records = await self.graph.execute(
+            'MATCH (v:PromptVersion) WHERE v.prompt_id STARTS WITH {org}'
+            ' RETURN v.prompt_id AS id',
+            {'org': self.org},
+            ['id'],
+        )
+        self.assertEqual(
+            [graph.parse_agtype(r['id']) for r in records], [other]
+        )
 
     async def test_workflows_and_bindings_block_the_delete(self) -> None:
         workflow_id = uuid.uuid4()

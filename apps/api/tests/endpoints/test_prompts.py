@@ -1008,6 +1008,52 @@ class ArchiveTestCase(PromptTestBase):
                 json=WorkflowPromptTestCase.BODY,
             )
         self.assertEqual(response.status_code, 201, response.text)
+        # One statement un-archives and writes the version.
+        create = next(q for q, _ in router.calls if CREATE_VERSION in q)
+        self.assertIn('SET p.archived_at = NULL', create)
+        self.assertIn('now', router.params_for(CREATE_VERSION))
+        self.assertFalse(
+            any(prompts._UNARCHIVE_QUERY in q for q, _ in router.calls)
+        )
+
+    def test_failed_version_keeps_workflows_prompt_archived(self) -> None:
+        wf = WorkflowPromptTestCase.WF
+        self.as_principal('prompt:read', 'workflow:write')
+        router = self.route(
+            (GET_PROMPT, prompt_row(1, **wf, **self.ARCHIVED)),
+            (GET_VERSION, version_row(1)),
+        )
+        with mock.patch.object(
+            prompts, 'caller_org_slugs', mock.AsyncMock(return_value={ORG})
+        ):
+            response = self.client.post(
+                WorkflowPromptTestCase.URL + '/versions',
+                json=WorkflowPromptTestCase.BODY,
+            )
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertFalse(
+            any(
+                prompts._UNARCHIVE_QUERY in q or CREATE_VERSION in q
+                for q, _ in router.calls
+            )
+        )
+
+    def test_unchanged_version_unarchives_a_workflows_prompt(self) -> None:
+        wf = WorkflowPromptTestCase.WF
+        self.as_principal('prompt:read', 'workflow:write')
+        body = WorkflowPromptTestCase.BODY
+        sha = prompts.content_sha256(prompts.PromptVersionCreate(**body))
+        router = self.route(
+            (GET_PROMPT, prompt_row(1, **wf, **self.ARCHIVED)),
+            (GET_VERSION, version_row(1, content_sha256=sha)),
+        )
+        with mock.patch.object(
+            prompts, 'caller_org_slugs', mock.AsyncMock(return_value={ORG})
+        ):
+            response = self.client.post(
+                WorkflowPromptTestCase.URL + '/versions', json=body
+            )
+        self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(
             router.params_for(prompts._UNARCHIVE_QUERY)['id'], 'prm-1'
         )

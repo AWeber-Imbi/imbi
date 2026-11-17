@@ -61,7 +61,7 @@ from .project_logs import project_logs_router
 from .project_pr_sync import project_pr_sync_router
 from .project_types import project_types_router
 from .projects import projects_router
-from .prompts import prompt_render_router
+from .prompts import delete_org_prompts, prompt_render_router
 from .pull_requests import pull_requests_project_router, pull_requests_router
 from .releases import releases_router
 from .search import search_router
@@ -778,7 +778,8 @@ async def delete_organization(
 ) -> None:
     """Delete an empty organization.
 
-    Its memberships, agent tasks, workflow runs, AI model calls, secret
+    Its memberships, agent tasks, workflow runs, AI model calls,
+    ``workflows/<org>.*`` and ``agents/<org>.*`` prompts, secret
     grants, and settled secret resolutions go with it.
 
     Parameters:
@@ -846,6 +847,7 @@ async def delete_organization(
                 ),
                 (org_id,),
             )
+        await delete_org_prompts(execute, org_id)
         # Match by id: a rename since the slug lookup must not leave
         # the organization in place or delete a new one with the slug.
         deleted = await execute(
