@@ -72,7 +72,7 @@ class FakeManager:
         return ['list']
 
 
-CREATE_TASK = 'create_ticket_api_organizations__org_slug__tickets__post'
+CREATE_TICKET = 'create_ticket_api_organizations__org_slug__tickets__post'
 
 
 class FakeTaskApi(FakeManager):
@@ -108,7 +108,7 @@ class FakeModel:
         tool_use = types.SimpleNamespace(
             type='tool_use',
             id='t1',
-            name=CREATE_TASK,
+            name=CREATE_TICKET,
             input={
                 'org_slug': 'eng',
                 'agent_slug': 'mender',
