@@ -268,6 +268,26 @@ class GenerativeRunTestCase(base.PromptTestBase):
         sent: generate.Request = self.generate.await_args.args[0]
         self.assertEqual(sent.output_fields[0].name, 'severity')
 
+    def test_grant_in_another_org_does_not_run(self) -> None:
+        # prompt:update in another org only: check_member keeps the
+        # permissions of this org, which has none.
+        self.as_principal('prompt:update')
+
+        async def narrow(_slug: str, _db: object, auth: typing.Any) -> str:
+            auth.permissions = set()
+            return 'org-1'
+
+        self._patch(
+            prompts.organizations,
+            'check_member',
+            mock.AsyncMock(side_effect=narrow),
+        )
+        self.route_run()
+        response = self.run_ref()
+        self.assertEqual(response.status_code, 403, response.text)
+        self.generate.assert_not_awaited()
+        self.calls.start.assert_not_awaited()
+
     def test_run_permission_runs_a_saved_version(self) -> None:
         self.as_principal('prompt:run')
         self.route_run()

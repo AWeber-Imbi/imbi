@@ -38,6 +38,7 @@ import urllib.parse
 import uuid
 
 import httpx
+import psycopg
 import pydantic
 
 from imbi.common import graph
@@ -526,6 +527,20 @@ class Executors:
                 org = await self.org_slug(call.organization_id)
         except TimeoutError:
             return resume
+        except psycopg.OperationalError:
+            # The graph is not reachable. An error here would make the
+            # engine retry with a new key while an earlier call of this
+            # attempt can still run, so ask again later with this key.
+            LOGGER.warning(
+                'LLM Call %s: organization lookup failed; asking again',
+                call.node.id,
+                exc_info=True,
+            )
+            return Outcome(
+                resume_at=_now()
+                + datetime.timedelta(seconds=LLM_CALL_POLL_SECONDS),
+                state=call.state,
+            )
         wait_seconds = min(LLM_CALL_TIMEOUT, deadline - loop.time())
         if wait_seconds <= 0:
             return resume

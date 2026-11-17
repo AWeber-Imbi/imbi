@@ -1462,12 +1462,14 @@ async def run_prompt(
         503: The provider is unavailable or rate limited; try again.
 
     """
+    # First, so that every check below uses only the permissions of the
+    # caller in this organization, not those of their other orgs.
+    org_id = await organizations.check_member(org_slug, db, auth)
     # A repeated key returns the first outcome before the live prompt
     # and model are resolved, so a deleted prompt or a disabled model
     # does not lose the answer. Only the organization member and
     # principal that made the call can repeat its key.
     if idempotency_key is not None:
-        org_id = await organizations.check_member(org_slug, db, auth)
         row = await calls.repeat(
             org_id, auth.principal_name, idempotency_key, STALE_AFTER
         )
@@ -1482,6 +1484,7 @@ async def run_prompt(
     if prompt.kind == 'generative':
         return await _run_generative(
             org_slug,
+            org_id,
             data,
             request,
             db,
@@ -1625,6 +1628,7 @@ def _repeat(row: dict[str, typing.Any]) -> RunResponse:
 
 async def _run_generative(
     org_slug: str,
+    org_id: str,
     data: RunRequest,
     request: fastapi.Request,
     db: graph.Graph,
@@ -1638,7 +1642,6 @@ async def _run_generative(
     idempotency_key: str | None,
 ) -> RunResponse:
     """Run a generative prompt; see :func:`run_prompt`."""
-    org_id = await organizations.check_member(org_slug, db, auth)
     if version.model is None:
         raise _unprocessable('Choose a generative model to run the prompt')
     records = await db.execute(

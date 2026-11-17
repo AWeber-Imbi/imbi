@@ -18,6 +18,7 @@ from unittest import mock
 import fastapi
 import httpx
 import orjson
+import psycopg
 from psycopg import rows
 
 from imbi.api import agent_tasks, models, workflows
@@ -2196,6 +2197,28 @@ class LLMCallStepTestCase(EngineTestCase):
             return await org_slug(self_, org_id)
 
         with mock.patch.object(executors.Executors, 'org_slug', slow):
+            run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(self._keys()[:2], ['sum:1', 'sum:1'])
+        self.assertEqual(run['steps']['sum']['attempt'], 1)
+
+    async def test_failed_org_slug_lookup_keeps_the_attempt(self) -> None:
+        # After an unknown outcome the step resumes. A lost graph
+        # connection in the lookup must not retry with a new key.
+        self.answers = [
+            self._error(409, 'call_in_progress', True),
+            self._answer(),
+        ]
+        org_slug = executors.Executors.org_slug
+        lookups: list[str] = []
+
+        async def flaky(self_: executors.Executors, org_id: str) -> str:
+            lookups.append(org_id)
+            if len(lookups) == 2:
+                raise psycopg.OperationalError('connection lost')
+            return await org_slug(self_, org_id)
+
+        with mock.patch.object(executors.Executors, 'org_slug', flaky):
             run = await self._drive_llm_call()
         self.assertEqual(run['status'], 'succeeded', run['error'])
         self.assertEqual(self._keys()[:2], ['sum:1', 'sum:1'])
