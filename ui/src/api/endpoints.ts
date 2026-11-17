@@ -3823,11 +3823,11 @@ export const restoreAgentVersion = (orgSlug: string, slug: string, n: number) =>
   apiClient.post<Agent>(`${agentPath(orgSlug, slug)}/versions/${n}/restore`)
 
 // Tickets (ADR 0020, ADR 0028). A ticket is addressed by its short id (`T-<n>`).
-const ticketsPath = (orgSlug: string) =>
+const ticketsApiPath = (orgSlug: string) =>
   `/organizations/${encodeURIComponent(orgSlug)}/tickets`
 
 const ticketPath = (orgSlug: string, shortId: string) =>
-  `${ticketsPath(orgSlug)}/${encodeURIComponent(shortId)}`
+  `${ticketsApiPath(orgSlug)}/${encodeURIComponent(shortId)}`
 
 export interface TicketListParams {
   agent_id?: string[]
@@ -3847,7 +3847,7 @@ export const listTickets = (
   signal?: AbortSignal,
 ) =>
   apiClient.get<TicketListItem[]>(
-    `${ticketsPath(orgSlug)}/`,
+    `${ticketsApiPath(orgSlug)}/`,
     { ...params },
     signal,
   )
@@ -3859,7 +3859,7 @@ export const countTickets = (
   signal?: AbortSignal,
 ) =>
   apiClient.get<TicketCounts>(
-    `${ticketsPath(orgSlug)}/counts`,
+    `${ticketsApiPath(orgSlug)}/counts`,
     { ...params },
     signal,
   )
@@ -3877,13 +3877,13 @@ export const getTicketPosition = (
 /** The number of blocked tasks in the org (the "waiting on you" badge). */
 export const countWaitingTickets = (orgSlug: string, signal?: AbortSignal) =>
   apiClient.get<{ count: number }>(
-    `${ticketsPath(orgSlug)}/waiting`,
+    `${ticketsApiPath(orgSlug)}/waiting`,
     undefined,
     signal,
   )
 
 export const createTicket = (orgSlug: string, task: TicketCreate) =>
-  apiClient.post<Ticket>(`${ticketsPath(orgSlug)}/`, task)
+  apiClient.post<Ticket>(`${ticketsApiPath(orgSlug)}/`, task)
 
 export const getTicket = (
   orgSlug: string,

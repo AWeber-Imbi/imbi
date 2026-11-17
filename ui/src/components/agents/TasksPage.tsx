@@ -56,7 +56,7 @@ import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { queryKeys } from '@/lib/queryKeys'
 import { storage } from '@/lib/storage'
-import { cn, migrateStorageKey } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import type { TaskHighlight, TicketCounts, TicketListItem } from '@/types'
 
 import { useAgentList } from './agentQueries'
@@ -82,15 +82,11 @@ import { SEARCH_MATCH, useMatchHighlight } from './taskSearch'
 import { useStoredState } from './useStoredState'
 import { useVirtualRows } from './virtualRows'
 
-/** A short id: an old link (`/agents/tasks/<short id>`) has no org. */
+/**
+ * A short id: an old link (`/agents/tasks/<short id>`) has no org.
+ * Remove in release B, with the redirect in App.tsx.
+ */
 const SHORT_ID = /^T-\d+$/
-
-const SPLIT_ID = 'imbi:tickets:split'
-// The key format of react-resizable-panels: the group id, then the panel ids.
-migrateStorageKey(
-  'react-resizable-panels:imbi:agent-tasks:split:list:detail',
-  `react-resizable-panels:${SPLIT_ID}:list:detail`,
-)
 
 /**
  * Tickets: the inbox in a resizable pane and the ticket in the URL
@@ -125,7 +121,7 @@ export function TasksPage() {
     previousOrg.current = orgSlug
   }, [orgSlug, taskOrg, navigate])
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
-    id: SPLIT_ID,
+    id: 'imbi:tickets:split',
     panelIds: ['list', 'detail'],
     storage,
   })
@@ -140,6 +136,7 @@ export function TasksPage() {
     )
   }
 
+  // Remove in release B (ADR 0028).
   if (legacy) {
     const rest = [orgSlug, shortId!, ...(tab ? [tab] : [])]
     return <Navigate replace to={ticketsPath(...rest)} />

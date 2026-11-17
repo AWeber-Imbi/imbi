@@ -1,7 +1,6 @@
 import { useCallback, useState } from 'react'
 
 import { storage } from '@/lib/storage'
-import { migrateStorageKey } from '@/lib/utils'
 
 import type { ProcessGroup, Turn } from './conversationTurns'
 import { isError, type TimelineEntry } from './taskTimeline'
@@ -15,8 +14,6 @@ export const CONVERSATION_MODES: ConversationMode[] = [
 ]
 
 export const MODE_KEY = 'imbi:ticket:conversation-mode'
-/** The key before ADR 0028. The first read moves its value to MODE_KEY. */
-export const OLD_MODE_KEY = 'imbi:agent-task:conversation-mode'
 
 /** No mode and no reader can fold a turn that runs, failed, or was steered. */
 export function canCollapseTurn(turn: Turn): boolean {
@@ -98,7 +95,6 @@ export function useConversationMode(): [
   (mode: ConversationMode) => void,
 ] {
   const [mode, setMode] = useState<ConversationMode>(() => {
-    migrateStorageKey(OLD_MODE_KEY, MODE_KEY)
     const saved = storage.getItem(MODE_KEY)
     return isConversationMode(saved) ? saved : 'standard'
   })

@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '@/api/client'
 import * as endpoints from '@/api/endpoints'
-import { LegacyTasksRedirect } from '@/pages/TicketsPage'
+import { LegacyTasksRedirect } from '@/pages/LegacyTasksRedirect'
 import { act, fireEvent, render, screen, waitFor, within } from '@/test/utils'
 import type { TicketListItem } from '@/types'
 

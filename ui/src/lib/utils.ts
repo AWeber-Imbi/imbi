@@ -25,6 +25,22 @@ export function extractDynamicFields(
 }
 
 /**
+ * Move the localStorage keys that ADR 0028 renamed. Call once at startup,
+ * before a page reads them. Remove in release B.
+ */
+export function migrateLegacyStorage(): void {
+  migrateStorageKey(
+    'imbi:agent-task:conversation-mode',
+    'imbi:ticket:conversation-mode',
+  )
+  // The react-resizable-panels key: the group id, then the panel ids.
+  migrateStorageKey(
+    'react-resizable-panels:imbi:agent-tasks:split:list:detail',
+    'react-resizable-panels:imbi:tickets:split:list:detail',
+  )
+}
+
+/**
  * Move a localStorage value from an old key to a new key, once. A value
  * already at the new key wins. Storage can be blocked; then nothing moves.
  */

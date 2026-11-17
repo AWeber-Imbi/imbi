@@ -13,6 +13,7 @@ import { OrganizationProvider } from './contexts/OrganizationContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { useAuth } from './hooks/useAuth'
 import { useVersionCheck } from './hooks/useVersionCheck'
+import { LegacyTasksRedirect } from './pages/LegacyTasksRedirect'
 
 const DashboardPage = lazy(() =>
   import('./pages/DashboardPage').then((m) => ({ default: m.DashboardPage })),
@@ -43,11 +44,6 @@ const AgentsPage = lazy(() =>
 )
 const TicketsPage = lazy(() =>
   import('./pages/TicketsPage').then((m) => ({ default: m.TicketsPage })),
-)
-const LegacyTasksRedirect = lazy(() =>
-  import('./pages/TicketsPage').then((m) => ({
-    default: m.LegacyTasksRedirect,
-  })),
 )
 const AdminPage = lazy(() =>
   import('./pages/AdminPage').then((m) => ({ default: m.AdminPage })),
@@ -172,7 +168,8 @@ function App() {
                   }
                   path="/tickets/:slug?/:action?/:tab?"
                 />
-                {/* Tickets were Agents > Tasks before ADR 0028. */}
+                {/* Tickets were Agents > Tasks before ADR 0028.
+                    Remove in release B. */}
                 <Route
                   element={<LegacyTasksRedirect />}
                   path="/agents/tasks/:slug?/:action?/:tab?"

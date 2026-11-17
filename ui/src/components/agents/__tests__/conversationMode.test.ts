@@ -8,7 +8,6 @@ import {
   groupOpenByDefault,
   groupSummary,
   MODE_KEY,
-  OLD_MODE_KEY,
   turnOpenByDefault,
   turnTitle,
   useConversationMode,
@@ -146,11 +145,6 @@ describe('useConversationMode', () => {
         store.set(key, value)
       },
     )
-    vi.mocked(window.localStorage.removeItem).mockImplementation(
-      (key: string) => {
-        store.delete(key)
-      },
-    )
   })
 
   it('defaults to standard and stores the choice', () => {
@@ -162,24 +156,6 @@ describe('useConversationMode', () => {
     expect(renderHook(() => useConversationMode()).result.current[0]).toBe(
       'verbose',
     )
-  })
-
-  it('moves the mode from the old key once', () => {
-    window.localStorage.setItem(OLD_MODE_KEY, 'compact')
-    expect(renderHook(() => useConversationMode()).result.current[0]).toBe(
-      'compact',
-    )
-    expect(window.localStorage.getItem(MODE_KEY)).toBe('compact')
-    expect(window.localStorage.getItem(OLD_MODE_KEY)).toBeNull()
-  })
-
-  it('keeps the new key when both keys have a mode', () => {
-    window.localStorage.setItem(MODE_KEY, 'verbose')
-    window.localStorage.setItem(OLD_MODE_KEY, 'compact')
-    expect(renderHook(() => useConversationMode()).result.current[0]).toBe(
-      'verbose',
-    )
-    expect(window.localStorage.getItem(OLD_MODE_KEY)).toBeNull()
   })
 
   it('ignores an unknown stored value', () => {
