@@ -129,7 +129,7 @@ with one output port has no port name.
 | `model_decision` | Model decision | Logic | One for each branch |
 | `condition` | Condition | Logic | `True`, `False` |
 | `script` | Script | Logic | One, or one for each branch |
-| `analysis` | Analysis | Logic | One |
+| `llm_call` | LLM Call | Logic | One |
 | `email` | Send email | Actions | One |
 | `slack` | Slack message | Actions | One |
 | `deploy` | Deploy | Actions | `Succeeded`, `Failed` |
@@ -145,7 +145,7 @@ count:
 | `model_decision` | 60 seconds | 2 |
 | `condition` | 10 seconds | 0 |
 | `script` | 30 seconds. The script itself stops at 5 seconds | 0 |
-| `analysis` | 5 minutes. One model call stops at 2 minutes | 2 |
+| `llm_call` | 5 minutes. One model call stops at 2 minutes | 2 |
 | `email` | 2 minutes | 0 |
 | `slack` | 2 minutes | 3, for a Slack rate limit only |
 | `deploy`, `rollback` | 1 hour | 2 |
@@ -347,12 +347,12 @@ error is one of these:
 **Output:** `result` (use `{{ <key>.result.<field> }}`), `branch`, and
 `stdout`: the first 8 KiB of the text that the script printed.
 
-### Analysis
+### LLM Call
 
 Sends a prompt to a generative model from the AI Model catalog and
 returns the answer. Use it to summarize, classify, or extract data from
 earlier steps, or to write the brief of a later agent task. See
-[ADR 0030](../api/adr/0030-workflow-analysis-step.md).
+[ADR 0030](../api/adr/0030-workflow-llm-call-step.md).
 
 The inspector has these fields:
 
@@ -765,7 +765,7 @@ only. The permissions that steps need:
 | Webhook | `webhook:update` |
 | Deploy, Rollback | `project:deployment:write` |
 | Agent task | `agent_task:create` |
-| Analysis | `prompt:run` |
+| LLM Call | `prompt:run` |
 
 Imbi records who activated the workflow. A workflow cannot do more than
 that person can do. When a run starts, the engine checks the person again.

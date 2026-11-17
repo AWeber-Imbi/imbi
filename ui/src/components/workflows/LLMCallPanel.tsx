@@ -15,6 +15,8 @@ import { extractApiErrorDetail } from '@/lib/apiError'
 import { queryKeys } from '@/lib/queryKeys'
 import type { PromptRunRequest } from '@/types'
 
+import { InputsField } from './InputsField'
+import { JsonBlock } from './JsonBlock'
 import {
   draftFromVersion,
   EMPTY_PROMPT,
@@ -24,9 +26,7 @@ import {
   promptContent,
   promptSlug,
   type StepPrompt,
-} from './analysisPrompt'
-import { InputsField } from './InputsField'
-import { JsonBlock } from './JsonBlock'
+} from './llmCallPrompt'
 import type { OutputField } from './outputFields'
 import { OutputFieldsField } from './OutputFieldsField'
 import type { ReferenceGroup } from './references'
@@ -35,11 +35,11 @@ import { parseSample, sampleInputs } from './ScriptPreview'
 import type { WorkflowNode } from './types'
 
 /**
- * The params of an analysis step. The prompt, the model, and its
+ * The params of an LLM Call step. The prompt, the model, and its
  * params are stored in the Prompt CMS when the workflow is saved; the
  * inputs and the output fields are step params.
  */
-export function AnalysisPanel({
+export function LLMCallPanel({
   node,
   onChange,
   onPromptChange,
@@ -171,7 +171,7 @@ export function AnalysisPanel({
           </p>
         )}
       </FormField>
-      <AnalysisPreview
+      <LLMCallPreview
         exists={node.params.prompt_ref === `${NAMESPACE}/${slug}`}
         inputs={node.params.inputs}
         name={`${workflowName} / ${node.title}`}
@@ -186,7 +186,7 @@ export function AnalysisPanel({
 }
 
 /** Run the draft prompt now with sample values. Nothing is saved. */
-function AnalysisPreview({
+function LLMCallPreview({
   exists,
   inputs,
   name,

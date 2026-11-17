@@ -340,7 +340,7 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             label='Prune AI Model Calls',
             description=(
                 'Delete the records of AI model calls (prompt runs and '
-                'workflow analysis steps) older than 90 days. The '
+                'workflow LLM Call steps) older than 90 days. The '
                 'scheduler runs this daily at 02:30 UTC.'
             ),
             pause_key=None,

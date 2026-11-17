@@ -6023,7 +6023,7 @@ export interface paths {
          *         409: The slug is in use in the org.
          *         422: The graph is too large, the team is not in the org, the
          *             name gives an empty slug and no slug is supplied, or the
-         *             prompt of an analysis step is not valid.
+         *             prompt of an LLM Call step is not valid.
          */
         post: operations["create_workflow_api_organizations__org_slug__workflows__post"];
         delete?: never;
@@ -6050,7 +6050,7 @@ export interface paths {
          *     Only an admin or a member of the current owner team can change the
          *     owner team, because the owner team controls the runs.
          *
-         *     The CMS prompt of each analysis node that the save removes is
+         *     The CMS prompt of each LLM Call node that the save removes is
          *     archived.
          *
          *     Raises:
@@ -6060,7 +6060,7 @@ export interface paths {
          *         409: ``conflict``: the workflow changed owner team or was
          *             deleted between the check and the save.
          *         422: The graph is too large, the team is not in the org, or
-         *             the prompt of an analysis step is not valid.
+         *             the prompt of an LLM Call step is not valid.
          */
         put: operations["save_workflow_api_organizations__org_slug__workflows__slug__put"];
         post?: never;
@@ -6068,7 +6068,7 @@ export interface paths {
          * Delete Workflow
          * @description Delete a workflow that has no open runs.
          *
-         *     The CMS prompts of its analysis nodes are archived.
+         *     The CMS prompts of its LLM Call nodes are archived.
          *
          *     Raises:
          *         404: No such workflow.

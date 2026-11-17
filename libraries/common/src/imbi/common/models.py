@@ -861,7 +861,7 @@ class AIModel(Node):
         default=None, ge=0
     )
     #: Set by an admin. ``False`` means an unknown model: a workflow
-    #: ``analysis`` step with output fields does not use it.
+    #: ``llm_call`` step with output fields does not use it.
     supports_structured_output: bool = False
 
 

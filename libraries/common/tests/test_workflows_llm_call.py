@@ -1,4 +1,4 @@
-"""Tests for the ``analysis`` step type."""
+"""Tests for the ``llm_call`` step type."""
 
 import typing
 import unittest
@@ -6,13 +6,13 @@ import unittest
 import pydantic
 
 from imbi.common.workflows import graph, registry, validation
-from imbi.common.workflows.registry import analysis
+from imbi.common.workflows.registry import llm_call
 
 FIELDS: list[dict[str, typing.Any]] = [{'name': 'risk', 'type': 'string'}]
 
 
-def _params(**overrides: typing.Any) -> analysis.Params:
-    return analysis.Params.model_validate(
+def _params(**overrides: typing.Any) -> llm_call.Params:
+    return llm_call.Params.model_validate(
         {'prompt_ref': 'workflows/acme.wf.sum', 'prompt_version': 1}
         | overrides
     )
@@ -57,12 +57,12 @@ class ParamsTestCase(unittest.TestCase):
                 _params(**overrides)
 
     def test_step(self) -> None:
-        step = registry.STEP_TYPES['analysis']
+        step = registry.STEP_TYPES['llm_call']
         self.assertEqual(step.category, 'logic')
         self.assertEqual(step.ports_for({}), [''])
         self.assertEqual(step.required_permissions({}), {'prompt:run'})
         self.assertFalse(step.side_effect)
-        analysis.Output.model_validate(step.sample_output)
+        llm_call.Output.model_validate(step.sample_output)
 
     def test_result_references_are_checked(self) -> None:
         def issues(reference: str) -> list[str]:
@@ -72,7 +72,7 @@ class ParamsTestCase(unittest.TestCase):
                         _node('start', 'manual', {}),
                         _node(
                             'sum',
-                            'analysis',
+                            'llm_call',
                             {
                                 'prompt_ref': 'workflows/acme.wf.sum',
                                 'prompt_version': 1,

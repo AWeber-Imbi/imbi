@@ -20,7 +20,7 @@ returns it after that. The step polls it until it is closed.
 A script step runs its code in the sandbox of
 :mod:`imbi.common.workflows.script_runner` (ADR 0027).
 
-An analysis step asks imbi-api to run its saved prompt, with the key
+An LLM Call step asks imbi-api to run its saved prompt, with the key
 ``<run_id>:<node_key>:<attempt>``. imbi-api records each model call
 with the key, so a repeat of an attempt (after a crash) gets the first
 answer and makes no second call. A retry is a new attempt and a new
@@ -46,10 +46,10 @@ from imbi.common.workflows import graph as wf
 from imbi.common.workflows import script_runner
 from imbi.common.workflows.registry import (
     agent,
-    analysis,
     condition,
     deploy,
     email,
+    llm_call,
     model_decision,
     rollback,
     script,
@@ -78,14 +78,14 @@ HTTP_CLIENT_ERROR = 400
 HTTP_FORBIDDEN = 403
 HTTP_SERVER_ERROR = 500
 
-#: Seconds that the engine waits for the answer of an analysis call.
+#: Seconds that the engine waits for the answer of an LLM Call step.
 #: More than the time after which imbi-api stops a call (its provider
 #: timeout, 120 seconds, plus the render and a token), so imbi-api
 #: always answers first.
-ANALYSIS_TIMEOUT = 190.0
-#: Seconds before the engine asks again for the answer of an analysis
-#: call that imbi-api still runs.
-ANALYSIS_POLL_SECONDS = 15
+LLM_CALL_TIMEOUT = 190.0
+#: Seconds before the engine asks again for the answer of an LLM Call
+#: step that imbi-api still runs.
+LLM_CALL_POLL_SECONDS = 15
 
 
 class StepError(Exception):
@@ -291,8 +291,8 @@ class Executors:
                 return await self._rollback(call)
             case 'agent':
                 return await self._agent(call)
-            case 'analysis':
-                return await self._analysis(call)
+            case 'llm_call':
+                return await self._llm_call(call)
             case other:
                 raise StepError(f'unknown_type:{other}', retry=False)
 
@@ -498,8 +498,8 @@ class Executors:
             state={'task_id': task['task_id']},
         )
 
-    async def _analysis(self, call: Call) -> Outcome:
-        params = _params(analysis.Params, call)
+    async def _llm_call(self, call: Call) -> Outcome:
+        params = _params(llm_call.Params, call)
         org = await self.org_slug(call.organization_id)
         try:
             answer = await self.api.request(
@@ -515,7 +515,7 @@ class Executors:
                 headers={
                     'Idempotency-Key': f'{call.idempotency_key}:{call.attempt}'
                 },
-                wait_seconds=ANALYSIS_TIMEOUT,
+                wait_seconds=LLM_CALL_TIMEOUT,
             )
         except StepError as e:
             if e.code != 'call_in_progress':
@@ -525,13 +525,13 @@ class Executors:
             # second call.
             return Outcome(
                 resume_at=_now()
-                + datetime.timedelta(seconds=ANALYSIS_POLL_SECONDS),
+                + datetime.timedelta(seconds=LLM_CALL_POLL_SECONDS),
                 state=call.state,
             )
         if answer.get('n') != params.prompt_version:
             raise StepError('prompt_version_mismatch', retry=False)
         return Outcome(
-            output=analysis.Output.model_validate(
+            output=llm_call.Output.model_validate(
                 {**answer, 'prompt_version': answer['n']}
             ).model_dump(mode='json')
         )

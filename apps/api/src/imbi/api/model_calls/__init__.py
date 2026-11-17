@@ -1,4 +1,4 @@
-"""The record of each generative AI model call (analysis step plan, D6).
+"""The record of each generative AI model call (LLM Call step plan, D6).
 
 The ``ai_runtime`` schema holds one row for each call that
 ``POST /organizations/{org}/prompts/run`` makes to a generative model.

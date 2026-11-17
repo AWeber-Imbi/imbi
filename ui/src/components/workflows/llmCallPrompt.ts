@@ -16,15 +16,15 @@ import type {
   WorkflowWrite,
 } from './types'
 
-// The prompt of an analysis step lives in the Prompt CMS, at
+// The prompt of an LLM Call step lives in the Prompt CMS, at
 // `workflows/<org>.<workflow>.<node key>`. The step pins one version
 // (`prompt_ref` + `prompt_version`). The editor keeps the prompt text,
 // the model, and its params here until the workflow is saved.
 
-export const ANALYSIS = 'analysis'
+export const LLM_CALL = 'llm_call'
 export const NAMESPACE = 'workflows'
 
-/** The part of an analysis step that is stored in the CMS. */
+/** The part of an LLM Call step that is stored in the CMS. */
 export interface StepPrompt {
   max_tokens: null | number
   model: null | string
@@ -41,7 +41,7 @@ export const EMPTY_PROMPT: StepPrompt = {
   user: '',
 }
 
-/** The pins that a save gives to each analysis node, by node id. */
+/** The pins that a save gives to each LLM Call node, by node id. */
 type Pins = Record<string, { prompt_ref: string; prompt_version: number }>
 
 export function draftFromVersion(version: PromptVersion): StepPrompt {
@@ -76,7 +76,7 @@ export function pinnedRef(node: WorkflowNode): null | string {
   return typeof ref === 'string' && typeof n === 'number' ? `${ref}@${n}` : null
 }
 
-/** Put the pins of a save into the graph's analysis nodes. */
+/** Put the pins of a save into the graph's LLM Call nodes. */
 export function pinNodes(graph: WorkflowGraph, pins: Pins): WorkflowGraph {
   return {
     ...graph,
@@ -117,12 +117,12 @@ export function promptSlug(orgSlug: string, workflowSlug: string, key: string) {
 }
 
 /**
- * Save a workflow. First write the CMS prompt of each analysis node,
+ * Save a workflow. First write the CMS prompt of each LLM Call node,
  * then save the workflow with the version numbers that the CMS gave:
  * the API refuses a pin to a version that does not exist.
  *
  * A new workflow is created first, with no pins (the API does not
- * check an analysis node that has no pin), because the prompt slugs
+ * check an LLM Call node that has no pin), because the prompt slugs
  * use the slug that the API gives it. `onCreated` gets the new
  * workflow, also when a later step fails.
  */
@@ -133,21 +133,21 @@ export async function saveWorkflow(
   prompts: Record<string, StepPrompt>,
   onCreated?: (created: Workflow) => void,
 ): Promise<{ pins: Pins; saved: Workflow }> {
-  const analysis = draft.graph.nodes.filter((n) => n.type === ANALYSIS)
+  const llmCalls = draft.graph.nodes.filter((n) => n.type === LLM_CALL)
   if (!slug) {
     const created = await createWorkflow(orgSlug, {
       ...draft,
       graph: unpinNodes(draft.graph),
     })
     onCreated?.(created)
-    if (!analysis.length) return { pins: {}, saved: created }
+    if (!llmCalls.length) return { pins: {}, saved: created }
     slug = created.slug
   }
   const workflowSlug = slug
   const pins: Pins = {}
   // The nodes do not depend on each other: write their prompts at once.
   await Promise.all(
-    analysis.map(async (node) => {
+    llmCalls.map(async (node) => {
       const slug = promptSlug(orgSlug, workflowSlug, node.key)
       const ref = `${NAMESPACE}/${slug}`
       const pinned = pinnedRef(node)
@@ -188,12 +188,12 @@ function createNodePrompt(
   })
 }
 
-/** Remove the pins of the graph's analysis nodes. */
+/** Remove the pins of the graph's LLM Call nodes. */
 function unpinNodes(graph: WorkflowGraph): WorkflowGraph {
   return {
     ...graph,
     nodes: graph.nodes.map((n) =>
-      n.type === ANALYSIS
+      n.type === LLM_CALL
         ? {
             ...n,
             params: Object.fromEntries(

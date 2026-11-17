@@ -68,7 +68,7 @@ class FakeApi:
             abc.Callable[[httpx.Request], abc.Awaitable[httpx.Response]] | None
         ) = None
         #: Takes the prompt run calls when set.
-        self.analysis: abc.Callable[[httpx.Request], httpx.Response] | None = (
+        self.llm_call: abc.Callable[[httpx.Request], httpx.Response] | None = (
             None
         )
 
@@ -106,8 +106,8 @@ class FakeApi:
         path = request.url.path
         if '/agent-task' in path and self.agent is not None:
             return self.agent(request)
-        if path.endswith('/prompts/run') and self.analysis is not None:
-            return self.analysis(request)
+        if path.endswith('/prompts/run') and self.llm_call is not None:
+            return self.llm_call(request)
         if path.endswith(('/email', '/failure-notice')):
             return self._once(request, lambda: self._email(request))
         if path.endswith('/slack'):
@@ -1954,8 +1954,8 @@ class ScriptStepTestCase(EngineTestCase):
 RISK = [{'name': 'risk', 'type': 'string'}]
 
 
-class AnalysisStepTestCase(EngineTestCase):
-    """The analysis step, with a fake ``POST .../prompts/run``."""
+class LLMCallStepTestCase(EngineTestCase):
+    """The LLM Call step, with a fake ``POST .../prompts/run``."""
 
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
@@ -1968,7 +1968,7 @@ class AnalysisStepTestCase(EngineTestCase):
             self.calls.append(request)
             return self.answers[min(len(self.calls), len(self.answers)) - 1]
 
-        self.api.analysis = run
+        self.api.llm_call = run
 
     def _answer(self, n: int = 1) -> httpx.Response:
         return httpx.Response(
@@ -1993,7 +1993,7 @@ class AnalysisStepTestCase(EngineTestCase):
             status, json={'detail': {'error': code, 'retry': retry}}
         )
 
-    async def _drive_analysis(self) -> dict[str, typing.Any]:
+    async def _drive_llm_call(self) -> dict[str, typing.Any]:
         params = {
             'prompt_ref': f'workflows/{self.org}.wf.sum',
             'prompt_version': 1,
@@ -2004,12 +2004,12 @@ class AnalysisStepTestCase(EngineTestCase):
                 _node('start', 'manual'),
                 _node(
                     'sum',
-                    'analysis',
+                    'llm_call',
                     {**params, 'inputs': {'diff': '{{ trigger.diff }}'}},
                 ),
                 _node(
                     'then',
-                    'analysis',
+                    'llm_call',
                     {**params, 'inputs': {'risk': '{{ sum.result.risk }}'}},
                 ),
             ],
@@ -2019,7 +2019,7 @@ class AnalysisStepTestCase(EngineTestCase):
         run_id = await self._start(workflow_id, {'diff': 'd'})
         with (
             mock.patch.object(engine, 'RETRY_BACKOFF', 0),
-            mock.patch.object(executors, 'ANALYSIS_POLL_SECONDS', 0),
+            mock.patch.object(executors, 'LLM_CALL_POLL_SECONDS', 0),
         ):
             return await self._drive(run_id)
 
@@ -2030,7 +2030,7 @@ class AnalysisStepTestCase(EngineTestCase):
 
     async def test_result_and_reference(self) -> None:
         self.answers = [self._answer()]
-        run = await self._drive_analysis()
+        run = await self._drive_llm_call()
         self.assertEqual(run['status'], 'succeeded', run['error'])
         first = self.calls[0]
         self.assertEqual(
@@ -2059,7 +2059,7 @@ class AnalysisStepTestCase(EngineTestCase):
             first.headers['Idempotency-Key'], f'{run["id"]}:sum:1'
         )
         self.assertEqual(
-            first.extensions['timeout']['read'], executors.ANALYSIS_TIMEOUT
+            first.extensions['timeout']['read'], executors.LLM_CALL_TIMEOUT
         )
         output = run['steps']['sum']['output']
         self.assertEqual(output['result'], {'risk': 'low'})
@@ -2074,7 +2074,7 @@ class AnalysisStepTestCase(EngineTestCase):
             self._error(503, 'rate_limited', True),
             self._answer(),
         ]
-        run = await self._drive_analysis()
+        run = await self._drive_llm_call()
         self.assertEqual(run['status'], 'succeeded', run['error'])
         self.assertEqual(self._keys()[:2], ['sum:1', 'sum:2'])
         self.assertEqual(run['steps']['sum']['attempt'], 2)
@@ -2086,21 +2086,21 @@ class AnalysisStepTestCase(EngineTestCase):
             self._error(409, 'call_in_progress', True),
             self._answer(),
         ]
-        run = await self._drive_analysis()
+        run = await self._drive_llm_call()
         self.assertEqual(run['status'], 'succeeded', run['error'])
         self.assertEqual(self._keys()[:2], ['sum:1', 'sum:1'])
         self.assertEqual(run['steps']['sum']['attempt'], 1)
 
     async def test_error_without_retry_fails(self) -> None:
         self.answers = [self._error(422, 'model_no_structured_output', False)]
-        run = await self._drive_analysis()
+        run = await self._drive_llm_call()
         self.assertEqual(run['status'], 'failed')
         self.assertEqual(run['error'], 'model_no_structured_output')
         self.assertEqual(len(self.calls), 1)
 
     async def test_version_mismatch_fails(self) -> None:
         self.answers = [self._answer(n=2)]
-        run = await self._drive_analysis()
+        run = await self._drive_llm_call()
         self.assertEqual(run['status'], 'failed')
         self.assertEqual(run['error'], 'prompt_version_mismatch')
         self.assertEqual(len(self.calls), 1)

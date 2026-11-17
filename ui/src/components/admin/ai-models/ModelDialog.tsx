@@ -391,7 +391,7 @@ export function ModelDialog({
                       </div>
                       <p className="text-tertiary text-sm">
                         The model can return JSON that matches a schema.
-                        Workflow analysis steps with output fields need it.
+                        Workflow LLM Call steps with output fields need it.
                       </p>
                     </div>
                     <Switch

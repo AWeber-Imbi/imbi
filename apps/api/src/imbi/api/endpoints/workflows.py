@@ -40,7 +40,7 @@ from imbi.common.workflows import (
     validation,
 )
 from imbi.common.workflows.registry import agent as agent_step
-from imbi.common.workflows.registry import analysis as analysis_step
+from imbi.common.workflows.registry import llm_call as llm_call_step
 from imbi.common.workflows.registry import script as script_step
 
 LOGGER = logging.getLogger(__name__)
@@ -398,17 +398,17 @@ RETURN m.supports_structured_output AS structured
 """
 
 
-def _analysis_ref(org_slug: str, slug: str, key: str) -> str:
-    """The CMS prompt of the analysis node ``key`` of a workflow."""
+def _llm_call_ref(org_slug: str, slug: str, key: str) -> str:
+    """The CMS prompt of the LLM Call node ``key`` of a workflow."""
     return f'{prompts.WORKFLOWS_NAMESPACE}/{org_slug}.{slug}.{key}'
 
 
-async def _check_analysis(
+async def _check_llm_call(
     db: graph.Graph, org_slug: str, slug: str, wf_graph: wf.Graph
 ) -> None:
-    """Check the prompt of each analysis node.
+    """Check the prompt of each LLM Call node.
 
-    The prompt is the node's own (see :func:`_analysis_ref`) and is
+    The prompt is the node's own (see :func:`_llm_call_ref`) and is
     generative, the pinned version exists, and with ``output_fields`` its model
     supports structured output. Invalid params are left to the
     validation issues of the version.
@@ -418,23 +418,23 @@ async def _check_analysis(
 
     """
     for node in wf_graph.nodes:
-        if node.type != analysis_step.STEP.type:
+        if node.type != llm_call_step.STEP.type:
             continue
         try:
-            params = analysis_step.Params.model_validate(node.params)
+            params = llm_call_step.Params.model_validate(node.params)
         except pydantic.ValidationError:
             continue
-        ref = _analysis_ref(org_slug, slug, node.key)
+        ref = _llm_call_ref(org_slug, slug, node.key)
         if params.prompt_ref != ref:
-            raise _analysis_error(node, f'the prompt must be {ref!r}')
+            raise _llm_call_error(node, f'the prompt must be {ref!r}')
         try:
             prompt, version, _ = await prompt_resolve.resolve(
                 db, f'{ref}@{params.prompt_version}'
             )
         except prompt_resolve.PromptError as e:
-            raise _analysis_error(node, str(e)) from e
+            raise _llm_call_error(node, str(e)) from e
         if prompt.kind != 'generative':
-            raise _analysis_error(node, 'the prompt must be generative')
+            raise _llm_call_error(node, 'the prompt must be generative')
         if not params.output_fields:
             continue
         records = await db.execute(
@@ -443,34 +443,34 @@ async def _check_analysis(
         if not (
             records and graph.parse_agtype(records[0]['structured']) is True
         ):
-            raise _analysis_error(
+            raise _llm_call_error(
                 node,
                 f'the model {version.model!r} does not support structured '
                 'output; remove the output fields or choose another model',
             )
 
 
-def _analysis_error(node: wf.Node, message: str) -> fastapi.HTTPException:
+def _llm_call_error(node: wf.Node, message: str) -> fastapi.HTTPException:
     return fastapi.HTTPException(
         status_code=422, detail=f'Step {node.key!r}: {message}'
     )
 
 
-def _analysis_keys(wf_graph: dict[str, typing.Any]) -> set[str]:
-    """The keys of the analysis nodes of a stored graph."""
+def _llm_call_keys(wf_graph: dict[str, typing.Any]) -> set[str]:
+    """The keys of the LLM Call nodes of a stored graph."""
     return {
         str(n['key'])
         for n in wf_graph.get('nodes', [])
-        if n.get('type') == analysis_step.STEP.type
+        if n.get('type') == llm_call_step.STEP.type
     }
 
 
 async def _archive_prompts(
     db: graph.Graph, org_slug: str, slug: str, keys: abc.Iterable[str]
 ) -> None:
-    """Archive the prompts of removed analysis nodes (plan D8)."""
+    """Archive the prompts of removed LLM Call nodes (plan D8)."""
     for key in keys:
-        await prompts.archive_prompt(db, _analysis_ref(org_slug, slug, key))
+        await prompts.archive_prompt(db, _llm_call_ref(org_slug, slug, key))
 
 
 def _version(row: workflows.Row) -> dict[str, typing.Any]:
@@ -643,7 +643,7 @@ async def create_workflow(
         409: The slug is in use in the org.
         422: The graph is too large, the team is not in the org, the
             name gives an empty slug and no slug is supplied, or the
-            prompt of an analysis step is not valid.
+            prompt of an LLM Call step is not valid.
 
     """
     slug = data.slug or slugify.slugify(data.name)
@@ -653,7 +653,7 @@ async def create_workflow(
             detail='The name gives an empty slug; supply a slug',
         )
     definition = await _definition(db, org_id, data, auth)
-    await _check_analysis(db, org_slug, slug, data.graph)
+    await _check_llm_call(db, org_slug, slug, data.graph)
     with conflict_on_unique_violation(f'Workflow {slug!r} already exists'):
         await store.create(org_id, slug, definition)
     return await _get(store, db, org_id, slug)
@@ -687,7 +687,7 @@ async def save_workflow(
     Only an admin or a member of the current owner team can change the
     owner team, because the owner team controls the runs.
 
-    The CMS prompt of each analysis node that the save removes is
+    The CMS prompt of each LLM Call node that the save removes is
     archived.
 
     Raises:
@@ -697,7 +697,7 @@ async def save_workflow(
         409: ``conflict``: the workflow changed owner team or was
             deleted between the check and the save.
         422: The graph is too large, the team is not in the org, or
-            the prompt of an analysis step is not valid.
+            the prompt of an LLM Call step is not valid.
 
     """
     current = await store.get(org_id, slug)
@@ -726,7 +726,7 @@ async def save_workflow(
                 'team can change the owner team',
             },
         )
-    await _check_analysis(db, org_slug, slug, data.graph)
+    await _check_llm_call(db, org_slug, slug, data.graph)
     if not await store.save(
         org_id, slug, definition, current['owner_team_id']
     ):
@@ -742,7 +742,7 @@ async def save_workflow(
         db,
         org_slug,
         slug,
-        _analysis_keys(current['graph']) - _analysis_keys(definition.graph),
+        _llm_call_keys(current['graph']) - _llm_call_keys(definition.graph),
     )
     return await _get(store, db, org_id, slug)
 
@@ -758,7 +758,7 @@ async def delete_workflow(
 ) -> None:
     """Delete a workflow that has no open runs.
 
-    The CMS prompts of its analysis nodes are archived.
+    The CMS prompts of its LLM Call nodes are archived.
 
     Raises:
         404: No such workflow.
@@ -776,7 +776,7 @@ async def delete_workflow(
             status_code=404, detail=f'Workflow {slug!r} not found'
         )
     await _archive_prompts(
-        db, org_slug, slug, _analysis_keys(current['graph'])
+        db, org_slug, slug, _llm_call_keys(current['graph'])
     )
 
 

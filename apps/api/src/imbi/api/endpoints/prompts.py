@@ -45,7 +45,7 @@ from imbi.common.graph import cypher as graph_cypher
 from imbi.common.llm import drivers, generate, typesafe
 from imbi.common.prompts import rendering
 from imbi.common.prompts import resolve as prompt_resolve
-from imbi.common.workflows.registry import agent, analysis
+from imbi.common.workflows.registry import agent, llm_call
 
 LOGGER = logging.getLogger(__name__)
 
@@ -590,7 +590,7 @@ async def _model_id_for(
 #: version pins a version number of the prompt, so such a prompt is
 #: never deleted or renamed, has no tools, and is archived (not
 #: deleted) with its node.
-WORKFLOWS_NAMESPACE = analysis.NAMESPACE
+WORKFLOWS_NAMESPACE = llm_call.NAMESPACE
 
 #: The namespaces whose prompts are data of one organization, and the
 #: organization permission of the owner. An agent's system prompt is

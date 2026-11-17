@@ -27,7 +27,6 @@ import { useHasPermission } from '@/hooks/useHasPermission'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { queryKeys } from '@/lib/queryKeys'
 
-import { pinNodes, saveWorkflow, type StepPrompt } from './analysisPrompt'
 import { Canvas, type Selection } from './Canvas'
 import type { NodeSummary } from './CanvasNode'
 import {
@@ -52,6 +51,7 @@ import {
   NodePanel,
   SettingsPanel,
 } from './Inspector'
+import { pinNodes, saveWorkflow, type StepPrompt } from './llmCallPrompt'
 import { Palette } from './Palette'
 import { type PanelTab, RunPanel } from './RunPanel'
 import { manualTrigger, runResults, testResults } from './runs'
@@ -113,7 +113,7 @@ export function WorkflowEditor({
     owner_team_slug: workflow?.owner_team_slug ?? '',
     settings: workflow?.version.settings ?? NEW_SETTINGS,
   }))
-  // The edited prompts of analysis steps, by node id. They are written
+  // The edited prompts of LLM Call steps, by node id. They are written
   // to the Prompt CMS on save.
   const [prompts, setPrompts] = useState<Record<string, StepPrompt>>({})
   const [dirty, setDirty] = useState(false)

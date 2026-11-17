@@ -4,7 +4,7 @@ import { ApiError } from '@/api/client'
 import * as endpoints from '@/api/endpoints'
 import type { Prompt, PromptResolution, PromptVersion } from '@/types'
 
-import { saveWorkflow, type StepPrompt } from '../analysisPrompt'
+import { saveWorkflow, type StepPrompt } from '../llmCallPrompt'
 import type { Workflow, WorkflowWrite } from '../types'
 import { node, workflow } from './fixtures'
 
@@ -48,7 +48,7 @@ function draft(params: Record<string, unknown> = {}): WorkflowWrite {
           key: 'summarize',
           params: { inputs: { log: '{{ fetch.result }}' }, ...params },
           title: 'Summarize',
-          type: 'analysis',
+          type: 'llm_call',
         }),
       ],
     },

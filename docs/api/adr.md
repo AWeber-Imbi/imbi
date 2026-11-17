@@ -541,11 +541,11 @@ Runs `imbi-automations` definitions on the server. An automation is a new entity
 
 ---
 
-#### [ADR 0030: Workflow Analysis Step](adr/0030-workflow-analysis-step.md)
+#### [ADR 0030: Workflow LLM Call Step](adr/0030-workflow-llm-call-step.md)
 
 *Date: 2026-11-17 | Status: Accepted*
 
-Adds the `analysis` workflow step: it sends a saved prompt to a generative model from the AI model catalog and returns the answer as text, or as a structured result.
+Adds the `llm_call` workflow step: it sends a saved prompt to a generative model from the AI model catalog and returns the answer as text, or as a structured result.
 
 **Key Decisions:**
 

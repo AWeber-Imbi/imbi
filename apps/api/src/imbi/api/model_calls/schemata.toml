@@ -1,4 +1,4 @@
-# Relational schema for the AI model call record (workflow analysis
+# Relational schema for the AI model call record (workflow LLM Call
 # step plan, D6).
 #
 # imbi-api applies it on startup. One row for each generative model call

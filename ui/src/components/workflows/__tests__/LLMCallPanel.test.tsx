@@ -10,8 +10,8 @@ import type {
   PromptRunResponse,
 } from '@/types'
 
-import { AnalysisPanel } from '../AnalysisPanel'
-import type { StepPrompt } from '../analysisPrompt'
+import { LLMCallPanel } from '../LLMCallPanel'
+import type { StepPrompt } from '../llmCallPrompt'
 import type { WorkflowNode } from '../types'
 import { node } from './fixtures'
 
@@ -50,10 +50,10 @@ function renderPanel(
     key: 'summarize',
     params,
     title: 'Summarize',
-    type: 'analysis',
+    type: 'llm_call',
   })
   render(
-    <AnalysisPanel
+    <LLMCallPanel
       node={step}
       onChange={vi.fn()}
       onPromptChange={vi.fn()}
@@ -67,7 +67,7 @@ function renderPanel(
   return step
 }
 
-describe('AnalysisPanel', () => {
+describe('LLMCallPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(endpoints.listAIModels).mockResolvedValue([

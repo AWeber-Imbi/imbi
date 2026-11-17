@@ -19,10 +19,10 @@ import {
 import type { StepCategory } from './types'
 
 const ICONS: Record<string, LucideIcon> = {
-  analysis: BrainCircuit,
   condition: Split,
   deploy: Rocket,
   email: Mail,
+  llm_call: BrainCircuit,
   manual: Play,
   model_decision: Sparkles,
   rollback: RotateCcw,

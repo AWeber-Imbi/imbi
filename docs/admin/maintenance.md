@@ -62,7 +62,7 @@ The page has two tabs: **Operations** and **Activity**.
 | **Reindex Search** | `search-reindex` | Rebuild the vector search index for every searchable node -- documents, comments, releases, projects, and the rest -- from its current content. Run this after a bulk import or a change to the embedding model; ordinary saves index themselves. |
 | **Sync Agent Marketplaces** | `marketplace-sync` | Read the catalog of every agent marketplace in every organization again at its default branch head. Agent versions keep the commit they pinned. The scheduler runs this every 6 hours. |
 | **Sync CVE Catalog** | `cve-sync` | Import the CVE List (CVEProject/cvelistV5) into the CVE catalog that advisories read severity and descriptions from. Only records that changed since the last import are written. The first run imports every record and needs about 1.5 GB of temporary disk. The scheduler runs this daily at 01:30 UTC. |
-| **Prune AI Model Calls** | `ai-model-calls-prune` | Delete the records of AI model calls (prompt runs and workflow analysis steps) older than 90 days. The scheduler runs this daily at 02:30 UTC. |
+| **Prune AI Model Calls** | `ai-model-calls-prune` | Delete the records of AI model calls (prompt runs and workflow LLM Call steps) older than 90 days. The scheduler runs this daily at 02:30 UTC. |
 
 <!-- END GENERATED -->
 

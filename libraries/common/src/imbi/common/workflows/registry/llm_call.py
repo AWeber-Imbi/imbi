@@ -1,4 +1,4 @@
-"""Analysis: send a saved prompt to its AI model and return the answer.
+"""LLM Call: send a saved prompt to its AI model and return the answer.
 
 The prompt is in the Prompt CMS, at
 ``workflows/<org slug>.<workflow slug>.<node key>``. The step pins one
@@ -20,7 +20,7 @@ from imbi.common.workflows import graph, step_type
 from imbi.common.workflows.registry import agent, script
 
 MAX_INPUTS = script.MAX_INPUTS
-#: The namespace of the prompts of analysis steps.
+#: The namespace of the prompts of LLM Call steps.
 NAMESPACE = 'workflows'
 #: Names that Jinja2 reads as a constant (``true``, ``false``, ``none``),
 #: as the ``not`` operator, or as the template itself (``self``). Jinja2
@@ -99,9 +99,9 @@ def required_permissions(_params: dict[str, typing.Any]) -> set[str]:
 
 
 STEP = step_type.StepType(
-    type='analysis',
+    type='llm_call',
     category='logic',
-    label='Analysis',
+    label='LLM Call',
     description='Sends a prompt to an AI model and returns the answer.',
     params=Params,
     output=Output,

@@ -1,4 +1,4 @@
-# ADR 0030: Workflow Analysis Step
+# ADR 0030: Workflow LLM Call Step
 
 Date: 2026-11-17
 
@@ -29,7 +29,7 @@ prompts only.
 
 ### The step type
 
-A new step type, `analysis` ("Analysis"), in the `logic` category.
+A new step type, `llm_call` ("LLM Call"), in the `logic` category.
 
 | Parameter | Meaning |
 |---|---|

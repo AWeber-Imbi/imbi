@@ -1107,7 +1107,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'scheduled_task:create',
             'scheduled_task:write',
             'scheduled_task:delete',
-            # The analysis step runs its saved prompt.
+            # The LLM Call step runs its saved prompt.
             'prompt:run',
             # Not `integration:act-as-service`: an operator grants it,
             # as ADR 0017 requires for every autonomous principal.

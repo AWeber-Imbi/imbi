@@ -7,10 +7,10 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 
-import { AnalysisPanel } from './AnalysisPanel'
-import { ANALYSIS, type StepPrompt } from './analysisPrompt'
 import { KEY_PATTERN, portsOf, type StepTypes } from './graph'
 import { JsonBlock } from './JsonBlock'
+import { LLMCallPanel } from './LLMCallPanel'
+import { LLM_CALL, type StepPrompt } from './llmCallPrompt'
 import { ParamsForm, SelectField } from './ParamsForm'
 import { referenceGroups } from './references'
 import { StatusBadge } from './RunPanel'
@@ -114,12 +114,12 @@ export function NodePanel({
   onChange: (patch: Partial<WorkflowNode>) => void
   onDelete: () => void
   onDuplicate: () => void
-  /** Edits the prompt of an analysis step. */
+  /** Edits the prompt of an LLM Call step. */
   onPromptChange: (prompt: StepPrompt) => void
   onRemoveItem: (name: string, index: number) => void
   onTab: (tab: InspectorTab) => void
   orgSlug: string
-  /** The edited prompt of an analysis step, if any. */
+  /** The edited prompt of an LLM Call step, if any. */
   prompt: StepPrompt | undefined
   readOnly: boolean
   /** What the step did in the run or the test run on show. */
@@ -227,8 +227,8 @@ export function NodePanel({
               value={node.key}
             />
           </FormField>
-          {node.type === ANALYSIS ? (
-            <AnalysisPanel
+          {node.type === LLM_CALL ? (
+            <LLMCallPanel
               node={node}
               onChange={(params) => onChange({ params })}
               onPromptChange={onPromptChange}

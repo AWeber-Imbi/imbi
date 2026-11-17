@@ -790,8 +790,8 @@ class ScriptPreviewTestCase(WorkflowTestCase):
         self.assertEqual(response.status_code, 503, response.text)
 
 
-class AnalysisStepTestCase(WorkflowTestCase):
-    """The CMS prompt of an analysis step: checked on save, archived
+class LLMCallStepTestCase(WorkflowTestCase):
+    """The CMS prompt of an LLM Call step: checked on save, archived
     when the node or the workflow goes."""
 
     async def asyncSetUp(self) -> None:
@@ -886,7 +886,7 @@ class AnalysisStepTestCase(WorkflowTestCase):
                 *(
                     _node(
                         key,
-                        'analysis',
+                        'llm_call',
                         {'prompt_ref': self._ref(key), 'prompt_version': 1}
                         | params,
                     )
@@ -948,7 +948,7 @@ class AnalysisStepTestCase(WorkflowTestCase):
                     graph={
                         'nodes': [
                             _node('start', 'manual'),
-                            _node('sum', 'analysis', params),
+                            _node('sum', 'llm_call', params),
                         ],
                         'edges': [
                             {'source': 'start', 'port': 0, 'target': 'sum'}

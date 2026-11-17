@@ -198,7 +198,7 @@ its provider. Imbi returns `409` when either rule fails.
 ## Structured output
 
 Set **Structured output** on a model that can return JSON that matches a
-schema. A workflow [analysis step](workflows.md#analysis) with output
+schema. A workflow [LLM Call step](workflows.md#llm-call) with output
 fields can use only such a model. The switch is off by default, and
 discovery does not set it, so set it on each model that supports it.
 
@@ -215,7 +215,7 @@ output fields that runs on a model with the switch off fails with
 `model_no_structured_output`.
 
 !!! note
-    An analysis step on Google Vertex AI calls Gemini models only, and
+    An LLM Call step on Google Vertex AI calls Gemini models only, and
     needs an API key on the provider. The runtime IAM role does not work
     for these calls.
 
