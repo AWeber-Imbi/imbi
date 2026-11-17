@@ -1,5 +1,6 @@
 """Tests for generative prompt runs and their call record."""
 
+import asyncio
 import json
 import typing
 import uuid
@@ -323,6 +324,21 @@ class GenerativeRunTestCase(base.PromptTestBase):
         )
         self.calls.finish.assert_awaited_once_with(
             CALL_ID, 'failed', error='rate_limited'
+        )
+
+    def test_call_past_the_deadline_is_recorded(self) -> None:
+        self.assertLess(prompts.CALL_DEADLINE, prompts.STALE_AFTER)
+
+        async def slow(*_: object) -> None:
+            await asyncio.sleep(1)
+
+        self.generate.side_effect = slow
+        self.route_run()
+        with mock.patch.object(prompts, 'CALL_DEADLINE', 0.01):
+            response = self.run_ref()
+        self.assertEqual(response.status_code, 503)
+        self.calls.finish.assert_awaited_once_with(
+            CALL_ID, 'failed', error='provider_unreachable'
         )
 
     def test_vertex_needs_a_key(self) -> None:

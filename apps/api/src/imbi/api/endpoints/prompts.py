@@ -15,6 +15,7 @@ The CMS does not know who consumes a prompt. Grouping by namespace is
 a convention only.
 """
 
+import asyncio
 import datetime
 import decimal
 import hashlib
@@ -1263,10 +1264,14 @@ async def _run_target(
 #: Seconds one generative model call may take.
 CALL_TIMEOUT = 120.0
 
+#: Seconds for the whole call: the workload identity token, a second
+#: request with a new token after a ``401``, and the generation. It
+#: expires before ``STALE_AFTER``, so the row is finished first.
+CALL_DEADLINE = CALL_TIMEOUT + 45
+
 #: A ``running`` call older than this did not finish: a repeat of its
-#: idempotency key sets it to ``outcome_unknown``. The call timeout plus
-#: time for the render and a workload identity token.
-STALE_AFTER = CALL_TIMEOUT + 60
+#: idempotency key sets it to ``outcome_unknown``.
+STALE_AFTER = CALL_DEADLINE + 15
 
 #: The HTTP status and the ``retry`` flag of each error code of a
 #: generative run (``detail={'error': <code>, 'retry': <bool>}``).
@@ -1608,7 +1613,11 @@ async def _run_generative(
     if not new:
         return _repeat(row)
     try:
-        answer = await model_generate.call(secrets, provider, call)
+        async with asyncio.timeout(CALL_DEADLINE):
+            answer = await model_generate.call(secrets, provider, call)
+    except TimeoutError:
+        await calls.finish(row['id'], 'failed', error='provider_unreachable')
+        raise _call_error('provider_unreachable') from None
     except generate.GenerateError as e:
         await calls.finish(row['id'], 'failed', error=e.code)
         raise _call_error(e.code) from None
