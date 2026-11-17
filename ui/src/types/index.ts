@@ -779,6 +779,8 @@ export type AgentTaskEvent = Schemas['AgentTaskEventResponse']
 
 export type AgentTaskListItem = Schemas['AgentTaskListItem']
 
+export type AgentTaskPosition = Schemas['AgentTaskPosition']
+
 // The tasks related to a task, and the projects it touches (F13).
 export type AgentTaskProject = Schemas['AssociatedProject']
 

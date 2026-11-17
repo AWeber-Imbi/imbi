@@ -1125,6 +1125,18 @@ class ReadTaskTests(AgentTaskTestCase):
             self.url(), params={'group': 'input', 'limit': 1}
         )
         self.assertNotIn('cursor=', response.headers.get('Link', ''))
+        for short_id, where in [
+            ('T-1', {'group': 'input', 'index': 0}),
+            ('t-5', {'group': 'input', 'index': 1}),
+            ('T-3', {'group': 'closed', 'index': 0}),
+            ('T-4', {'group': 'queued', 'index': 0}),
+        ]:
+            response = await self.client.get(self.url(f'{short_id}/position'))
+            self.assertEqual(response.json(), where, short_id)
+        response = await self.client.get(
+            self.url('T-5/position'), params={'status': 'running'}
+        )
+        self.assertEqual(response.status_code, 404, response.text)
 
     async def test_events_page_by_seq(self) -> None:
         await self.client.post(self.url('T-1/pause'))
@@ -1568,6 +1580,7 @@ class PermissionTests(AgentTaskTestCase):
             ('agent_task:read', 'GET', '', None),
             ('agent_task:read', 'GET', 'waiting', None),
             ('agent_task:read', 'GET', 'counts', None),
+            ('agent_task:read', 'GET', 'T-1/position', None),
             ('agent_task:read', 'GET', 'T-1', None),
             ('agent_task:read', 'GET', 'T-1/events', None),
             ('agent_task:manage', 'POST', 'T-1/pause', None),
@@ -1775,6 +1788,7 @@ class MembershipTests(AgentTaskTestCase):
             ('GET', '', None),
             ('GET', 'waiting', None),
             ('GET', 'counts', None),
+            ('GET', 'T-1/position', None),
             ('GET', 'T-1', None),
             ('GET', 'T-1/events', None),
             ('POST', 'T-1/pause', None),
