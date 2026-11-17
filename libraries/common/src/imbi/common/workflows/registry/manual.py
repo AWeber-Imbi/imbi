@@ -9,7 +9,8 @@ from imbi.common.workflows import graph, step_type
 
 class ManualInput(pydantic.BaseModel):
     name: str = pydantic.Field(pattern=graph.KEY_PATTERN)
-    type: typing.Literal['string', 'number', 'boolean'] = 'string'
+    #: ``text`` is a ``string`` that the run dialog asks for in a text area.
+    type: typing.Literal['string', 'text', 'number', 'boolean'] = 'string'
 
 
 class Params(pydantic.BaseModel):

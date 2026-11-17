@@ -9,6 +9,7 @@ import collections.abc
 import contextlib
 import datetime
 import typing
+import unittest
 import uuid
 from unittest import mock
 
@@ -2104,3 +2105,20 @@ class SideEffectRecoveryTestCase(WorkflowRunTestCase):
         )
         self.assertEqual(response.status_code, 409, response.text)
         find.assert_not_called()
+
+
+class CheckInputsTestCase(unittest.TestCase):
+    def test_text_input_takes_a_string(self) -> None:
+        trigger = wf.Node.model_validate(
+            _node(
+                'start',
+                'manual',
+                {'inputs': [{'name': 'notes', 'type': 'text'}]},
+            )
+        )
+        workflow_runs._check_inputs(trigger, {'notes': 'line 1\nline 2'})
+        with self.assertRaises(fastapi.HTTPException) as raised:
+            workflow_runs._check_inputs(trigger, {'notes': 1})
+        self.assertEqual(
+            raised.exception.detail, ["Input 'notes' must be a text"]
+        )

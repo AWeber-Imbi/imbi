@@ -279,6 +279,7 @@ RETURN u.email AS email
 
 _INPUT_TYPES: dict[str, tuple[type, ...]] = {
     'string': (str,),
+    'text': (str,),
     'number': (int, float),
     'boolean': (bool,),
 }

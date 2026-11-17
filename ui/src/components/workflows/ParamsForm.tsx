@@ -23,10 +23,12 @@ import { cn } from '@/lib/utils'
 import type { Condition } from './conditions'
 import { ConditionsField } from './ConditionsField'
 import { InputsField } from './InputsField'
+import { ManualInputsField } from './ManualInputsField'
 import type { OutputField } from './outputFields'
 import { OutputFieldsField } from './OutputFieldsField'
 import { TemplateInput } from './ReferencePicker'
 import type { ReferenceGroup } from './references'
+import type { ManualInput } from './runs'
 import {
   type FieldSource,
   isIdOrReference,
@@ -246,6 +248,16 @@ function FieldControl({
           onChange={onChange}
           onRemove={onRemoveItem}
           value={Array.isArray(value) ? value.map(String) : []}
+        />
+      )
+    case 'manualInputs':
+      return (
+        <ManualInputsField
+          id={id}
+          label={field.label}
+          onChange={onChange}
+          types={field.options}
+          value={Array.isArray(value) ? (value as ManualInput[]) : []}
         />
       )
     case 'multiline':
