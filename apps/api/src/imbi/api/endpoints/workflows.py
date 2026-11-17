@@ -403,12 +403,19 @@ def _llm_call_ref(org_slug: str, slug: str, key: str) -> str:
     return f'{prompts.WORKFLOWS_NAMESPACE}/{org_slug}.{slug}.{key}'
 
 
+#: The lowest ``timeout_seconds`` of an LLM Call node. A step that times
+#: out is retried with a new key, so its timeout must outlast the API's
+#: stale limit of one model call, or a retry can pay for a second call.
+MIN_LLM_CALL_TIMEOUT = int(prompts.STALE_AFTER) + 10
+
+
 async def _check_llm_call(
     db: graph.Graph, org_slug: str, slug: str, wf_graph: wf.Graph
 ) -> None:
-    """Check the prompt of each LLM Call node.
+    """Check each LLM Call node and its prompt.
 
-    The prompt is the node's own (see :func:`_llm_call_ref`) and is
+    The node timeout is at least :data:`MIN_LLM_CALL_TIMEOUT`. The
+    prompt is the node's own (see :func:`_llm_call_ref`) and is
     generative, the pinned version exists, and with ``output_fields`` its model
     supports structured output. Invalid params are left to the
     validation issues of the version.
@@ -420,6 +427,15 @@ async def _check_llm_call(
     for node in wf_graph.nodes:
         if node.type != llm_call_step.STEP.type:
             continue
+        if (
+            node.timeout_seconds is not None
+            and node.timeout_seconds < MIN_LLM_CALL_TIMEOUT
+        ):
+            raise _llm_call_error(
+                node,
+                f'the timeout must be at least {MIN_LLM_CALL_TIMEOUT} '
+                'seconds, so that a retry does not make a second model call',
+            )
         try:
             params = llm_call_step.Params.model_validate(node.params)
         except pydantic.ValidationError:
@@ -651,12 +667,25 @@ async def create_workflow(
     """Make a workflow in ``draft`` with its version 1.
 
     Raises:
+        403: The graph has an LLM Call step and the caller does not
+            have ``workflow:write``.
         409: The slug is in use in the org.
         422: The graph is too large, the team is not in the org, the
             name gives an empty slug and no slug is supplied, or the
             prompt of an LLM Call step is not valid.
 
     """
+    # The editor creates the workflow, then writes the prompts of its
+    # LLM Call steps and pins them with an update. Without
+    # workflow:write that update fails and leaves a partial workflow.
+    if not (auth.is_admin or 'workflow:write' in auth.permissions) and any(
+        n.type == llm_call_step.STEP.type for n in data.graph.nodes
+    ):
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail='Permission denied: workflow:write required to create '
+            'a workflow with an LLM Call step',
+        )
     slug = data.slug or slugify.slugify(data.name)
     if not slug:
         raise fastapi.HTTPException(

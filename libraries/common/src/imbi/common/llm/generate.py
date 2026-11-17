@@ -610,11 +610,15 @@ async def _vertex(
         usage = _mapping(data.get('usageMetadata'))
     except (KeyError, IndexError, TypeError, AttributeError):
         raise GenerateError('model_answer_invalid', retry=True) from None
+    # Gemini counts thinking tokens apart from the candidates and bills
+    # them as output.
+    output = usage.get('candidatesTokenCount')
+    thoughts = usage.get('thoughtsTokenCount')
+    if type(output) is int and type(thoughts) is int:
+        output += thoughts
     return _Answer(
         text,
         None,
-        _usage(
-            usage.get('promptTokenCount'), usage.get('candidatesTokenCount')
-        ),
+        _usage(usage.get('promptTokenCount'), output),
         data.get('responseId'),
     )

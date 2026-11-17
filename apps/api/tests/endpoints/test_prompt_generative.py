@@ -138,6 +138,14 @@ class GenerativeRunTestCase(base.PromptTestBase):
             {'error': 'model_no_structured_output', 'retry': False},
         )
         self.calls.start.assert_not_awaited()
+
+    def test_completion_model_is_refused(self) -> None:
+        self.route_run(kind='completion')
+        response = self.run_ref()
+        self.assertEqual(response.status_code, 422)
+        self.assertIn('completion model', response.json()['detail'])
+        self.calls.start.assert_not_awaited()
+        self.generate.assert_not_awaited()
         self.generate.assert_not_awaited()
 
     def test_structured_result(self) -> None:

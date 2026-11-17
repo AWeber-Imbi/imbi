@@ -358,7 +358,7 @@ RETURN m.model_id AS model_id, m.enabled AS enabled,
 _RUN_MODEL_QUERY: typing.LiteralString = """
 MATCH (m:AIModel {{slug: {slug}}})-[:SERVED_BY]->(p:AIProvider)
 RETURN m.model_id AS model_id, m.enabled AS enabled,
-       m.model_type AS model_type, p.id AS provider_id,
+       m.model_type AS model_type, m.kind AS kind, p.id AS provider_id,
        m.supports_structured_output AS structured,
        m.input_cost_per_million AS input_cost,
        m.output_cost_per_million AS output_cost
@@ -367,6 +367,7 @@ _RUN_MODEL_COLUMNS = [
     'model_id',
     'enabled',
     'model_type',
+    'kind',
     'provider_id',
     'structured',
     'input_cost',
@@ -1085,6 +1086,10 @@ async def insert_prompt(
         raise _unprocessable(
             'A workflows prompt slug must be <org>.<workflow>.<node>'
         )
+    if data.namespace == WORKFLOWS_NAMESPACE and data.kind != 'generative':
+        # An LLM Call step runs only generative prompts, and kind is
+        # read-only, so a decision prompt here could never be used.
+        raise _unprocessable('A workflows prompt must be generative')
     _check_label_name(data.default_label)
     _check_kind(data.kind, data.version)
     _check_tools(data.namespace, data.version)
@@ -1598,6 +1603,13 @@ async def _run_generative(
     if (record.get('model_type') or 'generative') != 'generative':
         raise _unprocessable(
             f'AI model {version.model!r} is not a generative model'
+        )
+    # The provider adapters send chat requests only. A missing value
+    # predates kind, when every model was a chat model.
+    if (record.get('kind') or 'chat') != 'chat':
+        raise _unprocessable(
+            f'AI model {version.model!r} is a completion model; '
+            'a generative run needs a chat model'
         )
     provider = await ai_providers.fetch_provider(
         db, str(record['provider_id'])

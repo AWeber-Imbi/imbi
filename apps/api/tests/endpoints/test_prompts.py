@@ -833,6 +833,13 @@ class WorkflowPromptTestCase(PromptTestBase):
         self.assertEqual(response.status_code, 201, response.text)
         self.assertEqual(response.json()['n'], 2)
 
+    def test_workflow_prompt_must_be_generative(self) -> None:
+        self.as_principal('prompt:read', 'workflow:write')
+        self.route()
+        response = self._create(kind='decision', version={})
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn('must be generative', response.text)
+
     def test_workflow_read_reads(self) -> None:
         # The step editor loads the pinned version of the node.
         self.as_principal('workflow:read')

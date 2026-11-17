@@ -145,7 +145,7 @@ count:
 | `model_decision` | 60 seconds | 2 |
 | `condition` | 10 seconds | 0 |
 | `script` | 30 seconds. The script itself stops at 5 seconds | 0 |
-| `llm_call` | 5 minutes. One model call stops at 2 minutes | 2 |
+| `llm_call` | 5 minutes. One model call stops at 165 seconds, which includes the time to get provider credentials | 2 |
 | `email` | 2 minutes | 0 |
 | `slack` | 2 minutes | 3, for a Slack rate limit only |
 | `deploy`, `rollback` | 1 hour | 2 |
@@ -153,6 +153,10 @@ count:
 
 The API also accepts `timeout_seconds` and `retries` (0 to 10) on a node to
 replace the defaults. The editor has no field for them.
+
+The timeout of an `llm_call` node must be at least 190 seconds, or the save
+returns `422`. A step that times out while its model call still runs is
+retried with a new model call, and the provider can bill both calls.
 
 `GET /organizations/{org}/workflow-step-types/` returns each type with its
 parameter schema, output schema, and sample output.

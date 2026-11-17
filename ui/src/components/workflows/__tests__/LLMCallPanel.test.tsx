@@ -102,6 +102,31 @@ describe('LLMCallPanel', () => {
     )
   })
 
+  it('blocks edits until the pinned prompt loads', async () => {
+    vi.mocked(endpoints.resolvePrompt)
+      .mockRejectedValueOnce(new ApiError(500, 'boom'))
+      .mockResolvedValue({
+        version: {
+          messages: [{ content: 'Summarize {{ log }}', role: 'user' }],
+          model: 'claude',
+          params: { max_tokens: 800, stop_sequences: [] },
+          system: 'Be brief.',
+        },
+      } as unknown as PromptResolution)
+    renderPanel({
+      prompt_ref: 'workflows/acme.deploy-guard.summarize',
+      prompt_version: 2,
+    })
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Failed to load the prompt',
+    )
+    expect(screen.queryByLabelText('System prompt')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByLabelText('System prompt')).toHaveValue(
+      'Be brief.',
+    )
+  })
+
   it('disables the output fields for a model with no structured output', async () => {
     renderPanel({}, { ...PROMPT, model: 'plain' })
     expect(

@@ -69,6 +69,26 @@ export function LLMCallPanel({
   if (!prompt && ref && loaded.isLoading) {
     return <p className="text-tertiary text-sm">Loading the prompt…</p>
   }
+  // An edit of an empty draft would save a version without the
+  // pinned content, so the fields wait for the pinned version.
+  if (!prompt && ref && !loaded.data) {
+    return (
+      <div className="flex flex-col items-start gap-2">
+        <p className="text-danger text-xs" role="alert">
+          Failed to load the prompt {ref}.
+        </p>
+        <Button
+          disabled={loaded.isFetching}
+          onClick={() => void loaded.refetch()}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          Retry
+        </Button>
+      </div>
+    )
+  }
   const current =
     prompt ?? (loaded.data ? draftFromVersion(loaded.data) : EMPTY_PROMPT)
   const set = (patch: Partial<StepPrompt>) =>
@@ -87,11 +107,6 @@ export function LLMCallPanel({
   const slug = promptSlug(orgSlug, workflowSlug ?? '', node.key)
   return (
     <>
-      {!prompt && ref && !loaded.data && (
-        <p className="text-danger text-xs" role="alert">
-          Failed to load the prompt {ref}.
-        </p>
-      )}
       <FormField label="Model" required>
         <AIModelSelect
           onChange={(model) => set({ model })}

@@ -518,10 +518,17 @@ class Executors:
         # includes the time to get the organization slug.
         loop = asyncio.get_running_loop()
         deadline = loop.time() + (call.time_limit or math.inf) * 0.9
-        org = await self.org_slug(call.organization_id)
+        resume = Outcome(resume_at=_now(), state=call.state)
+        try:
+            async with asyncio.timeout_at(
+                deadline if math.isfinite(deadline) else None
+            ):
+                org = await self.org_slug(call.organization_id)
+        except TimeoutError:
+            return resume
         wait_seconds = min(LLM_CALL_TIMEOUT, deadline - loop.time())
         if wait_seconds <= 0:
-            return Outcome(resume_at=_now(), state=call.state)
+            return resume
         # imbi-api still runs the call of this attempt, or the response
         # was lost and the outcome is unknown. Ask again with the same
         # key: a retry would be a new attempt and a second call.

@@ -18,7 +18,6 @@ from imbi.api.auth import permissions
 from imbi.api.endpoints import prompts
 from imbi.api.endpoints import workflows as workflows_endpoints
 from imbi.common import graph
-from imbi.common import models as common_models
 from imbi.common.workflows import script_runner
 
 ALL_PERMISSIONS = frozenset(
@@ -827,7 +826,7 @@ class LLMCallStepTestCase(WorkflowTestCase):
         self.addAsyncCleanup(self._cleanup_prompts)
         await self._prompt('sum', self.structured)
         await self._prompt('plain', self.plain)
-        await self._prompt('ask', self.plain, kind='decision')
+        await self._prompt('ask', self.plain)
 
     async def _cleanup_prompts(self) -> None:
         await self.graph.execute(
@@ -854,24 +853,16 @@ class LLMCallStepTestCase(WorkflowTestCase):
     def _ref(self, key: str) -> str:
         return f'workflows/{self.org}.deploy-guard.{key}'
 
-    async def _prompt(
-        self,
-        key: str,
-        model: str,
-        kind: common_models.PromptKind = 'generative',
-    ) -> None:
+    async def _prompt(self, key: str, model: str) -> None:
         await prompts.insert_prompt(
             self.graph,
             prompts.PromptCreate(
                 namespace='workflows',
                 name=key,
-                kind=kind,
                 slug=self._ref(key).partition('/')[2],
                 version=prompts.PromptVersionCreate(
-                    system='Summarize {{ diff }}.'
-                    if kind == 'generative'
-                    else '',
-                    model=model if kind == 'generative' else None,
+                    system='Summarize {{ diff }}.',
+                    model=model,
                     variable_schema={'diff': {'type': 'any'}},
                 ),
             ),
@@ -918,13 +909,19 @@ class LLMCallStepTestCase(WorkflowTestCase):
             ),
             ({'sum': {'prompt_version': 9}}, 'no version 9'),
             ({'gone': {}}, 'not found'),
-            ({'ask': {}}, 'must be generative'),
             ({'plain': {'output_fields': fields}}, 'structured output'),
         ):
             with self.subTest(message):
                 response = await self._create(graph=self._graph(**nodes))
                 self.assertEqual(response.status_code, 422, response.text)
                 self.assertIn(message, response.json()['detail'])
+        # A shorter timeout can retry with a new key while the first
+        # model call still runs.
+        short = self._graph(sum={})
+        short['nodes'][1]['timeout_seconds'] = 189
+        response = await self._create(graph=short)
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn('at least 190 seconds', response.json()['detail'])
         response = await self._create(
             graph=self._graph(sum={'output_fields': fields}, plain={})
         )
@@ -938,6 +935,17 @@ class LLMCallStepTestCase(WorkflowTestCase):
             },
         )
         self.assertEqual(response.status_code, 422, response.text)
+
+    async def test_create_with_llm_call_needs_workflow_write(self) -> None:
+        # The editor pins the prompts with an update after the create.
+        self.permissions.discard('workflow:write')
+        response = await self._create(graph=self._graph(sum={}))
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertIn('workflow:write', response.json()['detail'])
+        response = await self._create(
+            graph={'nodes': [_node('start', 'manual')], 'edges': []}
+        )
+        self.assertEqual(response.status_code, 201, response.text)
 
     async def test_unpinned_node_is_only_a_validation_issue(self) -> None:
         # The editor creates a new workflow before it writes the prompts.

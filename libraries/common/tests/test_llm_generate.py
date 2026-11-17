@@ -493,6 +493,20 @@ class GenerateTestCase(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(sent.headers['authorization'], 'Bearer secret')
 
+    async def test_vertex_thinking_tokens_are_output(self) -> None:
+        body = _vertex_body('Hi')
+        body['usageMetadata'] = {
+            'promptTokenCount': 3,
+            'candidatesTokenCount': 20,
+            'thoughtsTokenCount': 1000,
+        }
+        result = await self._call(
+            _request('vertex', model_id='gemini-2.5-flash'), 200, body
+        )
+        self.assertEqual(
+            result.usage, {'input_tokens': 3, 'output_tokens': 1020}
+        )
+
     async def test_vertex_structured(self) -> None:
         result = await self._call(
             _request('vertex', output_fields=FIELDS),

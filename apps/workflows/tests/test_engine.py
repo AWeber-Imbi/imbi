@@ -2153,6 +2153,30 @@ class LLMCallStepTestCase(EngineTestCase):
         self.assertLess(self.calls[0].extensions['timeout']['read'], 0.5)
         self.assertEqual(set(self._keys()), {'sum:1', 'then:1'})
 
+    async def test_slow_org_slug_lookup_keeps_the_attempt(self) -> None:
+        # After an unknown outcome the step resumes. A lookup slower
+        # than the budget must not let the engine cancel the step and
+        # retry it with a new key. Limit 1s, budget 0.9s.
+        self.config.lease_seconds = 31
+        self.answers = [
+            self._error(409, 'call_in_progress', True),
+            self._answer(),
+        ]
+        org_slug = executors.Executors.org_slug
+        lookups: list[str] = []
+
+        async def slow(self_: executors.Executors, org_id: str) -> str:
+            lookups.append(org_id)
+            if len(lookups) == 2:
+                await asyncio.sleep(5)
+            return await org_slug(self_, org_id)
+
+        with mock.patch.object(executors.Executors, 'org_slug', slow):
+            run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(self._keys()[:2], ['sum:1', 'sum:1'])
+        self.assertEqual(run['steps']['sum']['attempt'], 1)
+
     async def test_slow_response_asks_again_with_the_same_key(self) -> None:
         # The httpx timeout limits each phase, not the total. A response
         # that is slower than the budget must not let the engine cancel
