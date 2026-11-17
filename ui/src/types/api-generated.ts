@@ -6022,7 +6022,9 @@ export interface paths {
          *
          *     Raises:
          *         403: The graph has an LLM Call step and the caller does not
-         *             have ``workflow:write``.
+         *             have ``workflow:write``; ``owner_team_forbidden``: the caller
+         *             is not an admin or a member of the owner team; or
+         *             ``model_not_allowed`` (see :func:`_check_llm_call`).
          *         409: The slug is in use in the org.
          *         422: The graph is too large, the team is not in the org, the
          *             name gives an empty slug and no slug is supplied, or the
@@ -6059,7 +6061,8 @@ export interface paths {
          *
          *     Raises:
          *         403: ``owner_team_forbidden``: the caller changes the owner team
-         *             and is not an admin or a member of the current owner team.
+         *             and is not an admin or a member of the current owner team;
+         *             ``model_not_allowed`` (see :func:`_check_llm_call`).
          *         404: No such workflow.
          *         409: ``conflict``: the workflow changed owner team or was
          *             deleted between the check and the save.

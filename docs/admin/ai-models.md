@@ -296,8 +296,14 @@ with `422`.
 
 A generative prompt run checks the teams of a restricted model. A user must
 be a member of an allowed team. An LLM Call step of a workflow runs for the
-owner team of the workflow. Otherwise the run fails with `403`
-(`model_not_allowed`). Admins can run every model.
+owner team of the workflow, and only the workflows service can run it that
+way. Otherwise the run fails with `403` (`model_not_allowed`). Admins can run
+every model.
+
+A workflow save checks the same rule. The model of an LLM Call step must allow
+the owner team of the workflow, and the user who saves must be a member of an
+allowed team. An admin does not need to be a member. Otherwise the save fails
+with `403` (`model_not_allowed`).
 
 Deleting a team does not update the models that name it. Review restricted
 models after you delete a team.

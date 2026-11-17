@@ -12,6 +12,8 @@ from apps.api.tests.endpoints import test_ai_providers as provider_tests
 from apps.api.tests.endpoints import test_prompts as base
 from imbi.api.endpoints import ai_models, ai_providers, prompts
 from imbi.api.llm import generate as model_generate
+from imbi.common import models
+from imbi.common.auth import permissions as common_permissions
 from imbi.common.llm import generate
 
 RUN_URL = f'/organizations/{base.ORG}/prompts/run'
@@ -26,6 +28,7 @@ MODEL_ROW = {
     'output_cost': '15',
 }
 FIELDS = [{'name': 'severity', 'type': 'string', 'required': True}]
+WF_PROMPT = f'{base.ORG}.deploy.summary'
 
 
 def provider_row(**overrides: typing.Any) -> list[dict[str, typing.Any]]:
@@ -187,18 +190,49 @@ class GenerativeRunTestCase(base.PromptTestBase):
         )
         self.assertEqual(self.run_ref().status_code, 200)
 
-    def test_restricted_model_in_a_workflow_needs_the_owner_team(
-        self,
-    ) -> None:
+    def run_workflow_prompt_as(self, account: str) -> base.Router:
+        """Act as the service account ``account``, without a user, on
+        a restricted model of a workflow step prompt."""
         self.as_principal('prompt:run')
         self.auth_context.user = None
-        slug = f'{base.ORG}.deploy.summary'
+        self.auth_context.service_account = models.ServiceAccount(
+            slug=account, display_name=account
+        )
         router = self.route_run(access_scope='restricted')
         router.rules[0] = (
             base.GET_PROMPT,
-            base.prompt_row(namespace='workflows', slug=slug),
+            base.prompt_row(namespace='workflows', slug=WF_PROMPT),
         )
         self.workflow_store.get.return_value = {'owner_team_id': 'team-1'}
+        return router
+
+    def test_restricted_model_refuses_another_service_account(
+        self,
+    ) -> None:
+        router = self.run_workflow_prompt_as('imbi-scheduler')
+        router.rules.insert(
+            0, (ai_models._ALLOWED_TEAM_QUERY, [{'id': 'team-1'}])
+        )
+        with mock.patch.object(
+            prompts,
+            'caller_org_slugs',
+            mock.AsyncMock(return_value={base.ORG}),
+        ):
+            response = self.run_ref(ref=f'workflows/{WF_PROMPT}@1')
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(
+            response.json()['detail'],
+            {'error': 'model_not_allowed', 'retry': False},
+        )
+        self.generate.assert_not_awaited()
+
+    def test_restricted_model_in_a_workflow_needs_the_owner_team(
+        self,
+    ) -> None:
+        slug = WF_PROMPT
+        router = self.run_workflow_prompt_as(
+            common_permissions.WORKFLOWS_ACCOUNT
+        )
         with mock.patch.object(
             prompts,
             'caller_org_slugs',

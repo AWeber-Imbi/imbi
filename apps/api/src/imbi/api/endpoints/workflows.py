@@ -28,7 +28,7 @@ import slugify
 
 from imbi.api import workflows
 from imbi.api.auth import organizations, permissions
-from imbi.api.endpoints import prompts
+from imbi.api.endpoints import ai_models, prompts
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.common import graph, lifespan
 from imbi.common.prompts import resolve as prompt_resolve
@@ -241,6 +241,19 @@ RETURN t.id AS id
 """
 
 
+async def _is_team_member(
+    db: graph.Graph, auth: permissions.AuthContext, team_id: str
+) -> bool:
+    """Whether the caller is a user and a member of the team."""
+    return auth.user is not None and bool(
+        await db.execute(
+            _TEAM_MEMBER_QUERY,
+            {'email': auth.user.email, 'team': team_id},
+            ['id'],
+        )
+    )
+
+
 #: A resource id param may be one plain reference to a run-time value:
 #: ``trigger`` or a node key, then one or more attribute names. No
 #: filters, calls, literals, or other text, so it cannot hide a literal
@@ -394,7 +407,8 @@ def _check_trigger_project(
 
 _LLM_CALL_MODEL_QUERY: typing.LiteralString = """
 MATCH (m:AIModel {{slug: {slug}}})
-RETURN m.supports_structured_output AS structured, m.kind AS kind
+RETURN m.supports_structured_output AS structured, m.kind AS kind,
+       m.access_scope AS access_scope
 """
 
 
@@ -410,7 +424,12 @@ MIN_LLM_CALL_TIMEOUT = int(prompts.STALE_AFTER) + 10
 
 
 async def _check_llm_call(
-    db: graph.Graph, org_slug: str, slug: str, wf_graph: wf.Graph
+    db: graph.Graph,
+    org_slug: str,
+    slug: str,
+    wf_graph: wf.Graph,
+    auth: permissions.AuthContext,
+    owner_team_id: str,
 ) -> None:
     """Check each LLM Call node and its prompt.
 
@@ -420,7 +439,13 @@ async def _check_llm_call(
     with ``output_fields`` the model supports structured output. Invalid
     params are left to the validation issues of the version.
 
+    A ``restricted`` model must allow the owner team, because the
+    workflows service runs the step for that team (#782). The caller
+    must also be a member of an allowed team, unless an admin.
+
     Raises:
+        403: ``model_not_allowed``: a restricted model does not allow
+            the caller or the owner team.
         422: A check fails.
 
     """
@@ -454,7 +479,7 @@ async def _check_llm_call(
         records = await db.execute(
             _LLM_CALL_MODEL_QUERY,
             {'slug': version.model or ''},
-            ['structured', 'kind'],
+            ['structured', 'kind', 'access_scope'],
         )
         model = (
             {k: graph.parse_agtype(v) for k, v in records[0].items()}
@@ -474,6 +499,37 @@ async def _check_llm_call(
                 f'the model {version.model!r} does not support structured '
                 'output; remove the output fields or choose another model',
             )
+        if model.get('access_scope') == 'restricted':
+            await _check_model_teams(
+                db, auth, version.model or '', owner_team_id, node
+            )
+
+
+async def _check_model_teams(
+    db: graph.Graph,
+    auth: permissions.AuthContext,
+    model: str,
+    owner_team_id: str,
+    node: wf.Node,
+) -> None:
+    """Refuse a restricted model that the caller or the owner team
+    may not use."""
+    caller_allowed = auth.is_admin or (
+        auth.user is not None
+        and await ai_models.member_allowed(db, model, auth.user.email)
+    )
+    if not caller_allowed or not await ai_models.team_allowed(
+        db, model, owner_team_id
+    ):
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail={
+                'error': 'model_not_allowed',
+                'message': f'Step {node.key!r}: the model {model!r} is '
+                'restricted to teams that do not include you or the '
+                'owner team',
+            },
+        )
 
 
 def _llm_call_error(node: wf.Node, message: str) -> fastapi.HTTPException:
@@ -678,7 +734,9 @@ async def create_workflow(
 
     Raises:
         403: The graph has an LLM Call step and the caller does not
-            have ``workflow:write``.
+            have ``workflow:write``; ``owner_team_forbidden``: the caller
+            is not an admin or a member of the owner team; or
+            ``model_not_allowed`` (see :func:`_check_llm_call`).
         409: The slug is in use in the org.
         422: The graph is too large, the team is not in the org, the
             name gives an empty slug and no slug is supplied, or the
@@ -703,7 +761,20 @@ async def create_workflow(
             detail='The name gives an empty slug; supply a slug',
         )
     definition = await _definition(db, org_id, data, auth)
-    await _check_llm_call(db, org_slug, slug, data.graph)
+    if not auth.is_admin and not await _is_team_member(
+        db, auth, definition.owner_team_id
+    ):
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail={
+                'error': 'owner_team_forbidden',
+                'message': 'Only an admin or a member of the owner team '
+                'can make a workflow for that team',
+            },
+        )
+    await _check_llm_call(
+        db, org_slug, slug, data.graph, auth, definition.owner_team_id
+    )
     with conflict_on_unique_violation(f'Workflow {slug!r} already exists'):
         await store.create(org_id, slug, definition)
     return await _get(store, db, org_id, slug)
@@ -743,7 +814,8 @@ async def save_workflow(
 
     Raises:
         403: ``owner_team_forbidden``: the caller changes the owner team
-            and is not an admin or a member of the current owner team.
+            and is not an admin or a member of the current owner team;
+            ``model_not_allowed`` (see :func:`_check_llm_call`).
         404: No such workflow.
         409: ``conflict``: the workflow changed owner team or was
             deleted between the check and the save.
@@ -760,14 +832,7 @@ async def save_workflow(
     if (
         definition.owner_team_id != current['owner_team_id']
         and not auth.is_admin
-        and not (
-            auth.user is not None
-            and await db.execute(
-                _TEAM_MEMBER_QUERY,
-                {'email': auth.user.email, 'team': current['owner_team_id']},
-                ['id'],
-            )
-        )
+        and not await _is_team_member(db, auth, current['owner_team_id'])
     ):
         raise fastapi.HTTPException(
             status_code=403,
@@ -777,7 +842,9 @@ async def save_workflow(
                 'team can change the owner team',
             },
         )
-    await _check_llm_call(db, org_slug, slug, data.graph)
+    await _check_llm_call(
+        db, org_slug, slug, data.graph, auth, definition.owner_team_id
+    )
     # The archive runs under the row lock of the save: a second save
     # waits, so an older key set cannot archive a prompt of a newer
     # graph.

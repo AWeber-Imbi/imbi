@@ -99,6 +99,7 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
             CREATE (u:User {{id: {email}, email: {email},
                              display_name: 'Dev', is_active: true}})
             CREATE (u)-[:MEMBER_OF {{role: 'developer'}}]->(o)
+            CREATE (u)-[:MEMBER_OF]->(t)
             CREATE (t2:Team {{id: {team2}, slug: {team2}, name: 'Dev'}})
             CREATE (t2)-[:BELONGS_TO]->(o)
             CREATE (p:Project {{id: {project}, slug: {project}, name: 'P'}})
@@ -477,8 +478,30 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
         self.assertEqual(len(issues), 1)
         self.assertIn(self.foreign['user'], issues[0])
 
+    async def _leave_team(self) -> None:
+        await self.graph.execute(
+            """
+            MATCH (:User {{id: {email}}})-[r:MEMBER_OF]->(:Team {{id: {team}}})
+            DELETE r
+            RETURN 1 AS ok
+            """,
+            {'email': self.email, 'team': self.team},
+            ['ok'],
+        )
+
+    async def test_create_needs_owner_team_member_or_admin(self) -> None:
+        response = await self._create(owner_team_slug=self.team2)
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'owner_team_forbidden'
+        )
+        self.user.is_admin = True
+        response = await self._create(owner_team_slug=self.team2)
+        self.assertEqual(response.status_code, 201, response.text)
+
     async def test_owner_team_change_needs_member_or_admin(self) -> None:
         await self._create()
+        await self._leave_team()
         body = {'name': 'Deploy guard', 'owner_team_slug': self.team2}
         url = f'{self.base}/deploy-guard'
         response = await self.client.put(url, json=body)
@@ -952,6 +975,73 @@ class LLMCallStepTestCase(WorkflowTestCase):
             },
         )
         self.assertEqual(response.status_code, 422, response.text)
+
+    async def _restrict(self, model: str, *teams: str) -> None:
+        """Make ``model`` restricted to ``teams``."""
+        await self.graph.execute(
+            """
+            MATCH (m:AIModel {{id: {model}}})
+            SET m.access_scope = 'restricted'
+            WITH m
+            MATCH (t:Team) WHERE t.id IN {teams}
+            CREATE (m)-[:ALLOWED_FOR]->(t)
+            RETURN m.id AS id
+            """,
+            {'model': model, 'teams': list(teams)},
+            ['id'],
+        )
+
+    async def _join(self, team: str) -> None:
+        await self.graph.execute(
+            """
+            MATCH (u:User {{id: {email}}}), (t:Team {{id: {team}}})
+            CREATE (u)-[:MEMBER_OF]->(t)
+            RETURN t.id AS id
+            """,
+            {'email': self.email, 'team': team},
+            ['id'],
+        )
+
+    async def test_restricted_model_needs_an_allowed_saver(self) -> None:
+        response = await self._create()
+        self.assertEqual(response.status_code, 201, response.text)
+        await self._leave_team()
+        # The owner team is allowed; the saver is not a member of it.
+        await self._restrict(self.plain, self.team)
+        body = {
+            'name': 'Deploy guard',
+            'owner_team_slug': self.team,
+            'graph': self._graph(plain={}),
+        }
+        url = f'{self.base}/deploy-guard'
+        response = await self.client.put(url, json=body)
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'model_not_allowed'
+        )
+        self.user.is_admin = True
+        response = await self.client.put(url, json=body)
+        self.assertEqual(response.status_code, 200, response.text)
+
+    async def test_restricted_model_needs_an_allowed_owner_team(
+        self,
+    ) -> None:
+        # The saver is allowed through team2; the owner team is not.
+        await self._restrict(self.plain, self.team2)
+        await self._join(self.team2)
+        response = await self._create(graph=self._graph(plain={}))
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'model_not_allowed'
+        )
+        # An admin cannot pin it for that owner team either.
+        self.user.is_admin = True
+        response = await self._create(graph=self._graph(plain={}))
+        self.assertEqual(response.status_code, 403, response.text)
+        self.user.is_admin = False
+        await self._restrict(self.plain, self.team)
+        response = await self._create(graph=self._graph(plain={}))
+        self.assertEqual(response.status_code, 201, response.text)
 
     async def test_create_with_llm_call_needs_workflow_write(self) -> None:
         # The editor pins the prompts with an update after the create.

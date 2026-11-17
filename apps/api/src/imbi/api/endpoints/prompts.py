@@ -41,6 +41,7 @@ from imbi.api.graph_sql import escape_prop, props_template, set_clause
 from imbi.api.llm import generate as model_generate
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
+from imbi.common.auth import permissions as common_permissions
 from imbi.common.auth.encryption import decrypt_config_value
 from imbi.common.graph import cypher as graph_cypher
 from imbi.common.llm import drivers, generate, typesafe
@@ -1380,9 +1381,9 @@ async def _check_model_teams(
 ) -> None:
     """A ``restricted`` model runs only for its teams (#782).
 
-    A user must be a member of an allowed team. A caller without a user
-    (the workflows service) runs a workflow step prompt, so the owner
-    team of that workflow must be allowed.
+    A user must be a member of an allowed team. The workflows service
+    runs a workflow step prompt, so the owner team of that workflow must
+    be allowed. Another principal without a user is refused.
 
     Raises:
         403: ``model_not_allowed``.
@@ -1390,9 +1391,14 @@ async def _check_model_teams(
     """
     if auth.is_admin:
         return
+    account = auth.service_account
     if auth.user is not None:
         allowed = await ai_models.member_allowed(db, model, auth.user.email)
-    elif prompt.namespace == WORKFLOWS_NAMESPACE:
+    elif (
+        account is not None
+        and account.slug == common_permissions.WORKFLOWS_ACCOUNT
+        and prompt.namespace == WORKFLOWS_NAMESPACE
+    ):
         # <org>.<workflow>.<node key>
         slug = prompt.slug.partition('.')[2].rpartition('.')[0]
         row = await store.get(org_id, slug)

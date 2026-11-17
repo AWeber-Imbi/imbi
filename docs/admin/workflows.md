@@ -112,7 +112,8 @@ Click empty canvas to see the workflow settings.
 | **Max run time (minutes)** | A run that runs longer stops as `timed_out` | 120 |
 | **When a run fails** | **Notify the owner team**, **Do nothing** | **Notify the owner team** |
 
-Only an admin or a member of the current owner team can change the owner
+Only an admin or a member of the owner team can make a workflow for that
+team. Only an admin or a member of the current owner team can change the owner
 team.
 
 ## Step types
