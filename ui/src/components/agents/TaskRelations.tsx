@@ -6,9 +6,9 @@ import { useQuery } from '@tanstack/react-query'
 import { Box, ChevronRight, Link2, Trash2 } from 'lucide-react'
 
 import {
-  listAgentTasks,
-  setAgentTaskDependency,
-  setAgentTaskProject,
+  listTickets,
+  setTicketDependency,
+  setTicketProject,
 } from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -30,16 +30,16 @@ import { useHasPermission } from '@/hooks/useHasPermission'
 import { useProjectsSlimMap } from '@/hooks/useProjectsSlimMap'
 import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
-import type { AgentTask, AgentTaskRelated } from '@/types'
+import type { Ticket, TicketRelated } from '@/types'
 
 import { useAgentList } from './agentQueries'
-import { agentsPath } from './agentsNav'
+import { ticketsPath } from './agentsNav'
 import { statusLabel, statusVariant } from './taskEvents'
 import {
   errorMessage,
-  useAgentTaskProjects,
-  useAgentTaskRelationMutation,
-  useAgentTaskRelations,
+  useTicketProjects,
+  useTicketRelationMutation,
+  useTicketRelations,
 } from './taskQueries'
 
 /**
@@ -68,7 +68,7 @@ interface Row {
   kind: string
   /** The dependency `[dependent, prerequisite]`; none for delegation. */
   link?: [string, string]
-  task: AgentTaskRelated
+  task: TicketRelated
   tone: 'accent' | 'info' | 'neutral'
 }
 
@@ -78,13 +78,13 @@ export function AssociatedProjectsTab({
   task,
 }: {
   orgSlug: string
-  task: AgentTask
+  task: Ticket
 }) {
-  const canManage = useHasPermission('agent_task:manage', orgSlug)
-  const projects = useAgentTaskProjects(orgSlug, task.short_id)
+  const canManage = useHasPermission('ticket:manage', orgSlug)
+  const projects = useTicketProjects(orgSlug, task.short_id)
   const [open, setOpen] = useState(false)
-  const unlink = useAgentTaskRelationMutation(orgSlug, (projectId: string) =>
-    setAgentTaskProject(orgSlug, task.short_id, projectId, false),
+  const unlink = useTicketRelationMutation(orgSlug, (projectId: string) =>
+    setTicketProject(orgSlug, task.short_id, projectId, false),
   )
   // An archived task is sealed: its projects cannot change.
   const editable = canManage && !task.log_archived_at
@@ -99,7 +99,7 @@ export function AssociatedProjectsTab({
           )
         }
       >
-        Projects this task reads from or writes to
+        Projects this ticket reads from or writes to
       </PanelHeader>
       {(projects.error ?? unlink.error) && (
         <p className="text-danger px-6 py-3 text-sm" role="alert">
@@ -185,8 +185,8 @@ export function LinkProjectDialog({
   const [text, setText] = useState('')
   const [pick, setPick] = useState<null | string>(null)
   const { projectsById } = useProjectsSlimMap(orgSlug)
-  const link = useAgentTaskRelationMutation(orgSlug, (projectId: string) =>
-    setAgentTaskProject(orgSlug, shortId, projectId, true),
+  const link = useTicketRelationMutation(orgSlug, (projectId: string) =>
+    setTicketProject(orgSlug, shortId, projectId, true),
   )
   const q = text.trim().toLowerCase()
   const results = [...projectsById.values()]
@@ -203,7 +203,7 @@ export function LinkProjectDialog({
         <DialogHeader>
           <DialogTitle>Link project</DialogTitle>
           <DialogDescription>
-            Pick a project this task touches.
+            Pick a project this ticket touches.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4 p-6">
@@ -289,33 +289,33 @@ export function LinkTaskDialog({
   const { data: agents } = useAgentList(orgSlug)
   const found = useQuery({
     queryFn: ({ signal }) =>
-      listAgentTasks(orgSlug, { limit: 20, q: q || undefined }, signal),
-    queryKey: queryKeys.agentTasks(orgSlug, { link: q }),
+      listTickets(orgSlug, { limit: 20, q: q || undefined }, signal),
+    queryKey: queryKeys.tickets(orgSlug, { link: q }),
   })
-  const link = useAgentTaskRelationMutation(orgSlug, (other: string) =>
+  const link = useTicketRelationMutation(orgSlug, (other: string) =>
     KINDS[kind].requires
-      ? setAgentTaskDependency(orgSlug, shortId, other, true)
-      : setAgentTaskDependency(orgSlug, other, shortId, true),
+      ? setTicketDependency(orgSlug, shortId, other, true)
+      : setTicketDependency(orgSlug, other, shortId, true),
   )
   const results = (found.data ?? []).filter((t) => !exclude.has(t.short_id))
   return (
     <Dialog onOpenChange={(o) => !o && onClose()} open>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Link task</DialogTitle>
+          <DialogTitle>Link ticket</DialogTitle>
           <DialogDescription>
-            Choose the task, then set the relationship.
+            Choose the ticket, then set the relationship.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4 p-6">
           <Input
-            aria-label="Search tasks"
+            aria-label="Search tickets"
             onChange={(e) => setText(e.target.value)}
-            placeholder="Search tasks by id, title, project, or agent"
+            placeholder="Search tickets by id, title, project, or agent"
             value={text}
           />
           <ul
-            aria-label="Tasks"
+            aria-label="Tickets"
             className="border-tertiary max-h-80 overflow-y-auto rounded-md border"
           >
             {results.map((t) => (
@@ -349,7 +349,7 @@ export function LinkTaskDialog({
             ))}
             {found.data && results.length === 0 && (
               <li className="text-tertiary px-4 py-8 text-center text-sm">
-                No tasks match that search.
+                No tickets match that search.
               </li>
             )}
           </ul>
@@ -377,7 +377,7 @@ export function LinkTaskDialog({
             <p className="text-secondary text-sm">
               {pick
                 ? linkHint(shortId, pick, kind)
-                : 'Choose a task above, then set the relationship.'}
+                : 'Choose a ticket above, then set the relationship.'}
             </p>
           </div>
           {link.error && (
@@ -405,16 +405,16 @@ export function RelatedTasksTab({
   task,
 }: {
   orgSlug: string
-  task: AgentTask
+  task: Ticket
 }) {
-  const canManage = useHasPermission('agent_task:manage', orgSlug)
-  const relations = useAgentTaskRelations(orgSlug, task.short_id)
+  const canManage = useHasPermission('ticket:manage', orgSlug)
+  const relations = useTicketRelations(orgSlug, task.short_id)
   const { data: agents } = useAgentList(orgSlug)
   const [open, setOpen] = useState(false)
-  const unlink = useAgentTaskRelationMutation(
+  const unlink = useTicketRelationMutation(
     orgSlug,
     ([dependent, prerequisite]: [string, string]) =>
-      setAgentTaskDependency(orgSlug, dependent, prerequisite, false),
+      setTicketDependency(orgSlug, dependent, prerequisite, false),
   )
   const r = relations.data
   const rows: Row[] = r
@@ -458,7 +458,7 @@ export function RelatedTasksTab({
         action={
           canManage && (
             <Button onClick={() => setOpen(true)} size="sm" variant="outline">
-              Link task
+              Link ticket
             </Button>
           )
         }
@@ -475,7 +475,7 @@ export function RelatedTasksTab({
           {errorMessage(unlink.error)}
         </p>
       )}
-      <ul aria-label="Related tasks">
+      <ul aria-label="Related tickets">
         {rows.map((row) => (
           <li
             className="border-tertiary hover:bg-secondary flex items-center gap-4 border-b px-6 py-3"
@@ -487,7 +487,7 @@ export function RelatedTasksTab({
             </span>
             <Link
               className="flex min-w-0 flex-1 items-center gap-4"
-              to={agentsPath('tasks', orgSlug, row.task.short_id)}
+              to={ticketsPath(orgSlug, row.task.short_id)}
             >
               <span className="text-tertiary shrink-0 font-mono text-xs tabular-nums">
                 {row.task.short_id}
@@ -526,7 +526,7 @@ export function RelatedTasksTab({
       </ul>
       {r && rows.length === 0 && (
         <p className="text-tertiary px-6 py-10 text-center text-sm">
-          No related tasks.
+          No related tickets.
         </p>
       )}
       {open && (

@@ -769,33 +769,6 @@ export type AgentSubagent = Schemas['AgentSubagent']
 
 export type AgentSubagentRef = Schemas['AgentSubagentRef']
 
-// Agent tasks (ADR 0020): the work of one agent, its event log, and the
-// requests that wait on a person.
-export type AgentTask = Schemas['AgentTaskResponse']
-
-export type AgentTaskCounts = Schemas['AgentTaskCounts']
-
-export type AgentTaskCreate = Schemas['AgentTaskCreate']
-
-export type AgentTaskEvent = Schemas['AgentTaskEventResponse']
-
-export type AgentTaskListItem = Schemas['AgentTaskListItem']
-
-export type AgentTaskPosition = Schemas['AgentTaskPosition']
-
-// The tasks related to a task, and the projects it touches (F13).
-export type AgentTaskProject = Schemas['AssociatedProject']
-
-export type AgentTaskRelated = Schemas['RelatedTask']
-
-export type AgentTaskRelations = Schemas['AgentTaskRelations']
-
-export type AgentTaskResolve = Schemas['AgentTaskRequestResolve']
-
-export type AgentTaskRetry = Schemas['AgentTaskRetry']
-
-export type AgentTaskStatus = AgentTask['status']
-
 // The Imbi tools that an agent can use, and the configuration of one
 // tool. The tool key is `imbi.<name>`; an older key can have another
 // prefix.
@@ -805,7 +778,7 @@ export type AgentToolConfig = Schemas['AgentToolConfig']
 
 export type AgentUpdate = Schemas['AgentUpdate']
 
-// Token use and cost of agent tasks, from ClickHouse.
+// Token use and cost of tickets, from ClickHouse.
 export type AgentUsage = Schemas['AgentUsage']
 
 export type AgentUsageTotals = Schemas['AgentUsageTotals']
@@ -1844,6 +1817,33 @@ export interface TeamMembership {
   team_name: string
   team_slug: string
 }
+
+// Tickets (ADR 0020, ADR 0028): the work of one agent, its event log, and the
+// requests that wait on a person.
+export type Ticket = Schemas['AgentTaskResponse']
+
+export type TicketCounts = Schemas['AgentTaskCounts']
+
+export type TicketCreate = Schemas['AgentTaskCreate']
+
+export type TicketEvent = Schemas['AgentTaskEventResponse']
+
+export type TicketListItem = Schemas['AgentTaskListItem']
+
+export type TicketPosition = Schemas['AgentTaskPosition']
+
+// The tasks related to a task, and the projects it touches (F13).
+export type TicketProject = Schemas['AssociatedProject']
+
+export type TicketRelated = Schemas['RelatedTask']
+
+export type TicketRelations = Schemas['AgentTaskRelations']
+
+export type TicketResolve = Schemas['AgentTaskRequestResolve']
+
+export type TicketRetry = Schemas['AgentTaskRetry']
+
+export type TicketStatus = Ticket['status']
 
 export type TokenResponse = Schemas['TokenResponse']
 

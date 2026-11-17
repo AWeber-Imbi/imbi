@@ -25,6 +25,22 @@ export function extractDynamicFields(
 }
 
 /**
+ * Move a localStorage value from an old key to a new key, once. A value
+ * already at the new key wins. Storage can be blocked; then nothing moves.
+ */
+export function migrateStorageKey(from: string, to: string): void {
+  try {
+    const old = window.localStorage.getItem(from)
+    if (old === null) return
+    if (window.localStorage.getItem(to) === null)
+      window.localStorage.setItem(to, old)
+    window.localStorage.removeItem(from)
+  } catch {
+    // Blocked or full storage: the reader starts from the default.
+  }
+}
+
+/**
  * Parse a blueprint's filter field (string or object) into a typed
  * BlueprintFilter, returning null on missing/invalid input.
  */

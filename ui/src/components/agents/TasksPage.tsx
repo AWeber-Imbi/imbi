@@ -41,7 +41,7 @@ import {
 import { toast } from 'sonner'
 
 import { ApiError } from '@/api/client'
-import { getAgentTaskPosition } from '@/api/endpoints'
+import { getTicketPosition } from '@/api/endpoints'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -56,11 +56,11 @@ import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { queryKeys } from '@/lib/queryKeys'
 import { storage } from '@/lib/storage'
-import { cn } from '@/lib/utils'
-import type { AgentTaskCounts, AgentTaskListItem, TaskHighlight } from '@/types'
+import { cn, migrateStorageKey } from '@/lib/utils'
+import type { TaskHighlight, TicketCounts, TicketListItem } from '@/types'
 
 import { useAgentList } from './agentQueries'
-import { agentsPath } from './agentsNav'
+import { ticketsPath } from './agentsNav'
 import { NewTaskDialog } from './NewTaskDialog'
 import { TaskDetail } from './TaskDetail'
 import {
@@ -77,11 +77,7 @@ import {
   TaskFilterBar,
 } from './TaskFilterBar'
 import { activeCount, ME, useTaskFilters } from './taskFilters'
-import {
-  TASK_PAGE,
-  useAgentTaskCounts,
-  useAgentTaskGroupPages,
-} from './taskQueries'
+import { TASK_PAGE, useTicketCounts, useTicketGroupPages } from './taskQueries'
 import { SEARCH_MATCH, useMatchHighlight } from './taskSearch'
 import { useStoredState } from './useStoredState'
 import { useVirtualRows } from './virtualRows'
@@ -89,9 +85,16 @@ import { useVirtualRows } from './virtualRows'
 /** A short id: an old link (`/agents/tasks/<short id>`) has no org. */
 const SHORT_ID = /^T-\d+$/
 
+const SPLIT_ID = 'imbi:tickets:split'
+// The key format of react-resizable-panels: the group id, then the panel ids.
+migrateStorageKey(
+  'react-resizable-panels:imbi:agent-tasks:split:list:detail',
+  `react-resizable-panels:${SPLIT_ID}:list:detail`,
+)
+
 /**
- * Agents > Tasks: the inbox in a resizable pane and the task in the URL
- * (`/agents/tasks/<org slug>/<short id>[/<tab>]`). The org in the URL
+ * Tickets: the inbox in a resizable pane and the ticket in the URL
+ * (`/tickets/<org slug>/<short id>[/<tab>]`). The org in the URL
  * becomes the selected org. An old link without the org goes to the
  * selected org.
  */
@@ -109,7 +112,7 @@ export function TasksPage() {
   const { organizations, selectedOrganization, setSelectedOrganization } =
     useOrganization()
   const orgSlug = selectedOrganization?.slug
-  const canRead = useHasPermission('agent_task:read', orgSlug)
+  const canRead = useHasPermission('ticket:read', orgSlug)
   const urlOrg = organizations.find((o) => o.slug === taskOrg)
   useEffect(() => {
     if (urlOrg) setSelectedOrganization(urlOrg)
@@ -118,11 +121,11 @@ export function TasksPage() {
   const previousOrg = useRef(orgSlug)
   useEffect(() => {
     if (taskOrg && previousOrg.current === taskOrg && orgSlug !== taskOrg)
-      navigate(agentsPath('tasks'))
+      navigate(ticketsPath())
     previousOrg.current = orgSlug
   }, [orgSlug, taskOrg, navigate])
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
-    id: 'imbi:agent-tasks:split',
+    id: SPLIT_ID,
     panelIds: ['list', 'detail'],
     storage,
   })
@@ -131,15 +134,15 @@ export function TasksPage() {
     return (
       <div className="text-tertiary p-8 text-center">
         {orgSlug
-          ? 'You do not have permission to read agent tasks.'
-          : 'Select an organization to see agent tasks.'}
+          ? 'You do not have permission to read tickets.'
+          : 'Select an organization to see tickets.'}
       </div>
     )
   }
 
   if (legacy) {
     const rest = [orgSlug, shortId!, ...(tab ? [tab] : [])]
-    return <Navigate replace to={agentsPath('tasks', ...rest)} />
+    return <Navigate replace to={ticketsPath(...rest)} />
   }
 
   if (taskOrg && !urlOrg) {
@@ -184,7 +187,7 @@ export function TasksPage() {
           ) : (
             <div className="text-tertiary flex flex-1 flex-col items-center justify-center gap-2 text-sm">
               <Inbox className="size-8" />
-              Select a task.
+              Select a ticket.
             </div>
           )}
         </Panel>
@@ -272,7 +275,7 @@ function GroupHeader({
  * slot for each of its tasks unless the group is collapsed.
  */
 function inboxRows(
-  counts: AgentTaskCounts | undefined,
+  counts: TicketCounts | undefined,
   collapsed: InboxGroupId[],
 ): InboxRow[] {
   if (!counts) return []
@@ -349,7 +352,7 @@ function TaskInbox({
   const listRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
   useMatchHighlight(listRef, 'task-list-search')
-  const canCreate = useHasPermission('agent_task:create', orgSlug)
+  const canCreate = useHasPermission('ticket:create', orgSlug)
   const q = useDebouncedValue(text.trim(), 250) || undefined
   const params = {
     agent_id: nonEmpty(filters.agents),
@@ -365,7 +368,7 @@ function TaskInbox({
     shownParams.current = paramsKey
     if (listRef.current) listRef.current.scrollTop = 0
   }, [paramsKey])
-  const counts = useAgentTaskCounts(orgSlug, params)
+  const counts = useTicketCounts(orgSlug, params)
   const rows = useMemo(
     () => inboxRows(counts.data, collapsed),
     [counts.data, collapsed],
@@ -440,7 +443,7 @@ function TaskInbox({
       }),
     ),
   ]
-  const pages = useAgentTaskGroupPages(orgSlug, params, pageNames)
+  const pages = useTicketGroupPages(orgSlug, params, pageNames)
   const loaded = new Map(pageNames.map((name, i) => [name, pages[i]?.data]))
   const tasks = pages.flatMap((p) => p.data ?? [])
   const agentList = useAgentList(orgSlug)
@@ -491,14 +494,14 @@ function TaskInbox({
     if (!selected) return
     const request = ++revealRequest.current
     try {
-      const at = await getAgentTaskPosition(orgSlug, selected, params)
+      const at = await getTicketPosition(orgSlug, selected, params)
       const { group } = at
       const offset = Math.floor(at.index / TASK_PAGE) * TASK_PAGE
       await Promise.all([
         counts.refetch(),
         queryClient.refetchQueries({
           exact: true,
-          queryKey: queryKeys.agentTasks(orgSlug, { ...params, group, offset }),
+          queryKey: queryKeys.tickets(orgSlug, { ...params, group, offset }),
         }),
       ])
       if (request !== revealRequest.current) return
@@ -547,9 +550,9 @@ function TaskInbox({
               </Button>
             </IconTooltip>
             {canCreate && (
-              <IconTooltip label="New task">
+              <IconTooltip label="New ticket">
                 <Button
-                  aria-label="New task"
+                  aria-label="New ticket"
                   className="border-input size-8 shrink-0"
                   onClick={() => setCreating(true)}
                   size="icon"
@@ -570,17 +573,17 @@ function TaskInbox({
           <div className="relative min-w-0 flex-1">
             <Search className="text-tertiary pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
             <Input
-              aria-label="Filter tasks"
+              aria-label="Filter tickets"
               className="h-8 rounded-r-none pl-8 text-sm"
               onChange={(e) => setText(e.target.value)}
-              placeholder="Search tasks"
+              placeholder="Search tickets"
               value={text}
             />
           </div>
         }
       />
       {error && (
-        <Alert className="m-3" title="Could not load tasks" variant="danger">
+        <Alert className="m-3" title="Could not load tickets" variant="danger">
           <div className="flex items-center justify-between gap-3">
             <span className="text-secondary min-w-0 truncate">
               {error.message}
@@ -603,7 +606,7 @@ function TaskInbox({
       )}
       <div className="min-h-0 flex-1 overflow-y-auto" ref={listRef}>
         {counts.isLoading && (
-          <div aria-busy aria-label="Loading tasks">
+          <div aria-busy aria-label="Loading tickets">
             {Array.from({ length: 6 }, (_, i) => (
               <TaskSlot key={i} />
             ))}
@@ -613,9 +616,9 @@ function TaskInbox({
           <p className="text-tertiary p-6 text-center text-sm">
             {!q && !filtered
               ? canCreate
-                ? 'No tasks yet. Create one with New task.'
-                : 'No tasks yet.'
-              : 'No tasks match.'}
+                ? 'No tickets yet. Create one with New ticket.'
+                : 'No tickets yet.'
+              : 'No tickets match.'}
           </p>
         )}
         <div
@@ -675,7 +678,7 @@ function TaskInbox({
       </div>
       {counts.data && (
         <div className="border-tertiary text-tertiary shrink-0 border-t py-2 text-center text-xs">
-          {total} {total === 1 ? 'task' : 'tasks'}
+          {total} {total === 1 ? 'ticket' : 'tickets'}
         </div>
       )}
       <NewTaskDialog isOpen={creating} onClose={() => setCreating(false)} />
@@ -748,7 +751,7 @@ function TaskRow({
   agent?: FilterAgent
   group: InboxGroupId
   orgSlug: string
-  task: AgentTaskListItem
+  task: TicketListItem
 }) {
   const { search } = useLocation()
   const trigger = TRIGGERS[task.origin.kind]
@@ -775,7 +778,7 @@ function TaskRow({
         'flex items-start gap-3 border-b border-tertiary px-4 py-3 transition-colors',
         active ? 'bg-secondary' : 'hover:bg-secondary',
       )}
-      to={{ pathname: agentsPath('tasks', orgSlug, task.short_id), search }}
+      to={{ pathname: ticketsPath(orgSlug, task.short_id), search }}
     >
       <span className="mt-px flex shrink-0" title={agent?.name}>
         {agent ? (
@@ -844,7 +847,7 @@ function TaskRow({
  * The owners of the tasks seen so far, so that the Assignee list keeps
  * them when a filter hides their tasks. The API has no list of them.
  */
-function useSeenOwners(tasks: AgentTaskListItem[], assignees: string[]) {
+function useSeenOwners(tasks: TicketListItem[], assignees: string[]) {
   const [seen, setSeen] = useState<string[]>([])
   useEffect(() => {
     const next = new Set(seen)

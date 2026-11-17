@@ -41,6 +41,14 @@ const AssistantPage = lazy(() =>
 const AgentsPage = lazy(() =>
   import('./pages/AgentsPage').then((m) => ({ default: m.AgentsPage })),
 )
+const TicketsPage = lazy(() =>
+  import('./pages/TicketsPage').then((m) => ({ default: m.TicketsPage })),
+)
+const LegacyTasksRedirect = lazy(() =>
+  import('./pages/TicketsPage').then((m) => ({
+    default: m.LegacyTasksRedirect,
+  })),
+)
 const AdminPage = lazy(() =>
   import('./pages/AdminPage').then((m) => ({ default: m.AdminPage })),
 )
@@ -155,6 +163,19 @@ function App() {
                     </ProtectedRoute>
                   }
                   path="/settings/:tab?"
+                />
+                <Route
+                  element={
+                    <ProtectedRoute>
+                      <TicketsPage />
+                    </ProtectedRoute>
+                  }
+                  path="/tickets/:slug?/:action?/:tab?"
+                />
+                {/* Tickets were Agents > Tasks before ADR 0028. */}
+                <Route
+                  element={<LegacyTasksRedirect />}
+                  path="/agents/tasks/:slug?/:action?/:tab?"
                 />
                 <Route
                   element={

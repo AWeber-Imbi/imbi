@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 
 import { useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 
-import type { AgentTaskStatus } from '@/types'
+import type { TicketStatus } from '@/types'
 
 /** The assignee value of "my tasks": the API's `mine`. */
 export const ME = 'me'
 
-export const TASK_STATES: { label: string; value: AgentTaskStatus }[] = [
+export const TASK_STATES: { label: string; value: TicketStatus }[] = [
   { label: 'Needs input', value: 'blocked' },
   { label: 'Running', value: 'running' },
   { label: 'Paused', value: 'paused' },
@@ -18,7 +18,7 @@ export const TASK_STATES: { label: string; value: AgentTaskStatus }[] = [
 export interface TaskFilters {
   agents: string[]
   assignees: string[]
-  states: AgentTaskStatus[]
+  states: TicketStatus[]
 }
 
 export const NO_FILTERS: TaskFilters = { agents: [], assignees: [], states: [] }

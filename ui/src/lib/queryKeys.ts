@@ -14,20 +14,6 @@ export const queryKeys = {
   agentPlatformConfig: (orgSlug: string) =>
     ['agentPlatformConfig', orgSlug] as const,
   agents: (orgSlug: string) => ['agents', orgSlug] as const,
-  // Without a short id: the prefix for every task of the org.
-  agentTask: (orgSlug: string, ...shortId: string[]) =>
-    ['agentTask', orgSlug, ...shortId] as const,
-  agentTaskEvents: (orgSlug: string, ...shortId: string[]) =>
-    ['agentTaskEvents', orgSlug, ...shortId] as const,
-  agentTaskProjects: (orgSlug: string, ...shortId: string[]) =>
-    ['agentTaskProjects', orgSlug, ...shortId] as const,
-  agentTaskRelations: (orgSlug: string, ...shortId: string[]) =>
-    ['agentTaskRelations', orgSlug, ...shortId] as const,
-  // Without params: the prefix of every task list of the org.
-  agentTasks: (orgSlug: string, ...params: object[]) =>
-    ['agentTasks', orgSlug, ...params] as const,
-  agentTasksWaiting: (orgSlug: string) =>
-    ['agentTasksWaiting', orgSlug] as const,
   agentToolCatalog: (orgSlug: string) => ['agentToolCatalog', orgSlug] as const,
   agentUsage: (orgSlug: string, params: object) =>
     ['agentUsage', orgSlug, params] as const,
@@ -105,6 +91,19 @@ export const queryKeys = {
   // the LoginPage picker stays in sync.
   publicAuthProviders: () => ['authProviders'] as const,
   teams: (orgSlug: string) => ['teams', orgSlug] as const,
+  // Without a short id: the prefix for every task of the org.
+  ticket: (orgSlug: string, ...shortId: string[]) =>
+    ['ticket', orgSlug, ...shortId] as const,
+  ticketEvents: (orgSlug: string, ...shortId: string[]) =>
+    ['ticketEvents', orgSlug, ...shortId] as const,
+  ticketProjects: (orgSlug: string, ...shortId: string[]) =>
+    ['ticketProjects', orgSlug, ...shortId] as const,
+  ticketRelations: (orgSlug: string, ...shortId: string[]) =>
+    ['ticketRelations', orgSlug, ...shortId] as const,
+  // Without params: the prefix of every task list of the org.
+  tickets: (orgSlug: string, ...params: object[]) =>
+    ['tickets', orgSlug, ...params] as const,
+  ticketsWaiting: (orgSlug: string) => ['ticketsWaiting', orgSlug] as const,
   // Nested under `workflows` so a list invalidation refreshes each one.
   workflow: (orgSlug: string, slug: string) =>
     ['workflows', orgSlug, slug] as const,

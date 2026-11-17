@@ -9,7 +9,7 @@ import {
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { AgentTask } from '@/types'
+import type { Ticket } from '@/types'
 
 import { StatisticsTab } from '../StatisticsTab'
 import { taskStatistics } from '../statsModel'
@@ -190,7 +190,7 @@ function subagentLog(withIds: boolean) {
 }
 
 describe('taskStatistics', () => {
-  const t = task({ origin: { kind: 'human' } }) as unknown as AgentTask
+  const t = task({ origin: { kind: 'human' } }) as unknown as Ticket
 
   it('builds steps with context, cache hit, times and tools', () => {
     const { turns } = taskStatistics(t, TRAJECTORY, 'latest')
@@ -263,7 +263,7 @@ describe('taskStatistics', () => {
   })
 
   it('shows an automation trigger as its source', () => {
-    const hook = task({ origin: { kind: 'webhook' } }) as unknown as AgentTask
+    const hook = task({ origin: { kind: 'webhook' } }) as unknown as Ticket
     expect(taskStatistics(hook, TRAJECTORY, 'latest').turns[0].trigger).toEqual(
       { badge: true, text: 'Webhook' },
     )
@@ -326,7 +326,7 @@ describe('taskStatistics', () => {
 
 describe('StatisticsTab', () => {
   it('says when there are no model requests', () => {
-    const t = task({ status: 'closed' }) as unknown as AgentTask
+    const t = task({ status: 'closed' }) as unknown as Ticket
     render(
       <div className="flex h-150 flex-col">
         <StatisticsTab events={[]} task={t} />
@@ -339,7 +339,7 @@ describe('StatisticsTab', () => {
 
   it('says when nothing matches and clears the search', async () => {
     const user = userEvent.setup()
-    const t = task({ status: 'closed' }) as unknown as AgentTask
+    const t = task({ status: 'closed' }) as unknown as Ticket
     render(
       <div className="flex h-150 flex-col">
         <StatisticsTab events={LOG} task={t} />
@@ -365,7 +365,7 @@ describe('StatisticsTab', () => {
 
   it('keeps the step count of a turn while a search hides steps', async () => {
     const user = userEvent.setup()
-    const t = task({ status: 'closed' }) as unknown as AgentTask
+    const t = task({ status: 'closed' }) as unknown as Ticket
     render(
       <div className="flex h-150 flex-col">
         <StatisticsTab events={LOG} task={t} />
@@ -385,7 +385,7 @@ describe('StatisticsTab', () => {
 
   it('leaves the turn folds alone while searching', async () => {
     const user = userEvent.setup()
-    const t = task({ status: 'closed' }) as unknown as AgentTask
+    const t = task({ status: 'closed' }) as unknown as Ticket
     render(
       <div className="flex h-150 flex-col">
         <StatisticsTab events={LOG} task={t} />
@@ -403,7 +403,7 @@ describe('StatisticsTab', () => {
   })
 
   it('says the task total speed is the main agent only', () => {
-    const t = task({ status: 'closed' }) as unknown as AgentTask
+    const t = task({ status: 'closed' }) as unknown as Ticket
     render(
       <div className="flex h-150 flex-col">
         <StatisticsTab events={subagentLog(true)} task={t} />
@@ -416,7 +416,7 @@ describe('StatisticsTab', () => {
   })
 
   it('opens the only turn once its events load', () => {
-    const t = task({ status: 'closed' }) as unknown as AgentTask
+    const t = task({ status: 'closed' }) as unknown as Ticket
     const view = render(
       <div className="flex h-150 flex-col">
         <StatisticsTab events={[]} task={t} />
@@ -433,7 +433,7 @@ describe('StatisticsTab', () => {
   it('shows a turn in the conversation without folding it', async () => {
     const user = userEvent.setup()
     const onShow = vi.fn()
-    const t = task({ status: 'closed' }) as unknown as AgentTask
+    const t = task({ status: 'closed' }) as unknown as Ticket
     render(
       <div className="flex h-150 flex-col">
         <StatisticsTab
@@ -459,7 +459,7 @@ describe('StatisticsTab', () => {
 
   it('names the button in a tooltip', async () => {
     const user = userEvent.setup()
-    const t = task({ status: 'closed' }) as unknown as AgentTask
+    const t = task({ status: 'closed' }) as unknown as Ticket
     render(
       <div className="flex h-150 flex-col">
         <StatisticsTab events={LOG} onShowInConversation={vi.fn()} task={t} />
@@ -474,7 +474,7 @@ describe('StatisticsTab', () => {
   })
 
   it('leaves the button out without a conversation to show', () => {
-    const t = task({ status: 'closed' }) as unknown as AgentTask
+    const t = task({ status: 'closed' }) as unknown as Ticket
     render(
       <div className="flex h-150 flex-col">
         <StatisticsTab events={LOG} task={t} />
@@ -502,7 +502,7 @@ describe('StatisticsTab with many turns', () => {
   ]
   const isPane = (el: HTMLElement) => !!el.querySelector(':scope > div > table')
   const pane = () => screen.getByRole('table').parentElement!.parentElement!
-  const t = task({ status: 'closed' }) as unknown as AgentTask
+  const t = task({ status: 'closed' }) as unknown as Ticket
   let spy: ReturnType<typeof layout>
   beforeEach(() => {
     spy = layout({

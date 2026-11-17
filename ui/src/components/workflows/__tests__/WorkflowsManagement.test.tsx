@@ -230,7 +230,7 @@ describe('WorkflowsManagement', () => {
     expect(screen.getByText('refused').tagName).toBe('STRONG')
     expect(screen.getByRole('link', { name: 'Open task T-9' })).toHaveAttribute(
       'href',
-      '/agents/tasks/acme/T-9',
+      '/tickets/acme/T-9',
     )
     expect(await screen.findByText('Ship it')).toBeInTheDocument()
     expect(screen.getByText('Not reached')).toBeInTheDocument()
