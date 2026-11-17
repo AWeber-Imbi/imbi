@@ -946,6 +946,28 @@ class ArchiveTestCase(PromptTestBase):
             )
         )
 
+    def test_new_version_unarchives_a_workflows_prompt(self) -> None:
+        # A deleted step key that is added again gets its prompt back.
+        wf = WorkflowPromptTestCase.WF
+        self.as_principal('prompt:read', 'workflow:write')
+        router = self.route(
+            (GET_PROMPT, prompt_row(1, **wf, **self.ARCHIVED)),
+            (GET_VERSION, version_row(1)),
+            (MODEL, MODEL_ROW),
+            (CREATE_VERSION, [{'v': version_props(2)}]),
+        )
+        with mock.patch.object(
+            prompts, 'caller_org_slugs', mock.AsyncMock(return_value={ORG})
+        ):
+            response = self.client.post(
+                WorkflowPromptTestCase.URL + '/versions',
+                json=WorkflowPromptTestCase.BODY,
+            )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(
+            router.params_for(prompts._UNARCHIVE_QUERY)['id'], 'prm-1'
+        )
+
     def test_archived_pinned_ref_resolves(self) -> None:
         self.route(
             (GET_PROMPT, prompt_row(2, **self.ARCHIVED)),

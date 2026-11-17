@@ -202,6 +202,38 @@ class GenerativeRunTestCase(base.PromptTestBase):
         )
         self.assertEqual(response.status_code, 403)
 
+    def test_workflow_write_runs_a_draft_of_its_prompt(self) -> None:
+        slug = f'{base.ORG}.deploy.summary'
+        self.route_run()
+        draft = {
+            'namespace': 'workflows',
+            'slug': slug,
+            'version': {'system': 'Hi', 'model': 'default-chat'},
+        }
+        with mock.patch.object(
+            prompts,
+            'caller_org_slugs',
+            mock.AsyncMock(return_value={base.ORG}),
+        ):
+            # Not for another namespace.
+            self.as_principal('workflow:write')
+            response = self.client.post(
+                RUN_URL,
+                json={
+                    'draft': {**draft, 'namespace': 'mender', 'slug': 'core'}
+                },
+            )
+            self.assertEqual(response.status_code, 403)
+            self.mock_db.execute.side_effect.rules[0] = (
+                base.GET_PROMPT,
+                base.prompt_row(namespace='workflows', slug=slug),
+            )
+            response = self.client.post(RUN_URL, json={'draft': draft})
+            self.assertEqual(response.status_code, 200, response.text)
+            self.as_principal('prompt:read')
+            response = self.client.post(RUN_URL, json={'draft': draft})
+            self.assertEqual(response.status_code, 403)
+
     def test_read_permission_is_not_enough(self) -> None:
         self.as_principal('prompt:read')
         self.route_run()

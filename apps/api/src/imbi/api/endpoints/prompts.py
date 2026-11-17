@@ -45,7 +45,7 @@ from imbi.common.graph import cypher as graph_cypher
 from imbi.common.llm import drivers, generate, typesafe
 from imbi.common.prompts import rendering
 from imbi.common.prompts import resolve as prompt_resolve
-from imbi.common.workflows.registry import agent
+from imbi.common.workflows.registry import agent, analysis
 
 LOGGER = logging.getLogger(__name__)
 
@@ -393,6 +393,12 @@ SET p.archived_at = {now}, p.updated_at = {now}
 RETURN p
 """
 
+_UNARCHIVE_QUERY: typing.LiteralString = """
+MATCH (p:Prompt {{id: {id}}})
+SET p.archived_at = NULL, p.updated_at = {now}
+RETURN p
+"""
+
 _SET_EVAL_QUERY: typing.LiteralString = """
 MATCH (v:PromptVersion {{prompt_id: {prompt_id}, n: {n}}})
       -[:VERSION_OF]->(:Prompt {{id: {prompt_id}}})
@@ -572,7 +578,7 @@ async def _model_id_for(
 #: version pins a version number of the prompt, so such a prompt is
 #: never deleted or renamed, has no tools, and is archived (not
 #: deleted) with its node.
-WORKFLOWS_NAMESPACE = 'workflows'
+WORKFLOWS_NAMESPACE = analysis.NAMESPACE
 
 #: The namespaces whose prompts are data of one organization, and the
 #: organization permission of the owner. An agent's system prompt is
@@ -1245,19 +1251,25 @@ def _call_error(code: str) -> fastapi.HTTPException:
     )
 
 
-def _check_run_permission(
+async def _check_run_permission(
+    db: graph.Graph,
     auth: permissions.AuthContext,
     data: RunRequest,
-    kind: models.PromptKind,
+    prompt: models.Prompt,
 ) -> None:
     """``prompt:update`` may run anything; ``prompt:run`` only a saved
-    version of a generative prompt."""
+    version of a generative prompt. The author of a workflow
+    (``workflow:write``) may run its step prompts, also as a draft."""
     if auth.is_admin or 'prompt:update' in auth.permissions:
         return
     if (
         'prompt:run' in auth.permissions
         and data.ref is not None
-        and kind == 'generative'
+        and prompt.kind == 'generative'
+    ):
+        return
+    if prompt.namespace == WORKFLOWS_NAMESPACE and await _is_owner(
+        db, auth, prompt.namespace, prompt.slug
     ):
         return
     raise fastapi.HTTPException(
@@ -1287,7 +1299,9 @@ async def run_prompt(
     Renders the saved version ``ref``, or the unsaved ``draft``, then
     calls the version's model. A run spends provider credit, so it needs
     ``prompt:update`` (prompt authors), or ``prompt:run`` (the workflows
-    service) for a saved version of a generative prompt.
+    service) for a saved version of a generative prompt. For a
+    ``workflows/<org>.*`` prompt, ``workflow:write`` in ``<org>`` is
+    also enough.
 
     A decision prompt goes to its TypeSafe model with the provider's
     stored key.
@@ -1315,7 +1329,7 @@ async def run_prompt(
     """
     prompt, version, n = await _run_target(db, data, auth)
     _check_route_org(prompt, org_slug)
-    _check_run_permission(auth, data, prompt.kind)
+    await _check_run_permission(db, auth, data, prompt)
     ref = f'{prompt.namespace}/{prompt.slug}' + (
         f'@{n}' if n is not None else ' (draft)'
     )
@@ -1780,21 +1794,34 @@ async def create_prompt_version(
     When the content is the same as the newest version, nothing is
     written and the newest version is returned with status 200.
 
+    A new version of an archived workflows prompt un-archives it: a
+    workflow step with the same key is back.
+
     Raises:
         403: No permission.
         404: No such prompt.
-        409: The prompt is archived, or another version was saved at
-            the same time.
+        409: The prompt is archived and not a workflows prompt, or
+            another version was saved at the same time.
         422: A template does not parse, the model is not in the
             catalog, or a workflows prompt has tools.
 
     """
     await _require_write(db, auth, 'prompt:update', namespace, slug)
     prompt, latest = await _fetch_prompt(db, namespace, slug, auth)
-    _check_not_archived(prompt)
+    if prompt.namespace != WORKFLOWS_NAMESPACE:
+        _check_not_archived(prompt)
     _check_kind(prompt.kind, data)
     _check_tools(prompt.namespace, data)
     _check_templates(data)
+    if prompt.archived_at is not None:
+        await db.execute(
+            _UNARCHIVE_QUERY,
+            {
+                'id': prompt.id,
+                'now': _DATETIME.dump_python(_now(), mode='json'),
+            },
+            ['p'],
+        )
     if latest:
         newest = await _fetch_version(db, prompt, latest)
         if newest.content_sha256 == content_sha256(data):
