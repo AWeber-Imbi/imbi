@@ -2105,6 +2105,18 @@ class LLMCallStepTestCase(EngineTestCase):
         self.assertEqual(self._keys()[:2], ['sum:1', 'sum:1'])
         self.assertEqual(run['steps']['sum']['attempt'], 1)
 
+    async def test_wait_ends_before_the_engine_cancels_the_call(
+        self,
+    ) -> None:
+        # A cancelled call is retried with a new key while imbi-api can
+        # still run the first call. The wait must end first, so that
+        # the step asks again with the same key.
+        self.config.lease_seconds = 60
+        self.answers = [self._answer()]
+        run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertLess(self.calls[0].extensions['timeout']['read'], 30)
+
     async def test_error_without_retry_fails(self) -> None:
         self.answers = [self._error(422, 'model_no_structured_output', False)]
         run = await self._drive_llm_call()

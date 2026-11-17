@@ -31,6 +31,7 @@ import asyncio
 import dataclasses
 import datetime
 import logging
+import math
 import re
 import typing
 import urllib.parse
@@ -112,6 +113,8 @@ class Call:
     idempotency_key: str
     #: The attempt of the step: 1, then one more for each retry.
     attempt: int = 1
+    #: Seconds before the engine cancels this call, or ``None``.
+    time_limit: float | None = None
 
 
 @dataclasses.dataclass
@@ -515,7 +518,12 @@ class Executors:
                 headers={
                     'Idempotency-Key': f'{call.idempotency_key}:{call.attempt}'
                 },
-                wait_seconds=LLM_CALL_TIMEOUT,
+                # Stop waiting before the engine cancels the call: a
+                # cancelled call is retried as a new attempt, with a new
+                # key, while imbi-api can still run the first call.
+                wait_seconds=min(
+                    LLM_CALL_TIMEOUT, (call.time_limit or math.inf) * 0.9
+                ),
             )
         except StepError as e:
             if e.code != 'call_in_progress' and not isinstance(
