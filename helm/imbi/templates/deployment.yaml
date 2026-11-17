@@ -109,12 +109,12 @@ spec:
                 secretKeyRef:
                   name: {{ include "imbi.secretName" . }}
                   key: slack-app-token
-            {{- end }}
-            {{- if and (has .Values.service.mode (list "all" "api")) (or .Values.slackbot.botToken .Values.existingSecret) }}
+            {{- else if and (has .Values.service.mode (list "all" "api")) (or .Values.slackbot.botToken .Values.existingSecret) }}
             {{- /* imbi-api posts the messages of workflow slack steps with
-                   the Slack bot's token. Optional: without it, a slack
-                   step fails with slack_not_configured. */}}
-            - name: IMBI_SLACK_BOT_TOKEN
+                   the Slack bot's token. When the bot runs in this pod, the
+                   block above already sets it. Optional: without it, a
+                   slack step fails with slack_not_configured. */}}
+            - name: SLACK_BOT_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ include "imbi.secretName" . }}

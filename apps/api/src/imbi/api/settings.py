@@ -201,9 +201,13 @@ class Email(settings.ConfigFileSettings):
 
 
 class Slack(settings.ConfigFileSettings):
-    """Slack configuration for the ``slack`` workflow step."""
+    """Slack configuration for the ``slack`` workflow step.
 
-    model_config = settings.base_settings_config(env_prefix='IMBI_SLACK_')
+    The ``SLACK_`` prefix matches imbi-slackbot, so one
+    ``SLACK_BOT_TOKEN`` serves both.
+    """
+
+    model_config = settings.base_settings_config(env_prefix='SLACK_')
     config_section = 'slack'
 
     #: The bot token (``xoxb-...``). Empty: the step is not configured.

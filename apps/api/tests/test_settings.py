@@ -160,6 +160,16 @@ class EmailSettingsTestCase(unittest.TestCase):
             os.environ.pop('MAILPIT_SMTP_PORT', None)
 
 
+class SlackSettingsTestCase(unittest.TestCase):
+    def test_reads_the_slackbot_token_variable(self) -> None:
+        """imbi-api and imbi-slackbot share ``SLACK_BOT_TOKEN``."""
+        with unittest.mock.patch.dict(
+            os.environ, {'SLACK_BOT_TOKEN': 'xoxb-shared'}
+        ):
+            slack = settings.Slack()
+        self.assertEqual(slack.bot_token.get_secret_value(), 'xoxb-shared')
+
+
 class ServerConfigSettingsTestCase(unittest.TestCase):
     """Test cases for ServerConfig settings."""
 

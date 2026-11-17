@@ -382,8 +382,9 @@ bottom of the **About** tab.
 
 Setup:
 
-1. Set `IMBI_SLACK_BOT_TOKEN` on imbi-api to the bot token (`xoxb-...`) of
-   a Slack app with the `chat:write` scope. With Helm, set
+1. Set `SLACK_BOT_TOKEN` on imbi-api to the bot token (`xoxb-...`) of
+   a Slack app with the `chat:write` scope. imbi-slackbot reads the same
+   variable, so one token serves both. With Helm, set
    `slackbot.botToken`. See [Kubernetes](../deployment/kubernetes.md#slack-bot).
 2. Invite the bot to each channel that a workflow posts to:
    `/invite @<bot name>` in the channel.
@@ -396,7 +397,7 @@ Errors:
 
 | Error | Cause |
 |---|---|
-| `slack_not_configured` | imbi-api has no `IMBI_SLACK_BOT_TOKEN` |
+| `slack_not_configured` | imbi-api has no `SLACK_BOT_TOKEN` |
 | `slack_failed: not_in_channel` | The bot is not a member of the channel. Invite it |
 | `slack_failed: channel_not_found` | No channel has this ID, or the bot cannot see it |
 | `slack_failed: <code>` | Slack refused the message with another [error code](https://docs.slack.dev/reference/methods/chat.postMessage#errors) |

@@ -368,9 +368,6 @@ DESCRIPTIONS: dict[str, str] = {
     'IMBI_EMAIL_INITIAL_RETRY_DELAY': 'First retry delay in seconds',
     'IMBI_EMAIL_MAX_RETRY_DELAY': 'Maximum retry delay in seconds',
     'IMBI_EMAIL_RETRY_BACKOFF_FACTOR': 'Retry delay multiplier',
-    'IMBI_SLACK_BOT_TOKEN': 'Slack bot token (`xoxb-...`) that workflow '
-    '`slack` steps post with. Empty: those steps fail with '
-    '`slack_not_configured`.',
     'MAILPIT_SMTP_PORT': 'In development, with the default SMTP host and '
     'port, use this port and no TLS (Mailpit)',
     'S3_ENDPOINT_URL': 'S3-compatible endpoint. Unset: AWS S3.',
@@ -478,7 +475,9 @@ DESCRIPTIONS: dict[str, str] = {
     'IMBI_SLACKBOT_API_TOKEN': 'API key of the `imbi-slackbot` service '
     'account. Set: the bot uses the token of its AI provider from imbi-api '
     'instead of `ANTHROPIC_API_KEY`.',
-    'SLACK_BOT_TOKEN': 'Slack bot token (`xoxb-`)',
+    'SLACK_BOT_TOKEN': 'Slack bot token (`xoxb-`). imbi-api posts the '
+    'messages of workflow `slack` steps with it; without it those steps '
+    'fail with `slack_not_configured`.',
     'SLACK_APP_TOKEN': 'Slack app-level token for Socket Mode (`xapp-`)',
     'IMBI_WORKFLOWS_SA_CLIENT_ID': 'Client ID of the `imbi-workflows` '
     'service account. Deploy and rollback steps fail without it.',
