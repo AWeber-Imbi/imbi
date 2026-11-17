@@ -1414,6 +1414,17 @@ async def run_prompt(
         503: The provider is unavailable or rate limited; try again.
 
     """
+    # A repeated key returns the first outcome before the live prompt
+    # and model are resolved, so a deleted prompt or a disabled model
+    # does not lose the answer. Only the organization member and
+    # principal that made the call can repeat its key.
+    if idempotency_key is not None:
+        org_id = await organizations.check_member(org_slug, db, auth)
+        row = await calls.repeat(
+            org_id, auth.principal_name, idempotency_key, STALE_AFTER
+        )
+        if row is not None:
+            return _repeat(row)
     prompt, version, n = await _run_target(db, data, auth)
     _check_route_org(prompt, org_slug)
     await _check_run_permission(db, auth, data, prompt)
@@ -1576,14 +1587,6 @@ async def _run_generative(
 ) -> RunResponse:
     """Run a generative prompt; see :func:`run_prompt`."""
     org_id = await organizations.check_member(org_slug, db, auth)
-    # A repeated key returns the first outcome, even when the model is
-    # no longer usable.
-    if idempotency_key is not None:
-        row = await calls.repeat(
-            org_id, auth.principal_name, idempotency_key, STALE_AFTER
-        )
-        if row is not None:
-            return _repeat(row)
     if version.model is None:
         raise _unprocessable('Choose a generative model to run the prompt')
     records = await db.execute(

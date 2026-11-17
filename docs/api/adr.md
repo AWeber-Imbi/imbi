@@ -551,7 +551,7 @@ Adds the `llm_call` workflow step: it sends a saved prompt to a generative model
 
 - The prompt is stored in the Prompt CMS as `workflows/<org>.<workflow>.<node>`; the step pins a version, and a removed node archives its prompt
 - imbi-api makes the model call, not the engine: workload identity tokens, Bedrock SigV4, and the CMS render are there, and the preview uses the same path
-- Every call is recorded in `ai_runtime.ai_model_calls` with an idempotency key, so a repeat of an attempt makes no second call; rows are pruned after 90 days
+- Every call is recorded in `ai_runtime.ai_model_calls` with an idempotency key, so a repeat of an attempt makes no second call; rows are pruned after 90 days, but the rows of an open run (rendered prompts, answers, and mapped secrets) stay until the run closes
 - Each catalog model records `supports_structured_output`; a step with output fields cannot use a model without it
 - Drivers: Anthropic, OpenAI, OpenAI-compatible, Bedrock, and Vertex (Gemini only, with a key)
 

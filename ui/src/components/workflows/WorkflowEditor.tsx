@@ -52,7 +52,12 @@ import {
   NodePanel,
   SettingsPanel,
 } from './Inspector'
-import { pinNodes, saveWorkflow, type StepPrompt } from './llmCallPrompt'
+import {
+  nodePrompt,
+  pinNodes,
+  saveWorkflow,
+  type StepPrompt,
+} from './llmCallPrompt'
 import { Palette } from './Palette'
 import { type PanelTab, RunPanel } from './RunPanel'
 import { manualTrigger, runResults, testResults } from './runs'
@@ -593,7 +598,7 @@ export function WorkflowEditor({
                   const copy = duplicateNode(draft.graph, selectedNode.id).node
                   if (!copy) return
                   updateGraph((g) => ({ ...g, nodes: [...g.nodes, copy] }))
-                  const edited = prompts[selectedNode.id]
+                  const edited = nodePrompt(prompts, selectedNode.id)
                   if (edited) setPrompts((p) => ({ ...p, [copy.id]: edited }))
                   setSelection({ id: copy.id, kind: 'node' })
                 }}
@@ -618,7 +623,7 @@ export function WorkflowEditor({
                 }
                 onTab={setInspectorTab}
                 orgSlug={orgSlug}
-                prompt={prompts[selectedNode.id]}
+                prompt={nodePrompt(prompts, selectedNode.id)}
                 readOnly={readOnly}
                 result={results[selectedNode.id] ?? null}
                 resultSource={resultSource}

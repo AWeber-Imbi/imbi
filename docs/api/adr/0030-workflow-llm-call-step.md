@@ -130,9 +130,10 @@ constraint and a consistent read.
 - The step keeps `side_effect=False`: the record, not the engine, stops
   a second call.
 - The `ai-model-calls-prune` maintenance operation deletes rows older
-  than 90 days. A scheduler system task runs it daily at 02:30 UTC. 90
-  days is much longer than the longest run, so a prune never removes a
-  live key.
+  than 90 days. A scheduler system task runs it daily at 02:30 UTC. The
+  prune keeps the rows of a workflow run that is still open, also when
+  they are older than 90 days, so it never removes a live key. They are
+  deleted by the first prune after the run closes.
 
 ### Structured output is a property of the model
 
@@ -169,9 +170,10 @@ workflow save refuses it (`422`), and the run endpoint refuses it
 - A run spends provider credit. Only people with `prompt:run` can
   activate a workflow with the step. A preview needs `workflow:write` or
   `prompt:update`.
-- The call record holds the rendered prompt and the answer for 90 days.
-  Anything that the inputs hold is stored there, also secrets that an
-  author maps into a prompt.
+- The call record holds the rendered prompt and the answer for 90 days,
+  or until its run closes if the run stays open longer. Anything that
+  the inputs hold is stored there, also secrets that an author maps into
+  a prompt.
 - The record holds usage and cost, so per-organization spend tracking
   can be built on it later. This ADR does not add limits.
 - An admin must set the structured output flag of each model. Until then,

@@ -2124,6 +2124,30 @@ class LLMCallStepTestCase(EngineTestCase):
         self.assertEqual(self._keys()[:3], ['sum:1', 'sum:1', 'sum:1'])
         self.assertEqual(run['steps']['sum']['attempt'], 1)
 
+    async def test_token_failure_asks_again_with_the_same_key(
+        self,
+    ) -> None:
+        # The first call can still run in imbi-api when a token refresh
+        # fails during the poll. A new key could pay twice.
+        self.answers = [
+            self._error(409, 'call_in_progress', True),
+            self._answer(),
+        ]
+        bearer = executors.Api.bearer
+        tokens: list[int] = []
+
+        async def failing(self_: executors.Api) -> str:
+            tokens.append(1)
+            if len(self.calls) == 1 and len(tokens) == 2:
+                raise executors.StepError('token_http_503', retry=True)
+            return await bearer(self_)
+
+        with mock.patch.object(executors.Api, 'bearer', failing):
+            run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(self._keys()[:2], ['sum:1', 'sum:1'])
+        self.assertEqual(run['steps']['sum']['attempt'], 1)
+
     async def test_wait_ends_before_the_engine_cancels_the_call(
         self,
     ) -> None:

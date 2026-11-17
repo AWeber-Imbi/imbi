@@ -176,7 +176,10 @@ class WorkflowStore:
         return True
 
     async def delete(
-        self, organization_id: str, slug: str
+        self,
+        organization_id: str,
+        slug: str,
+        on_deleted: abc.Callable[[], abc.Awaitable[None]] | None = None,
     ) -> typing.Literal['deleted', 'missing', 'open_runs']:
         """Delete a workflow that has no open runs.
 
@@ -184,6 +187,10 @@ class WorkflowStore:
         (it holds ``FOR SHARE``), and the open-run check runs after it,
         so no run can be written between the check and the delete. The
         trigger bindings are marked ``removed`` for the reconciler.
+
+        ``on_deleted`` runs before the commit. A create of the same slug
+        waits for the commit, so it cannot run in between. When it
+        raises, the delete is rolled back.
         """
         async with self._pool.connection() as conn, conn.transaction():
             cur = await conn.execute(
@@ -211,6 +218,8 @@ class WorkflowStore:
                 (row[0],),
             )
             await conn.execute(f'NOTIFY {runtime.BINDINGS_CHANNEL}')
+            if on_deleted is not None:
+                await on_deleted()
             return 'deleted'
 
     async def versions(self, organization_id: str, slug: str) -> list[Row]:

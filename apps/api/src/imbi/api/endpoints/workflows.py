@@ -809,16 +809,19 @@ async def delete_workflow(
         409: A run of the workflow is queued or running.
 
     """
-    current = await store.get(org_id, slug)
-    result = await store.delete(org_id, slug)
+    # The archive runs before the delete commits: a create of the same
+    # slug waits, so the archive cannot reach the prompts of the new
+    # workflow. A failed archive rolls the delete back.
+    result = await store.delete(
+        org_id,
+        slug,
+        on_deleted=lambda: _archive_prompts(db, org_slug, slug, ()),
+    )
     if result == 'open_runs':
         raise fastapi.HTTPException(
             status_code=409, detail=f'Workflow {slug!r} has open runs'
         )
-    # Also when the workflow is missing: a retry of a delete whose
-    # archive failed archives the prompts then.
-    await _archive_prompts(db, org_slug, slug, ())
-    if result == 'missing' or current is None:
+    if result == 'missing':
         raise fastapi.HTTPException(
             status_code=404, detail=f'Workflow {slug!r} not found'
         )

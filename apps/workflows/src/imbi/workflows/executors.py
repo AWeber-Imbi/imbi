@@ -563,10 +563,11 @@ class Executors:
             return ask_again
         except StepError as e:
             # A 5xx with no error code, such as a failed record of the
-            # answer, does not tell whether imbi-api made the call.
-            unknown = (e.retry and e.code.startswith('http_')) or isinstance(
-                e.__cause__, httpx.HTTPError
-            )
+            # answer, does not tell whether imbi-api made the call. A
+            # failed token refresh while the call runs is the same.
+            unknown = (
+                e.retry and e.code.startswith(('http_', 'token_http_'))
+            ) or isinstance(e.__cause__, httpx.HTTPError)
             if e.code != 'call_in_progress' and not unknown:
                 raise
             return ask_again

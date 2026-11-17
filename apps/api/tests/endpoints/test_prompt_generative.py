@@ -298,6 +298,31 @@ class GenerativeRunTestCase(base.PromptTestBase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()['text'], 'Stored')
 
+    def test_repeat_after_the_prompt_is_deleted(self) -> None:
+        self.calls.repeat.return_value = {
+            'id': CALL_ID,
+            'status': 'succeeded',
+            'prompt_ref': 'mender/core@1',
+            'prompt_version': 1,
+            'model': 'default-chat',
+            'model_id': 'claude-opus-5',
+            'content_sha256': 'abc',
+            'text': 'Stored',
+            'result': None,
+            'usage': {'input_tokens': 1, 'output_tokens': 1},
+            'cost_usd': None,
+            'error': None,
+        }
+        self.route_run()
+        self.mock_db.execute.side_effect.rules[0] = (base.GET_PROMPT, [])
+        response = self.run_ref(
+            ref='mender/core@1',
+            headers={'Idempotency-Key': 'run-1:node-a:1'},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['text'], 'Stored')
+        self.generate.assert_not_awaited()
+
     def test_repeat_while_running_is_409(self) -> None:
         response = self._repeat(status='running')
         self.assertEqual(response.status_code, 409)

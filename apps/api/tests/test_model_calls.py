@@ -38,6 +38,7 @@ def _call(org: str, key: str | None) -> dict[str, typing.Any]:
 class ModelCallStoreTestCase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         self.org = f'mc-{uuid.uuid4().hex[:10]}'
+        await workflows.initialize()
         await model_calls.initialize()
         self.pool = model_calls.create_pool()
         await self.pool.open()

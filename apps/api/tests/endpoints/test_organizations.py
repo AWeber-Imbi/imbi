@@ -12,7 +12,14 @@ import psycopg.errors
 from fastapi import testclient
 
 from apps.api.tests import support
-from imbi.api import agent_tasks, harness, models, secret_broker, workflows
+from imbi.api import (
+    agent_tasks,
+    harness,
+    model_calls,
+    models,
+    secret_broker,
+    workflows,
+)
 from imbi.common import graph, relational
 
 
@@ -620,6 +627,7 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
         await workflows.initialize()
         await secret_broker.initialize()
         await harness.initialize()
+        await model_calls.initialize()
         self.graph = graph.Graph()
         await self.graph.open()
         self.pool = agent_tasks.create_pool()

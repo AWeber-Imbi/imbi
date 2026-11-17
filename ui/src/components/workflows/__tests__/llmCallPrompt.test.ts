@@ -6,6 +6,7 @@ import type { Prompt, PromptResolution, PromptVersion } from '@/types'
 
 import {
   draftFromVersion,
+  nodePrompt,
   saveWorkflow,
   type StepPrompt,
 } from '../llmCallPrompt'
@@ -90,6 +91,14 @@ function savedParams() {
   const body = vi.mocked(endpoints.updateWorkflow).mock.calls[0][2]
   return body.graph.nodes[0].params
 }
+
+describe('nodePrompt', () => {
+  it('ignores inherited names such as constructor', () => {
+    expect(nodePrompt({}, 'constructor')).toBeUndefined()
+    expect(nodePrompt({}, 'toString')).toBeUndefined()
+    expect(nodePrompt({ n1: PROMPT }, 'n1')).toBe(PROMPT)
+  })
+})
 
 describe('saveWorkflow', () => {
   beforeEach(() => {

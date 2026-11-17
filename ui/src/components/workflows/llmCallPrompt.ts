@@ -77,6 +77,16 @@ export async function ensurePrompt(
   }
 }
 
+/** The edited prompt of a node; an inherited name such as `constructor` is none. */
+export function nodePrompt(
+  prompts: Record<string, StepPrompt>,
+  id: string,
+): StepPrompt | undefined {
+  return Object.prototype.hasOwnProperty.call(prompts, id)
+    ? prompts[id]
+    : undefined
+}
+
 /** The pinned `ref@n` of a node, or null when it has no prompt yet. */
 export function pinnedRef(node: WorkflowNode): null | string {
   const { prompt_ref: ref, prompt_version: n } = node.params
@@ -155,7 +165,7 @@ export async function saveWorkflow(
       const slug = promptSlug(orgSlug, workflowSlug, node.key)
       const ref = `${NAMESPACE}/${slug}`
       const pinned = pinnedRef(node)
-      const draftPrompt = prompts[node.id]
+      const draftPrompt = nodePrompt(prompts, node.id)
       let content: Omit<PromptVersionCreate, 'summary'>
       if (draftPrompt) {
         content = promptContent(draftPrompt, node.params.inputs)
