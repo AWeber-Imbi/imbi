@@ -699,7 +699,8 @@ async def save_workflow(
     owner team, because the owner team controls the runs.
 
     The CMS prompt of each LLM Call node that the save removes is
-    archived.
+    archived, and an archived prompt of a node of the graph is
+    restored.
 
     Raises:
         403: ``owner_team_forbidden``: the caller changes the owner team
@@ -738,8 +739,17 @@ async def save_workflow(
             },
         )
     await _check_llm_call(db, org_slug, slug, data.graph)
+    # The archive runs under the row lock of the save: a second save
+    # waits, so an older key set cannot archive a prompt of a newer
+    # graph.
     if not await store.save(
-        org_id, slug, definition, current['owner_team_id']
+        org_id,
+        slug,
+        definition,
+        current['owner_team_id'],
+        on_saved=lambda: _archive_prompts(
+            db, org_slug, slug, _llm_call_keys(definition.graph)
+        ),
     ):
         raise fastapi.HTTPException(
             status_code=409,
@@ -749,9 +759,6 @@ async def save_workflow(
                 'during the save; read it again and retry',
             },
         )
-    await _archive_prompts(
-        db, org_slug, slug, _llm_call_keys(definition.graph)
-    )
     return await _get(store, db, org_id, slug)
 
 

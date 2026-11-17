@@ -89,8 +89,7 @@ _VERSION_JSON_FIELDS: tuple[str, ...] = (
     'eval_summary',
 )
 
-#: Template providers, by the name a template calls them with.
-_PROVIDER_NAMES: frozenset[str] = frozenset({'project'})
+_PROVIDER_NAMES = rendering.PROVIDER_NAMES
 
 #: Serializes timestamps the way ``model_dump(mode='json')`` stores
 #: them, so a stored value compares equal to a value read back.
@@ -418,6 +417,13 @@ MATCH (p:Prompt {{namespace: {namespace}}})
 WHERE p.archived_at IS NULL AND p.slug STARTS WITH {prefix}
   AND NOT (p.slug IN {keep})
 SET p.archived_at = {now}, p.updated_at = {now}
+RETURN p.slug AS slug
+"""
+
+_RESTORE_QUERY: typing.LiteralString = """
+MATCH (p:Prompt {{namespace: {namespace}}})
+WHERE p.archived_at IS NOT NULL AND p.slug IN {keep}
+SET p.archived_at = NULL, p.updated_at = {now}
 RETURN p.slug AS slug
 """
 
@@ -755,24 +761,23 @@ async def archive_prompts_except(
     db: graph.Graph, namespace: str, prefix: str, keep: list[str]
 ) -> None:
     """Archive each prompt of ``namespace`` whose slug starts with
-    ``prefix``, except the slugs in ``keep``.
+    ``prefix``, except the slugs in ``keep``. Restore the archived
+    prompts of ``keep``.
 
     An archived prompt is no longer listed and gets no new versions or
     label moves. Its versions stay, so ``ref@n`` still resolves. A
     prompt that is already archived does not change.
 
     """
-    now = _DATETIME.dump_python(_now(), mode='json')
-    await db.execute(
-        _ARCHIVE_QUERY,
-        {
-            'namespace': namespace,
-            'prefix': prefix,
-            'keep': keep,
-            'now': now,
-        },
-        ['slug'],
-    )
+    params = {
+        'namespace': namespace,
+        'prefix': prefix,
+        'keep': keep,
+        'now': _DATETIME.dump_python(_now(), mode='json'),
+    }
+    await db.execute(_ARCHIVE_QUERY, params, ['slug'])
+    if keep:
+        await db.execute(_RESTORE_QUERY, params, ['slug'])
 
 
 async def delete_org_prompts(
@@ -1652,19 +1657,26 @@ async def _run_generative(
         await calls.finish(row['id'], 'failed', error=e.code)
         raise _call_error(e.code) from None
     usage = dict(answer.usage)
-    cost = task_store.usage_cost(
-        {
-            'tokens_in': answer.usage['input_tokens'],
-            'tokens_out': answer.usage['output_tokens'],
-            'cache_read_tokens': None,
-            'cache_write_tokens': None,
-        },
-        {
-            'input_cost_per_million': _price(record.get('input_cost')),
-            'output_cost_per_million': _price(record.get('output_cost')),
-            'cache_read_cost_per_million': None,
-            'cache_write_cost_per_million': None,
-        },
+    tokens_in = answer.usage['input_tokens']
+    tokens_out = answer.usage['output_tokens']
+    # The cost is unknown when a count is unknown, not a subtotal.
+    cost = (
+        None
+        if tokens_in is None or tokens_out is None
+        else task_store.usage_cost(
+            {
+                'tokens_in': tokens_in,
+                'tokens_out': tokens_out,
+                'cache_read_tokens': None,
+                'cache_write_tokens': None,
+            },
+            {
+                'input_cost_per_million': _price(record.get('input_cost')),
+                'output_cost_per_million': _price(record.get('output_cost')),
+                'cache_read_cost_per_million': None,
+                'cache_write_cost_per_million': None,
+            },
+        )
     )
     await calls.finish(
         row['id'],

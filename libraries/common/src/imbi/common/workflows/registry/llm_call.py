@@ -16,6 +16,7 @@ import typing
 
 import pydantic
 
+from imbi.common.prompts import rendering
 from imbi.common.workflows import graph, step_type
 from imbi.common.workflows.registry import agent, script
 
@@ -63,6 +64,8 @@ class Params(pydantic.BaseModel):
                 raise ValueError(f'{name!r} is not a valid input name')
             if name in RESERVED_NAMES:
                 raise ValueError(f'{name!r} is reserved in Jinja2')
+            if name in rendering.PROVIDER_NAMES:
+                raise ValueError(f'{name!r} is the name of a prompt provider')
         return value
 
     @pydantic.field_validator('output_fields')

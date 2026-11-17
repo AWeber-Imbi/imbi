@@ -753,6 +753,11 @@ def check_syntax(
             raise RenderError(f'{label}: {e}') from e
 
 
+#: Template providers, by the name a template calls them with. A
+#: variable cannot have one of these names.
+PROVIDER_NAMES: frozenset[str] = frozenset({'project'})
+
+
 def check_variable_schema(
     schema: collections.abc.Mapping[str, models.PromptVariable],
     provider_names: collections.abc.Collection[str],

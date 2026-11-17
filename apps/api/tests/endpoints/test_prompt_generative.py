@@ -151,8 +151,9 @@ class GenerativeRunTestCase(base.PromptTestBase):
         response = self.run_ref(output_fields=FIELDS)
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()['result'], {'severity': 'high'})
-        # An unmeasured count adds nothing (agent_tasks.usage_cost).
-        self.assertAlmostEqual(response.json()['cost_usd'], 0.000075)
+        # An unknown count makes the cost unknown, not a subtotal.
+        self.assertIsNone(response.json()['cost_usd'])
+        self.assertIsNone(self.calls.finish.await_args.kwargs['cost_usd'])
         sent: generate.Request = self.generate.await_args.args[0]
         self.assertEqual(sent.output_fields[0].name, 'severity')
 

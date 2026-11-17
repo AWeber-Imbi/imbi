@@ -96,7 +96,17 @@ describe('InputsField', () => {
       target: { value: 'none' },
     })
     expect(
-      screen.getByText('This name is reserved in Jinja2.'),
+      screen.getByText('This name is reserved in a prompt.'),
+    ).toBeInTheDocument()
+  })
+
+  it('refuses the name of a prompt provider in a Jinja2 prompt', () => {
+    renderField({ limit: 3 }, 'jinja')
+    fireEvent.change(screen.getByLabelText('Input 1 name'), {
+      target: { value: 'project' },
+    })
+    expect(
+      screen.getByText('This name is reserved in a prompt.'),
     ).toBeInTheDocument()
   })
 

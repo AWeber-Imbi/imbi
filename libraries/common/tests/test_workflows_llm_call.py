@@ -33,9 +33,17 @@ def _node(
 
 class ParamsTestCase(unittest.TestCase):
     def test_valid(self) -> None:
-        params = _params(inputs={'diff': '{{ trigger.diff }}', 'lambda': 1})
+        params = _params(
+            inputs={
+                'diff': '{{ trigger.diff }}',
+                'lambda': 1,
+                'project_data': 2,
+            }
+        )
         self.assertEqual(params.output_fields, [])
-        self.assertEqual(set(params.inputs), {'diff', 'lambda'})
+        self.assertEqual(
+            set(params.inputs), {'diff', 'lambda', 'project_data'}
+        )
 
     def test_invalid(self) -> None:
         for overrides, message in (
@@ -46,6 +54,7 @@ class ParamsTestCase(unittest.TestCase):
             ({'inputs': {'Bad': 1}}, 'not a valid input name'),
             ({'inputs': {'none': 1}}, 'reserved in Jinja2'),
             ({'inputs': {'not': 1}}, 'reserved in Jinja2'),
+            ({'inputs': {'project': 1}}, 'name of a prompt provider'),
             ({'inputs': {f'i{n}': n for n in range(21)}}, 'at most 20'),
             ({'output_fields': FIELDS * 2}, 'unique'),
             ({'output_fields': FIELDS * 51}, 'at most 50'),

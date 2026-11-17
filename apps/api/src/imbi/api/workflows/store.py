@@ -8,6 +8,7 @@ consecutive version numbers.
 import dataclasses
 import typing
 import uuid
+from collections import abc
 
 import psycopg
 import psycopg_pool
@@ -135,12 +136,17 @@ class WorkflowStore:
         slug: str,
         definition: Definition,
         owner_team_id: str,
+        on_saved: abc.Callable[[], abc.Awaitable[None]] | None = None,
     ) -> bool:
         """Write a new version.
 
         ``owner_team_id`` is the owner team that the caller checked. The
         save changes nothing and returns ``False`` when there is no
         workflow, or when its owner team is no longer that team.
+
+        ``on_saved`` runs before the commit, while the save holds the
+        row lock of the workflow, so that a second save waits for it.
+        When it raises, the save is rolled back.
         """
         async with self._pool.connection() as conn, conn.transaction():
             cur = await conn.execute(
@@ -165,6 +171,8 @@ class WorkflowStore:
             await conn.execute(
                 _INSERT_VERSION, _version_values(row[0], row[1], definition)
             )
+            if on_saved is not None:
+                await on_saved()
         return True
 
     async def delete(

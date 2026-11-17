@@ -48,11 +48,21 @@ const PYTHON_KEYWORDS = new Set([
   'yield',
 ])
 
-/** The names that Jinja2 reads as a constant, an operator, or itself. */
-const JINJA_KEYWORDS = new Set(['false', 'none', 'not', 'self', 'true'])
+/**
+ * The names that Jinja2 reads as a constant, an operator, or itself,
+ * and the names of the prompt providers (`project`).
+ */
+const PROMPT_NAMES = new Set([
+  'false',
+  'none',
+  'not',
+  'project',
+  'self',
+  'true',
+])
 
 const KEYWORDS = {
-  jinja: { message: 'This name is reserved in Jinja2.', names: JINJA_KEYWORDS },
+  jinja: { message: 'This name is reserved in a prompt.', names: PROMPT_NAMES },
   python: { message: 'This name is a Python keyword.', names: PYTHON_KEYWORDS },
 }
 

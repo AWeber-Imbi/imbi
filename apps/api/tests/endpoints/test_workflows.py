@@ -976,6 +976,17 @@ class LLMCallStepTestCase(WorkflowTestCase):
         # Not a node of the workflow: a save archives what an earlier
         # save left.
         self.assertTrue(await self._archived('ask'))
+        # A save of a graph that uses an archived prompt restores it.
+        response = await self.client.put(
+            f'{self.base}/deploy-guard',
+            json={
+                'name': 'Deploy guard',
+                'owner_team_slug': self.team,
+                'graph': self._graph(sum={}, plain={}),
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertFalse(await self._archived('plain'))
         response = await self.client.delete(f'{self.base}/deploy-guard')
         self.assertEqual(response.status_code, 204, response.text)
         self.assertTrue(await self._archived('sum'))
