@@ -284,6 +284,11 @@ class GenerateTestCase(unittest.IsolatedAsyncioTestCase):
                 ),
                 '{"at": "not-a-date"}',
             ),
+            (
+                # Strict mode does not get uri; the local check does.
+                agent.OutputField(name='link', type='string', format='uri'),
+                '{"link": "not a uri"}',
+            ),
         ):
             with (
                 self.subTest(field.name),
