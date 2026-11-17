@@ -53,7 +53,7 @@ that fix them.
 
 ### AI and automation
 
-- **[Agents](admin/agents.md)** and **[agent tasks](admin/agent-tasks.md)**:
+- **[Agents](admin/agents.md)** and **[tickets](admin/tickets.md)**:
   AI agents that do work against your projects, in
   [runner pools](deployment/agent-runners.md) that you deploy
 - **[Workflows](admin/workflows.md)**: deploy, rollback, agent, email,

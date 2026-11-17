@@ -7,7 +7,7 @@ page tells you how to deploy a pool, connect it to Imbi, and find problems.
 For the design, see
 [ADR 0022](../api/adr/0022-agent-harness-and-secrets-broker.md). For the
 agents and tasks that the runners execute, see [Agents](../admin/agents.md)
-and [Agent Tasks](../admin/agent-tasks.md).
+and [Tickets](../admin/tickets.md).
 
 ## How a runner works
 

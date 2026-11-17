@@ -3,7 +3,7 @@
 The **Agents** area defines the agents of an organization. An agent is a
 named configuration: an owner team, a system prompt and a model, the tools
 and plugins it can use, the secrets it can request, and its limits. Agents
-do work in [agent tasks](agent-tasks.md). Runner pods run the tasks (see
+do work in [tickets](tickets.md). Runner pods run the tasks (see
 [Agent Runners](../deployment/agent-runners.md)).
 
 The **Agents** menu in the top bar shows when you have `agent:read`. Each
@@ -15,7 +15,7 @@ The area has these pages:
 | Page | Menu path | What it shows |
 |---|---|---|
 | Dashboard | **Agents > Dashboard** | Agent activity at a glance |
-| Tasks | **Agents > Tasks** | The task inbox. See [Agent tasks](agent-tasks.md) |
+| Tickets | **Tickets** (top bar) | The ticket list. It is a top-level page, not in the Agents area. See [Tickets](tickets.md) |
 | Usage | **Agents > Usage** | Tokens and spend |
 | Agents | **Agents > Settings > Agents** | The agent list, the agent detail, and the editor |
 | Workflows | **Agents > Settings > Workflows** | See [Workflows](workflows.md) |
@@ -35,7 +35,7 @@ The area has these pages:
 
 You must also be a member of the organization. The permissions come from
 your role in that organization only. For the task permissions,
-see [Agent tasks](agent-tasks.md#permissions). For roles, see
+see [Tickets](tickets.md#permissions). For roles, see
 [Roles and permissions](roles-and-permissions.md).
 
 ## Create an agent
@@ -163,7 +163,7 @@ To give the agent a tool:
    **Enabled only**.
 2. Turn on the switch of the tool. **Enable all** turns on all the tools.
 3. Optional: click **Approval**. Then a person must approve each call. See
-   [Approvals](agent-tasks.md#answer-a-request).
+   [Approvals](tickets.md#answer-a-request).
 4. Optional: click an environment chip to block that environment. A
    blocked environment is not highlighted. The runner refuses a call whose
    `environment` argument names a blocked environment. A built-in tool has
@@ -224,7 +224,7 @@ Admin > Secrets**.
 ### Subagents
 
 An agent can give work to other agents. Each such call makes a child task
-(see [Related tasks](agent-tasks.md#relations-and-associated-projects)).
+(see [Related tasks](tickets.md#relations-and-associated-projects)).
 
 1. Select each agent that this agent can delegate to. The list shows the
    enabled agents of the organization.
@@ -241,7 +241,7 @@ An empty field means no limit.
 | Field | What it does |
 |---|---|
 | Monthly cost cap | USD. Advisory only: warnings show at 80% and 100%. The agent still runs. See [Usage](#usage) |
-| Task budget | USD. The default hard budget of each task. A task can only lower it. See [Budgets](agent-tasks.md#budgets) |
+| Task budget | USD. The default hard budget of each task. A task can only lower it. See [Budgets](tickets.md#budgets) |
 | Max concurrent tasks | The number of tasks of this agent that can run at the same time |
 | Task timeout | For example `30m` or `2h`. A number with no unit is minutes. A task that runs longer closes with `exceeded_ceiling` |
 | Required runner labels | Used only to select a harness runner. Labels, separated by commas. Only a runner with every label runs the tasks of this agent. See [Labels and exclusive pools](../deployment/agent-runners.md#labels-and-exclusive-pools) |
@@ -261,7 +261,7 @@ On the agent list, use the switch on the row. A disabled agent:
 
 - Gets no new tasks. A create returns `409`.
 - Has no **Run** button.
-- Is not in the **New task** dialog.
+- Is not in the **New ticket** dialog.
 - Does not run its queued tasks.
 
 A change to only the enabled state writes no version.
@@ -313,7 +313,7 @@ Open an agent from the list. The detail page shows:
 - **Cost over time**: daily cost and runs for the last 30 days.
 - **Tools and MCP access**, **Subagents**, and the **System prompt**.
 - **Run**, **Duplicate**, and **Edit**. **Run** opens the
-  [New task](agent-tasks.md#create-a-task) dialog with this agent.
+  [New ticket](tickets.md#create-a-ticket) dialog with this agent.
 
 The agent list also shows **Runs 30d**, **Cost 30d**, and **Avg / run**.
 
@@ -411,19 +411,19 @@ Imbi calculates the cost from the token counts and the prices in
 [AI Models](ai-models.md). A usage report for a model with no price counts
 as $0. The page tells you how many reports had no price.
 
-- **Tasks** counts the tasks made in the range. The cost in the range can
-  include tasks made before it.
+- **Tickets** counts the tickets made in the range. The cost in the range can
+  include tickets made before it.
 - The days, the range, and the monthly cost cap use the calendar in the
   time zone of your browser. At 80% and 100% of a cap, the page shows a
   banner. The cap does not stop the agent.
 
-The page needs `agent_task:read`. The API is
+The page needs `ticket:read`. The API is
 `GET /organizations/{org}/agent-usage/`, with `start`, `end`, `agent_id`,
 and `tz` (an IANA time zone; the default is UTC).
 
 ## Dashboard
 
-Open **Agents > Dashboard**. It needs `agent_task:read`.
+Open **Agents > Dashboard**. It needs `ticket:read`.
 
 | Section | What it shows |
 |---|---|
