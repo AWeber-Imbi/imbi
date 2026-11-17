@@ -513,36 +513,44 @@ class Executors:
         wait_seconds = min(LLM_CALL_TIMEOUT, deadline - loop.time())
         if wait_seconds <= 0:
             return Outcome(resume_at=_now(), state=call.state)
+        # imbi-api still runs the call of this attempt, or the response
+        # was lost and the outcome is unknown. Ask again with the same
+        # key: a retry would be a new attempt and a second call.
+        ask_again = Outcome(
+            resume_at=_now()
+            + datetime.timedelta(seconds=LLM_CALL_POLL_SECONDS),
+            state=call.state,
+        )
         try:
-            answer = await self.api.request(
-                'POST',
-                _path('organizations', org, 'prompts', 'run'),
-                json={
-                    'ref': f'{params.prompt_ref}@{params.prompt_version}',
-                    'variables': params.inputs,
-                    'output_fields': [
-                        f.model_dump(mode='json') for f in params.output_fields
-                    ],
-                },
-                headers={
-                    'Idempotency-Key': f'{call.idempotency_key}:{call.attempt}'
-                },
-                wait_seconds=wait_seconds,
-            )
+            # The httpx timeout applies to each phase of the request,
+            # not to the total, so the total has its own limit.
+            async with asyncio.timeout(wait_seconds):
+                answer = await self.api.request(
+                    'POST',
+                    _path('organizations', org, 'prompts', 'run'),
+                    json={
+                        'ref': f'{params.prompt_ref}@{params.prompt_version}',
+                        'variables': params.inputs,
+                        'output_fields': [
+                            f.model_dump(mode='json')
+                            for f in params.output_fields
+                        ],
+                    },
+                    headers={
+                        'Idempotency-Key': (
+                            f'{call.idempotency_key}:{call.attempt}'
+                        )
+                    },
+                    wait_seconds=wait_seconds,
+                )
+        except TimeoutError:
+            return ask_again
         except StepError as e:
             if e.code != 'call_in_progress' and not isinstance(
                 e.__cause__, httpx.HTTPError
             ):
                 raise
-            # imbi-api still runs the call of this attempt, or the
-            # response was lost and the outcome is unknown. Ask again
-            # with the same key: a retry would be a new attempt and a
-            # second call.
-            return Outcome(
-                resume_at=_now()
-                + datetime.timedelta(seconds=LLM_CALL_POLL_SECONDS),
-                state=call.state,
-            )
+            return ask_again
         if answer.get('n') != params.prompt_version:
             raise StepError('prompt_version_mismatch', retry=False)
         return Outcome(

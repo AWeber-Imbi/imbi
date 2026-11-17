@@ -68,9 +68,13 @@ class FakeApi:
             abc.Callable[[httpx.Request], abc.Awaitable[httpx.Response]] | None
         ) = None
         #: Takes the prompt run calls when set.
-        self.llm_call: abc.Callable[[httpx.Request], httpx.Response] | None = (
-            None
-        )
+        self.llm_call: (
+            abc.Callable[
+                [httpx.Request],
+                httpx.Response | abc.Awaitable[httpx.Response],
+            ]
+            | None
+        ) = None
 
     def _once(
         self, request: httpx.Request, act: typing.Callable[[], dict]
@@ -2133,6 +2137,25 @@ class LLMCallStepTestCase(EngineTestCase):
         self.assertEqual(run['status'], 'succeeded', run['error'])
         self.assertLess(self.calls[0].extensions['timeout']['read'], 0.5)
         self.assertEqual(set(self._keys()), {'sum:1', 'then:1'})
+
+    async def test_slow_response_asks_again_with_the_same_key(self) -> None:
+        # The httpx timeout limits each phase, not the total. A response
+        # that is slower than the budget must not let the engine cancel
+        # the step and retry it with a new key. Limit 1s, budget 0.9s.
+        self.config.lease_seconds = 31
+        answer = self._answer()
+
+        async def slow(request: httpx.Request) -> httpx.Response:
+            self.calls.append(request)
+            if len(self.calls) == 1:
+                await asyncio.sleep(5)
+            return answer
+
+        self.api.llm_call = slow
+        run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(self._keys()[:2], ['sum:1', 'sum:1'])
+        self.assertEqual(run['steps']['sum']['attempt'], 1)
 
     async def test_error_without_retry_fails(self) -> None:
         self.answers = [self._error(422, 'model_no_structured_output', False)]
