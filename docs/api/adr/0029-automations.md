@@ -146,6 +146,13 @@ Rules:
   project runs in an organization, are organization settings.
 - The task lists of ADR 0020 do not show tasks of the origin kind
   `automation_run` unless a person asks for them.
+- The ticket routes of ADR 0028 refuse a handoff, a reopen, and a new
+  gating dependency on the planner ticket and on a project run ticket.
+  A reopen would run the engine again with no check of
+  `automation:run`, of the limits of the run, or of the one active
+  project run for a project. A handoff to a person, or a hold, would
+  leave the run with no end. The automation routes are the one way to
+  retry a project run.
 
 Differences from the CLI, on purpose:
 
@@ -248,12 +255,15 @@ The GitHub App of an automation agent must hold these permissions.
   no hooks, and a git configuration that the workspace cannot change.
   It records the head of each branch when it makes the clone, and each
   head that it pushes. Before a push or a branch delete it compares the
-  remote head with the recorded heads. A branch delete is a git push
-  of an empty ref, not an API call. A forced push and a branch delete
-  name the head that the runner expects (`--force-with-lease`), so the
-  remote refuses them when the head changed after the comparison. A
-  head that Imbi did not record, or a refused push, ends the project
-  run as `conflict`.
+  remote head with the last head that it recorded for that branch. An
+  earlier recorded head is not sufficient: a person can reset the
+  branch to it. A branch delete is a git push of an empty ref, not an
+  API call. Each push and each branch delete names the last recorded
+  head as the expected head (`--force-with-lease`), so the remote
+  refuses it when the head changed after the comparison. For a new
+  branch, the expected state is that the branch does not exist. A
+  remote head that is not the last recorded head, or a refused push,
+  ends the project run as `conflict`.
 - The planner task gets the read operations only.
 - A dry run makes no external write. Its project runs get the read
   operations and the model call only. The broker does not do a write;
