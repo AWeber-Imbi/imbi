@@ -25,12 +25,30 @@ describe('paramFields for the script step', () => {
     expect(field?.kind).toBe('text')
   })
 
-  it('keeps a list of manual trigger inputs as JSON', () => {
+  it('edits a list of manual trigger inputs as name and type rows', () => {
     const [field] = paramFields({
-      properties: { inputs: { items: { type: 'object' }, type: 'array' } },
+      $defs: {
+        ManualInput: {
+          properties: {
+            name: { type: 'string' },
+            type: { enum: ['string', 'number', 'boolean'], type: 'string' },
+          },
+          type: 'object',
+        },
+      },
+      properties: {
+        inputs: { items: { $ref: '#/$defs/ManualInput' }, type: 'array' },
+      },
       type: 'object',
     })
-    expect(field?.kind).toBe('json')
+    expect(field).toMatchObject({
+      kind: 'manualInputs',
+      options: [
+        { label: 'String', value: 'string' },
+        { label: 'Number', value: 'number' },
+        { label: 'Boolean', value: 'boolean' },
+      ],
+    })
   })
 })
 

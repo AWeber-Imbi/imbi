@@ -4,6 +4,12 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, ArrowLeft, FlaskConical, Play } from 'lucide-react'
+import {
+  Group,
+  Panel,
+  Separator,
+  useDefaultLayout,
+} from 'react-resizable-panels'
 import { toast } from 'sonner'
 
 import { ApiError } from '@/api/client'
@@ -121,6 +127,11 @@ export function WorkflowEditor({
   // `?run=<id>` opens that run, as the attention list links to it.
   const [searchParams] = useSearchParams()
   const [runId, setRunId] = useState<null | string>(searchParams.get('run'))
+  const { defaultLayout, onLayoutChanged } = useDefaultLayout({
+    id: 'imbi:workflow-editor:split',
+    panelIds: ['canvas', 'inspector'],
+    storage: typeof window === 'undefined' ? undefined : window.localStorage,
+  })
   const [panel, setPanel] = useState<{ open: boolean; tab: PanelTab }>({
     open: !!runId,
     tab: runId ? 'runs' : 'test',
@@ -486,111 +497,128 @@ export function WorkflowEditor({
             types={stepTypes}
           />
         )}
-        <div className="relative flex min-w-0 flex-1 flex-col">
-          <Canvas
-            edgeErrors={edgeErrors}
-            graph={draft.graph}
-            onAdd={onAdd}
-            onConnect={(edge) => updateGraph((g) => connect(g, types, edge))}
-            onMove={(id, position) =>
-              updateGraph((g) => updateNode(g, id, { position }))
-            }
-            onOpenPalette={
-              paletteOpen || readOnly ? null : () => setPaletteOpen(true)
-            }
-            onRemoveEdge={(index) => {
-              updateGraph((g) => removeEdge(g, index))
-              setSelection(null)
-            }}
-            onSelect={setSelection}
-            onView={setView}
-            readOnly={readOnly}
-            selection={selection}
-            summaries={summaries}
-            types={types}
-            view={view}
-            viewportRef={viewportRef}
-          />
-          <RunPanel
-            canRun={canRun}
-            onClearTest={() => setTestRun(null)}
-            onRunId={setRunId}
-            onSelectNode={(id) => {
-              setSelection({ id, kind: 'node' })
-              setInspectorTab('output')
-            }}
-            onTab={(tab) => setPanel({ open: true, tab })}
-            onToggle={() => setPanel((p) => ({ ...p, open: !p.open }))}
-            open={panel.open}
-            orgSlug={orgSlug}
-            results={results}
-            run={runDetail.data}
-            runId={runId}
-            slug={slug}
-            tab={panel.tab}
-            testPending={test.isPending}
-            testRun={testRun}
-            types={types}
-          />
-        </div>
-        <aside className="border-tertiary bg-primary flex w-80 shrink-0 flex-col border-l">
-          {selectedNode ? (
-            <NodePanel
+        <Group
+          className="min-w-0 flex-1"
+          defaultLayout={defaultLayout}
+          onLayoutChanged={onLayoutChanged}
+          orientation="horizontal"
+        >
+          <Panel className="relative flex min-w-0 flex-col" id="canvas">
+            <Canvas
+              edgeErrors={edgeErrors}
               graph={draft.graph}
-              issues={nodeIssues(selectedNode.id)}
-              key={selectedNode.id}
-              node={selectedNode}
-              onChange={(patch) =>
-                updateGraph((g) => updateNode(g, selectedNode.id, patch))
+              onAdd={onAdd}
+              onConnect={(edge) => updateGraph((g) => connect(g, types, edge))}
+              onMove={(id, position) =>
+                updateGraph((g) => updateNode(g, id, { position }))
               }
-              onDelete={deleteSelection}
-              onDuplicate={() => {
-                const copy = duplicateNode(draft.graph, selectedNode.id).node
-                if (!copy) return
-                updateGraph((g) => ({ ...g, nodes: [...g.nodes, copy] }))
-                setSelection({ id: copy.id, kind: 'node' })
+              onOpenPalette={
+                paletteOpen || readOnly ? null : () => setPaletteOpen(true)
+              }
+              onRemoveEdge={(index) => {
+                updateGraph((g) => removeEdge(g, index))
+                setSelection(null)
               }}
-              onRemoveItem={(name, index) =>
-                updateGraph((g) =>
-                  name === 'branches' &&
-                  types[selectedNode.type]?.ports === null
-                    ? removeBranch(g, selectedNode.id, index)
-                    : updateNode(g, selectedNode.id, {
-                        params: {
-                          ...selectedNode.params,
-                          [name]: (
-                            selectedNode.params[name] as unknown[]
-                          ).filter((_, i) => i !== index),
-                        },
-                      }),
-                )
-              }
-              onTab={setInspectorTab}
-              orgSlug={orgSlug}
+              onSelect={setSelection}
+              onView={setView}
               readOnly={readOnly}
-              result={results[selectedNode.id] ?? null}
-              resultSource={resultSource}
-              tab={inspectorTab}
+              selection={selection}
+              summaries={summaries}
+              types={types}
+              view={view}
+              viewportRef={viewportRef}
+            />
+            <RunPanel
+              canRun={canRun}
+              onClearTest={() => setTestRun(null)}
+              onRunId={setRunId}
+              onSelectNode={(id) => {
+                setSelection({ id, kind: 'node' })
+                setInspectorTab('output')
+              }}
+              onTab={(tab) => setPanel({ open: true, tab })}
+              onToggle={() => setPanel((p) => ({ ...p, open: !p.open }))}
+              open={panel.open}
+              orgSlug={orgSlug}
+              results={results}
+              run={runDetail.data}
+              runId={runId}
+              slug={slug}
+              tab={panel.tab}
+              testPending={test.isPending}
+              testRun={testRun}
               types={types}
             />
-          ) : selection?.kind === 'edge' ? (
-            <EdgePanel
-              graph={draft.graph}
-              index={selection.index}
-              onRemove={deleteSelection}
-              readOnly={readOnly}
-              types={types}
-            />
-          ) : (
-            <SettingsPanel
-              draft={draft}
-              issues={issues.filter((i) => !i.node_id)}
-              onChange={change}
-              orgSlug={orgSlug}
-              readOnly={readOnly}
-            />
-          )}
-        </aside>
+          </Panel>
+          <Separator
+            aria-label="Resize workflow canvas"
+            className="hover:after:bg-amber-border focus-visible:after:bg-amber-border relative w-1.5 cursor-col-resize bg-transparent outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-(--ds-border-primary) after:transition-colors"
+          />
+          <Panel
+            className="bg-primary flex min-h-0 flex-col"
+            defaultSize="320px"
+            id="inspector"
+            maxSize="60%"
+            minSize="320px"
+          >
+            {selectedNode ? (
+              <NodePanel
+                graph={draft.graph}
+                issues={nodeIssues(selectedNode.id)}
+                key={selectedNode.id}
+                node={selectedNode}
+                onChange={(patch) =>
+                  updateGraph((g) => updateNode(g, selectedNode.id, patch))
+                }
+                onDelete={deleteSelection}
+                onDuplicate={() => {
+                  const copy = duplicateNode(draft.graph, selectedNode.id).node
+                  if (!copy) return
+                  updateGraph((g) => ({ ...g, nodes: [...g.nodes, copy] }))
+                  setSelection({ id: copy.id, kind: 'node' })
+                }}
+                onRemoveItem={(name, index) =>
+                  updateGraph((g) =>
+                    name === 'branches' &&
+                    types[selectedNode.type]?.ports === null
+                      ? removeBranch(g, selectedNode.id, index)
+                      : updateNode(g, selectedNode.id, {
+                          params: {
+                            ...selectedNode.params,
+                            [name]: (
+                              selectedNode.params[name] as unknown[]
+                            ).filter((_, i) => i !== index),
+                          },
+                        }),
+                  )
+                }
+                onTab={setInspectorTab}
+                orgSlug={orgSlug}
+                readOnly={readOnly}
+                result={results[selectedNode.id] ?? null}
+                resultSource={resultSource}
+                tab={inspectorTab}
+                types={types}
+              />
+            ) : selection?.kind === 'edge' ? (
+              <EdgePanel
+                graph={draft.graph}
+                index={selection.index}
+                onRemove={deleteSelection}
+                readOnly={readOnly}
+                types={types}
+              />
+            ) : (
+              <SettingsPanel
+                draft={draft}
+                issues={issues.filter((i) => !i.node_id)}
+                onChange={change}
+                orgSlug={orgSlug}
+                readOnly={readOnly}
+              />
+            )}
+          </Panel>
+        </Group>
       </div>
       {trigger && startOpen && (
         <StartRunDialog

@@ -28,7 +28,7 @@ export const STATUS: Record<
 
 export interface ManualInput {
   name: string
-  type: 'boolean' | 'number' | 'string'
+  type: 'boolean' | 'number' | 'string' | 'text'
 }
 
 /** What one step of a run or a test run did. */
