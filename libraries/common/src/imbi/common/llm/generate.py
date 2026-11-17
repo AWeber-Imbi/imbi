@@ -178,7 +178,12 @@ async def generate(
         except ValueError:
             raise GenerateError('model_answer_invalid', retry=True) from None
     result = _check(request.output_fields, schema, value)
-    return Result(json.dumps(result), result, answer.usage, answer.request_id)
+    try:
+        # NaN and Infinity decode and pass the schema, but are not JSON.
+        text = json.dumps(result, allow_nan=False)
+    except ValueError:
+        raise GenerateError('model_answer_invalid', retry=True) from None
+    return Result(text, result, answer.usage, answer.request_id)
 
 
 def _check(
@@ -192,7 +197,10 @@ def _check(
     value = agent.match_enum_case(schema, _drop_nulls(schema, value))
     try:
         # The schema is our own, so no check against the meta-schema.
-        jsonschema.Draft202012Validator(schema).validate(value)
+        jsonschema.Draft202012Validator(
+            schema,
+            format_checker=jsonschema.Draft202012Validator.FORMAT_CHECKER,
+        ).validate(value)
     except jsonschema.ValidationError:
         raise GenerateError('model_answer_invalid', retry=True) from None
     return agent.complete_result(

@@ -275,6 +275,28 @@ class GenerateTestCase(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual(ctx.exception.code, 'model_answer_invalid')
 
+    async def test_answer_must_be_finite_and_match_the_format(self) -> None:
+        for field, text in (
+            (agent.OutputField(name='score', type='number'), '{"score": NaN}'),
+            (
+                agent.OutputField(
+                    name='at', type='string', format='date-time'
+                ),
+                '{"at": "not-a-date"}',
+            ),
+        ):
+            with (
+                self.subTest(field.name),
+                self.assertRaises(generate.GenerateError) as ctx,
+            ):
+                await self._call(
+                    _request('openai', output_fields=[field]),
+                    200,
+                    _openai_body(text),
+                )
+            self.assertEqual(ctx.exception.code, 'model_answer_invalid')
+            self.assertTrue(ctx.exception.retry)
+
     async def test_openai_refuses_response_format(self) -> None:
         with self.assertRaises(generate.GenerateError) as ctx:
             await self._call(
