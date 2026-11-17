@@ -14,7 +14,7 @@ export type FieldSource =
 
 export type ParamField =
   | (FieldBase & {
-      kind: 'checks' | 'conditions' | 'select'
+      kind: 'checks' | 'conditions' | 'manualInputs' | 'select'
       options: { label: string; value: string }[]
     })
   | (FieldBase & { kind: 'multiline'; mono: boolean })
@@ -85,6 +85,15 @@ export function paramFields(
     // are a list of declarations.
     if (name === 'inputs' && prop.type === 'object') {
       return { ...base, kind: 'inputs' }
+    }
+    if (name === 'inputs' && prop.items) {
+      const item = resolve(schema, prop.items)
+      const type = resolve(schema, item.properties?.type ?? {})
+      return {
+        ...base,
+        kind: 'manualInputs',
+        options: enumOptions(type.enum ?? []),
+      }
     }
     if (name === 'conditions' && prop.items) {
       const item = resolve(schema, prop.items)
