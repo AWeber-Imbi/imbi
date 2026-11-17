@@ -281,8 +281,9 @@ async def delete_project(
     SonarQube answered ``404`` -- the project was already gone, which a
     caller tearing it down treats as done rather than as an error.
     Raises :class:`SonarqubeClientError` on transport / any other
-    non-2xx failure -- notably a token whose account lacks Administer
-    on the project.
+    non-2xx response -- notably a token whose account lacks Administer
+    on the project, but also a redirect: httpx does not follow those,
+    and a ``302`` to a login page means nothing was deleted.
     """
     url = base_url.rstrip('/') + '/api/projects/delete'
     try:
@@ -294,7 +295,7 @@ async def delete_project(
         raise SonarqubeClientError(f'SonarQube request failed: {exc}') from exc
     if response.status_code == 404:
         return False
-    if response.is_error:
+    if not response.is_success:
         LOGGER.warning(
             'SonarQube %s %s returned %d: %s',
             response.request.method,
