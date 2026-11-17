@@ -12,6 +12,7 @@ things:
 
 | Capability | Label | Default | Scope |
 |---|---|---|---|
+| `lifecycle` | Project lifecycle | On | Project-scoped |
 | `webhook-actions` | Webhook actions | On | Project-scoped |
 | `analysis` | Project doctor | On | Project-scoped |
 
@@ -46,7 +47,7 @@ Give the account of the token these SonarQube permissions:
 |---|---|
 | Browse, on the projects | All reads |
 | Create Projects | The Doctor fix that creates a missing SonarQube project |
-| Administer, on the project | The Doctor fix that changes the main branch |
+| Administer, on the project | The Doctor fix that changes the main branch, and the lifecycle delete |
 
 ## Component key
 
@@ -129,8 +130,30 @@ Doctor shows `warn` findings. It does not fail.
 
 ## Lifecycle
 
-None. The plugin does not create or delete SonarQube projects when you
-create or delete an Imbi project. Only the Doctor fix creates them.
+| Event | What it does |
+|---|---|
+| Archive | Deletes the SonarQube project |
+| Delete | Deletes the SonarQube project |
+
+Both events call `POST /api/projects/delete` with the component key. The
+key is the identifier on the `EXISTS_IN` edge. A project without an edge
+is skipped: the plugin never deletes by the `<owning team slug>:<project
+slug>` convention that the Doctor uses, because that key is a guess.
+After the call, the plugin removes the edge and the `sonarqube` project
+link, so Imbi does not point at a project that is gone.
+
+The result of the event:
+
+| Result | When |
+|---|---|
+| `ok` | SonarQube deleted the project |
+| `skipped` | SonarQube has no project with the key. The edge and link are still removed. Also when the project has no `EXISTS_IN` edge, or the integration has no `service_url` or `api_token` |
+| `failed` | SonarQube refused the call, for example `403` when the token account lacks Administer on the project. The edge and link stay |
+
+The plugin does not create SonarQube projects when you create an Imbi
+project, and does not create one again when you unarchive it. Only an
+analysis or the Doctor fix creates them. After an unarchive, use the
+Doctor fix **Create / link the SonarQube project**.
 
 ## Known limits
 

@@ -1,7 +1,7 @@
 import unittest
 
 import imbi.plugins.sonarqube
-from imbi.plugins.sonarqube import actions, plugin
+from imbi.plugins.sonarqube import actions, lifecycle, plugin
 
 
 class SonarQubePluginManifestTests(unittest.TestCase):
@@ -36,6 +36,16 @@ class SonarQubePluginManifestTests(unittest.TestCase):
         self.assertIsNotNone(capability)
         assert capability is not None
         self.assertIs(capability.handler, plugin.SonarQubeDoctor)
+
+    def test_manifest_declares_lifecycle_capability(self) -> None:
+        manifest = plugin.SonarQubePlugin.manifest
+        capability = manifest.get_capability('lifecycle')
+        self.assertIsNotNone(capability)
+        assert capability is not None
+        self.assertIs(capability.handler, lifecycle.SonarQubeLifecycle)
+        self.assertEqual(
+            ['archived', 'deleted'], capability.hints['lifecycle_events']
+        )
 
 
 class SonarQubeWebhookActionsTests(unittest.TestCase):
