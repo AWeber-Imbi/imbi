@@ -152,7 +152,10 @@ gateway:
 # secret whenever the corresponding feature is switched on:
 #   - anthropic-api-key            when assistant.enabled, or the Slack bot
 #     is on (service.mode "slackbot", or "all" with slackbot.enabled)
-#   - slack-bot-token, slack-app-token  when the Slack bot is on
+#   - slack-bot-token, slack-app-token  when the Slack bot is on. imbi-api
+#     ("api" and "all" modes) also reads slack-bot-token, optionally, for
+#     workflow slack steps; without it those steps fail with
+#     slack_not_configured.
 #   - s3-access-key, s3-secret-key when storage.accessKey is set
 #   - iggy-connectors-api-key, iggy-password  when iggyConnect.enabled. The
 #     runtime's two refs are not optional, so it will not start without them;
@@ -283,7 +286,10 @@ assistant:
   anthropicApiKey: ""
 
 # Slack bot. Always on in "slackbot" mode. In "all" mode, enabled starts it
-# in the same pod. Other modes ignore enabled and get no Slack credentials. It needs both tokens and assistant.anthropicApiKey.
+# in the same pod. Other modes ignore enabled. It needs both tokens and assistant.anthropicApiKey.
+# imbi-api ("api" and "all" modes) also reads botToken, when set, as
+# SLACK_BOT_TOKEN to post the messages of workflow slack steps. That needs
+# no app token and does not need the bot to be on.
 slackbot:
   enabled: false
   botToken: ""  # xoxb-...

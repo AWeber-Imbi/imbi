@@ -42,6 +42,7 @@ dependencies = [
   "python-multipart>=0.0.26",
   "qrcode>=8.0",
   "sentry-sdk>=2.48.0,<3",
+  "slack-sdk>=3.43",
   "slowapi==0.1.9",
   "typer",
   "uvicorn",

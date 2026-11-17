@@ -14,6 +14,7 @@ from unittest import mock
 
 import fastapi
 import httpx
+from slack_sdk import errors as slack_errors
 
 from apps.api.tests import support
 from imbi.api import agent_tasks, email, models, workflows
@@ -862,6 +863,294 @@ class EngineEmailTestCase(WorkflowRunTestCase):
             response.json(), {'recipients': [self.email], 'failed': []}
         )
         self.assertEqual(self.sent[0].subject, 'Workflow Deploy guard failed')
+
+
+class EngineSlackTestCase(WorkflowRunTestCase):
+    """The engine-only Slack route."""
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        self.url = await self._workflow()
+        response = await self.client.post(
+            f'{self.url}/runs', json={'inputs': {'version': '1'}}
+        )
+        self.run_id = response.json()['id']
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'INSERT INTO workflow_runtime.step_runs (run_id, node_id,'
+                ' node_key, node_type, title, status, input)'
+                " VALUES (%s, 'post', 'post', 'slack', 'Post', 'running',"
+                " %s), (%s, 'tell', 'tell', 'email', 'Tell', 'running',"
+                " '{}')",
+                (
+                    self.run_id,
+                    workflows.runs.pg_json.Jsonb(
+                        {'channel': 'C0123456789', 'text': '*Shipped* 1'}
+                    ),
+                    self.run_id,
+                ),
+            )
+        self.token = 'xoxb-test'
+        engine = permissions.AuthContext(
+            service_account=models.ServiceAccount(
+                slug='imbi-workflows', display_name='Imbi Workflows'
+            ),
+            auth_method='client_credentials',
+        )
+        overrides = self.test_app.dependency_overrides
+        self.user_auth = overrides[permissions.get_current_user]
+        overrides[permissions.get_current_user] = lambda: engine
+        overrides[organizations.member_org_id] = lambda: self.org
+        overrides[workflow_runs._slack_token] = lambda: self.token
+        self.slack = mock.Mock()
+        self.slack.chat_postMessage = mock.AsyncMock(
+            return_value={
+                'ok': True,
+                'channel': 'C0123456789',
+                'ts': '1700000000.000100',
+            }
+        )
+        self.slack.chat_getPermalink = mock.AsyncMock(
+            return_value={
+                'ok': True,
+                'permalink': 'https://example.slack.com/archives/x',
+            }
+        )
+        patcher = mock.patch.object(
+            workflow_runs.slack_client,
+            'AsyncWebClient',
+            return_value=self.slack,
+        )
+        self.client_class = patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addAsyncCleanup(self._forget, str(self.run_id))
+        self.post_url = f'{self.url}/runs/{self.run_id}/steps/post/slack'
+        self.headers = {'Idempotency-Key': f'{self.run_id}:post'}
+
+    async def test_posts_once(self) -> None:
+        for _ in range(2):
+            response = await self.client.post(
+                self.post_url, headers=self.headers
+            )
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(
+                response.json(),
+                {
+                    'channel': 'C0123456789',
+                    'ts': '1700000000.000100',
+                    'permalink': 'https://example.slack.com/archives/x',
+                    'error': None,
+                },
+            )
+        self.client_class.assert_called_once_with(
+            token='xoxb-test', timeout=20, retry_handlers=[]
+        )
+        self.slack.chat_postMessage.assert_awaited_once_with(
+            channel='C0123456789', text='*Shipped* 1', unfurl_links=False
+        )
+        self.slack.chat_getPermalink.assert_awaited_once_with(
+            channel='C0123456789', message_ts='1700000000.000100'
+        )
+
+    async def test_permalink_failure_is_not_fatal(self) -> None:
+        self.slack.chat_getPermalink.side_effect = slack_errors.SlackApiError(
+            'refused', {'ok': False, 'error': 'ratelimited'}
+        )
+        response = await self.client.post(self.post_url, headers=self.headers)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['ts'], '1700000000.000100')
+        self.assertIsNone(response.json()['permalink'])
+
+    async def test_slack_error_is_the_result(self) -> None:
+        self.slack.chat_postMessage.side_effect = slack_errors.SlackApiError(
+            'refused', {'ok': False, 'error': 'not_in_channel'}
+        )
+        for _ in range(2):
+            response = await self.client.post(
+                self.post_url, headers=self.headers
+            )
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(
+                response.json(),
+                {
+                    'channel': 'C0123456789',
+                    'ts': None,
+                    'permalink': None,
+                    'error': 'not_in_channel',
+                },
+            )
+        self.slack.chat_postMessage.assert_awaited_once()
+
+    async def test_transport_error_keeps_the_key(self) -> None:
+        self.slack.chat_postMessage.side_effect = TimeoutError()
+        response = await self.client.post(self.post_url, headers=self.headers)
+        self.assertEqual(response.status_code, 502, response.text)
+        self.assertEqual(
+            response.json()['detail'], {'error': 'slack_unreachable'}
+        )
+        response = await self.client.post(self.post_url, headers=self.headers)
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(response.json()['detail']['error'], 'outcome_unknown')
+        self.slack.chat_postMessage.assert_awaited_once()
+
+    async def test_ambiguous_slack_error_keeps_the_key(self) -> None:
+        """``internal_error`` can come after Slack posted."""
+        self.slack.chat_postMessage.side_effect = slack_errors.SlackApiError(
+            'failed', {'ok': False, 'error': 'internal_error'}
+        )
+        response = await self.client.post(self.post_url, headers=self.headers)
+        self.assertEqual(response.status_code, 502, response.text)
+        self.assertEqual(
+            response.json()['detail'], {'error': 'slack_unreachable'}
+        )
+        response = await self.client.post(self.post_url, headers=self.headers)
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(response.json()['detail']['error'], 'outcome_unknown')
+        self.slack.chat_postMessage.assert_awaited_once()
+
+    async def test_slack_5xx_keeps_the_key(self) -> None:
+        """slack_sdk gives a 5xx with an HTML body no error code."""
+        response = mock.Mock(status_code=503)
+        response.get.return_value = None
+        self.slack.chat_postMessage.side_effect = slack_errors.SlackApiError(
+            'failed', response
+        )
+        response = await self.client.post(self.post_url, headers=self.headers)
+        self.assertEqual(response.status_code, 502, response.text)
+        self.assertEqual(
+            response.json()['detail'], {'error': 'slack_unreachable'}
+        )
+        response = await self.client.post(self.post_url, headers=self.headers)
+        self.assertEqual(response.status_code, 409, response.text)
+
+    async def test_slack_raw_response_keeps_the_key(self) -> None:
+        """A body that is not JSON comes with the raw HTTP response."""
+        self.slack.chat_postMessage.side_effect = slack_errors.SlackApiError(
+            'failed', object()
+        )
+        response = await self.client.post(self.post_url, headers=self.headers)
+        self.assertEqual(response.status_code, 502, response.text)
+
+    async def test_rate_limit_releases_the_key(self) -> None:
+        self.slack.chat_postMessage.side_effect = [
+            slack_errors.SlackApiError(
+                'limited', {'ok': False, 'error': 'ratelimited'}
+            ),
+            {'ok': True, 'channel': 'C0123456789', 'ts': '1.2'},
+        ]
+        response = await self.client.post(self.post_url, headers=self.headers)
+        self.assertEqual(response.status_code, 429, response.text)
+        self.assertEqual(
+            response.json()['detail'], {'error': 'slack_ratelimited'}
+        )
+        response = await self.client.post(self.post_url, headers=self.headers)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['ts'], '1.2')
+        self.assertEqual(self.slack.chat_postMessage.await_count, 2)
+
+    async def test_429_without_a_code_releases_the_key(self) -> None:
+        response = mock.Mock(status_code=429)
+        response.get.return_value = None
+        self.slack.chat_postMessage.side_effect = slack_errors.SlackApiError(
+            'limited', response
+        )
+        response = await self.client.post(self.post_url, headers=self.headers)
+        self.assertEqual(response.status_code, 429, response.text)
+        self.assertEqual(
+            response.json()['detail'], {'error': 'slack_ratelimited'}
+        )
+
+    async def test_not_configured(self) -> None:
+        self.token = ''
+        response = await self.client.post(self.post_url, headers=self.headers)
+        self.assertEqual(response.status_code, 503, response.text)
+        self.assertEqual(
+            response.json()['detail'], {'error': 'slack_not_configured'}
+        )
+        self.slack.chat_postMessage.assert_not_awaited()
+
+        # The key was not taken, so the step posts once a token is set.
+        self.token = 'xoxb-test'
+        response = await self.client.post(self.post_url, headers=self.headers)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.slack.chat_postMessage.assert_awaited_once()
+
+    async def test_invalid_channel(self) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE workflow_runtime.step_runs SET input = %s'
+                " WHERE run_id = %s AND node_id = 'post'",
+                (
+                    workflows.runs.pg_json.Jsonb(
+                        {'channel': '{{ trigger.channel }}', 'text': 'Hi'}
+                    ),
+                    self.run_id,
+                ),
+            )
+        response = await self.client.post(self.post_url, headers=self.headers)
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual(
+            response.json()['detail'], {'error': 'invalid_channel'}
+        )
+        self.slack.chat_postMessage.assert_not_awaited()
+
+    async def test_only_a_running_slack_step(self) -> None:
+        response = await self.client.post(
+            f'{self.url}/runs/{self.run_id}/steps/tell/slack',
+            headers=self.headers,
+        )
+        self.assertEqual(response.status_code, 409)
+        response = await self.client.post(
+            f'{self.url}/runs/{self.run_id}/steps/start/slack',
+            headers=self.headers,
+        )
+        self.assertEqual(response.status_code, 404)
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE workflow_runtime.step_runs SET status = 'succeeded'"
+                " WHERE run_id = %s AND node_id = 'post'",
+                (self.run_id,),
+            )
+        response = await self.client.post(self.post_url, headers=self.headers)
+        self.assertEqual(response.status_code, 409)
+        self.slack.chat_postMessage.assert_not_awaited()
+
+    async def test_only_the_engine(self) -> None:
+        overrides = self.test_app.dependency_overrides
+        overrides[permissions.get_current_user] = self.user_auth
+        response = await self.client.post(
+            self.post_url, headers={'Idempotency-Key': 'x'}
+        )
+        self.assertEqual(response.status_code, 403)
+        self.slack.chat_postMessage.assert_not_awaited()
+
+    def test_mark_done_response(self) -> None:
+        self.assertEqual(
+            workflow_runs._done_response(
+                {
+                    'action': 'step-slack',
+                    'step_input': {'channel': 'C0123456789', 'text': 'x'},
+                }
+            ),
+            {
+                'channel': 'C0123456789',
+                'ts': None,
+                'permalink': None,
+                'error': None,
+            },
+        )
+        self.assertEqual(
+            workflow_runs._done_response(
+                {'action': 'step-slack', 'step_input': None}
+            )['channel'],
+            '',
+        )
+        self.assertEqual(
+            workflow_runs._done_response(
+                {'action': 'step-email', 'step_input': {}}
+            ),
+            {'recipients': [], 'failed': []},
+        )
 
 
 class EngineAgentTaskTestCase(WorkflowRunTestCase):

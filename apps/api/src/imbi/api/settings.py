@@ -200,6 +200,20 @@ class Email(settings.ConfigFileSettings):
         return self
 
 
+class Slack(settings.ConfigFileSettings):
+    """Slack configuration for the ``slack`` workflow step.
+
+    The ``SLACK_`` prefix matches imbi-slackbot, so one
+    ``SLACK_BOT_TOKEN`` serves both.
+    """
+
+    model_config = settings.base_settings_config(env_prefix='SLACK_')
+    config_section = 'slack'
+
+    #: The bot token (``xoxb-...``). Empty: the step is not configured.
+    bot_token: pydantic.SecretStr = pydantic.SecretStr('')
+
+
 class Storage(settings.ConfigFileSettings):
     """S3-compatible object storage configuration."""
 
@@ -332,6 +346,7 @@ _internal_services: InternalServices | None = None
 _iggy_connectors: IggyConnectors | None = None
 _ai_providers: AIProviders | None = None
 _harness_egress_proxy: HarnessEgressProxy | None = None
+_slack_settings: Slack | None = None
 
 
 def get_auth_settings() -> Auth:
@@ -368,6 +383,14 @@ def get_storage_settings() -> Storage:
     if _storage_settings is None:
         _storage_settings = Storage()
     return _storage_settings
+
+
+def get_slack_settings() -> Slack:
+    """Get the singleton Slack settings instance."""
+    global _slack_settings
+    if _slack_settings is None:
+        _slack_settings = Slack()
+    return _slack_settings
 
 
 def get_internal_services() -> InternalServices:
@@ -410,7 +433,7 @@ def clear_caches() -> None:
     """
     global _auth_settings, _server_config, _storage_settings
     global _internal_services, _iggy_connectors, _ai_providers
-    global _harness_egress_proxy
+    global _harness_egress_proxy, _slack_settings
     _auth_settings = None
     _server_config = None
     _storage_settings = None
@@ -418,6 +441,7 @@ def clear_caches() -> None:
     _iggy_connectors = None
     _ai_providers = None
     _harness_egress_proxy = None
+    _slack_settings = None
 
 
 def oauth_callback_url(provider_slug: str, base_url: str | None = None) -> str:
@@ -439,7 +463,7 @@ def oauth_callback_url(provider_slug: str, base_url: str | None = None) -> str:
 class APIConfiguration(settings.Configuration):  # type: ignore[misc]
     """Extended configuration for the API service.
 
-    Adds ServerConfig, Email, and Storage settings to the shared
+    Adds ServerConfig, Email, Storage, and Slack settings to the shared
     Configuration.
     """
 
@@ -447,6 +471,7 @@ class APIConfiguration(settings.Configuration):  # type: ignore[misc]
     auth: Auth = pydantic.Field(default_factory=Auth)  # pyright: ignore[reportIncompatibleVariableOverride]
     email: Email = pydantic.Field(default_factory=Email)
     storage: Storage = pydantic.Field(default_factory=Storage)
+    slack: Slack = pydantic.Field(default_factory=Slack)
 
 
 # Alias so `from imbi.api import settings; settings.Configuration`
@@ -458,8 +483,8 @@ def load_config() -> APIConfiguration:
     """Load configuration from config.toml files with environment overrides.
 
     Includes the API-specific sections (``[server]``, ``[email]``,
-    ``[storage]``). An environment variable overrides the same key in a
-    config file.
+    ``[storage]``, ``[slack]``). An environment variable overrides the
+    same key in a config file.
 
     """
     return APIConfiguration()

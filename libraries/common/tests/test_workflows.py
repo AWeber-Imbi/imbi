@@ -65,7 +65,7 @@ class ValidationTestCase(unittest.TestCase):
 
     def test_unknown_type(self) -> None:
         issues = _check(
-            [_node('start', 'manual'), _node('x', 'slack')],
+            [_node('start', 'manual'), _node('x', 'carrier_pigeon')],
             [('start', 0, 'x')],
         )
         self.assertIn('unknown_type', _codes(issues))
@@ -412,6 +412,7 @@ class RegistryTestCase(unittest.TestCase):
                 'model_decision',
                 'script',
                 'email',
+                'slack',
                 'deploy',
                 'rollback',
                 'agent',
@@ -463,6 +464,49 @@ class RegistryTestCase(unittest.TestCase):
                 [('start', 0, 'ask')],
             )
             self.assertEqual(_codes(issues), codes, budget)
+
+    def test_slack_params(self) -> None:
+        for params, codes in (
+            ({'channel': 'C0123456789', 'text': 'Shipped'}, set()),
+            ({'channel': 'G0123456789', 'text': '*Shipped*'}, set()),
+            ({'channel': '{{ trigger.channel }}', 'text': 'x'}, set()),
+            ({'channel': '#general', 'text': 'Shipped'}, {'invalid_param'}),
+            ({'channel': 'C012', 'text': 'Shipped'}, {'invalid_param'}),
+            ({'channel': 'D0123456789', 'text': 'x'}, {'invalid_param'}),
+            (
+                {'channel': 'C{{ trigger.channel }}', 'text': 'x'},
+                {'invalid_param'},
+            ),
+            ({'channel': 'C0123456789', 'text': ''}, {'invalid_param'}),
+            (
+                {'channel': 'C0123456789', 'text': 'x' * 40001},
+                {'invalid_param'},
+            ),
+            ({'channel': 'C0123456789'}, {'missing_param'}),
+        ):
+            issues = _check(
+                [_node('start', 'manual'), _node('tell', 'slack', params)],
+                [('start', 0, 'tell')],
+            )
+            self.assertEqual(_codes(issues), codes, params)
+
+    def test_slack_text_is_a_template(self) -> None:
+        issues = _check(
+            [
+                _node('start', 'manual'),
+                _node('ship', 'deploy', DEPLOY),
+                _node(
+                    'tell',
+                    'slack',
+                    {
+                        'channel': 'C0123456789',
+                        'text': 'Shipped {{ ship.deployment_id }}',
+                    },
+                ),
+            ],
+            [('start', 0, 'ship'), ('ship', 0, 'tell')],
+        )
+        self.assertEqual(issues, [])
 
     def test_sample_outputs_match_output_schema(self) -> None:
         for step in registry.STEP_TYPES.values():

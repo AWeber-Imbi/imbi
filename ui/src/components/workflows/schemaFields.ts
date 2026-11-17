@@ -55,6 +55,7 @@ const MULTILINE = new Set([
   'filter',
   'instruction',
   'prompt',
+  'text',
 ])
 const MONO = new Set(['filter'])
 

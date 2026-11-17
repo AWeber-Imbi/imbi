@@ -2,7 +2,8 @@
 
 A workflow is a graph of steps that runs without a person at each step. A
 trigger starts a run. The steps after the trigger wait, ask a decision
-model, send email, deploy, roll back, or give a task to an agent.
+model, send email, post to Slack, deploy, roll back, or give a task to an
+agent.
 
 Open the section at **Agents > Settings > Workflows**. Each organization has its own
 workflows. The `imbi-workflows` service runs them.
@@ -129,6 +130,7 @@ with one output port has no port name.
 | `condition` | Condition | Logic | `True`, `False` |
 | `script` | Script | Logic | One, or one for each branch |
 | `email` | Send email | Actions | One |
+| `slack` | Slack message | Actions | One |
 | `deploy` | Deploy | Actions | `Succeeded`, `Failed` |
 | `rollback` | Rollback | Actions | One |
 | `agent` | Agent task | Agents | `Succeeded`, `Failed` |
@@ -143,6 +145,7 @@ count:
 | `condition` | 10 seconds | 0 |
 | `script` | 30 seconds. The script itself stops at 5 seconds | 0 |
 | `email` | 2 minutes | 0 |
+| `slack` | 2 minutes | 3, for a Slack rate limit only |
 | `deploy`, `rollback` | 1 hour | 2 |
 | `agent` | None. The max run time limits it | 2 |
 
@@ -365,6 +368,57 @@ recipients already have the message.
 
 **Output:** `recipients`, the addresses that got the message.
 
+### Slack message
+
+Posts a message to a Slack channel as the Imbi bot.
+
+| Parameter | What to enter |
+|---|---|
+| `channel` | The channel ID, for example `C0123456789`, or one plain reference such as `{{ trigger.channel }}`. Not the channel name |
+| `text` | The message, in Slack mrkdwn, up to 40,000 characters. Templates are allowed |
+
+To find a channel ID in Slack, open the channel details. The ID is at the
+bottom of the **About** tab.
+
+Setup:
+
+1. Set `SLACK_BOT_TOKEN` on imbi-api to the bot token (`xoxb-...`) of
+   a Slack app with the `chat:write` scope. imbi-slackbot reads the same
+   variable, so one token serves both. With Helm, set
+   `slackbot.botToken`. See [Kubernetes](../deployment/kubernetes.md#slack-bot).
+2. Invite the bot to each channel that a workflow posts to:
+   `/invite @<bot name>` in the channel.
+
+The bot posts only to channels that it is a member of. Do not give the app
+the `chat:write.public` scope, or a workflow can post to any public
+channel.
+
+Errors:
+
+| Error | Cause |
+|---|---|
+| `slack_not_configured` | imbi-api has no `SLACK_BOT_TOKEN` |
+| `slack_failed: not_in_channel` | The bot is not a member of the channel. Invite it |
+| `slack_failed: channel_not_found` | No channel has this ID, or the bot cannot see it |
+| `slack_failed: <code>` | Slack refused the message with another [error code](https://docs.slack.dev/reference/methods/chat.postMessage#errors) |
+| `slack_ratelimited` | Slack rate-limited the post after every retry |
+| `outcome_unknown` | The call to Slack failed, Slack answered with a 5xx, or Slack answered `internal_error`, `fatal_error`, `request_timeout`, or `service_unavailable`. Slack may have posted the message. See [unknown outcome](#calls-with-an-unknown-outcome) |
+| `invalid_params`, `invalid_channel` | The rendered channel is not a channel ID |
+
+When Slack refuses a message, it posts nothing, and Imbi does not retry
+it. The one exception is a rate limit (`ratelimited`): the step tries
+again up to 3 times, with a backoff, and fails with `slack_ratelimited`
+after that.
+
+A value that a template puts in `text` is escaped (`&`, `<`, and `>`), so
+a value from a webhook payload cannot add a mention such as `<!channel>`
+or a link. Mentions and links that you write in `text` yourself work.
+Keys are escaped too, so a key that holds one of those characters is
+looked up by its escaped form (`trigger['a &amp; b']`).
+
+**Output:** `channel`, `ts` (the message timestamp), and `permalink` (a
+link to the message, or empty when Slack did not return one).
+
 ### Deploy
 
 Deploys a version of a project to an environment, then waits for the
@@ -475,6 +529,11 @@ different organization:
 
 A literal id must exist in the organization. Otherwise validation shows
 `resource_not_in_organization`.
+
+The Slack `channel` takes a literal channel ID or one plain reference, but
+a channel is not a resource of an organization, so Imbi does not check it.
+The bot can post only to the channels that it was invited to. Invite it
+only to the channels that workflows may post to.
 
 ## Joins
 
@@ -769,9 +828,9 @@ The list comes from `GET /organizations/{org}/workflow-runs/attention`.
 - **Max run time.** The engine counts it from when Imbi made the run. A run
   that passes it closes as `timed_out`.
 
-Deploy, rollback, and email send the idempotency key
+Deploy, rollback, email, and Slack send the idempotency key
 `<run_id>:<node_key>` to imbi-api. After a crash, imbi-api returns the first
-result, so the step does not deploy or send two times. If the first call
+result, so the step does not deploy, send, or post two times. If the first call
 did not finish, imbi-api returns `409 outcome_unknown`, and the step fails
 without a retry.
 
@@ -792,7 +851,8 @@ call:
    minute before the call. Another deploy of the same version and
    environment at that time also shows, so make sure that you select the
    correct one. If the plugin cannot search (only GitHub can), look in the
-   deployment provider yourself. For an email, ask the recipients.
+   deployment provider yourself. For an email, ask the recipients. For a
+   Slack message, look in the channel.
 2. Set **Retry step** before you resolve the call. When it is selected,
    the run opens again and the step runs again when you resolve the call.
    The box shows only when the step failed the run with `outcome_unknown`,
@@ -804,7 +864,7 @@ call:
    - Click **Clear** to make Imbi forget the call: a retry deploys or
      sends again.
    - Click **Mark done** to record that the call acted: a retry of a step
-     email sends nothing and the step succeeds. A deployment marked done
+     email or Slack message sends nothing and the step succeeds. A deployment marked done
      with **Mark done** cannot run again, because Imbi does not know its
      deployment run.
 

@@ -156,6 +156,11 @@ assistant:
   anthropicApiKey: "sk-ant-..."
 ```
 
+imbi-api also reads `slackbot.botToken` as `SLACK_BOT_TOKEN`, in `api`
+and `all` mode, to post the messages of workflow `slack` steps. This needs
+only the bot token, and the bot does not have to be on. See
+[Workflows](../admin/workflows.md#slack-message).
+
 ### Gateway
 
 In `gateway` mode, set `gateway.serviceAccount.token` (or the
@@ -274,6 +279,7 @@ does not make its own Secret, and reads these keys:
 | `iggy-password` | `IGGY_CONNECTORS_IGGY_PASSWORD` | When the release runs the connectors runtime |
 | `anthropic-api-key` | `ANTHROPIC_API_KEY` | When `assistant.enabled`, or the Slack bot is on |
 | `slack-bot-token`, `slack-app-token` | `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN` | When the Slack bot is on (`slackbot.enabled` or `service.mode: slackbot`) |
+| `slack-bot-token` | `SLACK_BOT_TOKEN` | Optional, in `api` and `all` mode. For workflow `slack` steps |
 | `scheduler-sa-client-id`, `scheduler-sa-client-secret` | `IMBI_SCHEDULER_SA_CLIENT_*` | Optional |
 | `workflows-sa-client-id`, `workflows-sa-client-secret` | `IMBI_WORKFLOWS_SA_CLIENT_*` | Optional |
 | `gateway-sa-token` | `IMBI_GATEWAY_API_TOKEN` | Optional. In `gateway` mode the container does not start without it |

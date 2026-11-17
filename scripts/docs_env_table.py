@@ -71,6 +71,7 @@ SECTIONS: list[tuple[str, list[type], list[str], list[Row]]] = [
             api_settings.ServerConfig,
             api_settings.Auth,
             api_settings.Email,
+            api_settings.Slack,
             api_settings.Storage,
             api_settings.IggyConnectors,
             api_settings.InternalServices,
@@ -474,7 +475,9 @@ DESCRIPTIONS: dict[str, str] = {
     'IMBI_SLACKBOT_API_TOKEN': 'API key of the `imbi-slackbot` service '
     'account. Set: the bot uses the token of its AI provider from imbi-api '
     'instead of `ANTHROPIC_API_KEY`.',
-    'SLACK_BOT_TOKEN': 'Slack bot token (`xoxb-`)',
+    'SLACK_BOT_TOKEN': 'Slack bot token (`xoxb-`). imbi-api posts the '
+    'messages of workflow `slack` steps with it; without it those steps '
+    'fail with `slack_not_configured`.',
     'SLACK_APP_TOKEN': 'Slack app-level token for Socket Mode (`xapp-`)',
     'IMBI_WORKFLOWS_SA_CLIENT_ID': 'Client ID of the `imbi-workflows` '
     'service account. Deploy and rollback steps fail without it.',

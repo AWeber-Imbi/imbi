@@ -182,6 +182,38 @@ describe('paramFields for the agent step', () => {
   })
 })
 
+describe('paramFields for the slack step', () => {
+  it('takes a channel ID with a hint and the text as a template', () => {
+    const hint =
+      'Channel ID, for example C0123456789. Invite the Imbi bot to the channel first.'
+    expect(
+      paramFields({
+        properties: {
+          channel: { description: hint, title: 'Channel', type: 'string' },
+          text: { title: 'Text', type: 'string' },
+        },
+        required: ['channel', 'text'],
+        type: 'object',
+      }),
+    ).toEqual([
+      {
+        description: hint,
+        kind: 'text',
+        label: 'Channel',
+        name: 'channel',
+        required: true,
+      },
+      {
+        kind: 'multiline',
+        label: 'Text',
+        mono: false,
+        name: 'text',
+        required: true,
+      },
+    ])
+  })
+})
+
 describe('paramFields for the condition step', () => {
   it('builds condition rows with readable operators', () => {
     expect(paramFields(CONDITION.params_schema)).toEqual([

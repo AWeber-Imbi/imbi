@@ -348,7 +348,9 @@ Runs execute as one service account, `imbi-workflows`.
 
 Step types with authority of their own follow the same rule. An `email`
 step sends only to Imbi users and teams in the workflow's organization,
-never to an arbitrary address.
+never to an arbitrary address. A `slack` step posts only to channels that
+the operator invited the Imbi bot to: imbi-api holds the bot token, and
+the bot has no scope to post to a channel it is not a member of.
 
 ### Model decisions
 

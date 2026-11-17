@@ -258,7 +258,7 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
         graph_body = {
             'nodes': [
                 _node('start', 'manual'),
-                _node('x', 'slack'),
+                _node('x', 'carrier_pigeon'),
                 _node('a', 'wait', {'duration': '{{ ghost.out }}'}),
                 _node('b', 'wait', {'duration': '1m'}),
             ],

@@ -24,6 +24,7 @@ from imbi.common.prompts import rendering
 from imbi.common.workflows import graph as wf
 from imbi.common.workflows import registry, runtime, walk
 from imbi.common.workflows.registry import agent as agent_step
+from imbi.common.workflows.registry import slack as slack_step
 from imbi.workflows import executors, settings, store
 
 LOGGER = logging.getLogger(__name__)
@@ -224,10 +225,15 @@ class Engine:
         node_id = ready[0]
         node = next(n for n in wf_graph.nodes if n.id == node_id)
         try:
+            scope_steps, payload = steps, run['payload']
+            if node.type == 'slack':
+                scope_steps, payload = _escaped_inputs(
+                    steps, payload, slack_step.escape
+                )
             params = await _render(
                 node.params,
-                steps,
-                run['payload'],
+                scope_steps,
+                payload,
                 {n.id: n for n in wf_graph.nodes},
                 registry.STEP_TYPES[node.type].raw_params,
             )
@@ -650,6 +656,44 @@ def _scope(
             typed[key] = None
             text[key] = _blank_output(nodes.get(node_id), step['node_type'])
     return typed, text
+
+
+def _escaped[T](value: T, escape: abc.Callable[[str], str]) -> T:
+    """Return ``value`` with ``escape`` applied to each string in it.
+
+    Keys are escaped too: a template can print them with ``for`` or
+    ``tojson``.
+    """
+    if isinstance(value, str):
+        return typing.cast('T', escape(value))
+    if isinstance(value, dict):
+        mapping = typing.cast('dict[str, typing.Any]', value)
+        return typing.cast(
+            'T',
+            {escape(k): _escaped(v, escape) for k, v in mapping.items()},
+        )
+    if isinstance(value, list):
+        items = typing.cast('list[typing.Any]', value)
+        return typing.cast('T', [_escaped(v, escape) for v in items])
+    return value
+
+
+def _escaped_inputs(
+    steps: dict[str, store.Row],
+    payload: dict[str, typing.Any],
+    escape: abc.Callable[[str], str],
+) -> tuple[dict[str, store.Row], dict[str, typing.Any]]:
+    """Return the values that references can name, escaped.
+
+    ``escape`` applies to the trigger payload and to each step output,
+    so it changes each value that a template puts in a parameter, and
+    not the text of the template.
+    """
+    escaped = {
+        node_id: {**step, 'output': _escaped(step['output'], escape)}
+        for node_id, step in steps.items()
+    }
+    return escaped, _escaped(payload, escape)
 
 
 def _lookup(path: str, scope: dict[str, typing.Any]) -> typing.Any:

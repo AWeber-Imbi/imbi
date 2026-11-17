@@ -13,6 +13,8 @@ The two email routes are for the engine only. imbi-api holds the email
 client, so the engine asks it to send what a run recorded: the input of
 a running email step, or the failure notice of a failed run. Both take
 an ``Idempotency-Key``, so a repeat after a crash sends nothing twice.
+The Slack route is the same for a running ``slack`` step: imbi-api
+holds the bot token.
 
 The two agent task routes are for the engine only too. They make,
 read, and cancel the agent task of a running ``agent`` step (ADR 0021,
@@ -26,15 +28,20 @@ Every route needs the caller to be a member of the organization
 (``MEMBER_OF``): see :mod:`imbi.api.auth.organizations`.
 """
 
+import asyncio
 import datetime
 import typing
 import uuid
 
+import aiohttp
 import fastapi
 import pydantic
+from slack_sdk import errors as slack_errors
+from slack_sdk.web import async_client as slack_client
 
 from imbi.api import agent_tasks as agent_runtime
 from imbi.api import email, workflows
+from imbi.api import settings as api_settings
 from imbi.api.auth import organizations, permissions
 from imbi.api.email import client as email_client
 from imbi.api.endpoints import agent_tasks, project_deployments
@@ -45,6 +52,7 @@ from imbi.common.workflows import graph as wf
 from imbi.common.workflows import history, registry, validation, walk
 from imbi.common.workflows.registry import agent as agent_step
 from imbi.common.workflows.registry import email as email_step
+from imbi.common.workflows.registry import slack as slack_step
 
 OrgId = organizations.MemberOrgId
 
@@ -216,6 +224,17 @@ class EmailResult(pydantic.BaseModel):
     recipients: list[str]
     #: The addresses that a send failed for, after the client's retries.
     failed: list[str] = []
+
+
+class SlackResult(pydantic.BaseModel):
+    channel: str
+    #: The timestamp of the message. ``None`` when Slack refused it, or
+    #: an operator marked an unknown send done.
+    ts: str | None = None
+    permalink: str | None = None
+    #: The Slack error code when Slack refused the message, such as
+    #: ``not_in_channel``. Nothing was posted.
+    error: str | None = None
 
 
 class StepAgentTask(pydantic.BaseModel):
@@ -482,6 +501,115 @@ async def _send(
     return {'recipients': sent, 'failed': failed}
 
 
+def _slack_token() -> str:
+    return api_settings.get_slack_settings().bot_token.get_secret_value()
+
+
+#: Errors of a call to Slack that may come after Slack posted.
+_SLACK_TRANSPORT_ERRORS = (
+    slack_errors.SlackClientError,
+    aiohttp.ClientError,
+    TimeoutError,
+)
+
+#: Slack errors that can come after part of the call succeeded, so
+#: the message may be posted: treated as a transport error.
+_SLACK_AMBIGUOUS = frozenset(
+    {'fatal_error', 'internal_error', 'request_timeout', 'service_unavailable'}
+)
+
+# slack_sdk's AsyncWebClient is only loosely typed (``**kwargs`` and
+# untyped responses), so it is Any here, as in imbi-slackbot.
+SlackClient = typing.Any
+
+
+#: Seconds that each call to Slack may take. The post and the
+#: permalink together stay well under the engine's 60-second timeout.
+_SLACK_TIMEOUT = 20
+_SLACK_PERMALINK_TIMEOUT = 5.0
+_HTTP_SERVER_ERROR = 500
+_HTTP_TOO_MANY_REQUESTS = 429
+
+
+def _slack_refusal(error: slack_errors.SlackApiError) -> str | None:
+    """Return the code of a refusal that posted nothing, or ``None``.
+
+    A ``429`` is ``ratelimited`` with or without a code. ``None`` when
+    Slack may have posted: a 5xx (slack_sdk gives a 5xx
+    with an HTML body no error code), a missing code, or a code in
+    :data:`_SLACK_AMBIGUOUS`. On a body that is not JSON, slack_sdk
+    passes the raw HTTP response, which has no ``get``.
+    """
+    response: SlackClient = error.response
+    status = getattr(response, 'status_code', None)
+    if status == _HTTP_TOO_MANY_REQUESTS:
+        return 'ratelimited'
+    if isinstance(status, int) and status >= _HTTP_SERVER_ERROR:
+        return None
+    get = getattr(response, 'get', None)
+    code: typing.Any = get('error') if callable(get) else None
+    if not code or code in _SLACK_AMBIGUOUS:
+        return None
+    return str(code)
+
+
+async def _post_slack(token: str, channel: str, text: str) -> SlackResult:
+    """Post ``text`` to ``channel``, then ask for its permalink.
+
+    The client does not retry: a retry after a lost response could post
+    the message two times. A refusal from Slack posted nothing, so it is
+    a result with ``error``, except ``ratelimited``: a ``429`` releases
+    the key, and the engine tries again. A transport error, or a Slack
+    answer that may come after it posted (:func:`_slack_refusal`), is a
+    ``502`` and the idempotency key stays.
+    """
+    client: SlackClient = slack_client.AsyncWebClient(
+        token=token, timeout=_SLACK_TIMEOUT, retry_handlers=[]
+    )
+    try:
+        posted = await client.chat_postMessage(
+            channel=channel, text=text, unfurl_links=False
+        )
+    except slack_errors.SlackApiError as e:
+        refusal = _slack_refusal(e)
+        if refusal == 'ratelimited':
+            raise fastapi.HTTPException(
+                status_code=429, detail={'error': 'slack_ratelimited'}
+            ) from None
+        if refusal is not None:
+            return SlackResult(channel=channel, error=refusal)
+        raise fastapi.HTTPException(
+            status_code=502, detail={'error': 'slack_unreachable'}
+        ) from None
+    except _SLACK_TRANSPORT_ERRORS:
+        raise fastapi.HTTPException(
+            status_code=502, detail={'error': 'slack_unreachable'}
+        ) from None
+    ts = str(posted['ts'])
+    channel = str(posted.get('channel') or channel)
+    return SlackResult(
+        channel=channel,
+        ts=ts,
+        permalink=await _slack_permalink(client, channel, ts),
+    )
+
+
+async def _slack_permalink(
+    client: SlackClient, channel: str, ts: str
+) -> str | None:
+    """Return the permalink of a message, or ``None``: the message is
+    posted, so a failure here does not fail the step."""
+    try:
+        found = await asyncio.wait_for(
+            client.chat_getPermalink(channel=channel, message_ts=ts),
+            _SLACK_PERMALINK_TIMEOUT,
+        )
+    except _SLACK_TRANSPORT_ERRORS:
+        return None
+    permalink: typing.Any = found.get('permalink')
+    return str(permalink) if permalink else None
+
+
 async def _require_engine(
     auth: typing.Annotated[
         permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
@@ -675,6 +803,7 @@ EngineAuth = typing.Annotated[
 EmailClient = typing.Annotated[
     email_client.EmailClient, fastapi.Depends(_email_client)
 ]
+SlackToken = typing.Annotated[str, fastapi.Depends(_slack_token)]
 
 
 def _header(name: str) -> typing.Any:
@@ -1081,16 +1210,61 @@ async def resolve_side_effect(
             plugin_slug=resolved.plugin_slug,
         ).model_dump(mode='json')
     elif done:
-        response = (
-            _DEPLOYMENT_DONE
-            if deployment
-            else EmailResult(recipients=[]).model_dump()
-        )
+        response = _done_response(effect)
     retry = (effect['run_id'], effect['node_id']) if body.retry else None
     if not await runs.resolve_side_effect(body.key, response, retry):
         raise fastapi.HTTPException(
             status_code=409, detail='The side effect or its run changed'
         )
+
+
+def _done_response(effect: workflows.Row) -> dict[str, typing.Any]:
+    """Return the result to store for a call that an operator marked
+    done with no deployment run."""
+    match effect['action']:
+        case 'deployment':
+            return _DEPLOYMENT_DONE
+        case 'step-slack':
+            step_input: dict[str, typing.Any] = effect['step_input'] or {}
+            return SlackResult(
+                channel=str(step_input.get('channel') or '')
+            ).model_dump()
+        case _:
+            return EmailResult(recipients=[]).model_dump()
+
+
+async def _running_step(
+    store: workflows.WorkflowStore,
+    runs: workflows.RunStore,
+    org_id: str,
+    slug: str,
+    run_id: uuid.UUID,
+    node_id: str,
+) -> workflows.Row:
+    """Return the step of a run, if it is running.
+
+    Raises:
+        404: No such workflow, run, or step.
+        409: The step is not running.
+
+    """
+    workflow = await _workflow(store, org_id, slug)
+    await _run(runs, workflow, run_id)
+    step = next(
+        (s for s in await runs.steps(run_id) if s['node_id'] == node_id),
+        None,
+    )
+    if step is None:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'Run {run_id} has no step {node_id!r}'
+        )
+    if step['status'] != 'running':
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=f'Step {node_id!r} is not a running '
+            f'{step["node_type"]} step',
+        )
+    return step
 
 
 @workflow_runs_router.post(
@@ -1120,17 +1294,8 @@ async def send_step_email(
     ``failed``, and the engine fails the step.
 
     """
-    workflow = await _workflow(store, org_id, slug)
-    await _run(runs, workflow, run_id)
-    step = next(
-        (s for s in await runs.steps(run_id) if s['node_id'] == node_id),
-        None,
-    )
-    if step is None:
-        raise fastapi.HTTPException(
-            status_code=404, detail=f'Run {run_id} has no step {node_id!r}'
-        )
-    if step['node_type'] != 'email' or step['status'] != 'running':
+    step = await _running_step(store, runs, org_id, slug, run_id, node_id)
+    if step['node_type'] != 'email':
         raise fastapi.HTTPException(
             status_code=409,
             detail=f'Step {node_id!r} is not a running email step',
@@ -1147,6 +1312,62 @@ async def send_step_email(
 
     return await runs.once(
         auth.principal_name, 'step-email', idempotency_key, call
+    )
+
+
+@workflow_runs_router.post(
+    '/{slug}/runs/{run_id}/steps/{node_id}/slack', response_model=SlackResult
+)
+async def send_step_slack(
+    org_id: OrgId,
+    slug: str,
+    run_id: uuid.UUID,
+    node_id: str,
+    store: workflows.Store,
+    runs: workflows.Runs,
+    token: SlackToken,
+    auth: EngineAuth,
+    idempotency_key: IdempotencyKey,
+) -> dict[str, typing.Any]:
+    """Post the message of a running slack step. Engine only.
+
+    Raises:
+        404: No such workflow, run, or step.
+        409: The step is not a running slack step, or
+            ``outcome_unknown``: a call with the key did not finish.
+        422: ``invalid_channel``: the channel is not a Slack channel id.
+        502: ``slack_unreachable``: the call to Slack failed, and Slack
+            may have posted the message.
+        503: ``slack_not_configured``: imbi-api has no bot token.
+
+    A refusal from Slack is not an error here: the response has its
+    code in ``error``, and the engine fails the step.
+
+    """
+    step = await _running_step(store, runs, org_id, slug, run_id, node_id)
+    if step['node_type'] != 'slack':
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=f'Step {node_id!r} is not a running slack step',
+        )
+    # Checked before the key is taken: a 5xx inside ``once`` keeps the
+    # key, and this one posted nothing.
+    if not token:
+        raise fastapi.HTTPException(
+            status_code=503, detail={'error': 'slack_not_configured'}
+        )
+    params = slack_step.Params.model_validate(step['input'])
+    if not slack_step.CHANNEL_ID.match(params.channel):
+        raise fastapi.HTTPException(
+            status_code=422, detail={'error': 'invalid_channel'}
+        )
+
+    async def call() -> dict[str, typing.Any]:
+        posted = await _post_slack(token, params.channel, params.text)
+        return posted.model_dump()
+
+    return await runs.once(
+        auth.principal_name, 'step-slack', idempotency_key, call
     )
 
 

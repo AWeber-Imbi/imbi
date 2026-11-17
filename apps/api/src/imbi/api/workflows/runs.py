@@ -56,7 +56,7 @@ SELECT e.key, e.action, e.created_at, r.id AS run_id,
        CASE WHEN substr(e.caller_key, 37, 1) = ':'
             THEN substr(e.caller_key, 38) END AS node_key,
        s.node_id, s.node_type, s.input AS step_input,
-       COALESCE(e.action IN ('deployment', 'step-email')
+       COALESCE(e.action IN ('deployment', 'step-email', 'step-slack')
          AND r.status = 'failed' AND r.error = 'outcome_unknown'
          AND r.log_archived_at IS NULL AND NOT r.cancel_requested
          AND s.status = 'failed' AND s.error = 'outcome_unknown'

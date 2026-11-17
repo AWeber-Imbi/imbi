@@ -285,7 +285,7 @@ REFUSED_ROUTES: frozenset[str] = frozenset(
         'POST /organizations/',
         'POST /organizations/{org_slug}/teams/',
         'POST /organizations/{org_slug}/teams/{slug}/members',
-        # Workflows: definitions, triggers, runs and their steps (an agent could schedule itself or send email); validate stays
+        # Workflows: definitions, triggers, runs and their steps (an agent could schedule itself, send email, or post to Slack); validate stays
         'DELETE /organizations/{org_slug}/workflows/{slug}',
         'POST /organizations/{org_slug}/workflows/',
         'POST /organizations/{org_slug}/workflows/{slug}/activate',
@@ -296,6 +296,7 @@ REFUSED_ROUTES: frozenset[str] = frozenset(
         'POST /organizations/{org_slug}/workflows/{slug}/runs/{run_id}/steps/{node_id}/agent-task',
         'POST /organizations/{org_slug}/workflows/{slug}/runs/{run_id}/steps/{node_id}/agent-task/cancel',
         'POST /organizations/{org_slug}/workflows/{slug}/runs/{run_id}/steps/{node_id}/email',
+        'POST /organizations/{org_slug}/workflows/{slug}/runs/{run_id}/steps/{node_id}/slack',
         'GET /organizations/{org_slug}/workflow-runs/side-effects/deployments',
         'POST /organizations/{org_slug}/workflow-runs/side-effects/resolve',
         'POST /organizations/{org_slug}/workflows/{slug}/test-runs',

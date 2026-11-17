@@ -42,6 +42,7 @@ name, which is the variable name without the prefix, in lower case:
 | `[server]` | The `IMBI_API_*` fields, `url`, `ui_url` | imbi-api |
 | `[email]` | The `IMBI_EMAIL_*` fields | imbi-api |
 | `[storage]` | The `S3_*` fields | imbi-api |
+| `[slack]` | `bot_token` (`SLACK_BOT_TOKEN`) | imbi-api |
 
 Other settings classes, for example `Iggy`, `ConfigSecrets`, and the
 Anthropic settings, do not read `config.toml`. Use their environment
@@ -240,6 +241,7 @@ unset.
 | `IMBI_EMAIL_INITIAL_RETRY_DELAY` | float | `1.0` | First retry delay in seconds |
 | `IMBI_EMAIL_MAX_RETRY_DELAY` | float | `60.0` | Maximum retry delay in seconds |
 | `IMBI_EMAIL_RETRY_BACKOFF_FACTOR` | float | `2.0` | Retry delay multiplier |
+| `SLACK_BOT_TOKEN` | SecretStr | `''` | Slack bot token (`xoxb-`). imbi-api posts the messages of workflow `slack` steps with it; without it those steps fail with `slack_not_configured`. |
 | `S3_ENDPOINT_URL` | str | none | S3-compatible endpoint. Unset: AWS S3. |
 | `S3_ACCESS_KEY` | str | none | Access key ID. Unset: the default AWS credential chain. |
 | `S3_SECRET_KEY` | str | none | Secret access key |
@@ -348,7 +350,7 @@ unset.
 | `IMBI_SLACKBOT_SYSTEM_PROMPT` | str | none | Jinja system prompt that replaces the CMS and packaged prompts |
 | `IMBI_SLACKBOT_PROMPT_REF` | str | `imbi-slackbot/system@stable` | Prompt CMS reference of the system prompt |
 | `IMBI_SLACKBOT_API_TOKEN` | str | `''` | API key of the `imbi-slackbot` service account. Set: the bot uses the token of its AI provider from imbi-api instead of `ANTHROPIC_API_KEY`. |
-| `SLACK_BOT_TOKEN` | str | `''` | Slack bot token (`xoxb-`) |
+| `SLACK_BOT_TOKEN` | str | `''` | Slack bot token (`xoxb-`). imbi-api posts the messages of workflow `slack` steps with it; without it those steps fail with `slack_not_configured`. |
 | `SLACK_APP_TOKEN` | str | `''` | Slack app-level token for Socket Mode (`xapp-`) |
 | `IMBI_UI_URL` | str | `''` | Public UI URL, no path. Used for deep links. |
 | `IMBI_INTERNAL_UI_URL` | str | `''` | In-cluster UI URL for `llms.txt`. Unset: `IMBI_UI_URL`. |
