@@ -950,7 +950,10 @@ class PromptParams(pydantic.BaseModel):
 class PromptVariable(pydantic.BaseModel):
     """The declared type of one template variable."""
 
-    type: typing.Literal['str', 'int', 'float', 'bool', 'list', 'object']
+    #: ``any`` accepts every value, such as a whole workflow reference.
+    type: typing.Literal[
+        'str', 'int', 'float', 'bool', 'list', 'object', 'any'
+    ]
     required: bool = False
     description: str | None = None
 

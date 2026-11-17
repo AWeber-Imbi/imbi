@@ -229,7 +229,8 @@ export function WorkflowEditor({
   }
 
   const save = useMutation({
-    mutationFn: () => saveWorkflow(orgSlug, slug, draft, prompts),
+    // A retry after a failed save of a new workflow updates it.
+    mutationFn: () => saveWorkflow(orgSlug, slug, draft, prompts, stored),
     onError: (error) =>
       toast.error(
         `Failed to save the workflow: ${extractApiErrorDetail(error)}`,
@@ -239,7 +240,8 @@ export function WorkflowEditor({
       stored(saved)
       setDirty(false)
       setIssues(saved.version.validation.issues)
-      if (!slug) {
+      // Not `slug`: `stored` sets it when the save creates the workflow.
+      if (!workflow) {
         navigate(agentsPath('workflows', saved.slug), { replace: true })
       }
     },

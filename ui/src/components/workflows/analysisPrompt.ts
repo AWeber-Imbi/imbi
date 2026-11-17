@@ -6,7 +6,6 @@ import {
   resolvePrompt,
   updateWorkflow,
 } from '@/api/endpoints'
-import { slugify } from '@/lib/utils'
 import type { PromptVersion, PromptVersionCreate } from '@/types'
 
 import { isRecord } from './schemaFields'
@@ -107,7 +106,7 @@ export function promptContent(
     variable_schema: Object.fromEntries(
       Object.keys(isRecord(inputs) ? inputs : {}).map((name) => [
         name,
-        { required: true, type: 'str' as const },
+        { required: true, type: 'any' as const },
       ]),
     ),
   }
@@ -121,16 +120,30 @@ export function promptSlug(orgSlug: string, workflowSlug: string, key: string) {
  * Save a workflow. First write the CMS prompt of each analysis node,
  * then save the workflow with the version numbers that the CMS gave:
  * the API refuses a pin to a version that does not exist.
+ *
+ * A new workflow is created first, with no pins (the API does not
+ * check an analysis node that has no pin), because the prompt slugs
+ * use the slug that the API gives it. `onCreated` gets the new
+ * workflow, also when a later step fails.
  */
 export async function saveWorkflow(
   orgSlug: string,
   slug: string | undefined,
   draft: WorkflowWrite,
   prompts: Record<string, StepPrompt>,
+  onCreated?: (created: Workflow) => void,
 ): Promise<{ pins: Pins; saved: Workflow }> {
   const analysis = draft.graph.nodes.filter((n) => n.type === ANALYSIS)
-  // A new workflow has no slug yet; the prompt slugs need one.
-  const workflowSlug = slug ?? slugify(draft.name)
+  if (!slug) {
+    const created = await createWorkflow(orgSlug, {
+      ...draft,
+      graph: unpinNodes(draft.graph),
+    })
+    onCreated?.(created)
+    if (!analysis.length) return { pins: {}, saved: created }
+    slug = created.slug
+  }
+  const workflowSlug = slug
   const pins: Pins = {}
   // The nodes do not depend on each other: write their prompts at once.
   await Promise.all(
@@ -157,13 +170,7 @@ export async function saveWorkflow(
     }),
   )
   const body = { ...draft, graph: pinNodes(draft.graph, pins) }
-  const saved = slug
-    ? await updateWorkflow(orgSlug, slug, body)
-    : await createWorkflow(
-        orgSlug,
-        analysis.length ? { ...body, slug: workflowSlug } : body,
-      )
-  return { pins, saved }
+  return { pins, saved: await updateWorkflow(orgSlug, workflowSlug, body) }
 }
 
 function createNodePrompt(
@@ -179,6 +186,25 @@ function createNodePrompt(
     slug,
     version,
   })
+}
+
+/** Remove the pins of the graph's analysis nodes. */
+function unpinNodes(graph: WorkflowGraph): WorkflowGraph {
+  return {
+    ...graph,
+    nodes: graph.nodes.map((n) =>
+      n.type === ANALYSIS
+        ? {
+            ...n,
+            params: Object.fromEntries(
+              Object.entries(n.params).filter(
+                ([k]) => k !== 'prompt_ref' && k !== 'prompt_version',
+              ),
+            ),
+          }
+        : n,
+    ),
+  }
 }
 
 /**

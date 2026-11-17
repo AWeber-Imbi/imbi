@@ -606,6 +606,13 @@ function parseValue(
     return n
   }
   if (type === 'list' || type === 'object') return JSON.parse(text)
+  if (type === 'any') {
+    try {
+      return JSON.parse(text)
+    } catch {
+      return text
+    }
+  }
   return text
 }
 

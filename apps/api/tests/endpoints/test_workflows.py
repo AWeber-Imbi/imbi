@@ -926,6 +926,26 @@ class AnalysisStepTestCase(WorkflowTestCase):
         )
         self.assertEqual(response.status_code, 422, response.text)
 
+    async def test_unpinned_node_is_only_a_validation_issue(self) -> None:
+        # The editor creates a new workflow before it writes the prompts.
+        for params in ({}, {'prompt_ref': self._ref('sum')}):
+            with self.subTest(params=params):
+                response = await self._create(
+                    slug=f'new-{len(params)}',
+                    graph={
+                        'nodes': [
+                            _node('start', 'manual'),
+                            _node('sum', 'analysis', params),
+                        ],
+                        'edges': [
+                            {'source': 'start', 'port': 0, 'target': 'sum'}
+                        ],
+                    },
+                )
+                self.assertEqual(response.status_code, 201, response.text)
+                issues = response.json()['version']['validation']['issues']
+                self.assertIn('sum', {i.get('node_id') for i in issues})
+
     async def test_removed_node_and_deleted_workflow_archive(self) -> None:
         response = await self._create(graph=self._graph(sum={}, plain={}))
         self.assertEqual(response.status_code, 201, response.text)

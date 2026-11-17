@@ -6,12 +6,16 @@ import { fireEvent, render, screen } from '@/test/utils'
 
 import { InputsField } from '../InputsField'
 
-function renderField(initial: Record<string, unknown> = {}) {
+function renderField(
+  initial: Record<string, unknown> = {},
+  allowKeywords = false,
+) {
   const onChange = vi.fn()
   function Harness() {
     const [value, setValue] = useState(initial)
     return (
       <InputsField
+        allowKeywords={allowKeywords}
         id="inputs"
         label="Inputs"
         onChange={(next) => {
@@ -73,6 +77,17 @@ describe('InputsField', () => {
     expect(
       screen.getByText('This name is a Python keyword.'),
     ).toBeInTheDocument()
+  })
+
+  it('accepts a Python keyword when allowKeywords is set', () => {
+    const onChange = renderField({ limit: 3 }, true)
+    fireEvent.change(screen.getByLabelText('Input 1 name'), {
+      target: { value: 'lambda' },
+    })
+    expect(
+      screen.queryByText('This name is a Python keyword.'),
+    ).not.toBeInTheDocument()
+    expect(onChange).toHaveBeenLastCalledWith({ lambda: 3 })
   })
 
   it('does not send a map while two inputs have one name', () => {

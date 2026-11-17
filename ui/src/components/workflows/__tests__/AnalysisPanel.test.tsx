@@ -142,7 +142,7 @@ describe('AnalysisPanel', () => {
       state: '',
       system: 'Be brief.',
       tools: [],
-      variable_schema: { log: { required: true, type: 'str' } },
+      variable_schema: { log: { required: true, type: 'any' } },
     }
     expect(endpoints.createPrompt).toHaveBeenCalledWith(
       expect.objectContaining({

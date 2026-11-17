@@ -34,7 +34,7 @@ const VERSION_BODY = {
   summary: 'Saved from the workflow editor.',
   system: 'Be brief.',
   tools: [],
-  variable_schema: { log: { required: true, type: 'str' } },
+  variable_schema: { log: { required: true, type: 'any' } },
 }
 
 function draft(params: Record<string, unknown> = {}): WorkflowWrite {
@@ -184,23 +184,46 @@ describe('saveWorkflow', () => {
     })
   })
 
-  it('gives a new workflow the slug of its prompts', async () => {
-    vi.mocked(endpoints.createPromptVersion).mockResolvedValue({
-      n: 1,
-    } as PromptVersion)
-    vi.mocked(endpoints.createWorkflow).mockResolvedValue({} as Workflow)
+  it('creates a new workflow first and uses the slug it gets', async () => {
+    vi.mocked(endpoints.createWorkflow).mockImplementation(async () => {
+      calls.push('create workflow')
+      return { slug: 'deploy-guard-2' } as Workflow
+    })
+    vi.mocked(endpoints.createPromptVersion).mockImplementation(async () => {
+      calls.push('version')
+      return { n: 1 } as PromptVersion
+    })
+    const onCreated = vi.fn()
 
-    await saveWorkflow('acme', undefined, draft(), { n1: PROMPT })
+    await saveWorkflow(
+      'acme',
+      undefined,
+      draft({
+        prompt_ref: 'workflows/acme.other.summarize',
+        prompt_version: 3,
+      }),
+      { n1: PROMPT },
+      onCreated,
+    )
 
+    expect(calls).toEqual(['create workflow', 'version', 'workflow'])
+    const created = vi.mocked(endpoints.createWorkflow).mock.calls[0][1]
+    expect(created.graph.nodes[0].params).toEqual({
+      inputs: { log: '{{ fetch.result }}' },
+    })
+    expect(onCreated).toHaveBeenCalledWith({ slug: 'deploy-guard-2' })
     expect(endpoints.createPromptVersion).toHaveBeenCalledWith(
       'workflows',
-      'acme.deploy-guard.summarize',
+      'acme.deploy-guard-2.summarize',
       VERSION_BODY,
     )
-    expect(endpoints.createWorkflow).toHaveBeenCalledWith(
-      'acme',
-      expect.objectContaining({ slug: 'deploy-guard' }),
+    expect(vi.mocked(endpoints.updateWorkflow).mock.calls[0][1]).toBe(
+      'deploy-guard-2',
     )
+    expect(savedParams()).toMatchObject({
+      prompt_ref: 'workflows/acme.deploy-guard-2.summarize',
+      prompt_version: 1,
+    })
   })
 
   it('refuses a prompt with no model', async () => {

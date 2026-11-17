@@ -60,12 +60,15 @@ interface Row {
  * A row with no name is kept here only, until it has one.
  */
 export function InputsField({
+  allowKeywords = false,
   id,
   label,
   onChange,
   references,
   value,
 }: {
+  /** Accept Python keywords as names: only a script runs Python. */
+  allowKeywords?: boolean
   id: string
   label: string
   onChange: (value: Record<string, unknown>) => void
@@ -97,7 +100,11 @@ export function InputsField({
       role="group"
     >
       {rows.map((row, i) => {
-        const error = nameError(row.name, names.indexOf(row.name) !== i)
+        const error = nameError(
+          row.name,
+          names.indexOf(row.name) !== i,
+          allowKeywords,
+        )
         return (
           <div className="flex flex-col gap-1" key={row.key}>
             <div className="flex items-center gap-1.5">
@@ -154,12 +161,17 @@ export function InputsField({
   )
 }
 
-function nameError(name: string, repeated: boolean): null | string {
+function nameError(
+  name: string,
+  repeated: boolean,
+  allowKeywords: boolean,
+): null | string {
   if (!name) return null
   if (!NAME.test(name)) {
     return 'Use lowercase letters, digits, and _, starting with a letter.'
   }
-  if (KEYWORDS.has(name)) return 'This name is a Python keyword.'
+  if (!allowKeywords && KEYWORDS.has(name))
+    return 'This name is a Python keyword.'
   if (repeated) return 'Another input has this name.'
   return null
 }

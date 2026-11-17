@@ -4037,10 +4037,8 @@ export const getWorkflowVersion = (
     signal,
   )
 
-export const createWorkflow = (
-  orgSlug: string,
-  workflow: WorkflowWrite & { slug?: string },
-) => apiClient.post<Workflow>(`${workflowsPath(orgSlug)}/`, workflow)
+export const createWorkflow = (orgSlug: string, workflow: WorkflowWrite) =>
+  apiClient.post<Workflow>(`${workflowsPath(orgSlug)}/`, workflow)
 
 export const updateWorkflow = (
   orgSlug: string,

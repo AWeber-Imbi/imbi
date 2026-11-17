@@ -2998,7 +2998,9 @@ export interface paths {
          *     Renders the saved version ``ref``, or the unsaved ``draft``, then
          *     calls the version's model. A run spends provider credit, so it needs
          *     ``prompt:update`` (prompt authors), or ``prompt:run`` (the workflows
-         *     service) for a saved version of a generative prompt.
+         *     service) for a saved version of a generative prompt. For a
+         *     ``workflows/<org>.*`` prompt, ``workflow:write`` in ``<org>`` is
+         *     also enough.
          *
          *     A decision prompt goes to its TypeSafe model with the provider's
          *     stored key.
@@ -6019,8 +6021,9 @@ export interface paths {
          *
          *     Raises:
          *         409: The slug is in use in the org.
-         *         422: The graph is too large, the team is not in the org, or
-         *             the name gives an empty slug and no slug is supplied.
+         *         422: The graph is too large, the team is not in the org, the
+         *             name gives an empty slug and no slug is supplied, or the
+         *             prompt of an analysis step is not valid.
          */
         post: operations["create_workflow_api_organizations__org_slug__workflows__post"];
         delete?: never;
@@ -6047,19 +6050,25 @@ export interface paths {
          *     Only an admin or a member of the current owner team can change the
          *     owner team, because the owner team controls the runs.
          *
+         *     The CMS prompt of each analysis node that the save removes is
+         *     archived.
+         *
          *     Raises:
          *         403: ``owner_team_forbidden``: the caller changes the owner team
          *             and is not an admin or a member of the current owner team.
          *         404: No such workflow.
          *         409: ``conflict``: the workflow changed owner team or was
          *             deleted between the check and the save.
-         *         422: The graph is too large, or the team is not in the org.
+         *         422: The graph is too large, the team is not in the org, or
+         *             the prompt of an analysis step is not valid.
          */
         put: operations["save_workflow_api_organizations__org_slug__workflows__slug__put"];
         post?: never;
         /**
          * Delete Workflow
          * @description Delete a workflow that has no open runs.
+         *
+         *     The CMS prompts of its analysis nodes are archived.
          *
          *     Raises:
          *         404: No such workflow.
@@ -8864,11 +8873,14 @@ export interface paths {
          *     When the content is the same as the newest version, nothing is
          *     written and the newest version is returned with status 200.
          *
+         *     A new version of an archived workflows prompt un-archives it: a
+         *     workflow step with the same key is back.
+         *
          *     Raises:
          *         403: No permission.
          *         404: No such prompt.
-         *         409: The prompt is archived, or another version was saved at
-         *             the same time.
+         *         409: The prompt is archived and not a workflows prompt, or
+         *             another version was saved at the same time.
          *         422: A template does not parse, the model is not in the
          *             catalog, or a workflows prompt has tools.
          */
@@ -18126,7 +18138,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "str" | "int" | "float" | "bool" | "list" | "object";
+            type: "str" | "int" | "float" | "bool" | "list" | "object" | "any";
             /**
              * Required
              * @default false
@@ -32429,8 +32441,8 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                slug: string;
                 org_slug: string;
+                slug: string;
             };
             cookie?: never;
         };
@@ -32465,8 +32477,8 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                slug: string;
                 org_slug: string;
+                slug: string;
             };
             cookie?: never;
         };

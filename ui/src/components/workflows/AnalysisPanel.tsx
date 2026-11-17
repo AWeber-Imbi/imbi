@@ -137,6 +137,7 @@ export function AnalysisPanel({
         label="Inputs"
       >
         <InputsField
+          allowKeywords
           id={`${id}-inputs`}
           label="Inputs"
           onChange={(inputs) => setParam('inputs', inputs)}
