@@ -943,10 +943,16 @@ class ArchiveTestCase(PromptTestBase):
 
     def test_archive_sets_archived_at_once(self) -> None:
         router = self.route()
-        asyncio.run(prompts.archive_prompt(self.mock_db, 'workflows/acme.a.b'))
+        asyncio.run(
+            prompts.archive_prompts_except(
+                self.mock_db, 'workflows', 'acme.a.', ['acme.a.b']
+            )
+        )
+        self.assertIn('WHERE p.archived_at IS NULL', prompts._ARCHIVE_QUERY)
         params = router.params_for(prompts._ARCHIVE_QUERY)
         self.assertEqual(
-            (params['namespace'], params['slug']), ('workflows', 'acme.a.b')
+            (params['namespace'], params['prefix'], params['keep']),
+            ('workflows', 'acme.a.', ['acme.a.b']),
         )
 
     def test_archived_is_not_listed(self) -> None:

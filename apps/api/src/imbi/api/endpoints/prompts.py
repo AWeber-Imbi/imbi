@@ -396,10 +396,11 @@ RETURN p
 """
 
 _ARCHIVE_QUERY: typing.LiteralString = """
-MATCH (p:Prompt {{namespace: {namespace}, slug: {slug}}})
-WHERE p.archived_at IS NULL
+MATCH (p:Prompt {{namespace: {namespace}}})
+WHERE p.archived_at IS NULL AND p.slug STARTS WITH {prefix}
+  AND NOT (p.slug IN {keep})
 SET p.archived_at = {now}, p.updated_at = {now}
-RETURN p
+RETURN p.slug AS slug
 """
 
 _UNARCHIVE_QUERY: typing.LiteralString = """
@@ -732,23 +733,27 @@ def _workflow_prompt_locked() -> fastapi.HTTPException:
     )
 
 
-async def archive_prompt(db: graph.Graph, ref: str) -> None:
-    """Archive the prompt ``ref`` (``namespace/slug``).
+async def archive_prompts_except(
+    db: graph.Graph, namespace: str, prefix: str, keep: list[str]
+) -> None:
+    """Archive each prompt of ``namespace`` whose slug starts with
+    ``prefix``, except the slugs in ``keep``.
 
-    The prompt is no longer listed and gets no new versions or label
-    moves. Its versions stay, so ``ref@n`` still resolves. Nothing
-    happens when the prompt does not exist or is already archived.
-
-    Raises:
-        fastapi.HTTPException: 422 when ``ref`` is not valid.
+    An archived prompt is no longer listed and gets no new versions or
+    label moves. Its versions stay, so ``ref@n`` still resolves. A
+    prompt that is already archived does not change.
 
     """
-    namespace, slug, _selector = parse_ref(ref)
     now = _DATETIME.dump_python(_now(), mode='json')
     await db.execute(
         _ARCHIVE_QUERY,
-        {'namespace': namespace, 'slug': slug, 'now': now},
-        ['p'],
+        {
+            'namespace': namespace,
+            'prefix': prefix,
+            'keep': keep,
+            'now': now,
+        },
+        ['slug'],
     )
 
 

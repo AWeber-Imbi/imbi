@@ -111,7 +111,7 @@ class Request:
     )
     #: Already resolved against the driver default.
     base_url: str | None = None
-    credential: str | None = None
+    credential: str | None = dataclasses.field(default=None, repr=False)
     bearer: bool = False
     auth: httpx.Auth | None = None
     #: bedrock / vertex
@@ -266,6 +266,11 @@ def _usage(input_tokens: object, output_tokens: object) -> Usage:
     return Usage(
         input_tokens=as_int(input_tokens), output_tokens=as_int(output_tokens)
     )
+
+
+def _mapping(value: object) -> dict[str, typing.Any]:
+    """Return ``value`` when it is a dict, else ``{}`` (usage is advisory)."""
+    return value if isinstance(value, dict) else {}
 
 
 def _omit_none(**values: object) -> dict[str, object]:
@@ -426,7 +431,7 @@ async def _openai(
     data = _json(response)
     try:
         text = data['choices'][0]['message'].get('content') or ''
-        usage = data.get('usage') or {}
+        usage = _mapping(data.get('usage'))
     except (KeyError, IndexError, TypeError, AttributeError):
         raise GenerateError('model_answer_invalid', retry=True) from None
     return _Answer(
@@ -498,7 +503,7 @@ async def _bedrock(
         tool_input = next(
             (c['toolUse']['input'] for c in content if 'toolUse' in c), None
         )
-        usage = data.get('usage') or {}
+        usage = _mapping(data.get('usage'))
     except (KeyError, TypeError, AttributeError):
         raise GenerateError('model_answer_invalid', retry=True) from None
     return _Answer(
@@ -574,7 +579,7 @@ async def _vertex(
             for p in parts
             if 'text' in p and not p.get('thought')
         )
-        usage = data.get('usageMetadata') or {}
+        usage = _mapping(data.get('usageMetadata'))
     except (KeyError, IndexError, TypeError, AttributeError):
         raise GenerateError('model_answer_invalid', retry=True) from None
     return _Answer(

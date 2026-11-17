@@ -518,9 +518,12 @@ class Executors:
                 wait_seconds=LLM_CALL_TIMEOUT,
             )
         except StepError as e:
-            if e.code != 'call_in_progress':
+            if e.code != 'call_in_progress' and not isinstance(
+                e.__cause__, httpx.HTTPError
+            ):
                 raise
-            # imbi-api still runs the call of this attempt. Ask again
+            # imbi-api still runs the call of this attempt, or the
+            # response was lost and the outcome is unknown. Ask again
             # with the same key: a retry would be a new attempt and a
             # second call.
             return Outcome(

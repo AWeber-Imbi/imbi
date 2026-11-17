@@ -1961,12 +1961,16 @@ class LLMCallStepTestCase(EngineTestCase):
         await super().asyncSetUp()
         #: The requests to the run endpoint.
         self.calls: list[httpx.Request] = []
-        #: The answers, in order; the last one repeats.
-        self.answers: list[httpx.Response] = []
+        #: The answers, in order; the last one repeats. An exception
+        #: is raised, as a transport failure.
+        self.answers: list[httpx.Response | Exception] = []
 
         def run(request: httpx.Request) -> httpx.Response:
             self.calls.append(request)
-            return self.answers[min(len(self.calls), len(self.answers)) - 1]
+            answer = self.answers[min(len(self.calls), len(self.answers)) - 1]
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
 
         self.api.llm_call = run
 
@@ -2086,6 +2090,16 @@ class LLMCallStepTestCase(EngineTestCase):
             self._error(409, 'call_in_progress', True),
             self._answer(),
         ]
+        run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(self._keys()[:2], ['sum:1', 'sum:1'])
+        self.assertEqual(run['steps']['sum']['attempt'], 1)
+
+    async def test_transport_failure_asks_again_with_the_same_key(
+        self,
+    ) -> None:
+        # imbi-api may have made the call: a new key could pay twice.
+        self.answers = [httpx.ReadTimeout('lost'), self._answer()]
         run = await self._drive_llm_call()
         self.assertEqual(run['status'], 'succeeded', run['error'])
         self.assertEqual(self._keys()[:2], ['sum:1', 'sum:1'])

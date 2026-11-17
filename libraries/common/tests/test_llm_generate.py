@@ -316,6 +316,15 @@ class GenerateTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             result.usage, {'input_tokens': None, 'output_tokens': None}
         )
+        body['usage'] = [1, 2]
+        result = await self._call(_request('openai'), 200, body)
+        self.assertEqual(
+            result.usage, {'input_tokens': None, 'output_tokens': None}
+        )
+
+    def test_credential_not_in_repr(self) -> None:
+        request = _request('openai')
+        self.assertNotIn(str(request.credential), repr(request))
 
     # --- bedrock ---------------------------------------------------------
 

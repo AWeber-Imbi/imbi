@@ -468,9 +468,20 @@ def _llm_call_keys(wf_graph: dict[str, typing.Any]) -> set[str]:
 async def _archive_prompts(
     db: graph.Graph, org_slug: str, slug: str, keys: abc.Iterable[str]
 ) -> None:
-    """Archive the prompts of removed LLM Call nodes (plan D8)."""
-    for key in keys:
-        await prompts.archive_prompt(db, _llm_call_ref(org_slug, slug, key))
+    """Archive the prompts of the workflow, except those of ``keys``
+    (plan D8).
+
+    All prompts of the workflow are checked, not only the removed nodes,
+    so the next save or delete archives what a failed one left.
+
+    """
+    prefix = f'{org_slug}.{slug}.'
+    await prompts.archive_prompts_except(
+        db,
+        prompts.WORKFLOWS_NAMESPACE,
+        prefix,
+        [prefix + key for key in keys],
+    )
 
 
 def _version(row: workflows.Row) -> dict[str, typing.Any]:
@@ -739,10 +750,7 @@ async def save_workflow(
             },
         )
     await _archive_prompts(
-        db,
-        org_slug,
-        slug,
-        _llm_call_keys(current['graph']) - _llm_call_keys(definition.graph),
+        db, org_slug, slug, _llm_call_keys(definition.graph)
     )
     return await _get(store, db, org_id, slug)
 
@@ -771,13 +779,13 @@ async def delete_workflow(
         raise fastapi.HTTPException(
             status_code=409, detail=f'Workflow {slug!r} has open runs'
         )
+    # Also when the workflow is missing: a retry of a delete whose
+    # archive failed archives the prompts then.
+    await _archive_prompts(db, org_slug, slug, ())
     if result == 'missing' or current is None:
         raise fastapi.HTTPException(
             status_code=404, detail=f'Workflow {slug!r} not found'
         )
-    await _archive_prompts(
-        db, org_slug, slug, _llm_call_keys(current['graph'])
-    )
 
 
 @workflows_router.get('/{slug}/versions', response_model=list[WorkflowVersion])

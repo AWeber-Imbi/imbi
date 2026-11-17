@@ -973,6 +973,14 @@ class LLMCallStepTestCase(WorkflowTestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertTrue(await self._archived('plain'))
         self.assertFalse(await self._archived('sum'))
+        # Not a node of the workflow: a save archives what an earlier
+        # save left.
+        self.assertTrue(await self._archived('ask'))
         response = await self.client.delete(f'{self.base}/deploy-guard')
         self.assertEqual(response.status_code, 204, response.text)
         self.assertTrue(await self._archived('sum'))
+        # A retried delete archives what a failed archive left.
+        await self._prompt('late', self.plain)
+        response = await self.client.delete(f'{self.base}/deploy-guard')
+        self.assertEqual(response.status_code, 404, response.text)
+        self.assertTrue(await self._archived('late'))
