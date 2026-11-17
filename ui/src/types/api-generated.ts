@@ -8749,6 +8749,9 @@ export interface paths {
          * Create Prompt
          * @description Create a prompt with its first version.
          *
+         *     Needs ``prompt:create``. For a ``workflows/<org>.<workflow>.<node>``
+         *     prompt, ``workflow:write`` in ``<org>`` is also enough.
+         *
          *     When the caller may promote (see :func:`can_promote`), the default
          *     label points at version 1. Otherwise the prompt is created
          *     with no labels: pointing a label at a version changes what consumers
@@ -8757,9 +8760,11 @@ export interface paths {
          *     such as the assistant uses its packaged prompt.
          *
          *     Raises:
+         *         403: No permission.
          *         409: ``namespace/slug`` is taken.
-         *         422: A template does not parse, or the model is not in the
-         *             catalog.
+         *         422: A template does not parse, the model is not in the
+         *             catalog, or a workflows prompt has tools or no
+         *             ``<org>.`` slug prefix.
          */
         post: operations["create_prompt_api_prompts__post"];
         delete?: never;
@@ -8809,6 +8814,10 @@ export interface paths {
         /**
          * Delete Prompt
          * @description Delete a prompt and every version of it.
+         *
+         *     Raises:
+         *         404: No such prompt.
+         *         409: The prompt is a workflows prompt.
          */
         delete: operations["delete_prompt_api_prompts__namespace___slug__delete"];
         options?: never;
@@ -8825,7 +8834,8 @@ export interface paths {
          *         400: Invalid patch or a read-only path.
          *         403: A rename without ``prompt:promote``.
          *         404: No such prompt.
-         *         409: The new ``namespace/slug`` is taken.
+         *         409: The new ``namespace/slug`` is taken, or the rename moves
+         *             a prompt into or out of the ``workflows`` namespace.
          *         422: The patched values are not valid.
          */
         patch: operations["patch_prompt_api_prompts__namespace___slug__patch"];
@@ -8848,14 +8858,19 @@ export interface paths {
          * Create Prompt Version
          * @description Save a new version. Versions are never changed after this.
          *
+         *     Needs ``prompt:update``. For a ``workflows/<org>.*`` prompt,
+         *     ``workflow:write`` in ``<org>`` is also enough.
+         *
          *     When the content is the same as the newest version, nothing is
          *     written and the newest version is returned with status 200.
          *
          *     Raises:
+         *         403: No permission.
          *         404: No such prompt.
-         *         409: Another version was saved at the same time.
-         *         422: A template does not parse, or the model is not in the
-         *             catalog.
+         *         409: The prompt is archived, or another version was saved at
+         *             the same time.
+         *         422: A template does not parse, the model is not in the
+         *             catalog, or a workflows prompt has tools.
          */
         post: operations["create_prompt_version_api_prompts__namespace___slug__versions_post"];
         delete?: never;
@@ -8924,7 +8939,8 @@ export interface paths {
          *     Raises:
          *         403: The caller cannot promote this prompt.
          *         404: No such prompt or version.
-         *         409: The prompt changed while this request ran.
+         *         409: The prompt is archived, or it changed while this request
+         *             ran.
          *         422: The label is made only of digits.
          */
         put: operations["set_prompt_label_api_prompts__namespace___slug__labels__label__put"];
@@ -8935,8 +8951,8 @@ export interface paths {
          *
          *     Raises:
          *         404: No such prompt or label.
-         *         409: The label is the default label, or the prompt changed
-         *             while this request ran.
+         *         409: The label is the default label, the prompt is archived,
+         *             or the prompt changed while this request ran.
          */
         delete: operations["delete_prompt_label_api_prompts__namespace___slug__labels__label__delete"];
         options?: never;
@@ -8958,7 +8974,8 @@ export interface paths {
          *
          *     Raises:
          *         404: No such prompt.
-         *         409: The prompt changed while this request ran.
+         *         409: The prompt is archived, or it changed while this request
+         *             ran.
          *         422: The prompt has no such label.
          */
         put: operations["set_prompt_default_label_api_prompts__namespace___slug__default_label_put"];
@@ -18097,6 +18114,8 @@ export interface components {
             created_at?: string | null;
             /** Updated At */
             updated_at?: string | null;
+            /** Archived At */
+            archived_at?: string | null;
         };
         /**
          * PromptVariable

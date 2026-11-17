@@ -161,6 +161,7 @@ class PromptResponse(pydantic.BaseModel):
     latest_version: int = 0
     created_at: datetime.datetime | None = None
     updated_at: datetime.datetime | None = None
+    archived_at: datetime.datetime | None = None
 
 
 class PromptVersionResponse(PromptVersionContent):
@@ -329,12 +330,14 @@ _PROMPT_QUERY = prompt_resolve.PROMPT_QUERY
 
 _LIST_QUERY: typing.LiteralString = """
 MATCH (p:Prompt)
+WHERE p.archived_at IS NULL
 OPTIONAL MATCH (v:PromptVersion)-[:VERSION_OF]->(p)
 RETURN p, max(v.n) AS latest
 """
 
 _LIST_NAMESPACE_QUERY: typing.LiteralString = """
 MATCH (p:Prompt {{namespace: {namespace}}})
+WHERE p.archived_at IS NULL
 OPTIONAL MATCH (v:PromptVersion)-[:VERSION_OF]->(p)
 RETURN p, max(v.n) AS latest
 """
@@ -380,6 +383,13 @@ WHERE p.updated_at = {expected_updated_at}
 SET p.labels = {labels},
     p.default_label = {default_label},
     p.updated_at = {updated_at}
+RETURN p
+"""
+
+_ARCHIVE_QUERY: typing.LiteralString = """
+MATCH (p:Prompt {{namespace: {namespace}, slug: {slug}}})
+WHERE p.archived_at IS NULL
+SET p.archived_at = {now}, p.updated_at = {now}
 RETURN p
 """
 
@@ -429,6 +439,7 @@ def _prompt_response(prompt: models.Prompt, latest: int) -> PromptResponse:
         latest_version=latest,
         created_at=prompt.created_at,
         updated_at=prompt.updated_at,
+        archived_at=prompt.archived_at,
     )
 
 
@@ -556,20 +567,45 @@ async def _model_id_for(
     return str(graph.parse_agtype(records[0]['model_id']))
 
 
-#: The namespace whose prompts are data of one organization: an agent's
-#: system prompt is ``agents/<org slug>.<agent slug>``.
-_ORG_NAMESPACE = 'agents'
+#: The namespace of the prompts of workflow steps:
+#: ``workflows/<org slug>.<workflow slug>.<node key>``. A workflow
+#: version pins a version number of the prompt, so such a prompt is
+#: never deleted or renamed, has no tools, and is archived (not
+#: deleted) with its node.
+WORKFLOWS_NAMESPACE = 'workflows'
+
+#: The namespaces whose prompts are data of one organization, and the
+#: organization permission of the owner. An agent's system prompt is
+#: ``agents/<org slug>.<agent slug>``.
+_ORG_NAMESPACES: dict[str, str] = {
+    'agents': 'agent:write',
+    WORKFLOWS_NAMESPACE: 'workflow:write',
+}
 
 
 def _prompt_org(namespace: str, slug: str) -> str | None:
     """The organization whose data a prompt is, or ``None``.
 
-    A prompt in :data:`_ORG_NAMESPACE` named ``<org>.<agent>`` belongs
+    A prompt in :data:`_ORG_NAMESPACES` named ``<org>.<rest>`` belongs
     to ``<org>``. An older agent prompt without the prefix belongs to
     no organization.
     """
     org, dot, _ = slug.partition('.')
-    return org if namespace == _ORG_NAMESPACE and dot else None
+    return org if namespace in _ORG_NAMESPACES and dot else None
+
+
+async def _is_owner(
+    db: graph.Graph,
+    auth: permissions.AuthContext,
+    namespace: str,
+    slug: str,
+) -> bool:
+    """Whether the caller has the owner permission of an organization's
+    prompt (see :data:`_ORG_NAMESPACES`) in that organization."""
+    org = _prompt_org(namespace, slug)
+    return org is not None and _ORG_NAMESPACES[namespace] in (
+        await organizations.org_permissions(db, auth, org)
+    )
 
 
 async def can_promote(
@@ -581,17 +617,95 @@ async def can_promote(
     """Whether the caller may point a label of the prompt at a version.
 
     ``prompt:promote`` (or an admin) may move any label. An
-    organization's agent prompt is part of the agent, so ``agent:write``
-    in that organization may also move its labels; otherwise a developer
-    could change an agent's prompt but never make the agent use it.
+    organization's agent or workflow prompt is part of the agent or the
+    workflow, so ``agent:write`` or ``workflow:write`` in that
+    organization may also move its labels; otherwise a developer could
+    change an agent's prompt but never make the agent use it.
     Membership of that organization is checked by :func:`_require_access`
     before this.
     """
     if auth.is_admin or 'prompt:promote' in auth.permissions:
         return True
-    org = _prompt_org(namespace, slug)
-    return org is not None and 'agent:write' in (
-        await organizations.org_permissions(db, auth, org)
+    return await _is_owner(db, auth, namespace, slug)
+
+
+async def _require_write(
+    db: graph.Graph,
+    auth: permissions.AuthContext,
+    permission: str,
+    namespace: str,
+    slug: str,
+) -> None:
+    """Raise 403 unless the caller has ``permission``.
+
+    A workflow prompt is part of the workflow, so ``workflow:write`` in
+    its organization is also enough: the workflow editor creates the
+    prompt and adds its versions.
+    """
+    if auth.is_admin or permission in auth.permissions:
+        return
+    if namespace == WORKFLOWS_NAMESPACE and await _is_owner(
+        db, auth, namespace, slug
+    ):
+        return
+    raise fastapi.HTTPException(
+        status_code=403, detail=f'Permission denied: {permission} required'
+    )
+
+
+def _check_route_org(prompt: models.Prompt, org_slug: str) -> None:
+    """Raise 422 when a workflow prompt is used in another organization."""
+    org = _prompt_org(prompt.namespace, prompt.slug)
+    if prompt.namespace == WORKFLOWS_NAMESPACE and org != org_slug:
+        raise _unprocessable(
+            f'Prompt {prompt.namespace}/{prompt.slug} belongs to '
+            f'organization {org!r}, not {org_slug!r}'
+        )
+
+
+def _check_tools(namespace: str, content: PromptVersionContent) -> None:
+    """Raise 422 when a workflow prompt has tools: a workflow step
+    sends no tools to the model."""
+    if namespace == WORKFLOWS_NAMESPACE and content.tools:
+        raise _unprocessable('A workflows prompt cannot have tools')
+
+
+def _check_not_archived(prompt: models.Prompt) -> None:
+    """Raise 409 when the prompt is archived."""
+    if prompt.archived_at is not None:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=f'Prompt {prompt.namespace}/{prompt.slug} is archived',
+        )
+
+
+def _workflow_prompt_locked() -> fastapi.HTTPException:
+    return fastapi.HTTPException(
+        status_code=409,
+        detail=(
+            f'A {WORKFLOWS_NAMESPACE} prompt cannot be deleted or renamed: '
+            'workflow versions use it. Delete the workflow step to archive it'
+        ),
+    )
+
+
+async def archive_prompt(db: graph.Graph, ref: str) -> None:
+    """Archive the prompt ``ref`` (``namespace/slug``).
+
+    The prompt is no longer listed and gets no new versions or label
+    moves. Its versions stay, so ``ref@n`` still resolves. Nothing
+    happens when the prompt does not exist or is already archived.
+
+    Raises:
+        fastapi.HTTPException: 422 when ``ref`` is not valid.
+
+    """
+    namespace, slug, _selector = parse_ref(ref)
+    now = _DATETIME.dump_python(_now(), mode='json')
+    await db.execute(
+        _ARCHIVE_QUERY,
+        {'namespace': namespace, 'slug': slug, 'now': now},
+        ['p'],
     )
 
 
@@ -823,11 +937,13 @@ async def create_prompt(
     data: PromptCreate,
     db: graph.Pool,
     auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('prompt:create')),
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
     ],
 ) -> PromptResponse:
     """Create a prompt with its first version.
+
+    Needs ``prompt:create``. For a ``workflows/<org>.<workflow>.<node>``
+    prompt, ``workflow:write`` in ``<org>`` is also enough.
 
     When the caller may promote (see :func:`can_promote`), the default
     label points at version 1. Otherwise the prompt is created
@@ -837,19 +953,21 @@ async def create_prompt(
     such as the assistant uses its packaged prompt.
 
     Raises:
+        403: No permission.
         409: ``namespace/slug`` is taken.
-        422: A template does not parse, or the model is not in the
-            catalog.
+        422: A template does not parse, the model is not in the
+            catalog, or a workflows prompt has tools or no
+            ``<org>.`` slug prefix.
 
     """
-    await _require_access(db, auth, data.namespace, data.slug or '')
+    slug = data.slug or ''
+    await _require_access(db, auth, data.namespace, slug)
+    await _require_write(db, auth, 'prompt:create', data.namespace, slug)
     return await insert_prompt(
         db,
         data,
         auth.principal_name,
-        label_first_version=await can_promote(
-            db, auth, data.namespace, data.slug or ''
-        ),
+        label_first_version=await can_promote(db, auth, data.namespace, slug),
     )
 
 
@@ -877,8 +995,15 @@ async def insert_prompt(
     slug = data.slug or slugify.slugify(data.name)
     if not re.match(models.PROMPT_NAME_PATTERN, slug):
         raise _unprocessable(f'Slug {slug!r} is not valid')
+    if data.namespace == WORKFLOWS_NAMESPACE and (
+        _prompt_org(data.namespace, slug) is None
+    ):
+        raise _unprocessable(
+            'A workflows prompt slug must be <org>.<workflow>.<node>'
+        )
     _check_label_name(data.default_label)
     _check_kind(data.kind, data.version)
+    _check_tools(data.namespace, data.version)
     _check_templates(data.version)
     model_id = await _model_id_for(db, data.version.model, data.kind)
     await _assert_ref_free(db, data.namespace, slug)
@@ -992,6 +1117,7 @@ async def render_prompt(
 
     """
     prompt, version, label = await _resolve(db, data.ref, auth)
+    _check_route_org(prompt, org_slug)
     providers = _providers(auth, db, org_slug, request)
     response = RenderResponse(
         ref=f'{prompt.namespace}/{prompt.slug}@{version.n}',
@@ -1071,6 +1197,7 @@ async def _run_target(
     draft = typing.cast('RunDraft', data.draft)
     prompt, latest = await _fetch_prompt(db, draft.namespace, draft.slug, auth)
     _check_kind(prompt.kind, draft.version)
+    _check_tools(prompt.namespace, draft.version)
     _check_templates(draft.version)
     version = models.PromptVersion.model_validate(
         {
@@ -1187,6 +1314,7 @@ async def run_prompt(
 
     """
     prompt, version, n = await _run_target(db, data, auth)
+    _check_route_org(prompt, org_slug)
     _check_run_permission(auth, data, prompt.kind)
     ref = f'{prompt.namespace}/{prompt.slug}' + (
         f'@{n}' if n is not None else ' (draft)'
@@ -1506,7 +1634,8 @@ async def patch_prompt(
         400: Invalid patch or a read-only path.
         403: A rename without ``prompt:promote``.
         404: No such prompt.
-        409: The new ``namespace/slug`` is taken.
+        409: The new ``namespace/slug`` is taken, or the rename moves
+            a prompt into or out of the ``workflows`` namespace.
         422: The patched values are not valid.
 
     """
@@ -1525,6 +1654,8 @@ async def patch_prompt(
     if not re.match(models.PROMPT_NAME_PATTERN, updated.slug):
         raise _unprocessable(f'Slug {updated.slug!r} is not valid')
     if (updated.namespace, updated.slug) != (namespace, slug):
+        if WORKFLOWS_NAMESPACE in (namespace, updated.namespace):
+            raise _workflow_prompt_locked()
         if not (auth.is_admin or 'prompt:promote' in auth.permissions):
             raise fastapi.HTTPException(
                 status_code=403,
@@ -1557,9 +1688,16 @@ async def delete_prompt(
         fastapi.Depends(permissions.require_permission('prompt:delete')),
     ],
 ) -> None:
-    """Delete a prompt and every version of it."""
-    _ = auth
+    """Delete a prompt and every version of it.
+
+    Raises:
+        404: No such prompt.
+        409: The prompt is a workflows prompt.
+
+    """
     prompt, _latest = await _fetch_prompt(db, namespace, slug, auth)
+    if prompt.namespace == WORKFLOWS_NAMESPACE:
+        raise _workflow_prompt_locked()
     params = {'id': prompt.id}
     # Versions first: a failure between the two writes leaves a prompt
     # with no versions, which a second DELETE removes.
@@ -1631,24 +1769,31 @@ async def create_prompt_version(
     response: fastapi.Response,
     db: graph.Pool,
     auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('prompt:update')),
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
     ],
 ) -> PromptVersionResponse:
     """Save a new version. Versions are never changed after this.
+
+    Needs ``prompt:update``. For a ``workflows/<org>.*`` prompt,
+    ``workflow:write`` in ``<org>`` is also enough.
 
     When the content is the same as the newest version, nothing is
     written and the newest version is returned with status 200.
 
     Raises:
+        403: No permission.
         404: No such prompt.
-        409: Another version was saved at the same time.
-        422: A template does not parse, or the model is not in the
-            catalog.
+        409: The prompt is archived, or another version was saved at
+            the same time.
+        422: A template does not parse, the model is not in the
+            catalog, or a workflows prompt has tools.
 
     """
+    await _require_write(db, auth, 'prompt:update', namespace, slug)
     prompt, latest = await _fetch_prompt(db, namespace, slug, auth)
+    _check_not_archived(prompt)
     _check_kind(prompt.kind, data)
+    _check_tools(prompt.namespace, data)
     _check_templates(data)
     if latest:
         newest = await _fetch_version(db, prompt, latest)
@@ -1737,7 +1882,8 @@ async def set_prompt_label(
     Raises:
         403: The caller cannot promote this prompt.
         404: No such prompt or version.
-        409: The prompt changed while this request ran.
+        409: The prompt is archived, or it changed while this request
+            ran.
         422: The label is made only of digits.
 
     """
@@ -1751,6 +1897,7 @@ async def set_prompt_label(
             'prompt:promote',
         )
     prompt, latest = await _fetch_prompt(db, namespace, slug, auth)
+    _check_not_archived(prompt)
     await _fetch_version(db, prompt, data.version)
     labels = moved_labels(prompt, label, data.version, auth.principal_name)
     updated = await _write_labels(db, prompt, labels, prompt.default_label)
@@ -1774,12 +1921,13 @@ async def delete_prompt_label(
 
     Raises:
         404: No such prompt or label.
-        409: The label is the default label, or the prompt changed
-            while this request ran.
+        409: The label is the default label, the prompt is archived,
+            or the prompt changed while this request ran.
 
     """
     _ = auth
     prompt, latest = await _fetch_prompt(db, namespace, slug, auth)
+    _check_not_archived(prompt)
     if label == prompt.default_label:
         raise fastapi.HTTPException(
             status_code=409,
@@ -1815,12 +1963,14 @@ async def set_prompt_default_label(
 
     Raises:
         404: No such prompt.
-        409: The prompt changed while this request ran.
+        409: The prompt is archived, or it changed while this request
+            ran.
         422: The prompt has no such label.
 
     """
     _ = auth
     prompt, latest = await _fetch_prompt(db, namespace, slug, auth)
+    _check_not_archived(prompt)
     if data.label not in {item.name for item in prompt.labels}:
         raise _unprocessable(
             f'Prompt {namespace}/{slug} has no label {data.label!r}'

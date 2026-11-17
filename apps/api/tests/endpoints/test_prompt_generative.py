@@ -160,6 +160,33 @@ class GenerativeRunTestCase(base.PromptTestBase):
         self.route_run()
         self.assertEqual(self.run_ref().status_code, 200)
 
+    def test_archived_workflow_prompt_runs_by_version(self) -> None:
+        self.as_principal('prompt:run')
+        slug = f'{base.ORG}.deploy.summary'
+        self.route_run()
+        self.mock_db.execute.side_effect.rules[0] = (
+            base.GET_PROMPT,
+            base.prompt_row(
+                namespace='workflows', slug=slug, archived_at=base.STAMP
+            ),
+        )
+        with mock.patch.object(
+            prompts,
+            'caller_org_slugs',
+            mock.AsyncMock(return_value={base.ORG}),
+        ):
+            response = self.run_ref(ref=f'workflows/{slug}@1')
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()['ref'], f'workflows/{slug}@1')
+            other = self.client.post(
+                '/organizations/other/prompts/run',
+                json={
+                    'ref': f'workflows/{slug}@1',
+                    'variables': {'project_slug': 'billing'},
+                },
+            )
+        self.assertEqual(other.status_code, 422)
+
     def test_run_permission_cannot_run_a_draft(self) -> None:
         self.as_principal('prompt:run')
         self.route_run()

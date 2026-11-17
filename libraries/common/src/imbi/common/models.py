@@ -918,6 +918,10 @@ class Prompt(Node):
     #: or names a label the prompt does not have.
     default_label: PromptName = 'stable'
     labels: list[PromptLabel] = []
+    #: Set when the owner of the prompt is deleted. An archived prompt
+    #: is not listed and gets no new versions or label moves, but each
+    #: version still resolves by number.
+    archived_at: datetime.datetime | None = None
 
     @pydantic.field_validator('labels', mode='before')
     @classmethod
