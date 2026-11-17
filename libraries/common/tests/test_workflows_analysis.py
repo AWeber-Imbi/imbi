@@ -44,6 +44,8 @@ class ParamsTestCase(unittest.TestCase):
             ({'prompt_ref': 'workflows/{{ x }}'}, 'pattern'),
             ({'prompt_version': 0}, 'greater than 0'),
             ({'inputs': {'Bad': 1}}, 'not a valid input name'),
+            ({'inputs': {'none': 1}}, 'reserved in Jinja2'),
+            ({'inputs': {'not': 1}}, 'reserved in Jinja2'),
             ({'inputs': {f'i{n}': n for n in range(21)}}, 'at most 20'),
             ({'output_fields': FIELDS * 2}, 'unique'),
             ({'output_fields': FIELDS * 51}, 'at most 50'),

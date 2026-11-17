@@ -129,8 +129,8 @@ export function NodePanel({
   tab: InspectorTab
   types: StepTypes
   workflowName: string
-  /** The slug of the workflow, or the slug that a save will give it. */
-  workflowSlug: string
+  /** The slug of the workflow. Undefined until the first save. */
+  workflowSlug: string | undefined
 }) {
   const type = types[node.type]
   const Icon = stepIcon(node.type, type?.category)

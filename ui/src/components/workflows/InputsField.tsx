@@ -13,7 +13,7 @@ export const MAX_INPUTS = 20
 const NAME = /^[a-z][a-z0-9_]*$/
 
 /** The lowercase names of Python's `keyword.kwlist`; the API refuses them. */
-const KEYWORDS = new Set([
+const PYTHON_KEYWORDS = new Set([
   'and',
   'as',
   'assert',
@@ -48,6 +48,14 @@ const KEYWORDS = new Set([
   'yield',
 ])
 
+/** The names that Jinja2 reads as a constant, an operator, or itself. */
+const JINJA_KEYWORDS = new Set(['false', 'none', 'not', 'self', 'true'])
+
+const KEYWORDS = {
+  jinja: { message: 'This name is reserved in Jinja2.', names: JINJA_KEYWORDS },
+  python: { message: 'This name is a Python keyword.', names: PYTHON_KEYWORDS },
+}
+
 interface Row {
   key: string
   name: string
@@ -60,16 +68,16 @@ interface Row {
  * A row with no name is kept here only, until it has one.
  */
 export function InputsField({
-  allowKeywords = false,
   id,
+  keywords = 'python',
   label,
   onChange,
   references,
   value,
 }: {
-  /** Accept Python keywords as names: only a script runs Python. */
-  allowKeywords?: boolean
   id: string
+  /** The language that reads the names: a script or a Jinja2 prompt. */
+  keywords?: keyof typeof KEYWORDS
   label: string
   onChange: (value: Record<string, unknown>) => void
   references: ReferenceGroup[]
@@ -103,7 +111,7 @@ export function InputsField({
         const error = nameError(
           row.name,
           names.indexOf(row.name) !== i,
-          allowKeywords,
+          KEYWORDS[keywords],
         )
         return (
           <div className="flex flex-col gap-1" key={row.key}>
@@ -164,14 +172,13 @@ export function InputsField({
 function nameError(
   name: string,
   repeated: boolean,
-  allowKeywords: boolean,
+  reserved: { message: string; names: Set<string> },
 ): null | string {
   if (!name) return null
   if (!NAME.test(name)) {
     return 'Use lowercase letters, digits, and _, starting with a letter.'
   }
-  if (!allowKeywords && KEYWORDS.has(name))
-    return 'This name is a Python keyword.'
+  if (reserved.names.has(name)) return reserved.message
   if (repeated) return 'Another input has this name.'
   return null
 }

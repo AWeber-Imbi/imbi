@@ -43,6 +43,7 @@ const PROMPT: StepPrompt = {
 function renderPanel(
   params: Record<string, unknown>,
   prompt?: StepPrompt,
+  workflowSlug: null | string = 'deploy-guard',
 ): WorkflowNode {
   const step = node({
     id: 'n1',
@@ -60,7 +61,7 @@ function renderPanel(
       prompt={prompt}
       references={[]}
       workflowName="Deploy guard"
-      workflowSlug="deploy-guard"
+      workflowSlug={workflowSlug ?? undefined}
     />,
   )
   return step
@@ -180,5 +181,11 @@ describe('AnalysisPanel', () => {
       await screen.findByText('Model no structured output'),
     ).toBeInTheDocument()
     expect(endpoints.createPrompt).not.toHaveBeenCalled()
+  })
+
+  it('does not run the prompt of a workflow that is not saved', () => {
+    renderPanel({}, PROMPT, null)
+    expect(screen.getByRole('button', { name: 'Run prompt' })).toBeDisabled()
+    expect(screen.getByText('Save the workflow first.')).toBeInTheDocument()
   })
 })

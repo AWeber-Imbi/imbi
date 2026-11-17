@@ -26,7 +26,6 @@ import { Switch } from '@/components/ui/switch'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { queryKeys } from '@/lib/queryKeys'
-import { slugify } from '@/lib/utils'
 
 import { pinNodes, saveWorkflow, type StepPrompt } from './analysisPrompt'
 import { Canvas, type Selection } from './Canvas'
@@ -608,7 +607,7 @@ export function WorkflowEditor({
                 tab={inspectorTab}
                 types={types}
                 workflowName={draft.name}
-                workflowSlug={slug ?? slugify(draft.name)}
+                workflowSlug={slug}
               />
             ) : selection?.kind === 'edge' ? (
               <EdgePanel

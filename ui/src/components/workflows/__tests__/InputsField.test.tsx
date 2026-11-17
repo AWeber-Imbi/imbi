@@ -8,15 +8,15 @@ import { InputsField } from '../InputsField'
 
 function renderField(
   initial: Record<string, unknown> = {},
-  allowKeywords = false,
+  keywords?: 'jinja' | 'python',
 ) {
   const onChange = vi.fn()
   function Harness() {
     const [value, setValue] = useState(initial)
     return (
       <InputsField
-        allowKeywords={allowKeywords}
         id="inputs"
+        keywords={keywords}
         label="Inputs"
         onChange={(next) => {
           setValue(next)
@@ -79,8 +79,8 @@ describe('InputsField', () => {
     ).toBeInTheDocument()
   })
 
-  it('accepts a Python keyword when allowKeywords is set', () => {
-    const onChange = renderField({ limit: 3 }, true)
+  it('accepts a Python keyword in a Jinja2 prompt', () => {
+    const onChange = renderField({ limit: 3 }, 'jinja')
     fireEvent.change(screen.getByLabelText('Input 1 name'), {
       target: { value: 'lambda' },
     })
@@ -88,6 +88,16 @@ describe('InputsField', () => {
       screen.queryByText('This name is a Python keyword.'),
     ).not.toBeInTheDocument()
     expect(onChange).toHaveBeenLastCalledWith({ lambda: 3 })
+  })
+
+  it('refuses a Jinja2 reserved name in a Jinja2 prompt', () => {
+    renderField({ limit: 3 }, 'jinja')
+    fireEvent.change(screen.getByLabelText('Input 1 name'), {
+      target: { value: 'none' },
+    })
+    expect(
+      screen.getByText('This name is reserved in Jinja2.'),
+    ).toBeInTheDocument()
   })
 
   it('does not send a map while two inputs have one name', () => {

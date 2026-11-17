@@ -57,7 +57,8 @@ export function AnalysisPanel({
   prompt: StepPrompt | undefined
   references: ReferenceGroup[]
   workflowName: string
-  workflowSlug: string
+  /** Undefined until the workflow is saved for the first time. */
+  workflowSlug: string | undefined
 }) {
   const ref = pinnedRef(node)
   const loaded = usePromptResolution(prompt ? null : ref)
@@ -81,7 +82,7 @@ export function AnalysisPanel({
     (m) => m.slug === current.model && m.supports_structured_output,
   )
   const id = `workflow-node-${node.id}`
-  const slug = promptSlug(orgSlug, workflowSlug, node.key)
+  const slug = promptSlug(orgSlug, workflowSlug ?? '', node.key)
   return (
     <>
       {!prompt && ref && !loaded.data && (
@@ -137,8 +138,8 @@ export function AnalysisPanel({
         label="Inputs"
       >
         <InputsField
-          allowKeywords
           id={`${id}-inputs`}
+          keywords="jinja"
           label="Inputs"
           onChange={(inputs) => setParam('inputs', inputs)}
           references={references}
@@ -176,6 +177,7 @@ export function AnalysisPanel({
         name={`${workflowName} / ${node.title}`}
         orgSlug={orgSlug}
         outputFields={outputFields}
+        saved={workflowSlug !== undefined}
         slug={slug}
         version={promptContent(current, node.params.inputs)}
       />
@@ -190,6 +192,7 @@ function AnalysisPreview({
   name,
   orgSlug,
   outputFields,
+  saved,
   slug,
   version,
 }: {
@@ -199,6 +202,8 @@ function AnalysisPreview({
   name: string
   orgSlug: string
   outputFields: OutputField[]
+  /** The workflow exists, so its prompts can be created. */
+  saved: boolean
   slug: string
   version: NonNullable<PromptRunRequest['draft']>['version']
 }) {
@@ -247,7 +252,7 @@ function AnalysisPreview({
       </FormField>
       <Button
         className="self-start"
-        disabled={!variables || !version.model || run.isPending}
+        disabled={!saved || !variables || !version.model || run.isPending}
         onClick={() => run.mutate(body)}
         size="sm"
         type="button"
@@ -256,6 +261,9 @@ function AnalysisPreview({
         <Play />
         {run.isPending ? 'Running…' : 'Run prompt'}
       </Button>
+      {!saved && (
+        <p className="text-tertiary text-xs">Save the workflow first.</p>
+      )}
       {stale && (run.isPending || run.data || run.isError) && (
         <p className="text-tertiary text-xs">
           The step changed after you ran it. Run the prompt again to see a

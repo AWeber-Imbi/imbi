@@ -22,6 +22,11 @@ from imbi.common.workflows.registry import agent, script
 MAX_INPUTS = script.MAX_INPUTS
 #: The namespace of the prompts of analysis steps.
 NAMESPACE = 'workflows'
+#: Names that Jinja2 reads as a constant (``true``, ``false``, ``none``),
+#: as the ``not`` operator, or as the template itself (``self``). Jinja2
+#: does not publish this list. Other keywords, such as ``in`` and ``if``,
+#: work as variable names.
+RESERVED_NAMES = frozenset({'false', 'none', 'not', 'self', 'true'})
 
 
 class Params(pydantic.BaseModel):
@@ -56,6 +61,8 @@ class Params(pydantic.BaseModel):
         for name in value:
             if not re.fullmatch(graph.KEY_PATTERN, name):
                 raise ValueError(f'{name!r} is not a valid input name')
+            if name in RESERVED_NAMES:
+                raise ValueError(f'{name!r} is reserved in Jinja2')
         return value
 
     @pydantic.field_validator('output_fields')
