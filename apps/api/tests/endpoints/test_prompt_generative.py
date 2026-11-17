@@ -375,6 +375,23 @@ class GenerativeRunTestCase(base.PromptTestBase):
 
 
 class SigV4TestCase(base.PromptTestBase):
+    def test_credential_failure_is_retryable(self) -> None:
+        from botocore import exceptions
+
+        aws = mock.Mock()
+        aws.get_credentials.side_effect = exceptions.CredentialRetrievalError(
+            provider='container-role', error_msg='down'
+        )
+        with (
+            mock.patch.object(
+                model_generate, '_aws_session', return_value=aws
+            ),
+            self.assertRaises(generate.GenerateError) as ctx,
+        ):
+            asyncio.run(model_generate._sigv4('us-east-1'))
+        self.assertEqual(ctx.exception.code, 'credentials_unavailable')
+        self.assertTrue(ctx.exception.retry)
+
     def test_signs_for_bedrock(self) -> None:
         from botocore import credentials
 

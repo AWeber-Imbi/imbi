@@ -245,6 +245,17 @@ class GenerateTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(kind['enum'], ['a', 'b', None])
         self.assertEqual(items['items']['required'], ['kind'])
 
+    def test_strict_drops_unsupported_format(self) -> None:
+        fields = [
+            agent.OutputField(name='link', type='string', format='uri'),
+            agent.OutputField(name='when', type='string', format='date'),
+        ]
+        original = agent.output_schema(fields) or {}
+        schema = generate._strict(original)
+        self.assertNotIn('format', schema['properties']['link'])
+        self.assertEqual(schema['properties']['when']['format'], 'date')
+        self.assertEqual(original['properties']['link']['format'], 'uri')
+
     async def test_openai_invalid_json(self) -> None:
         with self.assertRaises(generate.GenerateError) as ctx:
             await self._call(

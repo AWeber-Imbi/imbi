@@ -217,12 +217,32 @@ def _drop_nulls(schema: dict[str, typing.Any], value: object) -> object:
     return value
 
 
+#: The string formats that OpenAI strict mode accepts. It refuses a
+#: schema with other formats, such as ``uri``.
+_STRICT_FORMATS = frozenset(
+    {
+        'date-time',
+        'time',
+        'date',
+        'duration',
+        'email',
+        'hostname',
+        'ipv4',
+        'ipv6',
+        'uuid',
+    }
+)
+
+
 def _strict(schema: dict[str, typing.Any]) -> dict[str, typing.Any]:
     """Return ``schema`` for OpenAI strict mode.
 
     Each optional property becomes a required property that can be
-    ``null``.
+    ``null``. A string format that strict mode refuses is removed; the
+    local validation of the answer still uses it.
     """
+    if schema.get('format', 'date') not in _STRICT_FORMATS:
+        schema = {k: v for k, v in schema.items() if k != 'format'}
     if schema['type'] == 'array':
         return {**schema, 'items': _strict(schema['items'])}
     if schema['type'] != 'object':

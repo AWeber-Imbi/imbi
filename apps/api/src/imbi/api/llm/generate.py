@@ -24,6 +24,7 @@ from botocore import (  # pyright: ignore[reportMissingTypeStubs]
 )
 from botocore import (  # pyright: ignore[reportMissingTypeStubs]
     awsrequest,
+    exceptions,
     session,
 )
 
@@ -75,7 +76,13 @@ async def _sigv4(region: str | None) -> SigV4:
         found = _aws_session().get_credentials()
         return found and found.get_frozen_credentials()
 
-    credentials = await asyncio.to_thread(frozen)
+    try:
+        credentials = await asyncio.to_thread(frozen)
+    except exceptions.BotoCoreError:
+        # For example, the container credential endpoint is down.
+        raise generate.GenerateError(
+            'credentials_unavailable', retry=True
+        ) from None
     if not credentials or not region:
         raise generate.GenerateError('provider_misconfigured')
     return SigV4(credentials, region)
