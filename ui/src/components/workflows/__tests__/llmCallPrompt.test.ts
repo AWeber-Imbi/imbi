@@ -4,7 +4,11 @@ import { ApiError } from '@/api/client'
 import * as endpoints from '@/api/endpoints'
 import type { Prompt, PromptResolution, PromptVersion } from '@/types'
 
-import { saveWorkflow, type StepPrompt } from '../llmCallPrompt'
+import {
+  draftFromVersion,
+  saveWorkflow,
+  type StepPrompt,
+} from '../llmCallPrompt'
 import type { Workflow, WorkflowWrite } from '../types'
 import { node, workflow } from './fixtures'
 
@@ -152,6 +156,42 @@ describe('saveWorkflow', () => {
     )
     expect(endpoints.createPrompt).not.toHaveBeenCalled()
     expect(savedParams().prompt_version).toBe(3)
+  })
+
+  it('keeps the unedited fields of the pinned version in a panel edit', async () => {
+    vi.mocked(endpoints.createPromptVersion).mockResolvedValue({
+      n: 3,
+    } as PromptVersion)
+    const edited = {
+      ...draftFromVersion({
+        ...PINNED,
+        params: { ...PINNED.params, top_p: 0.9 },
+      } as unknown as PromptVersion),
+      user: 'Shorten {{ log }}',
+    }
+
+    await saveWorkflow(
+      'acme',
+      'deploy-guard',
+      draft({
+        prompt_ref: 'workflows/acme.deploy-guard.summarize',
+        prompt_version: 2,
+      }),
+      { n1: edited },
+    )
+
+    expect(endpoints.createPromptVersion).toHaveBeenCalledWith(
+      'workflows',
+      'acme.deploy-guard.summarize',
+      {
+        ...COPY_BODY,
+        messages: [
+          { content: 'Shorten {{ log }}', role: 'user' },
+          { content: 'Summary:', role: 'assistant' },
+        ],
+        params: { ...PINNED.params, top_p: 0.9 },
+      },
+    )
   })
 
   it('writes nothing for an unchanged prompt that the node owns', async () => {

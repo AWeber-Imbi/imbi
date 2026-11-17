@@ -28,6 +28,12 @@ export const NAMESPACE = 'workflows'
 export interface StepPrompt {
   max_tokens: null | number
   model: null | string
+  /**
+   * The pinned version that the draft starts from. A save keeps the
+   * fields that the panel does not edit, such as other messages, stop
+   * sequences, and `top_p`.
+   */
+  pinned?: PromptVersion
   system: string
   temperature: null | number
   user: string
@@ -48,6 +54,7 @@ export function draftFromVersion(version: PromptVersion): StepPrompt {
   return {
     max_tokens: version.params?.max_tokens ?? null,
     model: version.model ?? null,
+    pinned: version,
     system: version.system,
     temperature: version.params?.temperature ?? null,
     user: version.messages.find((m) => m.role === 'user')?.content ?? '',
@@ -91,18 +98,20 @@ export function promptContent(
   draft: StepPrompt,
   inputs: unknown,
 ): Omit<PromptVersionCreate, 'summary'> {
+  const base = draft.pinned
   return {
-    messages: [{ content: draft.user, role: 'user' }],
+    messages: withUser(base?.messages ?? [], draft.user),
     model: draft.model,
     params: {
-      max_tokens: draft.max_tokens,
       stop_sequences: [],
+      ...base?.params,
+      max_tokens: draft.max_tokens,
       temperature: draft.temperature,
     },
-    questions: {},
-    state: '',
+    questions: base?.questions ?? {},
+    state: base?.state ?? '',
     system: draft.system,
-    tools: [],
+    tools: base?.tools ?? [],
     variable_schema: variableSchema(inputs),
   }
 }
@@ -242,6 +251,16 @@ function variableSchema(
       { required: true, type: 'any' as const },
     ]),
   )
+}
+
+/** The messages with the first `user` message set to `user`. */
+function withUser(
+  messages: PromptVersion['messages'],
+  user: string,
+): PromptVersion['messages'] {
+  const i = messages.findIndex((m) => m.role === 'user')
+  if (i < 0) return [...messages, { content: user, role: 'user' }]
+  return messages.map((m, j) => (j === i ? { ...m, content: user } : m))
 }
 
 /**
