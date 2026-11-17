@@ -63,13 +63,14 @@ import { type PanelTab, RunPanel } from './RunPanel'
 import { manualTrigger, runResults, testResults } from './runs'
 import { paramSummary } from './schemaFields'
 import { StartRunDialog } from './StartRunDialog'
-import type {
-  StepType,
-  TestRunResult,
-  ValidationIssue,
-  Workflow,
-  WorkflowGraph,
-  WorkflowWrite,
+import {
+  RETIRED_STEP_TYPES,
+  type StepType,
+  type TestRunResult,
+  type ValidationIssue,
+  type Workflow,
+  type WorkflowGraph,
+  type WorkflowWrite,
 } from './types'
 import {
   useSourceOptions,
@@ -517,7 +518,7 @@ export function WorkflowEditor({
           <Palette
             onAdd={onPaletteAdd}
             onClose={() => setPaletteOpen(false)}
-            types={stepTypes}
+            types={stepTypes.filter((t) => !RETIRED_STEP_TYPES.has(t.type))}
           />
         )}
         <Group
