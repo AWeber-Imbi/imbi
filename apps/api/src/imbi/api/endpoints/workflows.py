@@ -251,8 +251,8 @@ _TEMPLATE_MARKERS = ('{{', '{%', '{#')
 
 #: Resource kinds that must be a literal id: activation binds a webhook
 #: before any run, and the Agents delete lock reads the agent ids in
-#: the graph. Every id of an agent step must be literal too, so that
-#: run input cannot choose what the agent works on.
+#: the graph. The project of an agent step can be a reference, such as
+#: the output of an earlier step.
 _LITERAL_ONLY = frozenset({'webhook', 'agent'})
 
 
@@ -294,11 +294,8 @@ def _resource_ids(
                 params.get('agent_id'),
                 literal=node.type == 'task_completed',
             )
-            if (
-                node.type == 'agent'
-                and params.get('project_id') != agent_step.TRIGGER_PROJECT
-            ):
-                add('project', node.id, params.get('project_id'), literal=True)
+            if node.type == 'agent':
+                add('project', node.id, params.get('project_id'))
         elif node.type == 'email':
             raw: typing.Any = params.get('to')
             if not isinstance(raw, list):

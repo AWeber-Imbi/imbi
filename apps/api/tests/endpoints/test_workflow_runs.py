@@ -1205,6 +1205,53 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
             [p['project_id'] for p in task['projects']], [self.project]
         )
 
+    async def test_referenced_project_comes_from_the_step_input(
+        self,
+    ) -> None:
+        pinned = {
+            'agent_id': self.agent,
+            'instruction': 'Go.',
+            'project_id': '{{ review.result.project }}',
+        }
+        # The engine did not render it, or it rendered to nothing.
+        for rendered in (pinned, {**pinned, 'project_id': ' '}):
+            await self._agent_run(pinned, rendered)
+            response = await self.client.post(self.step_url)
+            self.assertEqual(response.status_code, 422, response.text)
+            self.assertEqual(
+                response.json()['detail'], {'error': 'project_not_rendered'}
+            )
+        self.assertEqual(await self._count(), 0)
+        # It rendered to a project that is not in the org.
+        await self._agent_run(pinned, {**pinned, 'project_id': 'p-missing'})
+        response = await self.client.post(self.step_url)
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn('p-missing', response.text)
+        self.assertEqual(await self._count(), 0)
+        await self._agent_run(pinned, {**pinned, 'project_id': self.project})
+        response = await self.client.post(self.step_url)
+        self.assertEqual(response.status_code, 200, response.text)
+        task = await self.tasks.get(self.org, response.json()['task_id'])
+        assert task is not None
+        self.assertEqual(
+            [p['project_id'] for p in task['projects']], [self.project]
+        )
+
+    async def test_literal_project_ignores_the_step_input(self) -> None:
+        pinned = {
+            'agent_id': self.agent,
+            'instruction': 'Go.',
+            'project_id': self.project,
+        }
+        await self._agent_run(pinned, {**pinned, 'project_id': 'p-other'})
+        response = await self.client.post(self.step_url)
+        self.assertEqual(response.status_code, 200, response.text)
+        task = await self.tasks.get(self.org, response.json()['task_id'])
+        assert task is not None
+        self.assertEqual(
+            [p['project_id'] for p in task['projects']], [self.project]
+        )
+
     async def _plant(self, origin: dict[str, typing.Any], agent: str) -> str:
         """Make a task with the step's origin and key, not by the step."""
         task, _ = await self.tasks.create(

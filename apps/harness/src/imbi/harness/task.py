@@ -166,6 +166,9 @@ _RULES = """\
   The tool result names each variable that it set. A secret with
   fields gives only those members; request one with `#<field>`.
 - The secret references that you may request:{secrets}
+- Use `attach_project` to add a project of the organization to this
+  task, by id or slug, when the work needs its repository. The next
+  secret you request covers it.
 - Use `request_input` to ask a person a question. Use
   `create_child_task` to give work to another agent: {subagents}.
 - Before you stop, use `report_outcome` once: `done_acted` when you
@@ -195,6 +198,16 @@ _CHILD_TASK_SCHEMA: dict[str, typing.Any] = {
         'budget': {'type': 'string', 'description': 'USD, optional.'},
     },
     'required': ['agent_slug', 'title', 'instruction'],
+}
+_ATTACH_PROJECT_SCHEMA: dict[str, typing.Any] = {
+    'type': 'object',
+    'properties': {
+        'project': {
+            'type': 'string',
+            'description': 'The id or slug of a project of the organization.',
+        },
+    },
+    'required': ['project'],
 }
 _REPORT_OUTCOME_SCHEMA: dict[str, typing.Any] = {
     'type': 'object',
@@ -1644,6 +1657,7 @@ class TaskRun:
                 self.run_with_secret_tool(),
                 self.request_input_tool(),
                 self.child_task_tool(),
+                self.attach_project_tool(),
                 self.report_outcome_tool(),
             ],
         )
@@ -2116,6 +2130,46 @@ class TaskRun:
             return _tool_error('This task stopped; the child task goes on')
         return {
             'content': [{'type': 'text', 'text': json.dumps(waiting.result())}]
+        }
+
+    # --- attach_project -----------------------------------------------
+
+    def attach_project_tool(self) -> sdk.SdkMcpTool[typing.Any]:
+        @sdk.tool(
+            'attach_project',
+            'Add a project of the organization to this task, by id or '
+            'slug. Secrets that you request after it cover the project.',
+            _ATTACH_PROJECT_SCHEMA,
+        )
+        async def attach_project(args: Body) -> Body:
+            return await self.attach_project(args)
+
+        return attach_project
+
+    async def attach_project(self, args: Body) -> Body:
+        """Associate a project with the task through imbi-api."""
+        project = args.get('project')
+        if not isinstance(project, str) or not project.strip():
+            return _tool_error('The project must be an id or a slug')
+        try:
+            attached = await self.api.attach_project(project.strip())
+        except api.Refused as err:
+            if err.status == http.HTTPStatus.UNPROCESSABLE_ENTITY:
+                return _tool_error(
+                    f'No project {project!r} in the organization, or more '
+                    'than one project has that slug'
+                )
+            return _tool_error(f'The project was refused: {err.code}')
+        except httpx.HTTPError:
+            return _tool_error('Imbi is not available')
+        return {
+            'content': [
+                {
+                    'type': 'text',
+                    'text': f'Project {attached["project_slug"]} '
+                    f'({attached["project_id"]}) is on the task.',
+                }
+            ]
         }
 
     # --- report_outcome -----------------------------------------------

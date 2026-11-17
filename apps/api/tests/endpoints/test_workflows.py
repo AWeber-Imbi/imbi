@@ -642,13 +642,24 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
             'task_completed', {'agent_id': '{{ trigger.agent }}'}
         )
         self.assertIn('invalid_reference', codes)
-        # Run input must not choose the agent or the project.
+        # Run input must not choose the agent. The project can be one
+        # plain reference, such as an earlier step's output, and no more.
         for params in (
             {'agent_id': '{{ trigger.agent }}'},
-            {'agent_id': agent, 'project_id': '{{ trigger.payload.p }}'},
+            {'agent_id': agent, 'project_id': '{{ trigger.payload.p | x }}'},
+            {'agent_id': agent, 'project_id': 'p-{{ review.result.p }}'},
         ):
             codes = await self._codes('agent', {**params, 'instruction': 'x'})
             self.assertIn('invalid_reference', codes, params)
+        for project in (
+            '{{ review.result.project }}',
+            '{{ trigger.payload.p }}',
+        ):
+            codes = await self._codes(
+                'agent',
+                {'agent_id': agent, 'project_id': project, 'instruction': 'x'},
+            )
+            self.assertNotIn('invalid_reference', codes, project)
         # The webhook's project comes from the run's origin, so it is
         # allowed, but only when every trigger is a webhook.
         hooked = {
