@@ -1476,7 +1476,8 @@ class TaskRun:
 
         The merged organization and agent ``claude_settings``, with the
         harness layer over them: the tool lists join their permission
-        lists, and the sandbox is the harness's.
+        lists, the sandbox is the harness's, and auto memory is off
+        because the task's pod is deleted when the task ends.
         """
         allowed, denied = self.tools()
         base: Body = self.config.get('claude_settings') or {}
@@ -1487,6 +1488,7 @@ class TaskRun:
         permissions: Body = base.get('permissions') or {}
         settings: Body = {
             **base,
+            'autoMemoryEnabled': False,
             'permissions': {
                 **permissions,
                 'allow': [*permissions.get('allow', []), *allowed],
