@@ -40,6 +40,7 @@ import jinja2
 import jinja2.compiler
 import jinja2.exceptions
 import jinja2.filters
+import jinja2.meta
 import jinja2.nodes
 import jinja2.runtime
 import jinja2.sandbox
@@ -768,6 +769,46 @@ def check_variable_schema(
         if name in provider_names:
             raise RenderError(
                 f'Variable {name!r} has the same name as a provider'
+            )
+
+
+def check_declared(
+    version_fields: collections.abc.Mapping[str, str],
+    schema: collections.abc.Mapping[str, models.PromptVariable],
+    provider_names: collections.abc.Collection[str],
+) -> None:
+    """Reject a template that reads a variable the schema does not declare.
+
+    A caller can only pass declared variables (:func:`validate_variables`),
+    so an undeclared one is always undefined and the render always fails.
+
+    Raises:
+        RenderError: A template reads an undeclared name, or uses a
+            filter or test that does not exist.
+
+    """
+    known = {*schema, *provider_names, *_ENV.globals}
+    for label, source in version_fields.items():
+        try:
+            tree = _ENV.parse(source)
+            # The analysis compiles the template, which checks filters and
+            # tests outside a conditional only.
+            names = jinja2.meta.find_undeclared_variables(tree)
+        except jinja2.TemplateSyntaxError as e:
+            raise RenderError(f'{label}: line {e.lineno}: {e.message}') from e
+        for node in tree.find_all((jinja2.nodes.Filter, jinja2.nodes.Test)):
+            is_filter = isinstance(node, jinja2.nodes.Filter)
+            if node.name not in (_ENV.filters if is_filter else _ENV.tests):
+                kind = 'filter' if is_filter else 'test'
+                raise RenderError(
+                    f'{label}: line {node.lineno}: No {kind} named '
+                    f'{node.name!r}.'
+                )
+        if missing := names - known:
+            raise RenderError(
+                f'{label}: undeclared variables: '
+                f'{", ".join(sorted(missing))}. Add them to the variable '
+                'schema'
             )
 
 

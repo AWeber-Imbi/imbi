@@ -830,6 +830,13 @@ class TaskRun:
         return self.summary()
 
     async def _work(self) -> sdk.ResultMessage | None:
+        if error := self.bundle.get('prompt_error'):
+            # Without its prompt the agent runs on the task description
+            # alone and does whatever that suggests.
+            LOGGER.error(
+                'Prompt of %s did not render: %s', self.api.short_id, error
+            )
+            raise Failed('prompt_render_failed')
         if self.build:
             await self.probe_egress()
             await self.build_workspace()

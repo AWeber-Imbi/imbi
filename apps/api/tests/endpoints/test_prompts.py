@@ -354,6 +354,24 @@ class CreatePromptTestCase(PromptTestBase):
         )
         self.assertEqual(response.status_code, 422)
 
+    def test_undeclared_variable_is_422(self) -> None:
+        self.route((MODEL, MODEL_ROW))
+        response = self.client.post(
+            BASE + '/', json=self._body(system='Task {{ task }}.')
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn(
+            'system: undeclared variables: task', response.json()['detail']
+        )
+
+    def test_unknown_filter_is_422(self) -> None:
+        self.route((MODEL, MODEL_ROW))
+        response = self.client.post(
+            BASE + '/', json=self._body(system='Hello {{ name | nope }}')
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("No filter named 'nope'", response.json()['detail'])
+
     def test_invalid_namespace_is_422(self) -> None:
         body = self._body()
         body['namespace'] = 'Not Valid'
