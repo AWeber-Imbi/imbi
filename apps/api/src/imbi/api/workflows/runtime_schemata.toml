@@ -73,6 +73,11 @@ unique = true
 name = "runs_workflow_created_idx"
 columns = ["workflow_id", "created_at"]
 
+# The org run list: runs of an organization, newest first.
+[[tables.indexes]]
+name = "runs_organization_created_idx"
+columns = ["organization_id", "created_at"]
+
 # The claim query: open runs by due time.
 [[tables.indexes]]
 name = "runs_status_due_idx"

@@ -7,11 +7,15 @@ straight into its table, as the Iggy sink would.
 """
 
 import datetime
+import typing
 import uuid
 from unittest import mock
 
+from psycopg.types import json as pg_json
+
 from apps.api.tests import support
 from apps.api.tests.endpoints import test_workflow_runs
+from imbi.api.auth import permissions
 from imbi.api.workflows import sweeper
 from imbi.common import clickhouse, iggy
 from imbi.common.clickhouse import client
@@ -296,3 +300,117 @@ class AttentionTestCase(test_workflow_runs.WorkflowRunTestCase):
         self.assertEqual(response.status_code, 200, response.text)
         found = {r['id']: r['reason'] for r in response.json()}
         self.assertEqual(found, {open_: 'stuck'})
+
+
+class OrgRunsTestCase(RunHistoryTestCase):
+    OUTPUT: typing.ClassVar[dict[str, typing.Any]] = {
+        'task_id': 'T-7',
+        'outcome': 'failed_external',
+        'reason': 'logzio_api_unauthorized',
+        'summary': 'Logz.io refused every request.',
+        'result': None,
+    }
+
+    async def _fail(self, run_id: str) -> None:
+        """Do what the engine does when an agent step fails a run."""
+        async with self.pool.connection() as conn, conn.transaction():
+            await conn.execute(
+                'INSERT INTO workflow_runtime.step_runs (run_id, node_id,'
+                ' node_key, node_type, title, status, port, output,'
+                ' started_at, finished_at) VALUES (%s, %s, %s, %s, %s,'
+                " 'failed', 1, %s, NOW(), NOW())",
+                (
+                    run_id,
+                    'review',
+                    'review',
+                    'agent',
+                    'Review',
+                    pg_json.Jsonb(self.OUTPUT),
+                ),
+            )
+            cur = await conn.execute(
+                "SELECT to_jsonb(s) - ARRAY['run_id', 'state',"
+                " 'call_started_at'] FROM workflow_runtime.step_runs AS s"
+                ' WHERE run_id = %s',
+                (run_id,),
+            )
+            row = await cur.fetchone()
+            assert row is not None
+            await runtime.append_event(
+                conn, uuid.UUID(run_id), 'step.failed', row[0]
+            )
+            await conn.execute(
+                "UPDATE workflow_runtime.runs SET status = 'failed',"
+                ' started_at = NOW(), closed_at = NOW() WHERE id = %s',
+                (run_id,),
+            )
+            await runtime.append_event(
+                conn, uuid.UUID(run_id), 'run.closed', {'status': 'failed'}
+            )
+
+    async def _list(self) -> dict[str, dict[str, typing.Any]]:
+        response = await self.client.get(
+            f'/organizations/{self.org}/workflow-runs/'
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        return {r['id']: r for r in response.json()}
+
+    async def test_failed_step_of_live_and_archived_runs(self) -> None:
+        url = await self._workflow()
+        with support.sink_to_clickhouse():
+            live, archived, ok = [await self._start(url) for _ in range(3)]
+            await self._fail(archived)
+            with mock.patch.object(
+                sweeper, '_try_sweep_lock', return_value=True
+            ):
+                await sweeper.sweep_once(self.runs)
+                await sweeper.sweep_once(self.runs)
+            await self._fail(live)
+            await self._close(ok, 'succeeded')
+
+        found = await self._list()
+        self.assertIsNotNone(found[archived]['log_archived_at'])
+        self.assertIsNone(found[live]['log_archived_at'])
+        self.assertIsNone(found[ok]['failure'])
+        for run_id in (live, archived):
+            failure = found[run_id]['failure']
+            self.assertEqual(failure['node_key'], 'review', run_id)
+            self.assertEqual(failure['task_id'], 'T-7')
+            self.assertEqual(failure['outcome'], 'failed_external')
+            # The caller cannot read agent tasks.
+            self.assertIsNone(failure['reason'])
+            self.assertIsNone(failure['summary'])
+            self.assertEqual(found[run_id]['workflow_slug'], 'deploy-guard')
+            self.assertFalse(found[run_id]['stuck'])
+
+    async def test_agent_task_readers_get_the_reason(self) -> None:
+        url = await self._workflow()
+        run_id = await self._start(url)
+        await self._fail(run_id)
+        overrides = self.test_app.dependency_overrides
+        user_auth = overrides[permissions.get_current_user]
+
+        async def reader() -> permissions.AuthContext:
+            auth = await user_auth()
+            auth.permissions.add('agent_task:read')
+            return auth
+
+        overrides[permissions.get_current_user] = reader
+        self.addCleanup(
+            overrides.__setitem__, permissions.get_current_user, user_auth
+        )
+        failure = (await self._list())[run_id]['failure']
+        self.assertEqual(failure['reason'], 'logzio_api_unauthorized')
+        self.assertEqual(failure['summary'], 'Logz.io refused every request.')
+
+    async def test_stuck_run_is_flagged(self) -> None:
+        url = await self._workflow()
+        run_id = await self._start(url)
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE workflow_runtime.runs SET status = 'running',"
+                " due_at = NOW() - INTERVAL '10 minutes',"
+                " created_at = NOW() - INTERVAL '30 days' WHERE id = %s",
+                (run_id,),
+            )
+        self.assertTrue((await self._list())[run_id]['stuck'])

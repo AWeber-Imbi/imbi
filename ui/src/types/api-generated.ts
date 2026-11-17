@@ -6525,6 +6525,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/workflow-runs/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Org Runs
+         * @description Return the runs of every workflow made in the last ``days``
+         *     days, and the stuck runs, newest first.
+         *
+         *     A failed or timed-out run has the failed step that finished last.
+         *     Its step records come from Postgres, or from ClickHouse when the
+         *     run's log is archived. When ClickHouse is not available, an archived
+         *     run has no ``failure``.
+         */
+        get: operations["list_org_runs_api_organizations__org_slug__workflow_runs__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/workflow-runs/side-effects": {
         parameters: {
             query?: never;
@@ -16497,6 +16523,71 @@ export interface components {
             /** Role */
             role: string | null;
         };
+        /** OrgRun */
+        OrgRun: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Version */
+            version: number;
+            /** Trigger Node Id */
+            trigger_node_id: string;
+            /** Origin Kind */
+            origin_kind: string;
+            /** Origin Id */
+            origin_id: string;
+            /**
+             * Origin
+             * @description The scheduler task id, the webhook id and delivery id, or the person.
+             */
+            origin: {
+                [key: string]: unknown;
+            };
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out" | "skipped";
+            /** Error */
+            error: string | null;
+            /** Cancel Requested */
+            cancel_requested: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Started At */
+            started_at: string | null;
+            /** Closed At */
+            closed_at: string | null;
+            /** Log Archived At */
+            log_archived_at: string | null;
+            /**
+             * Dedupe Key
+             * @description The workflow's dedupe key filled with the payload.
+             */
+            dedupe_key: string | null;
+            /**
+             * Duplicate Of
+             * @description For a ``skipped`` run: the earlier run with the same dedupe key.
+             */
+            duplicate_of: string | null;
+            /** Workflow Slug */
+            workflow_slug: string;
+            /** Workflow Name */
+            workflow_name: string;
+            /** Stuck */
+            stuck: boolean;
+            /** @description ``None`` when the run did not fail, when no step failed (a timeout), or when the archived step records are not available. */
+            failure: components["schemas"]["RunFailure"] | null;
+        };
         /** Organization */
         Organization: {
             /** Id */
@@ -19585,6 +19676,34 @@ export interface components {
             /** Slug */
             slug: string;
             version: components["schemas"]["PromptVersionContent"];
+        };
+        /**
+         * RunFailure
+         * @description The failed step of a run that finished last.
+         *
+         *     ``task_id``, ``outcome``, ``reason``, and ``summary`` come from the
+         *     agent task of an ``agent`` step. ``reason`` and ``summary`` are
+         *     ``None`` for a caller who cannot read agent tasks.
+         */
+        RunFailure: {
+            /** Node Key */
+            node_key: string;
+            /** Title */
+            title: string;
+            /** Node Type */
+            node_type: string;
+            /** Attempt */
+            attempt: number;
+            /** Error */
+            error: string | null;
+            /** Task Id */
+            task_id?: string | null;
+            /** Outcome */
+            outcome?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /** Summary */
+            summary?: string | null;
         };
         /**
          * RunRequest
@@ -33023,6 +33142,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AttentionRun"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_org_runs_api_organizations__org_slug__workflow_runs__get: {
+        parameters: {
+            query?: {
+                days?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgRun"][];
                 };
             };
             /** @description Validation Error */
