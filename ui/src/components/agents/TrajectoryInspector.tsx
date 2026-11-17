@@ -321,6 +321,19 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
+function decimal(text: string): string | undefined {
+  const match = /^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i.exec(text)
+  if (!match) return undefined
+  const [, sign, whole, fraction = '', exponent = '0'] = match
+  let digits = (whole + fraction).replace(/^0+/, '')
+  if (!digits) return '0'
+  let power = Number(exponent) - fraction.length
+  const trimmed = digits.replace(/0+$/, '')
+  power += digits.length - trimmed.length
+  digits = trimmed
+  return `${sign}${digits}e${power}`
+}
+
 function Field({
   children,
   label,
@@ -357,7 +370,7 @@ function jsonTree(value: unknown): object | undefined {
             typeof v === 'number' &&
             (context?.source === undefined
               ? Number.isInteger(v) && !Number.isSafeInteger(v)
-              : Number(context.source) !== v || String(v) !== context.source)
+              : decimal(context.source) !== decimal(String(v)))
           )
             lossy = true
           return v
