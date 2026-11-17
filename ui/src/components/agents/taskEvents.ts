@@ -22,7 +22,7 @@ export interface InboxGroup {
   tasks: AgentTaskListItem[]
 }
 
-export type InboxGroupId = 'closed' | 'input' | 'queued' | 'running'
+export type InboxGroupId = 'closed' | 'input' | 'paused' | 'queued' | 'running'
 
 export interface PhaseSpan {
   at: string
@@ -51,6 +51,7 @@ export interface TaskRequestView {
 const GROUPS: { id: InboxGroupId; label: string }[] = [
   { id: 'input', label: 'Human input required' },
   { id: 'running', label: 'Running' },
+  { id: 'paused', label: 'Paused' },
   { id: 'queued', label: 'Queued' },
   { id: 'closed', label: 'Recently closed' },
 ]
@@ -58,7 +59,7 @@ const GROUPS: { id: InboxGroupId; label: string }[] = [
 const GROUP_OF: Record<AgentTaskStatus, InboxGroupId> = {
   blocked: 'input',
   closed: 'closed',
-  paused: 'running',
+  paused: 'paused',
   queued: 'queued',
   running: 'running',
 }

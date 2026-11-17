@@ -425,7 +425,7 @@ describe('Tasks', () => {
     expect(screen.getByText('Closed 2')).toBeInTheDocument()
   })
 
-  it('filters by text on the server, and by state and mine', async () => {
+  it('filters by text and by my tasks on the server', async () => {
     renderAt('/agents/tasks')
     await screen.findByText('Busy')
     fireEvent.change(screen.getByLabelText('Filter tasks'), {
@@ -438,7 +438,10 @@ describe('Tasks', () => {
         expect.anything(),
       ),
     )
-    fireEvent.click(screen.getByRole('button', { name: 'My tasks' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }))
+    fireEvent.click(
+      await screen.findByRole('option', { name: 'Assigned to me' }),
+    )
     await waitFor(() =>
       expect(endpoints.listAgentTasks).toHaveBeenCalledWith(
         'acme',
@@ -446,25 +449,214 @@ describe('Tasks', () => {
         expect.anything(),
       ),
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Filter by State' }))
-    fireEvent.click(await screen.findByLabelText('Running'))
+    expect(screen.getByText('Assignee is')).toBeInTheDocument()
+    expect(window.location.search).toBe('?assignee=me')
+  })
+
+  it('names each assignee, with the domain when two share a name', async () => {
+    vi.mocked(endpoints.listAgentTasks).mockImplementation(
+      async (_org, params) =>
+        params.status?.includes('closed')
+          ? []
+          : [
+              task({
+                id: 'own-1',
+                owner: 'pat@example.com',
+                short_id: 'T-5',
+                title: 'A',
+              }),
+              task({
+                id: 'own-2',
+                owner: 'pat@other.example',
+                short_id: 'T-6',
+                title: 'B',
+              }),
+              task({
+                id: 'own-3',
+                owner: 'sam@example.com',
+                short_id: 'T-7',
+                title: 'C',
+              }),
+            ],
+    )
+    renderAt('/agents/tasks')
+    expect((await screen.findByText('A')).closest('a')).toHaveTextContent(
+      'Assigned to pat@example.com',
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Assignee' }))
+    expect(
+      await screen.findByRole('option', { name: 'pat@example.com' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('option', { name: 'pat@other.example' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'sam' })).toBeInTheDocument()
+  })
+
+  it('marks the parts of a task that the search matched', async () => {
+    vi.mocked(endpoints.listAgentTasks).mockImplementation(
+      async (_org, params) =>
+        params.status?.includes('closed')
+          ? []
+          : [
+              task({
+                highlights: [
+                  {
+                    field: 'title',
+                    parts: [
+                      { match: false, text: 'Fix the ' },
+                      { match: true, text: 'billing' },
+                      { match: false, text: ' job' },
+                    ],
+                  },
+                  {
+                    field: 'agent',
+                    id: 'agt-1',
+                    parts: [
+                      { match: true, text: 'Bill' },
+                      { match: false, text: 'ing bot' },
+                    ],
+                  },
+                ],
+                short_id: 'T-9',
+                title: 'Fix the billing job',
+              }),
+            ],
+    )
+    renderAt('/agents/tasks')
+    const row = await screen.findByRole('link', { name: /T-9/ })
+    expect(
+      [...row.querySelectorAll('[data-search-match]')].map(
+        (match) => match.textContent,
+      ),
+    ).toEqual(['billing', 'Bill'])
+    expect(row).toHaveTextContent('Fix the billing job')
+    expect(row).toHaveTextContent('Billing bot')
+  })
+
+  it('filters open states without reading the closed tasks', async () => {
+    renderAt('/agents/tasks')
+    await screen.findByText('Busy')
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'State' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Running' }))
     await waitFor(() =>
       expect(screen.queryByText('Apply the fix')).not.toBeInTheDocument(),
     )
     expect(screen.getByText('Busy')).toBeInTheDocument()
-    expect(screen.getByText('1 of 4 tasks')).toBeInTheDocument()
+    expect(screen.queryByText('Old work')).not.toBeInTheDocument()
+    expect(screen.getByText('1 task')).toBeInTheDocument()
+    expect(window.location.search).toBe('?state=running')
   })
 
   it('shows a paused task with an open request under Needs input', async () => {
+    renderAt('/agents/tasks?state=blocked')
+    await screen.findByText('Waiting longest')
+    expect(screen.getByText('Apply the fix')).toBeInTheDocument()
+    expect(screen.queryByText('Busy')).not.toBeInTheDocument()
+  })
+
+  it('reads the filters from the address', async () => {
+    renderAt('/agents/tasks?state=closed')
+    await screen.findByText('Old work')
+    expect(screen.queryByText('Busy')).not.toBeInTheDocument()
+    expect(endpoints.listAgentTasks).not.toHaveBeenCalledWith(
+      'acme',
+      expect.objectContaining({ status: expect.arrayContaining(['running']) }),
+      expect.anything(),
+    )
+    expect(screen.getByText('Closed')).toBeInTheDocument()
+  })
+
+  it('filters by agents on the server and removes them from the chip', async () => {
+    vi.mocked(endpoints.listAgents).mockResolvedValue([
+      agent(),
+      { ...agent(), id: 'agt-2', name: 'Shipper' },
+    ])
     renderAt('/agents/tasks')
     await screen.findByText('Busy')
-    fireEvent.click(screen.getByRole('button', { name: 'Filter by State' }))
-    fireEvent.click(await screen.findByLabelText('Needs input'))
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Agent' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Mender' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Shipper' }))
     await waitFor(() =>
-      expect(screen.queryByText('Busy')).not.toBeInTheDocument(),
+      expect(endpoints.listAgentTasks).toHaveBeenCalledWith(
+        'acme',
+        expect.objectContaining({ agent_id: ['agt-1', 'agt-2'] }),
+        expect.anything(),
+      ),
     )
-    expect(screen.getByText('Waiting longest')).toBeInTheDocument()
-    expect(screen.getByText('Apply the fix')).toBeInTheDocument()
+    expect(window.location.search).toBe('?agent=agt-1&agent=agt-2')
+    expect(screen.getByRole('option', { name: 'Shipper' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Remove the Agent filter' }),
+    )
+    await waitFor(() => expect(window.location.search).toBe(''))
+  })
+
+  it('finds a value by typing on the field list', async () => {
+    renderAt('/agents/tasks')
+    await screen.findByText('Busy')
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }))
+    fireEvent.change(await screen.findByPlaceholderText('Filter by…'), {
+      target: { value: 'pause' },
+    })
+    fireEvent.click(await screen.findByRole('option', { name: 'State Paused' }))
+    await waitFor(() => expect(window.location.search).toBe('?state=paused'))
+    expect(
+      screen.getByRole('option', { name: 'State Paused' }),
+    ).toHaveAttribute('aria-checked', 'true')
+    fireEvent.click(screen.getByRole('option', { name: 'State Paused' }))
+    await waitFor(() => expect(window.location.search).toBe(''))
+  })
+
+  it('matches menu values by substring, not by scattered letters', async () => {
+    renderAt('/agents/tasks')
+    await screen.findByText('Busy')
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }))
+    fireEvent.change(await screen.findByPlaceholderText('Filter by…'), {
+      target: { value: 'rng' },
+    })
+    expect(await screen.findByText('No matches.')).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'State:Running' })).toBeNull()
+  })
+
+  it('follows a link to other filters', async () => {
+    renderAt('/agents/tasks?state=closed')
+    await screen.findByText('Old work')
+    act(() => {
+      window.history.pushState({}, '', '/agents/tasks?state=running')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
+    await waitFor(() =>
+      expect(screen.queryByText('Old work')).not.toBeInTheDocument(),
+    )
+    expect(await screen.findByText('Busy')).toBeInTheDocument()
+    expect(window.location.search).toBe('?state=running')
+  })
+
+  it('clears the filters on Back to an address without them', async () => {
+    renderAt('/agents/tasks?state=closed')
+    await screen.findByText('Old work')
+    act(() => {
+      window.history.pushState({}, '', '/agents/tasks')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
+    expect(await screen.findByText('Busy')).toBeInTheDocument()
+    expect(window.location.search).toBe('')
+  })
+
+  it('keeps the filters when a task opens', async () => {
+    renderAt('/agents/tasks?state=blocked')
+    fireEvent.click(await screen.findByText('Apply the fix'))
+    await waitFor(() =>
+      expect(window.location.pathname).toMatch(/^\/agents\/tasks\/acme\/T-3/),
+    )
+    expect(window.location.search).toBe('?state=blocked')
   })
 
   it('answers a feedback request', async () => {

@@ -45,7 +45,8 @@ describe('groupTasks', () => {
       groups.map((g) => [g.label, g.tasks.map((t) => t.short_id)]),
     ).toEqual([
       ['Human input required', ['T-3', 'T-7', 'T-5']],
-      ['Running', ['T-4', 'T-2']],
+      ['Running', ['T-2']],
+      ['Paused', ['T-4']],
       ['Queued', ['T-6']],
       ['Recently closed', ['T-0', 'T-1']],
     ])

@@ -5119,10 +5119,12 @@ export interface paths {
          * @description List the tasks in an organization, newest first.
          *
          *     ``q`` matches the title, the short id, the agent name, or the
-         *     project slug. ``mine`` keeps the tasks that the caller owns. The
-         *     ``Link`` header has the URL of the next page. Each task has
-         *     ``blocked_since`` when it waits on a person, so a client can sort
-         *     that queue oldest block first (O2).
+         *     project slug, and ``highlights`` says where. ``agent_id`` and
+         *     ``owner`` repeat to match any of their values, and ``mine`` adds
+         *     the caller to the owners. The ``Link`` header has the URL of the
+         *     next page. Each task has ``project_icons``, and ``blocked_since``
+         *     when it waits on a person, so a client can sort that queue oldest
+         *     block first (O2).
          *
          *     Raises:
          *         400: The cursor is not valid.
@@ -11342,6 +11344,12 @@ export interface components {
             } | null;
             /** Blocked Since */
             blocked_since?: string | null;
+            /** Highlights */
+            highlights?: components["schemas"]["TaskHighlight"][];
+            /** Project Icons */
+            project_icons?: {
+                [key: string]: string;
+            };
         };
         /**
          * AgentTaskOrigin
@@ -14737,6 +14745,13 @@ export interface components {
             payload?: {
                 [key: string]: unknown;
             };
+        };
+        /** HighlightPart */
+        HighlightPart: {
+            /** Text */
+            text: string;
+            /** Match */
+            match: boolean;
         };
         /** IdentitiesResponse */
         IdentitiesResponse: {
@@ -21114,6 +21129,21 @@ export interface components {
             relationships?: {
                 [key: string]: components["schemas"]["RelationshipLink"];
             } | null;
+        };
+        /**
+         * TaskHighlight
+         * @description A field of a task that the text query matched.
+         */
+        TaskHighlight: {
+            /**
+             * Field
+             * @enum {string}
+             */
+            field: "agent" | "project" | "short_id" | "title";
+            /** Id */
+            id?: string | null;
+            /** Parts */
+            parts: components["schemas"]["HighlightPart"][];
         };
         /** TaskProject */
         TaskProject: {
@@ -31165,8 +31195,8 @@ export interface operations {
         parameters: {
             query?: {
                 status?: ("queued" | "running" | "blocked" | "paused" | "closed")[] | null;
-                agent_id?: string | null;
-                owner?: string | null;
+                agent_id?: string[] | null;
+                owner?: string[] | null;
                 mine?: boolean;
                 q?: string | null;
                 limit?: number;

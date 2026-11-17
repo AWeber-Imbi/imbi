@@ -159,8 +159,10 @@ export function useAgentTaskMutation<T>(
 export function useAgentTaskPages(
   orgSlug: string,
   params: AgentTaskListParams,
+  enabled = true,
 ) {
   return useInfiniteQuery({
+    enabled,
     getNextPageParam: (last: AgentTaskPage) => last.nextCursor,
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam, signal }) =>
