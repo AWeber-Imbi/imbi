@@ -263,7 +263,9 @@ The GitHub App of an automation agent must hold these permissions.
   refuses it when the head changed after the comparison. For a new
   branch, the expected state is that the branch does not exist. A
   remote head that is not the last recorded head, or a refused push,
-  ends the project run as `conflict`.
+  ends the project run as `conflict`. A successful branch delete
+  records that the branch does not exist. A push that makes the branch
+  again then expects no existing branch.
 - The planner task gets the read operations only.
 - A dry run makes no external write. Its project runs get the read
   operations and the model call only. The broker does not do a write;
