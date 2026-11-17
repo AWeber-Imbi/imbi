@@ -355,21 +355,21 @@ class ImbiClient(httpx.AsyncClient):
             LOGGER.warning('Failed to put SBoM %r: %s', url, response.text)
         return response
 
-    async def create_agent_task(
+    async def create_ticket(
         self,
         org_slug: str,
         webhook_id: str,
         delivery_id: str,
         body: abc.Mapping[str, object],
     ) -> httpx.Response:
-        """Make an agent task with a ``webhook`` origin (ADR 0020).
+        """Make a ticket with a ``webhook`` origin (ADR 0020, ADR 0028).
 
         The API takes the origin from the headers, and only from the
-        gateway's own service account. A 200 is a redelivery: the task
+        gateway's own service account. A 200 is a redelivery: the ticket
         exists, and the API returns it.
         """
-        url = f'/organizations/{org_slug}/agent-tasks/'
-        LOGGER.debug('Creating agent task %s', url)
+        url = f'/organizations/{org_slug}/tickets/'
+        LOGGER.debug('Creating ticket %s', url)
         response = await self.post(
             url,
             json=body,
@@ -380,7 +380,7 @@ class ImbiClient(httpx.AsyncClient):
         )
         if response.is_error:
             LOGGER.warning(
-                'Failed to create agent task %r: %s', url, response.text
+                'Failed to create ticket %r: %s', url, response.text
             )
         return response
 
@@ -599,14 +599,14 @@ class IngestSbomConfig(pydantic.BaseModel):
     )
 
 
-class CreateAgentTaskConfig(pydantic.BaseModel):
-    """Validates ``handler_config`` for :func:`create_agent_task`.
+class CreateTicketConfig(pydantic.BaseModel):
+    """Validates ``handler_config`` for :func:`create_ticket`.
 
     ``title_expression`` and ``description_expression`` are CEL
     expressions over the event context (``payload.<field>``); a static
     text is a quoted CEL string. The person who last set the rules of
     the webhook owns the task (F9); imbi-api checks that they can make
-    agent tasks in the organization.
+    tickets in the organization.
 
     ``delivery_id_selector`` points at the id of the delivery in the
     event context. The default is GitHub's ``X-GitHub-Delivery``
@@ -1376,7 +1376,7 @@ _WEBHOOK_ID = jsonpointer.JsonPointer('/metadata/webhook_id')
 #: ``fullmatch``: ``$`` would also match before a trailing newline.
 _DELIVERY_ID_PATTERN = re.compile(r'[A-Za-z0-9._:-]{1,128}')
 
-#: The longest title of an agent task that a webhook makes.
+#: The longest title of a ticket that a webhook makes.
 _TITLE_LIMIT = 200
 
 #: The characters that open or close a Markdown code fence.
@@ -1446,12 +1446,12 @@ def _untrusted_description(
     )
 
 
-async def create_agent_task(
+async def create_ticket(
     *,
     ctx: plugin_base.PluginContext,
     credentials: dict[str, str],
     external_identifier: str,
-    action_config: CreateAgentTaskConfig,
+    action_config: CreateTicketConfig,
     event: object,
 ) -> None:
     """Start agent work on the matched project (ADR 0020).
@@ -1498,9 +1498,7 @@ async def create_agent_task(
         ),
     }
     async with ImbiClient() as client:
-        await client.create_agent_task(
-            ctx.org_slug, webhook_id, delivery_id, body
-        )
+        await client.create_ticket(ctx.org_slug, webhook_id, delivery_id, body)
 
 
 async def start_workflow(

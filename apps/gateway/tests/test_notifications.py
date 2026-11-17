@@ -1091,13 +1091,13 @@ class ProcessNotificationTests(helpers.TestCase):
         self.assertEqual(204, resp.status_code)
         self.assertEqual([], ACTION_CALLS)
 
-    async def _post_github_agent_task(
-        self, secret: str | None
+    async def _post_github_ticket(
+        self, secret: str | None, action: str = 'create_ticket'
     ) -> unittest.mock.AsyncMock:
-        """Post a GitHub delivery to a webhook with a create_agent_task
-        rule, signed with ``secret`` when the webhook has one."""
+        """Post a GitHub delivery to a webhook with an ``action`` rule,
+        signed with ``secret`` when the webhook has one."""
         await self._add_rule(
-            handler='gateway-actions#create_agent_task',
+            handler=f'gateway-actions#{action}',
             handler_config=json.dumps(
                 {
                     'agent_slug': 'triage',
@@ -1115,7 +1115,7 @@ class ProcessNotificationTests(helpers.TestCase):
             self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
-                'create_agent_task',
+                'create_ticket',
                 new_callable=unittest.mock.AsyncMock,
                 return_value=httpx.Response(201),
             ) as mock_create,
@@ -1124,10 +1124,10 @@ class ProcessNotificationTests(helpers.TestCase):
         self.assertEqual(202, resp.status_code)
         return mock_create
 
-    async def test_github_verified_delivery_creates_agent_task(self) -> None:
+    async def test_github_verified_delivery_creates_ticket(self) -> None:
         # No secret on the EXISTS_IN edge: the GitHub HMAC check alone
         # makes the delivery verified for the project.
-        mock_create = await self._post_github_agent_task('ghsec')
+        mock_create = await self._post_github_ticket('ghsec')
         event = typing.cast('dict[str, typing.Any]', ACTION_CALLS[0]['event'])
         self.assertIs(True, event['signature_verified'])
         mock_create.assert_awaited_once()
@@ -1136,9 +1136,16 @@ class ProcessNotificationTests(helpers.TestCase):
             mock_create.call_args.args[:3],
         )
 
-    async def test_github_no_secret_skips_agent_task(self) -> None:
+    async def test_old_action_name_creates_ticket(self) -> None:
+        # Saved rules name the action create_agent_task (before ADR 0028).
+        mock_create = await self._post_github_ticket(
+            'ghsec', 'create_agent_task'
+        )
+        mock_create.assert_awaited_once()
+
+    async def test_github_no_secret_skips_ticket(self) -> None:
         with self.assertLogs('imbi.gateway.actions', level='WARNING') as cm:
-            mock_create = await self._post_github_agent_task(None)
+            mock_create = await self._post_github_ticket(None)
         event = typing.cast('dict[str, typing.Any]', ACTION_CALLS[0]['event'])
         self.assertIs(False, event['signature_verified'])
         mock_create.assert_not_called()
