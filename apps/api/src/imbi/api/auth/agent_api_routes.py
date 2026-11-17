@@ -38,6 +38,7 @@ ALLOWED_ROUTES: frozenset[str] = frozenset(
         'GET /organizations/{org_slug}/agent-marketplaces/',
         'GET /organizations/{org_slug}/agent-platform-config/',
         'GET /organizations/{org_slug}/agent-tasks/',
+        'GET /organizations/{org_slug}/agent-tasks/counts',
         'GET /organizations/{org_slug}/agent-tasks/waiting',
         'GET /organizations/{org_slug}/agent-tasks/{short_id}',
         'GET /organizations/{org_slug}/agent-tasks/{short_id}/events',

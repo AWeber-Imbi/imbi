@@ -1,9 +1,10 @@
 import { useEffect, useRef } from 'react'
 
 import {
+  keepPreviousData,
   type QueryKey,
-  useInfiniteQuery,
   useMutation,
+  useQueries,
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
@@ -11,12 +12,11 @@ import {
 import { ApiError } from '@/api/client'
 import {
   type AgentTaskListParams,
-  type AgentTaskPage,
+  countAgentTasks,
   countWaitingAgentTasks,
   getAgentTask,
   getAgentTaskRelations,
   listAgentTaskEvents,
-  listAgentTaskPage,
   listAgentTaskProjects,
   listAgentTasks,
 } from '@/api/endpoints'
@@ -32,8 +32,8 @@ const LIST_POLL_MS = 15_000
 
 const EVENT_PAGE = 500
 
-/** The largest page that the task list API gives. */
-const TASK_PAGE = 100
+/** The tasks in each page of an inbox group. */
+export const TASK_PAGE = 50
 
 /** The event types that change the relations of a task. */
 const RELATION_EVENTS = new Set([
@@ -58,6 +58,22 @@ export function useAgentTask(orgSlug: string, shortId: string) {
   return useQuery({
     queryFn: ({ signal }) => getAgentTask(orgSlug, shortId, signal),
     queryKey: queryKeys.agentTask(orgSlug, shortId),
+  })
+}
+
+/**
+ * The number of tasks in each inbox group. A change of filters keeps
+ * the old counts until the new ones come, so the list does not jump.
+ */
+export function useAgentTaskCounts(
+  orgSlug: string,
+  params: AgentTaskListParams,
+) {
+  return useQuery({
+    placeholderData: keepPreviousData,
+    queryFn: ({ signal }) => countAgentTasks(orgSlug, params, signal),
+    queryKey: queryKeys.agentTasks(orgSlug, { ...params, counts: true }),
+    refetchInterval: LIST_POLL_MS,
   })
 }
 
@@ -129,6 +145,36 @@ export function useAgentTaskEvents(
 }
 
 /**
+ * The pages of the inbox groups that `pages` names, as
+ * `<group>:<page>`, each `TASK_PAGE` tasks in the order of the inbox.
+ */
+export function useAgentTaskGroupPages(
+  orgSlug: string,
+  params: AgentTaskListParams,
+  pages: string[],
+) {
+  return useQueries({
+    queries: pages.map((name) => {
+      const [group, page] = name.split(':') as [
+        NonNullable<AgentTaskListParams['group']>,
+        string,
+      ]
+      const offset = Number(page) * TASK_PAGE
+      return {
+        queryFn: ({ signal }: { signal: AbortSignal }) =>
+          listAgentTasks(
+            orgSlug,
+            { ...params, group, limit: TASK_PAGE, offset },
+            signal,
+          ),
+        queryKey: queryKeys.agentTasks(orgSlug, { ...params, group, offset }),
+        refetchInterval: LIST_POLL_MS,
+      }
+    }),
+  })
+}
+
+/**
  * A change to a task, then a refresh of the task, its events, the
  * inbox, and the waiting count.
  */
@@ -149,30 +195,6 @@ export function useAgentTaskMutation<T>(
           queryKeys.agentTasksWaiting(orgSlug),
         ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
       ),
-  })
-}
-
-/**
- * The tasks of the org a page at a time, newest first. Each refresh
- * reads all of the loaded pages again, so it keeps them.
- */
-export function useAgentTaskPages(
-  orgSlug: string,
-  params: AgentTaskListParams,
-  enabled = true,
-) {
-  return useInfiniteQuery({
-    enabled,
-    getNextPageParam: (last: AgentTaskPage) => last.nextCursor,
-    initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam, signal }) =>
-      listAgentTaskPage(
-        orgSlug,
-        { ...params, cursor: pageParam, limit: TASK_PAGE },
-        signal,
-      ),
-    queryKey: queryKeys.agentTasks(orgSlug, { ...params, paged: true }),
-    refetchInterval: LIST_POLL_MS,
   })
 }
 

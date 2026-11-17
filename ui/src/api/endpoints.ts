@@ -52,6 +52,7 @@ import type {
   AgentPlatformConfig,
   AgentPlatformConfigResponse,
   AgentTask,
+  AgentTaskCounts,
   AgentTaskCreate,
   AgentTaskEvent,
   AgentTaskListItem,
@@ -3829,8 +3830,11 @@ const agentTaskPath = (orgSlug: string, shortId: string) =>
 
 export interface AgentTaskListParams {
   agent_id?: string[]
+  /** One inbox group, in the order of the inbox; it pages with `offset`. */
+  group?: keyof AgentTaskCounts
   limit?: number
   mine?: boolean
+  offset?: number
   owner?: string[]
   q?: string
   status?: AgentTaskStatus[]
@@ -3847,24 +3851,17 @@ export const listAgentTasks = (
     signal,
   )
 
-export interface AgentTaskPage {
-  entries: AgentTaskListItem[]
-  nextCursor?: string
-}
-
-/** One page of tasks and the cursor of the next page (`Link` header). */
-export const listAgentTaskPage = async (
+/** The number of tasks in each inbox group that the same filters find. */
+export const countAgentTasks = (
   orgSlug: string,
-  params: AgentTaskListParams & { cursor?: string },
+  params: Omit<AgentTaskListParams, 'group' | 'limit' | 'offset'>,
   signal?: AbortSignal,
-): Promise<AgentTaskPage> => {
-  const { data, headers } = await apiClient.getWithHeaders<AgentTaskListItem[]>(
-    `${agentTasksPath(orgSlug)}/`,
+) =>
+  apiClient.get<AgentTaskCounts>(
+    `${agentTasksPath(orgSlug)}/counts`,
     { ...params },
     signal,
   )
-  return { entries: data, nextCursor: parseNextCursor(headers) }
-}
 
 /** The number of blocked tasks in the org (the "waiting on you" badge). */
 export const countWaitingAgentTasks = (orgSlug: string, signal?: AbortSignal) =>

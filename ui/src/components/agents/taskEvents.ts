@@ -48,7 +48,7 @@ export interface TaskRequestView {
   why: null | string
 }
 
-const GROUPS: { id: InboxGroupId; label: string }[] = [
+export const INBOX_GROUPS: { id: InboxGroupId; label: string }[] = [
   { id: 'input', label: 'Human input required' },
   { id: 'running', label: 'Running' },
   { id: 'paused', label: 'Paused' },
@@ -69,7 +69,7 @@ const GROUP_OF: Record<AgentTaskStatus, InboxGroupId> = {
  * `blocked_since`: it is not closed and a request is open) needs human
  * input whatever its status, also when it is paused.
  */
-function groupOf(task: AgentTaskListItem): InboxGroupId {
+export function groupOf(task: AgentTaskListItem): InboxGroupId {
   return task.blocked_since ? 'input' : GROUP_OF[task.status]
 }
 
@@ -152,7 +152,7 @@ export function formatTokens(n: number): string {
 export function groupTasks(tasks: AgentTaskListItem[]): InboxGroup[] {
   const time = (value: null | string | undefined) =>
     value ? Date.parse(value) : 0
-  return GROUPS.map(({ id, label }) => {
+  return INBOX_GROUPS.map(({ id, label }) => {
     const members = tasks.filter((t) => groupOf(t) === id)
     if (id === 'input')
       members.sort((a, b) => time(a.blocked_since) - time(b.blocked_since))
