@@ -2,15 +2,20 @@ import type { ReactNode } from 'react'
 
 import { useNavigate } from 'react-router-dom'
 
+import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Bot } from 'lucide-react'
 
+import { listAgentMarketplaces } from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { MarkdownPreview } from '@/components/ui/markdown-editor/MarkdownPreview'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { useIcon } from '@/lib/icons'
+import { queryKeys } from '@/lib/queryKeys'
 import type {
   Agent,
+  AgentMarketplace,
+  AgentPlugin,
   AgentSettings,
   AgentSubagentRef,
   AgentUsage,
@@ -38,6 +43,9 @@ import { UsageBars } from './UsageBars'
 
 // The design's runs line: the Dusk label swatch.
 const RUNS_COLOR = 'var(--color-entity-project)'
+
+const plural = (count: number, noun: string) =>
+  `${count} ${noun}${count === 1 ? '' : 's'}`
 
 export function AgentDetail({ agent }: { agent: Agent }) {
   const navigate = useNavigate()
@@ -317,6 +325,42 @@ function MonthlyCap({
   )
 }
 
+/** A plugin, with every tool of the MCP servers that it brings. */
+function PluginRow({
+  plugin,
+  servers,
+}: {
+  plugin: AgentPlugin
+  servers: string[]
+}) {
+  return (
+    <div className="border-border flex items-center gap-4 border-b px-6 py-3 last:border-b-0">
+      <span className="w-30 shrink-0 truncate text-sm font-medium">
+        {plugin.plugin}
+      </span>
+      <span className="text-secondary min-w-0 flex-1 truncate font-mono text-xs">
+        {servers.length > 0 && `MCP: ${servers.join(', ')}`}
+      </span>
+      <span className="text-tertiary shrink-0 font-mono text-xs">
+        {plugin.marketplace}
+        {plugin.sha && ` @ ${plugin.sha.slice(0, 7)}`}
+      </span>
+    </div>
+  )
+}
+
+/** The MCP servers that a plugin brings, from the marketplace catalog. */
+function pluginServers(
+  marketplaces: AgentMarketplace[],
+  plugin: AgentPlugin,
+): string[] {
+  return (
+    marketplaces
+      .find((m) => m.slug === plugin.marketplace)
+      ?.plugins?.find((p) => p.name === plugin.plugin)?.mcp_servers ?? []
+  )
+}
+
 function SubagentItem({ subagent }: { subagent: AgentSubagentRef }) {
   const Icon = useIcon(subagent.icon, Bot)
   const tools = `${subagent.tool_count} tool${subagent.tool_count === 1 ? '' : 's'}`
@@ -356,9 +400,15 @@ function SubagentsCard({ agent }: { agent: Agent }) {
   )
 }
 
-/** The enabled tools, one row for each server. */
+/** The enabled plugins and tools, one row for each plugin and server. */
 function ToolAccessCard({ agent }: { agent: Agent }) {
-  const { query: catalog } = useAgentToolCatalog(agent.organization.slug)
+  const orgSlug = agent.organization.slug
+  const { query: catalog } = useAgentToolCatalog(orgSlug)
+  const marketplaces = useQuery({
+    queryFn: ({ signal }) => listAgentMarketplaces(orgSlug, signal),
+    queryKey: queryKeys.agentMarketplaces(orgSlug),
+  })
+  const plugins = agent.settings?.plugins ?? []
   const keys = Object.keys(agent.tools ?? {}).sort()
   const total = catalog.data ? catalogTools(catalog.data).length : 0
   const servers = new Map<string, string[]>()
@@ -369,20 +419,30 @@ function ToolAccessCard({ agent }: { agent: Agent }) {
       key.slice(server.length + 1),
     ])
   }
+  const toolCount = catalog.data
+    ? `${keys.length} of ${total} enabled`
+    : `${keys.length} enabled`
   return (
     <div className="border-border bg-card rounded-lg border">
       <div className="border-border flex items-center justify-between border-b px-6 py-4">
         <h3 className="text-card-title">Tools and MCP access</h3>
         <span className="text-tertiary font-mono text-sm tabular-nums">
-          {catalog.data
-            ? `${keys.length} of ${total} enabled`
-            : `${keys.length} enabled`}
+          {plugins.length > 0
+            ? `${plural(plugins.length, 'plugin')} · ${toolCount}`
+            : toolCount}
         </span>
       </div>
       <div className="flex flex-col">
-        {keys.length === 0 && (
+        {keys.length === 0 && plugins.length === 0 && (
           <p className="text-tertiary px-6 py-4 text-sm">No tools enabled.</p>
         )}
+        {plugins.map((plugin) => (
+          <PluginRow
+            key={`${plugin.marketplace}/${plugin.plugin}`}
+            plugin={plugin}
+            servers={pluginServers(marketplaces.data ?? [], plugin)}
+          />
+        ))}
         {[...servers].map(([server, tools]) => (
           <div
             className="border-border flex items-center gap-4 border-b px-6 py-3 last:border-b-0"
