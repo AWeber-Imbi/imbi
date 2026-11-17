@@ -1,5 +1,6 @@
 import {
   Bot,
+  BrainCircuit,
   Clock,
   Code,
   type LucideIcon,
@@ -18,6 +19,7 @@ import {
 import type { StepCategory } from './types'
 
 const ICONS: Record<string, LucideIcon> = {
+  analysis: BrainCircuit,
   condition: Split,
   deploy: Rocket,
   email: Mail,

@@ -67,6 +67,10 @@ class FakeApi:
         self.agent: (
             abc.Callable[[httpx.Request], abc.Awaitable[httpx.Response]] | None
         ) = None
+        #: Takes the prompt run calls when set.
+        self.analysis: abc.Callable[[httpx.Request], httpx.Response] | None = (
+            None
+        )
 
     def _once(
         self, request: httpx.Request, act: typing.Callable[[], dict]
@@ -102,6 +106,8 @@ class FakeApi:
         path = request.url.path
         if '/agent-task' in path and self.agent is not None:
             return self.agent(request)
+        if path.endswith('/prompts/run') and self.analysis is not None:
+            return self.analysis(request)
         if path.endswith(('/email', '/failure-notice')):
             return self._once(request, lambda: self._email(request))
         if path.endswith('/slack'):
@@ -1943,6 +1949,161 @@ class ScriptStepTestCase(EngineTestCase):
         self.assertEqual(run['status'], 'failed')
         self.assertEqual(run['error'], 'script_error: ValueError: nope')
         self.assertEqual(run['steps']['calc']['attempt'], 1)
+
+
+RISK = [{'name': 'risk', 'type': 'string'}]
+
+
+class AnalysisStepTestCase(EngineTestCase):
+    """The analysis step, with a fake ``POST .../prompts/run``."""
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        #: The requests to the run endpoint.
+        self.calls: list[httpx.Request] = []
+        #: The answers, in order; the last one repeats.
+        self.answers: list[httpx.Response] = []
+
+        def run(request: httpx.Request) -> httpx.Response:
+            self.calls.append(request)
+            return self.answers[min(len(self.calls), len(self.answers)) - 1]
+
+        self.api.analysis = run
+
+    def _answer(self, n: int = 1) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                'ref': f'workflows/{self.org}.wf.sum@{n}',
+                'n': n,
+                'model': 'chat',
+                'model_id': 'chat-1',
+                'usage': {'input_tokens': 10, 'output_tokens': 5},
+                'content_sha256': 'abc',
+                'text': '{"risk": "low"}',
+                'result': {'risk': 'low'},
+                'cost_usd': 0.001,
+                'call_id': '00000000-0000-0000-0000-000000000001',
+            },
+        )
+
+    @staticmethod
+    def _error(status: int, code: str, retry: bool) -> httpx.Response:
+        return httpx.Response(
+            status, json={'detail': {'error': code, 'retry': retry}}
+        )
+
+    async def _drive_analysis(self) -> dict[str, typing.Any]:
+        params = {
+            'prompt_ref': f'workflows/{self.org}.wf.sum',
+            'prompt_version': 1,
+            'output_fields': RISK,
+        }
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'manual'),
+                _node(
+                    'sum',
+                    'analysis',
+                    {**params, 'inputs': {'diff': '{{ trigger.diff }}'}},
+                ),
+                _node(
+                    'then',
+                    'analysis',
+                    {**params, 'inputs': {'risk': '{{ sum.result.risk }}'}},
+                ),
+            ],
+            [_edge('start', 'sum'), _edge('sum', 'then')],
+            {'on_failure': 'none'},
+        )
+        run_id = await self._start(workflow_id, {'diff': 'd'})
+        with (
+            mock.patch.object(engine, 'RETRY_BACKOFF', 0),
+            mock.patch.object(executors, 'ANALYSIS_POLL_SECONDS', 0),
+        ):
+            return await self._drive(run_id)
+
+    def _keys(self) -> list[str]:
+        return [
+            r.headers['Idempotency-Key'].split(':', 1)[1] for r in self.calls
+        ]
+
+    async def test_result_and_reference(self) -> None:
+        self.answers = [self._answer()]
+        run = await self._drive_analysis()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        first = self.calls[0]
+        self.assertEqual(
+            first.url.path, f'/organizations/{self.org}/prompts/run'
+        )
+        self.assertEqual(
+            json.loads(first.content),
+            {
+                'ref': f'workflows/{self.org}.wf.sum@1',
+                'variables': {'diff': 'd'},
+                'output_fields': [
+                    {
+                        'name': 'risk',
+                        'type': 'string',
+                        'description': '',
+                        'required': True,
+                        'enum': None,
+                        'format': None,
+                        'items': None,
+                        'fields': None,
+                    }
+                ],
+            },
+        )
+        self.assertEqual(
+            first.headers['Idempotency-Key'], f'{run["id"]}:sum:1'
+        )
+        self.assertEqual(
+            first.extensions['timeout']['read'], executors.ANALYSIS_TIMEOUT
+        )
+        output = run['steps']['sum']['output']
+        self.assertEqual(output['result'], {'risk': 'low'})
+        self.assertEqual(output['prompt_version'], 1)
+        self.assertEqual(output['usage']['input_tokens'], 10)
+        self.assertEqual(
+            run['steps']['then']['input']['inputs'], {'risk': 'low'}
+        )
+
+    async def test_retry_is_a_new_attempt(self) -> None:
+        self.answers = [
+            self._error(503, 'rate_limited', True),
+            self._answer(),
+        ]
+        run = await self._drive_analysis()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(self._keys()[:2], ['sum:1', 'sum:2'])
+        self.assertEqual(run['steps']['sum']['attempt'], 2)
+
+    async def test_call_in_progress_asks_again_with_the_same_key(
+        self,
+    ) -> None:
+        self.answers = [
+            self._error(409, 'call_in_progress', True),
+            self._answer(),
+        ]
+        run = await self._drive_analysis()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(self._keys()[:2], ['sum:1', 'sum:1'])
+        self.assertEqual(run['steps']['sum']['attempt'], 1)
+
+    async def test_error_without_retry_fails(self) -> None:
+        self.answers = [self._error(422, 'model_no_structured_output', False)]
+        run = await self._drive_analysis()
+        self.assertEqual(run['status'], 'failed')
+        self.assertEqual(run['error'], 'model_no_structured_output')
+        self.assertEqual(len(self.calls), 1)
+
+    async def test_version_mismatch_fails(self) -> None:
+        self.answers = [self._answer(n=2)]
+        run = await self._drive_analysis()
+        self.assertEqual(run['status'], 'failed')
+        self.assertEqual(run['error'], 'prompt_version_mismatch')
+        self.assertEqual(len(self.calls), 1)
 
 
 class AppTestCase(unittest.IsolatedAsyncioTestCase):

@@ -19,6 +19,12 @@ returns it after that. The step polls it until it is closed.
 
 A script step runs its code in the sandbox of
 :mod:`imbi.common.workflows.script_runner` (ADR 0027).
+
+An analysis step asks imbi-api to run its saved prompt, with the key
+``<run_id>:<node_key>:<attempt>``. imbi-api records each model call
+with the key, so a repeat of an attempt (after a crash) gets the first
+answer and makes no second call. A retry is a new attempt and a new
+call.
 """
 
 import asyncio
@@ -40,6 +46,7 @@ from imbi.common.workflows import graph as wf
 from imbi.common.workflows import script_runner
 from imbi.common.workflows.registry import (
     agent,
+    analysis,
     condition,
     deploy,
     email,
@@ -71,6 +78,15 @@ HTTP_CLIENT_ERROR = 400
 HTTP_FORBIDDEN = 403
 HTTP_SERVER_ERROR = 500
 
+#: Seconds that the engine waits for the answer of an analysis call.
+#: More than the time after which imbi-api stops a call (its provider
+#: timeout, 120 seconds, plus the render and a token), so imbi-api
+#: always answers first.
+ANALYSIS_TIMEOUT = 190.0
+#: Seconds before the engine asks again for the answer of an analysis
+#: call that imbi-api still runs.
+ANALYSIS_POLL_SECONDS = 15
+
 
 class StepError(Exception):
     """A step call failed. ``code`` is stored as the step's error."""
@@ -94,6 +110,8 @@ class Call:
     state: dict[str, typing.Any]
     #: ``<run_id>:<node_key>``; the same for every attempt.
     idempotency_key: str
+    #: The attempt of the step: 1, then one more for each retry.
+    attempt: int = 1
 
 
 @dataclasses.dataclass
@@ -159,12 +177,18 @@ class Api:
         *,
         json: dict[str, typing.Any] | None = None,
         headers: dict[str, str] | None = None,
+        wait_seconds: float | None = None,
     ) -> dict[str, typing.Any]:
         """Call imbi-api and return the JSON body.
 
+        ``wait_seconds`` replaces the timeout of the client for this
+        call.
+
         Raises:
             StepError: ``forbidden`` and other ``4xx`` responses are not
-                retried; ``5xx`` responses and transport errors are.
+                retried; ``5xx`` responses and transport errors are. An
+                error code in ``detail.error`` is retried when
+                ``detail.retry`` is true.
 
         """
         try:
@@ -176,6 +200,9 @@ class Api:
                     'Authorization': f'Bearer {await self.bearer()}',
                     **(headers or {}),
                 },
+                timeout=httpx.USE_CLIENT_DEFAULT
+                if wait_seconds is None
+                else wait_seconds,
             )
         except httpx.HTTPError as e:
             raise StepError(type(e).__name__, retry=True) from e
@@ -184,11 +211,11 @@ class Api:
         if response.status_code >= HTTP_CLIENT_ERROR:
             detail: typing.Any = response.json().get('detail')
             if isinstance(detail, dict):
-                error = typing.cast('dict[str, typing.Any]', detail).get(
-                    'error'
-                )
-                if error:
-                    raise StepError(str(error), retry=False)
+                found = typing.cast('dict[str, typing.Any]', detail)
+                if found.get('error'):
+                    raise StepError(
+                        str(found['error']), retry=found.get('retry') is True
+                    )
             raise StepError(
                 f'http_{response.status_code}',
                 retry=response.status_code >= HTTP_SERVER_ERROR,
@@ -264,6 +291,8 @@ class Executors:
                 return await self._rollback(call)
             case 'agent':
                 return await self._agent(call)
+            case 'analysis':
+                return await self._analysis(call)
             case other:
                 raise StepError(f'unknown_type:{other}', retry=False)
 
@@ -467,6 +496,44 @@ class Executors:
             port=port,
             failed=port == 1,
             state={'task_id': task['task_id']},
+        )
+
+    async def _analysis(self, call: Call) -> Outcome:
+        params = _params(analysis.Params, call)
+        org = await self.org_slug(call.organization_id)
+        try:
+            answer = await self.api.request(
+                'POST',
+                _path('organizations', org, 'prompts', 'run'),
+                json={
+                    'ref': f'{params.prompt_ref}@{params.prompt_version}',
+                    'variables': params.inputs,
+                    'output_fields': [
+                        f.model_dump(mode='json') for f in params.output_fields
+                    ],
+                },
+                headers={
+                    'Idempotency-Key': f'{call.idempotency_key}:{call.attempt}'
+                },
+                wait_seconds=ANALYSIS_TIMEOUT,
+            )
+        except StepError as e:
+            if e.code != 'call_in_progress':
+                raise
+            # imbi-api still runs the call of this attempt. Ask again
+            # with the same key: a retry would be a new attempt and a
+            # second call.
+            return Outcome(
+                resume_at=_now()
+                + datetime.timedelta(seconds=ANALYSIS_POLL_SECONDS),
+                state=call.state,
+            )
+        if answer.get('n') != params.prompt_version:
+            raise StepError('prompt_version_mismatch', retry=False)
+        return Outcome(
+            output=analysis.Output.model_validate(
+                {**answer, 'prompt_version': answer['n']}
+            ).model_dump(mode='json')
         )
 
     async def cancel_agent_task(

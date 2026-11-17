@@ -416,6 +416,7 @@ class RegistryTestCase(unittest.TestCase):
                 'deploy',
                 'rollback',
                 'agent',
+                'analysis',
                 'condition',
             },
         )

@@ -15,6 +15,7 @@ import httpx
 from apps.api.tests import support
 from imbi.api import models, workflows
 from imbi.api.auth import permissions
+from imbi.api.endpoints import prompts
 from imbi.api.endpoints import workflows as workflows_endpoints
 from imbi.common import graph
 from imbi.common.workflows import script_runner
@@ -786,3 +787,159 @@ class ScriptPreviewTestCase(WorkflowTestCase):
         self.runner = None
         response = await self._preview()
         self.assertEqual(response.status_code, 503, response.text)
+
+
+class AnalysisStepTestCase(WorkflowTestCase):
+    """The CMS prompt of an analysis step: checked on save, archived
+    when the node or the workflow goes."""
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        suffix = uuid.uuid4().hex[:8]
+        self.provider = f'prov-{suffix}'
+        self.structured = f'chat-s-{suffix}'
+        self.plain = f'chat-p-{suffix}'
+        await self.graph.execute(
+            """
+            CREATE (p:AIProvider {{id: {provider}, slug: {provider},
+                                   name: 'P', driver: 'anthropic',
+                                   enabled: true}})
+            CREATE (s:AIModel {{id: {structured}, slug: {structured},
+                                name: 'S', model_id: 's',
+                                model_type: 'generative', enabled: true,
+                                supports_structured_output: true}})
+            CREATE (m:AIModel {{id: {plain}, slug: {plain}, name: 'M',
+                                model_id: 'm', model_type: 'generative',
+                                enabled: true,
+                                supports_structured_output: false}})
+            CREATE (s)-[:SERVED_BY]->(p)
+            CREATE (m)-[:SERVED_BY]->(p)
+            RETURN p.id AS id
+            """,
+            {
+                'provider': self.provider,
+                'structured': self.structured,
+                'plain': self.plain,
+            },
+            ['id'],
+        )
+        self.addAsyncCleanup(self._cleanup_prompts)
+        await self._prompt('sum', self.structured)
+        await self._prompt('plain', self.plain)
+
+    async def _cleanup_prompts(self) -> None:
+        await self.graph.execute(
+            """
+            MATCH (p:Prompt {{namespace: 'workflows'}})
+            WHERE p.slug STARTS WITH {prefix}
+            OPTIONAL MATCH (v:PromptVersion)-[:VERSION_OF]->(p)
+            DETACH DELETE v, p
+            RETURN 1 AS ok
+            """,
+            {'prefix': f'{self.org}.'},
+            ['ok'],
+        )
+        await self.graph.execute(
+            """
+            MATCH (n) WHERE n.id IN {ids}
+            DETACH DELETE n
+            RETURN 1 AS ok
+            """,
+            {'ids': [self.provider, self.structured, self.plain]},
+            ['ok'],
+        )
+
+    def _ref(self, key: str) -> str:
+        return f'workflows/{self.org}.deploy-guard.{key}'
+
+    async def _prompt(self, key: str, model: str) -> None:
+        await prompts.insert_prompt(
+            self.graph,
+            prompts.PromptCreate(
+                namespace='workflows',
+                name=key,
+                slug=self._ref(key).partition('/')[2],
+                version=prompts.PromptVersionCreate(
+                    system='Summarize {{ diff }}.', model=model
+                ),
+            ),
+            self.email,
+            label_first_version=True,
+        )
+
+    def _graph(self, **nodes: dict[str, typing.Any]) -> dict[str, typing.Any]:
+        return {
+            'nodes': [
+                _node('start', 'manual'),
+                *(
+                    _node(
+                        key,
+                        'analysis',
+                        {'prompt_ref': self._ref(key), 'prompt_version': 1}
+                        | params,
+                    )
+                    for key, params in nodes.items()
+                ),
+            ],
+            'edges': [
+                {'source': 'start', 'port': 0, 'target': key} for key in nodes
+            ],
+        }
+
+    async def _archived(self, key: str) -> bool:
+        records = await self.graph.execute(
+            """
+            MATCH (p:Prompt {{namespace: 'workflows', slug: {slug}}})
+            RETURN p.archived_at AS at
+            """,
+            {'slug': self._ref(key).partition('/')[2]},
+            ['at'],
+        )
+        return graph.parse_agtype(records[0]['at']) is not None
+
+    async def test_save_checks(self) -> None:
+        fields = [{'name': 'risk', 'type': 'string'}]
+        for nodes, message in (
+            (
+                {'sum': {'prompt_ref': f'workflows/{self.org}.other.sum'}},
+                'the prompt must be',
+            ),
+            ({'sum': {'prompt_version': 9}}, 'no version 9'),
+            ({'gone': {}}, 'not found'),
+            ({'plain': {'output_fields': fields}}, 'structured output'),
+        ):
+            with self.subTest(message):
+                response = await self._create(graph=self._graph(**nodes))
+                self.assertEqual(response.status_code, 422, response.text)
+                self.assertIn(message, response.json()['detail'])
+        response = await self._create(
+            graph=self._graph(sum={'output_fields': fields}, plain={})
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        response = await self.client.put(
+            f'{self.base}/deploy-guard',
+            json={
+                'name': 'Deploy guard',
+                'owner_team_slug': self.team,
+                'graph': self._graph(plain={'output_fields': fields}),
+            },
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+
+    async def test_removed_node_and_deleted_workflow_archive(self) -> None:
+        response = await self._create(graph=self._graph(sum={}, plain={}))
+        self.assertEqual(response.status_code, 201, response.text)
+        response = await self.client.put(
+            f'{self.base}/deploy-guard',
+            json={
+                'name': 'Deploy guard',
+                'owner_team_slug': self.team,
+                'graph': self._graph(sum={}),
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertTrue(await self._archived('plain'))
+        self.assertFalse(await self._archived('sum'))
+        response = await self.client.delete(f'{self.base}/deploy-guard')
+        self.assertEqual(response.status_code, 204, response.text)
+        self.assertTrue(await self._archived('sum'))
