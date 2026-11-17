@@ -121,6 +121,7 @@ settings, GitHub Apps, New GitHub App**.
 | Repository permissions: Contents | Read and write |
 | Repository permissions: Pull requests | Read and write |
 | Repository permissions: Issues | Read and write |
+| Repository permissions: Actions | Read-only, for agents that read CI run logs with `github_read` |
 | Repository permissions: Metadata | Read-only (GitHub adds it) |
 | Where can this GitHub App be installed? | **Any account**. A private App can only be installed in the organization that owns it |
 
@@ -134,7 +135,11 @@ token with more permissions than the App has.
 |---|---|
 | `workspace_checkout` | `contents: read` |
 | `marketplace_fetch` | `contents: read` |
+| `github_read` | `actions: read`, `contents: read`, `issues: read`, `pull_requests: read` |
 | `github_write` | `contents: write`, `pull_requests: write`, `issues: write` |
+
+For an agent that only reads, such as a check, set every permission above
+to Read-only and grant `github_read`, not `github_write`.
 
 ## Step 2: Generate the private key
 

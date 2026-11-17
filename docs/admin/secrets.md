@@ -239,11 +239,16 @@ Grant them with the `file_descriptor` delivery mode only.
 The `mcp_server` purpose is retired. The broker refuses each request
 for it with `retired_purpose`. Delete the grants that still name it.
 
-The GitHub write purpose uses the `environment` delivery mode:
+The GitHub purposes for the agent's own commands use the `environment`
+delivery mode:
 
 | Purpose | Used for |
 |---|---|
+| `github_read` | Reading pull requests, review comments, issues, and CI run logs |
 | `github_write` | Pushing, and opening pull requests and issues |
+
+`github_write` does not include CI run logs. Grant both purposes to an
+agent that writes and also reads CI logs.
 
 A grant allows each of its purposes with each of its delivery modes. Put
 purposes that need different delivery modes in separate grants.

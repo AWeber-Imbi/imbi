@@ -217,6 +217,15 @@ class GitHubAppTestCase(unittest.IsolatedAsyncioTestCase):
                 {'repository_ids': [101]},
                 {'contents': 'read'},
             ),
+            'github_read': (
+                {'repository_ids': [101]},
+                {
+                    'actions': 'read',
+                    'contents': 'read',
+                    'issues': 'read',
+                    'pull_requests': 'read',
+                },
+            ),
             'github_write': (
                 {'repository_ids': [101]},
                 {

@@ -21,6 +21,11 @@ export const GITHUB_PURPOSES: {
     purpose: 'workspace_checkout',
   },
   {
+    label: 'Read pull requests, issues, and CI run logs',
+    mode: 'environment',
+    purpose: 'github_read',
+  },
+  {
     label: 'Push, and open pull requests and issues',
     mode: 'environment',
     purpose: 'github_write',

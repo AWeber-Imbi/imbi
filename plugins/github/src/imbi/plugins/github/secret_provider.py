@@ -63,6 +63,12 @@ LOGGER = logging.getLogger(__name__)
 PURPOSE_PERMISSIONS: dict[str, dict[str, str]] = {
     'workspace_checkout': {'contents': 'read'},
     'marketplace_fetch': {'contents': 'read'},
+    'github_read': {
+        'actions': 'read',
+        'contents': 'read',
+        'issues': 'read',
+        'pull_requests': 'read',
+    },
     'github_write': {
         'contents': 'write',
         'pull_requests': 'write',
