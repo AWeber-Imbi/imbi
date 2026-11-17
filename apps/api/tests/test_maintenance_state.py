@@ -229,6 +229,26 @@ class ClaimFencingValkeyTests(unittest.IsolatedAsyncioTestCase):
         status = await state.read_status(self.client, self.slug)
         self.assertEqual(0, status.remaining)
 
+    async def test_reclaim_returns_only_expired_leases(self) -> None:
+        now = 10_000.0
+        cutoff = now - state.LEASE_SECONDS
+        with mock.patch.object(state.time, 'time', return_value=cutoff - 1):
+            await state.checkout(self.client, self.slug)
+        processing = state._key(self.slug, 'processing')
+        await self.client.hset(
+            processing, mapping={'p2': str(cutoff), 'p3': str(now - 1)}
+        )
+        with mock.patch.object(state.time, 'time', return_value=now):
+            self.assertEqual(1, await state.reclaim(self.client, self.slug))
+        self.assertEqual(
+            {b'p2': str(cutoff).encode(), b'p3': str(now - 1).encode()},
+            await self.client.hgetall(processing),
+        )
+        self.assertEqual(
+            [b'p1'],
+            await self.client.smembers(state._key(self.slug, 'pending')),
+        )
+
     async def test_requeue_after_a_committed_outcome_is_a_no_op(
         self,
     ) -> None:
