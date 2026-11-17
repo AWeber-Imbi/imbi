@@ -320,18 +320,23 @@ class RunStore:
         """Return the runs of an organization made in the last ``days``
         days, and its stuck runs of any age, newest first.
 
-        ``stuck`` is as in :meth:`attention`.
+        ``stuck`` is as in :meth:`attention`. ``limit`` applies only to
+        the runs that are not stuck, so an old stuck run is always in
+        the result.
         """
         return await self._all(
-            'SELECT r.*, w.slug AS workflow_slug, w.name AS workflow_name,'  # noqa: S608
-            f' COALESCE({_STUCK}, FALSE) AS stuck'
+            'SELECT * FROM ('  # noqa: S608
+            'SELECT r.*, w.slug AS workflow_slug, w.name AS workflow_name,'
+            f' COALESCE({_STUCK}, FALSE) AS stuck,'
+            ' ROW_NUMBER() OVER (ORDER BY r.created_at DESC, r.id) AS n'
             ' FROM workflow_runtime.runs AS r'
             ' JOIN workflows.workflows AS w ON w.id = r.workflow_id'
             ' LEFT JOIN workflow_runtime.leases AS l ON l.run_id = r.id'
             ' WHERE r.organization_id = %s'
             ' AND (r.created_at > NOW() - make_interval(days => %s)'
             f' OR {_STUCK})'
-            ' ORDER BY r.created_at DESC, r.id LIMIT %s',
+            ') AS x WHERE x.stuck OR x.n <= %s'
+            ' ORDER BY x.created_at DESC, x.id',
             (organization_id, days, limit),
         )
 

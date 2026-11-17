@@ -467,3 +467,19 @@ class OrgRunsTestCase(RunHistoryTestCase):
                 (run_id,),
             )
         self.assertTrue((await self._list())[run_id]['stuck'])
+
+    async def test_limit_does_not_drop_old_stuck_run(self) -> None:
+        url = await self._workflow()
+        stuck, fresh = [await self._start(url) for _ in range(2)]
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE workflow_runtime.runs SET status = 'running',"
+                " due_at = NOW() - INTERVAL '10 minutes',"
+                " created_at = NOW() - INTERVAL '30 days' WHERE id = %s",
+                (stuck,),
+            )
+        response = await self.client.get(
+            f'/organizations/{self.org}/workflow-runs/', params={'limit': 1}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual([r['id'] for r in response.json()], [fresh, stuck])
