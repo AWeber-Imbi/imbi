@@ -79,6 +79,9 @@ export const TRIGGERS = {
   schedule: { icon: Timer, label: 'Schedule' },
   task: { icon: CornerDownRight, label: 'Delegation' },
   task_completed: { icon: CircleCheck, label: 'Task completed' },
+  // The ADR 0028 names of `task` and `task_completed`.
+  ticket: { icon: CornerDownRight, label: 'Delegation' },
+  ticket_closed: { icon: CircleCheck, label: 'Task completed' },
   webhook: { icon: Webhook, label: 'Webhook' },
 } as const
 

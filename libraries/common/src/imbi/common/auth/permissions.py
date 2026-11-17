@@ -974,6 +974,24 @@ async def get_current_user_cookie_fallback(
     )
 
 
+#: Permission prefixes that have one meaning (ADR 0028). A holder of
+#: ``agent_task:read`` holds ``ticket:read`` and the reverse, so roles
+#: of the previous release and new roles work with every check. Release
+#: B removes the ``agent_task`` names.
+_ALIASES = {'agent_task:': 'ticket:', 'ticket:': 'agent_task:'}
+
+
+def holds(permission: str, held: collections.abc.Container[str]) -> bool:
+    """Whether ``held`` has ``permission`` or a name of it in
+    :data:`_ALIASES`."""
+    if permission in held:
+        return True
+    for prefix, alias in _ALIASES.items():
+        if permission.startswith(prefix):
+            return alias + permission.removeprefix(prefix) in held
+    return False
+
+
 def require_permission(
     permission: str,
     *,
@@ -1023,7 +1041,7 @@ def require_permission(
         if auth.is_admin:
             return auth
 
-        if permission not in auth.permissions:
+        if not holds(permission, auth.permissions):
             LOGGER.warning(
                 'Permission denied: principal=%s permission=%s',
                 auth.principal_name,

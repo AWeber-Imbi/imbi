@@ -31,6 +31,7 @@ from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import ai_models, prompts
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.common import graph, lifespan
+from imbi.common.auth import permissions as common_permissions
 from imbi.common.prompts import resolve as prompt_resolve
 from imbi.common.workflows import graph as wf
 from imbi.common.workflows import (
@@ -42,6 +43,7 @@ from imbi.common.workflows import (
 from imbi.common.workflows.registry import agent as agent_step
 from imbi.common.workflows.registry import llm_call as llm_call_step
 from imbi.common.workflows.registry import script as script_step
+from imbi.common.workflows.registry import ticket_closed
 
 LOGGER = logging.getLogger(__name__)
 
@@ -51,7 +53,7 @@ Status = typing.Literal['draft', 'active', 'paused']
 
 #: Trigger types that get a binding: a scheduler task, a gateway rule,
 #: or (``task_completed``) only the binding, which the close hook reads.
-BOUND_TRIGGERS = ('schedule', 'webhook', 'task_completed')
+BOUND_TRIGGERS = ('schedule', 'webhook', *ticket_closed.TYPES)
 
 
 # --- Schemas -----------------------------------------------------------
@@ -302,13 +304,13 @@ def _resource_ids(
             add('project', node.id, params.get('project_id'))
         elif node.type == 'webhook':
             add('webhook', node.id, params.get('webhook_id'))
-        elif node.type in ('agent', 'task_completed'):
+        elif node.type == 'agent' or node.type in ticket_closed.TYPES:
             # A trigger's agent filter cannot be a template.
             add(
                 'agent',
                 node.id,
                 params.get('agent_id'),
-                literal=node.type == 'task_completed',
+                literal=node.type in ticket_closed.TYPES,
             )
             if node.type == 'agent':
                 add('project', node.id, params.get('project_id'))
@@ -1003,7 +1005,15 @@ async def activate_workflow(
     for node in wf_graph.nodes:
         step = registry.STEP_TYPES[node.type]
         required |= step.required_permissions(node.params)
-    missing = set[str]() if auth.is_admin else required - auth.permissions
+    missing = (
+        set[str]()
+        if auth.is_admin
+        else {
+            name
+            for name in required
+            if not common_permissions.holds(name, auth.permissions)
+        }
+    )
     if missing:
         raise fastapi.HTTPException(
             status_code=403,

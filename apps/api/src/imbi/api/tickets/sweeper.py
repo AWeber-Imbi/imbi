@@ -29,8 +29,8 @@ import dataclasses
 import itertools
 import logging
 
-from imbi.api.agent_tasks import log
-from imbi.api.agent_tasks import store as task_store
+from imbi.api.tickets import log
+from imbi.api.tickets import store as task_store
 from imbi.common import valkey
 
 LOGGER = logging.getLogger(__name__)
@@ -73,7 +73,7 @@ async def _try_sweep_lock() -> bool:
 
 
 async def _sweep_task(
-    store: task_store.TaskStore,
+    store: task_store.TicketStore,
     task: task_store.Row,
     events: dict[str, tuple[int, int]],
     reports: dict[str, int],
@@ -108,7 +108,7 @@ async def _sweep_task(
         result.archived += 1
 
 
-async def sweep_once(store: task_store.TaskStore) -> SweepResult:
+async def sweep_once(store: task_store.TicketStore) -> SweepResult:
     """Close stale sessions, republish what ClickHouse does not have,
     and archive complete tasks."""
     result = SweepResult()
@@ -161,7 +161,7 @@ async def sweep_once(store: task_store.TaskStore) -> SweepResult:
 
 
 async def run_sweeper(
-    store: task_store.TaskStore, *, stop: asyncio.Event
+    store: task_store.TicketStore, *, stop: asyncio.Event
 ) -> None:
     """Sweep every :data:`SWEEP_INTERVAL_SECONDS` until ``stop`` is set.
 

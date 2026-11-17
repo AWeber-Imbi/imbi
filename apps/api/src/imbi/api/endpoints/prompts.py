@@ -30,7 +30,7 @@ import pydantic
 import slugify
 
 from imbi.api import model_calls, secret_broker, workflows
-from imbi.api.agent_tasks import store as task_store
+from imbi.api.tickets import store as task_store
 from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import ai_models, ai_providers, projects
 from imbi.api.endpoints._helpers import (

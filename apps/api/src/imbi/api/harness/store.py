@@ -21,9 +21,9 @@ import psycopg_pool
 from psycopg import rows, sql
 from psycopg.types import json as pg_json
 
-from imbi.api.agent_tasks import log
-from imbi.api.agent_tasks import store as task_store
 from imbi.api.harness import egress, tokens
+from imbi.api.tickets import log
+from imbi.api.tickets import store as task_store
 
 type Pool = psycopg_pool.AsyncConnectionPool[
     psycopg.AsyncConnection[typing.Any]
@@ -62,14 +62,14 @@ _CLAIM_LOCK = 'harness.claim'
 #: ``max_concurrent_tasks``: open, in a pinned chain or with an open
 #: session.
 _BUSY: typing.LiteralString = """
-(SELECT count(*) FROM agent_runtime.tasks AS b
+(SELECT count(*) FROM tickets.tickets AS b
   WHERE b.agent_id = t.agent_id
     AND b.status <> 'closed'
     AND (EXISTS (SELECT 1 FROM harness.chains AS bc
                   WHERE bc.root_task_id = COALESCE(b.chain_id, b.id)
                     AND bc.state = ANY(%(pinned)s))
-         OR EXISTS (SELECT 1 FROM agent_runtime.sessions AS s
-                     WHERE s.task_id = b.id
+         OR EXISTS (SELECT 1 FROM tickets.sessions AS s
+                     WHERE s.ticket_id = b.id
                        AND s.closed_at IS NULL)))
 """
 
@@ -80,7 +80,7 @@ _BUSY: typing.LiteralString = """
 _CLAIMABLE: typing.LiteralString = ''.join(
     (
         """
-  FROM agent_runtime.tasks AS t
+  FROM tickets.tickets AS t
   LEFT JOIN harness.chains AS c
     ON c.root_task_id = COALESCE(t.chain_id, t.id)
  WHERE t.status = 'queued'
@@ -88,7 +88,8 @@ _CLAIMABLE: typing.LiteralString = ''.join(
    AND t.agent_id = ANY(%(agents)s)
    AND (cardinality(%(orgs)s::text[]) = 0
         OR t.organization_id = ANY(%(orgs)s))
-   AND ((c.root_task_id IS NULL AND t.origin_kind <> 'task')
+   AND ((c.root_task_id IS NULL
+        AND t.origin_kind NOT IN ('task', 'ticket'))
         OR c.state = 'queued')
    AND NOT EXISTS (
        SELECT 1 FROM jsonb_each_text(%(limits)s) AS l(agent_id, max)
@@ -128,9 +129,9 @@ _CHAIN_CLAIM_QUERY: typing.LiteralString = (
     'SELECT t.*, '  # noqa: S608
     + task_store.PROJECTS
     + """
-  FROM agent_runtime.tasks AS t
+  FROM tickets.tickets AS t
  WHERE t.chain_id = %(chain)s
-   AND t.origin_kind = 'task'
+   AND t.origin_kind IN ('task', 'ticket')
    AND t.status = 'queued'
    AND t.control = 'run'
    AND NOT EXISTS (SELECT 1 FROM harness.claims AS k
@@ -153,7 +154,7 @@ SELECT r.id, r.pool, r.instance, p.labels, r.state, r.chain_id,
   FROM harness.runners AS r
   JOIN harness.pools AS p ON p.name = r.pool
   LEFT JOIN harness.chains AS c ON c.root_task_id = r.chain_id
-  LEFT JOIN agent_runtime.tasks AS t ON t.id = r.chain_id
+  LEFT JOIN tickets.tickets AS t ON t.id = r.chain_id
  WHERE r.state <> 'offline'
    AND (%(pools)s::text[] IS NULL OR r.pool = ANY(%(pools)s))
  ORDER BY r.pool, r.registered_at, r.id
@@ -469,9 +470,11 @@ class HarnessStore:
             chain_id = task['chain_id'] or task['id']
             chain = await _fetch_one(
                 conn,
-                'INSERT INTO harness.chains (root_task_id, organization_id,'
+                # The new column; a trigger fills `root_task_id`, which
+                # the previous release reads (ADR 0028).
+                'INSERT INTO harness.chains (root_ticket_id, organization_id,'
                 ' runner_id) VALUES (%s, %s, %s)'
-                ' ON CONFLICT (root_task_id) DO UPDATE SET'
+                ' ON CONFLICT (root_ticket_id) DO UPDATE SET'
                 " runner_id = EXCLUDED.runner_id, state = 'running',"
                 ' claimed_at = NOW(), fenced_at = NULL,'
                 ' fencers_ok_at = NULL, fence_error = NULL,'
@@ -989,7 +992,7 @@ class HarnessStore:
     async def task_agent(self, task_id: uuid.UUID) -> Row | None:
         """Return the agent and pinned agent version of a task."""
         return await self._fetch_one(
-            'SELECT agent_id, agent_version FROM agent_runtime.tasks'
+            'SELECT agent_id, agent_version FROM tickets.tickets'
             ' WHERE id = %s',
             (task_id,),
         )
@@ -1170,7 +1173,7 @@ async def _record_claim(
     conn: Conn, task: Row, chain: Row, runner_id: uuid.UUID
 ) -> None:
     await conn.execute(
-        'INSERT INTO harness.claims (task_id, attempt, chain_id, runner_id)'
+        'INSERT INTO harness.claims (ticket_id, attempt, chain_id, runner_id)'
         ' VALUES (%s, %s, %s, %s)',
         (task['id'], chain['attempt'], chain['root_task_id'], runner_id),
     )
@@ -1234,7 +1237,7 @@ def _jsonable(row: Row) -> Row:
 async def _chain_open(conn: Conn, chain_id: uuid.UUID) -> bool:
     """Return whether a task of the chain is not closed."""
     cursor = await conn.execute(
-        'SELECT EXISTS (SELECT 1 FROM agent_runtime.tasks'
+        'SELECT EXISTS (SELECT 1 FROM tickets.tickets'
         ' WHERE (chain_id = %s OR (chain_id IS NULL AND id = %s))'
         " AND status <> 'closed')",
         (chain_id, chain_id),

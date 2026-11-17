@@ -13,11 +13,11 @@ from fastapi import testclient
 
 from apps.api.tests import support
 from imbi.api import (
-    agent_tasks,
     harness,
     model_calls,
     models,
     secret_broker,
+    tickets,
     workflows,
 )
 from imbi.common import graph, relational
@@ -623,14 +623,14 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
 
         self.org = f'orgdel-{uuid.uuid4().hex[:10]}'
         await graph.initialize()
-        await agent_tasks.initialize()
+        await tickets.initialize()
         await workflows.initialize()
         await secret_broker.initialize()
         await harness.initialize()
         await model_calls.initialize()
         self.graph = graph.Graph()
         await self.graph.open()
-        self.pool = agent_tasks.create_pool()
+        self.pool = tickets.create_pool()
         await self.pool.open()
         self.addAsyncCleanup(self._cleanup)
         await self.graph.execute(
@@ -673,10 +673,10 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
         )
         async with self.pool.connection() as conn:
             for table in (
-                'agent_runtime.task_dependencies',
-                'agent_runtime.task_projects',
-                'agent_runtime.tasks',
-                'agent_runtime.task_id_sequences',
+                'tickets.ticket_dependencies',
+                'tickets.ticket_projects',
+                'tickets.tickets',
+                'tickets.ticket_id_sequences',
                 'workflow_runtime.runs',
                 'workflows.trigger_bindings',
                 'workflows.workflows',
@@ -704,7 +704,7 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
     async def _insert_task(self, conn: typing.Any, short_id: str) -> uuid.UUID:
         task_id = uuid.uuid4()
         await conn.execute(
-            'INSERT INTO agent_runtime.tasks (id, organization_id, short_id,'
+            'INSERT INTO tickets.tickets (id, organization_id, short_id,'
             ' agent_id, agent_version, service_account_id, title,'
             ' description, origin_kind, origin_id, origin, owner)'
             " VALUES (%s, %s, %s, 'a', 1, 'sa', 't', 'd', 'human', 'u',"
@@ -718,25 +718,26 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
             first = await self._insert_task(conn, 'T-1')
             second = await self._insert_task(conn, 'T-2')
             await conn.execute(
-                'INSERT INTO agent_runtime.task_dependencies (organization_id,'
-                ' dependent_task_id, prerequisite_task_id, created_by_kind,'
-                " created_by) VALUES (%s, %s, %s, 'human', 'u')",
+                'INSERT INTO tickets.ticket_dependencies (organization_id,'
+                ' dependent_ticket_id, prerequisite_ticket_id,'
+                " created_by_kind, created_by) VALUES (%s, %s, %s, 'human',"
+                " 'u')",
                 (self.org, second, first),
             )
             await conn.execute(
-                'INSERT INTO agent_runtime.task_projects (organization_id,'
-                ' task_id, project_id, project_slug, added_by_kind,'
+                'INSERT INTO tickets.ticket_projects (organization_id,'
+                ' ticket_id, project_id, project_slug, added_by_kind,'
                 " added_by) VALUES (%s, %s, 'p', 'p', 'human', 'u')",
                 (self.org, first),
             )
             await conn.execute(
-                'INSERT INTO agent_runtime.events (task_id, seq, event_id,'
+                'INSERT INTO tickets.events (ticket_id, seq, event_id,'
                 " type, actor_kind, channel) VALUES (%s, 1, %s, 'x', 'human',"
                 " 'c')",
                 (first, uuid.uuid4()),
             )
             await conn.execute(
-                'INSERT INTO agent_runtime.task_id_sequences'
+                'INSERT INTO tickets.ticket_id_sequences'
                 ' (organization_id, last_value) VALUES (%s, 2)',
                 (self.org,),
             )
@@ -752,16 +753,16 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
 
         self.assertEqual(response.status_code, 204, response.text)
         for table in (
-            'agent_runtime.tasks',
-            'agent_runtime.task_dependencies',
-            'agent_runtime.task_projects',
-            'agent_runtime.task_id_sequences',
+            'tickets.tickets',
+            'tickets.ticket_dependencies',
+            'tickets.ticket_projects',
+            'tickets.ticket_id_sequences',
             'workflow_runtime.runs',
         ):
             self.assertEqual(await self._count(table), 0, table)
         async with self.pool.connection() as conn:
             cursor = await conn.execute(
-                'SELECT count(*) FROM agent_runtime.events WHERE task_id = %s',
+                'SELECT count(*) FROM tickets.events WHERE ticket_id = %s',
                 (first,),
             )
             self.assertEqual(await cursor.fetchone(), (0,))
@@ -843,7 +844,7 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
             ' bindings (1), workflows (1). Delete these first.',
         )
         # Nothing was deleted.
-        self.assertEqual(await self._count('agent_runtime.tasks'), 1)
+        self.assertEqual(await self._count('tickets.tickets'), 1)
 
     async def _insert_resolution(
         self, conn: typing.Any, state: str, revocation_state: str
@@ -1002,7 +1003,7 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
         await self._assert_waits_for_delete(
             lambda: store.activate(self.org, 'w', 1, 'u', [])
         )
-        task = agent_tasks.NewTask(
+        task = tickets.NewTask(
             organization_id=self.org,
             agent_id='a',
             agent_version=1,
@@ -1018,8 +1019,8 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
             budget=None,
         )
         await self._assert_waits_for_delete(
-            lambda: agent_tasks.TaskStore(self.pool).create(
-                task, agent_tasks.Actor('human', 'u', 'web'), {}
+            lambda: tickets.TicketStore(self.pool).create(
+                task, tickets.Actor('human', 'u', 'web'), {}
             )
         )
         secrets = secret_broker.store.SecretStore(self.pool)

@@ -63,6 +63,7 @@ from fastmcp.server.providers.openapi import MCPType, RouteMap
 from mcp import types as mcp_types
 
 from imbi.common import access_log, cache
+from imbi.common.auth import permissions as auth_permissions
 
 if typing.TYPE_CHECKING:
     import collections.abc
@@ -382,7 +383,7 @@ class PermissionFilterMiddleware(fastmcp.server.middleware.Middleware):
         """
         if self.ADMIN_PERMISSION in required:
             return False
-        return set(required).issubset(granted)
+        return all(auth_permissions.holds(name, granted) for name in required)
 
     async def on_list_tools(
         self,

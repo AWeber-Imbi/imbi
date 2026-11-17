@@ -42,7 +42,7 @@ Use 2.41.0 or later for a new install.
    operations.
 
 imbi-api applies the PostgreSQL graph schema and the relational schemas
-(`agent_runtime`, `workflows`, `workflow_runtime`, `secrets`, `harness`,
+(`tickets`, `workflows`, `workflow_runtime`, `secrets`, `harness`,
 `ai_runtime`) at startup. You do not run a command for them.
 
 ### Where to run the commands
@@ -73,6 +73,41 @@ To restart iggy-connect:
 
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
+
+## Unreleased: agent tasks become tickets (ADR 0028, release A)
+
+Set the version of this section when the release is cut.
+
+1. **Before you deploy**, deploy the release before this one everywhere
+   and let its rollout finish. That release skips a relational table
+   that is a view. Without it, an imbi-api pod of an older release that
+   restarts during this rollout cannot start.
+2. Deploy imbi-api first, before the harness runners, imbi-gateway,
+   imbi-slackbot, imbi-mcp, and imbi-workflows. At its first start,
+   imbi-api moves the `agent_runtime` tables to the new `tickets` schema
+   with new names, in one transaction, and leaves views under the old
+   names for the pods of the previous release. It also adds
+   `root_ticket_id` to `harness.chains` and `ticket_id` to
+   `harness.claims`, with a trigger that keeps them equal to the old
+   columns. You do not run a command for this. The move holds an
+   exclusive lock on the task tables while it runs; it moves no rows.
+3. Run `imbi-api setup-permissions`. It adds the `ticket:read`,
+   `ticket:create`, `ticket:manage`, `ticket:resolve`, and
+   `ticket:delete` permissions and gives them to each default role that
+   has the `agent_task` permission with the same action. Every check
+   accepts either name, so a custom role with only `agent_task`
+   permissions keeps working.
+4. Run `imbi-api setup-clickhouse` to create the `ticket_events` table.
+   Then restart iggy-connect (see
+   [Where to run the commands](#where-to-run-the-commands)): the
+   `ticket_events` stream (topic `tickets`) is new, and the sink reads
+   the stream list only at startup. Ticket events now go to
+   `ticket_events`. Imbi reads `agent_task_events` and `ticket_events`
+   together until a later release copies the old table.
+5. The API serves tickets at `/organizations/{org_slug}/tickets` and
+   `/harness/tickets`. The `/agent-tasks` and `/harness/tasks` paths
+   still work, with the same operation ids, and are marked deprecated. A
+   later release removes them.
 
 ## 2.53.0
 

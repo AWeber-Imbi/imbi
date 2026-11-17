@@ -12,7 +12,7 @@ import os
 import unittest
 import uuid
 
-from imbi.api.agent_tasks import log
+from imbi.api.tickets import log
 from imbi.common import clickhouse, iggy
 from imbi.common.clickhouse import client as clickhouse_client
 from imbi.common.iggy import client as iggy_client
@@ -77,13 +77,13 @@ class LargeTaskEventTestCase(unittest.IsolatedAsyncioTestCase):
         }
         row = log.event_row(task, event)
         self.assertEqual(len(row['payload']), MIB)
-        await iggy.publish_rows(log.EVENTS_STREAM, log.TOPIC, [row])
+        await iggy.publish_rows(log.EVENTS_STREAM, log.EVENTS_TOPIC, [row])
 
         deadline = asyncio.get_running_loop().time() + TIMEOUT
         while True:
             rows = await clickhouse.query(
-                'SELECT length(payload) AS size FROM agent_task_events '
-                'WHERE task_id = %(task_id)s',
+                'SELECT length(payload) AS size FROM ticket_events '
+                'WHERE ticket_id = %(task_id)s',
                 {'task_id': str(task_id)},
             )
             if rows:

@@ -15,12 +15,12 @@ import httpx
 from apps.api.tests.endpoints import test_harness
 from apps.api.tests.secret_support import MATERIAL
 from imbi.api import secret_broker
-from imbi.api.agent_tasks import store as task_store
 from imbi.api.auth import permissions
 from imbi.api.endpoints import harness as harness_api
 from imbi.api.harness import auth as harness_auth
 from imbi.api.harness import sweeper, tokens
 from imbi.api.secret_broker import broker, providers, store
+from imbi.api.tickets import store as task_store
 
 REFERENCE = 'secret://production/github/token'
 

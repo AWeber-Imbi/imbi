@@ -11,7 +11,7 @@ It serves four things on one port:
   binding for the setup purposes, and the static model key. A lease
   sweep marks a runner offline, revokes its resolutions, and requeues
   its chain after a grace period.
-- The ADR 0020 task routes of ``imbi.api.endpoints.agent_task_harness``
+- The ADR 0020 task routes of ``imbi.api.endpoints.ticket_harness``
   that the runner calls with the agent token: sessions, heartbeat,
   events (with the 1 MiB continuation rules), usage (one price per
   token, so a small budget runs out), and outcome.
@@ -1138,7 +1138,7 @@ def _close(task: Row, outcome: str, reason: str | None) -> None:
 
 
 def _check_event(event: Row) -> None:
-    """The checks of ``agent_task_harness.HarnessEvent`` and the size
+    """The checks of ``ticket_harness.HarnessEvent`` and the size
     limits of ``append_agent_task_events``."""
     kind = event.get('type')
     payload = event.get('payload') or {}

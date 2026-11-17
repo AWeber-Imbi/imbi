@@ -259,6 +259,11 @@ it.
 | `agent_task:manage` | Pause, resume, cancel, and reassign agent tasks | yes | yes |  |  |  |  |  |  |  |
 | `agent_task:resolve` | Answer feedback requests and resolve approvals of agent tasks | yes | yes |  |  |  |  |  |  |  |
 | `agent_task:delete` | Delete closed agent tasks | yes |  |  |  |  |  |  |  |  |
+| `ticket:read` | View tickets and their events | yes | yes | yes | yes | yes |  |  |  |  |
+| `ticket:create` | Create tickets | yes | yes |  |  | yes | yes |  |  |  |
+| `ticket:manage` | Pause, resume, cancel, and reassign tickets | yes | yes |  |  |  |  |  |  |  |
+| `ticket:resolve` | Answer feedback requests and resolve approvals of tickets | yes | yes |  |  |  |  |  |  |  |
+| `ticket:delete` | Delete closed tickets | yes |  |  |  |  |  |  |  |  |
 | `workflow:read` | View workflows, their versions, and their runs | yes | yes | yes | yes |  |  |  |  |  |
 | `workflow:create` | Create workflows | yes | yes |  |  |  |  |  |  |  |
 | `workflow:write` | Edit, activate, and pause workflows | yes | yes |  |  |  |  |  |  |  |

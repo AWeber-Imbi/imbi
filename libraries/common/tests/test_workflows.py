@@ -408,6 +408,7 @@ class RegistryTestCase(unittest.TestCase):
                 'schedule',
                 'webhook',
                 'task_completed',
+                'ticket_closed',
                 'wait',
                 'model_decision',
                 'script',

@@ -18,7 +18,7 @@ import httpx
 from slack_sdk import errors as slack_errors
 
 from apps.api.tests import support
-from imbi.api import agent_tasks, email, models, workflows
+from imbi.api import email, models, tickets, workflows
 from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import project_deployments, workflow_runs
 from imbi.common import graph
@@ -1186,10 +1186,10 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
             },
             ['id'],
         )
-        await agent_tasks.initialize()
-        self.task_pool = agent_tasks.create_pool()
+        await tickets.initialize()
+        self.task_pool = tickets.create_pool()
         await self.task_pool.open()
-        self.tasks = agent_tasks.TaskStore(self.task_pool)
+        self.tasks = tickets.TicketStore(self.task_pool)
         self.addAsyncCleanup(self._cleanup_tasks)
         await self._agent_run({'agent_id': self.agent, 'instruction': 'Go.'})
         engine = permissions.AuthContext(
@@ -1202,7 +1202,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
         self.user_auth = overrides[permissions.get_current_user]
         overrides[permissions.get_current_user] = lambda: engine
         overrides[organizations.member_org_id] = lambda: self.org
-        overrides[agent_tasks._inject_store] = lambda: self.tasks
+        overrides[tickets._inject_store] = lambda: self.tasks
 
     async def _agent_run(
         self,
@@ -1292,16 +1292,16 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
         )
         async with self.task_pool.connection() as conn:
             await conn.execute(
-                'DELETE FROM agent_runtime.task_projects'
+                'DELETE FROM tickets.ticket_projects'
                 ' WHERE organization_id = %s',
                 (self.org,),
             )
             await conn.execute(
-                'DELETE FROM agent_runtime.tasks WHERE organization_id = %s',
+                'DELETE FROM tickets.tickets WHERE organization_id = %s',
                 (self.org,),
             )
             await conn.execute(
-                'DELETE FROM agent_runtime.task_id_sequences'
+                'DELETE FROM tickets.ticket_id_sequences'
                 ' WHERE organization_id = %s',
                 (self.org,),
             )
@@ -1310,7 +1310,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
     async def _count(self) -> int:
         async with self.task_pool.connection() as conn:
             cur = await conn.execute(
-                'SELECT COUNT(*) FROM agent_runtime.tasks'
+                'SELECT COUNT(*) FROM tickets.tickets'
                 ' WHERE organization_id = %s',
                 (self.org,),
             )
@@ -1384,7 +1384,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
             task_id,
             'done_acted',
             None,
-            agent_tasks.Actor('agent', self.agent, 'harness'),
+            tickets.Actor('agent', self.agent, 'harness'),
             {'n': 3},
         )
         response = await self.client.post(self.step_url)
@@ -1545,7 +1545,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
     async def _plant(self, origin: dict[str, typing.Any], agent: str) -> str:
         """Make a task with the step's origin and key, not by the step."""
         task, _ = await self.tasks.create(
-            agent_tasks.NewTask(
+            tickets.NewTask(
                 organization_id=self.org,
                 agent_id=agent,
                 agent_version=1,
@@ -1560,7 +1560,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
                 owner=self.email,
                 budget=None,
             ),
-            agent_tasks.Actor('human', self.email, 'web'),
+            tickets.Actor('human', self.email, 'web'),
             {},
         )
         return task['short_id']

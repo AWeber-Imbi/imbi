@@ -354,7 +354,7 @@ class WorkflowStore:
             ' AND NOT (r.status = ANY(%s))))'
             ' AND EXISTS (SELECT 1'
             " FROM jsonb_array_elements(v.graph->'nodes') AS n"
-            " WHERE n->>'type' IN ('agent', 'task_completed')"
+            " WHERE n->>'type' IN ('agent', 'task_completed', 'ticket_closed')"
             " AND n->'params'->>'agent_id' = %s)",
             (organization_id, list(runtime.CLOSED), agent_id),
         )

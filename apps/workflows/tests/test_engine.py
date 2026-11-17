@@ -21,7 +21,7 @@ import orjson
 import psycopg
 from psycopg import rows
 
-from imbi.api import agent_tasks, models, workflows
+from imbi.api import models, tickets, workflows
 from imbi.api.auth import permissions
 from imbi.api.endpoints import workflow_runs
 from imbi.api.workflows import sweeper
@@ -1483,10 +1483,10 @@ class AgentStepTestCase(EngineTestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
         self.config.agent_poll_seconds = 1
-        await agent_tasks.initialize()
-        self.task_pool = agent_tasks.create_pool()
+        await tickets.initialize()
+        self.task_pool = tickets.create_pool()
         await self.task_pool.open()
-        self.tasks = agent_tasks.TaskStore(self.task_pool)
+        self.tasks = tickets.TicketStore(self.task_pool)
         self.addAsyncCleanup(self._cleanup_tasks)
         self.agent_id = f'agent-{uuid.uuid4().hex[:8]}'
         await self.graph.execute(
@@ -1527,11 +1527,11 @@ class AgentStepTestCase(EngineTestCase):
         )
         async with self.task_pool.connection() as conn:
             await conn.execute(
-                'DELETE FROM agent_runtime.tasks WHERE organization_id = %s',
+                'DELETE FROM tickets.tickets WHERE organization_id = %s',
                 (self.org,),
             )
             await conn.execute(
-                'DELETE FROM agent_runtime.task_id_sequences'
+                'DELETE FROM tickets.ticket_id_sequences'
                 ' WHERE organization_id = %s',
                 (self.org,),
             )
@@ -1614,13 +1614,13 @@ class AgentStepTestCase(EngineTestCase):
             conn.cursor(row_factory=rows.dict_row) as cur,
         ):
             await cur.execute(
-                'SELECT * FROM agent_runtime.tasks WHERE organization_id = %s',
+                'SELECT * FROM tickets.tickets WHERE organization_id = %s',
                 (self.org,),
             )
             return await cur.fetchall()
 
-    def _agent(self) -> agent_tasks.Actor:
-        return agent_tasks.Actor('agent', self.agent_id, 'harness')
+    def _agent(self) -> tickets.Actor:
+        return tickets.Actor('agent', self.agent_id, 'harness')
 
     async def test_task_done_takes_succeeded(self) -> None:
         run_id = await self._start(
@@ -1678,7 +1678,7 @@ class AgentStepTestCase(EngineTestCase):
         self.assertEqual(len(await self._org_tasks()), 1)
 
     async def _structured_step(
-        self, outcome: agent_tasks.Outcome, reason: str | None
+        self, outcome: tickets.Outcome, reason: str | None
     ) -> dict[str, typing.Any]:
         """Return the agent step of a task that closes with ``outcome``
         and structured output."""

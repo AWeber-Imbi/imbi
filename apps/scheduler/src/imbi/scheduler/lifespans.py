@@ -101,7 +101,7 @@ def _inject_engine(
 
 #: The running engine, for the routes that fire or cancel a run. Declared here
 #: rather than in the endpoints package so the dependency lives beside the hook
-#: that opens it, matching :data:`imbi.scheduler.store.TaskStore`.
+#: that opens it, matching :data:`imbi.scheduler.store.TicketStore`.
 EngineDependency = typing.Annotated[
     engine_module.Engine, fastapi.Depends(_inject_engine)
 ]

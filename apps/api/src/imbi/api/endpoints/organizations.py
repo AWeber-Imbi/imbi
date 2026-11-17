@@ -22,8 +22,6 @@ from .agent_platform import (
     agent_marketplaces_router,
     agent_platform_config_router,
 )
-from .agent_task_harness import agent_task_harness_router
-from .agent_tasks import agent_tasks_router
 from .agent_usage import agent_usage_router
 from .agents import agents_router
 from .comments import comments_router
@@ -83,6 +81,8 @@ from .secret_broker import (
 )
 from .tags import tags_router
 from .teams import teams_router
+from .ticket_harness import ticket_harness_router
+from .tickets import ticket_operation_id, tickets_router
 from .webhooks import project_services_router, webhooks_router
 from .workflow_runs import workflow_attention_router, workflow_runs_router
 from .workflows import step_types_router, workflows_router
@@ -206,9 +206,20 @@ organizations_router.include_router(
     agents_router,
     prefix='/{org_slug}/agents',
 )
+# ADR 0028: tickets at /tickets, with ticket operation ids, and at the
+# old /agent-tasks path with the old operation ids, which imbi-mcp turns
+# into tool names that clients call. Release B removes /agent-tasks.
+# The agent token rules (imbi.api.auth.agent_api) key a route by its
+# endpoint, so both paths share the rule of the path mounted last.
 organizations_router.include_router(
-    agent_tasks_router,
+    tickets_router,
     prefix='/{org_slug}/agent-tasks',
+    deprecated=True,
+)
+organizations_router.include_router(
+    tickets_router,
+    prefix='/{org_slug}/tickets',
+    generate_unique_id_function=ticket_operation_id,
 )
 organizations_router.include_router(
     agent_platform_config_router,
@@ -220,11 +231,18 @@ organizations_router.include_router(
 )
 # The harness routes take the organization-membership dependency of the
 # task routes, in the variant that also accepts an agent token (ADR
-# 0022), so no route under /agent-tasks can skip it.
+# 0022), so no route under /tickets or /agent-tasks can skip it.
 organizations_router.include_router(
-    agent_task_harness_router,
+    ticket_harness_router,
     prefix='/{org_slug}/agent-tasks',
     dependencies=[fastapi.Depends(harness_auth.harness_member_org_id)],
+    deprecated=True,
+)
+organizations_router.include_router(
+    ticket_harness_router,
+    prefix='/{org_slug}/tickets',
+    dependencies=[fastapi.Depends(harness_auth.harness_member_org_id)],
+    generate_unique_id_function=ticket_operation_id,
 )
 organizations_router.include_router(
     agent_usage_router,
@@ -754,10 +772,10 @@ _ORG_BLOCKING_ROWS: dict[str, tuple[tuple[str, str], typing.LiteralString]] = {
 # tables of tasks and runs cascade, and so do the nonces of
 # resolutions.
 _ORG_OWNED_TABLES: tuple[tuple[str, str], ...] = (
-    ('agent_runtime', 'task_dependencies'),
-    ('agent_runtime', 'task_projects'),
-    ('agent_runtime', 'tasks'),
-    ('agent_runtime', 'task_id_sequences'),
+    ('tickets', 'ticket_dependencies'),
+    ('tickets', 'ticket_projects'),
+    ('tickets', 'tickets'),
+    ('tickets', 'ticket_id_sequences'),
     ('workflow_runtime', 'runs'),
     ('ai_runtime', 'ai_model_calls'),
     ('secrets', 'grants'),
