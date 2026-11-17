@@ -1004,6 +1004,30 @@ describe('TrajectoryTab inspector', () => {
     expect(panel).not.toHaveTextContent('9007199254740992')
   })
 
+  it('shows JSON with other spellings of exact numbers as a tree', async () => {
+    renderTab('closed', [
+      ...LOG,
+      event(12, 'tool.called', {
+        arguments: {},
+        call_id: 'c4',
+        duration_ms: 5,
+        result: '{"count": 1e2, "ratio": 1.0, "small": 0.50}',
+        tool: 'List',
+      }),
+    ])
+    await userEvent.click(
+      rows().find((r) => r.getAttribute('data-record') === 'call:c4')!,
+    )
+    await userEvent.click(
+      within(inspector()).getByRole('tab', { name: 'Result' }),
+    )
+    const panel = within(inspector()).getByRole('tabpanel')
+    expect(panel.querySelector('pre')).toBeNull()
+    expect(
+      within(panel).getByRole('button', { name: 'Show original text' }),
+    ).toBeInTheDocument()
+  })
+
   it('keeps a plain text result as text', async () => {
     renderTab()
     await userEvent.click(rows()[3])
