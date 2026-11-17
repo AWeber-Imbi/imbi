@@ -2,17 +2,20 @@
 
 A maintenance run distributes work across every API instance through a
 Valkey SET of pending project ids: :func:`start_run` seeds the set, each
-instance's worker :func:`checkout`\\ s (``SPOP``) ids and records
-per-project outcomes on a shared run hash, and :func:`maybe_finalize`
-completes the run once the set is drained and nothing is in flight.
-There is no delivery guarantee: a hard-killed instance loses the id it
-had checked out and the run surfaces as ``abandoned`` once the lock's
-TTL lapses -- acceptable for an idempotent admin tool.
+instance's worker :func:`checkout`\\ s ids onto a leased processing
+hash and records per-project outcomes on a shared run hash, and
+:func:`maybe_finalize` completes the run once both are empty. An id
+whose lease is older than :data:`LEASE_SECONDS` -- its instance was
+hard-killed -- goes back on the pending set through :func:`reclaim`, so
+the cost of a lost instance is one retry. Items are idempotent, so a
+retry of a half-finished item is safe.
 
 Keys (all under ``imbi:maintenance:{slug}:``):
 
 - ``lock`` -- run id via ``SET NX EX``; existence means "running".
 - ``pending`` -- SET of project ids awaiting execution.
+- ``processing`` -- HASH of ``project_id -> claimed_at`` (epoch seconds)
+  for checked-out ids; its size is the run's ``in_flight``.
 - ``run`` -- HASH of run metadata and outcome counters.
 - ``failures`` -- HASH of ``project_id -> error`` for failed items.
 """
@@ -22,6 +25,7 @@ from __future__ import annotations
 import datetime
 import inspect
 import logging
+import time
 import typing
 import uuid
 from collections import abc
@@ -45,6 +49,43 @@ MAX_ERROR_LEN = 500
 #: Stop recording per-project failure detail past this many entries;
 #: the ``failed`` counter keeps counting.
 MAX_FAILURE_DETAILS = 500
+#: A checked-out id older than this goes back on the pending set. Longer
+#: than any single item should take; an item that runs past it can run
+#: twice, which idempotency makes safe.
+LEASE_SECONDS = 900
+
+# Lua keeps each move between keys atomic, so a hard kill between two
+# commands cannot leave an id in neither place.
+_CHECKOUT = """
+local id = redis.call('SPOP', KEYS[1])
+if not id then return false end
+redis.call('HSET', KEYS[2], id, ARGV[1])
+redis.call('EXPIRE', KEYS[2], ARGV[2])
+return id
+"""
+# Counts the outcome only while the lease is still held; once reclaim
+# has handed the id back, the retry's outcome is the one that counts.
+_RECORD_OUTCOME = """
+if redis.call('HDEL', KEYS[2], ARGV[1]) == 0 then return 0 end
+redis.call('HINCRBY', KEYS[1], ARGV[2], 1)
+if ARGV[3] ~= '' and redis.call('HLEN', KEYS[3]) < tonumber(ARGV[4]) then
+  redis.call('HSET', KEYS[3], ARGV[1], ARGV[3])
+end
+return 1
+"""
+_RECLAIM = """
+local entries = redis.call('HGETALL', KEYS[1])
+local count = 0
+for i = 1, #entries, 2 do
+  if tonumber(entries[i + 1]) < tonumber(ARGV[1]) then
+    redis.call('HDEL', KEYS[1], entries[i])
+    redis.call('SADD', KEYS[2], entries[i])
+    count = count + 1
+  end
+end
+if count > 0 then redis.call('EXPIRE', KEYS[2], ARGV[2]) end
+return count
+"""
 
 RunState = typing.Literal[
     'idle', 'running', 'completed', 'cancelled', 'abandoned'
@@ -127,6 +168,7 @@ async def start_run(
     async with client.pipeline(transaction=False) as pipe:
         pipe.delete(  # pyright: ignore[reportUnknownMemberType]
             _key(slug, 'pending'),
+            _key(slug, 'processing'),
             _key(slug, 'failures'),
             _key(slug, 'run'),
         )
@@ -142,7 +184,6 @@ async def start_run(
                 'started_at': started_at,
                 'started_by': started_by,
                 'state': 'running',
-                'in_flight': 0,
                 'succeeded': 0,
                 'failed': 0,
                 'skipped': 0,
@@ -193,16 +234,18 @@ async def read_run_meta(client: valkey.Valkey, slug: str) -> tuple[str, str]:
 
 
 async def checkout(client: valkey.Valkey, slug: str) -> str | None:
-    """Pop one pending project id, marking it in flight."""
+    """Move one pending project id onto the processing hash."""
     popped = await _resolve(
-        client.spop(  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
-            _key(slug, 'pending')
+        client.eval(  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
+            _CHECKOUT,
+            2,
+            _key(slug, 'pending'),
+            _key(slug, 'processing'),
+            str(time.time()),
+            str(PENDING_TTL_SECONDS),
         )
     )
-    if popped is None:
-        return None
-    await _resolve(client.hincrby(_key(slug, 'run'), 'in_flight', 1))
-    return _decode(popped)
+    return None if popped is None else _decode(popped)
 
 
 async def record_outcome(
@@ -211,36 +254,58 @@ async def record_outcome(
     project_id: str,
     outcome: Outcome,
     error: str = '',
-) -> None:
-    """Record a checked-out project's outcome on the run hash."""
-    record_detail = False
-    if outcome == 'failed' and error:
-        details = await _resolve(client.hlen(_key(slug, 'failures')))
-        record_detail = _opt_int(details) < MAX_FAILURE_DETAILS
-    async with client.pipeline(transaction=False) as pipe:
-        pipe.hincrby(  # pyright: ignore[reportUnknownMemberType]
-            _key(slug, 'run'), 'in_flight', -1
+) -> bool:
+    """Record a checked-out project's outcome on the run hash.
+
+    Returns ``False`` when the lease was already reclaimed: the outcome
+    is not counted, because the retry records its own.
+    """
+    detail = error[:MAX_ERROR_LEN] if outcome == 'failed' else ''
+    recorded = await _resolve(
+        client.eval(  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
+            _RECORD_OUTCOME,
+            3,
+            _key(slug, 'run'),
+            _key(slug, 'processing'),
+            _key(slug, 'failures'),
+            project_id,
+            outcome,
+            detail,
+            str(MAX_FAILURE_DETAILS),
         )
-        pipe.hincrby(  # pyright: ignore[reportUnknownMemberType]
-            _key(slug, 'run'), outcome, 1
-        )
-        if record_detail:
-            pipe.hset(  # pyright: ignore[reportUnknownMemberType]
-                _key(slug, 'failures'), project_id, error[:MAX_ERROR_LEN]
-            )
-        await pipe.execute()  # pyright: ignore[reportUnknownMemberType]
+    )
+    return bool(_opt_int(recorded))
 
 
 async def requeue(client: valkey.Valkey, slug: str, project_id: str) -> None:
     """Return a checked-out id to the pending set (rate limit/shutdown)."""
-    async with client.pipeline(transaction=False) as pipe:
+    async with client.pipeline(transaction=True) as pipe:
         pipe.sadd(  # pyright: ignore[reportUnknownMemberType]
             _key(slug, 'pending'), project_id
         )
-        pipe.hincrby(  # pyright: ignore[reportUnknownMemberType]
-            _key(slug, 'run'), 'in_flight', -1
+        pipe.hdel(  # pyright: ignore[reportUnknownMemberType]
+            _key(slug, 'processing'), project_id
         )
         await pipe.execute()  # pyright: ignore[reportUnknownMemberType]
+
+
+async def reclaim(client: valkey.Valkey, slug: str) -> int:
+    """Return ids whose lease expired to the pending set.
+
+    An expired lease means the instance that held the id died without
+    recording an outcome or requeueing it.
+    """
+    reclaimed = await _resolve(
+        client.eval(  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
+            _RECLAIM,
+            2,
+            _key(slug, 'processing'),
+            _key(slug, 'pending'),
+            str(time.time() - LEASE_SECONDS),
+            str(PENDING_TTL_SECONDS),
+        )
+    )
+    return _opt_int(reclaimed)
 
 
 async def maybe_finalize(client: valkey.Valkey, slug: str) -> bool:
@@ -254,8 +319,8 @@ async def maybe_finalize(client: valkey.Valkey, slug: str) -> bool:
         pipe.scard(  # pyright: ignore[reportUnknownMemberType]
             _key(slug, 'pending')
         )
-        pipe.hget(  # pyright: ignore[reportUnknownMemberType]
-            _key(slug, 'run'), 'in_flight'
+        pipe.hlen(  # pyright: ignore[reportUnknownMemberType]
+            _key(slug, 'processing')
         )
         pipe.hget(  # pyright: ignore[reportUnknownMemberType]
             _key(slug, 'run'), 'state'
@@ -305,6 +370,11 @@ async def _finish(
         )
         pipe.expire(  # pyright: ignore[reportUnknownMemberType]
             _key(slug, 'failures'), RESULT_TTL_SECONDS
+        )
+        # Kept, not deleted: a cancelled run's in-flight items still
+        # record their outcomes against it.
+        pipe.expire(  # pyright: ignore[reportUnknownMemberType]
+            _key(slug, 'processing'), RESULT_TTL_SECONDS
         )
         results = typing.cast(
             'list[object]',
@@ -374,11 +444,14 @@ async def read_status(client: valkey.Valkey, slug: str) -> RunStatus:
         pipe.scard(  # pyright: ignore[reportUnknownMemberType]
             _key(slug, 'pending')
         )
+        pipe.hlen(  # pyright: ignore[reportUnknownMemberType]
+            _key(slug, 'processing')
+        )
         results = typing.cast(
             'list[object]',
             await pipe.execute(),  # pyright: ignore[reportUnknownMemberType]
         )
-    locked, raw_run, pending = results
+    locked, raw_run, pending, processing = results
     run = {
         _decode(k): v
         for k, v in typing.cast('dict[object, object]', raw_run).items()
@@ -398,7 +471,7 @@ async def read_status(client: valkey.Valkey, slug: str) -> RunStatus:
         run_id=_decode(run_id) if run_id is not None else None,
         total=_opt_int(run.get('total')),
         remaining=int(typing.cast('int', pending)),
-        in_flight=_opt_int(run.get('in_flight')),
+        in_flight=_opt_int(processing),
         succeeded=_opt_int(run.get('succeeded')),
         failed=_opt_int(run.get('failed')),
         skipped=_opt_int(run.get('skipped')),

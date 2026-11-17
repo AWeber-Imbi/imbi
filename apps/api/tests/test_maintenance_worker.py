@@ -42,6 +42,7 @@ class TickOperationTests(unittest.IsolatedAsyncioTestCase):
             'checkout',
             'record_outcome',
             'requeue',
+            'reclaim',
             'maybe_finalize',
         ):
             patcher = mock.patch.object(worker.state, name, mock.AsyncMock())
@@ -49,6 +50,8 @@ class TickOperationTests(unittest.IsolatedAsyncioTestCase):
             self.addCleanup(patcher.stop)
         self.state['has_active_run'].return_value = True
         self.state['checkout'].return_value = 'p1'
+        self.state['record_outcome'].return_value = True
+        self.state['reclaim'].return_value = 0
         self.state['maybe_finalize'].return_value = False
         run_meta = mock.patch.object(
             worker.state,
@@ -125,6 +128,23 @@ class TickOperationTests(unittest.IsolatedAsyncioTestCase):
         result = await worker._tick_operation(self.client, self.db, operation)
         self.assertFalse(result)
         self.state['maybe_finalize'].assert_awaited_once()
+
+    async def test_drained_reclaims_expired_leases_before_finalizing(
+        self,
+    ) -> None:
+        self.state['checkout'].return_value = None
+        self.state['reclaim'].return_value = 2
+        operation = _operation(mock.AsyncMock())
+        result = await worker._tick_operation(self.client, self.db, operation)
+        self.assertTrue(result)
+        self.state['maybe_finalize'].assert_not_awaited()
+
+    async def test_lost_lease_is_deferred_not_claimed(self) -> None:
+        self.state['record_outcome'].return_value = False
+        operation = _operation(mock.AsyncMock(return_value='succeeded'))
+        await worker._tick_operation(self.client, self.db, operation)
+        rows = self.written_rows()
+        self.assertEqual('deferred', rows[0].disposition)
 
     async def test_item_failed_records_message(self) -> None:
         operation = _operation(
