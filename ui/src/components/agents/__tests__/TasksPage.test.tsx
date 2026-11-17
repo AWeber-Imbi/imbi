@@ -5,15 +5,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '@/api/client'
 import * as endpoints from '@/api/endpoints'
 import { act, fireEvent, render, screen, waitFor, within } from '@/test/utils'
+import type { AgentTaskListItem } from '@/types'
 
 import { AgentsArea } from '../AgentsArea'
+import { groupOf, groupTasks } from '../taskEvents'
 import { EVENT_POLL_MS } from '../taskQueries'
 import { agent, catalog, promptVersion } from './fixtures'
 import { event, task } from './taskFixtures'
+import { layout, scrollPane } from './virtualLayout'
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', () => ({
   controlAgentTask: vi.fn(),
+  countAgentTasks: vi.fn(),
   countWaitingAgentTasks: vi.fn(),
   createAgentTask: vi.fn(),
   deleteAgentTask: vi.fn(),
@@ -23,7 +27,6 @@ vi.mock('@/api/endpoints', () => ({
   listAdminUsers: vi.fn(),
   listAgents: vi.fn(),
   listAgentTaskEvents: vi.fn(),
-  listAgentTaskPage: vi.fn(),
   listAgentTasks: vi.fn(),
   reassignAgentTask: vi.fn(),
   replyAgentTask: vi.fn(),
@@ -88,17 +91,24 @@ const LOG = [
   }),
 ]
 
-/** The sentinel observers; `scrollToEnd` shows each sentinel. */
-let observers: IntersectionObserverCallback[] = []
-/** Each closed page, by the cursor that reads it. */
-function closedPages(pages: Record<string, endpoints.AgentTaskPage>) {
-  vi.mocked(endpoints.listAgentTaskPage).mockImplementation(
-    async (org, params, signal) =>
-      params.status?.includes('closed')
-        ? pages[params.cursor ?? '']
-        : { entries: await endpoints.listAgentTasks(org, params, signal) },
-  )
-}
+const TASKS = [
+  task({
+    closed_at: '2026-10-08T11:00:00Z',
+    outcome: 'done_acted',
+    short_id: 'T-1',
+    status: 'closed',
+    title: 'Old work',
+  }),
+  task({ short_id: 'T-4', status: 'running', title: 'Busy' }),
+  BLOCKED,
+  task({
+    blocked_since: '2026-10-08T09:00:00Z',
+    owner: 'pat@example.com',
+    short_id: 'T-2',
+    status: 'paused',
+    title: 'Waiting longest',
+  }),
+]
 
 function closedTask(n: number) {
   return task({
@@ -109,6 +119,14 @@ function closedTask(n: number) {
     status: 'closed',
     title: `Closed ${n}`,
   })
+}
+
+/** The titles of the tasks in the inbox, in order. */
+function inboxTitles() {
+  return screen
+    .getAllByRole('link')
+    .filter((a) => a.getAttribute('href')?.startsWith('/agents/tasks/acme/'))
+    .map((a) => a.querySelector('.font-medium[title]')?.getAttribute('title'))
 }
 
 function renderAt(path: string) {
@@ -123,62 +141,48 @@ function renderAt(path: string) {
   )
 }
 
-function scrollToEnd() {
-  act(() => {
-    for (const callback of observers)
-      callback(
-        [{ isIntersecting: true } as IntersectionObserverEntry],
-        {} as IntersectionObserver,
-      )
-  })
+/** Serves `tasks` as the API does: counted and paged by inbox group. */
+function serve(tasks: AgentTaskListItem[]) {
+  const matching = (params: endpoints.AgentTaskListParams) =>
+    tasks.filter(
+      (t) =>
+        !params.status ||
+        params.status.includes(t.status) ||
+        (params.status.includes('blocked') && groupOf(t) === 'input'),
+    )
+  vi.mocked(endpoints.countAgentTasks).mockImplementation(
+    async (_org, params) => {
+      const counts = { closed: 0, input: 0, paused: 0, queued: 0, running: 0 }
+      for (const t of matching(params)) counts[groupOf(t)] += 1
+      return counts
+    },
+  )
+  vi.mocked(endpoints.listAgentTasks).mockImplementation(
+    async (_org, params) => {
+      const found = matching(params)
+      if (!params.group) return found
+      const group =
+        groupTasks(found).find((g) => g.id === params.group)?.tasks ?? []
+      const offset = params.offset ?? 0
+      return group.slice(offset, offset + (params.limit ?? 50))
+    },
+  )
 }
 
 describe('Tasks', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    observers = []
     vi.stubGlobal(
       'IntersectionObserver',
       class {
-        constructor(callback: IntersectionObserverCallback) {
-          observers.push(callback)
-        }
         disconnect() {}
         observe() {}
       },
     )
-    vi.mocked(endpoints.listAgentTaskPage).mockImplementation(
-      async (org, params, signal) => ({
-        entries: await endpoints.listAgentTasks(org, params, signal),
-      }),
-    )
     vi.mocked(endpoints.listAgents).mockResolvedValue([agent()])
     vi.mocked(endpoints.listAdminUsers).mockResolvedValue([])
     vi.mocked(endpoints.countWaitingAgentTasks).mockResolvedValue({ count: 2 })
-    vi.mocked(endpoints.listAgentTasks).mockImplementation(
-      async (_org, params) =>
-        params.status?.includes('closed')
-          ? [
-              task({
-                closed_at: '2026-10-08T11:00:00Z',
-                outcome: 'done_acted',
-                short_id: 'T-1',
-                status: 'closed',
-                title: 'Old work',
-              }),
-            ]
-          : [
-              task({ short_id: 'T-4', status: 'running', title: 'Busy' }),
-              BLOCKED,
-              task({
-                blocked_since: '2026-10-08T09:00:00Z',
-                owner: 'pat@example.com',
-                short_id: 'T-2',
-                status: 'paused',
-                title: 'Waiting longest',
-              }),
-            ],
-    )
+    serve(TASKS)
     vi.mocked(endpoints.getAgentTask).mockResolvedValue(BLOCKED)
     vi.mocked(endpoints.listAgentTaskEvents).mockImplementation(
       async (_org, _id, afterSeq) => LOG.filter((e) => e.seq > afterSeq),
@@ -187,26 +191,20 @@ describe('Tasks', () => {
 
   it('groups the inbox, oldest block first, with the waiting count', async () => {
     renderAt('/agents/tasks')
-    const input = await screen.findByRole('region', {
-      name: 'Human input required',
-    })
+    await screen.findByText('Waiting longest')
+    await waitFor(() =>
+      expect(inboxTitles()).toEqual([
+        'Waiting longest',
+        'Apply the fix',
+        'Busy',
+        'Old work',
+      ]),
+    )
     expect(
-      within(input)
-        .getAllByRole('link')
-        .map((a) => a.textContent),
-    ).toEqual([
-      expect.stringContaining('Waiting longest'),
-      expect.stringContaining('Apply the fix'),
-    ])
-    const sections = screen
-      .getAllByRole('region')
-      .map((s) => s.getAttribute('aria-label'))
-    expect(sections).toEqual([
-      'Human input required',
-      'Running',
-      'Recently closed',
-    ])
+      screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent),
+    ).toEqual(['Human input required2', 'Running1', 'Recently closed1'])
     expect(await screen.findByTitle('2 waiting on you')).toBeInTheDocument()
+    expect(screen.getByText('4 tasks')).toBeInTheDocument()
   })
 
   it('links each task with its org', async () => {
@@ -316,113 +314,185 @@ describe('Tasks', () => {
     expect(endpoints.getAgentTask).not.toHaveBeenCalled()
   })
 
-  it('reads the next closed page when the end is in view', async () => {
-    closedPages({
-      '': { entries: [closedTask(2)], nextCursor: 'c2' },
-      c2: { entries: [closedTask(1)] },
-    })
+  it('sizes each group by its count and reads the pages it shows', async () => {
+    const closed = Array.from({ length: 60 }, (_, i) =>
+      task({
+        closed_at: new Date(Date.UTC(2026, 9, 1, 0, i)).toISOString(),
+        id: `closed-${i}`,
+        outcome: 'done_acted',
+        short_id: `T-${100 + i}`,
+        status: 'closed',
+        title: `Closed ${i}`,
+      }),
+    )
+    serve([...TASKS.slice(1), ...closed])
     renderAt('/agents/tasks')
-    const group = await screen.findByRole('region', { name: 'Recently closed' })
-    expect(within(group).getByText('1+')).toBeInTheDocument()
-    expect(screen.queryByText('Closed 1')).not.toBeInTheDocument()
-    scrollToEnd()
-    expect(await screen.findByText('Closed 1')).toBeInTheDocument()
-    expect(endpoints.listAgentTaskPage).toHaveBeenCalledWith(
+    expect(
+      await screen.findByRole('heading', { name: /Recently closed60/ }),
+    ).toBeInTheDocument()
+    expect(await screen.findByText('Closed 0')).toBeInTheDocument()
+    expect(endpoints.listAgentTasks).toHaveBeenCalledWith(
       'acme',
-      expect.objectContaining({ cursor: 'c2', status: ['closed'] }),
+      expect.objectContaining({ group: 'closed', limit: 50, offset: 50 }),
       expect.anything(),
     )
-    expect(within(group).getByText('2')).toBeInTheDocument()
+    expect(screen.getByText('63 tasks')).toBeInTheDocument()
   })
 
-  it('does not read a failed open page again until Retry', async () => {
+  it('reads a page only once it scrolls into view', async () => {
+    const closed = Array.from({ length: 60 }, (_, i) =>
+      task({
+        closed_at: new Date(Date.UTC(2026, 9, 1, 0, i)).toISOString(),
+        id: `closed-${i}`,
+        outcome: 'done_acted',
+        short_id: `T-${100 + i}`,
+        status: 'closed',
+        title: `Closed ${i}`,
+      }),
+    )
+    serve([...TASKS.slice(1), ...closed])
+    const isPane = (el: HTMLElement) =>
+      el.classList.contains('overflow-y-auto') &&
+      el.querySelector(':scope > .relative') !== null
+    const spy = layout({
+      content: (el) =>
+        parseFloat(
+          el.querySelector<HTMLElement>(':scope > .relative')?.style.height ??
+            '0',
+        ),
+      isPane,
+      pane: 600,
+      row: (el) => (el.querySelector('h3') ? 29 : 72),
+    })
+    const reads = () =>
+      vi
+        .mocked(endpoints.listAgentTasks)
+        .mock.calls.filter(([, p]) => p.group === 'closed' && p.offset === 50)
+        .length
+    try {
+      renderAt('/agents/tasks')
+      expect(await screen.findByText('Closed 59')).toBeInTheDocument()
+      const pane = screen
+        .getByText('Closed 59')
+        .closest<HTMLElement>('.overflow-y-auto')!
+      scrollPane(pane, 0)
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 20))
+      })
+      expect(reads()).toBe(0)
+      expect(screen.queryByText('Closed 0')).not.toBeInTheDocument()
+      scrollPane(pane, 100_000)
+      await waitFor(() => expect(reads()).toBe(1))
+      expect(await screen.findByText('Closed 0')).toBeInTheDocument()
+      const pinned = within(
+        document.querySelector<HTMLElement>('[data-sticky]')!,
+      ).getByRole('button', { name: /Recently closed/ })
+      expect(pinned).not.toHaveAttribute('tabindex')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('collapses a group and remembers it', async () => {
+    renderAt('/agents/tasks')
+    await screen.findByText('Old work')
+    const toggle = screen.getByRole('button', { name: /Recently closed/ })
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.click(toggle)
+    await waitFor(() =>
+      expect(screen.queryByText('Old work')).not.toBeInTheDocument(),
+    )
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByText('Busy')).toBeInTheDocument()
+    expect(window.localStorage.setItem).toHaveBeenCalledWith(
+      'imbi.tasks.collapsed',
+      '["closed"]',
+    )
+    fireEvent.click(toggle)
+    expect(await screen.findByText('Old work')).toBeInTheDocument()
+  })
+
+  it('keeps the header of the group in view at the top', async () => {
+    renderAt('/agents/tasks')
+    const scroller = (await screen.findByText('Busy')).closest<HTMLElement>(
+      '.overflow-y-auto',
+    )!
+    expect(document.querySelector('[data-sticky]')).toBeNull()
+    fireEvent.scroll(scroller, { target: { scrollTop: 200 } })
+    await waitFor(() =>
+      expect(document.querySelector('[data-sticky]')).toBeInTheDocument(),
+    )
+    const pinned = within(
+      document.querySelector<HTMLElement>('[data-sticky]')!,
+    ).getByRole('button', { hidden: true })
+    expect(pinned).toHaveAttribute('aria-expanded', 'true')
+    expect(pinned).toHaveAttribute('tabindex', '-1')
+    fireEvent.scroll(scroller, { target: { scrollTop: 0 } })
+    await waitFor(() =>
+      expect(document.querySelector('[data-sticky]')).toBeNull(),
+    )
+  })
+
+  it('opens with the groups collapsed last time', async () => {
+    vi.mocked(window.localStorage.getItem).mockImplementation((key) =>
+      key === 'imbi.tasks.collapsed' ? '["closed","input"]' : null,
+    )
+    try {
+      renderAt('/agents/tasks')
+      await screen.findByText('Busy')
+      expect(screen.queryByText('Old work')).not.toBeInTheDocument()
+      expect(screen.queryByText('Apply the fix')).not.toBeInTheDocument()
+      expect(endpoints.listAgentTasks).not.toHaveBeenCalledWith(
+        'acme',
+        expect.objectContaining({ group: 'closed' }),
+        expect.anything(),
+      )
+    } finally {
+      vi.mocked(window.localStorage.getItem).mockReturnValue(null)
+    }
+  })
+
+  it('does not read a failed page again until Retry', async () => {
     let fail = true
-    vi.mocked(endpoints.listAgentTaskPage).mockImplementation(
-      async (_org, params) => {
-        if (params.status?.includes('closed')) return { entries: [] }
-        if (params.cursor !== 'o2')
-          return { entries: [BLOCKED], nextCursor: 'o2' }
-        if (fail) throw new Error('boom')
-        return {
-          entries: [task({ id: 'open-2', short_id: 'T-2', title: 'Page two' })],
-        }
+    const served = vi.mocked(endpoints.listAgentTasks).getMockImplementation()!
+    vi.mocked(endpoints.listAgentTasks).mockImplementation(
+      async (org, params, signal) => {
+        if (params.group === 'running' && fail) throw new Error('boom')
+        return served(org, params, signal)
       },
     )
     renderAt('/agents/tasks')
-    expect(
-      await screen.findByText(/Could not load tasks: boom/),
-    ).toBeInTheDocument()
-    const page2 = () =>
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not load tasksboom',
+    )
+    const reads = () =>
       vi
-        .mocked(endpoints.listAgentTaskPage)
-        .mock.calls.filter(([, p]) => p.cursor === 'o2').length
+        .mocked(endpoints.listAgentTasks)
+        .mock.calls.filter(([, p]) => p.group === 'running').length
     await act(async () => {
       await new Promise((r) => setTimeout(r, 50))
     })
-    expect(page2()).toBe(1)
+    const failedReads = reads()
+    expect(screen.getByText('Old work')).toBeInTheDocument()
     fail = false
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
-    expect(await screen.findByText('Page two')).toBeInTheDocument()
-    expect(page2()).toBe(2)
+    expect(await screen.findByText('Busy')).toBeInTheDocument()
+    expect(reads()).toBe(failedReads + 1)
   })
 
-  it('reads every open page and merges the groups', async () => {
-    vi.mocked(endpoints.listAgentTaskPage).mockImplementation(
-      async (_org, params) =>
-        params.status?.includes('closed')
-          ? { entries: [] }
-          : params.cursor === 'o2'
-            ? {
-                entries: [
-                  task({
-                    blocked_since: '2026-10-08T09:00:00Z',
-                    id: 'open-2',
-                    short_id: 'T-2',
-                    status: 'paused',
-                    title: 'Waiting longest',
-                  }),
-                ],
-              }
-            : { entries: [BLOCKED], nextCursor: 'o2' },
-    )
-    renderAt('/agents/tasks')
-    // No scroll: the second open page loads by itself.
-    const input = await screen.findByRole('region', {
-      name: 'Human input required',
-    })
-    await waitFor(() =>
-      expect(
-        within(input)
-          .getAllByRole('link')
-          .map((a) => a.textContent),
-      ).toEqual([
-        expect.stringContaining('Waiting longest'),
-        expect.stringContaining('Apply the fix'),
-      ]),
-    )
-    expect(within(input).getByText('2')).toBeInTheDocument()
-  })
-
-  it('keeps the loaded pages when the list refreshes', async () => {
-    closedPages({
-      '': { entries: [closedTask(2)], nextCursor: 'c2' },
-      c2: { entries: [closedTask(1)] },
-    })
+  it('keeps the loaded rows when the list refreshes', async () => {
     vi.mocked(endpoints.resolveAgentTaskRequest).mockResolvedValue({})
     renderAt('/agents/tasks/acme/T-3/input')
-    await screen.findByText('Closed 2')
-    scrollToEnd()
-    const row = await screen.findByText('Closed 1')
+    const row = await screen.findByText('Old work')
     const reads = () =>
       vi
-        .mocked(endpoints.listAgentTaskPage)
-        .mock.calls.filter(([, params]) => params.cursor === 'c2').length
-    expect(reads()).toBe(1)
+        .mocked(endpoints.listAgentTasks)
+        .mock.calls.filter(([, params]) => params.group === 'closed').length
+    const before = reads()
     // An answer refreshes the inbox.
     fireEvent.click(await screen.findByRole('button', { name: 'yes' }))
-    await waitFor(() => expect(reads()).toBe(2))
-    expect(screen.getByText('Closed 1')).toBe(row)
-    expect(screen.getByText('Closed 2')).toBeInTheDocument()
+    await waitFor(() => expect(reads()).toBeGreaterThan(before))
+    expect(screen.getByText('Old work')).toBe(row)
   })
 
   it('filters by text and by my tasks on the server', async () => {
@@ -454,31 +524,26 @@ describe('Tasks', () => {
   })
 
   it('names each assignee, with the domain when two share a name', async () => {
-    vi.mocked(endpoints.listAgentTasks).mockImplementation(
-      async (_org, params) =>
-        params.status?.includes('closed')
-          ? []
-          : [
-              task({
-                id: 'own-1',
-                owner: 'pat@example.com',
-                short_id: 'T-5',
-                title: 'A',
-              }),
-              task({
-                id: 'own-2',
-                owner: 'pat@other.example',
-                short_id: 'T-6',
-                title: 'B',
-              }),
-              task({
-                id: 'own-3',
-                owner: 'sam@example.com',
-                short_id: 'T-7',
-                title: 'C',
-              }),
-            ],
-    )
+    serve([
+      task({
+        id: 'own-1',
+        owner: 'pat@example.com',
+        short_id: 'T-5',
+        title: 'A',
+      }),
+      task({
+        id: 'own-2',
+        owner: 'pat@other.example',
+        short_id: 'T-6',
+        title: 'B',
+      }),
+      task({
+        id: 'own-3',
+        owner: 'sam@example.com',
+        short_id: 'T-7',
+        title: 'C',
+      }),
+    ])
     renderAt('/agents/tasks')
     expect((await screen.findByText('A')).closest('a')).toHaveTextContent(
       'Assigned to pat@example.com',
@@ -495,35 +560,30 @@ describe('Tasks', () => {
   })
 
   it('marks the parts of a task that the search matched', async () => {
-    vi.mocked(endpoints.listAgentTasks).mockImplementation(
-      async (_org, params) =>
-        params.status?.includes('closed')
-          ? []
-          : [
-              task({
-                highlights: [
-                  {
-                    field: 'title',
-                    parts: [
-                      { match: false, text: 'Fix the ' },
-                      { match: true, text: 'billing' },
-                      { match: false, text: ' job' },
-                    ],
-                  },
-                  {
-                    field: 'agent',
-                    id: 'agt-1',
-                    parts: [
-                      { match: true, text: 'Bill' },
-                      { match: false, text: 'ing bot' },
-                    ],
-                  },
-                ],
-                short_id: 'T-9',
-                title: 'Fix the billing job',
-              }),
+    serve([
+      task({
+        highlights: [
+          {
+            field: 'title',
+            parts: [
+              { match: false, text: 'Fix the ' },
+              { match: true, text: 'billing' },
+              { match: false, text: ' job' },
             ],
-    )
+          },
+          {
+            field: 'agent',
+            id: 'agt-1',
+            parts: [
+              { match: true, text: 'Bill' },
+              { match: false, text: 'ing bot' },
+            ],
+          },
+        ],
+        short_id: 'T-9',
+        title: 'Fix the billing job',
+      }),
+    ])
     renderAt('/agents/tasks')
     const row = await screen.findByRole('link', { name: /T-9/ })
     expect(

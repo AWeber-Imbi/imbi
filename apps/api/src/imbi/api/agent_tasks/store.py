@@ -95,6 +95,23 @@ _OPEN_REQUESTS = sql.SQL(
     ' AND (r.expires_at IS NULL OR r.expires_at > NOW())'
 )
 
+#: The inbox groups of the task list, in order.
+Group = typing.Literal['input', 'running', 'paused', 'queued', 'closed']
+
+#: The inbox group of task ``t``: ``input`` when it waits on a person
+#: (blocked, or not closed with an open request), else its status.
+_GROUP = sql.SQL(
+    "CASE WHEN t.status = 'blocked' OR (t.status <> 'closed'"
+    ' AND EXISTS (SELECT 1 {open})) THEN {input} ELSE t.status::text END'
+).format(open=_OPEN_REQUESTS, input=sql.Literal('input'))
+
+#: The order of the tasks in each inbox group: oldest block first (O2)
+#: for ``input``, newest close first for ``closed``, else newest first.
+_GROUP_ORDER: dict[str, sql.SQL] = {
+    'input': sql.SQL('blocked_since ASC NULLS LAST, created_at DESC, id DESC'),
+    'closed': sql.SQL('closed_at DESC NULLS LAST, id DESC'),
+}
+
 #: The projects of task ``t`` (F13), oldest first, as a JSON list of
 #: ``project_id`` and ``project_slug``. Every task row has it.
 PROJECTS: typing.LiteralString = (
@@ -422,6 +439,57 @@ class _Relate:
             self.events.setdefault(task['id'], []).append(row)
 
 
+def _search_filters(
+    organization_id: str,
+    statuses: list[Status] | None,
+    agent_ids: list[str] | None,
+    owners: list[str] | None,
+    text: str | None,
+    text_agent_ids: list[str] | None,
+    text_project_ids: list[str] | None,
+) -> tuple[list[sql.Composable], list[typing.Any]]:
+    """The ``WHERE`` conditions of :meth:`Store.search` and their
+    parameters.
+    """
+    conditions: list[sql.Composable] = [sql.SQL('organization_id = %s')]
+    params: list[typing.Any] = [organization_id]
+    if statuses:
+        if 'blocked' in statuses:
+            conditions.append(
+                sql.SQL(
+                    "(status = ANY(%s) OR (status <> 'closed'"
+                    ' AND EXISTS (SELECT 1 {open})))'
+                ).format(open=_OPEN_REQUESTS)
+            )
+        else:
+            conditions.append(sql.SQL('status = ANY(%s)'))
+        params.append(list(statuses))
+    if agent_ids:
+        conditions.append(sql.SQL('agent_id = ANY(%s)'))
+        params.append(list(agent_ids))
+    if owners:
+        conditions.append(sql.SQL('owner = ANY(%s)'))
+        params.append(list(owners))
+    if text:
+        pattern = '%' + _escape_like(text) + '%'
+        conditions.append(
+            sql.SQL(
+                '(title ILIKE %s OR short_id ILIKE %s'
+                ' OR agent_id = ANY(%s) OR EXISTS (SELECT 1'
+                ' FROM agent_runtime.task_projects AS tp'
+                ' WHERE tp.organization_id = t.organization_id'
+                ' AND tp.task_id = t.id AND tp.project_id = ANY(%s)))'
+            )
+        )
+        params += [
+            pattern,
+            pattern,
+            text_agent_ids or [],
+            text_project_ids or [],
+        ]
+    return conditions, params
+
+
 class TaskStore:
     """Repository over the ``agent_runtime`` schema."""
 
@@ -643,7 +711,9 @@ class TaskStore:
         text: str | None = None,
         text_agent_ids: list[str] | None = None,
         text_project_ids: list[str] | None = None,
+        group: Group | None = None,
         before: tuple[datetime.datetime, uuid.UUID] | None = None,
+        offset: int = 0,
         limit: int = 50,
     ) -> list[Row]:
         """Return tasks in the organization, newest first.
@@ -651,57 +721,84 @@ class TaskStore:
         ``text`` matches the title or the short id. A task also matches
         when its agent is in ``text_agent_ids`` or one of its projects is
         in ``text_project_ids``; the caller finds those in the graph.
-        ``before`` is the ``(created_at, id)`` keyset of the last row of
-        the previous page. Each row also has ``blocked_since``: for a
-        task that waits on a person (see :data:`_OPEN_REQUESTS`), the
-        time its oldest open request opened, so the queue can sort
-        oldest block first (O2); else ``None``.
+        ``blocked`` in ``statuses`` also matches every task that waits on
+        a person. ``group`` keeps the tasks of one inbox group, in the
+        order of that group. ``before`` is the ``(created_at, id)``
+        keyset of the last row of the previous page; ``offset`` skips
+        rows. Each row also has ``blocked_since``: for a task that waits
+        on a person (see :data:`_OPEN_REQUESTS`), the time its oldest
+        open request opened, so the queue can sort oldest block first
+        (O2); else ``None``.
         """
-        conditions: list[sql.Composable] = [sql.SQL('organization_id = %s')]
-        params: list[typing.Any] = [organization_id]
-        if statuses:
-            conditions.append(sql.SQL('status = ANY(%s)'))
-            params.append(list(statuses))
-        if agent_ids:
-            conditions.append(sql.SQL('agent_id = ANY(%s)'))
-            params.append(list(agent_ids))
-        if owners:
-            conditions.append(sql.SQL('owner = ANY(%s)'))
-            params.append(list(owners))
-        if text:
-            pattern = '%' + _escape_like(text) + '%'
-            conditions.append(
-                sql.SQL(
-                    '(title ILIKE %s OR short_id ILIKE %s'
-                    ' OR agent_id = ANY(%s) OR EXISTS (SELECT 1'
-                    ' FROM agent_runtime.task_projects AS tp'
-                    ' WHERE tp.organization_id = t.organization_id'
-                    ' AND tp.task_id = t.id AND tp.project_id = ANY(%s)))'
-                )
-            )
-            params += [
-                pattern,
-                pattern,
-                text_agent_ids or [],
-                text_project_ids or [],
-            ]
+        conditions, params = _search_filters(
+            organization_id,
+            statuses,
+            agent_ids,
+            owners,
+            text,
+            text_agent_ids,
+            text_project_ids,
+        )
+        if group is not None:
+            conditions.append(sql.SQL('{group} = %s').format(group=_GROUP))
+            params.append(group)
         if before is not None:
             conditions.append(sql.SQL('(created_at, id) < (%s, %s)'))
             params += list(before)
+        order = _GROUP_ORDER.get(
+            group or '', sql.SQL('created_at DESC, id DESC')
+        )
         statement = sql.SQL(
             'SELECT t.*, ' + PROJECTS + ','  # noqa: S608
             " CASE WHEN t.status <> 'closed' THEN"
             ' (SELECT min(r.opened_at) {open}) END AS blocked_since'
             ' FROM agent_runtime.tasks AS t WHERE {where}'
-            ' ORDER BY created_at DESC, id DESC LIMIT %s'
-        ).format(open=_OPEN_REQUESTS, where=sql.SQL(' AND ').join(conditions))
-        params.append(limit)
+            ' ORDER BY {order} LIMIT %s OFFSET %s'
+        ).format(
+            open=_OPEN_REQUESTS,
+            where=sql.SQL(' AND ').join(conditions),
+            order=order,
+        )
+        params += [limit, offset]
         async with (
             self._pool.connection() as conn,
             conn.cursor(row_factory=rows.dict_row) as cursor,
         ):
             await cursor.execute(statement, params)
             return await cursor.fetchall()
+
+    async def count_groups(
+        self,
+        organization_id: str,
+        *,
+        statuses: list[Status] | None = None,
+        agent_ids: list[str] | None = None,
+        owners: list[str] | None = None,
+        text: str | None = None,
+        text_agent_ids: list[str] | None = None,
+        text_project_ids: list[str] | None = None,
+    ) -> dict[str, int]:
+        """Return the number of tasks in each inbox group that
+        :meth:`search` with the same filters finds. A group with no
+        tasks has no key.
+        """
+        conditions, params = _search_filters(
+            organization_id,
+            statuses,
+            agent_ids,
+            owners,
+            text,
+            text_agent_ids,
+            text_project_ids,
+        )
+        statement = sql.SQL(
+            'SELECT {group} AS inbox_group, count(*)'
+            ' FROM agent_runtime.tasks AS t WHERE {where} GROUP BY 1'
+        ).format(group=_GROUP, where=sql.SQL(' AND ').join(conditions))
+        async with self._pool.connection() as conn:
+            cursor = await conn.execute(statement, params)
+            found = await cursor.fetchall()
+        return {str(group): int(count) for group, count in found}
 
     async def count_waiting(self, organization_id: str) -> int:
         """Return the number of tasks in the organization that wait on

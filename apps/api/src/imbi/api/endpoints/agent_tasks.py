@@ -35,6 +35,7 @@ from imbi.api.agent_tasks.store import (
     ActorKind,
     Channel,
     Control,
+    Group,
     ResolvedStatus,
     Status,
 )
@@ -251,6 +252,16 @@ class AgentTaskListItem(AgentTaskResponse):
     #: The icon of each project of the task that has one, by project id:
     #: the project's own icon, else the icon of its project type.
     project_icons: dict[str, str] = pydantic.Field(default_factory=dict)
+
+
+class AgentTaskCounts(pydantic.BaseModel):
+    """The number of tasks in each inbox group."""
+
+    input: int = 0
+    running: int = 0
+    paused: int = 0
+    queued: int = 0
+    closed: int = 0
 
 
 class AgentTaskWaiting(pydantic.BaseModel):
@@ -1159,6 +1170,8 @@ async def list_agent_tasks(
     q: str | None = None,
     limit: typing.Annotated[int, fastapi.Query(ge=1, le=100)] = 50,
     cursor: str | None = None,
+    group: Group | None = None,
+    offset: typing.Annotated[int, fastapi.Query(ge=0)] = 0,
 ) -> list[dict[str, typing.Any]]:
     """List the tasks in an organization, newest first.
 
@@ -1168,28 +1181,30 @@ async def list_agent_tasks(
     the caller to the owners. The ``Link`` header has the URL of the
     next page. Each task has ``project_icons``, and ``blocked_since``
     when it waits on a person, so a client can sort that queue oldest
-    block first (O2).
+    block first (O2). ``status=blocked`` also matches every task that
+    waits on a person. ``group`` lists one inbox group in the order of
+    the inbox: oldest block first for ``input``, newest close first for
+    ``closed``, else newest first; it pages with ``offset``, so a client
+    can read any part of it.
 
     Raises:
-        400: The cursor is not valid.
+        400: The cursor is not valid or comes with ``group``, or
+            ``offset`` comes without ``group``.
         403: The caller is not a member of the org.
         404: No such organization.
 
     """
     text = (q or '').strip().lower()
-    agents: dict[str, str] = {}
-    projects: dict[str, str] = {}
-    if text:
-        records = await db.execute(
-            _TEXT_QUERY,
-            {'org_slug': org_slug, 'text': text},
-            ['agent_ids', 'agent_names', 'project_ids', 'project_slugs'],
-        )
-        if records:
-            record = records[0]
-            agents = _pairs(record['agent_ids'], record['agent_names'])
-            projects = _pairs(record['project_ids'], record['project_slugs'])
+    agents, projects = await _text_matches(db, org_slug, text)
     before: tuple[datetime.datetime, uuid.UUID] | None = None
+    if cursor is not None and group is not None:
+        raise fastapi.HTTPException(
+            status_code=400, detail='A group pages with offset, not cursor'
+        )
+    if offset and group is None:
+        raise fastapi.HTTPException(
+            status_code=400, detail='Only a group pages with offset'
+        )
     if cursor is not None:
         decoded = decode_cursor(cursor)
         try:
@@ -1209,15 +1224,18 @@ async def list_agent_tasks(
         text=text or None,
         text_agent_ids=list(agents),
         text_project_ids=list(projects),
+        group=group,
         before=before,
+        offset=offset,
         limit=limit + 1,
     )
     next_cursor: str | None = None
     if len(rows) > limit:
         rows = rows[:limit]
-        next_cursor = encode_cursor(
-            rows[-1]['created_at'], str(rows[-1]['id'])
-        )
+        if group is None:
+            next_cursor = encode_cursor(
+                rows[-1]['created_at'], str(rows[-1]['id'])
+            )
     response.headers['Link'] = build_link_header(request, next_cursor)
     icons = await _project_icons(db, org_slug, rows)
     return [
@@ -1234,6 +1252,67 @@ async def list_agent_tasks(
         }
         for row in rows
     ]
+
+
+@agent_tasks_router.get('/counts', response_model=AgentTaskCounts)
+async def count_agent_tasks(
+    org_slug: str,
+    org_id: OrgId,
+    db: graph.Pool,
+    store: agent_tasks.Store,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('agent_task:read')),
+    ],
+    status: typing.Annotated[list[Status] | None, fastapi.Query()] = None,
+    agent_id: typing.Annotated[list[str] | None, fastapi.Query()] = None,
+    owner: typing.Annotated[list[str] | None, fastapi.Query()] = None,
+    mine: bool = False,
+    q: str | None = None,
+) -> dict[str, int]:
+    """Count the tasks in each inbox group that the task list with the
+    same filters finds, so a client can size the whole list before it
+    reads the tasks.
+
+    Raises:
+        403: The caller is not a member of the org.
+        404: No such organization.
+
+    """
+    text = (q or '').strip().lower()
+    agents, projects = await _text_matches(db, org_slug, text)
+    owners = [*(owner or []), *([auth.principal_name] if mine else [])]
+    return await store.count_groups(
+        org_id,
+        statuses=status,
+        agent_ids=agent_id,
+        owners=owners,
+        text=text or None,
+        text_agent_ids=list(agents),
+        text_project_ids=list(projects),
+    )
+
+
+async def _text_matches(
+    db: graph.Graph, org_slug: str, text: str
+) -> tuple[dict[str, str], dict[str, str]]:
+    """The agents (id to name) and projects (id to slug) of the org that
+    ``text`` matches by agent name and project slug.
+    """
+    if not text:
+        return {}, {}
+    records = await db.execute(
+        _TEXT_QUERY,
+        {'org_slug': org_slug, 'text': text},
+        ['agent_ids', 'agent_names', 'project_ids', 'project_slugs'],
+    )
+    if not records:
+        return {}, {}
+    record = records[0]
+    return (
+        _pairs(record['agent_ids'], record['agent_names']),
+        _pairs(record['project_ids'], record['project_slugs']),
+    )
 
 
 @agent_tasks_router.get('/waiting', response_model=AgentTaskWaiting)

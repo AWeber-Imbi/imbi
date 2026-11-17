@@ -1,4 +1,11 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import {
   Link,
@@ -10,6 +17,7 @@ import {
 
 import {
   Bot,
+  ChevronRight,
   CircleCheck,
   Clock,
   FolderKanban,
@@ -19,6 +27,7 @@ import {
   type LucideIcon,
   Pause,
   Plus,
+  RotateCw,
   Search,
 } from 'lucide-react'
 import {
@@ -28,27 +37,28 @@ import {
   useDefaultLayout,
 } from 'react-resizable-panels'
 
+import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { EntityIcon } from '@/components/ui/entity-icon'
 import { Input } from '@/components/ui/input'
 import { RelativeTime } from '@/components/ui/RelativeTime'
+import { Sk } from '@/components/ui/skeleton'
 import { IconTooltip } from '@/components/ui/tooltip'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAuth } from '@/hooks/useAuth'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useHasPermission } from '@/hooks/useHasPermission'
-import { useInfiniteScroll } from '@/hooks/useInfiniteScroll'
 import { storage } from '@/lib/storage'
 import { cn } from '@/lib/utils'
-import type { AgentTaskListItem, AgentTaskStatus, TaskHighlight } from '@/types'
+import type { AgentTaskCounts, AgentTaskListItem, TaskHighlight } from '@/types'
 
 import { useAgentList } from './agentQueries'
 import { agentsPath } from './agentsNav'
 import { NewTaskDialog } from './NewTaskDialog'
 import { TaskDetail } from './TaskDetail'
 import {
-  groupTasks,
+  INBOX_GROUPS,
   type InboxGroupId,
   statusLabel,
   statusVariant,
@@ -61,10 +71,14 @@ import {
   TaskFilterBar,
 } from './TaskFilterBar'
 import { activeCount, ME, useTaskFilters } from './taskFilters'
-import { useAgentTaskPages } from './taskQueries'
+import {
+  TASK_PAGE,
+  useAgentTaskCounts,
+  useAgentTaskGroupPages,
+} from './taskQueries'
 import { SEARCH_MATCH, useMatchHighlight } from './taskSearch'
-
-const OPEN: AgentTaskStatus[] = ['blocked', 'running', 'paused', 'queued']
+import { useStoredState } from './useStoredState'
+import { useVirtualRows } from './virtualRows'
 
 /** A short id: an old link (`/agents/tasks/<short id>`) has no org. */
 const SHORT_ID = /^T-\d+$/
@@ -195,8 +209,120 @@ function Marked({
   })
 }
 
-function nonEmpty(values: string[]) {
+function nonEmpty<T>(values: T[]) {
   return values.length ? values : undefined
+}
+
+const HEADER_HEIGHT = 29
+
+type GroupInfo = (typeof INBOX_GROUPS)[number]
+const ROW_HEIGHT = 72
+
+type InboxRow =
+  | { count: number; group: GroupInfo; kind: 'group' }
+  | { group: InboxGroupId; index: number; kind: 'task' }
+
+function GroupHeader({
+  count,
+  group,
+  onToggle,
+  open,
+  pinned = false,
+}: {
+  count: number
+  group: GroupInfo
+  onToggle: () => void
+  open: boolean
+  pinned?: boolean
+}) {
+  return (
+    <h3
+      aria-hidden={pinned || undefined}
+      className="border-tertiary bg-secondary text-overline text-tertiary border-b"
+    >
+      <button
+        aria-expanded={open}
+        className="hover:text-secondary flex w-full items-center justify-between px-4 py-1.5 uppercase transition-colors"
+        onClick={onToggle}
+        tabIndex={pinned ? -1 : undefined}
+        type="button"
+      >
+        <span className="flex items-center gap-1.5">
+          <ChevronRight
+            aria-hidden
+            className={cn('size-3 transition-transform', open && 'rotate-90')}
+          />
+          <GroupIcon id={group.id} />
+          {group.label}
+        </span>
+        <span className="font-mono tabular-nums">{count}</span>
+      </button>
+    </h3>
+  )
+}
+
+/**
+ * The rows of the inbox: a header for each group that has tasks, then a
+ * slot for each of its tasks unless the group is collapsed.
+ */
+function inboxRows(
+  counts: AgentTaskCounts | undefined,
+  collapsed: InboxGroupId[],
+): InboxRow[] {
+  if (!counts) return []
+  return INBOX_GROUPS.flatMap((group): InboxRow[] => {
+    const count = counts[group.id]
+    if (!count) return []
+    const header: InboxRow = { count, group, kind: 'group' }
+    if (collapsed.includes(group.id)) return [header]
+    return [
+      header,
+      ...Array.from({ length: count }, (_, index) => ({
+        group: group.id,
+        index,
+        kind: 'task' as const,
+      })),
+    ]
+  })
+}
+
+function pageOf(row: { group: InboxGroupId; index: number }) {
+  return `${row.group}:${Math.floor(row.index / TASK_PAGE)}`
+}
+
+function parseGroupList(raw: unknown): InboxGroupId[] | undefined {
+  return Array.isArray(raw)
+    ? INBOX_GROUPS.map((g) => g.id).filter((id) => raw.includes(id))
+    : undefined
+}
+
+function rowKey(row: InboxRow | undefined) {
+  if (!row) return ''
+  return row.kind === 'group' ? row.group.id : `${row.group}:${row.index}`
+}
+
+/**
+ * The header row that sticks at the top: the last one above `top`, and
+ * how far the next header pushes it up. None while the header is in its
+ * own place.
+ */
+function stickyHeader(
+  headers: number[],
+  starts: (index: number) => number,
+  top: number,
+): undefined | { index: number; push: number } {
+  let current = -1
+  let next = -1
+  for (const i of headers) {
+    if (starts(i) < top) current = i
+    else {
+      next = i
+      break
+    }
+  }
+  if (current < 0) return undefined
+  const push = next < 0 ? 0 : Math.min(0, starts(next) - top - HEADER_HEIGHT)
+  return { index: current, push }
 }
 
 function TaskInbox({
@@ -209,67 +335,72 @@ function TaskInbox({
   const [text, setText] = useState('')
   const [filters, setFilters] = useTaskFilters()
   const [creating, setCreating] = useState(false)
+  const [collapsed, setCollapsed] = useStoredState<InboxGroupId[]>(
+    'imbi.tasks.collapsed',
+    [],
+    parseGroupList,
+  )
   const listRef = useRef<HTMLDivElement>(null)
   useMatchHighlight(listRef, 'task-list-search')
   const canCreate = useHasPermission('agent_task:create', orgSlug)
   const q = useDebouncedValue(text.trim(), 250) || undefined
-  // Every open page is read, so the open states filter here; the
-  // closed tasks are paged, so only the server can filter them.
-  const openStates = filters.states.filter((s) => s !== 'closed')
-  const scope = {
+  const params = {
     agent_id: nonEmpty(filters.agents),
     mine: filters.assignees.includes(ME),
     owner: nonEmpty(filters.assignees.filter((a) => a !== ME)),
     q,
+    status: nonEmpty(filters.states),
   }
-  // A query that a filter turns off still holds its cached pages, so
-  // nothing below reads it.
-  const wantOpen = filters.states.length === 0 || openStates.length > 0
-  const wantClosed =
-    filters.states.length === 0 || filters.states.includes('closed')
-  const open = useAgentTaskPages(orgSlug, { ...scope, status: OPEN }, wantOpen)
-  const closed = useAgentTaskPages(
-    orgSlug,
-    { ...scope, status: ['closed'] },
-    wantClosed,
+  const paramsKey = JSON.stringify(params)
+  const shownParams = useRef(paramsKey)
+  useEffect(() => {
+    if (shownParams.current === paramsKey) return
+    shownParams.current = paramsKey
+    if (listRef.current) listRef.current.scrollTop = 0
+  }, [paramsKey])
+  const counts = useAgentTaskCounts(orgSlug, params)
+  const rows = useMemo(
+    () => inboxRows(counts.data, collapsed),
+    [counts.data, collapsed],
   )
-  const openMore = wantOpen && open.hasNextPage
-  const closedMore = wantClosed && closed.hasNextPage
+  const getItemKey = useCallback((i: number) => rowKey(rows[i]), [rows])
+  const virtualizer = useVirtualRows({
+    count: rows.length,
+    estimateSize: (i) =>
+      rows[i]?.kind === 'group' ? HEADER_HEIGHT : ROW_HEIGHT,
+    getItemKey,
+    overscan: 12,
+    scroller: listRef,
+  })
+  const items = virtualizer.getVirtualItems()
+  const scrollTop = useScrollTop(listRef)
+  const headers = useMemo(
+    () => rows.flatMap((row, i) => (row.kind === 'group' ? [i] : [])),
+    [rows],
+  )
+  const sticky = stickyHeader(
+    headers,
+    (i) => virtualizer.measurementsCache[i]?.start ?? 0,
+    scrollTop,
+  )
+  const stickyRow = sticky && rows[sticky.index]
+  const stuck =
+    sticky && stickyRow?.kind === 'group'
+      ? { ...sticky, row: stickyRow }
+      : undefined
+  const pageNames = [
+    ...new Set(
+      items.flatMap((item) => {
+        const row = rows[item.index]
+        return row?.kind === 'task' ? [pageOf(row)] : []
+      }),
+    ),
+  ]
+  const pages = useAgentTaskGroupPages(orgSlug, params, pageNames)
+  const loaded = new Map(pageNames.map((name, i) => [name, pages[i]?.data]))
+  const tasks = pages.flatMap((p) => p.data ?? [])
   const agentList = useAgentList(orgSlug)
   const { user } = useAuth()
-  // The API gives tasks newest first, but the open groups sort by other
-  // fields (blocked_since), so a part of the open tasks can put a task in
-  // the wrong place. Thus the inbox reads all of the open pages. The
-  // closed group reads its next page when the end of the list comes into
-  // view. After a failed page, only the Retry button reads it again.
-  const { fetchNextPage, hasNextPage, isFetching, isFetchNextPageError } = open
-  useEffect(() => {
-    if (wantOpen && hasNextPage && !isFetching && !isFetchNextPageError)
-      void fetchNextPage()
-  }, [fetchNextPage, hasNextPage, isFetching, isFetchNextPageError, wantOpen])
-  const { sentinelRef } = useInfiniteScroll({
-    fetchNextPage: closed.fetchNextPage,
-    hasNextPage: closedMore && !openMore && !closed.isFetchNextPageError,
-    isFetchingNextPage: closed.isFetching,
-  })
-  const tasks = useMemo(
-    () =>
-      [
-        ...((wantOpen && open.data?.pages) || []),
-        ...((wantClosed && closed.data?.pages) || []),
-      ].flatMap((page) => page.entries),
-    [open.data, closed.data, wantOpen, wantClosed],
-  )
-  const shown =
-    openStates.length === 0
-      ? tasks
-      : tasks.filter(
-          (t) =>
-            t.status === 'closed' ||
-            openStates.includes(t.status) ||
-            (!!t.blocked_since && openStates.includes('blocked')),
-        )
-  const groups = groupTasks(shown)
   const owners = useSeenOwners(tasks, filters.assignees)
   const agents = useMemo(
     () =>
@@ -283,15 +414,28 @@ function TaskInbox({
     [agents],
   )
   const filtered = activeCount(filters) > 0
-  const loading = open.isLoading || closed.isLoading
-  const more = openMore || closedMore
-  const openError = wantOpen ? open.error : null
-  const error = openError ?? (wantClosed ? closed.error : null)
-  const failed = openError ? open : closed
-  const retry = () =>
-    void (failed.isFetchNextPageError
-      ? failed.fetchNextPage()
-      : failed.refetch())
+  const total = counts.data
+    ? Object.values(counts.data).reduce((sum, n) => sum + n, 0)
+    : 0
+  const failed = [counts, ...pages].filter((r) => r.error)
+  const error = failed[0]?.error
+  const retrying = failed.some((r) => r.isFetching)
+  const retry = () => {
+    for (const result of failed) void result.refetch()
+  }
+  const toggle = (id: InboxGroupId) =>
+    setCollapsed(
+      collapsed.includes(id)
+        ? collapsed.filter((g) => g !== id)
+        : [...collapsed, id],
+    )
+  // A header that collapses its group from the top keeps its place.
+  const toggleSticky = (index: number, id: InboxGroupId) => {
+    toggle(id)
+    requestAnimationFrame(() =>
+      virtualizer.scrollToIndex(index, { align: 'start' }),
+    )
+  }
 
   return (
     <>
@@ -329,61 +473,132 @@ function TaskInbox({
           </div>
         }
       />
-      <div className="min-h-0 flex-1 overflow-y-auto" ref={listRef}>
-        {loading && <p className="text-tertiary p-4 text-sm">Loading…</p>}
-        {error && (
-          <p className="text-danger p-4 text-sm" role="alert">
-            Could not load tasks: {error.message}{' '}
-            <button className="underline" onClick={retry} type="button">
+      {error && (
+        <Alert className="m-3" title="Could not load tasks" variant="danger">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-secondary min-w-0 truncate">
+              {error.message}
+            </span>
+            <Button
+              className="shrink-0"
+              disabled={retrying}
+              onClick={retry}
+              size="sm"
+              variant="outline"
+            >
+              <RotateCw
+                className={cn(retrying && 'animate-spin')}
+                data-icon="inline-start"
+              />
               Retry
-            </button>
-          </p>
+            </Button>
+          </div>
+        </Alert>
+      )}
+      <div className="min-h-0 flex-1 overflow-y-auto" ref={listRef}>
+        {counts.isLoading && (
+          <div aria-busy aria-label="Loading tasks">
+            {Array.from({ length: 6 }, (_, i) => (
+              <TaskSlot key={i} />
+            ))}
+          </div>
         )}
-        {!loading && !error && groups.length === 0 && (
+        {counts.data && !error && total === 0 && (
           <p className="text-tertiary p-6 text-center text-sm">
-            {tasks.length === 0 && !q && !filtered
+            {!q && !filtered
               ? canCreate
                 ? 'No tasks yet. Create one with New task.'
                 : 'No tasks yet.'
               : 'No tasks match.'}
           </p>
         )}
-        {groups.map((group) => (
-          <section aria-label={group.label} key={group.id}>
-            <h3 className="border-tertiary bg-secondary text-overline text-tertiary flex justify-between border-b px-4 py-1.5 uppercase">
-              <span className="flex items-center gap-1.5">
-                <GroupIcon id={group.id} />
-                {group.label}
-              </span>
-              <span className="font-mono tabular-nums">
-                {group.tasks.length}
-                {(group.id === 'closed' ? closedMore : openMore) && '+'}
-              </span>
-            </h3>
-            {group.tasks.map((task) => (
-              <TaskRow
-                active={task.short_id === selected}
-                agent={agentsById.get(task.agent_id)}
-                group={group.id}
-                key={task.id}
-                orgSlug={orgSlug}
-                task={task}
-              />
-            ))}
-          </section>
-        ))}
-        {more && !error && (
-          <p className="text-tertiary p-4 text-center text-sm">Loading…</p>
-        )}
-        <div ref={sentinelRef} />
+        <div
+          className="relative"
+          style={{ height: virtualizer.getTotalSize() }}
+        >
+          {stuck && (
+            <div className="sticky top-0 z-10 h-0" data-sticky="">
+              <div style={{ transform: `translateY(${stuck.push}px)` }}>
+                <GroupHeader
+                  count={stuck.row.count}
+                  group={stuck.row.group}
+                  onToggle={() => toggleSticky(stuck.index, stuck.row.group.id)}
+                  open={!collapsed.includes(stuck.row.group.id)}
+                  pinned={items.some((item) => item.index === stuck.index)}
+                />
+              </div>
+            </div>
+          )}
+          {items.map((item) => {
+            const row = rows[item.index]
+            if (!row) return null
+            const task =
+              row.kind === 'task'
+                ? loaded.get(pageOf(row))?.[row.index % TASK_PAGE]
+                : undefined
+            return (
+              <div
+                className="absolute inset-x-0 top-0"
+                data-index={item.index}
+                key={item.key}
+                ref={virtualizer.measureElement}
+                style={{ transform: `translateY(${item.start}px)` }}
+              >
+                {row.kind === 'group' ? (
+                  <GroupHeader
+                    count={row.count}
+                    group={row.group}
+                    onToggle={() => toggle(row.group.id)}
+                    open={!collapsed.includes(row.group.id)}
+                  />
+                ) : task ? (
+                  <TaskRow
+                    active={task.short_id === selected}
+                    agent={agentsById.get(task.agent_id)}
+                    group={row.group}
+                    orgSlug={orgSlug}
+                    task={task}
+                  />
+                ) : (
+                  <TaskSlot />
+                )}
+              </div>
+            )
+          })}
+        </div>
       </div>
-      <div className="border-tertiary text-tertiary shrink-0 border-t py-2 text-center text-xs">
-        {shown.length}
-        {more && '+'} {shown.length === 1 && !more ? 'task' : 'tasks'}
-      </div>
+      {counts.data && (
+        <div className="border-tertiary text-tertiary shrink-0 border-t py-2 text-center text-xs">
+          {total} {total === 1 ? 'task' : 'tasks'}
+        </div>
+      )}
       <NewTaskDialog isOpen={creating} onClose={() => setCreating(false)} />
     </>
   )
+}
+
+function TaskSlot() {
+  return (
+    <div className="border-tertiary flex h-18 items-start gap-3 border-b px-4 py-3">
+      <Sk h={20} r={4} w={20} />
+      <div className="flex flex-1 flex-col gap-2.5 pt-1">
+        <Sk line w="70%" />
+        <Sk line w="45%" />
+      </div>
+    </div>
+  )
+}
+
+function useScrollTop(ref: React.RefObject<HTMLElement | null>) {
+  const [top, setTop] = useState(0)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const onScroll = () => setTop(el.scrollTop)
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [ref])
+  return top
 }
 
 const GROUP_ICONS: Record<InboxGroupId, LucideIcon> = {

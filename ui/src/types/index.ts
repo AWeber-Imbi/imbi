@@ -771,6 +771,8 @@ export type AgentSubagentRef = Schemas['AgentSubagentRef']
 // requests that wait on a person.
 export type AgentTask = Schemas['AgentTaskResponse']
 
+export type AgentTaskCounts = Schemas['AgentTaskCounts']
+
 export type AgentTaskCreate = Schemas['AgentTaskCreate']
 
 export type AgentTaskEvent = Schemas['AgentTaskEventResponse']

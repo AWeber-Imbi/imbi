@@ -1085,6 +1085,47 @@ class ReadTaskTests(AgentTaskTestCase):
         self.assertIsNone(since['T-1'])
         self.assertIsNone(since['T-2'])
 
+    async def counts(self, **params: typing.Any) -> dict[str, int]:
+        response = await self.client.get(self.url('counts'), params=params)
+        self.assertEqual(response.status_code, 200, response.text)
+        return typing.cast('dict[str, int]', response.json())
+
+    async def test_groups_count_and_page_in_inbox_order(self) -> None:
+        await self.create_task(title='Draft notes')
+        await self.create_task(title='Review notes')
+        await self.open_request('T-1', 'First')
+        await self.open_request('T-5', 'Second')
+        await self.client.post(self.url('T-2/pause'))
+        await self.client.post(self.url('T-3/cancel'))
+        self.assertEqual(
+            await self.counts(),
+            {'input': 2, 'running': 0, 'paused': 1, 'queued': 1, 'closed': 1},
+        )
+        self.assertEqual(await self.list_ids(group='input'), ['T-1', 'T-5'])
+        self.assertEqual(
+            await self.list_ids(group='input', offset=1, limit=1), ['T-5']
+        )
+        self.assertEqual(await self.list_ids(group='paused'), ['T-2'])
+        self.assertEqual(await self.list_ids(group='queued'), ['T-4'])
+        self.assertEqual(await self.list_ids(group='closed'), ['T-3'])
+        self.assertEqual(await self.list_ids(status='blocked'), ['T-5', 'T-1'])
+        self.assertEqual(
+            await self.counts(status='blocked'),
+            {'input': 2, 'running': 0, 'paused': 0, 'queued': 0, 'closed': 0},
+        )
+        self.assertEqual((await self.counts(q='deployer'))['paused'], 1)
+        self.assertEqual(sum((await self.counts(q='deployer')).values()), 1)
+        response = await self.client.get(
+            self.url(), params={'group': 'input', 'cursor': 'x'}
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+        response = await self.client.get(self.url(), params={'offset': 1})
+        self.assertEqual(response.status_code, 400, response.text)
+        response = await self.client.get(
+            self.url(), params={'group': 'input', 'limit': 1}
+        )
+        self.assertNotIn('cursor=', response.headers.get('Link', ''))
+
     async def test_events_page_by_seq(self) -> None:
         await self.client.post(self.url('T-1/pause'))
         await self.client.post(self.url('T-1/resume'))
@@ -1526,6 +1567,7 @@ class PermissionTests(AgentTaskTestCase):
             ),
             ('agent_task:read', 'GET', '', None),
             ('agent_task:read', 'GET', 'waiting', None),
+            ('agent_task:read', 'GET', 'counts', None),
             ('agent_task:read', 'GET', 'T-1', None),
             ('agent_task:read', 'GET', 'T-1/events', None),
             ('agent_task:manage', 'POST', 'T-1/pause', None),
@@ -1732,6 +1774,7 @@ class MembershipTests(AgentTaskTestCase):
             ),
             ('GET', '', None),
             ('GET', 'waiting', None),
+            ('GET', 'counts', None),
             ('GET', 'T-1', None),
             ('GET', 'T-1/events', None),
             ('POST', 'T-1/pause', None),
