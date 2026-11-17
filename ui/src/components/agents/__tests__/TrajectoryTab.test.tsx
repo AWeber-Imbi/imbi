@@ -590,6 +590,98 @@ describe('TrajectoryTab overview', () => {
     expect(rows()[8]).not.toHaveAttribute('data-timeline-focus')
   })
 
+  it('keeps a range dragged before the strip draws it', () => {
+    renderTab()
+    vi.spyOn(track(), 'getBoundingClientRect').mockReturnValue({
+      bottom: 50,
+      height: 50,
+      left: 0,
+      right: 900,
+      toJSON: () => ({}),
+      top: 0,
+      width: 900,
+      x: 0,
+      y: 0,
+    })
+    act(() => {
+      fireEvent.pointerDown(spanBars()[0], { button: 0, clientX: 0 })
+      fireEvent.pointerMove(track(), { button: 0, clientX: 150 })
+      fireEvent.pointerUp(track(), { button: 0, clientX: 150 })
+    })
+    expect(rows()[0]).toHaveAttribute('data-timeline-focus', 'inside')
+    expect(rows()[8]).toHaveAttribute('data-timeline-focus', 'outside')
+    expect(rows()[0]).not.toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('takes a press and a release apart as a drag with no move between', () => {
+    renderTab()
+    vi.spyOn(track(), 'getBoundingClientRect').mockReturnValue({
+      bottom: 50,
+      height: 50,
+      left: 0,
+      right: 900,
+      toJSON: () => ({}),
+      top: 0,
+      width: 900,
+      x: 0,
+      y: 0,
+    })
+    fireEvent.pointerDown(spanBars()[0], { button: 0, clientX: 0 })
+    fireEvent.pointerUp(track(), { button: 0, clientX: 150 })
+    expect(rows()[0]).toHaveAttribute('data-timeline-focus', 'inside')
+    expect(rows()[8]).toHaveAttribute('data-timeline-focus', 'outside')
+    expect(rows()[0]).not.toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('ends a drag where the browser releases it, before the pointerup', () => {
+    renderTab()
+    vi.spyOn(track(), 'getBoundingClientRect').mockReturnValue({
+      bottom: 50,
+      height: 50,
+      left: 0,
+      right: 900,
+      toJSON: () => ({}),
+      top: 0,
+      width: 900,
+      x: 0,
+      y: 0,
+    })
+    fireEvent.pointerDown(track(), { button: 0, clientX: 450 })
+    fireEvent.pointerMove(track(), { button: 0, buttons: 1, clientX: 300 })
+    fireEvent.lostPointerCapture(track())
+    fireEvent.pointerMove(track(), { buttons: 0, clientX: 800 })
+    fireEvent.pointerUp(track(), { button: 0, clientX: 800 })
+    expect(rows()[0]).toHaveAttribute('data-timeline-focus', 'outside')
+    expect(rows().at(-1)).toHaveAttribute('data-timeline-focus', 'outside')
+    expect(
+      rows().some((r) => r.getAttribute('data-timeline-focus') === 'inside'),
+    ).toBe(true)
+  })
+
+  it('keeps a dragged range through the double-click that ends it', () => {
+    renderTab()
+    vi.spyOn(track(), 'getBoundingClientRect').mockReturnValue({
+      bottom: 50,
+      height: 50,
+      left: 0,
+      right: 900,
+      toJSON: () => ({}),
+      top: 0,
+      width: 900,
+      x: 0,
+      y: 0,
+    })
+    fireEvent.pointerDown(track(), { button: 0, clientX: 0 })
+    fireEvent.pointerMove(track(), { button: 0, clientX: 150 })
+    fireEvent.pointerUp(track(), { button: 0, clientX: 150 })
+    fireEvent.doubleClick(track())
+    expect(rows()[8]).toHaveAttribute('data-timeline-focus', 'outside')
+    fireEvent.pointerDown(track(), { button: 0, clientX: 0 })
+    fireEvent.pointerUp(track(), { button: 0, clientX: 0 })
+    fireEvent.doubleClick(track())
+    expect(rows()[8]).not.toHaveAttribute('data-timeline-focus')
+  })
+
   it('clears the range on a right click', () => {
     renderTab()
     fireEvent.pointerDown(track(), { button: 0, clientX: 0 })
