@@ -360,6 +360,46 @@ class GenerateTestCase(unittest.IsolatedAsyncioTestCase):
             result.usage, {'input_tokens': None, 'output_tokens': None}
         )
 
+    async def test_openai_refusal(self) -> None:
+        body = {
+            'choices': [
+                {
+                    'message': {
+                        'role': 'assistant',
+                        'content': None,
+                        'refusal': 'I cannot help with that.',
+                    }
+                }
+            ],
+        }
+        for fields in ([], FIELDS):
+            with (
+                self.subTest(output_fields=bool(fields)),
+                self.assertRaises(generate.GenerateError) as ctx,
+            ):
+                await self._call(
+                    _request('openai', output_fields=fields), 200, body
+                )
+            self.assertEqual(ctx.exception.code, 'provider_refused')
+            self.assertFalse(ctx.exception.retry)
+
+    async def test_openai_cached_tokens(self) -> None:
+        body = _openai_body('Hi')
+        body['usage'] = {
+            'prompt_tokens': 2048,
+            'completion_tokens': 5,
+            'prompt_tokens_details': {'cached_tokens': 1024},
+        }
+        result = await self._call(_request('openai'), 200, body)
+        self.assertEqual(
+            result.usage,
+            {
+                'input_tokens': 1024,
+                'output_tokens': 5,
+                'cache_read_tokens': 1024,
+            },
+        )
+
     def test_credential_not_in_repr(self) -> None:
         request = _request('openai')
         self.assertNotIn(str(request.credential), repr(request))

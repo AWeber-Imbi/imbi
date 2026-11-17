@@ -8,7 +8,7 @@ from unittest import mock
 import psycopg.errors
 
 from apps.api.tests.endpoints import test_ai_providers as provider_tests
-from imbi.api import model_calls
+from imbi.api import model_calls, workflows
 from imbi.api.endpoints import projects, prompts
 
 ORG = provider_tests.ORG
@@ -130,6 +130,10 @@ class PromptTestBase(provider_tests.AIProviderTestBase):
         self.calls.repeat.return_value = None
         self.test_app.dependency_overrides[model_calls._inject_store] = (
             lambda: self.calls
+        )
+        self.workflow_store = mock.AsyncMock()
+        self.test_app.dependency_overrides[workflows._inject_store] = (
+            lambda: self.workflow_store
         )
 
     def route(self, *rules: tuple[str, typing.Any]) -> Router:

@@ -10,7 +10,7 @@ import httpx
 
 from apps.api.tests.endpoints import test_ai_providers as provider_tests
 from apps.api.tests.endpoints import test_prompts as base
-from imbi.api.endpoints import ai_providers, prompts
+from imbi.api.endpoints import ai_models, ai_providers, prompts
 from imbi.api.llm import generate as model_generate
 from imbi.common.llm import generate
 
@@ -147,6 +147,75 @@ class GenerativeRunTestCase(base.PromptTestBase):
         self.calls.start.assert_not_awaited()
         self.generate.assert_not_awaited()
         self.generate.assert_not_awaited()
+
+    def test_cached_tokens_use_the_cache_read_price(self) -> None:
+        self.generate.return_value = generate.Result(
+            'All good',
+            None,
+            {
+                'input_tokens': 1024,
+                'output_tokens': 0,
+                'cache_read_tokens': 1024,
+            },
+            None,
+        )
+        self.route_run(input_cost='2', cache_read_cost='1')
+        response = self.run_ref()
+        self.assertEqual(response.status_code, 200, response.text)
+        # 1024 at $2/M plus 1024 at $1/M, not 2048 at $2/M.
+        self.assertAlmostEqual(response.json()['cost_usd'], 0.003072)
+        usage = self.calls.finish.await_args.kwargs['usage']
+        self.assertEqual(usage['cache_read_tokens'], 1024)
+
+    def test_restricted_model_needs_an_allowed_team(self) -> None:
+        self.as_principal('prompt:run')
+        router = self.route_run(access_scope='restricted')
+        response = self.run_ref()
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(
+            response.json()['detail'],
+            {'error': 'model_not_allowed', 'retry': False},
+        )
+        self.generate.assert_not_awaited()
+        self.calls.start.assert_not_awaited()
+        self.assertEqual(
+            router.params_for(ai_models._ALLOWED_MEMBER_QUERY)['email'],
+            self.user.email,
+        )
+        router.rules.insert(
+            0, (ai_models._ALLOWED_MEMBER_QUERY, [{'id': 'team-1'}])
+        )
+        self.assertEqual(self.run_ref().status_code, 200)
+
+    def test_restricted_model_in_a_workflow_needs_the_owner_team(
+        self,
+    ) -> None:
+        self.as_principal('prompt:run')
+        self.auth_context.user = None
+        slug = f'{base.ORG}.deploy.summary'
+        router = self.route_run(access_scope='restricted')
+        router.rules[0] = (
+            base.GET_PROMPT,
+            base.prompt_row(namespace='workflows', slug=slug),
+        )
+        self.workflow_store.get.return_value = {'owner_team_id': 'team-1'}
+        with mock.patch.object(
+            prompts,
+            'caller_org_slugs',
+            mock.AsyncMock(return_value={base.ORG}),
+        ):
+            response = self.run_ref(ref=f'workflows/{slug}@1')
+            self.assertEqual(response.status_code, 403, response.text)
+            self.workflow_store.get.assert_awaited_with('org-1', 'deploy')
+            self.assertEqual(
+                router.params_for(ai_models._ALLOWED_TEAM_QUERY)['team'],
+                'team-1',
+            )
+            router.rules.insert(
+                0, (ai_models._ALLOWED_TEAM_QUERY, [{'id': 'team-1'}])
+            )
+            response = self.run_ref(ref=f'workflows/{slug}@1')
+            self.assertEqual(response.status_code, 200, response.text)
 
     def test_structured_result(self) -> None:
         self.generate.return_value = generate.Result(

@@ -294,6 +294,11 @@ picker lists the teams of the organization you have selected. A
 restricted model must name at least one team. Imbi rejects an empty team list
 with `422`.
 
+A generative prompt run checks the teams of a restricted model. A user must
+be a member of an allowed team. An LLM Call step of a workflow runs for the
+owner team of the workflow. Otherwise the run fails with `403`
+(`model_not_allowed`). Admins can run every model.
+
 Deleting a team does not update the models that name it. Review restricted
 models after you delete a team.
 

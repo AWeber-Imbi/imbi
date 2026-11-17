@@ -106,3 +106,33 @@ class ParamsTestCase(unittest.TestCase):
             'unknown_output_field', issues('{{ sum.result.risk }}')
         )
         self.assertIn('unknown_output_field', issues('{{ sum.result.nope }}'))
+
+    def test_output_field_description_is_not_a_template(self) -> None:
+        wf_graph = graph.Graph.model_validate(
+            {
+                'nodes': [
+                    _node('start', 'manual', {}),
+                    _node(
+                        'sum',
+                        'llm_call',
+                        {
+                            'prompt_ref': 'workflows/acme.wf.sum',
+                            'prompt_version': 1,
+                            'output_fields': [
+                                {
+                                    'name': 'risk',
+                                    'type': 'string',
+                                    'description': 'Write {{ customer.name '
+                                    '}} literally.',
+                                }
+                            ],
+                        },
+                    ),
+                ],
+                'edges': [{'source': 'start', 'port': 0, 'target': 'sum'}],
+            }
+        )
+        result = validation.validate(wf_graph, graph.Settings())
+        self.assertEqual(
+            [i.code for i in result.issues if i.severity == 'error'], []
+        )

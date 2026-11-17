@@ -440,6 +440,31 @@ def _teams_for_scope(access_scope: str, teams: list[TeamRef]) -> list[TeamRef]:
     return teams if access_scope == 'restricted' else []
 
 
+_ALLOWED_MEMBER_QUERY: typing.LiteralString = """
+MATCH (:AIModel {{slug: {slug}}})-[:ALLOWED_FOR]->(t:Team)
+      <-[:MEMBER_OF]-(:User {{email: {email}}})
+RETURN t.id AS id
+"""
+
+_ALLOWED_TEAM_QUERY: typing.LiteralString = """
+MATCH (:AIModel {{slug: {slug}}})-[:ALLOWED_FOR]->(t:Team {{id: {team}}})
+RETURN t.id AS id
+"""
+
+
+async def member_allowed(db: graph.Graph, slug: str, email: str) -> bool:
+    """Whether the user ``email`` is a member of a team that a
+    ``restricted`` model allows."""
+    params = {'slug': slug, 'email': email}
+    return bool(await db.execute(_ALLOWED_MEMBER_QUERY, params, ['id']))
+
+
+async def team_allowed(db: graph.Graph, slug: str, team_id: str) -> bool:
+    """Whether a ``restricted`` model allows the team ``team_id``."""
+    params = {'slug': slug, 'team': team_id}
+    return bool(await db.execute(_ALLOWED_TEAM_QUERY, params, ['id']))
+
+
 async def _replace_team_edges(
     db: graph.Graph,
     model_id: str,

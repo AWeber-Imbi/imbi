@@ -412,13 +412,15 @@ The step fails with one of these errors:
 |---|---|---|
 | `model_answer_invalid` | The answer does not match the output fields | Yes |
 | `rate_limited`, `provider_unavailable`, `provider_unreachable` | The provider is busy, down, or not reachable | Yes |
-| `provider_refused` | The provider refused the request | No |
+| `provider_refused` | The provider refused the request, or the model refused to answer | No |
 | `provider_misconfigured`, `credentials_failed` | The provider has no usable credentials or settings | No |
 | `model_no_structured_output` | The step has output fields and the model does not support structured output | No |
+| `forbidden` | The model is restricted to teams that do not include the owner team of the workflow | No |
 | `outcome_unknown` | An earlier call of the attempt did not finish. Imbi does not know if the model answered | No |
 
 **Output:** `text`, `result` (with output fields), `model`, `model_id`,
-`prompt_version`, `usage` (`input_tokens`, `output_tokens`), and
+`prompt_version`, `usage` (`input_tokens`, `output_tokens`, and
+`cache_read_tokens` when the provider reports cache reads), and
 `cost_usd` (`null` when the provider did not report a token count).
 
 ### Send email

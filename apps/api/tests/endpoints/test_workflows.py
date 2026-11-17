@@ -799,6 +799,7 @@ class LLMCallStepTestCase(WorkflowTestCase):
         self.provider = f'prov-{suffix}'
         self.structured = f'chat-s-{suffix}'
         self.plain = f'chat-p-{suffix}'
+        self.completion = f'text-c-{suffix}'
         await self.graph.execute(
             """
             CREATE (p:AIProvider {{id: {provider}, slug: {provider},
@@ -812,14 +813,21 @@ class LLMCallStepTestCase(WorkflowTestCase):
                                 model_id: 'm', model_type: 'generative',
                                 enabled: true,
                                 supports_structured_output: false}})
+            CREATE (c:AIModel {{id: {completion}, slug: {completion},
+                                name: 'C', model_id: 'c',
+                                model_type: 'generative', kind: 'completion',
+                                enabled: true,
+                                supports_structured_output: false}})
             CREATE (s)-[:SERVED_BY]->(p)
             CREATE (m)-[:SERVED_BY]->(p)
+            CREATE (c)-[:SERVED_BY]->(p)
             RETURN p.id AS id
             """,
             {
                 'provider': self.provider,
                 'structured': self.structured,
                 'plain': self.plain,
+                'completion': self.completion,
             },
             ['id'],
         )
@@ -827,6 +835,7 @@ class LLMCallStepTestCase(WorkflowTestCase):
         await self._prompt('sum', self.structured)
         await self._prompt('plain', self.plain)
         await self._prompt('ask', self.plain)
+        await self._prompt('text', self.completion)
 
     async def _cleanup_prompts(self) -> None:
         await self.graph.execute(
@@ -846,7 +855,14 @@ class LLMCallStepTestCase(WorkflowTestCase):
             DETACH DELETE n
             RETURN 1 AS ok
             """,
-            {'ids': [self.provider, self.structured, self.plain]},
+            {
+                'ids': [
+                    self.provider,
+                    self.structured,
+                    self.plain,
+                    self.completion,
+                ]
+            },
             ['ok'],
         )
 
@@ -910,6 +926,7 @@ class LLMCallStepTestCase(WorkflowTestCase):
             ({'sum': {'prompt_version': 9}}, 'no version 9'),
             ({'gone': {}}, 'not found'),
             ({'plain': {'output_fields': fields}}, 'structured output'),
+            ({'text': {}}, 'is a completion model; choose a chat model'),
         ):
             with self.subTest(message):
                 response = await self._create(graph=self._graph(**nodes))

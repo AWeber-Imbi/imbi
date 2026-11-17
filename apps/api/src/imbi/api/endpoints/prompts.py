@@ -29,10 +29,10 @@ import fastapi
 import pydantic
 import slugify
 
-from imbi.api import model_calls, secret_broker
+from imbi.api import model_calls, secret_broker, workflows
 from imbi.api.agent_tasks import store as task_store
 from imbi.api.auth import organizations, permissions
-from imbi.api.endpoints import ai_providers, projects
+from imbi.api.endpoints import ai_models, ai_providers, projects
 from imbi.api.endpoints._helpers import (
     caller_org_slugs,
     conflict_on_unique_violation,
@@ -359,9 +359,11 @@ _RUN_MODEL_QUERY: typing.LiteralString = """
 MATCH (m:AIModel {{slug: {slug}}})-[:SERVED_BY]->(p:AIProvider)
 RETURN m.model_id AS model_id, m.enabled AS enabled,
        m.model_type AS model_type, m.kind AS kind, p.id AS provider_id,
+       m.access_scope AS access_scope,
        m.supports_structured_output AS structured,
        m.input_cost_per_million AS input_cost,
-       m.output_cost_per_million AS output_cost
+       m.output_cost_per_million AS output_cost,
+       m.cache_read_cost_per_million AS cache_read_cost
 """
 _RUN_MODEL_COLUMNS = [
     'model_id',
@@ -369,9 +371,11 @@ _RUN_MODEL_COLUMNS = [
     'model_type',
     'kind',
     'provider_id',
+    'access_scope',
     'structured',
     'input_cost',
     'output_cost',
+    'cache_read_cost',
 ]
 
 _DELETE_VERSIONS_QUERY: typing.LiteralString = """
@@ -1328,6 +1332,7 @@ CALL_ERRORS: dict[str, tuple[int, bool]] = {
     'outcome_unknown': (409, False),
     'model_unsupported': (422, False),
     'model_no_structured_output': (422, False),
+    'model_not_allowed': (403, False),
 }
 
 
@@ -1365,6 +1370,41 @@ async def _check_run_permission(
     )
 
 
+async def _check_model_teams(
+    db: graph.Graph,
+    store: workflows.WorkflowStore,
+    auth: permissions.AuthContext,
+    org_id: str,
+    prompt: models.Prompt,
+    model: str,
+) -> None:
+    """A ``restricted`` model runs only for its teams (#782).
+
+    A user must be a member of an allowed team. A caller without a user
+    (the workflows service) runs a workflow step prompt, so the owner
+    team of that workflow must be allowed.
+
+    Raises:
+        403: ``model_not_allowed``.
+
+    """
+    if auth.is_admin:
+        return
+    if auth.user is not None:
+        allowed = await ai_models.member_allowed(db, model, auth.user.email)
+    elif prompt.namespace == WORKFLOWS_NAMESPACE:
+        # <org>.<workflow>.<node key>
+        slug = prompt.slug.partition('.')[2].rpartition('.')[0]
+        row = await store.get(org_id, slug)
+        allowed = row is not None and await ai_models.team_allowed(
+            db, model, row['owner_team_id']
+        )
+    else:
+        allowed = False
+    if not allowed:
+        raise _call_error('model_not_allowed')
+
+
 @prompt_render_router.post('/run', response_model=RunResponse)
 async def run_prompt(
     org_slug: str,
@@ -1373,6 +1413,7 @@ async def run_prompt(
     db: graph.Pool,
     secrets: secret_broker.Store,
     calls: model_calls.Store,
+    workflow_store: workflows.Store,
     auth: typing.Annotated[
         permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
     ],
@@ -1402,8 +1443,9 @@ async def run_prompt(
     (see :data:`CALL_ERRORS`).
 
     Raises:
-        403: No permission, or a template calls ``project()`` without
-            ``project:read``.
+        403: No permission, a template calls ``project()`` without
+            ``project:read``, or the model is restricted to teams that
+            do not include the caller (``model_not_allowed``).
         404: No such prompt, version, label, project, or organization.
         409: The provider has no usable credentials, a call with the key
             is still running (``call_in_progress``), or one did not
@@ -1439,7 +1481,9 @@ async def run_prompt(
             db,
             secrets,
             calls,
+            workflow_store,
             auth,
+            prompt,
             version,
             ref,
             idempotency_key,
@@ -1580,7 +1624,9 @@ async def _run_generative(
     db: graph.Graph,
     secrets: secret_broker.store.SecretStore,
     calls: model_calls.ModelCallStore,
+    workflow_store: workflows.WorkflowStore,
     auth: permissions.AuthContext,
+    prompt: models.Prompt,
     version: models.PromptVersion,
     ref: str,
     idempotency_key: str | None,
@@ -1613,6 +1659,10 @@ async def _run_generative(
         raise _unprocessable(
             f'AI model {version.model!r} is a completion model; '
             'a generative run needs a chat model'
+        )
+    if record.get('access_scope') == 'restricted':
+        await _check_model_teams(
+            db, workflow_store, auth, org_id, prompt, version.model
         )
     provider = await ai_providers.fetch_provider(
         db, str(record['provider_id'])
@@ -1682,13 +1732,15 @@ async def _run_generative(
             {
                 'tokens_in': tokens_in,
                 'tokens_out': tokens_out,
-                'cache_read_tokens': None,
+                'cache_read_tokens': answer.usage.get('cache_read_tokens'),
                 'cache_write_tokens': None,
             },
             {
                 'input_cost_per_million': _price(record.get('input_cost')),
                 'output_cost_per_million': _price(record.get('output_cost')),
-                'cache_read_cost_per_million': None,
+                'cache_read_cost_per_million': _price(
+                    record.get('cache_read_cost')
+                ),
                 'cache_write_cost_per_million': None,
             },
         )

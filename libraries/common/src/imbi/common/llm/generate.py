@@ -68,7 +68,8 @@ class GenerateError(Exception):
     - ``rate_limited`` (retry): HTTP 429.
     - ``provider_unavailable`` (retry): HTTP 5xx.
     - ``provider_unreachable`` (retry): a transport error or a timeout.
-    - ``provider_refused``: another HTTP 4xx.
+    - ``provider_refused``: another HTTP 4xx, or the model refused to
+      answer.
     - ``provider_misconfigured``: the request is missing a value that
       the driver needs, such as a region.
     """
@@ -124,6 +125,9 @@ class Request:
 class Usage(typing.TypedDict):
     input_tokens: int | None
     output_tokens: int | None
+    #: Input tokens read from the provider's prompt cache, when the
+    #: provider reports them. ``input_tokens`` does not include them.
+    cache_read_tokens: typing.NotRequired[int]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -285,14 +289,16 @@ def _status_error(status: int, detail: str, structured: bool) -> GenerateError:
     return GenerateError('provider_refused', status=status)
 
 
-def _usage(input_tokens: object, output_tokens: object) -> Usage:
-    def as_int(value: object) -> int | None:
-        if isinstance(value, bool) or not isinstance(value, int):
-            return None
-        return value
+def _as_int(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
 
+
+def _usage(input_tokens: object, output_tokens: object) -> Usage:
     return Usage(
-        input_tokens=as_int(input_tokens), output_tokens=as_int(output_tokens)
+        input_tokens=_as_int(input_tokens),
+        output_tokens=_as_int(output_tokens),
     )
 
 
@@ -458,15 +464,26 @@ async def _openai(
     )
     data = _json(response)
     try:
-        text = data['choices'][0]['message'].get('content') or ''
+        message = data['choices'][0]['message']
+        text = message.get('content') or ''
+        refused = bool(message.get('refusal')) and not text
         usage = _mapping(data.get('usage'))
     except (KeyError, IndexError, TypeError, AttributeError):
         raise GenerateError('model_answer_invalid', retry=True) from None
+    if refused:
+        # The same request gets the same refusal: no retry.
+        raise GenerateError('provider_refused')
+    counts = _usage(usage.get('prompt_tokens'), usage.get('completion_tokens'))
+    cached = _as_int(
+        _mapping(usage.get('prompt_tokens_details')).get('cached_tokens')
+    )
+    if cached is not None:
+        # OpenAI counts the cache reads in prompt_tokens.
+        counts['cache_read_tokens'] = cached
+        if counts['input_tokens'] is not None:
+            counts['input_tokens'] -= cached
     return _Answer(
-        str(text),
-        None,
-        _usage(usage.get('prompt_tokens'), usage.get('completion_tokens')),
-        response.headers.get('x-request-id'),
+        str(text), None, counts, response.headers.get('x-request-id')
     )
 
 

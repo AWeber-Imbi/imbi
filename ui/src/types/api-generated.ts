@@ -3014,8 +3014,9 @@ export interface paths {
          *     (see :data:`CALL_ERRORS`).
          *
          *     Raises:
-         *         403: No permission, or a template calls ``project()`` without
-         *             ``project:read``.
+         *         403: No permission, a template calls ``project()`` without
+         *             ``project:read``, or the model is restricted to teams that
+         *             do not include the caller (``model_not_allowed``).
          *         404: No such prompt, version, label, project, or organization.
          *         409: The provider has no usable credentials, a call with the key
          *             is still running (``call_in_progress``), or one did not

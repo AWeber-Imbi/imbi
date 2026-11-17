@@ -392,9 +392,9 @@ def _check_trigger_project(
             )
 
 
-_STRUCTURED_QUERY: typing.LiteralString = """
+_LLM_CALL_MODEL_QUERY: typing.LiteralString = """
 MATCH (m:AIModel {{slug: {slug}}})
-RETURN m.supports_structured_output AS structured
+RETURN m.supports_structured_output AS structured, m.kind AS kind
 """
 
 
@@ -416,9 +416,9 @@ async def _check_llm_call(
 
     The node timeout is at least :data:`MIN_LLM_CALL_TIMEOUT`. The
     prompt is the node's own (see :func:`_llm_call_ref`) and is
-    generative, the pinned version exists, and with ``output_fields`` its model
-    supports structured output. Invalid params are left to the
-    validation issues of the version.
+    generative, the pinned version exists, its model is a chat model, and
+    with ``output_fields`` the model supports structured output. Invalid
+    params are left to the validation issues of the version.
 
     Raises:
         422: A check fails.
@@ -451,14 +451,24 @@ async def _check_llm_call(
             raise _llm_call_error(node, str(e)) from e
         if prompt.kind != 'generative':
             raise _llm_call_error(node, 'the prompt must be generative')
-        if not params.output_fields:
-            continue
         records = await db.execute(
-            _STRUCTURED_QUERY, {'slug': version.model or ''}, ['structured']
+            _LLM_CALL_MODEL_QUERY,
+            {'slug': version.model or ''},
+            ['structured', 'kind'],
         )
-        if not (
-            records and graph.parse_agtype(records[0]['structured']) is True
-        ):
+        model = (
+            {k: graph.parse_agtype(v) for k, v in records[0].items()}
+            if records
+            else {}
+        )
+        # The run sends chat requests only (see prompts._run_generative).
+        if (model.get('kind') or 'chat') != 'chat':
+            raise _llm_call_error(
+                node,
+                f'the model {version.model!r} is a completion model; '
+                'choose a chat model',
+            )
+        if params.output_fields and model.get('structured') is not True:
             raise _llm_call_error(
                 node,
                 f'the model {version.model!r} does not support structured '

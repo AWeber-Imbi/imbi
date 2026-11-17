@@ -123,6 +123,8 @@ STEP = step_type.StepType(
     # still runs the call of an attempt.
     timeout_seconds=300,
     retries=2,
+    # The descriptions are text for the model. Only inputs are templates.
+    raw_params=frozenset({'output_fields'}),
     required_permissions=required_permissions,
     structured_output=True,
 )
