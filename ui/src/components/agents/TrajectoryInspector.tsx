@@ -348,11 +348,25 @@ function jsonTree(value: unknown): object | undefined {
   if (typeof value === 'string') {
     const text = value.trim()
     if (!text.startsWith('{') && !text.startsWith('[')) return undefined
+    let lossy = false
     try {
-      parsed = JSON.parse(text)
+      parsed = JSON.parse(
+        text,
+        (_key, v: unknown, context?: { source?: string }) => {
+          if (
+            typeof v === 'number' &&
+            (context?.source === undefined
+              ? Number.isInteger(v) && !Number.isSafeInteger(v)
+              : Number(context.source) !== v || String(v) !== context.source)
+          )
+            lossy = true
+          return v
+        },
+      )
     } catch {
       return undefined
     }
+    if (lossy) return undefined
   }
   return typeof parsed === 'object' && parsed !== null ? parsed : undefined
 }

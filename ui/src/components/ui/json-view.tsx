@@ -80,12 +80,11 @@ function Branch({
   const [open, setOpen] = useState(depth < options.initialDepth)
   const [shown, setShown] = useState(options.pageSize)
   const array = Array.isArray(value)
-  const entries: [string, unknown][] = array
-    ? value.map((v, i) => [String(i), v])
-    : Object.entries(value)
+  const keys = array ? null : Object.keys(value)
+  const total = keys ? keys.length : (value as unknown[]).length
   const [start, end] = array ? ['[', ']'] : ['{', '}']
-  const hidden = entries.length - shown
-  if (entries.length === 0)
+  const hidden = total - shown
+  if (total === 0)
     return (
       <Line value={value}>
         {name !== undefined && <Key name={name} />}
@@ -128,16 +127,28 @@ function Branch({
       {open && (
         <>
           <div className="border-border ml-1.75 border-l pl-2">
-            {entries.slice(0, shown).map(([key, child], i) => (
+            {(keys ?? []).slice(0, shown).map((key, i) => (
               <Node
                 depth={depth + 1}
                 key={key}
-                last={i === entries.length - 1}
-                name={array ? undefined : key}
+                last={i === total - 1}
+                name={key}
                 options={options}
-                value={child}
+                value={(value as Record<string, unknown>)[key]}
               />
             ))}
+            {array &&
+              value
+                .slice(0, shown)
+                .map((child, i) => (
+                  <Node
+                    depth={depth + 1}
+                    key={i}
+                    last={i === total - 1}
+                    options={options}
+                    value={child}
+                  />
+                ))}
             {hidden > 0 && (
               <button
                 className="text-muted-foreground hover:text-foreground focus-visible:ring-ring ml-4 rounded-sm underline-offset-2 outline-none hover:underline focus-visible:ring-2"
