@@ -9,6 +9,7 @@ import {
   logoutAuth,
   refreshToken as refreshTokenApi,
 } from '@/api/endpoints'
+import { session } from '@/lib/storage'
 import { useAuthStore } from '@/stores/authStore'
 import type { LoginRequest, UseAuthReturn, UserResponse } from '@/types'
 
@@ -110,7 +111,7 @@ export function useAuth(): UseAuthReturn {
       if (location.pathname !== '/login') {
         // Save current path before redirecting to login
         const currentPath = location.pathname + location.search
-        sessionStorage.setItem('imbi_redirect_after_login', currentPath)
+        session.setItem('imbi_redirect_after_login', currentPath)
         navigate('/login', { replace: true })
       }
     },
@@ -123,7 +124,7 @@ export function useAuth(): UseAuthReturn {
   const loginWithOAuth = (providerId: string) => {
     const currentPath = window.location.pathname + window.location.search
     if (currentPath !== '/login') {
-      sessionStorage.setItem('imbi_redirect_after_login', currentPath)
+      session.setItem('imbi_redirect_after_login', currentPath)
     }
     // Tell the API to redirect back to the SPA's OAuth callback page,
     // which knows how to parse the token fragment.

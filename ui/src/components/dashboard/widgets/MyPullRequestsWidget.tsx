@@ -17,6 +17,7 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import { useGithubLogin } from '@/hooks/useGithubLogin'
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll'
 import { useProjectsSlimMap } from '@/hooks/useProjectsSlimMap'
+import { storage } from '@/lib/storage'
 import type { PullRequest, PullRequestListResponse } from '@/types'
 
 const PAGE_SIZE = 20
@@ -33,9 +34,7 @@ export function MyPullRequestsWidget() {
   function handleFilterClick(f: StateFilter) {
     const next = stateFilter === f ? 'all' : f
     setStateFilter(next)
-    try {
-      localStorage.setItem(FILTER_KEY, next)
-    } catch {}
+    storage.setItem(FILTER_KEY, next)
   }
 
   const {
@@ -298,10 +297,7 @@ function prStateAttrs(pr: PullRequest) {
 
 // fallow-ignore-next-line complexity
 function readSavedFilter(): StateFilter {
-  try {
-    const v = localStorage.getItem(FILTER_KEY)
-    if (v === 'all' || v === 'open' || v === 'merged' || v === 'closed')
-      return v
-  } catch {}
+  const v = storage.getItem(FILTER_KEY)
+  if (v === 'all' || v === 'open' || v === 'merged' || v === 'closed') return v
   return 'all'
 }

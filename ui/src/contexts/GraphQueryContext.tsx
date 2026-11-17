@@ -13,6 +13,7 @@ import {
 
 import { executeGraphQuery } from '@/api/endpoints'
 import { extractGraphQueryError } from '@/lib/graphQueryError'
+import { storage } from '@/lib/storage'
 import type {
   GraphQueryCard,
   GraphQueryCardTab,
@@ -112,12 +113,7 @@ export function GraphQueryProvider({ children }: { children: ReactNode }) {
   // Persist history changes after hydration.
   useEffect(() => {
     if (!hydratedRef.current) return
-    if (typeof window === 'undefined') return
-    try {
-      window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history))
-    } catch {
-      // Ignore quota errors.
-    }
+    storage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history))
   }, [history])
 
   const addCard = useCallback((card: GraphQueryCard) => {
@@ -251,9 +247,8 @@ function generateCardId(): string {
 }
 
 function readStoredHistory(): GraphQueryHistoryEntry[] {
-  if (typeof window === 'undefined') return []
   try {
-    const raw = window.localStorage.getItem(HISTORY_STORAGE_KEY)
+    const raw = storage.getItem(HISTORY_STORAGE_KEY)
     if (!raw) return []
     const parsed = JSON.parse(raw) as unknown
     if (!Array.isArray(parsed)) return []

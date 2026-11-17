@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 
+import { storage } from '@/lib/storage'
+
 const STORAGE_PREFIX = 'imbi:comment-last-visit:'
 
 /**
@@ -26,21 +28,10 @@ export function useCommentLastVisit(
       return
     }
     const key = `${STORAGE_PREFIX}${orgSlug}:${projectId ?? 'org'}:${documentId}`
-    let previous: number | undefined
-    try {
-      const raw = window.localStorage.getItem(key)
-      previous = raw ? Number(raw) : undefined
-      if (previous !== undefined && Number.isNaN(previous)) previous = undefined
-    } catch {
-      previous = undefined
-    }
-    setLastVisit(previous)
-    try {
-      window.localStorage.setItem(key, String(Date.now()))
-    } catch {
-      // Ignore storage failures (private mode, quota) — unread dots are
-      // a best-effort enhancement, not load-bearing.
-    }
+    const raw = storage.getItem(key)
+    const previous = raw ? Number(raw) : Number.NaN
+    setLastVisit(Number.isNaN(previous) ? undefined : previous)
+    storage.setItem(key, String(Date.now()))
   }, [orgSlug, projectId, documentId])
 
   return lastVisit

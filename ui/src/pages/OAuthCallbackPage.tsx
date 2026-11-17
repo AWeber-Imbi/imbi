@@ -9,6 +9,7 @@ import {
   performPostLoginRedirect,
   resolvePostLoginTarget,
 } from '@/lib/postLoginRedirect'
+import { session } from '@/lib/storage'
 import { useAuthStore } from '@/stores/authStore'
 
 export function OAuthCallbackPage() {
@@ -64,9 +65,9 @@ export function OAuthCallbackPage() {
       // load so the access cookie is sent; relative paths stay in-SPA.
       const target = resolvePostLoginTarget(
         null,
-        sessionStorage.getItem('imbi_redirect_after_login'),
+        session.getItem('imbi_redirect_after_login'),
       )
-      sessionStorage.removeItem('imbi_redirect_after_login')
+      session.removeItem('imbi_redirect_after_login')
       performPostLoginRedirect(target, navigate)
     }
   }, [user, navigate])

@@ -9,6 +9,8 @@ import {
   useState,
 } from 'react'
 
+import { storage } from '@/lib/storage'
+
 type Theme = 'dark' | 'light'
 
 const THEME_STORAGE_KEY = 'imbi-theme'
@@ -50,7 +52,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       toggleTheme: () => {
         setTheme((prev) => {
           const next = prev === 'dark' ? 'light' : 'dark'
-          window.localStorage.setItem(THEME_STORAGE_KEY, next)
+          storage.setItem(THEME_STORAGE_KEY, next)
           return next
         })
       },
@@ -70,8 +72,7 @@ export function useTheme() {
 }
 
 function readStoredTheme(): null | Theme {
-  if (typeof window === 'undefined') return null
-  const stored = window.localStorage.getItem(THEME_STORAGE_KEY)
+  const stored = storage.getItem(THEME_STORAGE_KEY)
   return stored === 'dark' || stored === 'light' ? stored : null
 }
 
