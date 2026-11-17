@@ -680,6 +680,7 @@ Find the error code first:
 
 | Reason | Cause | Fix |
 |---|---|---|
+| `prompt_render_failed` | The agent's pinned prompt version did not render, usually because the template uses a variable that its variable schema does not declare. The runner log shows `Prompt of <task> did not render` with the error | Declare the variable in a new prompt version and point the agent at it |
 | `model_key_missing` | The platform configuration has no `model_upstream.key_ref` | Do [step 5](#5-configure-the-model-key) |
 | `model_upstream_insecure` | The model upstream URL uses `http://` and `model_upstream.allow_insecure_http` is off. The runner does not send the key without TLS | Change the **Base URL** to `https://`. For a protected in-cluster upstream only, turn on **Allow http://**. See [step 5](#5-configure-the-model-key) |
 | `model_key_refused` | The broker refused the `model_inference` request | Check the grant: the agent, the binding, the purpose `model_inference`, and the delivery mode `file_descriptor`. The binding is the agent's **Model key**, or the organization's key when the agent has none |

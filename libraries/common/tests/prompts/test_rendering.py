@@ -301,6 +301,48 @@ class CheckTestCase(unittest.TestCase):
                 with self.assertRaisesRegex(rendering.RenderError, 'allowed'):
                     rendering.check_syntax({'system': source})
 
+    def test_declared_variables(self) -> None:
+        schema = {'name': models.PromptVariable(type='str')}
+        rendering.check_declared(
+            {
+                'system': (
+                    '{{ name }} {{ project(1) }} {{ range(2) | list }}'
+                    '{% set local = 1 %}{{ local }}'
+                    '{% for item in [1] %}{{ item }}{% endfor %}'
+                )
+            },
+            schema,
+            {'project'},
+        )
+        with self.assertRaisesRegex(
+            rendering.RenderError,
+            'messages\\[0\\]: undeclared variables: other, task',
+        ):
+            rendering.check_declared(
+                {'messages[0]': '{{ task }} {{ other }} {{ name }}'},
+                schema,
+                set(),
+            )
+        with self.assertRaisesRegex(
+            rendering.RenderError, "system: line 1: No filter named 'nope'"
+        ):
+            rendering.check_declared(
+                {'system': '{{ name | nope }}'}, schema, set()
+            )
+        for source, message in (
+            (
+                '{% if true %}{{ name | nope }}{% endif %}',
+                "filter named 'nope'",
+            ),
+            (
+                '{% if true %}{{ name is nope }}{% endif %}',
+                "test named 'nope'",
+            ),
+        ):
+            with self.subTest(source=source):
+                with self.assertRaisesRegex(rendering.RenderError, message):
+                    rendering.check_declared({'system': source}, schema, set())
+
     def test_variable_names(self) -> None:
         with self.assertRaises(rendering.RenderError):
             rendering.check_variable_schema(
