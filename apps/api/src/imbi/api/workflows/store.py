@@ -17,6 +17,7 @@ from psycopg.types import json as pg_json
 
 from imbi.common import relational
 from imbi.common.workflows import runtime
+from imbi.common.workflows.registry import ticket_closed
 
 type Pool = psycopg_pool.AsyncConnectionPool[
     psycopg.AsyncConnection[typing.Any]
@@ -318,9 +319,9 @@ class WorkflowStore:
         )
 
     async def active_bindings(
-        self, organization_id: str, trigger_type: str
+        self, organization_id: str, trigger_types: typing.Sequence[str]
     ) -> list[Row]:
-        """Return the enabled bindings of one trigger type of the active
+        """Return the enabled bindings of the trigger types of the active
         workflows of an org, with the settings of the active version."""
         return await self._all(
             'SELECT b.node_id, b.params, w.id AS workflow_id,'
@@ -329,9 +330,9 @@ class WorkflowStore:
             ' JOIN workflows.workflows AS w ON w.id = b.workflow_id'
             ' JOIN workflows.workflow_versions AS v'
             '   ON v.workflow_id = w.id AND v.version = w.active_version'
-            ' WHERE b.organization_id = %s AND b.type = %s'
+            ' WHERE b.organization_id = %s AND b.type = ANY(%s)'
             " AND b.enabled AND NOT b.removed AND w.status = 'active'",
-            (organization_id, trigger_type),
+            (organization_id, list(trigger_types)),
         )
 
     async def agent_references(
@@ -354,9 +355,14 @@ class WorkflowStore:
             ' AND NOT (r.status = ANY(%s))))'
             ' AND EXISTS (SELECT 1'
             " FROM jsonb_array_elements(v.graph->'nodes') AS n"
-            " WHERE n->>'type' IN ('agent', 'task_completed', 'ticket_closed')"
+            " WHERE n->>'type' = ANY(%s)"
             " AND n->'params'->>'agent_id' = %s)",
-            (organization_id, list(runtime.CLOSED), agent_id),
+            (
+                organization_id,
+                list(runtime.CLOSED),
+                ['agent', *ticket_closed.TYPES],
+                agent_id,
+            ),
         )
         return int(row['n']) if row else 0
 

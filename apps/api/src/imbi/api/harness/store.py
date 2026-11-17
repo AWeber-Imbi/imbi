@@ -89,7 +89,7 @@ _CLAIMABLE: typing.LiteralString = ''.join(
    AND (cardinality(%(orgs)s::text[]) = 0
         OR t.organization_id = ANY(%(orgs)s))
    AND ((c.root_task_id IS NULL
-        AND t.origin_kind NOT IN ('task', 'ticket'))
+        AND NOT (t.origin_kind = ANY(%(child_kinds)s)))
         OR c.state = 'queued')
    AND NOT EXISTS (
        SELECT 1 FROM jsonb_each_text(%(limits)s) AS l(agent_id, max)
@@ -131,7 +131,7 @@ _CHAIN_CLAIM_QUERY: typing.LiteralString = (
     + """
   FROM tickets.tickets AS t
  WHERE t.chain_id = %(chain)s
-   AND t.origin_kind IN ('task', 'ticket')
+   AND t.origin_kind = ANY(%(child_kinds)s)
    AND t.status = 'queued'
    AND t.control = 'run'
    AND NOT EXISTS (SELECT 1 FROM harness.claims AS k
@@ -184,6 +184,7 @@ def _claim_params(
         'orgs': pool['organization_ids'],
         'limits': pg_json.Jsonb(limits),
         'pinned': list(PINNED),
+        'child_kinds': list(task_store.CHILD_ORIGIN_KINDS),
     }
 
 
@@ -510,7 +511,11 @@ class HarnessStore:
             task = await _fetch_one(
                 conn,
                 _CHAIN_CLAIM_QUERY,
-                {'chain': chain['root_task_id'], 'attempt': chain['attempt']},
+                {
+                    'chain': chain['root_task_id'],
+                    'attempt': chain['attempt'],
+                    'child_kinds': list(task_store.CHILD_ORIGIN_KINDS),
+                },
             )
             if task is None:
                 return None

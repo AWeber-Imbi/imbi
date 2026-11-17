@@ -99,11 +99,9 @@ class TaskTrigger:
         }
         org = task['organization_id']
         failed = False
-        bindings = [
-            binding
-            for kind in ticket_closed.TYPES
-            for binding in await self._definitions.active_bindings(org, kind)
-        ]
+        bindings = await self._definitions.active_bindings(
+            org, ticket_closed.TYPES
+        )
         for binding in bindings:
             if not _matches(binding, task):
                 continue

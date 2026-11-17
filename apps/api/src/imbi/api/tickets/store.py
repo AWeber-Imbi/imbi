@@ -1048,9 +1048,15 @@ class TicketStore:
                 'SELECT 1 FROM tickets.tickets'
                 " WHERE status <> 'closed' AND (id = %s OR chain_id = %s"
                 ' OR (chain_id IS NULL AND id = %s)'
-                " OR (origin_kind IN ('task', 'ticket') AND origin_id = %s))"
+                ' OR (origin_kind = ANY(%s) AND origin_id = %s))'
                 ' LIMIT 1',
-                (task['id'], chain_id, chain_id, str(task['id'])),
+                (
+                    task['id'],
+                    chain_id,
+                    chain_id,
+                    list(CHILD_ORIGIN_KINDS),
+                    str(task['id']),
+                ),
             )
             if await cursor.fetchone() is not None:
                 raise TaskOpen(short_id)
@@ -1430,9 +1436,13 @@ class TicketStore:
             await cursor.execute(
                 _SELECT_TASKS
                 + ' WHERE organization_id = %s'
-                + " AND origin_kind IN ('task', 'ticket')"
+                + ' AND origin_kind = ANY(%s)'
                 ' AND origin_id = %s ORDER BY created_at, id',
-                (task['organization_id'], str(task['id'])),
+                (
+                    task['organization_id'],
+                    list(CHILD_ORIGIN_KINDS),
+                    str(task['id']),
+                ),
             )
             children = await cursor.fetchall()
         return {

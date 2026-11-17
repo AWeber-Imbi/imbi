@@ -42,7 +42,7 @@ from slack_sdk.web import async_client as slack_client
 
 from imbi.api import email, workflows
 from imbi.api import settings as api_settings
-from imbi.api import tickets as agent_runtime
+from imbi.api import tickets as ticket_store
 from imbi.api.auth import organizations, permissions
 from imbi.api.email import client as email_client
 from imbi.api.endpoints import project_deployments, tickets
@@ -1542,7 +1542,7 @@ async def step_agent_task(
     db: graph.Pool,
     store: workflows.Store,
     runs: workflows.Runs,
-    tasks: agent_runtime.Store,
+    tasks: ticket_store.Store,
     auth: EngineAuth,
 ) -> dict[str, typing.Any]:
     """Make the task of a running agent step, or return it. Engine only.
@@ -1615,7 +1615,7 @@ async def step_agent_task(
             origin,
             key,
             run['activated_by'],
-            agent_runtime.Actor('system', auth.principal_name, 'api'),
+            ticket_store.Actor('system', auth.principal_name, 'api'),
             agent_step.output_schema(params.output_fields),
         )
     if (
@@ -1642,7 +1642,7 @@ async def cancel_step_agent_task(
     node_id: str,
     store: workflows.Store,
     runs: workflows.Runs,
-    tasks: agent_runtime.Store,
+    tasks: ticket_store.Store,
     auth: EngineAuth,
 ) -> None:
     """Cancel the task of an agent step, when it is open. Engine only.
@@ -1673,9 +1673,9 @@ async def cancel_step_agent_task(
             org_id,
             task['short_id'],
             'cancel',
-            agent_runtime.Actor('system', auth.principal_name, 'api'),
+            ticket_store.Actor('system', auth.principal_name, 'api'),
         )
-    except (agent_runtime.TaskClosed, agent_runtime.CancelPending):
+    except (ticket_store.TaskClosed, ticket_store.CancelPending):
         pass
 
 
