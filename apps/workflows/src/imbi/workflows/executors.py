@@ -503,7 +503,16 @@ class Executors:
 
     async def _llm_call(self, call: Call) -> Outcome:
         params = _params(llm_call.Params, call)
+        # Stop waiting before the engine cancels the call: a cancelled
+        # call is retried as a new attempt, with a new key, while
+        # imbi-api can still run the first call. The engine limit
+        # includes the time to get the organization slug.
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + (call.time_limit or math.inf) * 0.9
         org = await self.org_slug(call.organization_id)
+        wait_seconds = min(LLM_CALL_TIMEOUT, deadline - loop.time())
+        if wait_seconds <= 0:
+            return Outcome(resume_at=_now(), state=call.state)
         try:
             answer = await self.api.request(
                 'POST',
@@ -518,12 +527,7 @@ class Executors:
                 headers={
                     'Idempotency-Key': f'{call.idempotency_key}:{call.attempt}'
                 },
-                # Stop waiting before the engine cancels the call: a
-                # cancelled call is retried as a new attempt, with a new
-                # key, while imbi-api can still run the first call.
-                wait_seconds=min(
-                    LLM_CALL_TIMEOUT, (call.time_limit or math.inf) * 0.9
-                ),
+                wait_seconds=wait_seconds,
             )
         except StepError as e:
             if e.code != 'call_in_progress' and not isinstance(

@@ -2117,6 +2117,23 @@ class LLMCallStepTestCase(EngineTestCase):
         self.assertEqual(run['status'], 'succeeded', run['error'])
         self.assertLess(self.calls[0].extensions['timeout']['read'], 30)
 
+    async def test_wait_counts_the_time_to_get_the_org_slug(self) -> None:
+        # The engine limit includes the org_slug lookup. Limit 1s,
+        # budget 0.9s, lookup 0.5s: the wait must be below 0.5s.
+        self.config.lease_seconds = 31
+        self.answers = [self._answer()]
+        org_slug = executors.Executors.org_slug
+
+        async def slow(self_: executors.Executors, org_id: str) -> str:
+            await asyncio.sleep(0.5)
+            return await org_slug(self_, org_id)
+
+        with mock.patch.object(executors.Executors, 'org_slug', slow):
+            run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertLess(self.calls[0].extensions['timeout']['read'], 0.5)
+        self.assertEqual(set(self._keys()), {'sum:1', 'then:1'})
+
     async def test_error_without_retry_fails(self) -> None:
         self.answers = [self._error(422, 'model_no_structured_output', False)]
         run = await self._drive_llm_call()
