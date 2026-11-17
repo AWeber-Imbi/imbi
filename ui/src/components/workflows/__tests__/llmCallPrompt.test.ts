@@ -178,6 +178,35 @@ describe('saveWorkflow', () => {
     expect(savedParams().prompt_version).toBe(3)
   })
 
+  it('writes a new version when an input is renamed to constructor', async () => {
+    vi.mocked(endpoints.resolvePrompt).mockResolvedValue({
+      version: {
+        messages: [{ content: 'Summarize {{ log }}', role: 'user' }],
+        model: 'claude',
+        params: { max_tokens: 500, stop_sequences: [] },
+        system: 'Be brief.',
+        variable_schema: { old: { required: true, type: 'any' } },
+      },
+    } as unknown as PromptResolution)
+    vi.mocked(endpoints.createPromptVersion).mockResolvedValue({
+      n: 3,
+    } as PromptVersion)
+
+    await saveWorkflow(
+      'acme',
+      'deploy-guard',
+      draft({
+        inputs: { constructor: '{{ fetch.result }}' },
+        prompt_ref: 'workflows/acme.deploy-guard.summarize',
+        prompt_version: 2,
+      }),
+      {},
+    )
+
+    expect(endpoints.createPromptVersion).toHaveBeenCalled()
+    expect(savedParams().prompt_version).toBe(3)
+  })
+
   it('copies the pinned prompt to the slug of a renamed node key', async () => {
     vi.mocked(endpoints.resolvePrompt).mockResolvedValue({
       version: {

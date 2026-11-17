@@ -7,6 +7,7 @@ import * as endpoints from '@/api/endpoints'
 import { fireEvent, render, screen, waitFor, within } from '@/test/utils'
 
 import { agent } from '../../agents/__tests__/fixtures'
+import type { Workflow } from '../types'
 import { WorkflowsManagement } from '../WorkflowsManagement'
 import { node, RUN, STEP_TYPES, workflow } from './fixtures'
 
@@ -598,6 +599,43 @@ describe('WorkflowsManagement', () => {
       target: added.id,
     })
     expect(await screen.findByText('Saved · v3')).toBeInTheDocument()
+  })
+
+  it('keeps an edit made during the first save of a new workflow', async () => {
+    vi.mocked(endpoints.listTeams).mockResolvedValue([
+      { id: 'team-1', name: 'Platform', slug: 'platform' },
+    ] as Awaited<ReturnType<typeof endpoints.listTeams>>)
+    let finish: (w: Workflow) => void = () => undefined
+    vi.mocked(endpoints.createWorkflow).mockReturnValue(
+      new Promise((resolve) => (finish = resolve)),
+    )
+    vi.mocked(endpoints.updateWorkflow).mockResolvedValue(workflow())
+    renderAt('/agents/workflows/new')
+    fireEvent.click(await screen.findByLabelText(/Owner team/))
+    fireEvent.click(await screen.findByRole('option', { name: 'Platform' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(endpoints.createWorkflow).toHaveBeenCalled())
+    // Edit while the save is pending.
+    fireEvent.change(screen.getByLabelText('Workflow name'), {
+      target: { value: 'Edited during save' },
+    })
+    finish(workflow())
+
+    await waitFor(() =>
+      expect(screen.getByText('Unsaved changes')).toBeInTheDocument(),
+    )
+    expect(window.location.pathname).toBe('/agents/workflows/new')
+    expect(screen.getByLabelText('Workflow name')).toHaveValue(
+      'Edited during save',
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() =>
+      expect(window.location.pathname).toBe('/agents/workflows/deploy-guard'),
+    )
+    const [, slug, body] = vi.mocked(endpoints.updateWorkflow).mock.calls[0]
+    expect(slug).toBe('deploy-guard')
+    expect(body.name).toBe('Edited during save')
   })
 
   it('shows each step key, and the type when the title differs', async () => {

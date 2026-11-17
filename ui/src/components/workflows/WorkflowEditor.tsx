@@ -249,10 +249,13 @@ export function WorkflowEditor({
     onSuccess: ({ pins, saved, saving }) => {
       setDraft((d) => ({ ...d, graph: pinNodes(d.graph, pins) }))
       stored(saved)
-      if (saving === revision.current) setDirty(false)
+      const clean = saving === revision.current
+      if (clean) setDirty(false)
       setIssues(saved.version.validation.issues)
       // Not `slug`: `stored` sets it when the save creates the workflow.
-      if (!workflow) {
+      // The navigation remounts the editor, so it waits for a save with
+      // no edit during it; until then the editor keeps the edits.
+      if (!workflow && clean) {
         navigate(agentsPath('workflows', saved.slug), { replace: true })
       }
     },

@@ -199,7 +199,10 @@ function createNodePrompt(
 function sameNames(schema: object, inputs: unknown): boolean {
   const names = Object.keys(isRecord(inputs) ? inputs : {})
   const vars = Object.keys(schema)
-  return names.length === vars.length && names.every((n) => n in schema)
+  return (
+    names.length === vars.length &&
+    names.every((n) => Object.prototype.hasOwnProperty.call(schema, n))
+  )
 }
 
 /** Remove the pins of the graph's LLM Call nodes. */
