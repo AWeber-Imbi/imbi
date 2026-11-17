@@ -103,12 +103,7 @@ export function promptContent(
     state: '',
     system: draft.system,
     tools: [],
-    variable_schema: Object.fromEntries(
-      Object.keys(isRecord(inputs) ? inputs : {}).map((name) => [
-        name,
-        { required: true, type: 'any' as const },
-      ]),
-    ),
+    variable_schema: variableSchema(inputs),
   }
 }
 
@@ -151,8 +146,11 @@ export async function saveWorkflow(
       const slug = promptSlug(orgSlug, workflowSlug, node.key)
       const ref = `${NAMESPACE}/${slug}`
       const pinned = pinnedRef(node)
-      let content = prompts[node.id]
-      if (!content) {
+      const draftPrompt = prompts[node.id]
+      let content: Omit<PromptVersionCreate, 'summary'>
+      if (draftPrompt) {
+        content = promptContent(draftPrompt, node.params.inputs)
+      } else {
         if (!pinned) return
         const { version } = await resolvePrompt(pinned)
         // An unchanged prompt that is already the node's own needs no
@@ -162,8 +160,18 @@ export async function saveWorkflow(
           sameNames(version.variable_schema, node.params.inputs)
         )
           return
-        // A copied node, a new key, or changed inputs: copy the pin.
-        content = draftFromVersion(version)
+        // A copied node, a new key, or changed inputs: copy the full
+        // pinned version, with only its variables changed.
+        content = {
+          messages: version.messages,
+          model: version.model,
+          params: version.params,
+          questions: version.questions,
+          state: version.state,
+          system: version.system,
+          tools: version.tools,
+          variable_schema: variableSchema(node.params.inputs),
+        }
       }
       pins[node.id] = {
         prompt_ref: ref,
@@ -224,6 +232,18 @@ function unpinNodes(graph: WorkflowGraph): WorkflowGraph {
   }
 }
 
+/** The prompt variables of a step: one for each input name. */
+function variableSchema(
+  inputs: unknown,
+): PromptVersionCreate['variable_schema'] {
+  return Object.fromEntries(
+    Object.keys(isRecord(inputs) ? inputs : {}).map((name) => [
+      name,
+      { required: true, type: 'any' as const },
+    ]),
+  )
+}
+
 /**
  * Write one node's prompt and return the version number to pin. A new
  * version of an existing prompt is always sent: it returns the newest
@@ -234,13 +254,10 @@ async function writePrompt(
   slug: string,
   name: string,
   node: WorkflowNode,
-  draft: StepPrompt,
+  content: Omit<PromptVersionCreate, 'summary'>,
 ): Promise<number> {
-  if (!draft.model) throw new Error(`Step '${node.key}': choose a model.`)
-  const version = {
-    ...promptContent(draft, node.params.inputs),
-    summary: 'Saved from the workflow editor.',
-  }
+  if (!content.model) throw new Error(`Step '${node.key}': choose a model.`)
+  const version = { ...content, summary: 'Saved from the workflow editor.' }
   try {
     return (await createPromptVersion(NAMESPACE, slug, version)).n
   } catch (error) {

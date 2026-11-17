@@ -37,6 +37,27 @@ const VERSION_BODY = {
   variable_schema: { log: { required: true, type: 'any' } },
 }
 
+// A pinned version with content that the editor does not show: a
+// copy must keep all of it and change only the variables.
+const PINNED = {
+  messages: [
+    { content: 'Summarize {{ log }}', role: 'user' },
+    { content: 'Summary:', role: 'assistant' },
+  ],
+  model: 'claude',
+  params: { max_tokens: 500, stop_sequences: ['END'], temperature: 0.2 },
+  questions: {},
+  state: '',
+  system: 'Be brief.',
+  tools: [],
+  variable_schema: { log: { required: true, type: 'any' } },
+}
+
+const COPY_BODY = {
+  ...PINNED,
+  summary: 'Saved from the workflow editor.',
+}
+
 function draft(params: Record<string, unknown> = {}): WorkflowWrite {
   return {
     description: '',
@@ -149,10 +170,7 @@ describe('saveWorkflow', () => {
   it('writes a new version when only the inputs changed', async () => {
     vi.mocked(endpoints.resolvePrompt).mockResolvedValue({
       version: {
-        messages: [{ content: 'Summarize {{ log }}', role: 'user' }],
-        model: 'claude',
-        params: { max_tokens: 500, stop_sequences: [] },
-        system: 'Be brief.',
+        ...PINNED,
         variable_schema: { old: { required: true, type: 'any' } },
       },
     } as unknown as PromptResolution)
@@ -173,7 +191,7 @@ describe('saveWorkflow', () => {
     expect(endpoints.createPromptVersion).toHaveBeenCalledWith(
       'workflows',
       'acme.deploy-guard.summarize',
-      VERSION_BODY,
+      COPY_BODY,
     )
     expect(savedParams().prompt_version).toBe(3)
   })
@@ -181,10 +199,7 @@ describe('saveWorkflow', () => {
   it('writes a new version when an input is renamed to constructor', async () => {
     vi.mocked(endpoints.resolvePrompt).mockResolvedValue({
       version: {
-        messages: [{ content: 'Summarize {{ log }}', role: 'user' }],
-        model: 'claude',
-        params: { max_tokens: 500, stop_sequences: [] },
-        system: 'Be brief.',
+        ...PINNED,
         variable_schema: { old: { required: true, type: 'any' } },
       },
     } as unknown as PromptResolution)
@@ -209,12 +224,7 @@ describe('saveWorkflow', () => {
 
   it('copies the pinned prompt to the slug of a renamed node key', async () => {
     vi.mocked(endpoints.resolvePrompt).mockResolvedValue({
-      version: {
-        messages: [{ content: 'Summarize {{ log }}', role: 'user' }],
-        model: 'claude',
-        params: { max_tokens: 500, stop_sequences: [] },
-        system: 'Be brief.',
-      },
+      version: PINNED,
     } as unknown as PromptResolution)
     vi.mocked(endpoints.createPromptVersion).mockRejectedValue(
       new ApiError(404, 'Not Found'),
@@ -239,7 +249,7 @@ describe('saveWorkflow', () => {
     expect(endpoints.createPrompt).toHaveBeenCalledWith(
       expect.objectContaining({
         slug: 'acme.deploy-guard.summarize',
-        version: VERSION_BODY,
+        version: COPY_BODY,
       }),
     )
     expect(savedParams()).toMatchObject({
