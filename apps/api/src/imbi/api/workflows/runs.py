@@ -328,7 +328,8 @@ class RunStore:
             'SELECT * FROM ('  # noqa: S608
             'SELECT r.*, w.slug AS workflow_slug, w.name AS workflow_name,'
             f' COALESCE({_STUCK}, FALSE) AS stuck,'
-            ' ROW_NUMBER() OVER (ORDER BY r.created_at DESC, r.id) AS n'
+            f' ROW_NUMBER() OVER (PARTITION BY COALESCE({_STUCK}, FALSE)'
+            ' ORDER BY r.created_at DESC, r.id) AS n'
             ' FROM workflow_runtime.runs AS r'
             ' JOIN workflows.workflows AS w ON w.id = r.workflow_id'
             ' LEFT JOIN workflow_runtime.leases AS l ON l.run_id = r.id'

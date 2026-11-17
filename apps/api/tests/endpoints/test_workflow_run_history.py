@@ -483,3 +483,24 @@ class OrgRunsTestCase(RunHistoryTestCase):
         )
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual([r['id'] for r in response.json()], [fresh, stuck])
+
+    async def test_new_stuck_run_does_not_use_the_limit(self) -> None:
+        url = await self._workflow()
+        failed, stuck = [await self._start(url) for _ in range(2)]
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE workflow_runtime.runs SET status = 'failed',"
+                ' closed_at = NOW(),'
+                " created_at = NOW() - INTERVAL '1 day' WHERE id = %s",
+                (failed,),
+            )
+            await conn.execute(
+                "UPDATE workflow_runtime.runs SET status = 'running',"
+                " due_at = NOW() - INTERVAL '10 minutes' WHERE id = %s",
+                (stuck,),
+            )
+        response = await self.client.get(
+            f'/organizations/{self.org}/workflow-runs/', params={'limit': 1}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual([r['id'] for r in response.json()], [stuck, failed])
