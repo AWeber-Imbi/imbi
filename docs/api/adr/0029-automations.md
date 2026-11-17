@@ -146,13 +146,6 @@ Rules:
   project runs in an organization, are organization settings.
 - The task lists of ADR 0020 do not show tasks of the origin kind
   `automation_run` unless a person asks for them.
-- The ticket routes of ADR 0028 refuse a handoff, a reopen, and a new
-  gating dependency on the planner ticket and on a project run ticket.
-  A reopen would run the engine again with no check of
-  `automation:run`, of the limits of the run, or of the one active
-  project run for a project. A handoff to a person, or a hold, would
-  leave the run with no end. The automation routes are the one way to
-  retry a project run.
 
 Differences from the CLI, on purpose:
 
