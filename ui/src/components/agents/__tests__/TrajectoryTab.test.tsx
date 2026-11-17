@@ -1024,6 +1024,115 @@ describe('TrajectoryTab inspector', () => {
     expect(within(inspector()).getByText('Failed')).toBeInTheDocument()
   })
 
+  it('shows a JSON result as a tree with the original text a toggle away', async () => {
+    renderTab('closed', [
+      ...LOG,
+      event(12, 'tool.called', {
+        arguments: { path: '.' },
+        call_id: 'c4',
+        duration_ms: 5,
+        result: '{"files": ["a.txt"]}',
+        tool: 'List',
+      }),
+    ])
+    await userEvent.click(
+      rows().find((r) => r.getAttribute('data-record') === 'call:c4')!,
+    )
+    await userEvent.click(
+      within(inspector()).getByRole('tab', { name: 'Result' }),
+    )
+    const panel = within(inspector()).getByRole('tabpanel')
+    expect(panel).toHaveTextContent('"files": ["a.txt"]')
+    expect(
+      within(panel).getAllByRole('button', { expanded: true }),
+    ).toHaveLength(2)
+    const toggle = within(panel).getByRole('button', {
+      name: 'Show original text',
+    })
+    await userEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-pressed', 'true')
+    expect(panel.querySelector('pre')).toHaveTextContent('{"files": ["a.txt"]}')
+    expect(within(panel).queryByRole('button', { expanded: true })).toBeNull()
+  })
+
+  it('opens the next record with its own payload view', async () => {
+    renderTab()
+    await userEvent.click(rows()[3])
+    await userEvent.click(
+      within(inspector()).getByRole('tab', { name: 'Payload' }),
+    )
+    const toggle = () =>
+      within(inspector()).getByRole('button', { name: 'Show original text' })
+    await userEvent.click(toggle())
+    expect(toggle()).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(rows()[4])
+    expect(toggle()).toHaveAttribute('aria-pressed', 'false')
+    expect(within(inspector()).getByRole('tabpanel')).toHaveTextContent(
+      '"pattern": "x"',
+    )
+  })
+
+  it('keeps JSON with a number a tree would round as text', async () => {
+    renderTab('closed', [
+      ...LOG,
+      event(12, 'tool.called', {
+        arguments: {},
+        call_id: 'c4',
+        duration_ms: 5,
+        result: '{"id": 9007199254740993}',
+        tool: 'List',
+      }),
+    ])
+    await userEvent.click(
+      rows().find((r) => r.getAttribute('data-record') === 'call:c4')!,
+    )
+    await userEvent.click(
+      within(inspector()).getByRole('tab', { name: 'Result' }),
+    )
+    const panel = within(inspector()).getByRole('tabpanel')
+    expect(panel.querySelector('pre')).toHaveTextContent(
+      '{"id": 9007199254740993}',
+    )
+    expect(panel).not.toHaveTextContent('9007199254740992')
+  })
+
+  it('shows JSON with other spellings of exact numbers as a tree', async () => {
+    renderTab('closed', [
+      ...LOG,
+      event(12, 'tool.called', {
+        arguments: {},
+        call_id: 'c4',
+        duration_ms: 5,
+        result: '{"count": 1e2, "ratio": 1.0, "small": 0.50}',
+        tool: 'List',
+      }),
+    ])
+    await userEvent.click(
+      rows().find((r) => r.getAttribute('data-record') === 'call:c4')!,
+    )
+    await userEvent.click(
+      within(inspector()).getByRole('tab', { name: 'Result' }),
+    )
+    const panel = within(inspector()).getByRole('tabpanel')
+    expect(panel.querySelector('pre')).toBeNull()
+    expect(
+      within(panel).getByRole('button', { name: 'Show original text' }),
+    ).toBeInTheDocument()
+  })
+
+  it('keeps a plain text result as text', async () => {
+    renderTab()
+    await userEvent.click(rows()[3])
+    await userEvent.click(
+      within(inspector()).getByRole('tab', { name: 'Result' }),
+    )
+    const panel = within(inspector()).getByRole('tabpanel')
+    expect(panel.querySelector('pre')).toHaveTextContent('a.txt')
+    expect(
+      within(panel).queryByRole('button', { name: 'Show original text' }),
+    ).toBeNull()
+  })
+
   it('keeps the last tab a record supports', async () => {
     renderTab()
     await userEvent.click(rows()[3])
