@@ -534,9 +534,11 @@ class ConfigTestCase(TaskTestCase):
                 },
                 'hooks': hooks,
                 'includeCoAuthoredBy': False,
+                'autoMemoryEnabled': True,
             },
         )
         settings = subject.settings()
+        self.assertIs(settings['autoMemoryEnabled'], False)
         allowed, denied = subject.tools()
         self.assertEqual(
             settings['permissions'],
