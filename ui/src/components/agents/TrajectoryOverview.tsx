@@ -101,11 +101,14 @@ export function TrajectoryOverview({
   const [panning, setPanning] = useState(false)
   const drag = useRef<null | {
     button: number
+    from: number
+    last: number
     moved: boolean
     span: null | string
     startView: View
     x: number
   }>(null)
+  const dragged = useRef(false)
   const v: View = view ?? { size: full, start: 0 }
   const minSize = spans.length ? full / spans.length : full
 
@@ -180,8 +183,11 @@ export function TrajectoryOverview({
     const span =
       (e.target as HTMLElement).closest<HTMLElement>('[data-span]')?.dataset
         .span ?? null
+    dragged.current = false
     drag.current = {
       button: e.button,
+      from: toDomain(e.clientX),
+      last: e.clientX,
       moved: false,
       span,
       startView: v,
@@ -194,6 +200,11 @@ export function TrajectoryOverview({
       setHoverX(e.target === track.current ? toDomain(e.clientX) : null)
       return
     }
+    if (e.pointerType === 'mouse' && e.buttons === 0) {
+      onPointerUp(e)
+      return
+    }
+    d.last = e.clientX
     if (Math.abs(e.clientX - d.x) >= DRAG_PX) d.moved = true
     if (!d.moved) return
     const rect = track.current!.getBoundingClientRect()
@@ -219,9 +230,7 @@ export function TrajectoryOverview({
           start: Math.min(full - view.size, view.start + step),
         })
     }
-    const from =
-      d.startView.start + ((d.x - rect.left) / rect.width) * d.startView.size
-    setDraft([from, toDomain(e.clientX)])
+    setDraft([d.from, toDomain(e.clientX)])
   }
   const onPointerCancel = () => {
     drag.current = null
@@ -237,8 +246,10 @@ export function TrajectoryOverview({
       if (!d.moved) onRange(null)
       return
     }
-    if (d.moved && draft) {
-      commit(draft[0], draft[1])
+    const x = e.type === 'lostpointercapture' ? d.last : e.clientX
+    if (d.moved || Math.abs(x - d.x) >= DRAG_PX) {
+      dragged.current = true
+      commit(d.from, toDomain(x))
       setDraft(null)
       return
     }
@@ -248,7 +259,7 @@ export function TrajectoryOverview({
       onSelect(d.span)
       return
     }
-    const at = toDomain(e.clientX)
+    const at = toDomain(x)
     commit(at, at)
   }
 
@@ -275,11 +286,13 @@ export function TrajectoryOverview({
           panning && 'cursor-grabbing',
         )}
         onContextMenu={(e) => e.preventDefault()}
-        onDoubleClick={() => onRange(null)}
+        onDoubleClick={() => {
+          if (!dragged.current) onRange(null)
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Escape') onRange(null)
         }}
-        onLostPointerCapture={onPointerCancel}
+        onLostPointerCapture={onPointerUp}
         onPointerCancel={onPointerCancel}
         onPointerDown={onPointerDown}
         onPointerLeave={() => setHoverX(null)}
