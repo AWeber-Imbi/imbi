@@ -203,7 +203,7 @@ function EffectRow({
         queryKey: queryKeys.workflowSideEffects(orgSlug),
       })
       void queryClient.invalidateQueries({
-        queryKey: queryKeys.workflowAttention(orgSlug),
+        queryKey: queryKeys.workflowOrgRuns(orgSlug),
       })
     },
     onSuccess: (_, body) => {

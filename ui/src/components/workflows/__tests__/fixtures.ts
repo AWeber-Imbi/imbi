@@ -1,4 +1,10 @@
-import type { StepType, Workflow, WorkflowNode, WorkflowRun } from '../types'
+import type {
+  OrgRun,
+  StepType,
+  Workflow,
+  WorkflowNode,
+  WorkflowRun,
+} from '../types'
 
 export const RUN: WorkflowRun = {
   cancel_requested: false,
@@ -152,6 +158,33 @@ export function node(overrides: Partial<WorkflowNode> = {}): WorkflowNode {
     position: { x: 0, y: 0 },
     title: 'Wait',
     type: 'wait',
+    ...overrides,
+  }
+}
+
+/** A failed run of `deploy-guard` whose agent step gave `reason`. */
+export function orgRun(
+  reason: null | string,
+  overrides: Partial<OrgRun> = {},
+): OrgRun {
+  return {
+    ...RUN,
+    closed_at: RUN.created_at,
+    failure: {
+      attempt: 1,
+      error: null,
+      node_key: 'review',
+      node_type: 'agent',
+      outcome: 'failed_external',
+      reason,
+      summary: null,
+      task_id: 'T-9',
+      title: 'Review',
+    },
+    status: 'failed',
+    stuck: false,
+    workflow_name: 'Deploy guard',
+    workflow_slug: 'deploy-guard',
     ...overrides,
   }
 }

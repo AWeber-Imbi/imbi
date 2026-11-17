@@ -2,16 +2,97 @@ import { describe, expect, it } from 'vitest'
 
 import {
   duplicateOf,
+  failureCauses,
+  failureReason,
   formatDuration,
   manualTrigger,
   runResults,
   testResults,
   windowDays,
   windowSeconds,
+  workflowFailures,
 } from '../runs'
-import { node, TYPES } from './fixtures'
+import { node, orgRun, TYPES } from './fixtures'
 
 describe('runs', () => {
+  it('takes the agent reason, then the step error, then the run error', () => {
+    const run = orgRun('logzio_api_unauthorized')
+    expect(failureReason(run)).toBe('logzio_api_unauthorized')
+    expect(
+      failureReason({
+        ...run,
+        failure: { ...run.failure!, error: 'ConnectError', reason: null },
+      }),
+    ).toBe('ConnectError')
+    expect(failureReason({ ...run, error: 'timeout', failure: null })).toBe(
+      'timeout',
+    )
+    expect(failureReason({ ...run, failure: null, status: 'timed_out' })).toBe(
+      'timed_out',
+    )
+    expect(failureReason({ ...run, status: 'succeeded' })).toBeNull()
+  })
+
+  it('groups failed runs by reason, the most frequent first', () => {
+    const runs = [
+      orgRun('model_key_unavailable', { created_at: '2026-10-12T03:00:00Z' }),
+      orgRun('checkout_refused', { created_at: '2026-10-12T02:00:00Z' }),
+      orgRun('checkout_refused', {
+        created_at: '2026-10-12T01:00:00Z',
+        failure: {
+          ...orgRun('').failure!,
+          reason: 'checkout_refused',
+          title: 'Writer',
+        },
+        workflow_name: 'Standards',
+        workflow_slug: 'standards',
+      }),
+      orgRun(null, { status: 'succeeded' }),
+    ]
+    expect(failureCauses(runs)).toEqual([
+      {
+        count: 2,
+        last: '2026-10-12T02:00:00Z',
+        outcome: 'failed_external',
+        reason: 'checkout_refused',
+        steps: 'Review ×1, Writer ×1',
+        workflows: ['Deploy guard', 'Standards'],
+      },
+      {
+        count: 1,
+        last: '2026-10-12T03:00:00Z',
+        outcome: 'failed_external',
+        reason: 'model_key_unavailable',
+        steps: 'Review',
+        workflows: ['Deploy guard'],
+      },
+    ])
+    expect(workflowFailures(runs)).toEqual({
+      'deploy-guard': {
+        failed: 2,
+        others: 1,
+        top: 'model_key_unavailable',
+        topCount: 1,
+        total: 3,
+      },
+      standards: {
+        failed: 1,
+        others: 0,
+        top: 'checkout_refused',
+        topCount: 1,
+        total: 1,
+      },
+    })
+  })
+
+  it('finds no inherited value for a slug such as constructor', () => {
+    const found = workflowFailures([
+      orgRun('checkout_refused', { workflow_slug: 'constructor' }),
+    ])
+    expect(found.constructor.failed).toBe(1)
+    expect(workflowFailures([])['toString']).toBeUndefined()
+  })
+
   it('converts the dedupe window between days and seconds', () => {
     expect(windowDays(null)).toBe('')
     expect(windowDays(1_209_600)).toBe('14')

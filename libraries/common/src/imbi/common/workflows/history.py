@@ -91,6 +91,26 @@ WHERE organization_id = {organization_id:String}
 ORDER BY seq
 """
 
+# The last failed step of each run. The last step event of a node holds
+# its record (:func:`steps`), so a node counts only when that event is
+# ``step.failed``: a retry that succeeded supersedes the failure.
+_FAILED_STEPS_QUERY = """
+SELECT run_id, argMax(last_payload, last_seq) AS step
+FROM (
+    SELECT run_id,
+           argMax(type, seq) AS last_type,
+           argMax(payload, seq) AS last_payload,
+           max(seq) AS last_seq
+    FROM imbi.workflow_run_events
+    WHERE organization_id = {organization_id:String}
+      AND run_id IN {run_ids:Array(String)}
+      AND startsWith(type, 'step.')
+    GROUP BY run_id, JSONExtractString(payload, 'node_id')
+)
+WHERE last_type = 'step.failed'
+GROUP BY run_id
+"""
+
 
 def event_row(run: Row, event: Row) -> Row:
     """Return the ``workflow_run_events`` row of one Postgres event."""
@@ -252,6 +272,18 @@ async def stored_seqs(run: Row) -> set[int]:
         {'organization_id': run['organization_id'], 'run_id': str(run['id'])},
     )
     return {int(row['seq']) for row in found}
+
+
+async def archived_failed_steps(
+    organization_id: str, run_ids: list[str]
+) -> dict[str, Row]:
+    """Return the step that failed last, by run id, from the archived
+    step records in ClickHouse."""
+    found = await clickhouse.query(
+        _FAILED_STEPS_QUERY,
+        {'organization_id': organization_id, 'run_ids': run_ids},
+    )
+    return {row['run_id']: orjson.loads(row['step']) for row in found}
 
 
 async def archived_steps(run: Row) -> list[Row]:

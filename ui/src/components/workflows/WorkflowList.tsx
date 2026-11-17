@@ -10,15 +10,9 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { cn } from '@/lib/utils'
 
-import { StatusBadge as RunStatusBadge } from './RunPanel'
-import { STATUS } from './runs'
+import { STATUS, type WorkflowFailures } from './runs'
 import { stepIcon } from './stepStyle'
-import type {
-  AttentionRun,
-  RunStatus,
-  StepType,
-  WorkflowSummary,
-} from './types'
+import type { RunStatus, StepType, WorkflowSummary } from './types'
 import { StatusBadge } from './WorkflowStatusBadge'
 
 const OUTCOME_TONE: Record<string, string> = {
@@ -29,17 +23,23 @@ const OUTCOME_TONE: Record<string, string> = {
 }
 
 interface WorkflowListProps {
-  /** Failed and stuck runs; empty for people who are not admins. */
-  attention: AttentionRun[]
   error: unknown
+  /**
+   * The failed runs of the last 7 days, by workflow slug. `null` while
+   * the run history is not loaded.
+   */
+  failures: null | Record<string, WorkflowFailures>
+  /** Why the run history did not load. */
+  failuresError: unknown
   loading: boolean
   stepTypes: StepType[]
   workflows: WorkflowSummary[]
 }
 
 export function WorkflowList({
-  attention,
   error,
+  failures,
+  failuresError,
   loading,
   stepTypes,
   workflows,
@@ -68,115 +68,113 @@ export function WorkflowList({
   }, [search, workflows])
 
   return (
-    <>
-      {attention.length > 0 && <AttentionList runs={attention} />}
-      <AdminSection
-        createLabel="New workflow"
-        error={error}
-        errorTitle="Failed to load workflows"
-        onCreate={
-          canCreate ? () => navigate(agentsPath('workflows', 'new')) : undefined
+    <AdminSection
+      createLabel="New workflow"
+      error={error}
+      errorTitle="Failed to load workflows"
+      onCreate={
+        canCreate ? () => navigate(agentsPath('workflows', 'new')) : undefined
+      }
+      onSearchChange={setSearch}
+      search={search}
+      searchPlaceholder="Search workflows"
+    >
+      <AdminTable
+        columns={[
+          {
+            header: 'Name',
+            key: 'name',
+            render: (w) => (
+              <div className="flex min-w-0 flex-col">
+                <span className="text-sm font-medium">{w.name}</span>
+                {w.description && (
+                  <span className="text-tertiary max-w-90 truncate text-xs">
+                    {w.description}
+                  </span>
+                )}
+              </div>
+            ),
+          },
+          {
+            header: 'Trigger',
+            key: 'trigger',
+            render: (w) => (
+              <TriggerCell labels={labels} types={w.trigger_types} />
+            ),
+          },
+          {
+            header: 'Last run',
+            key: 'last',
+            render: (w) => <LastRun workflow={w} />,
+          },
+          {
+            cellAlign: 'right',
+            header: 'Runs 30d',
+            headerAlign: 'right',
+            key: 'runs',
+            render: (w) => (
+              <span className="font-mono text-sm">{w.runs_30d ?? '—'}</span>
+            ),
+          },
+          {
+            header: 'Failed 7d',
+            interactive: true,
+            key: 'failed',
+            render: (w) =>
+              failures ? (
+                <FailedCell failures={failures[w.slug]} slug={w.slug} />
+              ) : failuresError ? (
+                <span className="text-danger text-sm">Unavailable</span>
+              ) : (
+                <span className="text-tertiary text-sm">—</span>
+              ),
+          },
+          {
+            header: 'Status',
+            key: 'status',
+            render: (w) => <StatusBadge status={w.status} />,
+          },
+        ]}
+        emptyMessage={
+          workflows.length === 0
+            ? 'No workflows yet.'
+            : 'No workflows match that search.'
         }
-        onSearchChange={setSearch}
-        search={search}
-        searchPlaceholder="Search workflows"
-      >
-        <AdminTable
-          columns={[
-            {
-              header: 'Name',
-              key: 'name',
-              render: (w) => (
-                <div className="flex min-w-0 flex-col">
-                  <span className="text-sm font-medium">{w.name}</span>
-                  {w.description && (
-                    <span className="text-tertiary max-w-90 truncate text-xs">
-                      {w.description}
-                    </span>
-                  )}
-                </div>
-              ),
-            },
-            {
-              header: 'Trigger',
-              key: 'trigger',
-              render: (w) => (
-                <TriggerCell labels={labels} types={w.trigger_types} />
-              ),
-            },
-            {
-              header: 'Last run',
-              key: 'last',
-              render: (w) => <LastRun workflow={w} />,
-            },
-            {
-              cellAlign: 'right',
-              header: 'Runs 30d',
-              headerAlign: 'right',
-              key: 'runs',
-              render: (w) => (
-                <span className="font-mono text-sm">{w.runs_30d ?? '—'}</span>
-              ),
-            },
-            {
-              header: 'Status',
-              key: 'status',
-              render: (w) => <StatusBadge status={w.status} />,
-            },
-          ]}
-          emptyMessage={
-            workflows.length === 0
-              ? 'No workflows yet.'
-              : 'No workflows match that search.'
-          }
-          getRowHref={(w) => agentsPath('workflows', w.slug)}
-          getRowKey={(w) => w.slug}
-          getRowLabel={(w) => w.name}
-          loading={loading}
-          rows={rows}
-        />
-      </AdminSection>
-    </>
+        getRowHref={(w) => agentsPath('workflows', w.slug)}
+        getRowKey={(w) => w.slug}
+        getRowLabel={(w) => w.name}
+        loading={loading}
+        rows={rows}
+      />
+    </AdminSection>
   )
 }
 
-/** Runs that an admin should look at: failed, or stuck with no engine. */
-function AttentionList({ runs }: { runs: AttentionRun[] }) {
+function FailedCell({
+  failures,
+  slug,
+}: {
+  failures: undefined | WorkflowFailures
+  slug: string
+}) {
+  if (!failures) return <span className="text-tertiary text-sm">None</span>
+  const { failed, others, top, topCount, total } = failures
   return (
-    <section className="border-tertiary mb-6 rounded-lg border">
-      <header className="border-tertiary flex items-baseline gap-2 border-b px-4 py-2.5">
-        <span className="font-medium">Runs that need attention</span>
-        <span className="text-tertiary text-xs">
-          Failed in the last 7 days, or stuck with no engine working on them
-        </span>
-      </header>
-      {runs.map((run) => (
-        <Link
-          className="border-tertiary hover:bg-secondary grid grid-cols-[96px_minmax(0,1.2fr)_minmax(0,2fr)_120px] items-center gap-3 border-b px-4 py-2 text-sm last:border-b-0"
-          key={run.id}
-          to={`${agentsPath('workflows', run.workflow_slug)}?run=${run.id}`}
-        >
-          <RunStatusBadge status={run.status} />
-          <span className="truncate font-medium">{run.workflow_name}</span>
-          <span
-            className={cn(
-              'truncate',
-              run.reason === 'stuck' ? 'text-warning' : 'text-danger',
-            )}
-          >
-            {run.reason === 'stuck'
-              ? run.worker_id
-                ? `Stuck: the lease of ${run.worker_id} expired`
-                : 'Stuck: no engine has picked it up'
-              : (run.error ?? 'Failed')}
-          </span>
-          <RelativeTime
-            className="text-tertiary text-right text-xs"
-            value={run.closed_at ?? run.created_at}
-          />
-        </Link>
-      ))}
-    </section>
+    <Link
+      className="flex flex-col hover:underline"
+      to={`${agentsPath('workflows')}?view=runs&workflow=${encodeURIComponent(slug)}`}
+    >
+      <span className="text-danger text-sm font-medium">
+        {failed === total && total > 1
+          ? `${failed} of ${total} failed`
+          : `${failed} failed`}
+      </span>
+      <span className="text-secondary text-xs">
+        <span className="font-mono">{top}</span> ×{topCount}
+        {others > 0 &&
+          `, +${others} other ${others === 1 ? 'reason' : 'reasons'}`}
+      </span>
+    </Link>
   )
 }
 
