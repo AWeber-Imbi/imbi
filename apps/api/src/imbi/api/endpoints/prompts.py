@@ -34,7 +34,7 @@ from psycopg.types import json as pg_json
 from imbi.api import model_calls, secret_broker, workflows
 from imbi.api.agent_tasks import store as task_store
 from imbi.api.auth import organizations, permissions
-from imbi.api.endpoints import ai_models, ai_providers, projects
+from imbi.api.endpoints import ai_providers, projects
 from imbi.api.endpoints._helpers import (
     caller_org_slugs,
     conflict_on_unique_violation,
@@ -364,6 +364,7 @@ RETURN m.model_id AS model_id, m.enabled AS enabled,
        m.model_type AS model_type, m.kind AS kind, p.id AS provider_id,
        m.access_scope AS access_scope,
        m.supports_structured_output AS structured,
+       m.supports_forced_tool_choice AS forced_tool_choice,
        m.input_cost_per_million AS input_cost,
        m.output_cost_per_million AS output_cost,
        m.cache_read_cost_per_million AS cache_read_cost
@@ -376,6 +377,7 @@ _RUN_MODEL_COLUMNS = [
     'provider_id',
     'access_scope',
     'structured',
+    'forced_tool_choice',
     'input_cost',
     'output_cost',
     'cache_read_cost',
@@ -800,7 +802,7 @@ def _workflow_prompt_locked() -> fastapi.HTTPException:
 
 
 async def archive_prompts_except(
-    db: graph.Graph, namespace: str, prefix: str, keep: list[str]
+    execute: graph.CypherExecute, namespace: str, prefix: str, keep: list[str]
 ) -> None:
     """Archive each prompt of ``namespace`` whose slug starts with
     ``prefix``, except the slugs in ``keep``. Restore the archived
@@ -817,9 +819,9 @@ async def archive_prompts_except(
         'keep': keep,
         'now': _DATETIME.dump_python(_now(), mode='json'),
     }
-    await db.execute(_ARCHIVE_QUERY, params, ['slug'])
+    await execute(_ARCHIVE_QUERY, params, ['slug'])
     if keep:
-        await db.execute(_RESTORE_QUERY, params, ['slug'])
+        await execute(_RESTORE_QUERY, params, ['slug'])
 
 
 async def delete_org_prompts(
@@ -1529,7 +1531,9 @@ async def _check_model_teams(
         return
     account = auth.service_account
     if auth.user is not None:
-        allowed = await ai_models.member_allowed(db, model, auth.user.email)
+        allowed = await prompt_resolve.member_allowed(
+            db, model, auth.user.email
+        )
     elif (
         account is not None
         and account.slug == common_permissions.WORKFLOWS_ACCOUNT
@@ -1538,7 +1542,7 @@ async def _check_model_teams(
         # <org>.<workflow>.<node key>
         slug = prompt.slug.partition('.')[2].rpartition('.')[0]
         row = await store.get(org_id, slug)
-        allowed = row is not None and await ai_models.team_allowed(
+        allowed = row is not None and await prompt_resolve.team_allowed(
             db, model, row['owner_team_id']
         )
     else:
@@ -1649,6 +1653,10 @@ async def run_prompt(
     record = records[0]
     if graph.parse_agtype(record['enabled']) is False:
         raise _unprocessable(f'AI model {version.model!r} is disabled')
+    if graph.parse_agtype(record.get('access_scope')) == 'restricted':
+        await _check_model_teams(
+            db, workflow_store, auth, org_id, prompt, version.model
+        )
     provider = await ai_providers.fetch_provider(
         db, str(graph.parse_agtype(record['provider_id']))
     )
@@ -1832,6 +1840,8 @@ async def _run_generative(
         system=rendered.system,
         params=version.params,
         output_fields=data.output_fields,
+        # A missing value predates the field: a forced tool choice.
+        forced_tool_choice=record.get('forced_tool_choice') is not False,
         base_url=drivers.resolve_base_url(provider.driver, provider.base_url),
         region=provider.region,
         project_id=provider.project_id,

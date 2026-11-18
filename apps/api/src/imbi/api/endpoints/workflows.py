@@ -17,18 +17,20 @@ Every route needs the caller to be a member of the organization
 """
 
 import datetime
+import functools
 import logging
 import re
 import typing
 from collections import abc
 
 import fastapi
+import psycopg
 import pydantic
 import slugify
 
 from imbi.api import workflows
 from imbi.api.auth import organizations, permissions
-from imbi.api.endpoints import ai_models, prompts
+from imbi.api.endpoints import prompts
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.common import graph, lifespan
 from imbi.common.prompts import resolve as prompt_resolve
@@ -516,9 +518,9 @@ async def _check_model_teams(
     may not use."""
     caller_allowed = auth.is_admin or (
         auth.user is not None
-        and await ai_models.member_allowed(db, model, auth.user.email)
+        and await prompt_resolve.member_allowed(db, model, auth.user.email)
     )
-    if not caller_allowed or not await ai_models.team_allowed(
+    if not caller_allowed or not await prompt_resolve.team_allowed(
         db, model, owner_team_id
     ):
         raise fastapi.HTTPException(
@@ -573,18 +575,26 @@ async def _require_org_slug(
 
 
 async def _archive_prompts(
-    db: graph.Graph, org_slug: str, slug: str, keys: abc.Iterable[str]
+    db: graph.Graph,
+    conn: psycopg.AsyncConnection[typing.Any],
+    org_slug: str,
+    slug: str,
+    keys: abc.Iterable[str],
 ) -> None:
     """Archive the prompts of the workflow, except those of ``keys``
     (plan D8).
 
-    All prompts of the workflow are checked, not only the removed nodes,
-    so the next save or delete archives what a failed one left.
+    The archive runs on ``conn``, in the transaction of the workflow
+    write, so it commits or rolls back with that write. All prompts of
+    the workflow are checked, not only the removed nodes, so the next
+    save or delete archives what an earlier one left.
 
     """
+    # The workflows pool does not put AGE on the search path.
+    await conn.execute('SET LOCAL search_path = ag_catalog, "$user", public')
     prefix = f'{org_slug}.{slug}.'
     await prompts.archive_prompts_except(
-        db,
+        functools.partial(db.execute, conn=conn),
         prompts.WORKFLOWS_NAMESPACE,
         prefix,
         [prefix + key for key in keys],
@@ -879,10 +889,10 @@ async def save_workflow(
     # The archive runs under the row lock of the save: a second save
     # waits, so an older key set cannot archive a prompt of a newer
     # graph.
-    async def on_saved() -> None:
+    async def on_saved(conn: psycopg.AsyncConnection[typing.Any]) -> None:
         await _require_org_slug(db, org_id, org_slug)
         await _archive_prompts(
-            db, org_slug, slug, _llm_call_keys(definition.graph)
+            db, conn, org_slug, slug, _llm_call_keys(definition.graph)
         )
 
     if not await store.save(
@@ -923,7 +933,7 @@ async def delete_workflow(
     result = await store.delete(
         org_id,
         slug,
-        on_deleted=lambda: _archive_prompts(db, org_slug, slug, ()),
+        on_deleted=lambda conn: _archive_prompts(db, conn, org_slug, slug, ()),
     )
     if result == 'open_runs':
         raise fastapi.HTTPException(

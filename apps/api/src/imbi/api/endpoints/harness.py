@@ -429,6 +429,11 @@ MATCH (a:Agent {{id: {id}}})
 RETURN a.slug AS slug
 """
 
+_AGENT_TEAM_QUERY: typing.LiteralString = """
+MATCH (:Agent {{id: {id}}})-[:OWNED_BY]->(t:Team)
+RETURN t.id AS id
+"""
+
 _VERSION_QUERY: typing.LiteralString = """
 MATCH (v:AgentVersion {{agent_id: {id}, n: {n}}})
 RETURN v.snapshot AS snapshot
@@ -705,6 +710,10 @@ async def _identity(
             )
     settings = _settings(bundle.snapshot.get('settings'))
     prompt, prompt_error = await _rendered_prompt(db, task, bundle, org_slug)
+    # The runner sends prompt.model_id. Without one it uses its own
+    # configured model, which is not checked (like IMBI_ASSISTANT_MODEL).
+    if prompt is not None and prompt.model_id is not None:
+        await _check_model_teams(db, task['agent_id'], prompt.model_id)
     return bundle.model_copy(
         update={
             'prompt': prompt,
@@ -736,6 +745,29 @@ class _NoServiceAccount(LookupError):
     """The service account of a claimed task is gone."""
 
 
+class _ModelNotAllowed(PermissionError):
+    """The owner team of the agent may not use its restricted model."""
+
+
+async def _check_model_teams(
+    db: graph.Graph, agent_id: str, model_id: str
+) -> None:
+    """Refuse the provider model id ``model_id`` when the owner team of
+    the agent may not use it now (#788): no enabled catalog model has
+    the id, or each one is restricted to other teams. The agent save
+    checks this too, but the catalog and the prompt label can change
+    after the save.
+
+    Raises:
+        _ModelNotAllowed: The owner team may not use ``model_id``.
+
+    """
+    records = await db.execute(_AGENT_TEAM_QUERY, {'id': agent_id}, ['id'])
+    team_id = str(graph.parse_agtype(records[0]['id'])) if records else ''
+    if not await prompt_resolve.team_may_use_model_id(db, model_id, team_id):
+        raise _ModelNotAllowed(model_id)
+
+
 class _EgressTokenTooLarge(ValueError):
     """The proxy token is longer than
     :data:`~imbi.api.harness.tokens.MAX_PROXY_TOKEN_BYTES`."""
@@ -761,35 +793,36 @@ async def _deliver(
     A task whose service account is gone can never run, so it closes
     with ``unhandled_no_actor`` and ``None`` is returned: the caller
     claims again. So does a task whose proxy token is too large
-    (``exceeded_ceiling``, ``egress_token_too_large``). Any other error
+    (``exceeded_ceiling``, ``egress_token_too_large``), and a task whose
+    agent's owner team may not use its restricted model
+    (``failed_external``, ``model_not_allowed``). Any other error
     undoes the claim and is raised again, so the runner is not left
     busy with a chain that it does not know.
     """
     task, chain = claimed
+    outcome: typing.Literal[
+        'unhandled_no_actor', 'exceeded_ceiling', 'failed_external'
+    ]
     try:
         return await _claim(
             db, store, secrets, runner, task, chain, pinned=pinned, pod=pod
         )
     except _NoServiceAccount:
-        await tasks.set_outcome(
-            task['organization_id'],
-            task['short_id'],
-            'unhandled_no_actor',
-            'service_account_missing',
-            _SYSTEM,
-        )
+        outcome, reason = 'unhandled_no_actor', 'service_account_missing'
     except _EgressTokenTooLarge:
-        await tasks.set_outcome(
-            task['organization_id'],
-            task['short_id'],
-            'exceeded_ceiling',
-            'egress_token_too_large',
-            _SYSTEM,
-        )
+        outcome, reason = 'exceeded_ceiling', 'egress_token_too_large'
+    except _ModelNotAllowed:
+        outcome, reason = 'failed_external', 'model_not_allowed'
     except BaseException:
         await store.release_claim(runner['id'], task, chain, pinned=pinned)
         raise
-    await store.release_claim(runner['id'], task, chain, pinned=pinned)
+    try:
+        await tasks.set_outcome(
+            task['organization_id'], task['short_id'], outcome, reason, _SYSTEM
+        )
+    finally:
+        # Also when the outcome write fails: the runner gets no claim.
+        await store.release_claim(runner['id'], task, chain, pinned=pinned)
     return None
 
 

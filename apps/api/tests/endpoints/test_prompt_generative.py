@@ -10,11 +10,12 @@ import httpx
 
 from apps.api.tests.endpoints import test_ai_providers as provider_tests
 from apps.api.tests.endpoints import test_prompts as base
-from imbi.api.endpoints import ai_models, ai_providers, prompts
+from imbi.api.endpoints import ai_providers, prompts
 from imbi.api.llm import generate as model_generate
 from imbi.common import models
 from imbi.common.auth import permissions as common_permissions
 from imbi.common.llm import generate
+from imbi.common.prompts import resolve as prompt_resolve
 
 RUN_URL = f'/organizations/{base.ORG}/prompts/run'
 CALL_ID = uuid.UUID('00000000-0000-0000-0000-000000000001')
@@ -182,11 +183,11 @@ class GenerativeRunTestCase(base.PromptTestBase):
         self.generate.assert_not_awaited()
         self.calls.start.assert_not_awaited()
         self.assertEqual(
-            router.params_for(ai_models._ALLOWED_MEMBER_QUERY)['email'],
+            router.params_for(prompt_resolve.ALLOWED_MEMBER_QUERY)['email'],
             self.user.email,
         )
         router.rules.insert(
-            0, (ai_models._ALLOWED_MEMBER_QUERY, [{'id': 'team-1'}])
+            0, (prompt_resolve.ALLOWED_MEMBER_QUERY, [{'id': 'team-1'}])
         )
         self.assertEqual(self.run_ref().status_code, 200)
 
@@ -211,7 +212,7 @@ class GenerativeRunTestCase(base.PromptTestBase):
     ) -> None:
         router = self.run_workflow_prompt_as('imbi-scheduler')
         router.rules.insert(
-            0, (ai_models._ALLOWED_TEAM_QUERY, [{'id': 'team-1'}])
+            0, (prompt_resolve.ALLOWED_TEAM_QUERY, [{'id': 'team-1'}])
         )
         with mock.patch.object(
             prompts,
@@ -242,11 +243,11 @@ class GenerativeRunTestCase(base.PromptTestBase):
             self.assertEqual(response.status_code, 403, response.text)
             self.workflow_store.get.assert_awaited_with('org-1', 'deploy')
             self.assertEqual(
-                router.params_for(ai_models._ALLOWED_TEAM_QUERY)['team'],
+                router.params_for(prompt_resolve.ALLOWED_TEAM_QUERY)['team'],
                 'team-1',
             )
             router.rules.insert(
-                0, (ai_models._ALLOWED_TEAM_QUERY, [{'id': 'team-1'}])
+                0, (prompt_resolve.ALLOWED_TEAM_QUERY, [{'id': 'team-1'}])
             )
             response = self.run_ref(ref=f'workflows/{slug}@1')
             self.assertEqual(response.status_code, 200, response.text)
@@ -267,6 +268,15 @@ class GenerativeRunTestCase(base.PromptTestBase):
         self.assertIsNone(self.calls.finish.await_args.kwargs['cost_usd'])
         sent: generate.Request = self.generate.await_args.args[0]
         self.assertEqual(sent.output_fields[0].name, 'severity')
+        # A model without the flag predates it: a forced tool choice.
+        self.assertTrue(sent.forced_tool_choice)
+
+    def test_forced_tool_choice_flag_reaches_the_adapter(self) -> None:
+        self.route_run(forced_tool_choice=False)
+        response = self.run_ref(output_fields=FIELDS)
+        self.assertEqual(response.status_code, 200, response.text)
+        sent: generate.Request = self.generate.await_args.args[0]
+        self.assertFalse(sent.forced_tool_choice)
 
     def test_grant_in_another_org_does_not_run(self) -> None:
         # prompt:update in another org only: check_member keeps the

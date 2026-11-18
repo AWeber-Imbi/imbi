@@ -154,6 +154,83 @@ class GenerateTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             body['tools'][0]['input_schema'], agent.output_schema(FIELDS)
         )
+        self.assertEqual(body['system'], 'Be brief.')
+
+    async def test_anthropic_structured_auto_tool_choice(self) -> None:
+        result = await self._call(
+            _request(
+                'anthropic', output_fields=FIELDS, forced_tool_choice=False
+            ),
+            200,
+            _anthropic_body(
+                [
+                    {'type': 'thinking', 'thinking': '...', 'signature': 's'},
+                    {
+                        'type': 'tool_use',
+                        'id': 't1',
+                        'name': generate.TOOL,
+                        'input': ANSWER,
+                    },
+                ]
+            ),
+        )
+        self.assertEqual(result.result, EXPECTED)
+        body = self._body()
+        self.assertEqual(
+            body['tool_choice'],
+            {'type': 'auto', 'disable_parallel_tool_use': True},
+        )
+        self.assertEqual(
+            body['system'], f'Be brief.\n\n{generate._TOOL_INSTRUCTION}'
+        )
+
+    async def test_anthropic_auto_tool_choice_without_tool_use(self) -> None:
+        # JSON text is not the tool call: the answer is not accepted.
+        with self.assertRaises(generate.GenerateError) as ctx:
+            await self._call(
+                _request(
+                    'anthropic',
+                    output_fields=FIELDS,
+                    forced_tool_choice=False,
+                    system='',
+                ),
+                200,
+                _anthropic_body(
+                    [{'type': 'text', 'text': json.dumps(ANSWER)}]
+                ),
+            )
+        self.assertEqual(ctx.exception.code, 'model_answer_invalid')
+        self.assertTrue(ctx.exception.retry)
+        self.assertEqual(self._body()['system'], generate._TOOL_INSTRUCTION)
+
+    async def test_anthropic_forced_tool_choice_accepts_json_text(
+        self,
+    ) -> None:
+        # Forced mode keeps the JSON text fallback.
+        result = await self._call(
+            _request('anthropic', output_fields=FIELDS),
+            200,
+            _anthropic_body([{'type': 'text', 'text': json.dumps(ANSWER)}]),
+        )
+        self.assertEqual(result.result, EXPECTED)
+
+    async def test_anthropic_more_than_one_tool_use(self) -> None:
+        block = {
+            'type': 'tool_use',
+            'id': 't1',
+            'name': generate.TOOL,
+            'input': ANSWER,
+        }
+        with self.assertRaises(generate.GenerateError) as ctx:
+            await self._call(
+                _request(
+                    'anthropic', output_fields=FIELDS, forced_tool_choice=False
+                ),
+                200,
+                _anthropic_body([block, {**block, 'id': 't2'}]),
+            )
+        self.assertEqual(ctx.exception.code, 'model_answer_invalid')
+        self.assertTrue(ctx.exception.retry)
 
     async def test_anthropic_429_retries(self) -> None:
         with self.assertRaises(generate.GenerateError) as ctx:
@@ -400,6 +477,39 @@ class GenerateTestCase(unittest.IsolatedAsyncioTestCase):
             },
         )
 
+    async def test_negative_usage_is_unknown(self) -> None:
+        body = _openai_body('Hi')
+        body['usage'] = {
+            'prompt_tokens': -3,
+            'completion_tokens': -5,
+            'prompt_tokens_details': {'cached_tokens': -1},
+        }
+        result = await self._call(_request('openai'), 200, body)
+        self.assertEqual(
+            result.usage, {'input_tokens': None, 'output_tokens': None}
+        )
+
+    async def test_null_key_kept_unless_declared(self) -> None:
+        nested = [
+            agent.OutputField(
+                name='entry',
+                type='object',
+                fields=[agent.ObjectField(name='kind', type='string')],
+            )
+        ]
+        for fields, answer in (
+            (FIELDS, {'verdict': 'Pass', 'extra': None}),
+            (nested, {'entry': {'kind': 'a', 'extra': None}}),
+        ):
+            with self.subTest(answer=answer):
+                with self.assertRaises(generate.GenerateError) as ctx:
+                    await self._call(
+                        _request('openai', output_fields=fields),
+                        200,
+                        _openai_body(json.dumps(answer)),
+                    )
+                self.assertEqual(ctx.exception.code, 'model_answer_invalid')
+
     def test_credential_not_in_repr(self) -> None:
         request = _request('openai')
         self.assertNotIn(str(request.credential), repr(request))
@@ -463,6 +573,51 @@ class GenerateTestCase(unittest.IsolatedAsyncioTestCase):
                 _bedrock_body([{'text': 'Sorry'}]),
             )
         self.assertEqual(ctx.exception.code, 'model_answer_invalid')
+
+    async def test_bedrock_structured_auto_tool_choice(self) -> None:
+        result = await self._call(
+            _request(
+                'bedrock', output_fields=FIELDS, forced_tool_choice=False
+            ),
+            200,
+            _bedrock_body(
+                [
+                    {
+                        'toolUse': {
+                            'toolUseId': 't1',
+                            'name': generate.TOOL,
+                            'input': ANSWER,
+                        }
+                    }
+                ]
+            ),
+        )
+        self.assertEqual(result.result, EXPECTED)
+        body = self._body()
+        self.assertEqual(body['toolConfig']['toolChoice'], {'auto': {}})
+        self.assertEqual(
+            body['system'],
+            [{'text': f'Be brief.\n\n{generate._TOOL_INSTRUCTION}'}],
+        )
+
+    async def test_bedrock_more_than_one_tool_use(self) -> None:
+        block = {
+            'toolUse': {
+                'toolUseId': 't1',
+                'name': generate.TOOL,
+                'input': ANSWER,
+            }
+        }
+        with self.assertRaises(generate.GenerateError) as ctx:
+            await self._call(
+                _request(
+                    'bedrock', output_fields=FIELDS, forced_tool_choice=False
+                ),
+                200,
+                _bedrock_body([block, block]),
+            )
+        self.assertEqual(ctx.exception.code, 'model_answer_invalid')
+        self.assertTrue(ctx.exception.retry)
 
     async def test_bedrock_needs_a_region(self) -> None:
         with self.assertRaises(generate.GenerateError) as ctx:
@@ -545,6 +700,64 @@ class GenerateTestCase(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             result.usage, {'input_tokens': 3, 'output_tokens': 1020}
+        )
+
+    async def test_vertex_thinking_tokens_absent_or_invalid(self) -> None:
+        for metadata, output in (
+            ({'candidatesTokenCount': 20}, 20),
+            ({'candidatesTokenCount': 20, 'thoughtsTokenCount': -1}, None),
+        ):
+            with self.subTest(metadata=metadata):
+                body = _vertex_body('Hi')
+                body['usageMetadata'] = {'promptTokenCount': 3, **metadata}
+                result = await self._call(
+                    _request('vertex', model_id='gemini-2.5-flash'), 200, body
+                )
+                self.assertEqual(
+                    result.usage, {'input_tokens': 3, 'output_tokens': output}
+                )
+
+    async def test_vertex_cached_tokens_above_prompt(self) -> None:
+        for cached, usage in (
+            (3072, {'input_tokens': None, 'output_tokens': 5}),
+            (
+                2048,
+                {
+                    'input_tokens': 0,
+                    'output_tokens': 5,
+                    'cache_read_tokens': 2048,
+                },
+            ),
+        ):
+            with self.subTest(cached=cached):
+                body = _vertex_body('Hi')
+                body['usageMetadata'] = {
+                    'promptTokenCount': 2048,
+                    'candidatesTokenCount': 5,
+                    'cachedContentTokenCount': cached,
+                }
+                result = await self._call(
+                    _request('vertex', model_id='gemini-2.5-flash'), 200, body
+                )
+                self.assertEqual(result.usage, usage)
+
+    async def test_vertex_cached_tokens(self) -> None:
+        body = _vertex_body('Hi')
+        body['usageMetadata'] = {
+            'promptTokenCount': 2048,
+            'candidatesTokenCount': 5,
+            'cachedContentTokenCount': 1024,
+        }
+        result = await self._call(
+            _request('vertex', model_id='gemini-2.5-flash'), 200, body
+        )
+        self.assertEqual(
+            result.usage,
+            {
+                'input_tokens': 1024,
+                'output_tokens': 5,
+                'cache_read_tokens': 1024,
+            },
         )
 
     async def test_vertex_structured(self) -> None:

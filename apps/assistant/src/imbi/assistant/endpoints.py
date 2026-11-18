@@ -22,6 +22,7 @@ from imbi.assistant import (
     system_prompt,
 )
 from imbi.common import graph
+from imbi.common.prompts import resolve
 from imbi.common.prompts import system as prompt_system
 
 if typing.TYPE_CHECKING:
@@ -48,6 +49,24 @@ def _require_assistant() -> None:
         )
 
 
+async def _check_model(
+    db: graph.Graph, auth_ctx: AuthDep, model: str, default: str
+) -> None:
+    """Raise 403 when a non-admin user may not use ``model`` (#788)."""
+    user = auth_ctx.require_user
+    if not user.is_admin and not await resolve.member_may_use_model_id(
+        db, model, user.email, default
+    ):
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail={
+                'error': 'model_not_allowed',
+                'message': f'The model {model!r} is not in the catalog '
+                'or is restricted to teams that do not include you',
+            },
+        )
+
+
 # --- Conversation CRUD ---
 
 
@@ -70,10 +89,13 @@ async def create_conversation(
         # it names one the assistant can call.
         model = (
             await prompt_system.load_model_id(
-                db, assistant_settings.prompt_ref
+                db,
+                assistant_settings.prompt_ref,
+                auth_ctx.require_user.email,
             )
             or assistant_settings.model
         )
+    await _check_model(db, auth_ctx, model, assistant_settings.model)
     conv = await age_ops.create_conversation(
         db,
         user_email=auth_ctx.require_user.email,
@@ -826,6 +848,8 @@ async def send_message(
                 ' conversation.'
             ),
         )
+    # The allowed teams can change after the conversation starts.
+    await _check_model(db, auth_ctx, conv.model, assistant_settings.model)
 
     await age_ops.add_message(
         db,

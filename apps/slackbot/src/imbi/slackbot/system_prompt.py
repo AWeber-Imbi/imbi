@@ -74,4 +74,5 @@ async def build_system_prompt(
         _variables(user, tool_names),
         system.SLACKBOT,
         override=slackbot_settings.system_prompt,
+        email=user.email,
     )
