@@ -104,6 +104,7 @@ export function TasksPage() {
   const taskOrg = legacy ? undefined : params.slug
   const shortId = legacy ? params.slug : params.action
   const tab = legacy ? params.action : params.tab
+  const { hash, search } = useLocation()
   const navigate = useNavigate()
   const { organizations, selectedOrganization, setSelectedOrganization } =
     useOrganization()
@@ -139,7 +140,7 @@ export function TasksPage() {
   // Remove in release B (ADR 0028).
   if (legacy) {
     const rest = [orgSlug, shortId!, ...(tab ? [tab] : [])]
-    return <Navigate replace to={ticketsPath(...rest)} />
+    return <Navigate replace to={`${ticketsPath(...rest)}${search}${hash}`} />
   }
 
   if (taskOrg && !urlOrg) {

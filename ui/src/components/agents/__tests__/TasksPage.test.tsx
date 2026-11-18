@@ -238,10 +238,12 @@ describe('Tasks', () => {
   })
 
   it('redirects an old Agents > Tasks link without an org', async () => {
-    renderAt('/agents/tasks/T-3')
+    renderAt('/agents/tasks/T-3/trajectory?state=blocked#e6')
     await waitFor(() =>
-      expect(window.location.pathname).toMatch(/^\/tickets\/acme\/T-3\b/),
+      expect(window.location.pathname).toBe('/tickets/acme/T-3/trajectory'),
     )
+    expect(window.location.search).toBe('?state=blocked')
+    expect(window.location.hash).toBe('#e6')
   })
 
   it('redirects the old Agents > Tasks list', async () => {

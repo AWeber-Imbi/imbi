@@ -51,7 +51,8 @@ export function systemText(e: TicketEvent): string {
     case 'state.changed':
       return stateText(String(p.from), String(p.to), p.reason)
     case 'task.created':
-      return 'Task created'
+    case 'ticket.created':
+      return 'Ticket created'
     case 'todos.updated':
       return 'Plan updated'
     case 'usage.reported':
