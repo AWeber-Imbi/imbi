@@ -1,19 +1,42 @@
-import { useState } from 'react'
+import { type FormEvent, useState } from 'react'
 
-import { Activity, Check, Hand } from 'lucide-react'
+import { Activity, Check, Clock, Hand, type LucideIcon, X } from 'lucide-react'
 
 import { ApiError } from '@/api/client'
 import { replyAgentTask, resolveAgentTaskRequest } from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Questionnaire,
+  QuestionnaireActions,
+  QuestionnaireChoice,
+  QuestionnaireChoices,
+  QuestionnaireError,
+  QuestionnaireInput,
+  QuestionnaireItem,
+  QuestionnaireSubmit,
+  QuestionnaireTitle,
+} from '@/components/ui/questionnaire'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import { Textarea } from '@/components/ui/textarea'
 import { useHasPermission } from '@/hooks/useHasPermission'
+import { cn } from '@/lib/utils'
 import type { AgentTask, AgentTaskEvent, AgentTaskResolve } from '@/types'
 
+import { useAgentList } from './agentQueries'
 import { checksFrom, type TaskRequestView } from './taskEvents'
+import { AgentMark, PersonMark } from './TaskFilterBar'
 import { errorMessage, useAgentTaskMutation } from './taskQueries'
 import { RESOLVED, useActorName } from './taskText'
+
+const OUTCOME: Partial<
+  Record<TaskRequestView['status'], { icon: LucideIcon; tone: string }>
+> = {
+  answered: { icon: Check, tone: 'text-success' },
+  approved: { icon: Check, tone: 'text-success' },
+  expired: { icon: Clock, tone: 'text-tertiary' },
+  rejected: { icon: X, tone: 'text-danger' },
+}
 
 /** The badge of the check verdicts the design knows; others show as is. */
 const VERDICT: Record<
@@ -175,7 +198,7 @@ export function RequestCard({
 }) {
   const canResolve = useHasPermission('agent_task:resolve', orgSlug)
   const actorName = useActorName(orgSlug)
-  const [answer, setAnswer] = useState('')
+  const { data: agents } = useAgentList(orgSlug)
   // Someone else resolved it first: collapse in place (I4).
   const [taken, setTaken] = useState<null | { by: string; status: string }>(
     null,
@@ -199,67 +222,110 @@ export function RequestCard({
       },
     })
 
+  const send = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const answer = String(
+      new FormData(event.currentTarget).get('answer') ?? '',
+    ).trim()
+    if (answer) submit({ answer, status: 'answered' })
+  }
+
+  const asker = agents?.find((a) => a.id === r.opened_by) ?? {
+    id: r.opened_by ?? '',
+    name: actorName(r.opened_by),
+  }
+
   if (r.status !== 'open' || taken) {
-    const status = taken
-      ? (RESOLVED[taken.status as TaskRequestView['status']] ?? taken.status)
-      : RESOLVED[r.status]
+    const outcome = (taken?.status ?? r.status) as TaskRequestView['status']
+    const Outcome = OUTCOME[outcome] ?? {
+      icon: Check,
+      tone: 'text-secondary',
+    }
     const by = taken?.by ?? r.resolved_by
     return (
-      <div className="border-tertiary flex flex-col gap-1 rounded-lg border px-4 py-3">
-        <div className="flex items-center gap-2 text-sm">
-          <Check className="text-success size-4 shrink-0" />
-          <span className="font-medium">{r.title}</span>
-          <span className="text-secondary ml-auto text-xs">
-            {status}
-            {by && ` by ${by}`}
-            {r.resolved_at && !taken && (
-              <>
-                {' · '}
-                <RelativeTime tooltip={false} value={r.resolved_at} />
-              </>
-            )}
+      <div className="border-secondary flex flex-col gap-2.5 rounded-lg border px-4 py-3">
+        <div className="text-secondary flex items-start gap-2.5 text-sm">
+          <AgentMark agent={asker} className="mt-px" />
+          <span className="line-clamp-2 min-w-0 flex-1 wrap-break-word">
+            {r.title}
           </span>
         </div>
-        {r.answer && !taken && (
-          <p className="text-secondary pl-6 text-sm whitespace-pre-wrap">
-            {r.answer}
-          </p>
-        )}
+        <div className="flex items-start gap-2.5">
+          <span className="flex size-5 shrink-0 items-center justify-center">
+            <Outcome.icon className={cn('size-4', Outcome.tone)} />
+          </span>
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <div className="text-secondary flex min-h-5 flex-wrap items-center gap-x-1.5 text-xs">
+              <span>
+                {RESOLVED[outcome] ?? outcome}
+                {by && ' by'}
+              </span>
+              {by && (
+                <span className="text-primary flex min-w-0 items-center gap-1.5">
+                  <PersonMark email={by} title={by} />
+                  <span className="truncate">{by}</span>
+                </span>
+              )}
+              {r.resolved_at && !taken && (
+                <span className="text-tertiary">
+                  · <RelativeTime tooltip={false} value={r.resolved_at} />
+                </span>
+              )}
+            </div>
+            {r.answer && !taken && (
+              <p className="text-primary text-sm leading-relaxed whitespace-pre-wrap">
+                {r.answer}
+              </p>
+            )}
+          </div>
+        </div>
       </div>
     )
   }
 
   const actionable = canResolve && task.status !== 'closed'
   return (
-    <div className="border-amber-border bg-amber-bg flex flex-col gap-3 rounded-lg border p-4">
-      <div className="flex items-center gap-2 text-xs">
-        <Hand className="text-amber-text size-3.5" />
-        <span className="text-overline text-amber-text uppercase">
+    <section
+      aria-label="Waiting on you"
+      className="border-amber-border bg-primary flex flex-col gap-4 rounded-lg border p-4"
+    >
+      <header className="flex items-center gap-2.5">
+        <AgentMark agent={asker} />
+        <span className="min-w-0 truncate text-sm font-medium">
+          {asker.name}
+        </span>
+        <span className="text-tertiary shrink-0 text-xs">
+          asked <RelativeTime tooltip={false} value={r.opened_at} />
+        </span>
+        <span className="bg-amber-bg text-amber-text ml-auto flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium">
+          <Hand className="size-3.5" />
           Waiting on you
         </span>
-        <span className="text-amber-text ml-auto">
-          asked <RelativeTime tooltip={false} value={r.opened_at} /> by{' '}
-          {actorName(r.opened_by)}
-        </span>
-      </div>
-      <div>
-        <h3 className="text-sm font-medium">{r.title}</h3>
+      </header>
+      <div className="flex flex-col gap-1.5">
+        <h3 className="text-sm leading-relaxed font-medium text-pretty wrap-break-word">
+          {r.title}
+        </h3>
         {r.why && (
-          <p className="text-secondary mt-1 text-sm whitespace-pre-wrap">
+          <p className="text-secondary text-sm leading-relaxed whitespace-pre-wrap">
             {r.why}
           </p>
         )}
       </div>
-      {r.artifacts.map((a, i) => (
-        <div
-          className="border-tertiary bg-primary truncate rounded border px-3 py-2 font-mono text-xs"
-          key={i}
-        >
-          {label(a)}
+      {r.artifacts.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {r.artifacts.map((a, i) => (
+            <div
+              className="border-secondary bg-secondary truncate rounded-md border px-3 py-2 font-mono text-xs"
+              key={i}
+            >
+              {label(a)}
+            </div>
+          ))}
         </div>
-      ))}
+      )}
       {actionable && r.kind === 'approval' && (
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <Button
             disabled={resolve.isPending}
             onClick={() =>
@@ -283,50 +349,43 @@ export function RequestCard({
         </div>
       )}
       {actionable && r.kind === 'feedback' && (
-        <div className="flex flex-col gap-2">
-          {r.options.length > 0 && (
-            <div className="flex flex-wrap gap-2">
+        <Questionnaire onSubmit={send}>
+          <QuestionnaireItem name="answer" required>
+            <QuestionnaireTitle className="sr-only">
+              {r.title}
+            </QuestionnaireTitle>
+            <QuestionnaireChoices>
               {r.options.map((o, i) => (
-                <Button
-                  disabled={resolve.isPending}
-                  key={i}
-                  onClick={() =>
-                    submit({ answer: label(o), status: 'answered' })
-                  }
-                  size="sm"
-                  variant="outline"
-                >
+                <QuestionnaireChoice key={i} value={label(o)}>
                   {label(o)}
-                </Button>
+                </QuestionnaireChoice>
               ))}
-            </div>
-          )}
-          <Textarea
-            aria-label="Answer"
-            onChange={(e) => setAnswer(e.target.value)}
-            placeholder="Answer in your own words"
-            rows={2}
-            value={answer}
-          />
-          <div>
-            <Button
-              disabled={!answer.trim() || resolve.isPending}
-              onClick={() =>
-                submit({ answer: answer.trim(), status: 'answered' })
-              }
-              size="sm"
-            >
+              <QuestionnaireInput
+                aria-label="Answer"
+                placeholder={
+                  r.options.length > 0
+                    ? 'Something else…'
+                    : 'Answer in your own words'
+                }
+              />
+            </QuestionnaireChoices>
+            <QuestionnaireError>
+              Pick an answer or write one.
+            </QuestionnaireError>
+          </QuestionnaireItem>
+          <QuestionnaireActions>
+            <QuestionnaireSubmit disabled={resolve.isPending}>
               Send answer
-            </Button>
-          </div>
-        </div>
+            </QuestionnaireSubmit>
+          </QuestionnaireActions>
+        </Questionnaire>
       )}
       {resolve.error && (
         <p className="text-danger text-xs" role="alert">
           {errorMessage(resolve.error)}
         </p>
       )}
-    </div>
+    </section>
   )
 }
 

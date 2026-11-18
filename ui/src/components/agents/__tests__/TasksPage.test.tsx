@@ -223,7 +223,7 @@ describe('Tasks', () => {
     await waitFor(() =>
       expect(window.location.pathname).toBe('/agents/tasks/acme/T-3/input'),
     )
-    expect(await screen.findByRole('button', { name: 'yes' })).toBeVisible()
+    expect(await screen.findByRole('radio', { name: 'yes' })).toBeVisible()
   })
 
   it('opens a task in the org of the link', async () => {
@@ -595,7 +595,8 @@ describe('Tasks', () => {
         .mock.calls.filter(([, params]) => params.group === 'closed').length
     const before = reads()
     // An answer refreshes the inbox.
-    fireEvent.click(await screen.findByRole('button', { name: 'yes' }))
+    fireEvent.click(await screen.findByRole('radio', { name: 'yes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send answer' }))
     await waitFor(() => expect(reads()).toBeGreaterThan(before))
     expect(screen.getByText('Old work')).toBe(row)
   })
@@ -827,7 +828,8 @@ describe('Tasks', () => {
   it('answers a feedback request', async () => {
     vi.mocked(endpoints.resolveAgentTaskRequest).mockResolvedValue({})
     renderAt('/agents/tasks/acme/T-3/input')
-    fireEvent.click(await screen.findByRole('button', { name: 'yes' }))
+    fireEvent.click(await screen.findByRole('radio', { name: 'yes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send answer' }))
     await waitFor(() =>
       expect(endpoints.resolveAgentTaskRequest).toHaveBeenCalledWith(
         'acme',
@@ -836,6 +838,34 @@ describe('Tasks', () => {
         { answer: 'yes', status: 'answered' },
       ),
     )
+  })
+
+  it('sends a written answer instead of an option', async () => {
+    vi.mocked(endpoints.resolveAgentTaskRequest).mockResolvedValue({})
+    renderAt('/agents/tasks/acme/T-3/input')
+    fireEvent.click(await screen.findByRole('radio', { name: 'yes' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Answer' }), {
+      target: { value: 'only on Fridays' },
+    })
+    expect(screen.getByRole('radio', { name: 'yes' })).not.toBeChecked()
+    fireEvent.click(screen.getByRole('button', { name: 'Send answer' }))
+    await waitFor(() =>
+      expect(endpoints.resolveAgentTaskRequest).toHaveBeenCalledWith(
+        'acme',
+        'T-3',
+        'req-1',
+        { answer: 'only on Fridays', status: 'answered' },
+      ),
+    )
+  })
+
+  it('asks for an answer before sending', async () => {
+    renderAt('/agents/tasks/acme/T-3/input')
+    fireEvent.click(await screen.findByRole('button', { name: 'Send answer' }))
+    expect(
+      await screen.findByText('Pick an answer or write one.'),
+    ).toBeVisible()
+    expect(endpoints.resolveAgentTaskRequest).not.toHaveBeenCalled()
   })
 
   it('collapses a request that someone else resolved (I4)', async () => {
@@ -851,13 +881,10 @@ describe('Tasks', () => {
       }),
     )
     renderAt('/agents/tasks/acme/T-3/input')
-    fireEvent.click(await screen.findByRole('button', { name: 'no' }))
-    expect(
-      await screen.findByText('Answered by pat@example.com'),
-    ).toBeInTheDocument()
-    expect(
-      screen.queryByRole('button', { name: 'yes' }),
-    ).not.toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('radio', { name: 'no' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send answer' }))
+    expect(await screen.findByText('pat@example.com')).toBeInTheDocument()
+    expect(screen.queryByRole('radio', { name: 'yes' })).not.toBeInTheDocument()
     expect(screen.queryByText('Waiting on you')).not.toBeInTheDocument()
   })
 
