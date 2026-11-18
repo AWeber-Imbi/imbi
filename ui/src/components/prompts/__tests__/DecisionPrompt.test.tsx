@@ -1,6 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { fireEvent, render, screen, waitFor } from '@/test/utils'
+import { fireEvent, JSON_SOURCE, render, screen, waitFor } from '@/test/utils'
 import type { PromptVersion } from '@/types'
 
 import { prompt, version } from './fixtures'
@@ -153,6 +153,73 @@ describe('Decision prompts', () => {
     expect(screen.getByText('91%')).toBeInTheDocument()
     expect(screen.getByText('80%')).toBeInTheDocument()
     expect(screen.getByText(/20 in/)).toBeInTheDocument()
+  })
+
+  it.skipIf(!JSON_SOURCE)(
+    'keeps a large integer in an any variable as text',
+    async () => {
+      const endpoints = await import('@/api/endpoints')
+      vi.mocked(endpoints.listPromptVersions).mockResolvedValue([
+        {
+          ...decisionVersion(1),
+          variable_schema: { service: { required: true, type: 'any' } },
+        },
+      ])
+      vi.mocked(endpoints.runPrompt).mockResolvedValue({
+        answers: {},
+        model: 'jev',
+        model_id: 'jev-latest',
+        n: null,
+        ref: 'mender/triage (draft)',
+        request: { questions: {}, state: {} },
+        usage: {},
+      })
+      await renderEditor()
+      await waitFor(() =>
+        expect(
+          screen.getByLabelText('Run variable service'),
+        ).toBeInTheDocument(),
+      )
+      const notice = /sent as text.*\(service\)/
+      fireEvent.change(screen.getByLabelText('Run variable service'), {
+        target: { value: '{"ids": [12345678901234567890, 7]}' },
+      })
+      // The notice shows before Run.
+      expect(screen.getByText(notice)).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: /^run$/i }))
+      await waitFor(() => expect(endpoints.runPrompt).toHaveBeenCalled())
+      const request = vi.mocked(endpoints.runPrompt).mock.calls[0][1]
+      expect(request.variables).toEqual({
+        service: { ids: ['12345678901234567890', 7] },
+      })
+      expect(screen.getByText(notice)).toBeInTheDocument()
+      // A changed input clears it.
+      fireEvent.change(screen.getByLabelText('Run variable service'), {
+        target: { value: '9007199254740992' },
+      })
+      expect(screen.queryByText(notice)).not.toBeInTheDocument()
+    },
+  )
+
+  it('rejects an int variable that a number would round', async () => {
+    const endpoints = await import('@/api/endpoints')
+    vi.mocked(endpoints.listPromptVersions).mockResolvedValue([
+      {
+        ...decisionVersion(1),
+        variable_schema: { count: { required: true, type: 'int' } },
+      },
+    ])
+    vi.mocked(endpoints.runPrompt).mockClear()
+    await renderEditor()
+    await waitFor(() =>
+      expect(screen.getByLabelText('Run variable count')).toBeInTheDocument(),
+    )
+    fireEvent.change(screen.getByLabelText('Run variable count'), {
+      target: { value: '9007199254740993' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /^run$/i }))
+    expect(screen.getByText(/within ±9007199254740991/)).toBeInTheDocument()
+    expect(endpoints.runPrompt).not.toHaveBeenCalled()
   })
 })
 

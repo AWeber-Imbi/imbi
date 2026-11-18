@@ -365,7 +365,8 @@ RETURN m.model_id AS model_id, m.enabled AS enabled,
        m.supports_forced_tool_choice AS forced_tool_choice,
        m.input_cost_per_million AS input_cost,
        m.output_cost_per_million AS output_cost,
-       m.cache_read_cost_per_million AS cache_read_cost
+       m.cache_read_cost_per_million AS cache_read_cost,
+       m.default_temperature AS default_temperature
 """
 _RUN_MODEL_COLUMNS = [
     'model_id',
@@ -379,6 +380,7 @@ _RUN_MODEL_COLUMNS = [
     'input_cost',
     'output_cost',
     'cache_read_cost',
+    'default_temperature',
 ]
 
 _DELETE_VERSIONS_QUERY: typing.LiteralString = """
@@ -1316,6 +1318,10 @@ CALL_TIMEOUT = 120.0
 #: expires before ``STALE_AFTER``, so the row is finished first.
 CALL_DEADLINE = CALL_TIMEOUT + 45
 
+#: The largest attempt in an ``Idempotency-Key``: the
+#: ``ai_model_calls.attempt`` column is a Postgres INTEGER.
+MAX_ATTEMPT = 2**31 - 1
+
 #: A ``running`` call older than this did not finish: a repeat of its
 #: idempotency key sets it to ``outcome_unknown``.
 STALE_AFTER = CALL_DEADLINE + 15
@@ -1594,11 +1600,17 @@ def _key_context(key: str | None) -> dict[str, typing.Any]:
         }
     run_id, _, rest = key.partition(':')
     node_id, _, attempt = rest.rpartition(':')
+    # ``isascii`` refuses digits such as '²' that ``int`` cannot parse.
+    number = int(attempt) if attempt.isascii() and attempt.isdigit() else None
+    if number is not None and number > MAX_ATTEMPT:
+        raise _unprocessable(
+            f'The Idempotency-Key attempt is larger than {MAX_ATTEMPT}'
+        )
     return {
         'origin': 'workflow',
         'run_id': run_id,
         'node_id': node_id or None,
-        'attempt': int(attempt) if attempt.isdigit() else None,
+        'attempt': number,
     }
 
 
@@ -1651,6 +1663,11 @@ async def _run_generative(
     idempotency_key: str | None,
 ) -> RunResponse:
     """Run a generative prompt; see :func:`run_prompt`."""
+    if version.tools:
+        raise _unprocessable(
+            'A generative run sends no tools to the model; '
+            'remove the tools from the prompt version'
+        )
     if version.model is None:
         raise _unprocessable('Choose a generative model to run the prompt')
     records = await db.execute(
@@ -1698,12 +1715,18 @@ async def _run_generative(
     except rendering.RenderError as e:
         raise _unprocessable(str(e)) from e
     model_id = str(record['model_id'])
+    params = version.params
+    # Compare with None: an explicit temperature of 0 stays.
+    if params.temperature is None:
+        params = params.model_copy(
+            update={'temperature': record.get('default_temperature')}
+        )
     call = generate.Request(
         driver=provider.driver,
         model_id=model_id,
         messages=rendered.messages,
         system=rendered.system,
-        params=version.params,
+        params=params,
         output_fields=data.output_fields,
         # A missing value predates the field: a forced tool choice.
         forced_tool_choice=record.get('forced_tool_choice') is not False,
