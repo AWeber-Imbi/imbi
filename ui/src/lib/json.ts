@@ -7,7 +7,8 @@ export const KEPT_AS_TEXT =
  * that a JavaScript number cannot hold exactly as its text, and call
  * `onKept` for it. This includes integers written with a decimal point
  * or an exponent, such as `9007199254740993e0`. An integer that a
- * number holds exactly, such as `9007199254740992`, stays a number. A
+ * number holds exactly and serializes to the same value, such as
+ * `9007199254740992`, stays a number. A
  * number too large to hold, such as `1e309`, is kept as its token. A
  * browser without `context.source` keeps the rounded number.
  */
@@ -25,7 +26,10 @@ export function parseJson(text: string, onKept: () => void): unknown {
       }
       if (!Number.isInteger(value) || Number.isSafeInteger(value)) return value
       const exact = exactInteger(context.source)
-      if (exact === null || exact === BigInt(value)) return value
+      // Compare with the digits that `JSON.stringify` writes, not with
+      // the exact double: `1000000000000000128` is exact, but it is
+      // written as `1000000000000000100`.
+      if (exact === null || exact === exactInteger(String(value))) return value
       onKept()
       return String(exact)
     },
