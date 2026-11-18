@@ -18,6 +18,7 @@ from unittest import mock
 import fastapi
 import httpx
 import orjson
+import psycopg
 from psycopg import rows
 
 from imbi.api import agent_tasks, models, workflows
@@ -67,6 +68,14 @@ class FakeApi:
         self.agent: (
             abc.Callable[[httpx.Request], abc.Awaitable[httpx.Response]] | None
         ) = None
+        #: Takes the prompt run calls when set.
+        self.llm_call: (
+            abc.Callable[
+                [httpx.Request],
+                httpx.Response | abc.Awaitable[httpx.Response],
+            ]
+            | None
+        ) = None
 
     def _once(
         self, request: httpx.Request, act: typing.Callable[[], dict]
@@ -102,6 +111,8 @@ class FakeApi:
         path = request.url.path
         if '/agent-task' in path and self.agent is not None:
             return self.agent(request)
+        if path.endswith('/prompts/run') and self.llm_call is not None:
+            return self.llm_call(request)
         if path.endswith(('/email', '/failure-notice')):
             return self._once(request, lambda: self._email(request))
         if path.endswith('/slack'):
@@ -1943,6 +1954,308 @@ class ScriptStepTestCase(EngineTestCase):
         self.assertEqual(run['status'], 'failed')
         self.assertEqual(run['error'], 'script_error: ValueError: nope')
         self.assertEqual(run['steps']['calc']['attempt'], 1)
+
+
+RISK = [{'name': 'risk', 'type': 'string'}]
+
+
+class LLMCallStepTestCase(EngineTestCase):
+    """The LLM Call step, with a fake ``POST .../prompts/run``."""
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        #: The requests to the run endpoint.
+        self.calls: list[httpx.Request] = []
+        #: The answers, in order; the last one repeats. An exception
+        #: is raised, as a transport failure.
+        self.answers: list[httpx.Response | Exception] = []
+
+        def run(request: httpx.Request) -> httpx.Response:
+            self.calls.append(request)
+            answer = self.answers[min(len(self.calls), len(self.answers)) - 1]
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+
+        self.api.llm_call = run
+
+    def _answer(self, n: int = 1) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                'ref': f'workflows/{self.org}.wf.sum@{n}',
+                'n': n,
+                'model': 'chat',
+                'model_id': 'chat-1',
+                'usage': {'input_tokens': 10, 'output_tokens': 5},
+                'content_sha256': 'abc',
+                'text': '{"risk": "low"}',
+                'result': {'risk': 'low'},
+                'cost_usd': 0.001,
+                'call_id': '00000000-0000-0000-0000-000000000001',
+            },
+        )
+
+    @staticmethod
+    def _error(status: int, code: str, retry: bool) -> httpx.Response:
+        return httpx.Response(
+            status, json={'detail': {'error': code, 'retry': retry}}
+        )
+
+    async def _drive_llm_call(self) -> dict[str, typing.Any]:
+        params = {
+            'prompt_ref': f'workflows/{self.org}.wf.sum',
+            'prompt_version': 1,
+            'output_fields': RISK,
+        }
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'manual'),
+                _node(
+                    'sum',
+                    'llm_call',
+                    {**params, 'inputs': {'diff': '{{ trigger.diff }}'}},
+                ),
+                _node(
+                    'then',
+                    'llm_call',
+                    {**params, 'inputs': {'risk': '{{ sum.result.risk }}'}},
+                ),
+            ],
+            [_edge('start', 'sum'), _edge('sum', 'then')],
+            {'on_failure': 'none'},
+        )
+        run_id = await self._start(workflow_id, {'diff': 'd'})
+        with (
+            mock.patch.object(engine, 'RETRY_BACKOFF', 0),
+            mock.patch.object(executors, 'LLM_CALL_POLL_SECONDS', 0),
+        ):
+            return await self._drive(run_id)
+
+    def _keys(self) -> list[str]:
+        return [
+            r.headers['Idempotency-Key'].split(':', 1)[1] for r in self.calls
+        ]
+
+    async def test_result_and_reference(self) -> None:
+        self.answers = [self._answer()]
+        run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        first = self.calls[0]
+        self.assertEqual(
+            first.url.path, f'/organizations/{self.org}/prompts/run'
+        )
+        self.assertEqual(
+            json.loads(first.content),
+            {
+                'ref': f'workflows/{self.org}.wf.sum@1',
+                'variables': {'diff': 'd'},
+                'output_fields': [
+                    {
+                        'name': 'risk',
+                        'type': 'string',
+                        'description': '',
+                        'required': True,
+                        'enum': None,
+                        'format': None,
+                        'items': None,
+                        'fields': None,
+                    }
+                ],
+            },
+        )
+        self.assertEqual(
+            first.headers['Idempotency-Key'], f'{run["id"]}:sum:1'
+        )
+        self.assertEqual(
+            first.extensions['timeout']['read'], executors.LLM_CALL_TIMEOUT
+        )
+        output = run['steps']['sum']['output']
+        self.assertEqual(output['result'], {'risk': 'low'})
+        self.assertEqual(output['prompt_version'], 1)
+        self.assertEqual(output['usage']['input_tokens'], 10)
+        self.assertEqual(
+            run['steps']['then']['input']['inputs'], {'risk': 'low'}
+        )
+
+    async def test_retry_is_a_new_attempt(self) -> None:
+        self.answers = [
+            self._error(503, 'rate_limited', True),
+            self._answer(),
+        ]
+        run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(self._keys()[:2], ['sum:1', 'sum:2'])
+        self.assertEqual(run['steps']['sum']['attempt'], 2)
+
+    async def test_call_in_progress_asks_again_with_the_same_key(
+        self,
+    ) -> None:
+        self.answers = [
+            self._error(409, 'call_in_progress', True),
+            self._answer(),
+        ]
+        run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(self._keys()[:2], ['sum:1', 'sum:1'])
+        self.assertEqual(run['steps']['sum']['attempt'], 1)
+
+    async def test_transport_failure_asks_again_with_the_same_key(
+        self,
+    ) -> None:
+        # imbi-api may have made the call: a new key could pay twice.
+        self.answers = [httpx.ReadTimeout('lost'), self._answer()]
+        run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(self._keys()[:2], ['sum:1', 'sum:1'])
+        self.assertEqual(run['steps']['sum']['attempt'], 1)
+
+    async def test_error_without_a_code_asks_again_with_the_same_key(
+        self,
+    ) -> None:
+        # A 5xx with no error code, such as a failed record of the
+        # answer or a proxy page, does not tell whether the call ran.
+        self.answers = [
+            httpx.Response(500, text='Internal Server Error'),
+            httpx.Response(502, text='<html>Bad Gateway</html>'),
+            self._answer(),
+        ]
+        run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(self._keys()[:3], ['sum:1', 'sum:1', 'sum:1'])
+        self.assertEqual(run['steps']['sum']['attempt'], 1)
+
+    async def test_token_failure_asks_again_with_the_same_key(
+        self,
+    ) -> None:
+        # The first call can still run in imbi-api when a token refresh
+        # fails during the poll. A new key could pay twice.
+        self.answers = [
+            self._error(409, 'call_in_progress', True),
+            self._answer(),
+        ]
+        bearer = executors.Api.bearer
+        tokens: list[int] = []
+
+        async def failing(self_: executors.Api) -> str:
+            tokens.append(1)
+            if len(self.calls) == 1 and len(tokens) == 2:
+                raise executors.StepError('token_http_503', retry=True)
+            return await bearer(self_)
+
+        with mock.patch.object(executors.Api, 'bearer', failing):
+            run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(self._keys()[:2], ['sum:1', 'sum:1'])
+        self.assertEqual(run['steps']['sum']['attempt'], 1)
+
+    async def test_wait_ends_before_the_engine_cancels_the_call(
+        self,
+    ) -> None:
+        # A cancelled call is retried with a new key while imbi-api can
+        # still run the first call. The wait must end first, so that
+        # the step asks again with the same key.
+        self.config.lease_seconds = 60
+        self.answers = [self._answer()]
+        run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertLess(self.calls[0].extensions['timeout']['read'], 30)
+
+    async def test_wait_counts_the_time_to_get_the_org_slug(self) -> None:
+        # The engine limit includes the org_slug lookup. Limit 1s,
+        # budget 0.9s, lookup 0.5s: the wait must be below 0.5s.
+        self.config.lease_seconds = 31
+        self.answers = [self._answer()]
+        org_slug = executors.Executors.org_slug
+
+        async def slow(self_: executors.Executors, org_id: str) -> str:
+            await asyncio.sleep(0.5)
+            return await org_slug(self_, org_id)
+
+        with mock.patch.object(executors.Executors, 'org_slug', slow):
+            run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertLess(self.calls[0].extensions['timeout']['read'], 0.5)
+        self.assertEqual(set(self._keys()), {'sum:1', 'then:1'})
+
+    async def test_slow_org_slug_lookup_keeps_the_attempt(self) -> None:
+        # After an unknown outcome the step resumes. A lookup slower
+        # than the budget must not let the engine cancel the step and
+        # retry it with a new key. Limit 1s, budget 0.9s.
+        self.config.lease_seconds = 31
+        self.answers = [
+            self._error(409, 'call_in_progress', True),
+            self._answer(),
+        ]
+        org_slug = executors.Executors.org_slug
+        lookups: list[str] = []
+
+        async def slow(self_: executors.Executors, org_id: str) -> str:
+            lookups.append(org_id)
+            if len(lookups) == 2:
+                await asyncio.sleep(5)
+            return await org_slug(self_, org_id)
+
+        with mock.patch.object(executors.Executors, 'org_slug', slow):
+            run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(self._keys()[:2], ['sum:1', 'sum:1'])
+        self.assertEqual(run['steps']['sum']['attempt'], 1)
+
+    async def test_failed_org_slug_lookup_keeps_the_attempt(self) -> None:
+        # After an unknown outcome the step resumes. A lost graph
+        # connection in the lookup must not retry with a new key.
+        self.answers = [
+            self._error(409, 'call_in_progress', True),
+            self._answer(),
+        ]
+        org_slug = executors.Executors.org_slug
+        lookups: list[str] = []
+
+        async def flaky(self_: executors.Executors, org_id: str) -> str:
+            lookups.append(org_id)
+            if len(lookups) == 2:
+                raise psycopg.OperationalError('connection lost')
+            return await org_slug(self_, org_id)
+
+        with mock.patch.object(executors.Executors, 'org_slug', flaky):
+            run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(self._keys()[:2], ['sum:1', 'sum:1'])
+        self.assertEqual(run['steps']['sum']['attempt'], 1)
+
+    async def test_slow_response_asks_again_with_the_same_key(self) -> None:
+        # The httpx timeout limits each phase, not the total. A response
+        # that is slower than the budget must not let the engine cancel
+        # the step and retry it with a new key. Limit 1s, budget 0.9s.
+        self.config.lease_seconds = 31
+        answer = self._answer()
+
+        async def slow(request: httpx.Request) -> httpx.Response:
+            self.calls.append(request)
+            if len(self.calls) == 1:
+                await asyncio.sleep(5)
+            return answer
+
+        self.api.llm_call = slow
+        run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(self._keys()[:2], ['sum:1', 'sum:1'])
+        self.assertEqual(run['steps']['sum']['attempt'], 1)
+
+    async def test_error_without_retry_fails(self) -> None:
+        self.answers = [self._error(422, 'model_no_structured_output', False)]
+        run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'failed')
+        self.assertEqual(run['error'], 'model_no_structured_output')
+        self.assertEqual(len(self.calls), 1)
+
+    async def test_version_mismatch_fails(self) -> None:
+        self.answers = [self._answer(n=2)]
+        run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'failed')
+        self.assertEqual(run['error'], 'prompt_version_mismatch')
+        self.assertEqual(len(self.calls), 1)
 
 
 class AppTestCase(unittest.IsolatedAsyncioTestCase):

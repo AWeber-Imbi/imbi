@@ -1178,3 +1178,28 @@ async def execute_cve_sync(
         published=result.published,
     )
     return 'succeeded'
+
+
+async def enumerate_ai_model_calls_prune(db: graph.Graph) -> list[str]:
+    """One item per run: the delete of the old AI model call rows."""
+    return ['older-than-retention']
+
+
+async def execute_ai_model_calls_prune(
+    db: graph.Graph,
+    client: valkey.Valkey,
+    item_id: str,
+    *,
+    ctx: log.MaintenanceContext,
+) -> ExecuteOutcome:
+    """Delete the AI model call rows older than 90 days."""
+    from imbi.api import model_calls
+
+    deleted = await model_calls.get_store().prune()
+    ctx.log.record(
+        'succeeded',
+        'ai-model-calls-prune',
+        f'Deleted {deleted} AI model calls older than {model_calls.RETENTION}',
+        deleted=deleted,
+    )
+    return 'succeeded'

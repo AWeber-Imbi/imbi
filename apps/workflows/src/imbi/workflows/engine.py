@@ -432,6 +432,8 @@ class Engine:
                         params=step['input'] or {},
                         state=step['state'],
                         idempotency_key=f'{run["id"]}:{node.key}',
+                        attempt=step['attempt'],
+                        time_limit=limit,
                     )
                 )
         except executors.StepError as e:

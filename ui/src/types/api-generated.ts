@@ -2993,20 +2993,38 @@ export interface paths {
         put?: never;
         /**
          * Run Prompt
-         * @description Run a decision prompt against its model and return the answers.
+         * @description Run a prompt against its model and return the answer.
          *
          *     Renders the saved version ``ref``, or the unsaved ``draft``, then
-         *     calls the version's decision model with its provider's stored key.
-         *     Only prompt authors (``prompt:update``) may run a prompt, because a
-         *     run spends provider credit.
+         *     calls the version's model. A run spends provider credit, so it needs
+         *     ``prompt:update`` (prompt authors), or ``prompt:run`` (the workflows
+         *     service) for a saved version of a generative prompt. For a
+         *     ``workflows/<org>.*`` prompt, ``workflow:write`` in ``<org>`` is
+         *     also enough.
+         *
+         *     A decision prompt goes to its TypeSafe model with the provider's
+         *     stored key.
+         *
+         *     A generative prompt goes to its catalog model (see
+         *     :mod:`imbi.api.llm.generate` for the credentials). Each call is
+         *     recorded in ``ai_runtime.ai_model_calls``. With an
+         *     ``Idempotency-Key`` header (``<run_id>:<node_id>:<attempt>``), a
+         *     repeat of the key gets the answer of the first call and makes no
+         *     new call. An error has ``detail={'error': <code>, 'retry': <bool>}``
+         *     (see :data:`CALL_ERRORS`).
          *
          *     Raises:
-         *         403: A template calls ``project()`` without ``project:read``.
-         *         404: No such prompt, version, label, or project.
-         *         409: The model's provider has no stored credentials.
-         *         422: The prompt is not a decision prompt, has no questions or no
-         *             model, the model cannot run it, or the render fails.
-         *         502: The decision model rejected or failed the call.
+         *         403: No permission, a template calls ``project()`` without
+         *             ``project:read``, or the model is restricted to teams that
+         *             do not include the caller (``model_not_allowed``).
+         *         404: No such prompt, version, label, project, or organization.
+         *         409: The provider has no usable credentials, a call with the key
+         *             is still running (``call_in_progress``), or one did not
+         *             finish (``outcome_unknown``).
+         *         422: The prompt has no model or no questions, the model cannot
+         *             run it, or the render fails.
+         *         502: The model rejected or failed the call.
+         *         503: The provider is unavailable or rate limited; try again.
          */
         post: operations["run_prompt_api_organizations__org_slug__prompts_run_post"];
         delete?: never;
@@ -6062,9 +6080,14 @@ export interface paths {
          * @description Make a workflow in ``draft`` with its version 1.
          *
          *     Raises:
+         *         403: The graph has an LLM Call step and the caller does not
+         *             have ``workflow:write``; ``owner_team_forbidden``: the caller
+         *             is not an admin or a member of the owner team; or
+         *             ``model_not_allowed`` (see :func:`_check_llm_call`).
          *         409: The slug is in use in the org.
-         *         422: The graph is too large, the team is not in the org, or
-         *             the name gives an empty slug and no slug is supplied.
+         *         422: The graph is too large, the team is not in the org, the
+         *             name gives an empty slug and no slug is supplied, or the
+         *             prompt of an LLM Call step is not valid.
          */
         post: operations["create_workflow_api_organizations__org_slug__workflows__post"];
         delete?: never;
@@ -6091,19 +6114,27 @@ export interface paths {
          *     Only an admin or a member of the current owner team can change the
          *     owner team, because the owner team controls the runs.
          *
+         *     The CMS prompt of each LLM Call node that the save removes is
+         *     archived, and an archived prompt of a node of the graph is
+         *     restored.
+         *
          *     Raises:
          *         403: ``owner_team_forbidden``: the caller changes the owner team
-         *             and is not an admin or a member of the current owner team.
+         *             and is not an admin or a member of the current owner team;
+         *             ``model_not_allowed`` (see :func:`_check_llm_call`).
          *         404: No such workflow.
          *         409: ``conflict``: the workflow changed owner team or was
          *             deleted between the check and the save.
-         *         422: The graph is too large, or the team is not in the org.
+         *         422: The graph is too large, the team is not in the org, or
+         *             the prompt of an LLM Call step is not valid.
          */
         put: operations["save_workflow_api_organizations__org_slug__workflows__slug__put"];
         post?: never;
         /**
          * Delete Workflow
          * @description Delete a workflow that has no open runs.
+         *
+         *     The CMS prompts of its LLM Call nodes are archived.
          *
          *     Raises:
          *         404: No such workflow.
@@ -8632,8 +8663,9 @@ export interface paths {
          * Delete Organization
          * @description Delete an empty organization.
          *
-         *     Its memberships, agent tasks, workflow runs, secret grants, and
-         *     settled secret resolutions go with it.
+         *     Its memberships, agent tasks, workflow runs, AI model calls,
+         *     ``workflows/<org>.*`` and ``agents/<org>.*`` prompts, secret
+         *     grants, and settled secret resolutions go with it.
          *
          *     Parameters:
          *         slug: Organization slug to delete.
@@ -8819,6 +8851,9 @@ export interface paths {
          * Create Prompt
          * @description Create a prompt with its first version.
          *
+         *     Needs ``prompt:create``. For a ``workflows/<org>.<workflow>.<node>``
+         *     prompt, ``workflow:write`` in ``<org>`` is also enough.
+         *
          *     When the caller may promote (see :func:`can_promote`), the default
          *     label points at version 1. Otherwise the prompt is created
          *     with no labels: pointing a label at a version changes what consumers
@@ -8827,9 +8862,11 @@ export interface paths {
          *     such as the assistant uses its packaged prompt.
          *
          *     Raises:
+         *         403: No permission.
          *         409: ``namespace/slug`` is taken.
-         *         422: A template does not parse, or the model is not in the
-         *             catalog.
+         *         422: A template does not parse, the model is not in the
+         *             catalog, or a workflows prompt has tools or no
+         *             ``<org>.`` slug prefix.
          */
         post: operations["create_prompt_api_prompts__post"];
         delete?: never;
@@ -8879,6 +8916,10 @@ export interface paths {
         /**
          * Delete Prompt
          * @description Delete a prompt and every version of it.
+         *
+         *     Raises:
+         *         404: No such prompt.
+         *         409: The prompt is a workflows prompt.
          */
         delete: operations["delete_prompt_api_prompts__namespace___slug__delete"];
         options?: never;
@@ -8895,7 +8936,8 @@ export interface paths {
          *         400: Invalid patch or a read-only path.
          *         403: A rename without ``prompt:promote``.
          *         404: No such prompt.
-         *         409: The new ``namespace/slug`` is taken.
+         *         409: The new ``namespace/slug`` is taken, or the rename moves
+         *             a prompt into or out of the ``workflows`` namespace.
          *         422: The patched values are not valid.
          */
         patch: operations["patch_prompt_api_prompts__namespace___slug__patch"];
@@ -8918,14 +8960,22 @@ export interface paths {
          * Create Prompt Version
          * @description Save a new version. Versions are never changed after this.
          *
+         *     Needs ``prompt:update``. For a ``workflows/<org>.*`` prompt,
+         *     ``workflow:write`` in ``<org>`` is also enough.
+         *
          *     When the content is the same as the newest version, nothing is
          *     written and the newest version is returned with status 200.
          *
+         *     A new version of an archived workflows prompt un-archives it: a
+         *     workflow step with the same key is back.
+         *
          *     Raises:
+         *         403: No permission.
          *         404: No such prompt.
-         *         409: Another version was saved at the same time.
-         *         422: A template does not parse, or the model is not in the
-         *             catalog.
+         *         409: The prompt is archived and not a workflows prompt, or
+         *             another version was saved at the same time.
+         *         422: A template does not parse, the model is not in the
+         *             catalog, or a workflows prompt has tools.
          */
         post: operations["create_prompt_version_api_prompts__namespace___slug__versions_post"];
         delete?: never;
@@ -8994,7 +9044,8 @@ export interface paths {
          *     Raises:
          *         403: The caller cannot promote this prompt.
          *         404: No such prompt or version.
-         *         409: The prompt changed while this request ran.
+         *         409: The prompt is archived, or it changed while this request
+         *             ran.
          *         422: The label is made only of digits.
          */
         put: operations["set_prompt_label_api_prompts__namespace___slug__labels__label__put"];
@@ -9005,8 +9056,8 @@ export interface paths {
          *
          *     Raises:
          *         404: No such prompt or label.
-         *         409: The label is the default label, or the prompt changed
-         *             while this request ran.
+         *         409: The label is the default label, the prompt is archived,
+         *             or the prompt changed while this request ran.
          */
         delete: operations["delete_prompt_label_api_prompts__namespace___slug__labels__label__delete"];
         options?: never;
@@ -9028,7 +9079,8 @@ export interface paths {
          *
          *     Raises:
          *         404: No such prompt.
-         *         409: The prompt changed while this request ran.
+         *         409: The prompt is archived, or it changed while this request
+         *             ran.
          *         422: The prompt has no such label.
          */
         put: operations["set_prompt_default_label_api_prompts__namespace___slug__default_label_put"];
@@ -10349,6 +10401,11 @@ export interface components {
             default_top_p?: number | null;
             /** Monthly Spend Cap */
             monthly_spend_cap?: number | string | null;
+            /**
+             * Supports Structured Output
+             * @default false
+             */
+            supports_structured_output: boolean;
         };
         /**
          * AIModelResponse
@@ -10414,6 +10471,11 @@ export interface components {
             default_top_p?: number | null;
             /** Monthly Spend Cap */
             monthly_spend_cap?: string | null;
+            /**
+             * Supports Structured Output
+             * @default false
+             */
+            supports_structured_output: boolean;
             /** Created At */
             created_at?: string | null;
             /** Updated At */
@@ -18279,6 +18341,8 @@ export interface components {
             created_at?: string | null;
             /** Updated At */
             updated_at?: string | null;
+            /** Archived At */
+            archived_at?: string | null;
         };
         /**
          * PromptVariable
@@ -18289,7 +18353,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "str" | "int" | "float" | "bool" | "list" | "object";
+            type: "str" | "int" | "float" | "bool" | "list" | "object" | "any";
             /**
              * Required
              * @default false
@@ -19823,7 +19887,7 @@ export interface components {
         };
         /**
          * RunRequest
-         * @description Run a decision prompt: a saved version (``ref``) or a draft.
+         * @description Run a prompt: a saved version (``ref``) or a draft.
          */
         RunRequest: {
             /** Ref */
@@ -19836,6 +19900,11 @@ export interface components {
             variables: {
                 [key: string]: unknown;
             };
+            /**
+             * Output Fields
+             * @default []
+             */
+            output_fields: components["schemas"]["OutputField"][];
         };
         /**
          * RunRequestBody
@@ -19851,7 +19920,11 @@ export interface components {
         };
         /**
          * RunResponse
-         * @description The typed answers of one decision run.
+         * @description The result of one run.
+         *
+         *     A decision run fills ``request`` and ``answers``. A generative run
+         *     fills ``text``, ``result`` (with ``output_fields`` only),
+         *     ``content_sha256``, ``cost_usd``, and ``call_id``.
          */
         RunResponse: {
             /** Ref */
@@ -19862,8 +19935,11 @@ export interface components {
             model: string;
             /** Model Id */
             model_id: string;
-            request: components["schemas"]["RunRequestBody"];
-            /** Answers */
+            request?: components["schemas"]["RunRequestBody"] | null;
+            /**
+             * Answers
+             * @default {}
+             */
             answers: {
                 [key: string]: unknown;
             };
@@ -19871,6 +19947,18 @@ export interface components {
             usage: {
                 [key: string]: unknown;
             };
+            /** Content Sha256 */
+            content_sha256?: string | null;
+            /** Text */
+            text?: string | null;
+            /** Result */
+            result?: {
+                [key: string]: unknown;
+            } | null;
+            /** Cost Usd */
+            cost_usd?: number | null;
+            /** Call Id */
+            call_id?: string | null;
         };
         /**
          * RunnerChain
@@ -26986,7 +27074,9 @@ export interface operations {
     run_prompt_api_organizations__org_slug__prompts_run_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 org_slug: string;
             };
@@ -32686,8 +32776,8 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                slug: string;
                 org_slug: string;
+                slug: string;
             };
             cookie?: never;
         };
@@ -32722,8 +32812,8 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                slug: string;
                 org_slug: string;
+                slug: string;
             };
             cookie?: never;
         };

@@ -1,0 +1,62 @@
+# Relational schema for the AI model call record (workflow LLM Call
+# step plan, D6).
+#
+# imbi-api applies it on startup. One row for each generative model call
+# of `POST /organizations/{org}/prompts/run`: a workflow step or an
+# editor preview. Rows refer to the organization by id and to people by
+# principal name. The `ai-model-calls-prune` maintenance operation
+# deletes rows older than 90 days.
+#
+# The schema name is fixed: `ai_runtime`.
+
+# `status` is `running`, `succeeded`, `failed`, or `outcome_unknown`.
+# `error` is the error code of a failed call. The rendered prompt is
+# capped by the render (256 KiB); the answer is kept whole, because a
+# repeat of the idempotency key must get the same answer.
+[[tables]]
+name = "ai_model_calls"
+
+[tables.columns]
+id = "UUID NOT NULL"
+organization_id = "TEXT NOT NULL"
+principal = "TEXT NOT NULL"
+# `workflow` when the caller sent an idempotency key, else `preview`.
+origin = "TEXT NOT NULL"
+# From the key `<run_id>:<node_id>:<attempt>`.
+run_id = "TEXT"
+node_id = "TEXT"
+attempt = "INTEGER"
+idempotency_key = "TEXT"
+prompt_ref = "TEXT NOT NULL"
+# NULL for a draft.
+prompt_version = "INTEGER"
+content_sha256 = "TEXT NOT NULL"
+model = "TEXT NOT NULL"
+model_id = "TEXT NOT NULL"
+driver = "TEXT NOT NULL"
+provider_request_id = "TEXT"
+system = "TEXT NOT NULL"
+messages = "JSONB NOT NULL"
+output_schema = "JSONB"
+text = "TEXT"
+result = "JSONB"
+status = "TEXT NOT NULL DEFAULT 'running'"
+error = "TEXT"
+usage = "JSONB NOT NULL DEFAULT '{}'"
+cost_usd = "NUMERIC"
+started_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+finished_at = "TIMESTAMP WITH TIME ZONE"
+
+[tables.primary_key]
+columns = ["id"]
+
+# One call for each key of a caller. NULL keys (previews) are distinct.
+[[tables.indexes]]
+name = "ai_model_calls_idempotency_key"
+columns = ["organization_id", "principal", "idempotency_key"]
+unique = true
+
+# The prune.
+[[tables.indexes]]
+name = "ai_model_calls_started_idx"
+columns = ["started_at"]

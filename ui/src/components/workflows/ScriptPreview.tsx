@@ -13,6 +13,27 @@ import { JsonBlock } from './JsonBlock'
 import { hasTemplate, isRecord } from './schemaFields'
 import type { ScriptPreviewRequest, WorkflowNode } from './types'
 
+export function parseSample(text: string): null | Record<string, unknown> {
+  if (!text.trim()) return {}
+  try {
+    const value: unknown = JSON.parse(text)
+    return isRecord(value) ? value : null
+  } catch {
+    return null
+  }
+}
+
+/** The node's inputs, with `null` for each value that holds a template. */
+export function sampleInputs(inputs: unknown): Record<string, unknown> {
+  if (!isRecord(inputs)) return {}
+  return Object.fromEntries(
+    Object.entries(inputs).map(([name, value]) => [
+      name,
+      typeof value === 'string' && hasTemplate(value) ? null : value,
+    ]),
+  )
+}
+
 /**
  * Run the node's script now with sample inputs (ADR 0027). The script
  * runs in the same sandbox, with the same limits, as in a run. Nothing
@@ -29,7 +50,7 @@ export function ScriptPreview({
   const [edited, setSample] = useState<null | string>(null)
   const sample =
     edited ?? JSON.stringify(sampleInputs(node.params.inputs), null, 2)
-  const inputs = parseObject(sample)
+  const inputs = parseSample(sample)
   const run = useMutation({
     mutationFn: (body: ScriptPreviewRequest) => previewScript(orgSlug, body),
   })
@@ -115,26 +136,5 @@ export function ScriptPreview({
         </>
       )}
     </div>
-  )
-}
-
-function parseObject(text: string): null | Record<string, unknown> {
-  if (!text.trim()) return {}
-  try {
-    const value: unknown = JSON.parse(text)
-    return isRecord(value) ? value : null
-  } catch {
-    return null
-  }
-}
-
-/** The node's inputs, with `null` for each value that holds a template. */
-function sampleInputs(inputs: unknown): Record<string, unknown> {
-  if (!isRecord(inputs)) return {}
-  return Object.fromEntries(
-    Object.entries(inputs).map(([name, value]) => [
-      name,
-      typeof value === 'string' && hasTemplate(value) ? null : value,
-    ]),
   )
 }

@@ -51,6 +51,20 @@ SYSTEM_TASKS: tuple[dict[str, typing.Any], ...] = (
             'path': '/maintenance/operations/cve-sync/run',
         },
     },
+    {
+        'slug': 'ai-model-calls-prune',
+        'name': 'Prune AI model calls',
+        'description': (
+            'Starts the ai-model-calls-prune maintenance operation, which '
+            'deletes the AI model call records older than 90 days.'
+        ),
+        'trigger': {'kind': 'cron', 'expression': '30 2 * * *'},
+        'target': {
+            'kind': 'api',
+            'method': 'POST',
+            'path': '/maintenance/operations/ai-model-calls-prune/run',
+        },
+    },
 )
 
 

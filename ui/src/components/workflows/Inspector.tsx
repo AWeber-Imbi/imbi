@@ -9,6 +9,8 @@ import { cn } from '@/lib/utils'
 
 import { KEY_PATTERN, portsOf, type StepTypes } from './graph'
 import { JsonBlock } from './JsonBlock'
+import { LLMCallPanel } from './LLMCallPanel'
+import { LLM_CALL, type StepPrompt } from './llmCallPrompt'
 import { ParamsForm, SelectField } from './ParamsForm'
 import { referenceGroups } from './references'
 import { StatusBadge } from './RunPanel'
@@ -93,14 +95,18 @@ export function NodePanel({
   onChange,
   onDelete,
   onDuplicate,
+  onPromptChange,
   onRemoveItem,
   onTab,
   orgSlug,
+  prompt,
   readOnly,
   result,
   resultSource,
   tab,
   types,
+  workflowName,
+  workflowSlug,
 }: {
   graph: WorkflowGraph
   issues: ValidationIssue[]
@@ -108,9 +114,13 @@ export function NodePanel({
   onChange: (patch: Partial<WorkflowNode>) => void
   onDelete: () => void
   onDuplicate: () => void
+  /** Edits the prompt of an LLM Call step. */
+  onPromptChange: (prompt: StepPrompt) => void
   onRemoveItem: (name: string, index: number) => void
   onTab: (tab: InspectorTab) => void
   orgSlug: string
+  /** The edited prompt of an LLM Call step, if any. */
+  prompt: StepPrompt | undefined
   readOnly: boolean
   /** What the step did in the run or the test run on show. */
   result: null | StepResult
@@ -118,6 +128,9 @@ export function NodePanel({
   resultSource: 'run' | 'test' | null
   tab: InspectorTab
   types: StepTypes
+  workflowName: string
+  /** The slug of the workflow. Undefined until the first save. */
+  workflowSlug: string | undefined
 }) {
   const type = types[node.type]
   const Icon = stepIcon(node.type, type?.category)
@@ -214,18 +227,31 @@ export function NodePanel({
               value={node.key}
             />
           </FormField>
-          <ParamsForm
-            fields={fields}
-            idPrefix={`workflow-node-${node.id}`}
-            onChange={(name, value) =>
-              onChange({ params: { ...node.params, [name]: value } })
-            }
-            onRemoveItem={onRemoveItem}
-            orgSlug={orgSlug}
-            params={node.params}
-            references={references}
-            webhookProject={graph.nodes.some((n) => n.type === 'webhook')}
-          />
+          {node.type === LLM_CALL ? (
+            <LLMCallPanel
+              node={node}
+              onChange={(params) => onChange({ params })}
+              onPromptChange={onPromptChange}
+              orgSlug={orgSlug}
+              prompt={prompt}
+              references={references}
+              workflowName={workflowName}
+              workflowSlug={workflowSlug}
+            />
+          ) : (
+            <ParamsForm
+              fields={fields}
+              idPrefix={`workflow-node-${node.id}`}
+              onChange={(name, value) =>
+                onChange({ params: { ...node.params, [name]: value } })
+              }
+              onRemoveItem={onRemoveItem}
+              orgSlug={orgSlug}
+              params={node.params}
+              references={references}
+              webhookProject={graph.nodes.some((n) => n.type === 'webhook')}
+            />
+          )}
           {node.type === 'script' && !readOnly && (
             <ScriptPreview key={node.id} node={node} orgSlug={orgSlug} />
           )}

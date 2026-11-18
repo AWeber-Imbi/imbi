@@ -199,6 +199,7 @@ nav:
               - 0027 Workflow Script Step: api/adr/0027-workflow-script-step.md
               - 0028 Tasks Become Tickets: api/adr/0028-tasks-become-tickets.md
               - 0029 Automations: api/adr/0029-automations.md
+              - 0030 Workflow LLM Call Step: api/adr/0030-workflow-llm-call-step.md
           - Library:
               - 0001 Library Extraction: common/adr/0001-imbi-common-library-extraction.md
               - 0002 Lifespan Composition: common/adr/0002-lifespan-composition.md

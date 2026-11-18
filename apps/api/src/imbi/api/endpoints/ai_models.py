@@ -63,6 +63,7 @@ _PATCHABLE_FIELDS: tuple[str, ...] = (
     'default_temperature',
     'default_top_p',
     'monthly_spend_cap',
+    'supports_structured_output',
 )
 
 #: Paths a patch may not target. ``provider_id`` and
@@ -129,6 +130,7 @@ class AIModelCreate(pydantic.BaseModel):
     monthly_spend_cap: decimal.Decimal | None = pydantic.Field(
         default=None, ge=0
     )
+    supports_structured_output: bool = False
 
 
 class AIModelResponse(pydantic.BaseModel):
@@ -158,6 +160,7 @@ class AIModelResponse(pydantic.BaseModel):
     default_temperature: float | None = None
     default_top_p: float | None = None
     monthly_spend_cap: decimal.Decimal | None = None
+    supports_structured_output: bool = False
     created_at: datetime.datetime | None = None
     updated_at: datetime.datetime | None = None
 
@@ -275,6 +278,7 @@ def _to_response(
         default_temperature=node.default_temperature,
         default_top_p=node.default_top_p,
         monthly_spend_cap=node.monthly_spend_cap,
+        supports_structured_output=node.supports_structured_output,
         created_at=node.created_at,
         updated_at=node.updated_at,
     )
@@ -434,6 +438,31 @@ def _teams_for_scope(access_scope: str, teams: list[TeamRef]) -> list[TeamRef]:
     on its own do the obvious thing to the edges.
     """
     return teams if access_scope == 'restricted' else []
+
+
+_ALLOWED_MEMBER_QUERY: typing.LiteralString = """
+MATCH (:AIModel {{slug: {slug}}})-[:ALLOWED_FOR]->(t:Team)
+      <-[:MEMBER_OF]-(:User {{email: {email}}})
+RETURN t.id AS id
+"""
+
+_ALLOWED_TEAM_QUERY: typing.LiteralString = """
+MATCH (:AIModel {{slug: {slug}}})-[:ALLOWED_FOR]->(t:Team {{id: {team}}})
+RETURN t.id AS id
+"""
+
+
+async def member_allowed(db: graph.Graph, slug: str, email: str) -> bool:
+    """Whether the user ``email`` is a member of a team that a
+    ``restricted`` model allows."""
+    params = {'slug': slug, 'email': email}
+    return bool(await db.execute(_ALLOWED_MEMBER_QUERY, params, ['id']))
+
+
+async def team_allowed(db: graph.Graph, slug: str, team_id: str) -> bool:
+    """Whether a ``restricted`` model allows the team ``team_id``."""
+    params = {'slug': slug, 'team': team_id}
+    return bool(await db.execute(_ALLOWED_TEAM_QUERY, params, ['id']))
 
 
 async def _replace_team_edges(

@@ -258,6 +258,13 @@ class DecisionRunTestCase(base.PromptTestBase):
         )
         self.decide = decide.start()
         self.addCleanup(decide.stop)
+        member = mock.patch.object(
+            prompts.organizations,
+            'check_member',
+            mock.AsyncMock(return_value='org-1'),
+        )
+        member.start()
+        self.addCleanup(member.stop)
 
     def route_run(self, *extra: tuple[str, typing.Any]) -> base.Router:
         return self.route(
@@ -338,15 +345,6 @@ class DecisionRunTestCase(base.PromptTestBase):
         response = self.client.post(RUN_URL, json={'variables': {}})
         self.assertEqual(response.status_code, 422)
 
-    def test_generative_prompt_is_422(self) -> None:
-        self.route(
-            (base.GET_PROMPT, base.prompt_row()),
-            (base.GET_VERSION, base.version_row()),
-        )
-        response = self.run_ref(variables={'project_slug': 'x'})
-        self.assertEqual(response.status_code, 422)
-        self.decide.assert_not_awaited()
-
     def test_no_credentials_is_409(self) -> None:
         self.decrypt.return_value = None
         self.route_run()
@@ -396,6 +394,12 @@ class DecisionRunTestCase(base.PromptTestBase):
 
     def test_needs_update_permission(self) -> None:
         self.as_principal('prompt:read')
+        self.route_run()
+        self.assertEqual(self.run_ref().status_code, 403)
+        self.decide.assert_not_awaited()
+
+    def test_run_permission_is_not_enough(self) -> None:
+        self.as_principal('prompt:run')
         self.route_run()
         self.assertEqual(self.run_ref().status_code, 403)
         self.decide.assert_not_awaited()

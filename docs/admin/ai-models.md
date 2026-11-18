@@ -177,6 +177,7 @@ two steps.
 | Output cost / 1M tokens | USD per one million output tokens. |
 | Default temperature | Between 0 and 2. Generative models only. |
 | Default top_p | Between 0 and 1. Generative models only. |
+| Structured output | The model can return JSON that matches a schema. See [Structured output](#structured-output). |
 | Monthly spend cap | USD per month. |
 | Allowed teams | See [Team access](#team-access). |
 | Enable immediately | Makes the model selectable as soon as it is created. |
@@ -193,6 +194,35 @@ unknown or set by contract. Enter `0` for a self-hosted model.
 Two rules apply within the catalog. A model's display name must produce a slug
 that is unique in the catalog. A model identifier must be unique within
 its provider. Imbi returns `409` when either rule fails.
+
+## Structured output
+
+Set **Structured output** on a model that can return JSON that matches a
+schema. A workflow [LLM Call step](workflows.md#llm-call) with output
+fields can use only such a model. The switch is off by default, and
+discovery does not set it, so set it on each model that supports it.
+
+Imbi asks for the structured answer in the form of the driver:
+
+| Driver | Form |
+|---|---|
+| Anthropic, AWS Bedrock | One forced tool call |
+| OpenAI, OpenAI-compatible | A strict `json_schema` response format |
+| Google Vertex AI | A JSON response schema (Gemini) |
+
+Turn the switch off when the provider refuses the request. Imbi checks
+the switch at two times:
+
+- **Save.** Imbi does not save a workflow that has an LLM Call step
+  with output fields on a model with the switch off. The `422` error
+  says that the model does not support structured output.
+- **Run.** When you turn the switch off after you save the workflow,
+  the step fails at run time with `model_no_structured_output`.
+
+!!! note
+    An LLM Call step on Google Vertex AI calls Gemini models only, and
+    needs an API key on the provider. The runtime IAM role does not work
+    for these calls.
 
 ## Discover and import models
 
@@ -263,6 +293,17 @@ Select the **All teams** chip to return to access for every team. The team
 picker lists the teams of the organization you have selected. A
 restricted model must name at least one team. Imbi rejects an empty team list
 with `422`.
+
+A generative prompt run checks the teams of a restricted model. A user must
+be a member of an allowed team. An LLM Call step of a workflow runs for the
+owner team of the workflow, and only the workflows service can run it that
+way. Otherwise the run fails with `403` (`model_not_allowed`). Admins can run
+every model.
+
+A workflow save checks the same rule. The model of an LLM Call step must allow
+the owner team of the workflow, and the user who saves must be a member of an
+allowed team. An admin does not need to be a member. Otherwise the save fails
+with `403` (`model_not_allowed`).
 
 Deleting a team does not update the models that name it. Review restricted
 models after you delete a team.

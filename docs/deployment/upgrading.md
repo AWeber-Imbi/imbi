@@ -42,8 +42,8 @@ Use 2.41.0 or later for a new install.
    operations.
 
 imbi-api applies the PostgreSQL graph schema and the relational schemas
-(`agent_runtime`, `workflows`, `workflow_runtime`, `secrets`, `harness`) at
-startup. You do not run a command for them.
+(`agent_runtime`, `workflows`, `workflow_runtime`, `secrets`, `harness`,
+`ai_runtime`) at startup. You do not run a command for them.
 
 ### Where to run the commands
 
@@ -73,6 +73,27 @@ To restart iggy-connect:
 
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
+
+## 2.53.0
+
+imbi-api creates the `ai_runtime` schema, which records each AI model
+call, when it starts.
+
+1. Run `imbi-api setup-permissions`. It adds `prompt:run` and gives it to
+   the `admin`, `developer`, and `imbi-workflows` roles. The engine needs
+   it to run an LLM Call step, and a person needs it to activate a
+   workflow with one. It also adds
+   `admin:maintenance:ai-model-calls-prune` and gives it to the
+   `imbi-scheduler` role. The new `ai-model-calls-prune` system task runs
+   daily at 02:30 UTC, and without the permission each run gets a `403`.
+2. In **Admin > Global Admin > AI Models**, set **Structured output** on
+   each generative model that supports it. The switch is off for every
+   existing model. An LLM Call step with output fields cannot use a
+   model with the switch off. See
+   [Structured output](../admin/ai-models.md#structured-output).
+3. To use Gemini on Google Vertex AI in an LLM Call step, set an API key
+   on the Vertex provider. The runtime IAM role does not work for these
+   calls.
 
 ## 2.51.0
 

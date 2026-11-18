@@ -27,6 +27,7 @@ const base: AIModel = {
   provider_id: 'prov-1',
   provider_name: 'Anthropic',
   slug: 'default-chat',
+  supports_structured_output: false,
 }
 
 describe('AIModelSelect', () => {

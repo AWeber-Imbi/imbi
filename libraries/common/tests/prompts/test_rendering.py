@@ -241,6 +241,11 @@ class RenderTestCase(unittest.IsolatedAsyncioTestCase):
                 '{{ n }}', {'n': True}, n=models.PromptVariable(type='int')
             )
 
+    def test_any_accepts_every_value(self) -> None:
+        schema = {'v': models.PromptVariable(type='any')}
+        for value in ('text', 1, True, None, [1], {'a': 1}):
+            rendering.validate_variables(schema, {'v': value})
+
     async def test_provider_is_awaited_and_memoized(self) -> None:
         calls: list[object] = []
 

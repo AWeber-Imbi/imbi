@@ -1,5 +1,6 @@
 """Tests for the prompt CMS endpoints."""
 
+import asyncio
 import json
 import typing
 from unittest import mock
@@ -7,6 +8,7 @@ from unittest import mock
 import psycopg.errors
 
 from apps.api.tests.endpoints import test_ai_providers as provider_tests
+from imbi.api import model_calls, workflows
 from imbi.api.endpoints import projects, prompts
 
 ORG = provider_tests.ORG
@@ -120,7 +122,19 @@ MODEL_ROW = [{'model_id': 'claude-opus-5', 'enabled': True}]
 
 
 class PromptTestBase(provider_tests.AIProviderTestBase):
-    """Admin principal and a mocked graph."""
+    """Admin principal, a mocked graph, and a mocked call record."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.calls = mock.AsyncMock()
+        self.calls.repeat.return_value = None
+        self.test_app.dependency_overrides[model_calls._inject_store] = (
+            lambda: self.calls
+        )
+        self.workflow_store = mock.AsyncMock()
+        self.test_app.dependency_overrides[workflows._inject_store] = (
+            lambda: self.workflow_store
+        )
 
     def route(self, *rules: tuple[str, typing.Any]) -> Router:
         router = Router(*rules)
@@ -764,3 +778,304 @@ class EvaluationAndDeleteTestCase(PromptTestBase):
         self.assertLess(
             queries.index(DELETE_VERSIONS), queries.index(DELETE_PROMPT)
         )
+
+
+class WorkflowPromptTestCase(PromptTestBase):
+    """``workflows/<org>.<workflow>.<node>``: owned by ``workflow:write``,
+    never deleted or renamed, no tools, and archived with its node."""
+
+    SLUG = f'{ORG}.deploy.summary'
+    URL = f'{BASE}/workflows/{SLUG}'
+    WF: typing.ClassVar[dict[str, str]] = {
+        'namespace': 'workflows',
+        'slug': SLUG,
+    }
+    BODY: typing.ClassVar[dict[str, typing.Any]] = {
+        'system': 'Summarize {{ diff }}.',
+        'model': 'default-chat',
+        'variable_schema': {'diff': {'type': 'str', 'required': True}},
+    }
+
+    def setUp(self) -> None:
+        super().setUp()
+        members = mock.patch.object(
+            prompts,
+            'caller_org_slugs',
+            mock.AsyncMock(return_value={ORG}),
+        )
+        members.start()
+        self.addCleanup(members.stop)
+
+    def _create(self, **body: typing.Any) -> typing.Any:
+        return self.client.post(
+            BASE + '/',
+            json={
+                **self.WF,
+                'name': 'Deploy summary',
+                'version': self.BODY,
+                **body,
+            },
+        )
+
+    def test_workflow_write_creates_and_versions(self) -> None:
+        self.as_principal('prompt:read', 'workflow:write')
+        self.route(
+            (MODEL, MODEL_ROW),
+            (CREATE_PROMPT, [{'p': prompt_props(**self.WF)}]),
+        )
+        response = self._create()
+        self.assertEqual(response.status_code, 201, response.text)
+        # workflow:write may also label it, like agent:write.
+        self.assertEqual(response.json()['labels'][0]['version'], 1)
+        self.route(
+            (GET_PROMPT, prompt_row(1, **self.WF)),
+            (GET_VERSION, version_row(1)),
+            (MODEL, MODEL_ROW),
+            (CREATE_VERSION, [{'v': version_props(2)}]),
+        )
+        response = self.client.post(self.URL + '/versions', json=self.BODY)
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(response.json()['n'], 2)
+
+    def test_workflow_prompt_must_be_generative(self) -> None:
+        self.as_principal('prompt:read', 'workflow:write')
+        self.route()
+        response = self._create(kind='decision', version={})
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn('must be generative', response.text)
+
+    def test_workflow_read_reads(self) -> None:
+        # The step editor loads the pinned version of the node.
+        self.as_principal('workflow:read')
+        self.route(
+            (GET_PROMPT, prompt_row(1, **self.WF)),
+            (GET_VERSION, version_row(1)),
+            (LIST_VERSIONS, version_row(1)),
+        )
+        for url in (
+            self.URL,
+            self.URL + '/versions',
+            self.URL + '/versions/1',
+            f'{BASE}/resolve?ref=workflows/{self.SLUG}@1',
+        ):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200, url)
+        response = self.client.get(BASE + '/mender/core')
+        self.assertEqual(response.status_code, 403)
+
+    def test_workflow_write_is_not_enough_elsewhere(self) -> None:
+        self.as_principal('prompt:read', 'workflow:write')
+        self.route((GET_PROMPT, prompt_row(1)))
+        response = self.client.post(
+            BASE + '/mender/core/versions', json=self.BODY
+        )
+        self.assertEqual(response.status_code, 403)
+        response = self._create(namespace='agents')
+        self.assertEqual(response.status_code, 403)
+
+    def test_other_org_prefix_is_refused(self) -> None:
+        # The caller is a member of ORG only: the prompt of another
+        # organization is not found, so its name is not confirmed.
+        self.as_principal('prompt:read', 'workflow:write')
+        response = self._create(slug='other.deploy.summary')
+        self.assertEqual(response.status_code, 404)
+        response = self.client.post(
+            BASE + '/workflows/other.deploy.summary/versions', json=self.BODY
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_needs_workflow_write(self) -> None:
+        self.as_principal('prompt:read', 'agent:write')
+        self.assertEqual(self._create().status_code, 403)
+        response = self.client.post(self.URL + '/versions', json=self.BODY)
+        self.assertEqual(response.status_code, 403)
+
+    def test_slug_needs_org_prefix(self) -> None:
+        response = self._create(slug='summary')
+        self.assertEqual(response.status_code, 422)
+
+    def test_render_in_another_org_is_422(self) -> None:
+        self.route(
+            (GET_PROMPT, prompt_row(1, **self.WF)),
+            (GET_VERSION, version_row(1)),
+        )
+        response = self.client.post(
+            '/organizations/other/prompts/render',
+            json={'ref': f'workflows/{self.SLUG}@1', 'variables': {}},
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn('belongs to organization', response.json()['detail'])
+
+    def test_delete_is_409(self) -> None:
+        router = self.route((GET_PROMPT, prompt_row(**self.WF)))
+        response = self.client.delete(self.URL)
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('cannot be deleted', response.json()['detail'])
+        self.assertNotIn(DELETE_VERSIONS, [q for q, _ in router.calls])
+
+    def test_rename_is_409(self) -> None:
+        self.route((GET_PROMPT, prompt_row(**self.WF)))
+        for path, value in (('/slug', f'{ORG}.x.y'), ('/namespace', 'x')):
+            response = self.client.patch(
+                self.URL,
+                json=[{'op': 'replace', 'path': path, 'value': value}],
+            )
+            self.assertEqual(response.status_code, 409, path)
+        response = self.client.patch(
+            self.URL, json=[{'op': 'replace', 'path': '/name', 'value': 'X'}]
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+
+    def test_rename_into_workflows_is_409(self) -> None:
+        self.route((GET_PROMPT, prompt_row()))
+        response = self.client.patch(
+            BASE + '/mender/core',
+            json=[
+                {'op': 'replace', 'path': '/namespace', 'value': 'workflows'}
+            ],
+        )
+        self.assertEqual(response.status_code, 409)
+
+    def test_tools_are_422(self) -> None:
+        tools = [{'name': 'search', 'input_schema': {}}]
+        self.route((MODEL, MODEL_ROW))
+        response = self._create(version={**self.BODY, 'tools': tools})
+        self.assertEqual(response.status_code, 422)
+        self.route((GET_PROMPT, prompt_row(1, **self.WF)))
+        response = self.client.post(
+            self.URL + '/versions', json={**self.BODY, 'tools': tools}
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn('tools', response.json()['detail'])
+
+
+class ArchiveTestCase(PromptTestBase):
+    ARCHIVED: typing.ClassVar[dict[str, str]] = {'archived_at': STAMP}
+
+    def test_archive_sets_archived_at_once(self) -> None:
+        router = self.route()
+        asyncio.run(
+            prompts.archive_prompts_except(
+                self.mock_db, 'workflows', 'acme.a.', ['acme.a.b']
+            )
+        )
+        self.assertIn('WHERE p.archived_at IS NULL', prompts._ARCHIVE_QUERY)
+        params = router.params_for(prompts._ARCHIVE_QUERY)
+        self.assertEqual(
+            (params['namespace'], params['prefix'], params['keep']),
+            ('workflows', 'acme.a.', ['acme.a.b']),
+        )
+
+    def test_archived_is_not_listed(self) -> None:
+        for query in (LIST_PROMPTS, LIST_NAMESPACE):
+            self.assertIn('WHERE p.archived_at IS NULL', query)
+
+    def test_archived_is_still_readable(self) -> None:
+        self.route((GET_PROMPT, prompt_row(**self.ARCHIVED)))
+        response = self.client.get(BASE + '/mender/core')
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNotNone(response.json()['archived_at'])
+
+    def test_archived_refuses_versions_and_labels(self) -> None:
+        router = self.route(
+            (GET_PROMPT, prompt_row(1, **self.ARCHIVED)),
+            (GET_VERSION, version_row(1)),
+        )
+        response = self.client.post(
+            BASE + '/mender/core/versions',
+            json=CreateVersionTestCase.BODY,
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('archived', response.json()['detail'])
+        response = self.client.put(
+            BASE + '/mender/core/labels/canary', json={'version': 1}
+        )
+        self.assertEqual(response.status_code, 409)
+        response = self.client.put(
+            BASE + '/mender/core/default-label', json={'label': 'stable'}
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(
+            any(
+                CREATE_VERSION in q or SET_LABELS in q for q, _ in router.calls
+            )
+        )
+
+    def test_new_version_unarchives_a_workflows_prompt(self) -> None:
+        # A deleted step key that is added again gets its prompt back.
+        wf = WorkflowPromptTestCase.WF
+        self.as_principal('prompt:read', 'workflow:write')
+        router = self.route(
+            (GET_PROMPT, prompt_row(1, **wf, **self.ARCHIVED)),
+            (GET_VERSION, version_row(1)),
+            (MODEL, MODEL_ROW),
+            (CREATE_VERSION, [{'v': version_props(2)}]),
+        )
+        with mock.patch.object(
+            prompts, 'caller_org_slugs', mock.AsyncMock(return_value={ORG})
+        ):
+            response = self.client.post(
+                WorkflowPromptTestCase.URL + '/versions',
+                json=WorkflowPromptTestCase.BODY,
+            )
+        self.assertEqual(response.status_code, 201, response.text)
+        # One statement un-archives and writes the version.
+        create = next(q for q, _ in router.calls if CREATE_VERSION in q)
+        self.assertIn('SET p.archived_at = NULL', create)
+        self.assertIn('now', router.params_for(CREATE_VERSION))
+        self.assertFalse(
+            any(prompts._UNARCHIVE_QUERY in q for q, _ in router.calls)
+        )
+
+    def test_failed_version_keeps_workflows_prompt_archived(self) -> None:
+        wf = WorkflowPromptTestCase.WF
+        self.as_principal('prompt:read', 'workflow:write')
+        router = self.route(
+            (GET_PROMPT, prompt_row(1, **wf, **self.ARCHIVED)),
+            (GET_VERSION, version_row(1)),
+        )
+        with mock.patch.object(
+            prompts, 'caller_org_slugs', mock.AsyncMock(return_value={ORG})
+        ):
+            response = self.client.post(
+                WorkflowPromptTestCase.URL + '/versions',
+                json=WorkflowPromptTestCase.BODY,
+            )
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertFalse(
+            any(
+                prompts._UNARCHIVE_QUERY in q or CREATE_VERSION in q
+                for q, _ in router.calls
+            )
+        )
+
+    def test_unchanged_version_unarchives_a_workflows_prompt(self) -> None:
+        wf = WorkflowPromptTestCase.WF
+        self.as_principal('prompt:read', 'workflow:write')
+        body = WorkflowPromptTestCase.BODY
+        sha = prompts.content_sha256(prompts.PromptVersionCreate(**body))
+        router = self.route(
+            (GET_PROMPT, prompt_row(1, **wf, **self.ARCHIVED)),
+            (GET_VERSION, version_row(1, content_sha256=sha)),
+        )
+        with mock.patch.object(
+            prompts, 'caller_org_slugs', mock.AsyncMock(return_value={ORG})
+        ):
+            response = self.client.post(
+                WorkflowPromptTestCase.URL + '/versions', json=body
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            router.params_for(prompts._UNARCHIVE_QUERY)['id'], 'prm-1'
+        )
+
+    def test_archived_pinned_ref_resolves(self) -> None:
+        self.route(
+            (GET_PROMPT, prompt_row(2, **self.ARCHIVED)),
+            (GET_VERSION, lambda params: version_row(params['n'])),
+        )
+        response = self.client.get(
+            BASE + '/resolve', params={'ref': 'mender/core@2'}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['version']['n'], 2)

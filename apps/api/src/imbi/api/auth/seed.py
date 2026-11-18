@@ -173,6 +173,13 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'Move prompt labels and set the default label',
     ),
     ('prompt:delete', 'prompt', 'delete', 'Delete prompts'),
+    # A run spends provider credit, so it is not part of ``read``.
+    (
+        'prompt:run',
+        'prompt',
+        'run',
+        'Run saved generative prompts against their AI model',
+    ),
     (
         'prompt:evaluate',
         'prompt',
@@ -635,6 +642,12 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'maintenance:cve-sync',
         'Start the cve-sync maintenance operation',
     ),
+    (
+        'admin:maintenance:ai-model-calls-prune',
+        'admin',
+        'maintenance:ai-model-calls-prune',
+        'Start the ai-model-calls-prune maintenance operation',
+    ),
     # Project plugin access
     (
         'project:configuration:read',
@@ -862,6 +875,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'prompt:create',
             'prompt:read',
             'prompt:update',
+            'prompt:run',
             'environment:read',
             'link_definition:read',
             'link_definition:write',
@@ -1020,8 +1034,10 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             # who can make a task that runs as this account could then
             # start any operation, including the purges.
             'admin:maintenance:marketplace-sync',
-            # The cve-sync system task, for the same reason.
+            # The cve-sync and ai-model-calls-prune system tasks, for
+            # the same reason.
             'admin:maintenance:cve-sync',
+            'admin:maintenance:ai-model-calls-prune',
             'agent:read',
             # An `api` task can start agent work with a `schedule`
             # origin (ADR 0020).
@@ -1091,6 +1107,8 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'scheduled_task:create',
             'scheduled_task:write',
             'scheduled_task:delete',
+            # The LLM Call step runs its saved prompt.
+            'prompt:run',
             # Not `integration:act-as-service`: an operator grants it,
             # as ADR 0017 requires for every autonomous principal.
         ],

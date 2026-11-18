@@ -310,6 +310,7 @@ export function RunPanel({
           slug: prompt.slug,
           version: content,
         },
+        output_fields: [],
         variables: vars,
       }),
     onError: (err) => toast.error(extractApiErrorDetail(err)),
@@ -605,6 +606,13 @@ function parseValue(
     return n
   }
   if (type === 'list' || type === 'object') return JSON.parse(text)
+  if (type === 'any') {
+    try {
+      return JSON.parse(text)
+    } catch {
+      return text
+    }
+  }
   return text
 }
 

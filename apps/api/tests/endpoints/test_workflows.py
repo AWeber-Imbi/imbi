@@ -15,6 +15,7 @@ import httpx
 from apps.api.tests import support
 from imbi.api import models, workflows
 from imbi.api.auth import permissions
+from imbi.api.endpoints import prompts
 from imbi.api.endpoints import workflows as workflows_endpoints
 from imbi.common import graph
 from imbi.common.workflows import script_runner
@@ -98,6 +99,7 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
             CREATE (u:User {{id: {email}, email: {email},
                              display_name: 'Dev', is_active: true}})
             CREATE (u)-[:MEMBER_OF {{role: 'developer'}}]->(o)
+            CREATE (u)-[:MEMBER_OF]->(t)
             CREATE (t2:Team {{id: {team2}, slug: {team2}, name: 'Dev'}})
             CREATE (t2)-[:BELONGS_TO]->(o)
             CREATE (p:Project {{id: {project}, slug: {project}, name: 'P'}})
@@ -476,8 +478,30 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
         self.assertEqual(len(issues), 1)
         self.assertIn(self.foreign['user'], issues[0])
 
+    async def _leave_team(self) -> None:
+        await self.graph.execute(
+            """
+            MATCH (:User {{id: {email}}})-[r:MEMBER_OF]->(:Team {{id: {team}}})
+            DELETE r
+            RETURN 1 AS ok
+            """,
+            {'email': self.email, 'team': self.team},
+            ['ok'],
+        )
+
+    async def test_create_needs_owner_team_member_or_admin(self) -> None:
+        response = await self._create(owner_team_slug=self.team2)
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'owner_team_forbidden'
+        )
+        self.user.is_admin = True
+        response = await self._create(owner_team_slug=self.team2)
+        self.assertEqual(response.status_code, 201, response.text)
+
     async def test_owner_team_change_needs_member_or_admin(self) -> None:
         await self._create()
+        await self._leave_team()
         body = {'name': 'Deploy guard', 'owner_team_slug': self.team2}
         url = f'{self.base}/deploy-guard'
         response = await self.client.put(url, json=body)
@@ -786,3 +810,314 @@ class ScriptPreviewTestCase(WorkflowTestCase):
         self.runner = None
         response = await self._preview()
         self.assertEqual(response.status_code, 503, response.text)
+
+
+class LLMCallStepTestCase(WorkflowTestCase):
+    """The CMS prompt of an LLM Call step: checked on save, archived
+    when the node or the workflow goes."""
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        suffix = uuid.uuid4().hex[:8]
+        self.provider = f'prov-{suffix}'
+        self.structured = f'chat-s-{suffix}'
+        self.plain = f'chat-p-{suffix}'
+        self.completion = f'text-c-{suffix}'
+        await self.graph.execute(
+            """
+            CREATE (p:AIProvider {{id: {provider}, slug: {provider},
+                                   name: 'P', driver: 'anthropic',
+                                   enabled: true}})
+            CREATE (s:AIModel {{id: {structured}, slug: {structured},
+                                name: 'S', model_id: 's',
+                                model_type: 'generative', enabled: true,
+                                supports_structured_output: true}})
+            CREATE (m:AIModel {{id: {plain}, slug: {plain}, name: 'M',
+                                model_id: 'm', model_type: 'generative',
+                                enabled: true,
+                                supports_structured_output: false}})
+            CREATE (c:AIModel {{id: {completion}, slug: {completion},
+                                name: 'C', model_id: 'c',
+                                model_type: 'generative', kind: 'completion',
+                                enabled: true,
+                                supports_structured_output: false}})
+            CREATE (s)-[:SERVED_BY]->(p)
+            CREATE (m)-[:SERVED_BY]->(p)
+            CREATE (c)-[:SERVED_BY]->(p)
+            RETURN p.id AS id
+            """,
+            {
+                'provider': self.provider,
+                'structured': self.structured,
+                'plain': self.plain,
+                'completion': self.completion,
+            },
+            ['id'],
+        )
+        self.addAsyncCleanup(self._cleanup_prompts)
+        await self._prompt('sum', self.structured)
+        await self._prompt('plain', self.plain)
+        await self._prompt('ask', self.plain)
+        await self._prompt('text', self.completion)
+
+    async def _cleanup_prompts(self) -> None:
+        await self.graph.execute(
+            """
+            MATCH (p:Prompt {{namespace: 'workflows'}})
+            WHERE p.slug STARTS WITH {prefix}
+            OPTIONAL MATCH (v:PromptVersion)-[:VERSION_OF]->(p)
+            DETACH DELETE v, p
+            RETURN 1 AS ok
+            """,
+            {'prefix': f'{self.org}.'},
+            ['ok'],
+        )
+        await self.graph.execute(
+            """
+            MATCH (n) WHERE n.id IN {ids}
+            DETACH DELETE n
+            RETURN 1 AS ok
+            """,
+            {
+                'ids': [
+                    self.provider,
+                    self.structured,
+                    self.plain,
+                    self.completion,
+                ]
+            },
+            ['ok'],
+        )
+
+    def _ref(self, key: str) -> str:
+        return f'workflows/{self.org}.deploy-guard.{key}'
+
+    async def _prompt(self, key: str, model: str) -> None:
+        await prompts.insert_prompt(
+            self.graph,
+            prompts.PromptCreate(
+                namespace='workflows',
+                name=key,
+                slug=self._ref(key).partition('/')[2],
+                version=prompts.PromptVersionCreate(
+                    system='Summarize {{ diff }}.',
+                    model=model,
+                    variable_schema={'diff': {'type': 'any'}},
+                ),
+            ),
+            self.email,
+            label_first_version=True,
+        )
+
+    def _graph(self, **nodes: dict[str, typing.Any]) -> dict[str, typing.Any]:
+        return {
+            'nodes': [
+                _node('start', 'manual'),
+                *(
+                    _node(
+                        key,
+                        'llm_call',
+                        {'prompt_ref': self._ref(key), 'prompt_version': 1}
+                        | params,
+                    )
+                    for key, params in nodes.items()
+                ),
+            ],
+            'edges': [
+                {'source': 'start', 'port': 0, 'target': key} for key in nodes
+            ],
+        }
+
+    async def _archived(self, key: str) -> bool:
+        records = await self.graph.execute(
+            """
+            MATCH (p:Prompt {{namespace: 'workflows', slug: {slug}}})
+            RETURN p.archived_at AS at
+            """,
+            {'slug': self._ref(key).partition('/')[2]},
+            ['at'],
+        )
+        return graph.parse_agtype(records[0]['at']) is not None
+
+    async def test_save_checks(self) -> None:
+        fields = [{'name': 'risk', 'type': 'string'}]
+        for nodes, message in (
+            (
+                {'sum': {'prompt_ref': f'workflows/{self.org}.other.sum'}},
+                'the prompt must be',
+            ),
+            ({'sum': {'prompt_version': 9}}, 'no version 9'),
+            ({'gone': {}}, 'not found'),
+            ({'plain': {'output_fields': fields}}, 'structured output'),
+            ({'text': {}}, 'is a completion model; choose a chat model'),
+        ):
+            with self.subTest(message):
+                response = await self._create(graph=self._graph(**nodes))
+                self.assertEqual(response.status_code, 422, response.text)
+                self.assertIn(message, response.json()['detail'])
+        # A shorter timeout can retry with a new key while the first
+        # model call still runs.
+        short = self._graph(sum={})
+        short['nodes'][1]['timeout_seconds'] = 189
+        response = await self._create(graph=short)
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn('at least 190 seconds', response.json()['detail'])
+        response = await self._create(
+            graph=self._graph(sum={'output_fields': fields}, plain={})
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        response = await self.client.put(
+            f'{self.base}/deploy-guard',
+            json={
+                'name': 'Deploy guard',
+                'owner_team_slug': self.team,
+                'graph': self._graph(plain={'output_fields': fields}),
+            },
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+
+    async def _restrict(self, model: str, *teams: str) -> None:
+        """Make ``model`` restricted to ``teams``."""
+        await self.graph.execute(
+            """
+            MATCH (m:AIModel {{id: {model}}})
+            SET m.access_scope = 'restricted'
+            WITH m
+            MATCH (t:Team) WHERE t.id IN {teams}
+            CREATE (m)-[:ALLOWED_FOR]->(t)
+            RETURN m.id AS id
+            """,
+            {'model': model, 'teams': list(teams)},
+            ['id'],
+        )
+
+    async def _join(self, team: str) -> None:
+        await self.graph.execute(
+            """
+            MATCH (u:User {{id: {email}}}), (t:Team {{id: {team}}})
+            CREATE (u)-[:MEMBER_OF]->(t)
+            RETURN t.id AS id
+            """,
+            {'email': self.email, 'team': team},
+            ['id'],
+        )
+
+    async def test_restricted_model_needs_an_allowed_saver(self) -> None:
+        response = await self._create()
+        self.assertEqual(response.status_code, 201, response.text)
+        await self._leave_team()
+        # The owner team is allowed; the saver is not a member of it.
+        await self._restrict(self.plain, self.team)
+        body = {
+            'name': 'Deploy guard',
+            'owner_team_slug': self.team,
+            'graph': self._graph(plain={}),
+        }
+        url = f'{self.base}/deploy-guard'
+        response = await self.client.put(url, json=body)
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'model_not_allowed'
+        )
+        self.user.is_admin = True
+        response = await self.client.put(url, json=body)
+        self.assertEqual(response.status_code, 200, response.text)
+
+    async def test_restricted_model_needs_an_allowed_owner_team(
+        self,
+    ) -> None:
+        # The saver is allowed through team2; the owner team is not.
+        await self._restrict(self.plain, self.team2)
+        await self._join(self.team2)
+        response = await self._create(graph=self._graph(plain={}))
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'model_not_allowed'
+        )
+        # An admin cannot pin it for that owner team either.
+        self.user.is_admin = True
+        response = await self._create(graph=self._graph(plain={}))
+        self.assertEqual(response.status_code, 403, response.text)
+        self.user.is_admin = False
+        await self._restrict(self.plain, self.team)
+        response = await self._create(graph=self._graph(plain={}))
+        self.assertEqual(response.status_code, 201, response.text)
+
+    async def test_create_with_llm_call_needs_workflow_write(self) -> None:
+        # The editor pins the prompts with an update after the create.
+        self.permissions.discard('workflow:write')
+        response = await self._create(graph=self._graph(sum={}))
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertIn('workflow:write', response.json()['detail'])
+        response = await self._create(
+            graph={'nodes': [_node('start', 'manual')], 'edges': []}
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+
+    async def test_unpinned_node_is_only_a_validation_issue(self) -> None:
+        # The editor creates a new workflow before it writes the prompts.
+        for params in ({}, {'prompt_ref': self._ref('sum')}):
+            with self.subTest(params=params):
+                response = await self._create(
+                    slug=f'new-{len(params)}',
+                    graph={
+                        'nodes': [
+                            _node('start', 'manual'),
+                            _node('sum', 'llm_call', params),
+                        ],
+                        'edges': [
+                            {'source': 'start', 'port': 0, 'target': 'sum'}
+                        ],
+                    },
+                )
+                self.assertEqual(response.status_code, 201, response.text)
+                issues = response.json()['version']['validation']['issues']
+                self.assertIn('sum', {i.get('node_id') for i in issues})
+
+    async def test_removed_node_and_deleted_workflow_archive(self) -> None:
+        response = await self._create(graph=self._graph(sum={}, plain={}))
+        self.assertEqual(response.status_code, 201, response.text)
+        response = await self.client.put(
+            f'{self.base}/deploy-guard',
+            json={
+                'name': 'Deploy guard',
+                'owner_team_slug': self.team,
+                'graph': self._graph(sum={}),
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertTrue(await self._archived('plain'))
+        self.assertFalse(await self._archived('sum'))
+        # Not a node of the workflow: a save archives what an earlier
+        # save left.
+        self.assertTrue(await self._archived('ask'))
+        # A save of a graph that uses an archived prompt restores it.
+        response = await self.client.put(
+            f'{self.base}/deploy-guard',
+            json={
+                'name': 'Deploy guard',
+                'owner_team_slug': self.team,
+                'graph': self._graph(sum={}, plain={}),
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertFalse(await self._archived('plain'))
+        response = await self.client.delete(f'{self.base}/deploy-guard')
+        self.assertEqual(response.status_code, 204, response.text)
+        self.assertTrue(await self._archived('sum'))
+
+    async def test_failed_archive_rolls_back_the_delete(self) -> None:
+        response = await self._create(graph=self._graph(sum={}))
+        self.assertEqual(response.status_code, 201, response.text)
+        with (
+            mock.patch.object(
+                workflows_endpoints,
+                '_archive_prompts',
+                mock.AsyncMock(side_effect=RuntimeError('graph down')),
+            ),
+            self.assertRaises(RuntimeError),
+        ):
+            await self.client.delete(f'{self.base}/deploy-guard')
+        response = await self.client.get(f'{self.base}/deploy-guard')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertFalse(await self._archived('sum'))

@@ -15,11 +15,9 @@ import { toast } from 'sonner'
 import { ApiError } from '@/api/client'
 import {
   activateWorkflow,
-  createWorkflow,
   pauseWorkflow,
   startWorkflowRun,
   testRunWorkflow,
-  updateWorkflow,
   validateWorkflow,
 } from '@/api/endpoints'
 import { agentsPath } from '@/components/agents/agentsNav'
@@ -54,6 +52,12 @@ import {
   NodePanel,
   SettingsPanel,
 } from './Inspector'
+import {
+  nodePrompt,
+  pinNodes,
+  saveWorkflow,
+  type StepPrompt,
+} from './llmCallPrompt'
 import { Palette } from './Palette'
 import { type PanelTab, RunPanel } from './RunPanel'
 import { manualTrigger, runResults, testResults } from './runs'
@@ -115,7 +119,17 @@ export function WorkflowEditor({
     owner_team_slug: workflow?.owner_team_slug ?? '',
     settings: workflow?.version.settings ?? NEW_SETTINGS,
   }))
+  // The edited prompts of LLM Call steps, by node id. They are written
+  // to the Prompt CMS on save.
+  const [prompts, setPrompts] = useState<Record<string, StepPrompt>>({})
   const [dirty, setDirty] = useState(false)
+  // Counts the edits. A save clears `dirty` only when no edit came
+  // while it was pending.
+  const revision = useRef(0)
+  const markDirty = () => {
+    revision.current += 1
+    setDirty(true)
+  }
   const [selection, setSelection] = useState<Selection>(null)
   const [paletteOpen, setPaletteOpen] = useState(true)
   const [view, setView] = useState<View>({ x: 80, y: 80, zoom: 1 })
@@ -144,11 +158,11 @@ export function WorkflowEditor({
 
   const change = (patch: Partial<WorkflowWrite>) => {
     setDraft((d) => ({ ...d, ...patch }))
-    setDirty(true)
+    markDirty()
   }
   const updateGraph = (fn: (graph: WorkflowGraph) => WorkflowGraph) => {
     setDraft((d) => ({ ...d, graph: fn(d.graph) }))
-    setDirty(true)
+    markDirty()
   }
 
   useLayoutEffect(() => {
@@ -227,19 +241,27 @@ export function WorkflowEditor({
   }
 
   const save = useMutation({
-    mutationFn: () =>
-      slug
-        ? updateWorkflow(orgSlug, slug, draft)
-        : createWorkflow(orgSlug, draft),
+    // A retry after a failed save of a new workflow updates it.
+    mutationFn: () => {
+      const saving = revision.current
+      return saveWorkflow(orgSlug, slug, draft, prompts, stored).then(
+        (result) => ({ ...result, saving }),
+      )
+    },
     onError: (error) =>
       toast.error(
         `Failed to save the workflow: ${extractApiErrorDetail(error)}`,
       ),
-    onSuccess: (saved) => {
+    onSuccess: ({ pins, saved, saving }) => {
+      setDraft((d) => ({ ...d, graph: pinNodes(d.graph, pins) }))
       stored(saved)
-      setDirty(false)
+      const clean = saving === revision.current
+      if (clean) setDirty(false)
       setIssues(saved.version.validation.issues)
-      if (!slug) {
+      // Not `slug`: `stored` sets it when the save creates the workflow.
+      // The navigation remounts the editor, so it waits for a save with
+      // no edit during it; until then the editor keeps the edits.
+      if (!workflow && clean) {
         navigate(agentsPath('workflows', saved.slug), { replace: true })
       }
     },
@@ -576,7 +598,13 @@ export function WorkflowEditor({
                   const copy = duplicateNode(draft.graph, selectedNode.id).node
                   if (!copy) return
                   updateGraph((g) => ({ ...g, nodes: [...g.nodes, copy] }))
+                  const edited = nodePrompt(prompts, selectedNode.id)
+                  if (edited) setPrompts((p) => ({ ...p, [copy.id]: edited }))
                   setSelection({ id: copy.id, kind: 'node' })
+                }}
+                onPromptChange={(prompt) => {
+                  setPrompts((p) => ({ ...p, [selectedNode.id]: prompt }))
+                  markDirty()
                 }}
                 onRemoveItem={(name, index) =>
                   updateGraph((g) =>
@@ -595,11 +623,14 @@ export function WorkflowEditor({
                 }
                 onTab={setInspectorTab}
                 orgSlug={orgSlug}
+                prompt={nodePrompt(prompts, selectedNode.id)}
                 readOnly={readOnly}
                 result={results[selectedNode.id] ?? null}
                 resultSource={resultSource}
                 tab={inspectorTab}
                 types={types}
+                workflowName={draft.name}
+                workflowSlug={slug}
               />
             ) : selection?.kind === 'edge' ? (
               <EdgePanel

@@ -19,18 +19,26 @@ returns it after that. The step polls it until it is closed.
 
 A script step runs its code in the sandbox of
 :mod:`imbi.common.workflows.script_runner` (ADR 0027).
+
+An LLM Call step asks imbi-api to run its saved prompt, with the key
+``<run_id>:<node_key>:<attempt>``. imbi-api records each model call
+with the key, so a repeat of an attempt (after a crash) gets the first
+answer and makes no second call. A retry is a new attempt and a new
+call.
 """
 
 import asyncio
 import dataclasses
 import datetime
 import logging
+import math
 import re
 import typing
 import urllib.parse
 import uuid
 
 import httpx
+import psycopg
 import pydantic
 
 from imbi.common import graph
@@ -43,6 +51,7 @@ from imbi.common.workflows.registry import (
     condition,
     deploy,
     email,
+    llm_call,
     model_decision,
     rollback,
     script,
@@ -71,6 +80,15 @@ HTTP_CLIENT_ERROR = 400
 HTTP_FORBIDDEN = 403
 HTTP_SERVER_ERROR = 500
 
+#: Seconds that the engine waits for the answer of an LLM Call step.
+#: More than the time after which imbi-api stops a call (its provider
+#: timeout, 120 seconds, plus the render and a token), so imbi-api
+#: always answers first.
+LLM_CALL_TIMEOUT = 190.0
+#: Seconds before the engine asks again for the answer of an LLM Call
+#: step that imbi-api still runs.
+LLM_CALL_POLL_SECONDS = 15
+
 
 class StepError(Exception):
     """A step call failed. ``code`` is stored as the step's error."""
@@ -94,6 +112,10 @@ class Call:
     state: dict[str, typing.Any]
     #: ``<run_id>:<node_key>``; the same for every attempt.
     idempotency_key: str
+    #: The attempt of the step: 1, then one more for each retry.
+    attempt: int = 1
+    #: Seconds before the engine cancels this call, or ``None``.
+    time_limit: float | None = None
 
 
 @dataclasses.dataclass
@@ -159,12 +181,18 @@ class Api:
         *,
         json: dict[str, typing.Any] | None = None,
         headers: dict[str, str] | None = None,
+        wait_seconds: float | None = None,
     ) -> dict[str, typing.Any]:
         """Call imbi-api and return the JSON body.
 
+        ``wait_seconds`` replaces the timeout of the client for this
+        call.
+
         Raises:
             StepError: ``forbidden`` and other ``4xx`` responses are not
-                retried; ``5xx`` responses and transport errors are.
+                retried; ``5xx`` responses and transport errors are. An
+                error code in ``detail.error`` is retried when
+                ``detail.retry`` is true.
 
         """
         try:
@@ -176,19 +204,31 @@ class Api:
                     'Authorization': f'Bearer {await self.bearer()}',
                     **(headers or {}),
                 },
+                timeout=httpx.USE_CLIENT_DEFAULT
+                if wait_seconds is None
+                else wait_seconds,
             )
         except httpx.HTTPError as e:
             raise StepError(type(e).__name__, retry=True) from e
         if response.status_code == HTTP_FORBIDDEN:
             raise StepError('forbidden', retry=False)
         if response.status_code >= HTTP_CLIENT_ERROR:
-            detail: typing.Any = response.json().get('detail')
+            try:
+                body: typing.Any = response.json()
+            except ValueError:
+                # For example, an HTML 502 page of a proxy.
+                body = None
+            detail: typing.Any = (
+                typing.cast('dict[str, typing.Any]', body).get('detail')
+                if isinstance(body, dict)
+                else None
+            )
             if isinstance(detail, dict):
-                error = typing.cast('dict[str, typing.Any]', detail).get(
-                    'error'
-                )
-                if error:
-                    raise StepError(str(error), retry=False)
+                found = typing.cast('dict[str, typing.Any]', detail)
+                if found.get('error'):
+                    raise StepError(
+                        str(found['error']), retry=found.get('retry') is True
+                    )
             raise StepError(
                 f'http_{response.status_code}',
                 retry=response.status_code >= HTTP_SERVER_ERROR,
@@ -264,6 +304,8 @@ class Executors:
                 return await self._rollback(call)
             case 'agent':
                 return await self._agent(call)
+            case 'llm_call':
+                return await self._llm_call(call)
             case other:
                 raise StepError(f'unknown_type:{other}', retry=False)
 
@@ -467,6 +509,89 @@ class Executors:
             port=port,
             failed=port == 1,
             state={'task_id': task['task_id']},
+        )
+
+    async def _llm_call(self, call: Call) -> Outcome:
+        params = _params(llm_call.Params, call)
+        # Stop waiting before the engine cancels the call: a cancelled
+        # call is retried as a new attempt, with a new key, while
+        # imbi-api can still run the first call. The engine limit
+        # includes the time to get the organization slug.
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + (call.time_limit or math.inf) * 0.9
+        resume = Outcome(resume_at=_now(), state=call.state)
+        try:
+            async with asyncio.timeout_at(
+                deadline if math.isfinite(deadline) else None
+            ):
+                org = await self.org_slug(call.organization_id)
+        except TimeoutError:
+            return resume
+        except psycopg.OperationalError:
+            # The graph is not reachable. An error here would make the
+            # engine retry with a new key while an earlier call of this
+            # attempt can still run, so ask again later with this key.
+            LOGGER.warning(
+                'LLM Call %s: organization lookup failed; asking again',
+                call.node.id,
+                exc_info=True,
+            )
+            return Outcome(
+                resume_at=_now()
+                + datetime.timedelta(seconds=LLM_CALL_POLL_SECONDS),
+                state=call.state,
+            )
+        wait_seconds = min(LLM_CALL_TIMEOUT, deadline - loop.time())
+        if wait_seconds <= 0:
+            return resume
+        # imbi-api still runs the call of this attempt, or the response
+        # was lost and the outcome is unknown. Ask again with the same
+        # key: a retry would be a new attempt and a second call.
+        ask_again = Outcome(
+            resume_at=_now()
+            + datetime.timedelta(seconds=LLM_CALL_POLL_SECONDS),
+            state=call.state,
+        )
+        try:
+            # The httpx timeout applies to each phase of the request,
+            # not to the total, so the total has its own limit.
+            async with asyncio.timeout(wait_seconds):
+                answer = await self.api.request(
+                    'POST',
+                    _path('organizations', org, 'prompts', 'run'),
+                    json={
+                        'ref': f'{params.prompt_ref}@{params.prompt_version}',
+                        'variables': params.inputs,
+                        'output_fields': [
+                            f.model_dump(mode='json')
+                            for f in params.output_fields
+                        ],
+                    },
+                    headers={
+                        'Idempotency-Key': (
+                            f'{call.idempotency_key}:{call.attempt}'
+                        )
+                    },
+                    wait_seconds=wait_seconds,
+                )
+        except TimeoutError:
+            return ask_again
+        except StepError as e:
+            # A 5xx with no error code, such as a failed record of the
+            # answer, does not tell whether imbi-api made the call. A
+            # failed token refresh while the call runs is the same.
+            unknown = (
+                e.retry and e.code.startswith(('http_', 'token_http_'))
+            ) or isinstance(e.__cause__, httpx.HTTPError)
+            if e.code != 'call_in_progress' and not unknown:
+                raise
+            return ask_again
+        if answer.get('n') != params.prompt_version:
+            raise StepError('prompt_version_mismatch', retry=False)
+        return Outcome(
+            output=llm_call.Output.model_validate(
+                {**answer, 'prompt_version': answer['n']}
+            ).model_dump(mode='json')
         )
 
     async def cancel_agent_task(

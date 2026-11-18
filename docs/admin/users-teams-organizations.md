@@ -55,8 +55,10 @@ while the organization has teams, agents, integrations, or other items,
 secret providers, an identity source, or workflows. Delete those first.
 It also refuses while a secret resolution is active or a provider lease
 is not revoked yet: wait for the broker to release or revoke it. The
-memberships, the agent tasks, the workflow runs, the secret grants, and
+memberships, the agent tasks, the workflow runs, the AI model calls, the
+`workflows/<org>.*` and `agents/<org>.*` prompts, the secret grants, and
 the settled secret resolutions of the organization are deleted with it.
+A later organization with the same slug does not get these prompts.
 The archived task events and usage records in ClickHouse stay as the
 audit trail.
 
