@@ -498,6 +498,21 @@ ingress:
         - imbi.example.com
 ```
 
+The task page holds a server-sent event stream open
+(`/organizations/{org}/agent-tasks/{short_id}/events/stream`). A proxy in
+front of Imbi must not buffer it:
+
+- imbi-api sends `X-Accel-Buffering: no` on the stream, which turns off
+  buffering in ingress-nginx. The Caddy in the image streams
+  `text/event-stream` responses with no configuration.
+- The stream sends a ping after 15 seconds with no event, so an idle
+  timeout of 60 seconds (the ingress-nginx and AWS ALB default) keeps it
+  open.
+- If a proxy closes the stream, the page polls and connects again.
+
+While at least one stream is open, each imbi-api process holds one more
+Postgres connection for `LISTEN`, outside its connection pool.
+
 ## Upgrading
 
 1. Set `image.tag` to the new version, and upgrade the release:

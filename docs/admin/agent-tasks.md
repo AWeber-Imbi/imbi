@@ -248,6 +248,7 @@ The **Activity** tab shows the events of the task in three views. Pick a view wi
 
 - The search field matches any text in the view and marks each match. It keeps its text when you switch views.
 - The copy button copies the conversation loaded so far as Markdown, or the task and its events as JSON.
+- New events show as the agent writes them, in every tab that has the task open, also for a closed task. The page holds an event stream open. When the stream is down, the page reads new events every 3 seconds until the stream connects again. When a hidden tab shows again, the page reads the task and its events again.
 
 #### Conversation
 
@@ -287,6 +288,42 @@ The **Statistics** view shows one row for each turn, and a **Task total** row at
 Old links to the **Actions taken** and **Conversation** tabs open the Conversation view. Old links to the **Log** tab, and event links that end in `#e` and an event number, open the Trajectory view.
 
 A task link without a tab opens the tab you used last.
+
+### Read the events with the API
+
+Both routes need `agent_task:read`. The service account of the task's
+agent can read the events of its own task without it.
+
+```http
+GET /organizations/{org}/agent-tasks/{short_id}/events?after_seq=0&limit=100
+GET /organizations/{org}/agent-tasks/{short_id}/events/stream?after_seq=0
+```
+
+The first route returns a page of events with a `seq` after `after_seq`.
+The second route is a stream of server-sent events (`text/event-stream`).
+It sends the events with a `seq` after `after_seq`, then each new event
+when it is written:
+
+```text
+id: 4
+event: task_event
+data: {"seq": 4, "type": "state.changed", "payload": {"from": "blocked", "to": "running", ...}, ...}
+```
+
+- `data` has the same JSON as an item of the events list.
+- `id` is the `seq`. To continue after a disconnect, send the last `id` as
+  `after_seq` or in the `Last-Event-ID` header. The stream uses the larger
+  of the two, so no event comes two times.
+- A change of state is a `state.changed` event and an outcome is an
+  `outcome.set` event, so the stream also tells you when the task changes.
+- After 15 seconds with no event, the stream sends a `: ping` comment.
+- The stream does not end by itself. A closed task stays open on the
+  stream, because a closed task can get more events.
+- Each imbi-api process holds at most 500 streams. More get `503`; read
+  the events list instead.
+
+The browser `EventSource` cannot send an `Authorization` header, so a
+browser client reads the stream with `fetch`.
 
 ### Pause, resume, cancel, and reassign
 

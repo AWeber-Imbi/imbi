@@ -195,6 +195,18 @@ the same names. If a publish fails, the archive sweep publishes the row
 again. When ClickHouse has all the events of a closed task, the sweep
 deletes them from Postgres.
 
+In the same transaction, imbi-api sends `NOTIFY agent_task_events` with
+the organization id, the task id, the short id, and the `seq`. The event
+stream route (`events/stream`) uses it to send new events to the task
+page at once. Each imbi-api process has one listener: one Postgres
+connection with `LISTEN`, outside the task store pool. It opens when the
+first stream starts and closes after the last stream ends. A notice only
+wakes the streams of its task. Each stream then reads the events after
+its last `seq` from the table, so a lost or repeated notice does not
+lose or repeat an event. After the listener reconnects, every stream
+reads again, and each stream also reads again after 15 seconds with no
+notice.
+
 Each usage report returns the task state. When the cost is over the
 budget, imbi-api closes the task with `exceeded_ceiling`, and the runner
 stops the SDK. The **Agents > Usage** page reads `agent_usage`.
