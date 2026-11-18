@@ -4082,8 +4082,15 @@ export const validateWorkflow = (
     signal,
   )
 
-export const activateWorkflow = (orgSlug: string, slug: string) =>
-  apiClient.post<Workflow>(`${workflowPath(orgSlug, slug)}/activate`, {})
+export const activateWorkflow = (
+  orgSlug: string,
+  slug: string,
+  version?: number,
+) =>
+  apiClient.post<Workflow>(
+    `${workflowPath(orgSlug, slug)}/activate`,
+    version === undefined ? {} : { version },
+  )
 
 export const pauseWorkflow = (orgSlug: string, slug: string) =>
   apiClient.post<Workflow>(`${workflowPath(orgSlug, slug)}/pause`, {})

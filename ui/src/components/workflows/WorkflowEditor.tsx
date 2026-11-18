@@ -87,6 +87,8 @@ const NEW_SETTINGS: WorkflowWrite['settings'] = {
   on_failure: 'notify_owner_team',
 }
 
+const SAVE_BEFORE_ACTIVATE = 'Save your changes before you activate.'
+
 interface WorkflowEditorProps {
   orgSlug: string
   stepTypes: StepType[]
@@ -268,15 +270,22 @@ export function WorkflowEditor({
   })
 
   const toggleActive = useMutation({
-    mutationFn: (active: boolean) =>
-      active ? activateWorkflow(orgSlug, slug!) : pauseWorkflow(orgSlug, slug!),
+    // A number activates that version; true activates the latest.
+    mutationFn: (active: boolean | number) =>
+      active === false
+        ? pauseWorkflow(orgSlug, slug!)
+        : activateWorkflow(
+            orgSlug,
+            slug!,
+            active === true ? undefined : active,
+          ),
     onError: (error, active) => {
       const detail =
         error instanceof ApiError
           ? (error.data as { detail?: { issues?: ValidationIssue[] } })?.detail
           : undefined
       if (detail?.issues) setIssues(detail.issues)
-      toast.error(activationError(error, active))
+      toast.error(activationError(error, active !== false))
     },
     onSuccess: stored,
   })
@@ -292,19 +301,20 @@ export function WorkflowEditor({
   // A run starts the active version, which may not be the version in
   // the editor: read its manual trigger from that version.
   const activeVersion = current?.active_version ?? null
+  const latestVersion = current?.latest_version ?? null
+  // Saving does not change the active version, so it can be older.
+  const olderActive = activeVersion !== null && activeVersion !== latestVersion
   const otherVersion = useWorkflowVersion(
     orgSlug,
     slug,
-    activeVersion !== null && activeVersion !== current?.latest_version
-      ? activeVersion
-      : null,
+    olderActive ? activeVersion : null,
   )
   const activeGraph =
     activeVersion === null
       ? null
-      : activeVersion === current?.latest_version
-        ? current.version.graph
-        : (otherVersion.data?.graph ?? null)
+      : olderActive
+        ? (otherVersion.data?.graph ?? null)
+        : (current?.version.graph ?? null)
   const trigger = activeGraph ? manualTrigger(activeGraph) : null
   const start = useMutation({
     mutationFn: (inputs: Record<string, boolean | number | string>) =>
@@ -417,11 +427,16 @@ export function WorkflowEditor({
       ? draft.graph.nodes.find((n) => n.id === selection.id)
       : undefined
   const status = current?.status ?? 'draft'
+  // Show a newer saved version, because Run and the triggers do not
+  // use it.
+  const newerSaved = status === 'active' && olderActive
   const savedLabel = dirty
     ? 'Unsaved changes'
-    : current
-      ? `Saved · v${current.latest_version}`
-      : 'Not saved yet'
+    : newerSaved
+      ? `Active: v${activeVersion} · Saved: v${latestVersion}`
+      : current
+        ? `Saved · v${current.latest_version}`
+        : 'Not saved yet'
 
   return (
     <div className="flex flex-col" style={{ height: 'calc(100vh - 4rem)' }}>
@@ -479,7 +494,7 @@ export function WorkflowEditor({
               status !== 'active'
                 ? 'Activate the workflow to run it.'
                 : trigger
-                  ? 'Start a run of the active version.'
+                  ? `Starts a run of v${activeVersion}, the active version.`
                   : 'The active version has no manual trigger.'
             }
             variant="outline"
@@ -488,10 +503,25 @@ export function WorkflowEditor({
             Run
           </Button>
         )}
+        {newerSaved && canWrite && (
+          <Button
+            disabled={dirty || toggleActive.isPending}
+            onClick={() => toggleActive.mutate(latestVersion!)}
+            size="sm"
+            title={
+              dirty
+                ? SAVE_BEFORE_ACTIVATE
+                : 'Make the latest saved version the active version.'
+            }
+            variant="outline"
+          >
+            Activate v{latestVersion}
+          </Button>
+        )}
         {current && canWrite && (
           <label
             className="flex items-center gap-2 text-sm"
-            title={dirty ? 'Save your changes before you activate.' : undefined}
+            title={dirty ? SAVE_BEFORE_ACTIVATE : undefined}
           >
             <Switch
               checked={status === 'active'}
