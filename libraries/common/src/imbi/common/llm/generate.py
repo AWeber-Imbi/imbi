@@ -307,7 +307,9 @@ def _usage(
 
     ``cached`` is the part of ``input_tokens`` that the provider read
     from its prompt cache. The result does not count it in
-    ``input_tokens``.
+    ``input_tokens``. A ``cached`` count above ``input_tokens`` makes
+    the split unknown: the result then has no input count and no cache
+    count.
     """
     usage = Usage(
         input_tokens=_as_int(input_tokens),
@@ -315,9 +317,13 @@ def _usage(
     )
     cache_read = _as_int(cached)
     if cache_read is not None:
-        usage['cache_read_tokens'] = cache_read
-        if usage['input_tokens'] is not None:
-            usage['input_tokens'] = max(usage['input_tokens'] - cache_read, 0)
+        if usage['input_tokens'] is None:
+            usage['cache_read_tokens'] = cache_read
+        elif cache_read > usage['input_tokens']:
+            usage['input_tokens'] = None
+        else:
+            usage['cache_read_tokens'] = cache_read
+            usage['input_tokens'] -= cache_read
     return usage
 
 
@@ -643,11 +649,12 @@ async def _vertex(
     except (KeyError, IndexError, TypeError, AttributeError):
         raise GenerateError('model_answer_invalid', retry=True) from None
     # Gemini counts thinking tokens apart from the candidates and bills
-    # them as output.
+    # them as output. An absent thinking count means no thinking; an
+    # invalid one makes the output count unknown.
     output = _as_int(usage.get('candidatesTokenCount'))
-    thoughts = _as_int(usage.get('thoughtsTokenCount'))
-    if output is not None and thoughts is not None:
-        output += thoughts
+    if output is not None and 'thoughtsTokenCount' in usage:
+        thoughts = _as_int(usage['thoughtsTokenCount'])
+        output = None if thoughts is None else output + thoughts
     return _Answer(
         text,
         None,
