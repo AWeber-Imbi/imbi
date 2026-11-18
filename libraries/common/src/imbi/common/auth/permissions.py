@@ -484,7 +484,7 @@ async def authenticate_jwt(
         # only the ones that are in both.
         scopes = str(claims.get('scope') or '').split()
         if scopes:
-            perms &= set(scopes)
+            perms = held(perms, set(scopes))
         return AuthContext(
             service_account=sa,
             session_id=jti,
@@ -695,7 +695,7 @@ async def authenticate_api_key(
         all_perms = await load_principal_permissions(
             db, 'ServiceAccount', 'slug', sa.slug
         )
-        filtered = all_perms.intersection(set(scopes)) if scopes else all_perms
+        filtered = held(all_perms, set(scopes)) if scopes else all_perms
 
         # Update last_used only after all validation passes
         await _stamp_api_key_last_used(db, key_id, auth_settings)
@@ -718,7 +718,7 @@ async def authenticate_api_key(
     all_perms = await load_principal_permissions(
         db, 'User', 'email', user.email
     )
-    filtered = all_perms.intersection(set(scopes)) if scopes else all_perms
+    filtered = held(all_perms, set(scopes)) if scopes else all_perms
     identities = await _load_user_identities(db, user.id)
 
     # Update last_used only after all validation passes
