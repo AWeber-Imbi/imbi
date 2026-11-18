@@ -423,6 +423,12 @@ The step fails with one of these errors:
 | `forbidden` | The model is restricted to teams that do not include the owner team of the workflow | No |
 | `outcome_unknown` | An earlier call of the attempt did not finish. Imbi does not know if the model answered | No |
 
+A record from before this release can hold `provider_unreachable` for a
+request that reached the provider. When the engine asks again for that
+call, Imbi returns the recorded error and the step can retry. Do not
+use a `provider_unreachable` error from such a record as proof that the
+provider did not run or bill the call.
+
 **Output:** `text`, `result` (with output fields), `model`, `model_id`,
 `prompt_version`, `usage` (`input_tokens`, `output_tokens`, and
 `cache_read_tokens` when the provider reports cache reads), and
