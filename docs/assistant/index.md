@@ -48,7 +48,9 @@ is set:
 3. `IMBI_ASSISTANT_MODEL`.
 
 A model that is restricted to teams that do not include the user is refused
-with `403` (`model_not_allowed`), also when the request names it.
+with `403` (`model_not_allowed`), also when the request names it. A model in
+the request that has no enabled catalog entry is also refused, except
+`IMBI_ASSISTANT_MODEL`. Admins can use every model.
 
 A conversation stops at `IMBI_ASSISTANT_MAX_CONVERSATION_TURNS` messages.
 Then the person must start a new conversation.
