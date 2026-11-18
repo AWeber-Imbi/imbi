@@ -33,6 +33,7 @@ class SharedIdentifierTestCase(test_agent_tasks.AgentTaskTestCase):
             'github': f'github-{suffix}',
             'sentry': f'sentry-{suffix}',
             'sonarqube': f'sonarqube-{suffix}',
+            'sonarqube2': f'sonarqube2-{suffix}',
         }
         await self.graph.execute(
             """
@@ -49,9 +50,13 @@ class SharedIdentifierTestCase(test_agent_tasks.AgentTaskTestCase):
             CREATE (q:Integration {{id: {sonarqube}, slug: {sonarqube},
                                     name: {sonarqube}, plugin: 'sonarqube',
                                     options: {options}}})
+            CREATE (q2:Integration {{id: {sonarqube2}, slug: {sonarqube2},
+                                     name: {sonarqube2}, plugin: 'sonarqube',
+                                     options: {options}}})
             CREATE (g)-[:BELONGS_TO]->(o)
             CREATE (s)-[:BELONGS_TO]->(o)
             CREATE (q)-[:BELONGS_TO]->(o)
+            CREATE (q2)-[:BELONGS_TO]->(o)
             RETURN p.id AS id
             """,
             {
@@ -201,3 +206,18 @@ class SharedIdentifierTestCase(test_agent_tasks.AgentTaskTestCase):
 
         self.assertIsNone(await holder(self.project_id))
         self.assertIsNotNone(await holder(self.other_project))
+
+    async def test_identifier_holder_covers_same_plugin(self) -> None:
+        self.assertIsNone(await self.link(self.project_id, 'sonarqube'))
+
+        async def holder(integration: str) -> str | None:
+            return await _helpers.identifier_holder(
+                self.graph,
+                self.org,
+                self.other_project,
+                self.integrations[integration],
+                'shared-id',
+            )
+
+        self.assertEqual(await holder('sonarqube2'), self.project_id)
+        self.assertIsNone(await holder('github'))

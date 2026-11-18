@@ -830,6 +830,18 @@ _IDENTIFIER_HOLDER_RETURN: typing.LiteralString = (
 _VERIFIED_HOLDER: typing.LiteralString = (
     'AND ei.verified_identifier = ei.identifier '
 )
+#: Another project in the organization with an ``EXISTS_IN`` edge with
+#: the same identifier to any Integration of the same plugin. Two
+#: Integrations can point at one remote server, so a check that guards
+#: a remote delete must not stop at one Integration slug.
+_PLUGIN_IDENTIFIER_HOLDER: typing.LiteralString = (
+    'MATCH (o:Organization {{slug: {org_slug}}})'
+    '<-[:BELONGS_TO]-(src:Integration {{slug: {integration_slug}}}) '
+    'MATCH (o)<-[:BELONGS_TO]-(:Team)<-[:OWNED_BY]-(p:Project)'
+    '-[ei:EXISTS_IN]->(i:Integration)-[:BELONGS_TO]->(o) '
+    'WHERE i.plugin = src.plugin AND ei.identifier = {identifier} '
+    'AND p.id <> {project_id} '
+)
 
 
 async def identifier_holder(
@@ -841,13 +853,14 @@ async def identifier_holder(
 ) -> str | None:
     """Return the slug of another project that holds ``identifier``.
 
-    Looks for an ``EXISTS_IN`` edge with ``identifier`` to the
-    ``integration_slug`` Integration from a project in ``org_slug``
-    other than ``project_id``. Returns ``None`` when there is none. A
-    lookup failure raises, so a caller that removes remote state stops.
+    Looks for an ``EXISTS_IN`` edge with ``identifier`` to any
+    Integration of the same plugin as ``integration_slug``, from a
+    project in ``org_slug`` other than ``project_id``. Returns ``None``
+    when there is none. A lookup failure raises, so a caller that
+    removes remote state stops.
     """
     records = await db.execute(
-        _IDENTIFIER_HOLDER + _IDENTIFIER_HOLDER_RETURN,
+        _PLUGIN_IDENTIFIER_HOLDER + _IDENTIFIER_HOLDER_RETURN,
         {
             'org_slug': org_slug,
             'integration_slug': integration_slug,
