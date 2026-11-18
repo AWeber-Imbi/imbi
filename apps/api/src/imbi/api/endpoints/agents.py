@@ -1045,28 +1045,36 @@ async def _check_egress(
         raise _unprocessable('Egress destinations: ' + '; '.join(problems))
 
 
-def _check_prompt_scope(org_slug: str, ref: str | None) -> None:
-    """Reject an ``agents/`` prompt of another organization.
+def _is_foreign_prompt(org_slug: str, namespace: str, slug: str) -> bool:
+    """Return ``True`` for a prompt that another organization owns.
 
-    An org-scoped agent prompt has the slug ``<org_slug>.<name>``. An
+    A prompt in an org-scoped namespace (``agents/``, ``workflows/``)
+    with the slug ``<org>.<name>`` belongs to ``<org>``. A slug with no
+    ``.``, or a prompt in another namespace, belongs to no
+    organization.
+    """
+    owner = prompts._prompt_org(namespace, slug)  # pyright: ignore[reportPrivateUsage]
+    return owner is not None and owner != org_slug
+
+
+def _check_prompt_scope(org_slug: str, ref: str | None) -> None:
+    """Reject an org-scoped prompt of another organization.
+
+    An org-scoped prompt has the slug ``<org_slug>.<name>``. An
     organization rename moves only the references of its own agents,
     so a reference from another organization would keep the old key
-    and stop resolving. A slug with no ``.`` is not org-scoped and is
-    accepted.
+    and stop resolving, and it would read the prompt of another
+    organization.
 
     Raises:
-        422: ``ref`` names an ``agents/`` prompt of another
+        422: ``ref`` names an org-scoped prompt of another
             organization.
 
     """
     if ref is None:
         return
     namespace, prompt_slug, _selector = prompt_resolve.parse_ref(ref)
-    if (
-        namespace == AGENT_PROMPT_NAMESPACE
-        and '.' in prompt_slug
-        and not prompt_slug.startswith(f'{org_slug}.')
-    ):
+    if _is_foreign_prompt(org_slug, namespace, prompt_slug):
         raise _unprocessable(
             f'prompt_ref {namespace}/{prompt_slug} is not a prompt of the '
             f'{org_slug!r} organization'
@@ -1834,11 +1842,7 @@ async def _restore_label_move(
         return None
     # Reject the prompt of another organization before the fetch, so
     # the response does not tell if that prompt exists (issue #414).
-    if (
-        namespace == AGENT_PROMPT_NAMESPACE
-        and '.' in prompt_slug
-        and not prompt_slug.startswith(f'{org_slug}.')
-    ):
+    if _is_foreign_prompt(org_slug, namespace, prompt_slug):
         raise fastapi.HTTPException(
             status_code=409,
             detail=(

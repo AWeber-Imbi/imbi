@@ -848,6 +848,20 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.assertIn('agents/acme.bot', response.json()['detail'])
         self.mock_db.execute.assert_not_awaited()
 
+    def test_create_rejects_workflow_prompt_of_other_org(self) -> None:
+        response = self.client.post(
+            BASE + '/',
+            json={
+                'name': 'Triage',
+                'slug': 'triage',
+                'team': 'ops',
+                'prompt_ref': 'workflows/acme.summarize@stable',
+            },
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn('workflows/acme.summarize', response.json()['detail'])
+        self.mock_db.execute.assert_not_awaited()
+
     def test_patch_enabled_only_writes_no_version(self) -> None:
         self.mock_db.execute.side_effect = [
             [self._row()],
@@ -1260,6 +1274,21 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         detail = response.json()['detail']
         self.assertIn('agents/other.triage', detail)
         self.assertIn("'engineering' organization", detail)
+        self.assertEqual(self.mock_db.execute.await_count, 2)
+        self.mock_db._execute_batch.assert_not_awaited()
+        self.assertEqual(self._version_writes(), [])
+
+    def test_restore_cross_org_workflow_prompt_conflicts(self) -> None:
+        # workflows/ prompts are org-scoped too.
+        self._allow_promote()
+        ref = 'workflows/other.summarize@stable'
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=3, prompt_ref=ref, prompt_version=5)],
+            [self._version(1, prompt_ref=ref, prompt_version=4)],
+        ]
+        response = self.client.post(BASE + '/triage/versions/1/restore')
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertIn('workflows/other.summarize', response.json()['detail'])
         self.assertEqual(self.mock_db.execute.await_count, 2)
         self.mock_db._execute_batch.assert_not_awaited()
         self.assertEqual(self._version_writes(), [])
