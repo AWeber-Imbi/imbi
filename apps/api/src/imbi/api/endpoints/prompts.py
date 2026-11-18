@@ -1493,11 +1493,14 @@ CALL_ERRORS: dict[str, tuple[int, bool]] = {
 }
 
 
-def _call_error(code: str) -> fastapi.HTTPException:
+def call_error(code: str, message: str | None = None) -> fastapi.HTTPException:
+    """The error ``code`` of :data:`CALL_ERRORS`, with ``message`` in
+    the detail when given."""
     status, retry = CALL_ERRORS.get(code, (502, False))
-    return fastapi.HTTPException(
-        status_code=status, detail={'error': code, 'retry': retry}
-    )
+    detail: dict[str, typing.Any] = {'error': code, 'retry': retry}
+    if message is not None:
+        detail['message'] = message
+    return fastapi.HTTPException(status_code=status, detail=detail)
 
 
 async def _check_run_permission(
@@ -1566,7 +1569,11 @@ async def _check_model_teams(
     else:
         allowed = False
     if not allowed:
-        raise _call_error('model_not_allowed')
+        raise call_error(
+            'model_not_allowed',
+            f'The model {model!r} is restricted to teams that do not '
+            'include the caller',
+        )
 
 
 @prompt_render_router.post('/run', response_model=RunResponse)
@@ -1639,26 +1646,17 @@ async def run_prompt(
     ref = f'{prompt.namespace}/{prompt.slug}' + (
         f'@{n}' if n is not None else ' (draft)'
     )
-    if prompt.kind == 'generative':
-        return await _run_generative(
-            org_slug,
-            org_id,
-            data,
-            request,
-            db,
-            secrets,
-            calls,
-            workflow_store,
-            auth,
-            prompt,
-            version,
-            ref,
-            idempotency_key,
+    if prompt.kind == 'generative' and version.tools:
+        raise _unprocessable(
+            'A generative run sends no tools to the model; '
+            'remove the tools from the prompt version'
         )
-    if not version.questions:
+    if prompt.kind != 'generative' and not version.questions:
         raise _unprocessable('The prompt has no questions to ask')
+    # One model check for each kind of run, so a new kind cannot skip
+    # the team check.
     if version.model is None:
-        raise _unprocessable('Choose a decision model to run the prompt')
+        raise _unprocessable(f'Choose a {prompt.kind} model to run the prompt')
     records = await db.execute(
         _RUN_MODEL_QUERY,
         {'slug': version.model},
@@ -1668,22 +1666,36 @@ async def run_prompt(
         raise _unprocessable(
             f'AI model {version.model!r} is not in the catalog'
         )
-    record = records[0]
-    if graph.parse_agtype(record['enabled']) is False:
+    record = {k: graph.parse_agtype(v) for k, v in records[0].items()}
+    if record['enabled'] is False:
         raise _unprocessable(f'AI model {version.model!r} is disabled')
-    if graph.parse_agtype(record.get('access_scope')) == 'restricted':
+    if record.get('access_scope') == 'restricted':
         await _check_model_teams(
             db, workflow_store, auth, org_id, prompt, version.model
         )
     provider = await ai_providers.fetch_provider(
-        db, str(graph.parse_agtype(record['provider_id']))
+        db, str(record['provider_id'])
     )
     if not provider.enabled:
         raise _unprocessable(f'AI provider {provider.slug!r} is disabled')
-    if (
-        graph.parse_agtype(record['model_type']) != 'decision'
-        or provider.driver != 'typesafe'
-    ):
+    if prompt.kind == 'generative':
+        return await _run_generative(
+            org_slug,
+            org_id,
+            data,
+            request,
+            db,
+            secrets,
+            calls,
+            auth,
+            prompt,
+            version,
+            record,
+            provider,
+            ref,
+            idempotency_key,
+        )
+    if record['model_type'] != 'decision' or provider.driver != 'typesafe':
         raise _unprocessable(
             f'AI model {version.model!r} is not a TypeSafe decision model'
         )
@@ -1703,7 +1715,7 @@ async def run_prompt(
                 f'AI provider {provider.slug!r} has no stored credentials'
             ),
         )
-    model_id = str(graph.parse_agtype(record['model_id']))
+    model_id = str(record['model_id'])
     questions = {
         qid: _wire_question(question)
         for qid, question in decision.questions.items()
@@ -1787,11 +1799,11 @@ def _repeat(row: dict[str, typing.Any]) -> RunResponse:
         case 'succeeded':
             return _call_response(row)
         case 'running':
-            raise _call_error('call_in_progress')
+            raise call_error('call_in_progress')
         case 'failed':
-            raise _call_error(str(row['error']))
+            raise call_error(str(row['error']))
         case _:
-            raise _call_error('outcome_unknown')
+            raise call_error('outcome_unknown')
 
 
 async def _run_generative(
@@ -1802,33 +1814,16 @@ async def _run_generative(
     db: graph.Graph,
     secrets: secret_broker.store.SecretStore,
     calls: model_calls.ModelCallStore,
-    workflow_store: workflows.WorkflowStore,
     auth: permissions.AuthContext,
     prompt: models.Prompt,
     version: models.PromptVersion,
+    record: dict[str, typing.Any],
+    provider: models.AIProvider,
     ref: str,
     idempotency_key: str | None,
 ) -> RunResponse:
-    """Run a generative prompt; see :func:`run_prompt`."""
-    if version.tools:
-        raise _unprocessable(
-            'A generative run sends no tools to the model; '
-            'remove the tools from the prompt version'
-        )
-    if version.model is None:
-        raise _unprocessable('Choose a generative model to run the prompt')
-    records = await db.execute(
-        _RUN_MODEL_QUERY,
-        {'slug': version.model},
-        _RUN_MODEL_COLUMNS,
-    )
-    if not records:
-        raise _unprocessable(
-            f'AI model {version.model!r} is not in the catalog'
-        )
-    record = {k: graph.parse_agtype(v) for k, v in records[0].items()}
-    if record['enabled'] is False:
-        raise _unprocessable(f'AI model {version.model!r} is disabled')
+    """Run a generative prompt with the checked catalog model
+    ``record`` and its ``provider``; see :func:`run_prompt`."""
     # A missing value predates model_type, when every model was
     # generative.
     if (record.get('model_type') or 'generative') != 'generative':
@@ -1842,17 +1837,8 @@ async def _run_generative(
             f'AI model {version.model!r} is a completion model; '
             'a generative run needs a chat model'
         )
-    if record.get('access_scope') == 'restricted':
-        await _check_model_teams(
-            db, workflow_store, auth, org_id, prompt, version.model
-        )
-    provider = await ai_providers.fetch_provider(
-        db, str(record['provider_id'])
-    )
-    if not provider.enabled:
-        raise _unprocessable(f'AI provider {provider.slug!r} is disabled')
     if data.output_fields and not record.get('structured'):
-        raise _call_error('model_no_structured_output')
+        raise call_error('model_no_structured_output')
     try:
         rendered = await rendering.render(
             version,
@@ -1917,10 +1903,10 @@ async def _run_generative(
             else 'credentials_unavailable'
         )
         await calls.finish(row['id'], 'failed', error=code)
-        raise _call_error(code) from None
+        raise call_error(code) from None
     except generate.GenerateError as e:
         await calls.finish(row['id'], 'failed', error=e.code)
-        raise _call_error(e.code) from None
+        raise call_error(e.code) from None
     usage = dict(answer.usage)
     tokens_in = answer.usage['input_tokens']
     tokens_out = answer.usage['output_tokens']

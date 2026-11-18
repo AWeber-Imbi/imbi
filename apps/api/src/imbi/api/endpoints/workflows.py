@@ -523,14 +523,10 @@ async def _check_model_teams(
     if not caller_allowed or not await prompt_resolve.team_allowed(
         db, model, owner_team_id
     ):
-        raise fastapi.HTTPException(
-            status_code=403,
-            detail={
-                'error': 'model_not_allowed',
-                'message': f'Step {node.key!r}: the model {model!r} is '
-                'restricted to teams that do not include you or the '
-                'owner team',
-            },
+        raise prompts.call_error(
+            'model_not_allowed',
+            f'Step {node.key!r}: the model {model!r} is restricted to '
+            'teams that do not include you or the owner team',
         )
 
 

@@ -842,13 +842,10 @@ async def _check_model_teams(
         return
     team_id = team_id or await _team_id(db, org_slug, snapshot.team)
     if not await prompt_resolve.team_allowed(db, version.model, team_id):
-        raise fastapi.HTTPException(
-            status_code=403,
-            detail={
-                'error': 'model_not_allowed',
-                'message': f'The model {version.model!r} is restricted to '
-                f'teams that do not include {snapshot.team!r}',
-            },
+        raise prompts.call_error(
+            'model_not_allowed',
+            f'The model {version.model!r} is restricted to teams that '
+            f'do not include {snapshot.team!r}',
         )
 
 

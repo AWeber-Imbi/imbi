@@ -61,6 +61,7 @@ async def _check_model(
             status_code=403,
             detail={
                 'error': 'model_not_allowed',
+                'retry': False,
                 'message': f'The model {model!r} is not in the catalog '
                 'or is restricted to teams that do not include you',
             },

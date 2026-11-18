@@ -24,17 +24,31 @@ export function FormField({
   required,
   touched,
 }: FormFieldProps) {
+  const shown = touched && error
+  // Link the input to its error, so a screen reader announces both.
+  const errorId = shown && htmlFor ? `${htmlFor}-error` : undefined
+  const field =
+    errorId && React.isValidElement<Record<string, unknown>>(children)
+      ? React.cloneElement(children, {
+          'aria-describedby': errorId,
+          'aria-invalid': true,
+        })
+      : children
   return (
     <div>
       <Label className="text-secondary mb-1.5 block text-sm" htmlFor={htmlFor}>
         {label}
         {required && <span className="text-red-500"> *</span>}
       </Label>
-      {children}
+      {field}
       {description && (
         <p className="text-secondary mt-1 text-sm">{description}</p>
       )}
-      {touched && error && <p className="mt-1 text-sm text-red-600">{error}</p>}
+      {shown && (
+        <p className="mt-1 text-sm text-red-600" id={errorId}>
+          {error}
+        </p>
+      )}
     </div>
   )
 }
