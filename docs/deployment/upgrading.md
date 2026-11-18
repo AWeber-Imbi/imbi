@@ -92,29 +92,37 @@ Set the version of this section when the release is cut.
    columns. You do not run a command for this. The move holds an
    exclusive lock on the task tables while it runs; it moves no rows.
 3. As soon as the first new imbi-api pod is up, run
-   `imbi-api setup-clickhouse` to create the `ticket_events` table. Until
-   it exists, a new pod cannot read the log of an archived ticket. Then
-   restart iggy-connect (see
+   `imbi-api setup-clickhouse` in that pod to create the
+   `ticket_events` table. Pick the pod by name, from the new
+   ReplicaSet: `kubectl exec deploy/imbi-api` can select a pod of the
+   previous release, which does not know the table. Until the table
+   exists, a new pod cannot read the log of an archived ticket.
+4. When the imbi-api rollout is complete, restart iggy-connect (see
    [Where to run the commands](#where-to-run-the-commands)): the
    `ticket_events` stream (topic `tickets`) is new, and the sink reads
    the stream list only at startup. Ticket events now go to
    `ticket_events`. Imbi reads `agent_task_events` and `ticket_events`
    together until a later release copies the old table.
-4. Run `imbi-api setup-permissions`. It adds the `ticket:read`,
+5. Run `imbi-api setup-permissions`. It adds the `ticket:read`,
    `ticket:create`, `ticket:manage`, `ticket:resolve`, and
    `ticket:delete` permissions and gives them to each default role that
    has the `agent_task` permission with the same action. Every check
    accepts either name, so a custom role with only `agent_task`
    permissions keeps working.
-5. **Until the imbi-api rollout is complete**, do not activate a workflow
-   with a **Ticket closed** trigger. A pod of the previous release can
-   take a ticket closure from the trigger outbox and start only the
-   **Task completed** workflows, and the **Ticket closed** run then
-   never starts. Also, while pods of both releases run, a pod of the
-   previous release can show an incomplete log for a ticket that a new
-   pod archived, because it reads only `agent_task_events`. No events
-   are lost; the full log shows once the rollout is complete.
-6. The API serves tickets at `/organizations/{org_slug}/tickets` and
+6. **Until the imbi-api and imbi-workflows rollouts are complete**, do
+   not activate a workflow with a **Ticket closed** trigger:
+   - A pod of the previous release can take a ticket closure from the
+     trigger outbox and start only the **Task completed** workflows.
+     The **Ticket closed** run then never starts.
+   - An imbi-workflows pod of the previous release does not know the
+     **Ticket closed** step. It cannot start such a run, and the run
+     stays queued until a new pod claims it.
+
+   Also, while pods of both releases run, a pod of the previous release
+   can show an incomplete log for a ticket that a new pod archived,
+   because it reads only `agent_task_events`. No events are lost; the
+   full log shows once the rollout is complete.
+7. The API serves tickets at `/organizations/{org_slug}/tickets` and
    `/harness/tickets`. The `/agent-tasks` and `/harness/tasks` paths
    still work, with the same operation ids, and are marked deprecated. A
    later release removes them.

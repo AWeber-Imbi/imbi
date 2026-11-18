@@ -12546,9 +12546,11 @@ export interface components {
          * AgentTaskRelations
          * @description The tasks related to a task.
          *
-         *     ``requires`` are the tasks that block this task; ``required_by`` are
-         *     the tasks that this task blocks. ``parent`` and ``children`` come from
-         *     a ``task`` origin (delegation) and do not change.
+         *     ``requires`` are the prerequisites of this task; ``required_by`` are
+         *     the tasks that have this task as a prerequisite. A prerequisite is a
+         *     link only: a runner can still claim a task whose prerequisite is
+         *     open. ``parent`` and ``children`` come from a ``task`` origin
+         *     (delegation) and do not change.
          */
         AgentTaskRelations: {
             /** Requires */
