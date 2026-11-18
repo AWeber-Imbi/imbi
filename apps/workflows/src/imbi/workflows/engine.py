@@ -503,7 +503,16 @@ class Engine:
                 {'run_id': run['id'], 'node_id': step['node_id']},
                 attempt=attempt,
                 error=code,
-                state={},
+                # After a timeout, the outcome of the last call is
+                # unknown. ``key_attempt`` lets a step (LLM Call) send
+                # the key of that call again, not a new one.
+                state={
+                    'key_attempt': step['state'].get(
+                        'key_attempt', step['attempt']
+                    )
+                }
+                if code == 'timeout'
+                else {},
                 call_started_at=None,
                 started_at=_now(),
             )

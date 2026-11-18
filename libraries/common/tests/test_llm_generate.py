@@ -419,6 +419,46 @@ class GenerateTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ctx.exception.code, 'provider_unreachable')
         self.assertTrue(ctx.exception.retry)
 
+    async def test_transport_error_after_send_is_not_retried(self) -> None:
+        # The provider may have got the request and billed it.
+        cases: list[tuple[str, Exception, str, bool]] = [
+            (driver, exc, code, retry)
+            for driver in ('openai', 'anthropic')
+            for exc, code, retry in (
+                (httpx.ConnectTimeout('slow'), 'provider_unreachable', True),
+                (httpx.PoolTimeout('busy'), 'provider_unreachable', True),
+                (httpx.ProxyError('502'), 'provider_unreachable', True),
+                (httpx.ReadTimeout('slow'), 'provider_outcome_unknown', False),
+                (
+                    httpx.WriteTimeout('slow'),
+                    'provider_outcome_unknown',
+                    False,
+                ),
+                (
+                    httpx.RemoteProtocolError('closed'),
+                    'provider_outcome_unknown',
+                    False,
+                ),
+                (httpx.ReadError('reset'), 'provider_outcome_unknown', False),
+            )
+        ]
+        for driver, exc, code, retry in cases:
+
+            def fail(
+                _req: httpx.Request, exc: Exception = exc
+            ) -> httpx.Response:
+                raise exc
+
+            with (
+                self.subTest(driver=driver, exc=type(exc).__name__),
+                self.assertRaises(generate.GenerateError) as ctx,
+            ):
+                await generate.generate(
+                    _request(driver), transport=httpx.MockTransport(fail)
+                )
+            self.assertEqual(ctx.exception.code, code)
+            self.assertEqual(ctx.exception.retry, retry)
+
     async def test_usage_normalized(self) -> None:
         body = _openai_body('Hi')
         body['usage'] = {'prompt_tokens': True, 'completion_tokens': '5'}
