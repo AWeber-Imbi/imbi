@@ -224,6 +224,7 @@ export function RequestCard({
 
   const send = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (resolve.isPending) return
     const answer = String(
       new FormData(event.currentTarget).get('answer') ?? '',
     ).trim()

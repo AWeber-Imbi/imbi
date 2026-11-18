@@ -868,6 +868,39 @@ describe('Tasks', () => {
     expect(endpoints.resolveAgentTaskRequest).not.toHaveBeenCalled()
   })
 
+  it('sends an answer once while it is pending', async () => {
+    vi.mocked(endpoints.resolveAgentTaskRequest).mockReturnValue(
+      new Promise(() => {}),
+    )
+    renderAt('/agents/tasks/acme/T-3/input')
+    fireEvent.click(await screen.findByRole('radio', { name: 'yes' }))
+    const send = screen.getByRole('button', { name: 'Send answer' })
+    fireEvent.click(send)
+    await waitFor(() => expect(send).toBeDisabled())
+    const form = send.closest('form')
+    if (!form) throw new Error('no form')
+    fireEvent.submit(form)
+    fireEvent.submit(form)
+    await new Promise((done) => setTimeout(done, 50))
+    expect(endpoints.resolveAgentTaskRequest).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends an answer again after a failure', async () => {
+    vi.mocked(endpoints.resolveAgentTaskRequest)
+      .mockRejectedValueOnce(new ApiError(500, 'Server Error', {}))
+      .mockResolvedValueOnce({})
+    renderAt('/agents/tasks/acme/T-3/input')
+    fireEvent.click(await screen.findByRole('radio', { name: 'yes' }))
+    const send = screen.getByRole('button', { name: 'Send answer' })
+    fireEvent.click(send)
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    await waitFor(() => expect(send).toBeEnabled())
+    fireEvent.click(send)
+    await waitFor(() =>
+      expect(endpoints.resolveAgentTaskRequest).toHaveBeenCalledTimes(2),
+    )
+  })
+
   it('collapses a request that someone else resolved (I4)', async () => {
     vi.mocked(endpoints.resolveAgentTaskRequest).mockRejectedValue(
       new ApiError(409, 'Conflict', {
