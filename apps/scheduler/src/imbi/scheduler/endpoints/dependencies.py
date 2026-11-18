@@ -26,7 +26,7 @@ ADMIN = 'scheduled_task:admin'
 # Each injected resource is declared beside the lifespan hook that opens it,
 # so there is one dependency identity per resource. A second alias here would
 # mean a test overriding one of them silently misses routes wired to the other.
-Tasks = store.TicketStore
+Tasks = store.TaskStore
 Engine = lifespans.EngineDependency
 
 AuthContext = permissions.AuthContext

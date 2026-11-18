@@ -82,7 +82,15 @@ class FakeTaskApi(FakeManager):
         self.tasks: dict[str, dict] = {}
         self.calls: list = []
 
+    def get_tools(self) -> list:
+        return [{'name': CREATE_TICKET}]
+
+    def get_tool_names(self) -> list:
+        return [CREATE_TICKET]
+
     async def execute_tool(self, name, tool_input, token):
+        if name not in self.get_tool_names():
+            raise AssertionError(f'unknown tool {name!r}')
         self.calls.append((name, tool_input, token))
         key = tool_input['idempotency_key']
         if key not in self.tasks:
