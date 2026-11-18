@@ -1324,6 +1324,7 @@ CALL_ERRORS: dict[str, tuple[int, bool]] = {
     'model_answer_invalid': (502, True),
     'provider_refused': (502, False),
     'credentials_failed': (502, False),
+    'provider_outcome_unknown': (502, False),
     'rate_limited': (503, True),
     'provider_unavailable': (503, True),
     'provider_unreachable': (503, True),
@@ -1725,8 +1726,11 @@ async def _run_generative(
         async with asyncio.timeout(CALL_DEADLINE):
             answer = await model_generate.call(secrets, provider, call)
     except TimeoutError:
-        await calls.finish(row['id'], 'failed', error='provider_unreachable')
-        raise _call_error('provider_unreachable') from None
+        # The request may have reached the provider.
+        await calls.finish(
+            row['id'], 'failed', error='provider_outcome_unknown'
+        )
+        raise _call_error('provider_outcome_unknown') from None
     except generate.GenerateError as e:
         await calls.finish(row['id'], 'failed', error=e.code)
         raise _call_error(e.code) from None

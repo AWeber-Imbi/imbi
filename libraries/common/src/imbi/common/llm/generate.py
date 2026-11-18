@@ -67,7 +67,11 @@ class GenerateError(Exception):
     - ``model_unsupported``: the provider refused structured output.
     - ``rate_limited`` (retry): HTTP 429.
     - ``provider_unavailable`` (retry): HTTP 5xx.
-    - ``provider_unreachable`` (retry): a transport error or a timeout.
+    - ``provider_unreachable`` (retry): the request was not sent (no
+      connection).
+    - ``provider_outcome_unknown``: a transport error or a timeout after
+      the request was sent. The provider may have run and billed it, so
+      a retry can be a second call.
     - ``provider_refused``: another HTTP 4xx, or the model refused to
       answer.
     - ``provider_misconfigured``: the request is missing a value that
@@ -324,11 +328,20 @@ async def _post(
             timeout=request.timeout, auth=request.auth, transport=transport
         ) as client:
             response = await client.post(url, json=body, headers=headers)
-    except httpx.HTTPError:
-        raise GenerateError('provider_unreachable', retry=True) from None
+    except httpx.HTTPError as exc:
+        raise _transport_error(exc) from None
     if response.status_code >= 400:
         raise _status_error(response.status_code, response.text, structured)
     return response
+
+
+def _transport_error(exc: BaseException | None) -> GenerateError:
+    """Only an error before the request was sent can be retried."""
+    if isinstance(
+        exc, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
+    ):
+        return GenerateError('provider_unreachable', retry=True)
+    return GenerateError('provider_outcome_unknown')
 
 
 def _json(response: httpx.Response) -> dict[str, typing.Any]:
@@ -405,8 +418,9 @@ async def _anthropic(
         raise _status_error(
             exc.status_code, exc.message, schema is not None
         ) from None
-    except anthropic.AnthropicError:
-        raise GenerateError('provider_unreachable', retry=True) from None
+    except anthropic.AnthropicError as exc:
+        # The SDK wraps the httpx error.
+        raise _transport_error(exc.__cause__) from None
     text = ''.join(b.text for b in response.content if b.type == 'text')
     tool_input = next(
         (b.input for b in response.content if b.type == 'tool_use'), None

@@ -493,10 +493,43 @@ class GenerativeRunTestCase(base.PromptTestBase):
         self.route_run()
         with mock.patch.object(prompts, 'CALL_DEADLINE', 0.01):
             response = self.run_ref()
-        self.assertEqual(response.status_code, 503)
-        self.calls.finish.assert_awaited_once_with(
-            CALL_ID, 'failed', error='provider_unreachable'
+        # The call may have reached the provider: no retry.
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(
+            response.json()['detail'],
+            {'error': 'provider_outcome_unknown', 'retry': False},
         )
+        self.calls.finish.assert_awaited_once_with(
+            CALL_ID, 'failed', error='provider_outcome_unknown'
+        )
+
+    def test_provider_outcome_unknown_is_not_retried(self) -> None:
+        self.generate.side_effect = generate.GenerateError(
+            'provider_outcome_unknown'
+        )
+        self.route_run()
+        response = self.run_ref()
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(
+            response.json()['detail'],
+            {'error': 'provider_outcome_unknown', 'retry': False},
+        )
+        self.calls.finish.assert_awaited_once_with(
+            CALL_ID, 'failed', error='provider_outcome_unknown'
+        )
+
+    def test_repeat_of_an_unknown_provider_outcome_makes_no_call(
+        self,
+    ) -> None:
+        response = self._repeat(
+            status='failed', error='provider_outcome_unknown'
+        )
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(
+            response.json()['detail'],
+            {'error': 'provider_outcome_unknown', 'retry': False},
+        )
+        self.generate.assert_not_awaited()
 
     def test_vertex_needs_a_key(self) -> None:
         self.decrypt.return_value = None

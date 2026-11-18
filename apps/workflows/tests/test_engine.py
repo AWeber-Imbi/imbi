@@ -2002,7 +2002,9 @@ class LLMCallStepTestCase(EngineTestCase):
             status, json={'detail': {'error': code, 'retry': retry}}
         )
 
-    async def _drive_llm_call(self) -> dict[str, typing.Any]:
+    async def _drive_llm_call(
+        self, timeout_seconds: int | None = None
+    ) -> dict[str, typing.Any]:
         params = {
             'prompt_ref': f'workflows/{self.org}.wf.sum',
             'prompt_version': 1,
@@ -2011,11 +2013,14 @@ class LLMCallStepTestCase(EngineTestCase):
         workflow_id = await self._workflow(
             [
                 _node('start', 'manual'),
-                _node(
-                    'sum',
-                    'llm_call',
-                    {**params, 'inputs': {'diff': '{{ trigger.diff }}'}},
-                ),
+                {
+                    **_node(
+                        'sum',
+                        'llm_call',
+                        {**params, 'inputs': {'diff': '{{ trigger.diff }}'}},
+                    ),
+                    'timeout_seconds': timeout_seconds,
+                },
                 _node(
                     'then',
                     'llm_call',
@@ -2242,6 +2247,40 @@ class LLMCallStepTestCase(EngineTestCase):
         self.assertEqual(run['status'], 'succeeded', run['error'])
         self.assertEqual(self._keys()[:2], ['sum:1', 'sum:1'])
         self.assertEqual(run['steps']['sum']['attempt'], 1)
+
+    async def test_timeout_retry_keeps_the_key(self) -> None:
+        # The call of attempt 1 can still run in imbi-api when the step
+        # times out. A new key could pay twice; with the same key,
+        # imbi-api returns the outcome of the first call. Only a known
+        # failure gets a new key. Timeout 1s: the call of attempt 1 runs
+        # until attempt 2, then fails with a known error.
+        loop = asyncio.get_running_loop()
+        first_call: float | None = None
+
+        def run(request: httpx.Request) -> httpx.Response:
+            nonlocal first_call
+            first_call = first_call or loop.time()
+            self.calls.append(request)
+            key = self._keys()[-1]
+            if key.startswith('then:') or key == 'sum:3':
+                return self._answer()
+            if loop.time() - first_call < 1.5:
+                return self._error(409, 'call_in_progress', True)
+            return self._error(503, 'rate_limited', True)
+
+        self.api.llm_call = run
+        run_ = await self._drive_llm_call(timeout_seconds=1)
+        self.assertEqual(run_['status'], 'succeeded', run_['error'])
+        self.assertEqual(run_['steps']['sum']['attempt'], 3)
+        sum_keys = [k for k in self._keys() if k.startswith('sum:')]
+        self.assertEqual(sorted(set(sum_keys)), ['sum:1', 'sum:3'])
+
+    async def test_provider_outcome_unknown_fails(self) -> None:
+        self.answers = [self._error(502, 'provider_outcome_unknown', False)]
+        run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'failed')
+        self.assertEqual(run['error'], 'provider_outcome_unknown')
+        self.assertEqual(len(self.calls), 1)
 
     async def test_error_without_retry_fails(self) -> None:
         self.answers = [self._error(422, 'model_no_structured_output', False)]

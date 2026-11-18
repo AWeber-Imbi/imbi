@@ -405,14 +405,17 @@ while its workflow run is open. The record holds the prompt as sent and
 the answer. See [Maintenance](maintenance.md). When the engine asks
 again for the same attempt, for example after a restart, a lost
 response, or a `5xx` without an error code, Imbi returns the recorded
-answer and does not call the model again. A retry is a new call.
+answer and does not call the model again. A retry after a known
+failure is a new call. A retry after a step timeout asks again for the
+call of the earlier attempt and does not call the model again.
 
 The step fails with one of these errors:
 
 | Error | Cause | Retry |
 |---|---|---|
 | `model_answer_invalid` | The answer does not match the output fields | Yes |
-| `rate_limited`, `provider_unavailable`, `provider_unreachable` | The provider is busy, down, or not reachable | Yes |
+| `rate_limited`, `provider_unavailable`, `provider_unreachable` | The provider is busy, down, or not reachable. Imbi did not send the request | Yes |
+| `provider_outcome_unknown` | Imbi sent the request, and no answer came back (a timeout or a lost connection). The provider may have run and billed the call. A retry could be a second, billed call, so Imbi does not retry. Look at the provider's usage, then start the run again if necessary | No |
 | `provider_refused` | The provider refused the request, or the model refused to answer | No |
 | `provider_misconfigured`, `credentials_failed` | The provider has no usable credentials or settings | No |
 | `model_no_structured_output` | The step has output fields and the model does not support structured output | No |
