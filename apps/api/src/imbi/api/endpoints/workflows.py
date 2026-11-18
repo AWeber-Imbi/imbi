@@ -30,7 +30,7 @@ import slugify
 
 from imbi.api import workflows
 from imbi.api.auth import organizations, permissions
-from imbi.api.endpoints import ai_models, prompts
+from imbi.api.endpoints import prompts
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.common import graph, lifespan
 from imbi.common.prompts import resolve as prompt_resolve
@@ -518,9 +518,9 @@ async def _check_model_teams(
     may not use."""
     caller_allowed = auth.is_admin or (
         auth.user is not None
-        and await ai_models.member_allowed(db, model, auth.user.email)
+        and await prompt_resolve.member_allowed(db, model, auth.user.email)
     )
-    if not caller_allowed or not await ai_models.team_allowed(
+    if not caller_allowed or not await prompt_resolve.team_allowed(
         db, model, owner_team_id
     ):
         raise fastapi.HTTPException(

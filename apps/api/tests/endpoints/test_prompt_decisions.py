@@ -9,6 +9,7 @@ from apps.api.tests.endpoints import test_ai_providers as provider_tests
 from apps.api.tests.endpoints import test_prompts as base
 from imbi.api.endpoints import ai_providers, prompts
 from imbi.common.llm import typesafe
+from imbi.common.prompts import resolve as prompt_resolve
 
 ORG = base.ORG
 RENDER_URL = base.RENDER_URL
@@ -403,3 +404,24 @@ class DecisionRunTestCase(base.PromptTestBase):
         self.route_run()
         self.assertEqual(self.run_ref().status_code, 403)
         self.decide.assert_not_awaited()
+
+    def test_restricted_model_needs_an_allowed_team(self) -> None:
+        self.as_principal('prompt:update')
+        router = self.route_run(
+            (RUN_MODEL, [{**RUN_MODEL_ROW[0], 'access_scope': 'restricted'}])
+        )
+        response = self.run_ref()
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(
+            response.json()['detail'],
+            {'error': 'model_not_allowed', 'retry': False},
+        )
+        self.decide.assert_not_awaited()
+        self.assertEqual(
+            router.params_for(prompt_resolve.ALLOWED_MEMBER_QUERY)['email'],
+            self.user.email,
+        )
+        router.rules.insert(
+            0, (prompt_resolve.ALLOWED_MEMBER_QUERY, [{'id': 'team-1'}])
+        )
+        self.assertEqual(self.run_ref().status_code, 200)

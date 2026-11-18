@@ -42,8 +42,16 @@ A conversation has a model. A new conversation uses the first of these that
 is set:
 
 1. The model in the request.
-2. The model of the prompt version, when the assistant can call it.
+2. The model of the prompt version, when the assistant can call it and the
+   user may use it (see [AI Models](../admin/ai-models.md)).
 3. `IMBI_ASSISTANT_MODEL`.
+
+The assistant checks the selected model id against the enabled catalog
+entries with that id. One unrestricted entry, or one restricted entry whose
+teams include the user, allows the id. When no enabled entry allows the id, a
+non-admin gets `403` (`model_not_allowed`). `IMBI_ASSISTANT_MODEL` is an
+exception only when no enabled entry has its id. The assistant checks the
+model of the conversation again on each message. Admins can use every model.
 
 A conversation stops at `IMBI_ASSISTANT_MAX_CONVERSATION_TURNS` messages.
 Then the person must start a new conversation.
