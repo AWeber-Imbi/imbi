@@ -1464,6 +1464,8 @@ export interface OrganizationCreate {
   slug: string
 }
 
+export type OrganizationMember = Schemas['OrganizationMember']
+
 export type OrgMembership = Schemas['OrgMembership']
 
 export type PackageEnvironmentChip = Schemas['EnvironmentChip']
