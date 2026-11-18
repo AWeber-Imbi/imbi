@@ -792,33 +792,35 @@ def _without_ticket(output: dict[str, typing.Any]) -> dict[str, typing.Any]:
     }
 
 
-def _without_task_content(
-    step: dict[str, typing.Any],
-) -> dict[str, typing.Any]:
-    """Remove the agent task content from the output of an agent step
-    or a ``task_completed`` trigger step."""
-    if not step['output']:
-        return step
-    if step['node_type'] == task_trigger.KIND:
-        return {**step, 'output': _without_ticket(step['output'])}
-    if step['node_type'] != 'agent':
-        return step
-    output = {
-        k: v
-        for k, v in _without_ticket(step['output']).items()
-        if k not in ('reason', 'summary', 'result')
-    }
-    return {**step, 'output': output}
-
-
 def _run_for(
-    auth: permissions.AuthContext, run: dict[str, typing.Any]
+    auth: permissions.AuthContext,
+    run: dict[str, typing.Any],
+    steps: list[dict[str, typing.Any]] | None = None,
 ) -> dict[str, typing.Any]:
-    """Remove the ticket attributes from the payload of a run that a
-    closed task started, for a caller who cannot read agent tasks."""
-    if run['origin_kind'] != task_trigger.KIND or _can_read_tasks(auth):
-        return run
-    return {**run, 'payload': _without_ticket(run['payload'])}
+    """Return ``run`` without agent task content, for a caller who
+    cannot read agent tasks.
+
+    A run that a closed task started, or that has an agent step, can
+    hold task content in any value that a template rendered. For such
+    a run, set the dedupe and concurrency keys to ``None`` and remove
+    the ``input`` and ``output`` of each of ``steps``. Remove the
+    ticket attributes from the payload of a run that a task started.
+    The keys come only from the payload
+    (:func:`validation.dedupe_key`), so a list without ``steps``
+    cannot show the content of an agent step.
+    """
+    found = list(steps or [])
+    from_task = run['origin_kind'] == task_trigger.KIND
+    if _can_read_tasks(auth) or (
+        not from_task and not any(s['node_type'] == 'agent' for s in found)
+    ):
+        return run if steps is None else {**run, 'steps': found}
+    hidden = {**run, 'dedupe_key': None, 'concurrency_key': None}
+    if from_task:
+        hidden['payload'] = _without_ticket(run['payload'])
+    if steps is not None:
+        hidden['steps'] = [{**s, 'input': None, 'output': None} for s in found]
+    return hidden
 
 
 def _step_agent_task(
@@ -1033,10 +1035,11 @@ async def get_run(
 ) -> dict[str, typing.Any]:
     """Return a run with its step records.
 
-    The ``reason``, ``summary``, ``result``, and ticket attributes of
-    an agent step's output come from the agent task, as do the ticket
-    attributes of a ``task_completed`` payload. Only a caller who can
-    read agent tasks (``agent_task:read``) gets them.
+    A later step can render agent task content into its ``input`` and
+    ``output``. For a run that a closed task started or that has an
+    agent step, only a caller who can read agent tasks
+    (``agent_task:read``) gets the step ``input`` and ``output``, the
+    dedupe key, and the ticket attributes of the payload.
 
     Raises:
         404: No such workflow or run.
@@ -1054,9 +1057,7 @@ async def get_run(
             raise fastapi.HTTPException(
                 status_code=503, detail='The run history is not available'
             ) from e
-    if not _can_read_tasks(auth):
-        steps = [_without_task_content(s) for s in steps]
-    return {**_run_for(auth, row), 'steps': steps}
+    return _run_for(auth, row, steps)
 
 
 @workflow_runs_router.post(

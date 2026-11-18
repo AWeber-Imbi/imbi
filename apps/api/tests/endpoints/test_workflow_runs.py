@@ -1764,9 +1764,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
             ]
             return ask['output']
 
-        self.assertEqual(
-            await output(), {'task_id': 'T-1', 'outcome': 'failed_external'}
-        )
+        self.assertIsNone(await output())
         user = await self.user_auth()
 
         async def reader() -> permissions.AuthContext:
@@ -1815,21 +1813,48 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
                 ' output = EXCLUDED.output',
                 (self.run_id, workflows.runs.pg_json.Jsonb(payload)),
             )
+            # A slack step that rendered {{ trigger.title }}.
+            await conn.execute(
+                'INSERT INTO workflow_runtime.step_runs (run_id, node_id,'
+                ' node_key, node_type, title, status, input, output)'
+                " VALUES (%s, 'tell', 'tell', 'slack', 'Tell', 'succeeded',"
+                ' %s, %s)',
+                (
+                    self.run_id,
+                    workflows.runs.pg_json.Jsonb({'text': 'Secret title'}),
+                    workflows.runs.pg_json.Jsonb({'ts': 'Secret title'}),
+                ),
+            )
+            await conn.execute(
+                "UPDATE workflow_runtime.runs SET dedupe_key = 'Secret title'"
+                ' WHERE id = %s',
+                (self.run_id,),
+            )
         overrides = self.test_app.dependency_overrides
         overrides[permissions.get_current_user] = self.user_auth
 
-        async def seen() -> list[dict[str, typing.Any]]:
+        async def seen() -> list[typing.Any]:
             detail = await self.client.get(f'{self.url}/runs/{self.run_id}')
             self.assertEqual(detail.status_code, 200, detail.text)
             listed = await self.client.get(f'{self.url}/runs')
             self.assertEqual(listed.status_code, 200, listed.text)
-            (start,) = [
-                s for s in detail.json()['steps'] if s['node_id'] == 'start'
-            ]
+            steps = {s['node_id']: s for s in detail.json()['steps']}
             (row,) = listed.json()
-            return [detail.json()['payload'], start['output'], row['payload']]
+            return [
+                detail.json()['payload'],
+                steps['start']['output'],
+                row['payload'],
+                steps['tell']['input'],
+                steps['tell']['output'],
+                steps['tell']['status'],
+                detail.json()['dedupe_key'],
+                row['dedupe_key'],
+            ]
 
-        self.assertEqual(await seen(), [plain, plain, plain])
+        self.assertEqual(
+            await seen(),
+            [plain, None, plain, None, None, 'succeeded', None, None],
+        )
         user = await self.user_auth()
 
         async def reader() -> permissions.AuthContext:
@@ -1841,7 +1866,19 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
             )
 
         overrides[permissions.get_current_user] = reader
-        self.assertEqual(await seen(), [payload, payload, payload])
+        self.assertEqual(
+            await seen(),
+            [
+                payload,
+                payload,
+                payload,
+                {'text': 'Secret title'},
+                {'ts': 'Secret title'},
+                'succeeded',
+                'Secret title',
+                'Secret title',
+            ],
+        )
 
     async def test_open_run_keeps_the_agent_in_use(self) -> None:
         # The run is open on version 1. Version 2 has no agent step.
@@ -2303,6 +2340,55 @@ class SideEffectRecoveryTestCase(WorkflowRunTestCase):
         )
         self.assertEqual(response.status_code, 409, response.text)
         find.assert_not_called()
+
+
+class RunForTestCase(unittest.TestCase):
+    RUN: typing.ClassVar[dict[str, typing.Any]] = {
+        'origin_kind': 'manual',
+        'payload': {'title': 'x'},
+        'dedupe_key': 'secret',
+        'concurrency_key': 'secret',
+    }
+    STEPS: typing.ClassVar[list[dict[str, typing.Any]]] = [
+        {'node_type': 'agent', 'input': {'a': 1}, 'output': {'b': 2}},
+        {'node_type': 'slack', 'input': {'text': 's'}, 'output': {'ts': 's'}},
+    ]
+
+    def test_agent_run_hides_keys_and_step_content(self) -> None:
+        auth = mock.Mock(is_admin=False, permissions=set())
+        found = workflow_runs._run_for(auth, self.RUN, self.STEPS)
+        self.assertIsNone(found['dedupe_key'])
+        self.assertIsNone(found['concurrency_key'])
+        self.assertEqual(
+            [(s['input'], s['output']) for s in found['steps']],
+            [(None, None), (None, None)],
+        )
+        # A manual payload is not task content: only the keys go.
+        self.assertEqual(found['payload'], {'title': 'x'})
+
+    def test_task_completed_list_row_hides_keys(self) -> None:
+        auth = mock.Mock(is_admin=False, permissions=set())
+        found = workflow_runs._run_for(
+            auth, {**self.RUN, 'origin_kind': 'task_completed'}
+        )
+        self.assertIsNone(found['dedupe_key'])
+        self.assertIsNone(found['concurrency_key'])
+        self.assertEqual(found['payload'], {})
+        self.assertNotIn('steps', found)
+
+    def test_run_without_agent_content_is_unchanged(self) -> None:
+        auth = mock.Mock(is_admin=False, permissions=set())
+        self.assertEqual(
+            workflow_runs._run_for(auth, self.RUN, self.STEPS[1:]),
+            {**self.RUN, 'steps': self.STEPS[1:]},
+        )
+
+    def test_task_reader_sees_everything(self) -> None:
+        auth = mock.Mock(is_admin=False, permissions={'agent_task:read'})
+        self.assertEqual(
+            workflow_runs._run_for(auth, self.RUN, self.STEPS),
+            {**self.RUN, 'steps': self.STEPS},
+        )
 
 
 class CheckInputsTestCase(unittest.TestCase):
