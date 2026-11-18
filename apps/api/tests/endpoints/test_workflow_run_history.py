@@ -456,6 +456,41 @@ class OrgRunsTestCase(RunHistoryTestCase):
         self.assertEqual(failure['reason'], 'logzio_api_unauthorized')
         self.assertEqual(failure['summary'], 'Logz.io refused every request.')
 
+    async def test_agent_task_readers_get_the_full_errors(self) -> None:
+        quoted = "invalid_params: 'Secret title' is not a channel"
+        url = await self._workflow()
+        run_id = await self._start(url)
+        await self._fail(run_id)
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE workflow_runtime.runs SET error = %s WHERE id = %s',
+                (quoted, run_id),
+            )
+            await conn.execute(
+                'UPDATE workflow_runtime.step_runs SET error = %s'
+                ' WHERE run_id = %s',
+                (quoted, run_id),
+            )
+
+        async def errors() -> list[str]:
+            row = (await self._list())[run_id]
+            return [row['error'], row['failure']['error']]
+
+        self.assertEqual(await errors(), ['invalid_params'] * 2)
+        overrides = self.test_app.dependency_overrides
+        user_auth = overrides[permissions.get_current_user]
+
+        async def reader() -> permissions.AuthContext:
+            auth = await user_auth()
+            auth.permissions.add('agent_task:read')
+            return auth
+
+        overrides[permissions.get_current_user] = reader
+        self.addCleanup(
+            overrides.__setitem__, permissions.get_current_user, user_auth
+        )
+        self.assertEqual(await errors(), [quoted] * 2)
+
     async def test_stuck_run_is_flagged(self) -> None:
         url = await self._workflow()
         run_id = await self._start(url)
