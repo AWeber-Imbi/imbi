@@ -1344,6 +1344,31 @@ class HistoryTests(RunnerTestCase):
             [('comment', False), ('request', True), ('comment', False)],
         )
 
+    async def test_child_of_an_agent_is_untrusted(self) -> None:
+        # The agent of a webhook ticket can quote the payload in a title.
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE tickets.tickets SET origin_kind = 'webhook'"
+                ' WHERE organization_id = %s AND short_id = %s',
+                (self.org, 'T-1'),
+            )
+        helper_id = await self.make_agent('helper', name='Helper')
+        await self.make_version({'subagents': [{'agent_id': helper_id}]})
+        response = await self.client.post(
+            '/harness/tickets/T-1/children',
+            json={
+                'agent_slug': 'helper',
+                'title': 'Quoted payload',
+                'description': 'Help out.',
+            },
+            headers={'Authorization': f'Bearer {self.token}'},
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        entries = (await self.history())['entries']
+        [child] = [e for e in entries if e['kind'] == 'child']
+        self.assertIn('Quoted payload', child['text'])
+        self.assertTrue(child['webhook'])
+
     async def test_byte_limit_keeps_the_newest(self) -> None:
         limit = len(b'Last comment.') + len(
             b'feedback request "Which branch?": answered\n'

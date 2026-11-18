@@ -54,6 +54,7 @@ from imbi.api.harness import store as harness_store
 from imbi.api.middleware import rate_limit
 from imbi.api.secret_broker import broker, providers
 from imbi.api.secret_broker import store as secret_store
+from imbi.api.tickets import store as ticket_store
 from imbi.common import graph, models
 from imbi.common.prompts import rendering
 from imbi.common.prompts import resolve as prompt_resolve
@@ -1742,7 +1743,12 @@ async def list_harness_task_events(
 def _linked_entry(
     kind: typing.Literal['child', 'prerequisite'], row: dict[str, typing.Any]
 ) -> HistoryEntry:
-    """The status and the outcome of a child or prerequisite ticket."""
+    """The status and the outcome of a child or prerequisite ticket.
+
+    An agent writes the title of a ticket that an agent starts, and it
+    can quote webhook text from any ticket of its chain. Thus the entry
+    of a webhook ticket or of an agent ticket is untrusted (``webhook``).
+    """
     text = f'{row["short_id"]} {row["title"]}: {row["status"]}'
     if row['outcome']:
         text += f', {row["outcome"]}'
@@ -1752,7 +1758,8 @@ def _linked_entry(
         kind=kind,
         at=row['closed_at'] or row['created_at'],
         text=text,
-        webhook=row['origin_kind'] == 'webhook',
+        webhook=row['origin_kind']
+        in ('webhook', *ticket_store.CHILD_ORIGIN_KINDS),
     )
 
 
