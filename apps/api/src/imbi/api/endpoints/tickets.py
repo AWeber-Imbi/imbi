@@ -832,7 +832,7 @@ async def may_create(db: graph.Graph, org_slug: str, email: str) -> bool:
     return common_permissions.holds(
         'agent_task:create',
         await common_permissions.load_principal_permissions(
-            db, 'User', 'email', email
+            db, 'User', 'email', email, org_slug=org_slug
         ),
     )
 
