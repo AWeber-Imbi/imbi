@@ -24,9 +24,10 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates gh git tini \
  && rm -rf /var/lib/apt/lists/*
 
-# The base image's pip ships in the image (and the model can run it): use
-# one whose CA bundle does not trust the eMudhra root.
-RUN pip install --no-cache-dir --upgrade 'pip>=26.2.2'
+# The base image's pip ships in the image (and the model can run it), and
+# uv runs the plugin MCP servers that start with `uv run`: use versions
+# whose CA bundles do not trust the eMudhra root.
+RUN pip install --no-cache-dir --upgrade 'pip>=26.2.2' 'uv>=0.13.5'
 
 # git and gh use the Debian store. Debian 13 still trusts the two eMudhra
 # roots that Mozilla removed after the 2026-10-19 key compromise, so
