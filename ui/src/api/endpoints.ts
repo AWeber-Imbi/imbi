@@ -222,7 +222,14 @@ import type {
   CreateThreadBody,
 } from '@/types/comments'
 
-import { apiClient, ApiError, apiUrl, refreshAccessToken } from './client'
+import {
+  apiClient,
+  ApiError,
+  apiUrl,
+  refreshAccessToken,
+  withAuthRetry,
+} from './client'
+import { readServerSentEvents } from './sse'
 
 // Re-export for backward compatibility with modules that import from here.
 export type { PatchOperation }
@@ -3919,6 +3926,55 @@ export const listAgentTaskEvents = (
     { after_seq: afterSeq, limit },
     signal,
   )
+
+/**
+ * Stream the events of a task with a `seq` after `afterSeq` (O4): the
+ * ones written already, then each new one. `onOpen` runs when the
+ * stream is up. Resolves when the server ends the stream; rejects with
+ * an `ApiError` when it refuses it. Abort `signal` to close it.
+ */
+export async function streamAgentTaskEvents(
+  orgSlug: string,
+  shortId: string,
+  afterSeq: number,
+  handlers: {
+    onEvent: (event: AgentTaskEvent) => void
+    onOpen?: () => void
+  },
+  signal?: AbortSignal,
+): Promise<void> {
+  const path = `${agentTaskPath(orgSlug, shortId)}/events/stream`
+  // after_seq, not Last-Event-ID: a plain query keeps a cross-origin
+  // dev server inside the CORS allow list.
+  const url = `${apiUrl(path)}?after_seq=${afterSeq}`
+  const response = await withAuthRetry(
+    path,
+    (token) =>
+      fetch(url, {
+        credentials: 'include',
+        headers: {
+          Accept: 'text/event-stream',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        signal,
+      }),
+    signal,
+  )
+  if (!response.ok) {
+    let data: unknown
+    try {
+      data = await response.json()
+    } catch {
+      /* no body */
+    }
+    throw new ApiError(response.status, response.statusText, data)
+  }
+  handlers.onOpen?.()
+  await readServerSentEvents(response, (event) => {
+    if (event.event === 'task_event')
+      handlers.onEvent(JSON.parse(event.data) as AgentTaskEvent)
+  })
+}
 
 /** Delete a closed task. Needs `agent_task:delete`. */
 export const deleteAgentTask = (orgSlug: string, shortId: string) =>

@@ -16,17 +16,24 @@ import { agent } from './fixtures'
 import { event, task } from './taskFixtures'
 
 // fallow-ignore-next-line unresolved-import
-vi.mock('@/api/endpoints', () => ({
-  getAgentTask: vi.fn(),
-  getAgentTaskRelations: vi.fn(),
-  getProjectsSlim: vi.fn(),
-  listAgents: vi.fn(),
-  listAgentTaskEvents: vi.fn(),
-  listAgentTaskProjects: vi.fn(),
-  listAgentTasks: vi.fn(),
-  setAgentTaskDependency: vi.fn(),
-  setAgentTaskProject: vi.fn(),
-}))
+vi.mock('@/api/endpoints', async () => {
+  const { ApiError } = await import('@/api/client')
+  return {
+    getAgentTask: vi.fn(),
+    getAgentTaskRelations: vi.fn(),
+    getProjectsSlim: vi.fn(),
+    listAgents: vi.fn(),
+    listAgentTaskEvents: vi.fn(),
+    listAgentTaskProjects: vi.fn(),
+    listAgentTasks: vi.fn(),
+    setAgentTaskDependency: vi.fn(),
+    setAgentTaskProject: vi.fn(),
+    // No event stream: these tests poll.
+    streamAgentTaskEvents: vi.fn(() =>
+      Promise.reject(new ApiError(404, 'Not Found')),
+    ),
+  }
+})
 
 const auth = { permissions: ['agent:read', 'agent_task:manage'] }
 

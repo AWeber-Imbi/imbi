@@ -34,6 +34,7 @@ vi.mock('@/api/endpoints', () => ({
   resolveAgentTaskRequest: vi.fn(),
   resolvePrompt: vi.fn(),
   retryAgentTask: vi.fn(),
+  streamAgentTaskEvents: vi.fn(),
 }))
 
 const ORGS = vi.hoisted(() => [{ slug: 'acme' }, { slug: 'beta' }])
@@ -189,6 +190,10 @@ describe('Tasks', () => {
     vi.mocked(endpoints.getAgentTask).mockResolvedValue(BLOCKED)
     vi.mocked(endpoints.listAgentTaskEvents).mockImplementation(
       async (_org, _id, afterSeq) => LOG.filter((e) => e.seq > afterSeq),
+    )
+    // No event stream unless a test opens one: the task polls.
+    vi.mocked(endpoints.streamAgentTaskEvents).mockRejectedValue(
+      new ApiError(404, 'Not Found'),
     )
   })
 
@@ -1306,6 +1311,112 @@ describe('Tasks', () => {
     },
     EVENT_POLL_MS + 5000,
   )
+
+  describe('event stream', () => {
+    type Handlers = Parameters<typeof endpoints.streamAgentTaskEvents>[3]
+
+    /** The streams the page opened, newest last. */
+    let streams: { afterSeq: number; end: () => void; handlers: Handlers }[]
+
+    beforeEach(() => {
+      streams = []
+      vi.mocked(endpoints.streamAgentTaskEvents).mockImplementation(
+        (_org, _id, afterSeq, handlers, signal) =>
+          new Promise<void>((resolve) => {
+            streams.push({ afterSeq, end: resolve, handlers })
+            signal?.addEventListener('abort', () => resolve())
+            handlers.onOpen?.()
+          }),
+      )
+    })
+
+    async function stream() {
+      await waitFor(() => expect(streams.length).toBeGreaterThan(0))
+      return streams[streams.length - 1]
+    }
+
+    function send(...events: ReturnType<typeof event>[]) {
+      const { handlers } = streams[streams.length - 1]
+      act(() => {
+        for (const e of events) handlers.onEvent(e)
+      })
+    }
+
+    it('shows events that arrive over the stream', async () => {
+      renderAt('/agents/tasks/acme/T-3/conversation')
+      await screen.findByText('I read the task.')
+      expect((await stream()).afterSeq).toBe(3)
+      const reads = vi.mocked(endpoints.listAgentTaskEvents).mock.calls.length
+      send(event(4, 'turn', { body: 'A streamed turn.' }))
+      expect(await screen.findByText('A streamed turn.')).toBeInTheDocument()
+      // The new event reads the task again, not the events.
+      await waitFor(() =>
+        expect(endpoints.getAgentTask).toHaveBeenCalledTimes(2),
+      )
+      expect(endpoints.listAgentTaskEvents).toHaveBeenCalledTimes(reads)
+    })
+
+    it('resumes after the last event on reconnect, without duplicates', async () => {
+      renderAt('/agents/tasks/acme/T-3/conversation')
+      await screen.findByText('I read the task.')
+      await stream()
+      send(event(4, 'turn', { body: 'Before the drop.' }))
+      await screen.findByText('Before the drop.')
+      act(() => streams[0].end())
+      await waitFor(() => expect(streams).toHaveLength(2), { timeout: 3000 })
+      expect(streams[1].afterSeq).toBe(4)
+      // A repeat of a seq the page has is dropped.
+      send(
+        event(4, 'turn', { body: 'Before the drop.' }),
+        event(5, 'turn', { body: 'After the drop.' }),
+      )
+      expect(await screen.findByText('After the drop.')).toBeInTheDocument()
+      expect(screen.getAllByText('Before the drop.')).toHaveLength(1)
+    })
+
+    it('opens the stream for a closed task, which can go live', async () => {
+      const closed = {
+        ...BLOCKED,
+        closed_at: '2026-10-08T13:00:00Z',
+        outcome: 'done_acted' as const,
+        status: 'closed' as const,
+      }
+      vi.mocked(endpoints.getAgentTask).mockResolvedValue(closed)
+      renderAt('/agents/tasks/acme/T-3/conversation')
+      await screen.findByText('I read the task.')
+      expect(screen.queryByLabelText('Reply')).not.toBeInTheDocument()
+      await stream()
+      vi.mocked(endpoints.getAgentTask).mockResolvedValue({
+        ...BLOCKED,
+        last_seq: 4,
+      })
+      send(
+        event(4, 'state.changed', {
+          from: 'closed',
+          reason: 'retry',
+          to: 'blocked',
+        }),
+      )
+      expect(await screen.findByLabelText('Reply')).toBeInTheDocument()
+    })
+
+    it('reads the task and events again when the tab shows', async () => {
+      renderAt('/agents/tasks/acme/T-3/conversation')
+      await screen.findByText('I read the task.')
+      await stream()
+      const tasks = vi.mocked(endpoints.getAgentTask).mock.calls.length
+      const reads = vi.mocked(endpoints.listAgentTaskEvents).mock.calls.length
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+      await waitFor(() =>
+        expect(endpoints.getAgentTask).toHaveBeenCalledTimes(tasks + 1),
+      )
+      await waitFor(() =>
+        expect(endpoints.listAgentTaskEvents).toHaveBeenCalledTimes(reads + 1),
+      )
+    })
+  })
 
   it('runs an agent from its detail page', async () => {
     vi.mocked(endpoints.resolvePrompt).mockResolvedValue({

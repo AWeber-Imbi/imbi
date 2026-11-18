@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import {
   keepPreviousData,
@@ -19,13 +19,21 @@ import {
   listAgentTaskEvents,
   listAgentTaskProjects,
   listAgentTasks,
+  streamAgentTaskEvents,
 } from '@/api/endpoints'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { queryKeys } from '@/lib/queryKeys'
 import type { AgentTask, AgentTaskEvent } from '@/types'
 
-/** How often a live task reads new events (O4). */
+/**
+ * How often a live task reads new events (O4) while its event stream
+ * is down.
+ */
 export const EVENT_POLL_MS = 3000
+
+/** Backoff bounds for reconnecting the event stream of a task. */
+const STREAM_RETRY_MIN_MS = 1000
+const STREAM_RETRY_MAX_MS = 30_000
 
 /** How often the inbox and the "waiting on you" count refresh. */
 const LIST_POLL_MS = 15_000
@@ -54,6 +62,25 @@ export function errorMessage(error: Error): string {
   return error.message
 }
 
+/**
+ * `have` with the events of `add` that it does not have, in seq order.
+ * `have` itself when `add` has nothing new.
+ */
+export function mergeEvents(
+  have: AgentTaskEvent[],
+  add: AgentTaskEvent[],
+): AgentTaskEvent[] {
+  const seqs = new Set(have.map((e) => e.seq))
+  const fresh: AgentTaskEvent[] = []
+  for (const event of add) {
+    if (seqs.has(event.seq)) continue
+    seqs.add(event.seq)
+    fresh.push(event)
+  }
+  if (!fresh.length) return have
+  return [...have, ...fresh].sort((a, b) => a.seq - b.seq)
+}
+
 export function useAgentTask(orgSlug: string, shortId: string) {
   return useQuery({
     queryFn: ({ signal }) => getAgentTask(orgSlug, shortId, signal),
@@ -79,8 +106,11 @@ export function useAgentTaskCounts(
 
 /**
  * The events of a task. Each refetch reads only the events after the
- * newest one in the cache and appends them, so polling is cheap and the
- * page never reloads. Polls while `live`.
+ * newest one in the cache and merges them in, so polling is cheap and
+ * the page never reloads. After the first read, the event stream of
+ * the task adds each new event to the same cache, for open and closed
+ * tasks alike: a closed task can take events, and a `state.changed`
+ * event reopens it. While the stream is down, a `live` task polls.
  */
 export function useAgentTaskEvents(
   orgSlug: string,
@@ -89,26 +119,34 @@ export function useAgentTaskEvents(
 ) {
   const queryClient = useQueryClient()
   const queryKey = queryKeys.agentTaskEvents(orgSlug, shortId)
+  const [streaming, setStreaming] = useState(false)
   const query = useQuery({
     queryFn: async ({ signal }) => {
       const have = queryClient.getQueryData<AgentTaskEvent[]>(queryKey) ?? []
-      const events = [...have]
+      const read: AgentTaskEvent[] = []
       for (;;) {
         const page = await listAgentTaskEvents(
           orgSlug,
           shortId,
-          events[events.length - 1]?.seq ?? 0,
+          (read[read.length - 1] ?? have[have.length - 1])?.seq ?? 0,
           EVENT_PAGE,
           signal,
         )
-        events.push(...page)
+        read.push(...page)
         if (page.length < EVENT_PAGE) break
       }
-      return events.length === have.length ? have : events
+      // The stream can add events during the read: merge into the cache
+      // as it is now, not as it was.
+      return mergeEvents(
+        queryClient.getQueryData<AgentTaskEvent[]>(queryKey) ?? have,
+        read,
+      )
     },
     queryKey,
-    refetchInterval: live ? EVENT_POLL_MS : false,
+    refetchInterval: live && !streaming ? EVENT_POLL_MS : false,
   })
+  useAgentTaskEventStream(orgSlug, shortId, query.isSuccess, setStreaming)
+  useRefetchWhenVisible(orgSlug, shortId)
   // A new event can change the task (status, phase, totals), so the
   // task, the inbox, and the waiting count read it again; a relation
   // event, also the relations. Before the first event read, the task
@@ -256,4 +294,94 @@ export function useWaitingTaskCount(orgSlug: string | undefined) {
     refetchInterval: LIST_POLL_MS,
     select: (data) => data.count,
   })
+}
+
+/** Whether the API refused the stream, so a retry cannot help. */
+function refused(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.status >= 400 &&
+    error.status < 500 &&
+    error.status !== 429
+  )
+}
+
+/**
+ * Hold the event stream of a task open once its events are read
+ * (`ready`), and merge each event into the events cache. Each connect
+ * starts after the newest cached event, so a reconnect sends nothing
+ * twice. After an error or an end it reconnects with backoff; a
+ * refusal (4xx) stops it, and the task polls. `onConnected` says
+ * whether the stream is up.
+ */
+function useAgentTaskEventStream(
+  orgSlug: string,
+  shortId: string,
+  ready: boolean,
+  onConnected: (connected: boolean) => void,
+) {
+  const queryClient = useQueryClient()
+  useEffect(() => {
+    if (!ready) return
+    const queryKey = queryKeys.agentTaskEvents(orgSlug, shortId)
+    const controller = new AbortController()
+    let delay = STREAM_RETRY_MIN_MS
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const connect = () => {
+      const have = queryClient.getQueryData<AgentTaskEvent[]>(queryKey) ?? []
+      streamAgentTaskEvents(
+        orgSlug,
+        shortId,
+        have[have.length - 1]?.seq ?? 0,
+        {
+          onEvent: (event) =>
+            queryClient.setQueryData<AgentTaskEvent[]>(queryKey, (old) =>
+              mergeEvents(old ?? [], [event]),
+            ),
+          onOpen: () => {
+            delay = STREAM_RETRY_MIN_MS
+            onConnected(true)
+          },
+        },
+        controller.signal,
+      )
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        )
+        .then((error) => {
+          if (controller.signal.aborted) return
+          onConnected(false)
+          if (refused(error)) return
+          timer = setTimeout(connect, delay)
+          delay = Math.min(delay * 2, STREAM_RETRY_MAX_MS)
+        })
+    }
+    connect()
+    return () => {
+      controller.abort()
+      clearTimeout(timer)
+      onConnected(false)
+    }
+  }, [orgSlug, shortId, ready, onConnected, queryClient])
+}
+
+/**
+ * Read the task and its events again when the tab becomes visible: a
+ * hidden tab can miss events while its stream reconnects.
+ */
+function useRefetchWhenVisible(orgSlug: string, shortId: string) {
+  const queryClient = useQueryClient()
+  useEffect(() => {
+    const onChange = () => {
+      if (document.visibilityState !== 'visible') return
+      for (const queryKey of [
+        queryKeys.agentTask(orgSlug, shortId),
+        queryKeys.agentTaskEvents(orgSlug, shortId),
+      ])
+        void queryClient.invalidateQueries({ queryKey })
+    }
+    document.addEventListener('visibilitychange', onChange)
+    return () => document.removeEventListener('visibilitychange', onChange)
+  }, [orgSlug, shortId, queryClient])
 }
