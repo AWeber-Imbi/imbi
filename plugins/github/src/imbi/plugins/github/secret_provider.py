@@ -76,6 +76,18 @@ PURPOSE_PERMISSIONS: dict[str, dict[str, str]] = {
     },
 }
 
+#: CI read permissions that a purpose adds when the installation grants
+#: them, so an agent can wait for and read checks. Asking for one the
+#: installation lacks would make GitHub refuse the whole token (422).
+PURPOSE_OPTIONAL_PERMISSIONS: dict[str, dict[str, str]] = {
+    'github_read': {'checks': 'read', 'statuses': 'read'},
+    'github_write': {
+        'actions': 'read',
+        'checks': 'read',
+        'statuses': 'read',
+    },
+}
+
 #: The binding test asks for the smallest permission set.
 _TEST_PERMISSIONS = {'metadata': 'read'}
 
@@ -282,6 +294,25 @@ def _options(raw: object) -> dict[str, typing.Any]:
     if isinstance(parsed, dict):
         return typing.cast(dict[str, typing.Any], parsed)
     return {}
+
+
+def _with_granted(
+    permissions: dict[str, str],
+    optional: dict[str, str],
+    installation: dict[str, typing.Any] | None,
+) -> dict[str, str]:
+    """``permissions`` plus each optional one the installation grants."""
+    if not optional or installation is None:
+        return permissions
+    granted = typing.cast(
+        dict[str, str], installation.get('permissions') or {}
+    )
+    extra = {
+        name: level
+        for name, level in optional.items()
+        if name not in permissions and granted.get(name) in (level, 'write')
+    }
+    return permissions | extra
 
 
 def _expiry(value: object) -> datetime.datetime:
@@ -651,6 +682,7 @@ class GitHubApp(secrets.SecretProvider):
             raise secrets.BrokerError(
                 'secret_access_denied', 'purpose_not_supported'
             )
+        optional = PURPOSE_OPTIONAL_PERMISSIONS.get(context.purpose, {})
         repositories: list[str] = []
         repository_ids: list[int] | None = None
         if context.purpose == 'marketplace_fetch':
@@ -698,7 +730,7 @@ class GitHubApp(secrets.SecretProvider):
                         client, repositories, repository_ids
                     )
                     installation_id = str(installation['id'])
-                elif repositories:
+                elif repositories or optional:
                     installation = await self._installation(
                         client, installation_id
                     )
@@ -708,7 +740,7 @@ class GitHubApp(secrets.SecretProvider):
                 token, expires_at = await self._mint(
                     client,
                     installation_id,
-                    permissions,
+                    _with_granted(permissions, optional, installation),
                     names,
                     repository_ids,
                 )
