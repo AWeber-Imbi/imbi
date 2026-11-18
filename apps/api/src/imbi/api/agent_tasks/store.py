@@ -26,13 +26,14 @@ import typing
 import uuid
 from collections import abc
 
+import orjson
 import psycopg
 import psycopg.errors
 import psycopg_pool
 from psycopg import rows, sql
 from psycopg.types import json as pg_json
 
-from imbi.api.agent_tasks import log
+from imbi.api.agent_tasks import log, stream
 from imbi.common import relational
 from imbi.common.workflows.registry import agent as agent_step
 
@@ -45,6 +46,9 @@ type Conn = psycopg.AsyncConnection[typing.Any]
 LOGGER = logging.getLogger(__name__)
 
 SCHEMA = 'agent_runtime'
+
+#: ``NOTIFY`` channel of new task events: see :mod:`.stream`.
+NOTIFY_CHANNEL = stream.NOTIFY_CHANNEL
 
 #: A close hook gets the task row after the transaction that closed the
 #: task commits. The secrets broker registers its release here.
@@ -495,6 +499,8 @@ class TaskStore:
 
     def __init__(self, pool: Pool) -> None:
         self._pool = pool
+        #: Wakes the event streams of a task when it gets an event.
+        self.hub = stream.EventHub(stream.connector(pool))
 
     @contextlib.asynccontextmanager
     async def _write(
@@ -2514,15 +2520,33 @@ async def _append_event(
 
     ``at`` is the time the event happened. The default is the start of
     the transaction.
+
+    It also sends ``NOTIFY`` on :data:`NOTIFY_CHANNEL` in the same
+    transaction, so the event streams of the task read the event when
+    the transaction commits, and never when it rolls back.
     """
     cursor = await conn.execute(
         'UPDATE agent_runtime.tasks SET last_seq = last_seq + 1'
-        ' WHERE id = %s RETURNING last_seq',
+        ' WHERE id = %s RETURNING last_seq, organization_id, short_id',
         (task_id,),
     )
     row = await cursor.fetchone()
     if row is None:  # pragma: no cover - callers hold the task
         raise TaskNotFound(str(task_id))
+    await conn.execute(
+        'SELECT pg_notify(%s, %s)',
+        (
+            NOTIFY_CHANNEL,
+            orjson.dumps(
+                {
+                    'organization_id': row[1],
+                    'task_id': str(task_id),
+                    'short_id': row[2],
+                    'seq': row[0],
+                }
+            ).decode(),
+        ),
+    )
     event = await _fetch_one(
         conn,
         'INSERT INTO agent_runtime.events (task_id, seq, event_id, type,'

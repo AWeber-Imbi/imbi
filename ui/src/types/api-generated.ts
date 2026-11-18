@@ -5353,6 +5353,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/agent-tasks/{short_id}/events/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream Agent Task Events
+         * @description Stream the events of a task as server-sent events.
+         *
+         *     It sends the events with ``seq`` after ``after_seq`` (or after the
+         *     ``Last-Event-ID`` header, when that is larger), then each new event
+         *     as it is written. Each SSE has ``event: task_event``, ``id:`` the
+         *     ``seq``, and ``data:`` the event in the shape of the events list.
+         *     A change of status is a ``state.changed`` event, and an outcome an
+         *     ``outcome.set`` event, so the task changes only with an event. A
+         *     ``: ping`` comment comes after 15 seconds with no event.
+         *
+         *     The read check is the check of the events list.
+         */
+        get: operations["stream_agent_task_events_api_organizations__org_slug__agent_tasks__short_id__events_stream_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/agent-tasks/{short_id}/pause": {
         parameters: {
             query?: never;
@@ -31744,6 +31774,49 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    stream_agent_task_events_api_organizations__org_slug__agent_tasks__short_id__events_stream_get: {
+        parameters: {
+            query?: {
+                after_seq?: number;
+            };
+            header?: {
+                "Last-Event-ID"?: number | null;
+            };
+            path: {
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description The process holds too many event streams. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

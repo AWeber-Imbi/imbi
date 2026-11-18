@@ -17,6 +17,7 @@ a control change also changes the status at once: see
 :meth:`imbi.api.agent_tasks.TaskStore.set_control`.
 """
 
+import asyncio
 import contextlib
 import datetime
 import decimal
@@ -27,6 +28,7 @@ import uuid
 from collections import abc
 
 import fastapi
+import fastapi.sse
 import orjson
 import pydantic
 
@@ -1423,6 +1425,136 @@ async def list_agent_task_events(
     if task['log_archived_at'] is not None:
         return await agent_tasks.log.archived_events(task, after_seq, limit)
     return await store.events(task['id'], after_seq, limit)
+
+
+#: The events that one read of an event stream takes from the table.
+STREAM_PAGE = 500
+
+#: How long an event stream waits for a wake before it reads the table
+#: again. A wake can be lost while the listener reconnects.
+STREAM_RESYNC_SECONDS = 15.0
+
+
+async def _stream_slot(store: agent_tasks.Store) -> None:
+    """Refuse a new event stream when the process holds too many.
+
+    Raises:
+        503: The process holds :data:`stream.MAX_STREAMS` streams.
+
+    """
+    if store.hub.streams >= agent_tasks.stream.MAX_STREAMS:
+        raise fastapi.HTTPException(
+            status_code=503,
+            detail='Too many open event streams; read the events instead',
+        )
+
+
+def _sse(event: dict[str, typing.Any]) -> fastapi.sse.ServerSentEvent:
+    """Return the SSE of one event: ``id`` is the ``seq``."""
+    return fastapi.sse.ServerSentEvent(
+        raw_data=AgentTaskEventResponse.model_validate(
+            event
+        ).model_dump_json(),
+        event='task_event',
+        id=str(event['seq']),
+    )
+
+
+async def _new_events(
+    store: agent_tasks.TaskStore, task: dict[str, typing.Any], after_seq: int
+) -> abc.AsyncIterator[dict[str, typing.Any]]:
+    """Yield every event of a live task after ``after_seq``, by seq."""
+    while True:
+        page = await store.events(task['id'], after_seq, STREAM_PAGE)
+        for event in page:
+            yield event
+        if len(page) < STREAM_PAGE:
+            return
+        after_seq = page[-1]['seq']
+
+
+async def task_event_stream(
+    store: agent_tasks.TaskStore,
+    task: dict[str, typing.Any],
+    after_seq: int,
+    *,
+    resync: float = STREAM_RESYNC_SECONDS,
+) -> abc.AsyncIterator[fastapi.sse.ServerSentEvent]:
+    """Yield the events after ``after_seq``, then each new event.
+
+    The subscription starts before the first read, so an event that
+    commits during the read comes in that read or by a wake. Each read
+    starts after the last ``seq`` sent, so nothing comes two times. An
+    archived task does not change: its events come from ClickHouse
+    once, and then the stream only holds the connection open.
+    """
+    if task['log_archived_at'] is not None:
+        while True:
+            page = await agent_tasks.log.archived_events(
+                task, after_seq, STREAM_PAGE
+            )
+            for event in page:
+                yield _sse(event)
+            if len(page) < STREAM_PAGE:
+                break
+            after_seq = page[-1]['seq']
+        # Nothing sets it: the stream stays open until the client goes.
+        await asyncio.Event().wait()
+        return
+    try:
+        async with store.hub.subscribe(task['id']) as wake:
+            while True:
+                wake.clear()
+                async for event in _new_events(store, task, after_seq):
+                    yield _sse(event)
+                    after_seq = event['seq']
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(wake.wait(), resync)
+    except (
+        agent_tasks.stream.ListenerUnavailable,
+        agent_tasks.stream.TooManyStreams,
+    ) as error:
+        # The client reconnects after the last seq, and polls until then.
+        # _stream_slot refuses most streams over the limit with a 503;
+        # this is one that passed it at the same time as another.
+        LOGGER.warning(
+            'Task %s: ending the event stream (%s)',
+            task['short_id'],
+            type(error).__name__,
+        )
+
+
+@agent_tasks_router.get(
+    '/{short_id}/events/stream',
+    response_class=fastapi.sse.EventSourceResponse,
+    dependencies=[fastapi.Depends(_stream_slot)],
+    responses={
+        503: {'description': 'The process holds too many event streams.'}
+    },
+)
+async def stream_agent_task_events(
+    task: ReadableTask,
+    store: agent_tasks.Store,
+    after_seq: typing.Annotated[int, fastapi.Query(ge=0)] = 0,
+    last_event_id: typing.Annotated[
+        int | None, fastapi.Header(alias='Last-Event-ID', ge=0)
+    ] = None,
+) -> abc.AsyncIterator[fastapi.sse.ServerSentEvent]:
+    """Stream the events of a task as server-sent events.
+
+    It sends the events with ``seq`` after ``after_seq`` (or after the
+    ``Last-Event-ID`` header, when that is larger), then each new event
+    as it is written. Each SSE has ``event: task_event``, ``id:`` the
+    ``seq``, and ``data:`` the event in the shape of the events list.
+    A change of status is a ``state.changed`` event, and an outcome an
+    ``outcome.set`` event, so the task changes only with an event. A
+    ``: ping`` comment comes after 15 seconds with no event.
+
+    The read check is the check of the events list.
+    """
+    after = max(after_seq, last_event_id or 0)
+    async for event in task_event_stream(store, task, after):
+        yield event
 
 
 @agent_tasks_router.post('/{short_id}/pause', response_model=AgentTaskResponse)

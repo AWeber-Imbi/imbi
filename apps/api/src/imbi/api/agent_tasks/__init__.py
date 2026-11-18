@@ -18,7 +18,7 @@ from collections import abc
 import fastapi
 import psycopg_pool
 
-from imbi.api.agent_tasks import log, sweeper
+from imbi.api.agent_tasks import log, stream, sweeper
 from imbi.api.agent_tasks.store import (
     SCHEMA,
     Actor,
@@ -90,6 +90,7 @@ async def store_lifespan() -> abc.AsyncGenerator[TaskStore]:
             sweep.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await sweep
+            await store.hub.close()
     finally:
         await pool.close()
 
@@ -132,5 +133,6 @@ __all__ = [
     'initialize',
     'log',
     'store_lifespan',
+    'stream',
     'sweeper',
 ]
