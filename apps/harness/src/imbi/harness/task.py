@@ -465,6 +465,23 @@ _PLUGIN_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}')
 _MARKETPLACE_ONLY = frozenset({'source', 'category', 'tags', 'strict'})
 
 
+def _history(entries: list[Body], cut: int) -> str:
+    """The ticket history text, in an untrusted block when an entry came
+    from a webhook."""
+    lines = [
+        f'- {entry.get("at")} {entry.get("kind")}'
+        + (f' by {entry["actor"]}' if entry.get('actor') else '')
+        + f': {entry.get("text")}'
+        for entry in entries
+    ]
+    if cut:
+        lines.insert(0, f'[{cut} older entries were cut to fit the limit.]')
+    text = '\n'.join(lines)
+    if any(entry.get('webhook') for entry in entries):
+        text = relay.untrusted(text, 'webhook')
+    return f'The ticket history before this session, oldest first:\n{text}'
+
+
 def _marketplace_entry(clone: pathlib.Path, name: str) -> Body | None:
     """The entry for ``name`` in the marketplace file of a clone."""
     try:
@@ -742,6 +759,8 @@ class TaskRun:
         #: The newest task state from imbi-api.
         self.state: Body = {}
         self.seq = 0
+        #: The ticket history before this session (:meth:`read_history`).
+        self.history = ''
         #: Request outcomes read by any wait, by request id, so a wait
         #: running beside another still sees its own.
         self.outcomes: dict[str, Body] = {}
@@ -798,6 +817,7 @@ class TaskRun:
         self._state(opened['task'])
         self.seq = int(opened['task'].get('last_seq') or 0)
         self.recorder.saw_input(self.seq)
+        self.history = await self.read_history()
         heartbeat = asyncio.create_task(self._heartbeat())
         try:
             result = await self._work()
@@ -1649,12 +1669,40 @@ class TaskRun:
         return ' '.join(lines)
 
     def instruction(self) -> str:
-        """The task description; a webhook payload is untrusted (6.7)."""
+        """The task description, then the ticket history; a webhook
+        payload is untrusted (6.7)."""
         text = str(self.task['description'])
         origin: Body = self.task.get('origin') or {}
-        if origin.get('kind') != 'webhook':
-            return text
-        return relay.untrusted(text, 'webhook')
+        if origin.get('kind') == 'webhook':
+            text = relay.untrusted(text, 'webhook')
+        return f'{text}\n\n{self.history}' if self.history else text
+
+    async def read_history(self) -> str:
+        """The ticket history before this session (ADR 0028): comments,
+        resolved requests, and child and prerequisite outcomes. The
+        description is already in :meth:`instruction`. The oldest
+        entries are cut so that the instruction fits in
+        :data:`PROMPT_BYTES`. Empty when there is none or imbi-api does
+        not give it."""
+        try:
+            body = await self.api.history()
+        except (api.Refused, httpx.HTTPError) as err:
+            LOGGER.warning('No history for %s: %s', self.api.short_id, err)
+            return ''
+        entries: list[Body] = [
+            entry
+            for entry in api.items(body, 'entries')
+            if entry.get('kind') != 'description'
+        ]
+        cut = int(body.get('cut') or 0)
+        used = len(self.instruction().encode()) + 2
+        while entries:
+            history = _history(entries, cut)
+            if used + len(history.encode()) <= PROMPT_BYTES:
+                return history
+            entries.pop(0)
+            cut += 1
+        return ''
 
     def options(self, proxy_url: str) -> sdk.ClaudeAgentOptions:
         allowed, denied = self.tools()

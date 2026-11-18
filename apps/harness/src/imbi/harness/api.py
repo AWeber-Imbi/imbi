@@ -269,6 +269,13 @@ class TaskApi:
         )
         return typing.cast('list[Body]', response.json())
 
+    async def history(self) -> Body:
+        """The ticket history for a new session, oldest first."""
+        response = await self.client.request(
+            'GET', f'/harness/tickets/{self.short_id}/history', self.token
+        )
+        return _body(response)
+
     async def create_child(self, body: Body) -> Body:
         response = await self.client.post(
             f'/harness/tickets/{self.short_id}/children', self.token, json=body
