@@ -1218,12 +1218,24 @@ class WorkspaceTestCase(TaskTestCase):
         self.assertNotIn('push_helper', request)
         dest = pathlib.Path(request['dest'])
         self.assertEqual(dest.parent, self.tmp / 'chain' / 'plugins')
-        self.assertTrue(dest.name.startswith('tools-'))
+        self.assertTrue(dest.name.startswith('T-1-tools-'))
         published = self.tmp / 'published' / 'chain'
         self.assertEqual(
             subject.plugins,
             [published / f'{dest.name}-0', published / f'{dest.name}-1'],
         )
+
+    async def test_child_plugins_do_not_reuse_the_parent_clone(self) -> None:
+        # Both run in one pod; the parent's agent can write its clone.
+        parent = self.make(plugins=[self.plugin()])
+        child = self.make(plugins=[self.plugin()])
+        child.task['short_id'] = 'T-2'
+        self.call.return_value = {'exit_code': 0, 'output': ''}
+        await parent.load_plugins()
+        await child.load_plugins()
+        first, second = self.clone_calls()
+        self.assertNotEqual(first['dest'], second['dest'])
+        self.assertNotEqual(parent.plugins, child.plugins)
 
     def marketplace(self, *entries: dict[str, typing.Any]) -> pathlib.Path:
         clone = self.tmp / 'chain' / 'plugins' / 'tools-abc'
@@ -1880,6 +1892,18 @@ class RunTestCase(TaskTestCase):
             self.posted('/outcome'),
             [{'outcome': 'failed_external', 'reason': 'model_key_missing'}],
         )
+
+    async def test_child_loads_its_own_plugins(self) -> None:
+        # A child shares its parent's checkout but is its own agent.
+        subject = self.make()
+        subject.build = False
+        with (
+            mock.patch.object(subject, 'clone_repositories') as repos,
+            mock.patch.object(subject, 'load_plugins') as plugins,
+        ):
+            await subject.run()
+        repos.assert_not_called()
+        plugins.assert_awaited_once_with()
 
     async def test_fails_when_the_prompt_did_not_render(self) -> None:
         subject = self.make()

@@ -814,7 +814,10 @@ class TaskFlowTests(unittest.TestCase):
         paths = [p['path'] for p in init['data']['plugins']]
         self.assertTrue(
             any(
-                p.startswith(f'/run/plugins/{self.task["chain_id"]}/tools-')
+                p.startswith(
+                    f'/run/plugins/{self.task["chain_id"]}/'
+                    f'{self.task["short_id"]}-tools-'
+                )
                 for p in paths
             ),
             paths,

@@ -465,6 +465,62 @@ class FailedClaimTests(RunnerTestCase):
         assert chain is not None
         self.assertEqual(chain['state'], 'done')
 
+    def patch_prompt(self, model_id: str) -> typing.Any:
+        prompt = harness_api.BundlePrompt(
+            ref='agents/triage@1', system='', model='opus', model_id=model_id
+        )
+        return mock.patch.object(
+            harness_api,
+            '_rendered_prompt',
+            mock.AsyncMock(return_value=(prompt, None)),
+        )
+
+    async def assert_model_not_allowed(
+        self, runner: dict[str, typing.Any]
+    ) -> None:
+        task = await self.task_row()
+        self.assertEqual(task['status'], 'closed')
+        self.assertEqual(task['outcome'], 'failed_external')
+        self.assertEqual(task['outcome_reason'], 'model_not_allowed')
+        self.assertEqual((await self.runner_row(runner))['state'], 'idle')
+
+    async def test_restricted_model_of_another_team_is_closed(self) -> None:
+        runner = await self.register()
+        with (
+            self.patch_prompt('claude-opus-5'),
+            mock.patch.object(
+                harness_api.prompt_resolve,
+                'team_may_use_model_id',
+                mock.AsyncMock(return_value=False),
+            ) as check,
+        ):
+            self.assertIsNone(await self.claim(runner))
+        # The id that the runner sends is checked. The test agent has
+        # no owner team.
+        check.assert_awaited_once_with(mock.ANY, 'claude-opus-5', '')
+        await self.assert_model_not_allowed(runner)
+
+    async def test_model_id_missing_from_the_catalog_is_closed(self) -> None:
+        runner = await self.register()
+        with self.patch_prompt('claude-renamed-away'):
+            self.assertIsNone(await self.claim(runner))
+        await self.assert_model_not_allowed(runner)
+
+    async def test_failed_outcome_write_releases_the_claim(self) -> None:
+        runner = await self.register()
+        with (
+            self.patch_prompt('claude-renamed-away'),
+            mock.patch.object(
+                harness_api.tickets.TicketStore,
+                'set_outcome',
+                side_effect=RuntimeError('boom'),
+            ),
+            self.assertRaises(RuntimeError),
+        ):
+            await self.runner_post(runner, 'claim')
+        self.assertEqual((await self.runner_row(runner))['state'], 'idle')
+        self.assertEqual((await self.task_row())['status'], 'queued')
+
     async def test_failed_response_releases_the_claim(self) -> None:
         runner = await self.register()
         with (

@@ -23,8 +23,9 @@ A script step runs its code in the sandbox of
 An LLM Call step asks imbi-api to run its saved prompt, with the key
 ``<run_id>:<node_key>:<attempt>``. imbi-api records each model call
 with the key, so a repeat of an attempt (after a crash) gets the first
-answer and makes no second call. A retry is a new attempt and a new
-call.
+answer and makes no second call. A retry after a known failure is a
+new attempt and a new call. A retry after a timeout sends the key of
+the earlier attempt again: imbi-api returns the outcome of that call.
 """
 
 import asyncio
@@ -514,9 +515,8 @@ class Executors:
     async def _llm_call(self, call: Call) -> Outcome:
         params = _params(llm_call.Params, call)
         # Stop waiting before the engine cancels the call: a cancelled
-        # call is retried as a new attempt, with a new key, while
-        # imbi-api can still run the first call. The engine limit
-        # includes the time to get the organization slug.
+        # call is a timeout, and its retry is a new attempt. The engine
+        # limit includes the time to get the organization slug.
         loop = asyncio.get_running_loop()
         deadline = loop.time() + (call.time_limit or math.inf) * 0.9
         resume = Outcome(resume_at=_now(), state=call.state)
@@ -569,7 +569,8 @@ class Executors:
                     },
                     headers={
                         'Idempotency-Key': (
-                            f'{call.idempotency_key}:{call.attempt}'
+                            f'{call.idempotency_key}:'
+                            f'{call.state.get("key_attempt", call.attempt)}'
                         )
                     },
                     wait_seconds=wait_seconds,

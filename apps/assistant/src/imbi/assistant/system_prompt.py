@@ -88,4 +88,5 @@ async def build_system_prompt(
         _variables(auth_context, tool_names),
         system.ASSISTANT,
         override=assistant_settings.system_prompt,
+        email=auth_context.require_user.email,
     )

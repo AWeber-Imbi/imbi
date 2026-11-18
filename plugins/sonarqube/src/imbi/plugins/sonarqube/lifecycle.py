@@ -8,8 +8,10 @@ project nobody will analyze again.  Both hooks delete it.
 Only a project Imbi has explicitly linked is deleted: the component key
 is the ``EXISTS_IN`` edge's identifier, and a project without one is
 skipped.  The doctor's ``<owning-team-slug>:<project-slug>`` convention
-is deliberately not used here -- it is a guess, and deleting is the one
-call that cannot be taken back.  On success the hook asks the host to
+is never used to find the key -- it is a guess, and deleting is the one
+call that cannot be taken back.  It is used as a check: the linked key
+must equal it, because any project writer can link any key (#775).
+On success the hook asks the host to
 drop the edge and the ``sonarqube`` dashboard link, so Imbi stops
 pointing at a project that no longer exists; a later unarchive is a
 fresh start, and the doctor offers to create the project again.
@@ -19,6 +21,8 @@ when the first analysis runs, or from the doctor's repair.
 """
 
 from __future__ import annotations
+
+import logging
 
 from imbi.common.plugins.base import (
     LifecycleCapability,
@@ -32,6 +36,8 @@ from imbi.plugins.sonarqube.doctor import (
     Unconfigured,
     remediation_target,
 )
+
+LOGGER = logging.getLogger(__name__)
 
 
 class SonarQubeLifecycle(LifecycleCapability):
@@ -62,6 +68,10 @@ class SonarQubeLifecycle(LifecycleCapability):
         SonarQube no longer has is also ``skipped`` -- the outcome the
         operator wanted is in place -- but the stale edge and link are
         still removed.
+
+        A key that is not ``<owning-team-slug>:<project-slug>``, or
+        that another Imbi project also links, is ``skipped`` and not
+        deleted (#775).
         """
         try:
             base_url, api_token, key, connection = remediation_target(
@@ -75,6 +85,39 @@ class SonarQubeLifecycle(LifecycleCapability):
                 message=(
                     'The project has no EXISTS_IN edge naming a SonarQube '
                     'project; nothing to delete.'
+                ),
+            )
+        expected = f'{ctx.team_slug}:{ctx.project_slug}'
+        if not ctx.team_slug or key != expected:
+            LOGGER.warning(
+                'Not deleting SonarQube project %r for project %s: the '
+                'key is not %r',
+                key,
+                ctx.project_id,
+                expected,
+            )
+            return LifecycleResult(
+                status='skipped',
+                message=(
+                    f'Not deleting SonarQube project {key!r}: only the '
+                    f'project key {expected!r} is deleted.'
+                ),
+            )
+        if ctx.resolve_identifier_holder is None:
+            return LifecycleResult(
+                status='skipped',
+                message=(
+                    f'Cannot check if another project links SonarQube '
+                    f'project {key!r}; not deleting it.'
+                ),
+            )
+        holder = await ctx.resolve_identifier_holder(key)
+        if holder is not None:
+            return LifecycleResult(
+                status='skipped',
+                message=(
+                    f'Not deleting SonarQube project {key!r}: project '
+                    f'{holder!r} also links it.'
                 ),
             )
         try:

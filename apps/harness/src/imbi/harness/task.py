@@ -860,6 +860,10 @@ class TaskRun:
         if self.build:
             await self.probe_egress()
             await self.build_workspace()
+        else:
+            # A child task works in its parent's checkout, but it is
+            # its own agent: it loads its own pinned plugins.
+            await self.load_plugins()
         self.cwd = self._cwd()
         self.layout.make_task(str(self.task['id']))
         upstream: Body = self.config.get('model_upstream') or {}
@@ -1224,6 +1228,11 @@ class TaskRun:
     async def build_workspace(self) -> None:
         """Clone each repository of the project and each pinned plugin
         (plan sections 5.2 and 6.2)."""
+        await self.clone_repositories()
+        await self.load_plugins()
+
+    async def clone_repositories(self) -> None:
+        """Clone each repository of the project (plan section 5.2)."""
         binding = self.config.get('github_app_binding')
         repo: Body
         for repo, dest in zip(
@@ -1246,6 +1255,15 @@ class TaskRun:
                 push_helper=True,
             ):
                 raise Failed('workspace_checkout_failed')
+
+    async def load_plugins(self) -> None:
+        """Clone and publish each pinned plugin (plan section 6.2).
+
+        The clone and the published copy carry the task's short id: a
+        child task loads its plugins in its parent's pod, and must not
+        reuse or overwrite the parent's.
+        """
+        binding = self.config.get('github_app_binding')
         cloned: set[pathlib.Path] = set()
         plugin: Body
         for plugin in api.items(self.config, 'plugins'):
@@ -1256,7 +1274,9 @@ class TaskRun:
             key = hashlib.sha256(
                 f'{plugin["url"]}\0{plugin["sha"]}'.encode()
             ).hexdigest()[:12]
-            dest = self.layout.plugins / f'{plugin["marketplace"]}-{key}'
+            dest = self.layout.plugins / (
+                f'{self.task["short_id"]}-{plugin["marketplace"]}-{key}'
+            )
             if dest not in cloned:
                 await self._marketplace(plugin, dest, binding)
                 cloned.add(dest)

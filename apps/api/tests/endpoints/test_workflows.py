@@ -558,6 +558,68 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
         self.assertEqual(response.json()['name'], 'Deploy guard')
         self.assertEqual(response.json()['latest_version'], 1)
 
+    async def test_save_conflicts_when_org_renamed(self) -> None:
+        # #780: a rename that commits after the checks of a save moves
+        # the prompt references that the save checked.
+        await self._create()
+        real_get = self.store.get
+
+        async def renaming_get(
+            org_id: str, slug: str
+        ) -> dict[str, typing.Any] | None:
+            row = await real_get(org_id, slug)
+            await self.graph.execute(
+                'MATCH (o:Organization {{id: {org}}})'
+                " SET o.slug = {org} + '-new' RETURN o.id AS id",
+                {'org': self.org},
+                ['id'],
+            )
+            return row
+
+        with mock.patch.object(self.store, 'get', side_effect=renaming_get):
+            response = await self.client.put(
+                f'{self.base}/deploy-guard',
+                json={'name': 'Renamed', 'owner_team_slug': self.team},
+            )
+        await self.graph.execute(
+            'MATCH (o:Organization {{id: {org}}})'
+            ' SET o.slug = {org} RETURN o.id AS id',
+            {'org': self.org},
+            ['id'],
+        )
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertIn('renamed', response.json()['detail']['message'])
+        response = await self.client.get(f'{self.base}/deploy-guard')
+        self.assertEqual(response.json()['latest_version'], 1)
+
+    async def test_create_conflicts_when_org_renamed(self) -> None:
+        # #780: the slug check runs on the connection of the create.
+        real_check = workflows_endpoints._check_llm_call
+
+        async def renaming_check(*args: typing.Any) -> None:
+            await real_check(*args)
+            await self.graph.execute(
+                'MATCH (o:Organization {{id: {org}}})'
+                " SET o.slug = {org} + '-new' RETURN o.id AS id",
+                {'org': self.org},
+                ['id'],
+            )
+
+        with mock.patch.object(
+            workflows_endpoints, '_check_llm_call', renaming_check
+        ):
+            response = await self._create()
+        await self.graph.execute(
+            'MATCH (o:Organization {{id: {org}}})'
+            ' SET o.slug = {org} RETURN o.id AS id',
+            {'org': self.org},
+            ['id'],
+        )
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertIn('renamed', response.json()['detail']['message'])
+        response = await self.client.get(f'{self.base}/deploy-guard')
+        self.assertEqual(response.status_code, 404)
+
     async def _codes(
         self, step: str, params: dict[str, typing.Any]
     ) -> set[str]:
@@ -1121,3 +1183,34 @@ class LLMCallStepTestCase(WorkflowTestCase):
         response = await self.client.get(f'{self.base}/deploy-guard')
         self.assertEqual(response.status_code, 200, response.text)
         self.assertFalse(await self._archived('sum'))
+
+    async def test_failed_write_after_archive_keeps_the_prompts(
+        self,
+    ) -> None:
+        """The archive commits only with the workflow write (#783)."""
+        response = await self._create(graph=self._graph(sum={}, plain={}))
+        self.assertEqual(response.status_code, 201, response.text)
+        archive = workflows_endpoints._archive_prompts
+
+        async def archive_then_fail(*args: typing.Any) -> None:
+            await archive(*args)
+            raise RuntimeError('commit failed')
+
+        body = {
+            'name': 'Deploy guard',
+            'owner_team_slug': self.team,
+            'graph': self._graph(sum={}),
+        }
+        url = f'{self.base}/deploy-guard'
+        with mock.patch.object(
+            workflows_endpoints, '_archive_prompts', archive_then_fail
+        ):
+            with self.assertRaises(RuntimeError):
+                await self.client.put(url, json=body)
+            self.assertFalse(await self._archived('plain'))
+            with self.assertRaises(RuntimeError):
+                await self.client.delete(url)
+            self.assertFalse(await self._archived('sum'))
+        response = await self.client.get(url)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['latest_version'], 1)

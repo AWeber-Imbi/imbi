@@ -163,6 +163,7 @@ import type {
   OperationsLogRecord,
   Organization,
   OrganizationCreate,
+  OrganizationMember,
   PatchOperation,
   PendingDeployResponse,
   PluginAssignmentResponse,
@@ -1575,6 +1576,18 @@ export const updateOrganization = (
 
 export const deleteOrganization = (slug: string) =>
   apiClient.delete<void>(`/organizations/${encodeURIComponent(slug)}`)
+
+export const listOrganizationMembers = async (
+  slug: string,
+  signal?: AbortSignal,
+): Promise<OrganizationMember[]> => {
+  const response = await apiClient.get<OrganizationMember[]>(
+    `/organizations/${encodeURIComponent(slug)}/members`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
 
 // Dynamic blueprint schema extraction from OpenAPI spec
 

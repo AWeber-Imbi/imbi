@@ -59,7 +59,11 @@ from .project_logs import project_logs_router
 from .project_pr_sync import project_pr_sync_router
 from .project_types import project_types_router
 from .projects import projects_router
-from .prompts import delete_org_prompts, prompt_render_router
+from .prompts import (
+    delete_org_prompts,
+    move_org_prompts,
+    prompt_render_router,
+)
 from .pull_requests import pull_requests_project_router, pull_requests_router
 from .releases import releases_router
 from .search import search_router
@@ -88,6 +92,15 @@ from .workflow_runs import workflow_attention_router, workflow_runs_router
 from .workflows import step_types_router, workflows_router
 
 LOGGER = logging.getLogger(__name__)
+
+
+class OrganizationMember(pydantic.BaseModel):
+    id: str
+    email: str
+    display_name: str | None = None
+    role: str | None = None
+    is_active: bool
+
 
 organizations_router = fastapi.APIRouter(
     prefix='/organizations', tags=['Organizations']
@@ -518,6 +531,37 @@ async def get_organization(
     return org_data
 
 
+async def _rename_history(
+    execute: graph.CypherExecute, original_slug: str
+) -> tuple[list[str], object]:
+    """Return ``previous_slugs`` with ``original_slug`` added, and the id.
+
+    Raises:
+        HTTPException 404: No organization has ``original_slug``.
+
+    """
+    records = await execute(
+        'MATCH (n:Organization {{slug: {original_slug}}})'
+        ' RETURN n.previous_slugs AS previous_slugs, n.id AS id',
+        {'original_slug': original_slug},
+        ['previous_slugs', 'id'],
+    )
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Organization with slug {original_slug!r} not found',
+        )
+    prior_raw = graph.parse_agtype(records[0]['previous_slugs'])
+    prior: list[str] = (
+        [str(s) for s in typing.cast(list[object], prior_raw)]
+        if isinstance(prior_raw, list)
+        else []
+    )
+    if original_slug not in prior:
+        prior.append(original_slug)
+    return prior, graph.parse_agtype(records[0].get('id'))
+
+
 async def _persist_organization(
     original_slug: str,
     org: models.Organization,
@@ -545,27 +589,12 @@ async def _persist_organization(
     # gets a fully-formed list parameter and we don't have to ask
     # AGE to do list-concat in Cypher (which is finicky).
     previous_slugs: list[str] | None = None
+    org_id = ''
     if org.slug != original_slug:
-        existing_records = await db.execute(
-            'MATCH (n:Organization {{slug: {original_slug}}})'
-            ' RETURN n.previous_slugs AS previous_slugs',
-            {'original_slug': original_slug},
-            columns=['previous_slugs'],
+        previous_slugs, raw_id = await _rename_history(
+            db.execute, original_slug
         )
-        if not existing_records:
-            raise fastapi.HTTPException(
-                status_code=404,
-                detail=f'Organization with slug {original_slug!r} not found',
-            )
-        prior_raw = graph.parse_agtype(existing_records[0]['previous_slugs'])
-        prior: list[str] = (
-            [str(s) for s in typing.cast(list[object], prior_raw)]
-            if isinstance(prior_raw, list)
-            else []
-        )
-        if original_slug not in prior:
-            prior.append(original_slug)
-        previous_slugs = prior
+        org_id = org_auth.organization_id(raw_id, original_slug)
 
     update_query: typing.LiteralString
     if previous_slugs is not None:
@@ -603,10 +632,35 @@ async def _persist_organization(
     }
     if previous_slugs is not None:
         params['previous_slugs'] = previous_slugs
+
+    async def rename(
+        execute: graph.CypherExecute,
+        conn: psycopg.AsyncConnection[typing.Any],
+    ) -> list[dict[str, typing.Any]]:
+        # Read the history again under the lock: a rename that
+        # committed since the first read changed it.
+        params['previous_slugs'], _ = await _rename_history(
+            execute, original_slug
+        )
+        renamed = await execute(update_query, params)
+        if renamed:
+            await move_org_prompts(
+                execute, conn, org_id, original_slug, org.slug
+            )
+        return renamed
+
     with conflict_on_unique_violation(
         f'Organization with slug {org.slug!r} already exists',
     ):
-        records = await db.execute(update_query, params)
+        if previous_slugs is None:
+            records = await db.execute(update_query, params)
+        else:
+            # The rename and the moves of the prompts and of the
+            # references to them are one transaction. The delete lock
+            # makes a delete of the organization wait for it.
+            records = await db.locked_with_connection(
+                relational.organization_delete_lock_key(org_id), rename
+            )
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
@@ -716,14 +770,14 @@ async def list_organization_members(
             permissions.require_permission('organization:read'),
         ),
     ],
-) -> list[dict[str, typing.Any]]:
+) -> list[OrganizationMember]:
     """List all members of an organization with their roles.
 
     Parameters:
         slug: Organization slug identifier.
 
     Returns:
-        Members with email, display_name, and role.
+        Members with id, email, display_name, role, and is_active.
 
     Raises:
         404: Organization not found.
@@ -732,9 +786,10 @@ async def list_organization_members(
     query: typing.LiteralString = (
         'MATCH (o:Organization {{slug: {slug}}})'
         ' OPTIONAL MATCH (u:User)-[m:MEMBER_OF]->(o)'
-        ' RETURN o, collect({{email: u.email,'
+        ' RETURN o, collect({{id: u.id, email: u.email,'
         ' display_name: u.display_name,'
-        ' role: m.role}}) AS members'
+        ' role: m.role,'
+        ' is_active: coalesce(u.is_active, false)}}) AS members'
     )
     records = await db.execute(
         query,
@@ -751,7 +806,11 @@ async def list_organization_members(
     )
     if isinstance(raw_members, str):
         raw_members = []
-    return [m for m in raw_members if m.get('email')]
+    return [
+        OrganizationMember.model_validate(m)
+        for m in raw_members
+        if m.get('email')
+    ]
 
 
 # Rows that block an organization delete, by the name the 409 shows,
