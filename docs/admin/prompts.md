@@ -125,6 +125,10 @@ Running needs `prompt:update`, because each run uses provider credit.
 The API is `POST /api/organizations/{org}/prompts/run`, with either a
 `ref` or an unsaved `draft`, plus `variables`.
 
+A run of a generative prompt sends no tools to the model, so the API
+refuses (422) a generative version that has tools. When the version has
+no `temperature`, the run uses the model's catalog `default_temperature`.
+
 ## Rendering isolation
 
 Templates render in separate worker processes, not in the service

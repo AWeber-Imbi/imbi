@@ -58,7 +58,24 @@ is not revoked yet: wait for the broker to release or revoke it. The
 memberships, the agent tasks, the workflow runs, the AI model calls, the
 `workflows/<org>.*` and `agents/<org>.*` prompts, the secret grants, and
 the settled secret resolutions of the organization are deleted with it.
-A later organization with the same slug does not get these prompts.
+The delete finds the prompts by the current slug of the organization. A
+rename moves the `workflows/<org>.*` and `agents/<org>.*` prompts to the
+new slug. So the delete removes the prompts that a rename moved, and a
+later organization with the same slug does not get them.
+
+A rename before Imbi moved the prompts left them under the earlier slug.
+The delete does not remove these prompts. An organization that later
+gets that earlier slug gets these prompts, and its delete removes them.
+Before you give an earlier slug to an organization, look for
+`workflows/<slug>.*` and `agents/<slug>.*` prompts that you do not want
+it to get:
+
+- Delete an `agents/<slug>.*` prompt with
+  `DELETE /prompts/agents/<slug>.<name>`.
+- The prompt API cannot delete a `workflows/<slug>.*` prompt. It refuses
+  each delete with 409, also for an administrator. An operator must
+  remove these prompts and their versions in the graph database.
+
 The archived task events and usage records in ClickHouse stay as the
 audit trail.
 

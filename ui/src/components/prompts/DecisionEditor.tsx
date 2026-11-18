@@ -18,6 +18,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { extractApiErrorDetail } from '@/lib/apiError'
+import { KEPT_AS_TEXT, parseJson } from '@/lib/json'
 import type {
   Prompt,
   PromptDecisionQuestion,
@@ -301,6 +302,18 @@ export function RunPanel({
   const orgSlug = selectedOrganization?.slug
   const [values, setValues] = useState<Record<string, boolean | string>>({})
   const [inputError, setInputError] = useState<null | string>(null)
+  // Follows the inputs, so the notice shows before Run and never goes stale.
+  const keptAsText = variables
+    .filter((v) => {
+      let kept = false
+      try {
+        parseValue(values[v.name] ?? '', v.type, () => (kept = true))
+      } catch {
+        return false
+      }
+      return kept
+    })
+    .map((v) => v.name)
 
   const run = useMutation({
     mutationFn: (vars: Record<string, unknown>) =>
@@ -320,12 +333,12 @@ export function RunPanel({
     const vars: Record<string, unknown> = {}
     try {
       for (const v of variables) {
-        const value = parseValue(values[v.name] ?? '', v.type)
+        const value = parseValue(values[v.name] ?? '', v.type, () => {})
         if (value !== undefined) vars[v.name] = value
       }
     } catch {
       setInputError(
-        'Number variables must be valid numbers (whole numbers for int); list and object variables must be valid JSON',
+        'Number variables must be valid numbers (whole numbers within ±9007199254740991 for int); list and object variables must be valid JSON',
       )
       return
     }
@@ -387,6 +400,11 @@ export function RunPanel({
             {inputError ?? (blocked ? 'Fix the draft before running' : '')}
           </span>
         </div>
+        {keptAsText.length > 0 && (
+          <p className="text-warning text-xs">
+            {KEPT_AS_TEXT} ({keptAsText.join(', ')})
+          </p>
+        )}
         {run.data && <RunResult result={run.data} />}
       </div>
     </section>
@@ -594,21 +612,23 @@ function CriteriaEditor({
 function parseValue(
   raw: boolean | string,
   type: PromptVariable['type'],
+  onKept: () => void,
 ): unknown {
   if (type === 'bool') return raw === true
   const text = String(raw)
   if (text.trim() === '') return undefined
   if (type === 'int' || type === 'float') {
     const n = Number(text)
-    if (Number.isNaN(n) || (type === 'int' && !Number.isInteger(n))) {
+    // An int outside the safe-integer range would round without notice.
+    if (Number.isNaN(n) || (type === 'int' && !Number.isSafeInteger(n))) {
       throw new Error('invalid number')
     }
     return n
   }
-  if (type === 'list' || type === 'object') return JSON.parse(text)
+  if (type === 'list' || type === 'object') return parseJson(text, onKept)
   if (type === 'any') {
     try {
-      return JSON.parse(text)
+      return parseJson(text, onKept)
     } catch {
       return text
     }

@@ -404,20 +404,33 @@ Imbi records each model call, also a preview, for 90 days, or longer
 while its workflow run is open. The record holds the prompt as sent and
 the answer. See [Maintenance](maintenance.md). When the engine asks
 again for the same attempt, for example after a restart, a lost
-response, or a `5xx` without an error code, Imbi returns the recorded
-answer and does not call the model again. A retry is a new call.
+response, or a `5xx` without an error code, Imbi does not call the
+model a second time. It returns the recorded result of the attempt:
+the answer, the recorded error (for example
+`provider_outcome_unknown`), or
+`call_in_progress` while the first call runs. A retry after a known
+failure is a new call. A retry after a step timeout asks for the call
+of the earlier attempt, with the same results.
 
 The step fails with one of these errors:
 
 | Error | Cause | Retry |
 |---|---|---|
 | `model_answer_invalid` | The answer does not match the output fields | Yes |
-| `rate_limited`, `provider_unavailable`, `provider_unreachable` | The provider is busy, down, or not reachable | Yes |
+| `rate_limited`, `provider_unavailable` | The provider sent an HTTP `429` or `5xx` response: it is busy or down | Yes |
+| `provider_unreachable`, `credentials_unavailable` | Imbi did not send the request: no connection to the provider, or no credentials in time | Yes |
+| `provider_outcome_unknown` | The request may have reached the provider, and no answer came back (a timeout or a lost connection). Imbi cannot confirm the outcome. The provider may have run and billed the call. A retry could be a second, billed call, so Imbi does not retry. Look at the provider's usage, then start the run again if necessary | No |
 | `provider_refused` | The provider refused the request, or the model refused to answer | No |
 | `provider_misconfigured`, `credentials_failed` | The provider has no usable credentials or settings | No |
 | `model_no_structured_output` | The step has output fields and the model does not support structured output | No |
 | `forbidden` | The model is restricted to teams that do not include the owner team of the workflow | No |
 | `outcome_unknown` | An earlier call of the attempt did not finish. Imbi does not know if the model answered | No |
+
+A record from before this release can hold `provider_unreachable` for a
+request that reached the provider. When the engine asks again for that
+call, Imbi returns the recorded error and the step can retry. Do not
+use a `provider_unreachable` error from such a record as proof that the
+provider did not run or bill the call.
 
 **Output:** `text`, `result` (with output fields), `model`, `model_id`,
 `prompt_version`, `usage` (`input_tokens`, `output_tokens`, and

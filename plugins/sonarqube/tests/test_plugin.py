@@ -13,6 +13,12 @@ class SonarQubePluginManifestTests(unittest.TestCase):
         self.assertEqual('sonarqube', manifest.slug)
         self.assertEqual('api_token', manifest.auth_type)
 
+    def test_manifest_identifier_is_not_shareable(self) -> None:
+        # The lifecycle deletes the key an edge names (#775).
+        self.assertFalse(
+            plugin.SonarQubePlugin.manifest.shareable_service_identifier
+        )
+
     def test_manifest_declares_service_url_option(self) -> None:
         manifest = plugin.SonarQubePlugin.manifest
         names = [option.name for option in manifest.options]

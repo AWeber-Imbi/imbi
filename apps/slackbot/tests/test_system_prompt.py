@@ -94,3 +94,12 @@ class SystemPromptTests(helpers.TestCase):
         self.assertEqual(
             found.await_args.args[1], 'imbi-slackbot/system@stable'
         )
+
+    async def test_passes_the_user_for_a_restricted_model(self) -> None:
+        with mock.patch.object(
+            system_prompt.system, 'load_system_prompt'
+        ) as load:
+            await system_prompt.build_system_prompt(
+                identity.ImbiUser('a@example.com', 'Ada'), []
+            )
+        self.assertEqual(load.await_args.kwargs['email'], 'a@example.com')

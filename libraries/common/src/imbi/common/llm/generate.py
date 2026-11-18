@@ -11,7 +11,10 @@ provider driver:
 With ``output_fields``, the model must give a structured answer:
 
 - ``anthropic`` and ``bedrock``: one forced tool whose input schema is
-  the schema of the fields.
+  the schema of the fields. For a model that refuses a forced tool
+  choice (``forced_tool_choice`` is ``False``), the tool choice is
+  ``auto`` and the system prompt tells the model to call the tool. An
+  answer without the tool call is ``model_answer_invalid``.
 - ``openai``, ``openai_compatible``: a strict ``json_schema``
   ``response_format``. Strict mode needs every property in
   ``required``, so each optional field becomes a required field that
@@ -52,6 +55,8 @@ DEFAULT_MAX_TOKENS = 4096
 #: The name of the forced tool that carries a structured answer.
 TOOL = 'submit_result'
 _TOOL_DESCRIPTION = 'Submit the result.'
+#: Added to the system prompt when the tool choice is ``auto``.
+_TOOL_INSTRUCTION = f'Give your answer only as one call to the {TOOL} tool.'
 
 #: Words in a 400 body that tell the provider refused structured output.
 _UNSUPPORTED = ('response_format', 'schema', 'tool')
@@ -67,7 +72,11 @@ class GenerateError(Exception):
     - ``model_unsupported``: the provider refused structured output.
     - ``rate_limited`` (retry): HTTP 429.
     - ``provider_unavailable`` (retry): HTTP 5xx.
-    - ``provider_unreachable`` (retry): a transport error or a timeout.
+    - ``provider_unreachable`` (retry): the request was not sent (no
+      connection).
+    - ``provider_outcome_unknown``: a transport error or a timeout after
+      the request was sent. The provider may have run and billed it, so
+      a retry can be a second call.
     - ``provider_refused``: another HTTP 4xx, or the model refused to
       answer.
     - ``provider_misconfigured``: the request is missing a value that
@@ -110,6 +119,9 @@ class Request:
     output_fields: list[agent.OutputField] = dataclasses.field(
         default_factory=list[agent.OutputField]
     )
+    #: anthropic / bedrock: ``False`` for a model that refuses a forced
+    #: tool choice.
+    forced_tool_choice: bool = True
     #: Already resolved against the driver default.
     base_url: str | None = None
     credential: str | None = dataclasses.field(default=None, repr=False)
@@ -177,6 +189,12 @@ async def generate(
         return Result(answer.text, None, answer.usage, answer.request_id)
     value = answer.tool_input
     if value is None:
+        if (
+            request.driver in ('anthropic', 'bedrock')
+            and not request.forced_tool_choice
+        ):
+            # With tool choice auto, the answer must be the tool call.
+            raise GenerateError('model_answer_invalid', retry=True)
         try:
             value = json.loads(answer.text)
         except ValueError:
@@ -213,7 +231,11 @@ def _check(
 
 
 def _drop_nulls(schema: dict[str, typing.Any], value: object) -> object:
-    """Remove each optional property whose value is ``null``."""
+    """Remove each optional property whose value is ``null``.
+
+    An undeclared property stays, so that a closed object schema
+    rejects it.
+    """
     if isinstance(value, dict) and 'properties' in schema:
         props: dict[str, typing.Any] = schema['properties']
         required = set(schema['required'])
@@ -221,7 +243,7 @@ def _drop_nulls(schema: dict[str, typing.Any], value: object) -> object:
         return {
             k: _drop_nulls(props.get(k, {}), v)
             for k, v in items.items()
-            if v is not None or k in required
+            if v is not None or k in required or k not in props
         }
     if isinstance(value, list) and 'items' in schema:
         values = typing.cast('list[object]', value)
@@ -290,16 +312,37 @@ def _status_error(status: int, detail: str, structured: bool) -> GenerateError:
 
 
 def _as_int(value: object) -> int | None:
-    if isinstance(value, bool) or not isinstance(value, int):
+    """Return a token count, or ``None`` when it is not a valid count."""
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         return None
     return value
 
 
-def _usage(input_tokens: object, output_tokens: object) -> Usage:
-    return Usage(
+def _usage(
+    input_tokens: object, output_tokens: object, cached: object = None
+) -> Usage:
+    """Return the usage.
+
+    ``cached`` is the part of ``input_tokens`` that the provider read
+    from its prompt cache. The result does not count it in
+    ``input_tokens``. A ``cached`` count above ``input_tokens`` makes
+    the split unknown: the result then has no input count and no cache
+    count.
+    """
+    usage = Usage(
         input_tokens=_as_int(input_tokens),
         output_tokens=_as_int(output_tokens),
     )
+    cache_read = _as_int(cached)
+    if cache_read is not None:
+        if usage['input_tokens'] is None:
+            usage['cache_read_tokens'] = cache_read
+        elif cache_read > usage['input_tokens']:
+            usage['input_tokens'] = None
+        else:
+            usage['cache_read_tokens'] = cache_read
+            usage['input_tokens'] -= cache_read
+    return usage
 
 
 def _mapping(value: object) -> dict[str, typing.Any]:
@@ -324,11 +367,30 @@ async def _post(
             timeout=request.timeout, auth=request.auth, transport=transport
         ) as client:
             response = await client.post(url, json=body, headers=headers)
-    except httpx.HTTPError:
-        raise GenerateError('provider_unreachable', retry=True) from None
+    except httpx.HTTPError as exc:
+        raise _transport_error(exc) from None
     if response.status_code >= 400:
         raise _status_error(response.status_code, response.text, structured)
     return response
+
+
+def _transport_error(exc: BaseException | None) -> GenerateError:
+    """Only an error before the request was sent can be retried.
+
+    ``ProxyError`` is a failed proxy tunnel (``CONNECT``): the request
+    did not reach the provider.
+    """
+    if isinstance(
+        exc,
+        (
+            httpx.ConnectError,
+            httpx.ConnectTimeout,
+            httpx.PoolTimeout,
+            httpx.ProxyError,
+        ),
+    ):
+        return GenerateError('provider_unreachable', retry=True)
+    return GenerateError('provider_outcome_unknown')
 
 
 def _json(response: httpx.Response) -> dict[str, typing.Any]:
@@ -351,6 +413,29 @@ def _messages(request: Request) -> list[dict[str, str]]:
     return [m.model_dump() for m in request.messages]
 
 
+def _auto_tool(request: Request, schema: dict[str, typing.Any] | None) -> bool:
+    """Return ``True`` when the structured answer uses ``auto``."""
+    return schema is not None and not request.forced_tool_choice
+
+
+def _one_tool_input(inputs: list[typing.Any]) -> typing.Any:
+    """Return the input of the one tool call, or ``None`` without one.
+
+    More than one call is ``model_answer_invalid``: Imbi does not
+    select one of the answers.
+
+    """
+    if len(inputs) > 1:
+        raise GenerateError('model_answer_invalid', retry=True)
+    return inputs[0] if inputs else None
+
+
+def _system(request: Request, auto_tool: bool) -> str:
+    if not auto_tool:
+        return request.system
+    return '\n\n'.join(filter(None, [request.system, _TOOL_INSTRUCTION]))
+
+
 # --- anthropic -----------------------------------------------------------
 
 
@@ -371,11 +456,12 @@ async def _anthropic(
         else {'api_key': request.credential}
     )
     params = request.params
+    auto_tool = _auto_tool(request, schema)
     kwargs: dict[str, typing.Any] = _omit_none(
         model=request.model_id,
         max_tokens=params.max_tokens or DEFAULT_MAX_TOKENS,
         messages=_messages(request),
-        system=request.system or None,
+        system=_system(request, auto_tool) or None,
         temperature=params.temperature,
         top_p=params.top_p,
         stop_sequences=params.stop_sequences,
@@ -388,7 +474,11 @@ async def _anthropic(
                 'input_schema': schema,
             }
         ]
-        kwargs['tool_choice'] = {'type': 'tool', 'name': TOOL}
+        kwargs['tool_choice'] = (
+            {'type': 'auto', 'disable_parallel_tool_use': True}
+            if auto_tool
+            else {'type': 'tool', 'name': TOOL}
+        )
     try:
         async with anthropic.AsyncAnthropic(
             **auth,
@@ -405,11 +495,12 @@ async def _anthropic(
         raise _status_error(
             exc.status_code, exc.message, schema is not None
         ) from None
-    except anthropic.AnthropicError:
-        raise GenerateError('provider_unreachable', retry=True) from None
+    except anthropic.AnthropicError as exc:
+        # The SDK wraps the httpx error.
+        raise _transport_error(exc.__cause__) from None
     text = ''.join(b.text for b in response.content if b.type == 'text')
-    tool_input = next(
-        (b.input for b in response.content if b.type == 'tool_use'), None
+    tool_input = _one_tool_input(
+        [b.input for b in response.content if b.type == 'tool_use']
     )
     return _Answer(
         text,
@@ -473,15 +564,11 @@ async def _openai(
     if refused:
         # The same request gets the same refusal: no retry.
         raise GenerateError('provider_refused')
-    counts = _usage(usage.get('prompt_tokens'), usage.get('completion_tokens'))
-    cached = _as_int(
-        _mapping(usage.get('prompt_tokens_details')).get('cached_tokens')
+    counts = _usage(
+        usage.get('prompt_tokens'),
+        usage.get('completion_tokens'),
+        _mapping(usage.get('prompt_tokens_details')).get('cached_tokens'),
     )
-    if cached is not None:
-        # OpenAI counts the cache reads in prompt_tokens.
-        counts['cache_read_tokens'] = cached
-        if counts['input_tokens'] is not None:
-            counts['input_tokens'] -= cached
     return _Answer(
         str(text), None, counts, response.headers.get('x-request-id')
     )
@@ -502,12 +589,14 @@ async def _bedrock(
     if not base:
         raise GenerateError('provider_misconfigured')
     params = request.params
+    auto_tool = _auto_tool(request, schema)
+    system = _system(request, auto_tool)
     body: dict[str, typing.Any] = _omit_none(
         messages=[
             {'role': m.role, 'content': [{'text': m.content}]}
             for m in request.messages
         ],
-        system=[{'text': request.system}] if request.system else None,
+        system=[{'text': system}] if system else None,
         inferenceConfig=_omit_none(
             maxTokens=params.max_tokens,
             temperature=params.temperature,
@@ -527,7 +616,9 @@ async def _bedrock(
                     }
                 }
             ],
-            'toolChoice': {'tool': {'name': TOOL}},
+            'toolChoice': {'auto': {}}
+            if auto_tool
+            else {'tool': {'name': TOOL}},
         }
     headers = _bearer(request)
     model = urllib.parse.quote(request.model_id, safe='')
@@ -545,8 +636,8 @@ async def _bedrock(
             'content'
         ]
         text = ''.join(str(c['text']) for c in content if 'text' in c)
-        tool_input = next(
-            (c['toolUse']['input'] for c in content if 'toolUse' in c), None
+        tool_input = _one_tool_input(
+            [c['toolUse']['input'] for c in content if 'toolUse' in c]
         )
         usage = _mapping(data.get('usage'))
     except (KeyError, TypeError, AttributeError):
@@ -628,14 +719,19 @@ async def _vertex(
     except (KeyError, IndexError, TypeError, AttributeError):
         raise GenerateError('model_answer_invalid', retry=True) from None
     # Gemini counts thinking tokens apart from the candidates and bills
-    # them as output.
-    output = usage.get('candidatesTokenCount')
-    thoughts = usage.get('thoughtsTokenCount')
-    if type(output) is int and type(thoughts) is int:
-        output += thoughts
+    # them as output. An absent thinking count means no thinking; an
+    # invalid one makes the output count unknown.
+    output = _as_int(usage.get('candidatesTokenCount'))
+    if output is not None and 'thoughtsTokenCount' in usage:
+        thoughts = _as_int(usage['thoughtsTokenCount'])
+        output = None if thoughts is None else output + thoughts
     return _Answer(
         text,
         None,
-        _usage(usage.get('promptTokenCount'), output),
+        _usage(
+            usage.get('promptTokenCount'),
+            output,
+            usage.get('cachedContentTokenCount'),
+        ),
         data.get('responseId'),
     )

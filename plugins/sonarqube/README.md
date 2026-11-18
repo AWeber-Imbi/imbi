@@ -54,6 +54,19 @@ lacks Administer on the project -- is `failed` and leaves the edge in place.
 There is no create hook, and an unarchived project is not re-created: an
 analysis or the Project Doctor's repair creates it again.
 
+Any project writer can link any key, so the capability deletes only the
+key `<owning-team-slug>:<project-slug>` of the project. It does not use the
+convention to find a key; the edge must name it. Another key is `skipped`
+and not deleted, and the skip is logged. A key that another Imbi project
+also links, through any SonarQube Integration of the organization, is
+`skipped` and not deleted.
+To keep keys apart, the plugin declares its identifier not shareable, so
+the host refuses a manual link to a key that another project holds through
+the same Integration. A plugin writeback is refused only by a project whose
+edge the plugin verified. Only an admin can change the verified key that a
+plugin writeback records. A manual edit changes only the linked key, and
+the key check above still applies to it.
+
 ## Project Doctor
 
 The `analysis` capability checks three things, offering a fix for the
