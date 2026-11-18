@@ -1668,19 +1668,22 @@ class TaskRun:
             lines.append(f'The task project ids are {", ".join(project_ids)}.')
         return ' '.join(lines)
 
-    def instruction(self) -> str:
-        """The task description, then the ticket history; a webhook
-        payload is untrusted (6.7)."""
+    def description(self) -> str:
+        """The task description; a webhook payload is untrusted (6.7)."""
         text = str(self.task['description'])
         origin: Body = self.task.get('origin') or {}
         if origin.get('kind') == 'webhook':
-            text = relay.untrusted(text, 'webhook')
+            return relay.untrusted(text, 'webhook')
+        return text
+
+    def instruction(self) -> str:
+        """The task description, then the ticket history."""
+        text = self.description()
         return f'{text}\n\n{self.history}' if self.history else text
 
     async def read_history(self) -> str:
         """The ticket history before this session (ADR 0028): comments,
-        resolved requests, and child and prerequisite outcomes. The
-        description is already in :meth:`instruction`. The oldest
+        resolved requests, and child and prerequisite outcomes. The oldest
         entries are cut so that the instruction fits in
         :data:`PROMPT_BYTES`. Empty when there is none or imbi-api does
         not give it."""
@@ -1689,13 +1692,9 @@ class TaskRun:
         except (api.Refused, httpx.HTTPError) as err:
             LOGGER.warning('No history for %s: %s', self.api.short_id, err)
             return ''
-        entries: list[Body] = [
-            entry
-            for entry in api.items(body, 'entries')
-            if entry.get('kind') != 'description'
-        ]
+        entries = api.items(body, 'entries')
         cut = int(body.get('cut') or 0)
-        used = len(self.instruction().encode()) + 2
+        used = len(self.description().encode()) + 2
         while entries:
             history = _history(entries, cut)
             if used + len(history.encode()) <= PROMPT_BYTES:

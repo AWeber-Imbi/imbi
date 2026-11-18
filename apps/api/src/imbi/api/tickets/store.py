@@ -1478,7 +1478,8 @@ class TicketStore:
             conn.cursor(row_factory=rows.dict_row) as cursor,
         ):
             await cursor.execute(
-                'SELECT * FROM tickets.events WHERE ticket_id = %s'
+                "SELECT at, actor_id, payload->>'body' AS body"
+                ' FROM tickets.events WHERE ticket_id = %s'
                 " AND type = 'turn' AND actor_kind = 'human' ORDER BY seq",
                 (task['id'],),
             )

@@ -2414,10 +2414,7 @@ class UntrustedTestCase(TaskTestCase):
 class HistoryTestCase(TaskTestCase):
     def history(self, *entries: dict[str, typing.Any], cut: int = 0) -> None:
         body = {
-            'entries': [
-                {'kind': 'description', 'at': 't0', 'text': 'Work.'},
-                *entries,
-            ],
+            'entries': list(entries),
             'cut': cut,
         }
         self.client.request.return_value = mock.Mock(
@@ -2449,7 +2446,7 @@ class HistoryTestCase(TaskTestCase):
         self.assertIn('<untrusted source="webhook">\n- t1', history)
         self.assertIn('&lt;/untrusted>', history)
 
-    async def test_only_the_description_gives_no_history(self) -> None:
+    async def test_no_entries_gives_no_history(self) -> None:
         self.history()
         self.assertEqual(await self.run_task.read_history(), '')
 

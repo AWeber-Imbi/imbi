@@ -410,8 +410,7 @@ def _new_task(body: Row, chain_id: str, origin: Row) -> Row:
         'outcome_reason': None,
         'sessions': {},
         'events': [],
-        # The entries of GET /harness/tickets/<id>/history after the
-        # description, oldest first.
+        # The entries of GET /harness/tickets/<id>/history, oldest first.
         'history': body.get('history') or [],
         'usage': [],
         'requests': {},
@@ -1257,13 +1256,7 @@ def _history(token: str, short_id: str) -> Row:
     task = TASKS.get(short_id)
     if task is None or _task_for_token(token) is not task:
         raise Fail(403, 'chain_forbidden')
-    description = {
-        'kind': 'description',
-        'at': '2026-01-01T00:00:00Z',
-        'text': task['description'],
-        'webhook': task['origin'].get('kind') == 'webhook',
-    }
-    return {'entries': [description, *task['history']], 'cut': 0}
+    return {'entries': task['history'], 'cut': 0}
 
 
 def _harness_task_route(

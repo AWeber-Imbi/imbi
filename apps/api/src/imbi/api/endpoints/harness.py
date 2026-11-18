@@ -316,9 +316,7 @@ class HistoryEntry(pydantic.BaseModel):
     """One part of the history of a ticket. Handoffs are not stored
     yet, so the history has none."""
 
-    kind: typing.Literal[
-        'description', 'comment', 'request', 'child', 'prerequisite'
-    ]
+    kind: typing.Literal['comment', 'request', 'child', 'prerequisite']
     at: datetime.datetime
     #: The person who wrote a comment or resolved a request.
     actor: str | None = None
@@ -1767,9 +1765,9 @@ async def read_harness_ticket_history(
     """Return the history of a ticket of the chain, for a new session.
 
     A new session reads events only after ``last_seq``, so it reads
-    what happened before here: the description, comments (human
-    turns), resolved requests, and the status and outcome of child
-    and prerequisite tickets, oldest first. When the text is larger
+    what happened before here: comments (human turns), resolved
+    requests, and the status and outcome of child and prerequisite
+    tickets, oldest first. When the text is larger
     than :data:`MAX_HISTORY_BYTES`, the oldest entries are left out
     and ``cut`` is their number. ``webhook`` marks untrusted text.
 
@@ -1780,21 +1778,16 @@ async def read_harness_ticket_history(
 
     """
     task = await _chain_task(caller, short_id, db, store)
-    turns, requests = await store.history(task)
-    relations = await store.relations(task)
+    (turns, requests), relations = await asyncio.gather(
+        store.history(task), store.relations(task)
+    )
     entries = [
-        HistoryEntry(
-            kind='description',
-            at=task['created_at'],
-            text=task['description'],
-            webhook=task['origin_kind'] == 'webhook',
-        ),
         *(
             HistoryEntry(
                 kind='comment',
                 at=turn['at'],
                 actor=turn['actor_id'],
-                text=str(turn['payload'].get('body') or ''),
+                text=turn['body'] or '',
             )
             for turn in turns
         ),
@@ -1802,7 +1795,6 @@ async def read_harness_ticket_history(
         *(_linked_entry('child', row) for row in relations['children']),
         *(_linked_entry('prerequisite', row) for row in relations['requires']),
     ]
-    # A stable sort: the description stays first at an equal time.
     entries.sort(key=lambda entry: entry.at)
     return cut_history(entries, MAX_HISTORY_BYTES)
 

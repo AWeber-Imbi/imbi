@@ -1259,21 +1259,21 @@ class HistoryTests(RunnerTestCase):
         entries = body['entries']
         self.assertEqual(
             [e['kind'] for e in entries],
-            ['description', 'comment', 'request', 'comment', 'prerequisite'],
+            ['comment', 'request', 'comment', 'prerequisite'],
         )
         self.assertEqual(
-            entries[4]['text'],
+            entries[3]['text'],
             'T-2 Look at the build: closed, failed_external (down)',
         )
-        self.assertTrue(entries[4]['webhook'])
-        self.assertEqual(entries[1]['text'], 'First comment.')
-        self.assertEqual(entries[1]['actor'], self.email)
+        self.assertTrue(entries[3]['webhook'])
+        self.assertEqual(entries[0]['text'], 'First comment.')
+        self.assertEqual(entries[0]['actor'], self.email)
         self.assertEqual(
-            entries[2]['text'],
+            entries[1]['text'],
             'feedback request "Which branch?": answered\n'
             'Answer: main\nConstraints: no force',
         )
-        self.assertFalse(any(e['webhook'] for e in entries[:4]))
+        self.assertFalse(any(e['webhook'] for e in entries[:3]))
 
     async def test_byte_limit_keeps_the_newest(self) -> None:
         limit = len(b'Last comment.') + len(
@@ -1282,7 +1282,7 @@ class HistoryTests(RunnerTestCase):
         )
         with mock.patch.object(harness_api, 'MAX_HISTORY_BYTES', limit):
             body = await self.history()
-        self.assertEqual(body['cut'], 2)
+        self.assertEqual(body['cut'], 1)
         self.assertEqual(
             [e['kind'] for e in body['entries']], ['request', 'comment']
         )
