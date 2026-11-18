@@ -592,6 +592,34 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
         response = await self.client.get(f'{self.base}/deploy-guard')
         self.assertEqual(response.json()['latest_version'], 1)
 
+    async def test_create_conflicts_when_org_renamed(self) -> None:
+        # #780: the slug check runs on the connection of the create.
+        real_check = workflows_endpoints._check_llm_call
+
+        async def renaming_check(*args: typing.Any) -> None:
+            await real_check(*args)
+            await self.graph.execute(
+                'MATCH (o:Organization {{id: {org}}})'
+                " SET o.slug = {org} + '-new' RETURN o.id AS id",
+                {'org': self.org},
+                ['id'],
+            )
+
+        with mock.patch.object(
+            workflows_endpoints, '_check_llm_call', renaming_check
+        ):
+            response = await self._create()
+        await self.graph.execute(
+            'MATCH (o:Organization {{id: {org}}})'
+            ' SET o.slug = {org} RETURN o.id AS id',
+            {'org': self.org},
+            ['id'],
+        )
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertIn('renamed', response.json()['detail']['message'])
+        response = await self.client.get(f'{self.base}/deploy-guard')
+        self.assertEqual(response.status_code, 404)
+
     async def _codes(
         self, step: str, params: dict[str, typing.Any]
     ) -> set[str]:

@@ -109,12 +109,13 @@ class WorkflowStore:
         organization_id: str,
         slug: str,
         definition: Definition,
-        on_created: abc.Callable[[], abc.Awaitable[None]] | None = None,
+        on_created: OnWrite | None = None,
     ) -> None:
         """Write a workflow and its version 1.
 
         ``on_created`` runs before the commit, under the shared lock on
-        the organization. When it raises, the create is rolled back.
+        the organization. It gets the connection of the create. When it
+        raises, the create is rolled back.
 
         Raises:
             psycopg.errors.UniqueViolation: The slug is in use.
@@ -141,7 +142,7 @@ class WorkflowStore:
                 _INSERT_VERSION, _version_values(workflow_id, 1, definition)
             )
             if on_created is not None:
-                await on_created()
+                await on_created(conn)
 
     async def save(
         self,
