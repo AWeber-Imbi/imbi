@@ -1073,9 +1073,12 @@ async def get_run(
     """
     workflow = await _workflow(store, org_id, slug)
     row = await _run(runs, workflow, run_id)
-    if row['log_archived_at'] is None:
-        steps = await runs.steps(run_id)
-    else:
+    steps = [] if row['log_archived_at'] else await runs.steps(run_id)
+    if not steps and row['log_archived_at'] is None:
+        # The archive can commit between the two reads and delete the
+        # step rows. Read the run again to get its archive state.
+        row = await _run(runs, workflow, run_id)
+    if row['log_archived_at'] is not None:
         try:
             steps = await history.archived_steps(row)
         except Exception as e:

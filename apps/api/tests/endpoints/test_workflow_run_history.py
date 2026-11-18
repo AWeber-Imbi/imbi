@@ -16,6 +16,7 @@ from psycopg.types import json as pg_json
 from apps.api.tests import support
 from apps.api.tests.endpoints import test_workflow_runs
 from imbi.api.auth import permissions
+from imbi.api.endpoints import workflow_runs
 from imbi.api.workflows import sweeper
 from imbi.common import clickhouse, iggy
 from imbi.common.clickhouse import client
@@ -490,6 +491,46 @@ class OrgRunsTestCase(RunHistoryTestCase):
             overrides.__setitem__, permissions.get_current_user, user_auth
         )
         self.assertEqual(await errors(), [quoted] * 2)
+
+    async def test_run_archived_during_get_run_is_redacted(self) -> None:
+        """When the archive commits between the run read and the step
+        read, the run detail uses the archived steps and hides the
+        error from a caller who cannot read agent tasks."""
+        quoted = "invalid_params: 'Secret title' is not a channel"
+        url = await self._workflow()
+        with support.sink_to_clickhouse():
+            run_id = await self._start(url)
+            await self._fail(run_id)
+            with mock.patch.object(
+                sweeper, '_try_sweep_lock', return_value=True
+            ):
+                await sweeper.sweep_once(self.runs)
+                await sweeper.sweep_once(self.runs)
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE workflow_runtime.runs SET error = %s WHERE id = %s',
+                (quoted, run_id),
+            )
+        read_run = workflow_runs._run
+        calls = 0
+
+        async def stale_first_read(
+            *args: typing.Any, **kwargs: typing.Any
+        ) -> dict[str, typing.Any]:
+            nonlocal calls
+            calls += 1
+            row = await read_run(*args, **kwargs)
+            # The first read sees the run before the archive commits.
+            return {**row, 'log_archived_at': None} if calls == 1 else row
+
+        with mock.patch.object(workflow_runs, '_run', stale_first_read):
+            response = await self.client.get(f'{url}/runs/{run_id}')
+        self.assertEqual(response.status_code, 200, response.text)
+        run = response.json()
+        self.assertIsNotNone(run['log_archived_at'])
+        self.assertEqual(run['error'], 'invalid_params')
+        self.assertEqual([s['node_key'] for s in run['steps']], ['review'])
+        self.assertIsNone(run['steps'][0]['output'])
 
     async def test_stuck_run_is_flagged(self) -> None:
         url = await self._workflow()
