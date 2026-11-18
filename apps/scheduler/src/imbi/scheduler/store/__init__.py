@@ -79,14 +79,14 @@ async def _inject_tasks(
     yield context.get_state(store_lifespan)
 
 
-TicketStore = typing.Annotated[Tasks, fastapi.Depends(_inject_tasks)]
+TaskStore = typing.Annotated[Tasks, fastapi.Depends(_inject_tasks)]
 
 __all__ = [
     'NOTIFY_CHANNEL',
     'DuplicateSlug',
     'Pool',
+    'TaskStore',
     'Tasks',
-    'TicketStore',
     'UnresolvableIdentity',
     'create_pool',
     'initialize',

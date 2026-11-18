@@ -78,10 +78,13 @@ async def org_permissions(
             org_slug=org_slug,
         )
     if auth.on_behalf_of is not None:
-        granted &= await common_permissions.load_principal_permissions(
-            db, *auth.on_behalf_of, org_slug=org_slug
+        granted = common_permissions.held(
+            granted,
+            await common_permissions.load_principal_permissions(
+                db, *auth.on_behalf_of, org_slug=org_slug
+            ),
         )
-    return auth.permissions & granted
+    return common_permissions.held(auth.permissions, granted)
 
 
 async def member_org_id(

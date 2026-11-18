@@ -484,7 +484,7 @@ async def authenticate_jwt(
         # only the ones that are in both.
         scopes = str(claims.get('scope') or '').split()
         if scopes:
-            perms &= set(scopes)
+            perms = held(perms, set(scopes))
         return AuthContext(
             service_account=sa,
             session_id=jti,
@@ -695,7 +695,7 @@ async def authenticate_api_key(
         all_perms = await load_principal_permissions(
             db, 'ServiceAccount', 'slug', sa.slug
         )
-        filtered = all_perms.intersection(set(scopes)) if scopes else all_perms
+        filtered = held(all_perms, set(scopes)) if scopes else all_perms
 
         # Update last_used only after all validation passes
         await _stamp_api_key_last_used(db, key_id, auth_settings)
@@ -718,7 +718,7 @@ async def authenticate_api_key(
     all_perms = await load_principal_permissions(
         db, 'User', 'email', user.email
     )
-    filtered = all_perms.intersection(set(scopes)) if scopes else all_perms
+    filtered = held(all_perms, set(scopes)) if scopes else all_perms
     identities = await _load_user_identities(db, user.id)
 
     # Update last_used only after all validation passes
@@ -815,9 +815,7 @@ async def narrow_to_accountable(
     )
     return ctx.model_copy(
         update={
-            # holds(): an agent_task:* and a ticket:* name are one
-            # permission (ADR 0028).
-            'permissions': {p for p in ctx.permissions if holds(p, granted)},
+            'permissions': held(ctx.permissions, granted),
             'on_behalf_of': (label, match_prop, accountable),
         }
     )
@@ -992,6 +990,16 @@ def holds(permission: str, held: collections.abc.Container[str]) -> bool:
         if permission.startswith(prefix):
             return alias + permission.removeprefix(prefix) in held
     return False
+
+
+def held(
+    permissions: collections.abc.Iterable[str],
+    granted: collections.abc.Container[str],
+) -> set[str]:
+    """The names in ``permissions`` that ``granted`` also has, by
+    :func:`holds`: an intersection where an ``agent_task:*`` and a
+    ``ticket:*`` name are one permission (ADR 0028)."""
+    return {p for p in permissions if holds(p, granted)}
 
 
 def require_permission(

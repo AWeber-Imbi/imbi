@@ -464,6 +464,17 @@ class ApiKeyAccessLogPrincipalTestCase(unittest.IsolatedAsyncioTestCase):
         remember.assert_not_called()
 
 
+class HeldTestCase(unittest.TestCase):
+    def test_ticket_and_agent_task_names_match(self) -> None:
+        self.assertEqual(
+            {'agent_task:read', 'ticket:create'},
+            permissions.held(
+                {'agent_task:read', 'ticket:create', 'project:read'},
+                {'ticket:read', 'agent_task:create'},
+            ),
+        )
+
+
 class NarrowToAccountableTestCase(unittest.IsolatedAsyncioTestCase):
     """A scheduler request gets only what its accountable principal has."""
 

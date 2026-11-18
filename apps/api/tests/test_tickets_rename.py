@@ -469,10 +469,10 @@ class RenameTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_old_sql_works_through_the_views(self) -> None:
         conn = await self._migrated()
+        # A queued chain makes both tasks claimable, so another claim
+        # gets the child only when the lock on the root holds.
+        await conn.execute("UPDATE harness.chains SET state = 'queued'")
         async with conn.transaction():
-            # With no chain row, the claim takes the root (the child is
-            # not a root), and another claim skips the locked row.
-            await conn.execute('DELETE FROM harness.chains')
             cursor = await conn.execute(OLD_CLAIM, {'agents': [AGENT]})
             claimed = await cursor.fetchone()
             self.assertIsNotNone(claimed)
@@ -483,7 +483,10 @@ class RenameTestCase(unittest.IsolatedAsyncioTestCase):
             )
             async with other:
                 cursor = await other.execute(OLD_CLAIM, {'agents': [AGENT]})
-                self.assertIsNone(await cursor.fetchone())
+                second = await cursor.fetchone()
+                self.assertIsNotNone(second)
+                assert second is not None
+                self.assertEqual(second['id'], CHILD)
             cursor = await conn.execute(OLD_PIN_CHAIN, (ROOT, ORG, RUNNER))
             pinned = await cursor.fetchone()
             assert pinned is not None
