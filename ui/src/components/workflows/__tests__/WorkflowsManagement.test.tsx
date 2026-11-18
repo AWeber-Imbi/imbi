@@ -507,6 +507,62 @@ describe('WorkflowsManagement', () => {
     )
   })
 
+  it('shows a newer saved version and activates it', async () => {
+    const stale = workflow({
+      active_version: 1,
+      latest_version: 2,
+      status: 'active',
+    })
+    vi.mocked(endpoints.getWorkflow).mockResolvedValue(stale)
+    vi.mocked(endpoints.getWorkflowVersion).mockResolvedValue({
+      ...stale.version,
+      version: 1,
+    })
+    vi.mocked(endpoints.activateWorkflow).mockResolvedValue({
+      ...stale,
+      active_version: 2,
+    })
+    renderAt('/agents/workflows/deploy-guard')
+    expect(
+      await screen.findByText('Active: v1 · Saved: v2'),
+    ).toBeInTheDocument()
+    const run = screen.getByRole('button', { name: 'Run' })
+    await waitFor(() => expect(run).toBeEnabled())
+    expect(run).toHaveAttribute(
+      'title',
+      'Starts a run of v1, the active version.',
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Activate v2' }))
+    await waitFor(() =>
+      expect(endpoints.activateWorkflow).toHaveBeenCalledWith(
+        'acme',
+        'deploy-guard',
+      ),
+    )
+    expect(await screen.findByText('Saved · v2')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Activate v2' }),
+    ).not.toBeInTheDocument()
+    expect(run).toHaveAttribute(
+      'title',
+      'Starts a run of v2, the active version.',
+    )
+  })
+
+  it.each([
+    ['the active version is the latest', 2, 'active'],
+    ['the workflow is paused', 1, 'paused'],
+  ] as const)('hides Activate when %s', async (_, active_version, status) => {
+    vi.mocked(endpoints.getWorkflow).mockResolvedValue(
+      workflow({ active_version, latest_version: 2, status }),
+    )
+    renderAt('/agents/workflows/deploy-guard')
+    expect(await screen.findByText('Saved · v2')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /^Activate v/ }),
+    ).not.toBeInTheDocument()
+  })
+
   it('shows a skipped run as a duplicate and links to the first', async () => {
     const first = { ...RUN, id: '9d8e7f6a-0000-4000-8000-000000000002' }
     const skipped = {

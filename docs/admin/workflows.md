@@ -771,6 +771,13 @@ graph is too large.
 Activation makes the latest version the active version. Runs that already
 started keep the version that they started with.
 
+When you save an active workflow, the new version does not become active.
+The header then shows both versions, for example `Active: v3 · Saved: v5`,
+and an **Activate v5** button. Click the button to make the latest version
+the active version. The workflow stays active, so schedule and webhook
+triggers continue to start runs. The button is off while there are unsaved
+changes. Activation can fail for the same causes as the switch.
+
 Activation fails in these cases:
 
 | Response | Cause | Fix |
@@ -850,7 +857,10 @@ output.
 
 ### Run
 
-Click **Run** to start a run of the active version. The workflow must be
+Click **Run** to start a run of the active version. This is not always
+the version in the editor: the tooltip of **Run** names the version that it
+starts. To run a newer saved version, activate it first (see
+[Activate a workflow](#activate-a-workflow)). The workflow must be
 active and have a **Manual run** trigger. If the trigger declares inputs,
 enter them, then click **Run workflow**.
 
