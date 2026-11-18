@@ -3,6 +3,7 @@
 import asyncio
 import json
 import typing
+import unittest
 import uuid
 from unittest import mock
 
@@ -503,10 +504,70 @@ class GenerativeRunTestCase(base.PromptTestBase):
         self.route_run()
         with mock.patch.object(prompts, 'CALL_DEADLINE', 0.01):
             response = self.run_ref()
-        self.assertEqual(response.status_code, 503)
-        self.calls.finish.assert_awaited_once_with(
-            CALL_ID, 'failed', error='provider_unreachable'
+        # The call may have reached the provider: no retry.
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(
+            response.json()['detail'],
+            {'error': 'provider_outcome_unknown', 'retry': False},
         )
+        self.calls.finish.assert_awaited_once_with(
+            CALL_ID, 'failed', error='provider_outcome_unknown'
+        )
+
+    def test_deadline_before_dispatch_is_retried(self) -> None:
+        async def slow(*_: object) -> None:
+            await asyncio.sleep(1)
+
+        self.decrypt.return_value = None
+        self._patch(model_generate, '_sigv4', slow)
+        self.route_run()
+        self.mock_db.execute.side_effect.rules.insert(
+            0,
+            (
+                ai_providers._GET_QUERY,
+                provider_row(driver='bedrock', region='us-east-1'),
+            ),
+        )
+        with mock.patch.object(prompts, 'CALL_DEADLINE', 0.01):
+            response = self.run_ref()
+        # No request was sent: the retry is safe.
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(
+            response.json()['detail'],
+            {'error': 'credentials_unavailable', 'retry': True},
+        )
+        self.calls.finish.assert_awaited_once_with(
+            CALL_ID, 'failed', error='credentials_unavailable'
+        )
+        self.generate.assert_not_awaited()
+
+    def test_provider_outcome_unknown_is_not_retried(self) -> None:
+        self.generate.side_effect = generate.GenerateError(
+            'provider_outcome_unknown'
+        )
+        self.route_run()
+        response = self.run_ref()
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(
+            response.json()['detail'],
+            {'error': 'provider_outcome_unknown', 'retry': False},
+        )
+        self.calls.finish.assert_awaited_once_with(
+            CALL_ID, 'failed', error='provider_outcome_unknown'
+        )
+
+    def test_repeat_of_an_unknown_provider_outcome_makes_no_call(
+        self,
+    ) -> None:
+        response = self._repeat(
+            status='failed', error='provider_outcome_unknown'
+        )
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(
+            response.json()['detail'],
+            {'error': 'provider_outcome_unknown', 'retry': False},
+        )
+        self.generate.assert_not_awaited()
 
     def test_vertex_needs_a_key(self) -> None:
         self.decrypt.return_value = None
@@ -577,3 +638,41 @@ class SigV4TestCase(base.PromptTestBase):
             r'^AWS4-HMAC-SHA256 Credential=AKID/\d{8}/us-east-1/bedrock/',
         )
         self.assertIn('X-Amz-Date', signed.headers)
+
+
+class DispatchTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_rejected_token_clears_dispatch(self) -> None:
+        # A 401 is a known rejection: while Imbi waits for a new token,
+        # no request is in flight, so a deadline then is safe to retry.
+        dispatched = asyncio.Event()
+        seen: list[bool] = []
+
+        async def get(*_: object) -> mock.Mock:
+            seen.append(dispatched.is_set())
+            return mock.Mock(token=f'token-{len(seen)}')
+
+        result = generate.Result('ok', None, {}, None)
+        call = mock.AsyncMock(
+            side_effect=[
+                generate.GenerateError('provider_refused', status=401),
+                result,
+            ]
+        )
+        provider = mock.Mock(workload_identity=object())
+        request = generate.Request(
+            driver='anthropic', model_id='claude-opus-5', messages=[]
+        )
+        with (
+            mock.patch.object(
+                model_generate, 'decrypt_config_value', return_value=None
+            ),
+            mock.patch.object(model_generate.tokens, 'get', get),
+            mock.patch.object(model_generate.tokens, 'CACHE'),
+            mock.patch.object(generate, 'generate', call),
+        ):
+            answer = await model_generate.call(
+                mock.Mock(), provider, request, dispatched
+            )
+        self.assertIs(answer, result)
+        self.assertEqual(seen, [False, False])
+        self.assertTrue(dispatched.is_set())

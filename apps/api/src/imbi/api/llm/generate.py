@@ -92,9 +92,15 @@ async def call(
     secrets: store.SecretStore,
     provider: models.AIProvider,
     request: generate.Request,
+    dispatched: asyncio.Event | None = None,
 ) -> generate.Result:
     """Call the model of ``request`` once, with the provider's
     credentials.
+
+    ``dispatched`` is set when the credentials are ready and the request
+    to the provider starts. Before that, no request was sent. A ``401``
+    for a workload identity token clears it until the request with a
+    new token starts.
 
     Raises:
         generate.GenerateError: The call failed. A workload identity
@@ -102,23 +108,36 @@ async def call(
             (retry) or ``credentials_failed``.
 
     """
+
+    async def send(request: generate.Request) -> generate.Result:
+        if dispatched is not None:
+            dispatched.set()
+        return await generate.generate(request)
+
+    def unauthorized(exc: Exception) -> bool:
+        # The provider rejected the token: no call ran. Until the
+        # request with a new token starts, no request is in flight.
+        if not (
+            isinstance(exc, generate.GenerateError)
+            and exc.status == http.HTTPStatus.UNAUTHORIZED
+        ):
+            return False
+        if dispatched is not None:
+            dispatched.clear()
+        return True
+
     key = decrypt_config_value(provider.credentials_encrypted)
     if key:
-        return await generate.generate(
-            dataclasses.replace(request, credential=key)
-        )
+        return await send(dataclasses.replace(request, credential=key))
     if provider.workload_identity is not None:
         try:
             return await tokens.call(
                 secrets,
                 provider,
-                lambda token: generate.generate(
+                lambda token: send(
                     dataclasses.replace(request, credential=token, bearer=True)
                 ),
-                lambda exc: (
-                    isinstance(exc, generate.GenerateError)
-                    and exc.status == http.HTTPStatus.UNAUTHORIZED
-                ),
+                unauthorized,
             )
         except IdentityError as exc:
             if exc.retryable:
@@ -128,7 +147,7 @@ async def call(
             raise generate.GenerateError('credentials_failed') from None
     if provider.driver == 'bedrock':
         auth = await _sigv4(provider.region)
-        return await generate.generate(dataclasses.replace(request, auth=auth))
+        return await send(dataclasses.replace(request, auth=auth))
     if provider.driver == 'vertex':
         raise generate.GenerateError('provider_misconfigured')
-    return await generate.generate(request)
+    return await send(request)

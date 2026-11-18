@@ -1326,6 +1326,7 @@ CALL_ERRORS: dict[str, tuple[int, bool]] = {
     'model_answer_invalid': (502, True),
     'provider_refused': (502, False),
     'credentials_failed': (502, False),
+    'provider_outcome_unknown': (502, False),
     'rate_limited': (503, True),
     'provider_unavailable': (503, True),
     'provider_unreachable': (503, True),
@@ -1731,12 +1732,22 @@ async def _run_generative(
     )
     if not new:
         return _repeat(row)
+    dispatched = asyncio.Event()
     try:
         async with asyncio.timeout(CALL_DEADLINE):
-            answer = await model_generate.call(secrets, provider, call)
+            answer = await model_generate.call(
+                secrets, provider, call, dispatched
+            )
     except TimeoutError:
-        await calls.finish(row['id'], 'failed', error='provider_unreachable')
-        raise _call_error('provider_unreachable') from None
+        # After dispatch, the request may have reached the provider.
+        # Before it, Imbi was still getting credentials: a retry is safe.
+        code = (
+            'provider_outcome_unknown'
+            if dispatched.is_set()
+            else 'credentials_unavailable'
+        )
+        await calls.finish(row['id'], 'failed', error=code)
+        raise _call_error(code) from None
     except generate.GenerateError as e:
         await calls.finish(row['id'], 'failed', error=e.code)
         raise _call_error(e.code) from None

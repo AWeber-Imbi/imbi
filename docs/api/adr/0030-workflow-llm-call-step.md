@@ -125,8 +125,11 @@ constraint and a consistent read.
   repeat while the call runs gets `409 call_in_progress`, and the engine
   asks again later with the same key. A `running` row older than the
   call timeout (120 seconds) plus 60 seconds becomes `outcome_unknown`,
-  and the step fails. A step retry is a new attempt, so it is a new key
-  and a new call.
+  and the step fails. A step retry after a known failure is a new
+  attempt, so it is a new key and a new call. A step retry after a
+  timeout sends the key of the earlier attempt again (the engine keeps
+  `key_attempt` in the step state), so imbi-api returns the stored
+  answer, `call_in_progress`, or the stored error.
 - The step keeps `side_effect=False`: the record, not the engine, stops
   a second call.
 - The `ai-model-calls-prune` maintenance operation deletes rows older
@@ -163,6 +166,20 @@ workflow save refuses it (`422`), and the run endpoint refuses it
   that does not parse or match is a retryable `model_answer_invalid`.
 - An error has `detail={'error': <code>, 'retry': <bool>}`. The engine
   retries a step only when `retry` is true.
+- A transport error before the request is sent (`ConnectError`,
+  `ConnectTimeout`, `PoolTimeout`) is `provider_unreachable`, with a
+  retry. A transport error or a timeout after the request is sent is
+  `provider_outcome_unknown`, with no retry: the provider may have run
+  and billed the call, and most providers cannot find a call by its
+  request. imbi-api records the code on the call, so a repeat of the
+  key gets the same error and makes no call. When the call deadline
+  expires before the request starts (imbi-api still gets the
+  credentials), the error is `credentials_unavailable`, with a retry.
+- Upgrade: a call recorded before this change keeps its code. A
+  `provider_unreachable` row from an earlier post-send timeout still
+  gets a retry, as it did before the upgrade. That can be one more
+  billed call, for open runs only. To prevent it, let open runs with
+  LLM Call steps finish before the upgrade.
 
 ## Consequences
 
