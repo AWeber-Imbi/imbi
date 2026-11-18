@@ -54,7 +54,11 @@ lacks Administer on the project -- is `failed` and leaves the edge in place.
 There is no create hook, and an unarchived project is not re-created: an
 analysis or the Project Doctor's repair creates it again.
 
-A key that another Imbi project also links is `skipped` and not deleted.
+Any project writer can link any key, so the capability deletes only the
+key `<owning-team-slug>:<project-slug>` of the project. It does not use the
+convention to find a key; the edge must name it. Another key is `skipped`
+and not deleted, and the skip is logged. A key that another Imbi project
+also links is `skipped` and not deleted.
 To keep keys apart, the plugin declares its identifier not shareable, so
 the host refuses a link to a key that another project holds, and only an
 admin can change a verified key to a different one.

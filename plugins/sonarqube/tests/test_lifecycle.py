@@ -57,19 +57,19 @@ class DeleteTestCase(unittest.IsolatedAsyncioTestCase):
     @respx.mock
     async def test_deleted_removes_project_and_edge(self) -> None:
         route = respx.post(_DELETE).mock(return_value=httpx.Response(204))
-        ctx = _ctx(identifier='custom*key')
+        ctx = _ctx(identifier=_KEY)
         result = await SonarQubeLifecycle().on_project_deleted(ctx, _CREDS)
         self.assertEqual(result.status, 'ok')
-        self.assertIn('custom*key', result.message or '')
+        self.assertIn(_KEY, result.message or '')
         request = route.calls.last.request
         self.assertEqual(
             'application/x-www-form-urlencoded',
             request.headers['content-type'],
         )
-        self.assertEqual(b'project=custom%2Akey', request.read())
+        self.assertEqual(b'project=platform%3Ademo', request.read())
         assert ctx.service_writeback is not None
         self.assertTrue(ctx.service_writeback.remove)
-        self.assertEqual(ctx.service_writeback.identifier, 'custom*key')
+        self.assertEqual(ctx.service_writeback.identifier, _KEY)
         self.assertEqual(
             ['sonarqube'], list(ctx.service_writeback.dashboard_links)
         )
@@ -105,6 +105,20 @@ class DeleteTestCase(unittest.IsolatedAsyncioTestCase):
         result = await SonarQubeLifecycle().on_project_deleted(ctx, _CREDS)
         self.assertEqual(result.status, 'failed')
         self.assertIn('403', result.message or '')
+        self.assertIsNone(ctx.service_writeback)
+
+    @respx.mock
+    async def test_foreign_key_is_not_deleted(self) -> None:
+        # No Imbi project holds the key, but it is not this project's.
+        route = respx.post(_DELETE)
+        ctx = _ctx(identifier='other-team:billing')
+        with self.assertLogs('imbi.plugins.sonarqube.lifecycle', 'WARNING'):
+            result = await SonarQubeLifecycle().on_project_archived(
+                ctx, _CREDS
+            )
+        self.assertEqual(result.status, 'skipped')
+        self.assertIn(_KEY, result.message or '')
+        self.assertFalse(route.called)
         self.assertIsNone(ctx.service_writeback)
 
     @respx.mock
