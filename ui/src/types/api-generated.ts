@@ -4959,8 +4959,9 @@ export interface paths {
          *         409: The org has an agent with this slug.
          *         422: The team, a tag, a tool environment, or a subagent is not
          *             in the org, a subagent is given two times,
-         *             ``prompt_ref`` does not parse, or a platform field is not
-         *             valid (see :func:`_check_platform`).
+         *             ``prompt_ref`` does not parse or names an ``agents/``
+         *             prompt of another organization, or a platform field is
+         *             not valid (see :func:`_check_platform`).
          */
         post: operations["create_agent_api_organizations__org_slug__agents__post"];
         delete?: never;
@@ -8936,8 +8937,9 @@ export interface paths {
          *         400: Invalid patch or a read-only path.
          *         403: A rename without ``prompt:promote``.
          *         404: No such prompt.
-         *         409: The new ``namespace/slug`` is taken, or the rename moves
-         *             a prompt into or out of the ``workflows`` namespace.
+         *         409: The new ``namespace/slug`` is taken, the rename moves
+         *             a prompt into or out of the ``workflows`` namespace, or the
+         *             prompt moved or was deleted while this request ran.
          *         422: The patched values are not valid.
          */
         patch: operations["patch_prompt_api_prompts__namespace___slug__patch"];
