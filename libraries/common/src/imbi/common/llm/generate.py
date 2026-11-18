@@ -185,8 +185,11 @@ async def generate(
         return Result(answer.text, None, answer.usage, answer.request_id)
     value = answer.tool_input
     if value is None:
-        if request.driver in ('anthropic', 'bedrock'):
-            # The answer must be the tool call, also with tool choice auto.
+        if (
+            request.driver in ('anthropic', 'bedrock')
+            and not request.forced_tool_choice
+        ):
+            # With tool choice auto, the answer must be the tool call.
             raise GenerateError('model_answer_invalid', retry=True)
         try:
             value = json.loads(answer.text)
@@ -367,6 +370,18 @@ def _auto_tool(request: Request, schema: dict[str, typing.Any] | None) -> bool:
     return schema is not None and not request.forced_tool_choice
 
 
+def _one_tool_input(inputs: list[typing.Any]) -> typing.Any:
+    """Return the input of the one tool call, or ``None`` without one.
+
+    More than one call is ``model_answer_invalid``: Imbi does not
+    select one of the answers.
+
+    """
+    if len(inputs) > 1:
+        raise GenerateError('model_answer_invalid', retry=True)
+    return inputs[0] if inputs else None
+
+
 def _system(request: Request, auto_tool: bool) -> str:
     if not auto_tool:
         return request.system
@@ -412,7 +427,9 @@ async def _anthropic(
             }
         ]
         kwargs['tool_choice'] = (
-            {'type': 'auto'} if auto_tool else {'type': 'tool', 'name': TOOL}
+            {'type': 'auto', 'disable_parallel_tool_use': True}
+            if auto_tool
+            else {'type': 'tool', 'name': TOOL}
         )
     try:
         async with anthropic.AsyncAnthropic(
@@ -433,8 +450,8 @@ async def _anthropic(
     except anthropic.AnthropicError:
         raise GenerateError('provider_unreachable', retry=True) from None
     text = ''.join(b.text for b in response.content if b.type == 'text')
-    tool_input = next(
-        (b.input for b in response.content if b.type == 'tool_use'), None
+    tool_input = _one_tool_input(
+        [b.input for b in response.content if b.type == 'tool_use']
     )
     return _Answer(
         text,
@@ -574,8 +591,8 @@ async def _bedrock(
             'content'
         ]
         text = ''.join(str(c['text']) for c in content if 'text' in c)
-        tool_input = next(
-            (c['toolUse']['input'] for c in content if 'toolUse' in c), None
+        tool_input = _one_tool_input(
+            [c['toolUse']['input'] for c in content if 'toolUse' in c]
         )
         usage = _mapping(data.get('usage'))
     except (KeyError, TypeError, AttributeError):

@@ -207,7 +207,7 @@ Imbi asks for the structured answer in the form of the driver:
 
 | Driver | Form |
 |---|---|
-| Anthropic, AWS Bedrock | One forced tool call |
+| Anthropic, AWS Bedrock | One `submit_result` tool call, forced unless [Forced tool choice](#forced-tool-choice) is off |
 | OpenAI, OpenAI-compatible | A strict `json_schema` response format |
 | Google Vertex AI | A JSON response schema (Gemini) |
 
@@ -230,8 +230,8 @@ Claude model with extended thinking. The call then fails with
 Turn **Forced tool choice** off for such a model. Imbi then sends the
 tool with the tool choice `auto`, and adds an instruction to the
 system prompt that tells the model to call the tool. Imbi checks the
-answer against the schema. When the model does not call the tool, the
-call fails with `model_answer_invalid` and the step can try again. The
+answer against the schema. When the model does not call the tool, or
+calls it more than one time, the call fails with `model_answer_invalid` and the step can try again. The
 switch is on by default. Other drivers do not use it.
 
 !!! note
