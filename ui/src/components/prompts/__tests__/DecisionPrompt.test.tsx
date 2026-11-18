@@ -1,6 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { fireEvent, render, screen, waitFor } from '@/test/utils'
+import { fireEvent, JSON_SOURCE, render, screen, waitFor } from '@/test/utils'
 import type { PromptVersion } from '@/types'
 
 import { prompt, version } from './fixtures'
@@ -155,40 +155,51 @@ describe('Decision prompts', () => {
     expect(screen.getByText(/20 in/)).toBeInTheDocument()
   })
 
-  it('keeps a large integer in an any variable as text', async () => {
-    const endpoints = await import('@/api/endpoints')
-    vi.mocked(endpoints.listPromptVersions).mockResolvedValue([
-      {
-        ...decisionVersion(1),
-        variable_schema: { service: { required: true, type: 'any' } },
-      },
-    ])
-    vi.mocked(endpoints.runPrompt).mockResolvedValue({
-      answers: {},
-      model: 'jev',
-      model_id: 'jev-latest',
-      n: null,
-      ref: 'mender/triage (draft)',
-      request: { questions: {}, state: {} },
-      usage: {},
-    })
-    await renderEditor()
-    await waitFor(() =>
-      expect(screen.getByLabelText('Run variable service')).toBeInTheDocument(),
-    )
-    fireEvent.change(screen.getByLabelText('Run variable service'), {
-      target: { value: '{"ids": [12345678901234567890, 7]}' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: /^run$/i }))
-    await waitFor(() => expect(endpoints.runPrompt).toHaveBeenCalled())
-    const request = vi.mocked(endpoints.runPrompt).mock.calls[0][1]
-    expect(request.variables).toEqual({
-      service: { ids: ['12345678901234567890', 7] },
-    })
-    expect(
-      screen.getByText(/Large integers are sent as text.*\(service\)/),
-    ).toBeInTheDocument()
-  })
+  it.skipIf(!JSON_SOURCE)(
+    'keeps a large integer in an any variable as text',
+    async () => {
+      const endpoints = await import('@/api/endpoints')
+      vi.mocked(endpoints.listPromptVersions).mockResolvedValue([
+        {
+          ...decisionVersion(1),
+          variable_schema: { service: { required: true, type: 'any' } },
+        },
+      ])
+      vi.mocked(endpoints.runPrompt).mockResolvedValue({
+        answers: {},
+        model: 'jev',
+        model_id: 'jev-latest',
+        n: null,
+        ref: 'mender/triage (draft)',
+        request: { questions: {}, state: {} },
+        usage: {},
+      })
+      await renderEditor()
+      await waitFor(() =>
+        expect(
+          screen.getByLabelText('Run variable service'),
+        ).toBeInTheDocument(),
+      )
+      const notice = /sent as text.*\(service\)/
+      fireEvent.change(screen.getByLabelText('Run variable service'), {
+        target: { value: '{"ids": [12345678901234567890, 7]}' },
+      })
+      // The notice shows before Run.
+      expect(screen.getByText(notice)).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: /^run$/i }))
+      await waitFor(() => expect(endpoints.runPrompt).toHaveBeenCalled())
+      const request = vi.mocked(endpoints.runPrompt).mock.calls[0][1]
+      expect(request.variables).toEqual({
+        service: { ids: ['12345678901234567890', 7] },
+      })
+      expect(screen.getByText(notice)).toBeInTheDocument()
+      // A changed input clears it.
+      fireEvent.change(screen.getByLabelText('Run variable service'), {
+        target: { value: '9007199254740992' },
+      })
+      expect(screen.queryByText(notice)).not.toBeInTheDocument()
+    },
+  )
 })
 
 describe('Question helpers', () => {

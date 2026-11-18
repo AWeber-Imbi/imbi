@@ -14,15 +14,21 @@ import { JsonBlock } from './JsonBlock'
 import { hasTemplate, isRecord } from './schemaFields'
 import type { ScriptPreviewRequest, WorkflowNode } from './types'
 
-/** The sample as an object, or `null`; see `parseJson` for `onKept`. */
+/**
+ * The sample as an object, or `null`; see `parseJson` for `onKept`,
+ * which is called only for a sample that is an object.
+ */
 export function parseSample(
   text: string,
   onKept: () => void,
 ): null | Record<string, unknown> {
   if (!text.trim()) return {}
   try {
-    const value = parseJson(text, onKept)
-    return isRecord(value) ? value : null
+    let kept = false
+    const value = parseJson(text, () => (kept = true))
+    if (!isRecord(value)) return null
+    if (kept) onKept()
+    return value
   } catch {
     return null
   }

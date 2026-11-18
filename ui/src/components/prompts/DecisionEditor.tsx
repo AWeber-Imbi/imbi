@@ -302,7 +302,18 @@ export function RunPanel({
   const orgSlug = selectedOrganization?.slug
   const [values, setValues] = useState<Record<string, boolean | string>>({})
   const [inputError, setInputError] = useState<null | string>(null)
-  const [keptAsText, setKeptAsText] = useState<string[]>([])
+  // Follows the inputs, so the notice shows before Run and never goes stale.
+  const keptAsText = variables
+    .filter((v) => {
+      let kept = false
+      try {
+        parseValue(values[v.name] ?? '', v.type, () => (kept = true))
+      } catch {
+        return false
+      }
+      return kept
+    })
+    .map((v) => v.name)
 
   const run = useMutation({
     mutationFn: (vars: Record<string, unknown>) =>
@@ -320,12 +331,9 @@ export function RunPanel({
 
   const submit = () => {
     const vars: Record<string, unknown> = {}
-    const kept = new Set<string>()
     try {
       for (const v of variables) {
-        const value = parseValue(values[v.name] ?? '', v.type, () =>
-          kept.add(v.name),
-        )
+        const value = parseValue(values[v.name] ?? '', v.type, () => {})
         if (value !== undefined) vars[v.name] = value
       }
     } catch {
@@ -335,7 +343,6 @@ export function RunPanel({
       return
     }
     setInputError(null)
-    setKeptAsText([...kept])
     run.mutate(vars)
   }
 

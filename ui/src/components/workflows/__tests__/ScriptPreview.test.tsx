@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { previewScript } from '@/api/endpoints'
-import { fireEvent, render, screen, waitFor } from '@/test/utils'
+import { fireEvent, JSON_SOURCE, render, screen, waitFor } from '@/test/utils'
 
 import { ScriptPreview } from '../ScriptPreview'
 import { node } from './fixtures'
@@ -113,23 +113,38 @@ describe('ScriptPreview', () => {
     expect(sample()).toEqual({ n: 9 })
   })
 
-  it('keeps a large integer in the sample as text', async () => {
-    vi.mocked(previewScript).mockResolvedValue({ output: {}, port: 1 })
-    renderPreview()
-    fireEvent.change(screen.getByLabelText('Sample inputs'), {
-      target: { value: '{"n": 12345678901234567890, "limit": 2}' },
-    })
-    expect(screen.getByText(/Large integers are sent as text/)).toBeVisible()
-    fireEvent.click(screen.getByRole('button', { name: 'Run script' }))
-    await waitFor(() =>
-      expect(previewScript).toHaveBeenCalledWith(
-        'acme',
-        expect.objectContaining({
-          inputs: { limit: 2, n: '12345678901234567890' },
-        }),
-      ),
-    )
-  })
+  it.skipIf(!JSON_SOURCE)(
+    'keeps a large integer in the sample as text',
+    async () => {
+      vi.mocked(previewScript).mockResolvedValue({ output: {}, port: 1 })
+      renderPreview()
+      fireEvent.change(screen.getByLabelText('Sample inputs'), {
+        target: { value: '{"n": 12345678901234567890, "limit": 2}' },
+      })
+      expect(screen.getByText(/sent as text/)).toBeVisible()
+      fireEvent.click(screen.getByRole('button', { name: 'Run script' }))
+      await waitFor(() =>
+        expect(previewScript).toHaveBeenCalledWith(
+          'acme',
+          expect.objectContaining({
+            inputs: { limit: 2, n: '12345678901234567890' },
+          }),
+        ),
+      )
+    },
+  )
+
+  it.skipIf(!JSON_SOURCE)(
+    'shows no text notice for a sample that is not an object',
+    () => {
+      renderPreview()
+      fireEvent.change(screen.getByLabelText('Sample inputs'), {
+        target: { value: '[9007199254740993]' },
+      })
+      expect(screen.queryByText(/sent as text/)).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Run script' })).toBeDisabled()
+    },
+  )
 
   it('does not run sample inputs that are not a JSON object', async () => {
     renderPreview()
