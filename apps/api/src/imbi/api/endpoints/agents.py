@@ -1045,6 +1045,34 @@ async def _check_egress(
         raise _unprocessable('Egress destinations: ' + '; '.join(problems))
 
 
+def _check_prompt_scope(org_slug: str, ref: str | None) -> None:
+    """Reject an ``agents/`` prompt of another organization.
+
+    An org-scoped agent prompt has the slug ``<org_slug>.<name>``. An
+    organization rename moves only the references of its own agents,
+    so a reference from another organization would keep the old key
+    and stop resolving. A slug with no ``.`` is not org-scoped and is
+    accepted.
+
+    Raises:
+        422: ``ref`` names an ``agents/`` prompt of another
+            organization.
+
+    """
+    if ref is None:
+        return
+    namespace, prompt_slug, _selector = prompt_resolve.parse_ref(ref)
+    if (
+        namespace == AGENT_PROMPT_NAMESPACE
+        and '.' in prompt_slug
+        and not prompt_slug.startswith(f'{org_slug}.')
+    ):
+        raise _unprocessable(
+            f'prompt_ref {namespace}/{prompt_slug} is not a prompt of the '
+            f'{org_slug!r} organization'
+        )
+
+
 def _version_conflict_detail(n: int) -> str:
     return (
         f'Version {n} of this agent was saved by another request; '
@@ -1129,6 +1157,8 @@ async def _apply(
     if config_changed:
         if target.slug != current.slug:
             await _assert_slug_free(db, org_slug, target.slug)
+        if target.prompt_ref != current.prompt_ref:
+            _check_prompt_scope(org_slug, target.prompt_ref)
         team_id: str | None = None
         if target.team != current.team:
             team_id = await _team_id(db, org_slug, target.team)
@@ -1275,11 +1305,13 @@ async def create_agent(
         409: The org has an agent with this slug.
         422: The team, a tag, a tool environment, or a subagent is not
             in the org, a subagent is given two times,
-            ``prompt_ref`` does not parse, or a platform field is not
-            valid (see :func:`_check_platform`).
+            ``prompt_ref`` does not parse or names an ``agents/``
+            prompt of another organization, or a platform field is
+            not valid (see :func:`_check_platform`).
 
     """
     snapshot = _snapshot_from(data)
+    _check_prompt_scope(org_slug, snapshot.prompt_ref)
     snapshot.settings = await _check_platform(
         store, org_id, snapshot.settings, None
     )

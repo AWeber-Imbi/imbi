@@ -817,6 +817,37 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(version['n'], 2)
         self.assertEqual(version['summary'], 'Canary')
 
+    def test_patch_rejects_prompt_of_other_org(self) -> None:
+        # An org rename moves only the references of its own agents.
+        self.mock_db.execute.side_effect = [[self._row()]]
+        response = self.client.patch(
+            BASE + '/triage',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/prompt_ref',
+                    'value': 'agents/acme.bot@3',
+                }
+            ],
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn('agents/acme.bot', response.json()['detail'])
+        self.assertEqual(self._version_writes(), [])
+
+    def test_create_rejects_prompt_of_other_org(self) -> None:
+        response = self.client.post(
+            BASE + '/',
+            json={
+                'name': 'Triage',
+                'slug': 'triage',
+                'team': 'ops',
+                'prompt_ref': 'agents/acme.bot@stable',
+            },
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn('agents/acme.bot', response.json()['detail'])
+        self.mock_db.execute.assert_not_awaited()
+
     def test_patch_enabled_only_writes_no_version(self) -> None:
         self.mock_db.execute.side_effect = [
             [self._row()],
