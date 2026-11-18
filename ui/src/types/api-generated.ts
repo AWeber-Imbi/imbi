@@ -10406,6 +10406,11 @@ export interface components {
              * @default false
              */
             supports_structured_output: boolean;
+            /**
+             * Supports Forced Tool Choice
+             * @default true
+             */
+            supports_forced_tool_choice: boolean;
         };
         /**
          * AIModelResponse
@@ -10476,6 +10481,11 @@ export interface components {
              * @default false
              */
             supports_structured_output: boolean;
+            /**
+             * Supports Forced Tool Choice
+             * @default true
+             */
+            supports_forced_tool_choice: boolean;
             /** Created At */
             created_at?: string | null;
             /** Updated At */

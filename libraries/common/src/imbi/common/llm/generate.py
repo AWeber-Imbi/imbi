@@ -11,7 +11,10 @@ provider driver:
 With ``output_fields``, the model must give a structured answer:
 
 - ``anthropic`` and ``bedrock``: one forced tool whose input schema is
-  the schema of the fields.
+  the schema of the fields. For a model that refuses a forced tool
+  choice (``forced_tool_choice`` is ``False``), the tool choice is
+  ``auto`` and the system prompt tells the model to call the tool. An
+  answer without the tool call is ``model_answer_invalid``.
 - ``openai``, ``openai_compatible``: a strict ``json_schema``
   ``response_format``. Strict mode needs every property in
   ``required``, so each optional field becomes a required field that
@@ -52,6 +55,8 @@ DEFAULT_MAX_TOKENS = 4096
 #: The name of the forced tool that carries a structured answer.
 TOOL = 'submit_result'
 _TOOL_DESCRIPTION = 'Submit the result.'
+#: Added to the system prompt when the tool choice is ``auto``.
+_TOOL_INSTRUCTION = f'Give your answer only as one call to the {TOOL} tool.'
 
 #: Words in a 400 body that tell the provider refused structured output.
 _UNSUPPORTED = ('response_format', 'schema', 'tool')
@@ -110,6 +115,9 @@ class Request:
     output_fields: list[agent.OutputField] = dataclasses.field(
         default_factory=list[agent.OutputField]
     )
+    #: anthropic / bedrock: ``False`` for a model that refuses a forced
+    #: tool choice.
+    forced_tool_choice: bool = True
     #: Already resolved against the driver default.
     base_url: str | None = None
     credential: str | None = dataclasses.field(default=None, repr=False)
@@ -177,6 +185,9 @@ async def generate(
         return Result(answer.text, None, answer.usage, answer.request_id)
     value = answer.tool_input
     if value is None:
+        if request.driver in ('anthropic', 'bedrock'):
+            # The answer must be the tool call, also with tool choice auto.
+            raise GenerateError('model_answer_invalid', retry=True)
         try:
             value = json.loads(answer.text)
         except ValueError:
@@ -351,6 +362,17 @@ def _messages(request: Request) -> list[dict[str, str]]:
     return [m.model_dump() for m in request.messages]
 
 
+def _auto_tool(request: Request, schema: dict[str, typing.Any] | None) -> bool:
+    """Return ``True`` when the structured answer uses ``auto``."""
+    return schema is not None and not request.forced_tool_choice
+
+
+def _system(request: Request, auto_tool: bool) -> str:
+    if not auto_tool:
+        return request.system
+    return '\n\n'.join(filter(None, [request.system, _TOOL_INSTRUCTION]))
+
+
 # --- anthropic -----------------------------------------------------------
 
 
@@ -371,11 +393,12 @@ async def _anthropic(
         else {'api_key': request.credential}
     )
     params = request.params
+    auto_tool = _auto_tool(request, schema)
     kwargs: dict[str, typing.Any] = _omit_none(
         model=request.model_id,
         max_tokens=params.max_tokens or DEFAULT_MAX_TOKENS,
         messages=_messages(request),
-        system=request.system or None,
+        system=_system(request, auto_tool) or None,
         temperature=params.temperature,
         top_p=params.top_p,
         stop_sequences=params.stop_sequences,
@@ -388,7 +411,9 @@ async def _anthropic(
                 'input_schema': schema,
             }
         ]
-        kwargs['tool_choice'] = {'type': 'tool', 'name': TOOL}
+        kwargs['tool_choice'] = (
+            {'type': 'auto'} if auto_tool else {'type': 'tool', 'name': TOOL}
+        )
     try:
         async with anthropic.AsyncAnthropic(
             **auth,
@@ -502,12 +527,14 @@ async def _bedrock(
     if not base:
         raise GenerateError('provider_misconfigured')
     params = request.params
+    auto_tool = _auto_tool(request, schema)
+    system = _system(request, auto_tool)
     body: dict[str, typing.Any] = _omit_none(
         messages=[
             {'role': m.role, 'content': [{'text': m.content}]}
             for m in request.messages
         ],
-        system=[{'text': request.system}] if request.system else None,
+        system=[{'text': system}] if system else None,
         inferenceConfig=_omit_none(
             maxTokens=params.max_tokens,
             temperature=params.temperature,
@@ -527,7 +554,9 @@ async def _bedrock(
                     }
                 }
             ],
-            'toolChoice': {'tool': {'name': TOOL}},
+            'toolChoice': {'auto': {}}
+            if auto_tool
+            else {'tool': {'name': TOOL}},
         }
     headers = _bearer(request)
     model = urllib.parse.quote(request.model_id, safe='')

@@ -64,6 +64,7 @@ _PATCHABLE_FIELDS: tuple[str, ...] = (
     'default_top_p',
     'monthly_spend_cap',
     'supports_structured_output',
+    'supports_forced_tool_choice',
 )
 
 #: Paths a patch may not target. ``provider_id`` and
@@ -131,6 +132,7 @@ class AIModelCreate(pydantic.BaseModel):
         default=None, ge=0
     )
     supports_structured_output: bool = False
+    supports_forced_tool_choice: bool = True
 
 
 class AIModelResponse(pydantic.BaseModel):
@@ -161,6 +163,7 @@ class AIModelResponse(pydantic.BaseModel):
     default_top_p: float | None = None
     monthly_spend_cap: decimal.Decimal | None = None
     supports_structured_output: bool = False
+    supports_forced_tool_choice: bool = True
     created_at: datetime.datetime | None = None
     updated_at: datetime.datetime | None = None
 
@@ -279,6 +282,7 @@ def _to_response(
         default_top_p=node.default_top_p,
         monthly_spend_cap=node.monthly_spend_cap,
         supports_structured_output=node.supports_structured_output,
+        supports_forced_tool_choice=node.supports_forced_tool_choice,
         created_at=node.created_at,
         updated_at=node.updated_at,
     )

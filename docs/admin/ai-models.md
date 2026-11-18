@@ -178,6 +178,7 @@ two steps.
 | Default temperature | Between 0 and 2. Generative models only. |
 | Default top_p | Between 0 and 1. Generative models only. |
 | Structured output | The model can return JSON that matches a schema. See [Structured output](#structured-output). |
+| Forced tool choice | Shown when **Structured output** is on. The model accepts a forced tool choice. See [Forced tool choice](#forced-tool-choice). |
 | Monthly spend cap | USD per month. |
 | Allowed teams | See [Team access](#team-access). |
 | Enable immediately | Makes the model selectable as soon as it is created. |
@@ -218,6 +219,20 @@ the switch at two times:
   says that the model does not support structured output.
 - **Run.** When you turn the switch off after you save the workflow,
   the step fails at run time with `model_no_structured_output`.
+
+### Forced tool choice
+
+For Anthropic and AWS Bedrock, Imbi forces the model to call one tool,
+`submit_result`. Some models refuse a forced tool choice, for example a
+Claude model with extended thinking. The call then fails with
+`model_unsupported`.
+
+Turn **Forced tool choice** off for such a model. Imbi then sends the
+tool with the tool choice `auto`, and adds an instruction to the
+system prompt that tells the model to call the tool. Imbi checks the
+answer against the schema. When the model does not call the tool, the
+call fails with `model_answer_invalid` and the step can try again. The
+switch is on by default. Other drivers do not use it.
 
 !!! note
     An LLM Call step on Google Vertex AI calls Gemini models only, and

@@ -863,6 +863,10 @@ class AIModel(Node):
     #: Set by an admin. ``False`` means an unknown model: a workflow
     #: ``llm_call`` step with output fields does not use it.
     supports_structured_output: bool = False
+    #: ``False`` for a model that refuses a forced tool choice, such as
+    #: a Claude model with extended thinking. Structured output then
+    #: uses ``tool_choice: auto`` and an instruction to call the tool.
+    supports_forced_tool_choice: bool = True
 
 
 #: Namespaces, prompt slugs, and label names share one shape, so a

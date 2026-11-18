@@ -105,6 +105,7 @@ const model: AIModel = {
   provider_id: 'prov-1',
   provider_name: 'Anthropic',
   slug: 'claude-fable-5-1',
+  supports_forced_tool_choice: true,
   supports_structured_output: false,
 }
 
@@ -407,6 +408,28 @@ describe('AIModelsManagement', () => {
 
     await waitFor(() =>
       expect(endpoints.updateAIModel).toHaveBeenCalledWith('model-1', [
+        { op: 'replace', path: '/supports_structured_output', value: true },
+      ]),
+    )
+  })
+
+  it('patches the forced tool choice flag of a model', async () => {
+    const endpoints = await import('@/api/endpoints')
+    await mountAt('/admin/ai-models/model-1/edit')
+
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    await waitFor(() =>
+      expect(screen.getByLabelText('Structured output')).toBeInTheDocument(),
+    )
+    expect(screen.queryByLabelText('Forced tool choice')).toBeNull()
+    fireEvent.click(screen.getByLabelText('Structured output'))
+    fireEvent.click(screen.getByLabelText('Forced tool choice'))
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() =>
+      expect(endpoints.updateAIModel).toHaveBeenCalledWith('model-1', [
+        { op: 'replace', path: '/supports_forced_tool_choice', value: false },
         { op: 'replace', path: '/supports_structured_output', value: true },
       ]),
     )
