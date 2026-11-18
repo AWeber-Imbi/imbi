@@ -94,6 +94,44 @@ call, when it starts.
 3. To use Gemini on Google Vertex AI in an LLM Call step, set an API key
    on the Vertex provider. The runtime IAM role does not work for these
    calls.
+4. **Before you deploy**, find each agent whose model is restricted to
+   teams that do not include the agent's owner team. When a runner claims
+   a task of such an agent, imbi-api now closes the task with
+   `failed_external` and the reason `model_not_allowed`. Add the owner
+   team to the model, or point the agent at a prompt version with another
+   model. Decision prompt runs now check the teams of a restricted model
+   too. See [Team access](../admin/ai-models.md#team-access).
+5. imbi-assistant now checks the model of each new conversation. A user
+   who is not an admin gets `403 model_not_allowed` for a model that is
+   not an enabled catalog model, or that is restricted to teams the user
+   is not in. `IMBI_ASSISTANT_MODEL` still works when it is not in the
+   catalog. The assistant and the Slack bot use the model of their system
+   prompt only for members of an allowed team. Other users get the
+   configured model.
+6. Archiving or deleting a project now deletes its SonarQube project only
+   when the linked key is `<owning-team-slug>:<project-slug>`, and only
+   when no other Imbi project links the key. Imbi skips and logs any
+   other key. Delete such a SonarQube project in SonarQube yourself.
+   Linking a SonarQube key that another project holds now gets a `409`,
+   and only an admin can change a verified SonarQube key. See
+   [SonarQube lifecycle](../plugins/sonarqube.md#lifecycle).
+7. An LLM Call step whose request may have reached the provider, with no
+   answer (a read timeout or a lost connection), now fails with
+   `provider_outcome_unknown` and is not retried. Before, the engine
+   retried it, and the provider could bill a second call. See
+   [LLM Call](../admin/workflows.md#llm-call).
+8. Renaming an organization now moves its `agents/` and `workflows/`
+   prompts to the new slug, and updates the agents and LLM Call steps
+   that use them. A prompt that an earlier rename left under an old slug
+   is not moved. If you renamed an organization that has agents, check
+   that each agent still resolves its prompt. An agent can no longer
+   use an org-owned prompt of another organization (`422` on save,
+   `409` on restore).
+9. AI Models has a new **Forced tool choice** switch. It is on by
+   default, so existing models do not change. Turn it off for an
+   Anthropic or Bedrock model that refuses a forced tool choice, for
+   example a model with extended thinking. See
+   [Forced tool choice](../admin/ai-models.md#forced-tool-choice).
 
 ## 2.51.0
 

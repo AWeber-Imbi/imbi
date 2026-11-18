@@ -145,17 +145,25 @@ Doctor shows `warn` findings. It does not fail.
 
 Both events call `POST /api/projects/delete` with the component key. The
 key is the identifier on the `EXISTS_IN` edge. A project without an edge
-is skipped: the plugin never deletes by the `<owning team slug>:<project
-slug>` convention that the Doctor uses, because that key is a guess.
+is skipped: the plugin does not use the `<owning team slug>:<project
+slug>` convention to find a key, because that key is a guess.
 After the call, the plugin removes the edge and the `sonarqube` project
 link, so Imbi does not point at a project that is gone.
+
+Any project writer can link any key, so the plugin deletes only when the
+edge names the key `<owning team slug>:<project slug>` of the project.
+It skips and logs any other key. It also skips a key that another Imbi
+project links through any SonarQube integration of the organization. For
+a skipped key, delete the SonarQube project in SonarQube yourself. A
+manual link to a key that another project holds gets a `409`, and only
+an admin can change the verified key of a project.
 
 The result of the event:
 
 | Result | When |
 |---|---|
 | `ok` | SonarQube deleted the project |
-| `skipped` | SonarQube has no project with the key. The edge and link are still removed. Also when the project has no `EXISTS_IN` edge, or the integration has no `service_url` or `api_token` |
+| `skipped` | SonarQube has no project with the key. The edge and link are still removed. Also when the project has no `EXISTS_IN` edge, the key is not the project's convention key, another Imbi project links the key, or the integration has no `service_url` or `api_token` |
 | `failed` | SonarQube refused the call, for example `403` when the token account lacks Administer on the project. On archive, the edge and link stay. On delete, Imbi has already removed the project node, so nothing is left to keep them on: the SonarQube project remains and you delete it in SonarQube yourself |
 
 The plugin does not create SonarQube projects when you create an Imbi
