@@ -790,6 +790,7 @@ def _without_task_content(
         k: v
         for k, v in step['output'].items()
         if k not in ('reason', 'summary', 'result')
+        and k not in agent_step.TicketAttributes.model_fields
     }
     return {**step, 'output': output}
 

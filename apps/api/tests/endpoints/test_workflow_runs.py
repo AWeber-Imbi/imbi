@@ -1742,6 +1742,11 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
                             'reason': 'secret_reason',
                             'summary': 'Secret summary.',
                             'result': {'secret': True},
+                            'title': 'Secret title',
+                            'url': 'https://imbi.example.com/tasks/T-1',
+                            'project': 'secret-project',
+                            'agent': 'secret-agent',
+                            'cost_usd': 1.25,
                         }
                     ),
                     self.run_id,
@@ -1776,6 +1781,8 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
         self.assertEqual((await output())['summary'], 'Secret summary.')
         self.assertEqual((await output())['reason'], 'secret_reason')
         self.assertEqual((await output())['result'], {'secret': True})
+        self.assertEqual((await output())['title'], 'Secret title')
+        self.assertEqual((await output())['cost_usd'], 1.25)
 
     async def test_open_run_keeps_the_agent_in_use(self) -> None:
         # The run is open on version 1. Version 2 has no agent step.
