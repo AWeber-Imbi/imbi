@@ -21,6 +21,7 @@ from apps.api.tests import support
 from imbi.api import agent_tasks, email, models, workflows
 from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import project_deployments, workflow_runs
+from imbi.api.workflows import tickets
 from imbi.common import graph
 from imbi.common.plugins import base as plugin_base
 from imbi.common.workflows import graph as wf
@@ -927,6 +928,97 @@ class EngineSlackTestCase(WorkflowRunTestCase):
         self.addAsyncCleanup(self._forget, str(self.run_id))
         self.post_url = f'{self.url}/runs/{self.run_id}/steps/post/slack'
         self.headers = {'Idempotency-Key': f'{self.run_id}:post'}
+        await agent_tasks.initialize()
+        self.task_pool = agent_tasks.create_pool()
+        await self.task_pool.open()
+        self.tasks = agent_tasks.TaskStore(self.task_pool)
+        self.other_org = f'{self.org}-other'
+        self.addAsyncCleanup(self._cleanup_tasks)
+        overrides[agent_tasks._inject_store] = lambda: self.tasks
+
+    async def _cleanup_tasks(self) -> None:
+        async with self.task_pool.connection() as conn:
+            for table in ('task_projects', 'tasks', 'task_id_sequences'):
+                await conn.execute(
+                    f'DELETE FROM agent_runtime.{table}'
+                    ' WHERE organization_id = ANY(%s)',
+                    ([self.org, self.other_org],),
+                )
+        await self.task_pool.close()
+
+    async def _make_task(self, org: str, title: str) -> str:
+        task, _ = await self.tasks.create(
+            agent_tasks.NewTask(
+                organization_id=org,
+                agent_id='fixer',
+                agent_version=1,
+                prompt_version=None,
+                service_account_id='sa',
+                title=title,
+                description='Fix it.',
+                origin_kind='human',
+                origin_id=self.email,
+                origin={'kind': 'human'},
+                idempotency_key=None,
+                owner=self.email,
+                budget=None,
+                projects=[(self.project, self.project)],
+            ),
+            agent_tasks.Actor('human', self.email, 'web'),
+            {},
+        )
+        return str(task['short_id'])
+
+    async def _post_with_ticket(self, ticket: str) -> httpx.Response:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE workflow_runtime.step_runs SET input = %s'
+                " WHERE run_id = %s AND node_id = 'post'",
+                (
+                    workflows.runs.pg_json.Jsonb(
+                        {
+                            'channel': 'C0123456789',
+                            'text': '*Done*',
+                            'ticket': ticket,
+                        }
+                    ),
+                    self.run_id,
+                ),
+            )
+        config = mock.Mock(ui_url='https://imbi.example.com')
+        with mock.patch.object(
+            tickets.settings, 'get_server_config', return_value=config
+        ):
+            return await self.client.post(self.post_url, headers=self.headers)
+
+    async def test_ticket_block_escapes_the_task(self) -> None:
+        short_id = await self._make_task(self.org, '<!channel> & fix')
+        response = await self._post_with_ticket(short_id)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.slack.chat_postMessage.assert_awaited_once_with(
+            channel='C0123456789',
+            text='*Done*\n\n*<https://imbi.example.com/agents/tasks/'
+            f'{self.org}/{short_id}|{short_id}: &lt;!channel&gt; &amp; fix>*'
+            f'\nStatus: queued | Outcome: none | Project: {self.project}',
+            unfurl_links=False,
+        )
+
+    async def test_missing_ticket_fails(self) -> None:
+        response = await self._post_with_ticket('T-999')
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual(
+            response.json()['detail'], {'error': 'ticket_not_found'}
+        )
+        self.slack.chat_postMessage.assert_not_awaited()
+
+    async def test_ticket_of_another_org_fails(self) -> None:
+        short_id = await self._make_task(self.other_org, 'Other')
+        response = await self._post_with_ticket(short_id)
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual(
+            response.json()['detail'], {'error': 'ticket_not_found'}
+        )
+        self.slack.chat_postMessage.assert_not_awaited()
 
     async def test_posts_once(self) -> None:
         for _ in range(2):
@@ -1331,6 +1423,8 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
                 'reason': None,
                 'summary': None,
                 'result': None,
+                # Set when the task is closed.
+                **dict.fromkeys(agent_step.TicketAttributes.model_fields),
             },
         )
         self.assertEqual(await self._count(), 1)
@@ -1387,8 +1481,26 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
             agent_tasks.Actor('agent', self.agent, 'harness'),
             {'n': 3},
         )
-        response = await self.client.post(self.step_url)
+        config = mock.Mock(ui_url='https://imbi.example.com')
+        with mock.patch.object(
+            tickets.settings, 'get_server_config', return_value=config
+        ):
+            response = await self.client.post(self.step_url)
         self.assertEqual(response.json()['result'], {'n': 3})
+        self.assertEqual(
+            {
+                k: response.json()[k]
+                for k in agent_step.TicketAttributes.model_fields
+            },
+            {
+                'title': 'Agent guard: Ask',
+                'url': 'https://imbi.example.com/agents/tasks/'
+                f'{self.org}/{task_id}',
+                'project': None,
+                'agent': self.agent,
+                'cost_usd': 0.0,
+            },
+        )
 
     async def _task_title(self, params: dict[str, typing.Any]) -> str:
         await self._agent_step(

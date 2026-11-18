@@ -6437,13 +6437,18 @@ export interface paths {
          *         404: No such workflow, run, or step.
          *         409: The step is not a running slack step, or
          *             ``outcome_unknown``: a call with the key did not finish.
-         *         422: ``invalid_channel``: the channel is not a Slack channel id.
+         *         422: ``invalid_channel``: the channel is not a Slack channel id,
+         *             or ``ticket_not_found``: the ticket is not a task of the
+         *             organization.
          *         502: ``slack_unreachable``: the call to Slack failed, and Slack
          *             may have posted the message.
          *         503: ``slack_not_configured``: imbi-api has no bot token.
          *
          *     A refusal from Slack is not an error here: the response has its
          *     code in ``error``, and the engine fails the step.
+         *
+         *     A step with a ``ticket`` shows the task below the message (see
+         *     :func:`tickets.with_ticket_block`).
          */
         post: operations["send_step_slack_api_organizations__org_slug__workflows__slug__runs__run_id__steps__node_id__slack_post"];
         delete?: never;
@@ -21173,8 +21178,22 @@ export interface components {
              */
             status: "ok" | "initializing" | "error";
         };
-        /** StepAgentTask */
+        /**
+         * StepAgentTask
+         * @description The attributes of :class:`agent_step.TicketAttributes` are set
+         *     when the task is closed.
+         */
         StepAgentTask: {
+            /** Title */
+            title?: string | null;
+            /** Url */
+            url?: string | null;
+            /** Project */
+            project?: string | null;
+            /** Agent */
+            agent?: string | null;
+            /** Cost Usd */
+            cost_usd?: number | null;
             /** Task Id */
             task_id: string;
             /** Status */
@@ -33250,10 +33269,10 @@ export interface operations {
                 "Idempotency-Key": string;
             };
             path: {
+                org_slug: string;
                 slug: string;
                 run_id: string;
                 node_id: string;
-                org_slug: string;
             };
             cookie?: never;
         };

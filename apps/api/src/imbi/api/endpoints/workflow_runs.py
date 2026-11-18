@@ -47,6 +47,7 @@ from imbi.api.auth import organizations, permissions
 from imbi.api.email import client as email_client
 from imbi.api.endpoints import agent_tasks, project_deployments
 from imbi.api.plugins.resolution import ResolvedCapability
+from imbi.api.workflows import tickets
 from imbi.common import graph, lifespan
 from imbi.common.plugins.base import DeploymentRun
 from imbi.common.workflows import graph as wf
@@ -270,7 +271,10 @@ class SlackResult(pydantic.BaseModel):
     error: str | None = None
 
 
-class StepAgentTask(pydantic.BaseModel):
+class StepAgentTask(agent_step.TicketAttributes):
+    """The attributes of :class:`agent_step.TicketAttributes` are set
+    when the task is closed."""
+
     #: The short id, ``T-<n>``.
     task_id: str
     status: str
@@ -1422,12 +1426,14 @@ async def send_step_email(
     '/{slug}/runs/{run_id}/steps/{node_id}/slack', response_model=SlackResult
 )
 async def send_step_slack(
+    org_slug: str,
     org_id: OrgId,
     slug: str,
     run_id: uuid.UUID,
     node_id: str,
     store: workflows.Store,
     runs: workflows.Runs,
+    tasks: agent_runtime.Store,
     token: SlackToken,
     auth: EngineAuth,
     idempotency_key: IdempotencyKey,
@@ -1438,13 +1444,18 @@ async def send_step_slack(
         404: No such workflow, run, or step.
         409: The step is not a running slack step, or
             ``outcome_unknown``: a call with the key did not finish.
-        422: ``invalid_channel``: the channel is not a Slack channel id.
+        422: ``invalid_channel``: the channel is not a Slack channel id,
+            or ``ticket_not_found``: the ticket is not a task of the
+            organization.
         502: ``slack_unreachable``: the call to Slack failed, and Slack
             may have posted the message.
         503: ``slack_not_configured``: imbi-api has no bot token.
 
     A refusal from Slack is not an error here: the response has its
     code in ``error``, and the engine fails the step.
+
+    A step with a ``ticket`` shows the task below the message (see
+    :func:`tickets.with_ticket_block`).
 
     """
     step = await _running_step(store, runs, org_id, slug, run_id, node_id)
@@ -1464,9 +1475,18 @@ async def send_step_slack(
         raise fastapi.HTTPException(
             status_code=422, detail={'error': 'invalid_channel'}
         )
+    # Read before the key is taken too: a failed read posted nothing.
+    text = params.text
+    if params.ticket:
+        task = await tasks.get(org_id, params.ticket)
+        if task is None:
+            raise fastapi.HTTPException(
+                status_code=422, detail={'error': 'ticket_not_found'}
+            )
+        text = tickets.with_ticket_block(text, task, org_slug)
 
     async def call() -> dict[str, typing.Any]:
-        posted = await _post_slack(token, params.channel, params.text)
+        posted = await _post_slack(token, params.channel, text)
         return posted.model_dump()
 
     return await runs.once(
@@ -1620,12 +1640,12 @@ async def step_agent_task(
         or task['agent_id'] != agent_id
     ):
         raise _task_key_conflict()
-    summary = (
-        await tasks.last_agent_turn(task)
-        if task['status'] == 'closed'
-        else None
+    if task['status'] != 'closed':
+        return _step_agent_task(task)
+    summary, attributes = await asyncio.gather(
+        tasks.last_agent_turn(task), tickets.attributes(db, task)
     )
-    return _step_agent_task(task, summary)
+    return {**_step_agent_task(task, summary), **attributes}
 
 
 @workflow_runs_router.post(

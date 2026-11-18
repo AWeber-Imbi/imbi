@@ -4,6 +4,7 @@ These run against the live Postgres that ``root:services`` boots.
 """
 
 import datetime
+import decimal
 import typing
 import unittest
 import uuid
@@ -15,7 +16,7 @@ from psycopg.types import json as pg_json
 from apps.api.tests.endpoints.test_workflow_runs import HeldRunStore
 from imbi.api import workflows
 from imbi.api.workflows import runs as runs_module
-from imbi.api.workflows import task_trigger
+from imbi.api.workflows import task_trigger, tickets
 from imbi.common.workflows.registry import task_completed
 
 
@@ -25,6 +26,9 @@ def _task(**changes: typing.Any) -> dict[str, typing.Any]:
         'short_id': 'T-7',
         'agent_id': 'mender',
         'outcome': 'failed_external',
+        'title': 'Fix the build',
+        'cost_total': decimal.Decimal('1.250000'),
+        'projects': [{'project_id': 'p1', 'project_slug': 'web'}],
         'origin_kind': 'human',
         'origin': {'kind': 'human'},
         'chain_id': None,
@@ -48,6 +52,15 @@ class FakeTasks:
 
     async def triggers_started(self, task_id: uuid.UUID) -> None:
         self.started.append(task_id)
+
+
+class FakeGraph:
+    """Returns the slugs of the org and the agent of a task."""
+
+    async def execute(
+        self, _query: str, params: dict[str, str], _columns: list[str]
+    ) -> list[dict[str, str]]:
+        return [{'org_slug': '"eng"', 'agent_slug': f'"{params["agent"]}"'}]
 
 
 class ParamsTestCase(unittest.TestCase):
@@ -84,6 +97,7 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
             self.definitions,
             HeldRunStore(self.pool),
             typing.cast(typing.Any, self.tasks),
+            lambda: typing.cast(typing.Any, FakeGraph()),
         )
 
     async def _cleanup(self) -> None:
@@ -126,8 +140,12 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
             agent_id='mender', outcomes=['failed_external', 'failed_at_gate']
         )
         task = _task(organization_id=self.org)
-        await self.trigger(task)
-        await self.trigger(task)  # a repeat starts no second run
+        config = mock.Mock(ui_url='https://imbi.example.com')
+        with mock.patch.object(
+            tickets.settings, 'get_server_config', return_value=config
+        ):
+            await self.trigger(task)
+            await self.trigger(task)  # a repeat starts no second run
         self.assertEqual(
             await self._runs(),
             [
@@ -144,6 +162,11 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
                         'task_id': 'T-7',
                         'agent_id': 'mender',
                         'outcome': 'failed_external',
+                        'title': 'Fix the build',
+                        'url': 'https://imbi.example.com/agents/tasks/eng/T-7',
+                        'project': 'web',
+                        'agent': 'mender',
+                        'cost_usd': 1.25,
                     },
                 }
             ],

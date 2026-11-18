@@ -384,7 +384,31 @@ class Params(pydantic.BaseModel):
         return check_output_fields(fields)
 
 
-class Output(pydantic.BaseModel):
+class TicketAttributes(pydantic.BaseModel):
+    """The attributes of the task. ``None`` in a run that started
+    before they were added."""
+
+    title: str | None = None
+    #: The UI link of the task. ``None`` when ``IMBI_UI_URL`` is not set.
+    url: str | None = None
+    #: The slug of the first project of the task.
+    project: str | None = None
+    #: The slug of the agent.
+    agent: str | None = None
+    cost_usd: float | None = None
+
+
+#: The sample values of :class:`TicketAttributes`.
+SAMPLE_ATTRIBUTES: dict[str, typing.Any] = {
+    'title': 'Sample task',
+    'url': 'https://imbi.example.com/agents/tasks/example/T-1',
+    'project': 'sample-project',
+    'agent': 'sample-agent',
+    'cost_usd': 0.25,
+}
+
+
+class Output(TicketAttributes):
     task_id: str
     outcome: str
     reason: str | None = None
@@ -412,6 +436,7 @@ STEP = step_type.StepType(
         'reason': None,
         'summary': 'Sample output of a test run.',
         'result': None,
+        **SAMPLE_ATTRIBUTES,
     },
     ports=('Succeeded', 'Failed'),
     side_effect=True,

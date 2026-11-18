@@ -126,6 +126,7 @@ with one output port has no port name.
 | `manual` | Manual run | Triggers | One |
 | `schedule` | Schedule | Triggers | One |
 | `webhook` | Webhook | Triggers | One |
+| `task_completed` | Task completed | Triggers | One |
 | `wait` | Wait | Logic | One |
 | `model_decision` | Model decision | Logic | One for each branch |
 | `condition` | Condition | Logic | `True`, `False` |
@@ -208,6 +209,31 @@ A delivery to a gateway Webhook starts a run.
 `{{ trigger.payload.repository.name }}`.
 
 Create the Webhook first at **Admin > \<organization\> Admin > Webhooks**.
+
+### Task completed
+
+An agent task of the organization that closes starts a run.
+
+| Parameter | What to enter | Default |
+|---|---|---|
+| `agent_id` | Start a run only for the tasks of this agent | None (any agent) |
+| `outcomes` | Start a run only for the tasks that close with one of these outcomes | None (any outcome) |
+
+**Output:** the attributes of the task. Use `{{ trigger.<field> }}`.
+
+| Field | Value |
+|---|---|
+| `task_id` | The short id of the task, for example `T-12` |
+| `agent_id` | The id of the agent |
+| `outcome` | The outcome of the task |
+| `title` | The title of the task |
+| `url` | The link to the task in the UI. `null` when `IMBI_UI_URL` is not set |
+| `project` | The slug of the first project of the task. `null` when the task has no project |
+| `agent` | The slug of the agent |
+| `cost_usd` | The cost of the task in USD |
+
+The fields after `outcome` are `null` in a run that started before Imbi
+added them.
 
 ### Wait
 
@@ -465,6 +491,7 @@ Posts a message to a Slack channel as the Imbi bot.
 |---|---|
 | `channel` | The channel ID, for example `C0123456789`, or one plain reference such as `{{ trigger.channel }}`. Not the channel name |
 | `text` | The message, in Slack mrkdwn, up to 40,000 characters. Templates are allowed |
+| `ticket` | Optional. An agent task (a ticket) to show below the message: a short id such as `T-12`, or one plain reference such as `{{ trigger.task_id }}` or `{{ ask.task_id }}` |
 
 To find a channel ID in Slack, open the channel details. The ID is at the
 bottom of the **About** tab.
@@ -492,7 +519,8 @@ Errors:
 | `slack_failed: <code>` | Slack refused the message with another [error code](https://docs.slack.dev/reference/methods/chat.postMessage#errors) |
 | `slack_ratelimited` | Slack rate-limited the post after every retry |
 | `outcome_unknown` | The call to Slack failed, Slack answered with a 5xx, or Slack answered `internal_error`, `fatal_error`, `request_timeout`, or `service_unavailable`. Slack may have posted the message. See [unknown outcome](#calls-with-an-unknown-outcome) |
-| `invalid_params`, `invalid_channel` | The rendered channel is not a channel ID |
+| `invalid_params`, `invalid_channel` | The rendered channel is not a channel ID, or the rendered ticket is not a short id |
+| `ticket_not_found` | The organization has no task with this short id |
 
 When Slack refuses a message, it posts nothing, and Imbi does not retry
 it. The one exception is a rate limit (`ratelimited`): the step tries
@@ -504,6 +532,14 @@ a value from a webhook payload cannot add a mention such as `<!channel>`
 or a link. Mentions and links that you write in `text` yourself work.
 Keys are escaped too, so a key that holds one of those characters is
 looked up by its escaped form (`trigger['a &amp; b']`).
+
+With `ticket`, Imbi reads the task when the step runs and adds a block
+below the message: the short id and title (a link to the task when
+`IMBI_UI_URL` is set), then the status, outcome, and project of the
+task. Each value from the task is escaped like a template value, so a
+task title cannot add a mention. If the message and the block are longer
+than 40,000 characters, Imbi cuts the end of the message. A workflow
+with a `ticket` needs `agent_task:read` to activate.
 
 **Output:** `channel`, `ts` (the message timestamp), and `permalink` (a
 link to the message, or empty when Slack did not return one).
@@ -579,9 +615,12 @@ the task. A step timeout does not cancel the task.
 You cannot delete an agent that a workflow uses. The delete returns `409`
 with "used in N workflow(s)".
 
-**Output:** `task_id`, `outcome`, `reason`, and `summary` (the last
-message of the agent). Run detail shows `reason` and `summary` only to
-people with `agent_task:read`.
+**Output:** `task_id`, `outcome`, `reason`, `summary` (the last message
+of the agent), `result` (the structured output), and the attributes of
+the task: `title`, `url`, `project`, `agent`, and `cost_usd`. These
+attributes are the same as in the output of a
+[Task completed](#task-completed) trigger. Run detail shows `reason`,
+`summary`, and `result` only to people with `agent_task:read`.
 
 ## References
 
@@ -590,7 +629,7 @@ is the sandboxed Jinja of [Prompts](prompts.md).
 
 | Reference | Value |
 |---|---|
-| `{{ trigger.<name> }}` | A manual input, `fired_at` of a schedule, or `payload` of a webhook |
+| `{{ trigger.<name> }}` | A manual input, `fired_at` of a schedule, `payload` of a webhook, or a field of a task completed trigger |
 | `{{ <key>.<field> }}` | An output field of a step before this one, by its key |
 
 Examples:
@@ -616,6 +655,7 @@ different organization:
 |---|---|
 | `webhook_id`, and `agent_id` of an agent step | A literal id only |
 | `project_id` of agent, deploy, and rollback steps, email recipient ids | A literal id, or one plain reference such as `{{ trigger.project }}` |
+| `ticket` of a Slack step | A literal short id, or one plain reference. Imbi reads the task in the organization of the run only |
 
 A literal id must exist in the organization. Otherwise validation shows
 `resource_not_in_organization`.
@@ -786,8 +826,10 @@ only. The permissions that steps need:
 | Schedule | `scheduled_task:create` |
 | Webhook | `webhook:update` |
 | Deploy, Rollback | `project:deployment:write` |
+| Task completed | `agent_task:read` |
 | Agent task | `agent_task:create` |
 | LLM Call | `prompt:run` |
+| Slack message with a `ticket` | `agent_task:read` |
 
 Imbi records who activated the workflow. A workflow cannot do more than
 that person can do. When a run starts, the engine checks the person again.

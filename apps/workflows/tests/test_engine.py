@@ -1664,6 +1664,11 @@ class AgentStepTestCase(EngineTestCase):
                 'reason': None,
                 'summary': 'Version 1.2 is fine.',
                 'result': None,
+                'title': 'Deploy guard: Ask',
+                'url': None,
+                'project': None,
+                'agent': self.agent_id,
+                'cost_usd': 0.0,
             },
         )
         self.assertEqual(
