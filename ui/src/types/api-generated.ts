@@ -1759,6 +1759,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/harness/tickets/{short_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Harness Ticket History
+         * @description Return the history of a ticket of the chain, for a new session.
+         *
+         *     A new session reads events only after ``last_seq``, so it reads
+         *     what happened before here: comments (human turns), resolved
+         *     requests, and the status and outcome of child and prerequisite
+         *     tickets, oldest first. When the text is larger
+         *     than :data:`MAX_HISTORY_BYTES`, the oldest entries are left out
+         *     and ``cut`` is their number. ``webhook`` marks untrusted text.
+         *
+         *     Raises:
+         *         401: Not a current agent token.
+         *         403: Another chain or another agent.
+         *         404: No such ticket.
+         */
+        get: operations["read_harness_ticket_history_api_harness_tickets__short_id__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/harness/tasks/{short_id}/projects/{project}": {
         parameters: {
             query?: never;
@@ -15883,6 +15915,32 @@ export interface components {
             /** Match */
             match: boolean;
         };
+        /**
+         * HistoryEntry
+         * @description One part of the history of a ticket. Handoffs are not stored
+         *     yet, so the history has none.
+         */
+        HistoryEntry: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "comment" | "request" | "child" | "prerequisite";
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Actor */
+            actor?: string | null;
+            /** Text */
+            text: string;
+            /**
+             * Webhook
+             * @default false
+             */
+            webhook: boolean;
+        };
         /** IdentitiesResponse */
         IdentitiesResponse: {
             primary: components["schemas"]["IdentityRecord"] | null;
@@ -22458,6 +22516,16 @@ export interface components {
             /** Port Name */
             port_name: string;
         };
+        /** TicketHistory */
+        TicketHistory: {
+            /** Entries */
+            entries: components["schemas"]["HistoryEntry"][];
+            /**
+             * Cut
+             * @default 0
+             */
+            cut: number;
+        };
         /** TokenExchangerType */
         TokenExchangerType: {
             /** Vendor */
@@ -26351,6 +26419,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentTaskEventResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_harness_ticket_history_api_harness_tickets__short_id__history_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketHistory"];
                 };
             };
             /** @description Validation Error */
