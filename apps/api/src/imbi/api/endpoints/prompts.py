@@ -26,8 +26,10 @@ import typing
 import uuid
 
 import fastapi
+import psycopg
 import pydantic
 import slugify
+from psycopg.types import json as pg_json
 
 from imbi.api import model_calls, secret_broker, workflows
 from imbi.api.agent_tasks import store as task_store
@@ -407,6 +409,31 @@ WHERE p.namespace IN {namespaces} AND p.slug STARTS WITH (o.slug + '.')
 DETACH DELETE p
 """
 
+#: An organization rename moves its prompts and the references to them
+#: from ``<old>.`` to ``<new>.``. Version numbers do not change.
+_MOVE_ORG_PROMPTS_QUERY: typing.LiteralString = """
+MATCH (p:Prompt)
+WHERE p.namespace IN {namespaces} AND p.slug STARTS WITH {old}
+SET p.slug = {new} + substring(p.slug, {cut})
+"""
+
+_MOVE_AGENT_REFS_QUERY: typing.LiteralString = """
+MATCH (a:Agent)-[:BELONGS_TO]->(:Organization {{id: {org_id}}})
+WHERE a.prompt_ref STARTS WITH {old}
+SET a.prompt_ref = {new} + substring(a.prompt_ref, {cut})
+"""
+
+_AGENT_VERSIONS_QUERY: typing.LiteralString = """
+MATCH (v:AgentVersion)-[:VERSION_OF]->(:Agent)
+      -[:BELONGS_TO]->(:Organization {{id: {org_id}}})
+RETURN v.agent_id AS agent_id, v.n AS n, v.snapshot AS snapshot
+"""
+
+_SET_AGENT_SNAPSHOT_QUERY: typing.LiteralString = """
+MATCH (v:AgentVersion {{agent_id: {agent_id}, n: {n}}})
+SET v.snapshot = {snapshot}
+"""
+
 #: Labels change by read, modify, write. The ``updated_at`` match makes
 #: the write fail when another write came first, instead of losing it.
 _SET_LABELS_QUERY: typing.LiteralString = """
@@ -620,7 +647,8 @@ async def _model_id_for(
 #: ``workflows/<org slug>.<workflow slug>.<node key>``. A workflow
 #: version pins a version number of the prompt, so such a prompt is
 #: never deleted or renamed, has no tools, and is archived (not
-#: deleted) with its node.
+#: deleted) with its node. Only an organization rename moves it, with
+#: the references to it (:func:`move_org_prompts`).
 WORKFLOWS_NAMESPACE = llm_call.NAMESPACE
 
 #: The namespaces whose prompts are data of one organization, and the
@@ -797,6 +825,96 @@ async def delete_org_prompts(
     params = {'org_id': org_id, 'namespaces': list(_ORG_NAMESPACES)}
     await execute(_DELETE_ORG_VERSIONS_QUERY, params, [])
     await execute(_DELETE_ORG_PROMPTS_QUERY, params, [])
+
+
+async def move_org_prompts(
+    execute: graph.CypherExecute,
+    conn: psycopg.AsyncConnection[typing.Any],
+    org_id: str,
+    old_slug: str,
+    new_slug: str,
+) -> None:
+    """Move the prompts of a renamed organization to the new slug.
+
+    The ``agents/<old>.*`` and ``workflows/<old>.*`` prompts get the
+    ``<new>.`` prefix. The ``prompt_ref`` of each agent and agent
+    version, and of each LLM Call node of each workflow version, moves
+    with them. Pinned version numbers do not change.
+
+    Call this in the transaction that renames the organization.
+    """
+    old, new = f'{old_slug}.', f'{new_slug}.'
+    with conflict_on_unique_violation(
+        f'A prompt with the {new!r} prefix already exists'
+    ):
+        await execute(
+            _MOVE_ORG_PROMPTS_QUERY,
+            {
+                'namespaces': list(_ORG_NAMESPACES),
+                'old': old,
+                'new': new,
+                'cut': len(old),
+            },
+            [],
+        )
+    agent_old = f'agents/{old}'
+    agent_new = f'agents/{new}'
+    await execute(
+        _MOVE_AGENT_REFS_QUERY,
+        {
+            'org_id': org_id,
+            'old': agent_old,
+            'new': agent_new,
+            'cut': len(agent_old),
+        },
+        [],
+    )
+    for row in await execute(
+        _AGENT_VERSIONS_QUERY,
+        {'org_id': org_id},
+        ['agent_id', 'n', 'snapshot'],
+    ):
+        raw = graph.parse_agtype(row['snapshot'])
+        snapshot: dict[str, typing.Any] = (
+            json.loads(raw) if isinstance(raw, str) else raw or {}
+        )
+        ref: str = snapshot.get('prompt_ref') or ''
+        if ref.startswith(agent_old):
+            snapshot['prompt_ref'] = agent_new + ref[len(agent_old) :]
+            await execute(
+                _SET_AGENT_SNAPSHOT_QUERY,
+                {
+                    'agent_id': graph.parse_agtype(row['agent_id']),
+                    'n': graph.parse_agtype(row['n']),
+                    'snapshot': json.dumps(snapshot),
+                },
+                [],
+            )
+    wf_old = f'{WORKFLOWS_NAMESPACE}/{old}'
+    wf_new = f'{WORKFLOWS_NAMESPACE}/{new}'
+    cursor = await conn.execute(
+        'SELECT v.workflow_id, v.version, v.graph'
+        ' FROM workflows.workflow_versions AS v'
+        ' JOIN workflows.workflows AS w ON w.id = v.workflow_id'
+        ' WHERE w.organization_id = %s',
+        (org_id,),
+    )
+    for workflow_id, version, wf_graph in await cursor.fetchall():
+        moved = False
+        for node in wf_graph.get('nodes', []):
+            params: dict[str, typing.Any] = node.get('params') or {}
+            node_ref: object = params.get('prompt_ref')
+            if node.get('type') == llm_call.STEP.type and (
+                isinstance(node_ref, str) and node_ref.startswith(wf_old)
+            ):
+                params['prompt_ref'] = wf_new + node_ref[len(wf_old) :]
+                moved = True
+        if moved:
+            await conn.execute(
+                'UPDATE workflows.workflow_versions SET graph = %s'
+                ' WHERE workflow_id = %s AND version = %s',
+                (pg_json.Jsonb(wf_graph), workflow_id, version),
+            )
 
 
 async def _require_access(
