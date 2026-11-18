@@ -154,6 +154,83 @@ class GenerateTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             body['tools'][0]['input_schema'], agent.output_schema(FIELDS)
         )
+        self.assertEqual(body['system'], 'Be brief.')
+
+    async def test_anthropic_structured_auto_tool_choice(self) -> None:
+        result = await self._call(
+            _request(
+                'anthropic', output_fields=FIELDS, forced_tool_choice=False
+            ),
+            200,
+            _anthropic_body(
+                [
+                    {'type': 'thinking', 'thinking': '...', 'signature': 's'},
+                    {
+                        'type': 'tool_use',
+                        'id': 't1',
+                        'name': generate.TOOL,
+                        'input': ANSWER,
+                    },
+                ]
+            ),
+        )
+        self.assertEqual(result.result, EXPECTED)
+        body = self._body()
+        self.assertEqual(
+            body['tool_choice'],
+            {'type': 'auto', 'disable_parallel_tool_use': True},
+        )
+        self.assertEqual(
+            body['system'], f'Be brief.\n\n{generate._TOOL_INSTRUCTION}'
+        )
+
+    async def test_anthropic_auto_tool_choice_without_tool_use(self) -> None:
+        # JSON text is not the tool call: the answer is not accepted.
+        with self.assertRaises(generate.GenerateError) as ctx:
+            await self._call(
+                _request(
+                    'anthropic',
+                    output_fields=FIELDS,
+                    forced_tool_choice=False,
+                    system='',
+                ),
+                200,
+                _anthropic_body(
+                    [{'type': 'text', 'text': json.dumps(ANSWER)}]
+                ),
+            )
+        self.assertEqual(ctx.exception.code, 'model_answer_invalid')
+        self.assertTrue(ctx.exception.retry)
+        self.assertEqual(self._body()['system'], generate._TOOL_INSTRUCTION)
+
+    async def test_anthropic_forced_tool_choice_accepts_json_text(
+        self,
+    ) -> None:
+        # Forced mode keeps the JSON text fallback.
+        result = await self._call(
+            _request('anthropic', output_fields=FIELDS),
+            200,
+            _anthropic_body([{'type': 'text', 'text': json.dumps(ANSWER)}]),
+        )
+        self.assertEqual(result.result, EXPECTED)
+
+    async def test_anthropic_more_than_one_tool_use(self) -> None:
+        block = {
+            'type': 'tool_use',
+            'id': 't1',
+            'name': generate.TOOL,
+            'input': ANSWER,
+        }
+        with self.assertRaises(generate.GenerateError) as ctx:
+            await self._call(
+                _request(
+                    'anthropic', output_fields=FIELDS, forced_tool_choice=False
+                ),
+                200,
+                _anthropic_body([block, {**block, 'id': 't2'}]),
+            )
+        self.assertEqual(ctx.exception.code, 'model_answer_invalid')
+        self.assertTrue(ctx.exception.retry)
 
     async def test_anthropic_429_retries(self) -> None:
         with self.assertRaises(generate.GenerateError) as ctx:
@@ -496,6 +573,51 @@ class GenerateTestCase(unittest.IsolatedAsyncioTestCase):
                 _bedrock_body([{'text': 'Sorry'}]),
             )
         self.assertEqual(ctx.exception.code, 'model_answer_invalid')
+
+    async def test_bedrock_structured_auto_tool_choice(self) -> None:
+        result = await self._call(
+            _request(
+                'bedrock', output_fields=FIELDS, forced_tool_choice=False
+            ),
+            200,
+            _bedrock_body(
+                [
+                    {
+                        'toolUse': {
+                            'toolUseId': 't1',
+                            'name': generate.TOOL,
+                            'input': ANSWER,
+                        }
+                    }
+                ]
+            ),
+        )
+        self.assertEqual(result.result, EXPECTED)
+        body = self._body()
+        self.assertEqual(body['toolConfig']['toolChoice'], {'auto': {}})
+        self.assertEqual(
+            body['system'],
+            [{'text': f'Be brief.\n\n{generate._TOOL_INSTRUCTION}'}],
+        )
+
+    async def test_bedrock_more_than_one_tool_use(self) -> None:
+        block = {
+            'toolUse': {
+                'toolUseId': 't1',
+                'name': generate.TOOL,
+                'input': ANSWER,
+            }
+        }
+        with self.assertRaises(generate.GenerateError) as ctx:
+            await self._call(
+                _request(
+                    'bedrock', output_fields=FIELDS, forced_tool_choice=False
+                ),
+                200,
+                _bedrock_body([block, block]),
+            )
+        self.assertEqual(ctx.exception.code, 'model_answer_invalid')
+        self.assertTrue(ctx.exception.retry)
 
     async def test_bedrock_needs_a_region(self) -> None:
         with self.assertRaises(generate.GenerateError) as ctx:

@@ -267,6 +267,15 @@ class GenerativeRunTestCase(base.PromptTestBase):
         self.assertIsNone(self.calls.finish.await_args.kwargs['cost_usd'])
         sent: generate.Request = self.generate.await_args.args[0]
         self.assertEqual(sent.output_fields[0].name, 'severity')
+        # A model without the flag predates it: a forced tool choice.
+        self.assertTrue(sent.forced_tool_choice)
+
+    def test_forced_tool_choice_flag_reaches_the_adapter(self) -> None:
+        self.route_run(forced_tool_choice=False)
+        response = self.run_ref(output_fields=FIELDS)
+        self.assertEqual(response.status_code, 200, response.text)
+        sent: generate.Request = self.generate.await_args.args[0]
+        self.assertFalse(sent.forced_tool_choice)
 
     def test_grant_in_another_org_does_not_run(self) -> None:
         # prompt:update in another org only: check_member keeps the
