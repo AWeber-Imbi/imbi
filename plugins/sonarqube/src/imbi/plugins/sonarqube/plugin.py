@@ -70,6 +70,9 @@ class SonarQubePlugin(plugins.Plugin):
                 'facts.'
             ),
             'auth_type': 'api_token',
+            # The lifecycle deletes the project an edge names, so one
+            # project must not link a key that another project holds.
+            'shareable_service_identifier': False,
             'options': [
                 {
                     'name': 'service_url',
