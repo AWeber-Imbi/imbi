@@ -309,20 +309,32 @@ An agent uses the model of its prompt version. The model must allow the owner
 team of the agent:
 
 - An agent save that changes the team or the prompt fails with `403`
-  (`model_not_allowed`) when the team is not allowed.
-- When a runner claims a task, Imbi checks the rule again, because the allowed
-  teams or the prompt label can change after the save. A task that fails this
-  check closes with `failed_external` (`model_not_allowed`) and does not run.
+  (`model_not_allowed`) when the team is not allowed. An agent without a
+  pinned prompt version is not checked, because its tasks use the model of the
+  runner.
+- When a runner claims a task, Imbi checks the model id that the runner gets,
+  because the catalog and the prompt label can change after the save. The task
+  fails this check when no enabled catalog model has that model id, or every
+  enabled catalog model with that model id is restricted to teams that do not
+  include the owner team. A task that fails this check closes with
+  `failed_external` (`model_not_allowed`) and does not run.
+- A task without a prompt model uses the model of the runner
+  (`IMBI_HARNESS_MODEL`, or the default of the agent CLI). The operator sets
+  this model, so Imbi does not check it.
 
-The assistant and the Slack bot use the model of their system prompt only for a
-member of an allowed team. Other users get the configured model
+A model id is allowed for a user or a team when one enabled catalog model with
+that model id is not restricted, or a restricted one includes the user or the
+team.
+
+The assistant and the Slack bot use the model of their system prompt only when
+the user may use its model id. Other users get the configured model
 (`IMBI_ASSISTANT_MODEL` or `IMBI_SLACKBOT_MODEL`). The assistant selects the
-model when a conversation starts. A new conversation that names a model in the
-request fails with `403` (`model_not_allowed`) when no enabled catalog model
-has that model id, or every enabled catalog model with that model id is
-restricted to teams that do not include the user. `IMBI_ASSISTANT_MODEL` is
-always allowed when it is not in the catalog. Admins can
-use every model.
+model when a conversation starts, and checks the selected model, also when it
+is `IMBI_ASSISTANT_MODEL`. A non-admin gets `403` (`model_not_allowed`) when no
+enabled catalog model allows the model id. `IMBI_ASSISTANT_MODEL` is allowed
+only when no enabled catalog model has its model id. The assistant checks the
+model of the conversation again on each message, because the allowed teams can
+change. Admins can use every model.
 
 Deleting a team does not update the models that name it. Review restricted
 models after you delete a team.

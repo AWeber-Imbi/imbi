@@ -182,18 +182,34 @@ async def _model_id(
             _SUPPORTED_DRIVER,
         )
         return None
-    if info.access_scope == 'restricted' and (
-        email is None
-        or not await resolve.member_allowed(db, version.model, email)
-    ):
-        LOGGER.info(
-            'Prompt %s names AI model %r, which is restricted to teams '
-            'that do not include the user; using the configured model',
+    model_id = version.model_id or info.model_id
+    # The stored id can differ from the catalog row of the slug after a
+    # catalog edit, so the check is on the id that is sent.
+    if info.access_scope != 'restricted' and model_id == info.model_id:
+        return model_id
+    try:
+        allowed = email is not None and await resolve.member_may_use_model_id(
+            db, model_id, email
+        )
+    except Exception:  # noqa: BLE001 - keep the rendered CMS prompt
+        LOGGER.warning(
+            'Failed to check the access to AI model %r of %s; using the '
+            'configured model',
+            model_id,
             ref,
-            version.model,
+            exc_info=True,
         )
         return None
-    return version.model_id or info.model_id
+    if not allowed:
+        LOGGER.info(
+            'Prompt %s names AI model %r, which is not in the catalog or '
+            'is restricted to teams that do not include the user; using '
+            'the configured model',
+            ref,
+            model_id,
+        )
+        return None
+    return model_id
 
 
 async def load_model_id(

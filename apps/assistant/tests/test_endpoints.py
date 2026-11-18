@@ -929,7 +929,8 @@ class SendMessageEndpointTestCase(
         mock_get_msgs: mock.AsyncMock,
     ) -> None:
         client._client = mock.MagicMock()
-        auth_ctx = _make_auth_context()
+        # An admin skips the model check (see the test below).
+        auth_ctx = _make_auth_context(is_admin=True)
         mock_get_conv.return_value = _make_conversation()
         mock_count.return_value = 0
         now = datetime.datetime.now(datetime.UTC)
@@ -964,6 +965,45 @@ class SendMessageEndpointTestCase(
         )
         self.assertIsInstance(result, responses.StreamingResponse)
         self.assertEqual(result.media_type, 'text/event-stream')
+
+    @mock.patch.dict('os.environ', {}, clear=True)
+    @mock.patch('imbi.assistant.age_ops.add_message')
+    @mock.patch('imbi.assistant.age_ops.count_messages')
+    @mock.patch('imbi.assistant.age_ops.get_conversation')
+    async def test_send_message_checks_the_conversation_model(
+        self,
+        mock_get_conv: mock.AsyncMock,
+        mock_count: mock.AsyncMock,
+        mock_add: mock.AsyncMock,
+    ) -> None:
+        # The user left the allowed team after the conversation started.
+        client._client = mock.MagicMock()
+        mock_get_conv.return_value = _make_conversation()
+        mock_count.return_value = 0
+        with (
+            mock.patch.object(
+                endpoints.resolve,
+                'member_may_use_model_id',
+                mock.AsyncMock(return_value=False),
+            ) as check,
+            self.assertRaises(fastapi.HTTPException) as ctx,
+        ):
+            await endpoints.send_message(
+                conversation_id='conv-123',
+                body=models.SendMessageRequest(content='Hello'),
+                db=mock.AsyncMock(),
+                auth_ctx=_make_auth_context(),
+                credentials=None,
+            )
+        self.assertEqual(ctx.exception.status_code, 403)
+        self.assertEqual(ctx.exception.detail['error'], 'model_not_allowed')
+        check.assert_awaited_once_with(
+            mock.ANY,
+            mock_get_conv.return_value.model,
+            'test@example.com',
+            mock.ANY,
+        )
+        mock_add.assert_not_called()
 
 
 class PromptParamsTestCase(unittest.TestCase):

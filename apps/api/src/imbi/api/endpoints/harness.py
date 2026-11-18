@@ -710,8 +710,10 @@ async def _identity(
             )
     settings = _settings(bundle.snapshot.get('settings'))
     prompt, prompt_error = await _rendered_prompt(db, task, bundle, org_slug)
-    if prompt is not None and prompt.model is not None:
-        await _check_model_teams(db, task['agent_id'], prompt.model)
+    # The runner sends prompt.model_id. Without one it uses its own
+    # configured model, which is not checked (like IMBI_ASSISTANT_MODEL).
+    if prompt is not None and prompt.model_id is not None:
+        await _check_model_teams(db, task['agent_id'], prompt.model_id)
     return bundle.model_copy(
         update={
             'prompt': prompt,
@@ -748,23 +750,22 @@ class _ModelNotAllowed(PermissionError):
 
 
 async def _check_model_teams(
-    db: graph.Graph, agent_id: str, model: str
+    db: graph.Graph, agent_id: str, model_id: str
 ) -> None:
-    """Refuse a restricted model that the owner team of the agent may
-    not use now (#788). The agent save checks this too, but the allowed
-    teams and the prompt label can change after the save.
+    """Refuse the provider model id ``model_id`` when the owner team of
+    the agent may not use it now (#788): no enabled catalog model has
+    the id, or each one is restricted to other teams. The agent save
+    checks this too, but the catalog and the prompt label can change
+    after the save.
 
     Raises:
-        _ModelNotAllowed: The owner team may not use ``model``.
+        _ModelNotAllowed: The owner team may not use ``model_id``.
 
     """
-    info = await prompt_resolve.model_info(db, model)
-    if info is None or info.access_scope != 'restricted':
-        return
     records = await db.execute(_AGENT_TEAM_QUERY, {'id': agent_id}, ['id'])
     team_id = str(graph.parse_agtype(records[0]['id'])) if records else ''
-    if not await prompt_resolve.team_allowed(db, model, team_id):
-        raise _ModelNotAllowed(model)
+    if not await prompt_resolve.team_may_use_model_id(db, model_id, team_id):
+        raise _ModelNotAllowed(model_id)
 
 
 class _EgressTokenTooLarge(ValueError):
@@ -799,38 +800,29 @@ async def _deliver(
     busy with a chain that it does not know.
     """
     task, chain = claimed
+    outcome: typing.Literal[
+        'unhandled_no_actor', 'exceeded_ceiling', 'failed_external'
+    ]
     try:
         return await _claim(
             db, store, secrets, runner, task, chain, pinned=pinned, pod=pod
         )
     except _NoServiceAccount:
-        await tasks.set_outcome(
-            task['organization_id'],
-            task['short_id'],
-            'unhandled_no_actor',
-            'service_account_missing',
-            _SYSTEM,
-        )
+        outcome, reason = 'unhandled_no_actor', 'service_account_missing'
     except _EgressTokenTooLarge:
-        await tasks.set_outcome(
-            task['organization_id'],
-            task['short_id'],
-            'exceeded_ceiling',
-            'egress_token_too_large',
-            _SYSTEM,
-        )
+        outcome, reason = 'exceeded_ceiling', 'egress_token_too_large'
     except _ModelNotAllowed:
-        await tasks.set_outcome(
-            task['organization_id'],
-            task['short_id'],
-            'failed_external',
-            'model_not_allowed',
-            _SYSTEM,
-        )
+        outcome, reason = 'failed_external', 'model_not_allowed'
     except BaseException:
         await store.release_claim(runner['id'], task, chain, pinned=pinned)
         raise
-    await store.release_claim(runner['id'], task, chain, pinned=pinned)
+    try:
+        await tasks.set_outcome(
+            task['organization_id'], task['short_id'], outcome, reason, _SYSTEM
+        )
+    finally:
+        # Also when the outcome write fails: the runner gets no claim.
+        await store.release_claim(runner['id'], task, chain, pinned=pinned)
     return None
 
 

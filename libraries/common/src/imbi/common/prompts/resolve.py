@@ -5,6 +5,7 @@ A reference is ``namespace/slug``, ``namespace/slug@label``, or
 not have, or no ``@`` at all, falls back to the prompt's default label.
 """
 
+import collections.abc
 import re
 import typing
 
@@ -212,6 +213,28 @@ async def member_may_use_model_id(
     no enabled catalog model is refused, except ``default`` (the
     configured default model, which need not be in the catalog).
     """
+    return await _may_use_model_id(
+        db, model_id, default, lambda slug: member_allowed(db, slug, email)
+    )
+
+
+async def team_may_use_model_id(
+    db: graph.Graph, model_id: str, team_id: str
+) -> bool:
+    """Whether the team ``team_id`` may use the provider model id
+    ``model_id``: the rule of :func:`member_may_use_model_id`, with no
+    default."""
+    return await _may_use_model_id(
+        db, model_id, None, lambda slug: team_allowed(db, slug, team_id)
+    )
+
+
+async def _may_use_model_id(
+    db: graph.Graph,
+    model_id: str,
+    default: str | None,
+    allowed: collections.abc.Callable[[str], collections.abc.Awaitable[bool]],
+) -> bool:
     records = await db.execute(
         MODEL_ID_SCOPES_QUERY,
         {'model_id': model_id},
@@ -224,7 +247,7 @@ async def member_may_use_model_id(
     if any(r['access_scope'] != 'restricted' for r in rows):
         return True
     for row in rows:
-        if await member_allowed(db, str(row['slug']), email):
+        if await allowed(str(row['slug'])):
             return True
     return False
 

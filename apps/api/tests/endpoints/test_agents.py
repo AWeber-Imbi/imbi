@@ -448,7 +448,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self._restricted_prompt()
         # fetch, team, model, allowed team (none)
         self.mock_db.execute.side_effect = [
-            [self._row()],
+            [self._row(prompt_version=2)],
             [{'team_id': 'team-2'}],
             [MODEL_INFO_ROW],
             [],
@@ -468,10 +468,27 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
             slug='triage',
             team='ops',
             prompt_ref='agents/triage@stable',
+            prompt_version=2,
         )
         asyncio.run(
             CHECK_MODEL_TEAMS(self.mock_db, 'engineering', snapshot, 'team-1')
         )
+        self.assertEqual(self.mock_db.execute.await_count, 2)
+
+    def test_no_prompt_version_has_no_model_to_check(self) -> None:
+        # A task copies the null version, renders no prompt, and the
+        # runner uses its own model.
+        resolve = self._restricted_prompt()
+        snapshot = agents.AgentSnapshot(
+            name='Triage',
+            slug='triage',
+            team='ops',
+            prompt_ref='agents/triage@stable',
+        )
+        asyncio.run(
+            CHECK_MODEL_TEAMS(self.mock_db, 'engineering', snapshot, None)
+        )
+        resolve.assert_not_awaited()
 
     def test_create_unknown_team(self) -> None:
         self.mock_db.execute.return_value = [{'team_id': None}]

@@ -818,19 +818,19 @@ async def _check_model_teams(
 ) -> None:
     """Refuse a restricted model that the owner team may not use (#788).
 
-    The model comes from the prompt version of the agent. A prompt that
-    does not exist yet has no model to check. Without ``team_id``, the
-    id of ``snapshot.team`` is read only for a restricted model.
+    The model comes from the prompt version of the agent. Without
+    ``prompt_version``, a task renders no prompt and the runner uses its
+    own model, so there is nothing to check. A prompt that does not
+    exist yet has no model to check. Without ``team_id``, the id of
+    ``snapshot.team`` is read only for a restricted model.
 
     Raises:
         403: ``model_not_allowed``.
 
     """
-    if snapshot.prompt_ref is None:
+    if snapshot.prompt_ref is None or snapshot.prompt_version is None:
         return
-    ref = snapshot.prompt_ref
-    if snapshot.prompt_version is not None:
-        ref = f'{ref.partition("@")[0]}@{snapshot.prompt_version}'
+    ref = f'{snapshot.prompt_ref.partition("@")[0]}@{snapshot.prompt_version}'
     try:
         _prompt, version, _label = await prompt_resolve.resolve(db, ref)
     except prompt_resolve.PromptError:
