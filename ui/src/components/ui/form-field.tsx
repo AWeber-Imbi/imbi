@@ -25,8 +25,9 @@ export function FormField({
   touched,
 }: FormFieldProps) {
   const shown = touched && error
+  const fallbackId = React.useId()
   // Link the input to its error, so a screen reader announces both.
-  const errorId = shown && htmlFor ? `${htmlFor}-error` : undefined
+  const errorId = shown ? `${htmlFor ?? fallbackId}-error` : undefined
   const field =
     errorId && React.isValidElement<Record<string, unknown>>(children)
       ? React.cloneElement(children, {
