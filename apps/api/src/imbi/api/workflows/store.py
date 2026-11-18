@@ -23,6 +23,10 @@ type Pool = psycopg_pool.AsyncConnectionPool[
     psycopg.AsyncConnection[typing.Any]
 ]
 type Row = dict[str, typing.Any]
+#: A callback that runs on the connection of a save or a delete.
+type OnWrite = abc.Callable[
+    [psycopg.AsyncConnection[typing.Any]], abc.Awaitable[None]
+]
 
 SCHEMA = 'workflows'
 
@@ -102,9 +106,17 @@ class WorkflowStore:
         )
 
     async def create(
-        self, organization_id: str, slug: str, definition: Definition
+        self,
+        organization_id: str,
+        slug: str,
+        definition: Definition,
+        on_created: OnWrite | None = None,
     ) -> None:
         """Write a workflow and its version 1.
+
+        ``on_created`` runs before the commit, under the shared lock on
+        the organization. It gets the connection of the create. When it
+        raises, the create is rolled back.
 
         Raises:
             psycopg.errors.UniqueViolation: The slug is in use.
@@ -130,6 +142,8 @@ class WorkflowStore:
             await conn.execute(
                 _INSERT_VERSION, _version_values(workflow_id, 1, definition)
             )
+            if on_created is not None:
+                await on_created(conn)
 
     async def save(
         self,
@@ -137,7 +151,7 @@ class WorkflowStore:
         slug: str,
         definition: Definition,
         owner_team_id: str,
-        on_saved: abc.Callable[[], abc.Awaitable[None]] | None = None,
+        on_saved: OnWrite | None = None,
     ) -> bool:
         """Write a new version.
 
@@ -147,9 +161,14 @@ class WorkflowStore:
 
         ``on_saved`` runs before the commit, while the save holds the
         row lock of the workflow, so that a second save waits for it.
-        When it raises, the save is rolled back.
+        It gets the connection of the save, so its writes commit or roll
+        back with the save. When it raises, the save is rolled back. The
+        save also holds the shared lock on the organization, so an
+        organization rename (which moves the prompt references) does not
+        run during it.
         """
         async with self._pool.connection() as conn, conn.transaction():
+            await relational.lock_organization_shared(conn, organization_id)
             cur = await conn.execute(
                 'UPDATE workflows.workflows SET name = %s,'
                 ' description = %s, owner_team_id = %s,'
@@ -173,14 +192,14 @@ class WorkflowStore:
                 _INSERT_VERSION, _version_values(row[0], row[1], definition)
             )
             if on_saved is not None:
-                await on_saved()
+                await on_saved(conn)
         return True
 
     async def delete(
         self,
         organization_id: str,
         slug: str,
-        on_deleted: abc.Callable[[], abc.Awaitable[None]] | None = None,
+        on_deleted: OnWrite | None = None,
     ) -> typing.Literal['deleted', 'missing', 'open_runs']:
         """Delete a workflow that has no open runs.
 
@@ -189,9 +208,10 @@ class WorkflowStore:
         so no run can be written between the check and the delete. The
         trigger bindings are marked ``removed`` for the reconciler.
 
-        ``on_deleted`` runs before the commit. A create of the same slug
-        waits for the commit, so it cannot run in between. When it
-        raises, the delete is rolled back.
+        ``on_deleted`` runs before the commit, on the connection of the
+        delete. A create of the same slug waits for the commit, so it
+        cannot run in between. When it raises, the delete is rolled
+        back.
         """
         async with self._pool.connection() as conn, conn.transaction():
             cur = await conn.execute(
@@ -220,7 +240,7 @@ class WorkflowStore:
             )
             await conn.execute(f'NOTIFY {runtime.BINDINGS_CHANNEL}')
             if on_deleted is not None:
-                await on_deleted()
+                await on_deleted(conn)
             return 'deleted'
 
     async def versions(self, organization_id: str, slug: str) -> list[Row]:

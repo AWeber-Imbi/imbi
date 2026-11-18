@@ -444,6 +444,71 @@ class CreateConversationEndpointTestCase(
     @mock.patch(
         'imbi.assistant.age_ops.create_conversation',
     )
+    async def test_create_conversation_checks_a_restricted_model(
+        self,
+        mock_create: mock.AsyncMock,
+    ) -> None:
+        client._client = mock.MagicMock()
+        mock_create.return_value = _make_conversation()
+        opus = 'claude-opus-5-5'
+        default = 'claude-sonnet-4-6'
+        restricted = [{'slug': 'opus', 'access_scope': 'restricted'}]
+        disabled_twin = {
+            'slug': 'opus-b',
+            'access_scope': None,
+            'enabled': False,
+        }
+        for model, scopes, allowed_rows, is_admin, refused in (
+            (opus, restricted, [], False, True),
+            (opus, restricted, [{'id': 'team-1'}], False, False),
+            (opus, restricted, [], True, False),
+            (
+                opus,
+                [*restricted, {'slug': 'opus-b', 'access_scope': None}],
+                [],
+                False,
+                False,
+            ),
+            # A disabled organization twin does not unlock the model.
+            (opus, [*restricted, disabled_twin], [], False, True),
+            # An id that is not in the catalog is refused ...
+            (opus, [], [], False, True),
+            # ... except the configured default model.
+            (default, [], [], False, False),
+        ):
+            db = mock.AsyncMock()
+            db.execute.side_effect = [scopes, allowed_rows]
+            with (
+                self.subTest(model=model, scopes=scopes, allowed=allowed_rows),
+                mock.patch.dict('os.environ', {}, clear=True),
+                mock.patch.object(
+                    resolve.graph, 'parse_agtype', side_effect=lambda v: v
+                ),
+            ):
+                mock_create.reset_mock()
+                try:
+                    await endpoints.create_conversation(
+                        db=db,
+                        auth_ctx=_make_auth_context(is_admin=is_admin),
+                        body=models.CreateConversationRequest(model=model),
+                    )
+                except fastapi.HTTPException as e:
+                    self.assertTrue(refused)
+                    self.assertEqual(e.status_code, 403)
+                    self.assertEqual(e.detail['error'], 'model_not_allowed')
+                    mock_create.assert_not_called()
+                else:
+                    self.assertFalse(refused)
+                    mock_create.assert_called_once()
+                if not is_admin:
+                    self.assertEqual(
+                        db.execute.await_args_list[0].args[1],
+                        {'model_id': model},
+                    )
+
+    @mock.patch(
+        'imbi.assistant.age_ops.create_conversation',
+    )
     async def test_create_conversation_uses_the_prompt_model(
         self,
         mock_create: mock.AsyncMock,
@@ -459,9 +524,13 @@ class CreateConversationEndpointTestCase(
             ) as load,
         ):
             await endpoints.create_conversation(
-                db=mock.AsyncMock(), auth_ctx=_make_auth_context(), body=None
+                db=mock.AsyncMock(),
+                auth_ctx=_make_auth_context(is_admin=True),
+                body=None,
             )
-        load.assert_awaited_once_with(mock.ANY, 'imbi-assistant/system@stable')
+        load.assert_awaited_once_with(
+            mock.ANY, 'imbi-assistant/system@stable', 'test@example.com'
+        )
         mock_create.assert_called_once_with(
             mock.ANY,
             user_email='test@example.com',
@@ -476,7 +545,7 @@ class CreateConversationEndpointTestCase(
         mock_create: mock.AsyncMock,
     ) -> None:
         client._client = mock.MagicMock()
-        auth_ctx = _make_auth_context()
+        auth_ctx = _make_auth_context(is_admin=True)
         conv = _make_conversation()
         mock_create.return_value = conv
         body = models.CreateConversationRequest(
@@ -860,7 +929,8 @@ class SendMessageEndpointTestCase(
         mock_get_msgs: mock.AsyncMock,
     ) -> None:
         client._client = mock.MagicMock()
-        auth_ctx = _make_auth_context()
+        # An admin skips the model check (see the test below).
+        auth_ctx = _make_auth_context(is_admin=True)
         mock_get_conv.return_value = _make_conversation()
         mock_count.return_value = 0
         now = datetime.datetime.now(datetime.UTC)
@@ -895,6 +965,45 @@ class SendMessageEndpointTestCase(
         )
         self.assertIsInstance(result, responses.StreamingResponse)
         self.assertEqual(result.media_type, 'text/event-stream')
+
+    @mock.patch.dict('os.environ', {}, clear=True)
+    @mock.patch('imbi.assistant.age_ops.add_message')
+    @mock.patch('imbi.assistant.age_ops.count_messages')
+    @mock.patch('imbi.assistant.age_ops.get_conversation')
+    async def test_send_message_checks_the_conversation_model(
+        self,
+        mock_get_conv: mock.AsyncMock,
+        mock_count: mock.AsyncMock,
+        mock_add: mock.AsyncMock,
+    ) -> None:
+        # The user left the allowed team after the conversation started.
+        client._client = mock.MagicMock()
+        mock_get_conv.return_value = _make_conversation()
+        mock_count.return_value = 0
+        with (
+            mock.patch.object(
+                endpoints.resolve,
+                'member_may_use_model_id',
+                mock.AsyncMock(return_value=False),
+            ) as check,
+            self.assertRaises(fastapi.HTTPException) as ctx,
+        ):
+            await endpoints.send_message(
+                conversation_id='conv-123',
+                body=models.SendMessageRequest(content='Hello'),
+                db=mock.AsyncMock(),
+                auth_ctx=_make_auth_context(),
+                credentials=None,
+            )
+        self.assertEqual(ctx.exception.status_code, 403)
+        self.assertEqual(ctx.exception.detail['error'], 'model_not_allowed')
+        check.assert_awaited_once_with(
+            mock.ANY,
+            mock_get_conv.return_value.model,
+            'test@example.com',
+            mock.ANY,
+        )
+        mock_add.assert_not_called()
 
 
 class PromptParamsTestCase(unittest.TestCase):

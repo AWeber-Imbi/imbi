@@ -33,6 +33,7 @@ const opus: AIModel = {
   provider_id: 'prov-1',
   provider_name: 'Anthropic',
   slug: 'claude-opus-5-5',
+  supports_forced_tool_choice: true,
   supports_structured_output: false,
 }
 

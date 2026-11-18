@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import datetime
+import functools
 import logging
 import typing
 
@@ -244,7 +245,10 @@ async def dispatch_lifecycle(
     (``'updated'`` / ``'relocated'``).
     """
     # Lazy import to avoid the endpoints/_helpers <-> this-module cycle.
-    from imbi.api.endpoints._helpers import linked_identifier_resolver
+    from imbi.api.endpoints._helpers import (
+        identifier_holder,
+        linked_identifier_resolver,
+    )
 
     if resolved_list is None:
         resolved_list = await resolve_all_capabilities(
@@ -307,6 +311,17 @@ async def dispatch_lifecycle(
                 else linked_identifier_resolver(
                     db, org_slug, resolved.integration_slug
                 )
+            ),
+            resolve_identifier_holder=(
+                functools.partial(
+                    identifier_holder,
+                    db,
+                    org_slug,
+                    project_id,
+                    resolved.integration_slug,
+                )
+                if resolved.integration_slug
+                else None
             ),
         )
         invocation = await _invoke_one(db, ctx, resolved, event, auth)

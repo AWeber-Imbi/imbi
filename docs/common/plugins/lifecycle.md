@@ -38,7 +38,7 @@ raises does not block the request.
 | `on_project_updated` | `updated` | Push name / description / homepage; `ctx.previous_project_slug` locates a renamed remote. |
 | `on_project_archived` | `archived` | Required. |
 | `on_project_unarchived` | `unarchived` | Inverse of archive. |
-| `on_project_deleted` | `deleted` | Invoked after the node is removed; `404` from the remote is a skip. |
+| `on_project_deleted` | `deleted` | Invoked after the node is removed; `404` from the remote is a skip. Before a hook removes a remote resource, `ctx.resolve_identifier_holder` returns another project that links the same identifier, if one exists. |
 | `on_project_relocated` | `relocated` | Move the remote to a new target; set `ctx.link_writeback`. For team-driven targets, `ctx.previous_team_slug` is the team before the move and `ctx.team_slug` the team after. |
 | `on_project_dependencies_changed` | `dependencies_changed` | A `DEPENDS_ON` edge was added or removed. Dispatched for the source project only; `ctx.dependencies` holds the neighbours in both directions (see [`ProjectDependency`][imbi.common.plugins.ProjectDependency]), and `ctx.resolve_linked_identifiers` tells an Imbi-managed remote resource from one created outside Imbi. |
 
