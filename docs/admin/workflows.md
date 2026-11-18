@@ -558,6 +558,7 @@ Gives an agent a task and waits for its outcome. See
 |---|---|---|
 | `agent_id` | An agent of the organization. It must be a literal id | Required |
 | `instruction` | What the agent must do. Templates are allowed | Required |
+| `task_title` | The title of the agent task, up to 200 characters. Templates are allowed, for example `{{ trigger.ticket_key }}: implement` | `<workflow name>: <step title>` |
 | `project_id` | The project of the task: a literal id, or one plain reference such as `{{ trigger.project }}` or `{{ review.result.project }}`. A reference can render to a project id or slug | None |
 | `budget` | A limit in USD. It cannot be more than the task budget of the agent | The task budget of the agent |
 
