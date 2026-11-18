@@ -1322,9 +1322,7 @@ async def count_agent_tasks(
     )
 
 
-@tickets_router.get(
-    '/{short_id}/position', response_model=AgentTaskPosition
-)
+@tickets_router.get('/{short_id}/position', response_model=AgentTaskPosition)
 async def get_agent_task_position(
     org_slug: str,
     org_id: OrgId,
