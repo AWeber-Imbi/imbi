@@ -249,6 +249,11 @@ export function TaskDetail({
           {view === 'conversation' ? (
             <ConversationTab
               events={log}
+              footer={
+                t.status === 'closed' ? undefined : (
+                  <Composer orgSlug={orgSlug} task={t} />
+                )
+              }
               orgSlug={orgSlug}
               requests={requests}
               task={t}
@@ -288,7 +293,6 @@ export function TaskDetail({
           )}
         </ToolbarLead.Provider>
       </TaskSearchProvider>
-      {t.status !== 'closed' && <Composer orgSlug={orgSlug} task={t} />}
     </div>
   )
 }

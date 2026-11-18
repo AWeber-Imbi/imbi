@@ -1153,10 +1153,19 @@ describe('Tasks', () => {
     })
   })
 
-  it('keeps the reply box on every tab while the task is open', async () => {
-    renderAt('/agents/tasks/acme/T-3/overview')
+  it('shows the reply box only in the Conversation view', async () => {
+    renderAt('/agents/tasks/acme/T-3/conversation')
     expect(await screen.findByLabelText('Reply')).toBeInTheDocument()
   })
+
+  it.each(['overview', 'trajectory', 'statistics'])(
+    'has no reply box on %s',
+    async (tab) => {
+      renderAt(`/agents/tasks/acme/T-3/${tab}`)
+      await screen.findByRole('tab', { name: /Overview/ })
+      expect(screen.queryByLabelText('Reply')).not.toBeInTheDocument()
+    },
+  )
 
   it('has no reply box on a closed task', async () => {
     vi.mocked(endpoints.getAgentTask).mockResolvedValue({
@@ -1336,6 +1345,33 @@ describe('Tasks', () => {
       ),
     )
     await waitFor(() => expect(screen.getByLabelText('Reply')).toHaveValue(''))
+  })
+
+  it('sends a reply on Enter and keeps Shift+Enter for a new line', async () => {
+    vi.mocked(endpoints.replyAgentTask).mockResolvedValue(BLOCKED)
+    renderAt('/agents/tasks/acme/T-3/conversation')
+    const box = await screen.findByLabelText('Reply')
+    fireEvent.change(box, { target: { value: 'Use the staging cluster.' } })
+    fireEvent.keyDown(box, { key: 'Enter', shiftKey: true })
+    expect(endpoints.replyAgentTask).not.toHaveBeenCalled()
+    fireEvent.keyDown(box, { key: 'Enter' })
+    await waitFor(() =>
+      expect(endpoints.replyAgentTask).toHaveBeenCalledWith(
+        'acme',
+        'T-3',
+        'Use the staging cluster.',
+        false,
+      ),
+    )
+    await waitFor(() => expect(screen.getByLabelText('Reply')).toHaveValue(''))
+  })
+
+  it('does not send an empty reply', async () => {
+    renderAt('/agents/tasks/acme/T-3/conversation')
+    const box = await screen.findByLabelText('Reply')
+    expect(screen.getByRole('button', { name: 'Send reply' })).toBeDisabled()
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(endpoints.replyAgentTask).not.toHaveBeenCalled()
   })
 
   it(
