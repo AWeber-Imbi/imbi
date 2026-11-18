@@ -40,6 +40,11 @@ MATCH (:AIModel {{slug: {slug}}})-[:ALLOWED_FOR]->(t:Team)
 RETURN t.id AS id
 """
 
+MODEL_ID_SCOPES_QUERY: typing.LiteralString = """
+MATCH (m:AIModel {{model_id: {model_id}}})
+RETURN m.slug AS slug, m.access_scope AS access_scope
+"""
+
 ALLOWED_TEAM_QUERY: typing.LiteralString = """
 MATCH (:AIModel {{slug: {slug}}})-[:ALLOWED_FOR]->(t:Team {{id: {team}}})
 RETURN t.id AS id
@@ -194,6 +199,28 @@ async def member_allowed(db: graph.Graph, slug: str, email: str) -> bool:
     ``restricted`` model allows."""
     params = {'slug': slug, 'email': email}
     return bool(await db.execute(ALLOWED_MEMBER_QUERY, params, ['id']))
+
+
+async def member_may_use_model_id(
+    db: graph.Graph, model_id: str, email: str
+) -> bool:
+    """Whether the user ``email`` may use the provider model id
+    ``model_id``.
+
+    Refused only when the catalog has the id, every catalog model with
+    the id is ``restricted``, and none of them allows the user. An id
+    that is not in the catalog is not refused here.
+    """
+    records = await db.execute(
+        MODEL_ID_SCOPES_QUERY, {'model_id': model_id}, ['slug', 'access_scope']
+    )
+    rows = [{k: graph.parse_agtype(v) for k, v in r.items()} for r in records]
+    if not rows or any(r['access_scope'] != 'restricted' for r in rows):
+        return True
+    for row in rows:
+        if await member_allowed(db, str(row['slug']), email):
+            return True
+    return False
 
 
 async def team_allowed(db: graph.Graph, slug: str, team_id: str) -> bool:

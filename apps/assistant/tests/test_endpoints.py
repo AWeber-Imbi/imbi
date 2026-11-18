@@ -444,6 +444,59 @@ class CreateConversationEndpointTestCase(
     @mock.patch(
         'imbi.assistant.age_ops.create_conversation',
     )
+    async def test_create_conversation_checks_a_restricted_model(
+        self,
+        mock_create: mock.AsyncMock,
+    ) -> None:
+        client._client = mock.MagicMock()
+        mock_create.return_value = _make_conversation()
+        restricted = [{'slug': 'opus', 'access_scope': 'restricted'}]
+        for scopes, allowed_rows, is_admin, refused in (
+            (restricted, [], False, True),
+            (restricted, [{'id': 'team-1'}], False, False),
+            (restricted, [], True, False),
+            (
+                [*restricted, {'slug': 'opus-b', 'access_scope': None}],
+                [],
+                False,
+                False,
+            ),
+        ):
+            db = mock.AsyncMock()
+            db.execute.side_effect = [scopes, allowed_rows]
+            with (
+                self.subTest(scopes=scopes, allowed=allowed_rows),
+                mock.patch.dict('os.environ', {}, clear=True),
+                mock.patch.object(
+                    resolve.graph, 'parse_agtype', side_effect=lambda v: v
+                ),
+            ):
+                mock_create.reset_mock()
+                try:
+                    await endpoints.create_conversation(
+                        db=db,
+                        auth_ctx=_make_auth_context(is_admin=is_admin),
+                        body=models.CreateConversationRequest(
+                            model='claude-opus-5-5'
+                        ),
+                    )
+                except fastapi.HTTPException as e:
+                    self.assertTrue(refused)
+                    self.assertEqual(e.status_code, 403)
+                    self.assertEqual(e.detail['error'], 'model_not_allowed')
+                    mock_create.assert_not_called()
+                else:
+                    self.assertFalse(refused)
+                    mock_create.assert_called_once()
+                if scopes and not is_admin:
+                    self.assertEqual(
+                        db.execute.await_args_list[0].args[1],
+                        {'model_id': 'claude-opus-5-5'},
+                    )
+
+    @mock.patch(
+        'imbi.assistant.age_ops.create_conversation',
+    )
     async def test_create_conversation_uses_the_prompt_model(
         self,
         mock_create: mock.AsyncMock,

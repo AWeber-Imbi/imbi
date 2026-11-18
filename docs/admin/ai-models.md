@@ -317,7 +317,10 @@ team of the agent:
 The assistant and the Slack bot use the model of their system prompt only for a
 member of an allowed team. Other users get the configured model
 (`IMBI_ASSISTANT_MODEL` or `IMBI_SLACKBOT_MODEL`). The assistant selects the
-model when a conversation starts.
+model when a conversation starts. A new conversation that names a model in the
+request fails with `403` (`model_not_allowed`) when every catalog model with
+that model id is restricted to teams that do not include the user. Admins can
+use every model.
 
 Deleting a team does not update the models that name it. Review restricted
 models after you delete a team.

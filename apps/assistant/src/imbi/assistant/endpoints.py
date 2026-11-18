@@ -22,6 +22,7 @@ from imbi.assistant import (
     system_prompt,
 )
 from imbi.common import graph
+from imbi.common.prompts import resolve
 from imbi.common.prompts import system as prompt_system
 
 if typing.TYPE_CHECKING:
@@ -75,6 +76,18 @@ async def create_conversation(
                 auth_ctx.require_user.email,
             )
             or assistant_settings.model
+        )
+    user = auth_ctx.require_user
+    if not user.is_admin and not await resolve.member_may_use_model_id(
+        db, model, user.email
+    ):
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail={
+                'error': 'model_not_allowed',
+                'message': f'The model {model!r} is restricted to teams '
+                'that do not include you',
+            },
         )
     conv = await age_ops.create_conversation(
         db,
