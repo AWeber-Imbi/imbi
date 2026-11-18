@@ -61,7 +61,11 @@ from .project_logs import project_logs_router
 from .project_pr_sync import project_pr_sync_router
 from .project_types import project_types_router
 from .projects import projects_router
-from .prompts import delete_org_prompts, prompt_render_router
+from .prompts import (
+    delete_org_prompts,
+    move_org_prompts,
+    prompt_render_router,
+)
 from .pull_requests import pull_requests_project_router, pull_requests_router
 from .releases import releases_router
 from .search import search_router
@@ -500,6 +504,37 @@ async def get_organization(
     return org_data
 
 
+async def _rename_history(
+    execute: graph.CypherExecute, original_slug: str
+) -> tuple[list[str], object]:
+    """Return ``previous_slugs`` with ``original_slug`` added, and the id.
+
+    Raises:
+        HTTPException 404: No organization has ``original_slug``.
+
+    """
+    records = await execute(
+        'MATCH (n:Organization {{slug: {original_slug}}})'
+        ' RETURN n.previous_slugs AS previous_slugs, n.id AS id',
+        {'original_slug': original_slug},
+        ['previous_slugs', 'id'],
+    )
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Organization with slug {original_slug!r} not found',
+        )
+    prior_raw = graph.parse_agtype(records[0]['previous_slugs'])
+    prior: list[str] = (
+        [str(s) for s in typing.cast(list[object], prior_raw)]
+        if isinstance(prior_raw, list)
+        else []
+    )
+    if original_slug not in prior:
+        prior.append(original_slug)
+    return prior, graph.parse_agtype(records[0].get('id'))
+
+
 async def _persist_organization(
     original_slug: str,
     org: models.Organization,
@@ -527,27 +562,12 @@ async def _persist_organization(
     # gets a fully-formed list parameter and we don't have to ask
     # AGE to do list-concat in Cypher (which is finicky).
     previous_slugs: list[str] | None = None
+    org_id = ''
     if org.slug != original_slug:
-        existing_records = await db.execute(
-            'MATCH (n:Organization {{slug: {original_slug}}})'
-            ' RETURN n.previous_slugs AS previous_slugs',
-            {'original_slug': original_slug},
-            columns=['previous_slugs'],
+        previous_slugs, raw_id = await _rename_history(
+            db.execute, original_slug
         )
-        if not existing_records:
-            raise fastapi.HTTPException(
-                status_code=404,
-                detail=f'Organization with slug {original_slug!r} not found',
-            )
-        prior_raw = graph.parse_agtype(existing_records[0]['previous_slugs'])
-        prior: list[str] = (
-            [str(s) for s in typing.cast(list[object], prior_raw)]
-            if isinstance(prior_raw, list)
-            else []
-        )
-        if original_slug not in prior:
-            prior.append(original_slug)
-        previous_slugs = prior
+        org_id = org_auth.organization_id(raw_id, original_slug)
 
     update_query: typing.LiteralString
     if previous_slugs is not None:
@@ -585,10 +605,35 @@ async def _persist_organization(
     }
     if previous_slugs is not None:
         params['previous_slugs'] = previous_slugs
+
+    async def rename(
+        execute: graph.CypherExecute,
+        conn: psycopg.AsyncConnection[typing.Any],
+    ) -> list[dict[str, typing.Any]]:
+        # Read the history again under the lock: a rename that
+        # committed since the first read changed it.
+        params['previous_slugs'], _ = await _rename_history(
+            execute, original_slug
+        )
+        renamed = await execute(update_query, params)
+        if renamed:
+            await move_org_prompts(
+                execute, conn, org_id, original_slug, org.slug
+            )
+        return renamed
+
     with conflict_on_unique_violation(
         f'Organization with slug {org.slug!r} already exists',
     ):
-        records = await db.execute(update_query, params)
+        if previous_slugs is None:
+            records = await db.execute(update_query, params)
+        else:
+            # The rename and the moves of the prompts and of the
+            # references to them are one transaction. The delete lock
+            # makes a delete of the organization wait for it.
+            records = await db.locked_with_connection(
+                relational.organization_delete_lock_key(org_id), rename
+            )
     if not records:
         raise fastapi.HTTPException(
             status_code=404,

@@ -549,6 +549,39 @@ def _llm_call_keys(wf_graph: dict[str, typing.Any]) -> set[str]:
     }
 
 
+async def _require_org_slug(
+    db: graph.Graph,
+    conn: psycopg.AsyncConnection[typing.Any],
+    org_id: str,
+    org_slug: str,
+) -> None:
+    """Raise 409 when the organization no longer has ``org_slug``.
+
+    The store calls this under the shared lock on the organization. A
+    rename that committed after :func:`_check_llm_call` changed the
+    prompt references that it checked, so the write must not commit.
+    The check runs on ``conn``, the connection of the store, so that it
+    does not wait for a graph pool connection while it holds the lock.
+    """
+    # The workflows pool does not put AGE on the search path.
+    await conn.execute('SET LOCAL search_path = ag_catalog, "$user", public')
+    if not await db.execute(
+        'MATCH (o:Organization {{id: {org_id}, slug: {org_slug}}})'
+        ' RETURN o.id AS id',
+        {'org_id': org_id, 'org_slug': org_slug},
+        ['id'],
+        conn=conn,
+    ):
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail={
+                'error': 'conflict',
+                'message': f'Organization {org_slug!r} was renamed during '
+                'the save; read the workflow again and retry',
+            },
+        )
+
+
 async def _archive_prompts(
     db: graph.Graph,
     conn: psycopg.AsyncConnection[typing.Any],
@@ -786,7 +819,14 @@ async def create_workflow(
         db, org_slug, slug, data.graph, auth, definition.owner_team_id
     )
     with conflict_on_unique_violation(f'Workflow {slug!r} already exists'):
-        await store.create(org_id, slug, definition)
+        await store.create(
+            org_id,
+            slug,
+            definition,
+            on_created=lambda conn: _require_org_slug(
+                db, conn, org_id, org_slug
+            ),
+        )
     return await _get(store, db, org_id, slug)
 
 
@@ -855,17 +895,18 @@ async def save_workflow(
     await _check_llm_call(
         db, org_slug, slug, data.graph, auth, definition.owner_team_id
     )
+
     # The archive runs under the row lock of the save: a second save
     # waits, so an older key set cannot archive a prompt of a newer
     # graph.
-    if not await store.save(
-        org_id,
-        slug,
-        definition,
-        current['owner_team_id'],
-        on_saved=lambda conn: _archive_prompts(
+    async def on_saved(conn: psycopg.AsyncConnection[typing.Any]) -> None:
+        await _require_org_slug(db, conn, org_id, org_slug)
+        await _archive_prompts(
             db, conn, org_slug, slug, _llm_call_keys(definition.graph)
-        ),
+        )
+
+    if not await store.save(
+        org_id, slug, definition, current['owner_team_id'], on_saved
     ):
         raise fastapi.HTTPException(
             status_code=409,

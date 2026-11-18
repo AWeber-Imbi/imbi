@@ -42,7 +42,7 @@ from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.graph_sql import props_template, set_clause
 from imbi.api.harness import platform
 from imbi.api.scoring import OptionalValkeyClient
-from imbi.common import graph, models
+from imbi.common import graph, models, relational
 from imbi.common import patch as json_patch
 from imbi.common.graph import cypher as graph_cypher
 from imbi.common.prompts import resolve as prompt_resolve
@@ -1045,6 +1045,42 @@ async def _check_egress(
         raise _unprocessable('Egress destinations: ' + '; '.join(problems))
 
 
+def _is_foreign_prompt(org_slug: str, namespace: str, slug: str) -> bool:
+    """Return ``True`` for a prompt that another organization owns.
+
+    A prompt in an org-scoped namespace (``agents/``, ``workflows/``)
+    with the slug ``<org>.<name>`` belongs to ``<org>``. A slug with no
+    ``.``, or a prompt in another namespace, belongs to no
+    organization.
+    """
+    owner = prompts._prompt_org(namespace, slug)  # pyright: ignore[reportPrivateUsage]
+    return owner is not None and owner != org_slug
+
+
+def _check_prompt_scope(org_slug: str, ref: str | None) -> None:
+    """Reject an org-scoped prompt of another organization.
+
+    An org-scoped prompt has the slug ``<org_slug>.<name>``. An
+    organization rename moves only the references of its own agents,
+    so a reference from another organization would keep the old key
+    and stop resolving, and it would read the prompt of another
+    organization.
+
+    Raises:
+        422: ``ref`` names an org-scoped prompt of another
+            organization.
+
+    """
+    if ref is None:
+        return
+    namespace, prompt_slug, _selector = prompt_resolve.parse_ref(ref)
+    if _is_foreign_prompt(org_slug, namespace, prompt_slug):
+        raise _unprocessable(
+            f'prompt_ref {namespace}/{prompt_slug} is not a prompt of the '
+            f'{org_slug!r} organization'
+        )
+
+
 def _version_conflict_detail(n: int) -> str:
     return (
         f'Version {n} of this agent was saved by another request; '
@@ -1094,6 +1130,7 @@ async def _write_version(
 
 async def _apply(
     db: graph.Pool,
+    org_id: str,
     org_slug: str,
     existing: dict[str, typing.Any],
     target: AgentSnapshot,
@@ -1113,7 +1150,9 @@ async def _apply(
     enabled_changed = enabled != bool(existing.get('enabled', True))
     if not config_changed and not enabled_changed:
         if label_move is not None:
-            await _execute(db, [label_move], None, target, current)
+            await _execute(
+                db, org_id, org_slug, [label_move], None, target, current
+            )
         return existing
 
     agent_id = str(existing['id'])
@@ -1126,6 +1165,8 @@ async def _apply(
     if config_changed:
         if target.slug != current.slug:
             await _assert_slug_free(db, org_slug, target.slug)
+        if target.prompt_ref != current.prompt_ref:
+            _check_prompt_scope(org_slug, target.prompt_ref)
         team_id: str | None = None
         if target.team != current.team:
             team_id = await _team_id(db, org_slug, target.team)
@@ -1186,12 +1227,21 @@ async def _apply(
             {**props, 'agent_id': agent_id},
         )
     )
-    await _execute(db, statements, n, target, current)
+    await _execute(db, org_id, org_slug, statements, n, target, current)
     return await _fetch_agent(db, org_slug, target.slug)
+
+
+#: The first statement of each agent write batch (:func:`_execute`).
+_ORG_SLUG_GUARD_QUERY: typing.LiteralString = (
+    'MATCH (o:Organization {{id: {org_id}, slug: {org_slug}}})'
+    ' RETURN o.id AS id'
+)
 
 
 async def _execute(
     db: graph.Pool,
+    org_id: str,
+    org_slug: str,
     statements: list[graph_cypher.Statement],
     n: int | None,
     target: AgentSnapshot,
@@ -1202,10 +1252,30 @@ async def _execute(
     The version, the properties, the edges, and a label move are all
     written, or none is. If the agent was deleted, every agent MATCH
     finds nothing, nothing is written, and the next read gives 404.
+
+    The batch holds the shared lock on the organization, which an
+    organization rename holds exclusively, and writes only while the
+    organization still has ``org_slug``. So a rename cannot commit
+    between the checks of this request and its write, and this write
+    cannot put back a pre-rename prompt reference.
     """
+    guard = graph_cypher.Statement(
+        _ORG_SLUG_GUARD_QUERY,
+        {'org_id': org_id, 'org_slug': org_slug},
+        expect_rows=True,
+    )
     try:
-        await db._execute_batch(statements)  # pyright: ignore[reportPrivateUsage]
+        await db._execute_batch(  # pyright: ignore[reportPrivateUsage]
+            [guard, *statements],
+            shared_lock=relational.organization_delete_lock_key(org_id),
+        )
     except graph.StatementMatchedNothing as exc:
+        if exc.args and exc.args[0] == _ORG_SLUG_GUARD_QUERY:
+            raise fastapi.HTTPException(
+                status_code=409,
+                detail=f'Organization {org_slug!r} was renamed or deleted '
+                'while this request ran; reload the agent and try again',
+            ) from exc
         # Only the label move expects rows.
         raise fastapi.HTTPException(
             status_code=409, detail=prompts.PROMPT_CHANGED_DETAIL
@@ -1243,11 +1313,13 @@ async def create_agent(
         409: The org has an agent with this slug.
         422: The team, a tag, a tool environment, or a subagent is not
             in the org, a subagent is given two times,
-            ``prompt_ref`` does not parse, or a platform field is not
-            valid (see :func:`_check_platform`).
+            ``prompt_ref`` does not parse or names an ``agents/``
+            prompt of another organization, or a platform field is
+            not valid (see :func:`_check_platform`).
 
     """
     snapshot = _snapshot_from(data)
+    _check_prompt_scope(org_slug, snapshot.prompt_ref)
     snapshot.settings = await _check_platform(
         store, org_id, snapshot.settings, None
     )
@@ -1455,6 +1527,7 @@ async def update_agent(
     )
     return await _apply(
         db,
+        org_id,
         org_slug,
         existing,
         target,
@@ -1499,6 +1572,7 @@ async def patch_agent(
     )
     return await _apply(
         db,
+        org_id,
         org_slug,
         existing,
         target,
@@ -1668,6 +1742,7 @@ async def get_agent_version(
 )
 async def restore_agent_version(
     org_slug: str,
+    org_id: organizations.MemberOrgId,
     slug: str,
     n: int,
     db: graph.Pool,
@@ -1721,6 +1796,7 @@ async def restore_agent_version(
     )
     return await _apply(
         db,
+        org_id,
         org_slug,
         existing,
         snapshot,
@@ -1766,11 +1842,7 @@ async def _restore_label_move(
         return None
     # Reject the prompt of another organization before the fetch, so
     # the response does not tell if that prompt exists (issue #414).
-    if (
-        namespace == AGENT_PROMPT_NAMESPACE
-        and '.' in prompt_slug
-        and not prompt_slug.startswith(f'{org_slug}.')
-    ):
+    if _is_foreign_prompt(org_slug, namespace, prompt_slug):
         raise fastapi.HTTPException(
             status_code=409,
             detail=(

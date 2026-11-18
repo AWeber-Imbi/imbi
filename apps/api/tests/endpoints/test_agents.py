@@ -179,9 +179,22 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         return [c.args[0] for c in self.mock_db.execute.await_args_list]
 
     def _batch(self) -> list[typing.Any]:
-        """Return the statements of the one transactional write."""
+        """Return the statements of the one transactional write.
+
+        The organization guard that starts each batch is checked here
+        and left out.
+        """
         self.mock_db._execute_batch.assert_awaited_once()
-        return list(self.mock_db._execute_batch.await_args.args[0])
+        call = self.mock_db._execute_batch.await_args
+        guard, *statements = call.args[0]
+        self.assertEqual(
+            guard.params, {'org_id': 'engineering', 'org_slug': 'engineering'}
+        )
+        self.assertTrue(guard.expect_rows)
+        self.assertEqual(
+            call.kwargs['shared_lock'], 'organization-delete:engineering'
+        )
+        return statements
 
     def _version_writes(self) -> list[dict[str, typing.Any]]:
         writes = [
@@ -745,6 +758,18 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         # The transaction rolls back, so no clean-up write is needed.
         self.assertEqual(self.mock_db.execute.await_count, 2)
 
+    def test_put_after_org_rename_conflicts(self) -> None:
+        # #780: the organization was renamed after the read, so the
+        # guard at the start of the batch matches nothing.
+        self.mock_db.execute.side_effect = [[self._row()]]
+        self.mock_db._execute_batch.side_effect = (
+            graph.StatementMatchedNothing(agents._ORG_SLUG_GUARD_QUERY)
+        )
+        response = self.client.put(BASE + '/triage', json={'name': 'New'})
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('was renamed', response.json()['detail'])
+        self.assertEqual(self.mock_db.execute.await_count, 1)
+
     def test_put_write_failure_propagates(self) -> None:
         self.mock_db.execute.side_effect = [[self._row()]]
         self.mock_db._execute_batch.side_effect = psycopg.errors.InternalError(
@@ -791,6 +816,51 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         (version,) = self._version_writes()
         self.assertEqual(version['n'], 2)
         self.assertEqual(version['summary'], 'Canary')
+
+    def test_patch_rejects_prompt_of_other_org(self) -> None:
+        # An org rename moves only the references of its own agents.
+        self.mock_db.execute.side_effect = [[self._row()]]
+        response = self.client.patch(
+            BASE + '/triage',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/prompt_ref',
+                    'value': 'agents/acme.bot@3',
+                }
+            ],
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn('agents/acme.bot', response.json()['detail'])
+        self.assertEqual(self._version_writes(), [])
+
+    def test_create_rejects_prompt_of_other_org(self) -> None:
+        response = self.client.post(
+            BASE + '/',
+            json={
+                'name': 'Triage',
+                'slug': 'triage',
+                'team': 'ops',
+                'prompt_ref': 'agents/acme.bot@stable',
+            },
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn('agents/acme.bot', response.json()['detail'])
+        self.mock_db.execute.assert_not_awaited()
+
+    def test_create_rejects_workflow_prompt_of_other_org(self) -> None:
+        response = self.client.post(
+            BASE + '/',
+            json={
+                'name': 'Triage',
+                'slug': 'triage',
+                'team': 'ops',
+                'prompt_ref': 'workflows/acme.summarize@stable',
+            },
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn('workflows/acme.summarize', response.json()['detail'])
+        self.mock_db.execute.assert_not_awaited()
 
     def test_patch_enabled_only_writes_no_version(self) -> None:
         self.mock_db.execute.side_effect = [
@@ -1204,6 +1274,21 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         detail = response.json()['detail']
         self.assertIn('agents/other.triage', detail)
         self.assertIn("'engineering' organization", detail)
+        self.assertEqual(self.mock_db.execute.await_count, 2)
+        self.mock_db._execute_batch.assert_not_awaited()
+        self.assertEqual(self._version_writes(), [])
+
+    def test_restore_cross_org_workflow_prompt_conflicts(self) -> None:
+        # workflows/ prompts are org-scoped too.
+        self._allow_promote()
+        ref = 'workflows/other.summarize@stable'
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=3, prompt_ref=ref, prompt_version=5)],
+            [self._version(1, prompt_ref=ref, prompt_version=4)],
+        ]
+        response = self.client.post(BASE + '/triage/versions/1/restore')
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertIn('workflows/other.summarize', response.json()['detail'])
         self.assertEqual(self.mock_db.execute.await_count, 2)
         self.mock_db._execute_batch.assert_not_awaited()
         self.assertEqual(self._version_writes(), [])

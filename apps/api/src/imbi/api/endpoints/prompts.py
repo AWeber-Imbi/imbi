@@ -26,8 +26,10 @@ import typing
 import uuid
 
 import fastapi
+import psycopg
 import pydantic
 import slugify
+from psycopg.types import json as pg_json
 
 from imbi.api import model_calls, secret_broker, workflows
 from imbi.api.agent_tasks import store as task_store
@@ -39,7 +41,7 @@ from imbi.api.endpoints._helpers import (
 )
 from imbi.api.graph_sql import escape_prop, props_template, set_clause
 from imbi.api.llm import generate as model_generate
-from imbi.common import graph, models
+from imbi.common import graph, models, relational
 from imbi.common import patch as json_patch
 from imbi.common.auth import permissions as common_permissions
 from imbi.common.auth.encryption import decrypt_config_value
@@ -411,6 +413,50 @@ WHERE p.namespace IN {namespaces} AND p.slug STARTS WITH (o.slug + '.')
 DETACH DELETE p
 """
 
+#: An organization rename moves its prompts and the references to them
+#: from ``<old>.`` to ``<new>.``. Version numbers do not change. It
+#: returns the ``namespace/slug`` that each moved prompt had.
+_MOVE_ORG_PROMPTS_QUERY: typing.LiteralString = """
+MATCH (p:Prompt)
+WHERE p.namespace IN {namespaces} AND p.slug STARTS WITH {old}
+WITH p, p.namespace + '/' + p.slug AS key
+SET p.slug = {new} + substring(p.slug, {cut})
+RETURN key
+"""
+
+_ORG_ID_QUERY: typing.LiteralString = (
+    'MATCH (o:Organization {{slug: {slug}}}) RETURN o.id AS id'
+)
+
+#: The first statement of a rename into an organization's prefix
+#: (:func:`patch_prompt`): the organization still has that slug.
+_ORG_GUARD_QUERY: typing.LiteralString = (
+    'MATCH (o:Organization {{id: {org_id}, slug: {org_slug}}})'
+    ' RETURN o.id AS id'
+)
+
+_AGENT_REFS_QUERY: typing.LiteralString = """
+MATCH (a:Agent)-[:BELONGS_TO]->(:Organization {{id: {org_id}}})
+WHERE a.prompt_ref IS NOT NULL
+RETURN a.id AS id, a.prompt_ref AS ref
+"""
+
+_SET_AGENT_REF_QUERY: typing.LiteralString = """
+MATCH (a:Agent {{id: {id}}})
+SET a.prompt_ref = {ref}
+"""
+
+_AGENT_VERSIONS_QUERY: typing.LiteralString = """
+MATCH (v:AgentVersion)-[:VERSION_OF]->(:Agent)
+      -[:BELONGS_TO]->(:Organization {{id: {org_id}}})
+RETURN v.agent_id AS agent_id, v.n AS n, v.snapshot AS snapshot
+"""
+
+_SET_AGENT_SNAPSHOT_QUERY: typing.LiteralString = """
+MATCH (v:AgentVersion {{agent_id: {agent_id}, n: {n}}})
+SET v.snapshot = {snapshot}
+"""
+
 #: Labels change by read, modify, write. The ``updated_at`` match makes
 #: the write fail when another write came first, instead of losing it.
 _SET_LABELS_QUERY: typing.LiteralString = """
@@ -624,7 +670,8 @@ async def _model_id_for(
 #: ``workflows/<org slug>.<workflow slug>.<node key>``. A workflow
 #: version pins a version number of the prompt, so such a prompt is
 #: never deleted or renamed, has no tools, and is archived (not
-#: deleted) with its node.
+#: deleted) with its node. Only an organization rename moves it, with
+#: the references to it (:func:`move_org_prompts`).
 WORKFLOWS_NAMESPACE = llm_call.NAMESPACE
 
 #: The namespaces whose prompts are data of one organization, and the
@@ -801,6 +848,106 @@ async def delete_org_prompts(
     params = {'org_id': org_id, 'namespaces': list(_ORG_NAMESPACES)}
     await execute(_DELETE_ORG_VERSIONS_QUERY, params, [])
     await execute(_DELETE_ORG_PROMPTS_QUERY, params, [])
+
+
+async def move_org_prompts(
+    execute: graph.CypherExecute,
+    conn: psycopg.AsyncConnection[typing.Any],
+    org_id: str,
+    old_slug: str,
+    new_slug: str,
+) -> None:
+    """Move the prompts of a renamed organization to the new slug.
+
+    The ``agents/<old>.*`` and ``workflows/<old>.*`` prompts get the
+    ``<new>.`` prefix. The ``prompt_ref`` of each agent and agent
+    version, and of each LLM Call node of each workflow version, moves
+    with them. Pinned version numbers do not change.
+
+    Call this in the transaction that renames the organization.
+
+    Only a reference to a prompt that moved changes. A reference to a
+    prompt that does not exist keeps its slug, so it cannot come to
+    name another prompt that has the new slug already.
+    """
+    old, new = f'{old_slug}.', f'{new_slug}.'
+    with conflict_on_unique_violation(
+        f'A prompt with the {new!r} prefix already exists'
+    ):
+        rows = await execute(
+            _MOVE_ORG_PROMPTS_QUERY,
+            {
+                'namespaces': list(_ORG_NAMESPACES),
+                'old': old,
+                'new': new,
+                'cut': len(old),
+            },
+            ['key'],
+        )
+    moved_keys = {str(graph.parse_agtype(r['key'])) for r in rows}
+
+    def moved(ref: object) -> str | None:
+        """The new ``ref``, or ``None`` when its prompt did not move."""
+        if not isinstance(ref, str):
+            return None
+        key, at, label = ref.partition('@')
+        if key not in moved_keys:
+            return None
+        namespace, _, slug = key.partition('/')
+        return f'{namespace}/{new}{slug[len(old) :]}{at}{label}'
+
+    for row in await execute(
+        _AGENT_REFS_QUERY, {'org_id': org_id}, ['id', 'ref']
+    ):
+        agent_ref = moved(graph.parse_agtype(row['ref']))
+        if agent_ref is not None:
+            await execute(
+                _SET_AGENT_REF_QUERY,
+                {'id': graph.parse_agtype(row['id']), 'ref': agent_ref},
+                [],
+            )
+    for row in await execute(
+        _AGENT_VERSIONS_QUERY,
+        {'org_id': org_id},
+        ['agent_id', 'n', 'snapshot'],
+    ):
+        raw = graph.parse_agtype(row['snapshot'])
+        snapshot: dict[str, typing.Any] = (
+            json.loads(raw) if isinstance(raw, str) else raw or {}
+        )
+        snapshot_ref = moved(snapshot.get('prompt_ref'))
+        if snapshot_ref is not None:
+            snapshot['prompt_ref'] = snapshot_ref
+            await execute(
+                _SET_AGENT_SNAPSHOT_QUERY,
+                {
+                    'agent_id': graph.parse_agtype(row['agent_id']),
+                    'n': graph.parse_agtype(row['n']),
+                    'snapshot': json.dumps(snapshot),
+                },
+                [],
+            )
+    cursor = await conn.execute(
+        'SELECT v.workflow_id, v.version, v.graph'
+        ' FROM workflows.workflow_versions AS v'
+        ' JOIN workflows.workflows AS w ON w.id = v.workflow_id'
+        ' WHERE w.organization_id = %s',
+        (org_id,),
+    )
+    for workflow_id, version, wf_graph in await cursor.fetchall():
+        changed = False
+        for node in wf_graph.get('nodes', []):
+            params: dict[str, typing.Any] = node.get('params') or {}
+            node_ref = moved(params.get('prompt_ref'))
+            if node.get('type') == llm_call.STEP.type and node_ref:
+                params['prompt_ref'] = node_ref
+                changed = True
+        if changed:
+            await conn.execute(
+                'UPDATE workflows.workflow_versions SET graph = %s'
+                ' WHERE workflow_id = %s AND version = %s',
+                (pg_json.Jsonb(wf_graph), workflow_id, version),
+            )
 
 
 async def _require_access(
@@ -1860,8 +2007,9 @@ async def patch_prompt(
         400: Invalid patch or a read-only path.
         403: A rename without ``prompt:promote``.
         404: No such prompt.
-        409: The new ``namespace/slug`` is taken, or the rename moves
-            a prompt into or out of the ``workflows`` namespace.
+        409: The new ``namespace/slug`` is taken, the rename moves
+            a prompt into or out of the ``workflows`` namespace, or the
+            prompt moved or was deleted while this request ran.
         422: The patched values are not valid.
 
     """
@@ -1893,14 +2041,65 @@ async def patch_prompt(
     props = updated.model_dump(
         mode='json', include={*_PATCHABLE_FIELDS, 'updated_at'}
     )
+    # The match on the reference that this patch read stops it from
+    # writing an old slug back over a move (an organization rename).
     query = (
-        'MATCH (p:Prompt {{id: {id}}})'
+        'MATCH (p:Prompt {{id: {id}, namespace: {read_namespace},'
+        ' slug: {read_slug}}})'
         f' {set_clause("p", props)} RETURN p'
     )
+    params = {
+        **props,
+        'id': prompt.id,
+        'read_namespace': prompt.namespace,
+        'read_slug': prompt.slug,
+    }
+    dest_org = _prompt_org(updated.namespace, updated.slug)
+    org_rows = (
+        await db.execute(_ORG_ID_QUERY, {'slug': dest_org}, ['id'])
+        if dest_org is not None
+        and (namespace, slug)
+        != (
+            updated.namespace,
+            updated.slug,
+        )
+        else []
+    )
+    records: list[dict[str, typing.Any]]
     with conflict_on_unique_violation(
         f'Prompt {updated.namespace}/{updated.slug} already exists'
     ):
-        await db.execute(query, {**props, 'id': prompt.id}, ['p'])
+        if org_rows:
+            # A rename into an organization's prefix holds the shared
+            # lock on that organization, which an organization rename
+            # holds exclusively, and writes only while the organization
+            # still has that slug.
+            org_id = str(graph.parse_agtype(org_rows[0]['id']))
+            try:
+                await db._execute_batch(  # pyright: ignore[reportPrivateUsage]
+                    [
+                        graph_cypher.Statement(
+                            _ORG_GUARD_QUERY,
+                            {'org_id': org_id, 'org_slug': dest_org},
+                            expect_rows=True,
+                        ),
+                        graph_cypher.Statement(
+                            query, params, expect_rows=True
+                        ),
+                    ],
+                    shared_lock=relational.organization_delete_lock_key(
+                        org_id
+                    ),
+                )
+                records = [{'p': None}]
+            except graph.StatementMatchedNothing:
+                records = []
+        else:
+            records = await db.execute(query, params, ['p'])
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=409, detail=PROMPT_CHANGED_DETAIL
+        )
     return _prompt_response(updated, latest)
 
 
