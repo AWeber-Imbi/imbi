@@ -2490,6 +2490,18 @@ class HistoryTestCase(TaskTestCase):
         )
         self.assertLessEqual(len(f'Work.\n\n{history}'.encode()), 150, history)
 
+    async def test_full_history_that_fits_is_not_cut(self) -> None:
+        # A cut of one entry adds the cut notice and makes the text longer.
+        entries = (
+            {'kind': 'comment', 'at': 't1', 'text': 'x'},
+            {'kind': 'comment', 'at': 't2', 'text': 'a' * 200},
+        )
+        self.history(*entries)
+        full = f'Work.\n\n{task._history(list(entries), 0)}'
+        with mock.patch.object(task, 'PROMPT_BYTES', len(full.encode())):
+            history = await self.run_task.read_history()
+        self.assertEqual(f'Work.\n\n{history}', full)
+
     async def test_refused_history_is_empty(self) -> None:
         self.client.request.side_effect = api.Refused(404, '404')
         self.assertEqual(await self.run_task.read_history(), '')

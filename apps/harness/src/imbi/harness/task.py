@@ -1721,9 +1721,14 @@ class TaskRun:
             history = _history(entries[drop:], cut + drop)
             return used + len(history.encode()) <= PROMPT_BYTES
 
-        # The text gets shorter for each entry that is cut, so a binary
-        # search finds the fewest entries to cut.
-        drop = bisect.bisect_left(range(len(entries)), True, key=fits)
+        if not entries:
+            return ''
+        if fits(0):
+            return _history(entries, cut)
+        # The first cut entry can add the cut notice and make the text
+        # longer. After that, the text gets shorter for each entry that is
+        # cut, so a binary search finds the fewest entries to cut.
+        drop = bisect.bisect_left(range(len(entries)), True, lo=1, key=fits)
         if drop == len(entries):
             return ''
         return _history(entries[drop:], cut + drop)
