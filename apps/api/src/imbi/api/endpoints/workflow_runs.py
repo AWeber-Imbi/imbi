@@ -1593,7 +1593,8 @@ async def step_agent_task(
             params = agent_step.Params.model_validate(step['input'] or {})
             data = agent_tasks.AgentTaskCreate(
                 agent_slug=str(graph.parse_agtype(records[0]['slug'])),
-                title=f'{workflow["name"]}: {step["title"]}',
+                title=params.task_title
+                or f'{workflow["name"]}: {step["title"]}',
                 description=params.instruction,
                 project_ids=[project_id] if project_id else [],
                 budget=params.budget,

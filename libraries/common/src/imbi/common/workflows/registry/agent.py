@@ -346,6 +346,14 @@ class Params(pydantic.BaseModel):
     instruction: str = pydantic.Field(
         min_length=1, description='What the agent must do.'
     )
+    task_title: str | None = pydantic.Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description='The title of the agent task. Templates are allowed, '
+        'for example ``{{ trigger.ticket_key }}: implement``. Defaults to '
+        '``<workflow name>: <step title>``.',
+    )
     project_id: str | None = pydantic.Field(
         default=None,
         description='The primary project of the task, or '
