@@ -8,19 +8,22 @@ export const KEPT_AS_TEXT =
  * `onKept` for it. This includes integers written with a decimal point
  * or an exponent, such as `9007199254740993e0`. An integer that a
  * number holds exactly, such as `9007199254740992`, stays a number. A
+ * number too large to hold, such as `1e309`, is kept as its token. A
  * browser without `context.source` keeps the rounded number.
  */
 export function parseJson(text: string, onKept: () => void): unknown {
   return JSON.parse(
     text,
     (_key, value: unknown, context?: { source?: string }) => {
-      if (
-        typeof value !== 'number' ||
-        !Number.isInteger(value) ||
-        Number.isSafeInteger(value) ||
-        context?.source === undefined
-      )
+      if (typeof value !== 'number' || context?.source === undefined)
         return value
+      // A token too large for a number, such as `1e309`, parses to
+      // Infinity. Keep the token as it is: do not expand its exponent.
+      if (!Number.isFinite(value)) {
+        onKept()
+        return context.source
+      }
+      if (!Number.isInteger(value) || Number.isSafeInteger(value)) return value
       const exact = exactInteger(context.source)
       if (exact === null || exact === BigInt(value)) return value
       onKept()

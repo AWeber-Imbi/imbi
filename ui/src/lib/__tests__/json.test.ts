@@ -10,6 +10,9 @@ describe.skipIf(!JSON_SOURCE)('parseJson', () => {
     ['9007199254740993e0', '9007199254740993'],
     ['9007199254740993.0', '9007199254740993'],
     ['90071992547409.93e2', '9007199254740993'],
+    ['1e309', '1e309'],
+    ['-1e309', '-1e309'],
+    ['1e999999999', '1e999999999'],
   ])('keeps %s as text', (token, text) => {
     const onKept = vi.fn()
     expect(parseJson(`[${token}]`, onKept)).toEqual([text])
