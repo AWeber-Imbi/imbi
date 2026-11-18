@@ -1331,6 +1331,19 @@ class HistoryTests(RunnerTestCase):
         )
         self.assertFalse(any(e['webhook'] for e in entries[:3]))
 
+    async def test_request_of_a_webhook_ticket_is_untrusted(self) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE tickets.tickets SET origin_kind = 'webhook'"
+                ' WHERE organization_id = %s AND short_id = %s',
+                (self.org, 'T-1'),
+            )
+        entries = (await self.history())['entries']
+        self.assertEqual(
+            [(e['kind'], e['webhook']) for e in entries],
+            [('comment', False), ('request', True), ('comment', False)],
+        )
+
     async def test_byte_limit_keeps_the_newest(self) -> None:
         limit = len(b'Last comment.') + len(
             b'feedback request "Which branch?": answered\n'

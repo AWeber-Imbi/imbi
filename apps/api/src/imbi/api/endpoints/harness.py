@@ -1756,8 +1756,12 @@ def _linked_entry(
     )
 
 
-def _request_entry(row: dict[str, typing.Any]) -> HistoryEntry:
-    """A resolved request: what the agent asked and what it got."""
+def _request_entry(row: dict[str, typing.Any], webhook: bool) -> HistoryEntry:
+    """A resolved request: what the agent asked and what it got.
+
+    The agent can quote the text of a webhook ticket in its question, so
+    the request of a webhook ticket is untrusted (``webhook``).
+    """
     resolution: dict[str, typing.Any] = row['resolution'] or {}
     lines = [f'{row["kind"]} request "{row["title"]}": {row["status"]}']
     if resolution.get('answer'):
@@ -1769,6 +1773,7 @@ def _request_entry(row: dict[str, typing.Any]) -> HistoryEntry:
         at=row['resolved_at'],
         actor=row['resolved_by'],
         text='\n'.join(lines),
+        webhook=webhook,
     )
 
 
@@ -1814,6 +1819,7 @@ async def read_harness_ticket_history(
     (turns, requests), relations = await asyncio.gather(
         store.history(task), store.relations(task)
     )
+    webhook = task['origin_kind'] == 'webhook'
     entries = [
         *(
             HistoryEntry(
@@ -1824,7 +1830,7 @@ async def read_harness_ticket_history(
             )
             for turn in turns
         ),
-        *(_request_entry(row) for row in requests),
+        *(_request_entry(row, webhook) for row in requests),
         *(_linked_entry('child', row) for row in relations['children']),
         *(_linked_entry('prerequisite', row) for row in relations['requires']),
     ]

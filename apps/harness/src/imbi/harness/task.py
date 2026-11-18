@@ -1710,11 +1710,17 @@ class TaskRun:
         not give it."""
         try:
             body = await self.api.history()
-        except (api.Refused, httpx.HTTPError, ValueError) as err:
+            entries = [dict(entry) for entry in api.items(body, 'entries')]
+            cut = int(body.get('cut') or 0)
+        except (
+            api.Refused,
+            httpx.HTTPError,
+            ValueError,
+            AttributeError,
+            TypeError,
+        ) as err:
             LOGGER.warning('No history for %s: %s', self.api.short_id, err)
             return ''
-        entries = api.items(body, 'entries')
-        cut = int(body.get('cut') or 0)
         used = len(self.description().encode()) + 2
 
         def fits(drop: int) -> bool:

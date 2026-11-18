@@ -2512,6 +2512,19 @@ class HistoryTestCase(TaskTestCase):
         )
         self.assertEqual(await self.run_task.read_history(), '')
 
+    async def test_invalid_history_shape_is_empty(self) -> None:
+        for body in (
+            None,
+            [],
+            {'entries': ['x']},
+            {'entries': [], 'cut': 'x'},
+        ):
+            with self.subTest(body=body):
+                self.client.request.return_value = mock.Mock(
+                    json=mock.Mock(return_value=body)
+                )
+                self.assertEqual(await self.run_task.read_history(), '')
+
     async def test_no_entry_fits_gives_no_history(self) -> None:
         self.history({'kind': 'comment', 'at': 't1', 'text': 'a' * 100})
         with mock.patch.object(task, 'PROMPT_BYTES', 50):
