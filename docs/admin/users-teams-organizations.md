@@ -60,10 +60,15 @@ memberships, the agent tasks, the workflow runs, the AI model calls, the
 the settled secret resolutions of the organization are deleted with it.
 The delete finds the prompts by the current slug of the organization. A
 rename moves the `workflows/<org>.*` and `agents/<org>.*` prompts to the
-new slug, so the delete removes them all, and a later organization with
-the same slug or an earlier slug does not get them. A rename before Imbi
-moved the prompts left them under the earlier slug. The delete does not
-remove these prompts.
+new slug. So the delete removes the prompts that a rename moved, and a
+later organization with the same slug does not get them.
+
+A rename before Imbi moved the prompts left them under the earlier slug.
+The delete does not remove these prompts. An organization that later
+gets that earlier slug gets these prompts, and its delete removes them.
+Before you give an earlier slug to an organization, look for
+`workflows/<slug>.*` and `agents/<slug>.*` prompts, and delete the
+prompts that you do not want it to get.
 The archived task events and usage records in ClickHouse stay as the
 audit trail.
 

@@ -164,9 +164,22 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         return [c.args[0] for c in self.mock_db.execute.await_args_list]
 
     def _batch(self) -> list[typing.Any]:
-        """Return the statements of the one transactional write."""
+        """Return the statements of the one transactional write.
+
+        The organization guard that starts each batch is checked here
+        and left out.
+        """
         self.mock_db._execute_batch.assert_awaited_once()
-        return list(self.mock_db._execute_batch.await_args.args[0])
+        call = self.mock_db._execute_batch.await_args
+        guard, *statements = call.args[0]
+        self.assertEqual(
+            guard.params, {'org_id': 'engineering', 'org_slug': 'engineering'}
+        )
+        self.assertTrue(guard.expect_rows)
+        self.assertEqual(
+            call.kwargs['shared_lock'], 'organization-delete:engineering'
+        )
+        return statements
 
     def _version_writes(self) -> list[dict[str, typing.Any]]:
         writes = [
@@ -641,6 +654,18 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.assertIn('already exists', response.json()['detail'])
         # The transaction rolls back, so no clean-up write is needed.
         self.assertEqual(self.mock_db.execute.await_count, 2)
+
+    def test_put_after_org_rename_conflicts(self) -> None:
+        # #780: the organization was renamed after the read, so the
+        # guard at the start of the batch matches nothing.
+        self.mock_db.execute.side_effect = [[self._row()]]
+        self.mock_db._execute_batch.side_effect = (
+            graph.StatementMatchedNothing(agents._ORG_SLUG_GUARD_QUERY)
+        )
+        response = self.client.put(BASE + '/triage', json={'name': 'New'})
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('was renamed', response.json()['detail'])
+        self.assertEqual(self.mock_db.execute.await_count, 1)
 
     def test_put_write_failure_propagates(self) -> None:
         self.mock_db.execute.side_effect = [[self._row()]]

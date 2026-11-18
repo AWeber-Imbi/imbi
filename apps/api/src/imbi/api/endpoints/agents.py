@@ -42,7 +42,7 @@ from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.graph_sql import props_template, set_clause
 from imbi.api.harness import platform
 from imbi.api.scoring import OptionalValkeyClient
-from imbi.common import graph, models
+from imbi.common import graph, models, relational
 from imbi.common import patch as json_patch
 from imbi.common.graph import cypher as graph_cypher
 from imbi.common.prompts import resolve as prompt_resolve
@@ -1052,6 +1052,7 @@ async def _write_version(
 
 async def _apply(
     db: graph.Pool,
+    org_id: str,
     org_slug: str,
     existing: dict[str, typing.Any],
     target: AgentSnapshot,
@@ -1071,7 +1072,9 @@ async def _apply(
     enabled_changed = enabled != bool(existing.get('enabled', True))
     if not config_changed and not enabled_changed:
         if label_move is not None:
-            await _execute(db, [label_move], None, target, current)
+            await _execute(
+                db, org_id, org_slug, [label_move], None, target, current
+            )
         return existing
 
     agent_id = str(existing['id'])
@@ -1138,12 +1141,21 @@ async def _apply(
             {**props, 'agent_id': agent_id},
         )
     )
-    await _execute(db, statements, n, target, current)
+    await _execute(db, org_id, org_slug, statements, n, target, current)
     return await _fetch_agent(db, org_slug, target.slug)
+
+
+#: The first statement of each agent write batch (:func:`_execute`).
+_ORG_SLUG_GUARD_QUERY: typing.LiteralString = (
+    'MATCH (o:Organization {{id: {org_id}, slug: {org_slug}}})'
+    ' RETURN o.id AS id'
+)
 
 
 async def _execute(
     db: graph.Pool,
+    org_id: str,
+    org_slug: str,
     statements: list[graph_cypher.Statement],
     n: int | None,
     target: AgentSnapshot,
@@ -1154,10 +1166,30 @@ async def _execute(
     The version, the properties, the edges, and a label move are all
     written, or none is. If the agent was deleted, every agent MATCH
     finds nothing, nothing is written, and the next read gives 404.
+
+    The batch holds the shared lock on the organization, which an
+    organization rename holds exclusively, and writes only while the
+    organization still has ``org_slug``. So a rename cannot commit
+    between the checks of this request and its write, and this write
+    cannot put back a pre-rename prompt reference.
     """
+    guard = graph_cypher.Statement(
+        _ORG_SLUG_GUARD_QUERY,
+        {'org_id': org_id, 'org_slug': org_slug},
+        expect_rows=True,
+    )
     try:
-        await db._execute_batch(statements)  # pyright: ignore[reportPrivateUsage]
+        await db._execute_batch(  # pyright: ignore[reportPrivateUsage]
+            [guard, *statements],
+            shared_lock=relational.organization_delete_lock_key(org_id),
+        )
     except graph.StatementMatchedNothing as exc:
+        if exc.args and exc.args[0] == _ORG_SLUG_GUARD_QUERY:
+            raise fastapi.HTTPException(
+                status_code=409,
+                detail=f'Organization {org_slug!r} was renamed or deleted '
+                'while this request ran; reload the agent and try again',
+            ) from exc
         # Only the label move expects rows.
         raise fastapi.HTTPException(
             status_code=409, detail=prompts.PROMPT_CHANGED_DETAIL
@@ -1406,6 +1438,7 @@ async def update_agent(
     )
     return await _apply(
         db,
+        org_id,
         org_slug,
         existing,
         target,
@@ -1450,6 +1483,7 @@ async def patch_agent(
     )
     return await _apply(
         db,
+        org_id,
         org_slug,
         existing,
         target,
@@ -1619,6 +1653,7 @@ async def get_agent_version(
 )
 async def restore_agent_version(
     org_slug: str,
+    org_id: organizations.MemberOrgId,
     slug: str,
     n: int,
     db: graph.Pool,
@@ -1672,6 +1707,7 @@ async def restore_agent_version(
     )
     return await _apply(
         db,
+        org_id,
         org_slug,
         existing,
         snapshot,

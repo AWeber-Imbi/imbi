@@ -960,6 +960,7 @@ class Graph:
     async def _execute_batch(
         self,
         statements: list[cypher.Statement],
+        shared_lock: str | None = None,
     ) -> None:
         """Execute multiple statements in a single transaction.
 
@@ -977,11 +978,21 @@ class Graph:
         raises :class:`StatementMatchedNothing`, and the transaction
         rolls back.
 
+        With ``shared_lock``, the transaction first takes a shared
+        advisory lock on that key, so it waits for a holder of the
+        exclusive lock (:meth:`locked_with_connection`) to commit.
+
         """
         self._require_open()
 
         async def run(conn: psycopg.AsyncConnection[typing.Any]) -> None:
             async with conn.transaction():
+                if shared_lock is not None:
+                    await conn.execute(
+                        'SELECT pg_advisory_xact_lock_shared('
+                        'hashtextextended(%s, 0))',
+                        (shared_lock,),
+                    )
                 for stmt in statements:
                     found = await self._execute_on(
                         conn,

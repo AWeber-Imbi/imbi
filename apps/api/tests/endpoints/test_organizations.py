@@ -439,9 +439,10 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
     def test_patch_organization_slug_conflict(self) -> None:
         """Test slug rename to conflicting slug returns 409."""
         self.mock_db.match.return_value = [self.test_org]
-        # First call fetches existing previous_slugs (L9), then the
-        # actual SET raises the unique-violation we're testing for.
+        # The first two calls fetch previous_slugs (L9), before and
+        # under the lock, then the SET raises the unique violation.
         self.mock_db.execute.side_effect = [
+            [{'previous_slugs': None, 'id': self.test_org.id}],
             [{'previous_slugs': None, 'id': self.test_org.id}],
             psycopg.errors.UniqueViolation('Duplicate'),
         ]
@@ -492,9 +493,10 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
     def test_patch_organization_rename_captures_previous_slug(self) -> None:
         """L9: renaming an org appends the old slug to previous_slugs."""
         self.mock_db.match.return_value = [self.test_org]
-        # 1st execute = fetch previous_slugs (none yet); 2nd execute
-        # = SET; 3rd to 5th = the prompt moves (no workflows); 6th =
-        # the count query in _persist_organization.
+        # 1st execute = fetch previous_slugs (none yet); 2nd = fetch
+        # them again under the lock (a rename to `middle` and back
+        # committed since); 3rd = SET; 4th to 6th = the prompt moves
+        # (no workflows); 7th = the count query.
         self.cursor.fetchall.return_value = []
         renamed_org = {
             'id': self.test_org.id,
@@ -508,6 +510,7 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
         }
         self.mock_db.execute.side_effect = [
             [{'previous_slugs': None, 'id': self.test_org.id}],
+            [{'previous_slugs': ['middle'], 'id': self.test_org.id}],
             [{'n': renamed_org}],
             [],
             [],
@@ -527,11 +530,11 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        # The SET call (call_args_list[1]) should have received the
-        # original slug as the new previous_slugs entry.
-        set_call = self.mock_db.execute.call_args_list[1]
+        # The SET call gets the history read under the lock, with the
+        # original slug added.
+        set_call = self.mock_db.execute.call_args_list[2]
         params = set_call.args[1]
-        self.assertEqual(params['previous_slugs'], ['engineering'])
+        self.assertEqual(params['previous_slugs'], ['middle', 'engineering'])
         self.assertEqual(params['slug'], 'eng')
         self.assertEqual(params['original_slug'], 'engineering')
 
@@ -856,10 +859,20 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
             },
             [],
         )
+        # This reference names no prompt, so the rename must not move
+        # it: it could come to name a prompt that has the new slug.
+        ghost = f'agents/{self.org}.ghost@1'
+        await self.graph.execute(
+            'MATCH (o:Organization {{id: {org}}})'
+            " CREATE (:Agent {{id: {org} + '-ghost', prompt_ref: {ref}}})"
+            '-[:BELONGS_TO]->(o)',
+            {'org': self.org, 'ref': ghost},
+            [],
+        )
         for query in (
             'MATCH (p:Prompt) WHERE p.slug STARTS WITH {org} DETACH DELETE p',
             'MATCH (v:AgentVersion {{agent_id: {org}}}) DETACH DELETE v',
-            'MATCH (a:Agent {{id: {org}}}) DETACH DELETE a',
+            'MATCH (a:Agent) WHERE a.id STARTS WITH {org} DETACH DELETE a',
         ):
             self.addAsyncCleanup(
                 self.graph.execute, query, {'org': self.org}, []
@@ -927,6 +940,13 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
             json.loads(graph.parse_agtype(records[0]['snapshot'])),
             {'prompt_ref': ref},
         )
+        records = await self.graph.execute(
+            "MATCH (a:Agent {{id: {org} + '-ghost'}})"
+            ' RETURN a.prompt_ref AS ref',
+            {'org': self.org},
+            ['ref'],
+        )
+        self.assertEqual(graph.parse_agtype(records[0]['ref']), ghost)
         async with self.pool.connection() as conn:
             cursor = await conn.execute(
                 'SELECT graph FROM workflows.workflow_versions'

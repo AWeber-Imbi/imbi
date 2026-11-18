@@ -547,6 +547,31 @@ def _llm_call_keys(wf_graph: dict[str, typing.Any]) -> set[str]:
     }
 
 
+async def _require_org_slug(
+    db: graph.Graph, org_id: str, org_slug: str
+) -> None:
+    """Raise 409 when the organization no longer has ``org_slug``.
+
+    The store calls this under the shared lock on the organization. A
+    rename that committed after :func:`_check_llm_call` changed the
+    prompt references that it checked, so the write must not commit.
+    """
+    if not await db.execute(
+        'MATCH (o:Organization {{id: {org_id}, slug: {org_slug}}})'
+        ' RETURN o.id AS id',
+        {'org_id': org_id, 'org_slug': org_slug},
+        ['id'],
+    ):
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail={
+                'error': 'conflict',
+                'message': f'Organization {org_slug!r} was renamed during '
+                'the save; read the workflow again and retry',
+            },
+        )
+
+
 async def _archive_prompts(
     db: graph.Graph, org_slug: str, slug: str, keys: abc.Iterable[str]
 ) -> None:
@@ -776,7 +801,12 @@ async def create_workflow(
         db, org_slug, slug, data.graph, auth, definition.owner_team_id
     )
     with conflict_on_unique_violation(f'Workflow {slug!r} already exists'):
-        await store.create(org_id, slug, definition)
+        await store.create(
+            org_id,
+            slug,
+            definition,
+            on_created=lambda: _require_org_slug(db, org_id, org_slug),
+        )
     return await _get(store, db, org_id, slug)
 
 
@@ -845,17 +875,18 @@ async def save_workflow(
     await _check_llm_call(
         db, org_slug, slug, data.graph, auth, definition.owner_team_id
     )
+
     # The archive runs under the row lock of the save: a second save
     # waits, so an older key set cannot archive a prompt of a newer
     # graph.
-    if not await store.save(
-        org_id,
-        slug,
-        definition,
-        current['owner_team_id'],
-        on_saved=lambda: _archive_prompts(
+    async def on_saved() -> None:
+        await _require_org_slug(db, org_id, org_slug)
+        await _archive_prompts(
             db, org_slug, slug, _llm_call_keys(definition.graph)
-        ),
+        )
+
+    if not await store.save(
+        org_id, slug, definition, current['owner_team_id'], on_saved
     ):
         raise fastapi.HTTPException(
             status_code=409,

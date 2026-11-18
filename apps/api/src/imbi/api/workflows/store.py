@@ -101,9 +101,16 @@ class WorkflowStore:
         )
 
     async def create(
-        self, organization_id: str, slug: str, definition: Definition
+        self,
+        organization_id: str,
+        slug: str,
+        definition: Definition,
+        on_created: abc.Callable[[], abc.Awaitable[None]] | None = None,
     ) -> None:
         """Write a workflow and its version 1.
+
+        ``on_created`` runs before the commit, under the shared lock on
+        the organization. When it raises, the create is rolled back.
 
         Raises:
             psycopg.errors.UniqueViolation: The slug is in use.
@@ -129,6 +136,8 @@ class WorkflowStore:
             await conn.execute(
                 _INSERT_VERSION, _version_values(workflow_id, 1, definition)
             )
+            if on_created is not None:
+                await on_created()
 
     async def save(
         self,
@@ -146,9 +155,12 @@ class WorkflowStore:
 
         ``on_saved`` runs before the commit, while the save holds the
         row lock of the workflow, so that a second save waits for it.
-        When it raises, the save is rolled back.
+        When it raises, the save is rolled back. The save also holds the
+        shared lock on the organization, so an organization rename
+        (which moves the prompt references) does not run during it.
         """
         async with self._pool.connection() as conn, conn.transaction():
+            await relational.lock_organization_shared(conn, organization_id)
             cur = await conn.execute(
                 'UPDATE workflows.workflows SET name = %s,'
                 ' description = %s, owner_team_id = %s,'

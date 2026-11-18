@@ -594,12 +594,29 @@ class PatchPromptTestCase(PromptTestBase):
 
     def test_update_can_change_name(self) -> None:
         self.as_principal('prompt:update')
-        self.route((GET_PROMPT, prompt_row()))
+        router = self.route((GET_PROMPT, prompt_row()), (UPDATE, prompt_row()))
         response = self.client.patch(
             self.URL, json=[{'op': 'replace', 'path': '/name', 'value': 'X'}]
         )
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()['name'], 'X')
+        params = router.params_for(UPDATE)
+        self.assertEqual(
+            (params['read_namespace'], params['read_slug']),
+            ('mender', 'core'),
+        )
+
+    def test_update_after_a_move_is_409(self) -> None:
+        # #780: the prompt moved (an organization rename) after the
+        # read, so the match on the read slug finds nothing.
+        self.route((GET_PROMPT, prompt_row()), (UPDATE, []))
+        response = self.client.patch(
+            self.URL, json=[{'op': 'replace', 'path': '/name', 'value': 'X'}]
+        )
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(
+            response.json()['detail'], prompts.PROMPT_CHANGED_DETAIL
+        )
 
     def test_rename_needs_promote(self) -> None:
         self.as_principal('prompt:update')
@@ -914,7 +931,8 @@ class WorkflowPromptTestCase(PromptTestBase):
         self.assertNotIn(DELETE_VERSIONS, [q for q, _ in router.calls])
 
     def test_rename_is_409(self) -> None:
-        self.route((GET_PROMPT, prompt_row(**self.WF)))
+        row = prompt_row(**self.WF)
+        self.route((GET_PROMPT, row), (UPDATE, row))
         for path, value in (('/slug', f'{ORG}.x.y'), ('/namespace', 'x')):
             response = self.client.patch(
                 self.URL,

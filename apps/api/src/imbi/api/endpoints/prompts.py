@@ -410,17 +410,25 @@ DETACH DELETE p
 """
 
 #: An organization rename moves its prompts and the references to them
-#: from ``<old>.`` to ``<new>.``. Version numbers do not change.
+#: from ``<old>.`` to ``<new>.``. Version numbers do not change. It
+#: returns the ``namespace/slug`` that each moved prompt had.
 _MOVE_ORG_PROMPTS_QUERY: typing.LiteralString = """
 MATCH (p:Prompt)
 WHERE p.namespace IN {namespaces} AND p.slug STARTS WITH {old}
+WITH p, p.namespace + '/' + p.slug AS key
 SET p.slug = {new} + substring(p.slug, {cut})
+RETURN key
 """
 
-_MOVE_AGENT_REFS_QUERY: typing.LiteralString = """
+_AGENT_REFS_QUERY: typing.LiteralString = """
 MATCH (a:Agent)-[:BELONGS_TO]->(:Organization {{id: {org_id}}})
-WHERE a.prompt_ref STARTS WITH {old}
-SET a.prompt_ref = {new} + substring(a.prompt_ref, {cut})
+WHERE a.prompt_ref IS NOT NULL
+RETURN a.id AS id, a.prompt_ref AS ref
+"""
+
+_SET_AGENT_REF_QUERY: typing.LiteralString = """
+MATCH (a:Agent {{id: {id}}})
+SET a.prompt_ref = {ref}
 """
 
 _AGENT_VERSIONS_QUERY: typing.LiteralString = """
@@ -842,12 +850,16 @@ async def move_org_prompts(
     with them. Pinned version numbers do not change.
 
     Call this in the transaction that renames the organization.
+
+    Only a reference to a prompt that moved changes. A reference to a
+    prompt that does not exist keeps its slug, so it cannot come to
+    name another prompt that has the new slug already.
     """
     old, new = f'{old_slug}.', f'{new_slug}.'
     with conflict_on_unique_violation(
         f'A prompt with the {new!r} prefix already exists'
     ):
-        await execute(
+        rows = await execute(
             _MOVE_ORG_PROMPTS_QUERY,
             {
                 'namespaces': list(_ORG_NAMESPACES),
@@ -855,20 +867,30 @@ async def move_org_prompts(
                 'new': new,
                 'cut': len(old),
             },
-            [],
+            ['key'],
         )
-    agent_old = f'agents/{old}'
-    agent_new = f'agents/{new}'
-    await execute(
-        _MOVE_AGENT_REFS_QUERY,
-        {
-            'org_id': org_id,
-            'old': agent_old,
-            'new': agent_new,
-            'cut': len(agent_old),
-        },
-        [],
-    )
+    moved_keys = {str(graph.parse_agtype(r['key'])) for r in rows}
+
+    def moved(ref: object) -> str | None:
+        """The new ``ref``, or ``None`` when its prompt did not move."""
+        if not isinstance(ref, str):
+            return None
+        key, at, label = ref.partition('@')
+        if key not in moved_keys:
+            return None
+        namespace, _, slug = key.partition('/')
+        return f'{namespace}/{new}{slug[len(old) :]}{at}{label}'
+
+    for row in await execute(
+        _AGENT_REFS_QUERY, {'org_id': org_id}, ['id', 'ref']
+    ):
+        agent_ref = moved(graph.parse_agtype(row['ref']))
+        if agent_ref is not None:
+            await execute(
+                _SET_AGENT_REF_QUERY,
+                {'id': graph.parse_agtype(row['id']), 'ref': agent_ref},
+                [],
+            )
     for row in await execute(
         _AGENT_VERSIONS_QUERY,
         {'org_id': org_id},
@@ -878,9 +900,9 @@ async def move_org_prompts(
         snapshot: dict[str, typing.Any] = (
             json.loads(raw) if isinstance(raw, str) else raw or {}
         )
-        ref: str = snapshot.get('prompt_ref') or ''
-        if ref.startswith(agent_old):
-            snapshot['prompt_ref'] = agent_new + ref[len(agent_old) :]
+        snapshot_ref = moved(snapshot.get('prompt_ref'))
+        if snapshot_ref is not None:
+            snapshot['prompt_ref'] = snapshot_ref
             await execute(
                 _SET_AGENT_SNAPSHOT_QUERY,
                 {
@@ -890,8 +912,6 @@ async def move_org_prompts(
                 },
                 [],
             )
-    wf_old = f'{WORKFLOWS_NAMESPACE}/{old}'
-    wf_new = f'{WORKFLOWS_NAMESPACE}/{new}'
     cursor = await conn.execute(
         'SELECT v.workflow_id, v.version, v.graph'
         ' FROM workflows.workflow_versions AS v'
@@ -900,16 +920,14 @@ async def move_org_prompts(
         (org_id,),
     )
     for workflow_id, version, wf_graph in await cursor.fetchall():
-        moved = False
+        changed = False
         for node in wf_graph.get('nodes', []):
             params: dict[str, typing.Any] = node.get('params') or {}
-            node_ref: object = params.get('prompt_ref')
-            if node.get('type') == llm_call.STEP.type and (
-                isinstance(node_ref, str) and node_ref.startswith(wf_old)
-            ):
-                params['prompt_ref'] = wf_new + node_ref[len(wf_old) :]
-                moved = True
-        if moved:
+            node_ref = moved(params.get('prompt_ref'))
+            if node.get('type') == llm_call.STEP.type and node_ref:
+                params['prompt_ref'] = node_ref
+                changed = True
+        if changed:
             await conn.execute(
                 'UPDATE workflows.workflow_versions SET graph = %s'
                 ' WHERE workflow_id = %s AND version = %s',
@@ -1934,8 +1952,9 @@ async def patch_prompt(
         400: Invalid patch or a read-only path.
         403: A rename without ``prompt:promote``.
         404: No such prompt.
-        409: The new ``namespace/slug`` is taken, or the rename moves
-            a prompt into or out of the ``workflows`` namespace.
+        409: The new ``namespace/slug`` is taken, the rename moves
+            a prompt into or out of the ``workflows`` namespace, or the
+            prompt moved or was deleted while this request ran.
         422: The patched values are not valid.
 
     """
@@ -1967,14 +1986,30 @@ async def patch_prompt(
     props = updated.model_dump(
         mode='json', include={*_PATCHABLE_FIELDS, 'updated_at'}
     )
+    # The match on the reference that this patch read stops it from
+    # writing an old slug back over a move (an organization rename).
     query = (
-        'MATCH (p:Prompt {{id: {id}}})'
+        'MATCH (p:Prompt {{id: {id}, namespace: {read_namespace},'
+        ' slug: {read_slug}}})'
         f' {set_clause("p", props)} RETURN p'
     )
     with conflict_on_unique_violation(
         f'Prompt {updated.namespace}/{updated.slug} already exists'
     ):
-        await db.execute(query, {**props, 'id': prompt.id}, ['p'])
+        records = await db.execute(
+            query,
+            {
+                **props,
+                'id': prompt.id,
+                'read_namespace': prompt.namespace,
+                'read_slug': prompt.slug,
+            },
+            ['p'],
+        )
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=409, detail=PROMPT_CHANGED_DETAIL
+        )
     return _prompt_response(updated, latest)
 
 
