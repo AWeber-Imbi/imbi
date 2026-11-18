@@ -350,6 +350,7 @@ class GenerateTestCase(unittest.IsolatedAsyncioTestCase):
             for exc, code, retry in (
                 (httpx.ConnectTimeout('slow'), 'provider_unreachable', True),
                 (httpx.PoolTimeout('busy'), 'provider_unreachable', True),
+                (httpx.ProxyError('502'), 'provider_unreachable', True),
                 (httpx.ReadTimeout('slow'), 'provider_outcome_unknown', False),
                 (
                     httpx.WriteTimeout('slow'),

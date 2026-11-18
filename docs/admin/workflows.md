@@ -404,10 +404,13 @@ Imbi records each model call, also a preview, for 90 days, or longer
 while its workflow run is open. The record holds the prompt as sent and
 the answer. See [Maintenance](maintenance.md). When the engine asks
 again for the same attempt, for example after a restart, a lost
-response, or a `5xx` without an error code, Imbi returns the recorded
-answer and does not call the model again. A retry after a known
-failure is a new call. A retry after a step timeout asks again for the
-call of the earlier attempt and does not call the model again.
+response, or a `5xx` without an error code, Imbi does not call the
+model a second time. It returns the recorded result of the attempt:
+the answer, the recorded error (for example
+`provider_outcome_unknown`), or
+`call_in_progress` while the first call runs. A retry after a known
+failure is a new call. A retry after a step timeout asks for the call
+of the earlier attempt, with the same results.
 
 The step fails with one of these errors:
 

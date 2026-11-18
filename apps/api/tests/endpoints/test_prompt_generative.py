@@ -3,6 +3,7 @@
 import asyncio
 import json
 import typing
+import unittest
 import uuid
 from unittest import mock
 
@@ -627,3 +628,41 @@ class SigV4TestCase(base.PromptTestBase):
             r'^AWS4-HMAC-SHA256 Credential=AKID/\d{8}/us-east-1/bedrock/',
         )
         self.assertIn('X-Amz-Date', signed.headers)
+
+
+class DispatchTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_rejected_token_clears_dispatch(self) -> None:
+        # A 401 is a known rejection: while Imbi waits for a new token,
+        # no request is in flight, so a deadline then is safe to retry.
+        dispatched = asyncio.Event()
+        seen: list[bool] = []
+
+        async def get(*_: object) -> mock.Mock:
+            seen.append(dispatched.is_set())
+            return mock.Mock(token=f'token-{len(seen)}')
+
+        result = generate.Result('ok', None, {}, None)
+        call = mock.AsyncMock(
+            side_effect=[
+                generate.GenerateError('provider_refused', status=401),
+                result,
+            ]
+        )
+        provider = mock.Mock(workload_identity=object())
+        request = generate.Request(
+            driver='anthropic', model_id='claude-opus-5', messages=[]
+        )
+        with (
+            mock.patch.object(
+                model_generate, 'decrypt_config_value', return_value=None
+            ),
+            mock.patch.object(model_generate.tokens, 'get', get),
+            mock.patch.object(model_generate.tokens, 'CACHE'),
+            mock.patch.object(generate, 'generate', call),
+        ):
+            answer = await model_generate.call(
+                mock.Mock(), provider, request, dispatched
+            )
+        self.assertIs(answer, result)
+        self.assertEqual(seen, [False, False])
+        self.assertTrue(dispatched.is_set())

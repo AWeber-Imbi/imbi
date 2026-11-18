@@ -336,9 +336,19 @@ async def _post(
 
 
 def _transport_error(exc: BaseException | None) -> GenerateError:
-    """Only an error before the request was sent can be retried."""
+    """Only an error before the request was sent can be retried.
+
+    ``ProxyError`` is a failed proxy tunnel (``CONNECT``): the request
+    did not reach the provider.
+    """
     if isinstance(
-        exc, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
+        exc,
+        (
+            httpx.ConnectError,
+            httpx.ConnectTimeout,
+            httpx.PoolTimeout,
+            httpx.ProxyError,
+        ),
     ):
         return GenerateError('provider_unreachable', retry=True)
     return GenerateError('provider_outcome_unknown')

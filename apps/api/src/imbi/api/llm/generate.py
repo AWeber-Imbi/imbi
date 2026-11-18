@@ -98,7 +98,9 @@ async def call(
     credentials.
 
     ``dispatched`` is set when the credentials are ready and the request
-    to the provider starts. Before that, no request was sent.
+    to the provider starts. Before that, no request was sent. A ``401``
+    for a workload identity token clears it until the request with a
+    new token starts.
 
     Raises:
         generate.GenerateError: The call failed. A workload identity
@@ -112,6 +114,18 @@ async def call(
             dispatched.set()
         return await generate.generate(request)
 
+    def unauthorized(exc: Exception) -> bool:
+        # The provider rejected the token: no call ran. Until the
+        # request with a new token starts, no request is in flight.
+        if not (
+            isinstance(exc, generate.GenerateError)
+            and exc.status == http.HTTPStatus.UNAUTHORIZED
+        ):
+            return False
+        if dispatched is not None:
+            dispatched.clear()
+        return True
+
     key = decrypt_config_value(provider.credentials_encrypted)
     if key:
         return await send(dataclasses.replace(request, credential=key))
@@ -123,10 +137,7 @@ async def call(
                 lambda token: send(
                     dataclasses.replace(request, credential=token, bearer=True)
                 ),
-                lambda exc: (
-                    isinstance(exc, generate.GenerateError)
-                    and exc.status == http.HTTPStatus.UNAUTHORIZED
-                ),
+                unauthorized,
             )
         except IdentityError as exc:
             if exc.retryable:
