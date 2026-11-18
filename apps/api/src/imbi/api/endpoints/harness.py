@@ -745,10 +745,6 @@ class _NoServiceAccount(LookupError):
     """The service account of a claimed task is gone."""
 
 
-class _ModelNotAllowed(PermissionError):
-    """The owner team of the agent may not use its restricted model."""
-
-
 async def _check_model_teams(
     db: graph.Graph, agent_id: str, model_id: str
 ) -> None:
@@ -759,13 +755,16 @@ async def _check_model_teams(
     after the save.
 
     Raises:
-        _ModelNotAllowed: The owner team may not use ``model_id``.
+        prompt_resolve.ModelNotAllowed: The owner team may not use
+            ``model_id``.
 
     """
     records = await db.execute(_AGENT_TEAM_QUERY, {'id': agent_id}, ['id'])
     team_id = str(graph.parse_agtype(records[0]['id'])) if records else ''
     if not await prompt_resolve.team_may_use_model_id(db, model_id, team_id):
-        raise _ModelNotAllowed(model_id)
+        raise prompt_resolve.ModelNotAllowed(
+            f'The owner team may not use the model {model_id!r}'
+        )
 
 
 class _EgressTokenTooLarge(ValueError):
@@ -811,7 +810,7 @@ async def _deliver(
         outcome, reason = 'unhandled_no_actor', 'service_account_missing'
     except _EgressTokenTooLarge:
         outcome, reason = 'exceeded_ceiling', 'egress_token_too_large'
-    except _ModelNotAllowed:
+    except prompt_resolve.ModelNotAllowed:
         outcome, reason = 'failed_external', 'model_not_allowed'
     except BaseException:
         await store.release_claim(runner['id'], task, chain, pinned=pinned)

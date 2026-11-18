@@ -57,13 +57,9 @@ async def _check_model(
     if not user.is_admin and not await resolve.member_may_use_model_id(
         db, model, user.email, default
     ):
-        raise fastapi.HTTPException(
-            status_code=403,
-            detail={
-                'error': 'model_not_allowed',
-                'message': f'The model {model!r} is not in the catalog '
-                'or is restricted to teams that do not include you',
-            },
+        raise resolve.ModelNotAllowed(
+            f'The model {model!r} is not in the catalog or is restricted '
+            'to teams that do not include you'
         )
 
 

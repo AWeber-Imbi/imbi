@@ -1192,9 +1192,12 @@ class LLMCallStepTestCase(WorkflowTestCase):
         self.assertEqual(response.status_code, 201, response.text)
         archive = workflows_endpoints._archive_prompts
 
+        class ArchivedError(Exception):
+            """Raised only after the archive completes."""
+
         async def archive_then_fail(*args: typing.Any) -> None:
             await archive(*args)
-            raise RuntimeError('commit failed')
+            raise ArchivedError
 
         body = {
             'name': 'Deploy guard',
@@ -1205,10 +1208,10 @@ class LLMCallStepTestCase(WorkflowTestCase):
         with mock.patch.object(
             workflows_endpoints, '_archive_prompts', archive_then_fail
         ):
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises(ArchivedError):
                 await self.client.put(url, json=body)
             self.assertFalse(await self._archived('plain'))
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises(ArchivedError):
                 await self.client.delete(url)
             self.assertFalse(await self._archived('sum'))
         response = await self.client.get(url)

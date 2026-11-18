@@ -218,7 +218,9 @@ describe('Decision prompts', () => {
       target: { value: '9007199254740993' },
     })
     fireEvent.click(screen.getByRole('button', { name: /^run$/i }))
-    expect(screen.getByText(/within ±9007199254740991/)).toBeInTheDocument()
+    const input = screen.getByLabelText('Run variable count')
+    expect(input).toHaveAttribute('aria-invalid', 'true')
+    expect(input).toHaveAccessibleDescription(/within ±9007199254740991/)
     expect(endpoints.runPrompt).not.toHaveBeenCalled()
   })
 })
