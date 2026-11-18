@@ -815,7 +815,9 @@ async def narrow_to_accountable(
     )
     return ctx.model_copy(
         update={
-            'permissions': ctx.permissions & granted,
+            # holds(): an agent_task:* and a ticket:* name are one
+            # permission (ADR 0028).
+            'permissions': {p for p in ctx.permissions if holds(p, granted)},
             'on_behalf_of': (label, match_prop, accountable),
         }
     )
