@@ -91,20 +91,30 @@ Set the version of this section when the release is cut.
    `harness.claims`, with a trigger that keeps them equal to the old
    columns. You do not run a command for this. The move holds an
    exclusive lock on the task tables while it runs; it moves no rows.
-3. Run `imbi-api setup-permissions`. It adds the `ticket:read`,
-   `ticket:create`, `ticket:manage`, `ticket:resolve`, and
-   `ticket:delete` permissions and gives them to each default role that
-   has the `agent_task` permission with the same action. Every check
-   accepts either name, so a custom role with only `agent_task`
-   permissions keeps working.
-4. Run `imbi-api setup-clickhouse` to create the `ticket_events` table.
-   Then restart iggy-connect (see
+3. As soon as the first new imbi-api pod is up, run
+   `imbi-api setup-clickhouse` to create the `ticket_events` table. Until
+   it exists, a new pod cannot read the log of an archived ticket. Then
+   restart iggy-connect (see
    [Where to run the commands](#where-to-run-the-commands)): the
    `ticket_events` stream (topic `tickets`) is new, and the sink reads
    the stream list only at startup. Ticket events now go to
    `ticket_events`. Imbi reads `agent_task_events` and `ticket_events`
    together until a later release copies the old table.
-5. The API serves tickets at `/organizations/{org_slug}/tickets` and
+4. Run `imbi-api setup-permissions`. It adds the `ticket:read`,
+   `ticket:create`, `ticket:manage`, `ticket:resolve`, and
+   `ticket:delete` permissions and gives them to each default role that
+   has the `agent_task` permission with the same action. Every check
+   accepts either name, so a custom role with only `agent_task`
+   permissions keeps working.
+5. **Until the imbi-api rollout is complete**, do not activate a workflow
+   with a **Ticket closed** trigger. A pod of the previous release can
+   take a ticket closure from the trigger outbox and start only the
+   **Task completed** workflows, and the **Ticket closed** run then
+   never starts. Also, while pods of both releases run, a pod of the
+   previous release can show an incomplete log for a ticket that a new
+   pod archived, because it reads only `agent_task_events`. No events
+   are lost; the full log shows once the rollout is complete.
+6. The API serves tickets at `/organizations/{org_slug}/tickets` and
    `/harness/tickets`. The `/agent-tasks` and `/harness/tasks` paths
    still work, with the same operation ids, and are marked deprecated. A
    later release removes them.

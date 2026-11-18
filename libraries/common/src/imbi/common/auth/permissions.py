@@ -815,9 +815,7 @@ async def narrow_to_accountable(
     )
     return ctx.model_copy(
         update={
-            # holds(): an agent_task:* and a ticket:* name are one
-            # permission (ADR 0028).
-            'permissions': {p for p in ctx.permissions if holds(p, granted)},
+            'permissions': held(ctx.permissions, granted),
             'on_behalf_of': (label, match_prop, accountable),
         }
     )
@@ -992,6 +990,16 @@ def holds(permission: str, held: collections.abc.Container[str]) -> bool:
         if permission.startswith(prefix):
             return alias + permission.removeprefix(prefix) in held
     return False
+
+
+def held(
+    permissions: collections.abc.Iterable[str],
+    granted: collections.abc.Container[str],
+) -> set[str]:
+    """The names in ``permissions`` that ``granted`` also has, by
+    :func:`holds`: an intersection where an ``agent_task:*`` and a
+    ``ticket:*`` name are one permission (ADR 0028)."""
+    return {p for p in permissions if holds(p, granted)}
 
 
 def require_permission(
