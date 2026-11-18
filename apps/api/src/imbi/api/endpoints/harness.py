@@ -308,6 +308,32 @@ class AttachedProject(pydantic.BaseModel):
     project_slug: str
 
 
+#: The largest history, in UTF-8 bytes of entry text.
+MAX_HISTORY_BYTES = 64 * 1024
+
+
+class HistoryEntry(pydantic.BaseModel):
+    """One part of the history of a ticket. Handoffs are not stored
+    yet, so the history has none."""
+
+    kind: typing.Literal[
+        'description', 'comment', 'request', 'child', 'prerequisite'
+    ]
+    at: datetime.datetime
+    #: The person who wrote a comment or resolved a request.
+    actor: str | None = None
+    text: str
+    #: The text came from a webhook payload: it is untrusted.
+    webhook: bool = False
+
+
+class TicketHistory(pydantic.BaseModel):
+    #: Oldest first.
+    entries: list[HistoryEntry]
+    #: The number of older entries left out to fit the byte limit.
+    cut: int = 0
+
+
 class ChildTaskCreate(pydantic.BaseModel):
     agent_slug: str = pydantic.Field(min_length=1)
     title: str = pydantic.Field(min_length=1)
@@ -1680,6 +1706,105 @@ async def list_harness_task_events(
     if task['log_archived_at'] is not None:
         return await tickets.log.archived_events(task, after_seq, limit)
     return await store.events(task['id'], after_seq, limit)
+
+
+def _linked_entry(
+    kind: typing.Literal['child', 'prerequisite'], row: dict[str, typing.Any]
+) -> HistoryEntry:
+    """The status and the outcome of a child or prerequisite ticket."""
+    text = f'{row["short_id"]} {row["title"]}: {row["status"]}'
+    if row['outcome']:
+        text += f', {row["outcome"]}'
+    if row['outcome_reason']:
+        text += f' ({row["outcome_reason"]})'
+    return HistoryEntry(
+        kind=kind,
+        at=row['closed_at'] or row['created_at'],
+        text=text,
+        webhook=row['origin_kind'] == 'webhook',
+    )
+
+
+def _request_entry(row: dict[str, typing.Any]) -> HistoryEntry:
+    """A resolved request: what the agent asked and what it got."""
+    resolution: dict[str, typing.Any] = row['resolution'] or {}
+    lines = [f'{row["kind"]} request "{row["title"]}": {row["status"]}']
+    if resolution.get('answer'):
+        lines.append(f'Answer: {resolution["answer"]}')
+    if resolution.get('constraints'):
+        lines.append(f'Constraints: {"; ".join(resolution["constraints"])}')
+    return HistoryEntry(
+        kind='request',
+        at=row['resolved_at'],
+        actor=row['resolved_by'],
+        text='\n'.join(lines),
+    )
+
+
+def cut_history(entries: list[HistoryEntry], max_bytes: int) -> TicketHistory:
+    """Keep the newest entries whose text fits in ``max_bytes``."""
+    size = 0
+    kept = 0
+    for entry in reversed(entries):
+        size += len(entry.text.encode())
+        if size > max_bytes:
+            break
+        kept += 1
+    return TicketHistory(
+        entries=entries[len(entries) - kept :], cut=len(entries) - kept
+    )
+
+
+@harness_router.get(
+    '/tickets/{short_id}/history', response_model=TicketHistory
+)
+async def read_harness_ticket_history(
+    short_id: str,
+    caller: harness_auth.AgentCaller,
+    db: graph.Pool,
+    store: tickets.Store,
+) -> TicketHistory:
+    """Return the history of a ticket of the chain, for a new session.
+
+    A new session reads events only after ``last_seq``, so it reads
+    what happened before here: the description, comments (human
+    turns), resolved requests, and the status and outcome of child
+    and prerequisite tickets, oldest first. When the text is larger
+    than :data:`MAX_HISTORY_BYTES`, the oldest entries are left out
+    and ``cut`` is their number. ``webhook`` marks untrusted text.
+
+    Raises:
+        401: Not a current agent token.
+        403: Another chain or another agent.
+        404: No such ticket.
+
+    """
+    task = await _chain_task(caller, short_id, db, store)
+    turns, requests = await store.history(task)
+    relations = await store.relations(task)
+    entries = [
+        HistoryEntry(
+            kind='description',
+            at=task['created_at'],
+            text=task['description'],
+            webhook=task['origin_kind'] == 'webhook',
+        ),
+        *(
+            HistoryEntry(
+                kind='comment',
+                at=turn['at'],
+                actor=turn['actor_id'],
+                text=str(turn['payload'].get('body') or ''),
+            )
+            for turn in turns
+        ),
+        *(_request_entry(row) for row in requests),
+        *(_linked_entry('child', row) for row in relations['children']),
+        *(_linked_entry('prerequisite', row) for row in relations['requires']),
+    ]
+    # A stable sort: the description stays first at an equal time.
+    entries.sort(key=lambda entry: entry.at)
+    return cut_history(entries, MAX_HISTORY_BYTES)
 
 
 @harness_router.put(

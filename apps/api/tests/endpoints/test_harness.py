@@ -1205,6 +1205,99 @@ class AttachProjectTests(RunnerTestCase):
         self.assertEqual(response.status_code, 200, response.text)
 
 
+class HistoryTests(RunnerTestCase):
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        claim = await self.claim(await self.register())
+        assert claim is not None
+        self.token: str = claim['agent_token']
+        person = task_store.Actor('human', self.email, 'web')
+        await self.store.reply(self.org, 'T-1', 'First comment.', person)
+        _task, request, _ = await self.store.open_request(
+            self.org,
+            'T-1',
+            task_store.NewRequest(
+                'feedback', 'Which branch?', None, None, None, None, None, None
+            ),
+            task_store.Actor('agent', self.agent_id, 'harness'),
+        )
+        await self.store.resolve_request(
+            self.org,
+            'T-1',
+            request['id'],
+            task_store.Resolution('answered', 'main', ['no force'], None),
+            person,
+        )
+        await self.store.reply(self.org, 'T-1', 'Last comment.', person)
+
+    async def history(self) -> dict[str, typing.Any]:
+        response = await self.client.get(
+            '/harness/tickets/T-1/history',
+            headers={'Authorization': f'Bearer {self.token}'},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        return response.json()
+
+    async def test_history_is_oldest_first(self) -> None:
+        # A closed prerequisite that a webhook started.
+        self.act_as_user()
+        await self.create_task()
+        self.act_as(self.account)
+        person = task_store.Actor('human', self.email, 'web')
+        await self.store.set_outcome(
+            self.org, 'T-2', 'failed_external', 'down', person, None
+        )
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE tickets.tickets SET origin_kind = 'webhook'"
+                ' WHERE organization_id = %s AND short_id = %s',
+                (self.org, 'T-2'),
+            )
+        await self.store.add_dependency(self.org, 'T-1', 'T-2', person)
+        body = await self.history()
+        self.assertEqual(body['cut'], 0)
+        entries = body['entries']
+        self.assertEqual(
+            [e['kind'] for e in entries],
+            ['description', 'comment', 'request', 'comment', 'prerequisite'],
+        )
+        self.assertEqual(
+            entries[4]['text'],
+            'T-2 Look at the build: closed, failed_external (down)',
+        )
+        self.assertTrue(entries[4]['webhook'])
+        self.assertEqual(entries[1]['text'], 'First comment.')
+        self.assertEqual(entries[1]['actor'], self.email)
+        self.assertEqual(
+            entries[2]['text'],
+            'feedback request "Which branch?": answered\n'
+            'Answer: main\nConstraints: no force',
+        )
+        self.assertFalse(any(e['webhook'] for e in entries[:4]))
+
+    async def test_byte_limit_keeps_the_newest(self) -> None:
+        limit = len(b'Last comment.') + len(
+            b'feedback request "Which branch?": answered\n'
+            b'Answer: main\nConstraints: no force'
+        )
+        with mock.patch.object(harness_api, 'MAX_HISTORY_BYTES', limit):
+            body = await self.history()
+        self.assertEqual(body['cut'], 2)
+        self.assertEqual(
+            [e['kind'] for e in body['entries']], ['request', 'comment']
+        )
+
+    async def test_another_chain_is_refused(self) -> None:
+        self.act_as_user()
+        await self.create_task()
+        self.act_as(self.account)
+        response = await self.client.get(
+            '/harness/tickets/T-2/history',
+            headers={'Authorization': f'Bearer {self.token}'},
+        )
+        self.assertEqual(response.status_code, 403, response.text)
+
+
 class RateLimitTests(RunnerTestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
