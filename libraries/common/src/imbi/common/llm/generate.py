@@ -213,7 +213,11 @@ def _check(
 
 
 def _drop_nulls(schema: dict[str, typing.Any], value: object) -> object:
-    """Remove each optional property whose value is ``null``."""
+    """Remove each optional property whose value is ``null``.
+
+    An undeclared property stays, so that a closed object schema
+    rejects it.
+    """
     if isinstance(value, dict) and 'properties' in schema:
         props: dict[str, typing.Any] = schema['properties']
         required = set(schema['required'])
@@ -221,7 +225,7 @@ def _drop_nulls(schema: dict[str, typing.Any], value: object) -> object:
         return {
             k: _drop_nulls(props.get(k, {}), v)
             for k, v in items.items()
-            if v is not None or k in required
+            if v is not None or k in required or k not in props
         }
     if isinstance(value, list) and 'items' in schema:
         values = typing.cast('list[object]', value)
@@ -290,16 +294,37 @@ def _status_error(status: int, detail: str, structured: bool) -> GenerateError:
 
 
 def _as_int(value: object) -> int | None:
-    if isinstance(value, bool) or not isinstance(value, int):
+    """Return a token count, or ``None`` when it is not a valid count."""
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         return None
     return value
 
 
-def _usage(input_tokens: object, output_tokens: object) -> Usage:
-    return Usage(
+def _usage(
+    input_tokens: object, output_tokens: object, cached: object = None
+) -> Usage:
+    """Return the usage.
+
+    ``cached`` is the part of ``input_tokens`` that the provider read
+    from its prompt cache. The result does not count it in
+    ``input_tokens``. A ``cached`` count above ``input_tokens`` makes
+    the split unknown: the result then has no input count and no cache
+    count.
+    """
+    usage = Usage(
         input_tokens=_as_int(input_tokens),
         output_tokens=_as_int(output_tokens),
     )
+    cache_read = _as_int(cached)
+    if cache_read is not None:
+        if usage['input_tokens'] is None:
+            usage['cache_read_tokens'] = cache_read
+        elif cache_read > usage['input_tokens']:
+            usage['input_tokens'] = None
+        else:
+            usage['cache_read_tokens'] = cache_read
+            usage['input_tokens'] -= cache_read
+    return usage
 
 
 def _mapping(value: object) -> dict[str, typing.Any]:
@@ -473,15 +498,11 @@ async def _openai(
     if refused:
         # The same request gets the same refusal: no retry.
         raise GenerateError('provider_refused')
-    counts = _usage(usage.get('prompt_tokens'), usage.get('completion_tokens'))
-    cached = _as_int(
-        _mapping(usage.get('prompt_tokens_details')).get('cached_tokens')
+    counts = _usage(
+        usage.get('prompt_tokens'),
+        usage.get('completion_tokens'),
+        _mapping(usage.get('prompt_tokens_details')).get('cached_tokens'),
     )
-    if cached is not None:
-        # OpenAI counts the cache reads in prompt_tokens.
-        counts['cache_read_tokens'] = cached
-        if counts['input_tokens'] is not None:
-            counts['input_tokens'] -= cached
     return _Answer(
         str(text), None, counts, response.headers.get('x-request-id')
     )
@@ -628,14 +649,19 @@ async def _vertex(
     except (KeyError, IndexError, TypeError, AttributeError):
         raise GenerateError('model_answer_invalid', retry=True) from None
     # Gemini counts thinking tokens apart from the candidates and bills
-    # them as output.
-    output = usage.get('candidatesTokenCount')
-    thoughts = usage.get('thoughtsTokenCount')
-    if type(output) is int and type(thoughts) is int:
-        output += thoughts
+    # them as output. An absent thinking count means no thinking; an
+    # invalid one makes the output count unknown.
+    output = _as_int(usage.get('candidatesTokenCount'))
+    if output is not None and 'thoughtsTokenCount' in usage:
+        thoughts = _as_int(usage['thoughtsTokenCount'])
+        output = None if thoughts is None else output + thoughts
     return _Answer(
         text,
         None,
-        _usage(usage.get('promptTokenCount'), output),
+        _usage(
+            usage.get('promptTokenCount'),
+            output,
+            usage.get('cachedContentTokenCount'),
+        ),
         data.get('responseId'),
     )
