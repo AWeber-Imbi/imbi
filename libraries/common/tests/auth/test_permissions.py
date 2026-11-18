@@ -521,6 +521,23 @@ class NarrowToAccountableTestCase(unittest.IsolatedAsyncioTestCase):
         # A copy: a cached context must not change.
         self.assertEqual({'project:read', 'workflow:run'}, ctx.permissions)
 
+    async def test_ticket_and_agent_task_names_are_one_permission(
+        self,
+    ) -> None:
+        ctx = self._scheduler()
+        ctx = ctx.model_copy(
+            update={'permissions': {'agent_task:read', 'ticket:create'}}
+        )
+        narrowed = await self._narrow(
+            ctx,
+            'dev@example.com',
+            principals=[self._user()],
+            granted={'ticket:read', 'agent_task:create'},
+        )
+        self.assertEqual(
+            {'agent_task:read', 'ticket:create'}, narrowed.permissions
+        )
+
     async def test_refuses_an_inactive_accountable_user(self) -> None:
         with self.assertRaises(fastapi.HTTPException) as raised:
             await self._narrow(
