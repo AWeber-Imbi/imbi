@@ -60,8 +60,9 @@ convention to find a key; the edge must name it. Another key is `skipped`
 and not deleted, and the skip is logged. A key that another Imbi project
 also links is `skipped` and not deleted.
 To keep keys apart, the plugin declares its identifier not shareable, so
-the host refuses a link to a key that another project holds, and only an
-admin can change a verified key to a different one.
+the host refuses a manual link to a key that another project holds. A
+plugin writeback is refused only by a project whose edge the plugin
+verified. Only an admin can change a verified key to a different one.
 
 ## Project Doctor
 
