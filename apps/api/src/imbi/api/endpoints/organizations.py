@@ -93,6 +93,15 @@ from .workflows import step_types_router, workflows_router
 
 LOGGER = logging.getLogger(__name__)
 
+
+class OrganizationMember(pydantic.BaseModel):
+    id: str
+    email: str
+    display_name: str | None = None
+    role: str | None = None
+    is_active: bool
+
+
 organizations_router = fastapi.APIRouter(
     prefix='/organizations', tags=['Organizations']
 )
@@ -743,14 +752,14 @@ async def list_organization_members(
             permissions.require_permission('organization:read'),
         ),
     ],
-) -> list[dict[str, typing.Any]]:
+) -> list[OrganizationMember]:
     """List all members of an organization with their roles.
 
     Parameters:
         slug: Organization slug identifier.
 
     Returns:
-        Members with email, display_name, and role.
+        Members with id, email, display_name, role, and is_active.
 
     Raises:
         404: Organization not found.
@@ -759,9 +768,10 @@ async def list_organization_members(
     query: typing.LiteralString = (
         'MATCH (o:Organization {{slug: {slug}}})'
         ' OPTIONAL MATCH (u:User)-[m:MEMBER_OF]->(o)'
-        ' RETURN o, collect({{email: u.email,'
+        ' RETURN o, collect({{id: u.id, email: u.email,'
         ' display_name: u.display_name,'
-        ' role: m.role}}) AS members'
+        ' role: m.role,'
+        ' is_active: coalesce(u.is_active, false)}}) AS members'
     )
     records = await db.execute(
         query,
@@ -778,7 +788,11 @@ async def list_organization_members(
     )
     if isinstance(raw_members, str):
         raw_members = []
-    return [m for m in raw_members if m.get('email')]
+    return [
+        OrganizationMember.model_validate(m)
+        for m in raw_members
+        if m.get('email')
+    ]
 
 
 # Rows that block an organization delete, by the name the 409 shows,

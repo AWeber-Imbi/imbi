@@ -283,6 +283,46 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
             response.json()['detail'],
         )
 
+    def test_list_organization_members(self) -> None:
+        """Members carry their id and active state."""
+        member = {
+            'id': 'u1',
+            'email': 'ada@example.com',
+            'display_name': 'Ada',
+            'role': 'admin',
+            'is_active': True,
+        }
+        self.mock_db.execute.return_value = [
+            {'o': {'slug': 'engineering'}, 'members': [member]},
+        ]
+
+        response = self.client.get('/organizations/engineering/members')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), [member])
+
+    def test_list_organization_members_without_members(self) -> None:
+        """The null row an organization with no members yields is dropped."""
+        self.mock_db.execute.return_value = [
+            {
+                'o': {'slug': 'engineering'},
+                'members': [
+                    {
+                        'id': None,
+                        'email': None,
+                        'display_name': None,
+                        'role': None,
+                        'is_active': False,
+                    },
+                ],
+            },
+        ]
+
+        response = self.client.get('/organizations/engineering/members')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), [])
+
     def test_delete_organization(self) -> None:
         """An empty organization is deleted."""
         # org id, contents, prompt versions, prompts, delete

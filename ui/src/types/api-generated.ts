@@ -8718,7 +8718,7 @@ export interface paths {
          *         slug: Organization slug identifier.
          *
          *     Returns:
-         *         Members with email, display_name, and role.
+         *         Members with id, email, display_name, role, and is_active.
          *
          *     Raises:
          *         404: Organization not found.
@@ -16808,6 +16808,19 @@ export interface components {
              * @enum {string}
              */
             document_analytics_identities: "enabled" | "authors_only" | "disabled";
+        };
+        /** OrganizationMember */
+        OrganizationMember: {
+            /** Id */
+            id: string;
+            /** Email */
+            email: string;
+            /** Display Name */
+            display_name?: string | null;
+            /** Role */
+            role?: string | null;
+            /** Is Active */
+            is_active: boolean;
         };
         /** OrganizationRef */
         OrganizationRef: {
@@ -36931,9 +36944,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["OrganizationMember"][];
                 };
             };
             /** @description Validation Error */
