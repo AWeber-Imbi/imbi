@@ -2494,6 +2494,17 @@ class HistoryTestCase(TaskTestCase):
         self.client.request.side_effect = api.Refused(404, '404')
         self.assertEqual(await self.run_task.read_history(), '')
 
+    async def test_invalid_json_history_is_empty(self) -> None:
+        self.client.request.return_value = mock.Mock(
+            json=mock.Mock(side_effect=json.JSONDecodeError('x', '', 0))
+        )
+        self.assertEqual(await self.run_task.read_history(), '')
+
+    async def test_no_entry_fits_gives_no_history(self) -> None:
+        self.history({'kind': 'comment', 'at': 't1', 'text': 'a' * 100})
+        with mock.patch.object(task, 'PROMPT_BYTES', 50):
+            self.assertEqual(await self.run_task.read_history(), '')
+
 
 class LongWaitTestCase(RoutedTestCase):
     async def test_cancel_ends_a_wait_at_once(self) -> None:

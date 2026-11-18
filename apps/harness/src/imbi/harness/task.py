@@ -14,6 +14,7 @@ proxy refuses model calls when the remaining budget is zero.
 """
 
 import asyncio
+import bisect
 import contextlib
 import dataclasses
 import datetime
@@ -1709,19 +1710,23 @@ class TaskRun:
         not give it."""
         try:
             body = await self.api.history()
-        except (api.Refused, httpx.HTTPError) as err:
+        except (api.Refused, httpx.HTTPError, ValueError) as err:
             LOGGER.warning('No history for %s: %s', self.api.short_id, err)
             return ''
         entries = api.items(body, 'entries')
         cut = int(body.get('cut') or 0)
         used = len(self.description().encode()) + 2
-        while entries:
-            history = _history(entries, cut)
-            if used + len(history.encode()) <= PROMPT_BYTES:
-                return history
-            entries.pop(0)
-            cut += 1
-        return ''
+
+        def fits(drop: int) -> bool:
+            history = _history(entries[drop:], cut + drop)
+            return used + len(history.encode()) <= PROMPT_BYTES
+
+        # The text gets shorter for each entry that is cut, so a binary
+        # search finds the fewest entries to cut.
+        drop = bisect.bisect_left(range(len(entries)), True, key=fits)
+        if drop == len(entries):
+            return ''
+        return _history(entries[drop:], cut + drop)
 
     def options(self, proxy_url: str) -> sdk.ClaudeAgentOptions:
         allowed, denied = self.tools()
