@@ -270,15 +270,22 @@ export function WorkflowEditor({
   })
 
   const toggleActive = useMutation({
-    mutationFn: (active: boolean) =>
-      active ? activateWorkflow(orgSlug, slug!) : pauseWorkflow(orgSlug, slug!),
+    // A number activates that version; true activates the latest.
+    mutationFn: (active: boolean | number) =>
+      active === false
+        ? pauseWorkflow(orgSlug, slug!)
+        : activateWorkflow(
+            orgSlug,
+            slug!,
+            active === true ? undefined : active,
+          ),
     onError: (error, active) => {
       const detail =
         error instanceof ApiError
           ? (error.data as { detail?: { issues?: ValidationIssue[] } })?.detail
           : undefined
       if (detail?.issues) setIssues(detail.issues)
-      toast.error(activationError(error, active))
+      toast.error(activationError(error, active !== false))
     },
     onSuccess: stored,
   })
@@ -499,7 +506,7 @@ export function WorkflowEditor({
         {newerSaved && canWrite && (
           <Button
             disabled={dirty || toggleActive.isPending}
-            onClick={() => toggleActive.mutate(true)}
+            onClick={() => toggleActive.mutate(latestVersion!)}
             size="sm"
             title={
               dirty

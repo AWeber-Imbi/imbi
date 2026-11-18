@@ -537,6 +537,7 @@ describe('WorkflowsManagement', () => {
       expect(endpoints.activateWorkflow).toHaveBeenCalledWith(
         'acme',
         'deploy-guard',
+        2,
       ),
     )
     expect(await screen.findByText('Saved · v2')).toBeInTheDocument()
