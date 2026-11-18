@@ -1126,7 +1126,9 @@ async def list_org_runs(
         )
     else:
         steps |= from_archive
-    task_content = auth.is_admin or 'agent_task:read' in auth.permissions
+    task_content = auth.is_admin or common_permissions.holds(
+        'agent_task:read', auth.permissions
+    )
     return [
         {**r, 'failure': _failure(steps.get(str(r['id'])), task_content)}
         for r in found
