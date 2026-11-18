@@ -76,7 +76,11 @@ class GenerativeRunTestCase(base.PromptTestBase):
         self.addCleanup(patcher.stop)
         return patcher.start()
 
-    def route_run(self, **model: typing.Any) -> base.Router:
+    def route_run(
+        self,
+        version: dict[str, typing.Any] | None = None,
+        **model: typing.Any,
+    ) -> base.Router:
         return self.route(
             (base.GET_PROMPT, base.prompt_row()),
             (
@@ -89,7 +93,8 @@ class GenerativeRunTestCase(base.PromptTestBase):
                                 'content': 'Check {{ project_slug }}',
                             }
                         ]
-                    )
+                    ),
+                    **(version or {}),
                 ),
             ),
             (prompts._RUN_MODEL_QUERY, [{**MODEL_ROW, **model}]),
@@ -384,6 +389,39 @@ class GenerativeRunTestCase(base.PromptTestBase):
             (call['run_id'], call['node_id'], call['attempt']),
             ('run-1', 'node-a', 2),
         )
+
+    def test_attempt_out_of_the_integer_range_is_422(self) -> None:
+        self.route_run()
+        key = f'run-1:node-a:{prompts.MAX_ATTEMPT + 1}'
+        response = self.run_ref(headers={'Idempotency-Key': key})
+        self.assertEqual(response.status_code, 422, response.text)
+        self.calls.start.assert_not_awaited()
+        self.generate.assert_not_awaited()
+
+    def test_attempt_that_is_not_a_number_is_none(self) -> None:
+        # str.isdigit accepts '²', but int() does not parse it.
+        for attempt in ('-1', '\u00b2', 'x'):
+            context = prompts._key_context(f'run-1:node-a:{attempt}')
+            self.assertIsNone(context['attempt'])
+
+    def test_version_with_tools_is_refused(self) -> None:
+        self.route_run(version={'tools': json.dumps([{'name': 'lookup'}])})
+        response = self.run_ref()
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn('no tools', response.json()['detail'])
+        self.calls.start.assert_not_awaited()
+        self.generate.assert_not_awaited()
+
+    def test_blank_temperature_uses_the_catalog_default(self) -> None:
+        for temperature, expected in ((None, 0.3), (0, 0)):
+            self.route_run(
+                version={'params': json.dumps({'temperature': temperature})},
+                default_temperature=0.3,
+            )
+            response = self.run_ref()
+            self.assertEqual(response.status_code, 200, response.text)
+            sent: generate.Request = self.generate.await_args.args[0]
+            self.assertEqual(sent.params.temperature, expected)
 
     def _repeat(self, **row: typing.Any) -> httpx.Response:
         enabled = row.pop('model_enabled', True)

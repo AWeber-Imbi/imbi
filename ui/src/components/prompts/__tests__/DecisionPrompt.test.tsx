@@ -154,6 +154,41 @@ describe('Decision prompts', () => {
     expect(screen.getByText('80%')).toBeInTheDocument()
     expect(screen.getByText(/20 in/)).toBeInTheDocument()
   })
+
+  it('keeps a large integer in an any variable as text', async () => {
+    const endpoints = await import('@/api/endpoints')
+    vi.mocked(endpoints.listPromptVersions).mockResolvedValue([
+      {
+        ...decisionVersion(1),
+        variable_schema: { service: { required: true, type: 'any' } },
+      },
+    ])
+    vi.mocked(endpoints.runPrompt).mockResolvedValue({
+      answers: {},
+      model: 'jev',
+      model_id: 'jev-latest',
+      n: null,
+      ref: 'mender/triage (draft)',
+      request: { questions: {}, state: {} },
+      usage: {},
+    })
+    await renderEditor()
+    await waitFor(() =>
+      expect(screen.getByLabelText('Run variable service')).toBeInTheDocument(),
+    )
+    fireEvent.change(screen.getByLabelText('Run variable service'), {
+      target: { value: '{"ids": [12345678901234567890, 7]}' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /^run$/i }))
+    await waitFor(() => expect(endpoints.runPrompt).toHaveBeenCalled())
+    const request = vi.mocked(endpoints.runPrompt).mock.calls[0][1]
+    expect(request.variables).toEqual({
+      service: { ids: ['12345678901234567890', 7] },
+    })
+    expect(
+      screen.getByText(/Sent large integers in service as text/),
+    ).toBeInTheDocument()
+  })
 })
 
 describe('Question helpers', () => {

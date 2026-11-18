@@ -301,6 +301,7 @@ export function RunPanel({
   const orgSlug = selectedOrganization?.slug
   const [values, setValues] = useState<Record<string, boolean | string>>({})
   const [inputError, setInputError] = useState<null | string>(null)
+  const [keptAsText, setKeptAsText] = useState<string[]>([])
 
   const run = useMutation({
     mutationFn: (vars: Record<string, unknown>) =>
@@ -318,9 +319,12 @@ export function RunPanel({
 
   const submit = () => {
     const vars: Record<string, unknown> = {}
+    const kept = new Set<string>()
     try {
       for (const v of variables) {
-        const value = parseValue(values[v.name] ?? '', v.type)
+        const value = parseValue(values[v.name] ?? '', v.type, () =>
+          kept.add(v.name),
+        )
         if (value !== undefined) vars[v.name] = value
       }
     } catch {
@@ -330,6 +334,7 @@ export function RunPanel({
       return
     }
     setInputError(null)
+    setKeptAsText([...kept])
     run.mutate(vars)
   }
 
@@ -387,6 +392,12 @@ export function RunPanel({
             {inputError ?? (blocked ? 'Fix the draft before running' : '')}
           </span>
         </div>
+        {keptAsText.length > 0 && (
+          <p className="text-warning text-xs">
+            Sent large integers in {keptAsText.join(', ')} as text, because a
+            JavaScript number would change their value
+          </p>
+        )}
         {run.data && <RunResult result={run.data} />}
       </div>
     </section>
@@ -591,9 +602,34 @@ function CriteriaEditor({
   )
 }
 
+/**
+ * Parse JSON, but keep each integer that a JavaScript number cannot
+ * hold exactly as its text, and call `onKept` for it. A browser
+ * without `context.source` keeps the rounded number.
+ */
+function parseJson(text: string, onKept: () => void): unknown {
+  return JSON.parse(
+    text,
+    (_key, value: unknown, context?: { source?: string }) => {
+      const source = context?.source
+      if (
+        typeof value === 'number' &&
+        !Number.isSafeInteger(value) &&
+        source !== undefined &&
+        /^-?\d+$/.test(source)
+      ) {
+        onKept()
+        return source
+      }
+      return value
+    },
+  )
+}
+
 function parseValue(
   raw: boolean | string,
   type: PromptVariable['type'],
+  onKept: () => void,
 ): unknown {
   if (type === 'bool') return raw === true
   const text = String(raw)
@@ -605,10 +641,10 @@ function parseValue(
     }
     return n
   }
-  if (type === 'list' || type === 'object') return JSON.parse(text)
+  if (type === 'list' || type === 'object') return parseJson(text, onKept)
   if (type === 'any') {
     try {
-      return JSON.parse(text)
+      return parseJson(text, onKept)
     } catch {
       return text
     }
