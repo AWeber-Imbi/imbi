@@ -10,6 +10,7 @@ import psycopg.errors
 from apps.api.tests.endpoints import test_ai_providers as provider_tests
 from imbi.api import model_calls, workflows
 from imbi.api.endpoints import projects, prompts
+from imbi.common import graph
 
 ORG = provider_tests.ORG
 BASE = '/prompts'
@@ -613,6 +614,47 @@ class PatchPromptTestCase(PromptTestBase):
         response = self.client.patch(
             self.URL, json=[{'op': 'replace', 'path': '/name', 'value': 'X'}]
         )
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(
+            response.json()['detail'], prompts.PROMPT_CHANGED_DETAIL
+        )
+
+    def _rename_into_org(self) -> typing.Any:
+        self.route(
+            (GET_PROMPT, prompt_row()),
+            (prompts._ORG_ID_QUERY, [{'id': 'org-1'}]),
+        )
+        return self.client.patch(
+            self.URL,
+            json=[
+                {'op': 'replace', 'path': '/namespace', 'value': 'agents'},
+                {'op': 'replace', 'path': '/slug', 'value': 'eng.core'},
+            ],
+        )
+
+    def test_rename_into_org_prefix_holds_org_lock(self) -> None:
+        response = self._rename_into_org()
+        self.assertEqual(response.status_code, 200, response.text)
+        call = self.mock_db._execute_batch.await_args
+        guard, write = call.args[0]
+        self.assertEqual(guard.params, {'org_id': 'org-1', 'org_slug': 'eng'})
+        self.assertTrue(guard.expect_rows)
+        self.assertTrue(write.expect_rows)
+        self.assertEqual(
+            (write.params['namespace'], write.params['slug']),
+            ('agents', 'eng.core'),
+        )
+        self.assertEqual(
+            call.kwargs['shared_lock'], 'organization-delete:org-1'
+        )
+
+    def test_rename_into_renamed_org_is_409(self) -> None:
+        # The destination organization was renamed after the read, so
+        # the guard matches nothing and the batch rolls back.
+        self.mock_db._execute_batch.side_effect = (
+            graph.StatementMatchedNothing(prompts._ORG_GUARD_QUERY)
+        )
+        response = self._rename_into_org()
         self.assertEqual(response.status_code, 409, response.text)
         self.assertEqual(
             response.json()['detail'], prompts.PROMPT_CHANGED_DETAIL

@@ -67,8 +67,15 @@ A rename before Imbi moved the prompts left them under the earlier slug.
 The delete does not remove these prompts. An organization that later
 gets that earlier slug gets these prompts, and its delete removes them.
 Before you give an earlier slug to an organization, look for
-`workflows/<slug>.*` and `agents/<slug>.*` prompts, and delete the
-prompts that you do not want it to get.
+`workflows/<slug>.*` and `agents/<slug>.*` prompts that you do not want
+it to get:
+
+- Delete an `agents/<slug>.*` prompt with
+  `DELETE /prompts/agents/<slug>.<name>`.
+- The prompt API cannot delete a `workflows/<slug>.*` prompt. It refuses
+  each delete with 409, also for an administrator. An operator must
+  remove these prompts and their versions in the graph database.
+
 The archived task events and usage records in ClickHouse stay as the
 audit trail.
 
