@@ -157,12 +157,18 @@ class InitializeTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_failed_step_rolls_back(self) -> None:
         await relational.initialize(SCHEMA, SCHEMATA, 'test.relational')
+        # The guard writes a marker. Only the step transaction rolls it
+        # back, because the guard and the step SQL are separate queries.
+        await self.conn.execute(f'CREATE TABLE {SCHEMA}.markers (id INT)')
         failing = {
             **SCHEMATA,
             'steps': [
                 {
                     'name': 'half-done',
-                    'when': 'SELECT true',
+                    'when': (
+                        f'INSERT INTO {SCHEMA}.markers VALUES (1)'
+                        ' RETURNING true'
+                    ),
                     'sql': (
                         f'ALTER TABLE {SCHEMA}.items'
                         ' RENAME COLUMN name TO title;'
@@ -174,6 +180,10 @@ class InitializeTestCase(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(psycopg.errors.DivisionByZero):
             await relational.initialize(SCHEMA, failing, 'test.relational')
         self.assertEqual(await self._columns(), {'id', 'name'})
+        cursor = await self.conn.execute(
+            f'SELECT count(*) FROM {SCHEMA}.markers'
+        )
+        self.assertEqual(await cursor.fetchone(), (0,))
 
     async def test_skips_a_view_of_a_declared_table(self) -> None:
         # A step moved the table and left a view under the old name; an
