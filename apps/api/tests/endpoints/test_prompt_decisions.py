@@ -258,6 +258,13 @@ class DecisionRunTestCase(base.PromptTestBase):
         )
         self.decide = decide.start()
         self.addCleanup(decide.stop)
+        member = mock.patch.object(
+            prompts.organizations,
+            'check_member',
+            mock.AsyncMock(return_value='org-1'),
+        )
+        member.start()
+        self.addCleanup(member.stop)
 
     def route_run(self, *extra: tuple[str, typing.Any]) -> base.Router:
         return self.route(
