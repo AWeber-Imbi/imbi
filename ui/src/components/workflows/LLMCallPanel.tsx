@@ -12,6 +12,7 @@ import { FormField } from '@/components/ui/form-field'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { extractApiErrorDetail } from '@/lib/apiError'
+import { KEPT_AS_TEXT } from '@/lib/json'
 import { queryKeys } from '@/lib/queryKeys'
 import type { PromptRunRequest } from '@/types'
 
@@ -227,7 +228,8 @@ function LLMCallPreview({
   // Follows the step's inputs until the user edits it.
   const [edited, setSample] = useState<null | string>(null)
   const sample = edited ?? JSON.stringify(sampleInputs(inputs), null, 2)
-  const variables = parseSample(sample)
+  let kept = false
+  const variables = parseSample(sample, () => (kept = true))
   const body: PromptRunRequest = {
     draft: { namespace: NAMESPACE, slug, version },
     // The API fills the defaults of a field.
@@ -267,6 +269,7 @@ function LLMCallPreview({
           value={sample}
         />
       </FormField>
+      {kept && <p className="text-warning text-xs">{KEPT_AS_TEXT}</p>}
       <Button
         className="self-start"
         disabled={!saved || !variables || !version.model || run.isPending}

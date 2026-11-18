@@ -161,6 +161,70 @@ class LoadSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
             result = await self.load()
         self.assertIsNone(result.model_id)
 
+    async def test_restricted_model_needs_an_allowed_user(self) -> None:
+        found = _version(model='opus', model_id='claude-opus-5-5')
+        info = resolve.ModelInfo(
+            'claude-opus-5-5', True, 'anthropic', 'restricted'
+        )
+        for allowed, email, expected in (
+            (False, 'dev@example.com', None),
+            (True, None, None),
+            (True, 'dev@example.com', 'claude-opus-5-5'),
+        ):
+            with (
+                self.subTest(allowed=allowed, email=email),
+                self.patch_resolve(found),
+                self.patch_model(info),
+                mock.patch.object(
+                    resolve,
+                    'member_may_use_model_id',
+                    mock.AsyncMock(return_value=allowed),
+                ),
+            ):
+                result = await self.load(email=email)
+                self.assertEqual(result.model_id, expected)
+
+    async def test_stale_model_id_is_checked(self) -> None:
+        # A catalog edit moved the slug to a new id; the version keeps
+        # the old one, and the old one is what is sent.
+        found = _version(model='opus', model_id='claude-opus-old')
+        info = resolve.ModelInfo('claude-opus-5-5', True, 'anthropic')
+        for allowed, expected in ((False, None), (True, 'claude-opus-old')):
+            with (
+                self.subTest(allowed=allowed),
+                self.patch_resolve(found),
+                self.patch_model(info),
+                mock.patch.object(
+                    resolve,
+                    'member_may_use_model_id',
+                    mock.AsyncMock(return_value=allowed),
+                ) as check,
+            ):
+                result = await self.load(email='dev@example.com')
+                self.assertEqual(result.model_id, expected)
+                check.assert_awaited_once_with(
+                    mock.ANY, 'claude-opus-old', 'dev@example.com'
+                )
+
+    async def test_access_check_error_keeps_the_cms_prompt(self) -> None:
+        found = _version(model='opus', model_id='claude-opus-5-5')
+        info = resolve.ModelInfo(
+            'claude-opus-5-5', True, 'anthropic', 'restricted'
+        )
+        with (
+            self.patch_resolve(found),
+            self.patch_model(info),
+            mock.patch.object(
+                resolve,
+                'member_may_use_model_id',
+                mock.AsyncMock(side_effect=RuntimeError('db down')),
+            ),
+            self.assertLogs(system.LOGGER, 'WARNING'),
+        ):
+            result = await self.load(email='dev@example.com')
+        self.assertEqual(result.source, 'cms')
+        self.assertIsNone(result.model_id)
+
     async def test_override_wins(self) -> None:
         with self.patch_resolve(_version()) as found:
             result = await self.load(override='Custom {{ email }}')

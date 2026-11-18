@@ -29,6 +29,7 @@ const MODEL = {
   model_id: 'claude-x',
   model_type: 'generative',
   slug: 'claude',
+  supports_forced_tool_choice: true,
   supports_structured_output: true,
 } as AIModel
 

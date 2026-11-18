@@ -3,6 +3,7 @@
 import asyncio
 import json
 import typing
+import unittest
 import uuid
 from unittest import mock
 
@@ -10,11 +11,12 @@ import httpx
 
 from apps.api.tests.endpoints import test_ai_providers as provider_tests
 from apps.api.tests.endpoints import test_prompts as base
-from imbi.api.endpoints import ai_models, ai_providers, prompts
+from imbi.api.endpoints import ai_providers, prompts
 from imbi.api.llm import generate as model_generate
 from imbi.common import models
 from imbi.common.auth import permissions as common_permissions
 from imbi.common.llm import generate
+from imbi.common.prompts import resolve as prompt_resolve
 
 RUN_URL = f'/organizations/{base.ORG}/prompts/run'
 CALL_ID = uuid.UUID('00000000-0000-0000-0000-000000000001')
@@ -76,7 +78,11 @@ class GenerativeRunTestCase(base.PromptTestBase):
         self.addCleanup(patcher.stop)
         return patcher.start()
 
-    def route_run(self, **model: typing.Any) -> base.Router:
+    def route_run(
+        self,
+        version: dict[str, typing.Any] | None = None,
+        **model: typing.Any,
+    ) -> base.Router:
         return self.route(
             (base.GET_PROMPT, base.prompt_row()),
             (
@@ -89,7 +95,8 @@ class GenerativeRunTestCase(base.PromptTestBase):
                                 'content': 'Check {{ project_slug }}',
                             }
                         ]
-                    )
+                    ),
+                    **(version or {}),
                 ),
             ),
             (prompts._RUN_MODEL_QUERY, [{**MODEL_ROW, **model}]),
@@ -182,11 +189,11 @@ class GenerativeRunTestCase(base.PromptTestBase):
         self.generate.assert_not_awaited()
         self.calls.start.assert_not_awaited()
         self.assertEqual(
-            router.params_for(ai_models._ALLOWED_MEMBER_QUERY)['email'],
+            router.params_for(prompt_resolve.ALLOWED_MEMBER_QUERY)['email'],
             self.user.email,
         )
         router.rules.insert(
-            0, (ai_models._ALLOWED_MEMBER_QUERY, [{'id': 'team-1'}])
+            0, (prompt_resolve.ALLOWED_MEMBER_QUERY, [{'id': 'team-1'}])
         )
         self.assertEqual(self.run_ref().status_code, 200)
 
@@ -211,7 +218,7 @@ class GenerativeRunTestCase(base.PromptTestBase):
     ) -> None:
         router = self.run_workflow_prompt_as('imbi-scheduler')
         router.rules.insert(
-            0, (ai_models._ALLOWED_TEAM_QUERY, [{'id': 'team-1'}])
+            0, (prompt_resolve.ALLOWED_TEAM_QUERY, [{'id': 'team-1'}])
         )
         with mock.patch.object(
             prompts,
@@ -242,11 +249,11 @@ class GenerativeRunTestCase(base.PromptTestBase):
             self.assertEqual(response.status_code, 403, response.text)
             self.workflow_store.get.assert_awaited_with('org-1', 'deploy')
             self.assertEqual(
-                router.params_for(ai_models._ALLOWED_TEAM_QUERY)['team'],
+                router.params_for(prompt_resolve.ALLOWED_TEAM_QUERY)['team'],
                 'team-1',
             )
             router.rules.insert(
-                0, (ai_models._ALLOWED_TEAM_QUERY, [{'id': 'team-1'}])
+                0, (prompt_resolve.ALLOWED_TEAM_QUERY, [{'id': 'team-1'}])
             )
             response = self.run_ref(ref=f'workflows/{slug}@1')
             self.assertEqual(response.status_code, 200, response.text)
@@ -267,6 +274,15 @@ class GenerativeRunTestCase(base.PromptTestBase):
         self.assertIsNone(self.calls.finish.await_args.kwargs['cost_usd'])
         sent: generate.Request = self.generate.await_args.args[0]
         self.assertEqual(sent.output_fields[0].name, 'severity')
+        # A model without the flag predates it: a forced tool choice.
+        self.assertTrue(sent.forced_tool_choice)
+
+    def test_forced_tool_choice_flag_reaches_the_adapter(self) -> None:
+        self.route_run(forced_tool_choice=False)
+        response = self.run_ref(output_fields=FIELDS)
+        self.assertEqual(response.status_code, 200, response.text)
+        sent: generate.Request = self.generate.await_args.args[0]
+        self.assertFalse(sent.forced_tool_choice)
 
     def test_grant_in_another_org_does_not_run(self) -> None:
         # prompt:update in another org only: check_member keeps the
@@ -385,6 +401,39 @@ class GenerativeRunTestCase(base.PromptTestBase):
             ('run-1', 'node-a', 2),
         )
 
+    def test_attempt_out_of_the_integer_range_is_422(self) -> None:
+        self.route_run()
+        key = f'run-1:node-a:{prompts.MAX_ATTEMPT + 1}'
+        response = self.run_ref(headers={'Idempotency-Key': key})
+        self.assertEqual(response.status_code, 422, response.text)
+        self.calls.start.assert_not_awaited()
+        self.generate.assert_not_awaited()
+
+    def test_attempt_that_is_not_a_number_is_none(self) -> None:
+        # str.isdigit accepts '²', but int() does not parse it.
+        for attempt in ('-1', '\u00b2', 'x'):
+            context = prompts._key_context(f'run-1:node-a:{attempt}')
+            self.assertIsNone(context['attempt'])
+
+    def test_version_with_tools_is_refused(self) -> None:
+        self.route_run(version={'tools': json.dumps([{'name': 'lookup'}])})
+        response = self.run_ref()
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn('no tools', response.json()['detail'])
+        self.calls.start.assert_not_awaited()
+        self.generate.assert_not_awaited()
+
+    def test_blank_temperature_uses_the_catalog_default(self) -> None:
+        for temperature, expected in ((None, 0.3), (0, 0)):
+            self.route_run(
+                version={'params': json.dumps({'temperature': temperature})},
+                default_temperature=0.3,
+            )
+            response = self.run_ref()
+            self.assertEqual(response.status_code, 200, response.text)
+            sent: generate.Request = self.generate.await_args.args[0]
+            self.assertEqual(sent.params.temperature, expected)
+
     def _repeat(self, **row: typing.Any) -> httpx.Response:
         enabled = row.pop('model_enabled', True)
         stored = {
@@ -493,10 +542,70 @@ class GenerativeRunTestCase(base.PromptTestBase):
         self.route_run()
         with mock.patch.object(prompts, 'CALL_DEADLINE', 0.01):
             response = self.run_ref()
-        self.assertEqual(response.status_code, 503)
-        self.calls.finish.assert_awaited_once_with(
-            CALL_ID, 'failed', error='provider_unreachable'
+        # The call may have reached the provider: no retry.
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(
+            response.json()['detail'],
+            {'error': 'provider_outcome_unknown', 'retry': False},
         )
+        self.calls.finish.assert_awaited_once_with(
+            CALL_ID, 'failed', error='provider_outcome_unknown'
+        )
+
+    def test_deadline_before_dispatch_is_retried(self) -> None:
+        async def slow(*_: object) -> None:
+            await asyncio.sleep(1)
+
+        self.decrypt.return_value = None
+        self._patch(model_generate, '_sigv4', slow)
+        self.route_run()
+        self.mock_db.execute.side_effect.rules.insert(
+            0,
+            (
+                ai_providers._GET_QUERY,
+                provider_row(driver='bedrock', region='us-east-1'),
+            ),
+        )
+        with mock.patch.object(prompts, 'CALL_DEADLINE', 0.01):
+            response = self.run_ref()
+        # No request was sent: the retry is safe.
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(
+            response.json()['detail'],
+            {'error': 'credentials_unavailable', 'retry': True},
+        )
+        self.calls.finish.assert_awaited_once_with(
+            CALL_ID, 'failed', error='credentials_unavailable'
+        )
+        self.generate.assert_not_awaited()
+
+    def test_provider_outcome_unknown_is_not_retried(self) -> None:
+        self.generate.side_effect = generate.GenerateError(
+            'provider_outcome_unknown'
+        )
+        self.route_run()
+        response = self.run_ref()
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(
+            response.json()['detail'],
+            {'error': 'provider_outcome_unknown', 'retry': False},
+        )
+        self.calls.finish.assert_awaited_once_with(
+            CALL_ID, 'failed', error='provider_outcome_unknown'
+        )
+
+    def test_repeat_of_an_unknown_provider_outcome_makes_no_call(
+        self,
+    ) -> None:
+        response = self._repeat(
+            status='failed', error='provider_outcome_unknown'
+        )
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(
+            response.json()['detail'],
+            {'error': 'provider_outcome_unknown', 'retry': False},
+        )
+        self.generate.assert_not_awaited()
 
     def test_vertex_needs_a_key(self) -> None:
         self.decrypt.return_value = None
@@ -567,3 +676,41 @@ class SigV4TestCase(base.PromptTestBase):
             r'^AWS4-HMAC-SHA256 Credential=AKID/\d{8}/us-east-1/bedrock/',
         )
         self.assertIn('X-Amz-Date', signed.headers)
+
+
+class DispatchTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_rejected_token_clears_dispatch(self) -> None:
+        # A 401 is a known rejection: while Imbi waits for a new token,
+        # no request is in flight, so a deadline then is safe to retry.
+        dispatched = asyncio.Event()
+        seen: list[bool] = []
+
+        async def get(*_: object) -> mock.Mock:
+            seen.append(dispatched.is_set())
+            return mock.Mock(token=f'token-{len(seen)}')
+
+        result = generate.Result('ok', None, {}, None)
+        call = mock.AsyncMock(
+            side_effect=[
+                generate.GenerateError('provider_refused', status=401),
+                result,
+            ]
+        )
+        provider = mock.Mock(workload_identity=object())
+        request = generate.Request(
+            driver='anthropic', model_id='claude-opus-5', messages=[]
+        )
+        with (
+            mock.patch.object(
+                model_generate, 'decrypt_config_value', return_value=None
+            ),
+            mock.patch.object(model_generate.tokens, 'get', get),
+            mock.patch.object(model_generate.tokens, 'CACHE'),
+            mock.patch.object(generate, 'generate', call),
+        ):
+            answer = await model_generate.call(
+                mock.Mock(), provider, request, dispatched
+            )
+        self.assertIs(answer, result)
+        self.assertEqual(seen, [False, False])
+        self.assertTrue(dispatched.is_set())

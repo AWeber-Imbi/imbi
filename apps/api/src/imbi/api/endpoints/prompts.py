@@ -26,12 +26,14 @@ import typing
 import uuid
 
 import fastapi
+import psycopg
 import pydantic
 import slugify
+from psycopg.types import json as pg_json
 
 from imbi.api import model_calls, secret_broker, workflows
 from imbi.api.auth import organizations, permissions
-from imbi.api.endpoints import ai_models, ai_providers, projects
+from imbi.api.endpoints import ai_providers, projects
 from imbi.api.endpoints._helpers import (
     caller_org_slugs,
     conflict_on_unique_violation,
@@ -39,7 +41,7 @@ from imbi.api.endpoints._helpers import (
 from imbi.api.graph_sql import escape_prop, props_template, set_clause
 from imbi.api.llm import generate as model_generate
 from imbi.api.tickets import store as task_store
-from imbi.common import graph, models
+from imbi.common import graph, models, relational
 from imbi.common import patch as json_patch
 from imbi.common.auth import permissions as common_permissions
 from imbi.common.auth.encryption import decrypt_config_value
@@ -362,9 +364,11 @@ RETURN m.model_id AS model_id, m.enabled AS enabled,
        m.model_type AS model_type, m.kind AS kind, p.id AS provider_id,
        m.access_scope AS access_scope,
        m.supports_structured_output AS structured,
+       m.supports_forced_tool_choice AS forced_tool_choice,
        m.input_cost_per_million AS input_cost,
        m.output_cost_per_million AS output_cost,
-       m.cache_read_cost_per_million AS cache_read_cost
+       m.cache_read_cost_per_million AS cache_read_cost,
+       m.default_temperature AS default_temperature
 """
 _RUN_MODEL_COLUMNS = [
     'model_id',
@@ -374,9 +378,11 @@ _RUN_MODEL_COLUMNS = [
     'provider_id',
     'access_scope',
     'structured',
+    'forced_tool_choice',
     'input_cost',
     'output_cost',
     'cache_read_cost',
+    'default_temperature',
 ]
 
 _DELETE_VERSIONS_QUERY: typing.LiteralString = """
@@ -405,6 +411,50 @@ MATCH (o:Organization {{id: {org_id}}})
 MATCH (p:Prompt)
 WHERE p.namespace IN {namespaces} AND p.slug STARTS WITH (o.slug + '.')
 DETACH DELETE p
+"""
+
+#: An organization rename moves its prompts and the references to them
+#: from ``<old>.`` to ``<new>.``. Version numbers do not change. It
+#: returns the ``namespace/slug`` that each moved prompt had.
+_MOVE_ORG_PROMPTS_QUERY: typing.LiteralString = """
+MATCH (p:Prompt)
+WHERE p.namespace IN {namespaces} AND p.slug STARTS WITH {old}
+WITH p, p.namespace + '/' + p.slug AS key
+SET p.slug = {new} + substring(p.slug, {cut})
+RETURN key
+"""
+
+_ORG_ID_QUERY: typing.LiteralString = (
+    'MATCH (o:Organization {{slug: {slug}}}) RETURN o.id AS id'
+)
+
+#: The first statement of a rename into an organization's prefix
+#: (:func:`patch_prompt`): the organization still has that slug.
+_ORG_GUARD_QUERY: typing.LiteralString = (
+    'MATCH (o:Organization {{id: {org_id}, slug: {org_slug}}})'
+    ' RETURN o.id AS id'
+)
+
+_AGENT_REFS_QUERY: typing.LiteralString = """
+MATCH (a:Agent)-[:BELONGS_TO]->(:Organization {{id: {org_id}}})
+WHERE a.prompt_ref IS NOT NULL
+RETURN a.id AS id, a.prompt_ref AS ref
+"""
+
+_SET_AGENT_REF_QUERY: typing.LiteralString = """
+MATCH (a:Agent {{id: {id}}})
+SET a.prompt_ref = {ref}
+"""
+
+_AGENT_VERSIONS_QUERY: typing.LiteralString = """
+MATCH (v:AgentVersion)-[:VERSION_OF]->(:Agent)
+      -[:BELONGS_TO]->(:Organization {{id: {org_id}}})
+RETURN v.agent_id AS agent_id, v.n AS n, v.snapshot AS snapshot
+"""
+
+_SET_AGENT_SNAPSHOT_QUERY: typing.LiteralString = """
+MATCH (v:AgentVersion {{agent_id: {agent_id}, n: {n}}})
+SET v.snapshot = {snapshot}
 """
 
 #: Labels change by read, modify, write. The ``updated_at`` match makes
@@ -620,7 +670,8 @@ async def _model_id_for(
 #: ``workflows/<org slug>.<workflow slug>.<node key>``. A workflow
 #: version pins a version number of the prompt, so such a prompt is
 #: never deleted or renamed, has no tools, and is archived (not
-#: deleted) with its node.
+#: deleted) with its node. Only an organization rename moves it, with
+#: the references to it (:func:`move_org_prompts`).
 WORKFLOWS_NAMESPACE = llm_call.NAMESPACE
 
 #: The namespaces whose prompts are data of one organization, and the
@@ -764,7 +815,7 @@ def _workflow_prompt_locked() -> fastapi.HTTPException:
 
 
 async def archive_prompts_except(
-    db: graph.Graph, namespace: str, prefix: str, keep: list[str]
+    execute: graph.CypherExecute, namespace: str, prefix: str, keep: list[str]
 ) -> None:
     """Archive each prompt of ``namespace`` whose slug starts with
     ``prefix``, except the slugs in ``keep``. Restore the archived
@@ -781,9 +832,9 @@ async def archive_prompts_except(
         'keep': keep,
         'now': _DATETIME.dump_python(_now(), mode='json'),
     }
-    await db.execute(_ARCHIVE_QUERY, params, ['slug'])
+    await execute(_ARCHIVE_QUERY, params, ['slug'])
     if keep:
-        await db.execute(_RESTORE_QUERY, params, ['slug'])
+        await execute(_RESTORE_QUERY, params, ['slug'])
 
 
 async def delete_org_prompts(
@@ -797,6 +848,106 @@ async def delete_org_prompts(
     params = {'org_id': org_id, 'namespaces': list(_ORG_NAMESPACES)}
     await execute(_DELETE_ORG_VERSIONS_QUERY, params, [])
     await execute(_DELETE_ORG_PROMPTS_QUERY, params, [])
+
+
+async def move_org_prompts(
+    execute: graph.CypherExecute,
+    conn: psycopg.AsyncConnection[typing.Any],
+    org_id: str,
+    old_slug: str,
+    new_slug: str,
+) -> None:
+    """Move the prompts of a renamed organization to the new slug.
+
+    The ``agents/<old>.*`` and ``workflows/<old>.*`` prompts get the
+    ``<new>.`` prefix. The ``prompt_ref`` of each agent and agent
+    version, and of each LLM Call node of each workflow version, moves
+    with them. Pinned version numbers do not change.
+
+    Call this in the transaction that renames the organization.
+
+    Only a reference to a prompt that moved changes. A reference to a
+    prompt that does not exist keeps its slug, so it cannot come to
+    name another prompt that has the new slug already.
+    """
+    old, new = f'{old_slug}.', f'{new_slug}.'
+    with conflict_on_unique_violation(
+        f'A prompt with the {new!r} prefix already exists'
+    ):
+        rows = await execute(
+            _MOVE_ORG_PROMPTS_QUERY,
+            {
+                'namespaces': list(_ORG_NAMESPACES),
+                'old': old,
+                'new': new,
+                'cut': len(old),
+            },
+            ['key'],
+        )
+    moved_keys = {str(graph.parse_agtype(r['key'])) for r in rows}
+
+    def moved(ref: object) -> str | None:
+        """The new ``ref``, or ``None`` when its prompt did not move."""
+        if not isinstance(ref, str):
+            return None
+        key, at, label = ref.partition('@')
+        if key not in moved_keys:
+            return None
+        namespace, _, slug = key.partition('/')
+        return f'{namespace}/{new}{slug[len(old) :]}{at}{label}'
+
+    for row in await execute(
+        _AGENT_REFS_QUERY, {'org_id': org_id}, ['id', 'ref']
+    ):
+        agent_ref = moved(graph.parse_agtype(row['ref']))
+        if agent_ref is not None:
+            await execute(
+                _SET_AGENT_REF_QUERY,
+                {'id': graph.parse_agtype(row['id']), 'ref': agent_ref},
+                [],
+            )
+    for row in await execute(
+        _AGENT_VERSIONS_QUERY,
+        {'org_id': org_id},
+        ['agent_id', 'n', 'snapshot'],
+    ):
+        raw = graph.parse_agtype(row['snapshot'])
+        snapshot: dict[str, typing.Any] = (
+            json.loads(raw) if isinstance(raw, str) else raw or {}
+        )
+        snapshot_ref = moved(snapshot.get('prompt_ref'))
+        if snapshot_ref is not None:
+            snapshot['prompt_ref'] = snapshot_ref
+            await execute(
+                _SET_AGENT_SNAPSHOT_QUERY,
+                {
+                    'agent_id': graph.parse_agtype(row['agent_id']),
+                    'n': graph.parse_agtype(row['n']),
+                    'snapshot': json.dumps(snapshot),
+                },
+                [],
+            )
+    cursor = await conn.execute(
+        'SELECT v.workflow_id, v.version, v.graph'
+        ' FROM workflows.workflow_versions AS v'
+        ' JOIN workflows.workflows AS w ON w.id = v.workflow_id'
+        ' WHERE w.organization_id = %s',
+        (org_id,),
+    )
+    for workflow_id, version, wf_graph in await cursor.fetchall():
+        changed = False
+        for node in wf_graph.get('nodes', []):
+            params: dict[str, typing.Any] = node.get('params') or {}
+            node_ref = moved(params.get('prompt_ref'))
+            if node.get('type') == llm_call.STEP.type and node_ref:
+                params['prompt_ref'] = node_ref
+                changed = True
+        if changed:
+            await conn.execute(
+                'UPDATE workflows.workflow_versions SET graph = %s'
+                ' WHERE workflow_id = %s AND version = %s',
+                (pg_json.Jsonb(wf_graph), workflow_id, version),
+            )
 
 
 async def _require_access(
@@ -1314,6 +1465,10 @@ CALL_TIMEOUT = 120.0
 #: expires before ``STALE_AFTER``, so the row is finished first.
 CALL_DEADLINE = CALL_TIMEOUT + 45
 
+#: The largest attempt in an ``Idempotency-Key``: the
+#: ``ai_model_calls.attempt`` column is a Postgres INTEGER.
+MAX_ATTEMPT = 2**31 - 1
+
 #: A ``running`` call older than this did not finish: a repeat of its
 #: idempotency key sets it to ``outcome_unknown``.
 STALE_AFTER = CALL_DEADLINE + 15
@@ -1324,6 +1479,7 @@ CALL_ERRORS: dict[str, tuple[int, bool]] = {
     'model_answer_invalid': (502, True),
     'provider_refused': (502, False),
     'credentials_failed': (502, False),
+    'provider_outcome_unknown': (502, False),
     'rate_limited': (503, True),
     'provider_unavailable': (503, True),
     'provider_unreachable': (503, True),
@@ -1393,7 +1549,9 @@ async def _check_model_teams(
         return
     account = auth.service_account
     if auth.user is not None:
-        allowed = await ai_models.member_allowed(db, model, auth.user.email)
+        allowed = await prompt_resolve.member_allowed(
+            db, model, auth.user.email
+        )
     elif (
         account is not None
         and account.slug == common_permissions.WORKFLOWS_ACCOUNT
@@ -1402,7 +1560,7 @@ async def _check_model_teams(
         # <org>.<workflow>.<node key>
         slug = prompt.slug.partition('.')[2].rpartition('.')[0]
         row = await store.get(org_id, slug)
-        allowed = row is not None and await ai_models.team_allowed(
+        allowed = row is not None and await prompt_resolve.team_allowed(
             db, model, row['owner_team_id']
         )
     else:
@@ -1513,6 +1671,10 @@ async def run_prompt(
     record = records[0]
     if graph.parse_agtype(record['enabled']) is False:
         raise _unprocessable(f'AI model {version.model!r} is disabled')
+    if graph.parse_agtype(record.get('access_scope')) == 'restricted':
+        await _check_model_teams(
+            db, workflow_store, auth, org_id, prompt, version.model
+        )
     provider = await ai_providers.fetch_provider(
         db, str(graph.parse_agtype(record['provider_id']))
     )
@@ -1585,11 +1747,17 @@ def _key_context(key: str | None) -> dict[str, typing.Any]:
         }
     run_id, _, rest = key.partition(':')
     node_id, _, attempt = rest.rpartition(':')
+    # ``isascii`` refuses digits such as '²' that ``int`` cannot parse.
+    number = int(attempt) if attempt.isascii() and attempt.isdigit() else None
+    if number is not None and number > MAX_ATTEMPT:
+        raise _unprocessable(
+            f'The Idempotency-Key attempt is larger than {MAX_ATTEMPT}'
+        )
     return {
         'origin': 'workflow',
         'run_id': run_id,
         'node_id': node_id or None,
-        'attempt': int(attempt) if attempt.isdigit() else None,
+        'attempt': number,
     }
 
 
@@ -1642,6 +1810,11 @@ async def _run_generative(
     idempotency_key: str | None,
 ) -> RunResponse:
     """Run a generative prompt; see :func:`run_prompt`."""
+    if version.tools:
+        raise _unprocessable(
+            'A generative run sends no tools to the model; '
+            'remove the tools from the prompt version'
+        )
     if version.model is None:
         raise _unprocessable('Choose a generative model to run the prompt')
     records = await db.execute(
@@ -1689,13 +1862,21 @@ async def _run_generative(
     except rendering.RenderError as e:
         raise _unprocessable(str(e)) from e
     model_id = str(record['model_id'])
+    params = version.params
+    # Compare with None: an explicit temperature of 0 stays.
+    if params.temperature is None:
+        params = params.model_copy(
+            update={'temperature': record.get('default_temperature')}
+        )
     call = generate.Request(
         driver=provider.driver,
         model_id=model_id,
         messages=rendered.messages,
         system=rendered.system,
-        params=version.params,
+        params=params,
         output_fields=data.output_fields,
+        # A missing value predates the field: a forced tool choice.
+        forced_tool_choice=record.get('forced_tool_choice') is not False,
         base_url=drivers.resolve_base_url(provider.driver, provider.base_url),
         region=provider.region,
         project_id=provider.project_id,
@@ -1721,12 +1902,22 @@ async def _run_generative(
     )
     if not new:
         return _repeat(row)
+    dispatched = asyncio.Event()
     try:
         async with asyncio.timeout(CALL_DEADLINE):
-            answer = await model_generate.call(secrets, provider, call)
+            answer = await model_generate.call(
+                secrets, provider, call, dispatched
+            )
     except TimeoutError:
-        await calls.finish(row['id'], 'failed', error='provider_unreachable')
-        raise _call_error('provider_unreachable') from None
+        # After dispatch, the request may have reached the provider.
+        # Before it, Imbi was still getting credentials: a retry is safe.
+        code = (
+            'provider_outcome_unknown'
+            if dispatched.is_set()
+            else 'credentials_unavailable'
+        )
+        await calls.finish(row['id'], 'failed', error=code)
+        raise _call_error(code) from None
     except generate.GenerateError as e:
         await calls.finish(row['id'], 'failed', error=e.code)
         raise _call_error(e.code) from None
@@ -1816,8 +2007,9 @@ async def patch_prompt(
         400: Invalid patch or a read-only path.
         403: A rename without ``prompt:promote``.
         404: No such prompt.
-        409: The new ``namespace/slug`` is taken, or the rename moves
-            a prompt into or out of the ``workflows`` namespace.
+        409: The new ``namespace/slug`` is taken, the rename moves
+            a prompt into or out of the ``workflows`` namespace, or the
+            prompt moved or was deleted while this request ran.
         422: The patched values are not valid.
 
     """
@@ -1849,14 +2041,65 @@ async def patch_prompt(
     props = updated.model_dump(
         mode='json', include={*_PATCHABLE_FIELDS, 'updated_at'}
     )
+    # The match on the reference that this patch read stops it from
+    # writing an old slug back over a move (an organization rename).
     query = (
-        'MATCH (p:Prompt {{id: {id}}})'
+        'MATCH (p:Prompt {{id: {id}, namespace: {read_namespace},'
+        ' slug: {read_slug}}})'
         f' {set_clause("p", props)} RETURN p'
     )
+    params = {
+        **props,
+        'id': prompt.id,
+        'read_namespace': prompt.namespace,
+        'read_slug': prompt.slug,
+    }
+    dest_org = _prompt_org(updated.namespace, updated.slug)
+    org_rows = (
+        await db.execute(_ORG_ID_QUERY, {'slug': dest_org}, ['id'])
+        if dest_org is not None
+        and (namespace, slug)
+        != (
+            updated.namespace,
+            updated.slug,
+        )
+        else []
+    )
+    records: list[dict[str, typing.Any]]
     with conflict_on_unique_violation(
         f'Prompt {updated.namespace}/{updated.slug} already exists'
     ):
-        await db.execute(query, {**props, 'id': prompt.id}, ['p'])
+        if org_rows:
+            # A rename into an organization's prefix holds the shared
+            # lock on that organization, which an organization rename
+            # holds exclusively, and writes only while the organization
+            # still has that slug.
+            org_id = str(graph.parse_agtype(org_rows[0]['id']))
+            try:
+                await db._execute_batch(  # pyright: ignore[reportPrivateUsage]
+                    [
+                        graph_cypher.Statement(
+                            _ORG_GUARD_QUERY,
+                            {'org_id': org_id, 'org_slug': dest_org},
+                            expect_rows=True,
+                        ),
+                        graph_cypher.Statement(
+                            query, params, expect_rows=True
+                        ),
+                    ],
+                    shared_lock=relational.organization_delete_lock_key(
+                        org_id
+                    ),
+                )
+                records = [{'p': None}]
+            except graph.StatementMatchedNothing:
+                records = []
+        else:
+            records = await db.execute(query, params, ['p'])
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=409, detail=PROMPT_CHANGED_DETAIL
+        )
     return _prompt_response(updated, latest)
 
 
