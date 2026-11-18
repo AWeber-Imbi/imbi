@@ -40,6 +40,7 @@ class SystemPromptTests(helpers.TestCase):
         user = identity.ImbiUser('ada@example.com', 'Ada')
         prompt = await self.build(user, ['list'])
         self.assertIn('`/tickets/{org_slug}/{short_id}`', prompt)
+        self.assertNotIn('/agents/tasks/', prompt)
 
     async def test_admin_flag(self) -> None:
         user = identity.ImbiUser('a@example.com', 'A', is_admin=True)
