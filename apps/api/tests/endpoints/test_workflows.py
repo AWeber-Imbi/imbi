@@ -1121,3 +1121,34 @@ class LLMCallStepTestCase(WorkflowTestCase):
         response = await self.client.get(f'{self.base}/deploy-guard')
         self.assertEqual(response.status_code, 200, response.text)
         self.assertFalse(await self._archived('sum'))
+
+    async def test_failed_write_after_archive_keeps_the_prompts(
+        self,
+    ) -> None:
+        """The archive commits only with the workflow write (#783)."""
+        response = await self._create(graph=self._graph(sum={}, plain={}))
+        self.assertEqual(response.status_code, 201, response.text)
+        archive = workflows_endpoints._archive_prompts
+
+        async def archive_then_fail(*args: typing.Any) -> None:
+            await archive(*args)
+            raise RuntimeError('commit failed')
+
+        body = {
+            'name': 'Deploy guard',
+            'owner_team_slug': self.team,
+            'graph': self._graph(sum={}),
+        }
+        url = f'{self.base}/deploy-guard'
+        with mock.patch.object(
+            workflows_endpoints, '_archive_prompts', archive_then_fail
+        ):
+            with self.assertRaises(RuntimeError):
+                await self.client.put(url, json=body)
+            self.assertFalse(await self._archived('plain'))
+            with self.assertRaises(RuntimeError):
+                await self.client.delete(url)
+            self.assertFalse(await self._archived('sum'))
+        response = await self.client.get(url)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['latest_version'], 1)

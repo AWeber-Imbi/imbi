@@ -17,12 +17,14 @@ Every route needs the caller to be a member of the organization
 """
 
 import datetime
+import functools
 import logging
 import re
 import typing
 from collections import abc
 
 import fastapi
+import psycopg
 import pydantic
 import slugify
 
@@ -548,18 +550,26 @@ def _llm_call_keys(wf_graph: dict[str, typing.Any]) -> set[str]:
 
 
 async def _archive_prompts(
-    db: graph.Graph, org_slug: str, slug: str, keys: abc.Iterable[str]
+    db: graph.Graph,
+    conn: psycopg.AsyncConnection[typing.Any],
+    org_slug: str,
+    slug: str,
+    keys: abc.Iterable[str],
 ) -> None:
     """Archive the prompts of the workflow, except those of ``keys``
     (plan D8).
 
-    All prompts of the workflow are checked, not only the removed nodes,
-    so the next save or delete archives what a failed one left.
+    The archive runs on ``conn``, in the transaction of the workflow
+    write, so it commits or rolls back with that write. All prompts of
+    the workflow are checked, not only the removed nodes, so the next
+    save or delete archives what an earlier one left.
 
     """
+    # The workflows pool does not put AGE on the search path.
+    await conn.execute('SET LOCAL search_path = ag_catalog, "$user", public')
     prefix = f'{org_slug}.{slug}.'
     await prompts.archive_prompts_except(
-        db,
+        functools.partial(db.execute, conn=conn),
         prompts.WORKFLOWS_NAMESPACE,
         prefix,
         [prefix + key for key in keys],
@@ -853,8 +863,8 @@ async def save_workflow(
         slug,
         definition,
         current['owner_team_id'],
-        on_saved=lambda: _archive_prompts(
-            db, org_slug, slug, _llm_call_keys(definition.graph)
+        on_saved=lambda conn: _archive_prompts(
+            db, conn, org_slug, slug, _llm_call_keys(definition.graph)
         ),
     ):
         raise fastapi.HTTPException(
@@ -892,7 +902,7 @@ async def delete_workflow(
     result = await store.delete(
         org_id,
         slug,
-        on_deleted=lambda: _archive_prompts(db, org_slug, slug, ()),
+        on_deleted=lambda conn: _archive_prompts(db, conn, org_slug, slug, ()),
     )
     if result == 'open_runs':
         raise fastapi.HTTPException(
