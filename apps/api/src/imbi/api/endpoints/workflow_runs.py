@@ -31,6 +31,7 @@ Every route needs the caller to be a member of the organization
 import asyncio
 import datetime
 import logging
+import re
 import typing
 import uuid
 
@@ -157,7 +158,8 @@ class RunFailure(pydantic.BaseModel):
 
     ``task_id``, ``outcome``, ``reason``, and ``summary`` come from the
     agent task of an ``agent`` step. ``reason`` and ``summary`` are
-    ``None`` for a caller who cannot read agent tasks.
+    ``None`` for a caller who cannot read agent tasks, and ``error``
+    has only its code.
     """
 
     node_key: str
@@ -792,6 +794,17 @@ def _without_ticket(output: dict[str, typing.Any]) -> dict[str, typing.Any]:
     }
 
 
+_ERROR_CODE = re.compile(r'[a-z][a-z0-9_]*')
+
+
+def _error_code(error: str | None) -> str | None:
+    """Return the code of ``error``: the text before the first ``:`` or
+    whitespace. Return ``None`` when that text is not a snake_case code.
+    """
+    code = re.split(r'[:\s]', error or '', maxsplit=1)[0]
+    return code if _ERROR_CODE.fullmatch(code) else None
+
+
 def _run_for(
     auth: permissions.AuthContext,
     run: dict[str, typing.Any],
@@ -802,24 +815,36 @@ def _run_for(
 
     A run that a closed task started, or that has an agent step, can
     hold task content in any value that a template rendered. For such
-    a run, set the dedupe and concurrency keys to ``None`` and remove
-    the ``input`` and ``output`` of each of ``steps``. Remove the
-    ticket attributes from the payload of a run that a task started.
-    The keys come only from the payload
-    (:func:`validation.dedupe_key`), so a list without ``steps``
-    cannot show the content of an agent step.
+    a run, set the dedupe and concurrency keys to ``None``, remove
+    the ``input`` and ``output`` of each of ``steps``, and keep only
+    the code of the run and step errors. Remove the ticket attributes
+    from the payload of a run that a task started. The keys come only
+    from the payload (:func:`validation.dedupe_key`), so a list
+    without ``steps`` cannot show the content of an agent step. The
+    run error can, and a list cannot see the agent steps, so a list
+    keeps only the code of the run error of each run.
     """
     found = list(steps or [])
     from_task = run['origin_kind'] == task_trigger.KIND
-    if _can_read_tasks(auth) or (
-        not from_task and not any(s['node_type'] == 'agent' for s in found)
-    ):
+    task_content = from_task or any(s['node_type'] == 'agent' for s in found)
+    if _can_read_tasks(auth) or (steps is not None and not task_content):
         return run if steps is None else {**run, 'steps': found}
-    hidden = {**run, 'dedupe_key': None, 'concurrency_key': None}
+    hidden = {**run, 'error': _error_code(run['error'])}
+    if not task_content:
+        return hidden
+    hidden |= {'dedupe_key': None, 'concurrency_key': None}
     if from_task:
         hidden['payload'] = _without_ticket(run['payload'])
     if steps is not None:
-        hidden['steps'] = [{**s, 'input': None, 'output': None} for s in found]
+        hidden['steps'] = [
+            {
+                **s,
+                'input': None,
+                'output': None,
+                'error': _error_code(s['error']),
+            }
+            for s in found
+        ]
     return hidden
 
 
@@ -1186,7 +1211,7 @@ def _failure(
         'title': step['title'],
         'node_type': step['node_type'],
         'attempt': step['attempt'],
-        'error': step['error'],
+        'error': step['error'] if task_content else _error_code(step['error']),
         'task_id': output.get('task_id'),
         'outcome': output.get('outcome'),
         'reason': output.get('reason') if task_content else None,

@@ -2348,11 +2348,59 @@ class RunForTestCase(unittest.TestCase):
         'payload': {'title': 'x'},
         'dedupe_key': 'secret',
         'concurrency_key': 'secret',
+        'error': None,
     }
     STEPS: typing.ClassVar[list[dict[str, typing.Any]]] = [
-        {'node_type': 'agent', 'input': {'a': 1}, 'output': {'b': 2}},
-        {'node_type': 'slack', 'input': {'text': 's'}, 'output': {'ts': 's'}},
+        {
+            'node_type': 'agent',
+            'input': {'a': 1},
+            'output': {'b': 2},
+            'error': None,
+        },
+        {
+            'node_type': 'slack',
+            'input': {'text': 's'},
+            'output': {'ts': 's'},
+            'error': None,
+        },
     ]
+    QUOTED = "invalid_params: 'Secret title' is not a channel"
+
+    def test_error_quoting_a_ticket_title_keeps_only_the_code(self) -> None:
+        run = {
+            **self.RUN,
+            'origin_kind': 'task_completed',
+            'error': self.QUOTED,
+        }
+        steps = [{**self.STEPS[1], 'error': self.QUOTED}]
+        step = {
+            'node_key': 'tell',
+            'title': 'Tell',
+            'node_type': 'slack',
+            'attempt': 1,
+            'error': self.QUOTED,
+        }
+        hidden = mock.Mock(is_admin=False, permissions=set())
+        found = workflow_runs._run_for(hidden, run, steps)
+        self.assertEqual(found['error'], 'invalid_params')
+        self.assertEqual(found['steps'][0]['error'], 'invalid_params')
+        listed = workflow_runs._run_for(hidden, {**run, 'origin_kind': 'x'})
+        self.assertEqual(listed['error'], 'invalid_params')
+        failure = workflow_runs._failure(step, task_content=False)
+        assert failure is not None
+        self.assertEqual(failure['error'], 'invalid_params')
+        reader = mock.Mock(is_admin=False, permissions={'agent_task:read'})
+        found = workflow_runs._run_for(reader, run, steps)
+        self.assertEqual(found['error'], self.QUOTED)
+        self.assertEqual(found['steps'][0]['error'], self.QUOTED)
+        failure = workflow_runs._failure(step, task_content=True)
+        assert failure is not None
+        self.assertEqual(failure['error'], self.QUOTED)
+
+    def test_error_code_needs_a_code_shape(self) -> None:
+        self.assertIsNone(workflow_runs._error_code('Secret title failed'))
+        self.assertIsNone(workflow_runs._error_code(None))
+        self.assertEqual(workflow_runs._error_code('timeout'), 'timeout')
 
     def test_agent_run_hides_keys_and_step_content(self) -> None:
         auth = mock.Mock(is_admin=False, permissions=set())
