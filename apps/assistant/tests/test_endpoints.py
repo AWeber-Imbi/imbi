@@ -450,22 +450,36 @@ class CreateConversationEndpointTestCase(
     ) -> None:
         client._client = mock.MagicMock()
         mock_create.return_value = _make_conversation()
+        opus = 'claude-opus-5-5'
+        default = 'claude-sonnet-4-6'
         restricted = [{'slug': 'opus', 'access_scope': 'restricted'}]
-        for scopes, allowed_rows, is_admin, refused in (
-            (restricted, [], False, True),
-            (restricted, [{'id': 'team-1'}], False, False),
-            (restricted, [], True, False),
+        disabled_twin = {
+            'slug': 'opus-b',
+            'access_scope': None,
+            'enabled': False,
+        }
+        for model, scopes, allowed_rows, is_admin, refused in (
+            (opus, restricted, [], False, True),
+            (opus, restricted, [{'id': 'team-1'}], False, False),
+            (opus, restricted, [], True, False),
             (
+                opus,
                 [*restricted, {'slug': 'opus-b', 'access_scope': None}],
                 [],
                 False,
                 False,
             ),
+            # A disabled organization twin does not unlock the model.
+            (opus, [*restricted, disabled_twin], [], False, True),
+            # An id that is not in the catalog is refused ...
+            (opus, [], [], False, True),
+            # ... except the configured default model.
+            (default, [], [], False, False),
         ):
             db = mock.AsyncMock()
             db.execute.side_effect = [scopes, allowed_rows]
             with (
-                self.subTest(scopes=scopes, allowed=allowed_rows),
+                self.subTest(model=model, scopes=scopes, allowed=allowed_rows),
                 mock.patch.dict('os.environ', {}, clear=True),
                 mock.patch.object(
                     resolve.graph, 'parse_agtype', side_effect=lambda v: v
@@ -476,9 +490,7 @@ class CreateConversationEndpointTestCase(
                     await endpoints.create_conversation(
                         db=db,
                         auth_ctx=_make_auth_context(is_admin=is_admin),
-                        body=models.CreateConversationRequest(
-                            model='claude-opus-5-5'
-                        ),
+                        body=models.CreateConversationRequest(model=model),
                     )
                 except fastapi.HTTPException as e:
                     self.assertTrue(refused)
@@ -488,10 +500,10 @@ class CreateConversationEndpointTestCase(
                 else:
                     self.assertFalse(refused)
                     mock_create.assert_called_once()
-                if scopes and not is_admin:
+                if not is_admin:
                     self.assertEqual(
                         db.execute.await_args_list[0].args[1],
-                        {'model_id': 'claude-opus-5-5'},
+                        {'model_id': model},
                     )
 
     @mock.patch(
@@ -512,7 +524,9 @@ class CreateConversationEndpointTestCase(
             ) as load,
         ):
             await endpoints.create_conversation(
-                db=mock.AsyncMock(), auth_ctx=_make_auth_context(), body=None
+                db=mock.AsyncMock(),
+                auth_ctx=_make_auth_context(is_admin=True),
+                body=None,
             )
         load.assert_awaited_once_with(
             mock.ANY, 'imbi-assistant/system@stable', 'test@example.com'
@@ -531,7 +545,7 @@ class CreateConversationEndpointTestCase(
         mock_create: mock.AsyncMock,
     ) -> None:
         client._client = mock.MagicMock()
-        auth_ctx = _make_auth_context()
+        auth_ctx = _make_auth_context(is_admin=True)
         conv = _make_conversation()
         mock_create.return_value = conv
         body = models.CreateConversationRequest(

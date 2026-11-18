@@ -42,7 +42,7 @@ RETURN t.id AS id
 
 MODEL_ID_SCOPES_QUERY: typing.LiteralString = """
 MATCH (m:AIModel {{model_id: {model_id}}})
-RETURN m.slug AS slug, m.access_scope AS access_scope
+RETURN m.slug AS slug, m.access_scope AS access_scope, m.enabled AS enabled
 """
 
 ALLOWED_TEAM_QUERY: typing.LiteralString = """
@@ -202,20 +202,26 @@ async def member_allowed(db: graph.Graph, slug: str, email: str) -> bool:
 
 
 async def member_may_use_model_id(
-    db: graph.Graph, model_id: str, email: str
+    db: graph.Graph, model_id: str, email: str, default: str | None = None
 ) -> bool:
     """Whether the user ``email`` may use the provider model id
     ``model_id``.
 
-    Refused only when the catalog has the id, every catalog model with
-    the id is ``restricted``, and none of them allows the user. An id
-    that is not in the catalog is not refused here.
+    Only enabled catalog models count. Allowed when one of them is not
+    ``restricted`` or a ``restricted`` one allows the user. An id with
+    no enabled catalog model is refused, except ``default`` (the
+    configured default model, which need not be in the catalog).
     """
     records = await db.execute(
-        MODEL_ID_SCOPES_QUERY, {'model_id': model_id}, ['slug', 'access_scope']
+        MODEL_ID_SCOPES_QUERY,
+        {'model_id': model_id},
+        ['slug', 'access_scope', 'enabled'],
     )
     rows = [{k: graph.parse_agtype(v) for k, v in r.items()} for r in records]
-    if not rows or any(r['access_scope'] != 'restricted' for r in rows):
+    rows = [r for r in rows if r.get('enabled') is not False]
+    if not rows:
+        return model_id == default
+    if any(r['access_scope'] != 'restricted' for r in rows):
         return True
     for row in rows:
         if await member_allowed(db, str(row['slug']), email):

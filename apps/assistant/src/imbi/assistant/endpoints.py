@@ -79,14 +79,14 @@ async def create_conversation(
         )
     user = auth_ctx.require_user
     if not user.is_admin and not await resolve.member_may_use_model_id(
-        db, model, user.email
+        db, model, user.email, assistant_settings.model
     ):
         raise fastapi.HTTPException(
             status_code=403,
             detail={
                 'error': 'model_not_allowed',
-                'message': f'The model {model!r} is restricted to teams '
-                'that do not include you',
+                'message': f'The model {model!r} is not in the catalog '
+                'or is restricted to teams that do not include you',
             },
         )
     conv = await age_ops.create_conversation(
