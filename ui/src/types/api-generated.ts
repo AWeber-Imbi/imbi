@@ -5335,6 +5335,7 @@ export interface paths {
         };
         /**
          * Count Agent Tasks
+         * @deprecated
          * @description Count the tasks in each inbox group that the task list with the
          *     same filters finds, so a client can size the whole list before it
          *     reads the tasks.
@@ -5361,6 +5362,7 @@ export interface paths {
         };
         /**
          * Get Agent Task Position
+         * @deprecated
          * @description Find where a task is in the task list with the same filters: its
          *     inbox group and its index in that group, so a client can scroll to
          *     it before it reads that part of the list.
@@ -5894,13 +5896,20 @@ export interface paths {
          * @description List the tasks in an organization, newest first.
          *
          *     ``q`` matches the title, the short id, the agent name, or the
-         *     project slug. ``mine`` keeps the tasks that the caller owns. The
-         *     ``Link`` header has the URL of the next page. Each task has
-         *     ``blocked_since`` when it waits on a person, so a client can sort
-         *     that queue oldest block first (O2).
+         *     project slug, and ``highlights`` says where. ``agent_id`` and
+         *     ``owner`` repeat to match any of their values, and ``mine`` adds
+         *     the caller to the owners. The ``Link`` header has the URL of the
+         *     next page. Each task has ``project_icons``, and ``blocked_since``
+         *     when it waits on a person, so a client can sort that queue oldest
+         *     block first (O2). ``status=blocked`` also matches every task that
+         *     waits on a person. ``group`` lists one inbox group in the order of
+         *     the inbox: oldest block first for ``input``, newest close first for
+         *     ``closed``, else newest first; it pages with ``offset``, so a client
+         *     can read any part of it.
          *
          *     Raises:
-         *         400: The cursor is not valid.
+         *         400: The cursor is not valid or comes with ``group``, or
+         *             ``offset`` comes without ``group``.
          *         403: The caller is not a member of the org.
          *         404: No such organization.
          */
@@ -5932,6 +5941,58 @@ export interface paths {
          *             shape of a workflow step key (``<uuid>:<node_key>``).
          */
         post: operations["create_ticket_api_organizations__org_slug__tickets__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Count Agent Tasks
+         * @description Count the tasks in each inbox group that the task list with the
+         *     same filters finds, so a client can size the whole list before it
+         *     reads the tasks.
+         *
+         *     Raises:
+         *         403: The caller is not a member of the org.
+         *         404: No such organization.
+         */
+        get: operations["count_tickets_api_organizations__org_slug__tickets_counts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/position": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Task Position
+         * @description Find where a task is in the task list with the same filters: its
+         *     inbox group and its index in that group, so a client can scroll to
+         *     it before it reads that part of the list.
+         *
+         *     Raises:
+         *         403: The caller is not a member of the org.
+         *         404: No such organization, or the filters do not find the task.
+         */
+        get: operations["get_ticket_position_api_organizations__org_slug__tickets__short_id__position_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -33244,12 +33305,14 @@ export interface operations {
         parameters: {
             query?: {
                 status?: ("queued" | "running" | "blocked" | "paused" | "closed")[] | null;
-                agent_id?: string | null;
-                owner?: string | null;
+                agent_id?: string[] | null;
+                owner?: string[] | null;
                 mine?: boolean;
                 q?: string | null;
                 limit?: number;
                 cursor?: string | null;
+                group?: ("input" | "running" | "paused" | "queued" | "closed") | null;
+                offset?: number;
             };
             header?: never;
             path: {
@@ -33317,6 +33380,81 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    count_tickets_api_organizations__org_slug__tickets_counts_get: {
+        parameters: {
+            query?: {
+                status?: ("queued" | "running" | "blocked" | "paused" | "closed")[] | null;
+                agent_id?: string[] | null;
+                owner?: string[] | null;
+                mine?: boolean;
+                q?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskCounts"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ticket_position_api_organizations__org_slug__tickets__short_id__position_get: {
+        parameters: {
+            query?: {
+                status?: ("queued" | "running" | "blocked" | "paused" | "closed")[] | null;
+                agent_id?: string[] | null;
+                owner?: string[] | null;
+                mine?: boolean;
+                q?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskPosition"];
                 };
             };
             /** @description Validation Error */

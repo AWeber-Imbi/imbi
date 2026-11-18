@@ -30,7 +30,6 @@ import pydantic
 import slugify
 
 from imbi.api import model_calls, secret_broker, workflows
-from imbi.api.tickets import store as task_store
 from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import ai_models, ai_providers, projects
 from imbi.api.endpoints._helpers import (
@@ -39,6 +38,7 @@ from imbi.api.endpoints._helpers import (
 )
 from imbi.api.graph_sql import escape_prop, props_template, set_clause
 from imbi.api.llm import generate as model_generate
+from imbi.api.tickets import store as task_store
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
 from imbi.common.auth import permissions as common_permissions
