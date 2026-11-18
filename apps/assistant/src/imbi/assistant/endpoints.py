@@ -70,7 +70,9 @@ async def create_conversation(
         # it names one the assistant can call.
         model = (
             await prompt_system.load_model_id(
-                db, assistant_settings.prompt_ref
+                db,
+                assistant_settings.prompt_ref,
+                auth_ctx.require_user.email,
             )
             or assistant_settings.model
         )

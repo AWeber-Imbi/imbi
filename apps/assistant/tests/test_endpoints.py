@@ -461,7 +461,9 @@ class CreateConversationEndpointTestCase(
             await endpoints.create_conversation(
                 db=mock.AsyncMock(), auth_ctx=_make_auth_context(), body=None
             )
-        load.assert_awaited_once_with(mock.ANY, 'imbi-assistant/system@stable')
+        load.assert_awaited_once_with(
+            mock.ANY, 'imbi-assistant/system@stable', 'test@example.com'
+        )
         mock_create.assert_called_once_with(
             mock.ANY,
             user_email='test@example.com',

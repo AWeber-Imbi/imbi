@@ -42,7 +42,9 @@ A conversation has a model. A new conversation uses the first of these that
 is set:
 
 1. The model in the request.
-2. The model of the prompt version, when the assistant can call it.
+2. The model of the prompt version, when the assistant can call it. A
+   restricted model applies only when the user is a member of an allowed
+   team (see [AI Models](../admin/ai-models.md)).
 3. `IMBI_ASSISTANT_MODEL`.
 
 A conversation stops at `IMBI_ASSISTANT_MAX_CONVERSATION_TURNS` messages.

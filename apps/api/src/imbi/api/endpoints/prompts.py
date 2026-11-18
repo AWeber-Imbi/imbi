@@ -32,7 +32,7 @@ import slugify
 from imbi.api import model_calls, secret_broker, workflows
 from imbi.api.agent_tasks import store as task_store
 from imbi.api.auth import organizations, permissions
-from imbi.api.endpoints import ai_models, ai_providers, projects
+from imbi.api.endpoints import ai_providers, projects
 from imbi.api.endpoints._helpers import (
     caller_org_slugs,
     conflict_on_unique_violation,
@@ -1393,7 +1393,9 @@ async def _check_model_teams(
         return
     account = auth.service_account
     if auth.user is not None:
-        allowed = await ai_models.member_allowed(db, model, auth.user.email)
+        allowed = await prompt_resolve.member_allowed(
+            db, model, auth.user.email
+        )
     elif (
         account is not None
         and account.slug == common_permissions.WORKFLOWS_ACCOUNT
@@ -1402,7 +1404,7 @@ async def _check_model_teams(
         # <org>.<workflow>.<node key>
         slug = prompt.slug.partition('.')[2].rpartition('.')[0]
         row = await store.get(org_id, slug)
-        allowed = row is not None and await ai_models.team_allowed(
+        allowed = row is not None and await prompt_resolve.team_allowed(
             db, model, row['owner_team_id']
         )
     else:
@@ -1513,6 +1515,10 @@ async def run_prompt(
     record = records[0]
     if graph.parse_agtype(record['enabled']) is False:
         raise _unprocessable(f'AI model {version.model!r} is disabled')
+    if graph.parse_agtype(record.get('access_scope')) == 'restricted':
+        await _check_model_teams(
+            db, workflow_store, auth, org_id, prompt, version.model
+        )
     provider = await ai_providers.fetch_provider(
         db, str(graph.parse_agtype(record['provider_id']))
     )

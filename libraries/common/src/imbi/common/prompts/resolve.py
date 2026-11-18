@@ -30,7 +30,19 @@ RETURN v
 
 MODEL_DRIVER_QUERY: typing.LiteralString = """
 MATCH (m:AIModel {{slug: {slug}}})-[:SERVED_BY]->(p:AIProvider)
-RETURN m.model_id AS model_id, m.enabled AS enabled, p.driver AS driver
+RETURN m.model_id AS model_id, m.enabled AS enabled, p.driver AS driver,
+       m.access_scope AS access_scope
+"""
+
+ALLOWED_MEMBER_QUERY: typing.LiteralString = """
+MATCH (:AIModel {{slug: {slug}}})-[:ALLOWED_FOR]->(t:Team)
+      <-[:MEMBER_OF]-(:User {{email: {email}}})
+RETURN t.id AS id
+"""
+
+ALLOWED_TEAM_QUERY: typing.LiteralString = """
+MATCH (:AIModel {{slug: {slug}}})-[:ALLOWED_FOR]->(t:Team {{id: {team}}})
+RETURN t.id AS id
 """
 
 
@@ -155,12 +167,16 @@ class ModelInfo(typing.NamedTuple):
     model_id: str
     enabled: bool
     driver: str
+    #: ``organization`` or ``restricted`` (only the allowed teams).
+    access_scope: str | None = None
 
 
 async def model_info(db: graph.Graph, slug: str) -> ModelInfo | None:
     """Return the catalog model ``slug`` and its provider's driver."""
     records = await db.execute(
-        MODEL_DRIVER_QUERY, {'slug': slug}, ['model_id', 'enabled', 'driver']
+        MODEL_DRIVER_QUERY,
+        {'slug': slug},
+        ['model_id', 'enabled', 'driver', 'access_scope'],
     )
     if not records:
         return None
@@ -169,4 +185,18 @@ async def model_info(db: graph.Graph, slug: str) -> ModelInfo | None:
         model_id=str(graph.parse_agtype(record['model_id'])),
         enabled=graph.parse_agtype(record['enabled']) is not False,
         driver=str(graph.parse_agtype(record['driver'])),
+        access_scope=graph.parse_agtype(record.get('access_scope')),
     )
+
+
+async def member_allowed(db: graph.Graph, slug: str, email: str) -> bool:
+    """Whether the user ``email`` is a member of a team that a
+    ``restricted`` model allows."""
+    params = {'slug': slug, 'email': email}
+    return bool(await db.execute(ALLOWED_MEMBER_QUERY, params, ['id']))
+
+
+async def team_allowed(db: graph.Graph, slug: str, team_id: str) -> bool:
+    """Whether a ``restricted`` model allows the team ``team_id``."""
+    params = {'slug': slug, 'team': team_id}
+    return bool(await db.execute(ALLOWED_TEAM_QUERY, params, ['id']))

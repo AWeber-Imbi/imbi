@@ -294,8 +294,8 @@ picker lists the teams of the organization you have selected. A
 restricted model must name at least one team. Imbi rejects an empty team list
 with `422`.
 
-A generative prompt run checks the teams of a restricted model. A user must
-be a member of an allowed team. An LLM Call step of a workflow runs for the
+A prompt run (generative or decision) checks the teams of a restricted
+model. A user must be a member of an allowed team. An LLM Call step of a workflow runs for the
 owner team of the workflow, and only the workflows service can run it that
 way. Otherwise the run fails with `403` (`model_not_allowed`). Admins can run
 every model.
@@ -304,6 +304,20 @@ A workflow save checks the same rule. The model of an LLM Call step must allow
 the owner team of the workflow, and the user who saves must be a member of an
 allowed team. An admin does not need to be a member. Otherwise the save fails
 with `403` (`model_not_allowed`).
+
+An agent uses the model of its prompt version. The model must allow the owner
+team of the agent:
+
+- An agent save that changes the team or the prompt fails with `403`
+  (`model_not_allowed`) when the team is not allowed.
+- When a runner claims a task, Imbi checks the rule again, because the allowed
+  teams or the prompt label can change after the save. A task that fails this
+  check closes with `failed_external` (`model_not_allowed`) and does not run.
+
+The assistant and the Slack bot use the model of their system prompt only for a
+member of an allowed team. Other users get the configured model
+(`IMBI_ASSISTANT_MODEL` or `IMBI_SLACKBOT_MODEL`). The assistant selects the
+model when a conversation starts.
 
 Deleting a team does not update the models that name it. Review restricted
 models after you delete a team.

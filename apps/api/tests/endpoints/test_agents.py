@@ -1,5 +1,6 @@
 """Tests for the agent definition endpoints."""
 
+import asyncio
 import datetime
 import json
 import typing
@@ -25,6 +26,15 @@ BASE = '/organizations/engineering/agents'
 ALL_PERMISSIONS = frozenset(
     {'agent:create', 'agent:read', 'agent:write', 'agent:delete'}
 )
+
+#: The real check; the test case patches it out for the other tests.
+CHECK_MODEL_TEAMS = agents._check_model_teams
+MODEL_INFO_ROW = {
+    'model_id': 'claude-opus-5',
+    'enabled': True,
+    'driver': 'anthropic',
+    'access_scope': 'restricted',
+}
 
 
 class AgentEndpointsTestCase(support.SharedAppTestCase):
@@ -93,6 +103,11 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
             'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         )
         patcher.start()
+        self.addCleanup(patcher.stop)
+        # The model team check reads the prompt. The tests of the check
+        # are below (``test_*_restricted_model_*``).
+        patcher = mock.patch.object(agents, '_check_model_teams')
+        self.check_model_teams = patcher.start()
         self.addCleanup(patcher.stop)
 
         self.client = testclient.TestClient(self.test_app)
@@ -385,6 +400,77 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         agent_id = self.mock_db.execute.await_args_list[3].args[1]['id']
         self.assertEqual(
             self.mock_db.execute.await_args_list[6].args[1], {'id': agent_id}
+        )
+
+    def _restricted_prompt(self) -> mock.AsyncMock:
+        """Use the real model team check on a prompt whose version names
+        the restricted model ``opus``."""
+        self.check_model_teams.side_effect = CHECK_MODEL_TEAMS
+        version = mock.Mock(model='opus')
+        patcher = mock.patch.object(
+            agents.prompt_resolve,
+            'resolve',
+            mock.AsyncMock(return_value=(None, version, 'stable')),
+        )
+        self.addCleanup(patcher.stop)
+        return patcher.start()
+
+    def test_create_restricted_model_needs_the_owner_team(self) -> None:
+        resolve = self._restricted_prompt()
+        # team, model, allowed team (none)
+        self.mock_db.execute.side_effect = [
+            [{'team_id': 'team-1'}],
+            [MODEL_INFO_ROW],
+            [],
+        ]
+        response = self.client.post(
+            BASE + '/',
+            json={
+                'name': 'Triage',
+                'slug': 'triage',
+                'team': 'ops',
+                'prompt_ref': 'agents/triage@stable',
+                'prompt_version': 2,
+            },
+        )
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'model_not_allowed'
+        )
+        resolve.assert_awaited_once_with(self.mock_db, 'agents/triage@2')
+        self.assertEqual(
+            self.mock_db.execute.await_args_list[2].args[1],
+            {'slug': 'opus', 'team': 'team-1'},
+        )
+        self.assertFalse(any('CREATE (a:Agent' in q for q in self._queries()))
+
+    def test_put_team_change_checks_the_restricted_model(self) -> None:
+        self._restricted_prompt()
+        # fetch, team, model, allowed team (none)
+        self.mock_db.execute.side_effect = [
+            [self._row()],
+            [{'team_id': 'team-2'}],
+            [MODEL_INFO_ROW],
+            [],
+        ]
+        response = self.client.put(BASE + '/triage', json={'team': 'sre'})
+        self.assertEqual(response.status_code, 403, response.text)
+        self.mock_db._execute_batch.assert_not_awaited()
+
+    def test_allowed_owner_team_may_use_the_restricted_model(self) -> None:
+        self._restricted_prompt()
+        self.mock_db.execute.side_effect = [
+            [MODEL_INFO_ROW],
+            [{'id': 'team-1'}],
+        ]
+        snapshot = agents.AgentSnapshot(
+            name='Triage',
+            slug='triage',
+            team='ops',
+            prompt_ref='agents/triage@stable',
+        )
+        asyncio.run(
+            CHECK_MODEL_TEAMS(self.mock_db, 'engineering', snapshot, 'team-1')
         )
 
     def test_create_unknown_team(self) -> None:

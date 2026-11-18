@@ -108,7 +108,7 @@ class SystemPrompt:
     #: ``namespace/slug@n`` when the text came from the CMS.
     ref: str | None = None
     #: Set only when the version names an enabled catalog model that a
-    #: supported (Anthropic) provider serves.
+    #: supported (Anthropic) provider serves, and that the user may use.
     model_id: str | None = None
     max_tokens: int | None = None
     temperature: float | None = None
@@ -151,9 +151,16 @@ async def _fallback(
 
 
 async def _model_id(
-    db: graph.Graph, version: models.PromptVersion, ref: str
+    db: graph.Graph,
+    version: models.PromptVersion,
+    ref: str,
+    email: str | None,
 ) -> str | None:
-    """Return the version's model id when the consumer can call it."""
+    """Return the version's model id when the consumer can call it.
+
+    A ``restricted`` model is used only for a member of one of its
+    teams (#788). Other users get the configured model.
+    """
     if version.model is None:
         return None
     info = await resolve.model_info(db, version.model)
@@ -175,11 +182,25 @@ async def _model_id(
             _SUPPORTED_DRIVER,
         )
         return None
+    if info.access_scope == 'restricted' and (
+        email is None
+        or not await resolve.member_allowed(db, version.model, email)
+    ):
+        LOGGER.info(
+            'Prompt %s names AI model %r, which is restricted to teams '
+            'that do not include the user; using the configured model',
+            ref,
+            version.model,
+        )
+        return None
     return version.model_id or info.model_id
 
 
-async def load_model_id(db: graph.Graph, ref: str) -> str | None:
-    """Return the model id of ``ref``'s version, when a consumer can call it.
+async def load_model_id(
+    db: graph.Graph, ref: str, email: str | None = None
+) -> str | None:
+    """Return the model id of ``ref``'s version, when a consumer can call it
+    for the user ``email``.
 
     ``None`` when the prompt is missing, names no model, or names one
     that is disabled or served by an unsupported driver. Errors are
@@ -187,7 +208,7 @@ async def load_model_id(db: graph.Graph, ref: str) -> str | None:
     """
     try:
         _prompt, version, _label = await resolve.resolve(db, ref)
-        return await _model_id(db, version, ref)
+        return await _model_id(db, version, ref, email)
     except resolve.PromptError:
         return None
     except Exception:  # noqa: BLE001 - creating a conversation must not fail
@@ -202,6 +223,7 @@ async def load_system_prompt(
     default: DefaultPrompt,
     *,
     override: str | None = None,
+    email: str | None = None,
 ) -> SystemPrompt:
     """Return the consumer's system prompt.
 
@@ -214,6 +236,7 @@ async def load_system_prompt(
             one without breaking the render.
         default: The packaged prompt used when the CMS cannot answer.
         override: An operator-supplied template that replaces both.
+        email: The user of the turn, for a ``restricted`` model.
 
     """
     if override:
@@ -240,7 +263,7 @@ async def load_system_prompt(
             if name in version.variable_schema
         }
         rendered = await rendering.render(version, declared, {})
-        model_id = await _model_id(db, version, ref)
+        model_id = await _model_id(db, version, ref, email)
     except resolve.PromptError as e:
         LOGGER.info('Using the packaged prompt for %s: %s', ref, e)
         return await _fallback(default, variables)

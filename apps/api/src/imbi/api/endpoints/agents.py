@@ -810,6 +810,48 @@ async def _team_id(db: graph.Pool, org_slug: str, team_slug: str) -> str:
     return str(team_id)
 
 
+async def _check_model_teams(
+    db: graph.Pool,
+    org_slug: str,
+    snapshot: AgentSnapshot,
+    team_id: str | None,
+) -> None:
+    """Refuse a restricted model that the owner team may not use (#788).
+
+    The model comes from the prompt version of the agent. A prompt that
+    does not exist yet has no model to check. Without ``team_id``, the
+    id of ``snapshot.team`` is read only for a restricted model.
+
+    Raises:
+        403: ``model_not_allowed``.
+
+    """
+    if snapshot.prompt_ref is None:
+        return
+    ref = snapshot.prompt_ref
+    if snapshot.prompt_version is not None:
+        ref = f'{ref.partition("@")[0]}@{snapshot.prompt_version}'
+    try:
+        _prompt, version, _label = await prompt_resolve.resolve(db, ref)
+    except prompt_resolve.PromptError:
+        return
+    if version.model is None:
+        return
+    info = await prompt_resolve.model_info(db, version.model)
+    if info is None or info.access_scope != 'restricted':
+        return
+    team_id = team_id or await _team_id(db, org_slug, snapshot.team)
+    if not await prompt_resolve.team_allowed(db, version.model, team_id):
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail={
+                'error': 'model_not_allowed',
+                'message': f'The model {version.model!r} is restricted to '
+                f'teams that do not include {snapshot.team!r}',
+            },
+        )
+
+
 async def _validate_tag_slugs(
     db: graph.Pool, org_slug: str, tag_slugs: list[str]
 ) -> None:
@@ -1087,6 +1129,12 @@ async def _apply(
         team_id: str | None = None
         if target.team != current.team:
             team_id = await _team_id(db, org_slug, target.team)
+        if (target.team, target.prompt_ref, target.prompt_version) != (
+            current.team,
+            current.prompt_ref,
+            current.prompt_version,
+        ):
+            await _check_model_teams(db, org_slug, target, team_id)
         if target.tags != current.tags:
             await _validate_tag_slugs(db, org_slug, target.tags)
         if target.tools != current.tools:
@@ -1204,6 +1252,7 @@ async def create_agent(
         store, org_id, snapshot.settings, None
     )
     team_id = await _team_id(db, org_slug, data.team)
+    await _check_model_teams(db, org_slug, snapshot, team_id)
     await _validate_tag_slugs(db, org_slug, snapshot.tags)
     await _validate_tools(db, org_slug, snapshot.tools)
     await _validate_subagents(db, org_slug, None, snapshot.subagents)

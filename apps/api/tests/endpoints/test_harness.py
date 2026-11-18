@@ -465,6 +465,41 @@ class FailedClaimTests(RunnerTestCase):
         assert chain is not None
         self.assertEqual(chain['state'], 'done')
 
+    async def test_restricted_model_of_another_team_is_closed(self) -> None:
+        prompt = harness_api.BundlePrompt(
+            ref='agents/triage@1', system='', model='opus'
+        )
+        runner = await self.register()
+        with (
+            mock.patch.object(
+                harness_api,
+                '_rendered_prompt',
+                mock.AsyncMock(return_value=(prompt, None)),
+            ),
+            mock.patch.object(
+                harness_api.prompt_resolve,
+                'model_info',
+                mock.AsyncMock(
+                    return_value=harness_api.prompt_resolve.ModelInfo(
+                        'claude-opus-5', True, 'anthropic', 'restricted'
+                    )
+                ),
+            ),
+            mock.patch.object(
+                harness_api.prompt_resolve,
+                'team_allowed',
+                mock.AsyncMock(return_value=False),
+            ) as team_allowed,
+        ):
+            self.assertIsNone(await self.claim(runner))
+        # The test agent has no owner team.
+        team_allowed.assert_awaited_once_with(mock.ANY, 'opus', '')
+        task = await self.task_row()
+        self.assertEqual(task['status'], 'closed')
+        self.assertEqual(task['outcome'], 'failed_external')
+        self.assertEqual(task['outcome_reason'], 'model_not_allowed')
+        self.assertEqual((await self.runner_row(runner))['state'], 'idle')
+
     async def test_failed_response_releases_the_claim(self) -> None:
         runner = await self.register()
         with (
