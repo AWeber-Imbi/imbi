@@ -228,6 +228,15 @@ describe('Tasks', () => {
     expect(window.location.hash).toBe('#e6')
   })
 
+  it('keeps the inbox filter when it redirects an old link', async () => {
+    renderAt('/agents/tasks/acme/T-3?state=blocked#e6')
+    await waitFor(() =>
+      expect(window.location.pathname).toBe('/tickets/acme/T-3/trajectory'),
+    )
+    expect(window.location.search).toBe('?state=blocked')
+    expect(window.location.hash).toBe('#e6')
+  })
+
   it('redirects an old Agents > Tasks link without an org', async () => {
     renderAt('/agents/tasks/T-3')
     await waitFor(() =>

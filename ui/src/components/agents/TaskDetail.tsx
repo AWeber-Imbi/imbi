@@ -108,7 +108,7 @@ export function TaskDetail({
   tab?: string
 }) {
   const navigate = useNavigate()
-  const { hash } = useLocation()
+  const { hash, search } = useLocation()
   const task = useTicket(orgSlug, shortId)
   const live = !!task.data && task.data.status !== 'closed'
   const events = useTicketEvents(orgSlug, shortId, live)
@@ -134,11 +134,12 @@ export function TaskDetail({
   )
   useEffect(() => {
     const linked = /^#e\d+$/.test(hash)
+    // Keep the search, so the inbox filters stay.
     if (tab === undefined) {
       navigate(
         linked
-          ? `${ticketsPath(orgSlug, shortId, 'trajectory')}${hash}`
-          : ticketsPath(orgSlug, shortId, lastTab),
+          ? `${ticketsPath(orgSlug, shortId, 'trajectory')}${search}${hash}`
+          : `${ticketsPath(orgSlug, shortId, lastTab)}${search}`,
         { replace: true },
       )
       return
@@ -149,10 +150,10 @@ export function TaskDetail({
         (tab === 'activity' || tab === 'conversation' || tab === 'actions'))
     if (!old) return
     navigate(
-      `${ticketsPath(orgSlug, shortId, 'trajectory')}${linked ? hash : ''}`,
+      `${ticketsPath(orgSlug, shortId, 'trajectory')}${search}${linked ? hash : ''}`,
       { replace: true },
     )
-  }, [hash, lastTab, navigate, orgSlug, shortId, tab])
+  }, [hash, lastTab, navigate, orgSlug, search, shortId, tab])
 
   if (task.isLoading) {
     return <p className="text-tertiary p-6 text-sm">Loading…</p>
