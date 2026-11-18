@@ -14,6 +14,7 @@ import datetime
 import decimal
 import json
 import typing
+import unittest
 import uuid
 from unittest import mock
 
@@ -26,6 +27,7 @@ from apps.api.tests import support
 from imbi.api import harness, models, secret_broker, tickets, workflows
 from imbi.api.auth import permissions
 from imbi.api.endpoints import agents
+from imbi.api.endpoints import tickets as tickets_api
 from imbi.api.graph_sql import props_template
 from imbi.api.harness import auth as harness_auth
 from imbi.common import graph
@@ -1877,3 +1879,19 @@ class MembershipTests(AgentTaskTestCase):
         self.assertEqual(
             response.json()['detail']['error'], 'organization_forbidden'
         )
+
+
+class MayCreateTestCase(unittest.IsolatedAsyncioTestCase):
+    """The create permission of an owner comes from the target org only."""
+
+    async def test_reads_permissions_of_the_target_org(self) -> None:
+        db = mock.AsyncMock()
+        db.execute.return_value = [{'is_admin': 'false', 'is_active': 'true'}]
+        with mock.patch.object(
+            tickets_api.common_permissions,
+            'load_principal_permissions',
+            mock.AsyncMock(return_value=set()),
+        ) as load:
+            allowed = await tickets_api.may_create(db, 'b', 'a@example.com')
+        self.assertFalse(allowed)
+        self.assertEqual(load.await_args.kwargs, {'org_slug': 'b'})
