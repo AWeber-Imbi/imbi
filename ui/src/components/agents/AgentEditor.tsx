@@ -231,7 +231,8 @@ function AgentEditorForm({
             {(t.key === 'tools' || t.key === 'subagents') && (
               <span className="text-tertiary ml-2 font-mono text-xs tabular-nums">
                 {t.key === 'tools'
-                  ? Object.keys(draft.tools).length
+                  ? Object.keys(draft.tools).length +
+                    draft.settings.plugins.length
                   : draft.subagents.length}
               </span>
             )}

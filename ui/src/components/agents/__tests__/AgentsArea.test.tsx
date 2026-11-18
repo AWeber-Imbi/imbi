@@ -421,6 +421,37 @@ describe('AgentsArea', () => {
     expect(screen.getByText('search')).toBeInTheDocument()
   })
 
+  it('shows the plugins and their MCP servers on the detail page', async () => {
+    vi.mocked(endpoints.listAgents).mockResolvedValue([
+      agent({
+        settings: {
+          ...agent().settings!,
+          plugins: [
+            {
+              marketplace: 'aweber',
+              plugin: 'posthog-mcp',
+              sha: 'e7c67c3aaaaaaaa',
+            },
+          ],
+        },
+      }),
+    ])
+    vi.mocked(endpoints.listAgentMarketplaces).mockResolvedValue([
+      {
+        plugins: [{ mcp_servers: ['posthog'], name: 'posthog-mcp' }],
+        slug: 'aweber',
+      },
+    ] as never)
+    renderAt('/agents/manage/mender')
+    expect(
+      await screen.findByText('1 plugin · 0 of 4 enabled'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('posthog-mcp')).toBeInTheDocument()
+    expect(screen.getByText('aweber @ e7c67c3')).toBeInTheDocument()
+    expect(await screen.findByText('MCP: posthog')).toBeInTheDocument()
+    expect(screen.queryByText('No tools enabled.')).not.toBeInTheDocument()
+  })
+
   it('shows the subagents on the detail page', async () => {
     vi.mocked(endpoints.listAgents).mockResolvedValue([
       agent({
@@ -517,6 +548,22 @@ describe('AgentsArea', () => {
       await screen.findByText(/Deletes the agent and its version history/),
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Delete agent' })).toBeEnabled()
+  })
+
+  it('counts the plugins on the Tools and plugins tab', async () => {
+    vi.mocked(endpoints.listAgents).mockResolvedValue([
+      agent({
+        settings: {
+          ...agent().settings!,
+          plugins: [{ marketplace: 'aweber', plugin: 'posthog-mcp' }],
+        },
+      }),
+    ])
+    renderAt('/agents/manage/mender/edit')
+    await screen.findByText('Edit Mender')
+    expect(
+      screen.getByRole('tab', { name: /Tools and plugins/ }),
+    ).toHaveTextContent('Tools and plugins1')
   })
 
   it('saves a tool change from the Tools and plugins tab', async () => {
