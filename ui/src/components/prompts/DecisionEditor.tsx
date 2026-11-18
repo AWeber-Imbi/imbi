@@ -18,6 +18,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { extractApiErrorDetail } from '@/lib/apiError'
+import { KEPT_AS_TEXT, parseJson } from '@/lib/json'
 import type {
   Prompt,
   PromptDecisionQuestion,
@@ -394,8 +395,7 @@ export function RunPanel({
         </div>
         {keptAsText.length > 0 && (
           <p className="text-warning text-xs">
-            Sent large integers in {keptAsText.join(', ')} as text, because a
-            JavaScript number would change their value
+            {KEPT_AS_TEXT} ({keptAsText.join(', ')})
           </p>
         )}
         {run.data && <RunResult result={run.data} />}
@@ -599,30 +599,6 @@ function CriteriaEditor({
         </Button>
       )}
     </div>
-  )
-}
-
-/**
- * Parse JSON, but keep each integer that a JavaScript number cannot
- * hold exactly as its text, and call `onKept` for it. A browser
- * without `context.source` keeps the rounded number.
- */
-function parseJson(text: string, onKept: () => void): unknown {
-  return JSON.parse(
-    text,
-    (_key, value: unknown, context?: { source?: string }) => {
-      const source = context?.source
-      if (
-        typeof value === 'number' &&
-        !Number.isSafeInteger(value) &&
-        source !== undefined &&
-        /^-?\d+$/.test(source)
-      ) {
-        onKept()
-        return source
-      }
-      return value
-    },
   )
 }
 

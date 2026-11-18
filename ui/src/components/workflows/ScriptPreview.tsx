@@ -8,15 +8,20 @@ import { Button } from '@/components/ui/button'
 import { FormField } from '@/components/ui/form-field'
 import { Textarea } from '@/components/ui/textarea'
 import { extractApiErrorDetail } from '@/lib/apiError'
+import { KEPT_AS_TEXT, parseJson } from '@/lib/json'
 
 import { JsonBlock } from './JsonBlock'
 import { hasTemplate, isRecord } from './schemaFields'
 import type { ScriptPreviewRequest, WorkflowNode } from './types'
 
-export function parseSample(text: string): null | Record<string, unknown> {
+/** The sample as an object, or `null`; see `parseJson` for `onKept`. */
+export function parseSample(
+  text: string,
+  onKept: () => void,
+): null | Record<string, unknown> {
   if (!text.trim()) return {}
   try {
-    const value: unknown = JSON.parse(text)
+    const value = parseJson(text, onKept)
     return isRecord(value) ? value : null
   } catch {
     return null
@@ -50,7 +55,8 @@ export function ScriptPreview({
   const [edited, setSample] = useState<null | string>(null)
   const sample =
     edited ?? JSON.stringify(sampleInputs(node.params.inputs), null, 2)
-  const inputs = parseSample(sample)
+  let kept = false
+  const inputs = parseSample(sample, () => (kept = true))
   const run = useMutation({
     mutationFn: (body: ScriptPreviewRequest) => previewScript(orgSlug, body),
   })
@@ -85,6 +91,7 @@ export function ScriptPreview({
           value={sample}
         />
       </FormField>
+      {kept && <p className="text-warning text-xs">{KEPT_AS_TEXT}</p>}
       <Button
         className="self-start"
         disabled={!inputs || run.isPending}

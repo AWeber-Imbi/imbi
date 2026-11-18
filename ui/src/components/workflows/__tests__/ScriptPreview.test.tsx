@@ -113,6 +113,24 @@ describe('ScriptPreview', () => {
     expect(sample()).toEqual({ n: 9 })
   })
 
+  it('keeps a large integer in the sample as text', async () => {
+    vi.mocked(previewScript).mockResolvedValue({ output: {}, port: 1 })
+    renderPreview()
+    fireEvent.change(screen.getByLabelText('Sample inputs'), {
+      target: { value: '{"n": 12345678901234567890, "limit": 2}' },
+    })
+    expect(screen.getByText(/Large integers are sent as text/)).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Run script' }))
+    await waitFor(() =>
+      expect(previewScript).toHaveBeenCalledWith(
+        'acme',
+        expect.objectContaining({
+          inputs: { limit: 2, n: '12345678901234567890' },
+        }),
+      ),
+    )
+  })
+
   it('does not run sample inputs that are not a JSON object', async () => {
     renderPreview()
     fireEvent.change(screen.getByLabelText('Sample inputs'), {

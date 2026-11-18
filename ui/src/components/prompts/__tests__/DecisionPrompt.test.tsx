@@ -186,7 +186,7 @@ describe('Decision prompts', () => {
       service: { ids: ['12345678901234567890', 7] },
     })
     expect(
-      screen.getByText(/Sent large integers in service as text/),
+      screen.getByText(/Large integers are sent as text.*\(service\)/),
     ).toBeInTheDocument()
   })
 })
