@@ -956,7 +956,7 @@ class ArchiveTestCase(PromptTestBase):
         router = self.route()
         asyncio.run(
             prompts.archive_prompts_except(
-                self.mock_db, 'workflows', 'acme.a.', ['acme.a.b']
+                self.mock_db.execute, 'workflows', 'acme.a.', ['acme.a.b']
             )
         )
         self.assertIn('WHERE p.archived_at IS NULL', prompts._ARCHIVE_QUERY)

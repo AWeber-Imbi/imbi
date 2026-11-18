@@ -1160,6 +1160,7 @@ class Graph:
         params: dict[str, typing.Any] | None = None,
         columns: list[str] | None = None,
         raw: bool = False,
+        conn: psycopg.AsyncConnection[typing.Any] | None = None,
     ) -> list[dict[str, typing.Any]]:
         """Wrap a Cypher query in SQL and execute it.
 
@@ -1181,7 +1182,15 @@ class Graph:
         clause.  Defaults to ``['n']`` for single-column
         returns.
 
+        Pass *conn* to run the query in the transaction of a caller's
+        connection, which must have ``ag_catalog`` on its search path.
+        The query then runs once, with no retry.
+
         """
+        if conn is not None:
+            return await self._execute_on(
+                conn, query_template, params, columns, raw
+            )
         self._require_open()
 
         async def run(

@@ -764,7 +764,7 @@ def _workflow_prompt_locked() -> fastapi.HTTPException:
 
 
 async def archive_prompts_except(
-    db: graph.Graph, namespace: str, prefix: str, keep: list[str]
+    execute: graph.CypherExecute, namespace: str, prefix: str, keep: list[str]
 ) -> None:
     """Archive each prompt of ``namespace`` whose slug starts with
     ``prefix``, except the slugs in ``keep``. Restore the archived
@@ -781,9 +781,9 @@ async def archive_prompts_except(
         'keep': keep,
         'now': _DATETIME.dump_python(_now(), mode='json'),
     }
-    await db.execute(_ARCHIVE_QUERY, params, ['slug'])
+    await execute(_ARCHIVE_QUERY, params, ['slug'])
     if keep:
-        await db.execute(_RESTORE_QUERY, params, ['slug'])
+        await execute(_RESTORE_QUERY, params, ['slug'])
 
 
 async def delete_org_prompts(
