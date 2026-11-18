@@ -9,6 +9,8 @@ import collections.abc
 import re
 import typing
 
+import fastapi
+
 from imbi.common import graph, models
 
 #: ``namespace/slug``, then ``@label`` or ``@n``.
@@ -62,6 +64,21 @@ class InvalidRef(PromptError):
 
 class PromptNotFound(PromptError):
     """The prompt, version, or a usable label does not exist."""
+
+
+class ModelNotAllowed(fastapi.HTTPException):
+    """A ``restricted`` model does not allow the caller or the team
+    (403 ``model_not_allowed``)."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(
+            status_code=403,
+            detail={
+                'error': 'model_not_allowed',
+                'retry': False,
+                'message': message,
+            },
+        )
 
 
 def vertex_props(raw: typing.Any) -> dict[str, typing.Any] | None:
@@ -256,3 +273,27 @@ async def team_allowed(db: graph.Graph, slug: str, team_id: str) -> bool:
     """Whether a ``restricted`` model allows the team ``team_id``."""
     params = {'slug': slug, 'team': team_id}
     return bool(await db.execute(ALLOWED_TEAM_QUERY, params, ['id']))
+
+
+async def check_model_teams(
+    db: graph.Graph,
+    slug: str,
+    message: str,
+    *,
+    email: str | None = None,
+    team_id: str | None = None,
+) -> None:
+    """Refuse the ``restricted`` model ``slug`` unless it allows the
+    user ``email`` and the team ``team_id``. A ``None`` value is not
+    checked. With neither, the caller is refused.
+
+    Raises:
+        ModelNotAllowed: With ``message``.
+
+    """
+    if email is None and team_id is None:
+        raise ModelNotAllowed(message)
+    if email is not None and not await member_allowed(db, slug, email):
+        raise ModelNotAllowed(message)
+    if team_id is not None and not await team_allowed(db, slug, team_id):
+        raise ModelNotAllowed(message)

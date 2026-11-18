@@ -825,7 +825,7 @@ async def _check_model_teams(
     ``snapshot.team`` is read only for a restricted model.
 
     Raises:
-        403: ``model_not_allowed``.
+        prompt_resolve.ModelNotAllowed: 403 ``model_not_allowed``.
 
     """
     if snapshot.prompt_ref is None or snapshot.prompt_version is None:
@@ -840,13 +840,13 @@ async def _check_model_teams(
     info = await prompt_resolve.model_info(db, version.model)
     if info is None or info.access_scope != 'restricted':
         return
-    team_id = team_id or await _team_id(db, org_slug, snapshot.team)
-    if not await prompt_resolve.team_allowed(db, version.model, team_id):
-        raise prompts.call_error(
-            'model_not_allowed',
-            f'The model {version.model!r} is restricted to teams that '
-            f'do not include {snapshot.team!r}',
-        )
+    await prompt_resolve.check_model_teams(
+        db,
+        version.model,
+        f'The model {version.model!r} is restricted to teams that do not '
+        f'include {snapshot.team!r}',
+        team_id=team_id or await _team_id(db, org_slug, snapshot.team),
+    )
 
 
 async def _validate_tag_slugs(

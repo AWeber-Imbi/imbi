@@ -1489,18 +1489,14 @@ CALL_ERRORS: dict[str, tuple[int, bool]] = {
     'outcome_unknown': (409, False),
     'model_unsupported': (422, False),
     'model_no_structured_output': (422, False),
-    'model_not_allowed': (403, False),
 }
 
 
-def call_error(code: str, message: str | None = None) -> fastapi.HTTPException:
-    """The error ``code`` of :data:`CALL_ERRORS`, with ``message`` in
-    the detail when given."""
+def _call_error(code: str) -> fastapi.HTTPException:
     status, retry = CALL_ERRORS.get(code, (502, False))
-    detail: dict[str, typing.Any] = {'error': code, 'retry': retry}
-    if message is not None:
-        detail['message'] = message
-    return fastapi.HTTPException(status_code=status, detail=detail)
+    return fastapi.HTTPException(
+        status_code=status, detail={'error': code, 'retry': retry}
+    )
 
 
 async def _check_run_permission(
@@ -1545,16 +1541,19 @@ async def _check_model_teams(
     be allowed. Another principal without a user is refused.
 
     Raises:
-        403: ``model_not_allowed``.
+        prompt_resolve.ModelNotAllowed: 403 ``model_not_allowed``.
 
     """
     if auth.is_admin:
         return
+    message = (
+        f'The model {model!r} is restricted to teams that do not '
+        'include the caller'
+    )
     account = auth.service_account
+    email = team_id = None
     if auth.user is not None:
-        allowed = await prompt_resolve.member_allowed(
-            db, model, auth.user.email
-        )
+        email = auth.user.email
     elif (
         account is not None
         and account.slug == common_permissions.WORKFLOWS_ACCOUNT
@@ -1563,17 +1562,10 @@ async def _check_model_teams(
         # <org>.<workflow>.<node key>
         slug = prompt.slug.partition('.')[2].rpartition('.')[0]
         row = await store.get(org_id, slug)
-        allowed = row is not None and await prompt_resolve.team_allowed(
-            db, model, row['owner_team_id']
-        )
-    else:
-        allowed = False
-    if not allowed:
-        raise call_error(
-            'model_not_allowed',
-            f'The model {model!r} is restricted to teams that do not '
-            'include the caller',
-        )
+        team_id = row['owner_team_id'] if row is not None else None
+    await prompt_resolve.check_model_teams(
+        db, model, message, email=email, team_id=team_id
+    )
 
 
 @prompt_render_router.post('/run', response_model=RunResponse)
@@ -1799,11 +1791,11 @@ def _repeat(row: dict[str, typing.Any]) -> RunResponse:
         case 'succeeded':
             return _call_response(row)
         case 'running':
-            raise call_error('call_in_progress')
+            raise _call_error('call_in_progress')
         case 'failed':
-            raise call_error(str(row['error']))
+            raise _call_error(str(row['error']))
         case _:
-            raise call_error('outcome_unknown')
+            raise _call_error('outcome_unknown')
 
 
 async def _run_generative(
@@ -1838,7 +1830,7 @@ async def _run_generative(
             'a generative run needs a chat model'
         )
     if data.output_fields and not record.get('structured'):
-        raise call_error('model_no_structured_output')
+        raise _call_error('model_no_structured_output')
     try:
         rendered = await rendering.render(
             version,
@@ -1903,10 +1895,10 @@ async def _run_generative(
             else 'credentials_unavailable'
         )
         await calls.finish(row['id'], 'failed', error=code)
-        raise call_error(code) from None
+        raise _call_error(code) from None
     except generate.GenerateError as e:
         await calls.finish(row['id'], 'failed', error=e.code)
-        raise call_error(e.code) from None
+        raise _call_error(e.code) from None
     usage = dict(answer.usage)
     tokens_in = answer.usage['input_tokens']
     tokens_out = answer.usage['output_tokens']
