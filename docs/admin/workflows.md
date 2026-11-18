@@ -414,8 +414,9 @@ The step fails with one of these errors:
 | Error | Cause | Retry |
 |---|---|---|
 | `model_answer_invalid` | The answer does not match the output fields | Yes |
-| `rate_limited`, `provider_unavailable`, `provider_unreachable` | The provider is busy, down, or not reachable. Imbi did not send the request | Yes |
-| `provider_outcome_unknown` | Imbi sent the request, and no answer came back (a timeout or a lost connection). The provider may have run and billed the call. A retry could be a second, billed call, so Imbi does not retry. Look at the provider's usage, then start the run again if necessary | No |
+| `rate_limited`, `provider_unavailable` | The provider sent an HTTP `429` or `5xx` response: it is busy or down | Yes |
+| `provider_unreachable`, `credentials_unavailable` | Imbi did not send the request: no connection to the provider, or no credentials in time | Yes |
+| `provider_outcome_unknown` | The request may have reached the provider, and no answer came back (a timeout or a lost connection). Imbi cannot confirm the outcome. The provider may have run and billed the call. A retry could be a second, billed call, so Imbi does not retry. Look at the provider's usage, then start the run again if necessary | No |
 | `provider_refused` | The provider refused the request, or the model refused to answer | No |
 | `provider_misconfigured`, `credentials_failed` | The provider has no usable credentials or settings | No |
 | `model_no_structured_output` | The step has output fields and the model does not support structured output | No |

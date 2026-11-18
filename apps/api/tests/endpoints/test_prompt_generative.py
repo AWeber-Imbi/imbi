@@ -503,6 +503,33 @@ class GenerativeRunTestCase(base.PromptTestBase):
             CALL_ID, 'failed', error='provider_outcome_unknown'
         )
 
+    def test_deadline_before_dispatch_is_retried(self) -> None:
+        async def slow(*_: object) -> None:
+            await asyncio.sleep(1)
+
+        self.decrypt.return_value = None
+        self._patch(model_generate, '_sigv4', slow)
+        self.route_run()
+        self.mock_db.execute.side_effect.rules.insert(
+            0,
+            (
+                ai_providers._GET_QUERY,
+                provider_row(driver='bedrock', region='us-east-1'),
+            ),
+        )
+        with mock.patch.object(prompts, 'CALL_DEADLINE', 0.01):
+            response = self.run_ref()
+        # No request was sent: the retry is safe.
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(
+            response.json()['detail'],
+            {'error': 'credentials_unavailable', 'retry': True},
+        )
+        self.calls.finish.assert_awaited_once_with(
+            CALL_ID, 'failed', error='credentials_unavailable'
+        )
+        self.generate.assert_not_awaited()
+
     def test_provider_outcome_unknown_is_not_retried(self) -> None:
         self.generate.side_effect = generate.GenerateError(
             'provider_outcome_unknown'

@@ -172,7 +172,14 @@ workflow save refuses it (`422`), and the run endpoint refuses it
   `provider_outcome_unknown`, with no retry: the provider may have run
   and billed the call, and most providers cannot find a call by its
   request. imbi-api records the code on the call, so a repeat of the
-  key gets the same error and makes no call.
+  key gets the same error and makes no call. When the call deadline
+  expires before the request starts (imbi-api still gets the
+  credentials), the error is `credentials_unavailable`, with a retry.
+- Upgrade: a call recorded before this change keeps its code. A
+  `provider_unreachable` row from an earlier post-send timeout still
+  gets a retry, as it did before the upgrade. That can be one more
+  billed call, for open runs only. To prevent it, let open runs with
+  LLM Call steps finish before the upgrade.
 
 ## Consequences
 
