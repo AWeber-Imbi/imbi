@@ -2,7 +2,7 @@
 
 These run against the live graph that ``root:services`` boots. The
 plugin manifest decides if projects can share an identifier: GitHub
-can (a monorepo), Sentry cannot.
+can (a monorepo), Sentry and SonarQube cannot.
 """
 
 import asyncio
@@ -15,8 +15,13 @@ from imbi.api.endpoints import _helpers
 from imbi.common.plugins.base import PluginContext, ServiceWriteback
 from imbi.plugins.github.plugin import GitHubPlugin
 from imbi.plugins.sentry.plugin import SentryPlugin
+from imbi.plugins.sonarqube.plugin import SonarQubePlugin
 
-_MANIFESTS = {'github': GitHubPlugin.manifest, 'sentry': SentryPlugin.manifest}
+_MANIFESTS = {
+    'github': GitHubPlugin.manifest,
+    'sentry': SentryPlugin.manifest,
+    'sonarqube': SonarQubePlugin.manifest,
+}
 
 
 class SharedIdentifierTestCase(test_agent_tasks.AgentTaskTestCase):
@@ -27,6 +32,7 @@ class SharedIdentifierTestCase(test_agent_tasks.AgentTaskTestCase):
         self.integrations = {
             'github': f'github-{suffix}',
             'sentry': f'sentry-{suffix}',
+            'sonarqube': f'sonarqube-{suffix}',
         }
         await self.graph.execute(
             """
@@ -40,8 +46,12 @@ class SharedIdentifierTestCase(test_agent_tasks.AgentTaskTestCase):
             CREATE (s:Integration {{id: {sentry}, slug: {sentry},
                                     name: {sentry}, plugin: 'sentry',
                                     options: {options}}})
+            CREATE (q:Integration {{id: {sonarqube}, slug: {sonarqube},
+                                    name: {sonarqube}, plugin: 'sonarqube',
+                                    options: {options}}})
             CREATE (g)-[:BELONGS_TO]->(o)
             CREATE (s)-[:BELONGS_TO]->(o)
+            CREATE (q)-[:BELONGS_TO]->(o)
             RETURN p.id AS id
             """,
             {
@@ -69,7 +79,14 @@ class SharedIdentifierTestCase(test_agent_tasks.AgentTaskTestCase):
             ['ok'],
         )
 
-    async def link(self, project_id: str, plugin: str) -> str | None:
+    async def link(
+        self,
+        project_id: str,
+        plugin: str,
+        identifier: str = 'shared-id',
+        *,
+        admin: bool = True,
+    ) -> str | None:
         return await _helpers.persist_service_writeback(
             self.graph,
             PluginContext(
@@ -78,10 +95,10 @@ class SharedIdentifierTestCase(test_agent_tasks.AgentTaskTestCase):
                 org_slug=self.org,
                 integration_slug=self.integrations[plugin],
                 service_writeback=ServiceWriteback(
-                    identifier='shared-id', canonical_url='https://api/x'
+                    identifier=identifier, canonical_url='https://api/x'
                 ),
             ),
-            mock.Mock(is_admin=True),
+            mock.Mock(is_admin=admin),
         )
 
     async def test_not_shareable_identifier_is_refused(self) -> None:
@@ -145,3 +162,42 @@ class SharedIdentifierTestCase(test_agent_tasks.AgentTaskTestCase):
             self.graph, self.project_id
         )
         self.assertEqual([e.verified_identifier for e in edges], ['shared-id'])
+
+    async def test_sonarqube_manual_link_is_refused(self) -> None:
+        self.permissions |= {'project:write'}
+        self.assertIsNone(await self.link(self.project_id, 'sonarqube'))
+        response = await self.client.post(
+            f'/organizations/{self.org}/projects/{self.other_project}'
+            '/services/',
+            json={
+                'integration_slug': self.integrations['sonarqube'],
+                'identifier': 'shared-id',
+                'canonical_url': 'https://api/x',
+            },
+        )
+        self.assertEqual(response.status_code, 409, response.text)
+
+    async def test_sonarqube_repoint_needs_an_admin(self) -> None:
+        self.assertIsNone(await self.link(self.project_id, 'sonarqube'))
+        refusal = await self.link(
+            self.project_id, 'sonarqube', 'other:key', admin=False
+        )
+        self.assertIn('only an admin', str(refusal))
+        self.assertIsNone(
+            await self.link(self.project_id, 'sonarqube', 'other:key')
+        )
+
+    async def test_identifier_holder_finds_only_other_projects(self) -> None:
+        self.assertIsNone(await self.link(self.project_id, 'github'))
+
+        async def holder(project_id: str) -> str | None:
+            return await _helpers.identifier_holder(
+                self.graph,
+                self.org,
+                project_id,
+                self.integrations['github'],
+                'shared-id',
+            )
+
+        self.assertIsNone(await holder(self.project_id))
+        self.assertIsNotNone(await holder(self.other_project))

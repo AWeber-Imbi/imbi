@@ -62,6 +62,9 @@ class SonarQubeLifecycle(LifecycleCapability):
         SonarQube no longer has is also ``skipped`` -- the outcome the
         operator wanted is in place -- but the stale edge and link are
         still removed.
+
+        A key that another Imbi project also links is ``skipped`` and
+        not deleted, because that project still uses it (#775).
         """
         try:
             base_url, api_token, key, connection = remediation_target(
@@ -75,6 +78,23 @@ class SonarQubeLifecycle(LifecycleCapability):
                 message=(
                     'The project has no EXISTS_IN edge naming a SonarQube '
                     'project; nothing to delete.'
+                ),
+            )
+        if ctx.resolve_identifier_holder is None:
+            return LifecycleResult(
+                status='skipped',
+                message=(
+                    f'Cannot check if another project links SonarQube '
+                    f'project {key!r}; not deleting it.'
+                ),
+            )
+        holder = await ctx.resolve_identifier_holder(key)
+        if holder is not None:
+            return LifecycleResult(
+                status='skipped',
+                message=(
+                    f'Not deleting SonarQube project {key!r}: project '
+                    f'{holder!r} also links it.'
                 ),
             )
         try:

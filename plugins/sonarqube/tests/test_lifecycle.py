@@ -1,6 +1,7 @@
 """Tests for the SonarQube lifecycle capability."""
 
 import unittest
+from unittest import mock
 
 import httpx
 import respx
@@ -21,6 +22,8 @@ def _ctx(
     identifier: str | None = None,
     options: dict[str, object] | None = None,
     team_slug: str | None = 'platform',
+    holder: str | None = None,
+    resolver: bool = True,
 ) -> PluginContext:
     connections = (
         [
@@ -44,6 +47,9 @@ def _ctx(
         else {'service_url': _URL},
         service_connections=connections,
         project_links={'sonarqube': f'{_URL}/dashboard?id=platform%3Ademo'},
+        resolve_identifier_holder=(
+            mock.AsyncMock(return_value=holder) if resolver else None
+        ),
     )
 
 
@@ -99,6 +105,28 @@ class DeleteTestCase(unittest.IsolatedAsyncioTestCase):
         result = await SonarQubeLifecycle().on_project_deleted(ctx, _CREDS)
         self.assertEqual(result.status, 'failed')
         self.assertIn('403', result.message or '')
+        self.assertIsNone(ctx.service_writeback)
+
+    @respx.mock
+    async def test_key_another_project_links_is_not_deleted(self) -> None:
+        route = respx.post(_DELETE)
+        ctx = _ctx(identifier=_KEY, holder='other-team-project')
+        result = await SonarQubeLifecycle().on_project_archived(ctx, _CREDS)
+        self.assertEqual(result.status, 'skipped')
+        self.assertIn('other-team-project', result.message or '')
+        self.assertFalse(route.called)
+        self.assertIsNone(ctx.service_writeback)
+        lookup = ctx.resolve_identifier_holder
+        assert isinstance(lookup, mock.AsyncMock)
+        lookup.assert_awaited_once_with(_KEY)
+
+    @respx.mock
+    async def test_without_holder_resolver_is_not_deleted(self) -> None:
+        route = respx.post(_DELETE)
+        ctx = _ctx(identifier=_KEY, resolver=False)
+        result = await SonarQubeLifecycle().on_project_deleted(ctx, _CREDS)
+        self.assertEqual(result.status, 'skipped')
+        self.assertFalse(route.called)
         self.assertIsNone(ctx.service_writeback)
 
     @respx.mock

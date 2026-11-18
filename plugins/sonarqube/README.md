@@ -54,6 +54,11 @@ lacks Administer on the project -- is `failed` and leaves the edge in place.
 There is no create hook, and an unarchived project is not re-created: an
 analysis or the Project Doctor's repair creates it again.
 
+A key that another Imbi project also links is `skipped` and not deleted.
+To keep keys apart, the plugin declares its identifier not shareable, so
+the host refuses a link to a key that another project holds, and only an
+admin can change a verified key to a different one.
+
 ## Project Doctor
 
 The `analysis` capability checks three things, offering a fix for the

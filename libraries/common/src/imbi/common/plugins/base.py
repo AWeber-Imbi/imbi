@@ -706,6 +706,17 @@ class PluginContext(pydantic.BaseModel):
         | None,
         pydantic.Field(default=None, exclude=True, repr=False),
     ] = None
+    # Host-injected resolver that takes one remote identifier for
+    # ``integration_slug`` and returns the slug of a *different* Imbi
+    # project in the organization whose ``EXISTS_IN`` edge holds it, or
+    # ``None``.  Lets a capability refuse to remove a remote resource
+    # that another project also links.  ``None`` when the host wires no
+    # resolver; capabilities must then not remove remote state.
+    resolve_identifier_holder: typing.Annotated[
+        collections.abc.Callable[[str], collections.abc.Awaitable[str | None]]
+        | None,
+        pydantic.Field(default=None, exclude=True, repr=False),
+    ] = None
     # Host-injected resolver mapping an external identity *subject* (e.g.
     # a GitHub numeric user id) to the matching Imbi user's email, or
     # ``None`` when no active ``IdentityConnection`` matches.  Lets a
