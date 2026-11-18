@@ -47,7 +47,7 @@ from imbi.api.auth import organizations, permissions
 from imbi.api.email import client as email_client
 from imbi.api.endpoints import agent_tasks, project_deployments
 from imbi.api.plugins.resolution import ResolvedCapability
-from imbi.api.workflows import tickets
+from imbi.api.workflows import task_trigger, tickets
 from imbi.common import graph, lifespan
 from imbi.common.plugins.base import DeploymentRun
 from imbi.common.workflows import graph as wf
@@ -780,19 +780,45 @@ def _task_key_conflict() -> fastapi.HTTPException:
     )
 
 
+def _can_read_tasks(auth: permissions.AuthContext) -> bool:
+    return auth.is_admin or 'agent_task:read' in auth.permissions
+
+
+def _without_ticket(output: dict[str, typing.Any]) -> dict[str, typing.Any]:
+    return {
+        k: v
+        for k, v in output.items()
+        if k not in agent_step.TicketAttributes.model_fields
+    }
+
+
 def _without_task_content(
     step: dict[str, typing.Any],
 ) -> dict[str, typing.Any]:
-    """Remove the agent task content from the output of an agent step."""
-    if step['node_type'] != 'agent' or not step['output']:
+    """Remove the agent task content from the output of an agent step
+    or a ``task_completed`` trigger step."""
+    if not step['output']:
+        return step
+    if step['node_type'] == task_trigger.KIND:
+        return {**step, 'output': _without_ticket(step['output'])}
+    if step['node_type'] != 'agent':
         return step
     output = {
         k: v
-        for k, v in step['output'].items()
+        for k, v in _without_ticket(step['output']).items()
         if k not in ('reason', 'summary', 'result')
-        and k not in agent_step.TicketAttributes.model_fields
     }
     return {**step, 'output': output}
+
+
+def _run_for(
+    auth: permissions.AuthContext, run: dict[str, typing.Any]
+) -> dict[str, typing.Any]:
+    """Remove the ticket attributes from the payload of a run that a
+    closed task started, for a caller who cannot read agent tasks."""
+    if run['origin_kind'] != task_trigger.KIND or _can_read_tasks(auth):
+        return run
+    return {**run, 'payload': _without_ticket(run['payload'])}
 
 
 def _step_agent_task(
@@ -986,12 +1012,14 @@ async def list_runs(
     slug: str,
     store: workflows.Store,
     runs: workflows.Runs,
-    _: ReadAuth,
+    auth: ReadAuth,
     limit: typing.Annotated[int, fastapi.Query(ge=1, le=200)] = 50,
 ) -> list[workflows.Row]:
     """Return the runs of a workflow, newest first."""
     workflow = await _workflow(store, org_id, slug)
-    return await runs.list_runs(workflow['id'], limit)
+    return [
+        _run_for(auth, r) for r in await runs.list_runs(workflow['id'], limit)
+    ]
 
 
 @workflow_runs_router.get('/{slug}/runs/{run_id}', response_model=RunDetail)
@@ -1005,9 +1033,10 @@ async def get_run(
 ) -> dict[str, typing.Any]:
     """Return a run with its step records.
 
-    The ``reason``, ``summary``, and ``result`` of an agent step's
-    output come from the agent task. Only a caller who can read agent
-    tasks (``agent_task:read``) gets them.
+    The ``reason``, ``summary``, ``result``, and ticket attributes of
+    an agent step's output come from the agent task, as do the ticket
+    attributes of a ``task_completed`` payload. Only a caller who can
+    read agent tasks (``agent_task:read``) gets them.
 
     Raises:
         404: No such workflow or run.
@@ -1025,9 +1054,9 @@ async def get_run(
             raise fastapi.HTTPException(
                 status_code=503, detail='The run history is not available'
             ) from e
-    if not (auth.is_admin or 'agent_task:read' in auth.permissions):
+    if not _can_read_tasks(auth):
         steps = [_without_task_content(s) for s in steps]
-    return {**row, 'steps': steps}
+    return {**_run_for(auth, row), 'steps': steps}
 
 
 @workflow_runs_router.post(
@@ -1069,7 +1098,7 @@ async def cancel_run(
         raise fastapi.HTTPException(
             status_code=409, detail=f'Run {run_id} is closed'
         )
-    return await _run(runs, workflow, run_id)
+    return _run_for(auth, await _run(runs, workflow, run_id))
 
 
 workflow_attention_router = fastapi.APIRouter(
@@ -1082,14 +1111,14 @@ workflow_attention_router = fastapi.APIRouter(
 async def list_attention_runs(
     org_id: OrgId,
     runs: workflows.Runs,
-    _: ReadAuth,
+    auth: ReadAuth,
 ) -> list[workflows.Row]:
     """Return the failed runs of the last 7 days and the stuck runs.
 
     A stuck run is open and no engine works on it: see
     :meth:`imbi.api.workflows.RunStore.attention`.
     """
-    return await runs.attention(org_id)
+    return [_run_for(auth, r) for r in await runs.attention(org_id)]
 
 
 @workflow_attention_router.get('/', response_model=list[OrgRun])
@@ -1127,9 +1156,12 @@ async def list_org_runs(
         )
     else:
         steps |= from_archive
-    task_content = auth.is_admin or 'agent_task:read' in auth.permissions
+    task_content = _can_read_tasks(auth)
     return [
-        {**r, 'failure': _failure(steps.get(str(r['id'])), task_content)}
+        {
+            **_run_for(auth, r),
+            'failure': _failure(steps.get(str(r['id'])), task_content),
+        }
         for r in found
     ]
 

@@ -1784,6 +1784,65 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
         self.assertEqual((await output())['title'], 'Secret title')
         self.assertEqual((await output())['cost_usd'], 1.25)
 
+    async def test_task_completed_run_hides_ticket_attributes(self) -> None:
+        payload = {
+            'task_id': 'T-1',
+            'agent_id': self.agent,
+            'outcome': 'done_acted',
+            'title': 'Secret title',
+            'url': 'https://imbi.example.com/tasks/T-1',
+            'project': 'secret-project',
+            'agent': 'secret-agent',
+            'cost_usd': 1.25,
+        }
+        plain = {
+            'task_id': 'T-1',
+            'agent_id': self.agent,
+            'outcome': 'done_acted',
+        }
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE workflow_runtime.runs SET payload = %s,'
+                " origin_kind = 'task_completed' WHERE id = %s",
+                (workflows.runs.pg_json.Jsonb(payload), self.run_id),
+            )
+            await conn.execute(
+                'INSERT INTO workflow_runtime.step_runs (run_id, node_id,'
+                ' node_key, node_type, title, status, output) VALUES (%s,'
+                " 'start', 'start', 'task_completed', 'Start', 'succeeded',"
+                ' %s) ON CONFLICT (run_id, node_id) DO UPDATE'
+                ' SET node_type = EXCLUDED.node_type,'
+                ' output = EXCLUDED.output',
+                (self.run_id, workflows.runs.pg_json.Jsonb(payload)),
+            )
+        overrides = self.test_app.dependency_overrides
+        overrides[permissions.get_current_user] = self.user_auth
+
+        async def seen() -> list[dict[str, typing.Any]]:
+            detail = await self.client.get(f'{self.url}/runs/{self.run_id}')
+            self.assertEqual(detail.status_code, 200, detail.text)
+            listed = await self.client.get(f'{self.url}/runs')
+            self.assertEqual(listed.status_code, 200, listed.text)
+            (start,) = [
+                s for s in detail.json()['steps'] if s['node_id'] == 'start'
+            ]
+            (row,) = listed.json()
+            return [detail.json()['payload'], start['output'], row['payload']]
+
+        self.assertEqual(await seen(), [plain, plain, plain])
+        user = await self.user_auth()
+
+        async def reader() -> permissions.AuthContext:
+            return permissions.AuthContext(
+                user=user.user,
+                session_id='test-session',
+                auth_method='jwt',
+                permissions={*user.permissions, 'agent_task:read'},
+            )
+
+        overrides[permissions.get_current_user] = reader
+        self.assertEqual(await seen(), [payload, payload, payload])
+
     async def test_open_run_keeps_the_agent_in_use(self) -> None:
         # The run is open on version 1. Version 2 has no agent step.
         slug = self.url.rsplit('/', 1)[1]
