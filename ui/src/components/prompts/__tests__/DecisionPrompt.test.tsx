@@ -200,6 +200,27 @@ describe('Decision prompts', () => {
       expect(screen.queryByText(notice)).not.toBeInTheDocument()
     },
   )
+
+  it('rejects an int variable that a number would round', async () => {
+    const endpoints = await import('@/api/endpoints')
+    vi.mocked(endpoints.listPromptVersions).mockResolvedValue([
+      {
+        ...decisionVersion(1),
+        variable_schema: { count: { required: true, type: 'int' } },
+      },
+    ])
+    vi.mocked(endpoints.runPrompt).mockClear()
+    await renderEditor()
+    await waitFor(() =>
+      expect(screen.getByLabelText('Run variable count')).toBeInTheDocument(),
+    )
+    fireEvent.change(screen.getByLabelText('Run variable count'), {
+      target: { value: '9007199254740993' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /^run$/i }))
+    expect(screen.getByText(/within ±9007199254740991/)).toBeInTheDocument()
+    expect(endpoints.runPrompt).not.toHaveBeenCalled()
+  })
 })
 
 describe('Question helpers', () => {

@@ -338,7 +338,7 @@ export function RunPanel({
       }
     } catch {
       setInputError(
-        'Number variables must be valid numbers (whole numbers for int); list and object variables must be valid JSON',
+        'Number variables must be valid numbers (whole numbers within ±9007199254740991 for int); list and object variables must be valid JSON',
       )
       return
     }
@@ -619,7 +619,8 @@ function parseValue(
   if (text.trim() === '') return undefined
   if (type === 'int' || type === 'float') {
     const n = Number(text)
-    if (Number.isNaN(n) || (type === 'int' && !Number.isInteger(n))) {
+    // An int outside the safe-integer range would round without notice.
+    if (Number.isNaN(n) || (type === 'int' && !Number.isSafeInteger(n))) {
       throw new Error('invalid number')
     }
     return n
