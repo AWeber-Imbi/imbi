@@ -94,31 +94,40 @@ call, when it starts.
 3. To use Gemini on Google Vertex AI in an LLM Call step, set an API key
    on the Vertex provider. The runtime IAM role does not work for these
    calls.
-4. **Before you deploy**, find each agent whose model is restricted to
-   teams that do not include the agent's owner team. When a runner claims
-   a task of such an agent, imbi-api now closes the task with
-   `failed_external` and the reason `model_not_allowed`. Add the owner
-   team to the model, or point the agent at a prompt version with another
-   model. Decision prompt runs now check the teams of a restricted model
+4. **Before you deploy**, find each agent whose model has no enabled
+   catalog entry, or is restricted to teams that do not include the
+   agent's owner team. When a runner claims a task of such an agent,
+   imbi-api now closes the task with `failed_external` and the reason
+   `model_not_allowed`. Enable a catalog model with that model ID, add
+   the owner team to the model, or point the agent at a prompt version
+   with another model. Decision prompt runs now check the teams of a restricted model
    too. See [Team access](../admin/ai-models.md#team-access).
 5. imbi-assistant now checks the model of each new conversation. A user
    who is not an admin gets `403 model_not_allowed` for a model that is
    not an enabled catalog model, or that is restricted to teams the user
    is not in. `IMBI_ASSISTANT_MODEL` still works when it is not in the
-   catalog. The assistant and the Slack bot use the model of their system
-   prompt only for members of an allowed team. Other users get the
-   configured model.
+   catalog. When the model of the system prompt of the assistant or the
+   Slack bot is restricted, they use it only for members of an allowed
+   team. Other users get the configured model. An enabled model that is
+   not restricted is used for all users.
 6. Archiving or deleting a project now deletes its SonarQube project only
    when the linked key is `<owning-team-slug>:<project-slug>`, and only
-   when no other Imbi project links the key. Imbi skips and logs any
-   other key. Delete such a SonarQube project in SonarQube yourself.
-   Linking a SonarQube key that another project holds now gets a `409`,
+   when no other Imbi project links the key. Imbi skips any other key.
+   Do not delete a skipped key that another Imbi project links: that
+   project still uses it. For other skipped keys, make sure that no
+   other project uses the SonarQube project, then delete it in
+   SonarQube yourself.
+   Linking a SonarQube key that another project holds in the same
+   integration now gets a `409`,
    and only an admin can change a verified SonarQube key. See
    [SonarQube lifecycle](../plugins/sonarqube.md#lifecycle).
-7. An LLM Call step whose request may have reached the provider, with no
-   answer (a read timeout or a lost connection), now fails with
-   `provider_outcome_unknown` and is not retried. Before, the engine
-   retried it, and the provider could bill a second call. See
+7. When the request of imbi-api to the provider gets no answer (a read
+   timeout or a lost connection), imbi-api now returns
+   `provider_outcome_unknown`, and the LLM Call step fails and is not
+   retried. Before, the engine retried it, and the provider could bill
+   a second call. When the engine loses the response of imbi-api, it
+   asks again with the same idempotency key and gets the recorded
+   result. It does not make a second call. See
    [LLM Call](../admin/workflows.md#llm-call).
 8. Renaming an organization now moves its `agents/` and `workflows/`
    prompts to the new slug, and updates the agents and LLM Call steps
