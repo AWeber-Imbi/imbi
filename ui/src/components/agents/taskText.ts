@@ -33,6 +33,12 @@ export function systemText(e: TicketEvent): string {
       return `Closed as ${statusLabel({ outcome: String(p.outcome), status: 'closed' }).toLowerCase()}${p.reason ? `: ${String(p.reason).replace(/_/g, ' ')}` : ''}`
     case 'owner.changed':
       return `Owner ${p.from} → ${p.to}`
+    case 'parent.changed':
+      return p.to
+        ? `Moved under ${p.to}`
+        : p.from
+          ? `Moved from ${p.from} to the root`
+          : 'Parent changed'
     case 'phase.changed':
       return `Phase ${p.phase}`
     case 'project.associated':

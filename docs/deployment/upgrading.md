@@ -74,6 +74,22 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
+## Unreleased: parent tickets (ADR 0028)
+
+Set the version of this section when the release is cut.
+
+1. **Before you deploy**, deploy release A+1 (the section below)
+   everywhere and let its rollout finish. This release writes the event
+   type `parent.changed`, which only release A+1 and later can read.
+2. Deploy the new image. There is no setup command. At start, imbi-api
+   adds `tickets.tickets.parent_id` and its foreign key. Before it adds
+   the key, it sets the parent of each child ticket that an agent made
+   from its own ticket. This runs one time.
+
+A child ticket that a pod of the previous release makes after the
+first new pod starts has no parent. To give it its parent, move it on
+the ticket page.
+
 ## Unreleased: tickets write the new names (ADR 0028, release A+1)
 
 Set the version of this section when the release is cut.

@@ -5844,6 +5844,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/agent-tasks/{short_id}/parent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Agent Task Parent
+         * @deprecated
+         * @description Move the task, with its descendants, under another task in the
+         *     org, or make it a root (ADR 0028).
+         *
+         *     The owner of the task and holders of ``agent_task:manage`` can move
+         *     it. A move changes no status, assignee, dependency, or chain. The
+         *     task gets a ``parent.changed`` event with the old and new parent.
+         *     When the parent does not change, nothing changes.
+         *
+         *     Raises:
+         *         403: The caller is not a person, or is not the owner and has no
+         *             ``agent_task:manage``.
+         *         404: No such task.
+         *         409: ``task_archived``: the log of the task is archived.
+         *             ``parent_cycle``: the task is the new parent or one of its
+         *             ancestors.
+         */
+        put: operations["set_agent_task_parent_api_organizations__org_slug__agent_tasks__short_id__parent_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/agent-tasks/{short_id}/projects": {
         parameters: {
             query?: never;
@@ -6442,6 +6477,40 @@ export interface paths {
          *         409: ``task_archived``: both tasks are archived.
          */
         delete: operations["remove_ticket_dependency_api_organizations__org_slug__tickets__short_id__requires__prerequisite__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/parent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Agent Task Parent
+         * @description Move the task, with its descendants, under another task in the
+         *     org, or make it a root (ADR 0028).
+         *
+         *     The owner of the task and holders of ``agent_task:manage`` can move
+         *     it. A move changes no status, assignee, dependency, or chain. The
+         *     task gets a ``parent.changed`` event with the old and new parent.
+         *     When the parent does not change, nothing changes.
+         *
+         *     Raises:
+         *         403: The caller is not a person, or is not the owner and has no
+         *             ``agent_task:manage``.
+         *         404: No such task.
+         *         409: ``task_archived``: the log of the task is archived.
+         *             ``parent_cycle``: the task is the new parent or one of its
+         *             ancestors.
+         */
+        put: operations["set_ticket_parent_api_organizations__org_slug__tickets__short_id__parent_put"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -12549,8 +12618,8 @@ export interface components {
          *     ``requires`` are the prerequisites of this task; ``required_by`` are
          *     the tasks that have this task as a prerequisite. A prerequisite is a
          *     link only: a runner can still claim a task whose prerequisite is
-         *     open. ``parent`` and ``children`` come from a ``task`` origin
-         *     (delegation) and do not change.
+         *     open. ``parent`` and ``children`` come from the parent of each
+         *     ticket. ``tree`` is the state of the tree of the ticket.
          */
         AgentTaskRelations: {
             /** Requires */
@@ -12560,6 +12629,7 @@ export interface components {
             parent?: components["schemas"]["RelatedTask"] | null;
             /** Children */
             children: components["schemas"]["RelatedTask"][];
+            tree: components["schemas"]["TicketTree"];
         };
         /** AgentTaskReply */
         AgentTaskReply: {
@@ -22527,6 +22597,31 @@ export interface components {
              * @default 0
              */
             cut: number;
+        };
+        /**
+         * TicketParentSet
+         * @description The new parent of a ticket.
+         */
+        TicketParentSet: {
+            /**
+             * Parent
+             * @description The short id of the new parent. ``null`` makes the ticket a root.
+             */
+            parent: string | null;
+        };
+        /**
+         * TicketTree
+         * @description The tree of a ticket, computed on read (ADR 0028).
+         */
+        TicketTree: {
+            /** Root Short Id */
+            root_short_id: string;
+            /** Root Title */
+            root_title: string;
+            /** Tickets */
+            tickets: number;
+            /** Open */
+            open: number;
         };
         /** TokenExchangerType */
         TokenExchangerType: {
@@ -33333,6 +33428,40 @@ export interface operations {
             };
         };
     };
+    set_agent_task_parent_api_organizations__org_slug__agent_tasks__short_id__parent_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TicketParentSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_agent_task_projects_api_organizations__org_slug__agent_tasks__short_id__projects_get: {
         parameters: {
             query?: never;
@@ -34133,6 +34262,40 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_ticket_parent_api_organizations__org_slug__tickets__short_id__parent_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TicketParentSet"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             204: {

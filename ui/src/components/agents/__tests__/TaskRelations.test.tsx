@@ -25,6 +25,7 @@ vi.mock('@/api/endpoints', () => ({
   listTicketProjects: vi.fn(),
   listTickets: vi.fn(),
   setTicketDependency: vi.fn(),
+  setTicketParent: vi.fn(),
   setTicketProject: vi.fn(),
 }))
 
@@ -66,6 +67,7 @@ const RELATIONS = {
   parent: related('T-4', { linked_at: null, linked_by: null }),
   required_by: [related('T-3', { status: 'running' })],
   requires: [related('T-2', { outcome: 'done_acted', status: 'closed' })],
+  tree: { open: 3, root_short_id: 'T-4', root_title: 'Task T-4', tickets: 4 },
 }
 
 function project(overrides: Partial<TicketProject>): TicketProject {
@@ -115,25 +117,36 @@ describe('Related tasks', () => {
     vi.mocked(endpoints.listAgents).mockResolvedValue([agent()])
     vi.mocked(endpoints.getTicketRelations).mockResolvedValue(RELATIONS)
     vi.mocked(endpoints.setTicketDependency).mockResolvedValue(undefined)
+    vi.mocked(endpoints.setTicketParent).mockResolvedValue(undefined)
   })
 
-  it('reads each dependency both ways and delegation read only', async () => {
+  it('reads each dependency both ways, and the tree', async () => {
     render(<RelatedTasksTab orgSlug="acme" task={task()} />)
     const list = await screen.findByRole('list', { name: 'Related tickets' })
     const rows = await within(list).findAllByRole('listitem')
     expect(rows.map((r) => r.textContent)).toEqual([
       expect.stringMatching(/^Requiresblocked byT-2Task T-2MenderCompleted/),
       expect.stringMatching(/^Required byblocksT-3Task T-3MenderRunning/),
-      expect.stringMatching(/^ParentdelegationT-4/),
-      expect.stringMatching(/^ChilddelegationT-6/),
+      expect.stringMatching(/^ParenttreeT-4/),
+      expect.stringMatching(/^ChildtreeT-6/),
     ])
+    expect(screen.getByText(/: 3 of 4 tickets open$/).textContent).toBe(
+      'Tree of T-4 Task T-4: 3 of 4 tickets open',
+    )
     expect(within(rows[0]).getByRole('link')).toHaveAttribute(
       'href',
       '/tickets/acme/T-2',
     )
-    // Delegation cannot be removed.
-    expect(within(rows[2]).queryByRole('button')).toBeNull()
+    // A child moves from its own ticket only.
     expect(within(rows[3]).queryByRole('button')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove parent T-4' }))
+    await waitFor(() =>
+      expect(endpoints.setTicketParent).toHaveBeenCalledWith(
+        'acme',
+        'T-1',
+        null,
+      ),
+    )
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove requires T-2' }))
     await waitFor(() =>
@@ -170,9 +183,11 @@ describe('Related tasks', () => {
       parent: null,
       required_by: [],
       requires: [],
+      tree: { open: 1, root_short_id: 'T-1', root_title: 'T', tickets: 1 },
     })
     render(<RelatedTasksTab orgSlug="acme" task={task()} />)
     expect(await screen.findByText('No related tickets.')).toBeInTheDocument()
+    expect(screen.queryByText(/Tree of/)).toBeNull()
   })
 
   it(
@@ -278,6 +293,22 @@ describe('Link task dialog', () => {
       'T-5',
       'T-1',
       true,
+    )
+  })
+
+  it('moves the task under the chosen parent', async () => {
+    vi.mocked(endpoints.setTicketParent).mockResolvedValue(undefined)
+    renderDialog()
+    fireEvent.click(await screen.findByRole('button', { name: /T-5/ }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Parent' }))
+    expect(screen.getByText('T-1 moves under T-5')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^Link$/ }))
+    await waitFor(() =>
+      expect(endpoints.setTicketParent).toHaveBeenCalledWith(
+        'acme',
+        'T-1',
+        'T-5',
+      ),
     )
   })
 

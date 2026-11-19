@@ -3998,6 +3998,13 @@ export const setTicketDependency = (
   return linked ? apiClient.put<void>(url) : apiClient.delete<void>(url)
 }
 
+/** Move `shortId` under `parent`, or make it a root when `parent` is null. */
+export const setTicketParent = (
+  orgSlug: string,
+  shortId: string,
+  parent: null | string,
+) => apiClient.put<void>(`${ticketPath(orgSlug, shortId)}/parent`, { parent })
+
 /** The projects of a task, oldest association first. */
 export const listTicketProjects = (
   orgSlug: string,

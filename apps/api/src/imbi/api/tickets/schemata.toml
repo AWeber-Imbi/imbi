@@ -101,6 +101,36 @@ END
 $step$;
 '''
 
+# Give `tickets.parent_id` its foreign key (ADR 0028). The initializer
+# adds a constraint only to a new table, and a new install also makes
+# the column after the table, so the step runs after the tables.
+#
+# First, a child that an agent made from its own ticket before the
+# column existed gets its parent from its origin. The step runs once,
+# because it adds the constraint that its guard looks for, so a later
+# move of a child to the root is not undone.
+#
+# A delete of a parent makes its children roots.
+[[steps]]
+name = "tickets-parent-fkey"
+after_tables = true
+when = """
+SELECT NOT EXISTS (
+         SELECT 1 FROM pg_constraint
+          WHERE conrelid = 'tickets.tickets'::regclass
+            AND conname = 'tickets_parent_fkey')
+"""
+sql = '''
+UPDATE tickets.tickets AS c SET parent_id = p.id
+  FROM tickets.tickets AS p
+ WHERE c.origin_kind IN ('task', 'ticket') AND c.parent_id IS NULL
+   AND p.organization_id = c.organization_id AND p.id::text = c.origin_id;
+ALTER TABLE tickets.tickets ADD CONSTRAINT tickets_parent_fkey
+  FOREIGN KEY (organization_id, parent_id)
+  REFERENCES tickets.tickets (organization_id, id)
+  ON DELETE SET NULL (parent_id);
+'''
+
 # One row per ticket.
 #
 # `last_seq` is the sequence number of the newest event. An event write
@@ -165,9 +195,18 @@ acknowledged_by = "TEXT"
 # and the output that it returned. NULL when the task asks for none.
 output_schema = "JSONB"
 structured_output = "JSONB"
+# The parent ticket, in the same organization (ADR 0028). A ticket that
+# an agent makes from its own ticket starts with its parent set. NULL
+# for a root ticket. The `tickets-parent-fkey` step adds the foreign key.
+parent_id = "UUID"
 
 [tables.primary_key]
 columns = ["id"]
+
+# The children of a ticket.
+[[tables.indexes]]
+name = "tickets_parent_idx"
+columns = ["organization_id", "parent_id"]
 
 [[tables.indexes]]
 name = "tickets_chain_idx"

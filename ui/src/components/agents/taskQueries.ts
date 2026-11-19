@@ -39,6 +39,7 @@ export const TASK_PAGE = 50
 const RELATION_EVENTS = new Set([
   'dependency.added',
   'dependency.removed',
+  'parent.changed',
   'project.associated',
   'project.dissociated',
 ])

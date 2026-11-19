@@ -8,6 +8,7 @@ import { Box, ChevronRight, Link2, Trash2 } from 'lucide-react'
 import {
   listTickets,
   setTicketDependency,
+  setTicketParent,
   setTicketProject,
 } from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
@@ -45,11 +46,12 @@ import {
 /**
  * The kinds of a relation, as this task reads them. One dependency row
  * reads two ways: "this task requires T-5" is "this task is blocked by
- * T-5". Parent and child come from a `task` origin (delegation).
+ * T-5". `parent` moves this task under the other task.
  */
 const KINDS = {
   blocked_by: { label: 'Blocked by', requires: true },
   blocks: { label: 'Blocks', requires: false },
+  parent: { label: 'Parent', requires: false },
   required_by: { label: 'Required by', requires: false },
   requires: { label: 'Requires', requires: true },
 } as const
@@ -61,13 +63,14 @@ const LINK_KINDS: LinkKind[] = [
   'required_by',
   'blocks',
   'blocked_by',
+  'parent',
 ]
 
 interface Row {
   alias: string
   kind: string
-  /** The dependency `[dependent, prerequisite]`; none for delegation. */
-  link?: [string, string]
+  /** The dependency `[dependent, prerequisite]`, or `parent`. */
+  link?: 'parent' | [string, string]
   task: TicketRelated
   tone: 'accent' | 'info' | 'neutral'
 }
@@ -293,9 +296,11 @@ export function LinkTaskDialog({
     queryKey: queryKeys.tickets(orgSlug, { link: q }),
   })
   const link = useTicketRelationMutation(orgSlug, (other: string) =>
-    KINDS[kind].requires
-      ? setTicketDependency(orgSlug, shortId, other, true)
-      : setTicketDependency(orgSlug, other, shortId, true),
+    kind === 'parent'
+      ? setTicketParent(orgSlug, shortId, other)
+      : KINDS[kind].requires
+        ? setTicketDependency(orgSlug, shortId, other, true)
+        : setTicketDependency(orgSlug, other, shortId, true),
   )
   const results = (found.data ?? []).filter((t) => !exclude.has(t.short_id))
   return (
@@ -399,7 +404,7 @@ export function LinkTaskDialog({
   )
 }
 
-/** Requires, required by, parent, and children of the task. */
+/** Requires, required by, parent, children, and tree of the task. */
 export function RelatedTasksTab({
   orgSlug,
   task,
@@ -413,8 +418,10 @@ export function RelatedTasksTab({
   const [open, setOpen] = useState(false)
   const unlink = useTicketRelationMutation(
     orgSlug,
-    ([dependent, prerequisite]: [string, string]) =>
-      setTicketDependency(orgSlug, dependent, prerequisite, false),
+    (link: NonNullable<Row['link']>) =>
+      link === 'parent'
+        ? setTicketParent(orgSlug, task.short_id, null)
+        : setTicketDependency(orgSlug, link[0], link[1], false),
   )
   const r = relations.data
   const rows: Row[] = r
@@ -434,13 +441,14 @@ export function RelatedTasksTab({
           tone: 'neutral' as const,
         })),
         ...(r.parent ? [r.parent] : []).map((t) => ({
-          alias: 'delegation',
+          alias: 'tree',
           kind: 'Parent',
+          link: 'parent' as const,
           task: t,
           tone: 'accent' as const,
         })),
         ...r.children.map((t) => ({
-          alias: 'delegation',
+          alias: 'tree',
           kind: 'Child',
           task: t,
           tone: 'accent' as const,
@@ -463,8 +471,20 @@ export function RelatedTasksTab({
           )
         }
       >
-        Tasks this one requires or is required by, and its delegation
+        Tickets this one requires or is required by, and its tree
       </PanelHeader>
+      {r && r.tree.tickets > 1 && (
+        <p className="border-tertiary text-secondary border-b px-6 py-3 text-xs">
+          Tree of{' '}
+          <Link
+            className="font-mono"
+            to={ticketsPath(orgSlug, r.tree.root_short_id)}
+          >
+            {r.tree.root_short_id}
+          </Link>{' '}
+          {r.tree.root_title}: {r.tree.open} of {r.tree.tickets} tickets open
+        </p>
+      )}
       {relations.error && (
         <p className="text-danger px-6 py-3 text-sm" role="alert">
           {errorMessage(relations.error)}
@@ -543,6 +563,7 @@ export function RelatedTasksTab({
 
 /** "T-1 requires T-5 · T-5 blocks T-1", for the chosen kind. */
 function linkHint(shortId: string, other: string, kind: LinkKind): string {
+  if (kind === 'parent') return `${shortId} moves under ${other}`
   const [dependent, prerequisite] = KINDS[kind].requires
     ? [shortId, other]
     : [other, shortId]
