@@ -205,10 +205,12 @@ the `attach_project` tool, by id or slug. The task gets a
 `project.associated` event, and the next secret that the agent requests
 covers the project's repository. The `detach_project` tool removes one
 again (`project.dissociated`), so the next secret no longer covers it. A
-GitHub token covers the repositories of every project on the task, and
-those must be in one GitHub organization, so an agent that works in
-repositories of two organizations detaches one before it attaches the
-other.
+task keeps at least one project (`last_project`): a grant that lists
+projects never matches a task with none. A GitHub token covers the
+repositories of every project on the task, and those must be in one
+GitHub organization, so an agent that moves to a repository of another
+organization attaches its project, then detaches the old one before it
+requests the next secret.
 
 **Secrets** lists the secrets that the agent can request with
 `run_with_secret`. Each secret goes into the environment of one command.

@@ -1325,8 +1325,9 @@ class AttachProjectTests(RunnerTestCase):
         )
 
     async def test_detach_by_slug_or_id(self) -> None:
-        response = await self.attach(self.extra['id'])
-        self.assertEqual(response.status_code, 200, response.text)
+        for project in (self.extra['id'], self.extra['dup_a']):
+            response = await self.attach(project)
+            self.assertEqual(response.status_code, 200, response.text)
         response = await self.detach(self.extra['slug'])
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(
@@ -1352,6 +1353,19 @@ class AttachProjectTests(RunnerTestCase):
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0]['actor_kind'], 'agent')
         self.assertEqual(events[0]['actor_id'], task['agent_id'])
+
+    async def test_detach_keeps_the_last_project(self) -> None:
+        response = await self.attach(self.extra['dup_a'])
+        self.assertEqual(response.status_code, 200, response.text)
+        task = await self.store.get(self.org, 'T-1')
+        assert task is not None
+        for row in task['projects']:
+            if row['project_id'] != self.extra['dup_a']:
+                response = await self.detach(row['project_id'])
+                self.assertEqual(response.status_code, 200, response.text)
+        response = await self.detach(self.extra['dup_a'])
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(response.json()['detail']['error'], 'last_project')
 
     async def test_detach_unknown_project_is_422(self) -> None:
         response = await self.detach('p-missing')

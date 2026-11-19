@@ -170,7 +170,8 @@ _RULES = """\
 - Use `attach_project` to add a project of the organization to this
   task, by id or slug, when the work needs its repository. The next
   secret you request covers it. Use `detach_project` to remove one;
-  the next secret no longer covers it.
+  the next secret no longer covers it. A task keeps at least one
+  project, so attach the next project before you detach the last one.
 - Use `request_input` to ask a person a question. Use
   `create_child_task` to give work to another agent: {subagents}.
 - Before you stop, use `report_outcome` once: `done_acted` when you

@@ -1918,11 +1918,16 @@ async def detach_harness_task_project(
     one no longer covers the project. When the project is not
     associated, nothing changes.
 
+    The task keeps at least one project: a grant that lists projects
+    never matches a task with none, so its next ``model_inference`` key
+    renewal would fail. Attach the next project first.
+
     Raises:
         401: Not a current agent token.
         403: Another chain or another agent.
         404: No such task.
-        409: ``task_closed`` or ``task_archived``.
+        409: ``task_closed``, ``task_archived``, or ``last_project``
+            (it is the task's only project).
         422: The project is not in the org, or the slug is not unique.
 
     """
@@ -1934,6 +1939,12 @@ async def detach_harness_task_project(
     [(project_id, slug)] = await tasks_api.project_slugs(
         db, org_slug, [project]
     )
+    if [p['project_id'] for p in task['projects']] == [project_id]:
+        raise _conflict(
+            'last_project',
+            f'Project {slug} is the only project of task '
+            f'{task["short_id"]}; attach the next project first',
+        )
     with tasks_api.relation_errors():
         await store.dissociate_project(
             org_id,
