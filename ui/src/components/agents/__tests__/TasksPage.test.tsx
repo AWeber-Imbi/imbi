@@ -1104,9 +1104,11 @@ describe('Tasks', () => {
       await waitFor(() =>
         expect(window.location.pathname).toBe('/tickets/acme/T-3/conversation'),
       )
-      expect(
-        await screen.findByRole('radio', { name: /^Conversation/ }),
-      ).toHaveAttribute('aria-checked', 'true')
+      await waitFor(() =>
+        expect(
+          screen.getByRole('radio', { name: /^Conversation/ }),
+        ).toHaveAttribute('aria-checked', 'true'),
+      )
     })
 
     it('inspects a subagent call in the Trajectory', async () => {
