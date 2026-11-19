@@ -1573,7 +1573,7 @@ class DeleteTests(AgentTaskTestCase):
         async with self.pool.connection() as conn:
             await conn.execute(
                 'INSERT INTO harness.chains'
-                ' (root_task_id, organization_id, state)'
+                ' (root_ticket_id, organization_id, state)'
                 " VALUES (%s, %s, 'fencing')",
                 (uuid.UUID(self.task['id']), self.org),
             )

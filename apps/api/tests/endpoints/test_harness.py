@@ -171,7 +171,7 @@ class RunnerTestCase(test_agent_task_harness.HarnessTestCase):
             await conn.execute(
                 'UPDATE harness.chains'
                 " SET fenced_at = NOW() - interval '1 hour'"
-                ' WHERE root_task_id = %s',
+                ' WHERE root_ticket_id = %s',
                 (uuid.UUID(chain_id),),
             )
 
@@ -697,7 +697,7 @@ class QueueLimitTests(RunnerTestCase):
         row = await self.task_row()
         async with self.pool.connection() as conn:
             await conn.execute(
-                'INSERT INTO harness.chains (root_task_id, organization_id,'
+                'INSERT INTO harness.chains (root_ticket_id, organization_id,'
                 " state) VALUES (%s, %s, 'queued')",
                 (row['id'], row['organization_id']),
             )
@@ -1068,7 +1068,7 @@ class FencingTests(RunnerTestCase):
         async def fail_first(
             chain: dict[str, typing.Any], error: str | None
         ) -> typing.Any:
-            if str(chain['root_task_id']) == self.chain_id:
+            if str(chain['root_ticket_id']) == self.chain_id:
                 raise RuntimeError('bad chain')
             return await real(chain, error)
 
