@@ -34,9 +34,10 @@ const ICONS: Record<string, LucideIcon> = {
   webhook: Webhook,
 }
 
-// Category tiles follow the mockup (logic blue, action green), which matches design.md's knowledge-graph node colours. The
-// mockup's amber trigger tile is gray here: design.md keeps amber for
-// the brand, primary actions, and warnings.
+// Category tiles follow the mockup (logic blue, action green), which
+// matches design.md's knowledge-graph node colours. The mockup's amber
+// trigger tile is gray here: design.md keeps amber for the brand,
+// primary actions, and warnings.
 export const CATEGORY_TILE: Record<StepCategory, string> = {
   action: 'bg-success text-success',
   logic: 'bg-info text-info',

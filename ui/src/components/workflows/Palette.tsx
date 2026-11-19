@@ -55,11 +55,12 @@ export function Palette({
     },
     type: 'button' as const,
   })
+  const groups = CATEGORY_ORDER.map((category) => ({
+    category,
+    items: types.filter((t) => t.category === category),
+  })).filter((group) => group.items.length > 0)
 
   if (rail) {
-    const groups = CATEGORY_ORDER.map((category) =>
-      types.filter((t) => t.category === category),
-    ).filter((items) => items.length > 0)
     return (
       <aside className="border-tertiary bg-primary flex w-13 shrink-0 flex-col items-center gap-2 overflow-y-auto border-r py-3">
         <button
@@ -71,10 +72,10 @@ export function Palette({
         >
           <PanelLeftOpen className="size-4" />
         </button>
-        {groups.map((items) => (
+        {groups.map(({ category, items }) => (
           <div
             className="border-tertiary flex flex-col items-center gap-1 border-t pt-2"
-            key={items[0].category}
+            key={category}
           >
             {items.map((t) => (
               <button
@@ -120,11 +121,10 @@ export function Palette({
         </button>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-auto p-2 pb-4">
-        {CATEGORY_ORDER.map((category) => {
-          const items = types.filter(
+        {groups.map(({ category, items: all }) => {
+          const items = all.filter(
             (t) =>
-              t.category === category &&
-              (!q || `${t.label} ${t.description}`.toLowerCase().includes(q)),
+              !q || `${t.label} ${t.description}`.toLowerCase().includes(q),
           )
           if (items.length === 0) return null
           const open = !!q || !collapsed.has(category)
