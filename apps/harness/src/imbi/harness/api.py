@@ -269,10 +269,14 @@ class TaskApi:
         )
         return typing.cast('list[Body]', response.json())
 
-    async def history(self) -> Body:
-        """The ticket history for a new session, oldest first."""
+    async def history(self, max_seq: int) -> Body:
+        """The ticket history for a new session, oldest first. Comments
+        after ``max_seq`` are left out: the session reads them as events."""
         response = await self.client.request(
-            'GET', f'/harness/tickets/{self.short_id}/history', self.token
+            'GET',
+            f'/harness/tickets/{self.short_id}/history',
+            self.token,
+            params={'max_seq': max_seq},
         )
         return _body(response)
 

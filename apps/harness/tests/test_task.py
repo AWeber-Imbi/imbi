@@ -2450,10 +2450,15 @@ class HistoryTestCase(TaskTestCase):
             {'kind': 'comment', 'at': 't1', 'actor': 'a@b.c', 'text': 'Hi'},
             {'kind': 'child', 'at': 't2', 'text': 'T-2 X: closed'},
         )
+        self.run_task.seq = 7
         self.run_task.history = await self.run_task.read_history()
         self.assertEqual(
             self.client.request.await_args.args[:2],
             ('GET', '/harness/tickets/T-1/history'),
+        )
+        # Comments after last_seq come as events, not as history.
+        self.assertEqual(
+            self.client.request.await_args.kwargs['params'], {'max_seq': 7}
         )
         self.assertEqual(
             self.run_task.instruction(),

@@ -1709,7 +1709,7 @@ class TaskRun:
         :data:`PROMPT_BYTES`. Empty when there is none or imbi-api does
         not give it."""
         try:
-            body = await self.api.history()
+            body = await self.api.history(self.seq)
             entries = [dict(entry) for entry in api.items(body, 'entries')]
             cut = int(body.get('cut') or 0)
         except (
