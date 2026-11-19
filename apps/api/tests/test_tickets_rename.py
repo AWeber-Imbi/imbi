@@ -787,7 +787,10 @@ class ReleaseBTestCase(DatabaseTestCase):
         self.assertIn('root_ticket_id', columns)
         self.assertNotIn('root_task_id', columns)
         self.assertNotIn('task_id', columns)
-        self.assertEqual(catalog['triggers'], [])
+        self.assertEqual(
+            [t for t in catalog['triggers'] if t[0].startswith('harness.')],
+            [],
+        )
         cursor = await conn.execute(
             'SELECT pg_get_constraintdef(oid) AS definition'
             " FROM pg_constraint WHERE conname = 'chains_pkey'"
@@ -796,3 +799,34 @@ class ReleaseBTestCase(DatabaseTestCase):
             await cursor.fetchone(),
             {'definition': 'PRIMARY KEY (root_ticket_id)'},
         )
+
+    async def test_child_gets_its_parent_from_its_origin(self) -> None:
+        conn = await self._release_b()
+        cursor = await conn.execute(
+            'SELECT id, parent_id FROM tickets.tickets ORDER BY id'
+        )
+        self.assertEqual(
+            await cursor.fetchall(),
+            [
+                {'id': ROOT, 'parent_id': None},
+                {'id': CHILD, 'parent_id': ROOT},
+            ],
+        )
+        # The step runs once: a child that a person made a root stays
+        # a root.
+        await conn.execute(
+            'UPDATE tickets.tickets SET parent_id = NULL WHERE id = %s',
+            (CHILD,),
+        )
+        await _release_b_install()
+        cursor = await conn.execute(
+            'SELECT parent_id FROM tickets.tickets WHERE id = %s', (CHILD,)
+        )
+        self.assertEqual(await cursor.fetchone(), {'parent_id': None})
+        # A writer of the previous release gives no parent: the trigger
+        # takes it from the origin.
+        await _insert_ticket(conn, NEW, 'task', None)
+        cursor = await conn.execute(
+            'SELECT parent_id FROM tickets.tickets WHERE id = %s', (NEW,)
+        )
+        self.assertEqual(await cursor.fetchone(), {'parent_id': ROOT})

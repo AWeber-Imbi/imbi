@@ -392,6 +392,20 @@ class RelatedTask(pydantic.BaseModel):
     linked_by_kind: ActorKind | None = None
     linked_by: str | None = None
     linked_at: datetime.datetime | None = None
+    #: Whether the prerequisite holds the dependent until it closes with
+    #: a ``done_*`` outcome (ADR 0028). ``null`` for a parent or child.
+    gates: bool | None = None
+
+
+class TicketTree(pydantic.BaseModel):
+    """The tree of a ticket, computed on read (ADR 0028)."""
+
+    root_short_id: str
+    root_title: str
+    #: The number of tickets in the tree, the root included.
+    tickets: int
+    #: The number of tickets in the tree that are not closed.
+    open: int
 
 
 class AgentTaskRelations(pydantic.BaseModel):
@@ -399,15 +413,37 @@ class AgentTaskRelations(pydantic.BaseModel):
 
     ``requires`` are the prerequisites of this task; ``required_by`` are
     the tasks that have this task as a prerequisite. A prerequisite is a
-    link only: a runner can still claim a task whose prerequisite is
-    open. ``parent`` and ``children`` come from a ``task`` origin
-    (delegation) and do not change.
+    link only, unless it ``gates``: a gating prerequisite holds the task
+    (status ``held``, never claimed) until it closes with a ``done_*``
+    outcome. ``parent`` and ``children`` come from the parent of each
+    ticket. ``tree`` is the state of the tree of the ticket.
     """
 
     requires: list[RelatedTask]
     required_by: list[RelatedTask]
     parent: RelatedTask | None = None
     children: list[RelatedTask]
+    tree: TicketTree
+
+
+class TicketDependencySet(pydantic.BaseModel):
+    """The kind of a dependency."""
+
+    gates: bool = pydantic.Field(
+        default=False,
+        description='Hold the ticket until the prerequisite closes with a '
+        '``done_*`` outcome. Only a ticket that has not started (``queued`` '
+        'or ``held``) can get a gating prerequisite.',
+    )
+
+
+class TicketParentSet(pydantic.BaseModel):
+    """The new parent of a ticket."""
+
+    parent: str | None = pydantic.Field(
+        description='The short id of the new parent. ``null`` makes the '
+        'ticket a root.'
+    )
 
 
 class AssociatedProject(pydantic.BaseModel):
@@ -959,6 +995,16 @@ def relation_errors() -> abc.Generator[None]:
         ) from e
     except tickets.SelfDependency as e:
         raise _unprocessable(f'Task {str(e)!r} cannot require itself') from e
+    except tickets.ParentCycle as e:
+        raise _conflict(
+            'parent_cycle', f'Task {str(e)!r} cannot be its own ancestor'
+        ) from e
+    except tickets.TicketStarted as e:
+        raise _conflict(
+            'ticket_started',
+            f'Task {str(e)!r} has started; a gating prerequisite cannot'
+            ' hold it',
+        ) from e
 
 
 #: A caller with ``ticket:read``, with no exception for the service
@@ -1542,7 +1588,7 @@ async def delete_agent_task(
 
     """
     try:
-        task = await store.delete(org_id, short_id.upper())
+        task = await store.delete(org_id, short_id.upper(), _actor(auth))
     except tickets.TaskNotFound as e:
         raise fastapi.HTTPException(
             status_code=404, detail=f'Task {short_id!r} not found'
@@ -1958,25 +2004,35 @@ async def add_agent_task_dependency(
     prerequisite: str,
     store: tickets.Store,
     auth: ManagingPerson,
+    data: TicketDependencySet = TicketDependencySet(),  # noqa: B008
 ) -> None:
     """Make the task require the ``prerequisite`` task, in the same org.
 
-    A dependency is information only: it does not change a status. Each
-    task gets a ``dependency.added`` event; an archived task gets none.
-    When the dependency exists, nothing changes.
+    A dependency is information only, unless it ``gates`` (ADR 0028): a
+    ``queued`` task then becomes ``held`` until the prerequisite closes
+    with a ``done_*`` outcome. Each task gets a ``dependency.added``
+    event; an archived task gets none. When the dependency exists with
+    the same ``gates`` value, nothing changes; with another value, the
+    value changes.
 
     Raises:
         403: The caller is not a person, has no ``ticket:manage``,
             or is not a member of the org.
         404: No such task.
         409: ``task_archived``: both tasks are archived.
+            ``ticket_started``: ``gates``, the task is not ``queued``
+            or ``held``, and the dependency does not gate already.
         422: The two tasks are the same.
 
     """
     _ = auth.require_user  # raises 403 for a caller that is not a person
     with relation_errors():
         await store.add_dependency(
-            org_id, short_id.upper(), prerequisite.upper(), _actor(auth)
+            org_id,
+            short_id.upper(),
+            prerequisite.upper(),
+            _actor(auth),
+            gates=data.gates,
         )
 
 
@@ -1991,8 +2047,8 @@ async def remove_agent_task_dependency(
     """Remove the dependency of the task on the ``prerequisite`` task.
 
     Each task gets a ``dependency.removed`` event with the removed row;
-    an archived task gets none. When there is no such dependency,
-    nothing changes.
+    an archived task gets none. A ``held`` task that no other gate holds
+    is released. When there is no such dependency, nothing changes.
 
     Raises:
         403: The caller is not a person, has no ``ticket:manage``,
@@ -2005,6 +2061,46 @@ async def remove_agent_task_dependency(
     with relation_errors():
         await store.remove_dependency(
             org_id, short_id.upper(), prerequisite.upper(), _actor(auth)
+        )
+
+
+@tickets_router.put('/{short_id}/parent', status_code=204)
+async def set_agent_task_parent(
+    org_id: OrgId,
+    short_id: str,
+    data: TicketParentSet,
+    store: tickets.Store,
+    auth: typing.Annotated[
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
+    ],
+) -> None:
+    """Move the task, with its descendants, under another task in the
+    org, or make it a root (ADR 0028).
+
+    The owner of the task and holders of ``ticket:manage`` can move
+    it. A move changes no status, assignee, dependency, or chain. The
+    task gets a ``parent.changed`` event with the old and new parent.
+    When the parent does not change, nothing changes.
+
+    Raises:
+        403: The caller is not a person, or is not the owner and has no
+            ``ticket:manage``.
+        404: No such task.
+        409: ``task_archived``: the log of the task is archived.
+            ``parent_cycle``: the task is the new parent or one of its
+            ancestors.
+
+    """
+    user = auth.require_user  # raises 403 for a caller that is not a person
+    task = await _get_task(store, org_id, short_id)
+    if task['owner'] != user.email:
+        await _require_manage(auth)
+    with relation_errors():
+        await store.set_parent(
+            org_id,
+            task['short_id'],
+            data.parent and data.parent.upper(),
+            _actor(auth),
         )
 
 

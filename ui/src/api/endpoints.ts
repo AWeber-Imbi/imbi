@@ -3996,16 +3996,29 @@ export const getTicketRelations = (
     signal,
   )
 
-/** Make `shortId` require `prerequisite`, or remove that dependency. */
+/**
+ * Make `shortId` require `prerequisite`, or remove that dependency. A
+ * gating prerequisite holds `shortId` until it is done.
+ */
 export const setTicketDependency = (
   orgSlug: string,
   shortId: string,
   prerequisite: string,
   linked: boolean,
+  gates = false,
 ) => {
   const url = `${ticketPath(orgSlug, shortId)}/requires/${encodeURIComponent(prerequisite)}`
-  return linked ? apiClient.put<void>(url) : apiClient.delete<void>(url)
+  return linked
+    ? apiClient.put<void>(url, { gates })
+    : apiClient.delete<void>(url)
 }
+
+/** Move `shortId` under `parent`, or make it a root when `parent` is null. */
+export const setTicketParent = (
+  orgSlug: string,
+  shortId: string,
+  parent: null | string,
+) => apiClient.put<void>(`${ticketPath(orgSlug, shortId)}/parent`, { parent })
 
 /** The projects of a task, oldest association first. */
 export const listTicketProjects = (

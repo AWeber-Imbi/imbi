@@ -1746,8 +1746,9 @@ export interface paths {
          *     what happened before here. It sends ``last_seq`` as ``max_seq``, so
          *     a comment written after the session opened is not here as well as
          *     in the events. The history has comments (human turns), resolved
-         *     requests, and the status and outcome of child and prerequisite
-         *     tickets, oldest first. When the text is larger
+         *     requests, and the status and outcome of prerequisite tickets and of
+         *     the tickets that it delegated (also after a move to another
+         *     parent), oldest first. When the text is larger
          *     than :data:`MAX_HISTORY_BYTES`, the oldest entries are left out
          *     and ``cut`` is their number. ``webhook`` marks untrusted text.
          *
@@ -5682,15 +5683,20 @@ export interface paths {
          * Add Agent Task Dependency
          * @description Make the task require the ``prerequisite`` task, in the same org.
          *
-         *     A dependency is information only: it does not change a status. Each
-         *     task gets a ``dependency.added`` event; an archived task gets none.
-         *     When the dependency exists, nothing changes.
+         *     A dependency is information only, unless it ``gates`` (ADR 0028): a
+         *     ``queued`` task then becomes ``held`` until the prerequisite closes
+         *     with a ``done_*`` outcome. Each task gets a ``dependency.added``
+         *     event; an archived task gets none. When the dependency exists with
+         *     the same ``gates`` value, nothing changes; with another value, the
+         *     value changes.
          *
          *     Raises:
          *         403: The caller is not a person, has no ``ticket:manage``,
          *             or is not a member of the org.
          *         404: No such task.
          *         409: ``task_archived``: both tasks are archived.
+         *             ``ticket_started``: ``gates``, the task is not ``queued``
+         *             or ``held``, and the dependency does not gate already.
          *         422: The two tasks are the same.
          */
         put: operations["add_ticket_dependency_api_organizations__org_slug__tickets__short_id__requires__prerequisite__put"];
@@ -5700,8 +5706,8 @@ export interface paths {
          * @description Remove the dependency of the task on the ``prerequisite`` task.
          *
          *     Each task gets a ``dependency.removed`` event with the removed row;
-         *     an archived task gets none. When there is no such dependency,
-         *     nothing changes.
+         *     an archived task gets none. A ``held`` task that no other gate holds
+         *     is released. When there is no such dependency, nothing changes.
          *
          *     Raises:
          *         403: The caller is not a person, has no ``ticket:manage``,
@@ -5710,6 +5716,40 @@ export interface paths {
          *         409: ``task_archived``: both tasks are archived.
          */
         delete: operations["remove_ticket_dependency_api_organizations__org_slug__tickets__short_id__requires__prerequisite__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/parent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Agent Task Parent
+         * @description Move the task, with its descendants, under another task in the
+         *     org, or make it a root (ADR 0028).
+         *
+         *     The owner of the task and holders of ``ticket:manage`` can move
+         *     it. A move changes no status, assignee, dependency, or chain. The
+         *     task gets a ``parent.changed`` event with the old and new parent.
+         *     When the parent does not change, nothing changes.
+         *
+         *     Raises:
+         *         403: The caller is not a person, or is not the owner and has no
+         *             ``ticket:manage``.
+         *         404: No such task.
+         *         409: ``task_archived``: the log of the task is archived.
+         *             ``parent_cycle``: the task is the new parent or one of its
+         *             ancestors.
+         */
+        put: operations["set_ticket_parent_api_organizations__org_slug__tickets__short_id__parent_put"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -5919,7 +5959,8 @@ export interface paths {
          *     Raises:
          *         403: The caller is not the service account of the task's agent.
          *         404: No such task.
-         *         409: ``task_closed``, ``task_cancelled`` (control is cancel), or
+         *         409: ``task_closed``, ``task_cancelled`` (control is cancel),
+         *             ``task_held`` (a gating prerequisite is open), or
          *             ``concurrency_limit`` (``settings.max_concurrent_tasks``
          *             other tasks of the agent have an open session).
          */
@@ -11648,9 +11689,10 @@ export interface components {
          *
          *     ``requires`` are the prerequisites of this task; ``required_by`` are
          *     the tasks that have this task as a prerequisite. A prerequisite is a
-         *     link only: a runner can still claim a task whose prerequisite is
-         *     open. ``parent`` and ``children`` come from a ``task`` origin
-         *     (delegation) and do not change.
+         *     link only, unless it ``gates``: a gating prerequisite holds the task
+         *     (status ``held``, never claimed) until it closes with a ``done_*``
+         *     outcome. ``parent`` and ``children`` come from the parent of each
+         *     ticket. ``tree`` is the state of the tree of the ticket.
          */
         AgentTaskRelations: {
             /** Requires */
@@ -11660,6 +11702,7 @@ export interface components {
             parent?: components["schemas"]["RelatedTask"] | null;
             /** Children */
             children: components["schemas"]["RelatedTask"][];
+            tree: components["schemas"]["TicketTree"];
         };
         /** AgentTaskReply */
         AgentTaskReply: {
@@ -18943,6 +18986,8 @@ export interface components {
             linked_by?: string | null;
             /** Linked At */
             linked_at?: string | null;
+            /** Gates */
+            gates?: boolean | null;
         };
         /**
          * RelationshipLink
@@ -21639,6 +21684,18 @@ export interface components {
             /** Port Name */
             port_name: string;
         };
+        /**
+         * TicketDependencySet
+         * @description The kind of a dependency.
+         */
+        TicketDependencySet: {
+            /**
+             * Gates
+             * @description Hold the ticket until the prerequisite closes with a ``done_*`` outcome. Only a ticket that has not started (``queued`` or ``held``) can get a gating prerequisite.
+             * @default false
+             */
+            gates: boolean;
+        };
         /** TicketHistory */
         TicketHistory: {
             /** Entries */
@@ -21648,6 +21705,31 @@ export interface components {
              * @default 0
              */
             cut: number;
+        };
+        /**
+         * TicketParentSet
+         * @description The new parent of a ticket.
+         */
+        TicketParentSet: {
+            /**
+             * Parent
+             * @description The short id of the new parent. ``null`` makes the ticket a root.
+             */
+            parent: string | null;
+        };
+        /**
+         * TicketTree
+         * @description The tree of a ticket, computed on read (ADR 0028).
+         */
+        TicketTree: {
+            /** Root Short Id */
+            root_short_id: string;
+            /** Root Title */
+            root_title: string;
+            /** Tickets */
+            tickets: number;
+            /** Open */
+            open: number;
         };
         /** TokenExchangerType */
         TokenExchangerType: {
@@ -32296,7 +32378,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["TicketDependencySet"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             204: {
@@ -32328,6 +32414,40 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_ticket_parent_api_organizations__org_slug__tickets__short_id__parent_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TicketParentSet"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             204: {

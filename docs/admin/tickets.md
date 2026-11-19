@@ -49,6 +49,7 @@ when it has the permission.
 
 | State | Label | Meaning |
 |---|---|---|
+| `held` | Held | A gating prerequisite holds the ticket. A runner does not take it |
 | `queued` | Queued | The ticket waits for a runner |
 | `running` | Running | A runner works on the ticket |
 | `blocked` | Needs input | The agent waits for an answer or an approval |
@@ -370,7 +371,8 @@ A reply or an answer can be up to 64 KiB.
 
 ## Relations and associated projects
 
-You need `ticket:manage` to change them.
+You need `ticket:manage` to change them. The owner of a ticket can also
+move it under a parent.
 
 **Related tickets**: click **Link ticket**. Find a ticket, then select the
 relation:
@@ -381,9 +383,55 @@ relation:
 | Blocked by | The same as Requires |
 | Required by | The other ticket needs this ticket first |
 | Blocks | The same as Required by |
+| Parent | Move this ticket, with its descendants, under the other ticket |
 
-A ticket cannot require itself. Parent and child rows come from delegation.
-You cannot change them.
+A ticket cannot require itself.
+
+**Gating dependencies**: a dependency is a link only, unless you select
+**Gating** in **Link ticket**. A gating prerequisite holds the dependent
+ticket until the prerequisite closes with `done_acted` or
+`done_nothing_to_act_on`.
+
+- A `queued` ticket that gets an open gating prerequisite becomes `held`.
+  The tab shows "Held: waiting on" and the prerequisites that hold it.
+- A ticket that has started (not `queued` or `held`) refuses a gating
+  prerequisite with `409` and `ticket_started`.
+- When the last gating prerequisite closes with a `done_*` outcome, the
+  dependent becomes `queued` (`paused` if a person paused it while it was
+  held, `blocked` if it has an open request), in the same transaction as
+  the close.
+- When a gating prerequisite closes with another outcome, the dependent
+  stays `held`. Cancel it, or remove the failed gate or make it a plain
+  link. To use a replacement prerequisite, first remove or downgrade the
+  failed gate, then add the replacement. A new prerequisite alone does not
+  release the dependent. When you remove the last gate, or delete the
+  prerequisite, the dependent is released.
+- A held ticket refuses a harness session with `409` and `task_held`.
+- Pause and resume change only the control value of a held ticket. Cancel
+  closes it.
+
+With the API: `PUT /organizations/{org}/tickets/{short_id}/requires/{prerequisite}`
+with `{"gates": true}`. A request without `gates`, or with `false`, makes
+an existing gate a plain link.
+
+**Parent tickets**: a ticket can have one parent in its organization. A
+ticket that an agent makes from its own ticket starts with that ticket as
+its parent. A root ticket and its descendants are one piece of work, and
+the owner of the root is accountable for it. The tab shows the parent, the
+children, and the tree: its root and how many of its tickets are open.
+
+- To move a ticket, select **Parent** in **Link ticket**. To make it a
+  root, remove its **Parent** row.
+- Holders of `ticket:manage` can move a ticket. The owner of the ticket
+  can also move it in the UI or with the API.
+- A move that makes a ticket its own ancestor gets `409` with
+  `parent_cycle`.
+- Open and closed tickets can move. A move changes no status, assignee,
+  dependency, or chain. The ticket gets a `parent.changed` event.
+- When you delete a ticket, its children become roots.
+
+With the API: `PUT /organizations/{org}/tickets/{short_id}/parent` with
+`{"parent": "T-5"}`, or `{"parent": null}` to make the ticket a root.
 
 **Associated projects**: click **Link project** to add a project. The
 oldest project is first. You can remove each project, also a project that

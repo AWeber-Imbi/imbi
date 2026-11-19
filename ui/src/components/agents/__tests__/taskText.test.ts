@@ -89,6 +89,15 @@ describe('systemText', () => {
     ).toBe('In progress')
   })
 
+  it('words a move of the parent', () => {
+    expect(
+      systemText(event(1, 'parent.changed', { from: null, to: 'T-2' })),
+    ).toBe('Moved under T-2')
+    expect(
+      systemText(event(2, 'parent.changed', { from: 'T-2', to: null })),
+    ).toBe('Moved from T-2 to the root')
+  })
+
   it('turns an unknown event type into words', () => {
     expect(systemText(event(1, 'harness.egress_denied'))).toBe(
       'Harness egress denied',

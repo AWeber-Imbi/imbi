@@ -8,10 +8,12 @@ import { Box, ChevronRight, Link2, Trash2 } from 'lucide-react'
 import {
   listTickets,
   setTicketDependency,
+  setTicketParent,
   setTicketProject,
 } from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -25,6 +27,7 @@ import {
   SegmentedControl,
   SegmentedControlItem,
 } from '@/components/ui/segmented-control'
+import { useAuth } from '@/hooks/useAuth'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { useProjectsSlimMap } from '@/hooks/useProjectsSlimMap'
@@ -45,11 +48,12 @@ import {
 /**
  * The kinds of a relation, as this task reads them. One dependency row
  * reads two ways: "this task requires T-5" is "this task is blocked by
- * T-5". Parent and child come from a `task` origin (delegation).
+ * T-5". `parent` moves this task under the other task.
  */
 const KINDS = {
   blocked_by: { label: 'Blocked by', requires: true },
   blocks: { label: 'Blocks', requires: false },
+  parent: { label: 'Parent', requires: false },
   required_by: { label: 'Required by', requires: false },
   requires: { label: 'Requires', requires: true },
 } as const
@@ -61,13 +65,14 @@ const LINK_KINDS: LinkKind[] = [
   'required_by',
   'blocks',
   'blocked_by',
+  'parent',
 ]
 
 interface Row {
   alias: string
   kind: string
-  /** The dependency `[dependent, prerequisite]`; none for delegation. */
-  link?: [string, string]
+  /** The dependency `[dependent, prerequisite]`, or `parent`. */
+  link?: 'parent' | [string, string]
   task: TicketRelated
   tone: 'accent' | 'info' | 'neutral'
 }
@@ -270,14 +275,20 @@ export function LinkProjectDialog({
   )
 }
 
-/** Pick a task and the relation, then link it (design: "Link task"). */
+/**
+ * Pick a task and the relation, then link it (design: "Link task").
+ * `exclude` blocks the dependency kinds only: a task that is a
+ * dependency can also be the parent.
+ */
 export function LinkTaskDialog({
   exclude,
+  kinds = LINK_KINDS,
   onClose,
   orgSlug,
   shortId,
 }: {
   exclude: Set<string>
+  kinds?: LinkKind[]
   onClose: () => void
   orgSlug: string
   shortId: string
@@ -285,7 +296,8 @@ export function LinkTaskDialog({
   const [text, setText] = useState('')
   const q = useDebouncedValue(text.trim(), 250)
   const [pick, setPick] = useState<null | string>(null)
-  const [kind, setKind] = useState<LinkKind>('requires')
+  const [kind, setKind] = useState<LinkKind>(kinds[0])
+  const [gates, setGates] = useState(false)
   const { data: agents } = useAgentList(orgSlug)
   const found = useQuery({
     queryFn: ({ signal }) =>
@@ -293,11 +305,15 @@ export function LinkTaskDialog({
     queryKey: queryKeys.tickets(orgSlug, { link: q }),
   })
   const link = useTicketRelationMutation(orgSlug, (other: string) =>
-    KINDS[kind].requires
-      ? setTicketDependency(orgSlug, shortId, other, true)
-      : setTicketDependency(orgSlug, other, shortId, true),
+    kind === 'parent'
+      ? setTicketParent(orgSlug, shortId, other)
+      : KINDS[kind].requires
+        ? setTicketDependency(orgSlug, shortId, other, true, gates)
+        : setTicketDependency(orgSlug, other, shortId, true, gates),
   )
-  const results = (found.data ?? []).filter((t) => !exclude.has(t.short_id))
+  const results = (found.data ?? []).filter((t) => t.short_id !== shortId)
+  const blocked = (k: LinkKind) =>
+    !pick || (k !== 'parent' && exclude.has(pick))
   return (
     <Dialog onOpenChange={(o) => !o && onClose()} open>
       <DialogContent className="max-w-3xl">
@@ -329,9 +345,10 @@ export function LinkTaskDialog({
                     'flex w-full items-center gap-3 px-4 py-3 text-left transition-colors',
                     pick === t.short_id ? 'bg-amber-bg' : 'hover:bg-secondary',
                   )}
-                  onClick={() =>
+                  onClick={() => {
                     setPick(pick === t.short_id ? null : t.short_id)
-                  }
+                    if (exclude.has(t.short_id)) setKind('parent')
+                  }}
                   type="button"
                 >
                   <span className="text-tertiary shrink-0 font-mono text-xs tabular-nums">
@@ -368,8 +385,8 @@ export function LinkTaskDialog({
               onValueChange={(v) => setKind(v as LinkKind)}
               value={kind}
             >
-              {LINK_KINDS.map((k) => (
-                <SegmentedControlItem disabled={!pick} key={k} value={k}>
+              {kinds.map((k) => (
+                <SegmentedControlItem disabled={blocked(k)} key={k} value={k}>
                   {KINDS[k].label}
                 </SegmentedControlItem>
               ))}
@@ -379,6 +396,16 @@ export function LinkTaskDialog({
                 ? linkHint(shortId, pick, kind)
                 : 'Choose a ticket above, then set the relationship.'}
             </p>
+            {kind !== 'parent' && (
+              <label className="text-secondary flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={gates}
+                  disabled={!pick}
+                  onCheckedChange={(c) => setGates(c === true)}
+                />
+                Gating: hold the dependent until the prerequisite is done
+              </label>
+            )}
           </div>
           {link.error && (
             <p className="text-danger text-sm" role="alert">
@@ -387,7 +414,7 @@ export function LinkTaskDialog({
           )}
           <Button
             className="self-end"
-            disabled={!pick || link.isPending}
+            disabled={blocked(kind) || link.isPending}
             onClick={() => link.mutate(pick!, { onSuccess: onClose })}
           >
             <Link2 className="mr-2 size-4" />
@@ -399,7 +426,7 @@ export function LinkTaskDialog({
   )
 }
 
-/** Requires, required by, parent, and children of the task. */
+/** Requires, required by, parent, children, and tree of the task. */
 export function RelatedTasksTab({
   orgSlug,
   task,
@@ -408,45 +435,60 @@ export function RelatedTasksTab({
   task: Ticket
 }) {
   const canManage = useHasPermission('ticket:manage', orgSlug)
+  const { user } = useAuth()
+  // The API lets the owner move the task without ticket:manage.
+  const canMove = canManage || (!!user?.email && user.email === task.owner)
   const relations = useTicketRelations(orgSlug, task.short_id)
   const { data: agents } = useAgentList(orgSlug)
   const [open, setOpen] = useState(false)
   const unlink = useTicketRelationMutation(
     orgSlug,
-    ([dependent, prerequisite]: [string, string]) =>
-      setTicketDependency(orgSlug, dependent, prerequisite, false),
+    (link: NonNullable<Row['link']>) =>
+      link === 'parent'
+        ? setTicketParent(orgSlug, task.short_id, null)
+        : setTicketDependency(orgSlug, link[0], link[1], false),
   )
   const r = relations.data
   const rows: Row[] = r
     ? [
         ...r.requires.map((t) => ({
-          alias: 'blocked by',
+          alias: t.gates ? 'gated by' : 'blocked by',
           kind: 'Requires',
           link: [task.short_id, t.short_id] as [string, string],
           task: t,
           tone: 'info' as const,
         })),
         ...r.required_by.map((t) => ({
-          alias: 'blocks',
+          alias: t.gates ? 'gates' : 'blocks',
           kind: 'Required by',
           link: [t.short_id, task.short_id] as [string, string],
           task: t,
           tone: 'neutral' as const,
         })),
         ...(r.parent ? [r.parent] : []).map((t) => ({
-          alias: 'delegation',
+          alias: 'tree',
           kind: 'Parent',
+          link: 'parent' as const,
           task: t,
           tone: 'accent' as const,
         })),
         ...r.children.map((t) => ({
-          alias: 'delegation',
+          alias: 'tree',
           kind: 'Child',
           task: t,
           tone: 'accent' as const,
         })),
       ]
     : []
+  // The gating prerequisites that hold a held ticket.
+  const holding =
+    task.status === 'held'
+      ? (r?.requires ?? []).filter(
+          (t) =>
+            t.gates &&
+            !(t.status === 'closed' && t.outcome?.startsWith('done_')),
+        )
+      : []
   const linked = new Set([
     task.short_id,
     ...(r?.requires ?? []).map((t) => t.short_id),
@@ -456,15 +498,40 @@ export function RelatedTasksTab({
     <div>
       <PanelHeader
         action={
-          canManage && (
+          canMove && (
             <Button onClick={() => setOpen(true)} size="sm" variant="outline">
               Link ticket
             </Button>
           )
         }
       >
-        Tasks this one requires or is required by, and its delegation
+        Tickets this one requires or is required by, and its tree
       </PanelHeader>
+      {r && r.tree.tickets > 1 && (
+        <p className="border-tertiary text-secondary border-b px-6 py-3 text-xs">
+          Tree of{' '}
+          <Link
+            className="font-mono"
+            to={ticketsPath(orgSlug, r.tree.root_short_id)}
+          >
+            {r.tree.root_short_id}
+          </Link>{' '}
+          {r.tree.root_title}: {r.tree.open} of {r.tree.tickets} tickets open
+        </p>
+      )}
+      {holding.length > 0 && (
+        <p className="border-tertiary text-secondary border-b px-6 py-3 text-xs">
+          Held: waiting on{' '}
+          {holding.map((t, i) => (
+            <span key={t.short_id}>
+              {i > 0 && ', '}
+              <Link className="font-mono" to={ticketsPath(orgSlug, t.short_id)}>
+                {t.short_id}
+              </Link>
+            </span>
+          ))}
+        </p>
+      )}
       {relations.error && (
         <p className="text-danger px-6 py-3 text-sm" role="alert">
           {errorMessage(relations.error)}
@@ -507,7 +574,7 @@ export function RelatedTasksTab({
                 value={row.task.created_at}
               />
             </Link>
-            {canManage && row.link ? (
+            {row.link && (row.link === 'parent' ? canMove : canManage) ? (
               <button
                 aria-label={`Remove ${row.kind.toLowerCase()} ${row.task.short_id}`}
                 className="text-tertiary hover:text-danger flex size-8 shrink-0 items-center justify-center rounded-md transition-colors"
@@ -519,7 +586,7 @@ export function RelatedTasksTab({
                 <Trash2 className="size-3.5" />
               </button>
             ) : (
-              canManage && <span className="size-8 shrink-0" />
+              canMove && <span className="size-8 shrink-0" />
             )}
           </li>
         ))}
@@ -532,6 +599,7 @@ export function RelatedTasksTab({
       {open && (
         <LinkTaskDialog
           exclude={linked}
+          kinds={canManage ? LINK_KINDS : ['parent']}
           onClose={() => setOpen(false)}
           orgSlug={orgSlug}
           shortId={task.short_id}
@@ -543,6 +611,7 @@ export function RelatedTasksTab({
 
 /** "T-1 requires T-5 · T-5 blocks T-1", for the chosen kind. */
 function linkHint(shortId: string, other: string, kind: LinkKind): string {
+  if (kind === 'parent') return `${shortId} moves under ${other}`
   const [dependent, prerequisite] = KINDS[kind].requires
     ? [shortId, other]
     : [other, shortId]

@@ -146,6 +146,28 @@ While pods of both releases run:
   the keys and drops the old columns, the trigger, the
   `agent_task_events` table, and the `/agent-tasks` paths.
 
+## Unreleased: parent tickets and gating dependencies (ADR 0028)
+
+Set the version of this section when the release is cut.
+
+1. **Before you deploy**, deploy 2.55.0
+   everywhere and let its rollout finish. This release writes the event
+   type `parent.changed` and the status `held`, which only 2.55.0 and
+   later can read.
+2. Deploy the new image. There is no setup command. At start, imbi-api
+   adds `tickets.tickets.parent_id` and its foreign key. Before it adds
+   the key, it sets the parent of each child ticket that an agent made
+   from its own ticket. This runs one time. It also adds
+   `tickets.ticket_dependencies.gates` (default `false`), so existing
+   dependencies stay links only.
+3. Do not add gating dependencies until every imbi-api pod runs this
+   release. A pod of the previous release does not release the
+   dependents of a ticket that it closes, so they stay `held`.
+
+A child ticket that a pod of the previous release makes after the
+first new pod starts gets its parent from a trigger on insert. A ticket that stays `held` after its prerequisites are
+done: remove the gating dependency, or add it again as a link only.
+
 ## 2.55.0
 
 1. **Before you deploy**, deploy 2.54.0
