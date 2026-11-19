@@ -6346,9 +6346,11 @@ export interface paths {
          * Get Run
          * @description Return a run with its step records.
          *
-         *     The ``reason``, ``summary``, and ``result`` of an agent step's
-         *     output come from the agent task. Only a caller who can read agent
-         *     tasks (``agent_task:read``) gets them.
+         *     A later step can render agent task content into its ``input`` and
+         *     ``output``. For a run that a closed task started or that has an
+         *     agent step, only a caller who can read agent tasks
+         *     (``agent_task:read``) gets the step ``input`` and ``output``, the
+         *     dedupe key, and the ticket attributes of the payload.
          *
          *     Raises:
          *         404: No such workflow or run.
@@ -19893,7 +19895,8 @@ export interface components {
          *
          *     ``task_id``, ``outcome``, ``reason``, and ``summary`` come from the
          *     agent task of an ``agent`` step. ``reason`` and ``summary`` are
-         *     ``None`` for a caller who cannot read agent tasks.
+         *     ``None`` for a caller who cannot read agent tasks, and ``error``
+         *     has only its code.
          */
         RunFailure: {
             /** Node Key */

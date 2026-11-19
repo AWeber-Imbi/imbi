@@ -399,6 +399,55 @@ class GitHubAppTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ctx.exception.reason, 'installation_not_found')
 
     @respx.mock
+    async def test_ci_read_only_when_the_installation_grants_it(
+        self,
+    ) -> None:
+        """CI permissions the installation lacks are never asked for."""
+        respx.get(INSTALLATION_URL).mock(
+            return_value=httpx.Response(
+                200,
+                json=INSTALLATION
+                | {
+                    'permissions': {
+                        'contents': 'write',
+                        'checks': 'write',
+                        'statuses': 'read',
+                        'metadata': 'read',
+                    }
+                },
+            )
+        )
+        route = respx.post(TOKENS_URL).mock(
+            return_value=httpx.Response(
+                201,
+                json={'token': TOKEN, 'expires_at': '2099-01-01T00:00:00Z'},
+            )
+        )
+        await APP.resolve(CONFIG, LOCATOR, None, _context('github_write'))
+        self.assertEqual(
+            json.loads(route.calls.last.request.content)['permissions'],
+            {
+                'checks': 'read',
+                'contents': 'write',
+                'issues': 'write',
+                'pull_requests': 'write',
+                'statuses': 'read',
+            },
+        )
+        await APP.resolve(CONFIG, LOCATOR, None, _context('github_read'))
+        self.assertEqual(
+            json.loads(route.calls.last.request.content)['permissions'],
+            {
+                'actions': 'read',
+                'checks': 'read',
+                'contents': 'read',
+                'issues': 'read',
+                'pull_requests': 'read',
+                'statuses': 'read',
+            },
+        )
+
+    @respx.mock
     async def test_disallowed_host_gets_no_jwt(self) -> None:
         """A host that left the allowlist after the provider was saved."""
         route = respx.route().mock(return_value=httpx.Response(200))
