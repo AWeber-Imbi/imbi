@@ -1,6 +1,6 @@
 [project]
 name = "imbi"
-version = "2.56.0"
+version = "2.57.0"
 description = "Imbi is the open-source service catalog that tracks every service's ownership, deployments, and health, and runs the AI agents and workflows that fix them."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -21,24 +21,24 @@ classifiers = [
 ]
 # Meta-distribution: installing `imbi` installs the whole platform.
 dependencies = [
-  "imbi-api==2.56.0",
-  "imbi-assistant==2.56.0",
-  "imbi-common[databases,llm,mcp,otel,posthog,sentry,server]==2.56.0",
-  "imbi-gateway==2.56.0",
-  "imbi-mcp==2.56.0",
-  "imbi-plugin-anthropic==2.56.0",
-  "imbi-plugin-aws==2.56.0",
-  "imbi-plugin-github==2.56.0",
-  "imbi-plugin-google==2.56.0",
-  "imbi-plugin-logzio==2.56.0",
-  "imbi-plugin-oidc==2.56.0",
-  "imbi-plugin-openai==2.56.0",
-  "imbi-plugin-pagerduty==2.56.0",
-  "imbi-plugin-sentry==2.56.0",
-  "imbi-plugin-sonarqube==2.56.0",
-  "imbi-scheduler==2.56.0",
-  "imbi-slackbot==2.56.0",
-  "imbi-workflows==2.56.0",
+  "imbi-api==2.57.0",
+  "imbi-assistant==2.57.0",
+  "imbi-common[databases,llm,mcp,otel,posthog,sentry,server]==2.57.0",
+  "imbi-gateway==2.57.0",
+  "imbi-mcp==2.57.0",
+  "imbi-plugin-anthropic==2.57.0",
+  "imbi-plugin-aws==2.57.0",
+  "imbi-plugin-github==2.57.0",
+  "imbi-plugin-google==2.57.0",
+  "imbi-plugin-logzio==2.57.0",
+  "imbi-plugin-oidc==2.57.0",
+  "imbi-plugin-openai==2.57.0",
+  "imbi-plugin-pagerduty==2.57.0",
+  "imbi-plugin-sentry==2.57.0",
+  "imbi-plugin-sonarqube==2.57.0",
+  "imbi-scheduler==2.57.0",
+  "imbi-slackbot==2.57.0",
+  "imbi-workflows==2.57.0",
 ]
 
 [dependency-groups]
