@@ -15,6 +15,7 @@ import {
   Hand,
   type LucideIcon,
   Pause,
+  Undo2,
   X,
 } from 'lucide-react'
 
@@ -56,6 +57,7 @@ const OUTCOME: Partial<
   approved: { icon: Check, swatch: '#6B9A3F' },
   expired: { icon: Clock, swatch: STONE },
   rejected: { icon: X, swatch: '#C86B5E' },
+  withdrawn: { icon: Undo2, swatch: STONE },
 }
 
 /** The badge of the check verdicts the design knows; others show as is. */
