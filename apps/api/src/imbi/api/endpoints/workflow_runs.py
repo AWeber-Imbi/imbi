@@ -31,6 +31,7 @@ Every route needs the caller to be a member of the organization
 import asyncio
 import datetime
 import logging
+import re
 import typing
 import uuid
 
@@ -47,6 +48,7 @@ from imbi.api.auth import organizations, permissions
 from imbi.api.email import client as email_client
 from imbi.api.endpoints import project_deployments, tickets
 from imbi.api.plugins.resolution import ResolvedCapability
+from imbi.api.workflows import tickets as workflow_tickets
 from imbi.common import graph, lifespan
 from imbi.common.auth import permissions as common_permissions
 from imbi.common.plugins.base import DeploymentRun
@@ -55,6 +57,7 @@ from imbi.common.workflows import history, registry, validation, walk
 from imbi.common.workflows.registry import agent as agent_step
 from imbi.common.workflows.registry import email as email_step
 from imbi.common.workflows.registry import slack as slack_step
+from imbi.common.workflows.registry import ticket_closed
 
 LOGGER = logging.getLogger(__name__)
 
@@ -157,7 +160,8 @@ class RunFailure(pydantic.BaseModel):
 
     ``task_id``, ``outcome``, ``reason``, and ``summary`` come from the
     agent task of an ``agent`` step. ``reason`` and ``summary`` are
-    ``None`` for a caller who cannot read agent tasks.
+    ``None`` for a caller who cannot read agent tasks, and ``error``
+    has only its code.
     """
 
     node_key: str
@@ -271,7 +275,10 @@ class SlackResult(pydantic.BaseModel):
     error: str | None = None
 
 
-class StepAgentTask(pydantic.BaseModel):
+class StepAgentTask(agent_step.TicketAttributes):
+    """The attributes of :class:`agent_step.TicketAttributes` are set
+    when the task is closed."""
+
     #: The short id, ``T-<n>``.
     task_id: str
     status: str
@@ -777,18 +784,72 @@ def _task_key_conflict() -> fastapi.HTTPException:
     )
 
 
-def _without_task_content(
-    step: dict[str, typing.Any],
-) -> dict[str, typing.Any]:
-    """Remove the agent task content from the output of an agent step."""
-    if step['node_type'] != 'agent' or not step['output']:
-        return step
-    output = {
+def _can_read_tasks(auth: permissions.AuthContext) -> bool:
+    return auth.is_admin or common_permissions.holds(
+        'agent_task:read', auth.permissions
+    )
+
+
+def _without_ticket(output: dict[str, typing.Any]) -> dict[str, typing.Any]:
+    return {
         k: v
-        for k, v in step['output'].items()
-        if k not in ('reason', 'summary', 'result')
+        for k, v in output.items()
+        if k not in agent_step.TicketAttributes.model_fields
     }
-    return {**step, 'output': output}
+
+
+_ERROR_CODE = re.compile(r'[a-z][a-z0-9_]*')
+
+
+def _error_code(error: str | None) -> str | None:
+    """Return the code of ``error``: the text before the first ``:`` or
+    whitespace. Return ``None`` when that text is not a snake_case code.
+    """
+    code = re.split(r'[:\s]', error or '', maxsplit=1)[0]
+    return code if _ERROR_CODE.fullmatch(code) else None
+
+
+def _run_for(
+    auth: permissions.AuthContext,
+    run: dict[str, typing.Any],
+    steps: list[dict[str, typing.Any]] | None = None,
+) -> dict[str, typing.Any]:
+    """Return ``run`` without agent task content, for a caller who
+    cannot read agent tasks.
+
+    A run that a closed task started, or that has an agent step, can
+    hold task content in any value that a template rendered. For such
+    a run, set the dedupe and concurrency keys to ``None``, remove
+    the ``input`` and ``output`` of each of ``steps``, and keep only
+    the code of the run and step errors. Remove the ticket attributes
+    from the payload of a run that a task started. The keys come only
+    from the payload (:func:`validation.dedupe_key`), so a list
+    without ``steps`` cannot show the content of an agent step. The
+    run error can, and a list cannot see the agent steps, so a list
+    keeps only the code of the run error of each run.
+    """
+    found = list(steps or [])
+    from_task = run['origin_kind'] in ticket_closed.TYPES
+    task_content = from_task or any(s['node_type'] == 'agent' for s in found)
+    if _can_read_tasks(auth) or (steps is not None and not task_content):
+        return run if steps is None else {**run, 'steps': found}
+    hidden = {**run, 'error': _error_code(run['error'])}
+    if not task_content:
+        return hidden
+    hidden |= {'dedupe_key': None, 'concurrency_key': None}
+    if from_task:
+        hidden['payload'] = _without_ticket(run['payload'])
+    if steps is not None:
+        hidden['steps'] = [
+            {
+                **s,
+                'input': None,
+                'output': None,
+                'error': _error_code(s['error']),
+            }
+            for s in found
+        ]
+    return hidden
 
 
 def _step_agent_task(
@@ -982,12 +1043,14 @@ async def list_runs(
     slug: str,
     store: workflows.Store,
     runs: workflows.Runs,
-    _: ReadAuth,
+    auth: ReadAuth,
     limit: typing.Annotated[int, fastapi.Query(ge=1, le=200)] = 50,
 ) -> list[workflows.Row]:
     """Return the runs of a workflow, newest first."""
     workflow = await _workflow(store, org_id, slug)
-    return await runs.list_runs(workflow['id'], limit)
+    return [
+        _run_for(auth, r) for r in await runs.list_runs(workflow['id'], limit)
+    ]
 
 
 @workflow_runs_router.get('/{slug}/runs/{run_id}', response_model=RunDetail)
@@ -1001,9 +1064,11 @@ async def get_run(
 ) -> dict[str, typing.Any]:
     """Return a run with its step records.
 
-    The ``reason``, ``summary``, and ``result`` of an agent step's
-    output come from the agent task. Only a caller who can read agent
-    tasks (``agent_task:read``) gets them.
+    A later step can render agent task content into its ``input`` and
+    ``output``. For a run that a closed task started or that has an
+    agent step, only a caller who can read agent tasks
+    (``agent_task:read``) gets the step ``input`` and ``output``, the
+    dedupe key, and the ticket attributes of the payload.
 
     Raises:
         404: No such workflow or run.
@@ -1012,21 +1077,24 @@ async def get_run(
     """
     workflow = await _workflow(store, org_id, slug)
     row = await _run(runs, workflow, run_id)
-    if row['log_archived_at'] is None:
-        steps = await runs.steps(run_id)
-    else:
+    steps = [] if row['log_archived_at'] else await runs.steps(run_id)
+    if not steps and row['log_archived_at'] is None:
+        # The archive can commit between the two reads and delete the
+        # step rows. Read the run again to get its archive state. Keep
+        # the first row when the run is not archived: the engine can
+        # add a step and set the run error after the step read, and
+        # that error must not go out with a step list that is empty.
+        again = await _run(runs, workflow, run_id)
+        if again['log_archived_at'] is not None:
+            row = again
+    if row['log_archived_at'] is not None:
         try:
             steps = await history.archived_steps(row)
         except Exception as e:
             raise fastapi.HTTPException(
                 status_code=503, detail='The run history is not available'
             ) from e
-    if not (
-        auth.is_admin
-        or common_permissions.holds('agent_task:read', auth.permissions)
-    ):
-        steps = [_without_task_content(s) for s in steps]
-    return {**row, 'steps': steps}
+    return _run_for(auth, row, steps)
 
 
 @workflow_runs_router.post(
@@ -1068,7 +1136,7 @@ async def cancel_run(
         raise fastapi.HTTPException(
             status_code=409, detail=f'Run {run_id} is closed'
         )
-    return await _run(runs, workflow, run_id)
+    return _run_for(auth, await _run(runs, workflow, run_id))
 
 
 workflow_attention_router = fastapi.APIRouter(
@@ -1081,14 +1149,14 @@ workflow_attention_router = fastapi.APIRouter(
 async def list_attention_runs(
     org_id: OrgId,
     runs: workflows.Runs,
-    _: ReadAuth,
+    auth: ReadAuth,
 ) -> list[workflows.Row]:
     """Return the failed runs of the last 7 days and the stuck runs.
 
     A stuck run is open and no engine works on it: see
     :meth:`imbi.api.workflows.RunStore.attention`.
     """
-    return await runs.attention(org_id)
+    return [_run_for(auth, r) for r in await runs.attention(org_id)]
 
 
 @workflow_attention_router.get('/', response_model=list[OrgRun])
@@ -1126,11 +1194,12 @@ async def list_org_runs(
         )
     else:
         steps |= from_archive
-    task_content = auth.is_admin or common_permissions.holds(
-        'agent_task:read', auth.permissions
-    )
+    task_content = _can_read_tasks(auth)
     return [
-        {**r, 'failure': _failure(steps.get(str(r['id'])), task_content)}
+        {
+            **_run_for(auth, r),
+            'failure': _failure(steps.get(str(r['id'])), task_content),
+        }
         for r in found
     ]
 
@@ -1154,7 +1223,7 @@ def _failure(
         'title': step['title'],
         'node_type': step['node_type'],
         'attempt': step['attempt'],
-        'error': step['error'],
+        'error': step['error'] if task_content else _error_code(step['error']),
         'task_id': output.get('task_id'),
         'outcome': output.get('outcome'),
         'reason': output.get('reason') if task_content else None,
@@ -1428,12 +1497,14 @@ async def send_step_email(
     '/{slug}/runs/{run_id}/steps/{node_id}/slack', response_model=SlackResult
 )
 async def send_step_slack(
+    org_slug: str,
     org_id: OrgId,
     slug: str,
     run_id: uuid.UUID,
     node_id: str,
     store: workflows.Store,
     runs: workflows.Runs,
+    tasks: ticket_store.Store,
     token: SlackToken,
     auth: EngineAuth,
     idempotency_key: IdempotencyKey,
@@ -1444,13 +1515,18 @@ async def send_step_slack(
         404: No such workflow, run, or step.
         409: The step is not a running slack step, or
             ``outcome_unknown``: a call with the key did not finish.
-        422: ``invalid_channel``: the channel is not a Slack channel id.
+        422: ``invalid_channel``: the channel is not a Slack channel id,
+            or ``ticket_not_found``: the ticket is not a task of the
+            organization.
         502: ``slack_unreachable``: the call to Slack failed, and Slack
             may have posted the message.
         503: ``slack_not_configured``: imbi-api has no bot token.
 
     A refusal from Slack is not an error here: the response has its
     code in ``error``, and the engine fails the step.
+
+    A step with a ``ticket`` shows the task below the message (see
+    :func:`workflow_tickets.with_ticket_block`).
 
     """
     step = await _running_step(store, runs, org_id, slug, run_id, node_id)
@@ -1470,9 +1546,18 @@ async def send_step_slack(
         raise fastapi.HTTPException(
             status_code=422, detail={'error': 'invalid_channel'}
         )
+    # Read before the key is taken too: a failed read posted nothing.
+    text = params.text
+    if params.ticket:
+        task = await tasks.get(org_id, params.ticket)
+        if task is None:
+            raise fastapi.HTTPException(
+                status_code=422, detail={'error': 'ticket_not_found'}
+            )
+        text = workflow_tickets.with_ticket_block(text, task, org_slug)
 
     async def call() -> dict[str, typing.Any]:
-        posted = await _post_slack(token, params.channel, params.text)
+        posted = await _post_slack(token, params.channel, text)
         return posted.model_dump()
 
     return await runs.once(
@@ -1626,12 +1711,12 @@ async def step_agent_task(
         or task['agent_id'] != agent_id
     ):
         raise _task_key_conflict()
-    summary = (
-        await tasks.last_agent_turn(task)
-        if task['status'] == 'closed'
-        else None
+    if task['status'] != 'closed':
+        return _step_agent_task(task)
+    summary, attributes = await asyncio.gather(
+        tasks.last_agent_turn(task), workflow_tickets.attributes(db, task)
     )
-    return _step_agent_task(task, summary)
+    return {**_step_agent_task(task, summary), **attributes}
 
 
 @workflow_runs_router.post(
