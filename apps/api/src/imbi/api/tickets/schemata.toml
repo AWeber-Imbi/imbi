@@ -117,10 +117,11 @@ sql = '''
 CREATE OR REPLACE FUNCTION tickets.parent_from_origin() RETURNS trigger
 LANGUAGE plpgsql AS $fn$
 BEGIN
-  IF NEW.parent_id IS NULL AND NEW.origin_kind IN ('task', 'ticket') THEN
+  IF NEW.parent_id IS NULL AND NEW.origin_kind IN ('task', 'ticket')
+     AND NEW.origin_id ~ '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$' THEN
     SELECT p.id INTO NEW.parent_id FROM tickets.tickets AS p
      WHERE p.organization_id = NEW.organization_id
-       AND p.id::text = NEW.origin_id;
+       AND p.id = NEW.origin_id::uuid;
   END IF;
   RETURN NEW;
 END
