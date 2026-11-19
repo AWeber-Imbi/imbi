@@ -250,11 +250,21 @@ does not restart an in-process server that ends. The relay returns the
 error as the result of the call instead.
 
 The relay keeps one session per server for the life of the task. It
-opens the session again after a connection error, for example when the
-server closes an idle session. When it refreshes a credential with an
-expiry, it opens the session again with the new headers before the old
-credential expires. A static secret is not resolved again, so a revoked
-grant takes effect at the next task.
+fills the headers on each HTTP request with an `httpx.Auth`, which both
+MCP client transports accept. So a refreshed credential applies to the
+next request, and the session stays open. A static secret is not
+resolved again, so a revoked grant takes effect at the next task.
+
+The relay opens a session again only after a connection error, for
+example when the server closes an idle session. By then the server has
+dropped the old session and any state it kept there, such as a selected
+workspace. The relay cannot restore that state. It starts the result of
+the first call in the new session with a note that the server session
+was reset, so the model can repeat its setup calls.
+
+If a refresh is denied, the relay closes the server's session before
+the old credential expires. Each later call to that server returns an
+error.
 
 The SDK bridge to an in-process server has these limits:
 
@@ -289,6 +299,8 @@ below, and the Conversation tab shows it. No warning fails the task.
   have.
 - A relayed server's URL is not `https`, or its origin changed.
 - A secret value is not a string.
+- The relay opened a server's session again, or a credential refresh
+  was denied.
 
 ### Verified CLI behavior
 
@@ -318,7 +330,11 @@ checked with Claude Agent SDK 0.2.164 and Claude Code 2.1.292:
 - Results of relayed servers reach the model in `<untrusted>` tags.
   Results of a plugin server that the CLI connects to itself do not.
 - A revoked grant does not stop a running task that uses a static
-  secret. A credential with an expiry stops at its next refresh.
+  secret. A credential with an expiry works until its next refresh,
+  which is denied, and the relay then closes the session.
+- A server that keeps state in a session loses it when the session
+  drops. The model learns of the reset from the next result and must
+  set the state up again.
 - The CLI does not know a relayed server's URL, so two relayed servers
   with the same URL both load. Only the checkboxes prevent this.
 - A server that needs `headersHelper`, OAuth, or a URL variable still
@@ -364,10 +380,8 @@ The relay would open a new session for each call, as the Imbi relay
 does, so a renewed token would apply at once.
 
 Not chosen. A third-party session costs a handshake for each call, and
-some servers keep state in a session. A static secret is resolved once
-per task. A credential with an expiry is refreshed on a known schedule,
-and the relay opens a new session when it refreshes one. So a new
-session for each call adds nothing.
+a server that keeps state in a session would lose it after every call.
+The relay already applies a refreshed credential to the open session.
 
 ### Resolve the secrets again on a fixed interval
 
