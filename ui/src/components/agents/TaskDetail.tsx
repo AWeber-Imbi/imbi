@@ -205,6 +205,8 @@ export function TaskDetail({
     navigate(ticketsPath(orgSlug, shortId, 'conversation'), {
       state: { revealSeq: seq } satisfies RevealState,
     })
+  const inspectInTrajectory = (seq: number) =>
+    navigate(`${ticketsPath(orgSlug, shortId, 'trajectory')}#e${seq}`)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -249,6 +251,7 @@ export function TaskDetail({
           {view === 'conversation' ? (
             <ConversationTab
               events={log}
+              onInspect={inspectInTrajectory}
               orgSlug={orgSlug}
               requests={requests}
               task={t}

@@ -1065,6 +1065,43 @@ describe('Tasks', () => {
       )
     })
 
+    it('inspects a Conversation call in the Trajectory', async () => {
+      renderAt('/tickets/acme/T-3/conversation')
+      fireEvent.click(await screen.findByRole('radio', { name: 'Verbose' }))
+      fireEvent.click(
+        await screen.findByRole('button', { name: /Bash uv run pytest -q/ }),
+      )
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Inspect Bash in the trajectory' }),
+      )
+      await waitFor(() =>
+        expect(window.location.pathname).toBe('/tickets/acme/T-3/trajectory'),
+      )
+      expect(window.location.hash).toBe('#e6')
+      const rows = await ledgerRows()
+      await waitFor(() =>
+        expect(rows[4]).toHaveAttribute('aria-selected', 'true'),
+      )
+      expect(
+        screen.getByRole('complementary', { name: 'Inspector' }),
+      ).toHaveTextContent('Failed')
+    })
+
+    it('inspects a subagent call in the Trajectory', async () => {
+      renderAt('/tickets/acme/T-3/conversation')
+      fireEvent.click(await screen.findByRole('radio', { name: 'Verbose' }))
+      fireEvent.click(await screen.findByRole('button', { name: /Find calls/ }))
+      fireEvent.click(await screen.findByRole('button', { name: /^Grep/ }))
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Inspect Grep in the trajectory' }),
+      )
+      await waitFor(() => expect(window.location.hash).toBe('#e7'))
+      const rows = await ledgerRows()
+      await waitFor(() =>
+        expect(rows[6]).toHaveAttribute('aria-selected', 'true'),
+      )
+    })
+
     it('shows a Statistics turn in the Conversation', async () => {
       renderAt('/tickets/acme/T-3/statistics')
       fireEvent.click(
