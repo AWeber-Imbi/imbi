@@ -9,11 +9,13 @@ import { initPostHog } from '@/lib/posthog'
 import { registerPwa } from '@/lib/pwa'
 import { queryClient } from '@/lib/queryClient'
 import { initSentry } from '@/lib/sentry'
+import { migrateLegacyStorage } from '@/lib/utils'
 
 import App from './App.tsx'
 import './index.css'
 
 initSentry()
+migrateLegacyStorage()
 void initPostHog()
 void registerPwa()
 

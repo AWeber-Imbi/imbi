@@ -84,7 +84,7 @@ The organization routes are these routes under
 | Area | Routes |
 |---|---|
 | Agents | `agents` |
-| Agent tasks | `agent-tasks` |
+| Tickets | `tickets`, `agent-tasks` (deprecated) |
 | Agent usage | `agent-usage` |
 | Agent platform | `agent-platform-config`, `agent-marketplaces` |
 | Workflows | `workflows`, `workflow-step-types`, `workflow-runs` |
@@ -315,6 +315,6 @@ it.
 
 <!-- END GENERATED -->
 
-See [Agents](agents.md), [Agent tasks](agent-tasks.md),
+See [Agents](agents.md), [Tickets](tickets.md),
 [Workflows](workflows.md), [Prompts](prompts.md), and
 [Secrets](secrets.md).

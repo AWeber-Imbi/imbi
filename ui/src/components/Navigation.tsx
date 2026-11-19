@@ -77,9 +77,14 @@ export function Navigation({ currentView }: NavigationProps) {
     'harness_pool:read',
     selectedOrganization?.slug,
   )
+  const canReadTickets = useHasPermission(
+    'ticket:read',
+    selectedOrganization?.slug,
+  )
+  const { data: waiting } = useWaitingTaskCount(selectedOrganization?.slug)
   // The dialog lists agents, so it needs agent:read too.
   const canCreateTask =
-    useHasPermission('agent_task:create', selectedOrganization?.slug) &&
+    useHasPermission('ticket:create', selectedOrganization?.slug) &&
     canReadAgents
 
   // Memoize navItems to avoid array mutation on every render
@@ -91,6 +96,9 @@ export function Navigation({ currentView }: NavigationProps) {
         label: 'Projects',
         path: '/projects',
       },
+      ...(canReadTickets
+        ? [{ icon: Inbox, id: 'tickets', label: 'Tickets', path: '/tickets' }]
+        : []),
       {
         icon: FileText,
         id: 'documents',
@@ -117,7 +125,7 @@ export function Navigation({ currentView }: NavigationProps) {
     }
 
     return items
-  }, [isAdmin])
+  }, [canReadTickets, isAdmin])
 
   // Determine active view from route if not explicitly provided
   const activeView =
@@ -172,6 +180,14 @@ export function Navigation({ currentView }: NavigationProps) {
                     <Link to={item.path}>
                       <Icon className="size-4" />
                       <span>{item.label}</span>
+                      {item.id === 'tickets' && waiting ? (
+                        <span
+                          className="font-mono text-xs tabular-nums opacity-70"
+                          title={`${waiting} waiting on you`}
+                        >
+                          {waiting}
+                        </span>
+                      ) : null}
                     </Link>
                   </Button>
                 )
@@ -268,7 +284,7 @@ export function Navigation({ currentView }: NavigationProps) {
                 {canCreateTask && (
                   <DropdownMenuItem onClick={() => setNewTaskOpen(true)}>
                     <Inbox className="mr-2 size-4" />
-                    <span>New Agent Task</span>
+                    <span>New Ticket</span>
                   </DropdownMenuItem>
                 )}
               </DropdownMenuContent>
@@ -378,8 +394,6 @@ export function Navigation({ currentView }: NavigationProps) {
 /** The Agents entry: a menu of the pages in the Agents area. */
 function AgentsMenu({ isActive }: { isActive: boolean }) {
   const navigate = useNavigate()
-  const { selectedOrganization } = useOrganization()
-  const { data: waiting } = useWaitingTaskCount(selectedOrganization?.slug)
   const agentsNav = useAgentsNav()
   return (
     <DropdownMenu modal={false}>
@@ -411,13 +425,7 @@ function AgentsMenu({ isActive }: { isActive: boolean }) {
                 <Icon className="text-tertiary size-4" />
                 <span className="flex flex-col">
                   <span className="text-sm font-medium">{item.label}</span>
-                  {item.id === 'tasks' && waiting ? (
-                    <span className="text-amber-text text-xs">
-                      {waiting} waiting on you
-                    </span>
-                  ) : (
-                    <span className="text-tertiary text-xs">{item.note}</span>
-                  )}
+                  <span className="text-tertiary text-xs">{item.note}</span>
                 </span>
               </DropdownMenuItem>
             </div>

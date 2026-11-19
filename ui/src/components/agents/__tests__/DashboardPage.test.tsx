@@ -11,12 +11,12 @@ import { task } from './taskFixtures'
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', () => ({
-  acknowledgeAgentTask: vi.fn(),
-  countWaitingAgentTasks: vi.fn(),
+  acknowledgeTicket: vi.fn(),
+  countWaitingTickets: vi.fn(),
   getAgentUsage: vi.fn(),
   listAdminUsers: vi.fn(),
   listAgents: vi.fn(),
-  listAgentTasks: vi.fn(),
+  listTickets: vi.fn(),
 }))
 
 // fallow-ignore-next-line unresolved-import
@@ -119,9 +119,9 @@ describe('Dashboard', () => {
       agent(),
       agent({ id: 'agt-2', name: 'Herald', slug: 'herald' }),
     ])
-    vi.mocked(endpoints.countWaitingAgentTasks).mockResolvedValue({ count: 3 })
-    vi.mocked(endpoints.listAgentTasks).mockImplementation(
-      async (_org, params) => (params.status ? OPEN : RECENT),
+    vi.mocked(endpoints.countWaitingTickets).mockResolvedValue({ count: 3 })
+    vi.mocked(endpoints.listTickets).mockImplementation(async (_org, params) =>
+      params.status ? OPEN : RECENT,
     )
     vi.mocked(endpoints.getAgentUsage).mockResolvedValue(
       usage({
@@ -163,19 +163,18 @@ describe('Dashboard', () => {
 
   it('acknowledges a failed task and leaves acknowledged ones out', async () => {
     let acked = false
-    vi.mocked(endpoints.acknowledgeAgentTask).mockImplementation(async () => {
+    vi.mocked(endpoints.acknowledgeTicket).mockImplementation(async () => {
       acked = true
       return { ...RECENT[2], acknowledged_at: ago(0) }
     })
-    vi.mocked(endpoints.listAgentTasks).mockImplementation(
-      async (_org, params) =>
-        params.status
-          ? OPEN
-          : RECENT.map((t) =>
-              t.id === 'T-9' || (acked && t.id === 'T-7')
-                ? { ...t, acknowledged_at: ago(0) }
-                : t,
-            ),
+    vi.mocked(endpoints.listTickets).mockImplementation(async (_org, params) =>
+      params.status
+        ? OPEN
+        : RECENT.map((t) =>
+            t.id === 'T-9' || (acked && t.id === 'T-7')
+              ? { ...t, acknowledged_at: ago(0) }
+              : t,
+          ),
     )
     renderAt('/agents/dashboard')
     const items = await links('Needs attention')
@@ -184,10 +183,7 @@ describe('Dashboard', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: 'Acknowledge T-7' }))
     await waitFor(() =>
-      expect(endpoints.acknowledgeAgentTask).toHaveBeenCalledWith(
-        'acme',
-        'T-7',
-      ),
+      expect(endpoints.acknowledgeTicket).toHaveBeenCalledWith('acme', 'T-7'),
     )
     // The success refresh removes it before the next poll.
     await waitFor(async () =>
@@ -243,8 +239,8 @@ describe('Dashboard', () => {
 
   it('shows empty states', async () => {
     vi.mocked(endpoints.listAgents).mockResolvedValue([])
-    vi.mocked(endpoints.countWaitingAgentTasks).mockResolvedValue({ count: 0 })
-    vi.mocked(endpoints.listAgentTasks).mockResolvedValue([])
+    vi.mocked(endpoints.countWaitingTickets).mockResolvedValue({ count: 0 })
+    vi.mocked(endpoints.listTickets).mockResolvedValue([])
     vi.mocked(endpoints.getAgentUsage).mockResolvedValue(
       usage({ agents: [], days: [], month_to_date: {} }),
     )
@@ -259,7 +255,7 @@ describe('Dashboard', () => {
       screen.getByText('Nobody is waiting on a request.'),
     ).toBeInTheDocument()
     expect(
-      screen.getByText('No tasks yet. Start one with Run on an agent.'),
+      screen.getByText('No tickets yet. Start one with Run on an agent.'),
     ).toBeInTheDocument()
     expect(screen.getByText('nobody waiting')).toBeInTheDocument()
   })

@@ -2,7 +2,7 @@ import { memo, type ReactNode } from 'react'
 
 import { RichMarkdown } from '@/components/ui/rich-markdown'
 import { cn } from '@/lib/utils'
-import type { AgentTaskEvent } from '@/types'
+import type { TicketEvent } from '@/types'
 
 import { useTaskSearch } from './taskSearch'
 import { type Family, label, OUTPUT_LINES } from './toolCalls'
@@ -28,7 +28,7 @@ export const Prose = memo(function Prose({ children }: { children: string }) {
   )
 })
 
-export function Todos({ event }: { event: AgentTaskEvent }) {
+export function Todos({ event }: { event: TicketEvent }) {
   const todos = (event.payload.todos ?? []) as {
     done?: boolean
     title?: string

@@ -20,19 +20,19 @@ const FOLDS: {
   {
     icon: MessagesSquare,
     key: 'turns',
-    none: 'This task has no turns yet.',
+    none: 'This ticket has no turns yet.',
     noun: 'turns',
   },
   {
     icon: Wrench,
     key: 'calls',
-    none: 'No turn in this task made a tool call.',
+    none: 'No turn in this ticket made a tool call.',
     noun: 'tool calls',
   },
   {
     icon: Bot,
     key: 'subcalls',
-    none: 'No subagent ran in this task.',
+    none: 'No subagent ran in this ticket.',
     noun: 'subagent calls',
   },
 ]

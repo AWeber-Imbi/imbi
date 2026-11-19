@@ -25,6 +25,38 @@ export function extractDynamicFields(
 }
 
 /**
+ * Move the localStorage keys that ADR 0028 renamed. Call once at startup,
+ * before a page reads them. Remove in release B.
+ */
+export function migrateLegacyStorage(): void {
+  migrateStorageKey(
+    'imbi:agent-task:conversation-mode',
+    'imbi:ticket:conversation-mode',
+  )
+  // The react-resizable-panels key: the group id, then the panel ids.
+  migrateStorageKey(
+    'react-resizable-panels:imbi:agent-tasks:split:list:detail',
+    'react-resizable-panels:imbi:tickets:split:list:detail',
+  )
+}
+
+/**
+ * Move a localStorage value from an old key to a new key, once. A value
+ * already at the new key wins. Storage can be blocked; then nothing moves.
+ */
+export function migrateStorageKey(from: string, to: string): void {
+  try {
+    const old = window.localStorage.getItem(from)
+    if (old === null) return
+    if (window.localStorage.getItem(to) === null)
+      window.localStorage.setItem(to, old)
+    window.localStorage.removeItem(from)
+  } catch {
+    // Blocked or full storage: the reader starts from the default.
+  }
+}
+
+/**
  * Parse a blueprint's filter field (string or object) into a typed
  * BlueprintFilter, returning null on missing/invalid input.
  */
