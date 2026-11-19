@@ -1306,6 +1306,25 @@ class ControlTests(AgentTaskTestCase):
         response = await self.post('reassign', owner='stranger@example.com')
         self.assertEqual(response.status_code, 422, response.text)
 
+    async def test_priority(self) -> None:
+        self.assertEqual(self.task['priority'], 'normal')
+        response = await self.post('priority', priority='urgent')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['priority'], 'urgent')
+        events = (await self.client.get(self.url('T-1/events'))).json()
+        self.assertEqual(events[-1]['type'], 'priority.changed')
+        self.assertEqual(
+            events[-1]['payload'], {'from': 'normal', 'to': 'urgent'}
+        )
+        response = await self.post('priority', priority='critical')
+        self.assertEqual(response.status_code, 422, response.text)
+        response = await self.create_task(priority='low')
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(response.json()['priority'], 'low')
+        await self.post('cancel')
+        response = await self.post('priority', priority='high')
+        self.assertEqual(response.status_code, 409, response.text)
+
     async def test_unknown_task_is_404(self) -> None:
         response = await self.client.post(self.url('T-9/pause'))
         self.assertEqual(response.status_code, 404, response.text)
@@ -1358,7 +1377,7 @@ class RetryTests(AgentTaskTestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
         await self.make_agent()
-        await self.create_task(project_ids=[self.project_id])
+        await self.create_task(project_ids=[self.project_id], priority='high')
 
     async def fail(
         self, turn: str | None = 'I could not read\nthe secret.'
@@ -1401,6 +1420,7 @@ class RetryTests(AgentTaskTestCase):
         task = response.json()
         self.assertEqual(task['short_id'], 'T-2')
         self.assertEqual(task['title'], 'Look at the build')
+        self.assertEqual(task['priority'], 'high')
         self.assertEqual(
             [p['project_id'] for p in task['projects']], [self.project_id]
         )

@@ -107,6 +107,7 @@ Status = typing.Literal[
     'closed',
 ]
 Control = typing.Literal['run', 'pause', 'cancel']
+Priority = typing.Literal['low', 'normal', 'high', 'urgent']
 ActorKind = typing.Literal['human', 'agent', 'subagent', 'system']
 Channel = typing.Literal['web', 'slack', 'mcp', 'api', 'harness']
 Outcome = agent_step.Outcome
@@ -282,6 +283,7 @@ class NewTask:
     #: The JSON Schema of the structured output that the agent must
     #: return. ``None``: the task asks for none.
     output_schema: Row | None = None
+    priority: Priority = 'normal'
 
 
 @dataclasses.dataclass(frozen=True)
@@ -632,9 +634,9 @@ class TicketStore:
                     ' service_account_id, title,'
                     ' description, origin_kind, origin_id, origin,'
                     ' idempotency_key, owner, budget, chain_id,'
-                    ' output_schema, platform_config_version) VALUES (%s,'
-                    ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
-                    ' %s, %s, %s, %s, (SELECT max(version)'
+                    ' output_schema, priority, platform_config_version)'
+                    ' VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
+                    ' %s, %s, %s, %s, %s, %s, %s, (SELECT max(version)'
                     ' FROM harness.platform_configs'
                     ' WHERE organization_id = %s))',
                     (
@@ -655,6 +657,7 @@ class TicketStore:
                         task.budget,
                         task.chain_id or task_id,
                         _jsonb(task.output_schema),
+                        task.priority,
                         task.organization_id,
                     ),
                 )
@@ -1200,6 +1203,30 @@ class TicketStore:
                     actor,
                 )
                 await write.update({'owner': owner})
+        return write.task
+
+    async def set_priority(
+        self,
+        organization_id: str,
+        short_id: str,
+        priority: Priority,
+        actor: Actor,
+    ) -> Row:
+        """Set the priority of the task and write ``priority.changed``.
+
+        Raises:
+            TaskNotFound: No such task.
+            TaskClosed: The task is closed.
+
+        """
+        async with self._write(organization_id, short_id) as write:
+            if write.task['priority'] != priority:
+                await write.event(
+                    'priority.changed',
+                    {'from': write.task['priority'], 'to': priority},
+                    actor,
+                )
+                await write.update({'priority': priority})
         return write.task
 
     async def acknowledge(

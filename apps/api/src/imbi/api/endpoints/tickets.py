@@ -45,6 +45,7 @@ from imbi.api.tickets.store import (
     Channel,
     Control,
     Group,
+    Priority,
     ResolvedStatus,
     Status,
 )
@@ -119,6 +120,7 @@ class AgentTaskCreate(pydantic.BaseModel):
         max_length=200,
         description='A repeat with the same key returns the first task.',
     )
+    priority: Priority = 'normal'
 
     @pydantic.model_validator(mode='before')
     @classmethod
@@ -158,6 +160,10 @@ class AgentTaskReassign(pydantic.BaseModel):
     owner: pydantic.EmailStr = pydantic.Field(
         description='The email of the new owner. Must be in the org.'
     )
+
+
+class AgentTaskPriority(pydantic.BaseModel):
+    priority: Priority
 
 
 class AgentTaskOrigin(pydantic.BaseModel):
@@ -215,6 +221,7 @@ class AgentTaskResponse(pydantic.BaseModel):
     budget: decimal.Decimal | None = None
     status: Status
     control: Control
+    priority: Priority = 'normal'
     phase: str | None = None
     outcome: str | None = None
     outcome_reason: str | None = None
@@ -1172,6 +1179,7 @@ async def make_task(
             owner=owner,
             budget=budget,
             output_schema=output_schema,
+            priority=data.priority,
         ),
         actor,
         {
@@ -1181,6 +1189,7 @@ async def make_task(
             'budget': None if budget is None else str(budget),
             'agent_version': agent_version,
             'prompt_version': prompt_version,
+            'priority': data.priority,
         },
     )
 
@@ -1694,6 +1703,7 @@ async def retry_agent_task(
         title=task['title'],
         description=retry_description(task, last_turn, data.note, user.email),
         project_ids=[p['project_id'] for p in task['projects']],
+        priority=task['priority'],
     )
     return await _create_task(
         db,
@@ -1737,6 +1747,39 @@ async def reassign_agent_task(
     try:
         return await store.set_owner(
             org_id, short_id.upper(), data.owner, _actor(auth)
+        )
+    except tickets.TaskNotFound as e:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'Task {short_id!r} not found'
+        ) from e
+    except tickets.TaskClosed as e:
+        raise fastapi.HTTPException(
+            status_code=409, detail=f'Task {short_id!r} is closed'
+        ) from e
+
+
+@tickets_router.post('/{short_id}/priority', response_model=AgentTaskResponse)
+async def set_agent_task_priority(
+    org_id: OrgId,
+    short_id: str,
+    data: AgentTaskPriority,
+    store: tickets.Store,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('agent_task:manage')),
+    ],
+) -> dict[str, typing.Any]:
+    """Set the priority of a task.
+
+    Raises:
+        403: The caller is not a member of the org.
+        404: No such task.
+        409: The task is closed.
+
+    """
+    try:
+        return await store.set_priority(
+            org_id, short_id.upper(), data.priority, _actor(auth)
         )
     except tickets.TaskNotFound as e:
         raise fastapi.HTTPException(
