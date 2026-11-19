@@ -577,6 +577,10 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(params['previous_slugs'], ['middle', 'engineering'])
         self.assertEqual(params['slug'], 'eng')
         self.assertEqual(params['original_slug'], 'engineering')
+        # The lookups and the SET match the id that the endpoint read.
+        for call in self.mock_db.execute.call_args_list[:3]:
+            self.assertIn('id: {org_id}', call.args[0])
+            self.assertEqual(call.args[1]['org_id'], self.test_org.id)
 
     def test_patch_organization_no_rename_skips_previous_slugs(
         self,
@@ -614,6 +618,7 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
         set_call = self.mock_db.execute.call_args_list[0]
         params = set_call.args[1]
         self.assertNotIn('previous_slugs', params)
+        self.assertEqual(params['org_id'], self.test_org.id)
 
     def test_patch_organization_tag_formats(self) -> None:
         """Patching tag_formats persists the list in the SET params."""
