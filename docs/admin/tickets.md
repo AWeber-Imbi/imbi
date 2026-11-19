@@ -45,6 +45,7 @@ when it has the permission.
 
 | State | Label | Meaning |
 |---|---|---|
+| `held` | Held | A gating prerequisite holds the ticket. A runner does not take it |
 | `queued` | Queued | The ticket waits for a runner |
 | `running` | Running | A runner works on the ticket |
 | `blocked` | Needs input | The agent waits for an answer or an approval |
@@ -368,6 +369,29 @@ relation:
 | Parent | Move this ticket, with its descendants, under the other ticket |
 
 A ticket cannot require itself.
+
+**Gating dependencies**: a dependency is a link only, unless you select
+**Gating** in **Link ticket**. A gating prerequisite holds the dependent
+ticket until the prerequisite closes with `done_acted` or
+`done_nothing_to_act_on`.
+
+- A `queued` ticket that gets an open gating prerequisite becomes `held`.
+  The tab shows "Held: waiting on" and the prerequisites that hold it.
+- A ticket that has started (not `queued` or `held`) refuses a gating
+  prerequisite with `409` and `ticket_started`.
+- When the last gating prerequisite closes with a `done_*` outcome, the
+  dependent becomes `queued` (`paused` if a person paused it while it was
+  held), in the same transaction as the close.
+- When a gating prerequisite closes with another outcome, the dependent
+  stays `held`. Cancel it, remove the dependency, or add a new
+  prerequisite. When you remove the last gate, or delete the prerequisite,
+  the dependent is released.
+- Pause and resume change only the control value of a held ticket. Cancel
+  closes it.
+
+With the API: `PUT /organizations/{org}/tickets/{short_id}/requires/{prerequisite}`
+with `{"gates": true}`. A request without `gates`, or with `false`, makes
+an existing gate a plain link.
 
 **Parent tickets**: a ticket can have one parent in its organization. A
 ticket that an agent makes from its own ticket starts with that ticket as

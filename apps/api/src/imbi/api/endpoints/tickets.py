@@ -384,6 +384,9 @@ class RelatedTask(pydantic.BaseModel):
     linked_by_kind: ActorKind | None = None
     linked_by: str | None = None
     linked_at: datetime.datetime | None = None
+    #: Whether the prerequisite holds the dependent until it closes with
+    #: a ``done_*`` outcome (ADR 0028). ``null`` for a parent or child.
+    gates: bool | None = None
 
 
 class TicketTree(pydantic.BaseModel):
@@ -402,8 +405,9 @@ class AgentTaskRelations(pydantic.BaseModel):
 
     ``requires`` are the prerequisites of this task; ``required_by`` are
     the tasks that have this task as a prerequisite. A prerequisite is a
-    link only: a runner can still claim a task whose prerequisite is
-    open. ``parent`` and ``children`` come from the parent of each
+    link only, unless it ``gates``: a gating prerequisite holds the task
+    (status ``held``, never claimed) until it closes with a ``done_*``
+    outcome. ``parent`` and ``children`` come from the parent of each
     ticket. ``tree`` is the state of the tree of the ticket.
     """
 
@@ -412,6 +416,17 @@ class AgentTaskRelations(pydantic.BaseModel):
     parent: RelatedTask | None = None
     children: list[RelatedTask]
     tree: TicketTree
+
+
+class TicketDependencySet(pydantic.BaseModel):
+    """The kind of a dependency."""
+
+    gates: bool = pydantic.Field(
+        default=False,
+        description='Hold the ticket until the prerequisite closes with a '
+        '``done_*`` outcome. Only a ticket that has not started (``queued`` '
+        'or ``held``) can get a gating prerequisite.',
+    )
 
 
 class TicketParentSet(pydantic.BaseModel):
@@ -975,6 +990,12 @@ def relation_errors() -> abc.Generator[None]:
     except tickets.ParentCycle as e:
         raise _conflict(
             'parent_cycle', f'Task {str(e)!r} cannot be its own ancestor'
+        ) from e
+    except tickets.TicketStarted as e:
+        raise _conflict(
+            'ticket_started',
+            f'Task {str(e)!r} has started; a gating prerequisite cannot'
+            ' hold it',
         ) from e
 
 
@@ -1558,7 +1579,7 @@ async def delete_agent_task(
 
     """
     try:
-        task = await store.delete(org_id, short_id.upper())
+        task = await store.delete(org_id, short_id.upper(), _actor(auth))
     except tickets.TaskNotFound as e:
         raise fastapi.HTTPException(
             status_code=404, detail=f'Task {short_id!r} not found'
@@ -1940,25 +1961,35 @@ async def add_agent_task_dependency(
     prerequisite: str,
     store: tickets.Store,
     auth: ManagingPerson,
+    data: TicketDependencySet = TicketDependencySet(),  # noqa: B008
 ) -> None:
     """Make the task require the ``prerequisite`` task, in the same org.
 
-    A dependency is information only: it does not change a status. Each
-    task gets a ``dependency.added`` event; an archived task gets none.
-    When the dependency exists, nothing changes.
+    A dependency is information only, unless it ``gates`` (ADR 0028): a
+    ``queued`` task then becomes ``held`` until the prerequisite closes
+    with a ``done_*`` outcome. Each task gets a ``dependency.added``
+    event; an archived task gets none. When the dependency exists with
+    the same ``gates`` value, nothing changes; with another value, the
+    value changes.
 
     Raises:
         403: The caller is not a person, has no ``agent_task:manage``,
             or is not a member of the org.
         404: No such task.
         409: ``task_archived``: both tasks are archived.
+            ``ticket_started``: ``gates`` and the task is not ``queued``
+            or ``held``.
         422: The two tasks are the same.
 
     """
     _ = auth.require_user  # raises 403 for a caller that is not a person
     with relation_errors():
         await store.add_dependency(
-            org_id, short_id.upper(), prerequisite.upper(), _actor(auth)
+            org_id,
+            short_id.upper(),
+            prerequisite.upper(),
+            _actor(auth),
+            gates=data.gates,
         )
 
 
@@ -1973,8 +2004,8 @@ async def remove_agent_task_dependency(
     """Remove the dependency of the task on the ``prerequisite`` task.
 
     Each task gets a ``dependency.removed`` event with the removed row;
-    an archived task gets none. When there is no such dependency,
-    nothing changes.
+    an archived task gets none. A ``held`` task that no other gate holds
+    is released. When there is no such dependency, nothing changes.
 
     Raises:
         403: The caller is not a person, has no ``agent_task:manage``,

@@ -170,6 +170,26 @@ describe('Related tasks', () => {
     )
   })
 
+  it('shows the open gates of a held ticket', async () => {
+    vi.mocked(endpoints.getTicketRelations).mockResolvedValue({
+      ...RELATIONS,
+      requires: [
+        related('T-2', {
+          gates: true,
+          outcome: 'done_acted',
+          status: 'closed',
+        }),
+        related('T-5', { gates: true }),
+        related('T-7'),
+      ],
+    })
+    render(<RelatedTasksTab orgSlug="acme" task={task({ status: 'held' })} />)
+    expect((await screen.findByText(/^Held: waiting on/)).textContent).toBe(
+      'Held: waiting on T-5',
+    )
+    expect(screen.getAllByText('gated by')).toHaveLength(2)
+  })
+
   it('hides changes without agent_task:manage', async () => {
     auth.permissions = ['agent:read']
     render(<RelatedTasksTab orgSlug="acme" task={task()} />)
@@ -293,6 +313,23 @@ describe('Link task dialog', () => {
       'T-5',
       'T-1',
       true,
+      false,
+    )
+  })
+
+  it('links a gating prerequisite', async () => {
+    renderDialog()
+    fireEvent.click(await screen.findByRole('button', { name: /T-5/ }))
+    fireEvent.click(screen.getByRole('checkbox'))
+    fireEvent.click(screen.getByRole('button', { name: /^Link$/ }))
+    await waitFor(() =>
+      expect(endpoints.setTicketDependency).toHaveBeenCalledWith(
+        'acme',
+        'T-1',
+        'T-5',
+        true,
+        true,
+      ),
     )
   })
 
@@ -323,6 +360,7 @@ describe('Link task dialog', () => {
         'T-1',
         'T-5',
         true,
+        false,
       ),
     )
   })

@@ -435,6 +435,15 @@ class ClaimTests(RunnerTestCase):
         self.act_as(self.account)
         self.assertIsNone(await self.claim(await self.register()))
 
+    async def test_held_task_is_not_claimed(self) -> None:
+        # A gating prerequisite holds the task (ADR 0028).
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE tickets.tickets SET status = 'held' WHERE id = %s",
+                (uuid.UUID(self.task['id']),),
+            )
+        self.assertIsNone(await self.claim(await self.register()))
+
 
 class FailedClaimTests(RunnerTestCase):
     async def runner_row(self, runner: dict[str, typing.Any]) -> typing.Any:

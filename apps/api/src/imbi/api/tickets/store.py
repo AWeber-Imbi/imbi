@@ -90,8 +90,9 @@ async def run_close_hooks(task: Row) -> None:
             )
 
 
-#: ``held``, ``open``, and ``in_progress`` are read but not written yet:
-#: a later release writes them (ADR 0028), and this release must read
+#: ``held`` is the status of a ticket that an open gating prerequisite
+#: holds (ADR 0028). ``open`` and ``in_progress`` are read but not
+#: written yet: a later release writes them, and this release must read
 #: its rows.
 Status = typing.Literal[
     'held',
@@ -107,6 +108,9 @@ Control = typing.Literal['run', 'pause', 'cancel']
 ActorKind = typing.Literal['human', 'agent', 'subagent', 'system']
 Channel = typing.Literal['web', 'slack', 'mcp', 'api', 'harness']
 Outcome = agent_step.Outcome
+
+#: The outcomes that release the dependents of a gating prerequisite.
+DONE_OUTCOMES: tuple[Outcome, ...] = ('done_acted', 'done_nothing_to_act_on')
 
 #: The open requests of the task ``t`` that a person can still resolve.
 #: A task that is not closed and has one waits on a person (O1), also
@@ -159,12 +163,22 @@ _SELECT_TASKS: typing.LiteralString = (
 #: link. ``this`` is the column of the task, ``other`` the other column.
 _LINKED_TASKS = sql.SQL(
     'SELECT t.*, d.created_by_kind AS linked_by_kind,'
-    ' d.created_by AS linked_by, d.created_at AS linked_at'
+    ' d.created_by AS linked_by, d.created_at AS linked_at, d.gates'
     ' FROM tickets.ticket_dependencies AS d'
     ' JOIN tickets.tickets AS t'
     ' ON t.organization_id = d.organization_id AND t.id = d.{other}'
     ' WHERE d.organization_id = %s AND d.{this} = %s'
     ' ORDER BY d.created_at, t.id'
+)
+
+#: True when a gating prerequisite holds the ticket ``%s``: one that
+#: is not closed with an outcome in ``%s`` (:data:`DONE_OUTCOMES`).
+_GATED: typing.LiteralString = (
+    'SELECT EXISTS (SELECT 1 FROM tickets.ticket_dependencies AS d'
+    ' JOIN tickets.tickets AS p ON p.organization_id = d.organization_id'
+    ' AND p.id = d.prerequisite_ticket_id'
+    ' WHERE d.dependent_ticket_id = %s AND d.gates'
+    " AND NOT (p.status = 'closed' AND p.outcome = ANY(%s)))"
 )
 
 #: The ticket ``%s`` and its ancestors, as ``up (id, parent_id)``.
@@ -275,6 +289,10 @@ class ParentCycle(ValueError):
 
 class SelfDependency(ValueError):
     """A task cannot depend on itself."""
+
+
+class TicketStarted(ValueError):
+    """The ticket has started, so a gating dependency cannot hold it."""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -436,6 +454,10 @@ class _Write:
     task: Row
     events: list[Row] = dataclasses.field(default_factory=list[Row])
     ledger: list[Row] = dataclasses.field(default_factory=list[Row])
+    #: The dependents that a close released, with their events.
+    released: list[tuple[Row, list[Row]]] = dataclasses.field(
+        default_factory=list[tuple[Row, list[Row]]]
+    )
 
     async def event(
         self, event_type: str, payload: Row, actor: Actor, **kwargs: typing.Any
@@ -467,7 +489,7 @@ class _Write:
 class _Relate:
     """One change to the relations of locked tasks.
 
-    ``tasks`` are in task id order. An event goes to each task whose log
+    ``tasks`` are in lock order. An event goes to each task whose log
     is not archived; an archived task is sealed. All events of the change
     share ``operation_id``.
     """
@@ -497,6 +519,12 @@ class _Relate:
                 actor,
             )
             self.events.setdefault(task['id'], []).append(row)
+
+    async def sync_gate(self, task: Row, actor: Actor) -> None:
+        """Hold or release ``task`` by its gates; see :func:`_sync_gate`."""
+        write = _Write(self.conn, task)
+        await _sync_gate(write, actor)
+        self.events.setdefault(task['id'], []).extend(write.events)
 
 
 def _search_filters(
@@ -577,6 +605,8 @@ class TicketStore:
                     # Event writes change ``last_seq``.
                     write.task = await _fetch_task(conn, write.task['id'])
         await log.publish(write.task, write.events, write.ledger)
+        for task, events in write.released:
+            await log.publish(task, events)
         # The lock refuses a closed task, so this write closed it.
         if write.task['status'] == 'closed':
             await run_close_hooks(write.task)
@@ -1074,11 +1104,14 @@ class TicketStore:
             )
         return True
 
-    async def delete(self, organization_id: str, short_id: str) -> Row:
+    async def delete(
+        self, organization_id: str, short_id: str, actor: Actor
+    ) -> Row:
         """Delete a closed task and return its row.
 
         Its events, sessions, requests, budget ledger, and harness rows
-        go by cascade; its dependency and project rows go here. The
+        go by cascade; its dependency and project rows go here. A
+        ``held`` dependent that no other gate holds is released. The
         secret resolutions and the ClickHouse rows (archived events,
         usage) stay, for the security and cost history.
 
@@ -1141,12 +1174,19 @@ class TicketStore:
             )
             if await cursor.fetchone() is not None:
                 raise TaskOpen(short_id)
-            await conn.execute(
+            cursor = await conn.execute(
                 'DELETE FROM tickets.ticket_dependencies'
                 ' WHERE organization_id = %s'
                 ' AND (dependent_ticket_id = %s'
-                ' OR prerequisite_ticket_id = %s)',
+                ' OR prerequisite_ticket_id = %s)'
+                ' RETURNING dependent_ticket_id, gates',
                 (organization_id, task['id'], task['id']),
+            )
+            # A held dependent of the task loses a gate.
+            released = await _release_dependents(
+                conn,
+                [row[0] for row in await cursor.fetchall() if row[1]],
+                actor,
             )
             await conn.execute(
                 'DELETE FROM tickets.ticket_projects'
@@ -1156,6 +1196,8 @@ class TicketStore:
             await conn.execute(
                 'DELETE FROM tickets.tickets WHERE id = %s', (task['id'],)
             )
+        for dependent, events in released:
+            await log.publish(dependent, events)
         return task
 
     async def set_control(
@@ -1278,9 +1320,11 @@ class TicketStore:
     ) -> abc.AsyncGenerator[_Relate]:
         """Lock tasks for a change to their relations, then publish.
 
-        The tasks lock in task id order, so two changes on one pair of
-        tasks cannot deadlock. A closed task takes relation events until
-        its log is archived.
+        The tasks lock in the order of ``short_ids``. A dependency change
+        gives the prerequisite first, as a close that releases dependents
+        locks them (:func:`_release_dependents`), so the two cannot
+        deadlock. A closed task takes relation events until its log is
+        archived.
 
         Raises:
             TaskNotFound: No such task.
@@ -1308,44 +1352,62 @@ class TicketStore:
         dependent: str,
         prerequisite: str,
         actor: Actor,
+        *,
+        gates: bool = False,
     ) -> bool:
         """Make ``dependent`` require ``prerequisite``.
 
         Write ``dependency.added`` on both tasks, or only on the one that
-        is not archived. Return ``False`` and write no event when the
-        dependency exists.
+        is not archived. With ``gates``, an open prerequisite holds the
+        dependent (ADR 0028): a ``queued`` dependent becomes ``held``.
+        A prerequisite that is closed with a ``done_*`` outcome does not
+        hold it. When the dependency exists with another ``gates``
+        value, the value changes and the event is written again, with
+        the new row. Return ``False`` and write no event when the
+        dependency exists with the same value.
 
         Raises:
             SelfDependency: The two short ids are the same.
             TaskNotFound: No such task.
             TaskArchived: Both tasks are archived.
+            TicketStarted: ``gates`` and the dependent is not ``queued``
+                or ``held``.
 
         """
         if dependent == prerequisite:
             raise SelfDependency(dependent)
         async with self._relate(
-            organization_id, [dependent, prerequisite]
+            organization_id, [prerequisite, dependent]
         ) as relate:
-            ids = {task['short_id']: task['id'] for task in relate.tasks}
+            by_short_id = {task['short_id']: task for task in relate.tasks}
+            task = by_short_id[dependent]
+            if gates and task['status'] not in ('queued', 'held'):
+                raise TicketStarted(dependent)
             row = await _fetch_one(
                 relate.conn,
                 'INSERT INTO tickets.ticket_dependencies'
                 ' (organization_id, dependent_ticket_id,'
-                ' prerequisite_ticket_id, created_by_kind, created_by)'
-                ' VALUES (%s, %s, %s, %s, %s)'
-                ' ON CONFLICT DO NOTHING RETURNING *',
+                ' prerequisite_ticket_id, created_by_kind, created_by,'
+                ' gates) VALUES (%s, %s, %s, %s, %s, %s)'
+                ' ON CONFLICT (organization_id, dependent_ticket_id,'
+                ' prerequisite_ticket_id) DO UPDATE SET gates = EXCLUDED.gates'
+                ' WHERE ticket_dependencies.gates <> EXCLUDED.gates'
+                ' RETURNING *',
                 (
                     organization_id,
-                    ids[dependent],
-                    ids[prerequisite],
+                    task['id'],
+                    by_short_id[prerequisite]['id'],
                     actor.kind,
                     actor.id,
+                    gates,
                 ),
             )
             if row is not None:
                 await relate.event(
                     'dependency.added', _dependency_payload(relate, row), actor
                 )
+                if gates or task['status'] == 'held':
+                    await relate.sync_gate(task, actor)
         return row is not None
 
     async def remove_dependency(
@@ -1358,8 +1420,9 @@ class TicketStore:
         """Remove the dependency of ``dependent`` on ``prerequisite``.
 
         Write ``dependency.removed``, with the removed row, as
-        :meth:`add_dependency` writes ``dependency.added``. Return
-        ``False`` and write no event when there is no such dependency.
+        :meth:`add_dependency` writes ``dependency.added``. A ``held``
+        dependent that no other gate holds is released. Return ``False``
+        and write no event when there is no such dependency.
 
         Raises:
             TaskNotFound: No such task.
@@ -1367,15 +1430,16 @@ class TicketStore:
 
         """
         async with self._relate(
-            organization_id, [dependent, prerequisite]
+            organization_id, [prerequisite, dependent]
         ) as relate:
-            ids = {task['short_id']: task['id'] for task in relate.tasks}
+            by_short_id = {task['short_id']: task for task in relate.tasks}
+            task = by_short_id[dependent]
             row = await _fetch_one(
                 relate.conn,
                 'DELETE FROM tickets.ticket_dependencies'
                 ' WHERE organization_id = %s AND dependent_ticket_id = %s'
                 ' AND prerequisite_ticket_id = %s RETURNING *',
-                (organization_id, ids[dependent], ids[prerequisite]),
+                (organization_id, task['id'], by_short_id[prerequisite]['id']),
             )
             if row is not None:
                 await relate.event(
@@ -1383,6 +1447,8 @@ class TicketStore:
                     _dependency_payload(relate, row),
                     actor,
                 )
+                if row['gates']:
+                    await relate.sync_gate(task, actor)
         return row is not None
 
     async def associate_project(
@@ -2289,7 +2355,9 @@ async def requeue_chain(
             actor,
         )
         status: Status = 'queued'
-        if task['control'] == 'pause':
+        if task['status'] == 'held':
+            status = 'held'
+        elif task['control'] == 'pause':
             status = 'paused'
         elif await _request_open(conn, task['id']):
             status = 'blocked'
@@ -2357,6 +2425,9 @@ async def _apply_control(
             if await _request_open(write.conn, task['id'])
             else 'running'
         )
+    # Only a release moves a held ticket on; it reads the control.
+    if task['status'] == 'held' and status != 'closed':
+        status = 'held'
     if status != task['status']:
         changes['status'] = status
         await write.event(
@@ -2395,13 +2466,67 @@ async def _set_status(
     await write.update({'status': status})
 
 
+async def _sync_gate(write: _Write, actor: Actor) -> None:
+    """Hold or release a ticket that has not started, by its gates.
+
+    A ``queued`` ticket that an open gating prerequisite holds becomes
+    ``held``. A ``held`` ticket that nothing holds becomes ``queued``,
+    or ``paused`` when its control is ``pause``. Other statuses do not
+    change. The caller holds the row lock of the ticket.
+    """
+    task = write.task
+    if task['status'] not in ('queued', 'held'):
+        return
+    cursor = await write.conn.execute(
+        _GATED, (task['id'], list(DONE_OUTCOMES))
+    )
+    row = await cursor.fetchone()
+    if row and row[0]:
+        if task['status'] == 'queued':
+            await _set_status(write, 'held', 'gated', actor)
+    elif task['status'] == 'held':
+        status: Status = 'paused' if task['control'] == 'pause' else 'queued'
+        await _set_status(write, status, 'released', actor)
+
+
+async def _release_dependents(
+    conn: Conn, dependent_ids: list[uuid.UUID], actor: Actor
+) -> list[tuple[Row, list[Row]]]:
+    """Release each ``held`` ticket of ``dependent_ids`` that no gate
+    holds; see :func:`_sync_gate`.
+
+    The caller holds the lock of the prerequisite. The dependents lock
+    after it, in task id order. Every change to a dependency locks the
+    prerequisite first, so it waits for this transaction or this one
+    waits for it. Return each released ticket and its events, to
+    publish after the commit.
+    """
+    if not dependent_ids:
+        return []
+    async with conn.cursor(row_factory=rows.dict_row) as cursor:
+        await cursor.execute(
+            _SELECT_TASKS + " WHERE t.status = 'held' AND t.id = ANY(%s)"
+            ' ORDER BY t.id FOR UPDATE',
+            (dependent_ids,),
+        )
+        dependents = await cursor.fetchall()
+    released: list[tuple[Row, list[Row]]] = []
+    for dependent in dependents:
+        write = _Write(conn, dependent)
+        await _sync_gate(write, actor)
+        if write.events:
+            released.append((write.task, write.events))
+    return released
+
+
 async def _close(
     write: _Write, outcome: Outcome, reason: str | None, actor: Actor
 ) -> None:
     """Close the task with an outcome.
 
     Close each open session (``session.closed``), then write
-    ``state.changed`` and ``outcome.set``.
+    ``state.changed`` and ``outcome.set``. A ``done_*`` outcome
+    releases the dependents that the task gates, in this transaction.
     """
     cursor = await write.conn.execute(
         'UPDATE tickets.sessions'
@@ -2436,6 +2561,15 @@ async def _close(
             'closed_at': datetime.datetime.now(datetime.UTC),
         }
     )
+    if outcome in DONE_OUTCOMES:
+        cursor = await write.conn.execute(
+            'SELECT dependent_ticket_id FROM tickets.ticket_dependencies'
+            ' WHERE prerequisite_ticket_id = %s AND gates',
+            (write.task['id'],),
+        )
+        write.released = await _release_dependents(
+            write.conn, [row[0] for row in await cursor.fetchall()], actor
+        )
 
 
 async def _session(
@@ -2571,13 +2705,14 @@ async def _lock_task(
 async def _lock_tasks(
     conn: Conn, organization_id: str, short_ids: list[str]
 ) -> list[Row]:
-    """Lock and return tasks in task id order, closed or not."""
+    """Lock and return tasks in the order of ``short_ids``, closed or
+    not."""
     async with conn.cursor(row_factory=rows.dict_row) as cursor:
         await cursor.execute(
             _SELECT_TASKS
             + ' WHERE organization_id = %s AND short_id = ANY(%s)'
-            ' ORDER BY id FOR UPDATE',
-            (organization_id, short_ids),
+            ' ORDER BY array_position(%s, short_id) FOR UPDATE',
+            (organization_id, short_ids, short_ids),
         )
         tasks = await cursor.fetchall()
     found = {task['short_id'] for task in tasks}
