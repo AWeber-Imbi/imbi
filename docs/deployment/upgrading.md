@@ -74,6 +74,43 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
+## Unreleased: person tickets (ADR 0028)
+
+Set the version of this section when the release is cut.
+
+1. **Before you deploy**, deploy 2.56.0 everywhere and let its rollout
+   finish.
+2. Deploy the new image. There is no setup command. At start, imbi-api
+   adds `tickets.tickets.assignee_kind` (default `agent`) and
+   `tickets.tickets.assignee`, makes `agent_id`, `agent_version`, and
+   `service_account_id` nullable, and adds three checks: the assignee
+   kind, the columns of each kind, and the statuses of each kind. Every
+   existing ticket is an agent ticket. The step reads the whole table
+   to validate the checks, and stops writes to `tickets.tickets` while
+   it runs.
+3. Do not make person tickets until every imbi-api pod runs this
+   release. Only a new pod can make one. A 2.56.0 pod reads one, but
+   some of its writes fail on one (see below).
+
+While pods of both releases run, if a person ticket exists:
+
+- A 2.56.0 pod reads a person ticket: the ticket list, the ticket,
+  and its relations show it with no agent. 2.56.0 makes the agent
+  columns optional in its responses for this reason.
+- A 2.56.0 pod that closes a ticket with a `done_*` outcome, and the
+  ticket gates a held person ticket, tries to move the person ticket to
+  `queued`. The check refuses that, so the whole close fails with 500,
+  also when the agent of the ticket reports its outcome. The close
+  works when a new pod takes the retry.
+- A 2.56.0 pod that pauses, resumes, or cancels a person ticket fails
+  with 500, and the ticket does not change.
+- No runner claims a person ticket: the claim query reads only `queued`
+  tickets, and a person ticket is never `queued`.
+- The events of a person ticket go to ClickHouse with an empty
+  `agent_id` and `agent_version` 0, from pods of both releases.
+- The 2.56.0 UI shows a person ticket with no agent name. It cannot
+  make one.
+
 ## Unreleased: release B+1 (ADR 0028)
 
 This release removes the old names of ADR 0028 that 2.56.0 (release B)

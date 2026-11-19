@@ -209,6 +209,7 @@ import type {
   TicketResolve,
   TicketRetry,
   TicketStatus,
+  TicketStatusSet,
   TokenResponse,
   Upload,
   UserResponse,
@@ -3942,6 +3943,13 @@ export const retryTicket = (
   shortId: string,
   body: TicketRetry,
 ) => apiClient.post<Ticket>(`${ticketPath(orgSlug, shortId)}/retry`, body)
+
+/** Move a person ticket to a status, or close it (ADR 0028). */
+export const setTicketStatus = (
+  orgSlug: string,
+  shortId: string,
+  body: TicketStatusSet,
+) => apiClient.post<Ticket>(`${ticketPath(orgSlug, shortId)}/status`, body)
 
 export const reassignTicket = (
   orgSlug: string,

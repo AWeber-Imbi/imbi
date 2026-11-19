@@ -673,6 +673,9 @@ describe('Tasks', () => {
         title: 'B',
       }),
       task({
+        agent_id: null,
+        assignee: 'lee@example.com',
+        assignee_kind: 'person',
         id: 'own-3',
         owner: 'sam@example.com',
         short_id: 'T-7',
@@ -681,7 +684,11 @@ describe('Tasks', () => {
     ])
     renderAt('/tickets')
     expect((await screen.findByText('A')).closest('a')).toHaveTextContent(
-      'Assigned to pat@example.com',
+      'Owned by pat@example.com',
+    )
+    // A person ticket names its assignee too.
+    expect(screen.getByText('C').closest('a')).toHaveTextContent(
+      'Assigned to lee@example.com',
     )
     fireEvent.click(screen.getByRole('button', { name: 'Filter' }))
     fireEvent.click(await screen.findByRole('option', { name: 'Assignee' }))
@@ -1628,7 +1635,7 @@ describe('Tasks', () => {
     renderAt('/agents/manage/mender')
     fireEvent.click(await screen.findByRole('button', { name: 'Run' }))
     const dialog = screen.getByRole('dialog')
-    fireEvent.change(within(dialog).getByLabelText(/What should the agent/), {
+    fireEvent.change(within(dialog).getByLabelText(/What should be done/), {
       target: { value: 'Check the build\nFind why it fails.' },
     })
     fireEvent.click(await within(dialog).findByText('billing'))
@@ -1638,9 +1645,11 @@ describe('Tasks', () => {
     await waitFor(() =>
       expect(endpoints.createTicket).toHaveBeenCalledWith('acme', {
         agent_slug: 'mender',
+        assignee_kind: 'agent',
         description: 'Check the build\nFind why it fails.',
         priority: 'normal',
         project_ids: ['p-1'],
+        requires: [],
         title: 'Check the build',
       }),
     )

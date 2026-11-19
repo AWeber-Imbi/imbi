@@ -26,6 +26,7 @@ export function task(overrides: Partial<TicketListItem> = {}): TicketListItem {
   return {
     agent_id: 'agt-1',
     agent_version: 3,
+    assignee_kind: 'agent',
     blocked_since: null,
     budget: '5.000000',
     cache_read_tokens: 5000,

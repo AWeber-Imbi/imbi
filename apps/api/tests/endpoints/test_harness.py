@@ -317,6 +317,25 @@ class ClaimTests(RunnerTestCase):
         response = await self.runner_post(runners[0], 'claim')
         self.assertEqual(response.status_code, 409, response.text)
 
+    async def test_person_ticket_is_never_claimed(self) -> None:
+        self.act_as_user()
+        response = await self.client.post(
+            self.url(),
+            json={
+                'assignee_kind': 'person',
+                'assignee': self.email,
+                'title': 'Rotate the key',
+                'description': 'Rotate the deploy key.',
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.act_as(self.account)
+        claim = await self.claim(await self.register())
+        assert claim is not None
+        self.assertEqual(claim['task']['short_id'], self.task['short_id'])
+        # Only the person ticket is left, and no runner takes it.
+        self.assertIsNone(await self.claim(await self.register()))
+
     async def test_claim_returns_bundle_and_token(self) -> None:
         await self.graph.execute(
             'MATCH (a:Agent {{id: {id}}})'
