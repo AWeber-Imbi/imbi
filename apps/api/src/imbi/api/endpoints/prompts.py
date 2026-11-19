@@ -32,7 +32,6 @@ import slugify
 from psycopg.types import json as pg_json
 
 from imbi.api import model_calls, secret_broker, workflows
-from imbi.api.agent_tasks import store as task_store
 from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import ai_providers, projects
 from imbi.api.endpoints._helpers import (
@@ -41,6 +40,7 @@ from imbi.api.endpoints._helpers import (
 )
 from imbi.api.graph_sql import escape_prop, props_template, set_clause
 from imbi.api.llm import generate as model_generate
+from imbi.api.tickets import store as task_store
 from imbi.common import graph, models, relational
 from imbi.common import patch as json_patch
 from imbi.common.auth import permissions as common_permissions
@@ -1489,7 +1489,6 @@ CALL_ERRORS: dict[str, tuple[int, bool]] = {
     'outcome_unknown': (409, False),
     'model_unsupported': (422, False),
     'model_no_structured_output': (422, False),
-    'model_not_allowed': (403, False),
 }
 
 
@@ -1542,16 +1541,19 @@ async def _check_model_teams(
     be allowed. Another principal without a user is refused.
 
     Raises:
-        403: ``model_not_allowed``.
+        prompt_resolve.ModelNotAllowed: 403 ``model_not_allowed``.
 
     """
     if auth.is_admin:
         return
+    message = (
+        f'The model {model!r} is restricted to teams that do not '
+        'include the caller'
+    )
     account = auth.service_account
+    email = team_id = None
     if auth.user is not None:
-        allowed = await prompt_resolve.member_allowed(
-            db, model, auth.user.email
-        )
+        email = auth.user.email
     elif (
         account is not None
         and account.slug == common_permissions.WORKFLOWS_ACCOUNT
@@ -1560,13 +1562,10 @@ async def _check_model_teams(
         # <org>.<workflow>.<node key>
         slug = prompt.slug.partition('.')[2].rpartition('.')[0]
         row = await store.get(org_id, slug)
-        allowed = row is not None and await prompt_resolve.team_allowed(
-            db, model, row['owner_team_id']
-        )
-    else:
-        allowed = False
-    if not allowed:
-        raise _call_error('model_not_allowed')
+        team_id = row['owner_team_id'] if row is not None else None
+    await prompt_resolve.check_model_teams(
+        db, model, message, email=email, team_id=team_id
+    )
 
 
 @prompt_render_router.post('/run', response_model=RunResponse)
@@ -1639,26 +1638,17 @@ async def run_prompt(
     ref = f'{prompt.namespace}/{prompt.slug}' + (
         f'@{n}' if n is not None else ' (draft)'
     )
-    if prompt.kind == 'generative':
-        return await _run_generative(
-            org_slug,
-            org_id,
-            data,
-            request,
-            db,
-            secrets,
-            calls,
-            workflow_store,
-            auth,
-            prompt,
-            version,
-            ref,
-            idempotency_key,
+    if prompt.kind == 'generative' and version.tools:
+        raise _unprocessable(
+            'A generative run sends no tools to the model; '
+            'remove the tools from the prompt version'
         )
-    if not version.questions:
+    if prompt.kind != 'generative' and not version.questions:
         raise _unprocessable('The prompt has no questions to ask')
+    # One model check for each kind of run, so a new kind cannot skip
+    # the team check.
     if version.model is None:
-        raise _unprocessable('Choose a decision model to run the prompt')
+        raise _unprocessable(f'Choose a {prompt.kind} model to run the prompt')
     records = await db.execute(
         _RUN_MODEL_QUERY,
         {'slug': version.model},
@@ -1668,22 +1658,36 @@ async def run_prompt(
         raise _unprocessable(
             f'AI model {version.model!r} is not in the catalog'
         )
-    record = records[0]
-    if graph.parse_agtype(record['enabled']) is False:
+    record = {k: graph.parse_agtype(v) for k, v in records[0].items()}
+    if record['enabled'] is False:
         raise _unprocessable(f'AI model {version.model!r} is disabled')
-    if graph.parse_agtype(record.get('access_scope')) == 'restricted':
+    if record.get('access_scope') == 'restricted':
         await _check_model_teams(
             db, workflow_store, auth, org_id, prompt, version.model
         )
     provider = await ai_providers.fetch_provider(
-        db, str(graph.parse_agtype(record['provider_id']))
+        db, str(record['provider_id'])
     )
     if not provider.enabled:
         raise _unprocessable(f'AI provider {provider.slug!r} is disabled')
-    if (
-        graph.parse_agtype(record['model_type']) != 'decision'
-        or provider.driver != 'typesafe'
-    ):
+    if prompt.kind == 'generative':
+        return await _run_generative(
+            org_slug,
+            org_id,
+            data,
+            request,
+            db,
+            secrets,
+            calls,
+            auth,
+            prompt,
+            version,
+            record,
+            provider,
+            ref,
+            idempotency_key,
+        )
+    if record['model_type'] != 'decision' or provider.driver != 'typesafe':
         raise _unprocessable(
             f'AI model {version.model!r} is not a TypeSafe decision model'
         )
@@ -1703,7 +1707,7 @@ async def run_prompt(
                 f'AI provider {provider.slug!r} has no stored credentials'
             ),
         )
-    model_id = str(graph.parse_agtype(record['model_id']))
+    model_id = str(record['model_id'])
     questions = {
         qid: _wire_question(question)
         for qid, question in decision.questions.items()
@@ -1802,33 +1806,16 @@ async def _run_generative(
     db: graph.Graph,
     secrets: secret_broker.store.SecretStore,
     calls: model_calls.ModelCallStore,
-    workflow_store: workflows.WorkflowStore,
     auth: permissions.AuthContext,
     prompt: models.Prompt,
     version: models.PromptVersion,
+    record: dict[str, typing.Any],
+    provider: models.AIProvider,
     ref: str,
     idempotency_key: str | None,
 ) -> RunResponse:
-    """Run a generative prompt; see :func:`run_prompt`."""
-    if version.tools:
-        raise _unprocessable(
-            'A generative run sends no tools to the model; '
-            'remove the tools from the prompt version'
-        )
-    if version.model is None:
-        raise _unprocessable('Choose a generative model to run the prompt')
-    records = await db.execute(
-        _RUN_MODEL_QUERY,
-        {'slug': version.model},
-        _RUN_MODEL_COLUMNS,
-    )
-    if not records:
-        raise _unprocessable(
-            f'AI model {version.model!r} is not in the catalog'
-        )
-    record = {k: graph.parse_agtype(v) for k, v in records[0].items()}
-    if record['enabled'] is False:
-        raise _unprocessable(f'AI model {version.model!r} is disabled')
+    """Run a generative prompt with the checked catalog model
+    ``record`` and its ``provider``; see :func:`run_prompt`."""
     # A missing value predates model_type, when every model was
     # generative.
     if (record.get('model_type') or 'generative') != 'generative':
@@ -1842,15 +1829,6 @@ async def _run_generative(
             f'AI model {version.model!r} is a completion model; '
             'a generative run needs a chat model'
         )
-    if record.get('access_scope') == 'restricted':
-        await _check_model_teams(
-            db, workflow_store, auth, org_id, prompt, version.model
-        )
-    provider = await ai_providers.fetch_provider(
-        db, str(record['provider_id'])
-    )
-    if not provider.enabled:
-        raise _unprocessable(f'AI provider {provider.slug!r} is disabled')
     if data.output_fields and not record.get('structured'):
         raise _call_error('model_no_structured_output')
     try:

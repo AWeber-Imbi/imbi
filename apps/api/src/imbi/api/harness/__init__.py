@@ -3,8 +3,8 @@
 The ``harness`` schema holds pools, runners, chain pins, claims, tool
 call counters, the agent platform configuration of each organization,
 and plugin marketplaces. It is a plain Postgres schema next to the graph,
-managed like ``agent_runtime``: the declarative ``schemata.toml`` is
-applied on every start. Its tables refer to ``agent_runtime.tasks``, so
+managed like ``tickets``: the declarative ``schemata.toml`` is
+applied on every start. Its tables refer to ``tickets.tickets``, so
 it initializes after that schema.
 
 The store lifespan also runs the lease sweep
@@ -19,7 +19,6 @@ from collections import abc
 
 import fastapi
 
-from imbi.api.agent_tasks import create_pool
 from imbi.api.harness import metrics, sweeper, tokens
 from imbi.api.harness.store import (
     GRACE_SECONDS,
@@ -33,6 +32,7 @@ from imbi.api.harness.store import (
     PoolInUse,
     RunnerBusy,
 )
+from imbi.api.tickets import create_pool
 from imbi.common import lifespan, relational
 
 SCHEMATA_PATH = pathlib.Path(__file__).parent / 'schemata.toml'

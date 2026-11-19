@@ -33,6 +33,7 @@ from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import prompts
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.common import graph, lifespan
+from imbi.common.auth import permissions as common_permissions
 from imbi.common.prompts import resolve as prompt_resolve
 from imbi.common.workflows import graph as wf
 from imbi.common.workflows import (
@@ -44,6 +45,7 @@ from imbi.common.workflows import (
 from imbi.common.workflows.registry import agent as agent_step
 from imbi.common.workflows.registry import llm_call as llm_call_step
 from imbi.common.workflows.registry import script as script_step
+from imbi.common.workflows.registry import ticket_closed
 
 LOGGER = logging.getLogger(__name__)
 
@@ -53,7 +55,7 @@ Status = typing.Literal['draft', 'active', 'paused']
 
 #: Trigger types that get a binding: a scheduler task, a gateway rule,
 #: or (``task_completed``) only the binding, which the close hook reads.
-BOUND_TRIGGERS = ('schedule', 'webhook', 'task_completed')
+BOUND_TRIGGERS = ('schedule', 'webhook', *ticket_closed.TYPES)
 
 
 # --- Schemas -----------------------------------------------------------
@@ -304,13 +306,13 @@ def _resource_ids(
             add('project', node.id, params.get('project_id'))
         elif node.type == 'webhook':
             add('webhook', node.id, params.get('webhook_id'))
-        elif node.type in ('agent', 'task_completed'):
+        elif node.type == 'agent' or node.type in ticket_closed.TYPES:
             # A trigger's agent filter cannot be a template.
             add(
                 'agent',
                 node.id,
                 params.get('agent_id'),
-                literal=node.type == 'task_completed',
+                literal=node.type in ticket_closed.TYPES,
             )
             if node.type == 'agent':
                 add('project', node.id, params.get('project_id'))
@@ -516,22 +518,19 @@ async def _check_model_teams(
 ) -> None:
     """Refuse a restricted model that the caller or the owner team
     may not use."""
-    caller_allowed = auth.is_admin or (
-        auth.user is not None
-        and await prompt_resolve.member_allowed(db, model, auth.user.email)
+    message = (
+        f'Step {node.key!r}: the model {model!r} is restricted to teams '
+        'that do not include you or the owner team'
     )
-    if not caller_allowed or not await prompt_resolve.team_allowed(
-        db, model, owner_team_id
-    ):
-        raise fastapi.HTTPException(
-            status_code=403,
-            detail={
-                'error': 'model_not_allowed',
-                'message': f'Step {node.key!r}: the model {model!r} is '
-                'restricted to teams that do not include you or the '
-                'owner team',
-            },
-        )
+    if auth.is_admin:
+        email = None
+    elif auth.user is None:
+        raise prompt_resolve.ModelNotAllowed(message)
+    else:
+        email = auth.user.email
+    await prompt_resolve.check_model_teams(
+        db, model, message, email=email, team_id=owner_team_id
+    )
 
 
 def _llm_call_error(node: wf.Node, message: str) -> fastapi.HTTPException:
@@ -1054,7 +1053,15 @@ async def activate_workflow(
     for node in wf_graph.nodes:
         step = registry.STEP_TYPES[node.type]
         required |= step.required_permissions(node.params)
-    missing = set[str]() if auth.is_admin else required - auth.permissions
+    missing = (
+        set[str]()
+        if auth.is_admin
+        else {
+            name
+            for name in required
+            if not common_permissions.holds(name, auth.permissions)
+        }
+    )
     if missing:
         raise fastapi.HTTPException(
             status_code=403,

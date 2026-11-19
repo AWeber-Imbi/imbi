@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 
 import { ApiError } from '@/api/client'
-import { resolveAgentTaskRequest } from '@/api/endpoints'
+import { resolveTicketRequest } from '@/api/endpoints'
 import { StageCardShell } from '@/components/deployments/StageCardShell'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -37,16 +37,12 @@ import { Textarea } from '@/components/ui/textarea'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { deriveChipColors } from '@/lib/chip-colors'
-import type { AgentTask, AgentTaskEvent, AgentTaskResolve } from '@/types'
+import type { Ticket, TicketEvent, TicketResolve } from '@/types'
 
 import { useAgentList } from './agentQueries'
 import { checksFrom, type TaskRequestView } from './taskEvents'
 import { AgentMark, PersonMark } from './TaskFilterBar'
-import {
-  errorMessage,
-  type TaskReply,
-  useAgentTaskMutation,
-} from './taskQueries'
+import { errorMessage, type TaskReply, useTicketMutation } from './taskQueries'
 import { RESOLVED, useActorName } from './taskText'
 
 const HONEY = '#C9A227'
@@ -75,7 +71,7 @@ const VERDICT: Record<
  * The latest report of each check: value, delta, baseline, verdict, and
  * source (J2).
  */
-export function ChecksTab({ events }: { events: AgentTaskEvent[] }) {
+export function ChecksTab({ events }: { events: TicketEvent[] }) {
   const checks = checksFrom(events)
   if (checks.length === 0) {
     return <p className="text-tertiary p-6 text-sm">No checks reported yet.</p>
@@ -83,7 +79,7 @@ export function ChecksTab({ events }: { events: AgentTaskEvent[] }) {
   return (
     <div>
       <p className="border-tertiary text-tertiary border-b px-6 py-3 text-xs">
-        Signals the agent and its subagents report against this task
+        Signals the agent and its subagents report against this ticket
       </p>
       <ul>
         {checks.map((e) => {
@@ -140,7 +136,7 @@ export function Composer({
   orgSlug: string
   reply: TaskReply
 }) {
-  const canManage = useHasPermission('agent_task:manage', orgSlug)
+  const canManage = useHasPermission('ticket:manage', orgSlug)
   if (!canManage) return null
   const ready = body.trim() !== '' && !reply.isPending
   const send = (hold: boolean) => {
@@ -193,7 +189,7 @@ export function Composer({
               disabled={!ready}
               onClick={() => send(true)}
               size="sm"
-              title="Reply and pause the task"
+              title="Reply and pause the ticket"
               type="button"
               variant="outline"
             >
@@ -225,12 +221,12 @@ export function InputRequiredTab({
 }: {
   orgSlug: string
   requests: TaskRequestView[]
-  task: AgentTask
+  task: Ticket
 }) {
   if (requests.length === 0) {
     return (
       <p className="text-tertiary p-6 text-sm">
-        This task has not asked for input.
+        This ticket has not asked for input.
       </p>
     )
   }
@@ -254,9 +250,9 @@ export function RequestCard({
 }: {
   orgSlug: string
   request: TaskRequestView
-  task: AgentTask
+  task: Ticket
 }) {
-  const canResolve = useHasPermission('agent_task:resolve', orgSlug)
+  const canResolve = useHasPermission('ticket:resolve', orgSlug)
   const actorName = useActorName(orgSlug)
   const { isDarkMode } = useTheme()
   const { data: agents } = useAgentList(orgSlug)
@@ -264,13 +260,13 @@ export function RequestCard({
   const [taken, setTaken] = useState<null | { by: string; status: string }>(
     null,
   )
-  const resolve = useAgentTaskMutation(
+  const resolve = useTicketMutation(
     orgSlug,
     task.short_id,
-    (resolution: AgentTaskResolve) =>
-      resolveAgentTaskRequest(orgSlug, task.short_id, r.id, resolution),
+    (resolution: TicketResolve) =>
+      resolveTicketRequest(orgSlug, task.short_id, r.id, resolution),
   )
-  const submit = (resolution: AgentTaskResolve) =>
+  const submit = (resolution: TicketResolve) =>
     resolve.mutate(resolution, {
       onError: (error) => {
         const detail =

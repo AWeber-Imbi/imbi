@@ -484,7 +484,7 @@ async def authenticate_jwt(
         # only the ones that are in both.
         scopes = str(claims.get('scope') or '').split()
         if scopes:
-            perms &= set(scopes)
+            perms = held(perms, set(scopes))
         return AuthContext(
             service_account=sa,
             session_id=jti,
@@ -695,7 +695,7 @@ async def authenticate_api_key(
         all_perms = await load_principal_permissions(
             db, 'ServiceAccount', 'slug', sa.slug
         )
-        filtered = all_perms.intersection(set(scopes)) if scopes else all_perms
+        filtered = held(all_perms, set(scopes)) if scopes else all_perms
 
         # Update last_used only after all validation passes
         await _stamp_api_key_last_used(db, key_id, auth_settings)
@@ -718,7 +718,7 @@ async def authenticate_api_key(
     all_perms = await load_principal_permissions(
         db, 'User', 'email', user.email
     )
-    filtered = all_perms.intersection(set(scopes)) if scopes else all_perms
+    filtered = held(all_perms, set(scopes)) if scopes else all_perms
     identities = await _load_user_identities(db, user.id)
 
     # Update last_used only after all validation passes
@@ -815,7 +815,7 @@ async def narrow_to_accountable(
     )
     return ctx.model_copy(
         update={
-            'permissions': ctx.permissions & granted,
+            'permissions': held(ctx.permissions, granted),
             'on_behalf_of': (label, match_prop, accountable),
         }
     )
@@ -974,6 +974,34 @@ async def get_current_user_cookie_fallback(
     )
 
 
+#: Permission prefixes that have one meaning (ADR 0028). A holder of
+#: ``agent_task:read`` holds ``ticket:read`` and the reverse, so roles
+#: of the previous release and new roles work with every check. Release
+#: B removes the ``agent_task`` names.
+_ALIASES = {'agent_task:': 'ticket:', 'ticket:': 'agent_task:'}
+
+
+def holds(permission: str, held: collections.abc.Container[str]) -> bool:
+    """Whether ``held`` has ``permission`` or a name of it in
+    :data:`_ALIASES`."""
+    if permission in held:
+        return True
+    for prefix, alias in _ALIASES.items():
+        if permission.startswith(prefix):
+            return alias + permission.removeprefix(prefix) in held
+    return False
+
+
+def held(
+    permissions: collections.abc.Iterable[str],
+    granted: collections.abc.Container[str],
+) -> set[str]:
+    """The names in ``permissions`` that ``granted`` also has, by
+    :func:`holds`: an intersection where an ``agent_task:*`` and a
+    ``ticket:*`` name are one permission (ADR 0028)."""
+    return {p for p in permissions if holds(p, granted)}
+
+
 def require_permission(
     permission: str,
     *,
@@ -1023,7 +1051,7 @@ def require_permission(
         if auth.is_admin:
             return auth
 
-        if permission not in auth.permissions:
+        if not holds(permission, auth.permissions):
             LOGGER.warning(
                 'Permission denied: principal=%s permission=%s',
                 auth.principal_name,

@@ -16,14 +16,14 @@ import httpx
 from apps.api.tests.endpoints import test_agent_task_harness
 from apps.api.tests.endpoints.test_agent_task_log import ClickHouseTestCase
 from imbi.api import models, secret_broker
-from imbi.api.agent_tasks import store as task_store
 from imbi.api.auth import password as password_auth
 from imbi.api.auth import permissions
-from imbi.api.endpoints import agent_task_harness
 from imbi.api.endpoints import harness as harness_api
+from imbi.api.endpoints import ticket_harness
 from imbi.api.harness import metrics as harness_metrics
 from imbi.api.harness import sweeper
 from imbi.api.secret_broker import store as secret_store
+from imbi.api.tickets import store as task_store
 
 new_id = test_agent_task_harness.new_id
 
@@ -511,7 +511,7 @@ class FailedClaimTests(RunnerTestCase):
         with (
             self.patch_prompt('claude-renamed-away'),
             mock.patch.object(
-                harness_api.agent_tasks.TaskStore,
+                harness_api.tickets.TicketStore,
                 'set_outcome',
                 side_effect=RuntimeError('boom'),
             ),
@@ -702,7 +702,7 @@ class QueueLimitTests(RunnerTestCase):
                 (row['id'], row['organization_id']),
             )
             await conn.execute(
-                'UPDATE agent_runtime.tasks SET chain_id = %s WHERE id = %s',
+                'UPDATE tickets.tickets SET chain_id = %s WHERE id = %s',
                 (row['id'], row['id']),
             )
         self.act_as_user()
@@ -711,7 +711,7 @@ class QueueLimitTests(RunnerTestCase):
         second = await self.task_row('T-2')
         async with self.pool.connection() as conn:
             await conn.execute(
-                'UPDATE agent_runtime.tasks SET chain_id = %s WHERE id = %s',
+                'UPDATE tickets.tickets SET chain_id = %s WHERE id = %s',
                 (row['id'], second['id']),
             )
         self.assertEqual(await self.depth(), 1)
@@ -796,12 +796,14 @@ class AgentTokenTests(RunnerTestCase):
             {'events': [{'event_id': new_id(), 'type': 'turn'}]},
         )
         self.assertEqual(response.status_code, 201, response.text)
-        response = await self.client.get(
-            '/harness/tasks/T-1/events',
-            headers={'Authorization': f'Bearer {self.token}'},
-        )
-        self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual(response.json()[-1]['type'], 'turn')
+        # ADR 0028: the new path and the old one.
+        for prefix in ('/harness/tickets', '/harness/tasks'):
+            response = await self.client.get(
+                f'{prefix}/T-1/events',
+                headers={'Authorization': f'Bearer {self.token}'},
+            )
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()[-1]['type'], 'turn')
 
     async def test_token_for_chain_a_cannot_write_chain_b(self) -> None:
         self.act_as_user()
@@ -841,7 +843,7 @@ class AgentTokenTests(RunnerTestCase):
         helper_id = await self.make_agent('helper', name='Helper')
         await self.make_version({'subagents': [{'agent_id': helper_id}]})
         response = await self.client.post(
-            '/harness/tasks/T-1/children',
+            '/harness/tickets/T-1/children',
             json={
                 'agent_slug': 'helper',
                 'title': 'Help',
@@ -1145,6 +1147,23 @@ class ChildTaskTests(RunnerTestCase):
         self.assertEqual(response.status_code, 403, response.text)
         self.assertEqual(response.json()['detail']['error'], 'owner_forbidden')
 
+    async def test_repeat_finds_a_child_of_the_new_origin_kind(self) -> None:
+        # A pod of release B writes the child as ``ticket`` (ADR 0028).
+        helper_id = await self.make_agent('helper', name='Helper')
+        await self.make_version({'subagents': [{'agent_id': helper_id}]})
+        response = await self.child('helper', idempotency_key='k')
+        self.assertEqual(response.status_code, 201, response.text)
+        child = response.json()
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE tickets.tickets SET origin_kind = 'ticket'"
+                ' WHERE id = %s',
+                (child['id'],),
+            )
+        repeat = await self.child('helper', idempotency_key='k')
+        self.assertEqual(repeat.status_code, 200, repeat.text)
+        self.assertEqual(repeat.json()['id'], child['id'])
+
     async def test_only_the_chain_runner_claims_the_child(self) -> None:
         helper_id = await self.make_agent('helper', name='Helper')
         await self.make_version({'subagents': [{'agent_id': helper_id}]})
@@ -1259,6 +1278,137 @@ class AttachProjectTests(RunnerTestCase):
         self.assertEqual(response.status_code, 200, response.text)
 
 
+class HistoryTests(RunnerTestCase):
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        claim = await self.claim(await self.register())
+        assert claim is not None
+        self.token: str = claim['agent_token']
+        person = task_store.Actor('human', self.email, 'web')
+        await self.store.reply(self.org, 'T-1', 'First comment.', person)
+        _task, request, _ = await self.store.open_request(
+            self.org,
+            'T-1',
+            task_store.NewRequest(
+                'feedback', 'Which branch?', None, None, None, None, None, None
+            ),
+            task_store.Actor('agent', self.agent_id, 'harness'),
+        )
+        await self.store.resolve_request(
+            self.org,
+            'T-1',
+            request['id'],
+            task_store.Resolution('answered', 'main', ['no force'], None),
+            person,
+        )
+        await self.store.reply(self.org, 'T-1', 'Last comment.', person)
+
+    async def history(self) -> dict[str, typing.Any]:
+        response = await self.client.get(
+            '/harness/tickets/T-1/history',
+            headers={'Authorization': f'Bearer {self.token}'},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        return response.json()
+
+    async def test_history_is_oldest_first(self) -> None:
+        # A closed prerequisite that a webhook started.
+        self.act_as_user()
+        await self.create_task()
+        self.act_as(self.account)
+        person = task_store.Actor('human', self.email, 'web')
+        await self.store.set_outcome(
+            self.org, 'T-2', 'failed_external', 'down', person, None
+        )
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE tickets.tickets SET origin_kind = 'webhook'"
+                ' WHERE organization_id = %s AND short_id = %s',
+                (self.org, 'T-2'),
+            )
+        await self.store.add_dependency(self.org, 'T-1', 'T-2', person)
+        body = await self.history()
+        self.assertEqual(body['cut'], 0)
+        entries = body['entries']
+        self.assertEqual(
+            [e['kind'] for e in entries],
+            ['comment', 'request', 'comment', 'prerequisite'],
+        )
+        self.assertEqual(
+            entries[3]['text'],
+            'T-2 Look at the build: closed, failed_external (down)',
+        )
+        self.assertTrue(entries[3]['webhook'])
+        self.assertEqual(entries[0]['text'], 'First comment.')
+        self.assertEqual(entries[0]['actor'], self.email)
+        self.assertEqual(
+            entries[1]['text'],
+            'feedback request "Which branch?": answered\n'
+            'Answer: main\nConstraints: no force',
+        )
+        self.assertFalse(any(e['webhook'] for e in entries[:3]))
+
+    async def test_request_of_a_webhook_ticket_is_untrusted(self) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE tickets.tickets SET origin_kind = 'webhook'"
+                ' WHERE organization_id = %s AND short_id = %s',
+                (self.org, 'T-1'),
+            )
+        entries = (await self.history())['entries']
+        self.assertEqual(
+            [(e['kind'], e['webhook']) for e in entries],
+            [('comment', False), ('request', True), ('comment', False)],
+        )
+
+    async def test_child_of_an_agent_is_untrusted(self) -> None:
+        # The agent of a webhook ticket can quote the payload in a title.
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE tickets.tickets SET origin_kind = 'webhook'"
+                ' WHERE organization_id = %s AND short_id = %s',
+                (self.org, 'T-1'),
+            )
+        helper_id = await self.make_agent('helper', name='Helper')
+        await self.make_version({'subagents': [{'agent_id': helper_id}]})
+        response = await self.client.post(
+            '/harness/tickets/T-1/children',
+            json={
+                'agent_slug': 'helper',
+                'title': 'Quoted payload',
+                'description': 'Help out.',
+            },
+            headers={'Authorization': f'Bearer {self.token}'},
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        entries = (await self.history())['entries']
+        [child] = [e for e in entries if e['kind'] == 'child']
+        self.assertIn('Quoted payload', child['text'])
+        self.assertTrue(child['webhook'])
+
+    async def test_byte_limit_keeps_the_newest(self) -> None:
+        limit = len(b'Last comment.') + len(
+            b'feedback request "Which branch?": answered\n'
+            b'Answer: main\nConstraints: no force'
+        )
+        with mock.patch.object(harness_api, 'MAX_HISTORY_BYTES', limit):
+            body = await self.history()
+        self.assertEqual(body['cut'], 1)
+        self.assertEqual(
+            [e['kind'] for e in body['entries']], ['request', 'comment']
+        )
+
+    async def test_another_chain_is_refused(self) -> None:
+        self.act_as_user()
+        await self.create_task()
+        self.act_as(self.account)
+        response = await self.client.get(
+            '/harness/tickets/T-2/history',
+            headers={'Authorization': f'Bearer {self.token}'},
+        )
+        self.assertEqual(response.status_code, 403, response.text)
+
+
 class RateLimitTests(RunnerTestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
@@ -1342,7 +1492,7 @@ class LargeEventTests(RunnerTestCase, ClickHouseTestCase):
         )
 
     async def test_three_mib_result_lands_as_three_parts(self) -> None:
-        part = 'x' * (agent_task_harness.MAX_LARGE_PAYLOAD_BYTES - 200)
+        part = 'x' * (ticket_harness.MAX_LARGE_PAYLOAD_BYTES - 200)
         events = [
             {
                 'event_id': new_id(),
@@ -1368,7 +1518,7 @@ class LargeEventTests(RunnerTestCase, ClickHouseTestCase):
         self.assertEqual(sum(len(p['result']) for p in parts), 3 * len(part))
 
     async def test_limits_and_continuation_rules(self) -> None:
-        too_big = 'x' * agent_task_harness.MAX_LARGE_PAYLOAD_BYTES
+        too_big = 'x' * ticket_harness.MAX_LARGE_PAYLOAD_BYTES
         response = await self.send(
             [{'event_id': new_id(), 'type': 'turn', 'payload': {'b': too_big}}]
         )

@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Server } from 'lucide-react'
 
 import { getEgressSyncStatus, listHarnessPools } from '@/api/endpoints'
-import { agentsPath } from '@/components/agents/agentsNav'
+import { ticketsPath } from '@/components/agents/agentsNav'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { ErrorBanner } from '@/components/ui/error-banner'
@@ -185,11 +185,7 @@ function RunnerRow({ runner }: { runner: HarnessRunner }) {
             {chain.short_id && chain.organization_slug ? (
               <Link
                 className="text-action font-mono hover:underline"
-                to={agentsPath(
-                  'tasks',
-                  chain.organization_slug,
-                  chain.short_id,
-                )}
+                to={ticketsPath(chain.organization_slug, chain.short_id)}
               >
                 {chain.short_id}
               </Link>

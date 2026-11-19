@@ -18,9 +18,10 @@ import httpx
 from slack_sdk import errors as slack_errors
 
 from apps.api.tests import support
-from imbi.api import agent_tasks, email, models, workflows
+from imbi.api import email, models, tickets, workflows
 from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import project_deployments, workflow_runs
+from imbi.api.workflows import tickets as workflow_tickets
 from imbi.common import graph
 from imbi.common.plugins import base as plugin_base
 from imbi.common.workflows import graph as wf
@@ -927,6 +928,101 @@ class EngineSlackTestCase(WorkflowRunTestCase):
         self.addAsyncCleanup(self._forget, str(self.run_id))
         self.post_url = f'{self.url}/runs/{self.run_id}/steps/post/slack'
         self.headers = {'Idempotency-Key': f'{self.run_id}:post'}
+        await tickets.initialize()
+        self.task_pool = tickets.create_pool()
+        await self.task_pool.open()
+        self.tasks = tickets.TicketStore(self.task_pool)
+        self.other_org = f'{self.org}-other'
+        self.addAsyncCleanup(self._cleanup_tasks)
+        overrides[tickets._inject_store] = lambda: self.tasks
+
+    async def _cleanup_tasks(self) -> None:
+        async with self.task_pool.connection() as conn:
+            for table in (
+                'ticket_projects',
+                'tickets',
+                'ticket_id_sequences',
+            ):
+                await conn.execute(
+                    f'DELETE FROM tickets.{table}'
+                    ' WHERE organization_id = ANY(%s)',
+                    ([self.org, self.other_org],),
+                )
+        await self.task_pool.close()
+
+    async def _make_task(self, org: str, title: str) -> str:
+        task, _ = await self.tasks.create(
+            tickets.NewTask(
+                organization_id=org,
+                agent_id='fixer',
+                agent_version=1,
+                prompt_version=None,
+                service_account_id='sa',
+                title=title,
+                description='Fix it.',
+                origin_kind='human',
+                origin_id=self.email,
+                origin={'kind': 'human'},
+                idempotency_key=None,
+                owner=self.email,
+                budget=None,
+                projects=[(self.project, self.project)],
+            ),
+            tickets.Actor('human', self.email, 'web'),
+            {},
+        )
+        return str(task['short_id'])
+
+    async def _post_with_ticket(self, ticket: str) -> httpx.Response:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE workflow_runtime.step_runs SET input = %s'
+                " WHERE run_id = %s AND node_id = 'post'",
+                (
+                    workflows.runs.pg_json.Jsonb(
+                        {
+                            'channel': 'C0123456789',
+                            'text': '*Done*',
+                            'ticket': ticket,
+                        }
+                    ),
+                    self.run_id,
+                ),
+            )
+        config = mock.Mock(ui_url='https://imbi.example.com')
+        with mock.patch.object(
+            workflow_tickets.settings, 'get_server_config', return_value=config
+        ):
+            return await self.client.post(self.post_url, headers=self.headers)
+
+    async def test_ticket_block_escapes_the_task(self) -> None:
+        short_id = await self._make_task(self.org, '<!channel> & fix')
+        response = await self._post_with_ticket(short_id)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.slack.chat_postMessage.assert_awaited_once_with(
+            channel='C0123456789',
+            text='*Done*\n\n*<https://imbi.example.com/tickets/'
+            f'{self.org}/{short_id}|{short_id}: &lt;!channel&gt; &amp; fix>*'
+            f'\nStatus: queued | Outcome: none | Project: {self.project}',
+            unfurl_links=False,
+        )
+
+    async def test_missing_ticket_fails(self) -> None:
+        response = await self._post_with_ticket('T-999')
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual(
+            response.json()['detail'], {'error': 'ticket_not_found'}
+        )
+        self.slack.chat_postMessage.assert_not_awaited()
+
+    async def test_ticket_of_another_org_fails(self) -> None:
+        short_id = await self._make_task(self.other_org, 'Other')
+        response = await self._post_with_ticket(short_id)
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual(
+            response.json()['detail'], {'error': 'ticket_not_found'}
+        )
+        self.slack.chat_postMessage.assert_not_awaited()
 
     async def test_posts_once(self) -> None:
         for _ in range(2):
@@ -1186,10 +1282,10 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
             },
             ['id'],
         )
-        await agent_tasks.initialize()
-        self.task_pool = agent_tasks.create_pool()
+        await tickets.initialize()
+        self.task_pool = tickets.create_pool()
         await self.task_pool.open()
-        self.tasks = agent_tasks.TaskStore(self.task_pool)
+        self.tasks = tickets.TicketStore(self.task_pool)
         self.addAsyncCleanup(self._cleanup_tasks)
         await self._agent_run({'agent_id': self.agent, 'instruction': 'Go.'})
         engine = permissions.AuthContext(
@@ -1202,7 +1298,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
         self.user_auth = overrides[permissions.get_current_user]
         overrides[permissions.get_current_user] = lambda: engine
         overrides[organizations.member_org_id] = lambda: self.org
-        overrides[agent_tasks._inject_store] = lambda: self.tasks
+        overrides[tickets._inject_store] = lambda: self.tasks
 
     async def _agent_run(
         self,
@@ -1292,16 +1388,16 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
         )
         async with self.task_pool.connection() as conn:
             await conn.execute(
-                'DELETE FROM agent_runtime.task_projects'
+                'DELETE FROM tickets.ticket_projects'
                 ' WHERE organization_id = %s',
                 (self.org,),
             )
             await conn.execute(
-                'DELETE FROM agent_runtime.tasks WHERE organization_id = %s',
+                'DELETE FROM tickets.tickets WHERE organization_id = %s',
                 (self.org,),
             )
             await conn.execute(
-                'DELETE FROM agent_runtime.task_id_sequences'
+                'DELETE FROM tickets.ticket_id_sequences'
                 ' WHERE organization_id = %s',
                 (self.org,),
             )
@@ -1310,7 +1406,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
     async def _count(self) -> int:
         async with self.task_pool.connection() as conn:
             cur = await conn.execute(
-                'SELECT COUNT(*) FROM agent_runtime.tasks'
+                'SELECT COUNT(*) FROM tickets.tickets'
                 ' WHERE organization_id = %s',
                 (self.org,),
             )
@@ -1331,6 +1427,8 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
                 'reason': None,
                 'summary': None,
                 'result': None,
+                # Set when the task is closed.
+                **dict.fromkeys(agent_step.TicketAttributes.model_fields),
             },
         )
         self.assertEqual(await self._count(), 1)
@@ -1384,11 +1482,49 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
             task_id,
             'done_acted',
             None,
-            agent_tasks.Actor('agent', self.agent, 'harness'),
+            tickets.Actor('agent', self.agent, 'harness'),
             {'n': 3},
         )
-        response = await self.client.post(self.step_url)
+        config = mock.Mock(ui_url='https://imbi.example.com')
+        with mock.patch.object(
+            workflow_tickets.settings, 'get_server_config', return_value=config
+        ):
+            response = await self.client.post(self.step_url)
         self.assertEqual(response.json()['result'], {'n': 3})
+        self.assertEqual(
+            {
+                k: response.json()[k]
+                for k in agent_step.TicketAttributes.model_fields
+            },
+            {
+                'title': 'Agent guard: Ask',
+                'url': 'https://imbi.example.com/tickets/'
+                f'{self.org}/{task_id}',
+                'project': None,
+                'agent': self.agent,
+                'cost_usd': 0.0,
+            },
+        )
+
+    async def _task_title(self, params: dict[str, typing.Any]) -> str:
+        await self._agent_step(
+            {'agent_id': self.agent, 'instruction': 'Go.', **params}
+        )
+        response = await self.client.post(self.step_url)
+        self.assertEqual(response.status_code, 200, response.text)
+        task = await self.tasks.get(self.org, response.json()['task_id'])
+        assert task is not None
+        return str(task['title'])
+
+    async def test_task_title_defaults_to_the_step(self) -> None:
+        self.assertEqual(await self._task_title({}), 'Agent guard: Ask')
+
+    async def test_task_title_from_the_step_input(self) -> None:
+        # The engine renders task_title like the instruction.
+        self.assertEqual(
+            await self._task_title({'task_title': 'ENG-1: implement'}),
+            'ENG-1: implement',
+        )
 
     async def test_malformed_input_is_422(self) -> None:
         # Not a 500: the engine would retry it, and it fails each time.
@@ -1545,7 +1681,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
     async def _plant(self, origin: dict[str, typing.Any], agent: str) -> str:
         """Make a task with the step's origin and key, not by the step."""
         task, _ = await self.tasks.create(
-            agent_tasks.NewTask(
+            tickets.NewTask(
                 organization_id=self.org,
                 agent_id=agent,
                 agent_version=1,
@@ -1560,7 +1696,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
                 owner=self.email,
                 budget=None,
             ),
-            agent_tasks.Actor('human', self.email, 'web'),
+            tickets.Actor('human', self.email, 'web'),
             {},
         )
         return task['short_id']
@@ -1610,6 +1746,11 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
                             'reason': 'secret_reason',
                             'summary': 'Secret summary.',
                             'result': {'secret': True},
+                            'title': 'Secret title',
+                            'url': 'https://imbi.example.com/tasks/T-1',
+                            'project': 'secret-project',
+                            'agent': 'secret-agent',
+                            'cost_usd': 1.25,
                         }
                     ),
                     self.run_id,
@@ -1627,9 +1768,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
             ]
             return ask['output']
 
-        self.assertEqual(
-            await output(), {'task_id': 'T-1', 'outcome': 'failed_external'}
-        )
+        self.assertIsNone(await output())
         user = await self.user_auth()
 
         async def reader() -> permissions.AuthContext:
@@ -1644,6 +1783,106 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
         self.assertEqual((await output())['summary'], 'Secret summary.')
         self.assertEqual((await output())['reason'], 'secret_reason')
         self.assertEqual((await output())['result'], {'secret': True})
+        self.assertEqual((await output())['title'], 'Secret title')
+        self.assertEqual((await output())['cost_usd'], 1.25)
+
+    async def test_task_completed_run_hides_ticket_attributes(self) -> None:
+        payload = {
+            'task_id': 'T-1',
+            'agent_id': self.agent,
+            'outcome': 'done_acted',
+            'title': 'Secret title',
+            'url': 'https://imbi.example.com/tasks/T-1',
+            'project': 'secret-project',
+            'agent': 'secret-agent',
+            'cost_usd': 1.25,
+        }
+        plain = {
+            'task_id': 'T-1',
+            'agent_id': self.agent,
+            'outcome': 'done_acted',
+        }
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE workflow_runtime.runs SET payload = %s,'
+                " origin_kind = 'task_completed' WHERE id = %s",
+                (workflows.runs.pg_json.Jsonb(payload), self.run_id),
+            )
+            await conn.execute(
+                'INSERT INTO workflow_runtime.step_runs (run_id, node_id,'
+                ' node_key, node_type, title, status, output) VALUES (%s,'
+                " 'start', 'start', 'task_completed', 'Start', 'succeeded',"
+                ' %s) ON CONFLICT (run_id, node_id) DO UPDATE'
+                ' SET node_type = EXCLUDED.node_type,'
+                ' output = EXCLUDED.output',
+                (self.run_id, workflows.runs.pg_json.Jsonb(payload)),
+            )
+            # A slack step that rendered {{ trigger.title }}.
+            await conn.execute(
+                'INSERT INTO workflow_runtime.step_runs (run_id, node_id,'
+                ' node_key, node_type, title, status, input, output)'
+                " VALUES (%s, 'tell', 'tell', 'slack', 'Tell', 'succeeded',"
+                ' %s, %s)',
+                (
+                    self.run_id,
+                    workflows.runs.pg_json.Jsonb({'text': 'Secret title'}),
+                    workflows.runs.pg_json.Jsonb({'ts': 'Secret title'}),
+                ),
+            )
+            await conn.execute(
+                "UPDATE workflow_runtime.runs SET dedupe_key = 'Secret title'"
+                ' WHERE id = %s',
+                (self.run_id,),
+            )
+        overrides = self.test_app.dependency_overrides
+        overrides[permissions.get_current_user] = self.user_auth
+
+        async def seen() -> list[typing.Any]:
+            detail = await self.client.get(f'{self.url}/runs/{self.run_id}')
+            self.assertEqual(detail.status_code, 200, detail.text)
+            listed = await self.client.get(f'{self.url}/runs')
+            self.assertEqual(listed.status_code, 200, listed.text)
+            steps = {s['node_id']: s for s in detail.json()['steps']}
+            (row,) = listed.json()
+            return [
+                detail.json()['payload'],
+                steps['start']['output'],
+                row['payload'],
+                steps['tell']['input'],
+                steps['tell']['output'],
+                steps['tell']['status'],
+                detail.json()['dedupe_key'],
+                row['dedupe_key'],
+            ]
+
+        self.assertEqual(
+            await seen(),
+            [plain, None, plain, None, None, 'succeeded', None, None],
+        )
+        user = await self.user_auth()
+
+        async def reader() -> permissions.AuthContext:
+            return permissions.AuthContext(
+                user=user.user,
+                session_id='test-session',
+                auth_method='jwt',
+                permissions={*user.permissions, 'agent_task:read'},
+            )
+
+        overrides[permissions.get_current_user] = reader
+        self.assertEqual(
+            await seen(),
+            [
+                payload,
+                payload,
+                payload,
+                {'text': 'Secret title'},
+                {'ts': 'Secret title'},
+                'succeeded',
+                'Secret title',
+                'Secret title',
+            ],
+        )
 
     async def test_open_run_keeps_the_agent_in_use(self) -> None:
         # The run is open on version 1. Version 2 has no agent step.
@@ -2105,6 +2344,103 @@ class SideEffectRecoveryTestCase(WorkflowRunTestCase):
         )
         self.assertEqual(response.status_code, 409, response.text)
         find.assert_not_called()
+
+
+class RunForTestCase(unittest.TestCase):
+    RUN: typing.ClassVar[dict[str, typing.Any]] = {
+        'origin_kind': 'manual',
+        'payload': {'title': 'x'},
+        'dedupe_key': 'secret',
+        'concurrency_key': 'secret',
+        'error': None,
+    }
+    STEPS: typing.ClassVar[list[dict[str, typing.Any]]] = [
+        {
+            'node_type': 'agent',
+            'input': {'a': 1},
+            'output': {'b': 2},
+            'error': None,
+        },
+        {
+            'node_type': 'slack',
+            'input': {'text': 's'},
+            'output': {'ts': 's'},
+            'error': None,
+        },
+    ]
+    QUOTED = "invalid_params: 'Secret title' is not a channel"
+
+    def test_error_quoting_a_ticket_title_keeps_only_the_code(self) -> None:
+        run = {
+            **self.RUN,
+            'origin_kind': 'task_completed',
+            'error': self.QUOTED,
+        }
+        steps = [{**self.STEPS[1], 'error': self.QUOTED}]
+        step = {
+            'node_key': 'tell',
+            'title': 'Tell',
+            'node_type': 'slack',
+            'attempt': 1,
+            'error': self.QUOTED,
+        }
+        hidden = mock.Mock(is_admin=False, permissions=set())
+        found = workflow_runs._run_for(hidden, run, steps)
+        self.assertEqual(found['error'], 'invalid_params')
+        self.assertEqual(found['steps'][0]['error'], 'invalid_params')
+        listed = workflow_runs._run_for(hidden, {**run, 'origin_kind': 'x'})
+        self.assertEqual(listed['error'], 'invalid_params')
+        failure = workflow_runs._failure(step, task_content=False)
+        assert failure is not None
+        self.assertEqual(failure['error'], 'invalid_params')
+        reader = mock.Mock(is_admin=False, permissions={'agent_task:read'})
+        found = workflow_runs._run_for(reader, run, steps)
+        self.assertEqual(found['error'], self.QUOTED)
+        self.assertEqual(found['steps'][0]['error'], self.QUOTED)
+        failure = workflow_runs._failure(step, task_content=True)
+        assert failure is not None
+        self.assertEqual(failure['error'], self.QUOTED)
+
+    def test_error_code_needs_a_code_shape(self) -> None:
+        self.assertIsNone(workflow_runs._error_code('Secret title failed'))
+        self.assertIsNone(workflow_runs._error_code(None))
+        self.assertEqual(workflow_runs._error_code('timeout'), 'timeout')
+
+    def test_agent_run_hides_keys_and_step_content(self) -> None:
+        auth = mock.Mock(is_admin=False, permissions=set())
+        found = workflow_runs._run_for(auth, self.RUN, self.STEPS)
+        self.assertIsNone(found['dedupe_key'])
+        self.assertIsNone(found['concurrency_key'])
+        self.assertEqual(
+            [(s['input'], s['output']) for s in found['steps']],
+            [(None, None), (None, None)],
+        )
+        # A manual payload is not task content: only the keys go.
+        self.assertEqual(found['payload'], {'title': 'x'})
+
+    def test_task_completed_list_row_hides_keys(self) -> None:
+        auth = mock.Mock(is_admin=False, permissions=set())
+        found = workflow_runs._run_for(
+            auth, {**self.RUN, 'origin_kind': 'task_completed'}
+        )
+        self.assertIsNone(found['dedupe_key'])
+        self.assertIsNone(found['concurrency_key'])
+        self.assertEqual(found['payload'], {})
+        self.assertNotIn('steps', found)
+
+    def test_run_without_agent_content_is_unchanged(self) -> None:
+        auth = mock.Mock(is_admin=False, permissions=set())
+        self.assertEqual(
+            workflow_runs._run_for(auth, self.RUN, self.STEPS[1:]),
+            {**self.RUN, 'steps': self.STEPS[1:]},
+        )
+
+    def test_task_reader_sees_everything(self) -> None:
+        auth = mock.Mock(is_admin=False, permissions={'agent_task:read'})
+        self.assertEqual(
+            workflow_runs._run_for(auth, self.RUN, self.STEPS),
+            {**self.RUN, 'steps': self.STEPS},
+        )
 
 
 class CheckInputsTestCase(unittest.TestCase):

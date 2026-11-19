@@ -44,13 +44,13 @@ export function useAgentToolCatalog(orgSlug: string) {
 
 /**
  * Token use and cost of the agents of an org. Disabled when the user
- * may not read agent tasks.
+ * may not read tickets.
  */
 export function useAgentUsage(
   orgSlug: string | undefined,
   params: AgentUsageParams = {},
 ) {
-  const canRead = useHasPermission('agent_task:read', orgSlug)
+  const canRead = useHasPermission('ticket:read', orgSlug)
   return useQuery({
     enabled: !!orgSlug && canRead,
     queryFn: ({ signal }) => getAgentUsage(orgSlug!, params, signal),

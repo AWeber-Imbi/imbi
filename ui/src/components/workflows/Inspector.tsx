@@ -113,7 +113,8 @@ export function NodePanel({
   node: WorkflowNode
   onChange: (patch: Partial<WorkflowNode>) => void
   onDelete: () => void
-  onDuplicate: () => void
+  /** Omitted for a step that must not be copied (a retired type). */
+  onDuplicate?: () => void
   /** Edits the prompt of an LLM Call step. */
   onPromptChange: (prompt: StepPrompt) => void
   onRemoveItem: (name: string, index: number) => void
@@ -174,9 +175,11 @@ export function NodePanel({
         </div>
         {!readOnly && (
           <>
-            <IconButton label="Duplicate" onClick={onDuplicate}>
-              <Copy className="size-3.5" />
-            </IconButton>
+            {onDuplicate && (
+              <IconButton label="Duplicate" onClick={onDuplicate}>
+                <Copy className="size-3.5" />
+              </IconButton>
+            )}
             <IconButton danger label="Delete step" onClick={onDelete}>
               <Trash2 className="size-3.5" />
             </IconButton>

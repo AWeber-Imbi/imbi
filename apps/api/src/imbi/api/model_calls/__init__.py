@@ -3,7 +3,7 @@
 The ``ai_runtime`` schema holds one row for each call that
 ``POST /organizations/{org}/prompts/run`` makes to a generative model.
 It is a plain Postgres schema next to the graph, managed like
-``agent_runtime``: the declarative ``schemata.toml`` is applied on every
+``tickets``: the declarative ``schemata.toml`` is applied on every
 start.
 
 A caller that sends an idempotency key gets one model call for that
@@ -24,7 +24,7 @@ import psycopg_pool
 from psycopg import rows
 from psycopg.types import json as pg_json
 
-from imbi.api.agent_tasks import create_pool
+from imbi.api.tickets import create_pool
 from imbi.common import lifespan, relational
 from imbi.common.workflows import runtime
 

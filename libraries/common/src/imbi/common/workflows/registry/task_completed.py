@@ -1,7 +1,7 @@
 """Task completed trigger: an agent task that closes starts a run.
 
 imbi-api starts the run when the task closes, from its close hook
-(:mod:`imbi.api.workflows.task_trigger`).
+(:mod:`imbi.api.workflows.ticket_trigger`).
 """
 
 import typing
@@ -25,7 +25,7 @@ class Params(pydantic.BaseModel):
     )
 
 
-class Output(pydantic.BaseModel):
+class Output(agent.TicketAttributes):
     #: The short id of the task, such as ``T-12``.
     task_id: str
     agent_id: str
@@ -50,6 +50,7 @@ STEP = step_type.StepType(
         'task_id': 'T-1',
         'agent_id': 'agent-1',
         'outcome': 'done_acted',
+        **agent.SAMPLE_ATTRIBUTES,
     },
     trigger=True,
     required_permissions=required_permissions,

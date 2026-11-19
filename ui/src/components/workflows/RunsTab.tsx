@@ -4,7 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 
 import { Search } from 'lucide-react'
 
-import { agentsPath } from '@/components/agents/agentsNav'
+import { agentsPath, ticketsPath } from '@/components/agents/agentsNav'
 import { AdminTable } from '@/components/ui/admin-table'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Input } from '@/components/ui/input'
@@ -247,7 +247,7 @@ export function RunsTab({
                 r.failure?.task_id ? (
                   <Link
                     className="text-secondary font-mono text-xs hover:underline"
-                    to={agentsPath('tasks', orgSlug, r.failure.task_id)}
+                    to={ticketsPath(orgSlug, r.failure.task_id)}
                   >
                     {r.failure.task_id}
                   </Link>

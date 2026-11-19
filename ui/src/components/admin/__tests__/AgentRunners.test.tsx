@@ -107,7 +107,7 @@ describe('AgentRunners', () => {
     expect(screen.getByText('all organizations', { exact: false }))
     expect(screen.getByRole('link', { name: 'T-7' })).toHaveAttribute(
       'href',
-      '/agents/tasks/acme/T-7',
+      '/tickets/acme/T-7',
     )
     expect(screen.getByText('stuck')).toBeInTheDocument()
     expect(screen.getByText('attempt 2')).toBeInTheDocument()

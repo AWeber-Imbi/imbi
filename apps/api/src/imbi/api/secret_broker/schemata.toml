@@ -1,6 +1,6 @@
 # Relational schema for the secrets broker (ADR 0022, plan section 9).
 #
-# imbi-api applies it on startup, like `agent_runtime`. The broker stores
+# imbi-api applies it on startup, like `tickets`. The broker stores
 # no secret material: providers hold configuration, bindings hold
 # provider locations, and resolutions hold a keyed hash of the handle,
 # never the handle. Every row belongs to one organization.

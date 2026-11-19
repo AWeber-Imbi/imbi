@@ -126,6 +126,7 @@ with one output port has no port name.
 | `manual` | Manual run | Triggers | One |
 | `schedule` | Schedule | Triggers | One |
 | `webhook` | Webhook | Triggers | One |
+| `ticket_closed` | Ticket closed | Triggers | One |
 | `wait` | Wait | Logic | One |
 | `model_decision` | Model decision | Logic | One for each branch |
 | `condition` | Condition | Logic | `True`, `False` |
@@ -208,6 +209,32 @@ A delivery to a gateway Webhook starts a run.
 `{{ trigger.payload.repository.name }}`.
 
 Create the Webhook first at **Admin > \<organization\> Admin > Webhooks**.
+
+### Ticket closed
+
+A ticket of the organization that closes starts a run. `task_completed` is
+the earlier name of this trigger. Both names work.
+
+| Parameter | What to enter | Default |
+|---|---|---|
+| `agent_id` | Start a run only for the tasks of this agent | None (any agent) |
+| `outcomes` | Start a run only for the tasks that close with one of these outcomes | None (any outcome) |
+
+**Output:** the attributes of the task. Use `{{ trigger.<field> }}`.
+
+| Field | Value |
+|---|---|
+| `task_id` | The short id of the task, for example `T-12` |
+| `agent_id` | The id of the agent |
+| `outcome` | The outcome of the task |
+| `title` | The title of the task |
+| `url` | The link to the task in the UI. `null` when `IMBI_UI_URL` is not set |
+| `project` | The slug of the first project of the task. `null` when the task has no project |
+| `agent` | The slug of the agent |
+| `cost_usd` | The cost of the task in USD |
+
+The fields after `outcome` are `null` in a run that started before Imbi
+added them.
 
 ### Wait
 
@@ -465,6 +492,7 @@ Posts a message to a Slack channel as the Imbi bot.
 |---|---|
 | `channel` | The channel ID, for example `C0123456789`, or one plain reference such as `{{ trigger.channel }}`. Not the channel name |
 | `text` | The message, in Slack mrkdwn, up to 40,000 characters. Templates are allowed |
+| `ticket` | Optional. An agent task (a ticket) to show below the message: a short id such as `T-12`, or one plain reference such as `{{ trigger.task_id }}` or `{{ ask.task_id }}` |
 
 To find a channel ID in Slack, open the channel details. The ID is at the
 bottom of the **About** tab.
@@ -492,7 +520,8 @@ Errors:
 | `slack_failed: <code>` | Slack refused the message with another [error code](https://docs.slack.dev/reference/methods/chat.postMessage#errors) |
 | `slack_ratelimited` | Slack rate-limited the post after every retry |
 | `outcome_unknown` | The call to Slack failed, Slack answered with a 5xx, or Slack answered `internal_error`, `fatal_error`, `request_timeout`, or `service_unavailable`. Slack may have posted the message. See [unknown outcome](#calls-with-an-unknown-outcome) |
-| `invalid_params`, `invalid_channel` | The rendered channel is not a channel ID |
+| `invalid_params`, `invalid_channel` | The rendered channel is not a channel ID, or the rendered ticket is not a short id |
+| `ticket_not_found` | The organization has no task with this short id |
 
 When Slack refuses a message, it posts nothing, and Imbi does not retry
 it. The one exception is a rate limit (`ratelimited`): the step tries
@@ -504,6 +533,14 @@ a value from a webhook payload cannot add a mention such as `<!channel>`
 or a link. Mentions and links that you write in `text` yourself work.
 Keys are escaped too, so a key that holds one of those characters is
 looked up by its escaped form (`trigger['a &amp; b']`).
+
+With `ticket`, Imbi reads the task when the step runs and adds a block
+below the message: the short id and title (a link to the task when
+`IMBI_UI_URL` is set), then the status, outcome, and project of the
+task. Each value from the task is escaped like a template value, so a
+task title cannot add a mention. If the message and the block are longer
+than 40,000 characters, Imbi cuts the end of the message. A workflow
+with a `ticket` needs `ticket:read` to activate.
 
 **Output:** `channel`, `ts` (the message timestamp), and `permalink` (a
 link to the message, or empty when Slack did not return one).
@@ -552,12 +589,13 @@ rollback fails the run.
 ### Agent task
 
 Gives an agent a task and waits for its outcome. See
-[Agent tasks](agent-tasks.md).
+[Tickets](tickets.md).
 
 | Parameter | What to enter | Default |
 |---|---|---|
 | `agent_id` | An agent of the organization. It must be a literal id | Required |
 | `instruction` | What the agent must do. Templates are allowed | Required |
+| `task_title` | The title of the agent task, up to 200 characters. Templates are allowed, for example `{{ trigger.ticket_key }}: implement` | `<workflow name>: <step title>` |
 | `project_id` | The project of the task: a literal id, or one plain reference such as `{{ trigger.project }}` or `{{ review.result.project }}`. A reference can render to a project id or slug | None |
 | `budget` | A limit in USD. It cannot be more than the task budget of the agent | The task budget of the agent |
 
@@ -578,9 +616,12 @@ the task. A step timeout does not cancel the task.
 You cannot delete an agent that a workflow uses. The delete returns `409`
 with "used in N workflow(s)".
 
-**Output:** `task_id`, `outcome`, `reason`, and `summary` (the last
-message of the agent). Run detail shows `reason` and `summary` only to
-people with `agent_task:read`.
+**Output:** `task_id`, `outcome`, `reason`, `summary` (the last message
+of the agent), `result` (the structured output), and the attributes of
+the task: `title`, `url`, `project`, `agent`, and `cost_usd`. These
+attributes are the same as in the output of a
+[Ticket closed](#ticket-closed) trigger. Run detail shows `reason`,
+`summary`, and `result` only to people with `ticket:read`.
 
 ## References
 
@@ -589,7 +630,7 @@ is the sandboxed Jinja of [Prompts](prompts.md).
 
 | Reference | Value |
 |---|---|
-| `{{ trigger.<name> }}` | A manual input, `fired_at` of a schedule, or `payload` of a webhook |
+| `{{ trigger.<name> }}` | A manual input, `fired_at` of a schedule, `payload` of a webhook, or a field of a ticket closed trigger |
 | `{{ <key>.<field> }}` | An output field of a step before this one, by its key |
 
 Examples:
@@ -615,6 +656,7 @@ different organization:
 |---|---|
 | `webhook_id`, and `agent_id` of an agent step | A literal id only |
 | `project_id` of agent, deploy, and rollback steps, email recipient ids | A literal id, or one plain reference such as `{{ trigger.project }}` |
+| `ticket` of a Slack step | A literal short id, or one plain reference. Imbi reads the task in the organization of the run only |
 
 A literal id must exist in the organization. Otherwise validation shows
 `resource_not_in_organization`.
@@ -688,7 +730,7 @@ Set **Dedupe key** to a [key template](#key-templates) that names the
 thing a run works on. Set **Dedupe window (days)** to how long a key
 skips a repeat. Leave the window empty to skip repeats forever.
 
-When a **Webhook** or **Task completed** trigger starts a run, Imbi
+When a **Webhook** or **Ticket closed** trigger starts a run, Imbi
 fills the key from the payload. If a run of the same workflow with the
 same key was made within the window, Imbi does not start the new run. It
 records it as `skipped`, with a link to the earlier run.
@@ -770,6 +812,13 @@ graph is too large.
 Activation makes the latest version the active version. Runs that already
 started keep the version that they started with.
 
+When you save an active workflow, the new version does not become active.
+The header then shows both versions, for example `Active: v3 · Saved: v5`,
+and an **Activate v5** button. Click the button to make the latest version
+the active version. The workflow stays active, so schedule and webhook
+triggers continue to start runs. The button is off while there are unsaved
+changes. Activation can fail for the same causes as the switch.
+
 Activation fails in these cases:
 
 | Response | Cause | Fix |
@@ -785,8 +834,10 @@ only. The permissions that steps need:
 | Schedule | `scheduled_task:create` |
 | Webhook | `webhook:update` |
 | Deploy, Rollback | `project:deployment:write` |
-| Agent task | `agent_task:create` |
+| Ticket closed | `ticket:read` |
+| Agent task | `ticket:create` |
 | LLM Call | `prompt:run` |
+| Slack message with a `ticket` | `ticket:read` |
 
 Imbi records who activated the workflow. A workflow cannot do more than
 that person can do. When a run starts, the engine checks the person again.
@@ -849,7 +900,10 @@ output.
 
 ### Run
 
-Click **Run** to start a run of the active version. The workflow must be
+Click **Run** to start a run of the active version. This is not always
+the version in the editor: the tooltip of **Run** names the version that it
+starts. To run a newer saved version, activate it first (see
+[Activate a workflow](#activate-a-workflow)). The workflow must be
 active and have a **Manual run** trigger. If the trigger declares inputs,
 enter them, then click **Run workflow**.
 
@@ -905,7 +959,7 @@ status:
 **Failure causes** groups the failed runs by reason. Click a reason to show
 only its runs. The reason comes from the failed step, not from the error of
 the run: the reason of the agent task of an agent step, else the error of
-the step, else the error of the run. Only people with `agent_task:read`
+the step, else the error of the run. Only people with `ticket:read`
 see the reason and summary of an agent task.
 
 The **Definitions** tab shows **Failed 7d** for each workflow: the failed
@@ -1102,5 +1156,5 @@ processes for script steps, and imbi-api keeps two for **Run script**. Allow
 memory for them in the pod limits. The preview always uses the default
 limits.
 
-See also [Agents](agents.md), [Agent tasks](agent-tasks.md), and
+See also [Agents](agents.md), [Tickets](tickets.md), and
 [Agent runners](../deployment/agent-runners.md).

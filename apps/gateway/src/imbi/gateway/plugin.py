@@ -2,8 +2,8 @@
 
 Wraps the bundled actions (``update_project``, ``create_release``,
 ``add_deployment_event``, ``publish_release``, ``block_release``,
-``update_release_drift``, ``ingest_sbom``, ``create_agent_task``,
-``start_workflow``) as a
+``update_release_drift``, ``ingest_sbom``, ``create_ticket`` (also
+named ``create_agent_task``), ``start_workflow``) as a
 :class:`~imbi.common.plugins.base.WebhookActionsCapability` on a single
 :class:`~imbi.common.plugins.base.Plugin` (slug ``gateway-actions``) so
 they participate in the same discovery, validation, and dispatch flow as
@@ -124,15 +124,26 @@ class GatewayWebhookActions(plugin_base.WebhookActionsCapability):
                 model_path='imbi.gateway.actions:IngestSbomConfig',
             ),
             _descriptor(
-                name='create_agent_task',
-                label='Create Agent Task from Webhook',
+                name='create_ticket',
+                label='Create Ticket from Webhook',
                 description=(
                     'Starts agent work on the matched project, with the '
                     'webhook delivery as its origin. Only for signed '
-                    'deliveries. A redelivery makes no second task.'
+                    'deliveries. A redelivery makes no second ticket.'
                 ),
-                callable_path='imbi.gateway.actions:create_agent_task',
-                model_path='imbi.gateway.actions:CreateAgentTaskConfig',
+                callable_path='imbi.gateway.actions:create_ticket',
+                model_path='imbi.gateway.actions:CreateTicketConfig',
+            ),
+            # The name before ADR 0028. Saved webhook rules name it.
+            _descriptor(
+                name='create_agent_task',
+                label='Create Ticket from Webhook (old name)',
+                description=(
+                    'The same action as create_ticket. Use create_ticket '
+                    'in new rules.'
+                ),
+                callable_path='imbi.gateway.actions:create_ticket',
+                model_path='imbi.gateway.actions:CreateTicketConfig',
             ),
             _descriptor(
                 name='start_workflow',
@@ -160,7 +171,7 @@ class GatewayActionsPlugin(plugin_base.Plugin):
             'facts, create a release, append a deployment event, publish '
             'or block a release on the deployment outcome, ingest drift '
             'verdicts from git-notes pushes, ingest CycloneDX SBoMs, '
-            'start agent tasks, and start workflow runs.'
+            'create tickets, and start workflow runs.'
         ),
         auth_type='none',
         credentials=[],

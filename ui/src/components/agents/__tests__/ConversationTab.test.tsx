@@ -2,7 +2,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { act, cleanup, render, screen, waitFor, within } from '@/test/utils'
-import type { AgentTask } from '@/types'
+import type { Ticket } from '@/types'
 
 import { MODE_KEY } from '../conversationMode'
 import { ConversationTab } from '../ConversationTab'
@@ -39,8 +39,8 @@ const LOG = [
   event(4, 'turn', { body: 'fixed' }),
 ]
 
-function renderTab(status: AgentTask['status'], events = LOG) {
-  const t = task({ status }) as unknown as AgentTask
+function renderTab(status: Ticket['status'], events = LOG) {
+  const t = task({ status }) as unknown as Ticket
   return render(
     <div className="flex h-150 flex-col">
       <ConversationTab events={events} orgSlug="acme" requests={[]} task={t} />
@@ -379,7 +379,7 @@ describe('ConversationTab', () => {
       result: 'a.py',
       tool: 'Bash',
     })
-    const t = task({ status: 'running' }) as unknown as AgentTask
+    const t = task({ status: 'running' }) as unknown as Ticket
     const view = (events: ReturnType<typeof event>[]) => (
       <div className="flex h-150 flex-col">
         <ConversationTab
@@ -447,7 +447,7 @@ describe('ConversationTab', () => {
       description: 'Review the ingest service',
       origin: { kind: 'webhook' },
       status: 'closed',
-    }) as unknown as AgentTask
+    }) as unknown as Ticket
     render(
       <div className="flex h-150 flex-col">
         <ConversationTab events={LOG} orgSlug="acme" requests={[]} task={t} />
@@ -461,7 +461,7 @@ describe('ConversationTab', () => {
     const t = task({
       description: 'fix it',
       status: 'closed',
-    }) as unknown as AgentTask
+    }) as unknown as Ticket
     render(
       <div className="flex h-150 flex-col">
         <ConversationTab events={LOG} orgSlug="acme" requests={[]} task={t} />
@@ -524,7 +524,7 @@ describe('ConversationTab', () => {
     const result = Array.from({ length: 60 }, (_, i) =>
       i === 50 ? 'the hidden clue' : `line ${i}`,
     ).join('\n')
-    const t = task({ status: 'closed' }) as unknown as AgentTask
+    const t = task({ status: 'closed' }) as unknown as Ticket
     render(
       <TaskSearchProvider>
         <div className="flex h-150 flex-col">
@@ -573,7 +573,7 @@ describe('ConversationTab', () => {
   it('shows all of a long ask when the search matches past its preview', async () => {
     const user = userEvent.setup()
     const description = `${'word '.repeat(150)}the hidden clue`
-    const t = task({ description, status: 'closed' }) as unknown as AgentTask
+    const t = task({ description, status: 'closed' }) as unknown as Ticket
     render(
       <div className="flex h-150 flex-col">
         <ConversationTab events={LOG} orgSlug="acme" requests={[]} task={t} />
@@ -641,8 +641,8 @@ describe('ConversationTab with many turns', () => {
     parseFloat(
       el.querySelector<HTMLElement>('[style*="height"]')?.style.height ?? '0',
     )
-  const view = (status: AgentTask['status'], events = MANY) => {
-    const t = task({ status }) as unknown as AgentTask
+  const view = (status: Ticket['status'], events = MANY) => {
+    const t = task({ status }) as unknown as Ticket
     return (
       <div className="flex h-150 flex-col">
         <ConversationTab
@@ -948,7 +948,7 @@ describe('ConversationTab with many turns', () => {
   it('keeps a long ask shown in full after it scrolls out of view', async () => {
     const user = userEvent.setup()
     const description = `${'word '.repeat(150)}the end`
-    const t = task({ description, status: 'closed' }) as unknown as AgentTask
+    const t = task({ description, status: 'closed' }) as unknown as Ticket
     render(
       <div className="flex h-150 flex-col">
         <ConversationTab events={MANY} orgSlug="acme" requests={[]} task={t} />
@@ -975,7 +975,7 @@ describe('ConversationTab with many turns', () => {
   it('lets the browser find only the part of a long ask it shows', async () => {
     const user = userEvent.setup()
     const description = `${'word '.repeat(150)}the hidden end`
-    const t = task({ description, status: 'closed' }) as unknown as AgentTask
+    const t = task({ description, status: 'closed' }) as unknown as Ticket
     render(
       <div className="flex h-150 flex-col">
         <ConversationTab events={MANY} orgSlug="acme" requests={[]} task={t} />
@@ -1000,7 +1000,7 @@ describe('ConversationTab with many turns', () => {
     const t = task({
       description: 'Hi, *Pluto*!',
       status: 'closed',
-    }) as unknown as AgentTask
+    }) as unknown as Ticket
     const events = [
       event(1, 'turn', { body: 'ask **0**' }, HUMAN),
       event(2, 'turn', {
@@ -1215,7 +1215,7 @@ describe('ConversationTab with many turns', () => {
       title: 'Pick a database',
       why: null,
     }
-    const t = task({ status: 'running' }) as unknown as AgentTask
+    const t = task({ status: 'running' }) as unknown as Ticket
     render(
       <div className="flex h-150 flex-col">
         <ConversationTab
@@ -1296,7 +1296,7 @@ describe('ConversationTab with many turns', () => {
       row: (el) => 100 + Math.round((el.textContent ?? '').length / 2),
     })
     const description = `${'word '.repeat(150)}the end`
-    const t = task({ description, status: 'closed' }) as unknown as AgentTask
+    const t = task({ description, status: 'closed' }) as unknown as Ticket
     render(
       <div className="flex h-150 flex-col">
         <ConversationTab

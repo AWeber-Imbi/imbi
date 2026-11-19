@@ -39,14 +39,14 @@ import fastapi
 import pydantic
 from fastapi import responses
 
-from imbi.api import agent_tasks, harness, secret_broker
+from imbi.api import harness, secret_broker, tickets
 from imbi.api import settings as api_settings
 from imbi.api.auth import autonomous, organizations, permissions
 from imbi.api.endpoints import _helpers
-from imbi.api.endpoints import agent_tasks as tasks_api
 from imbi.api.endpoints import agents as agents_api
 from imbi.api.endpoints import auth as auth_endpoints
 from imbi.api.endpoints import secret_broker as secrets_api
+from imbi.api.endpoints import tickets as tasks_api
 from imbi.api.harness import auth as harness_auth
 from imbi.api.harness import egress as harness_egress
 from imbi.api.harness import platform, tokens
@@ -54,6 +54,7 @@ from imbi.api.harness import store as harness_store
 from imbi.api.middleware import rate_limit
 from imbi.api.secret_broker import broker, providers
 from imbi.api.secret_broker import store as secret_store
+from imbi.api.tickets import store as ticket_store
 from imbi.common import graph, models
 from imbi.common.prompts import rendering
 from imbi.common.prompts import resolve as prompt_resolve
@@ -306,6 +307,30 @@ class RunnerFinished(pydantic.BaseModel):
 class AttachedProject(pydantic.BaseModel):
     project_id: str
     project_slug: str
+
+
+#: The largest history, in UTF-8 bytes of entry text.
+MAX_HISTORY_BYTES = 64 * 1024
+
+
+class HistoryEntry(pydantic.BaseModel):
+    """One part of the history of a ticket. Handoffs are not stored
+    yet, so the history has none."""
+
+    kind: typing.Literal['comment', 'request', 'child', 'prerequisite']
+    at: datetime.datetime
+    #: The person who wrote a comment or resolved a request.
+    actor: str | None = None
+    text: str
+    #: The text came from a webhook payload: it is untrusted.
+    webhook: bool = False
+
+
+class TicketHistory(pydantic.BaseModel):
+    #: Oldest first.
+    entries: list[HistoryEntry]
+    #: The number of older entries left out to fit the byte limit.
+    cut: int = 0
 
 
 class ChildTaskCreate(pydantic.BaseModel):
@@ -745,10 +770,6 @@ class _NoServiceAccount(LookupError):
     """The service account of a claimed task is gone."""
 
 
-class _ModelNotAllowed(PermissionError):
-    """The owner team of the agent may not use its restricted model."""
-
-
 async def _check_model_teams(
     db: graph.Graph, agent_id: str, model_id: str
 ) -> None:
@@ -759,13 +780,16 @@ async def _check_model_teams(
     after the save.
 
     Raises:
-        _ModelNotAllowed: The owner team may not use ``model_id``.
+        prompt_resolve.ModelNotAllowed: The owner team may not use
+            ``model_id``.
 
     """
     records = await db.execute(_AGENT_TEAM_QUERY, {'id': agent_id}, ['id'])
     team_id = str(graph.parse_agtype(records[0]['id'])) if records else ''
     if not await prompt_resolve.team_may_use_model_id(db, model_id, team_id):
-        raise _ModelNotAllowed(model_id)
+        raise prompt_resolve.ModelNotAllowed(
+            f'The owner team may not use the model {model_id!r}'
+        )
 
 
 class _EgressTokenTooLarge(ValueError):
@@ -774,14 +798,14 @@ class _EgressTokenTooLarge(ValueError):
 
 
 #: The actor of the outcome of a task that cannot run.
-_SYSTEM = agent_tasks.Actor('system', 'imbi', 'harness')
+_SYSTEM = tickets.Actor('system', 'imbi', 'harness')
 
 
 async def _deliver(
     db: graph.Graph,
     store: harness.HarnessStore,
     secrets: secret_store.SecretStore,
-    tasks: agent_tasks.TaskStore,
+    tasks: tickets.TicketStore,
     runner: dict[str, typing.Any],
     claimed: tuple[dict[str, typing.Any], dict[str, typing.Any]],
     *,
@@ -811,7 +835,7 @@ async def _deliver(
         outcome, reason = 'unhandled_no_actor', 'service_account_missing'
     except _EgressTokenTooLarge:
         outcome, reason = 'exceeded_ceiling', 'egress_token_too_large'
-    except _ModelNotAllowed:
+    except prompt_resolve.ModelNotAllowed:
         outcome, reason = 'failed_external', 'model_not_allowed'
     except BaseException:
         await store.release_claim(runner['id'], task, chain, pinned=pinned)
@@ -1059,7 +1083,7 @@ async def _chain_task(
     caller: harness_auth.HarnessCaller,
     short_id: str,
     db: graph.Graph,
-    store: agent_tasks.TaskStore,
+    store: tickets.TicketStore,
 ) -> dict[str, typing.Any]:
     """Return a task of the agent token's chain, of the token's agent.
 
@@ -1449,7 +1473,7 @@ async def heartbeat_harness_runner(
     runner: harness_auth.Runner,
     store: harness.Store,
     db: graph.Pool,
-    tasks: agent_tasks.Store,
+    tasks: tickets.Store,
     data: RunnerHeartbeat | None = None,
 ) -> RunnerLease:
     """Renew the lease of the runner, and the agent API tokens of the
@@ -1494,7 +1518,7 @@ async def heartbeat_harness_runner(
 async def _renew_api_tokens(
     db: graph.Graph,
     store: harness.HarnessStore,
-    tasks: agent_tasks.TaskStore,
+    tasks: tickets.TicketStore,
     runner: dict[str, typing.Any],
     short_ids: list[str],
 ) -> dict[str, ApiToken]:
@@ -1571,7 +1595,7 @@ async def claim_harness_task(
     db: graph.Pool,
     store: harness.Store,
     secrets: secret_broker.Store,
-    tasks: agent_tasks.Store,
+    tasks: tickets.Store,
     wait: typing.Annotated[
         int,
         fastapi.Query(
@@ -1639,7 +1663,7 @@ async def claim_harness_child_task(
     db: graph.Pool,
     store: harness.Store,
     secrets: secret_broker.Store,
-    tasks: agent_tasks.Store,
+    tasks: tickets.Store,
     pod: _PodQuery = None,
 ) -> Claim | fastapi.Response:
     """Claim the oldest queued child task of the runner's chain.
@@ -1682,14 +1706,20 @@ async def finish_harness_runner(
 
 
 @harness_router.get(
+    '/tickets/{short_id}/events',
+    response_model=list[tasks_api.AgentTaskEventResponse],
+    name='list_harness_ticket_events',
+)
+@harness_router.get(
     '/tasks/{short_id}/events',
     response_model=list[tasks_api.AgentTaskEventResponse],
+    deprecated=True,
 )
 async def list_harness_task_events(
     short_id: str,
     caller: harness_auth.AgentCaller,
     db: graph.Pool,
-    store: agent_tasks.Store,
+    store: tickets.Store,
     after_seq: typing.Annotated[int, fastapi.Query(ge=0)] = 0,
     limit: typing.Annotated[int, fastapi.Query(ge=1, le=1000)] = 100,
 ) -> list[dict[str, typing.Any]]:
@@ -1705,19 +1735,131 @@ async def list_harness_task_events(
     """
     task = await _chain_task(caller, short_id, db, store)
     if task['log_archived_at'] is not None:
-        return await agent_tasks.log.archived_events(task, after_seq, limit)
+        return await tickets.log.archived_events(task, after_seq, limit)
     return await store.events(task['id'], after_seq, limit)
 
 
+def _linked_entry(
+    kind: typing.Literal['child', 'prerequisite'], row: dict[str, typing.Any]
+) -> HistoryEntry:
+    """The status and the outcome of a child or prerequisite ticket.
+
+    An agent writes the title of a ticket that an agent starts, and it
+    can quote webhook text from any ticket of its chain. Thus the entry
+    of a webhook ticket or of an agent ticket is untrusted (``webhook``).
+    """
+    text = f'{row["short_id"]} {row["title"]}: {row["status"]}'
+    if row['outcome']:
+        text += f', {row["outcome"]}'
+    if row['outcome_reason']:
+        text += f' ({row["outcome_reason"]})'
+    return HistoryEntry(
+        kind=kind,
+        at=row['closed_at'] or row['created_at'],
+        text=text,
+        webhook=row['origin_kind']
+        in ('webhook', *ticket_store.CHILD_ORIGIN_KINDS),
+    )
+
+
+def _request_entry(row: dict[str, typing.Any], webhook: bool) -> HistoryEntry:
+    """A resolved request: what the agent asked and what it got.
+
+    The agent can quote the text of a webhook ticket in its question, so
+    the request of a webhook ticket is untrusted (``webhook``).
+    """
+    resolution: dict[str, typing.Any] = row['resolution'] or {}
+    lines = [f'{row["kind"]} request "{row["title"]}": {row["status"]}']
+    if resolution.get('answer'):
+        lines.append(f'Answer: {resolution["answer"]}')
+    if resolution.get('constraints'):
+        lines.append(f'Constraints: {"; ".join(resolution["constraints"])}')
+    return HistoryEntry(
+        kind='request',
+        at=row['resolved_at'],
+        actor=row['resolved_by'],
+        text='\n'.join(lines),
+        webhook=webhook,
+    )
+
+
+def cut_history(entries: list[HistoryEntry], max_bytes: int) -> TicketHistory:
+    """Keep the newest entries whose text fits in ``max_bytes``."""
+    size = 0
+    kept = 0
+    for entry in reversed(entries):
+        size += len(entry.text.encode())
+        if size > max_bytes:
+            break
+        kept += 1
+    return TicketHistory(
+        entries=entries[len(entries) - kept :], cut=len(entries) - kept
+    )
+
+
+@harness_router.get(
+    '/tickets/{short_id}/history', response_model=TicketHistory
+)
+async def read_harness_ticket_history(
+    short_id: str,
+    caller: harness_auth.AgentCaller,
+    db: graph.Pool,
+    store: tickets.Store,
+) -> TicketHistory:
+    """Return the history of a ticket of the chain, for a new session.
+
+    A new session reads events only after ``last_seq``, so it reads
+    what happened before here: comments (human turns), resolved
+    requests, and the status and outcome of child and prerequisite
+    tickets, oldest first. When the text is larger
+    than :data:`MAX_HISTORY_BYTES`, the oldest entries are left out
+    and ``cut`` is their number. ``webhook`` marks untrusted text.
+
+    Raises:
+        401: Not a current agent token.
+        403: Another chain or another agent.
+        404: No such ticket.
+
+    """
+    task = await _chain_task(caller, short_id, db, store)
+    (turns, requests), relations = await asyncio.gather(
+        store.history(task), store.relations(task)
+    )
+    webhook = task['origin_kind'] == 'webhook'
+    entries = [
+        *(
+            HistoryEntry(
+                kind='comment',
+                at=turn['at'],
+                actor=turn['actor_id'],
+                text=turn['body'] or '',
+            )
+            for turn in turns
+        ),
+        *(_request_entry(row, webhook) for row in requests),
+        *(_linked_entry('child', row) for row in relations['children']),
+        *(_linked_entry('prerequisite', row) for row in relations['requires']),
+    ]
+    entries.sort(key=lambda entry: entry.at)
+    return cut_history(entries, MAX_HISTORY_BYTES)
+
+
 @harness_router.put(
-    '/tasks/{short_id}/projects/{project}', response_model=AttachedProject
+    '/tickets/{short_id}/projects/{project}',
+    response_model=AttachedProject,
+    name='attach_harness_ticket_project',
+)
+@harness_router.put(
+    '/tasks/{short_id}/projects/{project}',
+    response_model=AttachedProject,
+    deprecated=True,
 )
 async def attach_harness_task_project(
     short_id: str,
     project: str,
     caller: harness_auth.AgentCaller,
     db: graph.Pool,
-    store: agent_tasks.Store,
+    store: tickets.Store,
 ) -> dict[str, str]:
     """Associate a project of the org with a task of the chain.
 
@@ -1749,11 +1891,23 @@ async def attach_harness_task_project(
             task['short_id'],
             project_id,
             slug,
-            agent_tasks.Actor('agent', task['agent_id'], 'harness'),
+            tickets.Actor('agent', task['agent_id'], 'harness'),
         )
     return {'project_id': project_id, 'project_slug': slug}
 
 
+@harness_router.post(
+    '/tickets/{short_id}/children',
+    status_code=201,
+    response_model=tasks_api.AgentTaskResponse,
+    responses={
+        200: {
+            'model': tasks_api.AgentTaskResponse,
+            'description': 'A child with this idempotency key exists.',
+        },
+    },
+    name='create_harness_child_ticket',
+)
 @harness_router.post(
     '/tasks/{short_id}/children',
     status_code=201,
@@ -1764,6 +1918,7 @@ async def attach_harness_task_project(
             'description': 'A child with this idempotency key exists.',
         },
     },
+    deprecated=True,
 )
 async def create_harness_child_task(
     short_id: str,
@@ -1771,7 +1926,7 @@ async def create_harness_child_task(
     response: fastapi.Response,
     caller: harness_auth.AgentCaller,
     db: graph.Pool,
-    store: agent_tasks.Store,
+    store: tickets.Store,
     runners: harness.Store,
 ) -> dict[str, typing.Any]:
     """Make a child task (origin ``task``) in the chain of a task.
@@ -1876,7 +2031,7 @@ async def create_harness_child_task(
     }
     try:
         task, created = await store.create(
-            agent_tasks.NewTask(
+            tickets.NewTask(
                 organization_id=parent['organization_id'],
                 agent_id=agent_id,
                 agent_version=agent_version,
@@ -1892,7 +2047,7 @@ async def create_harness_child_task(
                 budget=budget,
                 chain_id=chain_id,
             ),
-            agent_tasks.Actor('agent', parent['agent_id'], 'harness'),
+            tickets.Actor('agent', parent['agent_id'], 'harness'),
             {
                 'title': data.title,
                 'description': data.description,
@@ -1902,7 +2057,7 @@ async def create_harness_child_task(
                 'prompt_version': prompt_version,
             },
         )
-    except agent_tasks.TaskClosed as e:
+    except tickets.TaskClosed as e:
         raise _conflict(
             'task_closed', f'Task {parent["short_id"]} is closed'
         ) from e
@@ -1912,14 +2067,21 @@ async def create_harness_child_task(
 
 
 @harness_router.post(
-    '/tasks/{short_id}/tool-calls/check', response_model=ToolCallVerdict
+    '/tickets/{short_id}/tool-calls/check',
+    response_model=ToolCallVerdict,
+    name='check_harness_tool_call',
+)
+@harness_router.post(
+    '/tasks/{short_id}/tool-calls/check',
+    response_model=ToolCallVerdict,
+    deprecated=True,
 )
 async def check_harness_tool_call(
     short_id: str,
     data: ToolCallCheck,
     caller: harness_auth.AgentCaller,
     db: graph.Pool,
-    store: agent_tasks.Store,
+    store: tickets.Store,
     runners: harness.Store,
 ) -> ToolCallVerdict:
     """Count a call of a tool against its rate limit, across runners.
@@ -1975,7 +2137,7 @@ async def create_harness_secret_resolution(
     response: fastapi.Response,
     caller: harness_auth.AgentCaller,
     db: graph.Pool,
-    store: agent_tasks.Store,
+    store: tickets.Store,
     service: secret_broker.Broker,
     idempotency_key: typing.Annotated[
         str | None,

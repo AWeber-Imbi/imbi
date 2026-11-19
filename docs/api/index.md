@@ -64,7 +64,7 @@ Its runner pods claim agent tasks from imbi-api. See
 | Plugins and integrations | [Plugins](../common/plugins/index.md) |
 | Deployments and releases | [Deployment plugins](../common/plugins/deployment.md) |
 | Project scoring | [ADR 0011](adr/0011-graph-based-project-scoring.md) |
-| Agents and agent tasks | [Agents](../admin/agents.md), [Agent Tasks](../admin/agent-tasks.md) |
+| Agents and agent tasks | [Agents](../admin/agents.md), [Tickets](../admin/tickets.md) |
 | Workflows | [Workflows](../admin/workflows.md) |
 | Secrets broker | [Secrets](../admin/secrets.md) |
 | AI model catalog | [AI Models](../admin/ai-models.md) |

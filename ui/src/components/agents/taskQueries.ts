@@ -11,19 +11,19 @@ import {
 
 import { ApiError } from '@/api/client'
 import {
-  type AgentTaskListParams,
-  countAgentTasks,
-  countWaitingAgentTasks,
-  getAgentTask,
-  getAgentTaskRelations,
-  listAgentTaskEvents,
-  listAgentTaskProjects,
-  listAgentTasks,
-  replyAgentTask,
+  countTickets,
+  countWaitingTickets,
+  getTicket,
+  getTicketRelations,
+  listTicketEvents,
+  listTicketProjects,
+  listTickets,
+  replyTicket,
+  type TicketListParams,
 } from '@/api/endpoints'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { queryKeys } from '@/lib/queryKeys'
-import type { AgentTask, AgentTaskEvent } from '@/types'
+import type { Ticket, TicketEvent } from '@/types'
 
 export type TaskReply = ReturnType<typeof useTaskReply>
 
@@ -57,10 +57,23 @@ export function errorMessage(error: Error): string {
   return error.message
 }
 
-export function useAgentTask(orgSlug: string, shortId: string) {
+/**
+ * The reply mutation of a task, owned above the views so a pending reply
+ * stays pending when the composer remounts.
+ */
+export function useTaskReply(orgSlug: string, shortId: string) {
+  return useTicketMutation(
+    orgSlug,
+    shortId,
+    ({ hold, text }: { hold: boolean; text: string }) =>
+      replyTicket(orgSlug, shortId, text.trim(), hold),
+  )
+}
+
+export function useTicket(orgSlug: string, shortId: string) {
   return useQuery({
-    queryFn: ({ signal }) => getAgentTask(orgSlug, shortId, signal),
-    queryKey: queryKeys.agentTask(orgSlug, shortId),
+    queryFn: ({ signal }) => getTicket(orgSlug, shortId, signal),
+    queryKey: queryKeys.ticket(orgSlug, shortId),
   })
 }
 
@@ -68,14 +81,11 @@ export function useAgentTask(orgSlug: string, shortId: string) {
  * The number of tasks in each inbox group. A change of filters keeps
  * the old counts until the new ones come, so the list does not jump.
  */
-export function useAgentTaskCounts(
-  orgSlug: string,
-  params: AgentTaskListParams,
-) {
+export function useTicketCounts(orgSlug: string, params: TicketListParams) {
   return useQuery({
     placeholderData: keepPreviousData,
-    queryFn: ({ signal }) => countAgentTasks(orgSlug, params, signal),
-    queryKey: queryKeys.agentTasks(orgSlug, { ...params, counts: true }),
+    queryFn: ({ signal }) => countTickets(orgSlug, params, signal),
+    queryKey: queryKeys.tickets(orgSlug, { ...params, counts: true }),
     refetchInterval: LIST_POLL_MS,
   })
 }
@@ -85,19 +95,19 @@ export function useAgentTaskCounts(
  * newest one in the cache and appends them, so polling is cheap and the
  * page never reloads. Polls while `live`.
  */
-export function useAgentTaskEvents(
+export function useTicketEvents(
   orgSlug: string,
   shortId: string,
   live: boolean,
 ) {
   const queryClient = useQueryClient()
-  const queryKey = queryKeys.agentTaskEvents(orgSlug, shortId)
+  const queryKey = queryKeys.ticketEvents(orgSlug, shortId)
   const query = useQuery({
     queryFn: async ({ signal }) => {
-      const have = queryClient.getQueryData<AgentTaskEvent[]>(queryKey) ?? []
+      const have = queryClient.getQueryData<TicketEvent[]>(queryKey) ?? []
       const events = [...have]
       for (;;) {
-        const page = await listAgentTaskEvents(
+        const page = await listTicketEvents(
           orgSlug,
           shortId,
           events[events.length - 1]?.seq ?? 0,
@@ -123,22 +133,22 @@ export function useAgentTaskEvents(
   const seenSeq = useRef(0)
   useEffect(() => {
     const lastSeq = data?.[data.length - 1]?.seq ?? 0
-    const taskKey = queryKeys.agentTask(orgSlug, shortId)
+    const taskKey = queryKeys.ticket(orgSlug, shortId)
     const previousSeq = seenSeq.current
     const base =
       previousSeq ||
-      (queryClient.getQueryData<AgentTask>(taskKey)?.last_seq ?? lastSeq)
+      (queryClient.getQueryData<Ticket>(taskKey)?.last_seq ?? lastSeq)
     const keys: QueryKey[] = []
     if (lastSeq > base)
       keys.push(
         taskKey,
-        queryKeys.agentTasks(orgSlug),
-        queryKeys.agentTasksWaiting(orgSlug),
+        queryKeys.tickets(orgSlug),
+        queryKeys.ticketsWaiting(orgSlug),
       )
     if (data?.some((e) => e.seq > previousSeq && RELATION_EVENTS.has(e.type)))
       keys.push(
-        queryKeys.agentTaskRelations(orgSlug, shortId),
-        queryKeys.agentTaskProjects(orgSlug, shortId),
+        queryKeys.ticketRelations(orgSlug, shortId),
+        queryKeys.ticketProjects(orgSlug, shortId),
       )
     for (const key of keys)
       void queryClient.invalidateQueries({ queryKey: key })
@@ -151,26 +161,26 @@ export function useAgentTaskEvents(
  * The pages of the inbox groups that `pages` names, as
  * `<group>:<page>`, each `TASK_PAGE` tasks in the order of the inbox.
  */
-export function useAgentTaskGroupPages(
+export function useTicketGroupPages(
   orgSlug: string,
-  params: AgentTaskListParams,
+  params: TicketListParams,
   pages: string[],
 ) {
   return useQueries({
     queries: pages.map((name) => {
       const [group, page] = name.split(':') as [
-        NonNullable<AgentTaskListParams['group']>,
+        NonNullable<TicketListParams['group']>,
         string,
       ]
       const offset = Number(page) * TASK_PAGE
       return {
         queryFn: ({ signal }: { signal: AbortSignal }) =>
-          listAgentTasks(
+          listTickets(
             orgSlug,
             { ...params, group, limit: TASK_PAGE, offset },
             signal,
           ),
-        queryKey: queryKeys.agentTasks(orgSlug, { ...params, group, offset }),
+        queryKey: queryKeys.tickets(orgSlug, { ...params, group, offset }),
         refetchInterval: LIST_POLL_MS,
       }
     }),
@@ -181,7 +191,7 @@ export function useAgentTaskGroupPages(
  * A change to a task, then a refresh of the task, its events, the
  * inbox, and the waiting count.
  */
-export function useAgentTaskMutation<T>(
+export function useTicketMutation<T>(
   orgSlug: string,
   shortId: string,
   mutationFn: (value: T) => Promise<unknown>,
@@ -192,19 +202,19 @@ export function useAgentTaskMutation<T>(
     onSettled: () =>
       Promise.all(
         [
-          queryKeys.agentTask(orgSlug, shortId),
-          queryKeys.agentTaskEvents(orgSlug, shortId),
-          queryKeys.agentTasks(orgSlug),
-          queryKeys.agentTasksWaiting(orgSlug),
+          queryKeys.ticket(orgSlug, shortId),
+          queryKeys.ticketEvents(orgSlug, shortId),
+          queryKeys.tickets(orgSlug),
+          queryKeys.ticketsWaiting(orgSlug),
         ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
       ),
   })
 }
 
-export function useAgentTaskProjects(orgSlug: string, shortId: string) {
+export function useTicketProjects(orgSlug: string, shortId: string) {
   return useQuery({
-    queryFn: ({ signal }) => listAgentTaskProjects(orgSlug, shortId, signal),
-    queryKey: queryKeys.agentTaskProjects(orgSlug, shortId),
+    queryFn: ({ signal }) => listTicketProjects(orgSlug, shortId, signal),
+    queryKey: queryKeys.ticketProjects(orgSlug, shortId),
   })
 }
 
@@ -212,7 +222,7 @@ export function useAgentTaskProjects(orgSlug: string, shortId: string) {
  * A change to the relations of tasks. It writes events on each task in
  * it, so the relations, the events, and the tasks of the org read again.
  */
-export function useAgentTaskRelationMutation<T>(
+export function useTicketRelationMutation<T>(
   orgSlug: string,
   mutationFn: (value: T) => Promise<unknown>,
 ) {
@@ -222,26 +232,26 @@ export function useAgentTaskRelationMutation<T>(
     onSettled: () =>
       Promise.all(
         [
-          queryKeys.agentTaskRelations(orgSlug),
-          queryKeys.agentTaskProjects(orgSlug),
-          queryKeys.agentTaskEvents(orgSlug),
-          queryKeys.agentTask(orgSlug),
+          queryKeys.ticketRelations(orgSlug),
+          queryKeys.ticketProjects(orgSlug),
+          queryKeys.ticketEvents(orgSlug),
+          queryKeys.ticket(orgSlug),
         ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
       ),
   })
 }
 
-export function useAgentTaskRelations(orgSlug: string, shortId: string) {
+export function useTicketRelations(orgSlug: string, shortId: string) {
   return useQuery({
-    queryFn: ({ signal }) => getAgentTaskRelations(orgSlug, shortId, signal),
-    queryKey: queryKeys.agentTaskRelations(orgSlug, shortId),
+    queryFn: ({ signal }) => getTicketRelations(orgSlug, shortId, signal),
+    queryKey: queryKeys.ticketRelations(orgSlug, shortId),
   })
 }
 
-export function useAgentTasks(orgSlug: string, params: AgentTaskListParams) {
+export function useTickets(orgSlug: string, params: TicketListParams) {
   return useQuery({
-    queryFn: ({ signal }) => listAgentTasks(orgSlug, params, signal),
-    queryKey: queryKeys.agentTasks(orgSlug, params),
+    queryFn: ({ signal }) => listTickets(orgSlug, params, signal),
+    queryKey: queryKeys.tickets(orgSlug, params),
     refetchInterval: LIST_POLL_MS,
   })
 }
@@ -250,25 +260,12 @@ export function useAgentTasks(orgSlug: string, params: AgentTaskListParams) {
  * The number of tasks in the org that wait on a person (not closed, a
  * request open), for the badge (O1).
  */
-/**
- * The reply mutation of a task, owned above the views so a pending reply
- * stays pending when the composer remounts.
- */
-export function useTaskReply(orgSlug: string, shortId: string) {
-  return useAgentTaskMutation(
-    orgSlug,
-    shortId,
-    ({ hold, text }: { hold: boolean; text: string }) =>
-      replyAgentTask(orgSlug, shortId, text.trim(), hold),
-  )
-}
-
 export function useWaitingTaskCount(orgSlug: string | undefined) {
-  const canRead = useHasPermission('agent_task:read', orgSlug)
+  const canRead = useHasPermission('ticket:read', orgSlug)
   return useQuery({
     enabled: !!orgSlug && canRead,
-    queryFn: ({ signal }) => countWaitingAgentTasks(orgSlug!, signal),
-    queryKey: queryKeys.agentTasksWaiting(orgSlug ?? ''),
+    queryFn: ({ signal }) => countWaitingTickets(orgSlug!, signal),
+    queryKey: queryKeys.ticketsWaiting(orgSlug ?? ''),
     refetchInterval: LIST_POLL_MS,
     select: (data) => data.count,
   })

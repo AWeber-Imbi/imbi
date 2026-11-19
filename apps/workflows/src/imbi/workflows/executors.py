@@ -506,6 +506,10 @@ class Executors:
                 'result': _result(params, task.get('result'))
                 if port == 0
                 else None,
+                # An imbi-api older than these fields leaves them out.
+                **{
+                    k: task.get(k) for k in agent.TicketAttributes.model_fields
+                },
             },
             port=port,
             failed=port == 1,
