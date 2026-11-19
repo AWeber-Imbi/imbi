@@ -637,6 +637,49 @@ class ManualRunTestCase(EngineTestCase):
             sum('/commits/' in p for p in self.api.paths), 1, self.api.paths
         )
 
+    async def test_error_retry_resumes_the_deployment(self) -> None:
+        # #829: a failed poll of the run is retried by polling that run
+        # again, not by posting a new deployment.
+        original = FakeApi.__call__
+        polls: list[str] = []
+
+        def flaky(
+            api: FakeApi, request: httpx.Request
+        ) -> httpx.Response | abc.Awaitable[httpx.Response]:
+            if '/runs/' in request.url.path:
+                polls.append(request.url.path)
+                if len(polls) == 1:
+                    return httpx.Response(503, json={'detail': 'down'})
+            return original(api, request)
+
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'manual'),
+                _node(
+                    'ship',
+                    'deploy',
+                    {
+                        'project_id': 'p1',
+                        'environment': 'staging',
+                        'version': '1.0.0',
+                    },
+                ),
+            ],
+            [_edge('start', 'ship')],
+        )
+        run_id = await self._start(workflow_id)
+        with (
+            mock.patch.object(FakeApi, '__call__', flaky),
+            mock.patch.object(engine, 'RETRY_BACKOFF', 0),
+        ):
+            run = await self._drive(run_id)
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(run['steps']['ship']['attempt'], 2)
+        self.assertEqual(len(polls), 2)
+        self.assertEqual(
+            sum('/commits/' in p for p in self.api.paths), 1, self.api.paths
+        )
+
     async def _deploy_without_failed_edge(self) -> uuid.UUID:
         """A deploy whose ``Failed`` port has no edge."""
         workflow_id = await self._workflow(

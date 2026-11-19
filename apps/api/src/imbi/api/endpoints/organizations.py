@@ -532,27 +532,18 @@ async def get_organization(
 
 
 async def _rename_history(
-    execute: graph.CypherExecute,
-    original_slug: str,
-    org_id: str | None = None,
+    execute: graph.CypherExecute, original_slug: str
 ) -> tuple[list[str], object]:
     """Return ``previous_slugs`` with ``original_slug`` added, and the id.
 
-    With ``org_id``, the organization must also have that id.
-
     Raises:
-        HTTPException 404: No organization has ``original_slug`` (and
-            ``org_id``).
+        HTTPException 404: No organization has ``original_slug``.
 
     """
-    query: typing.LiteralString = (
-        'MATCH (n:Organization {{slug: {original_slug}}})'
-        if org_id is None
-        else 'MATCH (n:Organization {{id: {org_id}, slug: {original_slug}}})'
-    )
     records = await execute(
-        query + ' RETURN n.previous_slugs AS previous_slugs, n.id AS id',
-        {'original_slug': original_slug, 'org_id': org_id},
+        'MATCH (n:Organization {{slug: {original_slug}}})'
+        ' RETURN n.previous_slugs AS previous_slugs, n.id AS id',
+        {'original_slug': original_slug},
         ['previous_slugs', 'id'],
     )
     if not records:
@@ -638,20 +629,21 @@ async def _persist_organization(
         'icon': props.get('icon'),
         'tag_formats': props.get('tag_formats', []),
         'updated_at': props['updated_at'],
+        'org_id': org_id,
     }
     if previous_slugs is not None:
         params['previous_slugs'] = previous_slugs
-        params['org_id'] = org_id
 
     async def rename(
         execute: graph.CypherExecute,
         conn: psycopg.AsyncConnection[typing.Any],
     ) -> list[dict[str, typing.Any]]:
         # Read the history again under the lock: a rename that
-        # committed since the first read changed it. Match the id too:
-        # another organization can have taken ``original_slug`` since.
+        # committed since the first read changed it. The SET matches
+        # the id too: another organization can have taken
+        # ``original_slug`` since, and then nothing changes.
         params['previous_slugs'], _ = await _rename_history(
-            execute, original_slug, org_id
+            execute, original_slug
         )
         renamed = await execute(update_query, params)
         if renamed:

@@ -558,9 +558,18 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
         self.assertEqual(response.json()['name'], 'Deploy guard')
         self.assertEqual(response.json()['latest_version'], 1)
 
+    async def _set_org_slug(self, slug: str) -> None:
+        await self.graph.execute(
+            'MATCH (o:Organization {{id: {org}}})'
+            ' SET o.slug = {slug} RETURN o.id AS id',
+            {'org': self.org, 'slug': slug},
+            ['id'],
+        )
+
     async def test_save_conflicts_when_org_renamed(self) -> None:
         # #780: a rename that commits after the checks of a save moves
         # the prompt references that the save checked.
+        self.addAsyncCleanup(self._set_org_slug, self.org)
         await self._create()
         real_get = self.store.get
 
@@ -568,12 +577,7 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
             org_id: str, slug: str
         ) -> dict[str, typing.Any] | None:
             row = await real_get(org_id, slug)
-            await self.graph.execute(
-                'MATCH (o:Organization {{id: {org}}})'
-                " SET o.slug = {org} + '-new' RETURN o.id AS id",
-                {'org': self.org},
-                ['id'],
-            )
+            await self._set_org_slug(f'{self.org}-new')
             return row
 
         with mock.patch.object(self.store, 'get', side_effect=renaming_get):
@@ -581,74 +585,51 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
                 f'{self.base}/deploy-guard',
                 json={'name': 'Renamed', 'owner_team_slug': self.team},
             )
-        await self.graph.execute(
-            'MATCH (o:Organization {{id: {org}}})'
-            ' SET o.slug = {org} RETURN o.id AS id',
-            {'org': self.org},
-            ['id'],
-        )
         self.assertEqual(response.status_code, 409, response.text)
         self.assertIn('renamed', response.json()['detail']['message'])
+        await self._set_org_slug(self.org)
         response = await self.client.get(f'{self.base}/deploy-guard')
         self.assertEqual(response.json()['latest_version'], 1)
 
     async def test_delete_conflicts_when_org_renamed(self) -> None:
         # #829: a rename that commits after the org lookup of a delete
         # would leave the prompts of the workflow unarchived.
+        self.addAsyncCleanup(self._set_org_slug, self.org)
         await self._create()
         real_delete = self.store.delete
 
         async def renaming_delete(
             *args: typing.Any, **kwargs: typing.Any
         ) -> str:
-            await self.graph.execute(
-                'MATCH (o:Organization {{id: {org}}})'
-                " SET o.slug = {org} + '-new' RETURN o.id AS id",
-                {'org': self.org},
-                ['id'],
-            )
+            await self._set_org_slug(f'{self.org}-new')
             return await real_delete(*args, **kwargs)
 
         with mock.patch.object(
             self.store, 'delete', side_effect=renaming_delete
         ):
             response = await self.client.delete(f'{self.base}/deploy-guard')
-        await self.graph.execute(
-            'MATCH (o:Organization {{id: {org}}})'
-            ' SET o.slug = {org} RETURN o.id AS id',
-            {'org': self.org},
-            ['id'],
-        )
         self.assertEqual(response.status_code, 409, response.text)
         self.assertIn('renamed', response.json()['detail']['message'])
+        await self._set_org_slug(self.org)
         response = await self.client.get(f'{self.base}/deploy-guard')
         self.assertEqual(response.status_code, 200)
 
     async def test_create_conflicts_when_org_renamed(self) -> None:
         # #780: the slug check runs on the connection of the create.
+        self.addAsyncCleanup(self._set_org_slug, self.org)
         real_check = workflows_endpoints._check_llm_call
 
         async def renaming_check(*args: typing.Any) -> None:
             await real_check(*args)
-            await self.graph.execute(
-                'MATCH (o:Organization {{id: {org}}})'
-                " SET o.slug = {org} + '-new' RETURN o.id AS id",
-                {'org': self.org},
-                ['id'],
-            )
+            await self._set_org_slug(f'{self.org}-new')
 
         with mock.patch.object(
             workflows_endpoints, '_check_llm_call', renaming_check
         ):
             response = await self._create()
-        await self.graph.execute(
-            'MATCH (o:Organization {{id: {org}}})'
-            ' SET o.slug = {org} RETURN o.id AS id',
-            {'org': self.org},
-            ['id'],
-        )
         self.assertEqual(response.status_code, 409, response.text)
         self.assertIn('renamed', response.json()['detail']['message'])
+        await self._set_org_slug(self.org)
         response = await self.client.get(f'{self.base}/deploy-guard')
         self.assertEqual(response.status_code, 404)
 
