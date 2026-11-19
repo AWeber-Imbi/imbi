@@ -69,18 +69,27 @@ interface Option {
   value: string
 }
 
+const MARK_SIZE = {
+  lg: 'size-12 rounded-lg text-sm [&_svg]:size-7',
+  md: 'size-8 rounded-md text-[11px] [&_svg]:size-5',
+  sm: 'size-5 rounded text-[9px] [&_svg]:size-3.5',
+}
+
 export function AgentMark({
   agent,
   className,
+  size = 'sm',
 }: {
-  agent: FilterAgent
+  agent: Pick<FilterAgent, 'icon' | 'name'>
   className?: string
+  size?: keyof typeof MARK_SIZE
 }) {
   return (
     <span
       aria-hidden
       className={cn(
-        'flex size-5 shrink-0 items-center justify-center rounded bg-tertiary text-[9px] text-secondary [&_svg]:size-3!',
+        'flex shrink-0 items-center justify-center overflow-hidden bg-tertiary text-secondary [&_img]:size-full [&_img]:object-cover',
+        MARK_SIZE[size],
         className,
       )}
     >

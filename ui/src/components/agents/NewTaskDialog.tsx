@@ -13,7 +13,6 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { EntityIcon } from '@/components/ui/entity-icon'
 import { Textarea } from '@/components/ui/textarea'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { queryKeys } from '@/lib/queryKeys'
@@ -23,6 +22,7 @@ import type { Agent } from '@/types'
 import { useAgentList } from './agentQueries'
 import { ticketsPath } from './agentsNav'
 import { detectSource, titleFrom } from './newTask'
+import { AgentMark } from './TaskFilterBar'
 import { errorMessage } from './taskQueries'
 
 const PROJECTS_SHOWN = 6
@@ -316,15 +316,7 @@ function AgentCard({
       role="radio"
       type="button"
     >
-      <span className="bg-secondary text-secondary flex size-7 shrink-0 items-center justify-center rounded-md">
-        {agent.icon ? (
-          <EntityIcon className="size-4" icon={agent.icon} />
-        ) : (
-          <span className="text-[11px] font-semibold">
-            {agent.name.slice(0, 2).toUpperCase()}
-          </span>
-        )}
-      </span>
+      <AgentMark agent={agent} className="bg-secondary" size="md" />
       <span className="flex min-w-0 flex-col gap-0.5">
         <span className="flex items-center gap-1.5">
           <span className="text-[13.5px] font-semibold">{agent.name}</span>

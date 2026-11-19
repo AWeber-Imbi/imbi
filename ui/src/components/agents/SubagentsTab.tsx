@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { Bot, ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -9,10 +9,10 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { Input } from '@/components/ui/input'
 import { Sk } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
-import { useIcon } from '@/lib/icons'
 import type { Agent, AgentSubagent } from '@/types'
 
 import { useAgentList } from './agentQueries'
+import { AgentMark } from './TaskFilterBar'
 
 /** Show a search field when there are more choices than this. */
 const SEARCH_THRESHOLD = 10
@@ -153,7 +153,6 @@ function SubagentRow({
   onToggleOpen,
   selected,
 }: SubagentRowProps) {
-  const Icon = useIcon(agent.icon, Bot)
   const showPrompt = !!selected && isOpen
   const Caret = showPrompt ? ChevronUp : ChevronDown
   const fieldId = `subagent-instructions-${agent.id}`
@@ -165,7 +164,7 @@ function SubagentRow({
           checked={!!selected}
           onCheckedChange={(checked) => onToggle(checked === true)}
         />
-        <Icon className="text-secondary size-4 shrink-0" />
+        <AgentMark agent={agent} size="md" />
         <span className="w-33 shrink-0 truncate text-sm font-medium">
           {agent.name}
         </span>

@@ -3,14 +3,13 @@ import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Bot } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 
 import { listAgentMarketplaces } from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { MarkdownPreview } from '@/components/ui/markdown-editor/MarkdownPreview'
 import { useHasPermission } from '@/hooks/useHasPermission'
-import { useIcon } from '@/lib/icons'
 import { queryKeys } from '@/lib/queryKeys'
 import type {
   Agent,
@@ -39,6 +38,7 @@ import {
   sumTotals,
 } from './agentUsage'
 import { RunTaskButton } from './RunTaskButton'
+import { AgentMark } from './TaskFilterBar'
 import { UsageBars } from './UsageBars'
 
 // The design's runs line: the Dusk label swatch.
@@ -51,7 +51,6 @@ export function AgentDetail({ agent }: { agent: Agent }) {
   const navigate = useNavigate()
   const canCreate = useHasPermission('agent:create', agent.organization.slug)
   const canWrite = useHasPermission('agent:write', agent.organization.slug)
-  const Icon = useIcon(agent.icon, Bot)
   const prompt = usePromptResolution(agent.prompt_ref)
   const version = prompt.data ?? null
   const settings: Partial<AgentSettings> = agent.settings ?? {}
@@ -133,9 +132,11 @@ export function AgentDetail({ agent }: { agent: Agent }) {
       </div>
 
       <div className="flex items-start gap-4">
-        <div className="bg-secondary text-action flex size-12 shrink-0 items-center justify-center rounded-lg">
-          <Icon className="size-6" />
-        </div>
+        <AgentMark
+          agent={agent}
+          className="bg-secondary text-action"
+          size="lg"
+        />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-3">
             <h2 className="text-h2">{agent.name}</h2>
@@ -362,11 +363,10 @@ function pluginServers(
 }
 
 function SubagentItem({ subagent }: { subagent: AgentSubagentRef }) {
-  const Icon = useIcon(subagent.icon, Bot)
   const tools = `${subagent.tool_count} tool${subagent.tool_count === 1 ? '' : 's'}`
   return (
     <div className="border-border flex items-center gap-3 border-b px-6 py-3 last:border-b-0">
-      <Icon className="text-secondary size-4 shrink-0" />
+      <AgentMark agent={subagent} size="md" />
       <span className="text-sm font-medium">{subagent.name}</span>
       <span className="text-tertiary flex-1 text-right font-mono text-xs tabular-nums">
         v{subagent.version} · {tools}

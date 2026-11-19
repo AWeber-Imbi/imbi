@@ -780,13 +780,13 @@ function TaskRow({
     >
       <span className="mt-px flex shrink-0" title={agent?.name}>
         {agent ? (
-          <AgentMark agent={agent} />
+          <AgentMark agent={agent} size="md" />
         ) : (
           <span
             aria-hidden
-            className="bg-tertiary text-secondary flex size-5 items-center justify-center rounded"
+            className="bg-tertiary text-secondary flex size-8 items-center justify-center rounded-md"
           >
-            <Bot className="size-3" />
+            <Bot className="size-5" />
           </span>
         )}
         {agent && !agentMatch && <span className="sr-only">{agent.name}</span>}

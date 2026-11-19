@@ -3,7 +3,6 @@ import { type ReactNode, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Bot } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { patchAgent } from '@/api/endpoints'
@@ -13,7 +12,6 @@ import { FilterPopover } from '@/components/ui/filter-popover'
 import { Switch } from '@/components/ui/switch'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { extractApiErrorDetail } from '@/lib/apiError'
-import { useIcon } from '@/lib/icons'
 import { queryKeys } from '@/lib/queryKeys'
 import type { Agent } from '@/types'
 
@@ -22,6 +20,7 @@ import { AgentLabels } from './AgentLabelChip'
 import { useAgentUsage } from './agentQueries'
 import { agentsPath } from './agentsNav'
 import { formatCount } from './agentUsage'
+import { AgentMark } from './TaskFilterBar'
 
 interface AgentListProps {
   agents: Agent[]
@@ -217,10 +216,9 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
 }
 
 function AgentNameCell({ agent }: { agent: Agent }) {
-  const Icon = useIcon(agent.icon, Bot)
   return (
     <div className="flex items-center gap-3">
-      <Icon className="text-secondary size-4 shrink-0" />
+      <AgentMark agent={agent} size="md" />
       <div className="flex min-w-0 flex-col">
         <span className="text-sm font-medium whitespace-nowrap">
           {agent.name}
