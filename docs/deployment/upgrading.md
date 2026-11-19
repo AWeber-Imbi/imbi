@@ -102,8 +102,9 @@ release removes them.
    You do not run a command for this. The index changes lock writes to
    `tickets.tickets` and `workflow_runtime.runs` while they run.
 4. As soon as the first new imbi-api pod is up, run
-   `imbi-api setup-clickhouse` in that pod (pick the pod by name, as for
-   2.54.0). It copies the events of `agent_task_events` that
+   `imbi-api setup-permissions` in that pod (step 5), then
+   `imbi-api setup-clickhouse` in the same pod (pick the pod by name, as
+   for 2.54.0). `setup-clickhouse` copies the events of `agent_task_events` that
    `ticket_events` does not have. Nothing writes to `agent_task_events`
    since 2.54.0, so no event arrives there after the copy. This release
    reads only `ticket_events`, so until the copy is done a new pod shows an
@@ -122,8 +123,8 @@ release removes them.
      WHERE (task_id, seq) NOT IN (SELECT ticket_id, seq FROM imbi.ticket_events)
     ```
 
-5. Run `imbi-api setup-permissions` in the same pod, right after
-   `setup-clickhouse`. It gives each role that has an `agent_task`
+5. `imbi-api setup-permissions` runs first because the copy can be
+   slow, and 2.55.0 pods accept the new names. It gives each role that has an `agent_task`
    permission, custom roles too, the `ticket` permission with the same
    action, then removes the `agent_task` permissions. An API key scope
    that names an `agent_task` permission keeps working. A new pod does
