@@ -123,8 +123,8 @@ them is a `failed` run, and no request is made.
 `organization` scopes the request. Set it on the target or on the task; the
 target value wins. It must be a bare organization slug, for example `acme`.
 When it is set and `path` does not start with `/organizations/<slug>/`, the
-scheduler adds that prefix. So `"path": "/agent-tasks/"` with
-`"organization": "acme"` calls `/organizations/acme/agent-tasks/`. A path
+scheduler adds that prefix. So `"path": "/tickets/"` with
+`"organization": "acme"` calls `/organizations/acme/tickets/`. A path
 that names a different organization also gets the prefix.
 
 Every request has headers that the task cannot change:
@@ -149,7 +149,7 @@ To start agent work on a schedule, post to the agent tasks of an organization.
 `imbi-api` records the task with a `schedule` origin, and a retry of the run
 returns the first task. The person accountable for the scheduled task owns the
 agent task, so that person must be a member of the
-organization and hold `agent_task:create`. The scheduled task must name that organization in
+organization and hold `ticket:create`. The scheduled task must name that organization in
 `organization`, on the task or on the target:
 
 ```json
@@ -157,7 +157,7 @@ organization and hold `agent_task:create`. The scheduled task must name that org
   "kind": "api",
   "method": "POST",
   "organization": "acme",
-  "path": "/agent-tasks/",
+  "path": "/tickets/",
   "body": {
     "agent_slug": "triage",
     "title": "Nightly dependency audit",

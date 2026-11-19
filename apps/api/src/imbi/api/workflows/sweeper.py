@@ -15,7 +15,7 @@ Postgres events have no gaps, so ClickHouse is complete for a run when
 it has ``last_seq`` distinct seqs, the lowest is 1, and the highest is
 ``last_seq``.
 
-It runs like the agent task sweep (:mod:`imbi.api.agent_tasks.sweeper`):
+It runs like the agent task sweep (:mod:`imbi.api.tickets.sweeper`):
 every instance runs the loop, and a Valkey lock gives each round to one
 of them.
 
@@ -37,8 +37,8 @@ import itertools
 import logging
 import uuid
 
-from imbi.api import agent_tasks
-from imbi.api.agent_tasks import store as task_store
+from imbi.api import tickets
+from imbi.api.tickets import store as task_store
 from imbi.api.workflows import runs as run_store
 from imbi.common import valkey
 from imbi.common.workflows import history, runtime
@@ -144,14 +144,14 @@ async def _sweep_batch(
 
 
 async def cancel_orphan_agent_tasks(
-    store: run_store.RunStore, tasks: agent_tasks.TaskStore
+    store: run_store.RunStore, tasks: tickets.TicketStore
 ) -> int:
     """Cancel the open tasks of agent steps that ended. Return how many.
 
     See :meth:`run_store.RunStore.orphan_agent_tasks`. A task that
     closed or got a cancel since the query is not an error.
     """
-    actor = agent_tasks.Actor('system', 'imbi-workflows-reconciler', 'api')
+    actor = tickets.Actor('system', 'imbi-workflows-reconciler', 'api')
     cancelled = 0
     for task in await store.orphan_agent_tasks():
         try:
@@ -159,9 +159,9 @@ async def cancel_orphan_agent_tasks(
                 task['organization_id'], task['short_id'], 'cancel', actor
             )
         except (
-            agent_tasks.TaskNotFound,
-            agent_tasks.TaskClosed,
-            agent_tasks.CancelPending,
+            tickets.TaskNotFound,
+            tickets.TaskClosed,
+            tickets.CancelPending,
         ):
             continue
         except Exception:  # noqa: BLE001
@@ -178,7 +178,7 @@ async def cancel_orphan_agent_tasks(
 
 
 async def retry_task_triggers(
-    tasks: agent_tasks.TaskStore, trigger: task_store.CloseHook
+    tasks: tickets.TicketStore, trigger: task_store.CloseHook
 ) -> None:
     """Call ``trigger`` again for each task with a ``trigger_outbox``
     row."""
@@ -195,7 +195,7 @@ async def retry_task_triggers(
 
 async def sweep_once(
     store: run_store.RunStore,
-    tasks: agent_tasks.TaskStore | None = None,
+    tasks: tickets.TicketStore | None = None,
     trigger: task_store.CloseHook | None = None,
 ) -> SweepResult:
     """Republish what ClickHouse does not have and archive complete runs.
@@ -230,7 +230,7 @@ async def sweep_once(
 
 async def run_sweeper(
     store: run_store.RunStore,
-    tasks: agent_tasks.TaskStore,
+    tasks: tickets.TicketStore,
     trigger: task_store.CloseHook,
     *,
     stop: asyncio.Event,

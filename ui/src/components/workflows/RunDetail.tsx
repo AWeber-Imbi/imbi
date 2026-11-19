@@ -6,7 +6,7 @@ import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import { startWorkflowRun } from '@/api/endpoints'
-import { agentsPath } from '@/components/agents/agentsNav'
+import { agentsPath, ticketsPath } from '@/components/agents/agentsNav'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
@@ -143,7 +143,7 @@ export function RunDetail({
           </Button>
           {output?.task_id && (
             <Button asChild variant="outline">
-              <Link to={agentsPath('tasks', orgSlug, output.task_id)}>
+              <Link to={ticketsPath(orgSlug, output.task_id)}>
                 Open task {output.task_id}
               </Link>
             </Button>

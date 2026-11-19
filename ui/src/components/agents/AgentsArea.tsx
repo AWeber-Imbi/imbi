@@ -20,8 +20,6 @@ import {
 } from './agentsNav'
 import { DashboardPage } from './DashboardPage'
 import { PlatformPage } from './PlatformPage'
-import { useWaitingTaskCount } from './taskQueries'
-import { TasksPage } from './TasksPage'
 import { UsagePage } from './UsagePage'
 import { useResizableWidth } from './useResizableWidth'
 
@@ -53,8 +51,6 @@ export function AgentsArea() {
           <DashboardPage />
         ) : current === 'manage' ? (
           <AgentsManagement />
-        ) : current === 'tasks' ? (
-          <TasksPage />
         ) : current === 'usage' ? (
           <UsagePage />
         ) : current === 'platform' ? (
@@ -85,7 +81,6 @@ function AgentsSidebar({
   const [open, setOpen] = useState(true)
   const { selectedOrganization } = useOrganization()
   const { data: agents } = useAgentList(selectedOrganization?.slug)
-  const { data: waiting } = useWaitingTaskCount(selectedOrganization?.slug)
   const groups = ['Agentic platform', 'Settings'] as const
   const { cancel, dragging, handleProps, width } = useResizableWidth(
     'imbi:agents:sidebar-width',
@@ -122,11 +117,7 @@ function AgentsSidebar({
                 const Icon = item.icon
                 const active = item.id === current
                 const count =
-                  item.id === 'manage' && agents
-                    ? String(agents.length)
-                    : item.id === 'tasks' && waiting
-                      ? String(waiting)
-                      : ''
+                  item.id === 'manage' && agents ? String(agents.length) : ''
                 return (
                   <Link
                     aria-current={active ? 'page' : undefined}
@@ -138,11 +129,7 @@ function AgentsSidebar({
                         : 'text-secondary hover:bg-secondary hover:text-primary',
                     )}
                     key={item.id}
-                    title={
-                      item.id === 'tasks' && waiting
-                        ? `${waiting} waiting on you`
-                        : item.label
-                    }
+                    title={item.label}
                     to={agentsPath(item.id)}
                   >
                     <Icon className="size-4.5 shrink-0" />

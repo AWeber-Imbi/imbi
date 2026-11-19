@@ -184,7 +184,12 @@ class GenerativeRunTestCase(base.PromptTestBase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(
             response.json()['detail'],
-            {'error': 'model_not_allowed', 'retry': False},
+            {
+                'error': 'model_not_allowed',
+                'retry': False,
+                'message': "The model 'default-chat' is restricted to teams "
+                'that do not include the caller',
+            },
         )
         self.generate.assert_not_awaited()
         self.calls.start.assert_not_awaited()
@@ -229,7 +234,12 @@ class GenerativeRunTestCase(base.PromptTestBase):
         self.assertEqual(response.status_code, 403, response.text)
         self.assertEqual(
             response.json()['detail'],
-            {'error': 'model_not_allowed', 'retry': False},
+            {
+                'error': 'model_not_allowed',
+                'retry': False,
+                'message': "The model 'default-chat' is restricted to teams "
+                'that do not include the caller',
+            },
         )
         self.generate.assert_not_awaited()
 

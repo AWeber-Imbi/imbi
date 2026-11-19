@@ -10,13 +10,10 @@ import { NewTaskDialog } from './NewTaskDialog'
 
 /**
  * Run: make a task for the agent by hand (origin `human`), then open it.
- * Hidden without `agent_task:create` or when the agent is disabled.
+ * Hidden without `ticket:create` or when the agent is disabled.
  */
 export function RunTaskButton({ agent }: { agent: Agent }) {
-  const canCreate = useHasPermission(
-    'agent_task:create',
-    agent.organization.slug,
-  )
+  const canCreate = useHasPermission('ticket:create', agent.organization.slug)
   const [open, setOpen] = useState(false)
   if (!canCreate || !agent.enabled) return null
   return (

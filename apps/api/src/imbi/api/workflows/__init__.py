@@ -2,7 +2,7 @@
 
 The ``workflows`` schema holds definitions and the ``workflow_runtime``
 schema holds runs. They are plain Postgres schemas next to the graph,
-managed like ``agent_runtime``: the declarative schemata are applied on
+managed like ``tickets``: the declarative schemata are applied on
 every start. imbi-api owns both; imbi-workflows executes the runs.
 
 The store lifespan also runs the archive sweep of the run log and the
@@ -18,9 +18,9 @@ from collections import abc
 
 import fastapi
 
-from imbi.api.agent_tasks import TaskStore, create_pool
-from imbi.api.agent_tasks import store as task_store
-from imbi.api.workflows import runs, sweeper, task_trigger
+from imbi.api.tickets import TicketStore, create_pool
+from imbi.api.tickets import store as task_store
+from imbi.api.workflows import runs, sweeper, ticket_trigger
 from imbi.api.workflows.runs import NewRun, NotActive, RunStore
 from imbi.api.workflows.store import (
     SCHEMA,
@@ -31,7 +31,7 @@ from imbi.api.workflows.store import (
     WorkflowStore,
     agent_ids,
 )
-from imbi.common import lifespan, relational
+from imbi.common import graph, lifespan, relational
 from imbi.common.workflows import runtime
 
 SCHEMATA_PATH = pathlib.Path(__file__).parent / 'schemata.toml'
@@ -54,6 +54,13 @@ async def initialize() -> None:
     await relational.initialize_deleted_organizations()
 
 
+def _graph() -> graph.Graph | None:
+    # Imported here: imbi.api.lifespans imports this package.
+    from imbi.api import lifespans
+
+    return lifespans.get_graph()
+
+
 @contextlib.asynccontextmanager
 async def store_lifespan() -> abc.AsyncGenerator[WorkflowStore]:
     """Initialize the schemas, hold the workflow stores open, and sweep."""
@@ -64,8 +71,8 @@ async def store_lifespan() -> abc.AsyncGenerator[WorkflowStore]:
         await pool.open()
         _runs = RunStore(pool)
         definitions = WorkflowStore(pool)
-        tasks = TaskStore(pool)
-        trigger = task_trigger.TaskTrigger(definitions, _runs, tasks)
+        tasks = TicketStore(pool)
+        trigger = ticket_trigger.TaskTrigger(definitions, _runs, tasks, _graph)
         task_store.register_close_hook(trigger)
         stop = asyncio.Event()
         sweep = asyncio.create_task(

@@ -1,4 +1,4 @@
-import type { AgentTaskEvent } from '@/types'
+import type { TicketEvent } from '@/types'
 
 import { elapsed } from './conversationMode'
 import type { Turn } from './conversationTurns'
@@ -54,7 +54,7 @@ export function conversationMarkdown(task: TaskText, list: Turn[]): string {
 }
 
 /** What a person answered to a request: the answer, then each constraint. */
-export function resolution(e: AgentTaskEvent): {
+export function resolution(e: TicketEvent): {
   answer: null | string
   constraints: string[]
 } {

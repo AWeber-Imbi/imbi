@@ -131,6 +131,14 @@ describe('buildTrajectory', () => {
     expect(t.records[1].endedAt).toBeNull()
   })
 
+  it('starts the first turn at ticket.created (ADR 0028)', () => {
+    const t = buildTrajectory(
+      [event(1, 'ticket.created', { description: 'Check', title: 'T' })],
+      false,
+    )
+    expect(t.records.map((r) => r.kind)).toEqual(['user'])
+  })
+
   it('makes subagent calls subtools of their parent call', () => {
     const t = buildTrajectory(
       [

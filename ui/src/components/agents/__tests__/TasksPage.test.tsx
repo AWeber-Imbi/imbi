@@ -4,36 +4,38 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '@/api/client'
 import * as endpoints from '@/api/endpoints'
+import { LegacyTasksRedirect } from '@/pages/LegacyTasksRedirect'
 import { act, fireEvent, render, screen, waitFor, within } from '@/test/utils'
-import type { AgentTaskListItem } from '@/types'
+import type { TicketListItem } from '@/types'
 
 import { AgentsArea } from '../AgentsArea'
 import { groupOf, groupTasks } from '../taskEvents'
 import { EVENT_POLL_MS } from '../taskQueries'
+import { TasksPage } from '../TasksPage'
 import { agent, catalog, promptVersion } from './fixtures'
 import { event, task } from './taskFixtures'
 import { layout, scrollPane } from './virtualLayout'
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', () => ({
-  controlAgentTask: vi.fn(),
-  countAgentTasks: vi.fn(),
-  countWaitingAgentTasks: vi.fn(),
-  createAgentTask: vi.fn(),
-  deleteAgentTask: vi.fn(),
-  getAgentTask: vi.fn(),
-  getAgentTaskPosition: vi.fn(),
+  controlTicket: vi.fn(),
+  countTickets: vi.fn(),
+  countWaitingTickets: vi.fn(),
+  createTicket: vi.fn(),
+  deleteTicket: vi.fn(),
   getAgentToolCatalog: vi.fn(),
   getProjectsSlim: vi.fn(),
+  getTicket: vi.fn(),
+  getTicketPosition: vi.fn(),
   listAdminUsers: vi.fn(),
   listAgents: vi.fn(),
-  listAgentTaskEvents: vi.fn(),
-  listAgentTasks: vi.fn(),
-  reassignAgentTask: vi.fn(),
-  replyAgentTask: vi.fn(),
-  resolveAgentTaskRequest: vi.fn(),
+  listTicketEvents: vi.fn(),
+  listTickets: vi.fn(),
+  reassignTicket: vi.fn(),
+  replyTicket: vi.fn(),
   resolvePrompt: vi.fn(),
-  retryAgentTask: vi.fn(),
+  resolveTicketRequest: vi.fn(),
+  retryTicket: vi.fn(),
 }))
 
 const ORGS = vi.hoisted(() => [{ slug: 'acme' }, { slug: 'beta' }])
@@ -111,7 +113,7 @@ const TASKS = [
   }),
 ]
 
-type Position = Awaited<ReturnType<typeof endpoints.getAgentTaskPosition>>
+type Position = Awaited<ReturnType<typeof endpoints.getTicketPosition>>
 
 function closedTask(n: number) {
   return task({
@@ -128,7 +130,7 @@ function closedTask(n: number) {
 function inboxTitles() {
   return screen
     .getAllByRole('link')
-    .filter((a) => a.getAttribute('href')?.startsWith('/agents/tasks/acme/'))
+    .filter((a) => a.getAttribute('href')?.startsWith('/tickets/acme/'))
     .map((a) => a.querySelector('.font-medium[title]')?.getAttribute('title'))
 }
 
@@ -136,6 +138,11 @@ function renderAt(path: string) {
   window.history.pushState({}, '', path)
   return render(
     <Routes>
+      <Route element={<TasksPage />} path="/tickets/:slug?/:action?/:tab?" />
+      <Route
+        element={<LegacyTasksRedirect />}
+        path="/agents/tasks/:slug?/:action?/:tab?"
+      />
       <Route
         element={<AgentsArea />}
         path="/agents/:section?/:slug?/:action?/:tab?"
@@ -145,31 +152,27 @@ function renderAt(path: string) {
 }
 
 /** Serves `tasks` as the API does: counted and paged by inbox group. */
-function serve(tasks: AgentTaskListItem[]) {
-  const matching = (params: endpoints.AgentTaskListParams) =>
+function serve(tasks: TicketListItem[]) {
+  const matching = (params: endpoints.TicketListParams) =>
     tasks.filter(
       (t) =>
         !params.status ||
         params.status.includes(t.status) ||
         (params.status.includes('blocked') && groupOf(t) === 'input'),
     )
-  vi.mocked(endpoints.countAgentTasks).mockImplementation(
-    async (_org, params) => {
-      const counts = { closed: 0, input: 0, paused: 0, queued: 0, running: 0 }
-      for (const t of matching(params)) counts[groupOf(t)] += 1
-      return counts
-    },
-  )
-  vi.mocked(endpoints.listAgentTasks).mockImplementation(
-    async (_org, params) => {
-      const found = matching(params)
-      if (!params.group) return found
-      const group =
-        groupTasks(found).find((g) => g.id === params.group)?.tasks ?? []
-      const offset = params.offset ?? 0
-      return group.slice(offset, offset + (params.limit ?? 50))
-    },
-  )
+  vi.mocked(endpoints.countTickets).mockImplementation(async (_org, params) => {
+    const counts = { closed: 0, input: 0, paused: 0, queued: 0, running: 0 }
+    for (const t of matching(params)) counts[groupOf(t)] += 1
+    return counts
+  })
+  vi.mocked(endpoints.listTickets).mockImplementation(async (_org, params) => {
+    const found = matching(params)
+    if (!params.group) return found
+    const group =
+      groupTasks(found).find((g) => g.id === params.group)?.tasks ?? []
+    const offset = params.offset ?? 0
+    return group.slice(offset, offset + (params.limit ?? 50))
+  })
 }
 
 describe('Tasks', () => {
@@ -184,16 +187,16 @@ describe('Tasks', () => {
     )
     vi.mocked(endpoints.listAgents).mockResolvedValue([agent()])
     vi.mocked(endpoints.listAdminUsers).mockResolvedValue([])
-    vi.mocked(endpoints.countWaitingAgentTasks).mockResolvedValue({ count: 2 })
+    vi.mocked(endpoints.countWaitingTickets).mockResolvedValue({ count: 2 })
     serve(TASKS)
-    vi.mocked(endpoints.getAgentTask).mockResolvedValue(BLOCKED)
-    vi.mocked(endpoints.listAgentTaskEvents).mockImplementation(
+    vi.mocked(endpoints.getTicket).mockResolvedValue(BLOCKED)
+    vi.mocked(endpoints.listTicketEvents).mockImplementation(
       async (_org, _id, afterSeq) => LOG.filter((e) => e.seq > afterSeq),
     )
   })
 
   it('groups the inbox, oldest block first, with the waiting count', async () => {
-    renderAt('/agents/tasks')
+    renderAt('/tickets')
     await screen.findByText('Waiting longest')
     await waitFor(() =>
       expect(inboxTitles()).toEqual([
@@ -206,37 +209,67 @@ describe('Tasks', () => {
     expect(
       screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent),
     ).toEqual(['Human input required2', 'Running1', 'Recently closed1'])
-    expect(await screen.findByTitle('2 waiting on you')).toBeInTheDocument()
-    expect(screen.getByText('4 tasks')).toBeInTheDocument()
+    expect(screen.getByText('4 tickets')).toBeInTheDocument()
   })
 
   it('links each task with its org', async () => {
-    renderAt('/agents/tasks')
+    renderAt('/tickets')
     expect((await screen.findByText('Busy')).closest('a')).toHaveAttribute(
       'href',
-      '/agents/tasks/acme/T-4',
+      '/tickets/acme/T-4',
     )
   })
 
-  it('redirects an old link to the selected org', async () => {
-    renderAt('/agents/tasks/T-3/input')
+  it('redirects an old Agents > Tasks link to the ticket', async () => {
+    renderAt('/agents/tasks/acme/T-3/trajectory#e6')
     await waitFor(() =>
-      expect(window.location.pathname).toBe('/agents/tasks/acme/T-3/input'),
+      expect(window.location.pathname).toBe('/tickets/acme/T-3/trajectory'),
+    )
+    expect(window.location.hash).toBe('#e6')
+  })
+
+  it('keeps the inbox filter when it redirects an old link', async () => {
+    renderAt('/agents/tasks/acme/T-3?state=blocked#e6')
+    await waitFor(() =>
+      expect(window.location.pathname).toBe('/tickets/acme/T-3/trajectory'),
+    )
+    expect(window.location.search).toBe('?state=blocked')
+    expect(window.location.hash).toBe('#e6')
+  })
+
+  it('redirects an old Agents > Tasks link without an org', async () => {
+    renderAt('/agents/tasks/T-3/trajectory?state=blocked#e6')
+    await waitFor(() =>
+      expect(window.location.pathname).toBe('/tickets/acme/T-3/trajectory'),
+    )
+    expect(window.location.search).toBe('?state=blocked')
+    expect(window.location.hash).toBe('#e6')
+  })
+
+  it('redirects the old Agents > Tasks list', async () => {
+    renderAt('/agents/tasks')
+    await waitFor(() => expect(window.location.pathname).toBe('/tickets'))
+  })
+
+  it('redirects an old link to the selected org', async () => {
+    renderAt('/tickets/T-3/input')
+    await waitFor(() =>
+      expect(window.location.pathname).toBe('/tickets/acme/T-3/input'),
     )
     expect(await screen.findByRole('radio', { name: 'yes' })).toBeVisible()
   })
 
   it('opens a task in the org of the link', async () => {
-    renderAt('/agents/tasks/beta/T-3')
+    renderAt('/tickets/beta/T-3')
     await waitFor(() =>
-      expect(endpoints.getAgentTask).toHaveBeenCalledWith(
+      expect(endpoints.getTicket).toHaveBeenCalledWith(
         'beta',
         'T-3',
         expect.anything(),
       ),
     )
     expect(setSelectedOrganization).toHaveBeenCalledWith(ORGS[1])
-    expect(endpoints.getAgentTask).not.toHaveBeenCalledWith(
+    expect(endpoints.getTicket).not.toHaveBeenCalledWith(
       'acme',
       'T-3',
       expect.anything(),
@@ -248,7 +281,7 @@ describe('Tasks', () => {
       key === 'imbi.task.tab' ? '"statistics"' : null,
     )
     try {
-      renderAt('/agents/tasks/acme/T-3')
+      renderAt('/tickets/acme/T-3')
       expect(
         await screen.findByRole('tab', { name: /^Activity/, selected: true }),
       ).toBeInTheDocument()
@@ -266,11 +299,9 @@ describe('Tasks', () => {
       key === 'imbi.task.tab' ? '"trajectory"' : null,
     )
     try {
-      renderAt('/agents/tasks/acme/T-3')
+      renderAt('/tickets/acme/T-3')
       await waitFor(() =>
-        expect(window.location.pathname).toBe(
-          '/agents/tasks/acme/T-3/trajectory',
-        ),
+        expect(window.location.pathname).toBe('/tickets/acme/T-3/trajectory'),
       )
     } finally {
       vi.mocked(window.localStorage.getItem).mockReturnValue(null)
@@ -278,17 +309,15 @@ describe('Tasks', () => {
   })
 
   it('sends an event link with no tab to the Trajectory', async () => {
-    renderAt('/agents/tasks/acme/T-3#e6')
+    renderAt('/tickets/acme/T-3#e6')
     await waitFor(() =>
-      expect(window.location.pathname).toBe(
-        '/agents/tasks/acme/T-3/trajectory',
-      ),
+      expect(window.location.pathname).toBe('/tickets/acme/T-3/trajectory'),
     )
     expect(window.location.hash).toBe('#e6')
   })
 
   it('remembers the view an old Actions link opens', async () => {
-    renderAt('/agents/tasks/acme/T-3/actions')
+    renderAt('/tickets/acme/T-3/actions')
     await screen.findByRole('tab', { name: /^Activity/, selected: true })
     expect(window.localStorage.setItem).toHaveBeenCalledWith(
       'imbi.task.tab',
@@ -301,7 +330,7 @@ describe('Tasks', () => {
   })
 
   it('remembers the tab a task was opened on', async () => {
-    renderAt('/agents/tasks/acme/T-3/trajectory')
+    renderAt('/tickets/acme/T-3/trajectory')
     await screen.findByRole('tab', { name: /^Activity/, selected: true })
     expect(window.localStorage.setItem).toHaveBeenCalledWith(
       'imbi.task.tab',
@@ -310,11 +339,11 @@ describe('Tasks', () => {
   })
 
   it('does not open a task in an org that is not yours', async () => {
-    renderAt('/agents/tasks/zeta/T-3')
+    renderAt('/tickets/zeta/T-3')
     expect(
       await screen.findByText('You are not a member of the organization zeta.'),
     ).toBeInTheDocument()
-    expect(endpoints.getAgentTask).not.toHaveBeenCalled()
+    expect(endpoints.getTicket).not.toHaveBeenCalled()
   })
 
   it('sizes each group by its count and reads the pages it shows', async () => {
@@ -329,17 +358,17 @@ describe('Tasks', () => {
       }),
     )
     serve([...TASKS.slice(1), ...closed])
-    renderAt('/agents/tasks')
+    renderAt('/tickets')
     expect(
       await screen.findByRole('heading', { name: /Recently closed60/ }),
     ).toBeInTheDocument()
     expect(await screen.findByText('Closed 0')).toBeInTheDocument()
-    expect(endpoints.listAgentTasks).toHaveBeenCalledWith(
+    expect(endpoints.listTickets).toHaveBeenCalledWith(
       'acme',
       expect.objectContaining({ group: 'closed', limit: 50, offset: 50 }),
       expect.anything(),
     )
-    expect(screen.getByText('63 tasks')).toBeInTheDocument()
+    expect(screen.getByText('63 tickets')).toBeInTheDocument()
   })
 
   it('reads a page only once it scrolls into view', async () => {
@@ -369,11 +398,11 @@ describe('Tasks', () => {
     })
     const reads = () =>
       vi
-        .mocked(endpoints.listAgentTasks)
+        .mocked(endpoints.listTickets)
         .mock.calls.filter(([, p]) => p.group === 'closed' && p.offset === 50)
         .length
     try {
-      renderAt('/agents/tasks')
+      renderAt('/tickets')
       expect(await screen.findByText('Closed 59')).toBeInTheDocument()
       const pane = screen
         .getByText('Closed 59')
@@ -397,7 +426,7 @@ describe('Tasks', () => {
   })
 
   it('collapses a group and remembers it', async () => {
-    renderAt('/agents/tasks')
+    renderAt('/tickets')
     await screen.findByText('Old work')
     const toggle = screen.getByRole('button', { name: /Recently closed/ })
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
@@ -416,7 +445,7 @@ describe('Tasks', () => {
   })
 
   it('keeps the header of the group in view at the top', async () => {
-    renderAt('/agents/tasks')
+    renderAt('/tickets')
     const scroller = (await screen.findByText('Busy')).closest<HTMLElement>(
       '.overflow-y-auto',
     )!
@@ -440,15 +469,15 @@ describe('Tasks', () => {
     vi.mocked(window.localStorage.getItem).mockImplementation((key) =>
       key === 'imbi.tasks.collapsed' ? '["input"]' : null,
     )
-    vi.mocked(endpoints.getAgentTaskPosition).mockResolvedValue({
+    vi.mocked(endpoints.getTicketPosition).mockResolvedValue({
       group: 'input',
       index: 1,
     })
     try {
-      renderAt('/agents/tasks/acme/T-3?agent=agt-1')
+      renderAt('/tickets/acme/T-3?agent=agt-1')
       await waitFor(() => expect(inboxTitles()).toContain('Apply the fix'))
-      expect(endpoints.getAgentTaskPosition).toHaveBeenCalledTimes(1)
-      expect(endpoints.getAgentTaskPosition).toHaveBeenCalledWith(
+      expect(endpoints.getTicketPosition).toHaveBeenCalledTimes(1)
+      expect(endpoints.getTicketPosition).toHaveBeenCalledWith(
         'acme',
         'T-3',
         expect.objectContaining({ agent_id: ['agt-1'] }),
@@ -459,11 +488,11 @@ describe('Tasks', () => {
   })
 
   it('reveals the selected task on demand, opening its group', async () => {
-    vi.mocked(endpoints.getAgentTaskPosition).mockResolvedValue({
+    vi.mocked(endpoints.getTicketPosition).mockResolvedValue({
       group: 'input',
       index: 1,
     })
-    renderAt('/agents/tasks/acme/T-3')
+    renderAt('/tickets/acme/T-3')
     await waitFor(() => expect(inboxTitles()).toContain('Apply the fix'))
     fireEvent.click(
       screen.getByRole('button', { expanded: true, name: /Human input/i }),
@@ -471,7 +500,7 @@ describe('Tasks', () => {
     await waitFor(() => expect(inboxTitles()).not.toContain('Apply the fix'))
     fireEvent.click(screen.getByRole('button', { name: 'Reveal in list' }))
     await waitFor(() => expect(inboxTitles()).toContain('Apply the fix'))
-    expect(endpoints.getAgentTaskPosition).toHaveBeenCalledTimes(2)
+    expect(endpoints.getTicketPosition).toHaveBeenCalledTimes(2)
   })
 
   it('keeps collapse changes made while a reveal waits', async () => {
@@ -479,13 +508,13 @@ describe('Tasks', () => {
       key === 'imbi.tasks.collapsed' ? '["input"]' : null,
     )
     let found!: (at: Position) => void
-    vi.mocked(endpoints.getAgentTaskPosition).mockReturnValue(
+    vi.mocked(endpoints.getTicketPosition).mockReturnValue(
       new Promise((resolve) => {
         found = resolve
       }),
     )
     try {
-      renderAt('/agents/tasks/acme/T-3')
+      renderAt('/tickets/acme/T-3')
       await screen.findByText('Old work')
       fireEvent.click(screen.getByRole('button', { name: /Recently closed/ }))
       await waitFor(() =>
@@ -508,16 +537,16 @@ describe('Tasks', () => {
       key === 'imbi.tasks.collapsed' ? '["input"]' : null,
     )
     let found!: (at: Position) => void
-    vi.mocked(endpoints.getAgentTaskPosition).mockReturnValue(
+    vi.mocked(endpoints.getTicketPosition).mockReturnValue(
       new Promise((resolve) => {
         found = resolve
       }),
     )
     try {
-      renderAt('/agents/tasks/acme/T-3')
+      renderAt('/tickets/acme/T-3')
       fireEvent.click(await screen.findByText('Busy'))
       await waitFor(() =>
-        expect(window.location.pathname).toMatch(/^\/agents\/tasks\/acme\/T-4/),
+        expect(window.location.pathname).toMatch(/^\/tickets\/acme\/T-4/),
       )
       await act(async () => found({ group: 'input', index: 1 }))
       expect(inboxTitles()).not.toContain('Apply the fix')
@@ -530,9 +559,9 @@ describe('Tasks', () => {
   })
 
   it('does not reveal on load without a selected task', async () => {
-    renderAt('/agents/tasks')
+    renderAt('/tickets')
     await screen.findByText('Busy')
-    expect(endpoints.getAgentTaskPosition).not.toHaveBeenCalled()
+    expect(endpoints.getTicketPosition).not.toHaveBeenCalled()
     expect(
       screen.getByRole('button', { name: 'Reveal in list' }),
     ).toBeDisabled()
@@ -543,11 +572,11 @@ describe('Tasks', () => {
       key === 'imbi.tasks.collapsed' ? '["closed","input"]' : null,
     )
     try {
-      renderAt('/agents/tasks')
+      renderAt('/tickets')
       await screen.findByText('Busy')
       expect(screen.queryByText('Old work')).not.toBeInTheDocument()
       expect(screen.queryByText('Apply the fix')).not.toBeInTheDocument()
-      expect(endpoints.listAgentTasks).not.toHaveBeenCalledWith(
+      expect(endpoints.listTickets).not.toHaveBeenCalledWith(
         'acme',
         expect.objectContaining({ group: 'closed' }),
         expect.anything(),
@@ -559,20 +588,20 @@ describe('Tasks', () => {
 
   it('does not read a failed page again until Retry', async () => {
     let fail = true
-    const served = vi.mocked(endpoints.listAgentTasks).getMockImplementation()!
-    vi.mocked(endpoints.listAgentTasks).mockImplementation(
+    const served = vi.mocked(endpoints.listTickets).getMockImplementation()!
+    vi.mocked(endpoints.listTickets).mockImplementation(
       async (org, params, signal) => {
         if (params.group === 'running' && fail) throw new Error('boom')
         return served(org, params, signal)
       },
     )
-    renderAt('/agents/tasks')
+    renderAt('/tickets')
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Could not load tasksboom',
+      'Could not load ticketsboom',
     )
     const reads = () =>
       vi
-        .mocked(endpoints.listAgentTasks)
+        .mocked(endpoints.listTickets)
         .mock.calls.filter(([, p]) => p.group === 'running').length
     await act(async () => {
       await new Promise((r) => setTimeout(r, 50))
@@ -586,12 +615,12 @@ describe('Tasks', () => {
   })
 
   it('keeps the loaded rows when the list refreshes', async () => {
-    vi.mocked(endpoints.resolveAgentTaskRequest).mockResolvedValue({})
-    renderAt('/agents/tasks/acme/T-3/input')
+    vi.mocked(endpoints.resolveTicketRequest).mockResolvedValue({})
+    renderAt('/tickets/acme/T-3/input')
     const row = await screen.findByText('Old work')
     const reads = () =>
       vi
-        .mocked(endpoints.listAgentTasks)
+        .mocked(endpoints.listTickets)
         .mock.calls.filter(([, params]) => params.group === 'closed').length
     const before = reads()
     // An answer refreshes the inbox.
@@ -602,13 +631,13 @@ describe('Tasks', () => {
   })
 
   it('filters by text and by my tasks on the server', async () => {
-    renderAt('/agents/tasks')
+    renderAt('/tickets')
     await screen.findByText('Busy')
-    fireEvent.change(screen.getByLabelText('Filter tasks'), {
+    fireEvent.change(screen.getByLabelText('Filter tickets'), {
       target: { value: 'billing' },
     })
     await waitFor(() =>
-      expect(endpoints.listAgentTasks).toHaveBeenCalledWith(
+      expect(endpoints.listTickets).toHaveBeenCalledWith(
         'acme',
         expect.objectContaining({ q: 'billing' }),
         expect.anything(),
@@ -619,7 +648,7 @@ describe('Tasks', () => {
       await screen.findByRole('option', { name: 'Assigned to me' }),
     )
     await waitFor(() =>
-      expect(endpoints.listAgentTasks).toHaveBeenCalledWith(
+      expect(endpoints.listTickets).toHaveBeenCalledWith(
         'acme',
         expect.objectContaining({ mine: true, q: 'billing' }),
         expect.anything(),
@@ -650,7 +679,7 @@ describe('Tasks', () => {
         title: 'C',
       }),
     ])
-    renderAt('/agents/tasks')
+    renderAt('/tickets')
     expect((await screen.findByText('A')).closest('a')).toHaveTextContent(
       'Assigned to pat@example.com',
     )
@@ -690,7 +719,7 @@ describe('Tasks', () => {
         title: 'Fix the billing job',
       }),
     ])
-    renderAt('/agents/tasks')
+    renderAt('/tickets')
     const row = await screen.findByRole('link', { name: /T-9/ })
     expect(
       [...row.querySelectorAll('[data-search-match]')].map(
@@ -702,7 +731,7 @@ describe('Tasks', () => {
   })
 
   it('filters open states without reading the closed tasks', async () => {
-    renderAt('/agents/tasks')
+    renderAt('/tickets')
     await screen.findByText('Busy')
     fireEvent.click(screen.getByRole('button', { name: 'Filter' }))
     fireEvent.click(await screen.findByRole('option', { name: 'State' }))
@@ -712,22 +741,22 @@ describe('Tasks', () => {
     )
     expect(screen.getByText('Busy')).toBeInTheDocument()
     expect(screen.queryByText('Old work')).not.toBeInTheDocument()
-    expect(screen.getByText('1 task')).toBeInTheDocument()
+    expect(screen.getByText('1 ticket')).toBeInTheDocument()
     expect(window.location.search).toBe('?state=running')
   })
 
   it('shows a paused task with an open request under Needs input', async () => {
-    renderAt('/agents/tasks?state=blocked')
+    renderAt('/tickets?state=blocked')
     await screen.findByText('Waiting longest')
     expect(screen.getByText('Apply the fix')).toBeInTheDocument()
     expect(screen.queryByText('Busy')).not.toBeInTheDocument()
   })
 
   it('reads the filters from the address', async () => {
-    renderAt('/agents/tasks?state=closed')
+    renderAt('/tickets?state=closed')
     await screen.findByText('Old work')
     expect(screen.queryByText('Busy')).not.toBeInTheDocument()
-    expect(endpoints.listAgentTasks).not.toHaveBeenCalledWith(
+    expect(endpoints.listTickets).not.toHaveBeenCalledWith(
       'acme',
       expect.objectContaining({ status: expect.arrayContaining(['running']) }),
       expect.anything(),
@@ -740,14 +769,14 @@ describe('Tasks', () => {
       agent(),
       { ...agent(), id: 'agt-2', name: 'Shipper' },
     ])
-    renderAt('/agents/tasks')
+    renderAt('/tickets')
     await screen.findByText('Busy')
     fireEvent.click(screen.getByRole('button', { name: 'Filter' }))
     fireEvent.click(await screen.findByRole('option', { name: 'Agent' }))
     fireEvent.click(await screen.findByRole('option', { name: 'Mender' }))
     fireEvent.click(await screen.findByRole('option', { name: 'Shipper' }))
     await waitFor(() =>
-      expect(endpoints.listAgentTasks).toHaveBeenCalledWith(
+      expect(endpoints.listTickets).toHaveBeenCalledWith(
         'acme',
         expect.objectContaining({ agent_id: ['agt-1', 'agt-2'] }),
         expect.anything(),
@@ -765,7 +794,7 @@ describe('Tasks', () => {
   })
 
   it('finds a value by typing on the field list', async () => {
-    renderAt('/agents/tasks')
+    renderAt('/tickets')
     await screen.findByText('Busy')
     fireEvent.click(screen.getByRole('button', { name: 'Filter' }))
     fireEvent.change(await screen.findByPlaceholderText('Filter by…'), {
@@ -781,7 +810,7 @@ describe('Tasks', () => {
   })
 
   it('matches menu values by substring, not by scattered letters', async () => {
-    renderAt('/agents/tasks')
+    renderAt('/tickets')
     await screen.findByText('Busy')
     fireEvent.click(screen.getByRole('button', { name: 'Filter' }))
     fireEvent.change(await screen.findByPlaceholderText('Filter by…'), {
@@ -792,10 +821,10 @@ describe('Tasks', () => {
   })
 
   it('follows a link to other filters', async () => {
-    renderAt('/agents/tasks?state=closed')
+    renderAt('/tickets?state=closed')
     await screen.findByText('Old work')
     act(() => {
-      window.history.pushState({}, '', '/agents/tasks?state=running')
+      window.history.pushState({}, '', '/tickets?state=running')
       window.dispatchEvent(new PopStateEvent('popstate'))
     })
     await waitFor(() =>
@@ -806,10 +835,10 @@ describe('Tasks', () => {
   })
 
   it('clears the filters on Back to an address without them', async () => {
-    renderAt('/agents/tasks?state=closed')
+    renderAt('/tickets?state=closed')
     await screen.findByText('Old work')
     act(() => {
-      window.history.pushState({}, '', '/agents/tasks')
+      window.history.pushState({}, '', '/tickets')
       window.dispatchEvent(new PopStateEvent('popstate'))
     })
     expect(await screen.findByText('Busy')).toBeInTheDocument()
@@ -817,21 +846,21 @@ describe('Tasks', () => {
   })
 
   it('keeps the filters when a task opens', async () => {
-    renderAt('/agents/tasks?state=blocked')
+    renderAt('/tickets?state=blocked')
     fireEvent.click(await screen.findByText('Apply the fix'))
     await waitFor(() =>
-      expect(window.location.pathname).toMatch(/^\/agents\/tasks\/acme\/T-3/),
+      expect(window.location.pathname).toMatch(/^\/tickets\/acme\/T-3/),
     )
     expect(window.location.search).toBe('?state=blocked')
   })
 
   it('answers a feedback request', async () => {
-    vi.mocked(endpoints.resolveAgentTaskRequest).mockResolvedValue({})
-    renderAt('/agents/tasks/acme/T-3/input')
+    vi.mocked(endpoints.resolveTicketRequest).mockResolvedValue({})
+    renderAt('/tickets/acme/T-3/input')
     fireEvent.click(await screen.findByRole('radio', { name: 'yes' }))
     fireEvent.click(screen.getByRole('button', { name: 'Send answer' }))
     await waitFor(() =>
-      expect(endpoints.resolveAgentTaskRequest).toHaveBeenCalledWith(
+      expect(endpoints.resolveTicketRequest).toHaveBeenCalledWith(
         'acme',
         'T-3',
         'req-1',
@@ -841,8 +870,8 @@ describe('Tasks', () => {
   })
 
   it('sends a written answer instead of an option', async () => {
-    vi.mocked(endpoints.resolveAgentTaskRequest).mockResolvedValue({})
-    renderAt('/agents/tasks/acme/T-3/input')
+    vi.mocked(endpoints.resolveTicketRequest).mockResolvedValue({})
+    renderAt('/tickets/acme/T-3/input')
     fireEvent.click(await screen.findByRole('radio', { name: 'yes' }))
     fireEvent.change(screen.getByRole('textbox', { name: 'Answer' }), {
       target: { value: 'only on Fridays' },
@@ -850,7 +879,7 @@ describe('Tasks', () => {
     expect(screen.getByRole('radio', { name: 'yes' })).not.toBeChecked()
     fireEvent.click(screen.getByRole('button', { name: 'Send answer' }))
     await waitFor(() =>
-      expect(endpoints.resolveAgentTaskRequest).toHaveBeenCalledWith(
+      expect(endpoints.resolveTicketRequest).toHaveBeenCalledWith(
         'acme',
         'T-3',
         'req-1',
@@ -860,19 +889,19 @@ describe('Tasks', () => {
   })
 
   it('asks for an answer before sending', async () => {
-    renderAt('/agents/tasks/acme/T-3/input')
+    renderAt('/tickets/acme/T-3/input')
     fireEvent.click(await screen.findByRole('button', { name: 'Send answer' }))
     expect(
       await screen.findByText('Pick an answer or write one.'),
     ).toBeVisible()
-    expect(endpoints.resolveAgentTaskRequest).not.toHaveBeenCalled()
+    expect(endpoints.resolveTicketRequest).not.toHaveBeenCalled()
   })
 
   it('sends an answer once while it is pending', async () => {
-    vi.mocked(endpoints.resolveAgentTaskRequest).mockReturnValue(
+    vi.mocked(endpoints.resolveTicketRequest).mockReturnValue(
       new Promise(() => {}),
     )
-    renderAt('/agents/tasks/acme/T-3/input')
+    renderAt('/tickets/acme/T-3/input')
     fireEvent.click(await screen.findByRole('radio', { name: 'yes' }))
     const send = screen.getByRole('button', { name: 'Send answer' })
     fireEvent.click(send)
@@ -882,14 +911,14 @@ describe('Tasks', () => {
     fireEvent.submit(form)
     fireEvent.submit(form)
     await new Promise((done) => setTimeout(done, 50))
-    expect(endpoints.resolveAgentTaskRequest).toHaveBeenCalledTimes(1)
+    expect(endpoints.resolveTicketRequest).toHaveBeenCalledTimes(1)
   })
 
   it('sends an answer again after a failure', async () => {
-    vi.mocked(endpoints.resolveAgentTaskRequest)
+    vi.mocked(endpoints.resolveTicketRequest)
       .mockRejectedValueOnce(new ApiError(500, 'Server Error', {}))
       .mockResolvedValueOnce({})
-    renderAt('/agents/tasks/acme/T-3/input')
+    renderAt('/tickets/acme/T-3/input')
     fireEvent.click(await screen.findByRole('radio', { name: 'yes' }))
     const send = screen.getByRole('button', { name: 'Send answer' })
     fireEvent.click(send)
@@ -897,12 +926,12 @@ describe('Tasks', () => {
     await waitFor(() => expect(send).toBeEnabled())
     fireEvent.click(send)
     await waitFor(() =>
-      expect(endpoints.resolveAgentTaskRequest).toHaveBeenCalledTimes(2),
+      expect(endpoints.resolveTicketRequest).toHaveBeenCalledTimes(2),
     )
   })
 
   it('collapses a request that someone else resolved (I4)', async () => {
-    vi.mocked(endpoints.resolveAgentTaskRequest).mockRejectedValue(
+    vi.mocked(endpoints.resolveTicketRequest).mockRejectedValue(
       new ApiError(409, 'Conflict', {
         detail: {
           error: 'request_resolved',
@@ -913,7 +942,7 @@ describe('Tasks', () => {
         },
       }),
     )
-    renderAt('/agents/tasks/acme/T-3/input')
+    renderAt('/tickets/acme/T-3/input')
     fireEvent.click(await screen.findByRole('radio', { name: 'no' }))
     fireEvent.click(screen.getByRole('button', { name: 'Send answer' }))
     expect(await screen.findByText('pat@example.com')).toBeInTheDocument()
@@ -934,10 +963,10 @@ describe('Tasks', () => {
       }),
       event(5, 'check.reported', { name: 'tests', verdict: 'pending' }),
     ]
-    vi.mocked(endpoints.listAgentTaskEvents).mockImplementation(
+    vi.mocked(endpoints.listTicketEvents).mockImplementation(
       async (_org, _id, afterSeq) => log.filter((e) => e.seq > afterSeq),
     )
-    renderAt('/agents/tasks/acme/T-3/checks')
+    renderAt('/tickets/acme/T-3/checks')
     const row = (await screen.findByText('p95 latency')).closest('li')!
     expect(within(row).getByText('Failing')).toBeInTheDocument()
     expect(within(row).getByText('158ms')).toBeInTheDocument()
@@ -981,7 +1010,7 @@ describe('Tasks', () => {
     ]
 
     beforeEach(() => {
-      vi.mocked(endpoints.listAgentTaskEvents).mockImplementation(
+      vi.mocked(endpoints.listTicketEvents).mockImplementation(
         async (_org, _id, afterSeq) => log.filter((e) => e.seq > afterSeq),
       )
     })
@@ -993,7 +1022,7 @@ describe('Tasks', () => {
     }
 
     it('shows every record with its DSH kind', async () => {
-      renderAt('/agents/tasks/acme/T-3/trajectory')
+      renderAt('/tickets/acme/T-3/trajectory')
       const rows = await ledgerRows()
       expect(rows.map((r) => r.dataset.kind)).toEqual([
         'user',
@@ -1019,7 +1048,7 @@ describe('Tasks', () => {
     })
 
     it('searches the trajectory', async () => {
-      renderAt('/agents/tasks/acme/T-3/trajectory')
+      renderAt('/tickets/acme/T-3/trajectory')
       await ledgerRows()
       fireEvent.change(
         screen.getByRole('searchbox', { name: 'Search trajectory' }),
@@ -1030,7 +1059,7 @@ describe('Tasks', () => {
     })
 
     it('selects the record of a #e link and opens the inspector', async () => {
-      renderAt('/agents/tasks/acme/T-3/trajectory#e6')
+      renderAt('/tickets/acme/T-3/trajectory#e6')
       const rows = await ledgerRows()
       await waitFor(() =>
         expect(rows[4]).toHaveAttribute('aria-selected', 'true'),
@@ -1041,34 +1070,28 @@ describe('Tasks', () => {
     })
 
     it('sends an old Log link to the Trajectory', async () => {
-      renderAt('/agents/tasks/acme/T-3/log#e6')
+      renderAt('/tickets/acme/T-3/log#e6')
       expect(
         await screen.findByRole('radio', { name: /^Trajectory/ }),
       ).toHaveAttribute('aria-checked', 'true')
       await waitFor(() =>
-        expect(window.location.pathname).toBe(
-          '/agents/tasks/acme/T-3/trajectory',
-        ),
+        expect(window.location.pathname).toBe('/tickets/acme/T-3/trajectory'),
       )
       expect(window.location.hash).toBe('#e6')
     })
 
     it('sends an old Conversation event link to the Trajectory', async () => {
-      renderAt('/agents/tasks/acme/T-3/conversation#e2')
+      renderAt('/tickets/acme/T-3/conversation#e2')
       await waitFor(() =>
-        expect(window.location.pathname).toBe(
-          '/agents/tasks/acme/T-3/trajectory',
-        ),
+        expect(window.location.pathname).toBe('/tickets/acme/T-3/trajectory'),
       )
       expect(window.location.hash).toBe('#e2')
     })
 
     it('sends an Activity event link to the Trajectory', async () => {
-      renderAt('/agents/tasks/acme/T-3/activity#e6')
+      renderAt('/tickets/acme/T-3/activity#e6')
       await waitFor(() =>
-        expect(window.location.pathname).toBe(
-          '/agents/tasks/acme/T-3/trajectory',
-        ),
+        expect(window.location.pathname).toBe('/tickets/acme/T-3/trajectory'),
       )
       expect(window.location.hash).toBe('#e6')
       const rows = await ledgerRows()
@@ -1078,14 +1101,14 @@ describe('Tasks', () => {
     })
 
     it('opens an old Actions taken link on the Conversation', async () => {
-      renderAt('/agents/tasks/acme/T-3/actions')
+      renderAt('/tickets/acme/T-3/actions')
       expect(
         await screen.findByRole('radio', { name: /^Conversation/ }),
       ).toHaveAttribute('aria-checked', 'true')
     })
 
     it('shows a Trajectory event in the Conversation', async () => {
-      renderAt('/agents/tasks/acme/T-3/trajectory#e6')
+      renderAt('/tickets/acme/T-3/trajectory#e6')
       const rows = await ledgerRows()
       await waitFor(() =>
         expect(rows[4]).toHaveAttribute('aria-selected', 'true'),
@@ -1094,9 +1117,7 @@ describe('Tasks', () => {
         screen.getByRole('button', { name: 'Show in conversation' }),
       )
       await waitFor(() =>
-        expect(window.location.pathname).toBe(
-          '/agents/tasks/acme/T-3/conversation',
-        ),
+        expect(window.location.pathname).toBe('/tickets/acme/T-3/conversation'),
       )
       expect(window.location.hash).toBe('')
       await waitFor(() =>
@@ -1105,16 +1126,14 @@ describe('Tasks', () => {
     })
 
     it('shows a Statistics turn in the Conversation', async () => {
-      renderAt('/agents/tasks/acme/T-3/statistics')
+      renderAt('/tickets/acme/T-3/statistics')
       fireEvent.click(
         await screen.findByRole('button', {
           name: 'Turn 1: show in conversation',
         }),
       )
       await waitFor(() =>
-        expect(window.location.pathname).toBe(
-          '/agents/tasks/acme/T-3/conversation',
-        ),
+        expect(window.location.pathname).toBe('/tickets/acme/T-3/conversation'),
       )
       await waitFor(() =>
         expect(document.querySelector('[data-flash]')).toBeInTheDocument(),
@@ -1126,12 +1145,10 @@ describe('Tasks', () => {
         key === 'imbi.task.view' ? '"statistics"' : null,
       )
       try {
-        renderAt('/agents/tasks/acme/T-3/overview')
+        renderAt('/tickets/acme/T-3/overview')
         fireEvent.click(await screen.findByRole('tab', { name: /^Activity/ }))
         await waitFor(() =>
-          expect(window.location.pathname).toBe(
-            '/agents/tasks/acme/T-3/statistics',
-          ),
+          expect(window.location.pathname).toBe('/tickets/acme/T-3/statistics'),
         )
       } finally {
         vi.mocked(window.localStorage.getItem).mockReturnValue(null)
@@ -1139,12 +1156,10 @@ describe('Tasks', () => {
     })
 
     it('switches the Activity view from the toolbar', async () => {
-      renderAt('/agents/tasks/acme/T-3/conversation')
+      renderAt('/tickets/acme/T-3/conversation')
       fireEvent.click(await screen.findByRole('radio', { name: /^Trajectory/ }))
       await waitFor(() =>
-        expect(window.location.pathname).toBe(
-          '/agents/tasks/acme/T-3/trajectory',
-        ),
+        expect(window.location.pathname).toBe('/tickets/acme/T-3/trajectory'),
       )
       expect(window.localStorage.setItem).toHaveBeenCalledWith(
         'imbi.task.view',
@@ -1154,37 +1169,39 @@ describe('Tasks', () => {
   })
 
   it('keeps the reply box on every tab while the task is open', async () => {
-    renderAt('/agents/tasks/acme/T-3/overview')
+    renderAt('/tickets/acme/T-3/overview')
     expect(await screen.findByLabelText('Reply')).toBeInTheDocument()
   })
 
   it('has no reply box on a closed task', async () => {
-    vi.mocked(endpoints.getAgentTask).mockResolvedValue({
+    vi.mocked(endpoints.getTicket).mockResolvedValue({
       ...BLOCKED,
       closed_at: '2026-10-08T13:00:00Z',
       outcome: 'done_acted',
       status: 'closed',
     })
-    renderAt('/agents/tasks/acme/T-3/conversation')
+    renderAt('/tickets/acme/T-3/conversation')
     await screen.findByText('I read the task.')
     expect(screen.queryByLabelText('Reply')).not.toBeInTheDocument()
   })
 
   it('cancels a task after a confirm', async () => {
-    vi.mocked(endpoints.controlAgentTask).mockResolvedValue({
+    vi.mocked(endpoints.controlTicket).mockResolvedValue({
       ...BLOCKED,
       control: 'cancel',
     })
-    renderAt('/agents/tasks/acme/T-3/conversation')
-    fireEvent.click(await screen.findByRole('button', { name: 'Cancel task' }))
-    expect(endpoints.controlAgentTask).not.toHaveBeenCalled()
+    renderAt('/tickets/acme/T-3/conversation')
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Cancel ticket' }),
+    )
+    expect(endpoints.controlTicket).not.toHaveBeenCalled()
     fireEvent.click(
       within(screen.getByRole('alertdialog')).getByRole('button', {
-        name: 'Cancel task',
+        name: 'Cancel ticket',
       }),
     )
     await waitFor(() =>
-      expect(endpoints.controlAgentTask).toHaveBeenCalledWith(
+      expect(endpoints.controlTicket).toHaveBeenCalledWith(
         'acme',
         'T-3',
         'cancel',
@@ -1193,44 +1210,46 @@ describe('Tasks', () => {
   })
 
   it('deletes a closed task after a confirm', async () => {
-    vi.mocked(endpoints.getAgentTask).mockResolvedValue(closedTask(1))
-    vi.mocked(endpoints.deleteAgentTask).mockResolvedValue(undefined)
-    renderAt('/agents/tasks/acme/T-11')
-    fireEvent.click(await screen.findByRole('button', { name: 'Delete task' }))
-    expect(endpoints.deleteAgentTask).not.toHaveBeenCalled()
+    vi.mocked(endpoints.getTicket).mockResolvedValue(closedTask(1))
+    vi.mocked(endpoints.deleteTicket).mockResolvedValue(undefined)
+    renderAt('/tickets/acme/T-11')
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Delete ticket' }),
+    )
+    expect(endpoints.deleteTicket).not.toHaveBeenCalled()
     fireEvent.click(
       within(screen.getByRole('alertdialog')).getByRole('button', {
-        name: 'Delete task',
+        name: 'Delete ticket',
       }),
     )
     await waitFor(() =>
-      expect(endpoints.deleteAgentTask).toHaveBeenCalledWith('acme', 'T-11'),
+      expect(endpoints.deleteTicket).toHaveBeenCalledWith('acme', 'T-11'),
     )
-    expect(await screen.findByText('Select a task.')).toBeInTheDocument()
+    expect(await screen.findByText('Select a ticket.')).toBeInTheDocument()
   })
 
   it('has no Delete for an open task', async () => {
-    renderAt('/agents/tasks/acme/T-3')
-    await screen.findByRole('button', { name: 'Cancel task' })
+    renderAt('/tickets/acme/T-3')
+    await screen.findByRole('button', { name: 'Cancel ticket' })
     expect(
-      screen.queryByRole('button', { name: 'Delete task' }),
+      screen.queryByRole('button', { name: 'Delete ticket' }),
     ).not.toBeInTheDocument()
   })
 
   it('retries a failed task with a note', async () => {
-    vi.mocked(endpoints.getAgentTask).mockResolvedValue({
+    vi.mocked(endpoints.getTicket).mockResolvedValue({
       ...closedTask(1),
       outcome: 'failed_error',
     })
-    vi.mocked(endpoints.retryAgentTask).mockResolvedValue(task())
-    renderAt('/agents/tasks/acme/T-11')
-    fireEvent.click(await screen.findByRole('button', { name: 'Retry task' }))
+    vi.mocked(endpoints.retryTicket).mockResolvedValue(task())
+    renderAt('/tickets/acme/T-11')
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry ticket' }))
     fireEvent.change(screen.getByLabelText('Note for the retry'), {
       target: { value: ' Use the new token. ' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
     await waitFor(() =>
-      expect(endpoints.retryAgentTask).toHaveBeenCalledWith('acme', 'T-11', {
+      expect(endpoints.retryTicket).toHaveBeenCalledWith('acme', 'T-11', {
         idempotency_key: expect.any(String),
         note: 'Use the new token.',
       }),
@@ -1238,15 +1257,15 @@ describe('Tasks', () => {
   })
 
   it('sends the same key when a retry after an error repeats', async () => {
-    vi.mocked(endpoints.getAgentTask).mockResolvedValue({
+    vi.mocked(endpoints.getTicket).mockResolvedValue({
       ...closedTask(1),
       outcome: 'failed_error',
     })
-    vi.mocked(endpoints.retryAgentTask).mockRejectedValue(
+    vi.mocked(endpoints.retryTicket).mockRejectedValue(
       new Error('Network error'),
     )
-    renderAt('/agents/tasks/acme/T-11')
-    fireEvent.click(await screen.findByRole('button', { name: 'Retry task' }))
+    renderAt('/tickets/acme/T-11')
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry ticket' }))
     const submit = screen.getByRole('button', { name: 'Retry' })
     fireEvent.click(submit)
     await screen.findByRole('alert')
@@ -1254,24 +1273,22 @@ describe('Tasks', () => {
       'readonly',
     )
     fireEvent.click(submit)
-    await waitFor(() =>
-      expect(endpoints.retryAgentTask).toHaveBeenCalledTimes(2),
-    )
+    await waitFor(() => expect(endpoints.retryTicket).toHaveBeenCalledTimes(2))
     const [first, second] = vi
-      .mocked(endpoints.retryAgentTask)
+      .mocked(endpoints.retryTicket)
       .mock.calls.map(([, , body]) => body.idempotency_key)
     expect(first).toEqual(expect.any(String))
     expect(second).toBe(first)
   })
 
   it('locks the note while a retry is pending', async () => {
-    vi.mocked(endpoints.getAgentTask).mockResolvedValue({
+    vi.mocked(endpoints.getTicket).mockResolvedValue({
       ...closedTask(1),
       outcome: 'failed_error',
     })
-    vi.mocked(endpoints.retryAgentTask).mockReturnValue(new Promise(() => {}))
-    renderAt('/agents/tasks/acme/T-11')
-    fireEvent.click(await screen.findByRole('button', { name: 'Retry task' }))
+    vi.mocked(endpoints.retryTicket).mockReturnValue(new Promise(() => {}))
+    renderAt('/tickets/acme/T-11')
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry ticket' }))
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
     await waitFor(() =>
       expect(screen.getByLabelText('Note for the retry')).toHaveAttribute(
@@ -1281,15 +1298,15 @@ describe('Tasks', () => {
   })
 
   it('keeps the note editable after a rejected retry', async () => {
-    vi.mocked(endpoints.getAgentTask).mockResolvedValue({
+    vi.mocked(endpoints.getTicket).mockResolvedValue({
       ...closedTask(1),
       outcome: 'failed_error',
     })
-    vi.mocked(endpoints.retryAgentTask).mockRejectedValue(
+    vi.mocked(endpoints.retryTicket).mockRejectedValue(
       new ApiError(422, 'Unprocessable Entity'),
     )
-    renderAt('/agents/tasks/acme/T-11')
-    fireEvent.click(await screen.findByRole('button', { name: 'Retry task' }))
+    renderAt('/tickets/acme/T-11')
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry ticket' }))
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
     await screen.findByRole('alert')
     expect(screen.getByLabelText('Note for the retry')).not.toHaveAttribute(
@@ -1298,17 +1315,17 @@ describe('Tasks', () => {
   })
 
   it('has no Retry for a task that did not fail', async () => {
-    vi.mocked(endpoints.getAgentTask).mockResolvedValue(closedTask(1))
-    renderAt('/agents/tasks/acme/T-11')
-    await screen.findByRole('button', { name: 'Delete task' })
+    vi.mocked(endpoints.getTicket).mockResolvedValue(closedTask(1))
+    renderAt('/tickets/acme/T-11')
+    await screen.findByRole('button', { name: 'Delete ticket' })
     expect(
-      screen.queryByRole('button', { name: 'Retry task' }),
+      screen.queryByRole('button', { name: 'Retry ticket' }),
     ).not.toBeInTheDocument()
   })
 
   it('returns focus to Cancel when the confirm closes', async () => {
-    renderAt('/agents/tasks/acme/T-3/conversation')
-    const button = await screen.findByRole('button', { name: 'Cancel task' })
+    renderAt('/tickets/acme/T-3/conversation')
+    const button = await screen.findByRole('button', { name: 'Cancel ticket' })
     button.focus()
     fireEvent.click(button)
     fireEvent.click(
@@ -1317,18 +1334,18 @@ describe('Tasks', () => {
       }),
     )
     await waitFor(() => expect(button).toHaveFocus())
-    expect(endpoints.controlAgentTask).not.toHaveBeenCalled()
+    expect(endpoints.controlTicket).not.toHaveBeenCalled()
   })
 
   it('sends Reply and hold', async () => {
-    vi.mocked(endpoints.replyAgentTask).mockResolvedValue(BLOCKED)
-    renderAt('/agents/tasks/acme/T-3/conversation')
+    vi.mocked(endpoints.replyTicket).mockResolvedValue(BLOCKED)
+    renderAt('/tickets/acme/T-3/conversation')
     fireEvent.change(await screen.findByLabelText('Reply'), {
       target: { value: 'Wait for me.' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Reply and hold' }))
     await waitFor(() =>
-      expect(endpoints.replyAgentTask).toHaveBeenCalledWith(
+      expect(endpoints.replyTicket).toHaveBeenCalledWith(
         'acme',
         'T-3',
         'Wait for me.',
@@ -1341,7 +1358,7 @@ describe('Tasks', () => {
   it(
     'appends new events by seq without a reload (O4)',
     async () => {
-      renderAt('/agents/tasks/acme/T-3/conversation')
+      renderAt('/tickets/acme/T-3/conversation')
       await screen.findByText('I read the task.')
       LOG.push(event(4, 'turn', { body: 'A new turn.' }))
       try {
@@ -1356,7 +1373,7 @@ describe('Tasks', () => {
         LOG.pop()
       }
       expect(screen.getByText('I read the task.')).toBeInTheDocument()
-      expect(endpoints.listAgentTaskEvents).toHaveBeenCalledWith(
+      expect(endpoints.listTicketEvents).toHaveBeenCalledWith(
         'acme',
         'T-3',
         3,
@@ -1374,7 +1391,7 @@ describe('Tasks', () => {
       version: promptVersion(),
     })
     vi.mocked(endpoints.getAgentToolCatalog).mockResolvedValue(catalog())
-    vi.mocked(endpoints.createAgentTask).mockResolvedValue(
+    vi.mocked(endpoints.createTicket).mockResolvedValue(
       task({ short_id: 'T-9' }),
     )
     vi.mocked(endpoints.getProjectsSlim).mockResolvedValue([
@@ -1392,9 +1409,11 @@ describe('Tasks', () => {
       target: { value: 'Check the build\nFind why it fails.' },
     })
     fireEvent.click(await within(dialog).findByText('billing'))
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }))
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Create ticket' }),
+    )
     await waitFor(() =>
-      expect(endpoints.createAgentTask).toHaveBeenCalledWith('acme', {
+      expect(endpoints.createTicket).toHaveBeenCalledWith('acme', {
         agent_slug: 'mender',
         description: 'Check the build\nFind why it fails.',
         project_ids: ['p-1'],
@@ -1402,7 +1421,7 @@ describe('Tasks', () => {
       }),
     )
     await waitFor(() =>
-      expect(window.location.pathname).toBe('/agents/tasks/acme/T-9/overview'),
+      expect(window.location.pathname).toBe('/tickets/acme/T-9/overview'),
     )
   })
 })

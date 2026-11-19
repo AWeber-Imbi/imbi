@@ -9,7 +9,6 @@ from fastapi.middleware import cors
 from uvicorn.middleware import proxy_headers
 
 from imbi.api import (
-    agent_tasks,
     endpoints,
     harness,
     lifespans,
@@ -18,6 +17,7 @@ from imbi.api import (
     plugins,
     secret_broker,
     settings,
+    tickets,
     version,
     workflows,
 )
@@ -59,7 +59,7 @@ def create_app() -> fastapi.FastAPI:
             lifespans.iggy_hook,
             lifespans.iggy_metrics_hook,
             graph.graph_lifespan,
-            agent_tasks.store_lifespan,
+            tickets.store_lifespan,
             # Before harness: its fencer must be registered before the
             # lease sweep starts, and stay until the sweep stops.
             secret_broker.store_lifespan,

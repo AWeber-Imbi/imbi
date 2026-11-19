@@ -505,6 +505,25 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'delete',
         'Delete closed agent tasks',
     ),
+    # Tickets (ADR 0028): the new names of the `agent_task` permissions.
+    # Every role that has one of them has the other, and every check
+    # accepts either name until release B removes the old ones.
+    ('ticket:read', 'ticket', 'read', 'View tickets and their events'),
+    ('ticket:create', 'ticket', 'create', 'Create tickets'),
+    (
+        'ticket:manage',
+        'ticket',
+        'manage',
+        'Pause, resume, cancel, and reassign tickets',
+    ),
+    (
+        'ticket:resolve',
+        'ticket',
+        'resolve',
+        'Answer feedback requests and resolve approvals of tickets',
+    ),
+    # Granted to no non-admin default role.
+    ('ticket:delete', 'ticket', 'delete', 'Delete closed tickets'),
     # Workflows (ADR 0021)
     (
         'workflow:read',
@@ -850,11 +869,15 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
         [
             'agent:create',
             'agent_task:create',
+            'ticket:create',
             'agent:read',
             'agent_task:read',
+            'ticket:read',
             'agent:write',
             'agent_task:manage',
+            'ticket:manage',
             'agent_task:resolve',
+            'ticket:resolve',
             'blueprint:read',
             'blueprint:write',
             'workflow:create',
@@ -939,6 +962,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
         [
             'agent:read',
             'agent_task:read',
+            'ticket:read',
             'blueprint:read',
             'component:read',
             'workflow:read',
@@ -978,6 +1002,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
         [
             'agent:read',
             'agent_task:read',
+            'ticket:read',
             'blueprint:read',
             'component:read',
             'workflow:read',
@@ -1042,7 +1067,9 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             # An `api` task can start agent work with a `schedule`
             # origin (ADR 0020).
             'agent_task:create',
+            'ticket:create',
             'agent_task:read',
+            'ticket:read',
             # The task of a workflow's schedule trigger starts its runs
             # (ADR 0021).
             'workflow:run',
@@ -1084,6 +1111,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             # The `create_agent_task` action, with a `webhook` origin
             # (ADR 0020).
             'agent_task:create',
+            'ticket:create',
             # The `start_workflow` action, with a `webhook` origin
             # (ADR 0021).
             'workflow:run',

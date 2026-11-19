@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 
 import { useMutation } from '@tanstack/react-query'
 import { Play, Plus, X } from 'lucide-react'
@@ -61,6 +61,9 @@ const MAX_OPTIONS = 255
 const MIN_LEVELS = 2
 
 const MAX_LEVELS = 10
+
+const INVALID_INPUT =
+  'Number variables must be valid numbers (whole numbers within ±9007199254740991 for int); list and object variables must be valid JSON'
 
 const CARD = 'bg-primary border-tertiary rounded-lg border'
 
@@ -301,7 +304,9 @@ export function RunPanel({
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
   const [values, setValues] = useState<Record<string, boolean | string>>({})
-  const [inputError, setInputError] = useState<null | string>(null)
+  // The variables that did not parse at the last Run.
+  const [invalid, setInvalid] = useState<string[]>([])
+  const errorId = useId()
   // Follows the inputs, so the notice shows before Run and never goes stale.
   const keptAsText = variables
     .filter((v) => {
@@ -331,19 +336,17 @@ export function RunPanel({
 
   const submit = () => {
     const vars: Record<string, unknown> = {}
-    try {
-      for (const v of variables) {
+    const bad: string[] = []
+    for (const v of variables) {
+      try {
         const value = parseValue(values[v.name] ?? '', v.type, () => {})
         if (value !== undefined) vars[v.name] = value
+      } catch {
+        bad.push(v.name)
       }
-    } catch {
-      setInputError(
-        'Number variables must be valid numbers (whole numbers within ±9007199254740991 for int); list and object variables must be valid JSON',
-      )
-      return
     }
-    setInputError(null)
-    run.mutate(vars)
+    setInvalid(bad)
+    if (bad.length === 0) run.mutate(vars)
   }
 
   return (
@@ -371,6 +374,10 @@ export function RunPanel({
               />
             ) : (
               <Input
+                aria-describedby={
+                  invalid.includes(v.name) ? errorId : undefined
+                }
+                aria-invalid={invalid.includes(v.name) || undefined}
                 aria-label={`Run variable ${v.name}`}
                 className="h-8 flex-1 font-mono text-xs"
                 inputMode={
@@ -396,8 +403,12 @@ export function RunPanel({
             <Play />
             {run.isPending ? 'Running…' : 'Run'}
           </Button>
-          <span className="text-tertiary text-xs">
-            {inputError ?? (blocked ? 'Fix the draft before running' : '')}
+          <span className="text-tertiary text-xs" id={errorId}>
+            {invalid.length > 0
+              ? INVALID_INPUT
+              : blocked
+                ? 'Fix the draft before running'
+                : ''}
           </span>
         </div>
         {keptAsText.length > 0 && (

@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/table'
 import { IconTooltip } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import type { AgentTask, AgentTaskEvent } from '@/types'
+import type { Ticket, TicketEvent } from '@/types'
 
 import { ActivityEmpty, NoMatches } from './ActivityEmpty'
 import { FindStub } from './FindStub'
@@ -146,10 +146,10 @@ export function StatisticsTab({
   onShowInConversation,
   task,
 }: {
-  events: AgentTaskEvent[]
+  events: TicketEvent[]
   /** Opens the conversation at the turn that holds this event. */
   onShowInConversation?: (seq: number) => void
-  task: AgentTask
+  task: Ticket
 }) {
   const [basis, setBasis] = useStoredState<ContextBasis>(
     'imbi.statistics.basis',

@@ -42,7 +42,7 @@ Use 2.41.0 or later for a new install.
    operations.
 
 imbi-api applies the PostgreSQL graph schema and the relational schemas
-(`agent_runtime`, `workflows`, `workflow_runtime`, `secrets`, `harness`,
+(`tickets`, `workflows`, `workflow_runtime`, `secrets`, `harness`,
 `ai_runtime`) at startup. You do not run a command for them.
 
 ### Where to run the commands
@@ -73,6 +73,77 @@ To restart iggy-connect:
 
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
+
+## Unreleased: tickets write the new names (ADR 0028, release A+1)
+
+Set the version of this section when the release is cut.
+
+1. **Before you deploy**, deploy 2.54.0 (release A)
+   everywhere and let its rollout finish. This release writes a value
+   that only release A and later can read: the event type
+   `ticket.created`.
+2. Deploy the new image. There is no setup command and no schema
+   change.
+
+This release also reads ticket statuses (`held`, `open`,
+`in_progress`), the request status `withdrawn`, and event types
+(`reopened`, `assignee.changed`, `parent.changed`, `handed_off`,
+`request.withdrawn`) that no release writes yet. A later release writes
+them, and a pod of this release can then read its rows during that
+rollout. Child tickets keep the origin kind `task`, and workflow runs
+that a closed ticket starts keep the origin kind `task_completed`, until
+release B.
+
+## 2.54.0
+
+1. **Before you deploy**, deploy 2.53.0 everywhere
+   and let its rollout finish. That release skips a relational table
+   that is a view. Without it, an imbi-api pod of an older release that
+   restarts during this rollout cannot start.
+2. Deploy imbi-api first, before the harness runners, imbi-gateway,
+   imbi-slackbot, imbi-mcp, and imbi-workflows. At its first start,
+   imbi-api moves the `agent_runtime` tables to the new `tickets` schema
+   with new names, in one transaction, and leaves views under the old
+   names for the pods of the previous release. It also adds
+   `root_ticket_id` to `harness.chains` and `ticket_id` to
+   `harness.claims`, with a trigger that keeps them equal to the old
+   columns. You do not run a command for this. The move holds an
+   exclusive lock on the task tables while it runs; it moves no rows.
+3. As soon as the first new imbi-api pod is up, run
+   `imbi-api setup-clickhouse` in that pod to create the
+   `ticket_events` table. Pick the pod by name, from the new
+   ReplicaSet: `kubectl exec deploy/imbi-api` can select a pod of the
+   previous release, which does not know the table. Until the table
+   exists, a new pod cannot read the log of an archived ticket.
+4. When the imbi-api rollout is complete, restart iggy-connect (see
+   [Where to run the commands](#where-to-run-the-commands)): the
+   `ticket_events` stream (topic `tickets`) is new, and the sink reads
+   the stream list only at startup. Ticket events now go to
+   `ticket_events`. Imbi reads `agent_task_events` and `ticket_events`
+   together until a later release copies the old table.
+5. Run `imbi-api setup-permissions`. It adds the `ticket:read`,
+   `ticket:create`, `ticket:manage`, `ticket:resolve`, and
+   `ticket:delete` permissions and gives them to each default role that
+   has the `agent_task` permission with the same action. Every check
+   accepts either name, so a custom role with only `agent_task`
+   permissions keeps working.
+6. **Until the imbi-api and imbi-workflows rollouts are complete**, do
+   not activate a workflow with a **Ticket closed** trigger:
+   - A pod of the previous release can take a ticket closure from the
+     trigger outbox and start only the **Task completed** workflows.
+     The **Ticket closed** run then never starts.
+   - An imbi-workflows pod of the previous release does not know the
+     **Ticket closed** step. It cannot start such a run, and the run
+     stays queued until a new pod claims it.
+
+   Also, while pods of both releases run, a pod of the previous release
+   can show an incomplete log for a ticket that a new pod archived,
+   because it reads only `agent_task_events`. No events are lost; the
+   full log shows once the rollout is complete.
+7. The API serves tickets at `/organizations/{org_slug}/tickets` and
+   `/harness/tickets`. The `/agent-tasks` and `/harness/tasks` paths
+   still work, with the same operation ids, and are marked deprecated. A
+   later release removes them.
 
 ## 2.53.0
 

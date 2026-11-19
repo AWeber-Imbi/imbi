@@ -21,7 +21,9 @@ table) is a ``steps`` entry: ``name``, ``when`` (a query that returns one
 boolean), and ``sql``. Steps run in order, before the tables, each in its
 own transaction. A step runs only when ``when`` returns true, so ``when``
 must return false once the step is done. There is no table of completed
-steps.
+steps. A step with ``after_tables = true`` runs after the tables instead,
+for a change to a table that the initializer may create in the same run
+(a trigger on it, for example).
 
 A declared table that is a view is skipped. After a step moves a table and
 leaves a view under the old name, an older release still declares the old
@@ -78,14 +80,19 @@ async def initialize(
         )
         try:
             await _create_schema(cursor, schema)
-            for step in schemata.get('steps', []):
-                await _run_step(conn, step)
+            steps = schemata.get('steps', [])
+            for step in steps:
+                if not step.get('after_tables'):
+                    await _run_step(conn, step)
             views = await _views(cursor, schema)
             for table in schemata.get('tables', []):
                 if table['name'] in views:
                     continue
                 await _create_table(cursor, schema, table)
                 await _create_indexes(cursor, schema, table)
+            for step in steps:
+                if step.get('after_tables'):
+                    await _run_step(conn, step)
         finally:
             await cursor.execute(
                 'SELECT pg_advisory_unlock(hashtextextended(%s::text, 0))',

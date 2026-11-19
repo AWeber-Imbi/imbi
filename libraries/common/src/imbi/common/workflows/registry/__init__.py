@@ -17,6 +17,7 @@ from imbi.common.workflows.registry import (
     script,
     slack,
     task_completed,
+    ticket_closed,
     wait,
     webhook,
 )
@@ -29,6 +30,7 @@ STEP_TYPES: dict[str, StepType] = {
         schedule,
         webhook,
         task_completed,
+        ticket_closed,
         wait,
         model_decision,
         llm_call,

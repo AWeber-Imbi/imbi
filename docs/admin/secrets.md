@@ -245,10 +245,11 @@ delivery mode:
 | Purpose | Used for |
 |---|---|
 | `github_read` | Reading pull requests, review comments, issues, and CI run logs |
-| `github_write` | Pushing, and opening pull requests and issues |
+| `github_write` | Pushing, opening pull requests and issues, and reading check results |
 
-`github_write` does not include CI run logs. Grant both purposes to an
-agent that writes and also reads CI logs.
+Both purposes add `checks`, `statuses` and (for `github_write`)
+`actions` read access when the App's installation grants them, so a
+writer can wait for CI with `gh pr checks`.
 
 A grant allows each of its purposes with each of its delivery modes. Put
 purposes that need different delivery modes in separate grants.

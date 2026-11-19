@@ -52,6 +52,18 @@ describe('groupTasks', () => {
     ])
   })
 
+  it('groups the statuses of a later release (ADR 0028)', () => {
+    const groups = groupTasks([
+      task({ short_id: 'T-3', status: 'held' }),
+      task({ short_id: 'T-2', status: 'open' }),
+      task({ short_id: 'T-1', status: 'in_progress' }),
+    ])
+    expect(groups.map((g) => [g.id, g.tasks.map((t) => t.short_id)])).toEqual([
+      ['running', ['T-1']],
+      ['queued', ['T-3', 'T-2']],
+    ])
+  })
+
   it('leaves out empty groups', () => {
     expect(groupTasks([task()]).map((g) => g.id)).toEqual(['queued'])
   })
@@ -95,6 +107,14 @@ describe('requestsFrom', () => {
       ['c', 'expired', null, null],
     ])
     expect(requests[1].options).toEqual(['yes', 'no'])
+  })
+
+  it('folds a withdrawn request', () => {
+    const requests = requestsFrom(
+      [opened(1, 'a'), event(2, 'request.withdrawn', { request_id: 'a' })],
+      Date.parse('2026-10-08T12:01:00Z'),
+    )
+    expect(requests.map((r) => r.status)).toEqual(['withdrawn'])
   })
 })
 

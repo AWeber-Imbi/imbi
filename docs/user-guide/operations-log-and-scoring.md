@@ -32,7 +32,7 @@ See [Roles and permissions](../admin/roles-and-permissions.md).
 |---|---|
 | Deployed | Imbi, for each deploy, promote, release, and publish. People can also add it |
 | Configured | Imbi, when you set or delete a value on the **Configuration** tab. People can also add it |
-| Agent Task | Imbi only, when an [agent task](../admin/agent-tasks.md) of a project is resolved or gets an outcome |
+| Agent Task | Imbi only, when a [ticket](../admin/tickets.md) of a project is resolved or gets an outcome |
 | Decommissioned, Migrated, Provisioned, Restarted, Rolled Back, Scaled, Upgraded | People |
 
 You cannot add an **Agent Task** entry by hand.

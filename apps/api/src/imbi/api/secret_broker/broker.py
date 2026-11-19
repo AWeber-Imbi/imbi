@@ -45,9 +45,9 @@ import psycopg.errors
 import psycopg_pool
 from psycopg import rows
 
-from imbi.api.agent_tasks import log
-from imbi.api.agent_tasks import store as task_store
 from imbi.api.secret_broker import audit, providers
+from imbi.api.tickets import log
+from imbi.api.tickets import store as task_store
 from imbi.common import settings
 from imbi.common.auth import encryption
 from imbi.common.plugins import identity as plugin_identity
@@ -595,14 +595,14 @@ async def evaluate(
 async def _check_task(conn: Conn, context: ResolutionContext) -> None:
     """The task must be open and match the trusted context.
 
-    The lock serializes the check with ``TaskStore.delete``. It is the
+    The lock serializes the check with ``TicketStore.delete``. It is the
     lock that the task event write takes later in the transaction, so
     two writers do not deadlock on a lock upgrade.
     """
     task = await _fetch_one(
         conn,
         'SELECT organization_id, agent_id, status'
-        ' FROM agent_runtime.tasks WHERE id = %s FOR UPDATE',
+        ' FROM tickets.tickets WHERE id = %s FOR UPDATE',
         (context.task_id,),
     )
     if task is None or (
@@ -628,8 +628,8 @@ async def _task_project_ids(
     sees a project change that committed while the lock waited.
     """
     cur = await conn.execute(
-        'SELECT project_id FROM agent_runtime.task_projects'
-        ' WHERE organization_id = %s AND task_id = %s',
+        'SELECT project_id FROM tickets.ticket_projects'
+        ' WHERE organization_id = %s AND ticket_id = %s',
         (organization_id, task_id),
     )
     return {row[0] for row in await cur.fetchall()}
@@ -1443,7 +1443,7 @@ class Broker:
         revoke their provider leases.
 
         The close hook of the task store
-        (:func:`imbi.api.agent_tasks.store.register_close_hook`). When it
+        (:func:`imbi.api.tickets.store.register_close_hook`). When it
         fails, the sweep releases them.
         """
         async with self._pool.connection() as conn:
@@ -1490,7 +1490,7 @@ class Broker:
                 "UPDATE secrets.resolutions AS r SET state = 'released',"
                 ' handle_hash = NULL, released_at = NOW(),'
                 " release_reason = 'task_closed'"
-                ' FROM agent_runtime.tasks AS t'
+                ' FROM tickets.tickets AS t'
                 " WHERE t.id = r.task_id AND t.status = 'closed'"
                 " AND r.state IN ('pending', 'active') RETURNING r.*",
                 (),
@@ -1732,7 +1732,7 @@ async def _still_usable(conn: Conn, row: Row) -> bool:
     )
     resolution = await cur.fetchone()
     cur = await conn.execute(
-        'SELECT status FROM agent_runtime.tasks WHERE id = %s FOR SHARE',
+        'SELECT status FROM tickets.tickets WHERE id = %s FOR SHARE',
         (row['task_id'],),
     )
     task = await cur.fetchone()

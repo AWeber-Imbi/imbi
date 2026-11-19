@@ -1,4 +1,4 @@
-import type { AgentTaskEvent } from '@/types'
+import type { TicketEvent } from '@/types'
 
 import type { Trajectory } from './trajectoryModel'
 
@@ -64,14 +64,14 @@ export function taskActivity(
 }
 
 export function taskStats(
-  events: AgentTaskEvent[],
+  events: TicketEvent[],
   trajectory: Trajectory,
 ): TaskStats {
   const usage = taskUsage(events)
   return { activity: taskActivity(trajectory, usage.output), usage }
 }
 
-export function taskUsage(events: AgentTaskEvent[]): TaskUsage {
+export function taskUsage(events: TicketEvent[]): TaskUsage {
   const byModel = new Map<string, ModelUsage>()
   for (const e of events) {
     if (e.type !== 'usage.reported') continue

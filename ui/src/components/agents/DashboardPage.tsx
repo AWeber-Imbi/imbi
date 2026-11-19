@@ -13,7 +13,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 
-import { acknowledgeAgentTask } from '@/api/endpoints'
+import { acknowledgeTicket } from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
@@ -23,11 +23,11 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
-import type { AgentTaskListItem, AgentTaskStatus, AgentUsage } from '@/types'
+import type { AgentUsage, TicketListItem, TicketStatus } from '@/types'
 
 import { formatMoney } from './agentDraft'
 import { useAgentList, useAgentUsage } from './agentQueries'
-import { agentsPath } from './agentsNav'
+import { agentsPath, ticketsPath } from './agentsNav'
 import {
   capStatus,
   dailyValues,
@@ -43,9 +43,12 @@ import {
   statusLabel,
   statusVariant,
 } from './taskEvents'
-import { errorMessage, useAgentTasks, useWaitingTaskCount } from './taskQueries'
+import { errorMessage, useTickets, useWaitingTaskCount } from './taskQueries'
 
-const OPEN: AgentTaskStatus[] = ['blocked', 'running', 'paused', 'queued']
+// Only the statuses that 2.54.0 (release A) accepts: a pod of that
+// release refuses the filter `held`, `open`, or `in_progress` during the
+// rollout. Add them in the release that writes them (ADR 0028).
+const OPEN: TicketStatus[] = ['blocked', 'running', 'paused', 'queued']
 
 // ponytail: like the inbox, the dashboard reads the newest 100 open and
 // 50 recent tasks; an org with more needs a summary endpoint.
@@ -89,13 +92,13 @@ interface SparkBar {
 export function DashboardPage() {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
-  const canRead = useHasPermission('agent_task:read', orgSlug)
+  const canRead = useHasPermission('ticket:read', orgSlug)
   if (!orgSlug || !canRead) {
     return (
       <div className="text-tertiary p-8 text-center">
         {orgSlug
-          ? 'You do not have permission to read agent tasks.'
-          : 'Select an organization to see agent tasks.'}
+          ? 'You do not have permission to read tickets.'
+          : 'Select an organization to see tickets.'}
       </div>
     )
   }
@@ -176,8 +179,8 @@ function Card({
 }
 
 function Dashboard({ orgSlug }: { orgSlug: string }) {
-  const open = useAgentTasks(orgSlug, { limit: OPEN_LIMIT, status: OPEN })
-  const recent = useAgentTasks(orgSlug, { limit: RECENT_LIMIT })
+  const open = useTickets(orgSlug, { limit: OPEN_LIMIT, status: OPEN })
+  const recent = useTickets(orgSlug, { limit: RECENT_LIMIT })
   const { data: waitingCount } = useWaitingTaskCount(orgSlug)
   const usage = useAgentUsage(orgSlug)
   const { data: agents = [] } = useAgentList(orgSlug)
@@ -221,7 +224,7 @@ function Dashboard({ orgSlug }: { orgSlug: string }) {
         kind: 'Waiting',
         meta: `${t.short_id} · ${nameOf(t.agent_id)} · ${t.owner}`,
         title: t.title,
-        to: agentsPath('tasks', orgSlug, t.short_id, 'input'),
+        to: ticketsPath(orgSlug, t.short_id, 'input'),
         tone: 'warning',
       }),
     ),
@@ -244,7 +247,7 @@ function Dashboard({ orgSlug }: { orgSlug: string }) {
             .join(' · '),
           shortId: t.short_id,
           title: t.title,
-          to: agentsPath('tasks', orgSlug, t.short_id),
+          to: ticketsPath(orgSlug, t.short_id),
           tone: statusVariant(t) === 'danger' ? 'danger' : 'warning',
         }),
       ),
@@ -274,7 +277,7 @@ function Dashboard({ orgSlug }: { orgSlug: string }) {
           icon={Activity}
           label="Running"
           note="now"
-          to={agentsPath('tasks')}
+          to={ticketsPath()}
           value={formatCount(group('running').length)}
         />
         <Tile
@@ -285,7 +288,7 @@ function Dashboard({ orgSlug }: { orgSlug: string }) {
               ? `oldest ${formatElapsed(since(waiting[0].blocked_since))}`
               : 'nobody waiting'
           }
-          to={agentsPath('tasks')}
+          to={ticketsPath()}
           value={formatCount(waitingCount ?? waiting.length)}
           warn={waiting.length > 0}
         />
@@ -293,7 +296,7 @@ function Dashboard({ orgSlug }: { orgSlug: string }) {
           icon={Clock}
           label="Queued"
           note="now"
-          to={agentsPath('tasks')}
+          to={ticketsPath()}
           value={formatCount(group('queued').length)}
         />
         <Tile
@@ -369,13 +372,13 @@ function NeedsAttention({
   orgSlug: string
   runs: number
 }) {
-  const canManage = useHasPermission('agent_task:manage', orgSlug)
+  const canManage = useHasPermission('ticket:manage', orgSlug)
   const queryClient = useQueryClient()
   const acknowledge = useMutation({
-    mutationFn: (shortId: string) => acknowledgeAgentTask(orgSlug, shortId),
+    mutationFn: (shortId: string) => acknowledgeTicket(orgSlug, shortId),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: queryKeys.agentTasks(orgSlug),
+        queryKey: queryKeys.tickets(orgSlug),
       }),
   })
   return (
@@ -453,29 +456,29 @@ function RecentRuns({
 }: {
   nameOf: (id: string) => string
   orgSlug: string
-  tasks: AgentTaskListItem[]
+  tasks: TicketListItem[]
 }) {
   return (
     <Card
       action={
         <Link
           className="text-action text-sm hover:underline"
-          to={agentsPath('tasks')}
+          to={ticketsPath()}
         >
-          All tasks
+          All tickets
         </Link>
       }
       title="Recent runs"
     >
       {tasks.length === 0 ? (
-        <Empty>No tasks yet. Start one with Run on an agent.</Empty>
+        <Empty>No tickets yet. Start one with Run on an agent.</Empty>
       ) : (
         <ul>
           {tasks.map((t) => (
             <li className="border-border border-b last:border-b-0" key={t.id}>
               <Link
                 className="hover:bg-secondary flex items-center gap-4 px-5 py-3 transition-colors"
-                to={agentsPath('tasks', orgSlug, t.short_id)}
+                to={ticketsPath(orgSlug, t.short_id)}
               >
                 <span className="text-tertiary w-16 shrink-0 font-mono text-xs tabular-nums">
                   {t.short_id}
@@ -576,7 +579,7 @@ function WaitingOnPeople({
   tasks,
 }: {
   since: (at: null | string | undefined) => number
-  tasks: AgentTaskListItem[]
+  tasks: TicketListItem[]
 }) {
   // `tasks` is oldest block first, so the owners come longest wait
   // first and each owner's waits come longest first.
@@ -602,7 +605,7 @@ function WaitingOnPeople({
     <Card
       action={
         <span className="flex items-center gap-6">
-          {stat('Tasks', formatCount(tasks.length))}
+          {stat('Tickets', formatCount(tasks.length))}
           {stat(
             'Median wait',
             waits.length ? formatElapsed(median(waits)) : '—',
@@ -614,13 +617,13 @@ function WaitingOnPeople({
           )}
           <Link
             className="text-action text-sm hover:underline"
-            to={agentsPath('tasks')}
+            to={ticketsPath()}
           >
             View all
           </Link>
         </span>
       }
-      subtitle="Tasks with an open feedback or approval request, by owner"
+      subtitle="Tickets with an open feedback or approval request, by owner"
       title="Waiting on people"
     >
       {rows.length === 0 ? (

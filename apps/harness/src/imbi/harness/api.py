@@ -210,7 +210,7 @@ class TaskApi:
     ) -> None:
         self.client = client
         self.token = token
-        self.path = f'/organizations/{organization}/agent-tasks/{short_id}'
+        self.path = f'/organizations/{organization}/tickets/{short_id}'
         self.short_id = short_id
 
     async def _call(self, path: str, body: Body | None = None) -> Body:
@@ -263,15 +263,22 @@ class TaskApi:
         """The events after ``after_seq`` (the harness route)."""
         response = await self.client.request(
             'GET',
-            f'/harness/tasks/{self.short_id}/events',
+            f'/harness/tickets/{self.short_id}/events',
             self.token,
             params={'after_seq': after_seq, 'limit': 1000},
         )
         return typing.cast('list[Body]', response.json())
 
+    async def history(self) -> Body:
+        """The ticket history for a new session, oldest first."""
+        response = await self.client.request(
+            'GET', f'/harness/tickets/{self.short_id}/history', self.token
+        )
+        return _body(response)
+
     async def create_child(self, body: Body) -> Body:
         response = await self.client.post(
-            f'/harness/tasks/{self.short_id}/children', self.token, json=body
+            f'/harness/tickets/{self.short_id}/children', self.token, json=body
         )
         return _body(response)
 
@@ -279,7 +286,7 @@ class TaskApi:
         """Associate a project, by id or slug, with this task."""
         response = await self.client.request(
             'PUT',
-            f'/harness/tasks/{self.short_id}/projects/'
+            f'/harness/tickets/{self.short_id}/projects/'
             f'{urllib.parse.quote(project, safe="")}',
             self.token,
         )
@@ -288,7 +295,7 @@ class TaskApi:
     async def check_tool(self, tool_key: str) -> Body:
         """Count a call against the tool's rate limit, across runners."""
         response = await self.client.post(
-            f'/harness/tasks/{self.short_id}/tool-calls/check',
+            f'/harness/tickets/{self.short_id}/tool-calls/check',
             self.token,
             json={'tool_key': tool_key},
         )

@@ -11,7 +11,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 
 import { ChartGantt } from 'lucide-react'
 
-import type { AgentTask, AgentTaskEvent } from '@/types'
+import type { Ticket, TicketEvent } from '@/types'
 
 import { ActivityEmpty, NoMatches } from './ActivityEmpty'
 import { useSearchHighlight, useTaskSearch } from './taskSearch'
@@ -59,10 +59,10 @@ export function TrajectoryTab({
   onShowInConversation,
   task,
 }: {
-  events: AgentTaskEvent[]
+  events: TicketEvent[]
   /** Opens the conversation at the turn that holds this event. */
   onShowInConversation?: (seq: number) => void
-  task: AgentTask
+  task: Ticket
 }) {
   const navigate = useNavigate()
   const { hash, pathname } = useLocation()

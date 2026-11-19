@@ -69,7 +69,7 @@ task to fix this and give it to mender"), create an agent task:
    The agent cannot read Slack, so put everything it needs in the
    description.
 4. Reply with a link to the task's page,
-   `/agents/tasks/{org_slug}/{short_id}`, with the slug of the
+   `/tickets/{org_slug}/{short_id}`, with the slug of the
    organization from step 1 and the task's `short_id`. A short id is
    unique only in its organization, so the link must include the
    organization.
