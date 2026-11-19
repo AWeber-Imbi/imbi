@@ -74,11 +74,12 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
-## Unreleased: release B (ADR 0028)
+## 2.56.0
 
-This release removes the old names of ADR 0028 that no pod of 2.55.0
-uses. The old objects that 2.55.0 still reads stay until the next
-release removes them.
+This release is release B of ADR 0028. It removes the old names that no
+pod of 2.55.0 uses, and adds parent tickets and gating dependencies. The
+old objects that 2.55.0 still reads stay until the next release removes
+them.
 
 1. **Before you deploy**, deploy 2.55.0 everywhere and let its rollout
    finish.
@@ -97,7 +98,13 @@ release removes them.
      `ticket` in every ticket (each start does this again for a child
      ticket that a 2.55.0 pod made during the rollout), and
    - adds a unique index that makes the run origin kinds
-     `task_completed` and `ticket_closed` one kind.
+     `task_completed` and `ticket_closed` one kind,
+   - adds `tickets.tickets.parent_id` and its foreign key. Before it
+     adds the key, it sets the parent of each child ticket that an agent
+     made from its own ticket. This runs one time. A trigger gives the
+     parent to a child that a 2.55.0 pod makes during the rollout, and
+   - adds `tickets.ticket_dependencies.gates` (default `false`), so
+     existing dependencies stay links only.
 
    You do not run a command for this. The index changes lock writes to
    `tickets.tickets` and `workflow_runtime.runs` while they run.
@@ -126,8 +133,8 @@ release removes them.
 
 5. `imbi-api setup-permissions` runs first because the copy can be
    slow, and 2.55.0 pods accept the new names. It gives each role that
-   has an `agent_task` permission, custom roles too, the `ticket` permission with the same
-   action, then removes the `agent_task` permissions. An API key scope
+   has an `agent_task` permission, custom roles too, the `ticket`
+   permission with the same action, then removes the `agent_task` permissions. An API key scope
    that names an `agent_task` permission keeps working. A new pod does
    not accept an `agent_task` permission of a role, so until this
    command runs, a custom role that has only the `agent_task` name of a
@@ -166,28 +173,10 @@ While pods of both releases run:
   `ticket_id`; a trigger fills the old columns. The next release moves
   the keys and drops the old columns, the trigger, the
   `agent_task_events` table, and the `/agent-tasks` paths.
-
-## Unreleased: parent tickets and gating dependencies (ADR 0028)
-
-Set the version of this section when the release is cut.
-
-1. **Before you deploy**, deploy 2.55.0
-   everywhere and let its rollout finish. This release writes the event
-   type `parent.changed` and the status `held`, which only 2.55.0 and
-   later can read.
-2. Deploy the new image. There is no setup command. At start, imbi-api
-   adds `tickets.tickets.parent_id` and its foreign key. Before it adds
-   the key, it sets the parent of each child ticket that an agent made
-   from its own ticket. This runs one time. It also adds
-   `tickets.ticket_dependencies.gates` (default `false`), so existing
-   dependencies stay links only.
-3. Do not add gating dependencies until every imbi-api pod runs this
-   release. A pod of the previous release does not release the
-   dependents of a ticket that it closes, so they stay `held`.
-
-A child ticket that a pod of the previous release makes after the
-first new pod starts gets its parent from a trigger on insert. A ticket that stays `held` after its prerequisites are
-done: remove the gating dependency, or add it again as a link only.
+- Do not add gating dependencies until every imbi-api pod runs this
+  release. A 2.55.0 pod does not release the dependents of a ticket
+  that it closes, so they stay `held`. To release such a ticket, remove
+  the gating dependency, or add it again as a link only.
 
 ## 2.55.0
 
