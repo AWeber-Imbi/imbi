@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils'
 import type { TicketEvent } from '@/types'
 
 import { Prose } from './taskEntryViews'
+import { isCreated } from './taskEvents'
 import { KindTag } from './TrajectoryLedger'
 import {
   formatDuration,
@@ -804,7 +805,7 @@ function UsageView({
 function userText(e: TicketEvent | undefined): string {
   if (!e) return ''
   const p = e.payload
-  return e.type === 'task.created'
+  return isCreated(e)
     ? String(p.description || p.title || '')
     : String(p.body ?? '')
 }

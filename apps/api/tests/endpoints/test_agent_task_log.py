@@ -283,7 +283,7 @@ class ReferenceClientTests(
         self.assertEqual(
             [e['type'] for e in expected],
             [
-                'task.created',
+                'ticket.created',
                 'session.opened',
                 'state.changed',
                 'phase.changed',

@@ -1147,6 +1147,23 @@ class ChildTaskTests(RunnerTestCase):
         self.assertEqual(response.status_code, 403, response.text)
         self.assertEqual(response.json()['detail']['error'], 'owner_forbidden')
 
+    async def test_repeat_finds_a_child_of_the_old_origin_kind(self) -> None:
+        # A pod of release A writes the child as ``task`` (ADR 0028).
+        helper_id = await self.make_agent('helper', name='Helper')
+        await self.make_version({'subagents': [{'agent_id': helper_id}]})
+        response = await self.child('helper', idempotency_key='k')
+        self.assertEqual(response.status_code, 201, response.text)
+        child = response.json()
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE tickets.tickets SET origin_kind = 'task'"
+                ' WHERE id = %s',
+                (child['id'],),
+            )
+        repeat = await self.child('helper', idempotency_key='k')
+        self.assertEqual(repeat.status_code, 200, repeat.text)
+        self.assertEqual(repeat.json()['id'], child['id'])
+
     async def test_only_the_chain_runner_claims_the_child(self) -> None:
         helper_id = await self.make_agent('helper', name='Helper')
         await self.make_version({'subagents': [{'agent_id': helper_id}]})
@@ -1154,7 +1171,7 @@ class ChildTaskTests(RunnerTestCase):
         self.assertEqual(response.status_code, 201, response.text)
         child = response.json()
         self.assertEqual(child['chain_id'], self.chain_id)
-        self.assertEqual(child['origin']['kind'], 'task')
+        self.assertEqual(child['origin']['kind'], 'ticket')
         self.assertEqual(child['origin']['task_id'], self.task['id'])
         self.assertEqual(child['agent_id'], helper_id)
         repeat = await self.child('helper', idempotency_key='k')

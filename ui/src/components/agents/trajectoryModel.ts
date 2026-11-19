@@ -1,5 +1,6 @@
 import type { TicketEvent } from '@/types'
 
+import { isCreated } from './taskEvents'
 import { systemText } from './taskText'
 import { isError, timeline, type TimelineEntry } from './taskTimeline'
 import { isRecord, toolLabel, toolSummary } from './toolCalls'
@@ -203,7 +204,7 @@ export function buildTrajectory(
       open(e, e.seq)
       continue
     }
-    if (e?.type === 'task.created') {
+    if (e && isCreated(e)) {
       startTurn()
       const brief = String(e.payload.description || e.payload.title || '')
       push(instant(e, 'user', preview(brief), state.turn))

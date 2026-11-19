@@ -172,7 +172,9 @@ class AgentTaskOrigin(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra='allow')
 
     #: ``ticket`` and ``ticket_closed`` are the ADR 0028 names of
-    #: ``task`` and ``task_completed``. Release A writes the old names.
+    #: ``task`` and ``task_completed``. Release A+1 writes ``ticket``.
+    #: Runs keep ``task_completed`` until release B (see
+    #: :mod:`imbi.api.workflows.ticket_trigger`).
     kind: typing.Literal[
         'human',
         'schedule',

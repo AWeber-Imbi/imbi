@@ -58,6 +58,37 @@ describe('systemText', () => {
     }
   })
 
+  it('words the event types of a later release (ADR 0028)', () => {
+    expect(
+      [
+        'ticket.created',
+        'reopened',
+        'assignee.changed',
+        'parent.changed',
+        'handed_off',
+      ].map((type) => systemText(event(1, type))),
+    ).toEqual([
+      'Ticket created',
+      'Reopened',
+      'Assignee changed',
+      'Parent changed',
+      'Handed off',
+    ])
+    expect(
+      systemText(
+        event(2, 'request.resolved', {
+          resolved_by: 'pat',
+          status: 'withdrawn',
+        }),
+      ),
+    ).toBe('Withdrawn by pat')
+    expect(
+      systemText(
+        event(3, 'state.changed', { from: 'open', to: 'in_progress' }),
+      ),
+    ).toBe('In progress')
+  })
+
   it('turns an unknown event type into words', () => {
     expect(systemText(event(1, 'harness.egress_denied'))).toBe(
       'Harness egress denied',

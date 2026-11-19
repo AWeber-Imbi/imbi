@@ -1,4 +1,4 @@
-import type { TicketEvent } from '@/types'
+import type { TicketEvent, TicketStatus } from '@/types'
 
 import { useAgentList } from './agentQueries'
 import { formatTokens, statusLabel, type TaskRequestView } from './taskEvents'
@@ -12,6 +12,7 @@ export const RESOLVED: Record<TaskRequestView['status'], string> = {
   expired: 'Expired',
   open: 'Open',
   rejected: 'Rejected',
+  withdrawn: 'Withdrawn',
 }
 
 /** One line for an event that is not a turn. */
@@ -91,7 +92,9 @@ function stateWord(from: string, to: string): string {
   if (to === 'blocked') return 'Waiting for input'
   if (to === 'queued') return 'Queued'
   if (to === 'closed') return 'Stopped'
-  return `Moved from ${from} to ${to}`
+  return (
+    statusLabel({ status: to as TicketStatus }) ?? `Moved from ${from} to ${to}`
+  )
 }
 
 function words(type: string): string {
