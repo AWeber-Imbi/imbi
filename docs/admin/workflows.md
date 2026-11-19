@@ -57,8 +57,8 @@ Each save makes a new version. The header shows `Saved · v<n>`, or
 The editor has three parts: the step palette on the left, the canvas in
 the middle, and the inspector on the right.
 
-The **palette** shows the step types in four groups: **Triggers**,
-**Logic**, **Actions**, and **Agents**. Use **Search steps** to find a type.
+The **palette** shows the step types in three groups: **Triggers**,
+**Logic**, and **Actions**. Use **Search steps** to find a type.
 
 - Click a step type to add it after the selected step.
 - Drag a step type onto the canvas to put it at that position.
@@ -136,7 +136,7 @@ with one output port has no port name.
 | `slack` | Slack message | Actions | One |
 | `deploy` | Deploy | Actions | `Succeeded`, `Failed` |
 | `rollback` | Rollback | Actions | One |
-| `agent` | Agent task | Agents | `Succeeded`, `Failed` |
+| `agent` | Agent task | Actions | `Succeeded`, `Failed` |
 
 Each step that is not a trigger has a default timeout and a default retry
 count:

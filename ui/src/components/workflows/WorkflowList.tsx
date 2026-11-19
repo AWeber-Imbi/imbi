@@ -208,7 +208,7 @@ function TriggerCell({
   if (types.length === 0) {
     return <span className="text-tertiary text-sm">No trigger</span>
   }
-  const Icon = stepIcon(types[0], 'trigger')
+  const Icon = stepIcon(types[0])
   return (
     <div className="flex min-w-0 items-center gap-2">
       <span className="bg-tertiary text-secondary flex size-6 shrink-0 items-center justify-center rounded-md">

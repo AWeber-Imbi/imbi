@@ -41,7 +41,7 @@ export function QuickAddMenu({
       </div>
       <div className="max-h-75 overflow-auto p-1">
         {shown.map((t) => {
-          const Icon = stepIcon(t.type, t.category)
+          const Icon = stepIcon(t.type)
           return (
             <button
               className="hover:bg-secondary flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left"

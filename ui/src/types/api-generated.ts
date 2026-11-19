@@ -21413,7 +21413,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "trigger" | "logic" | "action" | "agent";
+            category: "trigger" | "logic" | "action";
             /** Label */
             label: string;
             /** Description */

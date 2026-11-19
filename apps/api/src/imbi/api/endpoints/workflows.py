@@ -146,7 +146,7 @@ class WorkflowActivate(pydantic.BaseModel):
 
 class StepType(pydantic.BaseModel):
     type: str
-    category: typing.Literal['trigger', 'logic', 'action', 'agent']
+    category: typing.Literal['trigger', 'logic', 'action']
     label: str
     description: str
     trigger: bool

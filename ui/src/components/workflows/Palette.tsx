@@ -89,7 +89,7 @@ export function Palette({
               </button>
               {open &&
                 items.map((t) => {
-                  const Icon = stepIcon(t.type, t.category)
+                  const Icon = stepIcon(t.type)
                   return (
                     <button
                       className="hover:bg-secondary flex cursor-grab items-center gap-2.5 rounded-md px-2 py-1.5 text-left"

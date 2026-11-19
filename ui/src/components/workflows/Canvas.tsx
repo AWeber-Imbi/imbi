@@ -421,7 +421,7 @@ export function Canvas({
               </span>
             </div>
             {triggers.map((t) => {
-              const Icon = stepIcon(t.type, t.category)
+              const Icon = stepIcon(t.type)
               return (
                 <button
                   className="border-tertiary hover:border-amber-border flex cursor-pointer items-center gap-3 rounded-md border p-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50"
