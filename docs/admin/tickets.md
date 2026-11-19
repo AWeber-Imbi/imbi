@@ -373,6 +373,10 @@ The API is `POST /organizations/{org}/tickets/{short_id}/reopen` with
   old outcome and the reason.
 - A person ticket returns to `open`. An agent ticket returns to `queued`,
   and a runner starts a new session. The session history has the reason.
+- To reopen an agent ticket you also need `ticket:create`, as for a
+  retry. The agent must be enabled, the ticket gets the agent version
+  that the agent has now, and its budget must be in the task budget of
+  the agent.
 - An agent ticket starts its own chain, also when an agent made it as a
   child of another ticket.
 - To give the ticket a new assignee in the same request, add

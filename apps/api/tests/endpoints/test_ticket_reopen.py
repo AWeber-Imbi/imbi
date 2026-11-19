@@ -176,6 +176,34 @@ class AgentReopenTests(ReopenTestCase):
         self.assertIsNone(reopened['agent_id'])
         self.assertIsNone(reopened['budget'])
 
+    async def test_agent_reopen_needs_create_and_an_enabled_agent(
+        self,
+    ) -> None:
+        task = await self.closed_agent_ticket()
+        await self.clear_outbox(task['short_id'])
+        # The caller owns the ticket, but cannot make agent tickets.
+        self.permissions = {'ticket:read'}
+        response = await self.reopen(task['short_id'])
+        self.assertEqual(response.status_code, 403, response.text)
+        self.permissions.add('ticket:create')
+        await self.graph.execute(
+            'MATCH (a:Agent {{id: {id}}}) SET a.enabled = false'
+            ' RETURN a.id AS id',
+            {'id': task['agent_id']},
+            ['id'],
+        )
+        response = await self.reopen(task['short_id'])
+        self.assertEqual(response.status_code, 409, response.text)
+        await self.graph.execute(
+            'MATCH (a:Agent {{id: {id}}}) SET a.enabled = true'
+            ' RETURN a.id AS id',
+            {'id': task['agent_id']},
+            ['id'],
+        )
+        response = await self.reopen(task['short_id'])
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['budget'], task['budget'])
+
     async def test_root_chain_row_returns_to_the_queue(self) -> None:
         task = await self.closed_agent_ticket()
         task_id = uuid.UUID(task['id'])

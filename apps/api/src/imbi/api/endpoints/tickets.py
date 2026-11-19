@@ -2077,8 +2077,10 @@ async def reopen_ticket(
     ``open``, an agent ticket to ``queued`` with a new chain, so a new
     session starts. The ticket keeps its assignee, or gets the new
     assignee of the request. The owner and the assignee can reopen a
-    ticket; other people need ``ticket:manage``. A new agent assignee
-    needs ``ticket:create``.
+    ticket; other people need ``ticket:manage``. A reopen to an agent,
+    kept or new, also needs ``ticket:create``, an enabled agent, and a
+    budget within the agent's task budget; the ticket pins the agent
+    version that the agent has now.
 
     Raises:
         403: The caller is not a person, or has no permission.
@@ -2086,8 +2088,9 @@ async def reopen_ticket(
         409: The task is not closed (``not_closed``), a runner holds its
             chain (``chain_pinned``), the workflow runs of its last
             close have not all started (``triggers_pending``), or the
-            new agent is disabled.
-        422: The new assignee is not in the org.
+            agent is disabled.
+        422: The assignee is not in the org, or the budget is more than
+            the agent's task budget.
 
     """
     user = auth.require_user
@@ -2096,10 +2099,24 @@ async def reopen_ticket(
     if email not in (task['owner'].lower(), (task['assignee'] or '').lower()):
         await _require_manage(auth)
     columns: dict[str, typing.Any] | None = None
-    if data.assignee_kind is not None:
-        if data.assignee_kind == 'agent':
-            await _require_create(auth)
+    if data.assignee_kind == 'person':
         columns = await _assignee_columns(db, org_slug, data, None)
+    elif data.assignee_kind == 'agent' or task['assignee_kind'] == 'agent':
+        # The agent runs again, as for a new ticket or a retry: the
+        # agent must be enabled, and the budget within its cap.
+        await _require_create(auth)
+        slug = data.agent_slug
+        if slug is None:
+            records = await db.execute(
+                _AGENT_SLUG_QUERY,
+                {'id': task['agent_id'], 'org_slug': org_slug},
+                ['slug'],
+            )
+            if not records:
+                raise _unprocessable('The agent of the task is not in the org')
+            slug = str(graph.parse_agtype(records[0]['slug']))
+        budget = None if data.agent_slug else task['budget']
+        columns = await _agent_assignee(db, org_slug, slug, budget)
     try:
         return await store.reopen(
             org_id, task['short_id'], data.reason, _actor(auth), columns
