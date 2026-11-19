@@ -453,6 +453,10 @@ class ConcurrencyTests(HarnessTestCase):
         await self.make_child('T-2', 'T-1')
         response = await self.post('sessions', {'session_key': 'c'}, 'T-2')
         self.assertEqual(response.status_code, 201, response.text)
+        # The child holds the place, but a new session on the running
+        # parent (a harness restart) is not a new concurrent task.
+        response = await self.post('sessions', {'session_key': 'e'}, 'T-1')
+        self.assertEqual(response.status_code, 201, response.text)
         response = await self.post('sessions', {'session_key': 'd'}, 'T-3')
         self.assertEqual(response.status_code, 409, response.text)
         self.assertEqual(

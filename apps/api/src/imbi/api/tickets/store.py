@@ -2927,10 +2927,11 @@ async def _check_concurrency(
 ) -> None:
     """Raise when ``max_concurrent`` other tasks of the agent run.
 
-    A task runs when it has an open session. The count excludes
-    ``task_id``: a new session on a task that already runs (for example
-    after a harness restart) does not start a new concurrent task. It
-    also excludes the ancestors of ``task_id`` (its parent, up to the
+    A task runs when it has an open session. A new session on a task
+    that already runs (for example after a harness restart) does not
+    start a new concurrent task, so it always gets a place, even when
+    the descendants of the task fill the cap. The count excludes
+    ``task_id`` and the ancestors of ``task_id`` (its parent, up to the
     root): a parent that waits for its child keeps its session open, so
     a child of the same agent would otherwise never get a place. The
     siblings of the task and their descendants still count, so one
@@ -2945,6 +2946,14 @@ async def _check_concurrency(
         # during a rolling deploy (ADR 0028).
         (f'agent_runtime.sessions:{agent_id}',),
     )
+    cursor = await conn.execute(
+        'SELECT EXISTS (SELECT 1 FROM tickets.sessions'
+        ' WHERE ticket_id = %s AND closed_at IS NULL)',
+        (task_id,),
+    )
+    row = await cursor.fetchone()
+    if row and row[0]:
+        return
     cursor = await conn.execute(
         # UNION (not UNION ALL) stops the walk if parent_id makes a loop.
         'WITH RECURSIVE lineage (id) AS ('
