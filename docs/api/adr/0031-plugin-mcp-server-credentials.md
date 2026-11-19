@@ -268,8 +268,9 @@ server session was reset and whether the call ran:
   is unknown. The error says so, and tells the model to check the
   server's state before it repeats the call.
 
-The model then repeats its setup calls before it retries, and no call
-runs against state the model did not set up.
+The error tells the model to repeat its setup calls before it
+retries. The relay does not check that it did. If the model skips the
+setup, its later calls run against the new session's default state.
 
 If a refresh is denied, the relay closes the server's session before
 the old credential expires. Each later call to that server returns an
@@ -343,8 +344,9 @@ checked with Claude Agent SDK 0.2.164 and Claude Code 2.1.292:
   which is denied, and the relay then closes the session.
 - A server that keeps state in a session loses it when the session
   drops. The call that finds the dropped session fails instead of
-  running against the new session's default state, so the model must
-  set the state up again and retry.
+  running against the new session's default state. Later calls run
+  against the state the model sets up again, or against the default
+  state if it does not, for example in the default workspace.
 - A call that broke off mid-request may or may not have run on the
   server, and its error says the outcome is unknown. The relay cannot
   tell which tools change state, so it does not stop the model from
