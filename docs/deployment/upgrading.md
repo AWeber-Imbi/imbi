@@ -103,10 +103,16 @@ kept for the pods of 2.55.0. No pod of 2.56.0 uses them.
     SELECT slug, organization, target ->> 'path' AS path
       FROM scheduler.tasks
      WHERE target ->> 'kind' = 'api'
-       AND target ->> 'path' LIKE '%/agent-tasks%'
+       AND (target ->> 'path' LIKE '%/agent-tasks%'
+            OR target ->> 'path' LIKE '%{{%'
+            OR target ->> 'path' LIKE '%{\%%')
     ```
 
-   If the query returns no rows, no task uses the old path. To change a
+   The path is a Jinja2 template, so the query also returns each path
+   that has a template expression (`{{` or `{%`). For such a path, find
+   the path that it renders when the task runs. If it renders an
+   `/agent-tasks` path, change the task too. If the query returns no
+   rows, no task uses the old path. To change a
    task, send a JSON Patch of `/target/path` to
    [`PATCH /tasks/{slug}`](../scheduler/tasks.md) on imbi-scheduler.
    Also change the scripts that call the old path.
