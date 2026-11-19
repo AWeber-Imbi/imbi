@@ -2,17 +2,29 @@ import { useMemo, useState } from 'react'
 
 import { Link, useNavigate } from 'react-router-dom'
 
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
+
+import { startWorkflowRun } from '@/api/endpoints'
 import { AdminSection } from '@/components/admin/AdminSection'
 import { agentsPath } from '@/components/agents/agentsNav'
 import { AdminTable } from '@/components/ui/admin-table'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useHasPermission } from '@/hooks/useHasPermission'
+import { extractApiErrorDetail } from '@/lib/apiError'
 import { cn } from '@/lib/utils'
 
-import { STATUS, type WorkflowFailures } from './runs'
+import {
+  type ManualInput,
+  manualTrigger,
+  STATUS,
+  type WorkflowFailures,
+} from './runs'
+import { StartRunDialog } from './StartRunDialog'
 import { stepIcon } from './stepStyle'
 import type { RunStatus, StepType, WorkflowSummary } from './types'
+import { workflowVersionQuery } from './workflowQueries'
 import { StatusBadge } from './WorkflowStatusBadge'
 
 const OUTCOME_TONE: Record<string, string> = {
@@ -46,10 +58,40 @@ export function WorkflowList({
 }: WorkflowListProps) {
   const navigate = useNavigate()
   const { selectedOrganization } = useOrganization()
-  const canCreate = useHasPermission(
-    'workflow:create',
-    selectedOrganization?.slug,
-  )
+  const orgSlug = selectedOrganization?.slug
+  const canCreate = useHasPermission('workflow:create', orgSlug)
+  const canRun = useHasPermission('workflow:run', orgSlug)
+  const queryClient = useQueryClient()
+  // The workflow whose manual trigger asks for inputs before a run.
+  const [asking, setAsking] = useState<null | {
+    inputs: ManualInput[]
+    slug: string
+  }>(null)
+  const start = useMutation({
+    mutationFn: (v: {
+      inputs: Record<string, boolean | number | string>
+      slug: string
+    }) => startWorkflowRun(orgSlug!, v.slug, v.inputs),
+    onError: startFailed,
+    // The editor opens the run panel for `?run=<id>`.
+    onSuccess: (run, { slug }) =>
+      navigate(`${agentsPath('workflows', slug)}?run=${run.id}`),
+  })
+  // A run starts the active version: read its manual trigger inputs.
+  const onRun = async (w: WorkflowSummary) => {
+    try {
+      const { graph } = await queryClient.fetchQuery(
+        workflowVersionQuery(orgSlug!, w.slug, w.active_version!),
+      )
+      const trigger = manualTrigger(graph)
+      if (!trigger) toast.error('The active version has no manual trigger.')
+      else if (trigger.inputs.length)
+        setAsking({ inputs: trigger.inputs, slug: w.slug })
+      else start.mutate({ inputs: {}, slug: w.slug })
+    } catch (error) {
+      startFailed(error)
+    }
+  }
   const [search, setSearch] = useState('')
   const labels = useMemo(
     () => Object.fromEntries(stepTypes.map((t) => [t.type, t.label])),
@@ -97,9 +139,22 @@ export function WorkflowList({
           },
           {
             header: 'Trigger',
+            interactive: true,
             key: 'trigger',
             render: (w) => (
-              <TriggerCell labels={labels} types={w.trigger_types} />
+              <TriggerCell
+                labels={labels}
+                onRun={
+                  canRun &&
+                  w.status === 'active' &&
+                  w.active_version !== null &&
+                  w.trigger_types.includes('manual')
+                    ? () => void onRun(w)
+                    : undefined
+                }
+                pending={start.isPending}
+                types={w.trigger_types}
+              />
             ),
           },
           {
@@ -146,6 +201,15 @@ export function WorkflowList({
         loading={loading}
         rows={rows}
       />
+      {asking && (
+        <StartRunDialog
+          inputs={asking.inputs}
+          onClose={() => setAsking(null)}
+          onStart={(inputs) => start.mutate({ inputs, slug: asking.slug })}
+          open
+          pending={start.isPending}
+        />
+      )}
     </AdminSection>
   )
 }
@@ -198,25 +262,43 @@ function LastRun({ workflow }: { workflow: WorkflowSummary }) {
   )
 }
 
+function startFailed(error: unknown) {
+  toast.error(`Failed to start the run: ${extractApiErrorDetail(error)}`)
+}
+
 function TriggerCell({
   labels,
+  onRun,
+  pending,
   types,
 }: {
   labels: Record<string, string>
+  /** Starts a run; set only when the user can run the workflow now. */
+  onRun?: () => void
+  pending: boolean
   types: string[]
 }) {
   if (types.length === 0) {
     return <span className="text-tertiary text-sm">No trigger</span>
   }
   const Icon = stepIcon(types[0], 'trigger')
+  const Wrap = onRun ? 'button' : 'div'
   return (
-    <div className="flex min-w-0 items-center gap-2">
+    <Wrap
+      className="flex min-w-0 items-center gap-2 enabled:cursor-pointer enabled:hover:underline disabled:cursor-wait"
+      {...(onRun && {
+        disabled: pending,
+        onClick: onRun,
+        title: 'Start a run of the active version',
+        type: 'button' as const,
+      })}
+    >
       <span className="bg-tertiary text-secondary flex size-6 shrink-0 items-center justify-center rounded-md">
         <Icon className="size-3.5" />
       </span>
       <span className="truncate text-sm">
         {types.map((t) => labels[t] ?? t).join(', ')}
       </span>
-    </div>
+    </Wrap>
   )
 }
