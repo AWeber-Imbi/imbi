@@ -59,6 +59,7 @@ const NOTE_TYPES = new Set([
   'outcome.set',
   'owner.changed',
   'phase.changed',
+  'priority.changed',
   'state.changed',
 ])
 

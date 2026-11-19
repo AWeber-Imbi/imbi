@@ -35,6 +35,8 @@ export function systemText(e: TicketEvent): string {
       return `Owner ${p.from} → ${p.to}`
     case 'phase.changed':
       return `Phase ${p.phase}`
+    case 'priority.changed':
+      return `Priority ${p.from} → ${p.to}`
     case 'project.associated':
       return `Linked to project ${String(p.project_slug ?? p.project_id)}`
     case 'project.dissociated':

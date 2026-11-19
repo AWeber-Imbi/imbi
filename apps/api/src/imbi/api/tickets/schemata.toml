@@ -165,6 +165,8 @@ acknowledged_by = "TEXT"
 # and the output that it returned. NULL when the task asks for none.
 output_schema = "JSONB"
 structured_output = "JSONB"
+# How urgent the ticket is: `low`, `normal`, `high`, or `urgent`.
+priority = "TEXT NOT NULL DEFAULT 'normal'"
 
 [tables.primary_key]
 columns = ["id"]

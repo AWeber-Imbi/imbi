@@ -1416,6 +1416,7 @@ describe('Tasks', () => {
       expect(endpoints.createTicket).toHaveBeenCalledWith('acme', {
         agent_slug: 'mender',
         description: 'Check the build\nFind why it fails.',
+        priority: 'normal',
         project_ids: ['p-1'],
         title: 'Check the build',
       }),

@@ -62,6 +62,7 @@ import type { TaskHighlight, TicketCounts, TicketListItem } from '@/types'
 import { useAgentList } from './agentQueries'
 import { ticketsPath } from './agentsNav'
 import { NewTaskDialog } from './NewTaskDialog'
+import { PriorityBadge } from './priority'
 import { TaskDetail } from './TaskDetail'
 import {
   INBOX_GROUPS,
@@ -815,6 +816,7 @@ function TaskRow({
               {label}
             </Badge>
           )}
+          <PriorityBadge priority={task.priority} />
           {agentMatch && (
             <span className="text-secondary max-w-1/2 shrink-0 truncate">
               <Marked parts={agentMatch} text="" />
