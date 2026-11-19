@@ -673,6 +673,9 @@ describe('Tasks', () => {
         title: 'B',
       }),
       task({
+        agent_id: null,
+        assignee: 'lee@example.com',
+        assignee_kind: 'person',
         id: 'own-3',
         owner: 'sam@example.com',
         short_id: 'T-7',
@@ -681,7 +684,11 @@ describe('Tasks', () => {
     ])
     renderAt('/tickets')
     expect((await screen.findByText('A')).closest('a')).toHaveTextContent(
-      'Assigned to pat@example.com',
+      'Owned by pat@example.com',
+    )
+    // A person ticket names its assignee too.
+    expect(screen.getByText('C').closest('a')).toHaveTextContent(
+      'Assigned to lee@example.com',
     )
     fireEvent.click(screen.getByRole('button', { name: 'Filter' }))
     fireEvent.click(await screen.findByRole('option', { name: 'Assignee' }))

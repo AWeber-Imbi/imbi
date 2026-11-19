@@ -2,6 +2,7 @@
 
 import typing
 import uuid
+from unittest import mock
 
 import httpx
 import psycopg.errors
@@ -341,6 +342,25 @@ class TransitionTests(PersonTicketTestCase):
                 actor=actor,
                 system=actor,
             )
+
+    async def test_deadlock_runs_the_change_again(self) -> None:
+        # A done close locks the held dependents after the ticket, so it
+        # can deadlock with a dependency change.
+        original = tickets.store._lock_task
+        calls = 0
+
+        async def deadlock_once(*args: typing.Any) -> typing.Any:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise psycopg.errors.DeadlockDetected('deadlock detected')
+            return await original(*args)
+
+        with mock.patch.object(tickets.store, '_lock_task', deadlock_once):
+            response = await self.set_status('T-1', 'in_progress')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(calls, 2)
+        self.assertEqual(await self.status_of('T-1'), 'in_progress')
 
     async def test_log_rows_have_empty_agent_columns(self) -> None:
         task = await self.store.get(self.org, 'T-1')

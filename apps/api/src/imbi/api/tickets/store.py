@@ -2547,6 +2547,7 @@ class TicketStore:
                 )
         return write.task
 
+    @_retry_deadlock
     async def set_person_status(
         self,
         organization_id: str,

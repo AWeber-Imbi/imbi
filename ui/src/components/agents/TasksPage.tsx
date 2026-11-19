@@ -795,7 +795,11 @@ function TaskRow({
             <Bot className="size-3" />
           </span>
         )}
-        {agent && !agentMatch && <span className="sr-only">{agent.name}</span>}
+        {task.assignee ? (
+          <span className="sr-only">Assigned to {task.assignee}</span>
+        ) : (
+          agent && !agentMatch && <span className="sr-only">{agent.name}</span>
+        )}
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="flex items-baseline gap-2">
@@ -841,7 +845,7 @@ function TaskRow({
             <span className="sr-only">{trigger.label}</span>
           </span>
           <PersonMark email={task.owner} title={task.owner} />
-          <span className="sr-only">Assigned to {task.owner}</span>
+          <span className="sr-only">Owned by {task.owner}</span>
         </span>
       </span>
     </Link>
