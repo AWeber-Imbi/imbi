@@ -364,7 +364,11 @@ class EngineTestCase(unittest.IsolatedAsyncioTestCase):
         """Tick until ``until`` holds for the run (default: closed)."""
         runner = runner or self.engine
         done = until or (lambda r: r['status'] in CLOSED)
-        for _ in range(300):
+        # Bound by time, not by ticks: fast ticks must not end the loop
+        # before a step timeout of a few seconds elapses (#829).
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + 15
+        while loop.time() < deadline:
             run = await self._run(run_id)
             if done(run):
                 if run['status'] in CLOSED:
@@ -372,7 +376,7 @@ class EngineTestCase(unittest.IsolatedAsyncioTestCase):
                 return run
             if not await runner.tick():
                 await asyncio.sleep(0.05)
-        self.fail(f'Run {run_id} did not get there: {run}')
+        self.fail(f'Run {run_id} did not get there: {await self._run(run_id)}')
 
     async def _run(self, run_id: uuid.UUID) -> dict[str, typing.Any]:
         async with self.pool.connection() as conn:
@@ -600,6 +604,81 @@ class ManualRunTestCase(EngineTestCase):
         )
         self.assertEqual(run['steps']['ship']['attempt'], 1)
         self.assertEqual(self.api.dispatches, 1)
+
+    async def test_timeout_retry_resumes_the_deployment(self) -> None:
+        # #829: the retry polls the run that attempt 1 started. It does
+        # not resolve the version again or post a new deployment.
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'manual'),
+                {
+                    **_node(
+                        'ship',
+                        'deploy',
+                        {
+                            'project_id': 'p1',
+                            'environment': 'staging',
+                            'version': '1.0.0',
+                        },
+                    ),
+                    # The poll is due after 1s, so the timeout comes first.
+                    'timeout_seconds': 1,
+                },
+            ],
+            [_edge('start', 'ship')],
+        )
+        run_id = await self._start(workflow_id)
+        with mock.patch.object(engine, 'RETRY_BACKOFF', 0):
+            run = await self._drive(run_id)
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(run['steps']['ship']['attempt'], 2)
+        self.assertEqual(run['steps']['ship']['output']['deployment_id'], 'r1')
+        self.assertEqual(
+            sum('/commits/' in p for p in self.api.paths), 1, self.api.paths
+        )
+
+    async def test_error_retry_resumes_the_deployment(self) -> None:
+        # #829: a failed poll of the run is retried by polling that run
+        # again, not by posting a new deployment.
+        original = FakeApi.__call__
+        polls: list[str] = []
+
+        def flaky(
+            api: FakeApi, request: httpx.Request
+        ) -> httpx.Response | abc.Awaitable[httpx.Response]:
+            if '/runs/' in request.url.path:
+                polls.append(request.url.path)
+                if len(polls) == 1:
+                    return httpx.Response(503, json={'detail': 'down'})
+            return original(api, request)
+
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'manual'),
+                _node(
+                    'ship',
+                    'deploy',
+                    {
+                        'project_id': 'p1',
+                        'environment': 'staging',
+                        'version': '1.0.0',
+                    },
+                ),
+            ],
+            [_edge('start', 'ship')],
+        )
+        run_id = await self._start(workflow_id)
+        with (
+            mock.patch.object(FakeApi, '__call__', flaky),
+            mock.patch.object(engine, 'RETRY_BACKOFF', 0),
+        ):
+            run = await self._drive(run_id)
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(run['steps']['ship']['attempt'], 2)
+        self.assertEqual(len(polls), 2)
+        self.assertEqual(
+            sum('/commits/' in p for p in self.api.paths), 1, self.api.paths
+        )
 
     async def _deploy_without_failed_edge(self) -> uuid.UUID:
         """A deploy whose ``Failed`` port has no edge."""
