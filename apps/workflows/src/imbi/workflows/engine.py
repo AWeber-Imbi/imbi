@@ -506,11 +506,13 @@ class Engine:
                 error=code,
                 # After a timeout, the outcome of the last call is
                 # unknown. ``key_attempt`` lets a step (LLM Call) send
-                # the key of that call again, not a new one.
+                # the key of that call again, not a new one. The rest of
+                # the state stays: a deploy or rollback resumes its run.
                 state={
+                    **step['state'],
                     'key_attempt': step['state'].get(
                         'key_attempt', step['attempt']
-                    )
+                    ),
                 }
                 if code == 'timeout'
                 else {},

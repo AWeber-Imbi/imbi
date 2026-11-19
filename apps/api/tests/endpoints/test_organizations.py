@@ -1004,6 +1004,60 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
             },
         )
 
+    async def test_rename_rejects_a_slug_taken_by_another_org(self) -> None:
+        """#829: the locked rename matches the id, not only the slug."""
+        other = f'{self.org}-b'
+        self.addAsyncCleanup(
+            self.graph.execute,
+            'MATCH (o:Organization {{id: {id}}}) DETACH DELETE o',
+            {'id': other},
+            [],
+        )
+        async with self.pool.connection() as conn, conn.transaction():
+            await conn.execute(
+                'SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))',
+                (relational.organization_delete_lock_key(self.org),),
+            )
+            patch = asyncio.create_task(
+                self.client.patch(
+                    f'/organizations/{self.org}',
+                    json=[
+                        {
+                            'op': 'replace',
+                            'path': '/slug',
+                            'value': f'{self.org}-new',
+                        }
+                    ],
+                )
+            )
+            await asyncio.sleep(0.5)
+            self.assertFalse(patch.done())
+            # While the rename waits: the organization is renamed, and
+            # another organization takes its old slug.
+            await self.graph.execute(
+                'MATCH (o:Organization {{id: {org}}})'
+                " SET o.slug = {org} + '-moved'"
+                ' CREATE (:Organization {{id: {other}, slug: {org},'
+                ' name: {other}}})',
+                {'org': self.org, 'other': other},
+                [],
+            )
+        response = await asyncio.wait_for(patch, 10)
+        self.assertEqual(response.status_code, 404, response.text)
+        records = await self.graph.execute(
+            'MATCH (o:Organization) WHERE o.id IN [{org}, {other}]'
+            ' RETURN o.id AS id, o.slug AS slug',
+            {'org': self.org, 'other': other},
+            ['id', 'slug'],
+        )
+        self.assertEqual(
+            {
+                graph.parse_agtype(r['id']): graph.parse_agtype(r['slug'])
+                for r in records
+            },
+            {self.org: f'{self.org}-moved', other: self.org},
+        )
+
     async def test_workflows_and_bindings_block_the_delete(self) -> None:
         workflow_id = uuid.uuid4()
         async with self.pool.connection() as conn:
@@ -1188,6 +1242,9 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
         )
         await self._assert_waits_for_delete(
             lambda: store.activate(self.org, 'w', 1, 'u', [])
+        )
+        await self._assert_waits_for_delete(
+            lambda: store.delete(self.org, 'w')
         )
         task = tickets.NewTask(
             organization_id=self.org,
