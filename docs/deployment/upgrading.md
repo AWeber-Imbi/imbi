@@ -161,6 +161,43 @@ While pods of both releases run:
   the keys and drops the old columns, the trigger, the
   `agent_task_events` table, and the `/agent-tasks` paths.
 
+## Unreleased: person tickets (ADR 0028)
+
+Set the version of this section when the release is cut.
+
+1. **Before you deploy**, deploy release B everywhere and let its rollout
+   finish.
+2. Deploy the new image. There is no setup command. At start, imbi-api
+   adds `tickets.tickets.assignee_kind` (default `agent`) and
+   `tickets.tickets.assignee`, makes `agent_id`, `agent_version`, and
+   `service_account_id` nullable, and adds three checks: the assignee
+   kind, the columns of each kind, and the statuses of each kind. Every
+   existing ticket is an agent ticket. The step reads the whole table
+   to validate the checks, and stops writes to `tickets.tickets` while
+   it runs.
+3. Do not make person tickets until every imbi-api pod runs this
+   release. Only a new pod can make one, but a release B pod cannot
+   handle one.
+
+While pods of both releases run, if a person ticket exists:
+
+- A release B pod returns 500 for every response that has a person
+  ticket: the ticket list, the ticket, its relations, and a change to
+  it. Its response schema requires the agent columns.
+- A release B pod that closes a ticket with a `done_*` outcome, and the
+  ticket gates a held person ticket, tries to move the person ticket to
+  `queued`. The check refuses that, so the whole close fails with 500,
+  also when the agent of the ticket reports its outcome. The close
+  works when a new pod takes the retry.
+- A release B pod that pauses, resumes, or cancels a person ticket fails
+  with 500, and the ticket does not change.
+- No runner claims a person ticket: the claim query reads only `queued`
+  tickets, and a person ticket is never `queued`.
+- The events of a person ticket go to ClickHouse with an empty
+  `agent_id` and `agent_version` 0, from pods of both releases.
+- The release B UI shows a person ticket with no agent name. It cannot
+  make one.
+
 ## Unreleased: parent tickets and gating dependencies (ADR 0028)
 
 Set the version of this section when the release is cut.
