@@ -1,4 +1,4 @@
-import type { AgentTaskEvent } from '@/types'
+import type { TicketEvent } from '@/types'
 
 import { useAgentList } from './agentQueries'
 import { formatTokens, statusLabel, type TaskRequestView } from './taskEvents'
@@ -15,7 +15,7 @@ export const RESOLVED: Record<TaskRequestView['status'], string> = {
 }
 
 /** One line for an event that is not a turn. */
-export function systemText(e: AgentTaskEvent): string {
+export function systemText(e: TicketEvent): string {
   const p = e.payload
   switch (e.type) {
     case 'check.reported':
@@ -51,7 +51,8 @@ export function systemText(e: AgentTaskEvent): string {
     case 'state.changed':
       return stateText(String(p.from), String(p.to), p.reason)
     case 'task.created':
-      return 'Task created'
+    case 'ticket.created':
+      return 'Ticket created'
     case 'todos.updated':
       return 'Plan updated'
     case 'usage.reported':

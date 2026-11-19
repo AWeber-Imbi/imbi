@@ -1,7 +1,6 @@
 import {
   Bot,
   ChartColumn,
-  Inbox,
   LayoutDashboard,
   type LucideIcon,
   Server,
@@ -35,7 +34,6 @@ export type AgentsSection =
   | 'manage'
   | 'platform'
   | 'runners'
-  | 'tasks'
   | 'usage'
   | 'workflows'
 
@@ -48,13 +46,6 @@ const AGENTS_NAV: AgentsNavItem[] = [
     id: 'dashboard',
     label: 'Dashboard',
     note: 'Agent activity at a glance',
-  },
-  {
-    group: 'Agentic platform',
-    icon: Inbox,
-    id: 'tasks',
-    label: 'Tasks',
-    note: 'Work that agents do',
   },
   {
     group: 'Agentic platform',
@@ -104,6 +95,11 @@ const AGENTS_NAV: AgentsNavItem[] = [
 
 export function agentsPath(section: AgentsSection, ...rest: string[]): string {
   return [AGENTS_BASE_PATH, section, ...rest.map(encodeURIComponent)].join('/')
+}
+
+/** The tickets page (ADR 0028): `/tickets[/<org slug>/<short id>[/<tab>]]`. */
+export function ticketsPath(...rest: string[]): string {
+  return ['/tickets', ...rest.map(encodeURIComponent)].join('/')
 }
 
 /** The {@link AGENTS_NAV} pages that the current user can open. */

@@ -74,7 +74,7 @@ nav:
           - Workload Identity Runbook: admin/workload-identity.md
           - GitHub App Runbook: admin/github-app-runbook.md
           - Agents: admin/agents.md
-          - Agent Tasks: admin/agent-tasks.md
+          - Tickets: admin/tickets.md
           - Workflows: admin/workflows.md
       - Maintenance: admin/maintenance.md
       - Scheduled Jobs: admin/scheduled-jobs.md

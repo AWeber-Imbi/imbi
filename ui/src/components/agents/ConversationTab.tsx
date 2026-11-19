@@ -45,7 +45,7 @@ import {
 } from '@/components/ui/trace'
 import { markdownText } from '@/lib/markdown-text'
 import { cn } from '@/lib/utils'
-import type { AgentTask, AgentTaskEvent } from '@/types'
+import type { Ticket, TicketEvent } from '@/types'
 
 import { ActivityEmpty, NoMatches } from './ActivityEmpty'
 import {
@@ -118,7 +118,7 @@ interface Ctx {
   requests: TaskRequestView[]
   setOpen: (id: string, open: boolean) => void
   showWhole: (id: string) => void
-  task: AgentTask
+  task: Ticket
 }
 
 const FAMILY_ICON: Record<Family, ReactNode> = {
@@ -193,7 +193,7 @@ export function ConversationTab({
   events: Parameters<typeof timeline>[0]
   orgSlug: string
   requests: TaskRequestView[]
-  task: AgentTask
+  task: Ticket
 }) {
   const [mode, setMode] = useConversationMode()
   const [width, setWidth] = useConversationWidth()
@@ -655,7 +655,7 @@ function PersonMessage({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
 }
 
 /** The start and the close are said by the footer and the outcome. */
-function quiet(e: AgentTaskEvent | null | undefined): boolean {
+function quiet(e: null | TicketEvent | undefined): boolean {
   if (e?.type !== 'state.changed') return false
   const { from, to } = e.payload
   return to === 'closed' || (from === 'queued' && to === 'running')

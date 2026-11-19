@@ -1,15 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import { fireEvent, render, screen } from '@/test/utils'
-import type { AgentTask } from '@/types'
+import type { Ticket } from '@/types'
 
 import { TaskUsageCard } from '../TaskUsageCards'
 import { event, task } from './taskFixtures'
 
 function renderCard(over: Record<string, unknown> = {}) {
-  render(
-    <TaskUsageCard events={[]} task={task(over) as unknown as AgentTask} />,
-  )
+  render(<TaskUsageCard events={[]} task={task(over) as unknown as Ticket} />)
   fireEvent.pointerUp(screen.getByRole('button', { name: /tokens/ }), {
     pointerType: 'touch',
   })
@@ -49,7 +47,7 @@ describe('TaskUsageCard', () => {
           usage(1, 'claude-opus', '0.120000'),
           usage(2, 'claude-haiku', '0.004200'),
         ]}
-        task={task() as unknown as AgentTask}
+        task={task() as unknown as Ticket}
       />,
     )
     fireEvent.pointerUp(screen.getByRole('button', { name: /tokens/ }), {

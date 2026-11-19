@@ -1,4 +1,4 @@
-"""Reference harness client for agent tasks (ADR 0020).
+"""Reference harness client for tickets (ADR 0020, ADR 0028).
 
 This works one task from start to end through the harness endpoints,
 as the service account of the task's agent. It opens a session, writes
@@ -25,14 +25,14 @@ As a person with the ``service_account:update`` permission:
        POST /api/service-accounts/agent-<agent id>/client-credentials
        {"name": "reference-harness"}
 
-3. Make a task for the agent (``POST /api/organizations/<org>/agent-tasks/``)
+3. Make a ticket for the agent (``POST /api/organizations/<org>/tickets/``)
    and give its short id to this script. The script gets a token with
    ``POST /api/auth/token`` (``grant_type=client_credentials``).
 
 Run::
 
     IMBI_CLIENT_ID=... IMBI_CLIENT_SECRET=... \\
-    uv run --frozen python scripts/agent_task_client.py \\
+    uv run --frozen python scripts/ticket_client.py \\
         --api-url https://<your imbi host>/api --org <org> --task T-1 \\
         --model <AI model slug>
 """
@@ -57,7 +57,7 @@ class HarnessClient:
         self, client: httpx.AsyncClient, org: str, short_id: str
     ) -> None:
         self._client = client
-        self._path = f'/organizations/{org}/agent-tasks/{short_id}'
+        self._path = f'/organizations/{org}/tickets/{short_id}'
 
     async def _post(self, path: str, body: typing.Any = None) -> typing.Any:
         response = await self._client.post(f'{self._path}/{path}', json=body)
@@ -429,7 +429,7 @@ async def _main(args: argparse.Namespace) -> Body:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description='Work an agent task as its harness.'
+        description='Work a ticket as its harness.'
     )
     parser.add_argument('--api-url', required=True, help='Ends in /api')
     parser.add_argument('--org', required=True, help='Organization slug')

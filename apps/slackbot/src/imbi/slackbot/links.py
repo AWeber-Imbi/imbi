@@ -31,8 +31,8 @@ FALLBACK_URL_PATTERNS = """\
 - `/projects/{project_id}/{tab}`: a project tab (overview, dependencies,
   relationships, documents, configuration, logs, operations-log).
 - `/operations-log`: the operations log.
-- `/agents/tasks/{org_slug}/{short_id}`: an agent task's detail page
-  (e.g. /agents/tasks/acme/T-12).
+- `/tickets/{org_slug}/{short_id}`: a ticket's detail page
+  (e.g. /tickets/acme/T-12).
 - `/reports` and `/reports/{report_id}`: reports.
 - `/settings` and `/settings/{tab}`: the current user's settings.
 - `/users/{email}`: a user's profile page.

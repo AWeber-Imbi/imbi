@@ -184,7 +184,7 @@ class TaskApiTestCase(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(self.mock.stop)
 
     async def test_routes(self) -> None:
-        base = '/organizations/org/agent-tasks/T-1'
+        base = '/organizations/org/tickets/T-1'
         routes = {
             name: self.mock.post(base + path).respond(200, json={'ok': name})
             for name, path in (
@@ -238,17 +238,17 @@ class SliceTwoRoutesTestCase(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(self.mock.stop)
 
     async def test_routes(self) -> None:
-        events = self.mock.get('/harness/tasks/T-1/events').respond(
+        events = self.mock.get('/harness/tickets/T-1/events').respond(
             200, json=[{'seq': 3}]
         )
-        child = self.mock.post('/harness/tasks/T-1/children').respond(
+        child = self.mock.post('/harness/tickets/T-1/children').respond(
             201, json={'short_id': 'T-2'}
         )
-        check = self.mock.post('/harness/tasks/T-1/tool-calls/check').respond(
-            200, json={'allowed': True}
-        )
+        check = self.mock.post(
+            '/harness/tickets/T-1/tool-calls/check'
+        ).respond(200, json={'allowed': True})
         request = self.mock.post(
-            '/organizations/org/agent-tasks/T-1/requests'
+            '/organizations/org/tickets/T-1/requests'
         ).respond(201, json={'request': {'id': 'q'}})
         claim = self.mock.post('/harness/runners/r/chain/claim')
         claim.side_effect = [
