@@ -1729,9 +1729,7 @@ async def list_harness_task_events(
 
     """
     task = await _chain_task(caller, short_id, db, store)
-    if task['log_archived_at'] is not None:
-        return await tickets.log.archived_events(task, after_seq, limit)
-    return await store.events(task['id'], after_seq, limit)
+    return await store.read_log(task, after_seq, limit)
 
 
 def _linked_entry(

@@ -206,6 +206,7 @@ import type {
   TicketPosition,
   TicketProject,
   TicketRelations,
+  TicketReopen,
   TicketResolve,
   TicketRetry,
   TicketStatus,
@@ -3943,6 +3944,13 @@ export const retryTicket = (
   shortId: string,
   body: TicketRetry,
 ) => apiClient.post<Ticket>(`${ticketPath(orgSlug, shortId)}/retry`, body)
+
+/** Reopen a closed ticket, with a reason (ADR 0028). */
+export const reopenTicket = (
+  orgSlug: string,
+  shortId: string,
+  body: TicketReopen,
+) => apiClient.post<Ticket>(`${ticketPath(orgSlug, shortId)}/reopen`, body)
 
 /** Move a person ticket to a status, or close it (ADR 0028). */
 export const setTicketStatus = (

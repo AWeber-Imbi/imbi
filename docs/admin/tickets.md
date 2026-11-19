@@ -364,6 +364,30 @@ You need `ticket:manage`. The controls do not show on a closed ticket.
   `POST /organizations/{org}/tickets/{short_id}/priority` with
   `{"priority": "high"}`. The change writes a `priority.changed` event.
 
+### Reopen a closed ticket
+
+The owner, the assignee, and people with `ticket:manage` can reopen a
+closed ticket. Click **Reopen**, write why, and click **Reopen ticket**.
+The API is `POST /organizations/{org}/tickets/{short_id}/reopen` with
+`{"reason": "Still broken"}`.
+
+- The outcome and the close time clear. The `reopened` event records the
+  old outcome and the reason.
+- A person ticket returns to `open`. An agent ticket returns to `queued`,
+  and a runner starts a new session. The session history has the reason.
+- An agent ticket starts its own chain, also when an agent made it as a
+  child of another ticket.
+- To give the ticket a new assignee in the same request, add
+  `"assignee_kind": "person", "assignee": "<email>"` or
+  `"assignee_kind": "agent", "agent_slug": "<slug>"`. A new agent needs
+  `ticket:create`, and the ticket gets the task budget of that agent.
+- The log stays one log, also when it was archived.
+- The request fails with 409 while a runner holds the chain of the
+  ticket (`chain_pinned`), or while the workflow runs of the last close
+  have not all started (`triggers_pending`). Try again later.
+- A ticket that closes again starts its `ticket_closed` workflow runs
+  again.
+
 ## Answer a request
 
 An agent can open two kinds of request. Each request moves the ticket to

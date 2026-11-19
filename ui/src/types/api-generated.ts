@@ -5587,6 +5587,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/tickets/{short_id}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reopen Ticket
+         * @description Reopen a closed ticket (ADR 0028).
+         *
+         *     The outcome and ``closed_at`` clear, and the ``reopened`` event
+         *     records the old outcome and the reason. A person ticket returns to
+         *     ``open``, an agent ticket to ``queued`` with a new chain, so a new
+         *     session starts. The ticket keeps its assignee, or gets the new
+         *     assignee of the request. The owner and the assignee can reopen a
+         *     ticket; other people need ``ticket:manage``. A new agent assignee
+         *     needs ``ticket:create``.
+         *
+         *     Raises:
+         *         403: The caller is not a person, or has no permission.
+         *         404: No such task.
+         *         409: The task is not closed (``not_closed``), a runner holds its
+         *             chain (``chain_pinned``), the workflow runs of its last
+         *             close have not all started (``triggers_pending``), or the
+         *             new agent is disabled.
+         *         422: The new assignee is not in the org.
+         */
+        post: operations["reopen_ticket_api_organizations__org_slug__tickets__short_id__reopen_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/tickets/{short_id}/priority": {
         parameters: {
             query?: never;
@@ -21799,6 +21836,32 @@ export interface components {
             parent: string | null;
         };
         /**
+         * TicketReopen
+         * @description A reopen of a closed ticket (ADR 0028).
+         */
+        TicketReopen: {
+            /**
+             * Reason
+             * @description Why the ticket reopens.
+             */
+            reason: string;
+            /**
+             * Assignee Kind
+             * @description Give the ticket a new assignee of this kind. ``null`` keeps the assignee.
+             */
+            assignee_kind?: ("agent" | "person") | null;
+            /**
+             * Agent Slug
+             * @description The new agent.
+             */
+            agent_slug?: string | null;
+            /**
+             * Assignee
+             * @description The email of the new person. Must be in the org.
+             */
+            assignee?: string | null;
+        };
+        /**
          * TicketRequirement
          * @description A prerequisite of a new ticket.
          */
@@ -32346,6 +32409,42 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["TicketStatusSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reopen_ticket_api_organizations__org_slug__tickets__short_id__reopen_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TicketReopen"];
             };
         };
         responses: {

@@ -516,6 +516,42 @@ class TicketStatusSet(pydantic.BaseModel):
         return self
 
 
+class TicketReopen(pydantic.BaseModel):
+    """A reopen of a closed ticket (ADR 0028)."""
+
+    reason: str = pydantic.Field(
+        min_length=1,
+        max_length=MAX_TEXT_LENGTH,
+        description='Why the ticket reopens.',
+    )
+    assignee_kind: AssigneeKind | None = pydantic.Field(
+        default=None,
+        description='Give the ticket a new assignee of this kind. '
+        '``null`` keeps the assignee.',
+    )
+    agent_slug: str | None = pydantic.Field(
+        default=None, min_length=1, description='The new agent.'
+    )
+    assignee: pydantic.EmailStr | None = pydantic.Field(
+        default=None,
+        description='The email of the new person. Must be in the org.',
+    )
+
+    @pydantic.model_validator(mode='after')
+    def _assignee(self) -> typing.Self:
+        agent = self.agent_slug is not None
+        person = self.assignee is not None
+        if (agent, person) != (
+            self.assignee_kind == 'agent',
+            self.assignee_kind == 'person',
+        ):
+            raise ValueError(
+                'send agent_slug with the kind agent, assignee with the '
+                'kind person, or neither'
+            )
+        return self
+
+
 class TicketParentSet(pydantic.BaseModel):
     """The new parent of a ticket."""
 
@@ -1104,6 +1140,7 @@ TaskReader = typing.Annotated[
 ]
 
 _require_manage = permissions.require_permission('ticket:manage')
+_require_create = permissions.require_permission('ticket:create')
 
 #: A person with ``ticket:manage``. Agents cannot change relations.
 ManagingPerson = typing.Annotated[
@@ -1258,6 +1295,78 @@ async def _create_task(
     return task
 
 
+async def _person_assignee(
+    db: graph.Graph, org_slug: str, email: str
+) -> dict[str, typing.Any]:
+    """Return the assignee columns of a person ticket, or raise 422."""
+    if not await db.execute(
+        _MEMBER_QUERY, {'email': email, 'org_slug': org_slug}, ['email']
+    ):
+        raise _unprocessable(f'User {email!r} is not in the org')
+    return {
+        'assignee_kind': 'person',
+        'assignee': email,
+        'agent_id': None,
+        'agent_version': None,
+        'prompt_version': None,
+        'service_account_id': None,
+        'budget': None,
+    }
+
+
+async def _agent_assignee(
+    db: graph.Graph,
+    org_slug: str,
+    slug: str,
+    requested: decimal.Decimal | None,
+) -> dict[str, typing.Any]:
+    """Return the assignee columns of an agent ticket: the agent and
+    the versions that it has now, its service account, and the budget.
+
+    Raises:
+        409: The agent is disabled.
+        422: The agent is not in the org, or ``requested`` is more than
+            its task budget.
+
+    """
+    agent = await _fetch_agent(db, org_slug, slug)
+    if not agent.get('enabled', True):
+        raise fastapi.HTTPException(
+            status_code=409, detail=f'Agent {slug!r} is disabled'
+        )
+    raw_settings: typing.Any = agent.get('settings') or {}
+    settings = (
+        models.AgentSettings.model_validate_json(raw_settings)
+        if isinstance(raw_settings, str)
+        else models.AgentSettings.model_validate(raw_settings)
+    )
+    agent_id = str(agent['id'])
+    return {
+        'assignee_kind': 'agent',
+        'assignee': None,
+        'agent_id': agent_id,
+        'agent_version': int(agent.get('version') or 1),
+        'prompt_version': agent.get('prompt_version'),
+        'service_account_id': await agents.ensure_service_account(
+            db, agent_id, str(agent.get('name', slug))
+        ),
+        'budget': task_budget(settings, requested),
+    }
+
+
+async def _assignee_columns(
+    db: graph.Graph,
+    org_slug: str,
+    data: AgentTaskCreate | TicketReopen,
+    budget: decimal.Decimal | None,
+) -> dict[str, typing.Any]:
+    """Return the assignee columns that ``data`` names; see
+    :func:`_person_assignee` and :func:`_agent_assignee`."""
+    if data.assignee_kind == 'person':
+        return await _person_assignee(db, org_slug, data.assignee or '')
+    return await _agent_assignee(db, org_slug, data.agent_slug or '', budget)
+
+
 async def make_task(
     db: graph.Graph,
     store: tickets.TicketStore,
@@ -1285,43 +1394,18 @@ async def make_task(
 
     """
     projects = await project_slugs(db, org_slug, data.project_ids)
-    agent_id = service_account_id = None
-    agent_version = prompt_version = budget = None
-    if data.assignee_kind == 'person':
-        if not await db.execute(
-            _MEMBER_QUERY,
-            {'email': data.assignee, 'org_slug': org_slug},
-            ['email'],
-        ):
-            raise _unprocessable(f'User {data.assignee!r} is not in the org')
-    else:
-        slug = data.agent_slug or ''
-        agent = await _fetch_agent(db, org_slug, slug)
-        if not agent.get('enabled', True):
-            raise fastapi.HTTPException(
-                status_code=409, detail=f'Agent {slug!r} is disabled'
-            )
-        raw_settings: typing.Any = agent.get('settings') or {}
-        settings = (
-            models.AgentSettings.model_validate_json(raw_settings)
-            if isinstance(raw_settings, str)
-            else models.AgentSettings.model_validate(raw_settings)
-        )
-        budget = task_budget(settings, data.budget)
-        agent_id = str(agent['id'])
-        service_account_id = await agents.ensure_service_account(
-            db, agent_id, str(agent.get('name', slug))
-        )
-        agent_version = int(agent.get('version') or 1)
-        prompt_version = agent.get('prompt_version')
+    columns = await _assignee_columns(db, org_slug, data, data.budget)
+    agent_version = columns['agent_version']
+    prompt_version = columns['prompt_version']
+    budget = columns['budget']
     try:
         return await store.create(
             tickets.NewTask(
                 organization_id=org_id,
-                agent_id=agent_id,
+                agent_id=columns['agent_id'],
                 agent_version=agent_version,
                 prompt_version=prompt_version,
-                service_account_id=service_account_id,
+                service_account_id=columns['service_account_id'],
                 projects=projects,
                 title=data.title,
                 description=data.description,
@@ -1615,9 +1699,7 @@ async def list_agent_task_events(
     ClickHouse, in the same shape. The service account of the task's
     agent can read the events of its own task.
     """
-    if task['log_archived_at'] is not None:
-        return await tickets.log.archived_events(task, after_seq, limit)
-    return await store.events(task['id'], after_seq, limit)
+    return await store.read_log(task, after_seq, limit)
 
 
 @tickets_router.post('/{short_id}/pause', response_model=AgentTaskResponse)
@@ -1974,6 +2056,60 @@ async def set_ticket_status(
         ) from e
     except tickets.TransitionInvalid as e:
         raise _conflict('transition_invalid', str(e)) from e
+
+
+@tickets_router.post('/{short_id}/reopen', response_model=AgentTaskResponse)
+async def reopen_ticket(
+    org_slug: str,
+    org_id: OrgId,
+    short_id: str,
+    data: TicketReopen,
+    db: graph.Pool,
+    store: tickets.Store,
+    auth: typing.Annotated[
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
+    ],
+) -> dict[str, typing.Any]:
+    """Reopen a closed ticket (ADR 0028).
+
+    The outcome and ``closed_at`` clear, and the ``reopened`` event
+    records the old outcome and the reason. A person ticket returns to
+    ``open``, an agent ticket to ``queued`` with a new chain, so a new
+    session starts. The ticket keeps its assignee, or gets the new
+    assignee of the request. The owner and the assignee can reopen a
+    ticket; other people need ``ticket:manage``. A new agent assignee
+    needs ``ticket:create``.
+
+    Raises:
+        403: The caller is not a person, or has no permission.
+        404: No such task.
+        409: The task is not closed (``not_closed``), a runner holds its
+            chain (``chain_pinned``), the workflow runs of its last
+            close have not all started (``triggers_pending``), or the
+            new agent is disabled.
+        422: The new assignee is not in the org.
+
+    """
+    user = auth.require_user
+    task = await _get_task(store, org_id, short_id)
+    email = user.email.lower()
+    if email not in (task['owner'].lower(), (task['assignee'] or '').lower()):
+        await _require_manage(auth)
+    columns: dict[str, typing.Any] | None = None
+    if data.assignee_kind is not None:
+        if data.assignee_kind == 'agent':
+            await _require_create(auth)
+        columns = await _assignee_columns(db, org_slug, data, None)
+    try:
+        return await store.reopen(
+            org_id, task['short_id'], data.reason, _actor(auth), columns
+        )
+    except tickets.TaskOpen as e:
+        raise _conflict(
+            'not_closed', f'Task {short_id!r} is not closed'
+        ) from e
+    except tickets.ReopenRefused as e:
+        raise _conflict(e.reason, str(e)) from e
 
 
 @tickets_router.post('/{short_id}/priority', response_model=AgentTaskResponse)

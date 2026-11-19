@@ -180,8 +180,8 @@ async def cancel_orphan_agent_tasks(
 async def retry_task_triggers(
     tasks: tickets.TicketStore, trigger: task_store.CloseHook
 ) -> None:
-    """Call ``trigger`` again for each task with a ``trigger_outbox``
-    row."""
+    """Call ``trigger`` again for each ``trigger_outbox`` row, with the
+    task and the ``close_id`` of the row."""
     for task in await tasks.pending_triggers():
         try:
             await trigger(task)

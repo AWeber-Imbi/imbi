@@ -60,6 +60,7 @@ const NOTE_TYPES = new Set([
   'owner.changed',
   'phase.changed',
   'priority.changed',
+  'reopened',
   'state.changed',
 ])
 
