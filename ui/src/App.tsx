@@ -45,6 +45,9 @@ const AgentsPage = lazy(() =>
 const TicketsPage = lazy(() =>
   import('./pages/TicketsPage').then((m) => ({ default: m.TicketsPage })),
 )
+const WaitingPage = lazy(() =>
+  import('./pages/WaitingPage').then((m) => ({ default: m.WaitingPage })),
+)
 const AdminPage = lazy(() =>
   import('./pages/AdminPage').then((m) => ({ default: m.AdminPage })),
 )
@@ -159,6 +162,16 @@ function App() {
                     </ProtectedRoute>
                   }
                   path="/settings/:tab?"
+                />
+                {/* A static segment ranks above the org slug of the
+                    tickets route. */}
+                <Route
+                  element={
+                    <ProtectedRoute>
+                      <WaitingPage />
+                    </ProtectedRoute>
+                  }
+                  path="/tickets/waiting"
                 />
                 <Route
                   element={

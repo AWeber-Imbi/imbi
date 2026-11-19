@@ -320,8 +320,21 @@ four groups:
   grow.
 - The page and the open ticket update without a reload.
 
-The **Tickets** item in the top bar shows the number of tickets that
-wait on you.
+## Waiting on me
+
+The **Tickets** item in the top bar shows the number of items that wait
+on you. Click the hourglass on the Tickets page, or open
+`/tickets/waiting`, to see them. The page has three lists:
+
+| List | Items |
+|---|---|
+| Questions on your tickets | Open requests that have not expired, on the tickets that you own and that are not closed. Paused tickets are included |
+| Assigned to you | Person tickets assigned to you that are not closed |
+| Held: a prerequisite failed | Held tickets that you own with a gating prerequisite that closed with an outcome other than `done_*`, with those prerequisites |
+
+The count is the number of items in the three lists. The API is
+`GET /organizations/{org}/tickets/waiting`. A caller that is not a
+person gets a count of `0`.
 
 A ticket URL is `/tickets/<organization slug>/<short id>`. Add `/<tab>` to
 open a tab. Old `/agents/tasks/...` URLs go to the new URL.

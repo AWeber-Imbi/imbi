@@ -264,17 +264,18 @@ export function useTickets(orgSlug: string, params: TicketListParams) {
   })
 }
 
-/**
- * The number of tasks in the org that wait on a person (not closed, a
- * request open), for the badge (O1).
- */
-export function useWaitingTaskCount(orgSlug: string | undefined) {
+/** What waits on the caller in the org (ADR 0028, Waiting on me). */
+export function useWaiting(orgSlug: string | undefined) {
   const canRead = useHasPermission('ticket:read', orgSlug)
   return useQuery({
     enabled: !!orgSlug && canRead,
     queryFn: ({ signal }) => countWaitingTickets(orgSlug!, signal),
     queryKey: queryKeys.ticketsWaiting(orgSlug ?? ''),
     refetchInterval: LIST_POLL_MS,
-    select: (data) => data.count,
   })
+}
+
+/** The number of items that wait on the caller, for the badge. */
+export function useWaitingTaskCount(orgSlug: string | undefined) {
+  return useWaiting(orgSlug).data?.count
 }

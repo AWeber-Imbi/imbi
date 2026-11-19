@@ -1853,6 +1853,8 @@ export type TicketStatus = Ticket['status']
 
 export type TicketStatusSet = Schemas['TicketStatusSet']
 
+export type TicketWaiting = Schemas['AgentTaskWaiting']
+
 export type TokenResponse = Schemas['TokenResponse']
 
 // Upload types

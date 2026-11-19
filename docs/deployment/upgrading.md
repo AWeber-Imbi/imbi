@@ -105,6 +105,13 @@ While pods of both releases run:
 - When an agent hands off its ticket, the runner keeps the chain until
   it finishes. The chain then has an open ticket, so it goes to
   `fencing`, as for a paused ticket.
+- `GET /tickets/waiting` now returns what waits on the caller, with
+  three lists, and `count` counts the caller's own items. Before, it
+  counted every ticket of the organization with an open request. While
+  pods of both releases run, the badge can show either count, and the
+  new **Waiting on me** page shows empty lists when a pod of the
+  previous release answers. The **Waiting on people** tile of the agent
+  dashboard keeps the count for the organization.
 
 ## Unreleased: person tickets (ADR 0028)
 

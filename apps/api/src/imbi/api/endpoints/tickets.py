@@ -347,9 +347,49 @@ class AgentTaskPosition(pydantic.BaseModel):
     index: int
 
 
+class WaitingRequest(pydantic.BaseModel):
+    """An open request on a ticket of the caller."""
+
+    id: uuid.UUID
+    kind: str
+    title: str
+    opened_at: datetime.datetime
+    expires_at: datetime.datetime | None = None
+    #: The ticket of the request.
+    short_id: str
+    ticket_title: str
+
+
+class WaitingTicket(pydantic.BaseModel):
+    """A ticket that waits on the caller."""
+
+    short_id: str
+    title: str
+    status: Status
+    priority: Priority = 'normal'
+    assignee_kind: AssigneeKind = 'agent'
+    assignee: str | None = None
+    agent_id: str | None = None
+    owner: str
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+    #: For a held ticket: its gating prerequisites that closed with an
+    #: outcome that does not release it.
+    failed: list[str] = pydantic.Field(default_factory=list)
+
+
 class AgentTaskWaiting(pydantic.BaseModel):
-    #: The number of tasks in the organization that wait on a person (O1).
+    """What waits on the caller (ADR 0028), for the navigation badge
+    and the Waiting on me page."""
+
+    #: The number of items in the three lists.
     count: int
+    #: Open requests on the tickets that the caller owns.
+    requests: list[WaitingRequest] = pydantic.Field(default_factory=list)
+    #: Person tickets assigned to the caller that are not closed.
+    assigned: list[WaitingTicket] = pydantic.Field(default_factory=list)
+    #: Held tickets of the caller with a gating prerequisite that failed.
+    held: list[WaitingTicket] = pydantic.Field(default_factory=list)
 
 
 class AgentTaskEventResponse(pydantic.BaseModel):
@@ -1639,24 +1679,32 @@ async def _text_matches(
 async def count_waiting_agent_tasks(
     org_id: OrgId,
     store: tickets.Store,
-    _auth: typing.Annotated[
+    auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('ticket:read')),
     ],
-) -> dict[str, int]:
-    """Count the tasks in the organization that wait on a person.
+) -> dict[str, typing.Any]:
+    """List what waits on the caller (ADR 0028).
 
-    A task waits when it is not closed and has an open request that has
-    not expired, whatever its status: a task that is paused with an open
-    request (Reply and hold) still waits. The count is for the whole
-    organization, for the navigation badge (O1).
+    ``requests`` are the open requests that have not expired on the
+    tickets that the caller owns and that are not closed, whatever
+    their status: a ticket that is paused with an open request (Reply
+    and hold) still waits. ``assigned`` are the person tickets assigned
+    to the caller that are not closed. ``held`` are the held tickets
+    that the caller owns with a gating prerequisite that closed with an
+    outcome that does not release them. ``count`` is the number of
+    items, for the navigation badge. A caller that is not a person has
+    none.
 
     Raises:
         403: The caller is not a member of the org.
         404: No such organization.
 
     """
-    return {'count': await store.count_waiting(org_id)}
+    if auth.user is None:
+        return {'count': 0}
+    found = await store.waiting(org_id, auth.user.email)
+    return {'count': sum(len(items) for items in found.values()), **found}
 
 
 @tickets_router.get('/{short_id}', response_model=AgentTaskResponse)

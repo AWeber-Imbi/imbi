@@ -5289,12 +5289,17 @@ export interface paths {
         };
         /**
          * Count Waiting Agent Tasks
-         * @description Count the tasks in the organization that wait on a person.
+         * @description List what waits on the caller (ADR 0028).
          *
-         *     A task waits when it is not closed and has an open request that has
-         *     not expired, whatever its status: a task that is paused with an open
-         *     request (Reply and hold) still waits. The count is for the whole
-         *     organization, for the navigation badge (O1).
+         *     ``requests`` are the open requests that have not expired on the
+         *     tickets that the caller owns and that are not closed, whatever
+         *     their status: a ticket that is paused with an open request (Reply
+         *     and hold) still waits. ``assigned`` are the person tickets assigned
+         *     to the caller that are not closed. ``held`` are the held tickets
+         *     that the caller owns with a gating prerequisite that closed with an
+         *     outcome that does not release them. ``count`` is the number of
+         *     items, for the navigation badge. A caller that is not a person has
+         *     none.
          *
          *     Raises:
          *         403: The caller is not a member of the org.
@@ -12001,10 +12006,20 @@ export interface components {
              */
             idempotency_key?: string | null;
         };
-        /** AgentTaskWaiting */
+        /**
+         * AgentTaskWaiting
+         * @description What waits on the caller (ADR 0028), for the navigation badge
+         *     and the Waiting on me page.
+         */
         AgentTaskWaiting: {
             /** Count */
             count: number;
+            /** Requests */
+            requests?: components["schemas"]["WaitingRequest"][];
+            /** Assigned */
+            assigned?: components["schemas"]["WaitingTicket"][];
+            /** Held */
+            held?: components["schemas"]["WaitingTicket"][];
         };
         /** AgentTeamRef */
         AgentTeamRef: {
@@ -22383,6 +22398,77 @@ export interface components {
              * @default []
              */
             issues: components["schemas"]["ValidationIssue"][];
+        };
+        /**
+         * WaitingRequest
+         * @description An open request on a ticket of the caller.
+         */
+        WaitingRequest: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /**
+             * Opened At
+             * Format: date-time
+             */
+            opened_at: string;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Short Id */
+            short_id: string;
+            /** Ticket Title */
+            ticket_title: string;
+        };
+        /**
+         * WaitingTicket
+         * @description A ticket that waits on the caller.
+         */
+        WaitingTicket: {
+            /** Short Id */
+            short_id: string;
+            /** Title */
+            title: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "held" | "queued" | "running" | "paused" | "open" | "in_progress" | "blocked" | "closed";
+            /**
+             * Priority
+             * @default normal
+             * @enum {string}
+             */
+            priority: "low" | "normal" | "high" | "urgent";
+            /**
+             * Assignee Kind
+             * @default agent
+             * @enum {string}
+             */
+            assignee_kind: "agent" | "person";
+            /** Assignee */
+            assignee?: string | null;
+            /** Agent Id */
+            agent_id?: string | null;
+            /** Owner */
+            owner: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Failed */
+            failed?: string[];
         };
         /**
          * WebhookCreate

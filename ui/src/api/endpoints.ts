@@ -211,6 +211,7 @@ import type {
   TicketRetry,
   TicketStatus,
   TicketStatusSet,
+  TicketWaiting,
   TokenResponse,
   Upload,
   UserResponse,
@@ -3889,9 +3890,14 @@ export const getTicketPosition = (
     ...params,
   })
 
-/** The number of blocked tasks in the org (the "waiting on you" badge). */
+/**
+ * What waits on the caller (ADR 0028): open requests on their tickets,
+ * person tickets assigned to them, and their held tickets whose gate
+ * failed. `count` is the "waiting on you" badge. A previous-release API
+ * sends `count` only.
+ */
 export const countWaitingTickets = (orgSlug: string, signal?: AbortSignal) =>
-  apiClient.get<{ count: number }>(
+  apiClient.get<TicketWaiting>(
     `${ticketsApiPath(orgSlug)}/waiting`,
     undefined,
     signal,

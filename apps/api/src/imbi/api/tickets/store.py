@@ -1124,21 +1124,59 @@ class TicketStore:
             found = await cursor.fetchall()
         return {str(group): int(count) for group, count in found}
 
-    async def count_waiting(self, organization_id: str) -> int:
-        """Return the number of tasks in the organization that wait on
-        a person: tasks that are not closed and have an open request.
+    async def waiting(self, organization_id: str, email: str) -> Row:
+        """Return what waits on the person ``email`` (ADR 0028):
+
+        - ``requests``: the open requests on the tickets that they own
+          and that are not closed, oldest first, with ``short_id`` and
+          ``ticket_title`` of the ticket.
+        - ``assigned``: the person tickets assigned to them that are
+          not closed, oldest first.
+        - ``held``: the held tickets that they own with a gating
+          prerequisite that closed with an outcome that does not release
+          them, oldest first, with those prerequisites in ``failed``.
+
+        Emails match without case.
         """
-        async with self._pool.connection() as conn:
-            cursor = await conn.execute(
-                sql.SQL(
-                    'SELECT count(*) FROM tickets.tickets AS t'
-                    " WHERE t.organization_id = %s AND t.status <> 'closed'"
-                    ' AND EXISTS (SELECT 1 {open})'
-                ).format(open=_OPEN_REQUESTS),
-                (organization_id,),
+        async with (
+            self._pool.connection() as conn,
+            conn.cursor(row_factory=rows.dict_row) as cursor,
+        ):
+            await cursor.execute(
+                'SELECT r.*, t.short_id, t.title AS ticket_title'
+                ' FROM tickets.requests AS r'
+                ' JOIN tickets.tickets AS t ON t.id = r.ticket_id'
+                ' WHERE t.organization_id = %s AND lower(t.owner) = %s'
+                " AND t.status <> 'closed' AND r.status = 'open'"
+                ' AND (r.expires_at IS NULL OR r.expires_at > NOW())'
+                ' ORDER BY r.opened_at, r.id',
+                (organization_id, email.lower()),
             )
-            row = await cursor.fetchone()
-        return int(row[0]) if row else 0
+            requests = await cursor.fetchall()
+            await cursor.execute(
+                _SELECT_TASKS + ' WHERE organization_id = %s'
+                " AND assignee_kind = 'person' AND lower(assignee) = %s"
+                " AND status <> 'closed' ORDER BY created_at, id",
+                (organization_id, email.lower()),
+            )
+            assigned = await cursor.fetchall()
+            await cursor.execute(
+                'SELECT * FROM (SELECT t.*, ' + PROJECTS + ','  # noqa: S608
+                ' ARRAY(SELECT p.short_id'
+                ' FROM tickets.ticket_dependencies AS d'
+                ' JOIN tickets.tickets AS p'
+                ' ON p.organization_id = d.organization_id'
+                ' AND p.id = d.prerequisite_ticket_id'
+                ' WHERE d.dependent_ticket_id = t.id AND d.gates'
+                " AND p.status = 'closed' AND NOT p.outcome = ANY(%s)"
+                ' ORDER BY p.created_at, p.id) AS failed'
+                ' FROM tickets.tickets AS t WHERE t.organization_id = %s'
+                " AND lower(t.owner) = %s AND t.status = 'held') AS h"
+                " WHERE failed <> '{}' ORDER BY created_at, id",
+                (list(DONE_OUTCOMES), organization_id, email.lower()),
+            )
+            held = await cursor.fetchall()
+        return {'requests': requests, 'assigned': assigned, 'held': held}
 
     async def events(
         self, task_id: uuid.UUID, after_seq: int, limit: int
