@@ -54,8 +54,9 @@ SCHEMA = 'tickets'
 #: one key.
 CHILD_ORIGIN_KINDS = ('task', 'ticket')
 
-#: The names of the unique index of idempotency keys. It keeps its ADR
-#: 0020 name until the release after B, which renames it (ADR 0028).
+#: The names of the unique index of idempotency keys. The release after
+#: B renamed it from its ADR 0020 name, but a release B pod that starts
+#: during the rollout makes the old index again (ADR 0028).
 ORIGIN_IDEMPOTENCY_KEYS = frozenset(
     {'tasks_origin_idempotency_key', 'tickets_origin_idempotency_key'}
 )

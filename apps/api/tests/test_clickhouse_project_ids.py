@@ -6,8 +6,6 @@ The ``project_ids`` external table goes as a file part instead.
 """
 
 import datetime
-import importlib.resources
-import tomllib
 import unittest
 import uuid
 
@@ -206,55 +204,6 @@ class OtherCallersTestCase(unittest.IsolatedAsyncioTestCase):
             {task_id: (2, 4)}, await log.event_counts(org, task_ids)
         )
         self.assertEqual({}, await log.usage_counts(org, task_ids))
-
-    async def test_copy_of_the_old_event_table(self) -> None:
-        """ADR 0028, release B: ``setup-clickhouse`` copies the events
-        of ``agent_task_events`` that ``ticket_events`` does not have."""
-        org = f'o664-{uuid.uuid4().hex}'
-        task = {'organization_id': org, 'id': uuid.uuid4()}
-        for table, column, seqs in (
-            ('agent_task_events', 'task_id', (1, 2)),
-            ('ticket_events', 'ticket_id', (2, 3)),
-        ):
-            for seq in seqs:
-                await clickhouse.command(
-                    f'INSERT INTO imbi.{table} (organization_id, {column},'
-                    ' seq, event_id, type, at, payload) VALUES'
-                    ' ({org:String}, {task:String}, {seq:UInt64},'
-                    " {event:String}, 'note', now64(6), '{}')",
-                    {
-                        'org': org,
-                        'task': str(task['id']),
-                        'seq': seq,
-                        'event': str(uuid.uuid4()),
-                    },
-                )
-        schemata = tomllib.loads(
-            importlib.resources.files('imbi.common.clickhouse')
-            .joinpath('schemata.toml')
-            .read_text()
-        )
-        for _ in range(2):  # a second run copies nothing
-            await clickhouse.command(
-                schemata['copy_agent_task_events']['query']
-            )
-        counts = await clickhouse.query(
-            'SELECT (SELECT count() FROM imbi.ticket_events'
-            '         WHERE organization_id = {org:String}) AS rows,'
-            '       (SELECT uniqExact(ticket_id, seq) FROM imbi.ticket_events'
-            '         WHERE organization_id = {org:String}) AS keys,'
-            '       (SELECT uniqExact(task_id, seq)'
-            '          FROM imbi.agent_task_events'
-            '         WHERE organization_id = {org:String}'
-            '           AND (task_id, seq) NOT IN'
-            '               (SELECT ticket_id, seq FROM imbi.ticket_events)'
-            '       ) AS missing',
-            {'org': org},
-        )
-        self.assertEqual([{'rows': 3, 'keys': 3, 'missing': 0}], counts)
-        events = await log.archived_events(task, 0, 10)
-        self.assertEqual([1, 2, 3], [event['seq'] for event in events])
-        self.assertEqual({1, 2, 3}, await log.stored_seqs(task))
 
     async def _insert_commit(self, sha: str, pushed_at: str) -> None:
         await clickhouse.command(

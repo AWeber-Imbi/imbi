@@ -74,6 +74,77 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
+## Unreleased: release B+1 (ADR 0028)
+
+This release removes the old names of ADR 0028 that release B (2.56.0)
+kept for the pods of 2.55.0. No pod of release B uses them.
+
+1. **Before you deploy**, deploy release B everywhere and let its
+   rollout finish. A pod older than release B uses the objects that this
+   release drops.
+2. **Before you deploy**, make sure that release B copied every event of
+   `agent_task_events` to `ticket_events`. This release drops the old
+   table. The result must be `0`:
+
+    ```sql
+    SELECT uniqExact(task_id, seq) FROM imbi.agent_task_events
+     WHERE (task_id, seq) NOT IN (SELECT ticket_id, seq FROM imbi.ticket_events)
+    ```
+
+   If it is not `0`, run `imbi-api setup-clickhouse` in a pod of release
+   B, then run the query again.
+3. **Before you deploy**, change each scheduled task whose `api` target
+   path has `/agent-tasks` to use `/tickets`. This release removes the
+   `/organizations/{org}/agent-tasks` paths, so a run of such a task
+   gets `404` and fails. Find the tasks in PostgreSQL (the schema is
+   `IMBI_SCHEDULER_SCHEMA`, default `scheduler`):
+
+    ```sql
+    SELECT slug, organization, target ->> 'path' AS path
+      FROM scheduler.tasks
+     WHERE target ->> 'kind' = 'api'
+       AND target ->> 'path' LIKE '%/agent-tasks%'
+    ```
+
+   If the query returns no rows, no task uses the old path. To change a
+   task, send a JSON Patch of `/target/path` to
+   [`PATCH /tasks/{slug}`](../scheduler/tasks.md) on imbi-scheduler.
+   Also change the scripts that call the old path.
+4. Deploy imbi-api first, then imbi-mcp, the harness runners,
+   imbi-gateway, imbi-slackbot, and imbi-workflows. At its first start,
+   imbi-api:
+   - moves the primary keys of `harness.chains` and `harness.claims` to
+     `root_ticket_id` and `ticket_id`, and drops the old columns
+     (`root_task_id`, `task_id`), the trigger that kept them equal, and
+     the function `harness.mirror_ticket_id()`,
+   - changes the origin kind `task` to `ticket` in each child ticket that
+     a 2.55.0 pod made after the last start of a release B pod, and
+   - renames the unique index of ticket idempotency keys from
+     `tasks_origin_idempotency_key` to `tickets_origin_idempotency_key`.
+
+   You do not run a command for this. The harness change locks
+   `harness.chains` and `harness.claims` while it builds the two new
+   primary keys.
+5. Run `imbi-api setup-clickhouse` in a new imbi-api pod (pick the pod by
+   name, as for 2.54.0). It drops the `agent_task_events` table. There
+   is no iggy-connect restart: release B removed the old stream.
+
+While pods of both releases run:
+
+- A release B pod that starts makes the old index
+  `tasks_origin_idempotency_key` again, and locks writes to
+  `tickets.tickets` while it builds it. Both releases know both index
+  names, so nothing fails. The next start of a new pod drops the old
+  index. When the rollout is complete, this query must return `NULL`;
+  if it does not, restart one imbi-api pod:
+
+    ```sql
+    SELECT to_regclass('tickets.tasks_origin_idempotency_key')
+    ```
+
+- If you run `setup-clickhouse` in a release B pod, it makes an empty
+  `agent_task_events` table again. Run it again in a new pod to drop it.
+
 ## Unreleased: release B (ADR 0028)
 
 This release removes the old names of ADR 0028 that no pod of 2.55.0

@@ -157,9 +157,7 @@ the origin of the workflow run.
 ### Schedules
 
 Use a scheduled task with an `api` target that posts to
-`/tickets/`. The scheduled task must name the organization. A scheduled
-task that posts to the old path, `/agent-tasks/`, still works, but a
-later release removes that path. See
+`/tickets/`. The scheduled task must name the organization. See
 [Scheduled Tasks](../scheduler/tasks.md#api). A retry of a run returns the
 first ticket.
 

@@ -227,17 +227,6 @@ class AccessTests(HarnessTestCase):
         self.assertEqual(response.status_code, 404, response.text)
 
 
-class OldPathTests(HarnessTestCase):
-    """Release B removes the harness routes at ``/agent-tasks`` (ADR
-    0028)."""
-
-    prefix = 'agent-tasks'
-
-    async def test_old_path_is_gone(self) -> None:
-        response = await self.post('sessions', {'session_key': 's-1'})
-        self.assertEqual(response.status_code, 404, response.text)
-
-
 class SessionTests(HarnessTestCase):
     async def test_open_is_idempotent_and_starts_the_task(self) -> None:
         first = await self.open_session()
