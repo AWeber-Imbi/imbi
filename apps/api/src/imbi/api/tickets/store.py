@@ -55,7 +55,7 @@ SCHEMA = 'tickets'
 CHILD_ORIGIN_KINDS = ('task', 'ticket')
 
 #: The names of the unique index of idempotency keys. It keeps its ADR
-#: 0020 name until the release after B, which renames it (ADR 0028).
+#: 0020 name until a later release renames it (ADR 0028).
 ORIGIN_IDEMPOTENCY_KEYS = frozenset(
     {'tasks_origin_idempotency_key', 'tickets_origin_idempotency_key'}
 )
