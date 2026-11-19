@@ -219,17 +219,7 @@ organizations_router.include_router(
     agents_router,
     prefix='/{org_slug}/agents',
 )
-# ADR 0028: tickets at /tickets, with ticket operation ids. The old
-# /agent-tasks path stays out of the OpenAPI document, so imbi-mcp has no
-# tools with the old names, but a saved scheduled job or script that
-# posts to it keeps working. The release after B removes it.
-# The agent token rules (imbi.api.auth.agent_api) key a route by its
-# endpoint, so both paths share the rule of the path mounted last.
-organizations_router.include_router(
-    tickets_router,
-    prefix='/{org_slug}/agent-tasks',
-    include_in_schema=False,
-)
+# ADR 0028: tickets at /tickets, with ticket operation ids.
 organizations_router.include_router(
     tickets_router,
     prefix='/{org_slug}/tickets',

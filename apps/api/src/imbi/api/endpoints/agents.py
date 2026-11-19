@@ -927,16 +927,15 @@ async def _validate_tools(
 async def _validate_subagents(
     db: graph.Pool,
     org_slug: str,
-    agent_id: str | None,
     subagents: list[models.AgentSubagent],
 ) -> None:
-    """Raise 422 when a subagent is the agent itself or not in the org.
+    """Raise 422 when a subagent is not in the org.
 
-    Cycles are allowed: the runtime caps the delegation depth.
+    An agent can be its own subagent, and cycles are allowed: the
+    harness caps the delegation depth at 2, so a child ticket never
+    starts another child.
     """
     ids = [item.agent_id for item in subagents]
-    if agent_id is not None and agent_id in ids:
-        raise _unprocessable('An agent cannot be its own subagent')
     found = await _find_subagents(db, org_slug, ids)
     missing = sorted(set(ids) - set(found))
     if missing:
@@ -1178,7 +1177,7 @@ async def _apply(
         if target.tools != current.tools:
             await _validate_tools(db, org_slug, target.tools)
         if target.subagents != current.subagents:
-            await _validate_subagents(db, org_slug, agent_id, target.subagents)
+            await _validate_subagents(db, org_slug, target.subagents)
         n = int(existing['_latest']) + 1
         # The version is written first. Its unique index stops a
         # concurrent save before that save changes the agent.
@@ -1324,7 +1323,7 @@ async def create_agent(
     await _check_model_teams(db, org_slug, snapshot, team_id)
     await _validate_tag_slugs(db, org_slug, snapshot.tags)
     await _validate_tools(db, org_slug, snapshot.tools)
-    await _validate_subagents(db, org_slug, None, snapshot.subagents)
+    await _validate_subagents(db, org_slug, snapshot.subagents)
     await _assert_slug_free(db, org_slug, data.slug)
 
     now = _now()

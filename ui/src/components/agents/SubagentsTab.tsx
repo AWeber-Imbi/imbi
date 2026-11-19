@@ -27,8 +27,6 @@ interface SubagentRowProps {
 }
 
 interface SubagentsTabProps {
-  /** The id of the agent that is edited, or null for a new agent. */
-  agentId: null | string
   onChange: (subagents: AgentSubagent[]) => void
   orgSlug: string
   /** The subagents of the saved agent. Their rows stay while you edit. */
@@ -37,12 +35,12 @@ interface SubagentsTabProps {
 }
 
 /**
- * The other agents of the org that this agent can delegate to. A
+ * The agents of the org that this agent can delegate to, itself
+ * included. A
  * checked agent can have delegation instructions. A disabled agent
  * shows only when it is selected now or in the saved agent.
  */
 export function SubagentsTab({
-  agentId,
   onChange,
   orgSlug,
   saved = [],
@@ -66,8 +64,7 @@ export function SubagentsTab({
   // Keep a saved disabled subagent after you clear it, so you can select it again.
   const savedIds = new Set(saved.map((s) => s.agent_id))
   const choices = agents.data.filter(
-    (a) =>
-      a.id !== agentId && (a.enabled || byId.has(a.id) || savedIds.has(a.id)),
+    (a) => a.enabled || byId.has(a.id) || savedIds.has(a.id),
   )
   // A stored subagent that is not in the list has no row, so do not count it.
   const selectedCount = choices.filter((a) => byId.has(a.id)).length
