@@ -590,6 +590,45 @@ class ConcurrencyTests(RunnerTestCase):
             sorted(c is None for c in (first, second)), [False, True]
         )
 
+    async def test_self_delegated_child_completes_at_limit(self) -> None:
+        # The parent holds the agent's only place while it waits for
+        # its child, which is the same agent.
+        runner = await self.register()
+        claim = await self.claim(runner)
+        assert claim is not None
+        token = claim['agent_token']
+        response = await self.as_agent(
+            token, 'POST', 'T-1/sessions', {'session_key': 'p'}
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        await self.make_version({'subagents': [{'agent_id': self.agent_id}]})
+        response = await self.client.post(
+            '/harness/tickets/T-1/children',
+            json={
+                'agent_slug': 'triage',
+                'title': 'Repo',
+                'description': 'One repository.',
+            },
+            headers={'Authorization': f'Bearer {token}'},
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        child = response.json()['short_id']
+        response = await self.runner_post(runner, 'chain/claim')
+        self.assertEqual(response.status_code, 200, response.text)
+        child_token = response.json()['agent_token']
+        response = await self.as_agent(
+            child_token, 'POST', f'{child}/sessions', {'session_key': 'c'}
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        response = await self.as_agent(
+            child_token, 'POST', f'{child}/outcome', {'outcome': 'done_acted'}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        task = await self.store.get(self.org, child)
+        assert task is not None
+        self.assertEqual(task['status'], 'closed')
+        self.assertEqual(task['outcome'], 'done_acted')
+
 
 class QueueTests(RunnerTestCase):
     """``GET /harness/pools/{name}/queue`` and the pool gauges."""

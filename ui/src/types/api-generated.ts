@@ -1803,11 +1803,16 @@ export interface paths {
          *     one no longer covers the project. When the project is not
          *     associated, nothing changes.
          *
+         *     The task keeps at least one project: a grant that lists projects
+         *     never matches a task with none, so its next ``model_inference`` key
+         *     renewal would fail. Attach the next project first.
+         *
          *     Raises:
          *         401: Not a current agent token.
          *         403: Another chain or another agent.
          *         404: No such task.
-         *         409: ``task_closed`` or ``task_archived``.
+         *         409: ``task_closed``, ``task_archived``, or ``last_project``
+         *             (it is the task's only project).
          *         422: The project is not in the org, or the slug is not unique.
          */
         delete: operations["detach_harness_ticket_project_api_harness_tickets__short_id__projects__project__delete"];
