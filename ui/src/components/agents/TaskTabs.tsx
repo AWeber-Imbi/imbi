@@ -331,7 +331,7 @@ export function RequestCard({
             <p className="text-tertiary mb-1.5 text-xs tracking-wider uppercase">
               Answer
             </p>
-            <p className="text-sm leading-relaxed whitespace-pre-wrap">
+            <p className="text-sm leading-relaxed wrap-break-word whitespace-pre-wrap">
               {answer}
             </p>
           </div>
