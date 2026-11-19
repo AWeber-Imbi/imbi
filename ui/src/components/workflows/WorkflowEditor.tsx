@@ -133,7 +133,6 @@ export function WorkflowEditor({
     setDirty(true)
   }
   const [selection, setSelection] = useState<Selection>(null)
-  const [paletteOpen, setPaletteOpen] = useState(true)
   const [view, setView] = useState<View>({ x: 80, y: 80, zoom: 1 })
   const [issues, setIssues] = useState<ValidationIssue[]>(
     workflow?.version.validation.issues ?? [],
@@ -543,13 +542,7 @@ export function WorkflowEditor({
       </div>
 
       <div className="flex min-h-0 flex-1">
-        {paletteOpen && !readOnly && (
-          <Palette
-            onAdd={onPaletteAdd}
-            onClose={() => setPaletteOpen(false)}
-            types={stepTypes}
-          />
-        )}
+        {!readOnly && <Palette onAdd={onPaletteAdd} types={stepTypes} />}
         <Group
           className="min-w-0 flex-1"
           defaultLayout={defaultLayout}
@@ -564,9 +557,6 @@ export function WorkflowEditor({
               onConnect={(edge) => updateGraph((g) => connect(g, types, edge))}
               onMove={(id, position) =>
                 updateGraph((g) => updateNode(g, id, { position }))
-              }
-              onOpenPalette={
-                paletteOpen || readOnly ? null : () => setPaletteOpen(true)
               }
               onRemoveEdge={(index) => {
                 updateGraph((g) => removeEdge(g, index))

@@ -49,7 +49,6 @@ interface CanvasProps {
   ) => void
   onConnect: (edge: { port: number; source: string; target: string }) => void
   onMove: (id: string, position: Point) => void
-  onOpenPalette: (() => void) | null
   onRemoveEdge: (index: number) => void
   onSelect: (selection: Selection) => void
   onView: (view: View) => void
@@ -78,7 +77,6 @@ export function Canvas({
   onAdd,
   onConnect,
   onMove,
-  onOpenPalette,
   onRemoveEdge,
   onSelect,
   onView,
@@ -457,18 +455,6 @@ export function Canvas({
             })}
           </div>
         </div>
-      )}
-
-      {onOpenPalette && (
-        <button
-          className="border-tertiary bg-primary hover:bg-secondary absolute top-4 left-4 flex h-8.5 items-center gap-1.5 rounded-md border px-3 text-sm font-medium"
-          onClick={onOpenPalette}
-          onPointerDown={(e) => e.stopPropagation()}
-          type="button"
-        >
-          <Plus className="size-3.5" />
-          Add step
-        </button>
       )}
 
       {quick && (

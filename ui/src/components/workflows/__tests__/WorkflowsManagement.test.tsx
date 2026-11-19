@@ -762,6 +762,26 @@ describe('WorkflowsManagement', () => {
     expect(await screen.findByText('Saved · v3')).toBeInTheDocument()
   })
 
+  it('collapses the palette to an icon rail that still adds steps', async () => {
+    renderAt('/agents/workflows/deploy-guard')
+    expect(await screen.findByText('Let traffic settle')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse steps' }))
+    expect(screen.queryByLabelText('Search steps')).not.toBeInTheDocument()
+    expect(localStorage.setItem).toHaveBeenCalledWith(
+      'imbi:workflows:palette-collapsed',
+      'true',
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Deploy' }))
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand steps' }))
+    expect(screen.getByLabelText('Search steps')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /^Deploy\s*Ship a release/ }),
+    ).toBeInTheDocument()
+  })
+
   it('keeps an edit made during the first save of a new workflow', async () => {
     vi.mocked(endpoints.listTeams).mockResolvedValue([
       { id: 'team-1', name: 'Platform', slug: 'platform' },

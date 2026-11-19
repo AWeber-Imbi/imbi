@@ -62,6 +62,9 @@ The **palette** shows the step types in three groups: **Triggers**,
 
 - Click a step type to add it after the selected step.
 - Drag a step type onto the canvas to put it at that position.
+- Click **Collapse steps** to show the palette as a narrow column of step
+  icons. Click or drag an icon to add that step. Click **Expand steps** to
+  show the full palette again. Imbi keeps your choice in this browser.
 
 On the **canvas**:
 
