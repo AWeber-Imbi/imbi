@@ -1171,22 +1171,15 @@ async def cleanup_retired_permissions(db: graph.Graph) -> int:
         raw = graph.parse_agtype(records[0].get('removed'))
         removed = int(raw or 0)
     if removed:
-        renames = ', '.join(
-            f'{{{{old: {{o_{i}}}, new: {{n_{i}}}}}}}'
-            for i in range(len(RENAMED_PERMISSIONS))
-        )
-        for i, (old, new) in enumerate(RENAMED_PERMISSIONS.items()):
-            params[f'o_{i}'] = old
-            params[f'n_{i}'] = new
-        await db.execute(
-            'UNWIND [' + renames + '] AS rename '
-            'MATCH (r:Role)-[:GRANTS]->(:Permission {{name: rename.old}}) '
-            'MATCH (p:Permission {{name: rename.new}}) '
-            'MERGE (r)-[:GRANTS]->(p) '
-            'RETURN count(p) AS granted',
-            params,
-            columns=['granted'],
-        )
+        for old, new in RENAMED_PERMISSIONS.items():
+            await db.execute(
+                'MATCH (r:Role)-[:GRANTS]->(:Permission {{name: {old}}}) '
+                'MATCH (p:Permission {{name: {new}}}) '
+                'MERGE (r)-[:GRANTS]->(p) '
+                'RETURN count(p) AS granted',
+                {'old': old, 'new': new},
+                columns=['granted'],
+            )
         delete_query: str = (
             'UNWIND [' + placeholders + '] AS name '
             'MATCH (p:Permission {{name: name}}) '

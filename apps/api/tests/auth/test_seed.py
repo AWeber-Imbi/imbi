@@ -53,13 +53,16 @@ class SeedPermissionsTestCase(unittest.IsolatedAsyncioTestCase):
             removed = await seed.cleanup_retired_permissions(mock_db)
 
         self.assertEqual(removed, 4)
-        # One query to count, one to move the grants of renamed
-        # permissions, one to detach-delete.
-        self.assertEqual(mock_db.execute.await_count, 3)
+        # One query to count, one for each renamed permission to move
+        # its grants, one to detach-delete.
+        self.assertEqual(
+            mock_db.execute.await_count, len(seed.RENAMED_PERMISSIONS) + 2
+        )
         grant = mock_db.execute.await_args_list[1]
         self.assertIn('MERGE (r)-[:GRANTS]->(p)', grant.args[0])
-        self.assertEqual(grant.args[1]['o_0'], 'agent_task:read')
-        self.assertEqual(grant.args[1]['n_0'], 'ticket:read')
+        self.assertEqual(
+            grant.args[1], {'old': 'agent_task:read', 'new': 'ticket:read'}
+        )
 
     async def test_cleanup_retired_permissions_noop(self) -> None:
         """No delete is issued when nothing retired remains."""

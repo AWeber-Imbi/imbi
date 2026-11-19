@@ -19,14 +19,14 @@ export function hasPermission(
 ): boolean {
   if (!user) return false
   if (orgSlug === undefined) {
-    return !!user.is_admin || holds(user.permissions, permission)
+    return !!user.is_admin || (user.permissions ?? []).includes(permission)
   }
   const membership = (user.organizations ?? []).find(
     (m) => m.organization_slug === orgSlug,
   )
   if (!membership) return false
   // An API older than this UI omits `permissions` from each membership.
-  return !!user.is_admin || holds(membership.permissions, permission)
+  return !!user.is_admin || (membership.permissions ?? []).includes(permission)
 }
 
 /** {@link hasPermission} for the current user. */
@@ -36,8 +36,4 @@ export function useHasPermission(
 ): boolean {
   const { user } = useAuth()
   return hasPermission(user, permission, orgSlug)
-}
-
-function holds(held: null | string[] | undefined, permission: string) {
-  return (held ?? []).includes(permission)
 }
