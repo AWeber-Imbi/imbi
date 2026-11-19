@@ -1229,10 +1229,19 @@ describe('Tasks', () => {
     })
   })
 
-  it('keeps the reply box on every tab while the task is open', async () => {
-    renderAt('/tickets/acme/T-3/overview')
+  it('shows the reply box only in the Conversation view', async () => {
+    renderAt('/tickets/acme/T-3/conversation')
     expect(await screen.findByLabelText('Reply')).toBeInTheDocument()
   })
+
+  it.each(['overview', 'trajectory', 'statistics'])(
+    'has no reply box on %s',
+    async (tab) => {
+      renderAt(`/tickets/acme/T-3/${tab}`)
+      await screen.findByRole('tab', { name: /Overview/ })
+      expect(screen.queryByLabelText('Reply')).not.toBeInTheDocument()
+    },
+  )
 
   it('has no reply box on a closed task', async () => {
     vi.mocked(endpoints.getTicket).mockResolvedValue({
@@ -1414,6 +1423,159 @@ describe('Tasks', () => {
       ),
     )
     await waitFor(() => expect(screen.getByLabelText('Reply')).toHaveValue(''))
+  })
+
+  it('keeps the reply draft across Activity views', async () => {
+    renderAt('/tickets/acme/T-3/conversation')
+    fireEvent.change(await screen.findByLabelText('Reply'), {
+      target: { value: 'Half a thought' },
+    })
+    fireEvent.click(screen.getByRole('radio', { name: /^Trajectory/ }))
+    await waitFor(() =>
+      expect(screen.queryByLabelText('Reply')).not.toBeInTheDocument(),
+    )
+    fireEvent.click(screen.getByRole('radio', { name: /^Conversation/ }))
+    expect(await screen.findByLabelText('Reply')).toHaveValue('Half a thought')
+  })
+
+  it('keeps text typed while a reply is being sent', async () => {
+    let finish: (task: typeof BLOCKED) => void = () => undefined
+    vi.mocked(endpoints.replyTicket).mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    renderAt('/tickets/acme/T-3/conversation')
+    const box = await screen.findByLabelText('Reply')
+    fireEvent.change(box, { target: { value: 'First.' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    await waitFor(() =>
+      expect(endpoints.replyTicket).toHaveBeenCalledWith(
+        'acme',
+        'T-3',
+        'First.',
+        false,
+      ),
+    )
+    fireEvent.change(box, { target: { value: 'Second.' } })
+    finish(BLOCKED)
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Send reply' })).toBeEnabled(),
+    )
+    expect(screen.getByLabelText('Reply')).toHaveValue('Second.')
+  })
+
+  it('keeps a pending reply pending across Activity views', async () => {
+    let finish: (task: typeof BLOCKED) => void = () => undefined
+    vi.mocked(endpoints.replyTicket).mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    renderAt('/tickets/acme/T-3/conversation')
+    const box = await screen.findByLabelText('Reply')
+    fireEvent.change(box, { target: { value: 'Only once.' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    await waitFor(() => expect(endpoints.replyTicket).toHaveBeenCalledTimes(1))
+    fireEvent.click(screen.getByRole('radio', { name: /^Trajectory/ }))
+    await waitFor(() =>
+      expect(screen.queryByLabelText('Reply')).not.toBeInTheDocument(),
+    )
+    fireEvent.click(screen.getByRole('radio', { name: /^Conversation/ }))
+    const again = await screen.findByLabelText('Reply')
+    expect(again).toHaveValue('Only once.')
+    expect(screen.getByRole('button', { name: 'Send reply' })).toBeDisabled()
+    expect(
+      screen.getByRole('button', { name: 'Reply and hold' }),
+    ).toBeDisabled()
+    fireEvent.keyDown(again, { key: 'Enter' })
+    expect(endpoints.replyTicket).toHaveBeenCalledTimes(1)
+    finish(BLOCKED)
+    await waitFor(() => expect(screen.getByLabelText('Reply')).toHaveValue(''))
+    fireEvent.change(screen.getByLabelText('Reply'), {
+      target: { value: 'Next.' },
+    })
+    expect(screen.getByRole('button', { name: 'Send reply' })).toBeEnabled()
+  })
+
+  it('sends a reply on Enter and keeps Shift+Enter for a new line', async () => {
+    vi.mocked(endpoints.replyTicket).mockResolvedValue(BLOCKED)
+    renderAt('/tickets/acme/T-3/conversation')
+    const box = await screen.findByLabelText('Reply')
+    fireEvent.change(box, { target: { value: 'Use the staging cluster.' } })
+    fireEvent.keyDown(box, { key: 'Enter', shiftKey: true })
+    expect(endpoints.replyTicket).not.toHaveBeenCalled()
+    fireEvent.keyDown(box, { key: 'Enter' })
+    await waitFor(() =>
+      expect(endpoints.replyTicket).toHaveBeenCalledWith(
+        'acme',
+        'T-3',
+        'Use the staging cluster.',
+        false,
+      ),
+    )
+    await waitFor(() => expect(screen.getByLabelText('Reply')).toHaveValue(''))
+  })
+
+  it('keeps Enter as a new line after a touch on the reply box', async () => {
+    vi.mocked(endpoints.replyTicket).mockResolvedValue(BLOCKED)
+    renderAt('/tickets/acme/T-3/conversation')
+    const box = await screen.findByLabelText('Reply')
+    fireEvent.change(box, { target: { value: 'From a tablet.' } })
+    fireEvent.pointerDown(box, { pointerType: 'touch' })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(endpoints.replyTicket).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('radio', { name: /^Trajectory/ }))
+    await waitFor(() =>
+      expect(screen.queryByLabelText('Reply')).not.toBeInTheDocument(),
+    )
+    fireEvent.click(screen.getByRole('radio', { name: /^Conversation/ }))
+    const again = await screen.findByLabelText('Reply')
+    fireEvent.keyDown(again, { key: 'Enter' })
+    expect(endpoints.replyTicket).not.toHaveBeenCalled()
+    fireEvent.pointerDown(again, { pointerType: 'mouse' })
+    fireEvent.keyDown(again, { key: 'Enter' })
+    await waitFor(() =>
+      expect(endpoints.replyTicket).toHaveBeenCalledWith(
+        'acme',
+        'T-3',
+        'From a tablet.',
+        false,
+      ),
+    )
+  })
+
+  it('sends on Enter after a mouse press on a coarse pointer', async () => {
+    vi.mocked(endpoints.replyTicket).mockResolvedValue(BLOCKED)
+    const fine = window.matchMedia
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      ...fine(query),
+      matches: query === '(pointer: coarse)',
+    }))
+    renderAt('/tickets/acme/T-3/conversation')
+    const box = await screen.findByLabelText('Reply')
+    fireEvent.change(box, { target: { value: 'With a mouse.' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(endpoints.replyTicket).not.toHaveBeenCalled()
+    fireEvent.pointerDown(box, { pointerType: 'mouse' })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    await waitFor(() =>
+      expect(endpoints.replyTicket).toHaveBeenCalledWith(
+        'acme',
+        'T-3',
+        'With a mouse.',
+        false,
+      ),
+    )
+    vi.unstubAllGlobals()
+  })
+
+  it('does not send an empty reply', async () => {
+    renderAt('/tickets/acme/T-3/conversation')
+    const box = await screen.findByLabelText('Reply')
+    expect(screen.getByRole('button', { name: 'Send reply' })).toBeDisabled()
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(endpoints.replyTicket).not.toHaveBeenCalled()
   })
 
   it(

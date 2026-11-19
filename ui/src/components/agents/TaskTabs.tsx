@@ -1,9 +1,25 @@
-import { type FormEvent, useState } from 'react'
+import {
+  type Dispatch,
+  type FormEvent,
+  type KeyboardEvent,
+  type RefObject,
+  type SetStateAction,
+  useState,
+} from 'react'
 
-import { Activity, Check, Clock, Hand, type LucideIcon, X } from 'lucide-react'
+import {
+  Activity,
+  ArrowUp,
+  Check,
+  Clock,
+  Hand,
+  type LucideIcon,
+  Pause,
+  X,
+} from 'lucide-react'
 
 import { ApiError } from '@/api/client'
-import { replyTicket, resolveTicketRequest } from '@/api/endpoints'
+import { resolveTicketRequest } from '@/api/endpoints'
 import { StageCardShell } from '@/components/deployments/StageCardShell'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -27,7 +43,7 @@ import type { Ticket, TicketEvent, TicketResolve } from '@/types'
 import { useAgentList } from './agentQueries'
 import { checksFrom, type TaskRequestView } from './taskEvents'
 import { AgentMark, PersonMark } from './TaskFilterBar'
-import { errorMessage, useTicketMutation } from './taskQueries'
+import { errorMessage, type TaskReply, useTicketMutation } from './taskQueries'
 import { RESOLVED, useActorName } from './taskText'
 
 const HONEY = '#C9A227'
@@ -110,47 +126,99 @@ export function ChecksTab({ events }: { events: TicketEvent[] }) {
 }
 
 /** Reply and Reply and hold: steer the task while it is open. */
-export function Composer({ orgSlug, task }: { orgSlug: string; task: Ticket }) {
+export function Composer({
+  body,
+  onBodyChange,
+  orgSlug,
+  pointer,
+  reply,
+}: {
+  body: string
+  onBodyChange: Dispatch<SetStateAction<string>>
+  orgSlug: string
+  pointer: RefObject<null | string>
+  reply: TaskReply
+}) {
   const canManage = useHasPermission('ticket:manage', orgSlug)
-  const [body, setBody] = useState('')
-  const reply = useTicketMutation(orgSlug, task.short_id, (hold: boolean) =>
-    replyTicket(orgSlug, task.short_id, body.trim(), hold),
-  )
   if (!canManage) return null
-  const send = (hold: boolean) =>
-    reply.mutate(hold, { onSuccess: () => setBody('') })
+  const ready = body.trim() !== '' && !reply.isPending
+  const send = (hold: boolean) => {
+    if (!ready) return
+    const text = body
+    reply
+      .mutateAsync({ hold, text })
+      .then(() => onBodyChange((now) => (now === text ? '' : now)))
+      .catch(() => undefined)
+  }
+  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    const touch =
+      pointer.current === null
+        ? !!window.matchMedia?.('(pointer: coarse)').matches
+        : pointer.current !== 'mouse'
+    if (
+      event.key !== 'Enter' ||
+      event.shiftKey ||
+      event.nativeEvent.isComposing ||
+      touch
+    )
+      return
+    event.preventDefault()
+    send(false)
+  }
   return (
-    <div className="border-tertiary bg-primary flex shrink-0 flex-col gap-2 border-t px-6 py-3">
-      <Textarea
-        aria-label="Reply"
-        onChange={(e) => setBody(e.target.value)}
-        placeholder="Add a comment, answer a question, or steer the agent"
-        rows={3}
-        value={body}
-      />
-      <div className="flex items-center gap-2">
-        <Button
-          disabled={!body.trim() || reply.isPending}
-          onClick={() => send(false)}
-          size="sm"
-        >
-          Reply
-        </Button>
-        <Button
-          disabled={!body.trim() || reply.isPending}
-          onClick={() => send(true)}
-          size="sm"
-          title="Reply and pause the ticket"
-          variant="outline"
-        >
-          Reply and hold
-        </Button>
-        {reply.error && (
-          <span className="text-danger text-xs" role="alert">
-            {errorMessage(reply.error)}
-          </span>
-        )}
-      </div>
+    <div className="px-6 pt-2 pb-4">
+      <form
+        className="border-secondary bg-secondary focus-within:border-input pointer-events-auto mx-auto flex w-full max-w-3xl flex-col rounded-[20px] border shadow-lg transition-colors"
+        onSubmit={(event) => {
+          event.preventDefault()
+          send(false)
+        }}
+      >
+        <Textarea
+          aria-label="Reply"
+          autoResize
+          className="max-h-50 min-h-17.5 rounded-none border-0 bg-transparent px-4 pt-3.5 pb-1 leading-relaxed focus-visible:ring-0 focus-visible:ring-offset-0"
+          onChange={(e) => onBodyChange(e.target.value)}
+          onKeyDown={onKeyDown}
+          onPointerDown={(e) => {
+            pointer.current = e.pointerType
+          }}
+          placeholder="Add a comment, answer a question, or steer the agent"
+          rows={1}
+          value={body}
+        />
+        <div className="flex items-center gap-2 px-3 pb-3">
+          {reply.error && (
+            <span className="text-danger min-w-0 truncate text-xs" role="alert">
+              {errorMessage(reply.error)}
+            </span>
+          )}
+          <div className="ml-auto flex shrink-0 items-center gap-1.5">
+            <Button
+              className="h-8 rounded-full px-3"
+              disabled={!ready}
+              onClick={() => send(true)}
+              size="sm"
+              title="Reply and pause the ticket"
+              type="button"
+              variant="outline"
+            >
+              <Pause className="size-3.5" />
+              Reply and hold
+            </Button>
+            <Button
+              aria-label="Send reply"
+              className="rounded-full"
+              disabled={!ready}
+              size="icon-sm"
+              title="Reply (Enter). Shift+Enter for a new line."
+              type="submit"
+            >
+              <ArrowUp className="size-4" />
+            </Button>
+          </div>
+        </div>
+      </form>
     </div>
   )
 }
