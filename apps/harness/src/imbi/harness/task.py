@@ -466,15 +466,19 @@ _PLUGIN_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}')
 _MARKETPLACE_ONLY = frozenset({'source', 'category', 'tags', 'strict'})
 
 
-def _history(entries: list[Body], cut: int) -> str:
-    """The ticket history text, in an untrusted block when an entry came
-    from a webhook."""
-    lines = [
+def _entry(entry: Body) -> str:
+    """One line of the ticket history."""
+    return (
         f'- {entry.get("at")} {entry.get("kind")}'
         + (f' by {entry["actor"]}' if entry.get('actor') else '')
         + f': {entry.get("text")}'
-        for entry in entries
-    ]
+    )
+
+
+def _history(entries: list[Body], cut: int) -> str:
+    """The ticket history text, in an untrusted block when an entry came
+    from a webhook."""
+    lines = [_entry(entry) for entry in entries]
     if cut:
         lines.insert(0, f'[{cut} older entries were cut to fit the limit.]')
     text = '\n'.join(lines)
@@ -759,7 +763,13 @@ class TaskRun:
         self.relay: relay.Relay | None = None
         #: The newest task state from imbi-api.
         self.state: Body = {}
+        #: The event cursor: the newest event read. :meth:`read_events`
+        #: is the one reader, so no event is read twice.
         self.seq = 0
+        self.events_lock = asyncio.Lock()
+        #: The human comments read after :attr:`seq` that the model has
+        #: not seen, as history entries with their ``seq``.
+        self.comments: list[Body] = []
         #: The ticket history before this session (:meth:`read_history`).
         self.history = ''
         #: Request outcomes read by any wait, by request id, so a wait
@@ -1848,7 +1858,13 @@ class TaskRun:
             async with self.client:
                 if self.stopping is not None:
                     return None
-                await self.client.query(self.instruction())
+                # Comments written after the session opened are not in
+                # the history.
+                await self.read_events()
+                prompt = self.instruction()
+                if self.comments:
+                    prompt += f'\n\n{self.take_comments()}'
+                await self.client.query(prompt)
                 self.reader = asyncio.create_task(
                     self._receive(self.client, transcript)
                 )
@@ -1884,8 +1900,10 @@ class TaskRun:
                 self.result_text = message.result
             if isinstance(message, (sdk.UserMessage, sdk.ResultMessage)):
                 await self.flush()
-            if isinstance(message, sdk.ResultMessage) and not self._waits(
-                message
+            if (
+                isinstance(message, sdk.ResultMessage)
+                and not self._waits(message)
+                and not await self._answer_comments(client, message)
             ):
                 return
 
@@ -1900,16 +1918,20 @@ class TaskRun:
         ):
             self.background.discard(message.task_id)
 
+    def _can_go_on(self, result: sdk.ResultMessage) -> bool:
+        """Another turn can follow ``result``: it is a ``success`` and
+        the task is not stopping."""
+        return (
+            not result.is_error
+            and result.subtype == 'success'
+            and self.stopping is None
+        )
+
     def _waits(self, result: sdk.ResultMessage) -> bool:
         """The session goes on after a ``success`` result: a background
         task runs and the task is not stopping. An error result ends
         the session: no turn follows it to merge the background work."""
-        if (
-            result.is_error
-            or result.subtype != 'success'
-            or not self.background
-            or self.stopping is not None
-        ):
+        if not self.background or not self._can_go_on(result):
             return False
         LOGGER.info(
             'Task %s waits for %d background tasks',
@@ -1917,6 +1939,68 @@ class TaskRun:
             len(self.background),
         )
         return True
+
+    async def _answer_comments(
+        self, client: sdk.ClaudeSDKClient, result: sdk.ResultMessage
+    ) -> bool:
+        """Start a turn with the comments that people wrote during the
+        last turn. Return ``True`` when a turn starts.
+
+        Comments go only between turns: the CLI queues a prompt that
+        comes during a turn, so each prompt sent here gets one result.
+        A comment after an error result or a stop is not sent; the
+        history of the next session has it.
+        """
+        if not self._can_go_on(result):
+            return False
+        await self.read_events()
+        if not self.comments:
+            return False
+        await client.query(self.take_comments())
+        return True
+
+    async def read_events(self) -> bool:
+        """Read the events after :attr:`seq`. Keep request outcomes in
+        :attr:`outcomes` and human comments in :attr:`comments`.
+        Return ``True`` when there were events."""
+        async with self.events_lock:
+            try:
+                found = await self.api.events(self.seq)
+            except (api.Refused, httpx.HTTPError) as err:
+                LOGGER.warning('Events of %s: %s', self.api.short_id, err)
+                return False
+            for event in found:
+                seq = int(event.get('seq') or 0)
+                self.seq = max(self.seq, seq)
+                payload: Body = event.get('payload') or {}
+                kind = event.get('type')
+                if kind == 'turn' and event.get('actor_kind') == 'human':
+                    self.comments.append(
+                        {
+                            'seq': seq,
+                            'at': event.get('at'),
+                            'kind': 'comment',
+                            'actor': event.get('actor_id'),
+                            'text': payload.get('body') or '',
+                        }
+                    )
+                    continue
+                answered = payload.get('request_id')
+                if answered is None:
+                    continue
+                if kind == 'request.resolved':
+                    self.recorder.saw_input(seq)
+                    self.outcomes[str(answered)] = payload
+                elif kind == 'request.expired':
+                    self.outcomes[str(answered)] = {'status': 'expired'}
+            return bool(found)
+
+    def take_comments(self) -> str:
+        """The comments for the model; they are then seen."""
+        comments, self.comments = self.comments, []
+        self.recorder.saw_input(max(c['seq'] for c in comments))
+        text = '\n'.join(_entry(c) for c in comments)
+        return f'New comments on the ticket, oldest first:\n{text}'
 
     def _check_plugins(self, message: typing.Any) -> None:
         """Fail the task when a pinned plugin did not load (plan 5.2)."""
@@ -2093,26 +2177,7 @@ class TaskRun:
         while not self.stopped:
             if request_id in self.outcomes:
                 return self.outcomes.pop(request_id)
-            try:
-                found = await self.api.events(self.seq)
-            except (api.Refused, httpx.HTTPError) as err:
-                LOGGER.warning('Events of %s: %s', self.api.short_id, err)
-                found = []
-            for event in found:
-                seq = int(event.get('seq') or 0)
-                self.seq = max(self.seq, seq)
-                payload: Body = event.get('payload') or {}
-                answered = payload.get('request_id')
-                if answered is None:
-                    continue
-                if event.get('type') == 'request.resolved':
-                    self.recorder.saw_input(seq)
-                    self.outcomes[str(answered)] = payload
-                elif event.get('type') == 'request.expired':
-                    self.outcomes[str(answered)] = {'status': 'expired'}
-            if request_id in self.outcomes:
-                return self.outcomes.pop(request_id)
-            if not found:
+            if not await self.read_events():
                 await self.nap()
         return {'status': 'stopped'}
 
