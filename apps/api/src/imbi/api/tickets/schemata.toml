@@ -218,6 +218,8 @@ structured_output = "JSONB"
 # an agent makes from its own ticket starts with its parent set. NULL
 # for a root ticket. The `tickets-parent-fkey` step adds the foreign key.
 parent_id = "UUID"
+# How urgent the ticket is: `low`, `normal`, `high`, or `urgent`.
+priority = "TEXT NOT NULL DEFAULT 'normal'"
 
 [tables.primary_key]
 columns = ["id"]

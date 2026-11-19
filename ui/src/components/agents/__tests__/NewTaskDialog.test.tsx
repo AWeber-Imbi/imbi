@@ -1,4 +1,4 @@
-import { fireEvent, waitFor } from '@testing-library/react'
+import { fireEvent, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as endpoints from '@/api/endpoints'
@@ -66,14 +66,19 @@ describe('NewTaskDialog', () => {
       screen.getByText('Needs a description and an agent.'),
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Create ticket' })).toBeDisabled()
-    expect(await screen.findAllByRole('radio')).toHaveLength(2)
+    const agents = await screen.findByRole('radiogroup', { name: 'Agent' })
+    expect(within(agents).getAllByRole('radio')).toHaveLength(2)
     expect(screen.queryByText('Retired')).toBeNull()
   })
 
   it('keeps the agent of the Run button', () => {
     render(<NewTaskDialog agent={agent('mender')} isOpen onClose={vi.fn()} />)
     expect(screen.getByRole('radio', { name: /Mender/ })).toBeChecked()
-    expect(screen.getAllByRole('radio')).toHaveLength(1)
+    expect(
+      within(screen.getByRole('radiogroup', { name: 'Agent' })).getAllByRole(
+        'radio',
+      ),
+    ).toHaveLength(1)
     expect(endpoints.listAgents).not.toHaveBeenCalled()
   })
 
@@ -105,6 +110,7 @@ describe('NewTaskDialog', () => {
       agent_slug: 'forager',
       description:
         'Fix the crash https://sentry.io/issues/1\nIt fails on save.',
+      priority: 'normal',
       project_ids: ['p-3'],
       title: 'Fix the crash',
     })
@@ -131,23 +137,26 @@ describe('NewTaskDialog', () => {
     expect(endpoints.createTicket).toHaveBeenCalledWith('acme', {
       agent_slug: 'forager',
       description: 'Sync the schemas',
+      priority: 'normal',
       project_ids: ['p-3', 'p-1'],
       title: 'Sync the schemas',
     })
   })
 
-  it('creates a task without a project', async () => {
+  it('creates an urgent task without a project', async () => {
     const onClose = vi.fn()
     render(<NewTaskDialog isOpen onClose={onClose} />)
     fireEvent.change(screen.getByLabelText('What should the agent do?'), {
       target: { value: 'Look for shell=True calls' },
     })
     fireEvent.click(await screen.findByRole('radio', { name: /Forager/ }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Urgent' }))
     fireEvent.click(screen.getByRole('button', { name: 'Create ticket' }))
     await waitFor(() => expect(onClose).toHaveBeenCalled())
     expect(endpoints.createTicket).toHaveBeenCalledWith('acme', {
       agent_slug: 'forager',
       description: 'Look for shell=True calls',
+      priority: 'urgent',
       project_ids: [],
       title: 'Look for shell=True calls',
     })

@@ -16,6 +16,11 @@ import {
   scrollPane,
 } from './virtualLayout'
 
+// fallow-ignore-next-line unresolved-import
+vi.mock('@/contexts/ThemeContext', () => ({
+  useTheme: () => ({ isDarkMode: false }),
+}))
+
 vi.mock('@/hooks/useHasPermission', () => ({
   useHasPermission: () => false,
 }))
@@ -90,6 +95,39 @@ describe('ConversationTab', () => {
     expect(screen.queryByText(/tests passed/)).not.toBeInTheDocument()
     await user.click(call)
     expect(screen.getByText(/tests passed/)).toBeInTheDocument()
+  })
+
+  it('inspects an open call in the trajectory', async () => {
+    const user = userEvent.setup()
+    const onInspect = vi.fn()
+    render(
+      <div className="flex h-150 flex-col">
+        <ConversationTab
+          events={LOG}
+          onInspect={onInspect}
+          orgSlug="acme"
+          requests={[]}
+          task={task({ status: 'closed' }) as unknown as Ticket}
+        />
+      </div>,
+    )
+    await user.click(screen.getByRole('radio', { name: 'Verbose' }))
+    const inspect = { name: 'Inspect Bash in the trajectory' }
+    expect(screen.queryByRole('button', inspect)).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Bash make test/ }))
+    await user.click(screen.getByRole('button', inspect))
+    expect(onInspect).toHaveBeenCalledWith(3)
+  })
+
+  it('offers no Inspect without a trajectory to open', async () => {
+    const user = userEvent.setup()
+    renderTab('closed')
+    await user.click(screen.getByRole('radio', { name: 'Verbose' }))
+    await user.click(screen.getByRole('button', { name: /Bash make test/ }))
+    expect(screen.getByText(/tests passed/)).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /^Inspect/ }),
+    ).not.toBeInTheDocument()
   })
 
   it('opens every group in Verbose but no call, and keeps the mode', async () => {

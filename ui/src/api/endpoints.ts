@@ -3952,6 +3952,15 @@ export const reassignTicket = (
     owner,
   })
 
+export const setTicketPriority = (
+  orgSlug: string,
+  shortId: string,
+  priority: Ticket['priority'],
+) =>
+  apiClient.post<Ticket>(`${ticketPath(orgSlug, shortId)}/priority`, {
+    priority,
+  })
+
 /** A reply from a person; `hold` also pauses the task. */
 export const replyTicket = (
   orgSlug: string,

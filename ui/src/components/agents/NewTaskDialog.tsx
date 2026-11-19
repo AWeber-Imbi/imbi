@@ -23,6 +23,7 @@ import type { Agent } from '@/types'
 import { useAgentList } from './agentQueries'
 import { ticketsPath } from './agentsNav'
 import { detectSource, titleFrom } from './newTask'
+import { type Priority, PriorityPicker } from './priority'
 import { errorMessage } from './taskQueries'
 
 const PROJECTS_SHOWN = 6
@@ -48,6 +49,7 @@ export function NewTaskDialog({
   const [request, setRequest] = useState('')
   const [agentSlug, setAgentSlug] = useState('')
   const [projectIds, setProjectIds] = useState<string[]>([])
+  const [priority, setPriority] = useState<Priority>('normal')
   const [query, setQuery] = useState('')
 
   useEffect(() => {
@@ -55,6 +57,7 @@ export function NewTaskDialog({
     setRequest('')
     setAgentSlug(agent?.slug ?? '')
     setProjectIds([])
+    setPriority('normal')
     setQuery('')
   }, [agent, isOpen])
 
@@ -103,6 +106,7 @@ export function NewTaskDialog({
       createTicket(orgSlug, {
         agent_slug: agentSlug,
         description: request.trim(),
+        priority,
         project_ids: projectIds,
         title: titleFrom(request),
       }),
@@ -187,6 +191,11 @@ export function NewTaskDialog({
                 ))}
               </div>
             )}
+          </div>
+
+          <div className="flex flex-col items-start gap-2">
+            <Overline>Priority</Overline>
+            <PriorityPicker onChange={setPriority} value={priority} />
           </div>
 
           <div className="flex flex-col gap-2">

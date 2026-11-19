@@ -27,6 +27,7 @@ const SHOWN = new Set([
   'outcome.set',
   'owner.changed',
   'phase.changed',
+  'priority.changed',
   'request.opened',
   'request.resolved',
   'state.changed',
