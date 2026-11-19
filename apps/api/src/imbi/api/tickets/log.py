@@ -113,8 +113,10 @@ def event_row(task: Row, event: Row) -> Row:
         'organization_id': task['organization_id'],
         'ticket_id': str(task['id']),
         'short_id': task['short_id'],
-        'agent_id': task['agent_id'],
-        'agent_version': task['agent_version'],
+        # Empty on a person ticket: the ClickHouse columns are not
+        # nullable (ADR 0028).
+        'agent_id': task['agent_id'] or '',
+        'agent_version': task['agent_version'] or 0,
         'project_id': _project_ids(task),
         'seq': event['seq'],
         'event_id': str(event['event_id']),

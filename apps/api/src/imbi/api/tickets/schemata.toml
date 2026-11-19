@@ -235,6 +235,42 @@ sql = '''
 ALTER TABLE tickets.tickets VALIDATE CONSTRAINT tickets_parent_fkey;
 '''
 
+# Person tickets (ADR 0028). The agent columns become nullable, and the
+# first checks on `tickets` tie the assignee columns and the status to
+# the assignee kind. The step runs after the tables, so that the
+# `assignee_kind` and `assignee` columns exist. A row of the previous
+# release is an agent ticket with a status of the agent set, so the
+# checks hold for it.
+[[steps]]
+name = "tickets-assignee-checks"
+after_tables = true
+when = """
+SELECT NOT EXISTS (
+         SELECT 1 FROM pg_constraint
+          WHERE conrelid = 'tickets.tickets'::regclass
+            AND conname = 'tickets_assignee_kind_check')
+"""
+sql = '''
+ALTER TABLE tickets.tickets
+  ALTER COLUMN agent_id DROP NOT NULL,
+  ALTER COLUMN agent_version DROP NOT NULL,
+  ALTER COLUMN service_account_id DROP NOT NULL,
+  ADD CONSTRAINT tickets_assignee_kind_check
+    CHECK (assignee_kind IN ('agent', 'person')),
+  ADD CONSTRAINT tickets_agent_assignee_check
+    CHECK (assignee_kind <> 'agent' OR (
+      agent_id IS NOT NULL AND agent_version IS NOT NULL
+      AND service_account_id IS NOT NULL AND assignee IS NULL
+      AND status IN ('held', 'queued', 'running', 'paused', 'blocked',
+                     'closed'))),
+  ADD CONSTRAINT tickets_person_assignee_check
+    CHECK (assignee_kind <> 'person' OR (
+      assignee IS NOT NULL AND assignee <> ''
+      AND agent_id IS NULL AND agent_version IS NULL
+      AND service_account_id IS NULL
+      AND status IN ('held', 'open', 'in_progress', 'blocked', 'closed')));
+'''
+
 # One row per ticket.
 #
 # `last_seq` is the sequence number of the newest event. An event write
@@ -247,10 +283,13 @@ name = "tickets"
 id = "UUID NOT NULL"
 organization_id = "TEXT NOT NULL"
 short_id = "TEXT NOT NULL"
-agent_id = "TEXT NOT NULL"
-agent_version = "INTEGER NOT NULL"
+# The agent, its pinned version, and its service account. NULL on a
+# person ticket; the `tickets-assignee-checks` step requires them on an
+# agent ticket (ADR 0028).
+agent_id = "TEXT"
+agent_version = "INTEGER"
 prompt_version = "INTEGER"
-service_account_id = "TEXT NOT NULL"
+service_account_id = "TEXT"
 # Not used. A task had one primary project here before it had a list
 # of projects (`task_projects`). Each start of imbi-api moves a value
 # that it finds to `task_projects` and clears it.
@@ -305,6 +344,11 @@ structured_output = "JSONB"
 parent_id = "UUID"
 # How urgent the ticket is: `low`, `normal`, `high`, or `urgent`.
 priority = "TEXT NOT NULL DEFAULT 'normal'"
+# Who works the ticket (ADR 0028): `agent` (the agent columns) or
+# `person` (`assignee`, the email of the person). A row of the previous
+# release gets the default.
+assignee_kind = "TEXT NOT NULL DEFAULT 'agent'"
+assignee = "TEXT"
 
 [tables.primary_key]
 columns = ["id"]

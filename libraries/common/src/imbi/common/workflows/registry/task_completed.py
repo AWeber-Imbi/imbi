@@ -28,7 +28,8 @@ class Params(pydantic.BaseModel):
 class Output(agent.TicketAttributes):
     #: The short id of the task, such as ``T-12``.
     task_id: str
-    agent_id: str
+    #: ``None`` for a person ticket (ADR 0028).
+    agent_id: str | None
     outcome: agent.Outcome
 
 

@@ -1141,15 +1141,20 @@ class ReadTaskTests(AgentTaskTestCase):
         self.assertEqual(response.status_code, 404, response.text)
 
     async def test_reads_the_statuses_of_a_later_release(self) -> None:
-        # Release A+1 reads what P1 to P4 write (ADR 0028).
+        # Release A+1 reads what P1 to P4 write (ADR 0028). The open
+        # and in progress tickets are person tickets.
         async with self.pool.connection() as conn:
-            for short_id, status in [
-                ('T-1', 'held'),
-                ('T-2', 'open'),
-                ('T-3', 'in_progress'),
-            ]:
+            await conn.execute(
+                "UPDATE tickets.tickets SET status = 'held'"
+                " WHERE organization_id = %s AND short_id = 'T-1'",
+                (self.org,),
+            )
+            for short_id, status in [('T-2', 'open'), ('T-3', 'in_progress')]:
                 await conn.execute(
-                    'UPDATE tickets.tickets SET status = %s'
+                    'UPDATE tickets.tickets SET status = %s,'
+                    " assignee_kind = 'person', assignee = owner,"
+                    ' agent_id = NULL, agent_version = NULL,'
+                    ' service_account_id = NULL'
                     ' WHERE organization_id = %s AND short_id = %s',
                     (status, self.org, short_id),
                 )

@@ -95,9 +95,8 @@ async def run_close_hooks(task: Row) -> None:
 
 
 #: ``held`` is the status of a ticket that an open gating prerequisite
-#: holds (ADR 0028). ``open`` and ``in_progress`` are read but not
-#: written yet: a later release writes them, and this release must read
-#: its rows.
+#: holds (ADR 0028). ``open`` and ``in_progress`` are the statuses of a
+#: person ticket that is not held, blocked, or closed.
 Status = typing.Literal[
     'held',
     'queued',
@@ -113,6 +112,24 @@ Priority = typing.Literal['low', 'normal', 'high', 'urgent']
 ActorKind = typing.Literal['human', 'agent', 'subagent', 'system']
 Channel = typing.Literal['web', 'slack', 'mcp', 'api', 'harness']
 Outcome = agent_step.Outcome
+AssigneeKind = typing.Literal['agent', 'person']
+
+#: The statuses that a person sets on a person ticket, and the statuses
+#: that each one can come from (ADR 0028). ``held`` changes only by its
+#: gates, and ``closed`` comes from every other status.
+PERSON_TRANSITIONS: dict[Status, tuple[Status, ...]] = {
+    'open': ('blocked',),
+    'in_progress': ('open', 'blocked'),
+    'blocked': ('open', 'in_progress'),
+}
+
+#: The outcomes of a person ticket (ADR 0028).
+PersonOutcome = typing.Literal[
+    'done_acted',
+    'done_nothing_to_act_on',
+    'superseded',
+    'cancelled_by_human',
+]
 
 #: The outcomes that release the dependents of a gating prerequisite.
 DONE_OUTCOMES: tuple[Outcome, ...] = ('done_acted', 'done_nothing_to_act_on')
@@ -220,6 +237,10 @@ _TREE: typing.LiteralString = (
     " count(*) FILTER (WHERE status <> 'closed') AS open FROM down"
 )
 
+#: The statuses of a ticket that has not started: a gating
+#: prerequisite can still hold it.
+_NOT_STARTED: tuple[Status, ...] = ('queued', 'open', 'held')
+
 #: The status of a task with no open session, by control value.
 _IDLE_STATUS: dict[Control, Status] = {
     'run': 'queued',
@@ -308,6 +329,19 @@ class TicketHeld(ValueError):
     """An open gating prerequisite holds the ticket; it cannot start."""
 
 
+class WrongAssigneeKind(ValueError):
+    """The change does not apply to the assignee kind of the ticket:
+    control, sessions, and usage apply only to an agent ticket, and
+    person statuses only to a person ticket (ADR 0028)."""
+
+
+class TransitionInvalid(ValueError):
+    """A person ticket cannot move from its status to the one asked."""
+
+    def __init__(self, short_id: str, status: str, to: str) -> None:
+        super().__init__(f'{short_id} cannot move from {status} to {to}')
+
+
 @dataclasses.dataclass(frozen=True)
 class Actor:
     """Who caused an event, and through which channel."""
@@ -322,10 +356,11 @@ class NewTask:
     """The values of a task that the caller sets at creation."""
 
     organization_id: str
-    agent_id: str
-    agent_version: int
+    #: The agent columns are ``None`` on a person ticket.
+    agent_id: str | None
+    agent_version: int | None
     prompt_version: int | None
-    service_account_id: str
+    service_account_id: str | None
     title: str
     description: str
     origin_kind: str
@@ -345,6 +380,12 @@ class NewTask:
     #: return. ``None``: the task asks for none.
     output_schema: Row | None = None
     priority: Priority = 'normal'
+    assignee_kind: AssigneeKind = 'agent'
+    #: The email of the person on a person ticket.
+    assignee: str | None = None
+    #: The short ids of the prerequisites of the ticket, each with its
+    #: ``gates`` value (ADR 0028).
+    requires: abc.Sequence[tuple[str, bool]] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -698,6 +739,7 @@ class TicketStore:
                 (organization_id, kinds, origin_id, key),
             )
 
+    @_retry_deadlock
     async def create(
         self, task: NewTask, actor: Actor, event_payload: Row
     ) -> tuple[Row, bool]:
@@ -707,11 +749,18 @@ class TicketStore:
         task with the same idempotency key first, return that task and
         ``False``. The rollback also returns the short id to the counter.
 
+        An agent ticket starts ``queued`` and a person ticket ``open``.
+        Each prerequisite in ``task.requires`` gets ``dependency.added``
+        on both tickets, as :meth:`add_dependency` writes it. An open
+        gating prerequisite makes the ticket start ``held``.
+
         Raises:
             TaskClosed: The origin is a task that is closed or gone.
+            TaskNotFound: A prerequisite is not in the organization.
 
         """
         task_id = uuid.uuid4()
+        linked: list[tuple[Row, list[Row]]] = []
         try:
             async with self._pool.connection() as conn, conn.transaction():
                 await relational.lock_organization_shared(
@@ -727,6 +776,20 @@ class TicketStore:
                     )
                     if await cursor.fetchone() is None:
                         raise TaskClosed(task.origin_id)
+                # Locked as a close locks them, so a prerequisite that
+                # closes now waits, then sees the new dependency rows.
+                gates = dict(task.requires)
+                prerequisites = await _lock_tasks(
+                    conn, task.organization_id, sorted(gates)
+                )
+                status: Status = (
+                    'open' if task.assignee_kind == 'person' else 'queued'
+                )
+                if any(
+                    gates[p['short_id']] and not _done(p)
+                    for p in prerequisites
+                ):
+                    status = 'held'
                 short_id = await _next_short_id(conn, task.organization_id)
                 await conn.execute(
                     'INSERT INTO tickets.tickets (id, organization_id,'
@@ -735,10 +798,11 @@ class TicketStore:
                     ' description, origin_kind, origin_id, origin,'
                     ' idempotency_key, owner, budget, chain_id,'
                     ' output_schema, parent_id, priority,'
+                    ' assignee_kind, assignee, status,'
                     ' platform_config_version)'
                     ' VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
-                    ' %s, %s, %s, %s, %s, %s, %s, %s, (SELECT max(version)'
-                    ' FROM harness.platform_configs'
+                    ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
+                    ' (SELECT max(version) FROM harness.platform_configs'
                     ' WHERE organization_id = %s))',
                     (
                         task_id,
@@ -762,6 +826,9 @@ class TicketStore:
                         if task.origin_kind in CHILD_ORIGIN_KINDS
                         else None,
                         task.priority,
+                        task.assignee_kind,
+                        task.assignee,
+                        status,
                         task.organization_id,
                     ),
                 )
@@ -808,6 +875,37 @@ class TicketStore:
                     conn, task_id, 'ticket.created', event_payload, actor
                 )
                 row = await _fetch_task(conn, task_id)
+                for prerequisite in prerequisites:
+                    relate = _Relate(conn, [prerequisite, row])
+                    link = await _fetch_one(
+                        conn,
+                        'INSERT INTO tickets.ticket_dependencies'
+                        ' (organization_id, dependent_ticket_id,'
+                        ' prerequisite_ticket_id, created_by_kind,'
+                        ' created_by, gates) VALUES (%s, %s, %s, %s, %s, %s)'
+                        ' RETURNING *',
+                        (
+                            task.organization_id,
+                            task_id,
+                            prerequisite['id'],
+                            actor.kind,
+                            actor.id,
+                            gates[prerequisite['short_id']],
+                        ),
+                    )
+                    if link is None:  # pragma: no cover - RETURNING
+                        raise RuntimeError('dependency insert returned no row')
+                    await relate.event(
+                        'dependency.added',
+                        _dependency_payload(relate, link),
+                        actor,
+                    )
+                    linked += [
+                        (await _fetch_task(conn, ticket_id), events)
+                        for ticket_id, events in relate.events.items()
+                    ]
+                if prerequisites:
+                    row = await _fetch_task(conn, task_id)
         except psycopg.errors.UniqueViolation as err:
             if (
                 err.diag.constraint_name not in ORIGIN_IDEMPOTENCY_KEYS
@@ -824,6 +922,8 @@ class TicketStore:
                 raise
             return existing, False
         await log.publish(row, [event])
+        for ticket, events in linked:
+            await log.publish(ticket, events)
         return row, True
 
     async def get(self, organization_id: str, short_id: str) -> Row | None:
@@ -1266,6 +1366,7 @@ class TicketStore:
             TaskNotFound: No such task.
             TaskClosed: The task is closed.
             CancelPending: A cancel waits for the harness.
+            WrongAssigneeKind: The task is a person ticket.
 
         """
         async with self._write(organization_id, short_id) as write:
@@ -1290,6 +1391,7 @@ class TicketStore:
             TaskNotFound: No such task.
             TaskClosed: The task is closed.
             CancelPending: ``hold`` and a cancel waits for the harness.
+            WrongAssigneeKind: ``hold`` on a person ticket.
 
         """
         async with self._write(organization_id, short_id) as write:
@@ -1439,8 +1541,9 @@ class TicketStore:
             SelfDependency: The two short ids are the same.
             TaskNotFound: No such task.
             TaskArchived: Both tasks are archived.
-            TicketStarted: ``gates``, the dependent is not ``queued`` or
-                ``held``, and the dependency does not gate already.
+            TicketStarted: ``gates``, the dependent is not ``queued``,
+                ``open``, or ``held``, and the dependency does not gate
+                already.
 
         """
         if dependent == prerequisite:
@@ -1450,7 +1553,7 @@ class TicketStore:
         ) as relate:
             by_short_id = {task['short_id']: task for task in relate.tasks}
             task = by_short_id[dependent]
-            if gates and task['status'] not in ('queued', 'held'):
+            if gates and task['status'] not in _NOT_STARTED:
                 cursor = await relate.conn.execute(
                     'SELECT 1 FROM tickets.ticket_dependencies'
                     ' WHERE organization_id = %s AND dependent_ticket_id = %s'
@@ -1830,10 +1933,13 @@ class TicketStore:
             ConcurrencyLimit: ``max_concurrent`` other tasks of the
                 agent have an open session.
             TicketHeld: An open gating prerequisite holds the task.
+            WrongAssigneeKind: The task is a person ticket.
 
         """
         async with self._write(organization_id, short_id) as write:
             task = write.task
+            if task['assignee_kind'] == 'person':
+                raise WrongAssigneeKind(short_id)
             if task['control'] == 'cancel':
                 raise CancelPending(short_id)
             session = await _fetch_one(
@@ -2301,6 +2407,7 @@ class TicketStore:
             TaskClosed: The task is closed.
             SessionNotFound: The task has no such session.
             SessionClosed: The session is closed.
+            WrongAssigneeKind: The task is a person ticket.
 
         """
         repeat = await self._usage_repeat(
@@ -2311,6 +2418,8 @@ class TicketStore:
         try:
             async with self._write(organization_id, short_id) as write:
                 task = write.task
+                if task['assignee_kind'] == 'person':
+                    raise WrongAssigneeKind(short_id)
                 # Two reports with one key wait for the same task lock.
                 existing = await _ledger_row(
                     write.conn, task['id'], usage.idempotency_key
@@ -2436,6 +2545,59 @@ class TicketStore:
                 )
         return write.task
 
+    async def set_person_status(
+        self,
+        organization_id: str,
+        short_id: str,
+        status: Status,
+        actor: Actor,
+        *,
+        outcome: PersonOutcome | None = None,
+        reason: str | None = None,
+    ) -> Row:
+        """Move a person ticket to ``status`` (ADR 0028).
+
+        ``closed`` closes it with ``outcome`` from every status; see
+        :func:`_close`. Other moves follow :data:`PERSON_TRANSITIONS`
+        and write ``state.changed`` with the reason ``started``,
+        ``blocked``, or ``unblocked``, and ``reason`` as ``note``. A
+        move to the current status changes nothing.
+
+        Raises:
+            TaskNotFound: No such task.
+            TaskClosed: The task is closed.
+            WrongAssigneeKind: The task is an agent ticket.
+            TransitionInvalid: The move is not in
+                :data:`PERSON_TRANSITIONS`.
+
+        """
+        async with self._write(organization_id, short_id) as write:
+            task = write.task
+            if task['assignee_kind'] != 'person':
+                raise WrongAssigneeKind(short_id)
+            if status == 'closed' and outcome is not None:
+                await _close(write, outcome, reason, actor)
+            elif task['status'] in PERSON_TRANSITIONS.get(status, ()):
+                code = 'started'
+                if status == 'blocked':
+                    code = 'blocked'
+                elif task['status'] == 'blocked':
+                    code = 'unblocked'
+                await write.event(
+                    'state.changed',
+                    {
+                        'from': task['status'],
+                        'to': status,
+                        'reason': code,
+                        'note': reason,
+                    },
+                    actor,
+                )
+                await write.update({'status': status})
+            elif task['status'] != status:
+                raise TransitionInvalid(short_id, task['status'], status)
+        return write.task
+
 
 async def requeue_chain(
     conn: Conn, chain_id: uuid.UUID, attempt: int, actor: Actor
@@ -2456,7 +2618,8 @@ async def requeue_chain(
         await cursor.execute(
             _SELECT_TASKS
             + ' WHERE (chain_id = %s OR (chain_id IS NULL AND id = %s))'
-            " AND status <> 'closed' ORDER BY id FOR UPDATE",
+            " AND status <> 'closed' AND assignee_kind = 'agent'"
+            ' ORDER BY id FOR UPDATE',
             (chain_id, chain_id),
         )
         tasks = await cursor.fetchall()
@@ -2531,6 +2694,8 @@ async def _apply_control(
 ) -> None:
     """Set the control value; see :meth:`TicketStore.set_control`."""
     task = write.task
+    if task['assignee_kind'] == 'person':
+        raise WrongAssigneeKind(short_id)
     if task['control'] == control:
         return
     if task['control'] == 'cancel':
@@ -2596,29 +2761,38 @@ async def _set_status(
 async def _sync_gate(write: _Write, actor: Actor) -> None:
     """Hold or release a ticket that has not started, by its gates.
 
-    A ``queued`` ticket that an open gating prerequisite holds becomes
-    ``held``. A ``held`` ticket that nothing holds becomes ``queued``,
-    ``paused`` when its control is ``pause``, or ``blocked`` when it has
-    an open request. Other statuses do not
-    change. The caller holds the row lock of the ticket.
+    A ``queued`` (agent) or ``open`` (person) ticket that an open gating
+    prerequisite holds becomes ``held``. A ``held`` person ticket that
+    nothing holds becomes ``open``. A ``held`` agent ticket becomes
+    ``queued``, ``paused`` when its control is ``pause``, or ``blocked``
+    when it has an open request. Other statuses do not change. The
+    caller holds the row lock of the ticket.
     """
     task = write.task
-    if task['status'] not in ('queued', 'held'):
+    if task['status'] not in _NOT_STARTED:
         return
     cursor = await write.conn.execute(
         _GATED, (task['id'], list(DONE_OUTCOMES))
     )
     row = await cursor.fetchone()
     if row and row[0]:
-        if task['status'] == 'queued':
+        if task['status'] != 'held':
             await _set_status(write, 'held', 'gated', actor)
     elif task['status'] == 'held':
         status: Status = 'queued'
-        if task['control'] == 'pause':
+        if task['assignee_kind'] == 'person':
+            status = 'open'
+        elif task['control'] == 'pause':
             status = 'paused'
         elif await _request_open(write.conn, task['id']):
             status = 'blocked'  # It still waits for an answer.
         await _set_status(write, status, 'released', actor)
+
+
+def _done(task: Row) -> bool:
+    """Whether ``task`` closed with an outcome that releases the tickets
+    that it gates."""
+    return task['status'] == 'closed' and task['outcome'] in DONE_OUTCOMES
 
 
 async def _release_dependents(
