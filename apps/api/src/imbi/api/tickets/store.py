@@ -2598,7 +2598,8 @@ async def _sync_gate(write: _Write, actor: Actor) -> None:
 
     A ``queued`` ticket that an open gating prerequisite holds becomes
     ``held``. A ``held`` ticket that nothing holds becomes ``queued``,
-    or ``paused`` when its control is ``pause``. Other statuses do not
+    ``paused`` when its control is ``pause``, or ``blocked`` when it has
+    an open request. Other statuses do not
     change. The caller holds the row lock of the ticket.
     """
     task = write.task
@@ -2612,7 +2613,11 @@ async def _sync_gate(write: _Write, actor: Actor) -> None:
         if task['status'] == 'queued':
             await _set_status(write, 'held', 'gated', actor)
     elif task['status'] == 'held':
-        status: Status = 'paused' if task['control'] == 'pause' else 'queued'
+        status: Status = 'queued'
+        if task['control'] == 'pause':
+            status = 'paused'
+        elif await _request_open(write.conn, task['id']):
+            status = 'blocked'  # It still waits for an answer.
         await _set_status(write, status, 'released', actor)
 
 

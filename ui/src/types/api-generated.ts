@@ -5851,8 +5851,8 @@ export interface paths {
          *             or is not a member of the org.
          *         404: No such task.
          *         409: ``task_archived``: both tasks are archived.
-         *             ``ticket_started``: ``gates`` and the task is not ``queued``
-         *             or ``held``.
+         *             ``ticket_started``: ``gates``, the task is not ``queued``
+         *             or ``held``, and the dependency does not gate already.
          *         422: The two tasks are the same.
          */
         put: operations["add_agent_task_dependency_api_organizations__org_slug__agent_tasks__short_id__requires__prerequisite__put"];
@@ -6520,8 +6520,8 @@ export interface paths {
          *             or is not a member of the org.
          *         404: No such task.
          *         409: ``task_archived``: both tasks are archived.
-         *             ``ticket_started``: ``gates`` and the task is not ``queued``
-         *             or ``held``.
+         *             ``ticket_started``: ``gates``, the task is not ``queued``
+         *             or ``held``, and the dependency does not gate already.
          *         422: The two tasks are the same.
          */
         put: operations["add_ticket_dependency_api_organizations__org_slug__tickets__short_id__requires__prerequisite__put"];
@@ -6785,7 +6785,8 @@ export interface paths {
          *     Raises:
          *         403: The caller is not the service account of the task's agent.
          *         404: No such task.
-         *         409: ``task_closed``, ``task_cancelled`` (control is cancel), or
+         *         409: ``task_closed``, ``task_cancelled`` (control is cancel),
+         *             ``task_held`` (a gating prerequisite is open), or
          *             ``concurrency_limit`` (``settings.max_concurrent_tasks``
          *             other tasks of the agent have an open session).
          */
@@ -6980,7 +6981,8 @@ export interface paths {
          *     Raises:
          *         403: The caller is not the service account of the task's agent.
          *         404: No such task.
-         *         409: ``task_closed``, ``task_cancelled`` (control is cancel), or
+         *         409: ``task_closed``, ``task_cancelled`` (control is cancel),
+         *             ``task_held`` (a gating prerequisite is open), or
          *             ``concurrency_limit`` (``settings.max_concurrent_tasks``
          *             other tasks of the agent have an open session).
          */

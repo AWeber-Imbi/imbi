@@ -397,7 +397,8 @@ ticket until the prerequisite closes with `done_acted` or
   prerequisite with `409` and `ticket_started`.
 - When the last gating prerequisite closes with a `done_*` outcome, the
   dependent becomes `queued` (`paused` if a person paused it while it was
-  held), in the same transaction as the close.
+  held, `blocked` if it has an open request), in the same transaction as
+  the close.
 - When a gating prerequisite closes with another outcome, the dependent
   stays `held`. Cancel it, or remove the failed gate or make it a plain
   link. To use a replacement prerequisite, first remove or downgrade the

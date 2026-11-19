@@ -796,6 +796,39 @@ class GatingTests(RelationTestCase):
         await self.close('T-2', 'done_acted')
         self.assertEqual(await self.status('T-1'), 'queued')
 
+    async def test_release_with_an_open_request_blocks(self) -> None:
+        await self.gate('T-1', 'T-2')
+        _, request, _ = await self.store.open_request(
+            self.org,
+            'T-1',
+            tickets.NewRequest(
+                kind='feedback',
+                title='Which branch?',
+                why=None,
+                options=None,
+                artifacts=None,
+                artifact_digests=None,
+                expires_at=None,
+                session_id=None,
+            ),
+            self.actor,
+        )
+        await self.close('T-2', 'done_acted')
+        self.assertEqual(await self.status('T-1'), 'blocked')
+        await self.store.resolve_request(
+            self.org,
+            'T-1',
+            request['id'],
+            tickets.Resolution(
+                status='answered',
+                answer='main',
+                constraints=None,
+                artifact_digests=None,
+            ),
+            tickets.Actor('human', self.email, 'web'),
+        )
+        self.assertEqual(await self.status('T-1'), 'queued')
+
     async def test_deadlock_runs_the_change_again(self) -> None:
         original = tickets.store._lock_tasks
         calls = 0
