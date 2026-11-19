@@ -402,7 +402,7 @@ export function ConversationTab({
           <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
             <div
               aria-label="Conversation"
-              className="scroll-fade scroll-fade-b-[20rem] size-full min-h-0 min-w-0 scrollbar-thin scrollbar-gutter-stable overflow-y-auto overscroll-contain contain-content"
+              className="scroll-fade supports-[animation-timeline:scroll()]:scroll-fade-b-[20rem] scroll-fade-b-[0px] size-full min-h-0 min-w-0 scrollbar-thin scrollbar-gutter-stable overflow-y-auto overscroll-contain contain-content"
               onFocus={(e) => {
                 const index = (e.target as HTMLElement).closest<HTMLElement>(
                   '[data-index]',
