@@ -264,6 +264,7 @@ REFUSED_ROUTES: frozenset[str] = frozenset(
         'POST /organizations/{org_slug}/tickets/{short_id}/requests/{request_id}/resolve',
         'POST /organizations/{org_slug}/tickets/{short_id}/resume',
         'POST /organizations/{org_slug}/tickets/{short_id}/retry',
+        'PUT /organizations/{org_slug}/tickets/{short_id}/parent',
         'PUT /organizations/{org_slug}/tickets/{short_id}/projects/{project_id}',
         'PUT /organizations/{org_slug}/tickets/{short_id}/requires/{prerequisite}',
         # Credentials and data outside Imbi: integrations, project integration assignments, webhooks, project configuration stores (values:fetch returns secret values)

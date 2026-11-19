@@ -369,7 +369,8 @@ A reply or an answer can be up to 64 KiB.
 
 ## Relations and associated projects
 
-You need `ticket:manage` to change them.
+You need `ticket:manage` to change them. The owner of a ticket can also
+move it under a parent.
 
 **Related tickets**: click **Link ticket**. Find a ticket, then select the
 relation:
@@ -380,9 +381,28 @@ relation:
 | Blocked by | The same as Requires |
 | Required by | The other ticket needs this ticket first |
 | Blocks | The same as Required by |
+| Parent | Move this ticket, with its descendants, under the other ticket |
 
-A ticket cannot require itself. Parent and child rows come from delegation.
-You cannot change them.
+A ticket cannot require itself.
+
+**Parent tickets**: a ticket can have one parent in its organization. A
+ticket that an agent makes from its own ticket starts with that ticket as
+its parent. A root ticket and its descendants are one piece of work, and
+the owner of the root is accountable for it. The tab shows the parent, the
+children, and the tree: its root and how many of its tickets are open.
+
+- To move a ticket, select **Parent** in **Link ticket**. To make it a
+  root, remove its **Parent** row.
+- Holders of `ticket:manage` can move a ticket. The owner of the ticket
+  can also move it in the UI or with the API.
+- A move that makes a ticket its own ancestor gets `409` with
+  `parent_cycle`.
+- Open and closed tickets can move. A move changes no status, assignee,
+  dependency, or chain. The ticket gets a `parent.changed` event.
+- When you delete a ticket, its children become roots.
+
+With the API: `PUT /organizations/{org}/tickets/{short_id}/parent` with
+`{"parent": "T-5"}`, or `{"parent": null}` to make the ticket a root.
 
 **Associated projects**: click **Link project** to add a project. The
 oldest project is first. You can remove each project, also a project that

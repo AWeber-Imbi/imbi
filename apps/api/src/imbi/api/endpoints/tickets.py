@@ -394,20 +394,41 @@ class RelatedTask(pydantic.BaseModel):
     linked_at: datetime.datetime | None = None
 
 
+class TicketTree(pydantic.BaseModel):
+    """The tree of a ticket, computed on read (ADR 0028)."""
+
+    root_short_id: str
+    root_title: str
+    #: The number of tickets in the tree, the root included.
+    tickets: int
+    #: The number of tickets in the tree that are not closed.
+    open: int
+
+
 class AgentTaskRelations(pydantic.BaseModel):
     """The tasks related to a task.
 
     ``requires`` are the prerequisites of this task; ``required_by`` are
     the tasks that have this task as a prerequisite. A prerequisite is a
     link only: a runner can still claim a task whose prerequisite is
-    open. ``parent`` and ``children`` come from a ``task`` origin
-    (delegation) and do not change.
+    open. ``parent`` and ``children`` come from the parent of each
+    ticket. ``tree`` is the state of the tree of the ticket.
     """
 
     requires: list[RelatedTask]
     required_by: list[RelatedTask]
     parent: RelatedTask | None = None
     children: list[RelatedTask]
+    tree: TicketTree
+
+
+class TicketParentSet(pydantic.BaseModel):
+    """The new parent of a ticket."""
+
+    parent: str | None = pydantic.Field(
+        description='The short id of the new parent. ``null`` makes the '
+        'ticket a root.'
+    )
 
 
 class AssociatedProject(pydantic.BaseModel):
@@ -959,6 +980,10 @@ def relation_errors() -> abc.Generator[None]:
         ) from e
     except tickets.SelfDependency as e:
         raise _unprocessable(f'Task {str(e)!r} cannot require itself') from e
+    except tickets.ParentCycle as e:
+        raise _conflict(
+            'parent_cycle', f'Task {str(e)!r} cannot be its own ancestor'
+        ) from e
 
 
 #: A caller with ``agent_task:read``, with no exception for the service
@@ -2006,6 +2031,46 @@ async def remove_agent_task_dependency(
     with relation_errors():
         await store.remove_dependency(
             org_id, short_id.upper(), prerequisite.upper(), _actor(auth)
+        )
+
+
+@tickets_router.put('/{short_id}/parent', status_code=204)
+async def set_agent_task_parent(
+    org_id: OrgId,
+    short_id: str,
+    data: TicketParentSet,
+    store: tickets.Store,
+    auth: typing.Annotated[
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
+    ],
+) -> None:
+    """Move the task, with its descendants, under another task in the
+    org, or make it a root (ADR 0028).
+
+    The owner of the task and holders of ``agent_task:manage`` can move
+    it. A move changes no status, assignee, dependency, or chain. The
+    task gets a ``parent.changed`` event with the old and new parent.
+    When the parent does not change, nothing changes.
+
+    Raises:
+        403: The caller is not a person, or is not the owner and has no
+            ``agent_task:manage``.
+        404: No such task.
+        409: ``task_archived``: the log of the task is archived.
+            ``parent_cycle``: the task is the new parent or one of its
+            ancestors.
+
+    """
+    user = auth.require_user  # raises 403 for a caller that is not a person
+    task = await _get_task(store, org_id, short_id)
+    if task['owner'] != user.email:
+        await _require_manage(auth)
+    with relation_errors():
+        await store.set_parent(
+            org_id,
+            task['short_id'],
+            data.parent and data.parent.upper(),
+            _actor(auth),
         )
 
 

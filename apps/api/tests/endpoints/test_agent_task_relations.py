@@ -5,6 +5,7 @@ These run against the live Postgres that ``root:services`` boots, like
 ``T-1`` (with a project), ``T-2``, and ``T-3``.
 """
 
+import asyncio
 import typing
 import uuid
 from unittest import mock
@@ -85,6 +86,30 @@ class RelationTestCase(test_agent_tasks.AgentTaskTestCase):
                 ' WHERE id = %s',
                 (uuid.UUID(self.tickets[short_id]['id']),),
             )
+
+    async def delegate(
+        self, parent: dict[str, typing.Any]
+    ) -> dict[str, typing.Any]:
+        child, _ = await self.store.create(
+            tickets.NewTask(
+                organization_id=self.org,
+                agent_id=parent['agent_id'],
+                agent_version=1,
+                prompt_version=None,
+                service_account_id=parent['service_account_id'],
+                title='Sub task',
+                description='Delegated.',
+                origin_kind='task',
+                origin_id=parent['id'],
+                origin={'kind': 'task', 'task_id': parent['id']},
+                idempotency_key=None,
+                owner=self.email,
+                budget=None,
+            ),
+            tickets.Actor('agent', parent['agent_id'], 'harness'),
+            {},
+        )
+        return child
 
 
 class DependencyTests(RelationTestCase):
@@ -279,30 +304,6 @@ class DependencyTests(RelationTestCase):
         relations = (await self.client.get(self.url('T-1/relations'))).json()
         self.assertEqual(len(relations['requires']), 1)
 
-    async def delegate(
-        self, parent: dict[str, typing.Any]
-    ) -> dict[str, typing.Any]:
-        child, _ = await self.store.create(
-            tickets.NewTask(
-                organization_id=self.org,
-                agent_id=parent['agent_id'],
-                agent_version=1,
-                prompt_version=None,
-                service_account_id=parent['service_account_id'],
-                title='Sub task',
-                description='Delegated.',
-                origin_kind='task',
-                origin_id=parent['id'],
-                origin={'kind': 'task', 'task_id': parent['id']},
-                idempotency_key=None,
-                owner=self.email,
-                budget=None,
-            ),
-            tickets.Actor('agent', parent['agent_id'], 'harness'),
-            {},
-        )
-        return child
-
     async def test_child_gets_the_projects_of_its_parent(self) -> None:
         response = await self.put(f'T-1/projects/{self.second_project}')
         self.assertEqual(response.status_code, 204, response.text)
@@ -440,6 +441,144 @@ class ProjectTests(RelationTestCase):
         response = await self.put(f'T-2/projects/{self.second_project}')
         self.assertEqual(response.status_code, 409, response.text)
         self.assertEqual(response.json()['detail']['error'], 'task_archived')
+
+
+class ParentTests(RelationTestCase):
+    """Parent tickets (ADR 0028)."""
+
+    async def move(self, short_id: str, parent: str | None) -> httpx.Response:
+        return await self.client.put(
+            self.url(f'{short_id}/parent'), json={'parent': parent}
+        )
+
+    async def relations(self, short_id: str) -> dict[str, typing.Any]:
+        response = await self.client.get(self.url(f'{short_id}/relations'))
+        self.assertEqual(response.status_code, 200, response.text)
+        return response.json()
+
+    async def test_agent_child_sets_parent(self) -> None:
+        child = await self.delegate(self.tickets['T-2'])
+        self.assertEqual(str(child['parent_id']), self.tickets['T-2']['id'])
+
+    async def test_move_writes_parent_changed(self) -> None:
+        response = await self.move('T-1', 't-2')
+        self.assertEqual(response.status_code, 204, response.text)
+        event = (await self.events('T-1'))[-1]
+        self.assertEqual(event['type'], 'parent.changed')
+        self.assertEqual(event['actor_id'], self.email)
+        self.assertEqual(event['payload'], {'from': None, 'to': 'T-2'})
+        relations = await self.relations('T-2')
+        self.assertEqual(
+            [t['short_id'] for t in relations['children']], ['T-1']
+        )
+        self.assertEqual(
+            relations['tree'],
+            {
+                'root_short_id': 'T-2',
+                'root_title': self.tickets['T-2']['title'],
+                'tickets': 2,
+                'open': 2,
+            },
+        )
+        self.assertEqual(
+            (await self.relations('T-1'))['parent']['short_id'], 'T-2'
+        )
+        # The same parent again: no event.
+        response = await self.move('T-1', 'T-2')
+        self.assertEqual(response.status_code, 204, response.text)
+        self.assertEqual(await self.last_seq('T-1'), 2)
+
+        response = await self.move('T-1', None)
+        self.assertEqual(response.status_code, 204, response.text)
+        event = (await self.events('T-1'))[-1]
+        self.assertEqual(event['payload'], {'from': 'T-2', 'to': None})
+        relations = await self.relations('T-1')
+        self.assertIsNone(relations['parent'])
+        self.assertEqual(relations['tree']['root_short_id'], 'T-1')
+        self.assertEqual(relations['tree']['tickets'], 1)
+
+    async def test_closed_ticket_moves_and_counts_in_tree(self) -> None:
+        response = await self.client.post(self.url('T-1/cancel'))
+        self.assertEqual(response.status_code, 200, response.text)
+        response = await self.move('T-1', 'T-2')
+        self.assertEqual(response.status_code, 204, response.text)
+        tree = (await self.relations('T-1'))['tree']
+        self.assertEqual((tree['tickets'], tree['open']), (2, 1))
+
+    async def test_cycle_is_refused(self) -> None:
+        await self.move('T-1', 'T-2')
+        await self.move('T-2', 'T-3')
+        for short_id, parent in (('T-3', 'T-1'), ('T-1', 'T-1')):
+            with self.subTest(short_id=short_id, parent=parent):
+                response = await self.move(short_id, parent)
+                self.assertEqual(response.status_code, 409, response.text)
+                self.assertEqual(
+                    response.json()['detail']['error'], 'parent_cycle'
+                )
+        self.assertIsNone((await self.relations('T-3'))['parent'])
+
+    async def test_two_moves_cannot_make_a_cycle(self) -> None:
+        # T-1 under T-2 and T-3 under T-4. Moving T-2 under T-3 and T-4
+        # under T-1 at once would make T-1 > T-2 > T-3 > T-4 > T-1. The
+        # two moves lock no row in common: only the advisory lock stops
+        # the cycle.
+        self.tickets['T-4'] = (await self.create_task()).json()
+        await self.move('T-1', 'T-2')
+        await self.move('T-3', 'T-4')
+        actor = tickets.Actor('human', self.email, 'web')
+        results = await asyncio.gather(
+            self.store.set_parent(self.org, 'T-2', 'T-3', actor),
+            self.store.set_parent(self.org, 'T-4', 'T-1', actor),
+            return_exceptions=True,
+        )
+        self.assertEqual(
+            sorted(type(r).__name__ for r in results),
+            ['NoneType', 'ParentCycle'],
+            results,
+        )
+
+    async def test_archived_ticket_cannot_move(self) -> None:
+        await self.archive('T-1')
+        response = await self.move('T-1', 'T-2')
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(response.json()['detail']['error'], 'task_archived')
+
+    async def test_unknown_parent_is_404(self) -> None:
+        response = await self.move('T-1', 'T-99')
+        self.assertEqual(response.status_code, 404, response.text)
+
+    async def test_owner_or_manage_can_move(self) -> None:
+        self.permissions = set(test_agent_tasks.ALL_PERMISSIONS) - {
+            'agent_task:manage',
+            'ticket:manage',
+        }
+        response = await self.move('T-1', 'T-2')
+        self.assertEqual(response.status_code, 204, response.text)
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE tickets.tickets SET owner = 'other@example.com'"
+                " WHERE organization_id = %s AND short_id = 'T-1'",
+                (self.org,),
+            )
+        response = await self.move('T-1', None)
+        self.assertEqual(response.status_code, 403, response.text)
+        self.permissions = set(test_agent_tasks.ALL_PERMISSIONS)
+        response = await self.move('T-1', None)
+        self.assertEqual(response.status_code, 204, response.text)
+
+
+class OldPathParentTests(RelationTestCase):
+    """The parent route at ``/agent-tasks``, which stays until release B."""
+
+    prefix = 'agent-tasks'
+
+    async def test_old_path_moves_the_ticket(self) -> None:
+        response = await self.client.put(
+            self.url('T-1/parent'), json={'parent': 'T-2'}
+        )
+        self.assertEqual(response.status_code, 204, response.text)
+        relations = (await self.client.get(self.url('T-1/relations'))).json()
+        self.assertEqual(relations['parent']['short_id'], 'T-2')
 
 
 class AccessTests(RelationTestCase):

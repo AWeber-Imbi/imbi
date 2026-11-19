@@ -171,6 +171,40 @@ _LINKED_TASKS = sql.SQL(
     ' ORDER BY d.created_at, t.id'
 )
 
+#: The ticket ``%s`` and its ancestors, as ``up (id, parent_id)``.
+#: UNION, not UNION ALL, so that the walk ends.
+_UP: typing.LiteralString = (
+    'WITH RECURSIVE up (id, parent_id) AS ('
+    ' SELECT id, parent_id FROM tickets.tickets WHERE id = %s'
+    ' UNION SELECT t.id, t.parent_id FROM tickets.tickets AS t'
+    ' JOIN up ON t.id = up.parent_id)'
+)
+
+#: A row when the ticket ``%s`` is the ticket ``%s`` or one of its
+#: descendants.
+_IS_ANCESTOR: typing.LiteralString = (
+    _UP + ' SELECT 1 FROM up WHERE id = %s'  # noqa: S608
+)
+
+#: The tree of the ticket ``%s``: the short id and title of its root,
+#: the number of tickets in the tree, and the number that are not
+#: closed. The foreign key keeps a tree in one organization; the
+#: descendant join also matches ``organization_id`` so that it can use
+#: ``tickets_parent_idx``.
+_TREE: typing.LiteralString = (
+    _UP  # noqa: S608
+    + ', down (organization_id, id, status, root_short_id, root_title) AS ('
+    ' SELECT t.organization_id, t.id, t.status, t.short_id, t.title'
+    ' FROM tickets.tickets AS t'
+    ' JOIN up ON t.id = up.id WHERE up.parent_id IS NULL'
+    ' UNION SELECT t.organization_id, t.id, t.status, down.root_short_id,'
+    ' down.root_title FROM tickets.tickets AS t JOIN down'
+    ' ON t.organization_id = down.organization_id AND t.parent_id = down.id)'
+    ' SELECT min(root_short_id) AS root_short_id,'
+    ' min(root_title) AS root_title, count(*) AS tickets,'
+    " count(*) FILTER (WHERE status <> 'closed') AS open FROM down"
+)
+
 #: The status of a task with no open session, by control value.
 _IDLE_STATUS: dict[Control, Status] = {
     'run': 'queued',
@@ -241,6 +275,10 @@ class RequestKeyConflict(ValueError):
 
 class TaskArchived(ValueError):
     """Every task in the change is archived. Its log is sealed."""
+
+
+class ParentCycle(ValueError):
+    """The move makes a ticket its own ancestor."""
 
 
 class SelfDependency(ValueError):
@@ -634,9 +672,10 @@ class TicketStore:
                     ' service_account_id, title,'
                     ' description, origin_kind, origin_id, origin,'
                     ' idempotency_key, owner, budget, chain_id,'
-                    ' output_schema, priority, platform_config_version)'
+                    ' output_schema, parent_id, priority,'
+                    ' platform_config_version)'
                     ' VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
-                    ' %s, %s, %s, %s, %s, %s, %s, (SELECT max(version)'
+                    ' %s, %s, %s, %s, %s, %s, %s, %s, (SELECT max(version)'
                     ' FROM harness.platform_configs'
                     ' WHERE organization_id = %s))',
                     (
@@ -657,6 +696,9 @@ class TicketStore:
                         task.budget,
                         task.chain_id or task_id,
                         _jsonb(task.output_schema),
+                        task.origin_id
+                        if task.origin_kind in CHILD_ORIGIN_KINDS
+                        else None,
                         task.priority,
                         task.organization_id,
                     ),
@@ -1456,15 +1498,24 @@ class TicketStore:
         ``requires`` and ``required_by`` are its dependencies in the two
         directions, oldest link first. Each is the other task, with the
         ``linked_by_kind``, ``linked_by``, and ``linked_at`` of the link.
-        ``parent`` and ``children`` come from a ``task`` origin
-        (delegation): the ``origin_id`` of a child is the id of its
-        parent.
+        ``parent`` and ``children`` come from ``parent_id``. ``tree``
+        is the state of the tree of the task, computed now: its root
+        ticket, and the number of tickets in the tree and of those that
+        are not closed.
+
+        All reads use one snapshot, and the parent comes from the current
+        row, not from ``task``. Thus a move that occurs after the caller
+        read ``task`` cannot give a parent and a tree that disagree.
         """
         params = (task['organization_id'], task['id'])
         async with (
             self._pool.connection() as conn,
+            conn.transaction(),
             conn.cursor(row_factory=rows.dict_row) as cursor,
         ):
+            await cursor.execute(
+                'SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY'
+            )
             await cursor.execute(
                 _LINKED_TASKS.format(
                     other=sql.Identifier('prerequisite_ticket_id'),
@@ -1481,32 +1532,96 @@ class TicketStore:
                 params,
             )
             required_by = await cursor.fetchall()
-            parent: Row | None = None
-            if task['origin_kind'] in CHILD_ORIGIN_KINDS:
-                await cursor.execute(
-                    _SELECT_TASKS
-                    + ' WHERE organization_id = %s AND id::text = %s',
-                    (task['organization_id'], task['origin_id']),
-                )
-                parent = await cursor.fetchone()
             await cursor.execute(
-                _SELECT_TASKS
-                + ' WHERE organization_id = %s'
-                + ' AND origin_kind = ANY(%s)'
-                ' AND origin_id = %s ORDER BY created_at, id',
-                (
-                    task['organization_id'],
-                    list(CHILD_ORIGIN_KINDS),
-                    str(task['id']),
-                ),
+                _SELECT_TASKS  # noqa: S608
+                + ' WHERE t.organization_id = %s AND t.id = ('
+                'SELECT c.parent_id FROM tickets.tickets AS c'
+                ' WHERE c.organization_id = %s AND c.id = %s)',
+                (task['organization_id'], *params),
+            )
+            parent = await cursor.fetchone()
+            await cursor.execute(
+                _SELECT_TASKS + ' WHERE organization_id = %s'
+                ' AND parent_id = %s ORDER BY created_at, id',
+                params,
             )
             children = await cursor.fetchall()
+            await cursor.execute(_TREE, (task['id'],))
+            tree = await cursor.fetchone()
         return {
             'requires': requires,
             'required_by': required_by,
             'parent': parent,
             'children': children,
+            'tree': tree,
         }
+
+    async def set_parent(
+        self,
+        organization_id: str,
+        short_id: str,
+        parent: str | None,
+        actor: Actor,
+    ) -> None:
+        """Move the task, with its descendants, under ``parent``, or make
+        it a root when ``parent`` is ``None``.
+
+        The ancestors of the new parent are read under an advisory lock
+        on the organization, so two moves at once cannot make a cycle.
+        Write ``parent.changed`` with the old and new parent. Write no
+        event when the parent does not change.
+
+        Raises:
+            TaskNotFound: No such task.
+            TaskArchived: The log of the task is archived.
+            ParentCycle: The task is ``parent`` or one of its ancestors.
+
+        """
+        async with self._pool.connection() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    'SELECT pg_advisory_xact_lock('
+                    "hashtextextended('imbi.api.tickets.parent:' || %s, 0))",
+                    (organization_id,),
+                )
+                tasks = await _lock_tasks(
+                    conn,
+                    organization_id,
+                    [short_id] if parent is None else [short_id, parent],
+                )
+                by_short_id = {t['short_id']: t for t in tasks}
+                task = by_short_id[short_id]
+                if task['log_archived_at'] is not None:
+                    raise TaskArchived(short_id)
+                new = None if parent is None else by_short_id[parent]
+                new_id = None if new is None else new['id']
+                if task['parent_id'] == new_id:
+                    return
+                if new is not None:
+                    cursor = await conn.execute(
+                        _IS_ANCESTOR, (new_id, task['id'])
+                    )
+                    if await cursor.fetchone() is not None:
+                        raise ParentCycle(short_id)
+                old = None
+                if task['parent_id'] is not None:
+                    cursor = await conn.execute(
+                        'SELECT short_id FROM tickets.tickets WHERE id = %s',
+                        (task['parent_id'],),
+                    )
+                    (old,) = await cursor.fetchone() or (None,)
+                event = await _append_event(
+                    conn,
+                    task['id'],
+                    'parent.changed',
+                    {'from': old, 'to': parent},
+                    actor,
+                )
+                # After the event, so that the row has its new last_seq.
+                task = await _update_task(
+                    conn, task['id'], {'parent_id': new_id}
+                )
+        await log.publish(task, [event])
 
     async def projects(self, task: Row) -> list[Row]:
         """Return the projects associated with ``task``, oldest first."""
@@ -1552,6 +1667,29 @@ class TicketStore:
                 (task['id'],),
             )
             return turns, await cursor.fetchall()
+
+    async def delegated(self, task: Row) -> list[Row]:
+        """Return the tickets that ``task`` delegated, oldest first.
+
+        They come from the origin link, not from ``parent_id``, so a
+        ticket that a person moves to another parent stays in the
+        history of the ticket that delegated it.
+        """
+        async with (
+            self._pool.connection() as conn,
+            conn.cursor(row_factory=rows.dict_row) as cursor,
+        ):
+            await cursor.execute(
+                _SELECT_TASKS + ' WHERE organization_id = %s'
+                ' AND origin_kind = ANY(%s) AND origin_id = %s'
+                ' ORDER BY created_at, id',
+                (
+                    task['organization_id'],
+                    list(CHILD_ORIGIN_KINDS),
+                    str(task['id']),
+                ),
+            )
+            return await cursor.fetchall()
 
     # --- Harness ------------------------------------------------------
 

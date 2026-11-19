@@ -643,3 +643,34 @@ class RenameTestCase(unittest.IsolatedAsyncioTestCase):
             # A pod of release A-1 that starts after the move.
             await _old_install()
         self.assertEqual(before, await self._catalog(conn))
+
+    async def test_child_gets_its_parent_from_its_origin(self) -> None:
+        conn = await self._migrated()
+        cursor = await conn.execute(
+            'SELECT id, parent_id FROM tickets.tickets ORDER BY id'
+        )
+        self.assertEqual(
+            await cursor.fetchall(),
+            [
+                {'id': ROOT, 'parent_id': None},
+                {'id': CHILD, 'parent_id': ROOT},
+            ],
+        )
+        # The step runs once: a child that a person made a root stays
+        # a root.
+        await conn.execute(
+            'UPDATE tickets.tickets SET parent_id = NULL WHERE id = %s',
+            (CHILD,),
+        )
+        await _new_install()
+        cursor = await conn.execute(
+            'SELECT parent_id FROM tickets.tickets WHERE id = %s', (CHILD,)
+        )
+        self.assertEqual(await cursor.fetchone(), {'parent_id': None})
+        # A writer of the previous release gives no parent: the trigger
+        # takes it from the origin.
+        await _new_task(conn, NEW, 'task', str(ROOT))
+        cursor = await conn.execute(
+            'SELECT parent_id FROM tickets.tickets WHERE id = %s', (NEW,)
+        )
+        self.assertEqual(await cursor.fetchone(), {'parent_id': ROOT})
