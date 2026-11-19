@@ -1,4 +1,10 @@
-import { type FormEvent, type KeyboardEvent, useState } from 'react'
+import {
+  type Dispatch,
+  type FormEvent,
+  type KeyboardEvent,
+  type SetStateAction,
+  useState,
+} from 'react'
 
 import {
   Activity,
@@ -116,21 +122,32 @@ export function ChecksTab({ events }: { events: AgentTaskEvent[] }) {
 
 /** Reply and Reply and hold: steer the task while it is open. */
 export function Composer({
+  body,
+  onBodyChange,
   orgSlug,
   task,
 }: {
+  body: string
+  onBodyChange: Dispatch<SetStateAction<string>>
   orgSlug: string
   task: AgentTask
 }) {
   const canManage = useHasPermission('agent_task:manage', orgSlug)
-  const [body, setBody] = useState('')
-  const reply = useAgentTaskMutation(orgSlug, task.short_id, (hold: boolean) =>
-    replyAgentTask(orgSlug, task.short_id, body.trim(), hold),
+  const reply = useAgentTaskMutation(
+    orgSlug,
+    task.short_id,
+    ({ hold, text }: { hold: boolean; text: string }) =>
+      replyAgentTask(orgSlug, task.short_id, text.trim(), hold),
   )
   if (!canManage) return null
   const ready = body.trim() !== '' && !reply.isPending
   const send = (hold: boolean) => {
-    if (ready) reply.mutate(hold, { onSuccess: () => setBody('') })
+    if (!ready) return
+    const text = body
+    reply
+      .mutateAsync({ hold, text })
+      .then(() => onBodyChange((now) => (now === text ? '' : now)))
+      .catch(() => undefined)
   }
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (
@@ -156,7 +173,7 @@ export function Composer({
           aria-label="Reply"
           autoResize
           className="max-h-50 min-h-17.5 rounded-none border-0 bg-transparent px-4 pt-3.5 pb-1 leading-relaxed focus-visible:ring-0 focus-visible:ring-offset-0"
-          onChange={(e) => setBody(e.target.value)}
+          onChange={(e) => onBodyChange(e.target.value)}
           onKeyDown={onKeyDown}
           placeholder="Add a comment, answer a question, or steer the agent"
           rows={1}

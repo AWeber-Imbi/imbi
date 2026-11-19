@@ -1347,6 +1347,46 @@ describe('Tasks', () => {
     await waitFor(() => expect(screen.getByLabelText('Reply')).toHaveValue(''))
   })
 
+  it('keeps the reply draft across Activity views', async () => {
+    renderAt('/agents/tasks/acme/T-3/conversation')
+    fireEvent.change(await screen.findByLabelText('Reply'), {
+      target: { value: 'Half a thought' },
+    })
+    fireEvent.click(screen.getByRole('radio', { name: /^Trajectory/ }))
+    await waitFor(() =>
+      expect(screen.queryByLabelText('Reply')).not.toBeInTheDocument(),
+    )
+    fireEvent.click(screen.getByRole('radio', { name: /^Conversation/ }))
+    expect(await screen.findByLabelText('Reply')).toHaveValue('Half a thought')
+  })
+
+  it('keeps text typed while a reply is being sent', async () => {
+    let finish: (task: typeof BLOCKED) => void = () => undefined
+    vi.mocked(endpoints.replyAgentTask).mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    renderAt('/agents/tasks/acme/T-3/conversation')
+    const box = await screen.findByLabelText('Reply')
+    fireEvent.change(box, { target: { value: 'First.' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    await waitFor(() =>
+      expect(endpoints.replyAgentTask).toHaveBeenCalledWith(
+        'acme',
+        'T-3',
+        'First.',
+        false,
+      ),
+    )
+    fireEvent.change(box, { target: { value: 'Second.' } })
+    finish(BLOCKED)
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Send reply' })).toBeEnabled(),
+    )
+    expect(screen.getByLabelText('Reply')).toHaveValue('Second.')
+  })
+
   it('sends a reply on Enter and keeps Shift+Enter for a new line', async () => {
     vi.mocked(endpoints.replyAgentTask).mockResolvedValue(BLOCKED)
     renderAt('/agents/tasks/acme/T-3/conversation')

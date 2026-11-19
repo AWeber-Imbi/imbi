@@ -123,6 +123,7 @@ export function TaskDetail({
     'conversation',
     (raw) => (isActivityView(raw) ? raw : undefined),
   )
+  const [draft, setDraft] = useState('')
   useEffect(() => {
     const shown = legacyRoute(tab)
     if (isRouteKey(shown)) setLastTab(shown)
@@ -251,7 +252,12 @@ export function TaskDetail({
               events={log}
               footer={
                 t.status === 'closed' ? undefined : (
-                  <Composer orgSlug={orgSlug} task={t} />
+                  <Composer
+                    body={draft}
+                    onBodyChange={setDraft}
+                    orgSlug={orgSlug}
+                    task={t}
+                  />
                 )
               }
               orgSlug={orgSlug}
