@@ -7177,7 +7177,8 @@ export interface paths {
          *
          *     Raises:
          *         404: No such workflow.
-         *         409: A run of the workflow is queued or running.
+         *         409: A run of the workflow is queued or running, or the
+         *             organization was renamed during the delete.
          */
         delete: operations["delete_workflow_api_organizations__org_slug__workflows__slug__delete"];
         options?: never;

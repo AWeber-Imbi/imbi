@@ -577,6 +577,10 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(params['previous_slugs'], ['middle', 'engineering'])
         self.assertEqual(params['slug'], 'eng')
         self.assertEqual(params['original_slug'], 'engineering')
+        # The lookups and the SET match the id that the endpoint read.
+        for call in self.mock_db.execute.call_args_list[:3]:
+            self.assertIn('id: {org_id}', call.args[0])
+            self.assertEqual(call.args[1]['org_id'], self.test_org.id)
 
     def test_patch_organization_no_rename_skips_previous_slugs(
         self,
@@ -614,6 +618,7 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
         set_call = self.mock_db.execute.call_args_list[0]
         params = set_call.args[1]
         self.assertNotIn('previous_slugs', params)
+        self.assertEqual(params['org_id'], self.test_org.id)
 
     def test_patch_organization_tag_formats(self) -> None:
         """Patching tag_formats persists the list in the SET params."""
@@ -1004,6 +1009,52 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
             },
         )
 
+    async def test_rename_rejects_a_slug_taken_by_another_org(self) -> None:
+        """#829: the locked rename matches the id, not only the slug."""
+        other = f'{self.org}-b'
+        self.addAsyncCleanup(
+            self.graph.execute,
+            'MATCH (o:Organization {{id: {id}}}) DETACH DELETE o',
+            {'id': other},
+            [],
+        )
+        response = await self._assert_waits_for_delete(
+            lambda: self.client.patch(
+                f'/organizations/{self.org}',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/slug',
+                        'value': f'{self.org}-new',
+                    }
+                ],
+            ),
+            # While the rename waits: the organization is renamed, and
+            # another organization takes its old slug.
+            lambda: self.graph.execute(
+                'MATCH (o:Organization {{id: {org}}})'
+                " SET o.slug = {org} + '-moved'"
+                ' CREATE (:Organization {{id: {other}, slug: {org},'
+                ' name: {other}}})',
+                {'org': self.org, 'other': other},
+                [],
+            ),
+        )
+        self.assertEqual(response.status_code, 404, response.text)
+        records = await self.graph.execute(
+            'MATCH (o:Organization) WHERE o.id IN [{org}, {other}]'
+            ' RETURN o.id AS id, o.slug AS slug',
+            {'org': self.org, 'other': other},
+            ['id', 'slug'],
+        )
+        self.assertEqual(
+            {
+                graph.parse_agtype(r['id']): graph.parse_agtype(r['slug'])
+                for r in records
+            },
+            {self.org: f'{self.org}-moved', other: self.org},
+        )
+
     async def test_workflows_and_bindings_block_the_delete(self) -> None:
         workflow_id = uuid.uuid4()
         async with self.pool.connection() as conn:
@@ -1160,8 +1211,11 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
         self.assertIsNone(await secrets.identity_source(self.org))
 
     async def _assert_waits_for_delete(
-        self, write: abc.Callable[[], abc.Awaitable[typing.Any]]
-    ) -> None:
+        self,
+        write: abc.Callable[[], abc.Awaitable[typing.Any]],
+        while_locked: abc.Callable[[], abc.Awaitable[typing.Any]]
+        | None = None,
+    ) -> typing.Any:
         async with self.pool.connection() as conn, conn.transaction():
             await conn.execute(
                 'SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))',
@@ -1170,7 +1224,9 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
             task = asyncio.create_task(write())
             await asyncio.sleep(0.5)
             self.assertFalse(task.done())
-        await asyncio.wait_for(task, 10)
+            if while_locked is not None:
+                await while_locked()
+        return await asyncio.wait_for(task, 10)
 
     async def test_writers_wait_for_a_delete(self) -> None:
         store = workflows.WorkflowStore(self.pool)
@@ -1188,6 +1244,9 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
         )
         await self._assert_waits_for_delete(
             lambda: store.activate(self.org, 'w', 1, 'u', [])
+        )
+        await self._assert_waits_for_delete(
+            lambda: store.delete(self.org, 'w')
         )
         task = tickets.NewTask(
             organization_id=self.org,

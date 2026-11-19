@@ -14,6 +14,7 @@ import {
   ArrowDown,
   Bot,
   Brain,
+  ChartGantt,
   ChevronRight,
   FilePen,
   FileText,
@@ -114,6 +115,7 @@ interface Ctx {
   isOpen: (id: string, byDefault: boolean) => boolean
   isWhole: (id: string) => boolean
   mode: ConversationMode
+  onInspect?: (seq: number) => void
   orgSlug: string
   requests: TaskRequestView[]
   setOpen: (id: string, open: boolean) => void
@@ -187,12 +189,15 @@ const WIDTHS: ToolbarOption<ConversationWidth>[] = [
 export function ConversationTab({
   events,
   footer,
+  onInspect,
   orgSlug,
   requests,
   task,
 }: {
   events: Parameters<typeof timeline>[0]
   footer?: ReactNode
+  /** Opens the trajectory on the record that holds this event. */
+  onInspect?: (seq: number) => void
   orgSlug: string
   requests: TaskRequestView[]
   task: Ticket
@@ -226,6 +231,7 @@ export function ConversationTab({
       isOpen: searching ? () => true : isOpen,
       isWhole: (id: string) => whole.has(id),
       mode: searching ? 'verbose' : mode,
+      onInspect,
       orgSlug,
       requests,
       setOpen: searching
@@ -240,7 +246,17 @@ export function ConversationTab({
       },
       task,
     }),
-    [isOpen, mode, orgSlug, requests, searching, setOpen, task, whole],
+    [
+      isOpen,
+      mode,
+      onInspect,
+      orgSlug,
+      requests,
+      searching,
+      setOpen,
+      task,
+      whole,
+    ],
   )
   const [flash, setFlash] = useState<null | { id: string }>(null)
   const [revealed, setRevealed] = useState<null | { id: string }>(null)
@@ -577,6 +593,18 @@ function CallRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
             onWhole={(part) => ctx.showWhole(`${key}:${part}`)}
             result={p.result == null ? '' : label(p.result)}
           />
+        )}
+        {e && ctx.onInspect && (
+          <Button
+            aria-label={`Inspect ${toolLabel(tool)} in the trajectory`}
+            className="text-muted-foreground hover:text-foreground -ml-1 h-6 w-fit gap-1 px-1 text-xs font-normal [&_svg]:size-3.5"
+            onClick={() => ctx.onInspect?.(e.seq)}
+            size="sm"
+            variant="ghost"
+          >
+            <ChartGantt />
+            Inspect
+          </Button>
         )}
         {entry.children.length > 0 && (
           <div className="border-accent/40 flex flex-col gap-2 border-l-2 pl-3">
