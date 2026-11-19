@@ -148,12 +148,16 @@ export function NewOpsLogDialog({
   })
 
   const canProceed =
-    projectId && projectSlug && environmentSlug && entryType && description
+    projectId &&
+    projectSlug &&
+    environmentSlug &&
+    entryType &&
+    description.trim()
 
   const handleSave = () => {
     if (!canProceed || createMutation.isPending) return
     createMutation.mutate({
-      description,
+      description: description.trim(),
       entry_type: entryType,
       environment_slug: environmentSlug,
       link: link || null,

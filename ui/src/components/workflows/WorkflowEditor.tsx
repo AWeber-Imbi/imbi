@@ -247,9 +247,13 @@ export function WorkflowEditor({
     // A retry after a failed save of a new workflow updates it.
     mutationFn: () => {
       const saving = revision.current
-      return saveWorkflow(orgSlug, slug, draft, prompts, stored).then(
-        (result) => ({ ...result, saving }),
-      )
+      return saveWorkflow(
+        orgSlug,
+        slug,
+        { ...draft, description: draft.description.trim() },
+        prompts,
+        stored,
+      ).then((result) => ({ ...result, saving }))
     },
     onError: (error) =>
       toast.error(
