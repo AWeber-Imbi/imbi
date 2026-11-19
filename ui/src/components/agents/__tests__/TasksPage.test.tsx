@@ -1628,7 +1628,7 @@ describe('Tasks', () => {
     renderAt('/agents/manage/mender')
     fireEvent.click(await screen.findByRole('button', { name: 'Run' }))
     const dialog = screen.getByRole('dialog')
-    fireEvent.change(within(dialog).getByLabelText(/What should the agent/), {
+    fireEvent.change(within(dialog).getByLabelText(/What should be done/), {
       target: { value: 'Check the build\nFind why it fails.' },
     })
     fireEvent.click(await within(dialog).findByText('billing'))
@@ -1638,9 +1638,11 @@ describe('Tasks', () => {
     await waitFor(() =>
       expect(endpoints.createTicket).toHaveBeenCalledWith('acme', {
         agent_slug: 'mender',
+        assignee_kind: 'agent',
         description: 'Check the build\nFind why it fails.',
         priority: 'normal',
         project_ids: ['p-1'],
+        requires: [],
         title: 'Check the build',
       }),
     )

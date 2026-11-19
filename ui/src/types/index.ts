@@ -1849,6 +1849,8 @@ export type TicketRetry = Schemas['AgentTaskRetry']
 
 export type TicketStatus = Ticket['status']
 
+export type TicketStatusSet = Schemas['TicketStatusSet']
+
 export type TokenResponse = Schemas['TokenResponse']
 
 // Upload types

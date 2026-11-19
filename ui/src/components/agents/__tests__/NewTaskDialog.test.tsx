@@ -12,6 +12,7 @@ import { NewTaskDialog } from '../NewTaskDialog'
 vi.mock('@/api/endpoints', () => ({
   createTicket: vi.fn(),
   getProjectsSlim: vi.fn(),
+  listAdminUsers: vi.fn(() => Promise.resolve([])),
   listAgents: vi.fn(),
 }))
 
@@ -95,7 +96,7 @@ describe('NewTaskDialog', () => {
   it('creates a task from the request', async () => {
     const onClose = vi.fn()
     render(<NewTaskDialog isOpen onClose={onClose} />)
-    fireEvent.change(screen.getByLabelText('What should the agent do?'), {
+    fireEvent.change(screen.getByLabelText('What should be done?'), {
       target: {
         value: 'Fix the crash https://sentry.io/issues/1\nIt fails on save.',
       },
@@ -108,10 +109,12 @@ describe('NewTaskDialog', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled())
     expect(endpoints.createTicket).toHaveBeenCalledWith('acme', {
       agent_slug: 'forager',
+      assignee_kind: 'agent',
       description:
         'Fix the crash https://sentry.io/issues/1\nIt fails on save.',
       priority: 'normal',
       project_ids: ['p-3'],
+      requires: [],
       title: 'Fix the crash',
     })
   })
@@ -119,7 +122,7 @@ describe('NewTaskDialog', () => {
   it('creates a task with two projects', async () => {
     const onClose = vi.fn()
     render(<NewTaskDialog isOpen onClose={onClose} />)
-    fireEvent.change(screen.getByLabelText('What should the agent do?'), {
+    fireEvent.change(screen.getByLabelText('What should be done?'), {
       target: { value: 'Sync the schemas' },
     })
     fireEvent.click(await screen.findByRole('radio', { name: /Forager/ }))
@@ -136,9 +139,11 @@ describe('NewTaskDialog', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled())
     expect(endpoints.createTicket).toHaveBeenCalledWith('acme', {
       agent_slug: 'forager',
+      assignee_kind: 'agent',
       description: 'Sync the schemas',
       priority: 'normal',
       project_ids: ['p-3', 'p-1'],
+      requires: [],
       title: 'Sync the schemas',
     })
   })
@@ -146,7 +151,7 @@ describe('NewTaskDialog', () => {
   it('creates an urgent task without a project', async () => {
     const onClose = vi.fn()
     render(<NewTaskDialog isOpen onClose={onClose} />)
-    fireEvent.change(screen.getByLabelText('What should the agent do?'), {
+    fireEvent.change(screen.getByLabelText('What should be done?'), {
       target: { value: 'Look for shell=True calls' },
     })
     fireEvent.click(await screen.findByRole('radio', { name: /Forager/ }))
@@ -155,10 +160,48 @@ describe('NewTaskDialog', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled())
     expect(endpoints.createTicket).toHaveBeenCalledWith('acme', {
       agent_slug: 'forager',
+      assignee_kind: 'agent',
       description: 'Look for shell=True calls',
       priority: 'urgent',
       project_ids: [],
+      requires: [],
       title: 'Look for shell=True calls',
+    })
+  })
+
+  it('creates a held person ticket', async () => {
+    const onClose = vi.fn()
+    render(<NewTaskDialog isOpen onClose={onClose} />)
+    fireEvent.change(screen.getByLabelText('What should be done?'), {
+      target: { value: 'Rotate the deploy key' },
+    })
+    fireEvent.click(screen.getByRole('radio', { name: 'Person' }))
+    expect(screen.getByText('Needs a person.')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Assignee email'), {
+      target: { value: 'ops@example.com' },
+    })
+    fireEvent.change(screen.getByLabelText('Required tickets'), {
+      target: { value: 'T-3, t-4' },
+    })
+    fireEvent.click(screen.getByRole('checkbox'))
+    expect(
+      screen.getByText(
+        'Starts as Open, or Held while a prerequisite is open. Esc to cancel.',
+      ),
+    ).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Create ticket' }))
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+    expect(endpoints.createTicket).toHaveBeenCalledWith('acme', {
+      assignee: 'ops@example.com',
+      assignee_kind: 'person',
+      description: 'Rotate the deploy key',
+      priority: 'normal',
+      project_ids: [],
+      requires: [
+        { gates: true, short_id: 'T-3' },
+        { gates: true, short_id: 't-4' },
+      ],
+      title: 'Rotate the deploy key',
     })
   })
 })

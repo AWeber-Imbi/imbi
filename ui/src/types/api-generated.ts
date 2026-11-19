@@ -5194,8 +5194,11 @@ export interface paths {
         put?: never;
         /**
          * Create Agent Task
-         * @description Make a task for an agent.
+         * @description Make a ticket for an agent or, with ``assignee_kind`` ``person``,
+         *     for a person (ADR 0028).
          *
+         *     An agent ticket starts ``queued`` and a person ticket ``open``; an
+         *     open gating prerequisite in ``requires`` makes it start ``held``.
          *     A person owns the tasks that they make. The scheduler and the
          *     gateway also make tasks, with a ``schedule`` or a ``webhook``
          *     origin that they name in headers (see :func:`task_origin`). The
@@ -5212,10 +5215,11 @@ export interface paths {
          *             :func:`_owner`).
          *         404: No such organization.
          *         409: The agent is disabled.
-         *         422: The agent or the project is not in the org, the budget is
-         *             more than the agent's task budget, a service does not name
-         *             its origin, the webhook does not exist, or the key has the
-         *             shape of a workflow step key (``<uuid>:<node_key>``).
+         *         422: The agent, the assignee, or the project is not in the org,
+         *             the budget is more than the agent's task budget, a service
+         *             does not name its origin, the webhook does not exist, a
+         *             prerequisite is not found, or the key has the shape of a
+         *             workflow step key (``<uuid>:<node_key>``).
          */
         post: operations["create_ticket_api_organizations__org_slug__tickets__post"];
         delete?: never;
@@ -5543,6 +5547,40 @@ export interface paths {
          *         422: The new owner is not a member of the org.
          */
         post: operations["reassign_ticket_api_organizations__org_slug__tickets__short_id__reassign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Ticket Status
+         * @description Move a person ticket to a status, or close it (ADR 0028).
+         *
+         *     ``open`` -> ``in_progress``; ``open`` or ``in_progress`` ->
+         *     ``blocked`` (with a ``reason``) and back; ``closed`` with an
+         *     ``outcome`` from every status. A ``held`` ticket opens when its
+         *     gating prerequisites are done. The assignee makes these changes;
+         *     other people need ``ticket:manage``.
+         *
+         *     Raises:
+         *         403: The caller is not a person, or is not the assignee and has
+         *             no ``ticket:manage``.
+         *         404: No such task.
+         *         409: The task is closed (``Task ... is closed``), is an agent
+         *             ticket (``agent_ticket``), or cannot move from its status
+         *             (``transition_invalid``).
+         */
+        post: operations["set_ticket_status_api_organizations__org_slug__tickets__short_id__status_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11462,15 +11500,34 @@ export interface components {
         };
         /** AgentTaskCreate */
         AgentTaskCreate: {
-            /** Agent Slug */
-            agent_slug: string;
+            /**
+             * Assignee Kind
+             * @default agent
+             * @enum {string}
+             */
+            assignee_kind: "agent" | "person";
+            /**
+             * Agent Slug
+             * @description The agent of an agent ticket.
+             */
+            agent_slug?: string | null;
+            /**
+             * Assignee
+             * @description The email of the person of a person ticket. Must be in the org.
+             */
+            assignee?: string | null;
             /** Title */
             title: string;
             /**
              * Description
-             * @description The instruction for the agent.
+             * @description What the assignee should do.
              */
             description: string;
+            /**
+             * Requires
+             * @description The prerequisites of the ticket, by short id. An open gating prerequisite makes the ticket start ``held``.
+             */
+            requires?: components["schemas"]["TicketRequirement"][];
             /**
              * Project Ids
              * @description The projects of the task, by id or slug.
@@ -11539,16 +11596,24 @@ export interface components {
             id: string;
             /** Short Id */
             short_id: string;
+            /**
+             * Assignee Kind
+             * @default agent
+             * @enum {string}
+             */
+            assignee_kind: "agent" | "person";
+            /** Assignee */
+            assignee?: string | null;
             /** Agent Id */
-            agent_id: string;
+            agent_id?: string | null;
             /** Agent Version */
-            agent_version: number;
+            agent_version?: number | null;
             /** Prompt Version */
             prompt_version?: number | null;
             /** Platform Config Version */
             platform_config_version?: number | null;
             /** Service Account Id */
-            service_account_id: string;
+            service_account_id?: string | null;
             /** Projects */
             projects: components["schemas"]["TaskProject"][];
             /** Title */
@@ -11756,16 +11821,24 @@ export interface components {
             id: string;
             /** Short Id */
             short_id: string;
+            /**
+             * Assignee Kind
+             * @default agent
+             * @enum {string}
+             */
+            assignee_kind: "agent" | "person";
+            /** Assignee */
+            assignee?: string | null;
             /** Agent Id */
-            agent_id: string;
+            agent_id?: string | null;
             /** Agent Version */
-            agent_version: number;
+            agent_version?: number | null;
             /** Prompt Version */
             prompt_version?: number | null;
             /** Platform Config Version */
             platform_config_version?: number | null;
             /** Service Account Id */
-            service_account_id: string;
+            service_account_id?: string | null;
             /** Projects */
             projects: components["schemas"]["TaskProject"][];
             /** Title */
@@ -18966,8 +19039,16 @@ export interface components {
             short_id: string;
             /** Title */
             title: string;
+            /**
+             * Assignee Kind
+             * @default agent
+             * @enum {string}
+             */
+            assignee_kind: "agent" | "person";
+            /** Assignee */
+            assignee?: string | null;
             /** Agent Id */
-            agent_id: string;
+            agent_id?: string | null;
             /**
              * Status
              * @enum {string}
@@ -21716,6 +21797,41 @@ export interface components {
              * @description The short id of the new parent. ``null`` makes the ticket a root.
              */
             parent: string | null;
+        };
+        /**
+         * TicketRequirement
+         * @description A prerequisite of a new ticket.
+         */
+        TicketRequirement: {
+            /** Short Id */
+            short_id: string;
+            /**
+             * Gates
+             * @description Hold the ticket until the prerequisite closes with a ``done_*`` outcome.
+             * @default false
+             */
+            gates: boolean;
+        };
+        /**
+         * TicketStatusSet
+         * @description A status change of a person ticket (ADR 0028).
+         */
+        TicketStatusSet: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "in_progress" | "blocked" | "closed";
+            /**
+             * Outcome
+             * @description Required to close, else not allowed.
+             */
+            outcome?: ("done_acted" | "done_nothing_to_act_on" | "superseded" | "cancelled_by_human") | null;
+            /**
+             * Reason
+             * @description Why. Required to block.
+             */
+            reason?: string | null;
         };
         /**
          * TicketTree
@@ -32194,6 +32310,42 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["AgentTaskReassign"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_ticket_status_api_organizations__org_slug__tickets__short_id__status_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TicketStatusSet"];
             };
         };
         responses: {

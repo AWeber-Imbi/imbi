@@ -662,7 +662,7 @@ function TaskInbox({
                 ) : task ? (
                   <TaskRow
                     active={task.short_id.toUpperCase() === selectedId}
-                    agent={agentsById.get(task.agent_id)}
+                    agent={agentsById.get(task.agent_id ?? '')}
                     group={row.group}
                     orgSlug={orgSlug}
                     task={task}
@@ -779,8 +779,13 @@ function TaskRow({
       )}
       to={{ pathname: ticketsPath(orgSlug, task.short_id), search }}
     >
-      <span className="mt-px flex shrink-0" title={agent?.name}>
-        {agent ? (
+      <span
+        className="mt-px flex shrink-0"
+        title={task.assignee ?? agent?.name}
+      >
+        {task.assignee ? (
+          <PersonMark email={task.assignee} />
+        ) : agent ? (
           <AgentMark agent={agent} />
         ) : (
           <span

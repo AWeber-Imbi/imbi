@@ -52,6 +52,7 @@ import { useAgentList } from './agentQueries'
 import { agentsPath, ticketsPath } from './agentsNav'
 import { ConversationTab } from './ConversationTab'
 import type { RevealState } from './conversationTurns'
+import { PersonStatusControls } from './PersonStatusControls'
 import { PriorityBadge, priorityLabel, PriorityPicker } from './priority'
 import { StatisticsTab } from './StatisticsTab'
 import {
@@ -702,13 +703,25 @@ function TaskHeader({
         </h2>
         <PriorityBadge priority={task.priority} />
         <Badge variant={statusVariant(task)}>{statusLabel(task)}</Badge>
-        <TaskControls orgSlug={orgSlug} task={task} />
-        <TaskRetry orgSlug={orgSlug} task={task} />
+        {task.assignee ? (
+          <PersonStatusControls orgSlug={orgSlug} task={task} />
+        ) : (
+          <>
+            <TaskControls orgSlug={orgSlug} task={task} />
+            <TaskRetry orgSlug={orgSlug} task={task} />
+          </>
+        )}
         <TaskDelete orgSlug={orgSlug} task={task} />
       </div>
       <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
         <Fact>
-          {agent ? (
+          {task.assignee ? (
+            <UserIdentity
+              email={task.assignee}
+              linkToProfile={false}
+              size="small"
+            />
+          ) : agent ? (
             <Link
               className="text-primary font-medium hover:underline"
               to={agentsPath('manage', agent.slug)}
@@ -718,9 +731,11 @@ function TaskHeader({
           ) : (
             <span className="font-mono text-xs">{task.agent_id}</span>
           )}
-          <span className="text-tertiary font-mono text-xs">
-            v{task.agent_version}
-          </span>
+          {task.agent_version && (
+            <span className="text-tertiary font-mono text-xs">
+              v{task.agent_version}
+            </span>
+          )}
         </Fact>
         {task.projects.length > 0 && (
           <Fact icon={<Box className="size-3.5" />}>

@@ -38,6 +38,7 @@ import {
   sumTotals,
 } from './agentUsage'
 import {
+  assigneeOf,
   formatElapsed,
   groupTasks,
   statusLabel,
@@ -222,7 +223,7 @@ function Dashboard({ orgSlug }: { orgSlug: string }) {
         age: formatElapsed(since(t.blocked_since)),
         key: t.id,
         kind: 'Waiting',
-        meta: `${t.short_id} · ${nameOf(t.agent_id)} · ${t.owner}`,
+        meta: `${t.short_id} · ${assigneeOf(t, nameOf)} · ${t.owner}`,
         title: t.title,
         to: ticketsPath(orgSlug, t.short_id, 'input'),
         tone: 'warning',
@@ -242,7 +243,7 @@ function Dashboard({ orgSlug }: { orgSlug: string }) {
           age: formatElapsed(since(t.closed_at)),
           key: t.id,
           kind: statusLabel(t),
-          meta: [t.short_id, nameOf(t.agent_id), t.outcome_reason]
+          meta: [t.short_id, assigneeOf(t, nameOf), t.outcome_reason]
             .filter(Boolean)
             .join(' · '),
           shortId: t.short_id,
@@ -484,7 +485,7 @@ function RecentRuns({
                   {t.short_id}
                 </span>
                 <span className="w-32 shrink-0 truncate text-sm">
-                  {nameOf(t.agent_id)}
+                  {assigneeOf(t, nameOf)}
                 </span>
                 <span className="text-secondary min-w-0 flex-1 truncate text-sm">
                   {t.title}

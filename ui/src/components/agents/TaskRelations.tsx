@@ -37,7 +37,7 @@ import type { Ticket, TicketRelated } from '@/types'
 
 import { useAgentList } from './agentQueries'
 import { ticketsPath } from './agentsNav'
-import { statusLabel, statusVariant } from './taskEvents'
+import { assigneeOf, statusLabel, statusVariant } from './taskEvents'
 import {
   errorMessage,
   useTicketProjects,
@@ -299,6 +299,7 @@ export function LinkTaskDialog({
   const [kind, setKind] = useState<LinkKind>(kinds[0])
   const [gates, setGates] = useState(false)
   const { data: agents } = useAgentList(orgSlug)
+  const nameOf = (id: string) => agents?.find((a) => a.id === id)?.name ?? ''
   const found = useQuery({
     queryFn: ({ signal }) =>
       listTickets(orgSlug, { limit: 20, q: q || undefined }, signal),
@@ -358,7 +359,7 @@ export function LinkTaskDialog({
                     {t.title}
                   </span>
                   <span className="text-tertiary text-xs whitespace-nowrap">
-                    {agents?.find((a) => a.id === t.agent_id)?.name ?? ''}
+                    {assigneeOf(t, nameOf)}
                   </span>
                   <Badge variant={statusVariant(t)}>{statusLabel(t)}</Badge>
                 </button>
@@ -440,6 +441,7 @@ export function RelatedTasksTab({
   const canMove = canManage || (!!user?.email && user.email === task.owner)
   const relations = useTicketRelations(orgSlug, task.short_id)
   const { data: agents } = useAgentList(orgSlug)
+  const nameOf = (id: string) => agents?.find((a) => a.id === id)?.name ?? ''
   const [open, setOpen] = useState(false)
   const unlink = useTicketRelationMutation(
     orgSlug,
@@ -563,7 +565,7 @@ export function RelatedTasksTab({
                 {row.task.title}
               </span>
               <span className="text-tertiary text-xs whitespace-nowrap">
-                {agents?.find((a) => a.id === row.task.agent_id)?.name ?? ''}
+                {assigneeOf(row.task, nameOf)}
               </span>
               <Badge variant={statusVariant(row.task)}>
                 {statusLabel(row.task)}
