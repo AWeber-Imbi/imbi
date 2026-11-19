@@ -52,6 +52,7 @@ import { useAgentList } from './agentQueries'
 import { agentsPath, ticketsPath } from './agentsNav'
 import { ConversationTab } from './ConversationTab'
 import type { RevealState } from './conversationTurns'
+import { HandOffControl } from './HandOffControl'
 import { PersonStatusControls } from './PersonStatusControls'
 import { PriorityBadge, priorityLabel, PriorityPicker } from './priority'
 import { StatisticsTab } from './StatisticsTab'
@@ -711,6 +712,7 @@ function TaskHeader({
             <TaskRetry orgSlug={orgSlug} task={task} />
           </>
         )}
+        <HandOffControl orgSlug={orgSlug} task={task} />
         <TaskDelete orgSlug={orgSlug} task={task} />
       </div>
       <div className="flex flex-wrap items-center gap-x-5 gap-y-1">

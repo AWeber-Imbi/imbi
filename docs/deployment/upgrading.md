@@ -74,6 +74,38 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
+## Unreleased: handoff and waiting on me (ADR 0028)
+
+Set the version of this section when the release is cut.
+
+1. **Before you deploy**, deploy the person ticket release (the
+   section below) everywhere and let its rollout finish.
+2. Deploy the new image. There is no setup command and no schema
+   change. A handoff writes values that the person ticket release reads
+   already: the request status `withdrawn` and the event types
+   `handed_off`, `assignee.changed`, and `request.withdrawn`.
+3. Deploy the runner image when you like, before or after imbi-api. An
+   agent gets the `hand_off` tool from the new runner. Against an older
+   imbi-api, the tool tells the agent that the handoff failed, and the
+   ticket stays with the agent.
+
+While pods of both releases run:
+
+- A pod of the previous release reads a handed-off ticket as a plain
+  agent ticket or person ticket. A withdrawn request is not open for it,
+  and its history of a new session shows the request as withdrawn.
+- Do not hand a ticket back to an agent until the rollout is done when
+  the ticket had agent sessions before. A pod of the previous release
+  counts the task timeout from the first session of the ticket, so its
+  heartbeat can close the ticket with `exceeded_ceiling`
+  (`task_timeout`). The new release counts from the first session after
+  the last handoff.
+- The new UI shows **Hand off** on a ticket. When a pod of the previous
+  release takes the request, it fails with `404`; try again.
+- When an agent hands off its ticket, the runner keeps the chain until
+  it finishes. The chain then has an open ticket, so it goes to
+  `fencing`, as for a paused ticket.
+
 ## Unreleased: person tickets (ADR 0028)
 
 Set the version of this section when the release is cut.

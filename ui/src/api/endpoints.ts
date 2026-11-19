@@ -202,6 +202,7 @@ import type {
   TicketCounts,
   TicketCreate,
   TicketEvent,
+  TicketHandOff,
   TicketListItem,
   TicketPosition,
   TicketProject,
@@ -3950,6 +3951,13 @@ export const setTicketStatus = (
   shortId: string,
   body: TicketStatusSet,
 ) => apiClient.post<Ticket>(`${ticketPath(orgSlug, shortId)}/status`, body)
+
+/** Hand a ticket to an agent or a person (ADR 0028). */
+export const handOffTicket = (
+  orgSlug: string,
+  shortId: string,
+  body: TicketHandOff,
+) => apiClient.post<Ticket>(`${ticketPath(orgSlug, shortId)}/hand-off`, body)
 
 export const reassignTicket = (
   orgSlug: string,

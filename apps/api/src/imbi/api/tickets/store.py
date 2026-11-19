@@ -335,6 +335,15 @@ class WrongAssigneeKind(ValueError):
     person statuses only to a person ticket (ADR 0028)."""
 
 
+class SessionOpen(ValueError):
+    """A harness session is open on the ticket."""
+
+
+class ChainPinned(ValueError):
+    """A runner holds the chain of the ticket (ADR 0022): it is
+    ``running``, ``fencing``, or ``stuck``."""
+
+
 class TransitionInvalid(ValueError):
     """A person ticket cannot move from its status to the one asked."""
 
@@ -386,6 +395,25 @@ class NewTask:
     #: The short ids of the prerequisites of the ticket, each with its
     #: ``gates`` value (ADR 0028).
     requires: abc.Sequence[tuple[str, bool]] = ()
+
+
+@dataclasses.dataclass(frozen=True)
+class HandOff:
+    """The new assignee of a ticket in a handoff (ADR 0028).
+
+    A person has ``assignee``; an agent has the agent columns, with the
+    version of the agent now. ``budget`` applies only to a ticket that
+    has no budget yet.
+    """
+
+    assignee_kind: AssigneeKind
+    assignee: str | None = None
+    agent_id: str | None = None
+    agent_version: int | None = None
+    prompt_version: int | None = None
+    service_account_id: str | None = None
+    budget: decimal.Decimal | None = None
+    note: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1859,11 +1887,12 @@ class TicketStore:
     async def history(
         self, task: Row, max_seq: int | None = None
     ) -> tuple[list[Row], list[Row]]:
-        """Return the human ``turn`` events and the resolved requests of
-        ``task``, oldest first, for the history of a new session.
+        """Return the human ``turn`` and the ``handed_off`` events and the
+        resolved requests of ``task``, oldest first, for the history of a
+        new session. A withdrawn request is resolved.
 
-        When ``max_seq`` is set, only turns with ``seq <= max_seq`` are
-        returned. The session reads the later turns as events.
+        When ``max_seq`` is set, only events with ``seq <= max_seq`` are
+        returned. The session reads the later events as events.
 
         It reads only Postgres: only a closed task has an archived log,
         and a closed task opens no session.
@@ -1873,9 +1902,10 @@ class TicketStore:
             conn.cursor(row_factory=rows.dict_row) as cursor,
         ):
             await cursor.execute(
-                "SELECT at, actor_id, payload->>'body' AS body"
+                'SELECT type, at, actor_id, payload'
                 ' FROM tickets.events WHERE ticket_id = %s'
-                " AND type = 'turn' AND actor_kind = 'human'"
+                " AND ((type = 'turn' AND actor_kind = 'human')"
+                " OR type = 'handed_off')"
                 ' AND (%s::bigint IS NULL OR seq <= %s) ORDER BY seq',
                 (task['id'], max_seq, max_seq),
             )
@@ -1997,7 +2027,8 @@ class TicketStore:
         """Record a heartbeat of an open session; return the task.
 
         When the task has run longer than ``timeout_seconds`` since its
-        first session opened, close it with ``exceeded_ceiling``.
+        first session after its last handoff opened, close it with
+        ``exceeded_ceiling``.
 
         Raises:
             TaskNotFound: No such task.
@@ -2016,10 +2047,15 @@ class TicketStore:
                 (session['id'],),
             )
             if timeout_seconds is not None:
+                # The timeout counts from the first session after the
+                # last handoff: an agent period starts there (ADR 0028).
                 cursor = await write.conn.execute(
                     'SELECT NOW() - min(opened_at) > make_interval(secs => %s)'
-                    ' FROM tickets.sessions WHERE ticket_id = %s',
-                    (timeout_seconds, write.task['id']),
+                    ' FROM tickets.sessions WHERE ticket_id = %s'
+                    ' AND opened_at > COALESCE((SELECT max(at)'
+                    ' FROM tickets.events WHERE ticket_id = %s'
+                    " AND type = 'handed_off'), '-infinity')",
+                    (timeout_seconds, write.task['id'], write.task['id']),
                 )
                 row = await cursor.fetchone()
                 if row and row[0]:
@@ -2601,6 +2637,76 @@ class TicketStore:
                 raise TransitionInvalid(short_id, task['status'], status)
         return write.task
 
+    @_retry_deadlock
+    async def hand_off(
+        self,
+        organization_id: str,
+        short_id: str,
+        to: HandOff,
+        actor: Actor,
+        *,
+        session_id: uuid.UUID | None = None,
+    ) -> Row:
+        """Give the ticket to another assignee (ADR 0028).
+
+        A change of kind writes ``handed_off`` and changes the status in
+        the same write: ``held`` stays ``held``, every other status
+        becomes ``open`` (to a person) or ``queued`` (to an agent). The
+        control value goes back to ``run``. Each open request closes as
+        ``withdrawn`` with a ``request.withdrawn`` event. To an agent,
+        the agent columns are set; the ticket keeps its budget (a ticket
+        with no budget gets ``to.budget``) and its cost total, so the
+        budget counts every agent period. A ``done`` chain goes back to
+        ``queued`` with a new attempt, so that a runner claims the
+        ticket. From a person to another person, only ``assignee``
+        changes, with ``assignee.changed``.
+
+        Without ``session_id``, the handoff is refused while a session is
+        open or the chain is pinned. With ``session_id``, the agent of
+        that open session hands its own ticket to a person: its sessions
+        close (reason ``handed_off``) in the same write, and the runner
+        keeps the chain.
+
+        Raises:
+            TaskNotFound: No such task.
+            TaskClosed: The task is closed.
+            SessionNotFound: The task has no such session.
+            SessionClosed: The session is closed.
+            SessionOpen: A session is open.
+            ChainPinned: A runner holds the chain.
+            WrongAssigneeKind: An agent ticket goes to an agent.
+            CancelPending: A cancel waits for the harness.
+
+        """
+        async with self._write(organization_id, short_id) as write:
+            task = write.task
+            if to.assignee_kind == 'agent' == task['assignee_kind']:
+                raise WrongAssigneeKind(short_id)
+            if task['control'] == 'cancel':
+                raise CancelPending(short_id)
+            if session_id is not None:
+                await _open_session(write.conn, task['id'], session_id)
+                await _close_sessions(write, 'handed_off', actor)
+            elif await _session_open(write.conn, task['id']):
+                raise SessionOpen(short_id)
+            elif await _chain_state(write.conn, task) in _PINNED:
+                raise ChainPinned(short_id)
+            if to.assignee_kind == task['assignee_kind']:
+                if to.assignee != task['assignee']:
+                    await write.event(
+                        'assignee.changed',
+                        {
+                            'from': task['assignee'],
+                            'to': to.assignee,
+                            'note': to.note,
+                        },
+                        actor,
+                    )
+                    await write.update({'assignee': to.assignee})
+            else:
+                await _hand_off(write, to, actor)
+        return write.task
+
 
 async def requeue_chain(
     conn: Conn, chain_id: uuid.UUID, attempt: int, actor: Actor
@@ -2837,19 +2943,7 @@ async def _close(
     ``state.changed`` and ``outcome.set``. A ``done_*`` outcome
     releases the dependents that the task gates, in this transaction.
     """
-    cursor = await write.conn.execute(
-        'UPDATE tickets.sessions'
-        " SET closed_at = NOW(), close_reason = 'task_closed'"
-        ' WHERE ticket_id = %s AND closed_at IS NULL RETURNING id',
-        (write.task['id'],),
-    )
-    for (session_id,) in await cursor.fetchall():
-        await write.event(
-            'session.closed',
-            {'session_id': str(session_id), 'reason': 'task_closed'},
-            actor,
-            session_id=session_id,
-        )
+    await _close_sessions(write, 'task_closed', actor)
     await write.event(
         'state.changed',
         {
@@ -2878,6 +2972,107 @@ async def _close(
         )
         write.released = await _release_dependents(
             write.conn, [row[0] for row in await cursor.fetchall()], actor
+        )
+
+
+#: The chain states in which a runner holds a chain; the same as
+#: :data:`imbi.api.harness.store.PINNED`.
+_PINNED = ('running', 'fencing', 'stuck')
+
+
+async def _chain_state(conn: Conn, task: Row) -> str | None:
+    """Lock the chain row of ``task`` and return its state; ``None``
+    when no runner claimed the chain yet."""
+    cursor = await conn.execute(
+        'SELECT state FROM harness.chains WHERE root_ticket_id = %s'
+        ' FOR UPDATE',
+        (task['chain_id'] or task['id'],),
+    )
+    row = await cursor.fetchone()
+    return None if row is None else str(row[0])
+
+
+def _assignee_of(row: Row) -> Row:
+    """One side of a ``handed_off`` event."""
+    if row['assignee_kind'] == 'person':
+        return {'kind': 'person', 'assignee': row['assignee']}
+    return {
+        'kind': 'agent',
+        'agent_id': row['agent_id'],
+        'agent_version': row['agent_version'],
+    }
+
+
+async def _hand_off(write: _Write, to: HandOff, actor: Actor) -> None:
+    """Change the assignee kind; see :meth:`TicketStore.hand_off`."""
+    task = write.task
+    cursor = await write.conn.execute(
+        "UPDATE tickets.requests SET status = 'withdrawn',"
+        ' resolved_at = NOW(), resolved_by = %s'
+        " WHERE ticket_id = %s AND status = 'open'"
+        ' RETURNING id, opened_at',
+        (actor.id, task['id']),
+    )
+    for request_id, _opened in sorted(
+        await cursor.fetchall(), key=lambda row: (row[1], row[0])
+    ):
+        await write.event(
+            'request.withdrawn', {'request_id': str(request_id)}, actor
+        )
+    status: Status = 'open' if to.assignee_kind == 'person' else 'queued'
+    if task['status'] == 'held':
+        status = 'held'
+    await write.event(
+        'handed_off',
+        {
+            'from': _assignee_of(task),
+            'to': _assignee_of(dataclasses.asdict(to)),
+            'note': to.note,
+        },
+        actor,
+    )
+    if status != task['status']:
+        await write.event(
+            'state.changed',
+            {'from': task['status'], 'to': status, 'reason': 'handed_off'},
+            actor,
+        )
+    # One write, so the checks of the assignee kind hold on the row.
+    changes: Row = {
+        'status': status,
+        'assignee_kind': to.assignee_kind,
+        'assignee': to.assignee,
+        'agent_id': to.agent_id,
+        'agent_version': to.agent_version,
+        'prompt_version': to.prompt_version,
+        'service_account_id': to.service_account_id,
+        'control': 'run',
+    }
+    if to.assignee_kind == 'agent':
+        if task['budget'] is None:
+            changes['budget'] = to.budget
+        await write.conn.execute(
+            "UPDATE harness.chains SET state = 'queued',"
+            ' attempt = attempt + 1, updated_at = NOW()'
+            " WHERE root_ticket_id = %s AND state = 'done'",
+            (task['chain_id'] or task['id'],),
+        )
+    await write.update(changes)
+
+
+async def _close_sessions(write: _Write, reason: str, actor: Actor) -> None:
+    """Close every open session of the task, each with ``session.closed``."""
+    cursor = await write.conn.execute(
+        'UPDATE tickets.sessions SET closed_at = NOW(), close_reason = %s'
+        ' WHERE ticket_id = %s AND closed_at IS NULL RETURNING id',
+        (reason, write.task['id']),
+    )
+    for (session_id,) in await cursor.fetchall():
+        await write.event(
+            'session.closed',
+            {'session_id': str(session_id), 'reason': reason},
+            actor,
+            session_id=session_id,
         )
 
 

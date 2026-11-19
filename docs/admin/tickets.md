@@ -32,7 +32,7 @@ A runner pod runs the ticket. See
 |---|---|---|
 | `ticket:read` | See tickets, their events, usage, and the dashboard | `admin`, `developer`, `default`, `readonly`, `imbi-scheduler` |
 | `ticket:create` | Create tickets | `admin`, `developer`, `imbi-scheduler`, `imbi-gateway` |
-| `ticket:manage` | Pause, resume, cancel, and reassign tickets. Reply. Change relations and associated projects | `admin`, `developer` |
+| `ticket:manage` | Pause, resume, cancel, reassign, and hand off tickets. Reply. Change relations and associated projects | `admin`, `developer` |
 | `ticket:resolve` | Answer feedback requests and resolve approvals | `admin`, `developer` |
 | `ticket:delete` | Delete closed tickets | `admin` |
 
@@ -120,6 +120,47 @@ The outcome of a person ticket is `done_acted`, `done_nothing_to_act_on`,
 `superseded`, or `cancelled_by_human`. Pause, resume, cancel, and retry
 apply to agent tickets only. A `held` person ticket opens when its gating
 prerequisites are done.
+
+## Hand off a ticket
+
+A ticket can go from an agent to a person, from a person to an agent,
+and from a person to another person. It keeps its id, log, owner,
+parent, dependencies, projects, and cost. On the ticket page, click
+**Hand off** (the arrows icon), or use
+`POST /organizations/{org}/tickets/{id}/hand-off`:
+
+```json
+{"assignee_kind": "person", "assignee": "ops@example.com", "note": "Merge the PR"}
+{"assignee_kind": "agent", "agent_slug": "triage"}
+```
+
+The owner, the assignee, and people with `ticket:manage` can hand off a
+ticket. The status changes in the same write:
+
+| From | To a person | To an agent |
+|---|---|---|
+| `queued`, `paused` | `open` | |
+| `open`, `in_progress` | | `queued` |
+| `blocked` | `open` | `queued` |
+| `held` | `held` | `held` |
+
+- Imbi refuses a handoff while a runner holds the ticket (`409
+  session_open` or `chain_pinned`). To take a running ticket, pause it,
+  and hand it off when its session closes.
+- Each open request closes as **Withdrawn**, with no answer.
+- An agent gets the ticket at the agent version that it has now, and the
+  agent budget when the ticket has no budget. The budget counts the cost
+  of every agent period of the ticket. The task timeout counts from the
+  first session after the last handoff.
+- An agent ticket cannot go to another agent.
+- From a person to another person, only the assignee changes
+  (`assignee.changed`). Other handoffs write `handed_off`.
+
+An agent gives its own ticket to a person with its `hand_off` tool, with
+a note. The default person is the owner. The tool ends the session; the
+ticket does not get an outcome. Use it when a person must do the rest of
+the work, or must decide something that can take days. A new session of
+an agent reads the handoffs and their notes in the ticket history.
 
 ## Create a ticket
 

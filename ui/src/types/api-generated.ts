@@ -1745,12 +1745,12 @@ export interface paths {
          *     A new session reads events only after ``last_seq``, so it reads
          *     what happened before here. It sends ``last_seq`` as ``max_seq``, so
          *     a comment written after the session opened is not here as well as
-         *     in the events. The history has comments (human turns), resolved
-         *     requests, and the status and outcome of prerequisite tickets and of
-         *     the tickets that it delegated (also after a move to another
-         *     parent), oldest first. When the text is larger
-         *     than :data:`MAX_HISTORY_BYTES`, the oldest entries are left out
-         *     and ``cut`` is their number. ``webhook`` marks untrusted text.
+         *     in the events. The history has comments (human turns), handoffs,
+         *     resolved and withdrawn requests, and the status and outcome of
+         *     prerequisite tickets and of the tickets that it delegated (also
+         *     after a move to another parent), oldest first. When the text is
+         *     larger than :data:`MAX_HISTORY_BYTES`, the oldest entries are left
+         *     out and ``cut`` is their number. ``webhook`` marks untrusted text.
          *
          *     Raises:
          *         401: Not a current agent token.
@@ -5587,6 +5587,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/tickets/{short_id}/hand-off": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hand Off Ticket
+         * @description Hand a ticket to an agent or to a person (ADR 0028).
+         *
+         *     The ticket keeps its id, log, owner, parent, dependencies, and cost.
+         *     Its status changes in the same write: ``held`` stays ``held``;
+         *     otherwise a person gets it ``open`` and an agent ``queued``. Open
+         *     requests close as ``withdrawn``. An agent gets the ticket at the
+         *     agent version that it has now. A person ticket to another person
+         *     changes only the assignee. The owner and the assignee make this
+         *     change; other callers need ``ticket:manage``. An agent hands off
+         *     its own ticket with the harness tool ``hand_off``.
+         *
+         *     Raises:
+         *         403: The caller is not the owner or the assignee and has no
+         *             ``ticket:manage``.
+         *         404: No such task.
+         *         409: The task is closed, is an agent ticket and goes to an agent
+         *             (``agent_ticket``), has an open session (``session_open``),
+         *             has a pinned chain (``chain_pinned``), or a cancel is not
+         *             done yet. The agent is disabled.
+         *         422: The agent or the person is not in the org.
+         */
+        post: operations["hand_off_ticket_api_organizations__org_slug__tickets__short_id__hand_off_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/tickets/{short_id}/priority": {
         parameters: {
             query?: never;
@@ -6023,7 +6062,8 @@ export interface paths {
          * @description Record a heartbeat; return the control value, seq, and budget.
          *
          *     When the task has run longer than the agent's
-         *     ``settings.task_timeout_seconds`` since its first session opened,
+         *     ``settings.task_timeout_seconds`` since its first session after its
+         *     last handoff opened,
          *     the task closes with ``exceeded_ceiling`` (reason ``task_timeout``)
          *     and the response has the closed status.
          *
@@ -6062,6 +6102,39 @@ export interface paths {
          *         409: ``task_closed``.
          */
         post: operations["close_ticket_session_api_organizations__org_slug__tickets__short_id__sessions__session_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/sessions/{session_id}/hand-off": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hand Off Agent Task Session
+         * @description Hand the task of the session to a person, and end the session
+         *     (ADR 0028).
+         *
+         *     Every open session closes with the reason ``handed_off``, and the
+         *     ticket becomes a person ticket, ``open`` (``held`` stays ``held``),
+         *     in the same write. Open requests close as ``withdrawn``. The runner
+         *     keeps the chain; the ticket is not claimed again until it goes back
+         *     to an agent.
+         *
+         *     Raises:
+         *         403: The caller is not the service account of the task's agent.
+         *         404: No such task or session.
+         *         409: ``task_closed``, ``session_closed``, or ``task_cancelled``.
+         *         422: The person is not in the org.
+         */
+        post: operations["hand_off_ticket_session_api_organizations__org_slug__tickets__short_id__sessions__session_id__hand_off_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -15091,6 +15164,22 @@ export interface components {
             detail?: components["schemas"]["ValidationError"][];
         };
         /**
+         * HandOffSet
+         * @description The person who gets the ticket of an agent (ADR 0028).
+         */
+        HandOffSet: {
+            /**
+             * Assignee
+             * @description The email of a person in the org. The owner of the ticket when not set.
+             */
+            assignee?: string | null;
+            /**
+             * Note
+             * @description What the person must do, and why.
+             */
+            note: string;
+        };
+        /**
          * HarnessEvent
          * @description One event in the envelope of ADR 0020.
          */
@@ -15141,15 +15230,14 @@ export interface components {
         };
         /**
          * HistoryEntry
-         * @description One part of the history of a ticket. Handoffs are not stored
-         *     yet, so the history has none.
+         * @description One part of the history of a ticket.
          */
         HistoryEntry: {
             /**
              * Kind
              * @enum {string}
              */
-            kind: "comment" | "request" | "child" | "prerequisite";
+            kind: "comment" | "request" | "handoff" | "child" | "prerequisite";
             /**
              * At
              * Format: date-time
@@ -21776,6 +21864,32 @@ export interface components {
              * @default false
              */
             gates: boolean;
+        };
+        /**
+         * TicketHandOff
+         * @description The new assignee of a ticket (ADR 0028).
+         */
+        TicketHandOff: {
+            /**
+             * Assignee Kind
+             * @enum {string}
+             */
+            assignee_kind: "agent" | "person";
+            /**
+             * Agent Slug
+             * @description The agent, for an agent.
+             */
+            agent_slug?: string | null;
+            /**
+             * Assignee
+             * @description The email of the person, for a person. Must be in the org.
+             */
+            assignee?: string | null;
+            /**
+             * Note
+             * @description Why, for the new assignee.
+             */
+            note?: string | null;
         };
         /** TicketHistory */
         TicketHistory: {
@@ -32369,6 +32483,42 @@ export interface operations {
             };
         };
     };
+    hand_off_ticket_api_organizations__org_slug__tickets__short_id__hand_off_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TicketHandOff"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     set_ticket_priority_api_organizations__org_slug__tickets__short_id__priority_post: {
         parameters: {
             query?: never;
@@ -32999,6 +33149,43 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["SessionClose"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    hand_off_ticket_session_api_organizations__org_slug__tickets__short_id__sessions__session_id__hand_off_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                session_id: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HandOffSet"];
             };
         };
         responses: {
