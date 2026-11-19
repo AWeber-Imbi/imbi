@@ -188,14 +188,18 @@ _IS_ANCESTOR: typing.LiteralString = (
 
 #: The tree of the ticket ``%s``: the short id and title of its root,
 #: the number of tickets in the tree, and the number that are not
-#: closed. The foreign key keeps a tree in one organization.
+#: closed. The foreign key keeps a tree in one organization; the
+#: descendant join also matches ``organization_id`` so that it can use
+#: ``tickets_parent_idx``.
 _TREE: typing.LiteralString = (
     _UP  # noqa: S608
-    + ', down (id, status, root_short_id, root_title) AS ('
-    ' SELECT t.id, t.status, t.short_id, t.title FROM tickets.tickets AS t'
+    + ', down (organization_id, id, status, root_short_id, root_title) AS ('
+    ' SELECT t.organization_id, t.id, t.status, t.short_id, t.title'
+    ' FROM tickets.tickets AS t'
     ' JOIN up ON t.id = up.id WHERE up.parent_id IS NULL'
-    ' UNION SELECT t.id, t.status, down.root_short_id, down.root_title'
-    ' FROM tickets.tickets AS t JOIN down ON t.parent_id = down.id)'
+    ' UNION SELECT t.organization_id, t.id, t.status, down.root_short_id,'
+    ' down.root_title FROM tickets.tickets AS t JOIN down'
+    ' ON t.organization_id = down.organization_id AND t.parent_id = down.id)'
     ' SELECT min(root_short_id) AS root_short_id,'
     ' min(root_title) AS root_title, count(*) AS tickets,'
     " count(*) FILTER (WHERE status <> 'closed') AS open FROM down"
