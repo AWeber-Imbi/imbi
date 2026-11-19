@@ -973,11 +973,24 @@ class ReleaseB1TestCase(DatabaseTestCase):
         before = await self._catalog(conn)
         self.assertEqual(
             await self._index_names(conn),
-            ['chains_pkey', 'claims_pkey', 'tasks_origin_idempotency_key'],
+            [
+                'chains_pkey',
+                'chains_root_ticket_id_key',
+                'claims_pkey',
+                'claims_ticket_key',
+                'tasks_origin_idempotency_key',
+            ],
         )
-        # A release B pod that starts makes the harness unique indexes
-        # again, and leaves the ticket index as it is.
-        await _release_b_install()
+        # A release B pod that starts, then a pod of this release.
+        with self.assertNoLogs('imbi.common.relational', 'INFO'):
+            await _release_b_install()
+            await _install()
+        self.assertEqual(before, await self._catalog(conn))
+
+    async def test_a_new_install_has_only_the_new_names(self) -> None:
+        await _install()
+        conn = await self._connect()
+        self._assert_no_old_harness_names(await self._catalog(conn))
         self.assertEqual(
             await self._index_names(conn),
             [
@@ -987,16 +1000,4 @@ class ReleaseB1TestCase(DatabaseTestCase):
                 'claims_ticket_key',
                 'tasks_origin_idempotency_key',
             ],
-        )
-        # The next start of this release drops them.
-        await _install()
-        self.assertEqual(before, await self._catalog(conn))
-
-    async def test_a_new_install_has_only_the_new_names(self) -> None:
-        await _install()
-        conn = await self._connect()
-        self._assert_no_old_harness_names(await self._catalog(conn))
-        self.assertEqual(
-            await self._index_names(conn),
-            ['chains_pkey', 'claims_pkey', 'tasks_origin_idempotency_key'],
         )

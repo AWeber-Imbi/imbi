@@ -9,44 +9,28 @@
 
 # ADR 0028 renamed `chains.root_task_id` to `root_ticket_id` and
 # `claims.task_id` to `ticket_id` without downtime. Release A added the
-# new columns, a unique index on each, and a trigger that kept the old
-# and new columns equal; release B used only the new columns. This
-# release makes the unique indexes the primary keys (so no index is
-# built) and drops the old columns, the trigger, and its function, so
-# that an older install is the same as a new install of this file.
-# Release B pods do not use the old columns, so they keep working.
-#
-# A release B pod that starts makes the two unique indexes again. They
-# duplicate the keys, so the next start drops them.
+# new columns and a trigger that kept the old and new columns equal;
+# release B used only the new columns. This release moves the primary
+# keys to the new columns and drops the old columns, the trigger, and
+# its function, so that an older install is the same as a new install
+# of this file. Release B pods do not use the old columns, so they keep
+# working. The unique indexes on the new columns duplicate the keys; a
+# later release drops them.
 [[steps]]
 name = "drop-old-ticket-ids"
 when = """
 SELECT EXISTS (SELECT 1 FROM pg_attribute
                 WHERE attrelid = to_regclass('harness.chains')
                   AND attname = 'root_task_id' AND NOT attisdropped)
-    OR to_regclass('harness.chains_root_ticket_id_key') IS NOT NULL
-    OR to_regclass('harness.claims_ticket_key') IS NOT NULL
 """
 sql = '''
-DO $step$
-BEGIN
-  IF EXISTS (SELECT 1 FROM pg_attribute
-              WHERE attrelid = 'harness.chains'::regclass
-                AND attname = 'root_task_id' AND NOT attisdropped) THEN
-    DROP TRIGGER chains_mirror_ticket_id ON harness.chains;
-    DROP TRIGGER claims_mirror_ticket_id ON harness.claims;
-    DROP FUNCTION harness.mirror_ticket_id();
-    ALTER TABLE harness.chains DROP COLUMN root_task_id,
-      ADD CONSTRAINT chains_pkey
-        PRIMARY KEY USING INDEX chains_root_ticket_id_key;
-    ALTER TABLE harness.claims DROP COLUMN task_id,
-      ADD CONSTRAINT claims_pkey PRIMARY KEY USING INDEX claims_ticket_key;
-  ELSE
-    DROP INDEX IF EXISTS harness.chains_root_ticket_id_key;
-    DROP INDEX IF EXISTS harness.claims_ticket_key;
-  END IF;
-END
-$step$;
+DROP TRIGGER IF EXISTS chains_mirror_ticket_id ON harness.chains;
+DROP TRIGGER IF EXISTS claims_mirror_ticket_id ON harness.claims;
+DROP FUNCTION IF EXISTS harness.mirror_ticket_id();
+ALTER TABLE harness.chains DROP COLUMN root_task_id,
+  ADD PRIMARY KEY (root_ticket_id);
+ALTER TABLE harness.claims DROP COLUMN task_id,
+  ADD PRIMARY KEY (ticket_id, attempt);
 '''
 
 # One row per runner pool. The Kubernetes Deployment of the pool has the
@@ -150,6 +134,11 @@ updated_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 columns = ["root_ticket_id"]
 
 [[tables.indexes]]
+name = "chains_root_ticket_id_key"
+columns = ["root_ticket_id"]
+unique = true
+
+[[tables.indexes]]
 name = "chains_state_idx"
 columns = ["state"]
 
@@ -168,6 +157,11 @@ claimed_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 
 [tables.primary_key]
 columns = ["ticket_id", "attempt"]
+
+[[tables.indexes]]
+name = "claims_ticket_key"
+columns = ["ticket_id", "attempt"]
+unique = true
 
 # Tool call counters for `AgentToolConfig.rate_limit`, across all
 # runners. One row per agent, tool, period, and window start.
