@@ -40,6 +40,7 @@ export function task(overrides: Partial<TicketListItem> = {}): TicketListItem {
     origin: { kind: 'human', user: 'dev@example.com' },
     owner: 'dev@example.com',
     phase: null,
+    priority: 'normal',
     projects: [{ project_id: 'proj-1', project_slug: 'billing' }],
     prompt_version: 7,
     service_account_id: 'agent-agt-1',

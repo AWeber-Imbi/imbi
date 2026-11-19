@@ -14,6 +14,7 @@ import {
   ArrowDown,
   Bot,
   Brain,
+  ChartGantt,
   ChevronRight,
   FilePen,
   FileText,
@@ -114,6 +115,7 @@ interface Ctx {
   isOpen: (id: string, byDefault: boolean) => boolean
   isWhole: (id: string) => boolean
   mode: ConversationMode
+  onInspect?: (seq: number) => void
   orgSlug: string
   requests: TaskRequestView[]
   setOpen: (id: string, open: boolean) => void
@@ -186,11 +188,16 @@ const WIDTHS: ToolbarOption<ConversationWidth>[] = [
  */
 export function ConversationTab({
   events,
+  footer,
+  onInspect,
   orgSlug,
   requests,
   task,
 }: {
   events: Parameters<typeof timeline>[0]
+  footer?: ReactNode
+  /** Opens the trajectory on the record that holds this event. */
+  onInspect?: (seq: number) => void
   orgSlug: string
   requests: TaskRequestView[]
   task: Ticket
@@ -224,6 +231,7 @@ export function ConversationTab({
       isOpen: searching ? () => true : isOpen,
       isWhole: (id: string) => whole.has(id),
       mode: searching ? 'verbose' : mode,
+      onInspect,
       orgSlug,
       requests,
       setOpen: searching
@@ -238,7 +246,17 @@ export function ConversationTab({
       },
       task,
     }),
-    [isOpen, mode, orgSlug, requests, searching, setOpen, task, whole],
+    [
+      isOpen,
+      mode,
+      onInspect,
+      orgSlug,
+      requests,
+      searching,
+      setOpen,
+      task,
+      whole,
+    ],
   )
   const [flash, setFlash] = useState<null | { id: string }>(null)
   const [revealed, setRevealed] = useState<null | { id: string }>(null)
@@ -276,6 +294,29 @@ export function ConversationTab({
   const pinned = useRef(true)
   const seen = useRef(events.length)
   const lastTop = useRef(0)
+  const dock = useRef<HTMLDivElement>(null)
+  const docked = footer !== undefined
+  useLayoutEffect(() => {
+    const el = dock.current
+    const host = root.current
+    if (!docked || !el || !host || typeof ResizeObserver === 'undefined') {
+      return
+    }
+    const fit = () => {
+      host.style.setProperty('--dock-h', `${el.offsetHeight}px`)
+      const box = scroller.current
+      if (box && pinned.current && follow.current) {
+        box.scrollTop = box.scrollHeight
+      }
+    }
+    fit()
+    const observer = new ResizeObserver(fit)
+    observer.observe(el)
+    return () => {
+      observer.disconnect()
+      host.style.removeProperty('--dock-h')
+    }
+  }, [docked])
   const [atEnd, setAtEnd] = useState(true)
   const [focusKey, setFocusKey] = useState<null | string>(null)
   const focusRow = focusKey === null ? -1 : rows.indexOf(focusKey)
@@ -350,7 +391,7 @@ export function ConversationTab({
   return (
     <>
       <RevealTurn list={list} onReveal={reveal} />
-      <div className="flex min-h-0 flex-1 flex-col" ref={root}>
+      <div className="relative flex min-h-0 flex-1 flex-col" ref={root}>
         <TaskToolbar label="Conversation">
           <ToolbarChoice
             label="Detail"
@@ -379,7 +420,7 @@ export function ConversationTab({
           <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
             <div
               aria-label="Conversation"
-              className="scroll-fade-b size-full min-h-0 min-w-0 scrollbar-thin scrollbar-gutter-stable overflow-y-auto overscroll-contain contain-content"
+              className="scroll-fade supports-[animation-timeline:scroll()]:scroll-fade-b-[20rem] scroll-fade-b-[0px] size-full min-h-0 min-w-0 scrollbar-thin scrollbar-gutter-stable overflow-y-auto overscroll-contain contain-content"
               onFocus={(e) => {
                 const index = (e.target as HTMLElement).closest<HTMLElement>(
                   '[data-index]',
@@ -399,7 +440,7 @@ export function ConversationTab({
             >
               <div
                 className={cn(
-                  'flex min-h-full w-full flex-col px-10',
+                  'flex min-h-full w-full flex-col px-10 pb-(--dock-h)',
                   width === 'narrow' && 'mx-auto max-w-3xl',
                 )}
               >
@@ -461,7 +502,7 @@ export function ConversationTab({
               </div>
             </div>
             <Button
-              className="border-border bg-background text-foreground hover:bg-muted absolute bottom-4 left-1/2 -translate-x-1/2 transition-[translate,scale,opacity] duration-200 data-[active=false]:pointer-events-none data-[active=false]:translate-y-full data-[active=false]:scale-95 data-[active=false]:opacity-0 data-[active=true]:translate-y-0 data-[active=true]:scale-100 data-[active=true]:opacity-100"
+              className="border-border bg-background text-foreground hover:bg-muted absolute bottom-[calc(var(--dock-h)+1rem)] left-1/2 -translate-x-1/2 transition-[translate,scale,opacity] duration-200 data-[active=false]:pointer-events-none data-[active=false]:translate-y-full data-[active=false]:scale-95 data-[active=false]:opacity-0 data-[active=true]:translate-y-0 data-[active=true]:scale-100 data-[active=true]:opacity-100"
               data-active={!atEnd}
               onClick={toLatest}
               size="icon-sm"
@@ -471,6 +512,14 @@ export function ConversationTab({
               <ArrowDown />
               <span className="sr-only">Scroll to end</span>
             </Button>
+          </div>
+        )}
+        {docked && (
+          <div
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-20"
+            ref={dock}
+          >
+            {footer}
           </div>
         )}
       </div>
@@ -544,6 +593,18 @@ function CallRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
             onWhole={(part) => ctx.showWhole(`${key}:${part}`)}
             result={p.result == null ? '' : label(p.result)}
           />
+        )}
+        {e && ctx.onInspect && (
+          <Button
+            aria-label={`Inspect ${toolLabel(tool)} in the trajectory`}
+            className="text-muted-foreground hover:text-foreground -ml-1 h-6 w-fit gap-1 px-1 text-xs font-normal [&_svg]:size-3.5"
+            onClick={() => ctx.onInspect?.(e.seq)}
+            size="sm"
+            variant="ghost"
+          >
+            <ChartGantt />
+            Inspect
+          </Button>
         )}
         {entry.children.length > 0 && (
           <div className="border-accent/40 flex flex-col gap-2 border-l-2 pl-3">

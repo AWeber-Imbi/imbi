@@ -256,7 +256,7 @@ describe('Tasks', () => {
     await waitFor(() =>
       expect(window.location.pathname).toBe('/tickets/acme/T-3/input'),
     )
-    expect(await screen.findByRole('button', { name: 'yes' })).toBeVisible()
+    expect(await screen.findByRole('radio', { name: 'yes' })).toBeVisible()
   })
 
   it('opens a task in the org of the link', async () => {
@@ -624,7 +624,8 @@ describe('Tasks', () => {
         .mock.calls.filter(([, params]) => params.group === 'closed').length
     const before = reads()
     // An answer refreshes the inbox.
-    fireEvent.click(await screen.findByRole('button', { name: 'yes' }))
+    fireEvent.click(await screen.findByRole('radio', { name: 'yes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send answer' }))
     await waitFor(() => expect(reads()).toBeGreaterThan(before))
     expect(screen.getByText('Old work')).toBe(row)
   })
@@ -856,7 +857,8 @@ describe('Tasks', () => {
   it('answers a feedback request', async () => {
     vi.mocked(endpoints.resolveTicketRequest).mockResolvedValue({})
     renderAt('/tickets/acme/T-3/input')
-    fireEvent.click(await screen.findByRole('button', { name: 'yes' }))
+    fireEvent.click(await screen.findByRole('radio', { name: 'yes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send answer' }))
     await waitFor(() =>
       expect(endpoints.resolveTicketRequest).toHaveBeenCalledWith(
         'acme',
@@ -864,6 +866,67 @@ describe('Tasks', () => {
         'req-1',
         { answer: 'yes', status: 'answered' },
       ),
+    )
+  })
+
+  it('sends a written answer instead of an option', async () => {
+    vi.mocked(endpoints.resolveTicketRequest).mockResolvedValue({})
+    renderAt('/tickets/acme/T-3/input')
+    fireEvent.click(await screen.findByRole('radio', { name: 'yes' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Answer' }), {
+      target: { value: 'only on Fridays' },
+    })
+    expect(screen.getByRole('radio', { name: 'yes' })).not.toBeChecked()
+    fireEvent.click(screen.getByRole('button', { name: 'Send answer' }))
+    await waitFor(() =>
+      expect(endpoints.resolveTicketRequest).toHaveBeenCalledWith(
+        'acme',
+        'T-3',
+        'req-1',
+        { answer: 'only on Fridays', status: 'answered' },
+      ),
+    )
+  })
+
+  it('asks for an answer before sending', async () => {
+    renderAt('/tickets/acme/T-3/input')
+    fireEvent.click(await screen.findByRole('button', { name: 'Send answer' }))
+    expect(
+      await screen.findByText('Pick an answer or write one.'),
+    ).toBeVisible()
+    expect(endpoints.resolveTicketRequest).not.toHaveBeenCalled()
+  })
+
+  it('sends an answer once while it is pending', async () => {
+    vi.mocked(endpoints.resolveTicketRequest).mockReturnValue(
+      new Promise(() => {}),
+    )
+    renderAt('/tickets/acme/T-3/input')
+    fireEvent.click(await screen.findByRole('radio', { name: 'yes' }))
+    const send = screen.getByRole('button', { name: 'Send answer' })
+    fireEvent.click(send)
+    await waitFor(() => expect(send).toBeDisabled())
+    const form = send.closest('form')
+    if (!form) throw new Error('no form')
+    fireEvent.submit(form)
+    fireEvent.submit(form)
+    await new Promise((done) => setTimeout(done, 50))
+    expect(endpoints.resolveTicketRequest).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends an answer again after a failure', async () => {
+    vi.mocked(endpoints.resolveTicketRequest)
+      .mockRejectedValueOnce(new ApiError(500, 'Server Error', {}))
+      .mockResolvedValueOnce({})
+    renderAt('/tickets/acme/T-3/input')
+    fireEvent.click(await screen.findByRole('radio', { name: 'yes' }))
+    const send = screen.getByRole('button', { name: 'Send answer' })
+    fireEvent.click(send)
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    await waitFor(() => expect(send).toBeEnabled())
+    fireEvent.click(send)
+    await waitFor(() =>
+      expect(endpoints.resolveTicketRequest).toHaveBeenCalledTimes(2),
     )
   })
 
@@ -880,13 +943,10 @@ describe('Tasks', () => {
       }),
     )
     renderAt('/tickets/acme/T-3/input')
-    fireEvent.click(await screen.findByRole('button', { name: 'no' }))
-    expect(
-      await screen.findByText('Answered by pat@example.com'),
-    ).toBeInTheDocument()
-    expect(
-      screen.queryByRole('button', { name: 'yes' }),
-    ).not.toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('radio', { name: 'no' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send answer' }))
+    expect(await screen.findByText('pat@example.com')).toBeInTheDocument()
+    expect(screen.queryByRole('radio', { name: 'yes' })).not.toBeInTheDocument()
     expect(screen.queryByText('Waiting on you')).not.toBeInTheDocument()
   })
 
@@ -1065,6 +1125,67 @@ describe('Tasks', () => {
       )
     })
 
+    it('inspects a Conversation call in the Trajectory', async () => {
+      renderAt('/tickets/acme/T-3/conversation')
+      fireEvent.click(await screen.findByRole('radio', { name: 'Verbose' }))
+      fireEvent.click(
+        await screen.findByRole('button', { name: /Bash uv run pytest -q/ }),
+      )
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Inspect Bash in the trajectory' }),
+      )
+      await waitFor(() =>
+        expect(window.location.pathname).toBe('/tickets/acme/T-3/trajectory'),
+      )
+      expect(window.location.hash).toBe('#e6')
+      const rows = await ledgerRows()
+      await waitFor(() =>
+        expect(rows[4]).toHaveAttribute('aria-selected', 'true'),
+      )
+      expect(
+        screen.getByRole('complementary', { name: 'Inspector' }),
+      ).toHaveTextContent('Failed')
+    })
+
+    it('goes Back from an inspection to the Conversation', async () => {
+      renderAt('/tickets/acme/T-3/activity')
+      fireEvent.click(await screen.findByRole('radio', { name: 'Verbose' }))
+      fireEvent.click(
+        await screen.findByRole('button', { name: /Bash uv run pytest -q/ }),
+      )
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Inspect Bash in the trajectory' }),
+      )
+      await waitFor(() =>
+        expect(window.location.pathname).toBe('/tickets/acme/T-3/trajectory'),
+      )
+      await ledgerRows()
+      window.history.back()
+      await waitFor(() =>
+        expect(window.location.pathname).toBe('/tickets/acme/T-3/conversation'),
+      )
+      await waitFor(() =>
+        expect(
+          screen.getByRole('radio', { name: /^Conversation/ }),
+        ).toHaveAttribute('aria-checked', 'true'),
+      )
+    })
+
+    it('inspects a subagent call in the Trajectory', async () => {
+      renderAt('/tickets/acme/T-3/conversation')
+      fireEvent.click(await screen.findByRole('radio', { name: 'Verbose' }))
+      fireEvent.click(await screen.findByRole('button', { name: /Find calls/ }))
+      fireEvent.click(await screen.findByRole('button', { name: /^Grep/ }))
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Inspect Grep in the trajectory' }),
+      )
+      await waitFor(() => expect(window.location.hash).toBe('#e7'))
+      const rows = await ledgerRows()
+      await waitFor(() =>
+        expect(rows[6]).toHaveAttribute('aria-selected', 'true'),
+      )
+    })
+
     it('shows a Statistics turn in the Conversation', async () => {
       renderAt('/tickets/acme/T-3/statistics')
       fireEvent.click(
@@ -1108,10 +1229,19 @@ describe('Tasks', () => {
     })
   })
 
-  it('keeps the reply box on every tab while the task is open', async () => {
-    renderAt('/tickets/acme/T-3/overview')
+  it('shows the reply box only in the Conversation view', async () => {
+    renderAt('/tickets/acme/T-3/conversation')
     expect(await screen.findByLabelText('Reply')).toBeInTheDocument()
   })
+
+  it.each(['overview', 'trajectory', 'statistics'])(
+    'has no reply box on %s',
+    async (tab) => {
+      renderAt(`/tickets/acme/T-3/${tab}`)
+      await screen.findByRole('tab', { name: /Overview/ })
+      expect(screen.queryByLabelText('Reply')).not.toBeInTheDocument()
+    },
+  )
 
   it('has no reply box on a closed task', async () => {
     vi.mocked(endpoints.getTicket).mockResolvedValue({
@@ -1295,6 +1425,159 @@ describe('Tasks', () => {
     await waitFor(() => expect(screen.getByLabelText('Reply')).toHaveValue(''))
   })
 
+  it('keeps the reply draft across Activity views', async () => {
+    renderAt('/tickets/acme/T-3/conversation')
+    fireEvent.change(await screen.findByLabelText('Reply'), {
+      target: { value: 'Half a thought' },
+    })
+    fireEvent.click(screen.getByRole('radio', { name: /^Trajectory/ }))
+    await waitFor(() =>
+      expect(screen.queryByLabelText('Reply')).not.toBeInTheDocument(),
+    )
+    fireEvent.click(screen.getByRole('radio', { name: /^Conversation/ }))
+    expect(await screen.findByLabelText('Reply')).toHaveValue('Half a thought')
+  })
+
+  it('keeps text typed while a reply is being sent', async () => {
+    let finish: (task: typeof BLOCKED) => void = () => undefined
+    vi.mocked(endpoints.replyTicket).mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    renderAt('/tickets/acme/T-3/conversation')
+    const box = await screen.findByLabelText('Reply')
+    fireEvent.change(box, { target: { value: 'First.' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    await waitFor(() =>
+      expect(endpoints.replyTicket).toHaveBeenCalledWith(
+        'acme',
+        'T-3',
+        'First.',
+        false,
+      ),
+    )
+    fireEvent.change(box, { target: { value: 'Second.' } })
+    finish(BLOCKED)
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Send reply' })).toBeEnabled(),
+    )
+    expect(screen.getByLabelText('Reply')).toHaveValue('Second.')
+  })
+
+  it('keeps a pending reply pending across Activity views', async () => {
+    let finish: (task: typeof BLOCKED) => void = () => undefined
+    vi.mocked(endpoints.replyTicket).mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    renderAt('/tickets/acme/T-3/conversation')
+    const box = await screen.findByLabelText('Reply')
+    fireEvent.change(box, { target: { value: 'Only once.' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    await waitFor(() => expect(endpoints.replyTicket).toHaveBeenCalledTimes(1))
+    fireEvent.click(screen.getByRole('radio', { name: /^Trajectory/ }))
+    await waitFor(() =>
+      expect(screen.queryByLabelText('Reply')).not.toBeInTheDocument(),
+    )
+    fireEvent.click(screen.getByRole('radio', { name: /^Conversation/ }))
+    const again = await screen.findByLabelText('Reply')
+    expect(again).toHaveValue('Only once.')
+    expect(screen.getByRole('button', { name: 'Send reply' })).toBeDisabled()
+    expect(
+      screen.getByRole('button', { name: 'Reply and hold' }),
+    ).toBeDisabled()
+    fireEvent.keyDown(again, { key: 'Enter' })
+    expect(endpoints.replyTicket).toHaveBeenCalledTimes(1)
+    finish(BLOCKED)
+    await waitFor(() => expect(screen.getByLabelText('Reply')).toHaveValue(''))
+    fireEvent.change(screen.getByLabelText('Reply'), {
+      target: { value: 'Next.' },
+    })
+    expect(screen.getByRole('button', { name: 'Send reply' })).toBeEnabled()
+  })
+
+  it('sends a reply on Enter and keeps Shift+Enter for a new line', async () => {
+    vi.mocked(endpoints.replyTicket).mockResolvedValue(BLOCKED)
+    renderAt('/tickets/acme/T-3/conversation')
+    const box = await screen.findByLabelText('Reply')
+    fireEvent.change(box, { target: { value: 'Use the staging cluster.' } })
+    fireEvent.keyDown(box, { key: 'Enter', shiftKey: true })
+    expect(endpoints.replyTicket).not.toHaveBeenCalled()
+    fireEvent.keyDown(box, { key: 'Enter' })
+    await waitFor(() =>
+      expect(endpoints.replyTicket).toHaveBeenCalledWith(
+        'acme',
+        'T-3',
+        'Use the staging cluster.',
+        false,
+      ),
+    )
+    await waitFor(() => expect(screen.getByLabelText('Reply')).toHaveValue(''))
+  })
+
+  it('keeps Enter as a new line after a touch on the reply box', async () => {
+    vi.mocked(endpoints.replyTicket).mockResolvedValue(BLOCKED)
+    renderAt('/tickets/acme/T-3/conversation')
+    const box = await screen.findByLabelText('Reply')
+    fireEvent.change(box, { target: { value: 'From a tablet.' } })
+    fireEvent.pointerDown(box, { pointerType: 'touch' })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(endpoints.replyTicket).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('radio', { name: /^Trajectory/ }))
+    await waitFor(() =>
+      expect(screen.queryByLabelText('Reply')).not.toBeInTheDocument(),
+    )
+    fireEvent.click(screen.getByRole('radio', { name: /^Conversation/ }))
+    const again = await screen.findByLabelText('Reply')
+    fireEvent.keyDown(again, { key: 'Enter' })
+    expect(endpoints.replyTicket).not.toHaveBeenCalled()
+    fireEvent.pointerDown(again, { pointerType: 'mouse' })
+    fireEvent.keyDown(again, { key: 'Enter' })
+    await waitFor(() =>
+      expect(endpoints.replyTicket).toHaveBeenCalledWith(
+        'acme',
+        'T-3',
+        'From a tablet.',
+        false,
+      ),
+    )
+  })
+
+  it('sends on Enter after a mouse press on a coarse pointer', async () => {
+    vi.mocked(endpoints.replyTicket).mockResolvedValue(BLOCKED)
+    const fine = window.matchMedia
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      ...fine(query),
+      matches: query === '(pointer: coarse)',
+    }))
+    renderAt('/tickets/acme/T-3/conversation')
+    const box = await screen.findByLabelText('Reply')
+    fireEvent.change(box, { target: { value: 'With a mouse.' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(endpoints.replyTicket).not.toHaveBeenCalled()
+    fireEvent.pointerDown(box, { pointerType: 'mouse' })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    await waitFor(() =>
+      expect(endpoints.replyTicket).toHaveBeenCalledWith(
+        'acme',
+        'T-3',
+        'With a mouse.',
+        false,
+      ),
+    )
+    vi.unstubAllGlobals()
+  })
+
+  it('does not send an empty reply', async () => {
+    renderAt('/tickets/acme/T-3/conversation')
+    const box = await screen.findByLabelText('Reply')
+    expect(screen.getByRole('button', { name: 'Send reply' })).toBeDisabled()
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(endpoints.replyTicket).not.toHaveBeenCalled()
+  })
+
   it(
     'appends new events by seq without a reload (O4)',
     async () => {
@@ -1356,6 +1639,7 @@ describe('Tasks', () => {
       expect(endpoints.createTicket).toHaveBeenCalledWith('acme', {
         agent_slug: 'mender',
         description: 'Check the build\nFind why it fails.',
+        priority: 'normal',
         project_ids: ['p-1'],
         title: 'Check the build',
       }),

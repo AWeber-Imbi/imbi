@@ -1312,9 +1312,10 @@ class HistoryTests(RunnerTestCase):
         )
         await self.store.reply(self.org, 'T-1', 'Last comment.', person)
 
-    async def history(self) -> dict[str, typing.Any]:
+    async def history(self, **params: int) -> dict[str, typing.Any]:
         response = await self.client.get(
             '/harness/tickets/T-1/history',
+            params=params,
             headers={'Authorization': f'Bearer {self.token}'},
         )
         self.assertEqual(response.status_code, 200, response.text)
@@ -1357,6 +1358,28 @@ class HistoryTests(RunnerTestCase):
         )
         self.assertFalse(any(e['webhook'] for e in entries[:3]))
 
+    async def test_max_seq_leaves_out_later_comments(self) -> None:
+        # A comment written after the session opened is an event after
+        # last_seq; the history must not repeat it.
+        async with self.pool.connection() as conn:
+            cursor = await conn.execute(
+                'SELECT max(e.seq) FROM tickets.events e'
+                ' JOIN tickets.tickets t ON t.id = e.ticket_id'
+                ' WHERE t.organization_id = %s AND t.short_id = %s',
+                (self.org, 'T-1'),
+            )
+            row = await cursor.fetchone()
+        assert row is not None
+        person = task_store.Actor('human', self.email, 'web')
+        await self.store.reply(self.org, 'T-1', 'Late comment.', person)
+        texts = [e['text'] for e in (await self.history())['entries']]
+        self.assertIn('Late comment.', texts)
+        entries = (await self.history(max_seq=row[0]))['entries']
+        self.assertEqual(
+            [e['kind'] for e in entries], ['comment', 'request', 'comment']
+        )
+        self.assertNotIn('Late comment.', [e['text'] for e in entries])
+
     async def test_request_of_a_webhook_ticket_is_untrusted(self) -> None:
         async with self.pool.connection() as conn:
             await conn.execute(
@@ -1394,6 +1417,26 @@ class HistoryTests(RunnerTestCase):
         [child] = [e for e in entries if e['kind'] == 'child']
         self.assertIn('Quoted payload', child['text'])
         self.assertTrue(child['webhook'])
+
+    async def test_moved_child_stays_in_history(self) -> None:
+        helper_id = await self.make_agent('helper', name='Helper')
+        await self.make_version({'subagents': [{'agent_id': helper_id}]})
+        response = await self.client.post(
+            '/harness/tickets/T-1/children',
+            json={
+                'agent_slug': 'helper',
+                'title': 'Moved child',
+                'description': 'Help out.',
+            },
+            headers={'Authorization': f'Bearer {self.token}'},
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        short_id = response.json()['short_id']
+        person = task_store.Actor('human', self.email, 'web')
+        await self.store.set_parent(self.org, short_id, None, person)
+        entries = (await self.history())['entries']
+        [child] = [e for e in entries if e['kind'] == 'child']
+        self.assertIn('Moved child', child['text'])
 
     async def test_byte_limit_keeps_the_newest(self) -> None:
         limit = len(b'Last comment.') + len(

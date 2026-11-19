@@ -933,17 +933,19 @@ async def delete_workflow(
 
     Raises:
         404: No such workflow.
-        409: A run of the workflow is queued or running.
+        409: A run of the workflow is queued or running, or the
+            organization was renamed during the delete.
 
     """
+
     # The archive runs before the delete commits: a create of the same
     # slug waits, so the archive cannot reach the prompts of the new
     # workflow. A failed archive rolls the delete back.
-    result = await store.delete(
-        org_id,
-        slug,
-        on_deleted=lambda conn: _archive_prompts(db, conn, org_slug, slug, ()),
-    )
+    async def on_deleted(conn: psycopg.AsyncConnection[typing.Any]) -> None:
+        await _require_org_slug(db, conn, org_id, org_slug)
+        await _archive_prompts(db, conn, org_slug, slug, ())
+
+    result = await store.delete(org_id, slug, on_deleted=on_deleted)
     if result == 'open_runs':
         raise fastapi.HTTPException(
             status_code=409, detail=f'Workflow {slug!r} has open runs'

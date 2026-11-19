@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
@@ -21,6 +21,7 @@ import {
   deleteTicket,
   reassignTicket,
   retryTicket,
+  setTicketPriority,
 } from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -51,6 +52,7 @@ import { useAgentList } from './agentQueries'
 import { agentsPath, ticketsPath } from './agentsNav'
 import { ConversationTab } from './ConversationTab'
 import type { RevealState } from './conversationTurns'
+import { PriorityBadge, priorityLabel, PriorityPicker } from './priority'
 import { StatisticsTab } from './StatisticsTab'
 import {
   checksFrom,
@@ -64,6 +66,7 @@ import {
 } from './taskEvents'
 import {
   errorMessage,
+  useTaskReply,
   useTicket,
   useTicketEvents,
   useTicketMutation,
@@ -123,6 +126,9 @@ export function TaskDetail({
     'conversation',
     (raw) => (isActivityView(raw) ? raw : undefined),
   )
+  const [draft, setDraft] = useState('')
+  const pointer = useRef<null | string>(null)
+  const reply = useTaskReply(orgSlug, shortId)
   useEffect(() => {
     const shown = legacyRoute(tab)
     if (isRouteKey(shown)) setLastTab(shown)
@@ -205,6 +211,13 @@ export function TaskDetail({
     navigate(ticketsPath(orgSlug, shortId, 'conversation'), {
       state: { revealSeq: seq } satisfies RevealState,
     })
+  const inspectInTrajectory = (seq: number) => {
+    if (tab !== 'conversation')
+      navigate(`${ticketsPath(orgSlug, shortId, 'conversation')}${search}`, {
+        replace: true,
+      })
+    navigate(`${ticketsPath(orgSlug, shortId, 'trajectory')}#e${seq}`)
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -249,6 +262,18 @@ export function TaskDetail({
           {view === 'conversation' ? (
             <ConversationTab
               events={log}
+              footer={
+                t.status === 'closed' ? undefined : (
+                  <Composer
+                    body={draft}
+                    onBodyChange={setDraft}
+                    orgSlug={orgSlug}
+                    pointer={pointer}
+                    reply={reply}
+                  />
+                )
+              }
+              onInspect={inspectInTrajectory}
               orgSlug={orgSlug}
               requests={requests}
               task={t}
@@ -268,7 +293,12 @@ export function TaskDetail({
           ) : (
             <div className="min-h-0 flex-1 overflow-y-auto">
               {current === 'overview' && (
-                <OverviewTab end={end} events={log} task={t} />
+                <OverviewTab
+                  end={end}
+                  events={log}
+                  orgSlug={orgSlug}
+                  task={t}
+                />
               )}
               {current === 'input' && (
                 <InputRequiredTab
@@ -288,7 +318,6 @@ export function TaskDetail({
           )}
         </ToolbarLead.Provider>
       </TaskSearchProvider>
-      {t.status !== 'closed' && <Composer orgSlug={orgSlug} task={t} />}
     </div>
   )
 }
@@ -314,19 +343,47 @@ function legacyRoute(tab: string | undefined): string | undefined {
 function OverviewTab({
   end,
   events,
+  orgSlug,
   task,
 }: {
   end: number
   events: TicketEvent[]
+  orgSlug: string
   task: Ticket
 }) {
   const [raw, setRaw] = useState(false)
+  const canManage = useHasPermission('ticket:manage', orgSlug)
+  const priority = useTicketMutation(
+    orgSlug,
+    task.short_id,
+    (to: Ticket['priority']) => setTicketPriority(orgSlug, task.short_id, to),
+  )
   const todos = [...events].reverse().find((e) => e.type === 'todos.updated')
     ?.payload.todos as undefined | { done?: boolean; title?: string }[]
   const rows: { name: string; value: ReactNode }[] = [
     {
       name: 'Owner',
       value: <UserIdentity email={task.owner} size="small" />,
+    },
+    {
+      name: 'Priority',
+      value:
+        canManage && task.status !== 'closed' ? (
+          <>
+            <PriorityPicker
+              disabled={priority.isPending}
+              onChange={(to) => priority.mutate(to)}
+              value={task.priority}
+            />
+            {priority.error && (
+              <span className="text-danger block text-xs" role="alert">
+                {errorMessage(priority.error)}
+              </span>
+            )}
+          </>
+        ) : (
+          priorityLabel(task.priority)
+        ),
     },
     { name: 'Started', value: new Date(task.created_at).toLocaleString() },
   ]
@@ -643,6 +700,7 @@ function TaskHeader({
         <h2 className="min-w-0 flex-1 text-lg font-medium text-pretty">
           {task.title}
         </h2>
+        <PriorityBadge priority={task.priority} />
         <Badge variant={statusVariant(task)}>{statusLabel(task)}</Badge>
         <TaskControls orgSlug={orgSlug} task={task} />
         <TaskRetry orgSlug={orgSlug} task={task} />

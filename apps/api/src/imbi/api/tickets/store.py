@@ -109,6 +109,7 @@ Status = typing.Literal[
     'closed',
 ]
 Control = typing.Literal['run', 'pause', 'cancel']
+Priority = typing.Literal['low', 'normal', 'high', 'urgent']
 ActorKind = typing.Literal['human', 'agent', 'subagent', 'system']
 Channel = typing.Literal['web', 'slack', 'mcp', 'api', 'harness']
 Outcome = agent_step.Outcome
@@ -202,14 +203,18 @@ _IS_ANCESTOR: typing.LiteralString = (
 
 #: The tree of the ticket ``%s``: the short id and title of its root,
 #: the number of tickets in the tree, and the number that are not
-#: closed. The foreign key keeps a tree in one organization.
+#: closed. The foreign key keeps a tree in one organization; the
+#: descendant join also matches ``organization_id`` so that it can use
+#: ``tickets_parent_idx``.
 _TREE: typing.LiteralString = (
     _UP  # noqa: S608
-    + ', down (id, status, root_short_id, root_title) AS ('
-    ' SELECT t.id, t.status, t.short_id, t.title FROM tickets.tickets AS t'
+    + ', down (organization_id, id, status, root_short_id, root_title) AS ('
+    ' SELECT t.organization_id, t.id, t.status, t.short_id, t.title'
+    ' FROM tickets.tickets AS t'
     ' JOIN up ON t.id = up.id WHERE up.parent_id IS NULL'
-    ' UNION SELECT t.id, t.status, down.root_short_id, down.root_title'
-    ' FROM tickets.tickets AS t JOIN down ON t.parent_id = down.id)'
+    ' UNION SELECT t.organization_id, t.id, t.status, down.root_short_id,'
+    ' down.root_title FROM tickets.tickets AS t JOIN down'
+    ' ON t.organization_id = down.organization_id AND t.parent_id = down.id)'
     ' SELECT min(root_short_id) AS root_short_id,'
     ' min(root_title) AS root_title, count(*) AS tickets,'
     " count(*) FILTER (WHERE status <> 'closed') AS open FROM down"
@@ -339,6 +344,7 @@ class NewTask:
     #: The JSON Schema of the structured output that the agent must
     #: return. ``None``: the task asks for none.
     output_schema: Row | None = None
+    priority: Priority = 'normal'
 
 
 @dataclasses.dataclass(frozen=True)
@@ -728,9 +734,10 @@ class TicketStore:
                     ' service_account_id, title,'
                     ' description, origin_kind, origin_id, origin,'
                     ' idempotency_key, owner, budget, chain_id,'
-                    ' output_schema, parent_id, platform_config_version)'
+                    ' output_schema, parent_id, priority,'
+                    ' platform_config_version)'
                     ' VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
-                    ' %s, %s, %s, %s, %s, %s, %s, (SELECT max(version)'
+                    ' %s, %s, %s, %s, %s, %s, %s, %s, (SELECT max(version)'
                     ' FROM harness.platform_configs'
                     ' WHERE organization_id = %s))',
                     (
@@ -754,6 +761,7 @@ class TicketStore:
                         task.origin_id
                         if task.origin_kind in CHILD_ORIGIN_KINDS
                         else None,
+                        task.priority,
                         task.organization_id,
                     ),
                 )
@@ -1314,6 +1322,30 @@ class TicketStore:
                 await write.update({'owner': owner})
         return write.task
 
+    async def set_priority(
+        self,
+        organization_id: str,
+        short_id: str,
+        priority: Priority,
+        actor: Actor,
+    ) -> Row:
+        """Set the priority of the task and write ``priority.changed``.
+
+        Raises:
+            TaskNotFound: No such task.
+            TaskClosed: The task is closed.
+
+        """
+        async with self._write(organization_id, short_id) as write:
+            if write.task['priority'] != priority:
+                await write.event(
+                    'priority.changed',
+                    {'from': write.task['priority'], 'to': priority},
+                    actor,
+                )
+                await write.update({'priority': priority})
+        return write.task
+
     async def acknowledge(
         self, organization_id: str, short_id: str, actor_id: str | None
     ) -> Row:
@@ -1583,12 +1615,20 @@ class TicketStore:
         is the state of the tree of the task, computed now: its root
         ticket, and the number of tickets in the tree and of those that
         are not closed.
+
+        All reads use one snapshot, and the parent comes from the current
+        row, not from ``task``. Thus a move that occurs after the caller
+        read ``task`` cannot give a parent and a tree that disagree.
         """
         params = (task['organization_id'], task['id'])
         async with (
             self._pool.connection() as conn,
+            conn.transaction(),
             conn.cursor(row_factory=rows.dict_row) as cursor,
         ):
+            await cursor.execute(
+                'SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY'
+            )
             await cursor.execute(
                 _LINKED_TASKS.format(
                     other=sql.Identifier('prerequisite_ticket_id'),
@@ -1605,13 +1645,14 @@ class TicketStore:
                 params,
             )
             required_by = await cursor.fetchall()
-            parent: Row | None = None
-            if task['parent_id'] is not None:
-                await cursor.execute(
-                    _SELECT_TASKS + ' WHERE organization_id = %s AND id = %s',
-                    (task['organization_id'], task['parent_id']),
-                )
-                parent = await cursor.fetchone()
+            await cursor.execute(
+                _SELECT_TASKS  # noqa: S608
+                + ' WHERE t.organization_id = %s AND t.id = ('
+                'SELECT c.parent_id FROM tickets.tickets AS c'
+                ' WHERE c.organization_id = %s AND c.id = %s)',
+                (task['organization_id'], *params),
+            )
+            parent = await cursor.fetchone()
             await cursor.execute(
                 _SELECT_TASKS + ' WHERE organization_id = %s'
                 ' AND parent_id = %s ORDER BY created_at, id',
@@ -1710,9 +1751,14 @@ class TicketStore:
             )
             return await cursor.fetchall()
 
-    async def history(self, task: Row) -> tuple[list[Row], list[Row]]:
+    async def history(
+        self, task: Row, max_seq: int | None = None
+    ) -> tuple[list[Row], list[Row]]:
         """Return the human ``turn`` events and the resolved requests of
         ``task``, oldest first, for the history of a new session.
+
+        When ``max_seq`` is set, only turns with ``seq <= max_seq`` are
+        returned. The session reads the later turns as events.
 
         It reads only Postgres: only a closed task has an archived log,
         and a closed task opens no session.
@@ -1724,8 +1770,9 @@ class TicketStore:
             await cursor.execute(
                 "SELECT at, actor_id, payload->>'body' AS body"
                 ' FROM tickets.events WHERE ticket_id = %s'
-                " AND type = 'turn' AND actor_kind = 'human' ORDER BY seq",
-                (task['id'],),
+                " AND type = 'turn' AND actor_kind = 'human'"
+                ' AND (%s::bigint IS NULL OR seq <= %s) ORDER BY seq',
+                (task['id'], max_seq, max_seq),
             )
             turns = await cursor.fetchall()
             await cursor.execute(
@@ -1734,6 +1781,29 @@ class TicketStore:
                 (task['id'],),
             )
             return turns, await cursor.fetchall()
+
+    async def delegated(self, task: Row) -> list[Row]:
+        """Return the tickets that ``task`` delegated, oldest first.
+
+        They come from the origin link, not from ``parent_id``, so a
+        ticket that a person moves to another parent stays in the
+        history of the ticket that delegated it.
+        """
+        async with (
+            self._pool.connection() as conn,
+            conn.cursor(row_factory=rows.dict_row) as cursor,
+        ):
+            await cursor.execute(
+                _SELECT_TASKS + ' WHERE organization_id = %s'
+                ' AND origin_kind = ANY(%s) AND origin_id = %s'
+                ' ORDER BY created_at, id',
+                (
+                    task['organization_id'],
+                    list(CHILD_ORIGIN_KINDS),
+                    str(task['id']),
+                ),
+            )
+            return await cursor.fetchall()
 
     # --- Harness ------------------------------------------------------
 

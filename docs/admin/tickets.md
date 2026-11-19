@@ -12,6 +12,8 @@ A ticket has:
 - An owner. The owner is a person, and the agent asks the owner for input.
 - Zero or more projects. The agent gets the repository of each project.
 - A budget in USD.
+- A priority: **Low**, **Normal**, **High**, or **Urgent**. The default
+  is **Normal**.
 - An event log. Each change to the ticket writes an event. Events are never
   changed.
 
@@ -104,8 +106,9 @@ In the **New ticket** dialog:
 2. Optional: paste a link. The dialog shows it as the **Source**: a Sentry
    issue, a pull request, a Slack thread, or a link.
 3. Select an **Agent**. The list shows enabled agents only.
-4. Select a **Project**. Archived projects are not in the list.
-5. Click **Create ticket**.
+4. Optional: select a **Priority**. The default is **Normal**.
+5. Select a **Project**. Archived projects are not in the list.
+6. Click **Create ticket**.
 
 The ticket starts as **Queued**. You are its owner. The ticket page opens.
 
@@ -229,6 +232,7 @@ four groups:
 - The filter field matches the title, the id, the agent, and the project.
 - **State** and **Assignee** filter by state and owner. **My tickets** shows
   only your tickets.
+- A ticket with a priority other than **Normal** shows its priority.
 - The page loads more tickets as you scroll. A count shown as `N+` can still
   grow.
 - The page and the open ticket update without a reload.
@@ -241,7 +245,8 @@ open a tab. Old `/agents/tasks/...` URLs go to the new URL.
 
 ## Ticket detail
 
-The header shows the id, the title, the state, the agent, the project, the
+The header shows the id, the title, the priority (when it is not
+**Normal**), the state, the agent, the project, the
 trigger, the duration, and the cost. It also has a timeline of the phases
 of the ticket.
 
@@ -250,7 +255,7 @@ of the ticket.
 
 | Tab | What it shows |
 |---|---|
-| Overview | The description, the latest todo list, the owner, the budget, the cost, the tokens, the prompt version, and the outcome |
+| Overview | The description, the latest todo list, the owner, the priority, the budget, the cost, the tokens, the prompt version, and the outcome |
 | Input required | The requests of the agent. See [Answer a request](#answer-a-request) |
 | Activity | The events of the ticket, as a conversation, as a trajectory of every event, or as statistics for each turn. See [Read the activity](#read-the-activity) |
 | Signals and checks | The latest report of each check, with its value, baseline, and verdict. The tab count shows the failing checks |
@@ -303,7 +308,7 @@ Old links to the **Actions taken** and **Conversation** tabs open the Conversati
 
 A ticket link without a tab opens the tab you used last.
 
-### Pause, resume, cancel, and reassign
+### Pause, resume, cancel, reassign, and change the priority
 
 You need `ticket:manage`. The controls do not show on a closed ticket.
 
@@ -313,6 +318,9 @@ You need `ticket:manage`. The controls do not show on a closed ticket.
   `POST /organizations/{org}/tickets/{short_id}/cancel`.
 - Click the reassign button, enter the email of the new owner, and click
   **Reassign**. The new owner must be a member of the organization.
+- On the **Overview** tab, click a **Priority**. The API is
+  `POST /organizations/{org}/tickets/{short_id}/priority` with
+  `{"priority": "high"}`. The change writes a `priority.changed` event.
 
 ## Answer a request
 
@@ -347,7 +355,14 @@ Write in the reply field. You need
 `ticket:manage`.
 
 - **Reply** sends the text to the agent. The agent reads it at its next
-  turn.
+  turn:
+    - During a session, the harness sends the reply when the current turn
+      ends, and the agent starts a new turn to read it. A reply that comes
+      while the agent waits for a request answer or for background work
+      goes with the next turn.
+    - A reply that comes after the last turn ended, after a turn that
+      failed, or while the ticket stops is not sent in this session. A
+      later session of the ticket reads it in the ticket history.
 - **Reply and hold** sends the text and pauses the ticket. Resume the ticket
   when the agent can go on.
 
@@ -355,7 +370,8 @@ A reply or an answer can be up to 64 KiB.
 
 ## Relations and associated projects
 
-You need `ticket:manage` to change them.
+You need `ticket:manage` to change them. The owner of a ticket can also
+move it under a parent.
 
 **Related tickets**: click **Link ticket**. Find a ticket, then select the
 relation:
@@ -405,7 +421,7 @@ children, and the tree: its root and how many of its tickets are open.
 - To move a ticket, select **Parent** in **Link ticket**. To make it a
   root, remove its **Parent** row.
 - Holders of `ticket:manage` can move a ticket. The owner of the ticket
-  can also move it with the API.
+  can also move it in the UI or with the API.
 - A move that makes a ticket its own ancestor gets `409` with
   `parent_cycle`.
 - Open and closed tickets can move. A move changes no status, assignee,

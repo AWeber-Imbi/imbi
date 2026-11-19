@@ -1771,9 +1771,12 @@ export interface paths {
          * @description Return the history of a ticket of the chain, for a new session.
          *
          *     A new session reads events only after ``last_seq``, so it reads
-         *     what happened before here: comments (human turns), resolved
-         *     requests, and the status and outcome of child and prerequisite
-         *     tickets, oldest first. When the text is larger
+         *     what happened before here. It sends ``last_seq`` as ``max_seq``, so
+         *     a comment written after the session opened is not here as well as
+         *     in the events. The history has comments (human turns), resolved
+         *     requests, and the status and outcome of prerequisite tickets and of
+         *     the tickets that it delegated (also after a move to another
+         *     parent), oldest first. When the text is larger
          *     than :data:`MAX_HISTORY_BYTES`, the oldest entries are left out
          *     and ``cut`` is their number. ``webhook`` marks untrusted text.
          *
@@ -5697,6 +5700,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/agent-tasks/{short_id}/priority": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Agent Task Priority
+         * @deprecated
+         * @description Set the priority of a task.
+         *
+         *     Raises:
+         *         403: The caller is not a member of the org.
+         *         404: No such task.
+         *         409: The task is closed.
+         */
+        post: operations["set_agent_task_priority_api_organizations__org_slug__agent_tasks__short_id__priority_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/agent-tasks/{short_id}/requests/{request_id}/resolve": {
         parameters: {
             query?: never;
@@ -6339,6 +6368,31 @@ export interface paths {
          *         422: The new owner is not a member of the org.
          */
         post: operations["reassign_ticket_api_organizations__org_slug__tickets__short_id__reassign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/priority": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Agent Task Priority
+         * @description Set the priority of a task.
+         *
+         *     Raises:
+         *         403: The caller is not a member of the org.
+         *         404: No such task.
+         *         409: The task is closed.
+         */
+        post: operations["set_ticket_priority_api_organizations__org_slug__tickets__short_id__priority_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7205,7 +7259,8 @@ export interface paths {
          *
          *     Raises:
          *         404: No such workflow.
-         *         409: A run of the workflow is queued or running.
+         *         409: A run of the workflow is queued or running, or the
+         *             organization was renamed during the delete.
          */
         delete: operations["delete_workflow_api_organizations__org_slug__workflows__slug__delete"];
         options?: never;
@@ -12451,6 +12506,12 @@ export interface components {
              * @description A repeat with the same key returns the first task.
              */
             idempotency_key?: string | null;
+            /**
+             * Priority
+             * @default normal
+             * @enum {string}
+             */
+            priority: "low" | "normal" | "high" | "urgent";
         };
         /** AgentTaskEventResponse */
         AgentTaskEventResponse: {
@@ -12531,6 +12592,12 @@ export interface components {
              * @enum {string}
              */
             control: "run" | "pause" | "cancel";
+            /**
+             * Priority
+             * @default normal
+             * @enum {string}
+             */
+            priority: "low" | "normal" | "high" | "urgent";
             /** Phase */
             phase?: string | null;
             /** Outcome */
@@ -12618,6 +12685,14 @@ export interface components {
             group: "input" | "running" | "paused" | "queued" | "closed";
             /** Index */
             index: number;
+        };
+        /** AgentTaskPriority */
+        AgentTaskPriority: {
+            /**
+             * Priority
+             * @enum {string}
+             */
+            priority: "low" | "normal" | "high" | "urgent";
         };
         /** AgentTaskReassign */
         AgentTaskReassign: {
@@ -12734,6 +12809,12 @@ export interface components {
              * @enum {string}
              */
             control: "run" | "pause" | "cancel";
+            /**
+             * Priority
+             * @default normal
+             * @enum {string}
+             */
+            priority: "low" | "normal" | "high" | "urgent";
             /** Phase */
             phase?: string | null;
             /** Outcome */
@@ -26578,7 +26659,9 @@ export interface operations {
     };
     read_harness_ticket_history_api_harness_tickets__short_id__history_get: {
         parameters: {
-            query?: never;
+            query?: {
+                max_seq?: number | null;
+            };
             header?: never;
             path: {
                 short_id: string;
@@ -33299,6 +33382,42 @@ export interface operations {
             };
         };
     };
+    set_agent_task_priority_api_organizations__org_slug__agent_tasks__short_id__priority_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentTaskPriority"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     resolve_agent_task_request_api_organizations__org_slug__agent_tasks__short_id__requests__request_id__resolve_post: {
         parameters: {
             query?: never;
@@ -34133,6 +34252,42 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["AgentTaskReassign"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_ticket_priority_api_organizations__org_slug__tickets__short_id__priority_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentTaskPriority"];
             };
         };
         responses: {

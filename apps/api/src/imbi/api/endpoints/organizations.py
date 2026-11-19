@@ -532,19 +532,20 @@ async def get_organization(
 
 
 async def _rename_history(
-    execute: graph.CypherExecute, original_slug: str
-) -> tuple[list[str], object]:
-    """Return ``previous_slugs`` with ``original_slug`` added, and the id.
+    execute: graph.CypherExecute, original_slug: str, org_id: str
+) -> list[str]:
+    """Return ``previous_slugs`` with ``original_slug`` added.
 
     Raises:
-        HTTPException 404: No organization has ``original_slug``.
+        HTTPException 404: The organization ``org_id`` does not have
+            ``original_slug``.
 
     """
     records = await execute(
-        'MATCH (n:Organization {{slug: {original_slug}}})'
-        ' RETURN n.previous_slugs AS previous_slugs, n.id AS id',
-        {'original_slug': original_slug},
-        ['previous_slugs', 'id'],
+        'MATCH (n:Organization {{id: {org_id}, slug: {original_slug}}})'
+        ' RETURN n.previous_slugs AS previous_slugs',
+        {'original_slug': original_slug, 'org_id': org_id},
+        ['previous_slugs'],
     )
     if not records:
         raise fastapi.HTTPException(
@@ -559,11 +560,12 @@ async def _rename_history(
     )
     if original_slug not in prior:
         prior.append(original_slug)
-    return prior, graph.parse_agtype(records[0].get('id'))
+    return prior
 
 
 async def _persist_organization(
     original_slug: str,
+    org_id: str,
     org: models.Organization,
     request: fastapi.Request,
     db: graph.Pool,
@@ -572,6 +574,9 @@ async def _persist_organization(
 
     Parameters:
         original_slug: The slug that currently identifies the node.
+        org_id: The id of the organization the caller read. Every
+            match requires it, so a different organization that has
+            taken ``original_slug`` since is not changed.
         org: Validated organization model with updated fields.
         db: Graph database connection.
 
@@ -589,17 +594,15 @@ async def _persist_organization(
     # gets a fully-formed list parameter and we don't have to ask
     # AGE to do list-concat in Cypher (which is finicky).
     previous_slugs: list[str] | None = None
-    org_id = ''
     if org.slug != original_slug:
-        previous_slugs, raw_id = await _rename_history(
-            db.execute, original_slug
+        previous_slugs = await _rename_history(
+            db.execute, original_slug, org_id
         )
-        org_id = org_auth.organization_id(raw_id, original_slug)
 
     update_query: typing.LiteralString
     if previous_slugs is not None:
         update_query = (
-            'MATCH (n:Organization {{slug: {original_slug}}})'
+            'MATCH (n:Organization {{id: {org_id}, slug: {original_slug}}})'
             ' SET n.name = {name},'
             ' n.slug = {slug},'
             ' n.description = {description},'
@@ -611,7 +614,7 @@ async def _persist_organization(
         )
     else:
         update_query = (
-            'MATCH (n:Organization {{slug: {original_slug}}})'
+            'MATCH (n:Organization {{id: {org_id}, slug: {original_slug}}})'
             ' SET n.name = {name},'
             ' n.slug = {slug},'
             ' n.description = {description},'
@@ -629,6 +632,7 @@ async def _persist_organization(
         'icon': props.get('icon'),
         'tag_formats': props.get('tag_formats', []),
         'updated_at': props['updated_at'],
+        'org_id': org_id,
     }
     if previous_slugs is not None:
         params['previous_slugs'] = previous_slugs
@@ -638,9 +642,11 @@ async def _persist_organization(
         conn: psycopg.AsyncConnection[typing.Any],
     ) -> list[dict[str, typing.Any]]:
         # Read the history again under the lock: a rename that
-        # committed since the first read changed it.
-        params['previous_slugs'], _ = await _rename_history(
-            execute, original_slug
+        # committed since the first read changed it. The lookup and
+        # the SET match the id too: another organization can have
+        # taken ``original_slug`` since, and then nothing changes.
+        params['previous_slugs'] = await _rename_history(
+            execute, original_slug, org_id
         )
         renamed = await execute(update_query, params)
         if renamed:
@@ -757,7 +763,7 @@ async def patch_organization(
 
     org.created_at = existing.created_at
     org.updated_at = datetime.datetime.now(datetime.UTC)
-    return await _persist_organization(slug, org, request, db)
+    return await _persist_organization(slug, existing.id, org, request, db)
 
 
 @organizations_router.get('/{slug}/members', name='list_organization_members')

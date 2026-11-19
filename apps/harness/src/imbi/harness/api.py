@@ -8,6 +8,9 @@ import httpx
 
 type Body = dict[str, typing.Any]
 
+#: The most events that one :meth:`TaskApi.events` call returns.
+EVENTS_PAGE = 1000
+
 
 def items(body: Body, key: str) -> list[typing.Any]:
     """The list at ``key``; empty when it is missing or ``None``."""
@@ -265,14 +268,18 @@ class TaskApi:
             'GET',
             f'/harness/tickets/{self.short_id}/events',
             self.token,
-            params={'after_seq': after_seq, 'limit': 1000},
+            params={'after_seq': after_seq, 'limit': EVENTS_PAGE},
         )
         return typing.cast('list[Body]', response.json())
 
-    async def history(self) -> Body:
-        """The ticket history for a new session, oldest first."""
+    async def history(self, max_seq: int) -> Body:
+        """The ticket history for a new session, oldest first. Comments
+        after ``max_seq`` are left out: the session reads them as events."""
         response = await self.client.request(
-            'GET', f'/harness/tickets/{self.short_id}/history', self.token
+            'GET',
+            f'/harness/tickets/{self.short_id}/history',
+            self.token,
+            params={'max_seq': max_seq},
         )
         return _body(response)
 
