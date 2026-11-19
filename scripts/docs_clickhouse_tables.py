@@ -57,7 +57,7 @@ def main() -> None:
         '|---|---|---|---|---|',
     ]
     for name, section in schemata.items():
-        if not section.get('ddl', True) or section['query'].startswith('DROP'):
+        if 'CREATE' not in section['query']:
             continue  # a data step or a drop, not an object
         kind, engine, order = describe(section['query'])
         feeds = ', '.join(f'`{t}`' for t in streams.get(name, ()))
