@@ -410,6 +410,8 @@ def _new_task(body: Row, chain_id: str, origin: Row) -> Row:
         'outcome_reason': None,
         'sessions': {},
         'events': [],
+        # The entries of GET /harness/tickets/<id>/history, oldest first.
+        'history': body.get('history') or [],
         'usage': [],
         'requests': {},
         'tool_counts': {},
@@ -683,6 +685,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             parts[2],
                             int(query.get('after_seq', 0)),
                         ),
+                    )
+            if parts[:2] == ['harness', 'tickets'] and parts[3:] == [
+                'history'
+            ]:
+                with LOCK:
+                    return self._json(
+                        200, _history(_bearer(self.headers), parts[2])
                     )
             return self._json(404, {'detail': 'not found'})
         except Fail as err:
@@ -1241,6 +1250,13 @@ def _events_after(token: str, short_id: str, after: int) -> list[Row]:
     if task is None or _task_for_token(token) is not task:
         raise Fail(403, 'chain_forbidden')
     return [e for e in task['events'] if e['seq'] > after]
+
+
+def _history(token: str, short_id: str) -> Row:
+    task = TASKS.get(short_id)
+    if task is None or _task_for_token(token) is not task:
+        raise Fail(403, 'chain_forbidden')
+    return {'entries': task['history'], 'cut': 0}
 
 
 def _harness_task_route(

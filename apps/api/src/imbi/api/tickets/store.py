@@ -1466,6 +1466,31 @@ class TicketStore:
             )
             return await cursor.fetchall()
 
+    async def history(self, task: Row) -> tuple[list[Row], list[Row]]:
+        """Return the human ``turn`` events and the resolved requests of
+        ``task``, oldest first, for the history of a new session.
+
+        It reads only Postgres: only a closed task has an archived log,
+        and a closed task opens no session.
+        """
+        async with (
+            self._pool.connection() as conn,
+            conn.cursor(row_factory=rows.dict_row) as cursor,
+        ):
+            await cursor.execute(
+                "SELECT at, actor_id, payload->>'body' AS body"
+                ' FROM tickets.events WHERE ticket_id = %s'
+                " AND type = 'turn' AND actor_kind = 'human' ORDER BY seq",
+                (task['id'],),
+            )
+            turns = await cursor.fetchall()
+            await cursor.execute(
+                'SELECT * FROM tickets.requests WHERE ticket_id = %s'
+                ' AND resolved_at IS NOT NULL ORDER BY resolved_at, id',
+                (task['id'],),
+            )
+            return turns, await cursor.fetchall()
+
     # --- Harness ------------------------------------------------------
 
     async def open_session(
