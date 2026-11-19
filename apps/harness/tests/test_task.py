@@ -1519,12 +1519,13 @@ class FakeClient:
     messages: typing.ClassVar[list[typing.Any]] = []
     #: Wait after the replay, like a CLI that has more to send.
     hang: typing.ClassVar[bool] = False
+    #: The prompts that the harness sent.
+    prompts: typing.ClassVar[list[str]] = []
 
     def __init__(
         self, options: sdk.ClaudeAgentOptions, **__: typing.Any
     ) -> None:
         self.options = options
-        self.prompts: list[str] = []
         self.interrupt = mock.AsyncMock()
 
     async def __aenter__(self) -> FakeClient:
@@ -1582,10 +1583,20 @@ class RunTestCase(TaskTestCase):
             return mock.Mock(json=mock.Mock(return_value={}))
 
         self.client.post.side_effect = post
-        # The ticket history: none.
-        self.client.request.return_value = mock.Mock(
-            json=mock.Mock(return_value={'entries': []})
-        )
+        #: The pages of the events route, in order; then none.
+        self.events: list[list[dict[str, typing.Any]]] = []
+
+        async def request(
+            _method: str, path: str, *_: typing.Any, **__: typing.Any
+        ) -> typing.Any:
+            body: typing.Any
+            if path.endswith('/events'):
+                body = self.events.pop(0) if self.events else []
+            else:
+                body = {'entries': []}  # The ticket history: none.
+            return mock.Mock(json=mock.Mock(return_value=body))
+
+        self.client.request.side_effect = request
         self.call.side_effect = self.executor
         for name, value in (
             ('ClaudeSDKClient', FakeClient),
@@ -1615,6 +1626,7 @@ class RunTestCase(TaskTestCase):
             result_message(),
         ]
         FakeClient.hang = False
+        FakeClient.prompts = []
 
     async def executor(self, message: dict[str, typing.Any]) -> typing.Any:
         if message['op'] == 'fetch':
@@ -1642,6 +1654,85 @@ class RunTestCase(TaskTestCase):
         self.assertFalse(self.proxy.call_args.kwargs['litellm'])
         transcript = self.tmp / 'transcripts' / 't.jsonl'
         self.assertEqual(len(transcript.read_text().splitlines()), 4)
+
+    @staticmethod
+    def comment(seq: int, text: str) -> dict[str, typing.Any]:
+        return {
+            'seq': seq,
+            'type': 'turn',
+            'actor_kind': 'human',
+            'actor_id': 'a@b.c',
+            'at': 't1',
+            'payload': {'body': text},
+        }
+
+    async def test_comment_during_a_turn_starts_another(self) -> None:
+        FakeClient.messages = [result_message(), result_message()]
+        # None before the first turn; one comment at its end.
+        self.events = [[], [self.comment(5, 'Use main.')]]
+        await self.run_task.run()
+        self.assertEqual(len(FakeClient.prompts), 2)
+        self.assertEqual(
+            FakeClient.prompts[1],
+            'New comments on the ticket, oldest first:\n'
+            '- t1 comment by a@b.c: Use main.',
+        )
+        self.assertEqual(
+            sum(p.count('Use main.') for p in FakeClient.prompts), 1
+        )
+        self.assertEqual(self.run_task.seq, 5)
+
+    async def test_comment_before_the_first_turn_is_in_its_prompt(
+        self,
+    ) -> None:
+        # Written after open_session: not in the history (max_seq).
+        FakeClient.messages = [result_message()]
+        self.events = [[self.comment(3, 'Use main.')]]
+        await self.run_task.run()
+        [prompt] = FakeClient.prompts
+        self.assertTrue(
+            prompt.endswith(
+                '\n\nNew comments on the ticket, oldest first:\n'
+                '- t1 comment by a@b.c: Use main.'
+            ),
+            prompt,
+        )
+
+    async def test_no_turn_for_comments_after_an_error(self) -> None:
+        FakeClient.messages = [
+            result_message(is_error=True, subtype='error_max_turns')
+        ]
+        self.events = [[], [self.comment(5, 'Use main.')]]
+        await self.run_task.run()
+        self.assertEqual(len(FakeClient.prompts), 1)
+
+    async def test_comment_on_a_later_page_starts_another_turn(
+        self,
+    ) -> None:
+        FakeClient.messages = [result_message(), result_message()]
+        other = {'seq': 4, 'type': 'tool.called', 'payload': {}}
+        self.events = [[], [other], [self.comment(5, 'Use main.')]]
+        with mock.patch.object(api, 'EVENTS_PAGE', 1):
+            await self.run_task.run()
+        self.assertEqual(len(FakeClient.prompts), 2)
+        self.assertEqual(self.run_task.seq, 5)
+
+    async def test_no_turn_for_comments_read_during_a_stop(self) -> None:
+        FakeClient.messages = [result_message(), result_message()]
+        self.events = [[], [self.comment(5, 'Use main.')]]
+        request = self.client.request.side_effect
+
+        async def stop_on_read(
+            method: str, path: str, *args: typing.Any, **kwargs: typing.Any
+        ) -> typing.Any:
+            # The stop comes while the events after the turn are read.
+            if path.endswith('/events') and len(self.events) == 1:
+                self.run_task.stopping = mock.Mock()
+            return await request(method, path, *args, **kwargs)
+
+        self.client.request.side_effect = stop_on_read
+        await self.run_task.run()
+        self.assertEqual(len(FakeClient.prompts), 1)
 
     def background_turn(self) -> list[typing.Any]:
         """A turn that starts a background subagent and ends before it."""
@@ -2255,6 +2346,33 @@ class PolicyHookTestCase(RoutedTestCase):
             self.run_task.control = 'cancel'
             self.assertEqual(await waiting, {'status': 'stopped'})
 
+    async def test_wait_keeps_the_comments(self) -> None:
+        self.pages = [
+            [
+                {
+                    'seq': 5,
+                    'type': 'turn',
+                    'actor_kind': 'human',
+                    'actor_id': 'a@b.c',
+                    'at': 't1',
+                    'payload': {'body': 'Use main.'},
+                },
+                {
+                    'seq': 6,
+                    'type': 'request.resolved',
+                    'payload': {'request_id': 'q1', 'status': 'approved'},
+                },
+            ]
+        ]
+        resolved = await asyncio.wait_for(self.run_task.wait_request('q1'), 1)
+        self.assertEqual(resolved['status'], 'approved')
+        self.assertEqual(
+            self.run_task.take_comments(),
+            'New comments on the ticket, oldest first:\n'
+            '- t1 comment by a@b.c: Use main.',
+        )
+        self.assertEqual(self.run_task.recorder.input_seq, 6)
+
     async def test_wait_keeps_the_outcomes_of_other_waits(self) -> None:
         self.pages = [
             [
@@ -2450,10 +2568,15 @@ class HistoryTestCase(TaskTestCase):
             {'kind': 'comment', 'at': 't1', 'actor': 'a@b.c', 'text': 'Hi'},
             {'kind': 'child', 'at': 't2', 'text': 'T-2 X: closed'},
         )
+        self.run_task.seq = 7
         self.run_task.history = await self.run_task.read_history()
         self.assertEqual(
             self.client.request.await_args.args[:2],
             ('GET', '/harness/tickets/T-1/history'),
+        )
+        # Comments after last_seq come as events, not as history.
+        self.assertEqual(
+            self.client.request.await_args.kwargs['params'], {'max_seq': 7}
         )
         self.assertEqual(
             self.run_task.instruction(),

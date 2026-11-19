@@ -18,11 +18,14 @@ import {
   listTicketEvents,
   listTicketProjects,
   listTickets,
+  replyTicket,
   type TicketListParams,
 } from '@/api/endpoints'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { queryKeys } from '@/lib/queryKeys'
 import type { Ticket, TicketEvent } from '@/types'
+
+export type TaskReply = ReturnType<typeof useTaskReply>
 
 /** How often a live task reads new events (O4). */
 export const EVENT_POLL_MS = 3000
@@ -52,6 +55,19 @@ export function errorMessage(error: Error): string {
       return String(detail.message)
   }
   return error.message
+}
+
+/**
+ * The reply mutation of a task, owned above the views so a pending reply
+ * stays pending when the composer remounts.
+ */
+export function useTaskReply(orgSlug: string, shortId: string) {
+  return useTicketMutation(
+    orgSlug,
+    shortId,
+    ({ hold, text }: { hold: boolean; text: string }) =>
+      replyTicket(orgSlug, shortId, text.trim(), hold),
+  )
 }
 
 export function useTicket(orgSlug: string, shortId: string) {

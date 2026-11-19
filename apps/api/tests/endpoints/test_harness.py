@@ -1308,9 +1308,10 @@ class HistoryTests(RunnerTestCase):
         )
         await self.store.reply(self.org, 'T-1', 'Last comment.', person)
 
-    async def history(self) -> dict[str, typing.Any]:
+    async def history(self, **params: int) -> dict[str, typing.Any]:
         response = await self.client.get(
             '/harness/tickets/T-1/history',
+            params=params,
             headers={'Authorization': f'Bearer {self.token}'},
         )
         self.assertEqual(response.status_code, 200, response.text)
@@ -1352,6 +1353,28 @@ class HistoryTests(RunnerTestCase):
             'Answer: main\nConstraints: no force',
         )
         self.assertFalse(any(e['webhook'] for e in entries[:3]))
+
+    async def test_max_seq_leaves_out_later_comments(self) -> None:
+        # A comment written after the session opened is an event after
+        # last_seq; the history must not repeat it.
+        async with self.pool.connection() as conn:
+            cursor = await conn.execute(
+                'SELECT max(e.seq) FROM tickets.events e'
+                ' JOIN tickets.tickets t ON t.id = e.ticket_id'
+                ' WHERE t.organization_id = %s AND t.short_id = %s',
+                (self.org, 'T-1'),
+            )
+            row = await cursor.fetchone()
+        assert row is not None
+        person = task_store.Actor('human', self.email, 'web')
+        await self.store.reply(self.org, 'T-1', 'Late comment.', person)
+        texts = [e['text'] for e in (await self.history())['entries']]
+        self.assertIn('Late comment.', texts)
+        entries = (await self.history(max_seq=row[0]))['entries']
+        self.assertEqual(
+            [e['kind'] for e in entries], ['comment', 'request', 'comment']
+        )
+        self.assertNotIn('Late comment.', [e['text'] for e in entries])
 
     async def test_request_of_a_webhook_ticket_is_untrusted(self) -> None:
         async with self.pool.connection() as conn:

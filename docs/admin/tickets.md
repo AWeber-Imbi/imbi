@@ -355,7 +355,14 @@ Write in the reply field. You need
 `ticket:manage`.
 
 - **Reply** sends the text to the agent. The agent reads it at its next
-  turn.
+  turn:
+    - During a session, the harness sends the reply when the current turn
+      ends, and the agent starts a new turn to read it. A reply that comes
+      while the agent waits for a request answer or for background work
+      goes with the next turn.
+    - A reply that comes after the last turn ended, after a turn that
+      failed, or while the ticket stops is not sent in this session. A
+      later session of the ticket reads it in the ticket history.
 - **Reply and hold** sends the text and pauses the ticket. Resume the ticket
   when the agent can go on.
 

@@ -1800,11 +1800,14 @@ async def read_harness_ticket_history(
     caller: harness_auth.AgentCaller,
     db: graph.Pool,
     store: tickets.Store,
+    max_seq: typing.Annotated[int | None, fastapi.Query(ge=0)] = None,
 ) -> TicketHistory:
     """Return the history of a ticket of the chain, for a new session.
 
     A new session reads events only after ``last_seq``, so it reads
-    what happened before here: comments (human turns), resolved
+    what happened before here. It sends ``last_seq`` as ``max_seq``, so
+    a comment written after the session opened is not here as well as
+    in the events. The history has comments (human turns), resolved
     requests, and the status and outcome of child and prerequisite
     tickets, oldest first. When the text is larger
     than :data:`MAX_HISTORY_BYTES`, the oldest entries are left out
@@ -1818,7 +1821,7 @@ async def read_harness_ticket_history(
     """
     task = await _chain_task(caller, short_id, db, store)
     (turns, requests), relations = await asyncio.gather(
-        store.history(task), store.relations(task)
+        store.history(task, max_seq), store.relations(task)
     )
     webhook = task['origin_kind'] == 'webhook'
     entries = [

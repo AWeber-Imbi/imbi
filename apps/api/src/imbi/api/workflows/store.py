@@ -211,9 +211,11 @@ class WorkflowStore:
         ``on_deleted`` runs before the commit, on the connection of the
         delete. A create of the same slug waits for the commit, so it
         cannot run in between. When it raises, the delete is rolled
-        back.
+        back. The delete holds the shared lock on the organization, so
+        an organization rename does not run during it.
         """
         async with self._pool.connection() as conn, conn.transaction():
+            await relational.lock_organization_shared(conn, organization_id)
             cur = await conn.execute(
                 'SELECT id FROM workflows.workflows'
                 ' WHERE organization_id = %s AND slug = %s FOR UPDATE',

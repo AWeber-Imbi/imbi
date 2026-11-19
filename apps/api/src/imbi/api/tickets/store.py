@@ -1522,9 +1522,14 @@ class TicketStore:
             )
             return await cursor.fetchall()
 
-    async def history(self, task: Row) -> tuple[list[Row], list[Row]]:
+    async def history(
+        self, task: Row, max_seq: int | None = None
+    ) -> tuple[list[Row], list[Row]]:
         """Return the human ``turn`` events and the resolved requests of
         ``task``, oldest first, for the history of a new session.
+
+        When ``max_seq`` is set, only turns with ``seq <= max_seq`` are
+        returned. The session reads the later turns as events.
 
         It reads only Postgres: only a closed task has an archived log,
         and a closed task opens no session.
@@ -1536,8 +1541,9 @@ class TicketStore:
             await cursor.execute(
                 "SELECT at, actor_id, payload->>'body' AS body"
                 ' FROM tickets.events WHERE ticket_id = %s'
-                " AND type = 'turn' AND actor_kind = 'human' ORDER BY seq",
-                (task['id'],),
+                " AND type = 'turn' AND actor_kind = 'human'"
+                ' AND (%s::bigint IS NULL OR seq <= %s) ORDER BY seq',
+                (task['id'], max_seq, max_seq),
             )
             turns = await cursor.fetchall()
             await cursor.execute(
