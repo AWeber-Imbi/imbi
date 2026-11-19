@@ -2138,7 +2138,7 @@ class TicketStore:
                 cursor = await write.conn.execute(
                     'SELECT NOW() - min(opened_at) > make_interval(secs => %s)'
                     ' FROM tickets.sessions WHERE ticket_id = %s'
-                    " AND opened_at > COALESCE(%s, '-infinity')",
+                    " AND opened_at > COALESCE(%s::timestamptz, '-infinity')",
                     (
                         timeout_seconds,
                         write.task['id'],
