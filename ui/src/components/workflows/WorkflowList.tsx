@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -77,8 +77,14 @@ export function WorkflowList({
     onSuccess: (run, { slug }) =>
       navigate(`${agentsPath('workflows', slug)}?run=${run.id}`),
   })
+  // Blocks a second click from the version fetch through the run start.
+  const launching = useRef(false)
+  const [fetching, setFetching] = useState(false)
   // A run starts the active version: read its manual trigger inputs.
   const onRun = async (w: WorkflowSummary) => {
+    if (launching.current) return
+    launching.current = true
+    setFetching(true)
     try {
       const { graph } = await queryClient.fetchQuery(
         workflowVersionQuery(orgSlug!, w.slug, w.active_version!),
@@ -87,9 +93,16 @@ export function WorkflowList({
       if (!trigger) toast.error('The active version has no manual trigger.')
       else if (trigger.inputs.length)
         setAsking({ inputs: trigger.inputs, slug: w.slug })
-      else start.mutate({ inputs: {}, slug: w.slug })
+      // onError reports a failed start.
+      else
+        await start
+          .mutateAsync({ inputs: {}, slug: w.slug })
+          .catch(() => undefined)
     } catch (error) {
       startFailed(error)
+    } finally {
+      launching.current = false
+      setFetching(false)
     }
   }
   const [search, setSearch] = useState('')
@@ -152,7 +165,7 @@ export function WorkflowList({
                     ? () => void onRun(w)
                     : undefined
                 }
-                pending={start.isPending}
+                pending={fetching || start.isPending}
                 types={w.trigger_types}
               />
             ),
