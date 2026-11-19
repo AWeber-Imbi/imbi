@@ -847,7 +847,12 @@
   display: none;
 }
 
-::highlight(task-search),
+/* Kept as two rules: a selector list of ::highlight() names crashes the Chrome DevTools Styles pane. */
+::highlight(task-search) {
+  background-color: color-mix(in srgb, var(--ds-action-bg) 40%, transparent);
+  color: inherit;
+}
+
 ::highlight(task-list-search) {
   background-color: color-mix(in srgb, var(--ds-action-bg) 40%, transparent);
   color: inherit;

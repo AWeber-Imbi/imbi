@@ -258,6 +258,7 @@ REFUSED_ROUTES: frozenset[str] = frozenset(
         'POST /organizations/{org_slug}/tickets/{short_id}/acknowledge',
         'POST /organizations/{org_slug}/tickets/{short_id}/cancel',
         'POST /organizations/{org_slug}/tickets/{short_id}/pause',
+        'POST /organizations/{org_slug}/tickets/{short_id}/priority',
         'POST /organizations/{org_slug}/tickets/{short_id}/reassign',
         'POST /organizations/{org_slug}/tickets/{short_id}/reply',
         'POST /organizations/{org_slug}/tickets/{short_id}/requests/{request_id}/resolve',

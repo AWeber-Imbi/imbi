@@ -19,6 +19,12 @@ from imbi.api.workflows import runs as runs_module
 from imbi.api.workflows import ticket_trigger, tickets
 from imbi.common.workflows.registry import task_completed
 
+# ``activated_at`` comes from the Postgres clock and ``closed_at`` from
+# the test clock. Fixed times far from now keep their order when the two
+# clocks are not the same.
+CLOSED_AFTER_ACTIVATION = datetime.datetime(2999, 1, 1, tzinfo=datetime.UTC)
+CLOSED_BEFORE_ACTIVATION = datetime.datetime(2000, 1, 1, tzinfo=datetime.UTC)
+
 
 def _task(**changes: typing.Any) -> dict[str, typing.Any]:
     return {
@@ -32,7 +38,7 @@ def _task(**changes: typing.Any) -> dict[str, typing.Any]:
         'origin_kind': 'human',
         'origin': {'kind': 'human'},
         'chain_id': None,
-        'closed_at': datetime.datetime.now(datetime.UTC),
+        'closed_at': CLOSED_AFTER_ACTIVATION,
         **changes,
     }
 
@@ -253,9 +259,10 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_task_closed_before_activation_starts_nothing(self) -> None:
         """The sweep calls the trigger again after the task closed; a
         workflow activated since then must not start a run."""
-        task = _task(organization_id=self.org)
         await self._activate()
-        await self.trigger(task)
+        await self.trigger(
+            _task(organization_id=self.org, closed_at=CLOSED_BEFORE_ACTIVATION)
+        )
         self.assertEqual(await self._runs(), [])
 
     async def test_paused_workflow_starts_nothing(self) -> None:
