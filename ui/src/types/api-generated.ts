@@ -5628,8 +5628,10 @@ export interface paths {
          *     ``open``, an agent ticket to ``queued`` with a new chain, so a new
          *     session starts. The ticket keeps its assignee, or gets the new
          *     assignee of the request. The owner and the assignee can reopen a
-         *     ticket; other people need ``ticket:manage``. A new agent assignee
-         *     needs ``ticket:create``.
+         *     ticket; other people need ``ticket:manage``. A reopen to an agent,
+         *     kept or new, also needs ``ticket:create``, an enabled agent, and a
+         *     budget within the agent's task budget; the ticket pins the agent
+         *     version that the agent has now.
          *
          *     Raises:
          *         403: The caller is not a person, or has no permission.
@@ -5637,8 +5639,9 @@ export interface paths {
          *         409: The task is not closed (``not_closed``), a runner holds its
          *             chain (``chain_pinned``), the workflow runs of its last
          *             close have not all started (``triggers_pending``), or the
-         *             new agent is disabled.
-         *         422: The new assignee is not in the org.
+         *             agent is disabled.
+         *         422: The assignee is not in the org, or the budget is more than
+         *             the agent's task budget.
          */
         post: operations["reopen_ticket_api_organizations__org_slug__tickets__short_id__reopen_post"];
         delete?: never;
