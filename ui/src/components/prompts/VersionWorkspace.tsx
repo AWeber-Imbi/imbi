@@ -46,6 +46,7 @@ const VARIABLE_TYPES: PromptVariable['type'][] = [
   'bool',
   'list',
   'object',
+  'any',
 ]
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/
 

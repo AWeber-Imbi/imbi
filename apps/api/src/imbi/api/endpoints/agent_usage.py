@@ -2,9 +2,10 @@
 
 Token use and cost of agent tasks, from the ``agent_usage`` table in
 ClickHouse. ClickHouse is analytics only: the budget authority is the
-Postgres ledger. A task counts as one run of its agent on the day of its
-``task.created`` event in ``agent_task_events``, so a task that stops
-before its first model call is also a run.
+Postgres ledger. A ticket counts as one run of its agent on the day of
+its ``task.created`` (or ``ticket.created``) event in the ticket log
+(:data:`imbi.api.tickets.log.EVENTS`), so a ticket that stops before its
+first model call is also a run.
 
 Like the task routes, every route needs the caller to be a member of
 the organization (``MEMBER_OF``).
@@ -21,6 +22,7 @@ import pydantic
 
 from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import _local_time
+from imbi.api.tickets import log
 from imbi.common import clickhouse
 
 #: The longest range that one request can ask for, in days.
@@ -93,23 +95,23 @@ SELECT agent_id, {_TOTALS},
 GROUP BY agent_id
 """
 
-_RUNS_FROM = """
-FROM imbi.agent_task_events
-WHERE organization_id = {organization_id:String}
-  AND type = 'task.created'
-  AND at >= {since:DateTime64(6)}
-  AND at < {until:DateTime64(6)}
-  AND ({agent_id:String} = '' OR agent_id = {agent_id:String})
+_RUNS_FROM = f"""
+FROM {log.EVENTS}
+WHERE organization_id = {{organization_id:String}}
+  AND type IN ('task.created', 'ticket.created')
+  AND at >= {{since:DateTime64(6)}}
+  AND at < {{until:DateTime64(6)}}
+  AND ({{agent_id:String}} = '' OR agent_id = {{agent_id:String}})
 """
 
 _DAY_RUNS_QUERY = f"""
 SELECT toDate(at, {{tz:String}}) AS day, agent_id,
-       uniqExact(task_id) AS tasks {_RUNS_FROM}
+       uniqExact(ticket_id) AS tasks {_RUNS_FROM}
 GROUP BY day, agent_id
 """
 
 _AGENT_RUNS_QUERY = f"""
-SELECT agent_id, uniqExact(task_id) AS tasks {_RUNS_FROM}
+SELECT agent_id, uniqExact(ticket_id) AS tasks {_RUNS_FROM}
 GROUP BY agent_id
 """
 

@@ -1,7 +1,7 @@
 import unittest
 
 import imbi.plugins.sonarqube
-from imbi.plugins.sonarqube import actions, plugin
+from imbi.plugins.sonarqube import actions, lifecycle, plugin
 
 
 class SonarQubePluginManifestTests(unittest.TestCase):
@@ -12,6 +12,12 @@ class SonarQubePluginManifestTests(unittest.TestCase):
         manifest = plugin.SonarQubePlugin.manifest
         self.assertEqual('sonarqube', manifest.slug)
         self.assertEqual('api_token', manifest.auth_type)
+
+    def test_manifest_identifier_is_not_shareable(self) -> None:
+        # The lifecycle deletes the key an edge names (#775).
+        self.assertFalse(
+            plugin.SonarQubePlugin.manifest.shareable_service_identifier
+        )
 
     def test_manifest_declares_service_url_option(self) -> None:
         manifest = plugin.SonarQubePlugin.manifest
@@ -36,6 +42,16 @@ class SonarQubePluginManifestTests(unittest.TestCase):
         self.assertIsNotNone(capability)
         assert capability is not None
         self.assertIs(capability.handler, plugin.SonarQubeDoctor)
+
+    def test_manifest_declares_lifecycle_capability(self) -> None:
+        manifest = plugin.SonarQubePlugin.manifest
+        capability = manifest.get_capability('lifecycle')
+        self.assertIsNotNone(capability)
+        assert capability is not None
+        self.assertIs(capability.handler, lifecycle.SonarQubeLifecycle)
+        self.assertEqual(
+            ['archived', 'deleted'], capability.hints['lifecycle_events']
+        )
 
 
 class SonarQubeWebhookActionsTests(unittest.TestCase):

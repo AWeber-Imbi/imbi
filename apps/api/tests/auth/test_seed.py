@@ -290,9 +290,9 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
         gateway writes only projects (which covers releases and SBOMs).
         Both can start agent tasks (ADR 0020) and workflow runs (ADR
         0021), with their own origin. The scheduler can also start the
-        marketplace-sync and cve-sync maintenance operations, which its
-        system tasks call. Widening either is a deliberate decision, not
-        a drive-by edit.
+        marketplace-sync, cve-sync, and ai-model-calls-prune maintenance
+        operations, which its system tasks call. Widening either is a
+        deliberate decision, not a drive-by edit.
         """
         scheduler = next(
             r for r in seed.DEFAULT_ROLES if r[0] == 'imbi-scheduler'
@@ -306,16 +306,23 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
             non_read,
             {
                 'agent_task:create',
+                'ticket:create',
                 'workflow:run',
                 'admin:maintenance:marketplace-sync',
                 'admin:maintenance:cve-sync',
+                'admin:maintenance:ai-model-calls-prune',
             },
         )
 
         gateway = next(r for r in seed.DEFAULT_ROLES if r[0] == 'imbi-gateway')
         self.assertEqual(
             {perm for perm in gateway[4] if ':read' not in perm},
-            {'project:write', 'agent_task:create', 'workflow:run'},
+            {
+                'project:write',
+                'agent_task:create',
+                'ticket:create',
+                'workflow:run',
+            },
         )
 
     def test_internal_service_roles_are_not_auto_assigned(self) -> None:

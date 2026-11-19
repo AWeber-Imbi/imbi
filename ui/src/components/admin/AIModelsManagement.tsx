@@ -100,6 +100,8 @@ const MODEL_PATCH_FIELDS = [
   'name',
   'output_cost_per_million',
   'provider_id',
+  'supports_forced_tool_choice',
+  'supports_structured_output',
 ]
 
 // fallow-ignore-next-line complexity
@@ -235,6 +237,8 @@ export function AIModelsManagement() {
         name: values.name,
         output_cost_per_million: values.output_cost_per_million,
         provider_id: values.provider_id,
+        supports_forced_tool_choice: values.supports_forced_tool_choice,
+        supports_structured_output: values.supports_structured_output,
       }),
     onError: onMutationError,
     onSuccess: closeAndRefresh,
@@ -634,6 +638,8 @@ function currentModelState(
     name: model.name,
     output_cost_per_million: decimalToNumber(model.output_cost_per_million),
     provider_id: model.provider_id,
+    supports_forced_tool_choice: model.supports_forced_tool_choice,
+    supports_structured_output: model.supports_structured_output,
   }
 }
 

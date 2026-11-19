@@ -59,6 +59,8 @@ export interface AIModel {
   provider_id: string
   provider_name: string
   slug: string
+  supports_forced_tool_choice: boolean
+  supports_structured_output: boolean
   updated_at?: null | string
 }
 
@@ -85,6 +87,8 @@ export interface AIModelCreate {
   output_cost_per_million?: null | number
   provider_id: string
   slug?: string
+  supports_forced_tool_choice?: boolean
+  supports_structured_output?: boolean
 }
 
 export interface AIModelImport {
@@ -767,29 +771,6 @@ export type AgentSubagent = Schemas['AgentSubagent']
 
 export type AgentSubagentRef = Schemas['AgentSubagentRef']
 
-// Agent tasks (ADR 0020): the work of one agent, its event log, and the
-// requests that wait on a person.
-export type AgentTask = Schemas['AgentTaskResponse']
-
-export type AgentTaskCreate = Schemas['AgentTaskCreate']
-
-export type AgentTaskEvent = Schemas['AgentTaskEventResponse']
-
-export type AgentTaskListItem = Schemas['AgentTaskListItem']
-
-// The tasks related to a task, and the projects it touches (F13).
-export type AgentTaskProject = Schemas['AssociatedProject']
-
-export type AgentTaskRelated = Schemas['RelatedTask']
-
-export type AgentTaskRelations = Schemas['AgentTaskRelations']
-
-export type AgentTaskResolve = Schemas['AgentTaskRequestResolve']
-
-export type AgentTaskRetry = Schemas['AgentTaskRetry']
-
-export type AgentTaskStatus = AgentTask['status']
-
 // The Imbi tools that an agent can use, and the configuration of one
 // tool. The tool key is `imbi.<name>`; an older key can have another
 // prefix.
@@ -799,7 +780,7 @@ export type AgentToolConfig = Schemas['AgentToolConfig']
 
 export type AgentUpdate = Schemas['AgentUpdate']
 
-// Token use and cost of agent tasks, from ClickHouse.
+// Token use and cost of tickets, from ClickHouse.
 export type AgentUsage = Schemas['AgentUsage']
 
 export type AgentUsageTotals = Schemas['AgentUsageTotals']
@@ -1458,6 +1439,8 @@ export interface OrganizationCreate {
   slug: string
 }
 
+export type OrganizationMember = Schemas['OrganizationMember']
+
 export type OrgMembership = Schemas['OrgMembership']
 
 export type PackageEnvironmentChip = Schemas['EnvironmentChip']
@@ -1506,6 +1489,7 @@ export interface PluginEdgePut {
   target_id: string
   target_label: string
 }
+
 // Generic plugin entity (a graph node declared by a plugin's
 // vertex_labels manifest entry).  Shape varies per plugin model_ref;
 // the host returns whatever Pydantic.model_dump() produced.
@@ -1513,7 +1497,6 @@ export type PluginEntity = Record<string, unknown> & { id: string }
 export interface PluginEntityCreate {
   [key: string]: unknown
 }
-
 export interface PluginOptionDef {
   choices?: null | string[]
   default?: boolean | null | number | string
@@ -1552,16 +1535,17 @@ export interface PluginVertexLabel {
     nav_label?: null | string
   }
 }
+
 // `deprecated` is surfaced on the neighbour summary by the relationships
 // endpoint so the UI can flag deprecated dependencies.
 export type ProblemPackageRow = Schemas['ProblemPackageRow']
-
 export type ProblemPackagesResponse = Schemas['ProblemPackagesResponse']
 
 export type ProjectRelationship = Schemas['ProjectRelationship']
 
 export type ProjectRelationshipsResponse =
   Schemas['ProjectRelationshipsResponse']
+
 // Releases tab (build-and-release-only projects). Commit/tag data is read
 // from ClickHouse; release notes come from the graph Release nodes.
 export interface RecentCommit {
@@ -1606,7 +1590,6 @@ export interface ReleaseBlocker {
   status: 'open' | 'resolved'
   type: BlockerType
 }
-
 export interface ReleaseBlockerCreateRequest {
   description: string
   external_ref?: null | string
@@ -1624,6 +1607,7 @@ export interface ReleaseBlockResponse {
   blocked_reason?: null | string
   tag: string
 }
+
 /**
  * A release's CI status, which has one state a commit's does not:
  * `not_applicable`, for a project with no environments and therefore no
@@ -1633,7 +1617,6 @@ export interface ReleaseBlockResponse {
  * (#211).
  */
 export type ReleaseCiStatus = 'not_applicable' | DeploymentCommitCiStatus
-
 export interface ReleaseDependenciesResponse {
   components: ReleaseDependencyComponent[]
   release_id: string
@@ -1738,6 +1721,7 @@ export interface RoleCreate {
   priority?: number
   slug: string
 }
+
 export interface RoleDetail extends Role {
   is_system: boolean
   parent_role?: null | Role
@@ -1756,7 +1740,6 @@ export interface RoleUser {
   is_service_account: boolean
   last_login?: null | string
 }
-
 // `SchemaProperty` is UI-only — a form-builder projection derived from a
 // JSON Schema property descriptor.
 export interface SchemaProperty {
@@ -1804,6 +1787,8 @@ export type TagFormat = Schemas['TagFormat']
 
 export type TagRef = Schemas['TagRef']
 
+export type TaskHighlight = Schemas['TaskHighlight']
+
 // Team types
 export type Team = Schemas['TeamBlueprintResponse']
 
@@ -1836,6 +1821,33 @@ export interface TeamMembership {
   team_name: string
   team_slug: string
 }
+
+// Tickets (ADR 0020, ADR 0028): the work of one agent, its event log, and the
+// requests that wait on a person.
+export type Ticket = Schemas['AgentTaskResponse']
+
+export type TicketCounts = Schemas['AgentTaskCounts']
+
+export type TicketCreate = Schemas['AgentTaskCreate']
+
+export type TicketEvent = Schemas['AgentTaskEventResponse']
+
+export type TicketListItem = Schemas['AgentTaskListItem']
+
+export type TicketPosition = Schemas['AgentTaskPosition']
+
+// The tasks related to a task, and the projects it touches (F13).
+export type TicketProject = Schemas['AssociatedProject']
+
+export type TicketRelated = Schemas['RelatedTask']
+
+export type TicketRelations = Schemas['AgentTaskRelations']
+
+export type TicketResolve = Schemas['AgentTaskRequestResolve']
+
+export type TicketRetry = Schemas['AgentTaskRetry']
+
+export type TicketStatus = Ticket['status']
 
 export type TokenResponse = Schemas['TokenResponse']
 

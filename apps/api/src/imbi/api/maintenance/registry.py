@@ -37,6 +37,7 @@ MaintenanceSlug = typing.Literal[
     'search-reindex',
     'marketplace-sync',
     'cve-sync',
+    'ai-model-calls-prune',
 ]
 
 
@@ -332,6 +333,19 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             pause_key=None,
             enumerate=operations.enumerate_cve_release,
             execute=operations.execute_cve_sync,
+            items_are_projects=False,
+        ),
+        OperationDefinition(
+            slug='ai-model-calls-prune',
+            label='Prune AI Model Calls',
+            description=(
+                'Delete the records of AI model calls (prompt runs and '
+                'workflow LLM Call steps) older than 90 days. The '
+                'scheduler runs this daily at 02:30 UTC.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_ai_model_calls_prune,
+            execute=operations.execute_ai_model_calls_prune,
             items_are_projects=False,
         ),
     )

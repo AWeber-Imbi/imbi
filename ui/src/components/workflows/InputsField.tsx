@@ -13,7 +13,7 @@ export const MAX_INPUTS = 20
 const NAME = /^[a-z][a-z0-9_]*$/
 
 /** The lowercase names of Python's `keyword.kwlist`; the API refuses them. */
-const KEYWORDS = new Set([
+const PYTHON_KEYWORDS = new Set([
   'and',
   'as',
   'assert',
@@ -48,6 +48,24 @@ const KEYWORDS = new Set([
   'yield',
 ])
 
+/**
+ * The names that Jinja2 reads as a constant, an operator, or itself,
+ * and the names of the prompt providers (`project`).
+ */
+const PROMPT_NAMES = new Set([
+  'false',
+  'none',
+  'not',
+  'project',
+  'self',
+  'true',
+])
+
+const KEYWORDS = {
+  jinja: { message: 'This name is reserved in a prompt.', names: PROMPT_NAMES },
+  python: { message: 'This name is a Python keyword.', names: PYTHON_KEYWORDS },
+}
+
 interface Row {
   key: string
   name: string
@@ -61,12 +79,15 @@ interface Row {
  */
 export function InputsField({
   id,
+  keywords = 'python',
   label,
   onChange,
   references,
   value,
 }: {
   id: string
+  /** The language that reads the names: a script or a Jinja2 prompt. */
+  keywords?: keyof typeof KEYWORDS
   label: string
   onChange: (value: Record<string, unknown>) => void
   references: ReferenceGroup[]
@@ -97,7 +118,11 @@ export function InputsField({
       role="group"
     >
       {rows.map((row, i) => {
-        const error = nameError(row.name, names.indexOf(row.name) !== i)
+        const error = nameError(
+          row.name,
+          names.indexOf(row.name) !== i,
+          KEYWORDS[keywords],
+        )
         return (
           <div className="flex flex-col gap-1" key={row.key}>
             <div className="flex items-center gap-1.5">
@@ -154,12 +179,16 @@ export function InputsField({
   )
 }
 
-function nameError(name: string, repeated: boolean): null | string {
+function nameError(
+  name: string,
+  repeated: boolean,
+  reserved: { message: string; names: Set<string> },
+): null | string {
   if (!name) return null
   if (!NAME.test(name)) {
     return 'Use lowercase letters, digits, and _, starting with a letter.'
   }
-  if (KEYWORDS.has(name)) return 'This name is a Python keyword.'
+  if (reserved.names.has(name)) return reserved.message
   if (repeated) return 'Another input has this name.'
   return null
 }

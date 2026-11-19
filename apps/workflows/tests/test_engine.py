@@ -18,9 +18,10 @@ from unittest import mock
 import fastapi
 import httpx
 import orjson
+import psycopg
 from psycopg import rows
 
-from imbi.api import agent_tasks, models, workflows
+from imbi.api import models, tickets, workflows
 from imbi.api.auth import permissions
 from imbi.api.endpoints import workflow_runs
 from imbi.api.workflows import sweeper
@@ -67,6 +68,14 @@ class FakeApi:
         self.agent: (
             abc.Callable[[httpx.Request], abc.Awaitable[httpx.Response]] | None
         ) = None
+        #: Takes the prompt run calls when set.
+        self.llm_call: (
+            abc.Callable[
+                [httpx.Request],
+                httpx.Response | abc.Awaitable[httpx.Response],
+            ]
+            | None
+        ) = None
 
     def _once(
         self, request: httpx.Request, act: typing.Callable[[], dict]
@@ -102,6 +111,8 @@ class FakeApi:
         path = request.url.path
         if '/agent-task' in path and self.agent is not None:
             return self.agent(request)
+        if path.endswith('/prompts/run') and self.llm_call is not None:
+            return self.llm_call(request)
         if path.endswith(('/email', '/failure-notice')):
             return self._once(request, lambda: self._email(request))
         if path.endswith('/slack'):
@@ -353,7 +364,11 @@ class EngineTestCase(unittest.IsolatedAsyncioTestCase):
         """Tick until ``until`` holds for the run (default: closed)."""
         runner = runner or self.engine
         done = until or (lambda r: r['status'] in CLOSED)
-        for _ in range(300):
+        # Bound by time, not by ticks: fast ticks must not end the loop
+        # before a step timeout of a few seconds elapses (#829).
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + 15
+        while loop.time() < deadline:
             run = await self._run(run_id)
             if done(run):
                 if run['status'] in CLOSED:
@@ -361,7 +376,7 @@ class EngineTestCase(unittest.IsolatedAsyncioTestCase):
                 return run
             if not await runner.tick():
                 await asyncio.sleep(0.05)
-        self.fail(f'Run {run_id} did not get there: {run}')
+        self.fail(f'Run {run_id} did not get there: {await self._run(run_id)}')
 
     async def _run(self, run_id: uuid.UUID) -> dict[str, typing.Any]:
         async with self.pool.connection() as conn:
@@ -589,6 +604,81 @@ class ManualRunTestCase(EngineTestCase):
         )
         self.assertEqual(run['steps']['ship']['attempt'], 1)
         self.assertEqual(self.api.dispatches, 1)
+
+    async def test_timeout_retry_resumes_the_deployment(self) -> None:
+        # #829: the retry polls the run that attempt 1 started. It does
+        # not resolve the version again or post a new deployment.
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'manual'),
+                {
+                    **_node(
+                        'ship',
+                        'deploy',
+                        {
+                            'project_id': 'p1',
+                            'environment': 'staging',
+                            'version': '1.0.0',
+                        },
+                    ),
+                    # The poll is due after 1s, so the timeout comes first.
+                    'timeout_seconds': 1,
+                },
+            ],
+            [_edge('start', 'ship')],
+        )
+        run_id = await self._start(workflow_id)
+        with mock.patch.object(engine, 'RETRY_BACKOFF', 0):
+            run = await self._drive(run_id)
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(run['steps']['ship']['attempt'], 2)
+        self.assertEqual(run['steps']['ship']['output']['deployment_id'], 'r1')
+        self.assertEqual(
+            sum('/commits/' in p for p in self.api.paths), 1, self.api.paths
+        )
+
+    async def test_error_retry_resumes_the_deployment(self) -> None:
+        # #829: a failed poll of the run is retried by polling that run
+        # again, not by posting a new deployment.
+        original = FakeApi.__call__
+        polls: list[str] = []
+
+        def flaky(
+            api: FakeApi, request: httpx.Request
+        ) -> httpx.Response | abc.Awaitable[httpx.Response]:
+            if '/runs/' in request.url.path:
+                polls.append(request.url.path)
+                if len(polls) == 1:
+                    return httpx.Response(503, json={'detail': 'down'})
+            return original(api, request)
+
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'manual'),
+                _node(
+                    'ship',
+                    'deploy',
+                    {
+                        'project_id': 'p1',
+                        'environment': 'staging',
+                        'version': '1.0.0',
+                    },
+                ),
+            ],
+            [_edge('start', 'ship')],
+        )
+        run_id = await self._start(workflow_id)
+        with (
+            mock.patch.object(FakeApi, '__call__', flaky),
+            mock.patch.object(engine, 'RETRY_BACKOFF', 0),
+        ):
+            run = await self._drive(run_id)
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(run['steps']['ship']['attempt'], 2)
+        self.assertEqual(len(polls), 2)
+        self.assertEqual(
+            sum('/commits/' in p for p in self.api.paths), 1, self.api.paths
+        )
 
     async def _deploy_without_failed_edge(self) -> uuid.UUID:
         """A deploy whose ``Failed`` port has no edge."""
@@ -1472,10 +1562,10 @@ class AgentStepTestCase(EngineTestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
         self.config.agent_poll_seconds = 1
-        await agent_tasks.initialize()
-        self.task_pool = agent_tasks.create_pool()
+        await tickets.initialize()
+        self.task_pool = tickets.create_pool()
         await self.task_pool.open()
-        self.tasks = agent_tasks.TaskStore(self.task_pool)
+        self.tasks = tickets.TicketStore(self.task_pool)
         self.addAsyncCleanup(self._cleanup_tasks)
         self.agent_id = f'agent-{uuid.uuid4().hex[:8]}'
         await self.graph.execute(
@@ -1516,11 +1606,11 @@ class AgentStepTestCase(EngineTestCase):
         )
         async with self.task_pool.connection() as conn:
             await conn.execute(
-                'DELETE FROM agent_runtime.tasks WHERE organization_id = %s',
+                'DELETE FROM tickets.tickets WHERE organization_id = %s',
                 (self.org,),
             )
             await conn.execute(
-                'DELETE FROM agent_runtime.task_id_sequences'
+                'DELETE FROM tickets.ticket_id_sequences'
                 ' WHERE organization_id = %s',
                 (self.org,),
             )
@@ -1603,13 +1693,13 @@ class AgentStepTestCase(EngineTestCase):
             conn.cursor(row_factory=rows.dict_row) as cur,
         ):
             await cur.execute(
-                'SELECT * FROM agent_runtime.tasks WHERE organization_id = %s',
+                'SELECT * FROM tickets.tickets WHERE organization_id = %s',
                 (self.org,),
             )
             return await cur.fetchall()
 
-    def _agent(self) -> agent_tasks.Actor:
-        return agent_tasks.Actor('agent', self.agent_id, 'harness')
+    def _agent(self) -> tickets.Actor:
+        return tickets.Actor('agent', self.agent_id, 'harness')
 
     async def test_task_done_takes_succeeded(self) -> None:
         run_id = await self._start(
@@ -1653,6 +1743,11 @@ class AgentStepTestCase(EngineTestCase):
                 'reason': None,
                 'summary': 'Version 1.2 is fine.',
                 'result': None,
+                'title': 'Deploy guard: Ask',
+                'url': None,
+                'project': None,
+                'agent': self.agent_id,
+                'cost_usd': 0.0,
             },
         )
         self.assertEqual(
@@ -1667,7 +1762,7 @@ class AgentStepTestCase(EngineTestCase):
         self.assertEqual(len(await self._org_tasks()), 1)
 
     async def _structured_step(
-        self, outcome: agent_tasks.Outcome, reason: str | None
+        self, outcome: tickets.Outcome, reason: str | None
     ) -> dict[str, typing.Any]:
         """Return the agent step of a task that closes with ``outcome``
         and structured output."""
@@ -1943,6 +2038,352 @@ class ScriptStepTestCase(EngineTestCase):
         self.assertEqual(run['status'], 'failed')
         self.assertEqual(run['error'], 'script_error: ValueError: nope')
         self.assertEqual(run['steps']['calc']['attempt'], 1)
+
+
+RISK = [{'name': 'risk', 'type': 'string'}]
+
+
+class LLMCallStepTestCase(EngineTestCase):
+    """The LLM Call step, with a fake ``POST .../prompts/run``."""
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        #: The requests to the run endpoint.
+        self.calls: list[httpx.Request] = []
+        #: The answers, in order; the last one repeats. An exception
+        #: is raised, as a transport failure.
+        self.answers: list[httpx.Response | Exception] = []
+
+        def run(request: httpx.Request) -> httpx.Response:
+            self.calls.append(request)
+            answer = self.answers[min(len(self.calls), len(self.answers)) - 1]
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+
+        self.api.llm_call = run
+
+    def _answer(self, n: int = 1) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                'ref': f'workflows/{self.org}.wf.sum@{n}',
+                'n': n,
+                'model': 'chat',
+                'model_id': 'chat-1',
+                'usage': {'input_tokens': 10, 'output_tokens': 5},
+                'content_sha256': 'abc',
+                'text': '{"risk": "low"}',
+                'result': {'risk': 'low'},
+                'cost_usd': 0.001,
+                'call_id': '00000000-0000-0000-0000-000000000001',
+            },
+        )
+
+    @staticmethod
+    def _error(status: int, code: str, retry: bool) -> httpx.Response:
+        return httpx.Response(
+            status, json={'detail': {'error': code, 'retry': retry}}
+        )
+
+    async def _drive_llm_call(
+        self, timeout_seconds: int | None = None
+    ) -> dict[str, typing.Any]:
+        params = {
+            'prompt_ref': f'workflows/{self.org}.wf.sum',
+            'prompt_version': 1,
+            'output_fields': RISK,
+        }
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'manual'),
+                {
+                    **_node(
+                        'sum',
+                        'llm_call',
+                        {**params, 'inputs': {'diff': '{{ trigger.diff }}'}},
+                    ),
+                    'timeout_seconds': timeout_seconds,
+                },
+                _node(
+                    'then',
+                    'llm_call',
+                    {**params, 'inputs': {'risk': '{{ sum.result.risk }}'}},
+                ),
+            ],
+            [_edge('start', 'sum'), _edge('sum', 'then')],
+            {'on_failure': 'none'},
+        )
+        run_id = await self._start(workflow_id, {'diff': 'd'})
+        with (
+            mock.patch.object(engine, 'RETRY_BACKOFF', 0),
+            mock.patch.object(executors, 'LLM_CALL_POLL_SECONDS', 0),
+        ):
+            return await self._drive(run_id)
+
+    def _keys(self) -> list[str]:
+        return [
+            r.headers['Idempotency-Key'].split(':', 1)[1] for r in self.calls
+        ]
+
+    async def test_result_and_reference(self) -> None:
+        self.answers = [self._answer()]
+        run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        first = self.calls[0]
+        self.assertEqual(
+            first.url.path, f'/organizations/{self.org}/prompts/run'
+        )
+        self.assertEqual(
+            json.loads(first.content),
+            {
+                'ref': f'workflows/{self.org}.wf.sum@1',
+                'variables': {'diff': 'd'},
+                'output_fields': [
+                    {
+                        'name': 'risk',
+                        'type': 'string',
+                        'description': '',
+                        'required': True,
+                        'enum': None,
+                        'format': None,
+                        'items': None,
+                        'fields': None,
+                    }
+                ],
+            },
+        )
+        self.assertEqual(
+            first.headers['Idempotency-Key'], f'{run["id"]}:sum:1'
+        )
+        self.assertEqual(
+            first.extensions['timeout']['read'], executors.LLM_CALL_TIMEOUT
+        )
+        output = run['steps']['sum']['output']
+        self.assertEqual(output['result'], {'risk': 'low'})
+        self.assertEqual(output['prompt_version'], 1)
+        self.assertEqual(output['usage']['input_tokens'], 10)
+        self.assertEqual(
+            run['steps']['then']['input']['inputs'], {'risk': 'low'}
+        )
+
+    async def test_retry_is_a_new_attempt(self) -> None:
+        self.answers = [
+            self._error(503, 'rate_limited', True),
+            self._answer(),
+        ]
+        run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(self._keys()[:2], ['sum:1', 'sum:2'])
+        self.assertEqual(run['steps']['sum']['attempt'], 2)
+
+    async def test_call_in_progress_asks_again_with_the_same_key(
+        self,
+    ) -> None:
+        self.answers = [
+            self._error(409, 'call_in_progress', True),
+            self._answer(),
+        ]
+        run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(self._keys()[:2], ['sum:1', 'sum:1'])
+        self.assertEqual(run['steps']['sum']['attempt'], 1)
+
+    async def test_transport_failure_asks_again_with_the_same_key(
+        self,
+    ) -> None:
+        # imbi-api may have made the call: a new key could pay twice.
+        self.answers = [httpx.ReadTimeout('lost'), self._answer()]
+        run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(self._keys()[:2], ['sum:1', 'sum:1'])
+        self.assertEqual(run['steps']['sum']['attempt'], 1)
+
+    async def test_error_without_a_code_asks_again_with_the_same_key(
+        self,
+    ) -> None:
+        # A 5xx with no error code, such as a failed record of the
+        # answer or a proxy page, does not tell whether the call ran.
+        self.answers = [
+            httpx.Response(500, text='Internal Server Error'),
+            httpx.Response(502, text='<html>Bad Gateway</html>'),
+            self._answer(),
+        ]
+        run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(self._keys()[:3], ['sum:1', 'sum:1', 'sum:1'])
+        self.assertEqual(run['steps']['sum']['attempt'], 1)
+
+    async def test_token_failure_asks_again_with_the_same_key(
+        self,
+    ) -> None:
+        # The first call can still run in imbi-api when a token refresh
+        # fails during the poll. A new key could pay twice.
+        self.answers = [
+            self._error(409, 'call_in_progress', True),
+            self._answer(),
+        ]
+        bearer = executors.Api.bearer
+        tokens: list[int] = []
+
+        async def failing(self_: executors.Api) -> str:
+            tokens.append(1)
+            if len(self.calls) == 1 and len(tokens) == 2:
+                raise executors.StepError('token_http_503', retry=True)
+            return await bearer(self_)
+
+        with mock.patch.object(executors.Api, 'bearer', failing):
+            run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(self._keys()[:2], ['sum:1', 'sum:1'])
+        self.assertEqual(run['steps']['sum']['attempt'], 1)
+
+    async def test_wait_ends_before_the_engine_cancels_the_call(
+        self,
+    ) -> None:
+        # A cancelled call is retried with a new key while imbi-api can
+        # still run the first call. The wait must end first, so that
+        # the step asks again with the same key.
+        self.config.lease_seconds = 60
+        self.answers = [self._answer()]
+        run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertLess(self.calls[0].extensions['timeout']['read'], 30)
+
+    async def test_wait_counts_the_time_to_get_the_org_slug(self) -> None:
+        # The engine limit includes the org_slug lookup. Limit 1s,
+        # budget 0.9s, lookup 0.5s: the wait must be below 0.5s.
+        self.config.lease_seconds = 31
+        self.answers = [self._answer()]
+        org_slug = executors.Executors.org_slug
+
+        async def slow(self_: executors.Executors, org_id: str) -> str:
+            await asyncio.sleep(0.5)
+            return await org_slug(self_, org_id)
+
+        with mock.patch.object(executors.Executors, 'org_slug', slow):
+            run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertLess(self.calls[0].extensions['timeout']['read'], 0.5)
+        self.assertEqual(set(self._keys()), {'sum:1', 'then:1'})
+
+    async def test_slow_org_slug_lookup_keeps_the_attempt(self) -> None:
+        # After an unknown outcome the step resumes. A lookup slower
+        # than the budget must not let the engine cancel the step and
+        # retry it with a new key. Limit 1s, budget 0.9s.
+        self.config.lease_seconds = 31
+        self.answers = [
+            self._error(409, 'call_in_progress', True),
+            self._answer(),
+        ]
+        org_slug = executors.Executors.org_slug
+        lookups: list[str] = []
+
+        async def slow(self_: executors.Executors, org_id: str) -> str:
+            lookups.append(org_id)
+            if len(lookups) == 2:
+                await asyncio.sleep(5)
+            return await org_slug(self_, org_id)
+
+        with mock.patch.object(executors.Executors, 'org_slug', slow):
+            run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(self._keys()[:2], ['sum:1', 'sum:1'])
+        self.assertEqual(run['steps']['sum']['attempt'], 1)
+
+    async def test_failed_org_slug_lookup_keeps_the_attempt(self) -> None:
+        # After an unknown outcome the step resumes. A lost graph
+        # connection in the lookup must not retry with a new key.
+        self.answers = [
+            self._error(409, 'call_in_progress', True),
+            self._answer(),
+        ]
+        org_slug = executors.Executors.org_slug
+        lookups: list[str] = []
+
+        async def flaky(self_: executors.Executors, org_id: str) -> str:
+            lookups.append(org_id)
+            if len(lookups) == 2:
+                raise psycopg.OperationalError('connection lost')
+            return await org_slug(self_, org_id)
+
+        with mock.patch.object(executors.Executors, 'org_slug', flaky):
+            run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(self._keys()[:2], ['sum:1', 'sum:1'])
+        self.assertEqual(run['steps']['sum']['attempt'], 1)
+
+    async def test_slow_response_asks_again_with_the_same_key(self) -> None:
+        # The httpx timeout limits each phase, not the total. A response
+        # that is slower than the budget must not let the engine cancel
+        # the step and retry it with a new key. Limit 1s, budget 0.9s.
+        self.config.lease_seconds = 31
+        answer = self._answer()
+
+        async def slow(request: httpx.Request) -> httpx.Response:
+            self.calls.append(request)
+            if len(self.calls) == 1:
+                await asyncio.sleep(5)
+            return answer
+
+        self.api.llm_call = slow
+        run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(self._keys()[:2], ['sum:1', 'sum:1'])
+        self.assertEqual(run['steps']['sum']['attempt'], 1)
+
+    async def test_timeout_retry_keeps_the_key(self) -> None:
+        # The call of attempt 1 can still run in imbi-api when the step
+        # times out. A new key could pay twice; with the same key,
+        # imbi-api returns the outcome of the first call. Only a known
+        # failure gets a new key. Timeout 1s: the call of attempt 1 runs
+        # until attempt 2 starts, then fails with a known error.
+        attempts: list[int] = []
+        llm_call = executors.Executors._llm_call
+
+        async def tracked(
+            self_: executors.Executors, call: executors.Call
+        ) -> executors.Outcome:
+            attempts.append(call.attempt)
+            return await llm_call(self_, call)
+
+        def run(request: httpx.Request) -> httpx.Response:
+            self.calls.append(request)
+            key = self._keys()[-1]
+            if key.startswith('then:') or key == 'sum:3':
+                return self._answer()
+            if 2 not in attempts:
+                return self._error(409, 'call_in_progress', True)
+            return self._error(503, 'rate_limited', True)
+
+        self.api.llm_call = run
+        with mock.patch.object(executors.Executors, '_llm_call', tracked):
+            run_ = await self._drive_llm_call(timeout_seconds=1)
+        self.assertEqual(run_['status'], 'succeeded', run_['error'])
+        self.assertEqual(run_['steps']['sum']['attempt'], 3)
+        sum_keys = [k for k in self._keys() if k.startswith('sum:')]
+        self.assertEqual(sorted(set(sum_keys)), ['sum:1', 'sum:3'])
+
+    async def test_provider_outcome_unknown_fails(self) -> None:
+        self.answers = [self._error(502, 'provider_outcome_unknown', False)]
+        run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'failed')
+        self.assertEqual(run['error'], 'provider_outcome_unknown')
+        self.assertEqual(len(self.calls), 1)
+
+    async def test_error_without_retry_fails(self) -> None:
+        self.answers = [self._error(422, 'model_no_structured_output', False)]
+        run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'failed')
+        self.assertEqual(run['error'], 'model_no_structured_output')
+        self.assertEqual(len(self.calls), 1)
+
+    async def test_version_mismatch_fails(self) -> None:
+        self.answers = [self._answer(n=2)]
+        run = await self._drive_llm_call()
+        self.assertEqual(run['status'], 'failed')
+        self.assertEqual(run['error'], 'prompt_version_mismatch')
+        self.assertEqual(len(self.calls), 1)
 
 
 class AppTestCase(unittest.IsolatedAsyncioTestCase):

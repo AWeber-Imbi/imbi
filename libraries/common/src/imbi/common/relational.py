@@ -15,8 +15,22 @@ An existing table gets new columns and new indexes, so a unique key that a
 later table refers to is a unique index. A new constraint applies only to a
 table that does not exist yet: ``CREATE TABLE IF NOT EXISTS`` ignores it on
 an existing table.
+
+A change that is not additive (a rename, a new constraint on an existing
+table) is a ``steps`` entry: ``name``, ``when`` (a query that returns one
+boolean), and ``sql``. Steps run in order, before the tables, each in its
+own transaction. A step runs only when ``when`` returns true, so ``when``
+must return false once the step is done. There is no table of completed
+steps. A step with ``after_tables = true`` runs after the tables instead,
+for a change to a table that the initializer may create in the same run
+(a trigger on it, for example).
+
+A declared table that is a view is skipped. After a step moves a table and
+leaves a view under the old name, an older release still declares the old
+name, and Postgres cannot index a view.
 """
 
+import logging
 import pathlib
 import tomllib
 import typing
@@ -25,6 +39,8 @@ import psycopg
 from psycopg import sql
 
 from imbi.common import settings
+
+LOGGER = logging.getLogger(__name__)
 
 
 def load_schemata(path: pathlib.Path) -> dict[str, typing.Any]:
@@ -64,9 +80,19 @@ async def initialize(
         )
         try:
             await _create_schema(cursor, schema)
+            steps = schemata.get('steps', [])
+            for step in steps:
+                if not step.get('after_tables'):
+                    await _run_step(conn, step)
+            views = await _views(cursor, schema)
             for table in schemata.get('tables', []):
+                if table['name'] in views:
+                    continue
                 await _create_table(cursor, schema, table)
                 await _create_indexes(cursor, schema, table)
+            for step in steps:
+                if step.get('after_tables'):
+                    await _run_step(conn, step)
         finally:
             await cursor.execute(
                 'SELECT pg_advisory_unlock(hashtextextended(%s::text, 0))',
@@ -153,6 +179,29 @@ async def _create_schema(
             schema=sql.Identifier(schema)
         )
     )
+
+
+async def _run_step(
+    conn: psycopg.AsyncConnection[typing.Any], step: dict[str, typing.Any]
+) -> None:
+    async with conn.transaction():
+        cursor = await conn.execute(step['when'])
+        row = await cursor.fetchone()
+        if row and row[0]:
+            LOGGER.info('Running schema step %s', step['name'])
+            await conn.execute(step['sql'])
+
+
+async def _views(
+    cursor: psycopg.AsyncCursor[typing.Any], schema: str
+) -> set[str]:
+    await cursor.execute(
+        'SELECT c.relname FROM pg_class c'
+        ' JOIN pg_namespace n ON n.oid = c.relnamespace'
+        " WHERE n.nspname = %s AND c.relkind = 'v'",
+        (schema,),
+    )
+    return {row[0] for row in await cursor.fetchall()}
 
 
 async def _create_table(

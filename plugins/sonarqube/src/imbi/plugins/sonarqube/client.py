@@ -264,3 +264,46 @@ async def create_project(
     if isinstance(project_obj, dict):
         return typing.cast('dict[str, typing.Any]', project_obj)
     return {}
+
+
+async def delete_project(
+    *,
+    base_url: str,
+    api_token: str,
+    key: str,
+    timeout: float = 15.0,
+) -> bool:
+    """Delete the SonarQube project ``key``.
+
+    Calls ``POST {base_url}/api/projects/delete`` with the ``project``
+    key as a form-encoded body, which answers ``204`` with no body.
+    Returns ``True`` when the project was deleted and ``False`` when
+    SonarQube answered ``404`` -- the project was already gone, which a
+    caller tearing it down treats as done rather than as an error.
+    Raises :class:`SonarqubeClientError` on transport / any other
+    non-2xx response -- notably a token whose account lacks Administer
+    on the project, but also a redirect: httpx does not follow those,
+    and a ``302`` to a login page means nothing was deleted.
+    """
+    url = base_url.rstrip('/') + '/api/projects/delete'
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as http_client:
+            response = await http_client.post(
+                url, data={'project': key}, headers=_headers(api_token)
+            )
+    except httpx.RequestError as exc:
+        raise SonarqubeClientError(f'SonarQube request failed: {exc}') from exc
+    if response.status_code == 404:
+        return False
+    if not response.is_success:
+        LOGGER.warning(
+            'SonarQube %s %s returned %d: %s',
+            response.request.method,
+            response.request.url,
+            response.status_code,
+            response.text,
+        )
+        raise SonarqubeClientError(
+            f'SonarQube returned status {response.status_code}'
+        )
+    return True

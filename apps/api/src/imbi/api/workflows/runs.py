@@ -385,7 +385,7 @@ class RunStore:
         """
         return await self._all(
             'SELECT t.organization_id, t.short_id'
-            ' FROM agent_runtime.tasks AS t'
+            ' FROM tickets.tickets AS t'
             ' LEFT JOIN workflow_runtime.runs AS r'
             " ON r.id::text = t.origin->>'workflow_run_id'"
             ' AND r.organization_id = t.organization_id'

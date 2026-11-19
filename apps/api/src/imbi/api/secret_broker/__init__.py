@@ -3,7 +3,7 @@
 imbi-api brokers secrets that external systems hold and stores no
 secret values. The ``secrets`` schema holds providers, bindings,
 grants, and resolutions. It is a plain Postgres schema, managed like
-``agent_runtime``: the declarative schemata are applied on every start.
+``tickets``: the declarative schemata are applied on every start.
 
 The store lifespan also runs the expiry sweep and publishes the audit
 outbox, because both need the pool. It registers the broker's release
@@ -20,10 +20,10 @@ from collections import abc
 
 import fastapi
 
-from imbi.api.agent_tasks import create_pool
-from imbi.api.agent_tasks import store as task_store
 from imbi.api.harness import sweeper
 from imbi.api.secret_broker import audit, broker, providers, store
+from imbi.api.tickets import create_pool
+from imbi.api.tickets import store as task_store
 from imbi.common import lifespan, relational
 
 LOGGER = logging.getLogger(__name__)

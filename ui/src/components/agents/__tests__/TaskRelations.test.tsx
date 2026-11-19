@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as endpoints from '@/api/endpoints'
 import { fireEvent, render, screen, waitFor, within } from '@/test/utils'
-import type { AgentTaskProject, AgentTaskRelated } from '@/types'
+import type { TicketProject, TicketRelated } from '@/types'
 
 import { TaskDetail } from '../TaskDetail'
 import { EVENT_POLL_MS } from '../taskQueries'
@@ -17,23 +17,28 @@ import { event, task } from './taskFixtures'
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', () => ({
-  getAgentTask: vi.fn(),
-  getAgentTaskRelations: vi.fn(),
   getProjectsSlim: vi.fn(),
+  getTicket: vi.fn(),
+  getTicketRelations: vi.fn(),
   listAgents: vi.fn(),
-  listAgentTaskEvents: vi.fn(),
-  listAgentTaskProjects: vi.fn(),
-  listAgentTasks: vi.fn(),
-  setAgentTaskDependency: vi.fn(),
-  setAgentTaskProject: vi.fn(),
+  listTicketEvents: vi.fn(),
+  listTicketProjects: vi.fn(),
+  listTickets: vi.fn(),
+  setTicketDependency: vi.fn(),
+  setTicketParent: vi.fn(),
+  setTicketProject: vi.fn(),
 }))
 
-const auth = { permissions: ['agent:read', 'agent_task:manage'] }
+const auth = {
+  email: undefined as string | undefined,
+  permissions: ['agent:read', 'agent_task:manage'],
+}
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({
     user: {
+      email: auth.email,
       is_admin: false,
       organizations: [
         { organization_slug: 'acme', permissions: auth.permissions },
@@ -45,8 +50,8 @@ vi.mock('@/hooks/useAuth', () => ({
 
 function related(
   shortId: string,
-  overrides: Partial<AgentTaskRelated> = {},
-): AgentTaskRelated {
+  overrides: Partial<TicketRelated> = {},
+): TicketRelated {
   return {
     agent_id: 'agt-1',
     created_at: '2026-10-08T12:00:00Z',
@@ -66,9 +71,10 @@ const RELATIONS = {
   parent: related('T-4', { linked_at: null, linked_by: null }),
   required_by: [related('T-3', { status: 'running' })],
   requires: [related('T-2', { outcome: 'done_acted', status: 'closed' })],
+  tree: { open: 3, root_short_id: 'T-4', root_title: 'Task T-4', tickets: 4 },
 }
 
-function project(overrides: Partial<AgentTaskProject>): AgentTaskProject {
+function project(overrides: Partial<TicketProject>): TicketProject {
   return {
     added_at: '2026-10-08T12:30:00Z',
     added_by: 'dev@example.com',
@@ -111,33 +117,45 @@ function slimProject(id: string, name: string, team: string) {
 describe('Related tasks', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    auth.email = undefined
     auth.permissions = ['agent:read', 'agent_task:manage']
     vi.mocked(endpoints.listAgents).mockResolvedValue([agent()])
-    vi.mocked(endpoints.getAgentTaskRelations).mockResolvedValue(RELATIONS)
-    vi.mocked(endpoints.setAgentTaskDependency).mockResolvedValue(undefined)
+    vi.mocked(endpoints.getTicketRelations).mockResolvedValue(RELATIONS)
+    vi.mocked(endpoints.setTicketDependency).mockResolvedValue(undefined)
+    vi.mocked(endpoints.setTicketParent).mockResolvedValue(undefined)
   })
 
-  it('reads each dependency both ways and delegation read only', async () => {
+  it('reads each dependency both ways, and the tree', async () => {
     render(<RelatedTasksTab orgSlug="acme" task={task()} />)
-    const list = await screen.findByRole('list', { name: 'Related tasks' })
+    const list = await screen.findByRole('list', { name: 'Related tickets' })
     const rows = await within(list).findAllByRole('listitem')
     expect(rows.map((r) => r.textContent)).toEqual([
       expect.stringMatching(/^Requiresblocked byT-2Task T-2MenderCompleted/),
       expect.stringMatching(/^Required byblocksT-3Task T-3MenderRunning/),
-      expect.stringMatching(/^ParentdelegationT-4/),
-      expect.stringMatching(/^ChilddelegationT-6/),
+      expect.stringMatching(/^ParenttreeT-4/),
+      expect.stringMatching(/^ChildtreeT-6/),
     ])
+    expect(screen.getByText(/: 3 of 4 tickets open$/).textContent).toBe(
+      'Tree of T-4 Task T-4: 3 of 4 tickets open',
+    )
     expect(within(rows[0]).getByRole('link')).toHaveAttribute(
       'href',
-      '/agents/tasks/acme/T-2',
+      '/tickets/acme/T-2',
     )
-    // Delegation cannot be removed.
-    expect(within(rows[2]).queryByRole('button')).toBeNull()
+    // A child moves from its own ticket only.
     expect(within(rows[3]).queryByRole('button')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove parent T-4' }))
+    await waitFor(() =>
+      expect(endpoints.setTicketParent).toHaveBeenCalledWith(
+        'acme',
+        'T-1',
+        null,
+      ),
+    )
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove requires T-2' }))
     await waitFor(() =>
-      expect(endpoints.setAgentTaskDependency).toHaveBeenCalledWith(
+      expect(endpoints.setTicketDependency).toHaveBeenCalledWith(
         'acme',
         'T-1',
         'T-2',
@@ -148,13 +166,33 @@ describe('Related tasks', () => {
       screen.getByRole('button', { name: 'Remove required by T-3' }),
     )
     await waitFor(() =>
-      expect(endpoints.setAgentTaskDependency).toHaveBeenCalledWith(
+      expect(endpoints.setTicketDependency).toHaveBeenCalledWith(
         'acme',
         'T-3',
         'T-1',
         false,
       ),
     )
+  })
+
+  it('shows the open gates of a held ticket', async () => {
+    vi.mocked(endpoints.getTicketRelations).mockResolvedValue({
+      ...RELATIONS,
+      requires: [
+        related('T-2', {
+          gates: true,
+          outcome: 'done_acted',
+          status: 'closed',
+        }),
+        related('T-5', { gates: true }),
+        related('T-7'),
+      ],
+    })
+    render(<RelatedTasksTab orgSlug="acme" task={task({ status: 'held' })} />)
+    expect((await screen.findByText(/^Held: waiting on/)).textContent).toBe(
+      'Held: waiting on T-5',
+    )
+    expect(screen.getAllByText('gated by')).toHaveLength(2)
   })
 
   it('hides changes without agent_task:manage', async () => {
@@ -164,26 +202,49 @@ describe('Related tasks', () => {
     expect(screen.queryByRole('button')).toBeNull()
   })
 
+  it('lets the owner move the task without agent_task:manage', async () => {
+    auth.email = 'dev@example.com'
+    auth.permissions = ['agent:read']
+    vi.mocked(endpoints.listTickets).mockResolvedValue([])
+    render(<RelatedTasksTab orgSlug="acme" task={task()} />)
+    await screen.findByText('Task T-2')
+    expect(
+      screen.getByRole('button', { name: 'Remove parent T-4' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Remove requires/ })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Link ticket' }))
+    const relationship = screen.getByRole('radiogroup', {
+      name: 'Relationship',
+    })
+    expect(
+      within(relationship)
+        .getAllByRole('radio')
+        .map((r) => r.textContent),
+    ).toEqual(['Parent'])
+  })
+
   it('shows an empty state', async () => {
-    vi.mocked(endpoints.getAgentTaskRelations).mockResolvedValue({
+    vi.mocked(endpoints.getTicketRelations).mockResolvedValue({
       children: [],
       parent: null,
       required_by: [],
       requires: [],
+      tree: { open: 1, root_short_id: 'T-1', root_title: 'T', tickets: 1 },
     })
     render(<RelatedTasksTab orgSlug="acme" task={task()} />)
-    expect(await screen.findByText('No related tasks.')).toBeInTheDocument()
+    expect(await screen.findByText('No related tickets.')).toBeInTheDocument()
+    expect(screen.queryByText(/Tree of/)).toBeNull()
   })
 
   it(
     'updates live from a relation event',
     async () => {
       const log = [event(1, 'task.created')]
-      vi.mocked(endpoints.getAgentTask).mockResolvedValue(task())
-      vi.mocked(endpoints.listAgentTaskEvents).mockImplementation(
+      vi.mocked(endpoints.getTicket).mockResolvedValue(task())
+      vi.mocked(endpoints.listTicketEvents).mockImplementation(
         async (_org, _id, afterSeq) => log.filter((e) => e.seq > afterSeq),
       )
-      vi.mocked(endpoints.getAgentTaskRelations).mockResolvedValue({
+      vi.mocked(endpoints.getTicketRelations).mockResolvedValue({
         ...RELATIONS,
         required_by: [],
       })
@@ -191,7 +252,7 @@ describe('Related tasks', () => {
       await screen.findByText('Task T-2')
       expect(screen.queryByText('Task T-3')).toBeNull()
 
-      vi.mocked(endpoints.getAgentTaskRelations).mockResolvedValue(RELATIONS)
+      vi.mocked(endpoints.getTicketRelations).mockResolvedValue(RELATIONS)
       log.push(event(2, 'dependency.added', { side: 'prerequisite' }))
       expect(
         await screen.findByText(
@@ -213,14 +274,14 @@ describe('Related tasks', () => {
     // and the events are read after it.
     let relationsRead = () => {}
     const gate = new Promise<void>((resolve) => (relationsRead = resolve))
-    vi.mocked(endpoints.getAgentTask).mockResolvedValue(task({ last_seq: 2 }))
-    vi.mocked(endpoints.listAgentTaskEvents).mockImplementation(
+    vi.mocked(endpoints.getTicket).mockResolvedValue(task({ last_seq: 2 }))
+    vi.mocked(endpoints.listTicketEvents).mockImplementation(
       async (_org, _id, afterSeq) => {
         await gate
         return log.filter((e) => e.seq > afterSeq)
       },
     )
-    vi.mocked(endpoints.getAgentTaskRelations)
+    vi.mocked(endpoints.getTicketRelations)
       .mockImplementationOnce(async () => {
         relationsRead()
         return { ...RELATIONS, required_by: [] }
@@ -235,8 +296,8 @@ describe('Link task dialog', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(endpoints.listAgents).mockResolvedValue([agent()])
-    vi.mocked(endpoints.setAgentTaskDependency).mockResolvedValue(undefined)
-    vi.mocked(endpoints.listAgentTasks).mockResolvedValue([
+    vi.mocked(endpoints.setTicketDependency).mockResolvedValue(undefined)
+    vi.mocked(endpoints.listTickets).mockResolvedValue([
       task(),
       task({ id: 'id-2', short_id: 'T-2', title: 'Linked already' }),
       task({ id: 'id-5', short_id: 'T-5', title: 'Ship the fix' }),
@@ -257,9 +318,9 @@ describe('Link task dialog', () => {
 
   it('links the chosen task in the chosen direction', async () => {
     const onClose = renderDialog()
-    const list = await screen.findByRole('list', { name: 'Tasks' })
-    // This task and linked tasks are not offered.
-    expect(await within(list).findAllByRole('button')).toHaveLength(1)
+    const list = await screen.findByRole('list', { name: 'Tickets' })
+    // This task is not offered.
+    expect(await within(list).findAllByRole('button')).toHaveLength(2)
     const link = screen.getByRole('button', { name: /^Link$/ })
     expect(link).toBeDisabled()
 
@@ -273,11 +334,60 @@ describe('Link task dialog', () => {
     ).toBeInTheDocument()
     fireEvent.click(link)
     await waitFor(() => expect(onClose).toHaveBeenCalled())
-    expect(endpoints.setAgentTaskDependency).toHaveBeenCalledWith(
+    expect(endpoints.setTicketDependency).toHaveBeenCalledWith(
       'acme',
       'T-5',
       'T-1',
       true,
+      false,
+    )
+  })
+
+  it('links a gating prerequisite', async () => {
+    renderDialog()
+    fireEvent.click(await screen.findByRole('button', { name: /T-5/ }))
+    fireEvent.click(screen.getByRole('checkbox'))
+    fireEvent.click(screen.getByRole('button', { name: /^Link$/ }))
+    await waitFor(() =>
+      expect(endpoints.setTicketDependency).toHaveBeenCalledWith(
+        'acme',
+        'T-1',
+        'T-5',
+        true,
+        true,
+      ),
+    )
+  })
+
+  it('moves the task under the chosen parent', async () => {
+    vi.mocked(endpoints.setTicketParent).mockResolvedValue(undefined)
+    renderDialog()
+    fireEvent.click(await screen.findByRole('button', { name: /T-5/ }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Parent' }))
+    expect(screen.getByText('T-1 moves under T-5')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^Link$/ }))
+    await waitFor(() =>
+      expect(endpoints.setTicketParent).toHaveBeenCalledWith(
+        'acme',
+        'T-1',
+        'T-5',
+      ),
+    )
+  })
+
+  it('offers a linked task only as the parent', async () => {
+    vi.mocked(endpoints.setTicketParent).mockResolvedValue(undefined)
+    renderDialog()
+    fireEvent.click(await screen.findByRole('button', { name: /T-2/ }))
+    expect(screen.getByRole('radio', { name: 'Requires' })).toBeDisabled()
+    expect(screen.getByText('T-1 moves under T-2')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^Link$/ }))
+    await waitFor(() =>
+      expect(endpoints.setTicketParent).toHaveBeenCalledWith(
+        'acme',
+        'T-1',
+        'T-2',
+      ),
     )
   })
 
@@ -287,11 +397,12 @@ describe('Link task dialog', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Blocked by' }))
     fireEvent.click(screen.getByRole('button', { name: /^Link$/ }))
     await waitFor(() =>
-      expect(endpoints.setAgentTaskDependency).toHaveBeenCalledWith(
+      expect(endpoints.setTicketDependency).toHaveBeenCalledWith(
         'acme',
         'T-1',
         'T-5',
         true,
+        false,
       ),
     )
   })
@@ -299,11 +410,11 @@ describe('Link task dialog', () => {
   it('searches by text', async () => {
     renderDialog()
     await screen.findByRole('button', { name: /T-5/ })
-    fireEvent.change(screen.getByLabelText('Search tasks'), {
+    fireEvent.change(screen.getByLabelText('Search tickets'), {
       target: { value: 'ship' },
     })
     await waitFor(() =>
-      expect(endpoints.listAgentTasks).toHaveBeenCalledWith(
+      expect(endpoints.listTickets).toHaveBeenCalledWith(
         'acme',
         { limit: 20, q: 'ship' },
         expect.anything(),
@@ -316,8 +427,8 @@ describe('Associated projects', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     auth.permissions = ['agent:read', 'agent_task:manage']
-    vi.mocked(endpoints.listAgentTaskProjects).mockResolvedValue(PROJECTS)
-    vi.mocked(endpoints.setAgentTaskProject).mockResolvedValue(undefined)
+    vi.mocked(endpoints.listTicketProjects).mockResolvedValue(PROJECTS)
+    vi.mocked(endpoints.setTicketProject).mockResolvedValue(undefined)
   })
 
   it('shows every project as removable, and removes one', async () => {
@@ -343,7 +454,7 @@ describe('Associated projects', () => {
       screen.getByRole('button', { name: 'Remove project old-slug' }),
     )
     await waitFor(() =>
-      expect(endpoints.setAgentTaskProject).toHaveBeenCalledWith(
+      expect(endpoints.setTicketProject).toHaveBeenCalledWith(
         'acme',
         'T-1',
         'p-gone',
@@ -367,7 +478,7 @@ describe('Associated projects', () => {
 describe('Link project dialog', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(endpoints.setAgentTaskProject).mockResolvedValue(undefined)
+    vi.mocked(endpoints.setTicketProject).mockResolvedValue(undefined)
     vi.mocked(endpoints.getProjectsSlim).mockResolvedValue([
       slimProject('proj-1', 'Billing', 'Payments'),
       slimProject('p-3', 'Subscriber API', 'Platform'),
@@ -398,7 +509,7 @@ describe('Link project dialog', () => {
     expect(screen.getByText('Linking Subscriber API')).toBeInTheDocument()
     fireEvent.click(link)
     await waitFor(() => expect(onClose).toHaveBeenCalled())
-    expect(endpoints.setAgentTaskProject).toHaveBeenCalledWith(
+    expect(endpoints.setTicketProject).toHaveBeenCalledWith(
       'acme',
       'T-1',
       'p-3',

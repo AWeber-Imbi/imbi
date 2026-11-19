@@ -22,8 +22,6 @@ from .agent_platform import (
     agent_marketplaces_router,
     agent_platform_config_router,
 )
-from .agent_task_harness import agent_task_harness_router
-from .agent_tasks import agent_tasks_router
 from .agent_usage import agent_usage_router
 from .agents import agents_router
 from .comments import comments_router
@@ -61,7 +59,11 @@ from .project_logs import project_logs_router
 from .project_pr_sync import project_pr_sync_router
 from .project_types import project_types_router
 from .projects import projects_router
-from .prompts import prompt_render_router
+from .prompts import (
+    delete_org_prompts,
+    move_org_prompts,
+    prompt_render_router,
+)
 from .pull_requests import pull_requests_project_router, pull_requests_router
 from .releases import releases_router
 from .search import search_router
@@ -83,11 +85,22 @@ from .secret_broker import (
 )
 from .tags import tags_router
 from .teams import teams_router
+from .ticket_harness import ticket_harness_router
+from .tickets import ticket_operation_id, tickets_router
 from .webhooks import project_services_router, webhooks_router
 from .workflow_runs import workflow_attention_router, workflow_runs_router
 from .workflows import step_types_router, workflows_router
 
 LOGGER = logging.getLogger(__name__)
+
+
+class OrganizationMember(pydantic.BaseModel):
+    id: str
+    email: str
+    display_name: str | None = None
+    role: str | None = None
+    is_active: bool
+
 
 organizations_router = fastapi.APIRouter(
     prefix='/organizations', tags=['Organizations']
@@ -206,9 +219,20 @@ organizations_router.include_router(
     agents_router,
     prefix='/{org_slug}/agents',
 )
+# ADR 0028: tickets at /tickets, with ticket operation ids, and at the
+# old /agent-tasks path with the old operation ids, which imbi-mcp turns
+# into tool names that clients call. Release B removes /agent-tasks.
+# The agent token rules (imbi.api.auth.agent_api) key a route by its
+# endpoint, so both paths share the rule of the path mounted last.
 organizations_router.include_router(
-    agent_tasks_router,
+    tickets_router,
     prefix='/{org_slug}/agent-tasks',
+    deprecated=True,
+)
+organizations_router.include_router(
+    tickets_router,
+    prefix='/{org_slug}/tickets',
+    generate_unique_id_function=ticket_operation_id,
 )
 organizations_router.include_router(
     agent_platform_config_router,
@@ -220,11 +244,18 @@ organizations_router.include_router(
 )
 # The harness routes take the organization-membership dependency of the
 # task routes, in the variant that also accepts an agent token (ADR
-# 0022), so no route under /agent-tasks can skip it.
+# 0022), so no route under /tickets or /agent-tasks can skip it.
 organizations_router.include_router(
-    agent_task_harness_router,
+    ticket_harness_router,
     prefix='/{org_slug}/agent-tasks',
     dependencies=[fastapi.Depends(harness_auth.harness_member_org_id)],
+    deprecated=True,
+)
+organizations_router.include_router(
+    ticket_harness_router,
+    prefix='/{org_slug}/tickets',
+    dependencies=[fastapi.Depends(harness_auth.harness_member_org_id)],
+    generate_unique_id_function=ticket_operation_id,
 )
 organizations_router.include_router(
     agent_usage_router,
@@ -500,8 +531,41 @@ async def get_organization(
     return org_data
 
 
+async def _rename_history(
+    execute: graph.CypherExecute, original_slug: str, org_id: str
+) -> list[str]:
+    """Return ``previous_slugs`` with ``original_slug`` added.
+
+    Raises:
+        HTTPException 404: The organization ``org_id`` does not have
+            ``original_slug``.
+
+    """
+    records = await execute(
+        'MATCH (n:Organization {{id: {org_id}, slug: {original_slug}}})'
+        ' RETURN n.previous_slugs AS previous_slugs',
+        {'original_slug': original_slug, 'org_id': org_id},
+        ['previous_slugs'],
+    )
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Organization with slug {original_slug!r} not found',
+        )
+    prior_raw = graph.parse_agtype(records[0]['previous_slugs'])
+    prior: list[str] = (
+        [str(s) for s in typing.cast(list[object], prior_raw)]
+        if isinstance(prior_raw, list)
+        else []
+    )
+    if original_slug not in prior:
+        prior.append(original_slug)
+    return prior
+
+
 async def _persist_organization(
     original_slug: str,
+    org_id: str,
     org: models.Organization,
     request: fastapi.Request,
     db: graph.Pool,
@@ -510,6 +574,9 @@ async def _persist_organization(
 
     Parameters:
         original_slug: The slug that currently identifies the node.
+        org_id: The id of the organization the caller read. Every
+            match requires it, so a different organization that has
+            taken ``original_slug`` since is not changed.
         org: Validated organization model with updated fields.
         db: Graph database connection.
 
@@ -528,31 +595,14 @@ async def _persist_organization(
     # AGE to do list-concat in Cypher (which is finicky).
     previous_slugs: list[str] | None = None
     if org.slug != original_slug:
-        existing_records = await db.execute(
-            'MATCH (n:Organization {{slug: {original_slug}}})'
-            ' RETURN n.previous_slugs AS previous_slugs',
-            {'original_slug': original_slug},
-            columns=['previous_slugs'],
+        previous_slugs = await _rename_history(
+            db.execute, original_slug, org_id
         )
-        if not existing_records:
-            raise fastapi.HTTPException(
-                status_code=404,
-                detail=f'Organization with slug {original_slug!r} not found',
-            )
-        prior_raw = graph.parse_agtype(existing_records[0]['previous_slugs'])
-        prior: list[str] = (
-            [str(s) for s in typing.cast(list[object], prior_raw)]
-            if isinstance(prior_raw, list)
-            else []
-        )
-        if original_slug not in prior:
-            prior.append(original_slug)
-        previous_slugs = prior
 
     update_query: typing.LiteralString
     if previous_slugs is not None:
         update_query = (
-            'MATCH (n:Organization {{slug: {original_slug}}})'
+            'MATCH (n:Organization {{id: {org_id}, slug: {original_slug}}})'
             ' SET n.name = {name},'
             ' n.slug = {slug},'
             ' n.description = {description},'
@@ -564,7 +614,7 @@ async def _persist_organization(
         )
     else:
         update_query = (
-            'MATCH (n:Organization {{slug: {original_slug}}})'
+            'MATCH (n:Organization {{id: {org_id}, slug: {original_slug}}})'
             ' SET n.name = {name},'
             ' n.slug = {slug},'
             ' n.description = {description},'
@@ -582,13 +632,41 @@ async def _persist_organization(
         'icon': props.get('icon'),
         'tag_formats': props.get('tag_formats', []),
         'updated_at': props['updated_at'],
+        'org_id': org_id,
     }
     if previous_slugs is not None:
         params['previous_slugs'] = previous_slugs
+
+    async def rename(
+        execute: graph.CypherExecute,
+        conn: psycopg.AsyncConnection[typing.Any],
+    ) -> list[dict[str, typing.Any]]:
+        # Read the history again under the lock: a rename that
+        # committed since the first read changed it. The lookup and
+        # the SET match the id too: another organization can have
+        # taken ``original_slug`` since, and then nothing changes.
+        params['previous_slugs'] = await _rename_history(
+            execute, original_slug, org_id
+        )
+        renamed = await execute(update_query, params)
+        if renamed:
+            await move_org_prompts(
+                execute, conn, org_id, original_slug, org.slug
+            )
+        return renamed
+
     with conflict_on_unique_violation(
         f'Organization with slug {org.slug!r} already exists',
     ):
-        records = await db.execute(update_query, params)
+        if previous_slugs is None:
+            records = await db.execute(update_query, params)
+        else:
+            # The rename and the moves of the prompts and of the
+            # references to them are one transaction. The delete lock
+            # makes a delete of the organization wait for it.
+            records = await db.locked_with_connection(
+                relational.organization_delete_lock_key(org_id), rename
+            )
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
@@ -685,7 +763,7 @@ async def patch_organization(
 
     org.created_at = existing.created_at
     org.updated_at = datetime.datetime.now(datetime.UTC)
-    return await _persist_organization(slug, org, request, db)
+    return await _persist_organization(slug, existing.id, org, request, db)
 
 
 @organizations_router.get('/{slug}/members', name='list_organization_members')
@@ -698,14 +776,14 @@ async def list_organization_members(
             permissions.require_permission('organization:read'),
         ),
     ],
-) -> list[dict[str, typing.Any]]:
+) -> list[OrganizationMember]:
     """List all members of an organization with their roles.
 
     Parameters:
         slug: Organization slug identifier.
 
     Returns:
-        Members with email, display_name, and role.
+        Members with id, email, display_name, role, and is_active.
 
     Raises:
         404: Organization not found.
@@ -714,9 +792,10 @@ async def list_organization_members(
     query: typing.LiteralString = (
         'MATCH (o:Organization {{slug: {slug}}})'
         ' OPTIONAL MATCH (u:User)-[m:MEMBER_OF]->(o)'
-        ' RETURN o, collect({{email: u.email,'
+        ' RETURN o, collect({{id: u.id, email: u.email,'
         ' display_name: u.display_name,'
-        ' role: m.role}}) AS members'
+        ' role: m.role,'
+        ' is_active: coalesce(u.is_active, false)}}) AS members'
     )
     records = await db.execute(
         query,
@@ -733,7 +812,11 @@ async def list_organization_members(
     )
     if isinstance(raw_members, str):
         raw_members = []
-    return [m for m in raw_members if m.get('email')]
+    return [
+        OrganizationMember.model_validate(m)
+        for m in raw_members
+        if m.get('email')
+    ]
 
 
 # Rows that block an organization delete, by the name the 409 shows,
@@ -754,11 +837,12 @@ _ORG_BLOCKING_ROWS: dict[str, tuple[tuple[str, str], typing.LiteralString]] = {
 # tables of tasks and runs cascade, and so do the nonces of
 # resolutions.
 _ORG_OWNED_TABLES: tuple[tuple[str, str], ...] = (
-    ('agent_runtime', 'task_dependencies'),
-    ('agent_runtime', 'task_projects'),
-    ('agent_runtime', 'tasks'),
-    ('agent_runtime', 'task_id_sequences'),
+    ('tickets', 'ticket_dependencies'),
+    ('tickets', 'ticket_projects'),
+    ('tickets', 'tickets'),
+    ('tickets', 'ticket_id_sequences'),
     ('workflow_runtime', 'runs'),
+    ('ai_runtime', 'ai_model_calls'),
     ('secrets', 'grants'),
     ('secrets', 'resolutions'),
 )
@@ -777,8 +861,9 @@ async def delete_organization(
 ) -> None:
     """Delete an empty organization.
 
-    Its memberships, agent tasks, workflow runs, secret grants, and
-    settled secret resolutions go with it.
+    Its memberships, agent tasks, workflow runs, AI model calls,
+    ``workflows/<org>.*`` and ``agents/<org>.*`` prompts, secret
+    grants, and settled secret resolutions go with it.
 
     Parameters:
         slug: Organization slug to delete.
@@ -845,6 +930,7 @@ async def delete_organization(
                 ),
                 (org_id,),
             )
+        await delete_org_prompts(execute, org_id)
         # Match by id: a rename since the slug lookup must not leave
         # the organization in place or delete a new one with the slug.
         deleted = await execute(

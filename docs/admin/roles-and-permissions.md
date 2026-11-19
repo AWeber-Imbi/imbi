@@ -84,7 +84,7 @@ The organization routes are these routes under
 | Area | Routes |
 |---|---|
 | Agents | `agents` |
-| Agent tasks | `agent-tasks` |
+| Tickets | `tickets`, `agent-tasks` (deprecated) |
 | Agent usage | `agent-usage` |
 | Agent platform | `agent-platform-config`, `agent-marketplaces` |
 | Workflows | `workflows`, `workflow-step-types`, `workflow-runs` |
@@ -195,6 +195,7 @@ it.
 | `prompt:update` | Edit prompts and save new versions | yes | yes |  |  |  |  |  |  |  |
 | `prompt:promote` | Move prompt labels and set the default label | yes |  |  |  |  |  |  |  |  |
 | `prompt:delete` | Delete prompts | yes |  |  |  |  |  |  |  |  |
+| `prompt:run` | Run saved generative prompts against their AI model | yes | yes |  |  |  |  | yes |  |  |
 | `prompt:evaluate` | Record evaluation results against prompt versions | yes |  |  |  |  |  |  |  |  |
 | `environment:create` | Create environments | yes |  |  |  |  |  |  |  |  |
 | `environment:read` | View environments | yes | yes | yes | yes | yes |  |  |  |  |
@@ -258,6 +259,11 @@ it.
 | `agent_task:manage` | Pause, resume, cancel, and reassign agent tasks | yes | yes |  |  |  |  |  |  |  |
 | `agent_task:resolve` | Answer feedback requests and resolve approvals of agent tasks | yes | yes |  |  |  |  |  |  |  |
 | `agent_task:delete` | Delete closed agent tasks | yes |  |  |  |  |  |  |  |  |
+| `ticket:read` | View tickets and their events | yes | yes | yes | yes | yes |  |  |  |  |
+| `ticket:create` | Create tickets | yes | yes |  |  | yes | yes |  |  |  |
+| `ticket:manage` | Pause, resume, cancel, and reassign tickets | yes | yes |  |  |  |  |  |  |  |
+| `ticket:resolve` | Answer feedback requests and resolve approvals of tickets | yes | yes |  |  |  |  |  |  |  |
+| `ticket:delete` | Delete closed tickets | yes |  |  |  |  |  |  |  |  |
 | `workflow:read` | View workflows, their versions, and their runs | yes | yes | yes | yes |  |  |  |  |  |
 | `workflow:create` | Create workflows | yes | yes |  |  |  |  |  |  |  |
 | `workflow:write` | Edit, activate, and pause workflows | yes | yes |  |  |  |  |  |  |  |
@@ -281,6 +287,7 @@ it.
 | `admin:maintenance:manage` | Run and cancel global maintenance operations | yes |  |  |  |  |  |  |  |  |
 | `admin:maintenance:marketplace-sync` | Start the marketplace-sync maintenance operation | yes |  |  |  | yes |  |  |  |  |
 | `admin:maintenance:cve-sync` | Start the cve-sync maintenance operation | yes |  |  |  | yes |  |  |  |  |
+| `admin:maintenance:ai-model-calls-prune` | Start the ai-model-calls-prune maintenance operation | yes |  |  |  | yes |  |  |  |  |
 | `project:configuration:read` | Read project configuration via plugins | yes | yes |  |  |  |  |  |  |  |
 | `project:configuration:read_secrets` | Read secret configuration values via plugins | yes | yes |  |  |  |  |  |  |  |
 | `project:configuration:write` | Write project configuration via plugins | yes | yes |  |  |  |  |  |  |  |
@@ -308,6 +315,6 @@ it.
 
 <!-- END GENERATED -->
 
-See [Agents](agents.md), [Agent tasks](agent-tasks.md),
+See [Agents](agents.md), [Tickets](tickets.md),
 [Workflows](workflows.md), [Prompts](prompts.md), and
 [Secrets](secrets.md).

@@ -771,11 +771,17 @@ def linked_identifier_resolver(
     return _resolve
 
 
-#: The verified identifier of a project's ``EXISTS_IN`` edge to a
-#: GitHub Integration (the ``github_app`` secret provider's ``plugin``).
-_VERIFIED_GITHUB_IDENTIFIER: typing.LiteralString = (
+#: Plugins whose verified identifier only an admin can change: the
+#: ``github_app`` secret provider issues tokens for it (#402), and the
+#: SonarQube lifecycle deletes the project it names (#775).
+_ADMIN_REPOINT_PLUGINS = ['github', 'sonarqube']
+
+#: The verified identifier of a project's ``EXISTS_IN`` edge to an
+#: Integration of one of ``plugins``.
+_VERIFIED_IDENTIFIER: typing.LiteralString = (
     'MATCH (:Project {{id: {project_id}}})-[ei:EXISTS_IN]->'
-    '(:Integration {{slug: {integration_slug}, plugin: {plugin}}}) '
+    '(i:Integration {{slug: {integration_slug}}}) '
+    'WHERE i.plugin IN {plugins} '
     'RETURN ei.verified_identifier AS verified_identifier'
 )
 
@@ -785,18 +791,16 @@ async def _repoint_refusal(
 ) -> str | None:
     """Return why a non-admin cannot write ``identifier``, or ``None``.
 
-    The ``github_app`` secret provider issues tokens for the verified
-    identifier of a GitHub ``EXISTS_IN`` edge. A plugin derives the
-    repository from the project's links, which any project writer can
-    edit, so only an admin can change a verified identifier to a
-    different repository (issue #402).
+    A plugin derives the identifier from data that any project writer
+    can edit, so only an admin can change the verified identifier of an
+    ``EXISTS_IN`` edge to a plugin in :data:`_ADMIN_REPOINT_PLUGINS`.
     """
     records = await db.execute(
-        _VERIFIED_GITHUB_IDENTIFIER,
+        _VERIFIED_IDENTIFIER,
         {
             'project_id': ctx.project_id,
             'integration_slug': slug,
-            'plugin': 'github',
+            'plugins': _ADMIN_REPOINT_PLUGINS,
         },
         ['verified_identifier'],
     )
@@ -804,9 +808,9 @@ async def _repoint_refusal(
         verified = graph.parse_agtype(row.get('verified_identifier'))
         if verified is not None and str(verified) != identifier:
             return (
-                f'Refusing to change the verified repository id from '
+                f'Refusing to change the verified identifier from '
                 f'{verified} to {identifier}: only an admin can point '
-                'the project at a different repository.'
+                'the project at a different remote.'
             )
     return None
 
@@ -826,6 +830,48 @@ _IDENTIFIER_HOLDER_RETURN: typing.LiteralString = (
 _VERIFIED_HOLDER: typing.LiteralString = (
     'AND ei.verified_identifier = ei.identifier '
 )
+#: Another project in the organization with an ``EXISTS_IN`` edge with
+#: the same identifier to any Integration of the same plugin. Two
+#: Integrations can point at one remote server, so a check that guards
+#: a remote delete must not stop at one Integration slug.
+_PLUGIN_IDENTIFIER_HOLDER: typing.LiteralString = (
+    'MATCH (o:Organization {{slug: {org_slug}}})'
+    '<-[:BELONGS_TO]-(src:Integration {{slug: {integration_slug}}}) '
+    'MATCH (o)<-[:BELONGS_TO]-(:Team)<-[:OWNED_BY]-(p:Project)'
+    '-[ei:EXISTS_IN]->(i:Integration)-[:BELONGS_TO]->(o) '
+    'WHERE i.plugin = src.plugin AND ei.identifier = {identifier} '
+    'AND p.id <> {project_id} '
+)
+
+
+async def identifier_holder(
+    db: graph.Graph,
+    org_slug: str,
+    project_id: str,
+    integration_slug: str,
+    identifier: str,
+) -> str | None:
+    """Return the slug of another project that holds ``identifier``.
+
+    Looks for an ``EXISTS_IN`` edge with ``identifier`` to any
+    Integration of the same plugin as ``integration_slug``, from a
+    project in ``org_slug`` other than ``project_id``. Returns ``None``
+    when there is none. A lookup failure raises, so a caller that
+    removes remote state stops.
+    """
+    records = await db.execute(
+        _PLUGIN_IDENTIFIER_HOLDER + _IDENTIFIER_HOLDER_RETURN,
+        {
+            'org_slug': org_slug,
+            'integration_slug': integration_slug,
+            'identifier': identifier,
+            'project_id': project_id,
+        },
+        ['plugin', 'project_slug'],
+    )
+    for row in records:
+        return str(graph.parse_agtype(row.get('project_slug')))
+    return None
 
 
 class SharedIdentifierRefused(Exception):
@@ -935,7 +981,8 @@ async def persist_service_writeback(
 
     Returns a refusal message, and writes nothing, when a caller that
     is not an admin would change the verified identifier of a GitHub
-    edge to a different repository, or when another project already
+    or SonarQube edge (see :func:`_repoint_refusal`), or when another
+    project already
     holds an identifier the plugin declares not shareable. Otherwise
     returns ``None``.
     """

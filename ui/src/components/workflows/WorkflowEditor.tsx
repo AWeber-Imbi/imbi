@@ -15,11 +15,9 @@ import { toast } from 'sonner'
 import { ApiError } from '@/api/client'
 import {
   activateWorkflow,
-  createWorkflow,
   pauseWorkflow,
   startWorkflowRun,
   testRunWorkflow,
-  updateWorkflow,
   validateWorkflow,
 } from '@/api/endpoints'
 import { agentsPath } from '@/components/agents/agentsNav'
@@ -54,18 +52,25 @@ import {
   NodePanel,
   SettingsPanel,
 } from './Inspector'
+import {
+  nodePrompt,
+  pinNodes,
+  saveWorkflow,
+  type StepPrompt,
+} from './llmCallPrompt'
 import { Palette } from './Palette'
 import { type PanelTab, RunPanel } from './RunPanel'
 import { manualTrigger, runResults, testResults } from './runs'
 import { paramSummary } from './schemaFields'
 import { StartRunDialog } from './StartRunDialog'
-import type {
-  StepType,
-  TestRunResult,
-  ValidationIssue,
-  Workflow,
-  WorkflowGraph,
-  WorkflowWrite,
+import {
+  RETIRED_STEP_TYPES,
+  type StepType,
+  type TestRunResult,
+  type ValidationIssue,
+  type Workflow,
+  type WorkflowGraph,
+  type WorkflowWrite,
 } from './types'
 import {
   useSourceOptions,
@@ -82,6 +87,8 @@ const NEW_SETTINGS: WorkflowWrite['settings'] = {
   max_run_time_seconds: 7200,
   on_failure: 'notify_owner_team',
 }
+
+const SAVE_BEFORE_ACTIVATE = 'Save your changes before you activate.'
 
 interface WorkflowEditorProps {
   orgSlug: string
@@ -115,7 +122,17 @@ export function WorkflowEditor({
     owner_team_slug: workflow?.owner_team_slug ?? '',
     settings: workflow?.version.settings ?? NEW_SETTINGS,
   }))
+  // The edited prompts of LLM Call steps, by node id. They are written
+  // to the Prompt CMS on save.
+  const [prompts, setPrompts] = useState<Record<string, StepPrompt>>({})
   const [dirty, setDirty] = useState(false)
+  // Counts the edits. A save clears `dirty` only when no edit came
+  // while it was pending.
+  const revision = useRef(0)
+  const markDirty = () => {
+    revision.current += 1
+    setDirty(true)
+  }
   const [selection, setSelection] = useState<Selection>(null)
   const [paletteOpen, setPaletteOpen] = useState(true)
   const [view, setView] = useState<View>({ x: 80, y: 80, zoom: 1 })
@@ -144,11 +161,11 @@ export function WorkflowEditor({
 
   const change = (patch: Partial<WorkflowWrite>) => {
     setDraft((d) => ({ ...d, ...patch }))
-    setDirty(true)
+    markDirty()
   }
   const updateGraph = (fn: (graph: WorkflowGraph) => WorkflowGraph) => {
     setDraft((d) => ({ ...d, graph: fn(d.graph) }))
-    setDirty(true)
+    markDirty()
   }
 
   useLayoutEffect(() => {
@@ -227,34 +244,49 @@ export function WorkflowEditor({
   }
 
   const save = useMutation({
-    mutationFn: () =>
-      slug
-        ? updateWorkflow(orgSlug, slug, draft)
-        : createWorkflow(orgSlug, draft),
+    // A retry after a failed save of a new workflow updates it.
+    mutationFn: () => {
+      const saving = revision.current
+      return saveWorkflow(orgSlug, slug, draft, prompts, stored).then(
+        (result) => ({ ...result, saving }),
+      )
+    },
     onError: (error) =>
       toast.error(
         `Failed to save the workflow: ${extractApiErrorDetail(error)}`,
       ),
-    onSuccess: (saved) => {
+    onSuccess: ({ pins, saved, saving }) => {
+      setDraft((d) => ({ ...d, graph: pinNodes(d.graph, pins) }))
       stored(saved)
-      setDirty(false)
+      const clean = saving === revision.current
+      if (clean) setDirty(false)
       setIssues(saved.version.validation.issues)
-      if (!slug) {
+      // Not `slug`: `stored` sets it when the save creates the workflow.
+      // The navigation remounts the editor, so it waits for a save with
+      // no edit during it; until then the editor keeps the edits.
+      if (!workflow && clean) {
         navigate(agentsPath('workflows', saved.slug), { replace: true })
       }
     },
   })
 
   const toggleActive = useMutation({
-    mutationFn: (active: boolean) =>
-      active ? activateWorkflow(orgSlug, slug!) : pauseWorkflow(orgSlug, slug!),
+    // A number activates that version; true activates the latest.
+    mutationFn: (active: boolean | number) =>
+      active === false
+        ? pauseWorkflow(orgSlug, slug!)
+        : activateWorkflow(
+            orgSlug,
+            slug!,
+            active === true ? undefined : active,
+          ),
     onError: (error, active) => {
       const detail =
         error instanceof ApiError
           ? (error.data as { detail?: { issues?: ValidationIssue[] } })?.detail
           : undefined
       if (detail?.issues) setIssues(detail.issues)
-      toast.error(activationError(error, active))
+      toast.error(activationError(error, active !== false))
     },
     onSuccess: stored,
   })
@@ -270,19 +302,20 @@ export function WorkflowEditor({
   // A run starts the active version, which may not be the version in
   // the editor: read its manual trigger from that version.
   const activeVersion = current?.active_version ?? null
+  const latestVersion = current?.latest_version ?? null
+  // Saving does not change the active version, so it can be older.
+  const olderActive = activeVersion !== null && activeVersion !== latestVersion
   const otherVersion = useWorkflowVersion(
     orgSlug,
     slug,
-    activeVersion !== null && activeVersion !== current?.latest_version
-      ? activeVersion
-      : null,
+    olderActive ? activeVersion : null,
   )
   const activeGraph =
     activeVersion === null
       ? null
-      : activeVersion === current?.latest_version
-        ? current.version.graph
-        : (otherVersion.data?.graph ?? null)
+      : olderActive
+        ? (otherVersion.data?.graph ?? null)
+        : (current?.version.graph ?? null)
   const trigger = activeGraph ? manualTrigger(activeGraph) : null
   const start = useMutation({
     mutationFn: (inputs: Record<string, boolean | number | string>) =>
@@ -395,11 +428,16 @@ export function WorkflowEditor({
       ? draft.graph.nodes.find((n) => n.id === selection.id)
       : undefined
   const status = current?.status ?? 'draft'
+  // Show a newer saved version, because Run and the triggers do not
+  // use it.
+  const newerSaved = status === 'active' && olderActive
   const savedLabel = dirty
     ? 'Unsaved changes'
-    : current
-      ? `Saved · v${current.latest_version}`
-      : 'Not saved yet'
+    : newerSaved
+      ? `Active: v${activeVersion} · Saved: v${latestVersion}`
+      : current
+        ? `Saved · v${current.latest_version}`
+        : 'Not saved yet'
 
   return (
     <div className="flex flex-col" style={{ height: 'calc(100vh - 4rem)' }}>
@@ -457,7 +495,7 @@ export function WorkflowEditor({
               status !== 'active'
                 ? 'Activate the workflow to run it.'
                 : trigger
-                  ? 'Start a run of the active version.'
+                  ? `Starts a run of v${activeVersion}, the active version.`
                   : 'The active version has no manual trigger.'
             }
             variant="outline"
@@ -466,10 +504,25 @@ export function WorkflowEditor({
             Run
           </Button>
         )}
+        {newerSaved && canWrite && (
+          <Button
+            disabled={dirty || toggleActive.isPending}
+            onClick={() => toggleActive.mutate(latestVersion!)}
+            size="sm"
+            title={
+              dirty
+                ? SAVE_BEFORE_ACTIVATE
+                : 'Make the latest saved version the active version.'
+            }
+            variant="outline"
+          >
+            Activate v{latestVersion}
+          </Button>
+        )}
         {current && canWrite && (
           <label
             className="flex items-center gap-2 text-sm"
-            title={dirty ? 'Save your changes before you activate.' : undefined}
+            title={dirty ? SAVE_BEFORE_ACTIVATE : undefined}
           >
             <Switch
               checked={status === 'active'}
@@ -495,7 +548,7 @@ export function WorkflowEditor({
           <Palette
             onAdd={onPaletteAdd}
             onClose={() => setPaletteOpen(false)}
-            types={stepTypes}
+            types={stepTypes.filter((t) => !RETIRED_STEP_TYPES.has(t.type))}
           />
         )}
         <Group
@@ -553,7 +606,7 @@ export function WorkflowEditor({
           </Panel>
           <Separator
             aria-label="Resize workflow canvas"
-            className="hover:after:bg-amber-border focus-visible:after:bg-amber-border relative w-1.5 cursor-col-resize bg-transparent outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-(--ds-border-primary) after:transition-colors"
+            className="hover:after:bg-amber-border focus-visible:after:bg-amber-border relative z-20 -mx-0.75 w-1.5 cursor-col-resize bg-transparent outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-(--ds-border-primary) after:transition-colors"
           />
           <Panel
             className="bg-primary flex min-h-0 flex-col"
@@ -572,11 +625,29 @@ export function WorkflowEditor({
                   updateGraph((g) => updateNode(g, selectedNode.id, patch))
                 }
                 onDelete={deleteSelection}
-                onDuplicate={() => {
-                  const copy = duplicateNode(draft.graph, selectedNode.id).node
-                  if (!copy) return
-                  updateGraph((g) => ({ ...g, nodes: [...g.nodes, copy] }))
-                  setSelection({ id: copy.id, kind: 'node' })
+                onDuplicate={
+                  // A copy would make a new step of a retired type.
+                  RETIRED_STEP_TYPES.has(selectedNode.type)
+                    ? undefined
+                    : () => {
+                        const copy = duplicateNode(
+                          draft.graph,
+                          selectedNode.id,
+                        ).node
+                        if (!copy) return
+                        updateGraph((g) => ({
+                          ...g,
+                          nodes: [...g.nodes, copy],
+                        }))
+                        const edited = nodePrompt(prompts, selectedNode.id)
+                        if (edited)
+                          setPrompts((p) => ({ ...p, [copy.id]: edited }))
+                        setSelection({ id: copy.id, kind: 'node' })
+                      }
+                }
+                onPromptChange={(prompt) => {
+                  setPrompts((p) => ({ ...p, [selectedNode.id]: prompt }))
+                  markDirty()
                 }}
                 onRemoveItem={(name, index) =>
                   updateGraph((g) =>
@@ -595,11 +666,14 @@ export function WorkflowEditor({
                 }
                 onTab={setInspectorTab}
                 orgSlug={orgSlug}
+                prompt={nodePrompt(prompts, selectedNode.id)}
                 readOnly={readOnly}
                 result={results[selectedNode.id] ?? null}
                 resultSource={resultSource}
                 tab={inspectorTab}
                 types={types}
+                workflowName={draft.name}
+                workflowSlug={slug}
               />
             ) : selection?.kind === 'edge' ? (
               <EdgePanel

@@ -7,19 +7,23 @@ import * as endpoints from '@/api/endpoints'
 import { fireEvent, render, screen, waitFor, within } from '@/test/utils'
 
 import { agent } from '../../agents/__tests__/fixtures'
+import type { Workflow } from '../types'
 import { WorkflowsManagement } from '../WorkflowsManagement'
-import { node, orgRun, RUN, STEP_TYPES, workflow } from './fixtures'
+import { node, orgRun, RUN, STEP_TYPES, stepType, workflow } from './fixtures'
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', () => ({
   activateWorkflow: vi.fn(),
   cancelWorkflowRun: vi.fn(),
+  createPrompt: vi.fn(),
+  createPromptVersion: vi.fn(),
   createWorkflow: vi.fn(),
   findSideEffectDeployments: vi.fn(),
   getWorkflow: vi.fn(),
   getWorkflowRun: vi.fn(),
   getWorkflowVersion: vi.fn(),
   listAgents: vi.fn(),
+  listAIModels: vi.fn(),
   listStaleSideEffects: vi.fn(),
   listTeams: vi.fn(),
   listWorkflowOrgRuns: vi.fn(),
@@ -27,7 +31,9 @@ vi.mock('@/api/endpoints', () => ({
   listWorkflows: vi.fn(),
   listWorkflowStepTypes: vi.fn(),
   pauseWorkflow: vi.fn(),
+  resolvePrompt: vi.fn(),
   resolveSideEffect: vi.fn(),
+  runPrompt: vi.fn(),
   startWorkflowRun: vi.fn(),
   testRunWorkflow: vi.fn(),
   updateWorkflow: vi.fn(),
@@ -224,7 +230,7 @@ describe('WorkflowsManagement', () => {
     expect(screen.getByText('refused').tagName).toBe('STRONG')
     expect(screen.getByRole('link', { name: 'Open task T-9' })).toHaveAttribute(
       'href',
-      '/agents/tasks/acme/T-9',
+      '/tickets/acme/T-9',
     )
     expect(await screen.findByText('Ship it')).toBeInTheDocument()
     expect(screen.getByText('Not reached')).toBeInTheDocument()
@@ -501,6 +507,63 @@ describe('WorkflowsManagement', () => {
     )
   })
 
+  it('shows a newer saved version and activates it', async () => {
+    const stale = workflow({
+      active_version: 1,
+      latest_version: 2,
+      status: 'active',
+    })
+    vi.mocked(endpoints.getWorkflow).mockResolvedValue(stale)
+    vi.mocked(endpoints.getWorkflowVersion).mockResolvedValue({
+      ...stale.version,
+      version: 1,
+    })
+    vi.mocked(endpoints.activateWorkflow).mockResolvedValue({
+      ...stale,
+      active_version: 2,
+    })
+    renderAt('/agents/workflows/deploy-guard')
+    expect(
+      await screen.findByText('Active: v1 · Saved: v2'),
+    ).toBeInTheDocument()
+    const run = screen.getByRole('button', { name: 'Run' })
+    await waitFor(() => expect(run).toBeEnabled())
+    expect(run).toHaveAttribute(
+      'title',
+      'Starts a run of v1, the active version.',
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Activate v2' }))
+    await waitFor(() =>
+      expect(endpoints.activateWorkflow).toHaveBeenCalledWith(
+        'acme',
+        'deploy-guard',
+        2,
+      ),
+    )
+    expect(await screen.findByText('Saved · v2')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Activate v2' }),
+    ).not.toBeInTheDocument()
+    expect(run).toHaveAttribute(
+      'title',
+      'Starts a run of v2, the active version.',
+    )
+  })
+
+  it.each([
+    ['the active version is the latest', 2, 'active'],
+    ['the workflow is paused', 1, 'paused'],
+  ] as const)('hides Activate when %s', async (_, active_version, status) => {
+    vi.mocked(endpoints.getWorkflow).mockResolvedValue(
+      workflow({ active_version, latest_version: 2, status }),
+    )
+    renderAt('/agents/workflows/deploy-guard')
+    expect(await screen.findByText('Saved · v2')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /^Activate v/ }),
+    ).not.toBeInTheDocument()
+  })
+
   it('shows a skipped run as a duplicate and links to the first', async () => {
     const first = { ...RUN, id: '9d8e7f6a-0000-4000-8000-000000000002' }
     const skipped = {
@@ -697,6 +760,185 @@ describe('WorkflowsManagement', () => {
       target: added.id,
     })
     expect(await screen.findByText('Saved · v3')).toBeInTheDocument()
+  })
+
+  it('keeps an edit made during the first save of a new workflow', async () => {
+    vi.mocked(endpoints.listTeams).mockResolvedValue([
+      { id: 'team-1', name: 'Platform', slug: 'platform' },
+    ] as Awaited<ReturnType<typeof endpoints.listTeams>>)
+    let finish: (w: Workflow) => void = () => undefined
+    vi.mocked(endpoints.createWorkflow).mockReturnValue(
+      new Promise((resolve) => (finish = resolve)),
+    )
+    vi.mocked(endpoints.updateWorkflow).mockResolvedValue(workflow())
+    renderAt('/agents/workflows/new')
+    fireEvent.click(await screen.findByLabelText(/Owner team/))
+    fireEvent.click(await screen.findByRole('option', { name: 'Platform' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(endpoints.createWorkflow).toHaveBeenCalled())
+    // Edit while the save is pending.
+    fireEvent.change(screen.getByLabelText('Workflow name'), {
+      target: { value: 'Edited during save' },
+    })
+    finish(workflow())
+
+    await waitFor(() =>
+      expect(screen.getByText('Unsaved changes')).toBeInTheDocument(),
+    )
+    expect(window.location.pathname).toBe('/agents/workflows/new')
+    expect(screen.getByLabelText('Workflow name')).toHaveValue(
+      'Edited during save',
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() =>
+      expect(window.location.pathname).toBe('/agents/workflows/deploy-guard'),
+    )
+    const [, slug, body] = vi.mocked(endpoints.updateWorkflow).mock.calls[0]
+    expect(slug).toBe('deploy-guard')
+    expect(body.name).toBe('Edited during save')
+  })
+
+  it('keeps a prompt edit made during the first save of a new workflow', async () => {
+    vi.mocked(endpoints.listWorkflowStepTypes).mockResolvedValue([
+      ...STEP_TYPES,
+      stepType({
+        category: 'action',
+        description: 'Sends a prompt to an AI model',
+        label: 'LLM Call',
+        params_schema: { properties: {}, type: 'object' },
+        type: 'llm_call',
+      }),
+    ])
+    vi.mocked(endpoints.listAIModels).mockResolvedValue([
+      {
+        enabled: true,
+        id: 'm1',
+        model_id: 'claude-x',
+        model_type: 'generative',
+        slug: 'claude',
+        supports_structured_output: true,
+      } as Awaited<ReturnType<typeof endpoints.listAIModels>>[number],
+    ])
+    vi.mocked(endpoints.listTeams).mockResolvedValue([
+      { id: 'team-1', name: 'Platform', slug: 'platform' },
+    ] as Awaited<ReturnType<typeof endpoints.listTeams>>)
+    let finish: (w: Workflow) => void = () => undefined
+    vi.mocked(endpoints.createWorkflow).mockReturnValue(
+      new Promise((resolve) => (finish = resolve)),
+    )
+    vi.mocked(endpoints.createPromptVersion).mockResolvedValue({
+      n: 1,
+    } as Awaited<ReturnType<typeof endpoints.createPromptVersion>>)
+    vi.mocked(endpoints.updateWorkflow).mockResolvedValue(workflow())
+    renderAt('/agents/workflows/new')
+    fireEvent.click(await screen.findByLabelText(/Owner team/))
+    fireEvent.click(await screen.findByRole('option', { name: 'Platform' }))
+    fireEvent.click(
+      await screen.findByRole('button', { name: /^LLM Call\s*Sends/ }),
+    )
+    fireEvent.click(await screen.findByLabelText('Model'))
+    fireEvent.click(await screen.findByRole('option', { name: /claude/ }))
+    const user = await screen.findByLabelText('User message *')
+    fireEvent.change(user, { target: { value: 'Before the save' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(endpoints.createWorkflow).toHaveBeenCalled())
+    // Edit the prompt while the save is pending.
+    fireEvent.change(screen.getByLabelText('User message *'), {
+      target: { value: 'Edited during save' },
+    })
+    finish(workflow())
+
+    await waitFor(() => expect(endpoints.updateWorkflow).toHaveBeenCalled())
+    expect(await screen.findByText('Unsaved changes')).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/agents/workflows/new')
+
+    vi.mocked(endpoints.createPromptVersion).mockClear()
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() =>
+      expect(window.location.pathname).toBe('/agents/workflows/deploy-guard'),
+    )
+    const [, , version] = vi.mocked(endpoints.createPromptVersion).mock.calls[0]
+    expect(version.messages).toEqual([
+      { content: 'Edited during save', role: 'user' },
+    ])
+  })
+
+  it('offers ticket_closed, not task_completed, for a new step', async () => {
+    const trigger = { category: 'trigger' as const, trigger: true }
+    vi.mocked(endpoints.listWorkflowStepTypes).mockResolvedValue([
+      ...STEP_TYPES,
+      stepType({
+        ...trigger,
+        description: 'Old name',
+        label: 'Task completed',
+        type: 'task_completed',
+      }),
+      stepType({
+        ...trigger,
+        description: 'A ticket closes',
+        label: 'Ticket closed',
+        type: 'ticket_closed',
+      }),
+    ])
+    renderAt('/agents/workflows/deploy-guard')
+    expect(
+      await screen.findByRole('button', { name: /^Ticket closed\s*A ticket/ }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /^Task completed/ }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('offers no Duplicate for a step of a retired type', async () => {
+    vi.mocked(endpoints.listWorkflowStepTypes).mockResolvedValue([
+      ...STEP_TYPES,
+      stepType({
+        category: 'trigger',
+        label: 'Task completed',
+        params_schema: { properties: {}, type: 'object' },
+        trigger: true,
+        type: 'task_completed',
+      }),
+    ])
+    const base = workflow()
+    vi.mocked(endpoints.getWorkflow).mockResolvedValue({
+      ...base,
+      version: {
+        ...base.version,
+        graph: {
+          edges: [],
+          nodes: [
+            node({
+              id: 'old',
+              key: 'closed',
+              title: 'Old trigger',
+              type: 'task_completed',
+            }),
+            node({
+              id: 'w',
+              key: 'settle',
+              position: { x: 320, y: 0 },
+              title: 'Let traffic settle',
+              type: 'wait',
+            }),
+          ],
+        },
+      },
+    })
+    renderAt('/agents/workflows/deploy-guard')
+    fireEvent.pointerDown(await screen.findByText('Old trigger'), { button: 0 })
+    expect(
+      await screen.findByRole('button', { name: 'Delete step' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Duplicate' }),
+    ).not.toBeInTheDocument()
+
+    fireEvent.pointerDown(screen.getByText('Let traffic settle'), { button: 0 })
+    expect(
+      await screen.findByRole('button', { name: 'Duplicate' }),
+    ).toBeInTheDocument()
   })
 
   it('shows each step key, and the type when the title differs', async () => {

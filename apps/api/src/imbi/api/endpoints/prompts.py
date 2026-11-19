@@ -15,17 +15,23 @@ The CMS does not know who consumes a prompt. Grouping by namespace is
 a convention only.
 """
 
+import asyncio
 import datetime
+import decimal
 import hashlib
 import json
 import logging
 import re
 import typing
+import uuid
 
 import fastapi
+import psycopg
 import pydantic
 import slugify
+from psycopg.types import json as pg_json
 
+from imbi.api import model_calls, secret_broker, workflows
 from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import ai_providers, projects
 from imbi.api.endpoints._helpers import (
@@ -33,13 +39,17 @@ from imbi.api.endpoints._helpers import (
     conflict_on_unique_violation,
 )
 from imbi.api.graph_sql import escape_prop, props_template, set_clause
-from imbi.common import graph, models
+from imbi.api.llm import generate as model_generate
+from imbi.api.tickets import store as task_store
+from imbi.common import graph, models, relational
 from imbi.common import patch as json_patch
+from imbi.common.auth import permissions as common_permissions
 from imbi.common.auth.encryption import decrypt_config_value
 from imbi.common.graph import cypher as graph_cypher
-from imbi.common.llm import drivers, typesafe
+from imbi.common.llm import drivers, generate, typesafe
 from imbi.common.prompts import rendering
 from imbi.common.prompts import resolve as prompt_resolve
+from imbi.common.workflows.registry import agent, llm_call
 
 LOGGER = logging.getLogger(__name__)
 
@@ -82,8 +92,7 @@ _VERSION_JSON_FIELDS: tuple[str, ...] = (
     'eval_summary',
 )
 
-#: Template providers, by the name a template calls them with.
-_PROVIDER_NAMES: frozenset[str] = frozenset({'project'})
+_PROVIDER_NAMES = rendering.PROVIDER_NAMES
 
 #: Serializes timestamps the way ``model_dump(mode='json')`` stores
 #: them, so a stored value compares equal to a value read back.
@@ -155,6 +164,7 @@ class PromptResponse(pydantic.BaseModel):
     latest_version: int = 0
     created_at: datetime.datetime | None = None
     updated_at: datetime.datetime | None = None
+    archived_at: datetime.datetime | None = None
 
 
 class PromptVersionResponse(PromptVersionContent):
@@ -256,11 +266,22 @@ class RunDraft(pydantic.BaseModel):
 
 
 class RunRequest(pydantic.BaseModel):
-    """Run a decision prompt: a saved version (``ref``) or a draft."""
+    """Run a prompt: a saved version (``ref``) or a draft."""
 
     ref: str | None = None
     draft: RunDraft | None = None
     variables: dict[str, typing.Any] = {}
+    #: Generative prompts: the fields of a structured answer.
+    output_fields: list[agent.OutputField] = pydantic.Field(
+        default=[], max_length=agent.MAX_FIELDS
+    )
+
+    @pydantic.field_validator('output_fields')
+    @classmethod
+    def _check_output_fields(
+        cls, fields: list[agent.OutputField]
+    ) -> list[agent.OutputField]:
+        return agent.check_output_fields(fields)
 
     @pydantic.model_validator(mode='after')
     def _one_source(self) -> typing.Self:
@@ -277,7 +298,12 @@ class RunRequestBody(pydantic.BaseModel):
 
 
 class RunResponse(pydantic.BaseModel):
-    """The typed answers of one decision run."""
+    """The result of one run.
+
+    A decision run fills ``request`` and ``answers``. A generative run
+    fills ``text``, ``result`` (with ``output_fields`` only),
+    ``content_sha256``, ``cost_usd``, and ``call_id``.
+    """
 
     model_config = pydantic.ConfigDict(protected_namespaces=())
 
@@ -286,9 +312,19 @@ class RunResponse(pydantic.BaseModel):
     n: int | None
     model: str
     model_id: str
-    request: RunRequestBody
-    answers: dict[str, typing.Any]
+    request: RunRequestBody | None = None
+    answers: dict[str, typing.Any] = {}
+    #: Generative runs: ``input_tokens`` and ``output_tokens``, each
+    #: ``None`` when the provider did not tell.
     usage: dict[str, typing.Any]
+    content_sha256: str | None = None
+    text: str | None = None
+    result: dict[str, typing.Any] | None = None
+    #: From the catalog prices; ``None`` when a price or a count is
+    #: unknown.
+    cost_usd: float | None = None
+    #: The ``ai_runtime.ai_model_calls`` row of the call.
+    call_id: uuid.UUID | None = None
 
 
 # --- Queries -----------------------------------------------------------
@@ -297,12 +333,14 @@ _PROMPT_QUERY = prompt_resolve.PROMPT_QUERY
 
 _LIST_QUERY: typing.LiteralString = """
 MATCH (p:Prompt)
+WHERE p.archived_at IS NULL
 OPTIONAL MATCH (v:PromptVersion)-[:VERSION_OF]->(p)
 RETURN p, max(v.n) AS latest
 """
 
 _LIST_NAMESPACE_QUERY: typing.LiteralString = """
 MATCH (p:Prompt {{namespace: {namespace}}})
+WHERE p.archived_at IS NULL
 OPTIONAL MATCH (v:PromptVersion)-[:VERSION_OF]->(p)
 RETURN p, max(v.n) AS latest
 """
@@ -323,8 +361,29 @@ RETURN m.model_id AS model_id, m.enabled AS enabled,
 _RUN_MODEL_QUERY: typing.LiteralString = """
 MATCH (m:AIModel {{slug: {slug}}})-[:SERVED_BY]->(p:AIProvider)
 RETURN m.model_id AS model_id, m.enabled AS enabled,
-       m.model_type AS model_type, p.id AS provider_id
+       m.model_type AS model_type, m.kind AS kind, p.id AS provider_id,
+       m.access_scope AS access_scope,
+       m.supports_structured_output AS structured,
+       m.supports_forced_tool_choice AS forced_tool_choice,
+       m.input_cost_per_million AS input_cost,
+       m.output_cost_per_million AS output_cost,
+       m.cache_read_cost_per_million AS cache_read_cost,
+       m.default_temperature AS default_temperature
 """
+_RUN_MODEL_COLUMNS = [
+    'model_id',
+    'enabled',
+    'model_type',
+    'kind',
+    'provider_id',
+    'access_scope',
+    'structured',
+    'forced_tool_choice',
+    'input_cost',
+    'output_cost',
+    'cache_read_cost',
+    'default_temperature',
+]
 
 _DELETE_VERSIONS_QUERY: typing.LiteralString = """
 MATCH (v:PromptVersion)-[:VERSION_OF]->(p:Prompt {{id: {id}}})
@@ -337,6 +396,67 @@ DETACH DELETE p
 RETURN 1 AS deleted
 """
 
+#: The prompts of an organization that is deleted go with it, so that
+#: a later organization with the same slug does not get them. The
+#: slug is read in the delete transaction, matched by id.
+_DELETE_ORG_VERSIONS_QUERY: typing.LiteralString = """
+MATCH (o:Organization {{id: {org_id}}})
+MATCH (v:PromptVersion)-[:VERSION_OF]->(p:Prompt)
+WHERE p.namespace IN {namespaces} AND p.slug STARTS WITH (o.slug + '.')
+DETACH DELETE v
+"""
+
+_DELETE_ORG_PROMPTS_QUERY: typing.LiteralString = """
+MATCH (o:Organization {{id: {org_id}}})
+MATCH (p:Prompt)
+WHERE p.namespace IN {namespaces} AND p.slug STARTS WITH (o.slug + '.')
+DETACH DELETE p
+"""
+
+#: An organization rename moves its prompts and the references to them
+#: from ``<old>.`` to ``<new>.``. Version numbers do not change. It
+#: returns the ``namespace/slug`` that each moved prompt had.
+_MOVE_ORG_PROMPTS_QUERY: typing.LiteralString = """
+MATCH (p:Prompt)
+WHERE p.namespace IN {namespaces} AND p.slug STARTS WITH {old}
+WITH p, p.namespace + '/' + p.slug AS key
+SET p.slug = {new} + substring(p.slug, {cut})
+RETURN key
+"""
+
+_ORG_ID_QUERY: typing.LiteralString = (
+    'MATCH (o:Organization {{slug: {slug}}}) RETURN o.id AS id'
+)
+
+#: The first statement of a rename into an organization's prefix
+#: (:func:`patch_prompt`): the organization still has that slug.
+_ORG_GUARD_QUERY: typing.LiteralString = (
+    'MATCH (o:Organization {{id: {org_id}, slug: {org_slug}}})'
+    ' RETURN o.id AS id'
+)
+
+_AGENT_REFS_QUERY: typing.LiteralString = """
+MATCH (a:Agent)-[:BELONGS_TO]->(:Organization {{id: {org_id}}})
+WHERE a.prompt_ref IS NOT NULL
+RETURN a.id AS id, a.prompt_ref AS ref
+"""
+
+_SET_AGENT_REF_QUERY: typing.LiteralString = """
+MATCH (a:Agent {{id: {id}}})
+SET a.prompt_ref = {ref}
+"""
+
+_AGENT_VERSIONS_QUERY: typing.LiteralString = """
+MATCH (v:AgentVersion)-[:VERSION_OF]->(:Agent)
+      -[:BELONGS_TO]->(:Organization {{id: {org_id}}})
+RETURN v.agent_id AS agent_id, v.n AS n, v.snapshot AS snapshot
+"""
+
+_SET_AGENT_SNAPSHOT_QUERY: typing.LiteralString = """
+MATCH (v:AgentVersion {{agent_id: {agent_id}, n: {n}}})
+SET v.snapshot = {snapshot}
+"""
+
 #: Labels change by read, modify, write. The ``updated_at`` match makes
 #: the write fail when another write came first, instead of losing it.
 _SET_LABELS_QUERY: typing.LiteralString = """
@@ -345,6 +465,27 @@ WHERE p.updated_at = {expected_updated_at}
 SET p.labels = {labels},
     p.default_label = {default_label},
     p.updated_at = {updated_at}
+RETURN p
+"""
+
+_ARCHIVE_QUERY: typing.LiteralString = """
+MATCH (p:Prompt {{namespace: {namespace}}})
+WHERE p.archived_at IS NULL AND p.slug STARTS WITH {prefix}
+  AND NOT (p.slug IN {keep})
+SET p.archived_at = {now}, p.updated_at = {now}
+RETURN p.slug AS slug
+"""
+
+_RESTORE_QUERY: typing.LiteralString = """
+MATCH (p:Prompt {{namespace: {namespace}}})
+WHERE p.archived_at IS NOT NULL AND p.slug IN {keep}
+SET p.archived_at = NULL, p.updated_at = {now}
+RETURN p.slug AS slug
+"""
+
+_UNARCHIVE_QUERY: typing.LiteralString = """
+MATCH (p:Prompt {{id: {id}}})
+SET p.archived_at = NULL, p.updated_at = {now}
 RETURN p
 """
 
@@ -394,6 +535,7 @@ def _prompt_response(prompt: models.Prompt, latest: int) -> PromptResponse:
         latest_version=latest,
         created_at=prompt.created_at,
         updated_at=prompt.updated_at,
+        archived_at=prompt.archived_at,
     )
 
 
@@ -524,20 +666,60 @@ async def _model_id_for(
     return str(graph.parse_agtype(records[0]['model_id']))
 
 
-#: The namespace whose prompts are data of one organization: an agent's
-#: system prompt is ``agents/<org slug>.<agent slug>``.
-_ORG_NAMESPACE = 'agents'
+#: The namespace of the prompts of workflow steps:
+#: ``workflows/<org slug>.<workflow slug>.<node key>``. A workflow
+#: version pins a version number of the prompt, so such a prompt is
+#: never deleted or renamed, has no tools, and is archived (not
+#: deleted) with its node. Only an organization rename moves it, with
+#: the references to it (:func:`move_org_prompts`).
+WORKFLOWS_NAMESPACE = llm_call.NAMESPACE
+
+#: The namespaces whose prompts are data of one organization, and the
+#: organization permission of the owner. An agent's system prompt is
+#: ``agents/<org slug>.<agent slug>``.
+_ORG_NAMESPACES: dict[str, str] = {
+    'agents': 'agent:write',
+    WORKFLOWS_NAMESPACE: 'workflow:write',
+}
 
 
 def _prompt_org(namespace: str, slug: str) -> str | None:
     """The organization whose data a prompt is, or ``None``.
 
-    A prompt in :data:`_ORG_NAMESPACE` named ``<org>.<agent>`` belongs
+    A prompt in :data:`_ORG_NAMESPACES` named ``<org>.<rest>`` belongs
     to ``<org>``. An older agent prompt without the prefix belongs to
     no organization.
     """
     org, dot, _ = slug.partition('.')
-    return org if namespace == _ORG_NAMESPACE and dot else None
+    return org if namespace in _ORG_NAMESPACES and dot else None
+
+
+async def _is_owner(
+    db: graph.Graph,
+    auth: permissions.AuthContext,
+    namespace: str,
+    slug: str,
+) -> bool:
+    """Whether the caller has the owner permission of an organization's
+    prompt (see :data:`_ORG_NAMESPACES`) in that organization."""
+    return namespace in _ORG_NAMESPACES and await _has_org_permission(
+        db, auth, namespace, slug, _ORG_NAMESPACES[namespace]
+    )
+
+
+async def _has_org_permission(
+    db: graph.Graph,
+    auth: permissions.AuthContext,
+    namespace: str,
+    slug: str,
+    permission: str,
+) -> bool:
+    """Whether the caller has ``permission`` in the organization of an
+    organization's prompt."""
+    org = _prompt_org(namespace, slug)
+    return org is not None and permission in (
+        await organizations.org_permissions(db, auth, org)
+    )
 
 
 async def can_promote(
@@ -549,18 +731,223 @@ async def can_promote(
     """Whether the caller may point a label of the prompt at a version.
 
     ``prompt:promote`` (or an admin) may move any label. An
-    organization's agent prompt is part of the agent, so ``agent:write``
-    in that organization may also move its labels; otherwise a developer
-    could change an agent's prompt but never make the agent use it.
+    organization's agent or workflow prompt is part of the agent or the
+    workflow, so ``agent:write`` or ``workflow:write`` in that
+    organization may also move its labels; otherwise a developer could
+    change an agent's prompt but never make the agent use it.
     Membership of that organization is checked by :func:`_require_access`
     before this.
     """
     if auth.is_admin or 'prompt:promote' in auth.permissions:
         return True
-    org = _prompt_org(namespace, slug)
-    return org is not None and 'agent:write' in (
-        await organizations.org_permissions(db, auth, org)
+    return await _is_owner(db, auth, namespace, slug)
+
+
+async def _require_permission(
+    db: graph.Graph,
+    auth: permissions.AuthContext,
+    permission: str,
+    namespace: str,
+    slug: str,
+    workflow_permission: str = 'workflow:write',
+) -> None:
+    """Raise 403 unless the caller has ``permission``.
+
+    A workflow prompt is part of the workflow, so
+    ``workflow_permission`` in its organization is also enough: the
+    workflow editor reads the prompt, creates it, and adds its
+    versions.
+    """
+    if auth.is_admin or permission in auth.permissions:
+        return
+    if namespace == WORKFLOWS_NAMESPACE and await _has_org_permission(
+        db, auth, namespace, slug, workflow_permission
+    ):
+        return
+    raise fastapi.HTTPException(
+        status_code=403, detail=f'Permission denied: {permission} required'
     )
+
+
+async def _require_read(
+    db: graph.Graph, auth: permissions.AuthContext, namespace: str, slug: str
+) -> None:
+    """Raise 403 unless the caller may read the prompt."""
+    await _require_permission(
+        db, auth, 'prompt:read', namespace, slug, 'workflow:read'
+    )
+
+
+def _check_route_org(prompt: models.Prompt, org_slug: str) -> None:
+    """Raise 422 when a workflow prompt is used in another organization."""
+    org = _prompt_org(prompt.namespace, prompt.slug)
+    if prompt.namespace == WORKFLOWS_NAMESPACE and org != org_slug:
+        raise _unprocessable(
+            f'Prompt {prompt.namespace}/{prompt.slug} belongs to '
+            f'organization {org!r}, not {org_slug!r}'
+        )
+
+
+def _check_tools(namespace: str, content: PromptVersionContent) -> None:
+    """Raise 422 when a workflow prompt has tools: a workflow step
+    sends no tools to the model."""
+    if namespace == WORKFLOWS_NAMESPACE and content.tools:
+        raise _unprocessable('A workflows prompt cannot have tools')
+
+
+def _check_not_archived(prompt: models.Prompt) -> None:
+    """Raise 409 when the prompt is archived."""
+    if prompt.archived_at is not None:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=f'Prompt {prompt.namespace}/{prompt.slug} is archived',
+        )
+
+
+def _workflow_prompt_locked() -> fastapi.HTTPException:
+    return fastapi.HTTPException(
+        status_code=409,
+        detail=(
+            f'A {WORKFLOWS_NAMESPACE} prompt cannot be deleted or renamed: '
+            'workflow versions use it. Delete the workflow step to archive it'
+        ),
+    )
+
+
+async def archive_prompts_except(
+    execute: graph.CypherExecute, namespace: str, prefix: str, keep: list[str]
+) -> None:
+    """Archive each prompt of ``namespace`` whose slug starts with
+    ``prefix``, except the slugs in ``keep``. Restore the archived
+    prompts of ``keep``.
+
+    An archived prompt is no longer listed and gets no new versions or
+    label moves. Its versions stay, so ``ref@n`` still resolves. A
+    prompt that is already archived does not change.
+
+    """
+    params = {
+        'namespace': namespace,
+        'prefix': prefix,
+        'keep': keep,
+        'now': _DATETIME.dump_python(_now(), mode='json'),
+    }
+    await execute(_ARCHIVE_QUERY, params, ['slug'])
+    if keep:
+        await execute(_RESTORE_QUERY, params, ['slug'])
+
+
+async def delete_org_prompts(
+    execute: graph.CypherExecute, org_id: str
+) -> None:
+    """Delete the prompts of an organization and their versions.
+
+    Call this in the transaction that deletes the organization, before
+    the organization node is deleted.
+    """
+    params = {'org_id': org_id, 'namespaces': list(_ORG_NAMESPACES)}
+    await execute(_DELETE_ORG_VERSIONS_QUERY, params, [])
+    await execute(_DELETE_ORG_PROMPTS_QUERY, params, [])
+
+
+async def move_org_prompts(
+    execute: graph.CypherExecute,
+    conn: psycopg.AsyncConnection[typing.Any],
+    org_id: str,
+    old_slug: str,
+    new_slug: str,
+) -> None:
+    """Move the prompts of a renamed organization to the new slug.
+
+    The ``agents/<old>.*`` and ``workflows/<old>.*`` prompts get the
+    ``<new>.`` prefix. The ``prompt_ref`` of each agent and agent
+    version, and of each LLM Call node of each workflow version, moves
+    with them. Pinned version numbers do not change.
+
+    Call this in the transaction that renames the organization.
+
+    Only a reference to a prompt that moved changes. A reference to a
+    prompt that does not exist keeps its slug, so it cannot come to
+    name another prompt that has the new slug already.
+    """
+    old, new = f'{old_slug}.', f'{new_slug}.'
+    with conflict_on_unique_violation(
+        f'A prompt with the {new!r} prefix already exists'
+    ):
+        rows = await execute(
+            _MOVE_ORG_PROMPTS_QUERY,
+            {
+                'namespaces': list(_ORG_NAMESPACES),
+                'old': old,
+                'new': new,
+                'cut': len(old),
+            },
+            ['key'],
+        )
+    moved_keys = {str(graph.parse_agtype(r['key'])) for r in rows}
+
+    def moved(ref: object) -> str | None:
+        """The new ``ref``, or ``None`` when its prompt did not move."""
+        if not isinstance(ref, str):
+            return None
+        key, at, label = ref.partition('@')
+        if key not in moved_keys:
+            return None
+        namespace, _, slug = key.partition('/')
+        return f'{namespace}/{new}{slug[len(old) :]}{at}{label}'
+
+    for row in await execute(
+        _AGENT_REFS_QUERY, {'org_id': org_id}, ['id', 'ref']
+    ):
+        agent_ref = moved(graph.parse_agtype(row['ref']))
+        if agent_ref is not None:
+            await execute(
+                _SET_AGENT_REF_QUERY,
+                {'id': graph.parse_agtype(row['id']), 'ref': agent_ref},
+                [],
+            )
+    for row in await execute(
+        _AGENT_VERSIONS_QUERY,
+        {'org_id': org_id},
+        ['agent_id', 'n', 'snapshot'],
+    ):
+        raw = graph.parse_agtype(row['snapshot'])
+        snapshot: dict[str, typing.Any] = (
+            json.loads(raw) if isinstance(raw, str) else raw or {}
+        )
+        snapshot_ref = moved(snapshot.get('prompt_ref'))
+        if snapshot_ref is not None:
+            snapshot['prompt_ref'] = snapshot_ref
+            await execute(
+                _SET_AGENT_SNAPSHOT_QUERY,
+                {
+                    'agent_id': graph.parse_agtype(row['agent_id']),
+                    'n': graph.parse_agtype(row['n']),
+                    'snapshot': json.dumps(snapshot),
+                },
+                [],
+            )
+    cursor = await conn.execute(
+        'SELECT v.workflow_id, v.version, v.graph'
+        ' FROM workflows.workflow_versions AS v'
+        ' JOIN workflows.workflows AS w ON w.id = v.workflow_id'
+        ' WHERE w.organization_id = %s',
+        (org_id,),
+    )
+    for workflow_id, version, wf_graph in await cursor.fetchall():
+        changed = False
+        for node in wf_graph.get('nodes', []):
+            params: dict[str, typing.Any] = node.get('params') or {}
+            node_ref = moved(params.get('prompt_ref'))
+            if node.get('type') == llm_call.STEP.type and node_ref:
+                params['prompt_ref'] = node_ref
+                changed = True
+        if changed:
+            await conn.execute(
+                'UPDATE workflows.workflow_versions SET graph = %s'
+                ' WHERE workflow_id = %s AND version = %s',
+                (pg_json.Jsonb(wf_graph), workflow_id, version),
+            )
 
 
 async def _require_access(
@@ -791,11 +1178,13 @@ async def create_prompt(
     data: PromptCreate,
     db: graph.Pool,
     auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('prompt:create')),
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
     ],
 ) -> PromptResponse:
     """Create a prompt with its first version.
+
+    Needs ``prompt:create``. For a ``workflows/<org>.<workflow>.<node>``
+    prompt, ``workflow:write`` in ``<org>`` is also enough.
 
     When the caller may promote (see :func:`can_promote`), the default
     label points at version 1. Otherwise the prompt is created
@@ -805,19 +1194,21 @@ async def create_prompt(
     such as the assistant uses its packaged prompt.
 
     Raises:
+        403: No permission.
         409: ``namespace/slug`` is taken.
-        422: A template does not parse, or the model is not in the
-            catalog.
+        422: A template does not parse, the model is not in the
+            catalog, or a workflows prompt has tools or no
+            ``<org>.`` slug prefix.
 
     """
-    await _require_access(db, auth, data.namespace, data.slug or '')
+    slug = data.slug or ''
+    await _require_access(db, auth, data.namespace, slug)
+    await _require_permission(db, auth, 'prompt:create', data.namespace, slug)
     return await insert_prompt(
         db,
         data,
         auth.principal_name,
-        label_first_version=await can_promote(
-            db, auth, data.namespace, data.slug or ''
-        ),
+        label_first_version=await can_promote(db, auth, data.namespace, slug),
     )
 
 
@@ -845,8 +1236,19 @@ async def insert_prompt(
     slug = data.slug or slugify.slugify(data.name)
     if not re.match(models.PROMPT_NAME_PATTERN, slug):
         raise _unprocessable(f'Slug {slug!r} is not valid')
+    if data.namespace == WORKFLOWS_NAMESPACE and (
+        _prompt_org(data.namespace, slug) is None
+    ):
+        raise _unprocessable(
+            'A workflows prompt slug must be <org>.<workflow>.<node>'
+        )
+    if data.namespace == WORKFLOWS_NAMESPACE and data.kind != 'generative':
+        # An LLM Call step runs only generative prompts, and kind is
+        # read-only, so a decision prompt here could never be used.
+        raise _unprocessable('A workflows prompt must be generative')
     _check_label_name(data.default_label)
     _check_kind(data.kind, data.version)
+    _check_tools(data.namespace, data.version)
     _check_templates(data.version)
     model_id = await _model_id_for(db, data.version.model, data.kind)
     await _assert_ref_free(db, data.namespace, slug)
@@ -918,8 +1320,7 @@ async def resolve_prompt(
     ref: str,
     db: graph.Pool,
     auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('prompt:read')),
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
     ],
 ) -> Resolution:
     """Resolve ``namespace/slug@label`` or ``@n`` to one version.
@@ -929,7 +1330,8 @@ async def resolve_prompt(
         422: The reference is not valid.
 
     """
-    _ = auth
+    namespace, slug, _selector = parse_ref(ref)
+    await _require_read(db, auth, namespace, slug)
     prompt, version, label = await _resolve(db, ref, auth)
     return Resolution(
         ref=ref, label=label, version=_version_response(version, prompt)
@@ -960,6 +1362,7 @@ async def render_prompt(
 
     """
     prompt, version, label = await _resolve(db, data.ref, auth)
+    _check_route_org(prompt, org_slug)
     providers = _providers(auth, db, org_slug, request)
     response = RenderResponse(
         ref=f'{prompt.namespace}/{prompt.slug}@{version.n}',
@@ -1039,6 +1442,7 @@ async def _run_target(
     draft = typing.cast('RunDraft', data.draft)
     prompt, latest = await _fetch_prompt(db, draft.namespace, draft.slug, auth)
     _check_kind(prompt.kind, draft.version)
+    _check_tools(prompt.namespace, draft.version)
     _check_templates(draft.version)
     version = models.PromptVersion.model_validate(
         {
@@ -1053,64 +1457,237 @@ async def _run_target(
     return prompt, version, None
 
 
+#: Seconds one generative model call may take.
+CALL_TIMEOUT = 120.0
+
+#: Seconds for the whole call: the workload identity token, a second
+#: request with a new token after a ``401``, and the generation. It
+#: expires before ``STALE_AFTER``, so the row is finished first.
+CALL_DEADLINE = CALL_TIMEOUT + 45
+
+#: The largest attempt in an ``Idempotency-Key``: the
+#: ``ai_model_calls.attempt`` column is a Postgres INTEGER.
+MAX_ATTEMPT = 2**31 - 1
+
+#: A ``running`` call older than this did not finish: a repeat of its
+#: idempotency key sets it to ``outcome_unknown``.
+STALE_AFTER = CALL_DEADLINE + 15
+
+#: The HTTP status and the ``retry`` flag of each error code of a
+#: generative run (``detail={'error': <code>, 'retry': <bool>}``).
+CALL_ERRORS: dict[str, tuple[int, bool]] = {
+    'model_answer_invalid': (502, True),
+    'provider_refused': (502, False),
+    'credentials_failed': (502, False),
+    'provider_outcome_unknown': (502, False),
+    'rate_limited': (503, True),
+    'provider_unavailable': (503, True),
+    'provider_unreachable': (503, True),
+    'credentials_unavailable': (503, True),
+    'provider_misconfigured': (409, False),
+    'call_in_progress': (409, True),
+    'outcome_unknown': (409, False),
+    'model_unsupported': (422, False),
+    'model_no_structured_output': (422, False),
+}
+
+
+def _call_error(code: str) -> fastapi.HTTPException:
+    status, retry = CALL_ERRORS.get(code, (502, False))
+    return fastapi.HTTPException(
+        status_code=status, detail={'error': code, 'retry': retry}
+    )
+
+
+async def _check_run_permission(
+    db: graph.Graph,
+    auth: permissions.AuthContext,
+    data: RunRequest,
+    prompt: models.Prompt,
+) -> None:
+    """``prompt:update`` may run anything; ``prompt:run`` only a saved
+    version of a generative prompt. The author of a workflow
+    (``workflow:write``) may run its step prompts, also as a draft."""
+    if auth.is_admin or 'prompt:update' in auth.permissions:
+        return
+    if (
+        'prompt:run' in auth.permissions
+        and data.ref is not None
+        and prompt.kind == 'generative'
+    ):
+        return
+    if prompt.namespace == WORKFLOWS_NAMESPACE and await _is_owner(
+        db, auth, prompt.namespace, prompt.slug
+    ):
+        return
+    raise fastapi.HTTPException(
+        status_code=403,
+        detail='Permission denied: prompt:update or prompt:run required',
+    )
+
+
+async def _check_model_teams(
+    db: graph.Graph,
+    store: workflows.WorkflowStore,
+    auth: permissions.AuthContext,
+    org_id: str,
+    prompt: models.Prompt,
+    model: str,
+) -> None:
+    """A ``restricted`` model runs only for its teams (#782).
+
+    A user must be a member of an allowed team. The workflows service
+    runs a workflow step prompt, so the owner team of that workflow must
+    be allowed. Another principal without a user is refused.
+
+    Raises:
+        prompt_resolve.ModelNotAllowed: 403 ``model_not_allowed``.
+
+    """
+    if auth.is_admin:
+        return
+    message = (
+        f'The model {model!r} is restricted to teams that do not '
+        'include the caller'
+    )
+    account = auth.service_account
+    email = team_id = None
+    if auth.user is not None:
+        email = auth.user.email
+    elif (
+        account is not None
+        and account.slug == common_permissions.WORKFLOWS_ACCOUNT
+        and prompt.namespace == WORKFLOWS_NAMESPACE
+    ):
+        # <org>.<workflow>.<node key>
+        slug = prompt.slug.partition('.')[2].rpartition('.')[0]
+        row = await store.get(org_id, slug)
+        team_id = row['owner_team_id'] if row is not None else None
+    await prompt_resolve.check_model_teams(
+        db, model, message, email=email, team_id=team_id
+    )
+
+
 @prompt_render_router.post('/run', response_model=RunResponse)
 async def run_prompt(
     org_slug: str,
     data: RunRequest,
     request: fastapi.Request,
     db: graph.Pool,
+    secrets: secret_broker.Store,
+    calls: model_calls.Store,
+    workflow_store: workflows.Store,
     auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('prompt:update')),
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
     ],
+    idempotency_key: typing.Annotated[
+        str | None,
+        fastapi.Header(alias='Idempotency-Key', min_length=1, max_length=200),
+    ] = None,
 ) -> RunResponse:
-    """Run a decision prompt against its model and return the answers.
+    """Run a prompt against its model and return the answer.
 
     Renders the saved version ``ref``, or the unsaved ``draft``, then
-    calls the version's decision model with its provider's stored key.
-    Only prompt authors (``prompt:update``) may run a prompt, because a
-    run spends provider credit.
+    calls the version's model. A run spends provider credit, so it needs
+    ``prompt:update`` (prompt authors), or ``prompt:run`` (the workflows
+    service) for a saved version of a generative prompt. For a
+    ``workflows/<org>.*`` prompt, ``workflow:write`` in ``<org>`` is
+    also enough.
+
+    A decision prompt goes to its TypeSafe model with the provider's
+    stored key.
+
+    A generative prompt goes to its catalog model (see
+    :mod:`imbi.api.llm.generate` for the credentials). Each call is
+    recorded in ``ai_runtime.ai_model_calls``. With an
+    ``Idempotency-Key`` header (``<run_id>:<node_id>:<attempt>``), a
+    repeat of the key gets the answer of the first call and makes no
+    new call. An error has ``detail={'error': <code>, 'retry': <bool>}``
+    (see :data:`CALL_ERRORS`).
 
     Raises:
-        403: A template calls ``project()`` without ``project:read``.
-        404: No such prompt, version, label, or project.
-        409: The model's provider has no stored credentials.
-        422: The prompt is not a decision prompt, has no questions or no
-            model, the model cannot run it, or the render fails.
-        502: The decision model rejected or failed the call.
+        403: No permission, a template calls ``project()`` without
+            ``project:read``, or the model is restricted to teams that
+            do not include the caller (``model_not_allowed``).
+        404: No such prompt, version, label, project, or organization.
+        409: The provider has no usable credentials, a call with the key
+            is still running (``call_in_progress``), or one did not
+            finish (``outcome_unknown``).
+        422: The prompt has no model or no questions, the model cannot
+            run it, or the render fails.
+        502: The model rejected or failed the call.
+        503: The provider is unavailable or rate limited; try again.
 
     """
+    # First, so that every check below uses only the permissions of the
+    # caller in this organization, not those of their other orgs.
+    org_id = await organizations.check_member(org_slug, db, auth)
+    # A repeated key returns the first outcome before the live prompt
+    # and model are resolved, so a deleted prompt or a disabled model
+    # does not lose the answer. Only the organization member and
+    # principal that made the call can repeat its key.
+    if idempotency_key is not None:
+        row = await calls.repeat(
+            org_id, auth.principal_name, idempotency_key, STALE_AFTER
+        )
+        if row is not None:
+            return _repeat(row)
     prompt, version, n = await _run_target(db, data, auth)
+    _check_route_org(prompt, org_slug)
+    await _check_run_permission(db, auth, data, prompt)
     ref = f'{prompt.namespace}/{prompt.slug}' + (
         f'@{n}' if n is not None else ' (draft)'
     )
-    if prompt.kind != 'decision':
-        raise _unprocessable('Only decision prompts can be run')
-    if not version.questions:
+    if prompt.kind == 'generative' and version.tools:
+        raise _unprocessable(
+            'A generative run sends no tools to the model; '
+            'remove the tools from the prompt version'
+        )
+    if prompt.kind != 'generative' and not version.questions:
         raise _unprocessable('The prompt has no questions to ask')
+    # One model check for each kind of run, so a new kind cannot skip
+    # the team check.
     if version.model is None:
-        raise _unprocessable('Choose a decision model to run the prompt')
+        raise _unprocessable(f'Choose a {prompt.kind} model to run the prompt')
     records = await db.execute(
         _RUN_MODEL_QUERY,
         {'slug': version.model},
-        ['model_id', 'enabled', 'model_type', 'provider_id'],
+        _RUN_MODEL_COLUMNS,
     )
     if not records:
         raise _unprocessable(
             f'AI model {version.model!r} is not in the catalog'
         )
-    record = records[0]
-    if graph.parse_agtype(record['enabled']) is False:
+    record = {k: graph.parse_agtype(v) for k, v in records[0].items()}
+    if record['enabled'] is False:
         raise _unprocessable(f'AI model {version.model!r} is disabled')
+    if record.get('access_scope') == 'restricted':
+        await _check_model_teams(
+            db, workflow_store, auth, org_id, prompt, version.model
+        )
     provider = await ai_providers.fetch_provider(
-        db, str(graph.parse_agtype(record['provider_id']))
+        db, str(record['provider_id'])
     )
     if not provider.enabled:
         raise _unprocessable(f'AI provider {provider.slug!r} is disabled')
-    if (
-        graph.parse_agtype(record['model_type']) != 'decision'
-        or provider.driver != 'typesafe'
-    ):
+    if prompt.kind == 'generative':
+        return await _run_generative(
+            org_slug,
+            org_id,
+            data,
+            request,
+            db,
+            secrets,
+            calls,
+            auth,
+            prompt,
+            version,
+            record,
+            provider,
+            ref,
+            idempotency_key,
+        )
+    if record['model_type'] != 'decision' or provider.driver != 'typesafe':
         raise _unprocessable(
             f'AI model {version.model!r} is not a TypeSafe decision model'
         )
@@ -1130,7 +1707,7 @@ async def run_prompt(
                 f'AI provider {provider.slug!r} has no stored credentials'
             ),
         )
-    model_id = str(graph.parse_agtype(record['model_id']))
+    model_id = str(record['model_id'])
     questions = {
         qid: _wire_question(question)
         for qid, question in decision.questions.items()
@@ -1163,18 +1740,226 @@ async def run_prompt(
     )
 
 
+def _key_context(key: str | None) -> dict[str, typing.Any]:
+    """The workflow context in a key ``<run_id>:<node_id>:<attempt>``."""
+    if key is None:
+        return {
+            'origin': 'preview',
+            'run_id': None,
+            'node_id': None,
+            'attempt': None,
+        }
+    run_id, _, rest = key.partition(':')
+    node_id, _, attempt = rest.rpartition(':')
+    # ``isascii`` refuses digits such as '²' that ``int`` cannot parse.
+    number = int(attempt) if attempt.isascii() and attempt.isdigit() else None
+    if number is not None and number > MAX_ATTEMPT:
+        raise _unprocessable(
+            f'The Idempotency-Key attempt is larger than {MAX_ATTEMPT}'
+        )
+    return {
+        'origin': 'workflow',
+        'run_id': run_id,
+        'node_id': node_id or None,
+        'attempt': number,
+    }
+
+
+def _price(value: object) -> decimal.Decimal | None:
+    """A catalog price as AGE returns it (a number or a string)."""
+    return None if value is None else decimal.Decimal(str(value))
+
+
+def _call_response(row: dict[str, typing.Any]) -> RunResponse:
+    return RunResponse(
+        ref=row['prompt_ref'],
+        n=row['prompt_version'],
+        model=row['model'],
+        model_id=row['model_id'],
+        usage=row['usage'],
+        content_sha256=row['content_sha256'],
+        text=row['text'],
+        result=row['result'],
+        cost_usd=row['cost_usd'],
+        call_id=row['id'],
+    )
+
+
+def _repeat(row: dict[str, typing.Any]) -> RunResponse:
+    """The answer to a repeat of an idempotency key."""
+    match row['status']:
+        case 'succeeded':
+            return _call_response(row)
+        case 'running':
+            raise _call_error('call_in_progress')
+        case 'failed':
+            raise _call_error(str(row['error']))
+        case _:
+            raise _call_error('outcome_unknown')
+
+
+async def _run_generative(
+    org_slug: str,
+    org_id: str,
+    data: RunRequest,
+    request: fastapi.Request,
+    db: graph.Graph,
+    secrets: secret_broker.store.SecretStore,
+    calls: model_calls.ModelCallStore,
+    auth: permissions.AuthContext,
+    prompt: models.Prompt,
+    version: models.PromptVersion,
+    record: dict[str, typing.Any],
+    provider: models.AIProvider,
+    ref: str,
+    idempotency_key: str | None,
+) -> RunResponse:
+    """Run a generative prompt with the checked catalog model
+    ``record`` and its ``provider``; see :func:`run_prompt`."""
+    # A missing value predates model_type, when every model was
+    # generative.
+    if (record.get('model_type') or 'generative') != 'generative':
+        raise _unprocessable(
+            f'AI model {version.model!r} is not a generative model'
+        )
+    # The provider adapters send chat requests only. A missing value
+    # predates kind, when every model was a chat model.
+    if (record.get('kind') or 'chat') != 'chat':
+        raise _unprocessable(
+            f'AI model {version.model!r} is a completion model; '
+            'a generative run needs a chat model'
+        )
+    if data.output_fields and not record.get('structured'):
+        raise _call_error('model_no_structured_output')
+    try:
+        rendered = await rendering.render(
+            version,
+            data.variables,
+            _providers(auth, db, org_slug, request),
+        )
+    except rendering.RenderError as e:
+        raise _unprocessable(str(e)) from e
+    model_id = str(record['model_id'])
+    params = version.params
+    # Compare with None: an explicit temperature of 0 stays.
+    if params.temperature is None:
+        params = params.model_copy(
+            update={'temperature': record.get('default_temperature')}
+        )
+    call = generate.Request(
+        driver=provider.driver,
+        model_id=model_id,
+        messages=rendered.messages,
+        system=rendered.system,
+        params=params,
+        output_fields=data.output_fields,
+        # A missing value predates the field: a forced tool choice.
+        forced_tool_choice=record.get('forced_tool_choice') is not False,
+        base_url=drivers.resolve_base_url(provider.driver, provider.base_url),
+        region=provider.region,
+        project_id=provider.project_id,
+        timeout=CALL_TIMEOUT,
+    )
+    row, new = await calls.start(
+        {
+            'organization_id': org_id,
+            'principal': auth.principal_name,
+            **_key_context(idempotency_key),
+            'idempotency_key': idempotency_key,
+            'prompt_ref': ref,
+            'prompt_version': version.n if data.ref is not None else None,
+            'content_sha256': version.content_sha256,
+            'model': version.model,
+            'model_id': model_id,
+            'driver': provider.driver,
+            'system': rendered.system,
+            'messages': [m.model_dump() for m in rendered.messages],
+            'output_schema': agent.output_schema(data.output_fields),
+        },
+        STALE_AFTER,
+    )
+    if not new:
+        return _repeat(row)
+    dispatched = asyncio.Event()
+    try:
+        async with asyncio.timeout(CALL_DEADLINE):
+            answer = await model_generate.call(
+                secrets, provider, call, dispatched
+            )
+    except TimeoutError:
+        # After dispatch, the request may have reached the provider.
+        # Before it, Imbi was still getting credentials: a retry is safe.
+        code = (
+            'provider_outcome_unknown'
+            if dispatched.is_set()
+            else 'credentials_unavailable'
+        )
+        await calls.finish(row['id'], 'failed', error=code)
+        raise _call_error(code) from None
+    except generate.GenerateError as e:
+        await calls.finish(row['id'], 'failed', error=e.code)
+        raise _call_error(e.code) from None
+    usage = dict(answer.usage)
+    tokens_in = answer.usage['input_tokens']
+    tokens_out = answer.usage['output_tokens']
+    # The cost is unknown when a count is unknown, not a subtotal.
+    cost = (
+        None
+        if tokens_in is None or tokens_out is None
+        else task_store.usage_cost(
+            {
+                'tokens_in': tokens_in,
+                'tokens_out': tokens_out,
+                'cache_read_tokens': answer.usage.get('cache_read_tokens'),
+                'cache_write_tokens': None,
+            },
+            {
+                'input_cost_per_million': _price(record.get('input_cost')),
+                'output_cost_per_million': _price(record.get('output_cost')),
+                'cache_read_cost_per_million': _price(
+                    record.get('cache_read_cost')
+                ),
+                'cache_write_cost_per_million': None,
+            },
+        )
+    )
+    await calls.finish(
+        row['id'],
+        'succeeded',
+        text=answer.text,
+        result=answer.result,
+        usage=usage,
+        cost_usd=cost,
+        provider_request_id=answer.request_id,
+    )
+    LOGGER.info(
+        'Ran generative prompt %s with %s for %s',
+        ref,
+        model_id,
+        auth.principal_name,
+    )
+    return _call_response(
+        {
+            **row,
+            'text': answer.text,
+            'result': answer.result,
+            'usage': usage,
+            'cost_usd': cost,
+        }
+    )
+
+
 @prompts_router.get('/{namespace}/{slug}', response_model=PromptResponse)
 async def get_prompt(
     namespace: str,
     slug: str,
     db: graph.Pool,
     auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('prompt:read')),
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
     ],
 ) -> PromptResponse:
     """Get one prompt with its labels."""
-    _ = auth
+    await _require_read(db, auth, namespace, slug)
     prompt, latest = await _fetch_prompt(db, namespace, slug, auth)
     return _prompt_response(prompt, latest)
 
@@ -1200,7 +1985,9 @@ async def patch_prompt(
         400: Invalid patch or a read-only path.
         403: A rename without ``prompt:promote``.
         404: No such prompt.
-        409: The new ``namespace/slug`` is taken.
+        409: The new ``namespace/slug`` is taken, the rename moves
+            a prompt into or out of the ``workflows`` namespace, or the
+            prompt moved or was deleted while this request ran.
         422: The patched values are not valid.
 
     """
@@ -1219,6 +2006,8 @@ async def patch_prompt(
     if not re.match(models.PROMPT_NAME_PATTERN, updated.slug):
         raise _unprocessable(f'Slug {updated.slug!r} is not valid')
     if (updated.namespace, updated.slug) != (namespace, slug):
+        if WORKFLOWS_NAMESPACE in (namespace, updated.namespace):
+            raise _workflow_prompt_locked()
         if not (auth.is_admin or 'prompt:promote' in auth.permissions):
             raise fastapi.HTTPException(
                 status_code=403,
@@ -1230,14 +2019,65 @@ async def patch_prompt(
     props = updated.model_dump(
         mode='json', include={*_PATCHABLE_FIELDS, 'updated_at'}
     )
+    # The match on the reference that this patch read stops it from
+    # writing an old slug back over a move (an organization rename).
     query = (
-        'MATCH (p:Prompt {{id: {id}}})'
+        'MATCH (p:Prompt {{id: {id}, namespace: {read_namespace},'
+        ' slug: {read_slug}}})'
         f' {set_clause("p", props)} RETURN p'
     )
+    params = {
+        **props,
+        'id': prompt.id,
+        'read_namespace': prompt.namespace,
+        'read_slug': prompt.slug,
+    }
+    dest_org = _prompt_org(updated.namespace, updated.slug)
+    org_rows = (
+        await db.execute(_ORG_ID_QUERY, {'slug': dest_org}, ['id'])
+        if dest_org is not None
+        and (namespace, slug)
+        != (
+            updated.namespace,
+            updated.slug,
+        )
+        else []
+    )
+    records: list[dict[str, typing.Any]]
     with conflict_on_unique_violation(
         f'Prompt {updated.namespace}/{updated.slug} already exists'
     ):
-        await db.execute(query, {**props, 'id': prompt.id}, ['p'])
+        if org_rows:
+            # A rename into an organization's prefix holds the shared
+            # lock on that organization, which an organization rename
+            # holds exclusively, and writes only while the organization
+            # still has that slug.
+            org_id = str(graph.parse_agtype(org_rows[0]['id']))
+            try:
+                await db._execute_batch(  # pyright: ignore[reportPrivateUsage]
+                    [
+                        graph_cypher.Statement(
+                            _ORG_GUARD_QUERY,
+                            {'org_id': org_id, 'org_slug': dest_org},
+                            expect_rows=True,
+                        ),
+                        graph_cypher.Statement(
+                            query, params, expect_rows=True
+                        ),
+                    ],
+                    shared_lock=relational.organization_delete_lock_key(
+                        org_id
+                    ),
+                )
+                records = [{'p': None}]
+            except graph.StatementMatchedNothing:
+                records = []
+        else:
+            records = await db.execute(query, params, ['p'])
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=409, detail=PROMPT_CHANGED_DETAIL
+        )
     return _prompt_response(updated, latest)
 
 
@@ -1251,9 +2091,16 @@ async def delete_prompt(
         fastapi.Depends(permissions.require_permission('prompt:delete')),
     ],
 ) -> None:
-    """Delete a prompt and every version of it."""
-    _ = auth
+    """Delete a prompt and every version of it.
+
+    Raises:
+        404: No such prompt.
+        409: The prompt is a workflows prompt.
+
+    """
     prompt, _latest = await _fetch_prompt(db, namespace, slug, auth)
+    if prompt.namespace == WORKFLOWS_NAMESPACE:
+        raise _workflow_prompt_locked()
     params = {'id': prompt.id}
     # Versions first: a failure between the two writes leaves a prompt
     # with no versions, which a second DELETE removes.
@@ -1273,12 +2120,11 @@ async def list_prompt_versions(
     slug: str,
     db: graph.Pool,
     auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('prompt:read')),
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
     ],
 ) -> list[PromptVersionResponse]:
     """List every version of a prompt, newest first."""
-    _ = auth
+    await _require_read(db, auth, namespace, slug)
     prompt, _latest = await _fetch_prompt(db, namespace, slug, auth)
     records = await db.execute(
         _VERSIONS_QUERY, {'prompt_id': prompt.id}, ['v']
@@ -1302,12 +2148,11 @@ async def get_prompt_version(
     n: int,
     db: graph.Pool,
     auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('prompt:read')),
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
     ],
 ) -> PromptVersionResponse:
     """Get one version of a prompt."""
-    _ = auth
+    await _require_read(db, auth, namespace, slug)
     prompt, _latest = await _fetch_prompt(db, namespace, slug, auth)
     version = await _fetch_version(db, prompt, n)
     return _version_response(version, prompt)
@@ -1325,37 +2170,61 @@ async def create_prompt_version(
     response: fastapi.Response,
     db: graph.Pool,
     auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('prompt:update')),
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
     ],
 ) -> PromptVersionResponse:
     """Save a new version. Versions are never changed after this.
 
+    Needs ``prompt:update``. For a ``workflows/<org>.*`` prompt,
+    ``workflow:write`` in ``<org>`` is also enough.
+
     When the content is the same as the newest version, nothing is
     written and the newest version is returned with status 200.
 
+    A new version of an archived workflows prompt un-archives it: a
+    workflow step with the same key is back.
+
     Raises:
+        403: No permission.
         404: No such prompt.
-        409: Another version was saved at the same time.
-        422: A template does not parse, or the model is not in the
-            catalog.
+        409: The prompt is archived and not a workflows prompt, or
+            another version was saved at the same time.
+        422: A template does not parse, the model is not in the
+            catalog, or a workflows prompt has tools.
 
     """
+    await _require_permission(db, auth, 'prompt:update', namespace, slug)
     prompt, latest = await _fetch_prompt(db, namespace, slug, auth)
+    if prompt.namespace != WORKFLOWS_NAMESPACE:
+        _check_not_archived(prompt)
     _check_kind(prompt.kind, data)
+    _check_tools(prompt.namespace, data)
     _check_templates(data)
+    archived = prompt.archived_at is not None
+    now = _DATETIME.dump_python(_now(), mode='json')
     if latest:
         newest = await _fetch_version(db, prompt, latest)
         if newest.content_sha256 == content_sha256(data):
+            if archived:
+                await db.execute(
+                    _UNARCHIVE_QUERY, {'id': prompt.id, 'now': now}, ['p']
+                )
             response.status_code = 200
             return _version_response(newest, prompt)
     model_id = await _model_id_for(db, data.model, prompt.kind)
     version, props = _version_props(
         prompt, latest + 1, data, model_id, auth.principal_name
     )
+    # The prompt is un-archived in the same statement, so a failed
+    # write leaves it archived.
     query = (
         'MATCH (p:Prompt {{id: {prompt_id}}})'
-        f' CREATE (v:PromptVersion {props_template(props)})'
+        + (
+            ' SET p.archived_at = NULL, p.updated_at = {now}'
+            if archived
+            else ''
+        )
+        + f' CREATE (v:PromptVersion {props_template(props)})'
         ' CREATE (v)-[:VERSION_OF]->(p)'
         ' RETURN v'
     )
@@ -1363,7 +2232,7 @@ async def create_prompt_version(
         f'Version {latest + 1} of {namespace}/{slug} was saved by another '
         'request; reload the prompt and try again'
     ):
-        records = await db.execute(query, props, ['v'])
+        records = await db.execute(query, {**props, 'now': now}, ['v'])
     if not records:
         raise fastapi.HTTPException(
             status_code=404, detail=f'Prompt {namespace}/{slug} not found'
@@ -1431,7 +2300,8 @@ async def set_prompt_label(
     Raises:
         403: The caller cannot promote this prompt.
         404: No such prompt or version.
-        409: The prompt changed while this request ran.
+        409: The prompt is archived, or it changed while this request
+            ran.
         422: The label is made only of digits.
 
     """
@@ -1445,6 +2315,7 @@ async def set_prompt_label(
             'prompt:promote',
         )
     prompt, latest = await _fetch_prompt(db, namespace, slug, auth)
+    _check_not_archived(prompt)
     await _fetch_version(db, prompt, data.version)
     labels = moved_labels(prompt, label, data.version, auth.principal_name)
     updated = await _write_labels(db, prompt, labels, prompt.default_label)
@@ -1468,12 +2339,13 @@ async def delete_prompt_label(
 
     Raises:
         404: No such prompt or label.
-        409: The label is the default label, or the prompt changed
-            while this request ran.
+        409: The label is the default label, the prompt is archived,
+            or the prompt changed while this request ran.
 
     """
     _ = auth
     prompt, latest = await _fetch_prompt(db, namespace, slug, auth)
+    _check_not_archived(prompt)
     if label == prompt.default_label:
         raise fastapi.HTTPException(
             status_code=409,
@@ -1509,12 +2381,14 @@ async def set_prompt_default_label(
 
     Raises:
         404: No such prompt.
-        409: The prompt changed while this request ran.
+        409: The prompt is archived, or it changed while this request
+            ran.
         422: The prompt has no such label.
 
     """
     _ = auth
     prompt, latest = await _fetch_prompt(db, namespace, slug, auth)
+    _check_not_archived(prompt)
     if data.label not in {item.name for item in prompt.labels}:
         raise _unprocessable(
             f'Prompt {namespace}/{slug} has no label {data.label!r}'

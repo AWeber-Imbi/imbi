@@ -1,4 +1,4 @@
-import { fireEvent, waitFor } from '@testing-library/react'
+import { fireEvent, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as endpoints from '@/api/endpoints'
@@ -10,7 +10,7 @@ import { NewTaskDialog } from '../NewTaskDialog'
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', () => ({
-  createAgentTask: vi.fn(),
+  createTicket: vi.fn(),
   getProjectsSlim: vi.fn(),
   listAgents: vi.fn(),
 }))
@@ -55,9 +55,9 @@ describe('NewTaskDialog', () => {
       { archived: true, id: 'p-2', project_types: [], slug: 'old-billing' },
       { archived: false, id: 'p-3', project_types: [], slug: 'search' },
     ] as unknown as Awaited<ReturnType<typeof endpoints.getProjectsSlim>>)
-    vi.mocked(endpoints.createAgentTask).mockResolvedValue({
+    vi.mocked(endpoints.createTicket).mockResolvedValue({
       short_id: 'T-1',
-    } as Awaited<ReturnType<typeof endpoints.createAgentTask>>)
+    } as Awaited<ReturnType<typeof endpoints.createTicket>>)
   })
 
   it('says what is missing and lists enabled agents only', async () => {
@@ -65,15 +65,20 @@ describe('NewTaskDialog', () => {
     expect(
       screen.getByText('Needs a description and an agent.'),
     ).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Create task' })).toBeDisabled()
-    expect(await screen.findAllByRole('radio')).toHaveLength(2)
+    expect(screen.getByRole('button', { name: 'Create ticket' })).toBeDisabled()
+    const agents = await screen.findByRole('radiogroup', { name: 'Agent' })
+    expect(within(agents).getAllByRole('radio')).toHaveLength(2)
     expect(screen.queryByText('Retired')).toBeNull()
   })
 
   it('keeps the agent of the Run button', () => {
     render(<NewTaskDialog agent={agent('mender')} isOpen onClose={vi.fn()} />)
     expect(screen.getByRole('radio', { name: /Mender/ })).toBeChecked()
-    expect(screen.getAllByRole('radio')).toHaveLength(1)
+    expect(
+      within(screen.getByRole('radiogroup', { name: 'Agent' })).getAllByRole(
+        'radio',
+      ),
+    ).toHaveLength(1)
     expect(endpoints.listAgents).not.toHaveBeenCalled()
   })
 
@@ -99,12 +104,13 @@ describe('NewTaskDialog', () => {
     fireEvent.click(await screen.findByRole('radio', { name: /Forager/ }))
     fireEvent.click(await screen.findByText('search'))
     expect(screen.getByText('Starts as Queued. Esc to cancel.')).toBeVisible()
-    fireEvent.click(screen.getByRole('button', { name: 'Create task' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create ticket' }))
     await waitFor(() => expect(onClose).toHaveBeenCalled())
-    expect(endpoints.createAgentTask).toHaveBeenCalledWith('acme', {
+    expect(endpoints.createTicket).toHaveBeenCalledWith('acme', {
       agent_slug: 'forager',
       description:
         'Fix the crash https://sentry.io/issues/1\nIt fails on save.',
+      priority: 'normal',
       project_ids: ['p-3'],
       title: 'Fix the crash',
     })
@@ -126,28 +132,31 @@ describe('NewTaskDialog', () => {
     expect(
       screen.queryAllByRole('button', { name: /^(billing|search)$/ }),
     ).toHaveLength(0)
-    fireEvent.click(screen.getByRole('button', { name: 'Create task' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create ticket' }))
     await waitFor(() => expect(onClose).toHaveBeenCalled())
-    expect(endpoints.createAgentTask).toHaveBeenCalledWith('acme', {
+    expect(endpoints.createTicket).toHaveBeenCalledWith('acme', {
       agent_slug: 'forager',
       description: 'Sync the schemas',
+      priority: 'normal',
       project_ids: ['p-3', 'p-1'],
       title: 'Sync the schemas',
     })
   })
 
-  it('creates a task without a project', async () => {
+  it('creates an urgent task without a project', async () => {
     const onClose = vi.fn()
     render(<NewTaskDialog isOpen onClose={onClose} />)
     fireEvent.change(screen.getByLabelText('What should the agent do?'), {
       target: { value: 'Look for shell=True calls' },
     })
     fireEvent.click(await screen.findByRole('radio', { name: /Forager/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Create task' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Urgent' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create ticket' }))
     await waitFor(() => expect(onClose).toHaveBeenCalled())
-    expect(endpoints.createAgentTask).toHaveBeenCalledWith('acme', {
+    expect(endpoints.createTicket).toHaveBeenCalledWith('acme', {
       agent_slug: 'forager',
       description: 'Look for shell=True calls',
+      priority: 'urgent',
       project_ids: [],
       title: 'Look for shell=True calls',
     })

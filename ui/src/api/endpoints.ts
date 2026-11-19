@@ -51,15 +51,6 @@ import type {
   AgentMarketplace,
   AgentPlatformConfig,
   AgentPlatformConfigResponse,
-  AgentTask,
-  AgentTaskCreate,
-  AgentTaskEvent,
-  AgentTaskListItem,
-  AgentTaskProject,
-  AgentTaskRelations,
-  AgentTaskResolve,
-  AgentTaskRetry,
-  AgentTaskStatus,
   AgentToolCatalog,
   AgentUpdate,
   AgentUsage,
@@ -161,6 +152,7 @@ import type {
   OperationsLogRecord,
   Organization,
   OrganizationCreate,
+  OrganizationMember,
   PatchOperation,
   PendingDeployResponse,
   PluginAssignmentResponse,
@@ -206,6 +198,17 @@ import type {
   Team,
   TeamCreate,
   TeamMember,
+  Ticket,
+  TicketCounts,
+  TicketCreate,
+  TicketEvent,
+  TicketListItem,
+  TicketPosition,
+  TicketProject,
+  TicketRelations,
+  TicketResolve,
+  TicketRetry,
+  TicketStatus,
   TokenResponse,
   Upload,
   UserResponse,
@@ -1573,6 +1576,18 @@ export const updateOrganization = (
 
 export const deleteOrganization = (slug: string) =>
   apiClient.delete<void>(`/organizations/${encodeURIComponent(slug)}`)
+
+export const listOrganizationMembers = async (
+  slug: string,
+  signal?: AbortSignal,
+): Promise<OrganizationMember[]> => {
+  const response = await apiClient.get<OrganizationMember[]>(
+    `/organizations/${encodeURIComponent(slug)}/members`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
 
 // Dynamic blueprint schema extraction from OpenAPI spec
 
@@ -3820,182 +3835,211 @@ export const getAgentToolCatalog = (
 export const restoreAgentVersion = (orgSlug: string, slug: string, n: number) =>
   apiClient.post<Agent>(`${agentPath(orgSlug, slug)}/versions/${n}/restore`)
 
-// Agent tasks (ADR 0020). A task is addressed by its short id (`T-<n>`).
-const agentTasksPath = (orgSlug: string) =>
-  `/organizations/${encodeURIComponent(orgSlug)}/agent-tasks`
+// Tickets (ADR 0020, ADR 0028). A ticket is addressed by its short id (`T-<n>`).
+const ticketsApiPath = (orgSlug: string) =>
+  `/organizations/${encodeURIComponent(orgSlug)}/tickets`
 
-const agentTaskPath = (orgSlug: string, shortId: string) =>
-  `${agentTasksPath(orgSlug)}/${encodeURIComponent(shortId)}`
+const ticketPath = (orgSlug: string, shortId: string) =>
+  `${ticketsApiPath(orgSlug)}/${encodeURIComponent(shortId)}`
 
-export interface AgentTaskListParams {
+export interface TicketListParams {
+  agent_id?: string[]
+  /** One inbox group, in the order of the inbox; it pages with `offset`. */
+  group?: keyof TicketCounts
   limit?: number
   mine?: boolean
+  offset?: number
+  owner?: string[]
   q?: string
-  status?: AgentTaskStatus[]
+  status?: TicketStatus[]
 }
 
-export const listAgentTasks = (
+export const listTickets = (
   orgSlug: string,
-  params: AgentTaskListParams,
+  params: TicketListParams,
   signal?: AbortSignal,
 ) =>
-  apiClient.get<AgentTaskListItem[]>(
-    `${agentTasksPath(orgSlug)}/`,
+  apiClient.get<TicketListItem[]>(
+    `${ticketsApiPath(orgSlug)}/`,
     { ...params },
     signal,
   )
 
-export interface AgentTaskPage {
-  entries: AgentTaskListItem[]
-  nextCursor?: string
-}
-
-/** One page of tasks and the cursor of the next page (`Link` header). */
-export const listAgentTaskPage = async (
+/** The number of tasks in each inbox group that the same filters find. */
+export const countTickets = (
   orgSlug: string,
-  params: AgentTaskListParams & { cursor?: string },
+  params: Omit<TicketListParams, 'group' | 'limit' | 'offset'>,
   signal?: AbortSignal,
-): Promise<AgentTaskPage> => {
-  const { data, headers } = await apiClient.getWithHeaders<AgentTaskListItem[]>(
-    `${agentTasksPath(orgSlug)}/`,
+) =>
+  apiClient.get<TicketCounts>(
+    `${ticketsApiPath(orgSlug)}/counts`,
     { ...params },
     signal,
   )
-  return { entries: data, nextCursor: parseNextCursor(headers) }
-}
+
+/** The inbox group of a task and its index there, with the same filters. */
+export const getTicketPosition = (
+  orgSlug: string,
+  shortId: string,
+  params: Omit<TicketListParams, 'group' | 'limit' | 'offset'>,
+) =>
+  apiClient.get<TicketPosition>(`${ticketPath(orgSlug, shortId)}/position`, {
+    ...params,
+  })
 
 /** The number of blocked tasks in the org (the "waiting on you" badge). */
-export const countWaitingAgentTasks = (orgSlug: string, signal?: AbortSignal) =>
+export const countWaitingTickets = (orgSlug: string, signal?: AbortSignal) =>
   apiClient.get<{ count: number }>(
-    `${agentTasksPath(orgSlug)}/waiting`,
+    `${ticketsApiPath(orgSlug)}/waiting`,
     undefined,
     signal,
   )
 
-export const createAgentTask = (orgSlug: string, task: AgentTaskCreate) =>
-  apiClient.post<AgentTask>(`${agentTasksPath(orgSlug)}/`, task)
+export const createTicket = (orgSlug: string, task: TicketCreate) =>
+  apiClient.post<Ticket>(`${ticketsApiPath(orgSlug)}/`, task)
 
-export const getAgentTask = (
+export const getTicket = (
   orgSlug: string,
   shortId: string,
   signal?: AbortSignal,
-) =>
-  apiClient.get<AgentTask>(agentTaskPath(orgSlug, shortId), undefined, signal)
+) => apiClient.get<Ticket>(ticketPath(orgSlug, shortId), undefined, signal)
 
 /** The events of a task with a `seq` after `afterSeq`, in seq order. */
-export const listAgentTaskEvents = (
+export const listTicketEvents = (
   orgSlug: string,
   shortId: string,
   afterSeq: number,
   limit: number,
   signal?: AbortSignal,
 ) =>
-  apiClient.get<AgentTaskEvent[]>(
-    `${agentTaskPath(orgSlug, shortId)}/events`,
+  apiClient.get<TicketEvent[]>(
+    `${ticketPath(orgSlug, shortId)}/events`,
     { after_seq: afterSeq, limit },
     signal,
   )
 
-/** Delete a closed task. Needs `agent_task:delete`. */
-export const deleteAgentTask = (orgSlug: string, shortId: string) =>
-  apiClient.delete<void>(agentTaskPath(orgSlug, shortId))
+/** Delete a closed task. Needs `ticket:delete`. */
+export const deleteTicket = (orgSlug: string, shortId: string) =>
+  apiClient.delete<void>(ticketPath(orgSlug, shortId))
 
 /** Pause, resume, or cancel a task. */
-export const controlAgentTask = (
+export const controlTicket = (
   orgSlug: string,
   shortId: string,
   action: 'cancel' | 'pause' | 'resume',
-) => apiClient.post<AgentTask>(`${agentTaskPath(orgSlug, shortId)}/${action}`)
+) => apiClient.post<Ticket>(`${ticketPath(orgSlug, shortId)}/${action}`)
 
 /** Mark a closed task as needing no more attention. */
-export const acknowledgeAgentTask = (orgSlug: string, shortId: string) =>
-  apiClient.post<AgentTask>(`${agentTaskPath(orgSlug, shortId)}/acknowledge`)
+export const acknowledgeTicket = (orgSlug: string, shortId: string) =>
+  apiClient.post<Ticket>(`${ticketPath(orgSlug, shortId)}/acknowledge`)
 
 /**
  * Make a new task that does a closed task again, with what happened to
  * it and an optional note.
  */
-export const retryAgentTask = (
+export const retryTicket = (
   orgSlug: string,
   shortId: string,
-  body: AgentTaskRetry,
-) => apiClient.post<AgentTask>(`${agentTaskPath(orgSlug, shortId)}/retry`, body)
+  body: TicketRetry,
+) => apiClient.post<Ticket>(`${ticketPath(orgSlug, shortId)}/retry`, body)
 
-export const reassignAgentTask = (
+export const reassignTicket = (
   orgSlug: string,
   shortId: string,
   owner: string,
 ) =>
-  apiClient.post<AgentTask>(`${agentTaskPath(orgSlug, shortId)}/reassign`, {
+  apiClient.post<Ticket>(`${ticketPath(orgSlug, shortId)}/reassign`, {
     owner,
   })
 
+export const setTicketPriority = (
+  orgSlug: string,
+  shortId: string,
+  priority: Ticket['priority'],
+) =>
+  apiClient.post<Ticket>(`${ticketPath(orgSlug, shortId)}/priority`, {
+    priority,
+  })
+
 /** A reply from a person; `hold` also pauses the task. */
-export const replyAgentTask = (
+export const replyTicket = (
   orgSlug: string,
   shortId: string,
   body: string,
   hold: boolean,
 ) =>
-  apiClient.post<AgentTask>(`${agentTaskPath(orgSlug, shortId)}/reply`, {
+  apiClient.post<Ticket>(`${ticketPath(orgSlug, shortId)}/reply`, {
     body,
     hold,
   })
 
-export const resolveAgentTaskRequest = (
+export const resolveTicketRequest = (
   orgSlug: string,
   shortId: string,
   requestId: string,
-  resolution: AgentTaskResolve,
+  resolution: TicketResolve,
 ) =>
   apiClient.post<unknown>(
-    `${agentTaskPath(orgSlug, shortId)}/requests/${encodeURIComponent(requestId)}/resolve`,
+    `${ticketPath(orgSlug, shortId)}/requests/${encodeURIComponent(requestId)}/resolve`,
     resolution,
   )
 
 /** Requires, required by, parent, and children of a task. */
-export const getAgentTaskRelations = (
+export const getTicketRelations = (
   orgSlug: string,
   shortId: string,
   signal?: AbortSignal,
 ) =>
-  apiClient.get<AgentTaskRelations>(
-    `${agentTaskPath(orgSlug, shortId)}/relations`,
+  apiClient.get<TicketRelations>(
+    `${ticketPath(orgSlug, shortId)}/relations`,
     undefined,
     signal,
   )
 
-/** Make `shortId` require `prerequisite`, or remove that dependency. */
-export const setAgentTaskDependency = (
+/**
+ * Make `shortId` require `prerequisite`, or remove that dependency. A
+ * gating prerequisite holds `shortId` until it is done.
+ */
+export const setTicketDependency = (
   orgSlug: string,
   shortId: string,
   prerequisite: string,
   linked: boolean,
+  gates = false,
 ) => {
-  const url = `${agentTaskPath(orgSlug, shortId)}/requires/${encodeURIComponent(prerequisite)}`
-  return linked ? apiClient.put<void>(url) : apiClient.delete<void>(url)
+  const url = `${ticketPath(orgSlug, shortId)}/requires/${encodeURIComponent(prerequisite)}`
+  return linked
+    ? apiClient.put<void>(url, { gates })
+    : apiClient.delete<void>(url)
 }
 
+/** Move `shortId` under `parent`, or make it a root when `parent` is null. */
+export const setTicketParent = (
+  orgSlug: string,
+  shortId: string,
+  parent: null | string,
+) => apiClient.put<void>(`${ticketPath(orgSlug, shortId)}/parent`, { parent })
+
 /** The projects of a task, oldest association first. */
-export const listAgentTaskProjects = (
+export const listTicketProjects = (
   orgSlug: string,
   shortId: string,
   signal?: AbortSignal,
 ) =>
-  apiClient.get<AgentTaskProject[]>(
-    `${agentTaskPath(orgSlug, shortId)}/projects`,
+  apiClient.get<TicketProject[]>(
+    `${ticketPath(orgSlug, shortId)}/projects`,
     undefined,
     signal,
   )
 
 /** Associate a project with a task, or remove the association. */
-export const setAgentTaskProject = (
+export const setTicketProject = (
   orgSlug: string,
   shortId: string,
   projectId: string,
   linked: boolean,
 ) => {
-  const url = `${agentTaskPath(orgSlug, shortId)}/projects/${encodeURIComponent(projectId)}`
+  const url = `${ticketPath(orgSlug, shortId)}/projects/${encodeURIComponent(projectId)}`
   return linked ? apiClient.put<void>(url) : apiClient.delete<void>(url)
 }
 
@@ -4058,8 +4102,15 @@ export const validateWorkflow = (
     signal,
   )
 
-export const activateWorkflow = (orgSlug: string, slug: string) =>
-  apiClient.post<Workflow>(`${workflowPath(orgSlug, slug)}/activate`, {})
+export const activateWorkflow = (
+  orgSlug: string,
+  slug: string,
+  version?: number,
+) =>
+  apiClient.post<Workflow>(
+    `${workflowPath(orgSlug, slug)}/activate`,
+    version === undefined ? {} : { version },
+  )
 
 export const pauseWorkflow = (orgSlug: string, slug: string) =>
   apiClient.post<Workflow>(`${workflowPath(orgSlug, slug)}/pause`, {})

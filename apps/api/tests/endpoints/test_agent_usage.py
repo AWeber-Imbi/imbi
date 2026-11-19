@@ -1,8 +1,8 @@
 """Tests for the agent usage endpoint (ADR 0020).
 
 The rows go into the live ClickHouse that ``root:services`` boots, in
-the shape that :func:`imbi.api.agent_tasks.log.usage_row` and
-:func:`~imbi.api.agent_tasks.log.event_row` make. A run is a
+the shape that :func:`imbi.api.tickets.log.usage_row` and
+:func:`~imbi.api.tickets.log.event_row` make. A run is a
 ``task.created`` event; cost and tokens come from usage reports.
 """
 
@@ -13,8 +13,8 @@ import uuid
 from unittest import mock
 
 from apps.api.tests.endpoints import test_agent_task_log
-from imbi.api.agent_tasks import log
 from imbi.api.endpoints import agent_usage
+from imbi.api.tickets import log
 from imbi.common import iggy
 
 TODAY = datetime.datetime.now(datetime.UTC).replace(
@@ -51,12 +51,18 @@ class AgentUsageTests(test_agent_task_log.ClickHouseTestCase):
         agent: str = 'agent-a',
         task: str = 'T-1',
         days_ago: int = 0,
+        event_type: str = 'task.created',
+        old_table: bool = False,
     ) -> None:
-        """Publish the ``task.created`` event of ``task``."""
+        """Publish the ``task.created`` event of ``task``.
+
+        ``old_table`` publishes it to ``agent_task_events``, as release
+        A-1 did (ADR 0028).
+        """
         event = {
             'seq': 1,
             'event_id': uuid.uuid4(),
-            'type': 'task.created',
+            'type': event_type,
             'schema_version': 1,
             'actor_kind': 'human',
             'actor_id': self.email,
@@ -65,11 +71,12 @@ class AgentUsageTests(test_agent_task_log.ClickHouseTestCase):
             'at': TODAY - datetime.timedelta(days=days_ago),
             'payload': {},
         }
-        await iggy.publish_rows(
-            log.EVENTS_STREAM,
-            log.TOPIC,
-            [log.event_row(_task(org or self.org, task, agent), event)],
-        )
+        row = log.event_row(_task(org or self.org, task, agent), event)
+        stream = log.EVENTS_STREAM
+        if old_table:
+            stream = 'agent_task_events'
+            row['task_id'] = row.pop('ticket_id')
+        await iggy.publish_rows(stream, log.EVENTS_TOPIC, [row])
 
     async def publish(
         self,
@@ -100,7 +107,9 @@ class AgentUsageTests(test_agent_task_log.ClickHouseTestCase):
             'cost': None if cost is None else decimal.Decimal(cost),
         }
         await iggy.publish_rows(
-            log.USAGE_STREAM, log.TOPIC, [log.usage_row(task_row, ledger)]
+            log.USAGE_STREAM,
+            log.USAGE_TOPIC,
+            [log.usage_row(task_row, ledger)],
         )
 
     async def get_usage(
@@ -171,6 +180,20 @@ class AgentUsageTests(test_agent_task_log.ClickHouseTestCase):
                 (today.isoformat(), 'agent-a', 1, decimal.Decimal('1.5')),
                 (today.isoformat(), 'agent-b', 1, decimal.Decimal(4)),
             ],
+        )
+
+    async def test_runs_from_both_event_tables(self) -> None:
+        # T-1 is in both tables and counts one time (ADR 0028).
+        await self.create(task='T-1', old_table=True)
+        await self.create(task='T-1')
+        await self.create(task='T-2', event_type='ticket.created')
+        await self.create(task='T-3', old_table=True)
+
+        usage = await self.get_usage()
+
+        self.assertEqual(
+            [(row['agent_id'], row['tasks']) for row in usage['agents']],
+            [('agent-a', 3)],
         )
 
     async def test_range_and_agent_filters(self) -> None:

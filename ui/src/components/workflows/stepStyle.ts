@@ -1,5 +1,6 @@
 import {
   Bot,
+  BrainCircuit,
   Clock,
   Code,
   type LucideIcon,
@@ -21,6 +22,7 @@ const ICONS: Record<string, LucideIcon> = {
   condition: Split,
   deploy: Rocket,
   email: Mail,
+  llm_call: BrainCircuit,
   manual: Play,
   model_decision: Sparkles,
   rollback: RotateCcw,

@@ -1713,6 +1713,7 @@ export interface paths {
         };
         /**
          * List Harness Task Events
+         * @deprecated
          * @description List the events of a task of the chain after ``after_seq``.
          *
          *     The harness reads human input here at each turn boundary.
@@ -1731,6 +1732,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/harness/tickets/{short_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Harness Ticket Events
+         * @description List the events of a task of the chain after ``after_seq``.
+         *
+         *     The harness reads human input here at each turn boundary.
+         *
+         *     Raises:
+         *         401: Not a current agent token.
+         *         403: Another chain or another agent.
+         *         404: No such task.
+         */
+        get: operations["list_harness_ticket_events_api_harness_tickets__short_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/harness/tickets/{short_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Harness Ticket History
+         * @description Return the history of a ticket of the chain, for a new session.
+         *
+         *     A new session reads events only after ``last_seq``, so it reads
+         *     what happened before here. It sends ``last_seq`` as ``max_seq``, so
+         *     a comment written after the session opened is not here as well as
+         *     in the events. The history has comments (human turns), resolved
+         *     requests, and the status and outcome of prerequisite tickets and of
+         *     the tickets that it delegated (also after a move to another
+         *     parent), oldest first. When the text is larger
+         *     than :data:`MAX_HISTORY_BYTES`, the oldest entries are left out
+         *     and ``cut`` is their number. ``webhook`` marks untrusted text.
+         *
+         *     Raises:
+         *         401: Not a current agent token.
+         *         403: Another chain or another agent.
+         *         404: No such ticket.
+         */
+        get: operations["read_harness_ticket_history_api_harness_tickets__short_id__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/harness/tasks/{short_id}/projects/{project}": {
         parameters: {
             query?: never;
@@ -1741,6 +1804,7 @@ export interface paths {
         get?: never;
         /**
          * Attach Harness Task Project
+         * @deprecated
          * @description Associate a project of the org with a task of the chain.
          *
          *     ``project`` is a project id or slug. The task gets a
@@ -1764,6 +1828,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/harness/tickets/{short_id}/projects/{project}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Attach Harness Ticket Project
+         * @description Associate a project of the org with a task of the chain.
+         *
+         *     ``project`` is a project id or slug. The task gets a
+         *     ``project.associated`` event, with the agent as the actor. A secret
+         *     resolution reads the task's projects when it is made, so the next
+         *     one covers the project. When the project is associated, nothing
+         *     changes.
+         *
+         *     Raises:
+         *         401: Not a current agent token.
+         *         403: Another chain or another agent.
+         *         404: No such task.
+         *         409: ``task_closed`` or ``task_archived``.
+         *         422: The project is not in the org, or the slug is not unique.
+         */
+        put: operations["attach_harness_ticket_project_api_harness_tickets__short_id__projects__project__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/harness/tasks/{short_id}/children": {
         parameters: {
             query?: never;
@@ -1775,6 +1872,7 @@ export interface paths {
         put?: never;
         /**
          * Create Harness Child Task
+         * @deprecated
          * @description Make a child task (origin ``task``) in the chain of a task.
          *
          *     The child agent must be a subagent of the parent's pinned agent
@@ -1806,7 +1904,80 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/harness/tickets/{short_id}/children": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Harness Child Ticket
+         * @description Make a child task (origin ``task``) in the chain of a task.
+         *
+         *     The child agent must be a subagent of the parent's pinned agent
+         *     version.
+         *
+         *     The child has the owner and the project of its parent. Only the
+         *     runner of the chain can claim it, so its agent must not need a
+         *     label that the runner does not have.
+         *
+         *     Raises:
+         *         401: Not a current agent token.
+         *         403: Another chain or another agent, ``subagent_forbidden`` (the
+         *             child agent is not in the ``subagents`` of the parent's
+         *             pinned agent version), or ``owner_forbidden`` (the owner of
+         *             the parent can no longer make agent tasks in the
+         *             organization).
+         *         404: No such task.
+         *         409: The parent is closed, the child agent is disabled, or the
+         *             runner of the chain does not have a label that the child
+         *             agent needs (``runner_label_missing``), or the pod of the
+         *             chain does not have an egress destination that the child
+         *             agent has (``egress_destination_missing``).
+         *         422: No such agent, or a budget over its task budget.
+         */
+        post: operations["create_harness_child_ticket_api_harness_tickets__short_id__children_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/harness/tasks/{short_id}/tool-calls/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Harness Tool Call
+         * @deprecated
+         * @description Count a call of a tool against its rate limit, across runners.
+         *
+         *     The limit is ``rate_limit`` of the tool in the pinned agent
+         *     version. A tool with no limit is allowed and not counted. A tool
+         *     that is not configured is not allowed. A refused call is not
+         *     counted.
+         *
+         *     Raises:
+         *         401: Not a current agent token.
+         *         403: Another chain or another agent.
+         *         404: No such task.
+         */
+        post: operations["check_harness_tool_call_api_harness_tasks__short_id__tool_calls_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/harness/tickets/{short_id}/tool-calls/check": {
         parameters: {
             query?: never;
             header?: never;
@@ -1829,7 +2000,7 @@ export interface paths {
          *         403: Another chain or another agent.
          *         404: No such task.
          */
-        post: operations["check_harness_tool_call_api_harness_tasks__short_id__tool_calls_check_post"];
+        post: operations["check_harness_tool_call_api_harness_tickets__short_id__tool_calls_check_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2993,20 +3164,38 @@ export interface paths {
         put?: never;
         /**
          * Run Prompt
-         * @description Run a decision prompt against its model and return the answers.
+         * @description Run a prompt against its model and return the answer.
          *
          *     Renders the saved version ``ref``, or the unsaved ``draft``, then
-         *     calls the version's decision model with its provider's stored key.
-         *     Only prompt authors (``prompt:update``) may run a prompt, because a
-         *     run spends provider credit.
+         *     calls the version's model. A run spends provider credit, so it needs
+         *     ``prompt:update`` (prompt authors), or ``prompt:run`` (the workflows
+         *     service) for a saved version of a generative prompt. For a
+         *     ``workflows/<org>.*`` prompt, ``workflow:write`` in ``<org>`` is
+         *     also enough.
+         *
+         *     A decision prompt goes to its TypeSafe model with the provider's
+         *     stored key.
+         *
+         *     A generative prompt goes to its catalog model (see
+         *     :mod:`imbi.api.llm.generate` for the credentials). Each call is
+         *     recorded in ``ai_runtime.ai_model_calls``. With an
+         *     ``Idempotency-Key`` header (``<run_id>:<node_id>:<attempt>``), a
+         *     repeat of the key gets the answer of the first call and makes no
+         *     new call. An error has ``detail={'error': <code>, 'retry': <bool>}``
+         *     (see :data:`CALL_ERRORS`).
          *
          *     Raises:
-         *         403: A template calls ``project()`` without ``project:read``.
-         *         404: No such prompt, version, label, or project.
-         *         409: The model's provider has no stored credentials.
-         *         422: The prompt is not a decision prompt, has no questions or no
-         *             model, the model cannot run it, or the render fails.
-         *         502: The decision model rejected or failed the call.
+         *         403: No permission, a template calls ``project()`` without
+         *             ``project:read``, or the model is restricted to teams that
+         *             do not include the caller (``model_not_allowed``).
+         *         404: No such prompt, version, label, project, or organization.
+         *         409: The provider has no usable credentials, a call with the key
+         *             is still running (``call_in_progress``), or one did not
+         *             finish (``outcome_unknown``).
+         *         422: The prompt has no model or no questions, the model cannot
+         *             run it, or the render fails.
+         *         502: The model rejected or failed the call.
+         *         503: The provider is unavailable or rate limited; try again.
          */
         post: operations["run_prompt_api_organizations__org_slug__prompts_run_post"];
         delete?: never;
@@ -4941,8 +5130,9 @@ export interface paths {
          *         409: The org has an agent with this slug.
          *         422: The team, a tag, a tool environment, or a subagent is not
          *             in the org, a subagent is given two times,
-         *             ``prompt_ref`` does not parse, or a platform field is not
-         *             valid (see :func:`_check_platform`).
+         *             ``prompt_ref`` does not parse or names an ``agents/``
+         *             prompt of another organization, or a platform field is
+         *             not valid (see :func:`_check_platform`).
          */
         post: operations["create_agent_api_organizations__org_slug__agents__post"];
         delete?: never;
@@ -5116,16 +5306,24 @@ export interface paths {
         };
         /**
          * List Agent Tasks
+         * @deprecated
          * @description List the tasks in an organization, newest first.
          *
          *     ``q`` matches the title, the short id, the agent name, or the
-         *     project slug. ``mine`` keeps the tasks that the caller owns. The
-         *     ``Link`` header has the URL of the next page. Each task has
-         *     ``blocked_since`` when it waits on a person, so a client can sort
-         *     that queue oldest block first (O2).
+         *     project slug, and ``highlights`` says where. ``agent_id`` and
+         *     ``owner`` repeat to match any of their values, and ``mine`` adds
+         *     the caller to the owners. The ``Link`` header has the URL of the
+         *     next page. Each task has ``project_icons``, and ``blocked_since``
+         *     when it waits on a person, so a client can sort that queue oldest
+         *     block first (O2). ``status=blocked`` also matches every task that
+         *     waits on a person. ``group`` lists one inbox group in the order of
+         *     the inbox: oldest block first for ``input``, newest close first for
+         *     ``closed``, else newest first; it pages with ``offset``, so a client
+         *     can read any part of it.
          *
          *     Raises:
-         *         400: The cursor is not valid.
+         *         400: The cursor is not valid or comes with ``group``, or
+         *             ``offset`` comes without ``group``.
          *         403: The caller is not a member of the org.
          *         404: No such organization.
          */
@@ -5133,6 +5331,7 @@ export interface paths {
         put?: never;
         /**
          * Create Agent Task
+         * @deprecated
          * @description Make a task for an agent.
          *
          *     A person owns the tasks that they make. The scheduler and the
@@ -5163,6 +5362,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/agent-tasks/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Count Agent Tasks
+         * @deprecated
+         * @description Count the tasks in each inbox group that the task list with the
+         *     same filters finds, so a client can size the whole list before it
+         *     reads the tasks.
+         *
+         *     Raises:
+         *         403: The caller is not a member of the org.
+         *         404: No such organization.
+         */
+        get: operations["count_agent_tasks_api_organizations__org_slug__agent_tasks_counts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agent-tasks/{short_id}/position": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Task Position
+         * @deprecated
+         * @description Find where a task is in the task list with the same filters: its
+         *     inbox group and its index in that group, so a client can scroll to
+         *     it before it reads that part of the list.
+         *
+         *     Raises:
+         *         403: The caller is not a member of the org.
+         *         404: No such organization, or the filters do not find the task.
+         */
+        get: operations["get_agent_task_position_api_organizations__org_slug__agent_tasks__short_id__position_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/agent-tasks/waiting": {
         parameters: {
             query?: never;
@@ -5172,6 +5425,7 @@ export interface paths {
         };
         /**
          * Count Waiting Agent Tasks
+         * @deprecated
          * @description Count the tasks in the organization that wait on a person.
          *
          *     A task waits when it is not closed and has an open request that has
@@ -5201,6 +5455,7 @@ export interface paths {
         };
         /**
          * Get Agent Task
+         * @deprecated
          * @description Get a task by its short id (``T-<n>``).
          *
          *     The service account of the task's agent can read its own task.
@@ -5210,6 +5465,7 @@ export interface paths {
         post?: never;
         /**
          * Delete Agent Task
+         * @deprecated
          * @description Delete a closed task, with its events and relations.
          *
          *     The secret audit and the usage records of the task stay.
@@ -5235,6 +5491,7 @@ export interface paths {
         };
         /**
          * List Agent Task Events
+         * @deprecated
          * @description List the events of a task with ``seq`` after ``after_seq``.
          *
          *     To read new events, give the ``seq`` of the last event that you
@@ -5246,6 +5503,7 @@ export interface paths {
         put?: never;
         /**
          * Append Agent Task Events
+         * @deprecated
          * @description Write a batch of harness events, in order.
          *
          *     The harness writes only ``turn``, ``tool.called``,
@@ -5286,6 +5544,7 @@ export interface paths {
         put?: never;
         /**
          * Pause Agent Task
+         * @deprecated
          * @description Set the control value of a task to ``pause``.
          *
          *     Raises:
@@ -5311,6 +5570,7 @@ export interface paths {
         put?: never;
         /**
          * Resume Agent Task
+         * @deprecated
          * @description Set the control value of a task to ``run``.
          *
          *     Raises:
@@ -5336,6 +5596,7 @@ export interface paths {
         put?: never;
         /**
          * Cancel Agent Task
+         * @deprecated
          * @description Set the control value of a task to ``cancel``.
          *
          *     Raises:
@@ -5361,6 +5622,7 @@ export interface paths {
         put?: never;
         /**
          * Acknowledge Agent Task
+         * @deprecated
          * @description Mark a closed task as needing no more attention.
          *
          *     The first acknowledgement stays; a repeat returns the task.
@@ -5388,6 +5650,7 @@ export interface paths {
         put?: never;
         /**
          * Retry Agent Task
+         * @deprecated
          * @description Make a new task that does a closed task again.
          *
          *     The new task has the agent, title, and projects of the closed task.
@@ -5421,6 +5684,7 @@ export interface paths {
         put?: never;
         /**
          * Reassign Agent Task
+         * @deprecated
          * @description Give a task a new owner.
          *
          *     Raises:
@@ -5430,6 +5694,32 @@ export interface paths {
          *         422: The new owner is not a member of the org.
          */
         post: operations["reassign_agent_task_api_organizations__org_slug__agent_tasks__short_id__reassign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agent-tasks/{short_id}/priority": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Agent Task Priority
+         * @deprecated
+         * @description Set the priority of a task.
+         *
+         *     Raises:
+         *         403: The caller is not a member of the org.
+         *         404: No such task.
+         *         409: The task is closed.
+         */
+        post: operations["set_agent_task_priority_api_organizations__org_slug__agent_tasks__short_id__priority_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5447,6 +5737,7 @@ export interface paths {
         put?: never;
         /**
          * Resolve Agent Task Request
+         * @deprecated
          * @description Answer a feedback request, or approve or reject an approval.
          *
          *     Only a person can resolve a request, so an agent can never resolve
@@ -5487,6 +5778,7 @@ export interface paths {
         put?: never;
         /**
          * Reply Agent Task
+         * @deprecated
          * @description Write a reply from a person to the agent (H3).
          *
          *     The reply is a ``turn`` event with the person and the channel. The
@@ -5518,6 +5810,7 @@ export interface paths {
         };
         /**
          * Get Agent Task Relations
+         * @deprecated
          * @description List the tasks related to a task: the tasks it requires, the
          *     tasks that require it, and its parent and children (delegation).
          *
@@ -5543,28 +5836,35 @@ export interface paths {
         get?: never;
         /**
          * Add Agent Task Dependency
+         * @deprecated
          * @description Make the task require the ``prerequisite`` task, in the same org.
          *
-         *     A dependency is information only: it does not change a status. Each
-         *     task gets a ``dependency.added`` event; an archived task gets none.
-         *     When the dependency exists, nothing changes.
+         *     A dependency is information only, unless it ``gates`` (ADR 0028): a
+         *     ``queued`` task then becomes ``held`` until the prerequisite closes
+         *     with a ``done_*`` outcome. Each task gets a ``dependency.added``
+         *     event; an archived task gets none. When the dependency exists with
+         *     the same ``gates`` value, nothing changes; with another value, the
+         *     value changes.
          *
          *     Raises:
          *         403: The caller is not a person, has no ``agent_task:manage``,
          *             or is not a member of the org.
          *         404: No such task.
          *         409: ``task_archived``: both tasks are archived.
+         *             ``ticket_started``: ``gates``, the task is not ``queued``
+         *             or ``held``, and the dependency does not gate already.
          *         422: The two tasks are the same.
          */
         put: operations["add_agent_task_dependency_api_organizations__org_slug__agent_tasks__short_id__requires__prerequisite__put"];
         post?: never;
         /**
          * Remove Agent Task Dependency
+         * @deprecated
          * @description Remove the dependency of the task on the ``prerequisite`` task.
          *
          *     Each task gets a ``dependency.removed`` event with the removed row;
-         *     an archived task gets none. When there is no such dependency,
-         *     nothing changes.
+         *     an archived task gets none. A ``held`` task that no other gate holds
+         *     is released. When there is no such dependency, nothing changes.
          *
          *     Raises:
          *         403: The caller is not a person, has no ``agent_task:manage``,
@@ -5573,6 +5873,41 @@ export interface paths {
          *         409: ``task_archived``: both tasks are archived.
          */
         delete: operations["remove_agent_task_dependency_api_organizations__org_slug__agent_tasks__short_id__requires__prerequisite__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agent-tasks/{short_id}/parent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Agent Task Parent
+         * @deprecated
+         * @description Move the task, with its descendants, under another task in the
+         *     org, or make it a root (ADR 0028).
+         *
+         *     The owner of the task and holders of ``agent_task:manage`` can move
+         *     it. A move changes no status, assignee, dependency, or chain. The
+         *     task gets a ``parent.changed`` event with the old and new parent.
+         *     When the parent does not change, nothing changes.
+         *
+         *     Raises:
+         *         403: The caller is not a person, or is not the owner and has no
+         *             ``agent_task:manage``.
+         *         404: No such task.
+         *         409: ``task_archived``: the log of the task is archived.
+         *             ``parent_cycle``: the task is the new parent or one of its
+         *             ancestors.
+         */
+        put: operations["set_agent_task_parent_api_organizations__org_slug__agent_tasks__short_id__parent_put"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -5587,6 +5922,7 @@ export interface paths {
         };
         /**
          * List Agent Task Projects
+         * @deprecated
          * @description List the projects of a task, oldest first.
          *
          *     The caller needs ``agent_task:read``, also the service account of the
@@ -5614,6 +5950,7 @@ export interface paths {
         get?: never;
         /**
          * Associate Agent Task Project
+         * @deprecated
          * @description Associate a project of the org with the task (F13).
          *
          *     The task gets a ``project.associated`` event. When the project is
@@ -5630,6 +5967,7 @@ export interface paths {
         post?: never;
         /**
          * Dissociate Agent Task Project
+         * @deprecated
          * @description Remove a project association from the task.
          *
          *     The task gets a ``project.dissociated`` event with the removed row.
@@ -5643,6 +5981,670 @@ export interface paths {
          *         409: ``task_archived``.
          */
         delete: operations["dissociate_agent_task_project_api_organizations__org_slug__agent_tasks__short_id__projects__project_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agent Tasks
+         * @description List the tasks in an organization, newest first.
+         *
+         *     ``q`` matches the title, the short id, the agent name, or the
+         *     project slug, and ``highlights`` says where. ``agent_id`` and
+         *     ``owner`` repeat to match any of their values, and ``mine`` adds
+         *     the caller to the owners. The ``Link`` header has the URL of the
+         *     next page. Each task has ``project_icons``, and ``blocked_since``
+         *     when it waits on a person, so a client can sort that queue oldest
+         *     block first (O2). ``status=blocked`` also matches every task that
+         *     waits on a person. ``group`` lists one inbox group in the order of
+         *     the inbox: oldest block first for ``input``, newest close first for
+         *     ``closed``, else newest first; it pages with ``offset``, so a client
+         *     can read any part of it.
+         *
+         *     Raises:
+         *         400: The cursor is not valid or comes with ``group``, or
+         *             ``offset`` comes without ``group``.
+         *         403: The caller is not a member of the org.
+         *         404: No such organization.
+         */
+        get: operations["list_tickets_api_organizations__org_slug__tickets__get"];
+        put?: never;
+        /**
+         * Create Agent Task
+         * @description Make a task for an agent.
+         *
+         *     A person owns the tasks that they make. The scheduler and the
+         *     gateway also make tasks, with a ``schedule`` or a ``webhook``
+         *     origin that they name in headers (see :func:`task_origin`). The
+         *     person who last set the scheduler task or the webhook owns such a task
+         *     (see :func:`_owner`). The task records the agent version and the
+         *     prompt version that the agent has now. A repeat with the same
+         *     idempotency key (``idempotency_key``, else the ``Idempotency-Key``
+         *     header) and the same origin returns the first task with status 200.
+         *
+         *     Raises:
+         *         403: The caller is not a person or one of Imbi's own services,
+         *             a person names an origin, the caller is not a member of the
+         *             org, or the origin or its person is not allowed (see
+         *             :func:`_owner`).
+         *         404: No such organization.
+         *         409: The agent is disabled.
+         *         422: The agent or the project is not in the org, the budget is
+         *             more than the agent's task budget, a service does not name
+         *             its origin, the webhook does not exist, or the key has the
+         *             shape of a workflow step key (``<uuid>:<node_key>``).
+         */
+        post: operations["create_ticket_api_organizations__org_slug__tickets__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Count Agent Tasks
+         * @description Count the tasks in each inbox group that the task list with the
+         *     same filters finds, so a client can size the whole list before it
+         *     reads the tasks.
+         *
+         *     Raises:
+         *         403: The caller is not a member of the org.
+         *         404: No such organization.
+         */
+        get: operations["count_tickets_api_organizations__org_slug__tickets_counts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/position": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Task Position
+         * @description Find where a task is in the task list with the same filters: its
+         *     inbox group and its index in that group, so a client can scroll to
+         *     it before it reads that part of the list.
+         *
+         *     Raises:
+         *         403: The caller is not a member of the org.
+         *         404: No such organization, or the filters do not find the task.
+         */
+        get: operations["get_ticket_position_api_organizations__org_slug__tickets__short_id__position_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/waiting": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Count Waiting Agent Tasks
+         * @description Count the tasks in the organization that wait on a person.
+         *
+         *     A task waits when it is not closed and has an open request that has
+         *     not expired, whatever its status: a task that is paused with an open
+         *     request (Reply and hold) still waits. The count is for the whole
+         *     organization, for the navigation badge (O1).
+         *
+         *     Raises:
+         *         403: The caller is not a member of the org.
+         *         404: No such organization.
+         */
+        get: operations["count_waiting_tickets_api_organizations__org_slug__tickets_waiting_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Task
+         * @description Get a task by its short id (``T-<n>``).
+         *
+         *     The service account of the task's agent can read its own task.
+         */
+        get: operations["get_ticket_api_organizations__org_slug__tickets__short_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Agent Task
+         * @description Delete a closed task, with its events and relations.
+         *
+         *     The secret audit and the usage records of the task stay.
+         *
+         *     Raises:
+         *         403: The caller has no ``agent_task:delete``, or is not a member
+         *             of the org.
+         *         404: No such task.
+         *         409: The task, or a task in its chain, is not closed.
+         */
+        delete: operations["delete_ticket_api_organizations__org_slug__tickets__short_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agent Task Events
+         * @description List the events of a task with ``seq`` after ``after_seq``.
+         *
+         *     To read new events, give the ``seq`` of the last event that you
+         *     have as ``after_seq``. The events of an archived task come from
+         *     ClickHouse, in the same shape. The service account of the task's
+         *     agent can read the events of its own task.
+         */
+        get: operations["list_ticket_events_api_organizations__org_slug__tickets__short_id__events_get"];
+        put?: never;
+        /**
+         * Append Agent Task Events
+         * @description Write a batch of harness events, in order.
+         *
+         *     The harness writes only ``turn``, ``tool.called``,
+         *     ``phase.changed``, ``todos.updated``, and ``check.reported``. A
+         *     ``phase.changed`` event also sets the phase of the task.
+         *
+         *     Each event has an ``event_id`` that the harness picks. An event that
+         *     the task already has is not written again and takes no seq; its id
+         *     is in ``duplicates``. The status is 200 when nothing was written.
+         *
+         *     Raises:
+         *         403: The caller is not the service account of the task's agent.
+         *         404: No such task or session.
+         *         409: ``task_closed``, ``session_closed``, or
+         *             ``event_id_conflict`` (another task has the event id).
+         *         413: A payload is larger than its limit
+         *             (:data:`MAX_LARGE_PAYLOAD_BYTES` for ``turn`` and
+         *             ``tool.called``, else :data:`MAX_PAYLOAD_BYTES`), or the
+         *             batch is larger than :data:`MAX_BATCH_PAYLOAD_BYTES`.
+         *         422: An event type that Imbi writes, a bad envelope, or a bad
+         *             continuation (``call_id``, ``part``, ``parts``).
+         */
+        post: operations["append_ticket_events_api_organizations__org_slug__tickets__short_id__events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause Agent Task
+         * @description Set the control value of a task to ``pause``.
+         *
+         *     Raises:
+         *         403: The caller is not a member of the org.
+         *         404: No such task.
+         *         409: The task is closed, or a cancel is not done yet.
+         */
+        post: operations["pause_ticket_api_organizations__org_slug__tickets__short_id__pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Agent Task
+         * @description Set the control value of a task to ``run``.
+         *
+         *     Raises:
+         *         403: The caller is not a member of the org.
+         *         404: No such task.
+         *         409: The task is closed, or a cancel is not done yet.
+         */
+        post: operations["resume_ticket_api_organizations__org_slug__tickets__short_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Agent Task
+         * @description Set the control value of a task to ``cancel``.
+         *
+         *     Raises:
+         *         403: The caller is not a member of the org.
+         *         404: No such task.
+         *         409: The task is closed.
+         */
+        post: operations["cancel_ticket_api_organizations__org_slug__tickets__short_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Acknowledge Agent Task
+         * @description Mark a closed task as needing no more attention.
+         *
+         *     The first acknowledgement stays; a repeat returns the task.
+         *
+         *     Raises:
+         *         403: The caller is not a person, or not a member of the org.
+         *         404: No such task.
+         *         409: The task is not closed.
+         */
+        post: operations["acknowledge_ticket_api_organizations__org_slug__tickets__short_id__acknowledge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Agent Task
+         * @description Make a new task that does a closed task again.
+         *
+         *     The new task has the agent, title, and projects of the closed task.
+         *     Its description adds what happened to the closed task, and the note
+         *     of the person. The closed task does not change. The caller also
+         *     needs ``agent_task:read``, because the new description shows the
+         *     log of the closed task.
+         *
+         *     Raises:
+         *         403: The caller is not a person, not a member of the org, or
+         *             cannot read tasks.
+         *         404: No such task.
+         *         409: The task is not closed, or its agent is disabled.
+         *         422: The agent or a project is no longer in the org.
+         */
+        post: operations["retry_ticket_api_organizations__org_slug__tickets__short_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/reassign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reassign Agent Task
+         * @description Give a task a new owner.
+         *
+         *     Raises:
+         *         403: The caller is not a member of the org.
+         *         404: No such task.
+         *         409: The task is closed.
+         *         422: The new owner is not a member of the org.
+         */
+        post: operations["reassign_ticket_api_organizations__org_slug__tickets__short_id__reassign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/priority": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Agent Task Priority
+         * @description Set the priority of a task.
+         *
+         *     Raises:
+         *         403: The caller is not a member of the org.
+         *         404: No such task.
+         *         409: The task is closed.
+         */
+        post: operations["set_ticket_priority_api_organizations__org_slug__tickets__short_id__priority_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/requests/{request_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Agent Task Request
+         * @description Answer a feedback request, or approve or reject an approval.
+         *
+         *     Only a person can resolve a request, so an agent can never resolve
+         *     its own request or one of its subagent (I6). An approval names the
+         *     digests that the person reviewed; they must be the digests of the
+         *     request (I3). The resolution records the person, the time, the
+         *     channel, the constraints, and the approved digests (I9).
+         *
+         *     The status is 201 when this call resolves the request. When the
+         *     same person sends the same resolution again, the status is 200 and
+         *     nothing changes. A request that someone else resolved is a
+         *     ``409 request_resolved`` that names who resolved it (I4).
+         *
+         *     Raises:
+         *         403: The caller is not a person, has no ``agent_task:resolve``,
+         *             or is not a member of the org.
+         *         404: No such task or request.
+         *         409: ``task_closed``, ``request_resolved``, ``request_expired``,
+         *             or ``digest_mismatch``.
+         *         413: The resolution is larger than :data:`MAX_PAYLOAD_BYTES`.
+         *         422: The status does not fit the kind of the request.
+         */
+        post: operations["resolve_ticket_request_api_organizations__org_slug__tickets__short_id__requests__request_id__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/reply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reply Agent Task
+         * @description Write a reply from a person to the agent (H3).
+         *
+         *     The reply is a ``turn`` event with the person and the channel. The
+         *     harness reads it by seq at its next turn boundary (H7). With
+         *     ``hold``, the control value also changes to ``pause``, in the same
+         *     transaction (Reply and hold).
+         *
+         *     Raises:
+         *         403: The caller is not a person, has no ``agent_task:manage``,
+         *             or is not a member of the org.
+         *         404: No such task.
+         *         409: The task is closed, or ``hold`` and a cancel is not done
+         *             yet.
+         *         413: The reply is larger than :data:`MAX_PAYLOAD_BYTES`.
+         */
+        post: operations["reply_ticket_api_organizations__org_slug__tickets__short_id__reply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/relations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Task Relations
+         * @description List the tasks related to a task: the tasks it requires, the
+         *     tasks that require it, and its parent and children (delegation).
+         *
+         *     The caller needs ``agent_task:read``, also the service account of the
+         *     task's agent: the relations show other tasks.
+         */
+        get: operations["get_ticket_relations_api_organizations__org_slug__tickets__short_id__relations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/requires/{prerequisite}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Add Agent Task Dependency
+         * @description Make the task require the ``prerequisite`` task, in the same org.
+         *
+         *     A dependency is information only, unless it ``gates`` (ADR 0028): a
+         *     ``queued`` task then becomes ``held`` until the prerequisite closes
+         *     with a ``done_*`` outcome. Each task gets a ``dependency.added``
+         *     event; an archived task gets none. When the dependency exists with
+         *     the same ``gates`` value, nothing changes; with another value, the
+         *     value changes.
+         *
+         *     Raises:
+         *         403: The caller is not a person, has no ``agent_task:manage``,
+         *             or is not a member of the org.
+         *         404: No such task.
+         *         409: ``task_archived``: both tasks are archived.
+         *             ``ticket_started``: ``gates``, the task is not ``queued``
+         *             or ``held``, and the dependency does not gate already.
+         *         422: The two tasks are the same.
+         */
+        put: operations["add_ticket_dependency_api_organizations__org_slug__tickets__short_id__requires__prerequisite__put"];
+        post?: never;
+        /**
+         * Remove Agent Task Dependency
+         * @description Remove the dependency of the task on the ``prerequisite`` task.
+         *
+         *     Each task gets a ``dependency.removed`` event with the removed row;
+         *     an archived task gets none. A ``held`` task that no other gate holds
+         *     is released. When there is no such dependency, nothing changes.
+         *
+         *     Raises:
+         *         403: The caller is not a person, has no ``agent_task:manage``,
+         *             or is not a member of the org.
+         *         404: No such task.
+         *         409: ``task_archived``: both tasks are archived.
+         */
+        delete: operations["remove_ticket_dependency_api_organizations__org_slug__tickets__short_id__requires__prerequisite__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/parent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Agent Task Parent
+         * @description Move the task, with its descendants, under another task in the
+         *     org, or make it a root (ADR 0028).
+         *
+         *     The owner of the task and holders of ``agent_task:manage`` can move
+         *     it. A move changes no status, assignee, dependency, or chain. The
+         *     task gets a ``parent.changed`` event with the old and new parent.
+         *     When the parent does not change, nothing changes.
+         *
+         *     Raises:
+         *         403: The caller is not a person, or is not the owner and has no
+         *             ``agent_task:manage``.
+         *         404: No such task.
+         *         409: ``task_archived``: the log of the task is archived.
+         *             ``parent_cycle``: the task is the new parent or one of its
+         *             ancestors.
+         */
+        put: operations["set_ticket_parent_api_organizations__org_slug__tickets__short_id__parent_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agent Task Projects
+         * @description List the projects of a task, oldest first.
+         *
+         *     The caller needs ``agent_task:read``, also the service account of the
+         *     task's agent: the rows show who associated each project.
+         *
+         *     A project that is no longer in the org is not ``available``; its
+         *     slug is the slug when it was associated.
+         */
+        get: operations["list_ticket_projects_api_organizations__org_slug__tickets__short_id__projects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/projects/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Associate Agent Task Project
+         * @description Associate a project of the org with the task (F13).
+         *
+         *     The task gets a ``project.associated`` event. When the project is
+         *     associated, nothing changes.
+         *
+         *     Raises:
+         *         403: The caller is not a person, has no ``agent_task:manage``,
+         *             or is not a member of the org.
+         *         404: No such task.
+         *         409: ``task_archived``.
+         *         422: The project is not in the org.
+         */
+        put: operations["associate_ticket_project_api_organizations__org_slug__tickets__short_id__projects__project_id__put"];
+        post?: never;
+        /**
+         * Dissociate Agent Task Project
+         * @description Remove a project association from the task.
+         *
+         *     The task gets a ``project.dissociated`` event with the removed row.
+         *     A project that is no longer in the org can also be removed. When the
+         *     project is not associated, nothing changes.
+         *
+         *     Raises:
+         *         403: The caller is not a person, has no ``agent_task:manage``,
+         *             or is not a member of the org.
+         *         404: No such task.
+         *         409: ``task_archived``.
+         */
+        delete: operations["dissociate_ticket_project_api_organizations__org_slug__tickets__short_id__projects__project_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -5773,6 +6775,7 @@ export interface paths {
         put?: never;
         /**
          * Open Agent Task Session
+         * @deprecated
          * @description Open a harness session on a task.
          *
          *     A repeat with the same ``session_key`` returns the first session
@@ -5782,7 +6785,8 @@ export interface paths {
          *     Raises:
          *         403: The caller is not the service account of the task's agent.
          *         404: No such task.
-         *         409: ``task_closed``, ``task_cancelled`` (control is cancel), or
+         *         409: ``task_closed``, ``task_cancelled`` (control is cancel),
+         *             ``task_held`` (a gating prerequisite is open), or
          *             ``concurrency_limit`` (``settings.max_concurrent_tasks``
          *             other tasks of the agent have an open session).
          */
@@ -5804,6 +6808,7 @@ export interface paths {
         put?: never;
         /**
          * Heartbeat Agent Task Session
+         * @deprecated
          * @description Record a heartbeat; return the control value, seq, and budget.
          *
          *     When the task has run longer than the agent's
@@ -5834,6 +6839,7 @@ export interface paths {
         put?: never;
         /**
          * Close Agent Task Session
+         * @deprecated
          * @description Close a session. Closing a closed session changes nothing.
          *
          *     When no session remains open, the status follows the control value:
@@ -5863,6 +6869,7 @@ export interface paths {
         put?: never;
         /**
          * Report Agent Task Usage
+         * @deprecated
          * @description Report the tokens of one model call; return the remaining budget.
          *
          *     Imbi prices the report from the AI model catalog and records the
@@ -5895,6 +6902,7 @@ export interface paths {
         put?: never;
         /**
          * Open Agent Task Request
+         * @deprecated
          * @description Ask a person for feedback or an approval; block the task.
          *
          *     A repeat with the same ``request_key`` returns the first request
@@ -5930,6 +6938,7 @@ export interface paths {
         put?: never;
         /**
          * Set Agent Task Outcome
+         * @deprecated
          * @description Close the task with a terminal outcome (F5).
          *
          *     Every open session closes. Every outcome but ``done_acted`` needs a
@@ -5946,6 +6955,197 @@ export interface paths {
          *             than :data:`MAX_STRUCTURED_OUTPUT_BYTES` or is not JSON.
          */
         post: operations["set_agent_task_outcome_api_organizations__org_slug__agent_tasks__short_id__outcome_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open Agent Task Session
+         * @description Open a harness session on a task.
+         *
+         *     A repeat with the same ``session_key`` returns the first session
+         *     with status 200. A new session moves a ``queued`` task to
+         *     ``running``, as it does a ``blocked`` task with no open request.
+         *
+         *     Raises:
+         *         403: The caller is not the service account of the task's agent.
+         *         404: No such task.
+         *         409: ``task_closed``, ``task_cancelled`` (control is cancel),
+         *             ``task_held`` (a gating prerequisite is open), or
+         *             ``concurrency_limit`` (``settings.max_concurrent_tasks``
+         *             other tasks of the agent have an open session).
+         */
+        post: operations["open_ticket_session_api_organizations__org_slug__tickets__short_id__sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/sessions/{session_id}/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Heartbeat Agent Task Session
+         * @description Record a heartbeat; return the control value, seq, and budget.
+         *
+         *     When the task has run longer than the agent's
+         *     ``settings.task_timeout_seconds`` since its first session opened,
+         *     the task closes with ``exceeded_ceiling`` (reason ``task_timeout``)
+         *     and the response has the closed status.
+         *
+         *     Raises:
+         *         403: The caller is not the service account of the task's agent.
+         *         404: No such task or session.
+         *         409: ``task_closed`` or ``session_closed``.
+         */
+        post: operations["heartbeat_ticket_session_api_organizations__org_slug__tickets__short_id__sessions__session_id__heartbeat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/sessions/{session_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close Agent Task Session
+         * @description Close a session. Closing a closed session changes nothing.
+         *
+         *     When no session remains open, the status follows the control value:
+         *     ``pause`` makes the task ``paused``, ``run`` puts a ``running`` task
+         *     back to ``queued``, and ``cancel`` closes it.
+         *
+         *     Raises:
+         *         403: The caller is not the service account of the task's agent.
+         *         404: No such task or session.
+         *         409: ``task_closed``.
+         */
+        post: operations["close_ticket_session_api_organizations__org_slug__tickets__short_id__sessions__session_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Agent Task Usage
+         * @description Report the tokens of one model call; return the remaining budget.
+         *
+         *     Imbi prices the report from the AI model catalog and records the
+         *     prices it used. A report with no token counts is unmeasured, and an
+         *     unknown model has no cost; both are still recorded. When the cost
+         *     total passes the budget, the task closes with ``exceeded_ceiling``
+         *     (reason ``budget``). A repeat with the same ``idempotency_key``
+         *     returns the first report with status 200.
+         *
+         *     Raises:
+         *         403: The caller is not the service account of the task's agent.
+         *         404: No such task or session.
+         *         409: ``task_closed`` or ``session_closed``.
+         */
+        post: operations["report_ticket_usage_api_organizations__org_slug__tickets__short_id__usage_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open Agent Task Request
+         * @description Ask a person for feedback or an approval; block the task.
+         *
+         *     A repeat with the same ``request_key`` returns the first request
+         *     with status 200, resolved or not. Changed ``artifact_digests`` need a
+         *     new key (I3).
+         *
+         *     Raises:
+         *         403: The caller is not the service account of the task's agent.
+         *         404: No such task or session.
+         *         409: ``task_closed``, ``session_closed``, or
+         *             ``request_key_conflict`` (the request with the key has other
+         *             ``artifact_digests``).
+         *         413: The request content is larger than
+         *             :data:`MAX_PAYLOAD_BYTES`.
+         *         422: An approval with no ``artifact_digests``, or an
+         *             ``expires_at`` that is not in the future.
+         */
+        post: operations["open_ticket_request_api_organizations__org_slug__tickets__short_id__requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/outcome": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Agent Task Outcome
+         * @description Close the task with a terminal outcome (F5).
+         *
+         *     Every open session closes. Every outcome but ``done_acted`` needs a
+         *     slug ``reason``. Per-outcome reason lists (F6) are not checked yet.
+         *
+         *     Raises:
+         *         403: The caller is not the service account of the task's agent.
+         *         404: No such task.
+         *         409: ``task_closed``.
+         *         422: Not an F5 outcome, or no reason.
+         *             ``invalid_structured_output``: ``structured_output`` does
+         *             not match the ``output_schema`` of the task, the task has
+         *             no ``output_schema``, or ``structured_output`` is larger
+         *             than :data:`MAX_STRUCTURED_OUTPUT_BYTES` or is not JSON.
+         */
+        post: operations["set_ticket_outcome_api_organizations__org_slug__tickets__short_id__outcome_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6003,9 +7203,14 @@ export interface paths {
          * @description Make a workflow in ``draft`` with its version 1.
          *
          *     Raises:
+         *         403: The graph has an LLM Call step and the caller does not
+         *             have ``workflow:write``; ``owner_team_forbidden``: the caller
+         *             is not an admin or a member of the owner team; or
+         *             ``model_not_allowed`` (see :func:`_check_llm_call`).
          *         409: The slug is in use in the org.
-         *         422: The graph is too large, the team is not in the org, or
-         *             the name gives an empty slug and no slug is supplied.
+         *         422: The graph is too large, the team is not in the org, the
+         *             name gives an empty slug and no slug is supplied, or the
+         *             prompt of an LLM Call step is not valid.
          */
         post: operations["create_workflow_api_organizations__org_slug__workflows__post"];
         delete?: never;
@@ -6032,13 +7237,19 @@ export interface paths {
          *     Only an admin or a member of the current owner team can change the
          *     owner team, because the owner team controls the runs.
          *
+         *     The CMS prompt of each LLM Call node that the save removes is
+         *     archived, and an archived prompt of a node of the graph is
+         *     restored.
+         *
          *     Raises:
          *         403: ``owner_team_forbidden``: the caller changes the owner team
-         *             and is not an admin or a member of the current owner team.
+         *             and is not an admin or a member of the current owner team;
+         *             ``model_not_allowed`` (see :func:`_check_llm_call`).
          *         404: No such workflow.
          *         409: ``conflict``: the workflow changed owner team or was
          *             deleted between the check and the save.
-         *         422: The graph is too large, or the team is not in the org.
+         *         422: The graph is too large, the team is not in the org, or
+         *             the prompt of an LLM Call step is not valid.
          */
         put: operations["save_workflow_api_organizations__org_slug__workflows__slug__put"];
         post?: never;
@@ -6046,9 +7257,12 @@ export interface paths {
          * Delete Workflow
          * @description Delete a workflow that has no open runs.
          *
+         *     The CMS prompts of its LLM Call nodes are archived.
+         *
          *     Raises:
          *         404: No such workflow.
-         *         409: A run of the workflow is queued or running.
+         *         409: A run of the workflow is queued or running, or the
+         *             organization was renamed during the delete.
          */
         delete: operations["delete_workflow_api_organizations__org_slug__workflows__slug__delete"];
         options?: never;
@@ -6213,7 +7427,7 @@ export interface paths {
          *
          *     A person starts a manual trigger. The scheduler starts a schedule
          *     trigger, and the gateway a webhook trigger, with the origin in
-         *     headers (see :func:`agent_tasks.task_origin`). The idempotency key
+         *     headers (see :func:`tickets.task_origin`). The idempotency key
          *     is the ``Idempotency-Key`` header (the scheduler sends its run id),
          *     or the delivery id for a webhook. A repeat by the same origin
          *     returns the first run.
@@ -6255,9 +7469,11 @@ export interface paths {
          * Get Run
          * @description Return a run with its step records.
          *
-         *     The ``reason``, ``summary``, and ``result`` of an agent step's
-         *     output come from the agent task. Only a caller who can read agent
-         *     tasks (``agent_task:read``) gets them.
+         *     A later step can render agent task content into its ``input`` and
+         *     ``output``. For a run that a closed task started or that has an
+         *     agent step, only a caller who can read agent tasks
+         *     (``agent_task:read``) gets the step ``input`` and ``output``, the
+         *     dedupe key, and the ticket attributes of the payload.
          *
          *     Raises:
          *         404: No such workflow or run.
@@ -6346,13 +7562,18 @@ export interface paths {
          *         404: No such workflow, run, or step.
          *         409: The step is not a running slack step, or
          *             ``outcome_unknown``: a call with the key did not finish.
-         *         422: ``invalid_channel``: the channel is not a Slack channel id.
+         *         422: ``invalid_channel``: the channel is not a Slack channel id,
+         *             or ``ticket_not_found``: the ticket is not a task of the
+         *             organization.
          *         502: ``slack_unreachable``: the call to Slack failed, and Slack
          *             may have posted the message.
          *         503: ``slack_not_configured``: imbi-api has no bot token.
          *
          *     A refusal from Slack is not an error here: the response has its
          *     code in ``error``, and the engine fails the step.
+         *
+         *     A step with a ``ticket`` shows the task below the message (see
+         *     :func:`workflow_tickets.with_ticket_block`).
          */
         post: operations["send_step_slack_api_organizations__org_slug__workflows__slug__runs__run_id__steps__node_id__slack_post"];
         delete?: never;
@@ -6419,7 +7640,7 @@ export interface paths {
          *         422: ``agent_not_found``, ``agent_params_not_literal``,
          *             ``trigger_project_missing``, ``project_not_rendered``, or the
          *             project or the budget is not valid (see
-         *             :func:`agent_tasks.make_task`).
+         *             :func:`tickets.make_task`).
          */
         post: operations["step_agent_task_api_organizations__org_slug__workflows__slug__runs__run_id__steps__node_id__agent_task_post"];
         delete?: never;
@@ -8573,8 +9794,9 @@ export interface paths {
          * Delete Organization
          * @description Delete an empty organization.
          *
-         *     Its memberships, agent tasks, workflow runs, secret grants, and
-         *     settled secret resolutions go with it.
+         *     Its memberships, agent tasks, workflow runs, AI model calls,
+         *     ``workflows/<org>.*`` and ``agents/<org>.*`` prompts, secret
+         *     grants, and settled secret resolutions go with it.
          *
          *     Parameters:
          *         slug: Organization slug to delete.
@@ -8626,7 +9848,7 @@ export interface paths {
          *         slug: Organization slug identifier.
          *
          *     Returns:
-         *         Members with email, display_name, and role.
+         *         Members with id, email, display_name, role, and is_active.
          *
          *     Raises:
          *         404: Organization not found.
@@ -8760,6 +9982,9 @@ export interface paths {
          * Create Prompt
          * @description Create a prompt with its first version.
          *
+         *     Needs ``prompt:create``. For a ``workflows/<org>.<workflow>.<node>``
+         *     prompt, ``workflow:write`` in ``<org>`` is also enough.
+         *
          *     When the caller may promote (see :func:`can_promote`), the default
          *     label points at version 1. Otherwise the prompt is created
          *     with no labels: pointing a label at a version changes what consumers
@@ -8768,9 +9993,11 @@ export interface paths {
          *     such as the assistant uses its packaged prompt.
          *
          *     Raises:
+         *         403: No permission.
          *         409: ``namespace/slug`` is taken.
-         *         422: A template does not parse, or the model is not in the
-         *             catalog.
+         *         422: A template does not parse, the model is not in the
+         *             catalog, or a workflows prompt has tools or no
+         *             ``<org>.`` slug prefix.
          */
         post: operations["create_prompt_api_prompts__post"];
         delete?: never;
@@ -8820,6 +10047,10 @@ export interface paths {
         /**
          * Delete Prompt
          * @description Delete a prompt and every version of it.
+         *
+         *     Raises:
+         *         404: No such prompt.
+         *         409: The prompt is a workflows prompt.
          */
         delete: operations["delete_prompt_api_prompts__namespace___slug__delete"];
         options?: never;
@@ -8836,7 +10067,9 @@ export interface paths {
          *         400: Invalid patch or a read-only path.
          *         403: A rename without ``prompt:promote``.
          *         404: No such prompt.
-         *         409: The new ``namespace/slug`` is taken.
+         *         409: The new ``namespace/slug`` is taken, the rename moves
+         *             a prompt into or out of the ``workflows`` namespace, or the
+         *             prompt moved or was deleted while this request ran.
          *         422: The patched values are not valid.
          */
         patch: operations["patch_prompt_api_prompts__namespace___slug__patch"];
@@ -8859,14 +10092,22 @@ export interface paths {
          * Create Prompt Version
          * @description Save a new version. Versions are never changed after this.
          *
+         *     Needs ``prompt:update``. For a ``workflows/<org>.*`` prompt,
+         *     ``workflow:write`` in ``<org>`` is also enough.
+         *
          *     When the content is the same as the newest version, nothing is
          *     written and the newest version is returned with status 200.
          *
+         *     A new version of an archived workflows prompt un-archives it: a
+         *     workflow step with the same key is back.
+         *
          *     Raises:
+         *         403: No permission.
          *         404: No such prompt.
-         *         409: Another version was saved at the same time.
-         *         422: A template does not parse, or the model is not in the
-         *             catalog.
+         *         409: The prompt is archived and not a workflows prompt, or
+         *             another version was saved at the same time.
+         *         422: A template does not parse, the model is not in the
+         *             catalog, or a workflows prompt has tools.
          */
         post: operations["create_prompt_version_api_prompts__namespace___slug__versions_post"];
         delete?: never;
@@ -8935,7 +10176,8 @@ export interface paths {
          *     Raises:
          *         403: The caller cannot promote this prompt.
          *         404: No such prompt or version.
-         *         409: The prompt changed while this request ran.
+         *         409: The prompt is archived, or it changed while this request
+         *             ran.
          *         422: The label is made only of digits.
          */
         put: operations["set_prompt_label_api_prompts__namespace___slug__labels__label__put"];
@@ -8946,8 +10188,8 @@ export interface paths {
          *
          *     Raises:
          *         404: No such prompt or label.
-         *         409: The label is the default label, or the prompt changed
-         *             while this request ran.
+         *         409: The label is the default label, the prompt is archived,
+         *             or the prompt changed while this request ran.
          */
         delete: operations["delete_prompt_label_api_prompts__namespace___slug__labels__label__delete"];
         options?: never;
@@ -8969,7 +10211,8 @@ export interface paths {
          *
          *     Raises:
          *         404: No such prompt.
-         *         409: The prompt changed while this request ran.
+         *         409: The prompt is archived, or it changed while this request
+         *             ran.
          *         422: The prompt has no such label.
          */
         put: operations["set_prompt_default_label_api_prompts__namespace___slug__default_label_put"];
@@ -10290,6 +11533,16 @@ export interface components {
             default_top_p?: number | null;
             /** Monthly Spend Cap */
             monthly_spend_cap?: number | string | null;
+            /**
+             * Supports Structured Output
+             * @default false
+             */
+            supports_structured_output: boolean;
+            /**
+             * Supports Forced Tool Choice
+             * @default true
+             */
+            supports_forced_tool_choice: boolean;
         };
         /**
          * AIModelResponse
@@ -10355,6 +11608,16 @@ export interface components {
             default_top_p?: number | null;
             /** Monthly Spend Cap */
             monthly_spend_cap?: string | null;
+            /**
+             * Supports Structured Output
+             * @default false
+             */
+            supports_structured_output: boolean;
+            /**
+             * Supports Forced Tool Choice
+             * @default true
+             */
+            supports_forced_tool_choice: boolean;
             /** Created At */
             created_at?: string | null;
             /** Updated At */
@@ -11188,6 +12451,37 @@ export interface components {
             /** Color */
             color?: string | null;
         };
+        /**
+         * AgentTaskCounts
+         * @description The number of tasks in each inbox group.
+         */
+        AgentTaskCounts: {
+            /**
+             * Input
+             * @default 0
+             */
+            input: number;
+            /**
+             * Running
+             * @default 0
+             */
+            running: number;
+            /**
+             * Paused
+             * @default 0
+             */
+            paused: number;
+            /**
+             * Queued
+             * @default 0
+             */
+            queued: number;
+            /**
+             * Closed
+             * @default 0
+             */
+            closed: number;
+        };
         /** AgentTaskCreate */
         AgentTaskCreate: {
             /** Agent Slug */
@@ -11214,6 +12508,12 @@ export interface components {
              * @description A repeat with the same key returns the first task.
              */
             idempotency_key?: string | null;
+            /**
+             * Priority
+             * @default normal
+             * @enum {string}
+             */
+            priority: "low" | "normal" | "high" | "urgent";
         };
         /** AgentTaskEventResponse */
         AgentTaskEventResponse: {
@@ -11288,12 +12588,18 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "queued" | "running" | "blocked" | "paused" | "closed";
+            status: "held" | "queued" | "running" | "paused" | "open" | "in_progress" | "blocked" | "closed";
             /**
              * Control
              * @enum {string}
              */
             control: "run" | "pause" | "cancel";
+            /**
+             * Priority
+             * @default normal
+             * @enum {string}
+             */
+            priority: "low" | "normal" | "high" | "urgent";
             /** Phase */
             phase?: string | null;
             /** Outcome */
@@ -11342,6 +12648,12 @@ export interface components {
             } | null;
             /** Blocked Since */
             blocked_since?: string | null;
+            /** Highlights */
+            highlights?: components["schemas"]["TaskHighlight"][];
+            /** Project Icons */
+            project_icons?: {
+                [key: string]: string;
+            };
         };
         /**
          * AgentTaskOrigin
@@ -11357,11 +12669,32 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "human" | "schedule" | "webhook" | "task" | "task_completed";
+            kind: "human" | "schedule" | "webhook" | "task" | "ticket" | "task_completed" | "ticket_closed";
             /** User */
             user?: string | null;
         } & {
             [key: string]: unknown;
+        };
+        /**
+         * AgentTaskPosition
+         * @description Where a task is in the task list.
+         */
+        AgentTaskPosition: {
+            /**
+             * Group
+             * @enum {string}
+             */
+            group: "input" | "running" | "paused" | "queued" | "closed";
+            /** Index */
+            index: number;
+        };
+        /** AgentTaskPriority */
+        AgentTaskPriority: {
+            /**
+             * Priority
+             * @enum {string}
+             */
+            priority: "low" | "normal" | "high" | "urgent";
         };
         /** AgentTaskReassign */
         AgentTaskReassign: {
@@ -11376,9 +12709,12 @@ export interface components {
          * AgentTaskRelations
          * @description The tasks related to a task.
          *
-         *     ``requires`` are the tasks that block this task; ``required_by`` are
-         *     the tasks that this task blocks. ``parent`` and ``children`` come from
-         *     a ``task`` origin (delegation) and do not change.
+         *     ``requires`` are the prerequisites of this task; ``required_by`` are
+         *     the tasks that have this task as a prerequisite. A prerequisite is a
+         *     link only, unless it ``gates``: a gating prerequisite holds the task
+         *     (status ``held``, never claimed) until it closes with a ``done_*``
+         *     outcome. ``parent`` and ``children`` come from the parent of each
+         *     ticket. ``tree`` is the state of the tree of the ticket.
          */
         AgentTaskRelations: {
             /** Requires */
@@ -11388,6 +12724,7 @@ export interface components {
             parent?: components["schemas"]["RelatedTask"] | null;
             /** Children */
             children: components["schemas"]["RelatedTask"][];
+            tree: components["schemas"]["TicketTree"];
         };
         /** AgentTaskReply */
         AgentTaskReply: {
@@ -11468,12 +12805,18 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "queued" | "running" | "blocked" | "paused" | "closed";
+            status: "held" | "queued" | "running" | "paused" | "open" | "in_progress" | "blocked" | "closed";
             /**
              * Control
              * @enum {string}
              */
             control: "run" | "pause" | "cancel";
+            /**
+             * Priority
+             * @default normal
+             * @enum {string}
+             */
+            priority: "low" | "normal" | "high" | "urgent";
             /** Phase */
             phase?: string | null;
             /** Outcome */
@@ -14738,6 +16081,39 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** HighlightPart */
+        HighlightPart: {
+            /** Text */
+            text: string;
+            /** Match */
+            match: boolean;
+        };
+        /**
+         * HistoryEntry
+         * @description One part of the history of a ticket. Handoffs are not stored
+         *     yet, so the history has none.
+         */
+        HistoryEntry: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "comment" | "request" | "child" | "prerequisite";
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Actor */
+            actor?: string | null;
+            /** Text */
+            text: string;
+            /**
+             * Webhook
+             * @default false
+             */
+            webhook: boolean;
+        };
         /** IdentitiesResponse */
         IdentitiesResponse: {
             primary: components["schemas"]["IdentityRecord"] | null;
@@ -16619,6 +17995,19 @@ export interface components {
              */
             document_analytics_identities: "enabled" | "authors_only" | "disabled";
         };
+        /** OrganizationMember */
+        OrganizationMember: {
+            /** Id */
+            id: string;
+            /** Email */
+            email: string;
+            /** Display Name */
+            display_name?: string | null;
+            /** Role */
+            role?: string | null;
+            /** Is Active */
+            is_active: boolean;
+        };
         /** OrganizationRef */
         OrganizationRef: {
             /** Name */
@@ -18163,6 +19552,8 @@ export interface components {
             created_at?: string | null;
             /** Updated At */
             updated_at?: string | null;
+            /** Archived At */
+            archived_at?: string | null;
         };
         /**
          * PromptVariable
@@ -18173,7 +19564,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "str" | "int" | "float" | "bool" | "list" | "object";
+            type: "str" | "int" | "float" | "bool" | "list" | "object" | "any";
             /**
              * Required
              * @default false
@@ -18603,7 +19994,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "queued" | "running" | "blocked" | "paused" | "closed";
+            status: "held" | "queued" | "running" | "paused" | "open" | "in_progress" | "blocked" | "closed";
             /** Outcome */
             outcome?: string | null;
             /**
@@ -18617,6 +20008,8 @@ export interface components {
             linked_by?: string | null;
             /** Linked At */
             linked_at?: string | null;
+            /** Gates */
+            gates?: boolean | null;
         };
         /**
          * RelationshipLink
@@ -19683,7 +21076,8 @@ export interface components {
          *
          *     ``task_id``, ``outcome``, ``reason``, and ``summary`` come from the
          *     agent task of an ``agent`` step. ``reason`` and ``summary`` are
-         *     ``None`` for a caller who cannot read agent tasks.
+         *     ``None`` for a caller who cannot read agent tasks, and ``error``
+         *     has only its code.
          */
         RunFailure: {
             /** Node Key */
@@ -19707,7 +21101,7 @@ export interface components {
         };
         /**
          * RunRequest
-         * @description Run a decision prompt: a saved version (``ref``) or a draft.
+         * @description Run a prompt: a saved version (``ref``) or a draft.
          */
         RunRequest: {
             /** Ref */
@@ -19720,6 +21114,11 @@ export interface components {
             variables: {
                 [key: string]: unknown;
             };
+            /**
+             * Output Fields
+             * @default []
+             */
+            output_fields: components["schemas"]["OutputField"][];
         };
         /**
          * RunRequestBody
@@ -19735,7 +21134,11 @@ export interface components {
         };
         /**
          * RunResponse
-         * @description The typed answers of one decision run.
+         * @description The result of one run.
+         *
+         *     A decision run fills ``request`` and ``answers``. A generative run
+         *     fills ``text``, ``result`` (with ``output_fields`` only),
+         *     ``content_sha256``, ``cost_usd``, and ``call_id``.
          */
         RunResponse: {
             /** Ref */
@@ -19746,8 +21149,11 @@ export interface components {
             model: string;
             /** Model Id */
             model_id: string;
-            request: components["schemas"]["RunRequestBody"];
-            /** Answers */
+            request?: components["schemas"]["RunRequestBody"] | null;
+            /**
+             * Answers
+             * @default {}
+             */
             answers: {
                 [key: string]: unknown;
             };
@@ -19755,6 +21161,18 @@ export interface components {
             usage: {
                 [key: string]: unknown;
             };
+            /** Content Sha256 */
+            content_sha256?: string | null;
+            /** Text */
+            text?: string | null;
+            /** Result */
+            result?: {
+                [key: string]: unknown;
+            } | null;
+            /** Cost Usd */
+            cost_usd?: number | null;
+            /** Call Id */
+            call_id?: string | null;
         };
         /**
          * RunnerChain
@@ -20944,8 +22362,22 @@ export interface components {
              */
             status: "ok" | "initializing" | "error";
         };
-        /** StepAgentTask */
+        /**
+         * StepAgentTask
+         * @description The attributes of :class:`agent_step.TicketAttributes` are set
+         *     when the task is closed.
+         */
         StepAgentTask: {
+            /** Title */
+            title?: string | null;
+            /** Url */
+            url?: string | null;
+            /** Project */
+            project?: string | null;
+            /** Agent */
+            agent?: string | null;
+            /** Cost Usd */
+            cost_usd?: number | null;
             /** Task Id */
             task_id: string;
             /** Status */
@@ -21115,6 +22547,21 @@ export interface components {
                 [key: string]: components["schemas"]["RelationshipLink"];
             } | null;
         };
+        /**
+         * TaskHighlight
+         * @description A field of a task that the text query matched.
+         */
+        TaskHighlight: {
+            /**
+             * Field
+             * @enum {string}
+             */
+            field: "agent" | "project" | "short_id" | "title";
+            /** Id */
+            id?: string | null;
+            /** Parts */
+            parts: components["schemas"]["HighlightPart"][];
+        };
         /** TaskProject */
         TaskProject: {
             /** Project Id */
@@ -21133,7 +22580,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "queued" | "running" | "blocked" | "paused" | "closed";
+            status: "held" | "queued" | "running" | "paused" | "open" | "in_progress" | "blocked" | "closed";
             /**
              * Control
              * @enum {string}
@@ -21258,6 +22705,53 @@ export interface components {
             port: number;
             /** Port Name */
             port_name: string;
+        };
+        /**
+         * TicketDependencySet
+         * @description The kind of a dependency.
+         */
+        TicketDependencySet: {
+            /**
+             * Gates
+             * @description Hold the ticket until the prerequisite closes with a ``done_*`` outcome. Only a ticket that has not started (``queued`` or ``held``) can get a gating prerequisite.
+             * @default false
+             */
+            gates: boolean;
+        };
+        /** TicketHistory */
+        TicketHistory: {
+            /** Entries */
+            entries: components["schemas"]["HistoryEntry"][];
+            /**
+             * Cut
+             * @default 0
+             */
+            cut: number;
+        };
+        /**
+         * TicketParentSet
+         * @description The new parent of a ticket.
+         */
+        TicketParentSet: {
+            /**
+             * Parent
+             * @description The short id of the new parent. ``null`` makes the ticket a root.
+             */
+            parent: string | null;
+        };
+        /**
+         * TicketTree
+         * @description The tree of a ticket, computed on read (ADR 0028).
+         */
+        TicketTree: {
+            /** Root Short Id */
+            root_short_id: string;
+            /** Root Title */
+            root_title: string;
+            /** Tickets */
+            tickets: number;
+            /** Open */
+            open: number;
         };
         /** TokenExchangerType */
         TokenExchangerType: {
@@ -25131,7 +26625,106 @@ export interface operations {
             };
         };
     };
+    list_harness_ticket_events_api_harness_tickets__short_id__events_get: {
+        parameters: {
+            query?: {
+                after_seq?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskEventResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_harness_ticket_history_api_harness_tickets__short_id__history_get: {
+        parameters: {
+            query?: {
+                max_seq?: number | null;
+            };
+            header?: never;
+            path: {
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketHistory"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     attach_harness_task_project_api_harness_tasks__short_id__projects__project__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachedProject"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    attach_harness_ticket_project_api_harness_tickets__short_id__projects__project__put: {
         parameters: {
             query?: never;
             header?: never;
@@ -25207,7 +26800,86 @@ export interface operations {
             };
         };
     };
+    create_harness_child_ticket_api_harness_tickets__short_id__children_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChildTaskCreate"];
+            };
+        };
+        responses: {
+            /** @description A child with this idempotency key exists. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     check_harness_tool_call_api_harness_tasks__short_id__tool_calls_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ToolCallCheck"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ToolCallVerdict"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_harness_tool_call_api_harness_tickets__short_id__tool_calls_check_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -26855,7 +28527,9 @@ export interface operations {
     run_prompt_api_organizations__org_slug__prompts_run_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 org_slug: string;
             };
@@ -31164,13 +32838,15 @@ export interface operations {
     list_agent_tasks_api_organizations__org_slug__agent_tasks__get: {
         parameters: {
             query?: {
-                status?: ("queued" | "running" | "blocked" | "paused" | "closed")[] | null;
-                agent_id?: string | null;
-                owner?: string | null;
+                status?: ("held" | "queued" | "running" | "paused" | "open" | "in_progress" | "blocked" | "closed")[] | null;
+                agent_id?: string[] | null;
+                owner?: string[] | null;
                 mine?: boolean;
                 q?: string | null;
                 limit?: number;
                 cursor?: string | null;
+                group?: ("input" | "running" | "paused" | "queued" | "closed") | null;
+                offset?: number;
             };
             header?: never;
             path: {
@@ -31238,6 +32914,81 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    count_agent_tasks_api_organizations__org_slug__agent_tasks_counts_get: {
+        parameters: {
+            query?: {
+                status?: ("held" | "queued" | "running" | "paused" | "open" | "in_progress" | "blocked" | "closed")[] | null;
+                agent_id?: string[] | null;
+                owner?: string[] | null;
+                mine?: boolean;
+                q?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskCounts"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_agent_task_position_api_organizations__org_slug__agent_tasks__short_id__position_get: {
+        parameters: {
+            query?: {
+                status?: ("held" | "queued" | "running" | "paused" | "open" | "in_progress" | "blocked" | "closed")[] | null;
+                agent_id?: string[] | null;
+                owner?: string[] | null;
+                mine?: boolean;
+                q?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskPosition"];
                 };
             };
             /** @description Validation Error */
@@ -31633,6 +33384,42 @@ export interface operations {
             };
         };
     };
+    set_agent_task_priority_api_organizations__org_slug__agent_tasks__short_id__priority_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentTaskPriority"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     resolve_agent_task_request_api_organizations__org_slug__agent_tasks__short_id__requests__request_id__resolve_post: {
         parameters: {
             query?: never;
@@ -31758,7 +33545,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["TicketDependencySet"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             204: {
@@ -31790,6 +33581,40 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_agent_task_parent_api_organizations__org_slug__agent_tasks__short_id__parent_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TicketParentSet"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             204: {
@@ -31873,6 +33698,899 @@ export interface operations {
         };
     };
     dissociate_agent_task_project_api_organizations__org_slug__agent_tasks__short_id__projects__project_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                project_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tickets_api_organizations__org_slug__tickets__get: {
+        parameters: {
+            query?: {
+                status?: ("held" | "queued" | "running" | "paused" | "open" | "in_progress" | "blocked" | "closed")[] | null;
+                agent_id?: string[] | null;
+                owner?: string[] | null;
+                mine?: boolean;
+                q?: string | null;
+                limit?: number;
+                cursor?: string | null;
+                group?: ("input" | "running" | "paused" | "queued" | "closed") | null;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskListItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_ticket_api_organizations__org_slug__tickets__post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Imbi-Scheduled-Task"?: string | null;
+                "X-Imbi-Webhook"?: string | null;
+                "X-Imbi-Delivery"?: string | null;
+                "X-Imbi-Scheduled-Task-Accountable"?: string | null;
+                "X-Imbi-Scheduled-Task-Org"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentTaskCreate"];
+            };
+        };
+        responses: {
+            /** @description A task with this idempotency key exists; it is returned unchanged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    count_tickets_api_organizations__org_slug__tickets_counts_get: {
+        parameters: {
+            query?: {
+                status?: ("held" | "queued" | "running" | "paused" | "open" | "in_progress" | "blocked" | "closed")[] | null;
+                agent_id?: string[] | null;
+                owner?: string[] | null;
+                mine?: boolean;
+                q?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskCounts"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ticket_position_api_organizations__org_slug__tickets__short_id__position_get: {
+        parameters: {
+            query?: {
+                status?: ("held" | "queued" | "running" | "paused" | "open" | "in_progress" | "blocked" | "closed")[] | null;
+                agent_id?: string[] | null;
+                owner?: string[] | null;
+                mine?: boolean;
+                q?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskPosition"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    count_waiting_tickets_api_organizations__org_slug__tickets_waiting_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskWaiting"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ticket_api_organizations__org_slug__tickets__short_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_ticket_api_organizations__org_slug__tickets__short_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_ticket_events_api_organizations__org_slug__tickets__short_id__events_get: {
+        parameters: {
+            query?: {
+                after_seq?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskEventResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    append_ticket_events_api_organizations__org_slug__tickets__short_id__events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventBatch"];
+            };
+        };
+        responses: {
+            /** @description All events in the batch are duplicates. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppendEventsResponse"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppendEventsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pause_ticket_api_organizations__org_slug__tickets__short_id__pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_ticket_api_organizations__org_slug__tickets__short_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_ticket_api_organizations__org_slug__tickets__short_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    acknowledge_ticket_api_organizations__org_slug__tickets__short_id__acknowledge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_ticket_api_organizations__org_slug__tickets__short_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentTaskRetry"];
+            };
+        };
+        responses: {
+            /** @description A task with this idempotency key exists; it is returned unchanged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reassign_ticket_api_organizations__org_slug__tickets__short_id__reassign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentTaskReassign"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_ticket_priority_api_organizations__org_slug__tickets__short_id__priority_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentTaskPriority"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_ticket_request_api_organizations__org_slug__tickets__short_id__requests__request_id__resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                request_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentTaskRequestResolve"];
+            };
+        };
+        responses: {
+            /** @description The caller already resolved the request this way; it is returned unchanged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskRequestResolveResponse"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskRequestResolveResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reply_ticket_api_organizations__org_slug__tickets__short_id__reply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentTaskReply"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ticket_relations_api_organizations__org_slug__tickets__short_id__relations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskRelations"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_ticket_dependency_api_organizations__org_slug__tickets__short_id__requires__prerequisite__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                prerequisite: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["TicketDependencySet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_ticket_dependency_api_organizations__org_slug__tickets__short_id__requires__prerequisite__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                prerequisite: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_ticket_parent_api_organizations__org_slug__tickets__short_id__parent_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TicketParentSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_ticket_projects_api_organizations__org_slug__tickets__short_id__projects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssociatedProject"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    associate_ticket_project_api_organizations__org_slug__tickets__short_id__projects__project_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dissociate_ticket_project_api_organizations__org_slug__tickets__short_id__projects__project_id__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -32338,6 +35056,247 @@ export interface operations {
             };
         };
     };
+    open_ticket_session_api_organizations__org_slug__tickets__short_id__sessions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionOpen"];
+            };
+        };
+        responses: {
+            /** @description A session with this session key exists; it is returned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionOpenResponse"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionOpenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    heartbeat_ticket_session_api_organizations__org_slug__tickets__short_id__sessions__session_id__heartbeat_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_ticket_session_api_organizations__org_slug__tickets__short_id__sessions__session_id__close_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionClose"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_ticket_usage_api_organizations__org_slug__tickets__short_id__usage_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UsageReport"];
+            };
+        };
+        responses: {
+            /** @description A report with this idempotency key exists; it is returned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageResponse"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    open_ticket_request_api_organizations__org_slug__tickets__short_id__requests_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequestCreate"];
+            };
+        };
+        responses: {
+            /** @description A request with this request key exists; it is returned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequestOpenResponse"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequestOpenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_ticket_outcome_api_organizations__org_slug__tickets__short_id__outcome_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutcomeSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_agent_usage_api_organizations__org_slug__agent_usage__get: {
         parameters: {
             query?: {
@@ -32478,8 +35437,8 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                slug: string;
                 org_slug: string;
+                slug: string;
             };
             cookie?: never;
         };
@@ -32514,8 +35473,8 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                slug: string;
                 org_slug: string;
+                slug: string;
             };
             cookie?: never;
         };
@@ -32927,10 +35886,10 @@ export interface operations {
                 "Idempotency-Key": string;
             };
             path: {
+                org_slug: string;
                 slug: string;
                 run_id: string;
                 node_id: string;
-                org_slug: string;
             };
             cookie?: never;
         };
@@ -36621,9 +39580,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["OrganizationMember"][];
                 };
             };
             /** @description Validation Error */

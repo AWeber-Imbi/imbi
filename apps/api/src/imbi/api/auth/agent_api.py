@@ -50,7 +50,7 @@ REFUSED_MODULES = frozenset(
     {
         'imbi.api.endpoints.admin',
         'imbi.api.endpoints.admin_plugins',
-        'imbi.api.endpoints.agent_task_harness',
+        'imbi.api.endpoints.ticket_harness',
         'imbi.api.endpoints.ai_providers',
         'imbi.api.endpoints.api_keys',
         'imbi.api.endpoints.auth',

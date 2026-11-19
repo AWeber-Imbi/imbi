@@ -1,7 +1,7 @@
 """Agent task endpoints (ADR 0020).
 
 An agent task is the durable unit of work of one agent. Its state lives
-in the ``agent_runtime`` Postgres schema; the graph holds the agent,
+in the ``tickets`` Postgres schema; the graph holds the agent,
 the organization, and the project that a task refers to by id. People
 are referred to by email, as everywhere in this API.
 
@@ -14,7 +14,7 @@ caller that is not a member gets ``403 organization_forbidden``: see
 Nothing runs a task yet. A person can make a task, read it and its
 events, and change its control value. When no harness session is open,
 a control change also changes the status at once: see
-:meth:`imbi.api.agent_tasks.TaskStore.set_control`.
+:meth:`imbi.api.tickets.TicketStore.set_control`.
 """
 
 import contextlib
@@ -27,23 +27,27 @@ import uuid
 from collections import abc
 
 import fastapi
+import fastapi.routing
 import orjson
 import pydantic
+from fastapi import utils as fastapi_utils
 
-from imbi.api import agent_tasks
-from imbi.api.agent_tasks.store import (
-    ActorKind,
-    Channel,
-    Control,
-    ResolvedStatus,
-    Status,
-)
+from imbi.api import tickets
 from imbi.api.auth import autonomous, organizations, permissions
 from imbi.api.endpoints import agents
 from imbi.api.endpoints._pagination import (
     build_link_header,
     decode_cursor,
     encode_cursor,
+)
+from imbi.api.tickets.store import (
+    ActorKind,
+    Channel,
+    Control,
+    Group,
+    Priority,
+    ResolvedStatus,
+    Status,
 )
 from imbi.common import graph, models
 from imbi.common.auth import permissions as common_permissions
@@ -116,6 +120,7 @@ class AgentTaskCreate(pydantic.BaseModel):
         max_length=200,
         description='A repeat with the same key returns the first task.',
     )
+    priority: Priority = 'normal'
 
     @pydantic.model_validator(mode='before')
     @classmethod
@@ -157,6 +162,10 @@ class AgentTaskReassign(pydantic.BaseModel):
     )
 
 
+class AgentTaskPriority(pydantic.BaseModel):
+    priority: Priority
+
+
 class AgentTaskOrigin(pydantic.BaseModel):
     """What started a task. It does not change.
 
@@ -168,8 +177,19 @@ class AgentTaskOrigin(pydantic.BaseModel):
 
     model_config = pydantic.ConfigDict(extra='allow')
 
+    #: ``ticket`` and ``ticket_closed`` are the ADR 0028 names of
+    #: ``task`` and ``task_completed``. Child tickets keep ``task`` and
+    #: runs keep ``task_completed`` until release B (see
+    #: :data:`imbi.api.tickets.store.CHILD_ORIGIN_KINDS` and
+    #: :mod:`imbi.api.workflows.ticket_trigger`).
     kind: typing.Literal[
-        'human', 'schedule', 'webhook', 'task', 'task_completed'
+        'human',
+        'schedule',
+        'webhook',
+        'task',
+        'ticket',
+        'task_completed',
+        'ticket_closed',
     ]
     #: The email of the person, for a ``human`` origin.
     user: str | None = None
@@ -201,6 +221,7 @@ class AgentTaskResponse(pydantic.BaseModel):
     budget: decimal.Decimal | None = None
     status: Status
     control: Control
+    priority: Priority = 'normal'
     phase: str | None = None
     outcome: str | None = None
     outcome_reason: str | None = None
@@ -227,10 +248,48 @@ class AgentTaskResponse(pydantic.BaseModel):
     structured_output: dict[str, typing.Any] | None = None
 
 
+class HighlightPart(pydantic.BaseModel):
+    text: str
+    match: bool
+
+
+class TaskHighlight(pydantic.BaseModel):
+    """A field of a task that the text query matched."""
+
+    field: typing.Literal['agent', 'project', 'short_id', 'title']
+    #: The id of the agent or project, for those fields.
+    id: str | None = None
+    #: The whole value of the field, in order, split around each match.
+    parts: list[HighlightPart]
+
+
 class AgentTaskListItem(AgentTaskResponse):
     #: When the oldest open request opened, for a task that waits on a
     #: person; ``null`` when the task is closed or has none open.
     blocked_since: datetime.datetime | None = None
+    #: What ``q`` matched; empty without ``q``.
+    highlights: list[TaskHighlight] = pydantic.Field(default_factory=list)
+    #: The icon of each project of the task that has one, by project id:
+    #: the project's own icon, else the icon of its project type.
+    project_icons: dict[str, str] = pydantic.Field(default_factory=dict)
+
+
+class AgentTaskCounts(pydantic.BaseModel):
+    """The number of tasks in each inbox group."""
+
+    input: int = 0
+    running: int = 0
+    paused: int = 0
+    queued: int = 0
+    closed: int = 0
+
+
+class AgentTaskPosition(pydantic.BaseModel):
+    """Where a task is in the task list."""
+
+    group: Group
+    #: The index of the task in its group, from 0.
+    index: int
 
 
 class AgentTaskWaiting(pydantic.BaseModel):
@@ -333,20 +392,58 @@ class RelatedTask(pydantic.BaseModel):
     linked_by_kind: ActorKind | None = None
     linked_by: str | None = None
     linked_at: datetime.datetime | None = None
+    #: Whether the prerequisite holds the dependent until it closes with
+    #: a ``done_*`` outcome (ADR 0028). ``null`` for a parent or child.
+    gates: bool | None = None
+
+
+class TicketTree(pydantic.BaseModel):
+    """The tree of a ticket, computed on read (ADR 0028)."""
+
+    root_short_id: str
+    root_title: str
+    #: The number of tickets in the tree, the root included.
+    tickets: int
+    #: The number of tickets in the tree that are not closed.
+    open: int
 
 
 class AgentTaskRelations(pydantic.BaseModel):
     """The tasks related to a task.
 
-    ``requires`` are the tasks that block this task; ``required_by`` are
-    the tasks that this task blocks. ``parent`` and ``children`` come from
-    a ``task`` origin (delegation) and do not change.
+    ``requires`` are the prerequisites of this task; ``required_by`` are
+    the tasks that have this task as a prerequisite. A prerequisite is a
+    link only, unless it ``gates``: a gating prerequisite holds the task
+    (status ``held``, never claimed) until it closes with a ``done_*``
+    outcome. ``parent`` and ``children`` come from the parent of each
+    ticket. ``tree`` is the state of the tree of the ticket.
     """
 
     requires: list[RelatedTask]
     required_by: list[RelatedTask]
     parent: RelatedTask | None = None
     children: list[RelatedTask]
+    tree: TicketTree
+
+
+class TicketDependencySet(pydantic.BaseModel):
+    """The kind of a dependency."""
+
+    gates: bool = pydantic.Field(
+        default=False,
+        description='Hold the ticket until the prerequisite closes with a '
+        '``done_*`` outcome. Only a ticket that has not started (``queued`` '
+        'or ``held``) can get a gating prerequisite.',
+    )
+
+
+class TicketParentSet(pydantic.BaseModel):
+    """The new parent of a ticket."""
+
+    parent: str | None = pydantic.Field(
+        description='The short id of the new parent. ``null`` makes the '
+        'ticket a root.'
+    )
 
 
 class AssociatedProject(pydantic.BaseModel):
@@ -372,10 +469,11 @@ _TEXT_QUERY: typing.LiteralString = """
 MATCH (o:Organization {{slug: {org_slug}}})
 OPTIONAL MATCH (a:Agent)-[:BELONGS_TO]->(o)
 WHERE toLower(a.name) CONTAINS {text}
-WITH o, collect(a.id) AS agent_ids
+WITH o, collect(a.id) AS agent_ids, collect(a.name) AS agent_names
 OPTIONAL MATCH (p:Project)-[:OWNED_BY]->(:Team)-[:BELONGS_TO]->(o)
 WHERE toLower(p.slug) CONTAINS {text}
-RETURN agent_ids, collect(p.id) AS project_ids
+RETURN agent_ids, agent_names, collect(p.id) AS project_ids,
+       collect(p.slug) AS project_slugs
 """
 
 _AGENT_QUERY: typing.LiteralString = """
@@ -396,6 +494,18 @@ MATCH (p:Project)
       -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
 WHERE p.id IN {ids} OR p.slug IN {ids}
 RETURN p.id AS id, p.slug AS slug, p.name AS name
+"""
+
+_ICONS_QUERY: typing.LiteralString = """
+MATCH (p:Project)
+      -[:OWNED_BY]->(:Team)
+      -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+WHERE p.id IN {ids}
+OPTIONAL MATCH (p)-[:TYPE]->(pt:ProjectType)
+WITH p, pt
+ORDER BY pt.slug
+WITH p, collect(pt.icon) AS type_icons
+RETURN p.id AS id, p.icon AS icon, type_icons[0] AS type_icon
 """
 
 _WEBHOOK_QUERY: typing.LiteralString = """
@@ -479,6 +589,86 @@ def _ids(value: typing.Any) -> list[str]:
     """Return the ids in an agtype list."""
     items = typing.cast('list[typing.Any]', graph.parse_agtype(value) or [])
     return [str(item) for item in items]
+
+
+def _pairs(ids: typing.Any, values: typing.Any) -> dict[str, str]:
+    """Pair two agtype lists that one ``collect`` pass built."""
+    keys, names = _ids(ids), _ids(values)
+    if len(keys) != len(names):
+        return dict.fromkeys(keys, '')
+    return dict(zip(keys, names, strict=True))
+
+
+def _parts(value: str, text: str) -> list[dict[str, typing.Any]]:
+    """Split ``value`` around each case-blind match of ``text``."""
+    parts: list[dict[str, typing.Any]] = []
+    end = 0
+    for found in re.finditer(re.escape(text), value, re.IGNORECASE):
+        if found.start() > end:
+            parts.append({'text': value[end : found.start()], 'match': False})
+        parts.append({'text': found.group(), 'match': True})
+        end = found.end()
+    if parts and end < len(value):
+        parts.append({'text': value[end:], 'match': False})
+    return parts
+
+
+def _highlights(
+    row: dict[str, typing.Any],
+    text: str,
+    agents: dict[str, str],
+    projects: dict[str, str],
+) -> list[dict[str, typing.Any]]:
+    """Return each field of the task that ``text`` matched.
+
+    The agent and project values are the current name and slug from
+    the graph, which the search matched, not the slug the task stored.
+    """
+    found: list[dict[str, typing.Any]] = []
+    for field in ('short_id', 'title'):
+        if parts := _parts(row[field], text):
+            found.append({'field': field, 'parts': parts})
+    if parts := _parts(agents.get(row['agent_id'], ''), text):
+        found.append({'field': 'agent', 'id': row['agent_id'], 'parts': parts})
+    for project in _projects_of(row):
+        project_id = project['project_id']
+        if parts := _parts(projects.get(project_id, ''), text):
+            found.append(
+                {'field': 'project', 'id': project_id, 'parts': parts}
+            )
+    return found
+
+
+def _projects_of(row: dict[str, typing.Any]) -> list[dict[str, str]]:
+    return typing.cast('list[dict[str, str]]', row['projects'] or [])
+
+
+async def _project_icons(
+    db: graph.Graph, org_slug: str, rows: list[dict[str, typing.Any]]
+) -> dict[str, str]:
+    """Return the icon of each project of ``rows`` that has one."""
+    ids = sorted(
+        {
+            project['project_id']
+            for row in rows
+            for project in _projects_of(row)
+        }
+    )
+    if not ids:
+        return {}
+    records = await db.execute(
+        _ICONS_QUERY,
+        {'org_slug': org_slug, 'ids': ids},
+        ['id', 'icon', 'type_icon'],
+    )
+    icons: dict[str, str] = {}
+    for record in records:
+        icon: typing.Any = graph.parse_agtype(
+            record['icon']
+        ) or graph.parse_agtype(record['type_icon'])
+        if icon:
+            icons[str(graph.parse_agtype(record['id']))] = str(icon)
+    return icons
 
 
 def task_budget(
@@ -583,7 +773,7 @@ def task_origin(
     )
 
 
-def _actor(auth: permissions.AuthContext) -> agent_tasks.Actor:
+def _actor(auth: permissions.AuthContext) -> tickets.Actor:
     """Return the actor of a request, for the events that it writes.
 
     A browser session authenticates with a JWT; other callers use an API
@@ -594,12 +784,12 @@ def _actor(auth: permissions.AuthContext) -> agent_tasks.Actor:
         'web' if auth.auth_method == 'jwt' else 'api'
     )
     if auth.user is not None:
-        return agent_tasks.Actor('human', auth.user.email, channel)
-    return agent_tasks.Actor('system', auth.principal_name, channel)
+        return tickets.Actor('human', auth.user.email, channel)
+    return tickets.Actor('system', auth.principal_name, channel)
 
 
 async def _get_task(
-    store: agent_tasks.TaskStore, org_id: str, short_id: str
+    store: tickets.TicketStore, org_id: str, short_id: str
 ) -> dict[str, typing.Any]:
     task = await store.get(org_id, short_id.upper())
     if task is None:
@@ -615,7 +805,7 @@ _require_read = permissions.require_permission('agent_task:read')
 async def _readable_task(
     org_id: OrgId,
     short_id: str,
-    store: agent_tasks.Store,
+    store: tickets.Store,
     auth: typing.Annotated[
         permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
     ],
@@ -647,7 +837,7 @@ ReadableTask = typing.Annotated[
 
 
 async def _set_control(
-    store: agent_tasks.TaskStore,
+    store: tickets.TicketStore,
     org_id: str,
     short_id: str,
     control: Control,
@@ -657,15 +847,15 @@ async def _set_control(
         return await store.set_control(
             org_id, short_id.upper(), control, _actor(auth)
         )
-    except agent_tasks.TaskNotFound as e:
+    except tickets.TaskNotFound as e:
         raise fastapi.HTTPException(
             status_code=404, detail=f'Task {short_id!r} not found'
         ) from e
-    except agent_tasks.TaskClosed as e:
+    except tickets.TaskClosed as e:
         raise fastapi.HTTPException(
             status_code=409, detail=f'Task {short_id!r} is closed'
         ) from e
-    except agent_tasks.CancelPending as e:
+    except tickets.CancelPending as e:
         raise fastapi.HTTPException(
             status_code=409,
             detail=f'Task {short_id!r} has a cancel that is not done yet',
@@ -687,10 +877,11 @@ async def may_create(db: graph.Graph, org_slug: str, email: str) -> bool:
         return False
     if graph.parse_agtype(records[0]['is_admin']):
         return True
-    return 'agent_task:create' in (
+    return common_permissions.holds(
+        'agent_task:create',
         await common_permissions.load_principal_permissions(
-            db, 'User', 'email', email
-        )
+            db, 'User', 'email', email, org_slug=org_slug
+        ),
     )
 
 
@@ -794,16 +985,26 @@ def relation_errors() -> abc.Generator[None]:
     """Map the errors of a relation change to HTTP errors."""
     try:
         yield
-    except agent_tasks.TaskNotFound as e:
+    except tickets.TaskNotFound as e:
         raise fastapi.HTTPException(
             status_code=404, detail=f'Task {str(e)!r} not found'
         ) from e
-    except agent_tasks.TaskArchived as e:
+    except tickets.TaskArchived as e:
         raise _conflict(
             'task_archived', f'The log of {e} is archived; it cannot change'
         ) from e
-    except agent_tasks.SelfDependency as e:
+    except tickets.SelfDependency as e:
         raise _unprocessable(f'Task {str(e)!r} cannot require itself') from e
+    except tickets.ParentCycle as e:
+        raise _conflict(
+            'parent_cycle', f'Task {str(e)!r} cannot be its own ancestor'
+        ) from e
+    except tickets.TicketStarted as e:
+        raise _conflict(
+            'ticket_started',
+            f'Task {str(e)!r} has started; a gating prerequisite cannot'
+            ' hold it',
+        ) from e
 
 
 #: A caller with ``agent_task:read``, with no exception for the service
@@ -820,15 +1021,25 @@ ManagingPerson = typing.Annotated[
 ]
 
 
+def ticket_operation_id(route: fastapi.routing.APIRoute) -> str:
+    """Return the operation id of a route at ``/tickets``: the default
+    id, with ``ticket`` for ``agent_task`` in the function name.
+
+    The routes at ``/agent-tasks`` keep the default ids (ADR 0028).
+    """
+    name = route.name.replace('agent_task', 'ticket')
+    return name + fastapi_utils.generate_unique_id(route)[len(route.name) :]
+
+
 # --- Endpoints ---------------------------------------------------------
 
-agent_tasks_router = fastapi.APIRouter(
+tickets_router = fastapi.APIRouter(
     tags=['Agent Tasks'],
     dependencies=[fastapi.Depends(organizations.member_org_id)],
 )
 
 
-@agent_tasks_router.post(
+@tickets_router.post(
     '/',
     status_code=201,
     response_model=AgentTaskResponse,
@@ -848,7 +1059,7 @@ async def create_agent_task(
     data: AgentTaskCreate,
     response: fastapi.Response,
     db: graph.Pool,
-    store: agent_tasks.Store,
+    store: tickets.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('agent_task:create')),
@@ -909,7 +1120,7 @@ async def create_agent_task(
 
 
 async def _keyed_task(
-    store: agent_tasks.TaskStore,
+    store: tickets.TicketStore,
     org_id: str,
     origin: TaskOrigin,
     key: str | None,
@@ -932,7 +1143,7 @@ async def _keyed_task(
 
 async def _create_task(
     db: graph.Graph,
-    store: agent_tasks.TaskStore,
+    store: tickets.TicketStore,
     org_slug: str,
     org_id: str,
     data: AgentTaskCreate,
@@ -956,14 +1167,14 @@ async def _create_task(
 
 async def make_task(
     db: graph.Graph,
-    store: agent_tasks.TaskStore,
+    store: tickets.TicketStore,
     org_slug: str,
     org_id: str,
     data: AgentTaskCreate,
     origin: TaskOrigin,
     key: str | None,
     owner: str,
-    actor: agent_tasks.Actor,
+    actor: tickets.Actor,
     output_schema: dict[str, typing.Any] | None = None,
 ) -> tuple[dict[str, typing.Any], bool]:
     """Make a task with the agent and prompt versions that it has now.
@@ -998,7 +1209,7 @@ async def make_task(
     agent_version = int(agent.get('version') or 1)
     prompt_version = agent.get('prompt_version')
     return await store.create(
-        agent_tasks.NewTask(
+        tickets.NewTask(
             organization_id=org_id,
             agent_id=agent_id,
             agent_version=agent_version,
@@ -1014,6 +1225,7 @@ async def make_task(
             owner=owner,
             budget=budget,
             output_schema=output_schema,
+            priority=data.priority,
         ),
         actor,
         {
@@ -1023,57 +1235,65 @@ async def make_task(
             'budget': None if budget is None else str(budget),
             'agent_version': agent_version,
             'prompt_version': prompt_version,
+            'priority': data.priority,
         },
     )
 
 
-@agent_tasks_router.get('/', response_model=list[AgentTaskListItem])
+@tickets_router.get('/', response_model=list[AgentTaskListItem])
 async def list_agent_tasks(
     org_slug: str,
     org_id: OrgId,
     request: fastapi.Request,
     response: fastapi.Response,
     db: graph.Pool,
-    store: agent_tasks.Store,
+    store: tickets.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('agent_task:read')),
     ],
     status: typing.Annotated[list[Status] | None, fastapi.Query()] = None,
-    agent_id: str | None = None,
-    owner: str | None = None,
+    agent_id: typing.Annotated[list[str] | None, fastapi.Query()] = None,
+    owner: typing.Annotated[list[str] | None, fastapi.Query()] = None,
     mine: bool = False,
     q: str | None = None,
     limit: typing.Annotated[int, fastapi.Query(ge=1, le=100)] = 50,
     cursor: str | None = None,
+    group: Group | None = None,
+    offset: typing.Annotated[int, fastapi.Query(ge=0)] = 0,
 ) -> list[dict[str, typing.Any]]:
     """List the tasks in an organization, newest first.
 
     ``q`` matches the title, the short id, the agent name, or the
-    project slug. ``mine`` keeps the tasks that the caller owns. The
-    ``Link`` header has the URL of the next page. Each task has
-    ``blocked_since`` when it waits on a person, so a client can sort
-    that queue oldest block first (O2).
+    project slug, and ``highlights`` says where. ``agent_id`` and
+    ``owner`` repeat to match any of their values, and ``mine`` adds
+    the caller to the owners. The ``Link`` header has the URL of the
+    next page. Each task has ``project_icons``, and ``blocked_since``
+    when it waits on a person, so a client can sort that queue oldest
+    block first (O2). ``status=blocked`` also matches every task that
+    waits on a person. ``group`` lists one inbox group in the order of
+    the inbox: oldest block first for ``input``, newest close first for
+    ``closed``, else newest first; it pages with ``offset``, so a client
+    can read any part of it.
 
     Raises:
-        400: The cursor is not valid.
+        400: The cursor is not valid or comes with ``group``, or
+            ``offset`` comes without ``group``.
         403: The caller is not a member of the org.
         404: No such organization.
 
     """
     text = (q or '').strip().lower()
-    agent_ids: list[str] = []
-    project_ids: list[str] = []
-    if text:
-        records = await db.execute(
-            _TEXT_QUERY,
-            {'org_slug': org_slug, 'text': text},
-            ['agent_ids', 'project_ids'],
-        )
-        if records:
-            agent_ids = _ids(records[0]['agent_ids'])
-            project_ids = _ids(records[0]['project_ids'])
+    agents, projects = await _text_matches(db, org_slug, text)
     before: tuple[datetime.datetime, uuid.UUID] | None = None
+    if cursor is not None and group is not None:
+        raise fastapi.HTTPException(
+            status_code=400, detail='A group pages with offset, not cursor'
+        )
+    if offset and group is None:
+        raise fastapi.HTTPException(
+            status_code=400, detail='Only a group pages with offset'
+        )
     if cursor is not None:
         decoded = decode_cursor(cursor)
         try:
@@ -1084,31 +1304,156 @@ async def list_agent_tasks(
             raise fastapi.HTTPException(
                 status_code=400, detail='Invalid cursor'
             )
+    owners = [*(owner or []), *([auth.principal_name] if mine else [])]
     rows = await store.search(
         org_id,
         statuses=status,
-        agent_id=agent_id,
-        owner=auth.principal_name if mine else owner,
+        agent_ids=agent_id,
+        owners=owners,
         text=text or None,
-        text_agent_ids=agent_ids,
-        text_project_ids=project_ids,
+        text_agent_ids=list(agents),
+        text_project_ids=list(projects),
+        group=group,
         before=before,
+        offset=offset,
         limit=limit + 1,
     )
     next_cursor: str | None = None
     if len(rows) > limit:
         rows = rows[:limit]
-        next_cursor = encode_cursor(
-            rows[-1]['created_at'], str(rows[-1]['id'])
-        )
+        if group is None:
+            next_cursor = encode_cursor(
+                rows[-1]['created_at'], str(rows[-1]['id'])
+            )
     response.headers['Link'] = build_link_header(request, next_cursor)
-    return rows
+    icons = await _project_icons(db, org_slug, rows)
+    return [
+        {
+            **row,
+            'highlights': (
+                _highlights(row, text, agents, projects) if text else []
+            ),
+            'project_icons': {
+                project['project_id']: icons[project['project_id']]
+                for project in _projects_of(row)
+                if project['project_id'] in icons
+            },
+        }
+        for row in rows
+    ]
 
 
-@agent_tasks_router.get('/waiting', response_model=AgentTaskWaiting)
+@tickets_router.get('/counts', response_model=AgentTaskCounts)
+async def count_agent_tasks(
+    org_slug: str,
+    org_id: OrgId,
+    db: graph.Pool,
+    store: tickets.Store,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('agent_task:read')),
+    ],
+    status: typing.Annotated[list[Status] | None, fastapi.Query()] = None,
+    agent_id: typing.Annotated[list[str] | None, fastapi.Query()] = None,
+    owner: typing.Annotated[list[str] | None, fastapi.Query()] = None,
+    mine: bool = False,
+    q: str | None = None,
+) -> dict[str, int]:
+    """Count the tasks in each inbox group that the task list with the
+    same filters finds, so a client can size the whole list before it
+    reads the tasks.
+
+    Raises:
+        403: The caller is not a member of the org.
+        404: No such organization.
+
+    """
+    text = (q or '').strip().lower()
+    agents, projects = await _text_matches(db, org_slug, text)
+    owners = [*(owner or []), *([auth.principal_name] if mine else [])]
+    return await store.count_groups(
+        org_id,
+        statuses=status,
+        agent_ids=agent_id,
+        owners=owners,
+        text=text or None,
+        text_agent_ids=list(agents),
+        text_project_ids=list(projects),
+    )
+
+
+@tickets_router.get('/{short_id}/position', response_model=AgentTaskPosition)
+async def get_agent_task_position(
+    org_slug: str,
+    org_id: OrgId,
+    short_id: str,
+    db: graph.Pool,
+    store: tickets.Store,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('agent_task:read')),
+    ],
+    status: typing.Annotated[list[Status] | None, fastapi.Query()] = None,
+    agent_id: typing.Annotated[list[str] | None, fastapi.Query()] = None,
+    owner: typing.Annotated[list[str] | None, fastapi.Query()] = None,
+    mine: bool = False,
+    q: str | None = None,
+) -> dict[str, typing.Any]:
+    """Find where a task is in the task list with the same filters: its
+    inbox group and its index in that group, so a client can scroll to
+    it before it reads that part of the list.
+
+    Raises:
+        403: The caller is not a member of the org.
+        404: No such organization, or the filters do not find the task.
+
+    """
+    text = (q or '').strip().lower()
+    agents, projects = await _text_matches(db, org_slug, text)
+    owners = [*(owner or []), *([auth.principal_name] if mine else [])]
+    found = await store.position(
+        org_id,
+        short_id,
+        statuses=status,
+        agent_ids=agent_id,
+        owners=owners,
+        text=text or None,
+        text_agent_ids=list(agents),
+        text_project_ids=list(projects),
+    )
+    if found is None:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'{short_id} is not in the list'
+        )
+    return {'group': found[0], 'index': found[1]}
+
+
+async def _text_matches(
+    db: graph.Graph, org_slug: str, text: str
+) -> tuple[dict[str, str], dict[str, str]]:
+    """The agents (id to name) and projects (id to slug) of the org that
+    ``text`` matches by agent name and project slug.
+    """
+    if not text:
+        return {}, {}
+    records = await db.execute(
+        _TEXT_QUERY,
+        {'org_slug': org_slug, 'text': text},
+        ['agent_ids', 'agent_names', 'project_ids', 'project_slugs'],
+    )
+    if not records:
+        return {}, {}
+    record = records[0]
+    return (
+        _pairs(record['agent_ids'], record['agent_names']),
+        _pairs(record['project_ids'], record['project_slugs']),
+    )
+
+
+@tickets_router.get('/waiting', response_model=AgentTaskWaiting)
 async def count_waiting_agent_tasks(
     org_id: OrgId,
-    store: agent_tasks.Store,
+    store: tickets.Store,
     _auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('agent_task:read')),
@@ -1129,7 +1474,7 @@ async def count_waiting_agent_tasks(
     return {'count': await store.count_waiting(org_id)}
 
 
-@agent_tasks_router.get('/{short_id}', response_model=AgentTaskResponse)
+@tickets_router.get('/{short_id}', response_model=AgentTaskResponse)
 async def get_agent_task(task: ReadableTask) -> dict[str, typing.Any]:
     """Get a task by its short id (``T-<n>``).
 
@@ -1138,12 +1483,12 @@ async def get_agent_task(task: ReadableTask) -> dict[str, typing.Any]:
     return task
 
 
-@agent_tasks_router.get(
+@tickets_router.get(
     '/{short_id}/events', response_model=list[AgentTaskEventResponse]
 )
 async def list_agent_task_events(
     task: ReadableTask,
-    store: agent_tasks.Store,
+    store: tickets.Store,
     after_seq: typing.Annotated[int, fastapi.Query(ge=0)] = 0,
     limit: typing.Annotated[int, fastapi.Query(ge=1, le=1000)] = 100,
 ) -> list[dict[str, typing.Any]]:
@@ -1155,15 +1500,15 @@ async def list_agent_task_events(
     agent can read the events of its own task.
     """
     if task['log_archived_at'] is not None:
-        return await agent_tasks.log.archived_events(task, after_seq, limit)
+        return await tickets.log.archived_events(task, after_seq, limit)
     return await store.events(task['id'], after_seq, limit)
 
 
-@agent_tasks_router.post('/{short_id}/pause', response_model=AgentTaskResponse)
+@tickets_router.post('/{short_id}/pause', response_model=AgentTaskResponse)
 async def pause_agent_task(
     org_id: OrgId,
     short_id: str,
-    store: agent_tasks.Store,
+    store: tickets.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('agent_task:manage')),
@@ -1180,13 +1525,11 @@ async def pause_agent_task(
     return await _set_control(store, org_id, short_id, 'pause', auth)
 
 
-@agent_tasks_router.post(
-    '/{short_id}/resume', response_model=AgentTaskResponse
-)
+@tickets_router.post('/{short_id}/resume', response_model=AgentTaskResponse)
 async def resume_agent_task(
     org_id: OrgId,
     short_id: str,
-    store: agent_tasks.Store,
+    store: tickets.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('agent_task:manage')),
@@ -1203,13 +1546,11 @@ async def resume_agent_task(
     return await _set_control(store, org_id, short_id, 'run', auth)
 
 
-@agent_tasks_router.post(
-    '/{short_id}/cancel', response_model=AgentTaskResponse
-)
+@tickets_router.post('/{short_id}/cancel', response_model=AgentTaskResponse)
 async def cancel_agent_task(
     org_id: OrgId,
     short_id: str,
-    store: agent_tasks.Store,
+    store: tickets.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('agent_task:manage')),
@@ -1226,11 +1567,11 @@ async def cancel_agent_task(
     return await _set_control(store, org_id, short_id, 'cancel', auth)
 
 
-@agent_tasks_router.delete('/{short_id}', status_code=204)
+@tickets_router.delete('/{short_id}', status_code=204)
 async def delete_agent_task(
     org_id: OrgId,
     short_id: str,
-    store: agent_tasks.Store,
+    store: tickets.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('agent_task:delete')),
@@ -1248,12 +1589,12 @@ async def delete_agent_task(
 
     """
     try:
-        task = await store.delete(org_id, short_id.upper())
-    except agent_tasks.TaskNotFound as e:
+        task = await store.delete(org_id, short_id.upper(), _actor(auth))
+    except tickets.TaskNotFound as e:
         raise fastapi.HTTPException(
             status_code=404, detail=f'Task {short_id!r} not found'
         ) from e
-    except agent_tasks.TaskOpen as e:
+    except tickets.TaskOpen as e:
         raise fastapi.HTTPException(
             status_code=409,
             detail=(
@@ -1269,13 +1610,13 @@ async def delete_agent_task(
     )
 
 
-@agent_tasks_router.post(
+@tickets_router.post(
     '/{short_id}/acknowledge', response_model=AgentTaskResponse
 )
 async def acknowledge_agent_task(
     org_id: OrgId,
     short_id: str,
-    store: agent_tasks.Store,
+    store: tickets.Store,
     auth: ManagingPerson,
 ) -> dict[str, typing.Any]:
     """Mark a closed task as needing no more attention.
@@ -1291,11 +1632,11 @@ async def acknowledge_agent_task(
     user = auth.require_user
     try:
         return await store.acknowledge(org_id, short_id.upper(), user.email)
-    except agent_tasks.TaskNotFound as e:
+    except tickets.TaskNotFound as e:
         raise fastapi.HTTPException(
             status_code=404, detail=f'Task {short_id!r} not found'
         ) from e
-    except agent_tasks.TaskOpen as e:
+    except tickets.TaskOpen as e:
         raise fastapi.HTTPException(
             status_code=409, detail=f'Task {short_id!r} is not closed'
         ) from e
@@ -1335,7 +1676,7 @@ def retry_description(
     return '\n\n'.join(parts)
 
 
-@agent_tasks_router.post(
+@tickets_router.post(
     '/{short_id}/retry',
     status_code=201,
     response_model=AgentTaskResponse,
@@ -1356,7 +1697,7 @@ async def retry_agent_task(
     data: AgentTaskRetry,
     response: fastapi.Response,
     db: graph.Pool,
-    store: agent_tasks.Store,
+    store: tickets.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('agent_task:create')),
@@ -1408,6 +1749,7 @@ async def retry_agent_task(
         title=task['title'],
         description=retry_description(task, last_turn, data.note, user.email),
         project_ids=[p['project_id'] for p in task['projects']],
+        priority=task['priority'],
     )
     return await _create_task(
         db,
@@ -1422,16 +1764,14 @@ async def retry_agent_task(
     )
 
 
-@agent_tasks_router.post(
-    '/{short_id}/reassign', response_model=AgentTaskResponse
-)
+@tickets_router.post('/{short_id}/reassign', response_model=AgentTaskResponse)
 async def reassign_agent_task(
     org_slug: str,
     org_id: OrgId,
     short_id: str,
     data: AgentTaskReassign,
     db: graph.Pool,
-    store: agent_tasks.Store,
+    store: tickets.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('agent_task:manage')),
@@ -1454,17 +1794,50 @@ async def reassign_agent_task(
         return await store.set_owner(
             org_id, short_id.upper(), data.owner, _actor(auth)
         )
-    except agent_tasks.TaskNotFound as e:
+    except tickets.TaskNotFound as e:
         raise fastapi.HTTPException(
             status_code=404, detail=f'Task {short_id!r} not found'
         ) from e
-    except agent_tasks.TaskClosed as e:
+    except tickets.TaskClosed as e:
         raise fastapi.HTTPException(
             status_code=409, detail=f'Task {short_id!r} is closed'
         ) from e
 
 
-@agent_tasks_router.post(
+@tickets_router.post('/{short_id}/priority', response_model=AgentTaskResponse)
+async def set_agent_task_priority(
+    org_id: OrgId,
+    short_id: str,
+    data: AgentTaskPriority,
+    store: tickets.Store,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('agent_task:manage')),
+    ],
+) -> dict[str, typing.Any]:
+    """Set the priority of a task.
+
+    Raises:
+        403: The caller is not a member of the org.
+        404: No such task.
+        409: The task is closed.
+
+    """
+    try:
+        return await store.set_priority(
+            org_id, short_id.upper(), data.priority, _actor(auth)
+        )
+    except tickets.TaskNotFound as e:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'Task {short_id!r} not found'
+        ) from e
+    except tickets.TaskClosed as e:
+        raise fastapi.HTTPException(
+            status_code=409, detail=f'Task {short_id!r} is closed'
+        ) from e
+
+
+@tickets_router.post(
     '/{short_id}/requests/{request_id}/resolve',
     status_code=201,
     response_model=AgentTaskRequestResolveResponse,
@@ -1484,7 +1857,7 @@ async def resolve_agent_task_request(
     request_id: uuid.UUID,
     data: AgentTaskRequestResolve,
     response: fastapi.Response,
-    store: agent_tasks.Store,
+    store: tickets.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('agent_task:resolve')),
@@ -1520,7 +1893,7 @@ async def resolve_agent_task_request(
             org_id,
             short_id.upper(),
             request_id,
-            agent_tasks.Resolution(
+            tickets.Resolution(
                 status=data.status,
                 answer=data.answer,
                 constraints=data.constraints,
@@ -1528,17 +1901,17 @@ async def resolve_agent_task_request(
             ),
             _actor(auth),
         )
-    except agent_tasks.TaskNotFound as e:
+    except tickets.TaskNotFound as e:
         raise fastapi.HTTPException(
             status_code=404, detail=f'Task {short_id!r} not found'
         ) from e
-    except agent_tasks.RequestNotFound as e:
+    except tickets.RequestNotFound as e:
         raise fastapi.HTTPException(
             status_code=404, detail=f'Request {request_id} not found'
         ) from e
-    except agent_tasks.TaskClosed as e:
+    except tickets.TaskClosed as e:
         raise _conflict('task_closed', f'Task {short_id!r} is closed') from e
-    except agent_tasks.RequestNotOpen as e:
+    except tickets.RequestNotOpen as e:
         if e.request['status'] == 'open':
             raise _conflict(
                 'request_expired', f'Request {request_id} expired'
@@ -1551,25 +1924,25 @@ async def resolve_agent_task_request(
             resolved_by=e.request['resolved_by'],
             resolved_at=e.request['resolved_at'].isoformat(),
         ) from e
-    except agent_tasks.DigestMismatch as e:
+    except tickets.DigestMismatch as e:
         raise _conflict(
             'digest_mismatch',
             'The artifacts changed; the approval is void. Review the '
             'request again.',
         ) from e
-    except agent_tasks.ResolutionInvalid as e:
+    except tickets.ResolutionInvalid as e:
         raise _unprocessable(str(e)) from e
     if not created:
         response.status_code = 200
     return {'request': request, 'task': task}
 
 
-@agent_tasks_router.post('/{short_id}/reply', response_model=AgentTaskResponse)
+@tickets_router.post('/{short_id}/reply', response_model=AgentTaskResponse)
 async def reply_agent_task(
     org_id: OrgId,
     short_id: str,
     data: AgentTaskReply,
-    store: agent_tasks.Store,
+    store: tickets.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('agent_task:manage')),
@@ -1597,26 +1970,24 @@ async def reply_agent_task(
         return await store.reply(
             org_id, short_id.upper(), data.body, _actor(auth), hold=data.hold
         )
-    except agent_tasks.TaskNotFound as e:
+    except tickets.TaskNotFound as e:
         raise fastapi.HTTPException(
             status_code=404, detail=f'Task {short_id!r} not found'
         ) from e
-    except agent_tasks.TaskClosed as e:
+    except tickets.TaskClosed as e:
         raise fastapi.HTTPException(
             status_code=409, detail=f'Task {short_id!r} is closed'
         ) from e
-    except agent_tasks.CancelPending as e:
+    except tickets.CancelPending as e:
         raise fastapi.HTTPException(
             status_code=409,
             detail=f'Task {short_id!r} has a cancel that is not done yet',
         ) from e
 
 
-@agent_tasks_router.get(
-    '/{short_id}/relations', response_model=AgentTaskRelations
-)
+@tickets_router.get('/{short_id}/relations', response_model=AgentTaskRelations)
 async def get_agent_task_relations(
-    task: ReadableTask, store: agent_tasks.Store, _auth: TaskReader
+    task: ReadableTask, store: tickets.Store, _auth: TaskReader
 ) -> dict[str, typing.Any]:
     """List the tasks related to a task: the tasks it requires, the
     tasks that require it, and its parent and children (delegation).
@@ -1627,50 +1998,58 @@ async def get_agent_task_relations(
     return await store.relations(task)
 
 
-@agent_tasks_router.put('/{short_id}/requires/{prerequisite}', status_code=204)
+@tickets_router.put('/{short_id}/requires/{prerequisite}', status_code=204)
 async def add_agent_task_dependency(
     org_id: OrgId,
     short_id: str,
     prerequisite: str,
-    store: agent_tasks.Store,
+    store: tickets.Store,
     auth: ManagingPerson,
+    data: TicketDependencySet = TicketDependencySet(),  # noqa: B008
 ) -> None:
     """Make the task require the ``prerequisite`` task, in the same org.
 
-    A dependency is information only: it does not change a status. Each
-    task gets a ``dependency.added`` event; an archived task gets none.
-    When the dependency exists, nothing changes.
+    A dependency is information only, unless it ``gates`` (ADR 0028): a
+    ``queued`` task then becomes ``held`` until the prerequisite closes
+    with a ``done_*`` outcome. Each task gets a ``dependency.added``
+    event; an archived task gets none. When the dependency exists with
+    the same ``gates`` value, nothing changes; with another value, the
+    value changes.
 
     Raises:
         403: The caller is not a person, has no ``agent_task:manage``,
             or is not a member of the org.
         404: No such task.
         409: ``task_archived``: both tasks are archived.
+            ``ticket_started``: ``gates``, the task is not ``queued``
+            or ``held``, and the dependency does not gate already.
         422: The two tasks are the same.
 
     """
     _ = auth.require_user  # raises 403 for a caller that is not a person
     with relation_errors():
         await store.add_dependency(
-            org_id, short_id.upper(), prerequisite.upper(), _actor(auth)
+            org_id,
+            short_id.upper(),
+            prerequisite.upper(),
+            _actor(auth),
+            gates=data.gates,
         )
 
 
-@agent_tasks_router.delete(
-    '/{short_id}/requires/{prerequisite}', status_code=204
-)
+@tickets_router.delete('/{short_id}/requires/{prerequisite}', status_code=204)
 async def remove_agent_task_dependency(
     org_id: OrgId,
     short_id: str,
     prerequisite: str,
-    store: agent_tasks.Store,
+    store: tickets.Store,
     auth: ManagingPerson,
 ) -> None:
     """Remove the dependency of the task on the ``prerequisite`` task.
 
     Each task gets a ``dependency.removed`` event with the removed row;
-    an archived task gets none. When there is no such dependency,
-    nothing changes.
+    an archived task gets none. A ``held`` task that no other gate holds
+    is released. When there is no such dependency, nothing changes.
 
     Raises:
         403: The caller is not a person, has no ``agent_task:manage``,
@@ -1686,14 +2065,54 @@ async def remove_agent_task_dependency(
         )
 
 
-@agent_tasks_router.get(
+@tickets_router.put('/{short_id}/parent', status_code=204)
+async def set_agent_task_parent(
+    org_id: OrgId,
+    short_id: str,
+    data: TicketParentSet,
+    store: tickets.Store,
+    auth: typing.Annotated[
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
+    ],
+) -> None:
+    """Move the task, with its descendants, under another task in the
+    org, or make it a root (ADR 0028).
+
+    The owner of the task and holders of ``agent_task:manage`` can move
+    it. A move changes no status, assignee, dependency, or chain. The
+    task gets a ``parent.changed`` event with the old and new parent.
+    When the parent does not change, nothing changes.
+
+    Raises:
+        403: The caller is not a person, or is not the owner and has no
+            ``agent_task:manage``.
+        404: No such task.
+        409: ``task_archived``: the log of the task is archived.
+            ``parent_cycle``: the task is the new parent or one of its
+            ancestors.
+
+    """
+    user = auth.require_user  # raises 403 for a caller that is not a person
+    task = await _get_task(store, org_id, short_id)
+    if task['owner'] != user.email:
+        await _require_manage(auth)
+    with relation_errors():
+        await store.set_parent(
+            org_id,
+            task['short_id'],
+            data.parent and data.parent.upper(),
+            _actor(auth),
+        )
+
+
+@tickets_router.get(
     '/{short_id}/projects', response_model=list[AssociatedProject]
 )
 async def list_agent_task_projects(
     org_slug: str,
     task: ReadableTask,
     db: graph.Pool,
-    store: agent_tasks.Store,
+    store: tickets.Store,
     _auth: TaskReader,
 ) -> list[dict[str, typing.Any]]:
     """List the projects of a task, oldest first.
@@ -1725,14 +2144,14 @@ async def list_agent_task_projects(
     return rows
 
 
-@agent_tasks_router.put('/{short_id}/projects/{project_id}', status_code=204)
+@tickets_router.put('/{short_id}/projects/{project_id}', status_code=204)
 async def associate_agent_task_project(
     org_slug: str,
     org_id: OrgId,
     short_id: str,
     project_id: str,
     db: graph.Pool,
-    store: agent_tasks.Store,
+    store: tickets.Store,
     auth: ManagingPerson,
 ) -> None:
     """Associate a project of the org with the task (F13).
@@ -1756,14 +2175,12 @@ async def associate_agent_task_project(
         )
 
 
-@agent_tasks_router.delete(
-    '/{short_id}/projects/{project_id}', status_code=204
-)
+@tickets_router.delete('/{short_id}/projects/{project_id}', status_code=204)
 async def dissociate_agent_task_project(
     org_id: OrgId,
     short_id: str,
     project_id: str,
-    store: agent_tasks.Store,
+    store: tickets.Store,
     auth: ManagingPerson,
 ) -> None:
     """Remove a project association from the task.

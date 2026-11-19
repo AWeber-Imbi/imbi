@@ -14,6 +14,7 @@ proxy refuses model calls when the remaining budget is zero.
 """
 
 import asyncio
+import bisect
 import contextlib
 import dataclasses
 import datetime
@@ -465,6 +466,27 @@ _PLUGIN_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}')
 _MARKETPLACE_ONLY = frozenset({'source', 'category', 'tags', 'strict'})
 
 
+def _entry(entry: Body) -> str:
+    """One line of the ticket history."""
+    return (
+        f'- {entry.get("at")} {entry.get("kind")}'
+        + (f' by {entry["actor"]}' if entry.get('actor') else '')
+        + f': {entry.get("text")}'
+    )
+
+
+def _history(entries: list[Body], cut: int) -> str:
+    """The ticket history text, in an untrusted block when an entry came
+    from a webhook."""
+    lines = [_entry(entry) for entry in entries]
+    if cut:
+        lines.insert(0, f'[{cut} older entries were cut to fit the limit.]')
+    text = '\n'.join(lines)
+    if any(entry.get('webhook') for entry in entries):
+        text = relay.untrusted(text, 'webhook')
+    return f'The ticket history before this session, oldest first:\n{text}'
+
+
 def _marketplace_entry(clone: pathlib.Path, name: str) -> Body | None:
     """The entry for ``name`` in the marketplace file of a clone."""
     try:
@@ -741,7 +763,15 @@ class TaskRun:
         self.relay: relay.Relay | None = None
         #: The newest task state from imbi-api.
         self.state: Body = {}
+        #: The event cursor: the newest event read. :meth:`read_events`
+        #: is the one reader, so no event is read twice.
         self.seq = 0
+        self.events_lock = asyncio.Lock()
+        #: The human comments read after :attr:`seq` that the model has
+        #: not seen, as history entries with their ``seq``.
+        self.comments: list[Body] = []
+        #: The ticket history before this session (:meth:`read_history`).
+        self.history = ''
         #: Request outcomes read by any wait, by request id, so a wait
         #: running beside another still sees its own.
         self.outcomes: dict[str, Body] = {}
@@ -798,6 +828,7 @@ class TaskRun:
         self._state(opened['task'])
         self.seq = int(opened['task'].get('last_seq') or 0)
         self.recorder.saw_input(self.seq)
+        self.history = await self.read_history()
         heartbeat = asyncio.create_task(self._heartbeat())
         try:
             result = await self._work()
@@ -840,6 +871,10 @@ class TaskRun:
         if self.build:
             await self.probe_egress()
             await self.build_workspace()
+        else:
+            # A child task works in its parent's checkout, but it is
+            # its own agent: it loads its own pinned plugins.
+            await self.load_plugins()
         self.cwd = self._cwd()
         self.layout.make_task(str(self.task['id']))
         upstream: Body = self.config.get('model_upstream') or {}
@@ -1204,6 +1239,11 @@ class TaskRun:
     async def build_workspace(self) -> None:
         """Clone each repository of the project and each pinned plugin
         (plan sections 5.2 and 6.2)."""
+        await self.clone_repositories()
+        await self.load_plugins()
+
+    async def clone_repositories(self) -> None:
+        """Clone each repository of the project (plan section 5.2)."""
         binding = self.config.get('github_app_binding')
         repo: Body
         for repo, dest in zip(
@@ -1226,6 +1266,15 @@ class TaskRun:
                 push_helper=True,
             ):
                 raise Failed('workspace_checkout_failed')
+
+    async def load_plugins(self) -> None:
+        """Clone and publish each pinned plugin (plan section 6.2).
+
+        The clone and the published copy carry the task's short id: a
+        child task loads its plugins in its parent's pod, and must not
+        reuse or overwrite the parent's.
+        """
+        binding = self.config.get('github_app_binding')
         cloned: set[pathlib.Path] = set()
         plugin: Body
         for plugin in api.items(self.config, 'plugins'):
@@ -1236,7 +1285,9 @@ class TaskRun:
             key = hashlib.sha256(
                 f'{plugin["url"]}\0{plugin["sha"]}'.encode()
             ).hexdigest()[:12]
-            dest = self.layout.plugins / f'{plugin["marketplace"]}-{key}'
+            dest = self.layout.plugins / (
+                f'{self.task["short_id"]}-{plugin["marketplace"]}-{key}'
+            )
             if dest not in cloned:
                 await self._marketplace(plugin, dest, binding)
                 cloned.add(dest)
@@ -1648,13 +1699,55 @@ class TaskRun:
             lines.append(f'The task project ids are {", ".join(project_ids)}.')
         return ' '.join(lines)
 
-    def instruction(self) -> str:
+    def description(self) -> str:
         """The task description; a webhook payload is untrusted (6.7)."""
         text = str(self.task['description'])
         origin: Body = self.task.get('origin') or {}
-        if origin.get('kind') != 'webhook':
-            return text
-        return relay.untrusted(text, 'webhook')
+        if origin.get('kind') == 'webhook':
+            return relay.untrusted(text, 'webhook')
+        return text
+
+    def instruction(self) -> str:
+        """The task description, then the ticket history."""
+        text = self.description()
+        return f'{text}\n\n{self.history}' if self.history else text
+
+    async def read_history(self) -> str:
+        """The ticket history before this session (ADR 0028): comments,
+        resolved requests, and child and prerequisite outcomes. The oldest
+        entries are cut so that the instruction fits in
+        :data:`PROMPT_BYTES`. Empty when there is none or imbi-api does
+        not give it."""
+        try:
+            body = await self.api.history(self.seq)
+            entries = [dict(entry) for entry in api.items(body, 'entries')]
+            cut = int(body.get('cut') or 0)
+        except (
+            api.Refused,
+            httpx.HTTPError,
+            ValueError,
+            AttributeError,
+            TypeError,
+        ) as err:
+            LOGGER.warning('No history for %s: %s', self.api.short_id, err)
+            return ''
+        used = len(self.description().encode()) + 2
+
+        def fits(drop: int) -> bool:
+            history = _history(entries[drop:], cut + drop)
+            return used + len(history.encode()) <= PROMPT_BYTES
+
+        if not entries:
+            return ''
+        if fits(0):
+            return _history(entries, cut)
+        # The first cut entry can add the cut notice and make the text
+        # longer. After that, the text gets shorter for each entry that is
+        # cut, so a binary search finds the fewest entries to cut.
+        drop = bisect.bisect_left(range(len(entries)), True, lo=1, key=fits)
+        if drop == len(entries):
+            return ''
+        return _history(entries[drop:], cut + drop)
 
     def options(self, proxy_url: str) -> sdk.ClaudeAgentOptions:
         allowed, denied = self.tools()
@@ -1765,7 +1858,16 @@ class TaskRun:
             async with self.client:
                 if self.stopping is not None:
                     return None
-                await self.client.query(self.instruction())
+                # Comments written after the session opened are not in
+                # the history.
+                await self.read_events()
+                # A stop can come while the events are read.
+                if self.stopping is not None:
+                    return None
+                prompt = self.instruction()
+                if self.comments:
+                    prompt += f'\n\n{self.take_comments()}'
+                await self.client.query(prompt)
                 self.reader = asyncio.create_task(
                     self._receive(self.client, transcript)
                 )
@@ -1801,8 +1903,10 @@ class TaskRun:
                 self.result_text = message.result
             if isinstance(message, (sdk.UserMessage, sdk.ResultMessage)):
                 await self.flush()
-            if isinstance(message, sdk.ResultMessage) and not self._waits(
-                message
+            if (
+                isinstance(message, sdk.ResultMessage)
+                and not self._waits(message)
+                and not await self._answer_comments(client, message)
             ):
                 return
 
@@ -1817,16 +1921,20 @@ class TaskRun:
         ):
             self.background.discard(message.task_id)
 
+    def _can_go_on(self, result: sdk.ResultMessage) -> bool:
+        """Another turn can follow ``result``: it is a ``success`` and
+        the task is not stopping."""
+        return (
+            not result.is_error
+            and result.subtype == 'success'
+            and self.stopping is None
+        )
+
     def _waits(self, result: sdk.ResultMessage) -> bool:
         """The session goes on after a ``success`` result: a background
         task runs and the task is not stopping. An error result ends
         the session: no turn follows it to merge the background work."""
-        if (
-            result.is_error
-            or result.subtype != 'success'
-            or not self.background
-            or self.stopping is not None
-        ):
+        if not self.background or not self._can_go_on(result):
             return False
         LOGGER.info(
             'Task %s waits for %d background tasks',
@@ -1834,6 +1942,80 @@ class TaskRun:
             len(self.background),
         )
         return True
+
+    async def _answer_comments(
+        self, client: sdk.ClaudeSDKClient, result: sdk.ResultMessage
+    ) -> bool:
+        """Start a turn with the comments that people wrote during the
+        last turn. Return ``True`` when a turn starts.
+
+        Comments go only between turns: the CLI queues a prompt that
+        comes during a turn, so each prompt sent here gets one result.
+        A comment after an error result or a stop is not sent; the
+        history of the next session has it.
+        """
+        if not self._can_go_on(result):
+            return False
+        await self.read_events()
+        # A stop can come while the events are read.
+        if self.stopping is not None or not self.comments:
+            return False
+        await client.query(self.take_comments())
+        return True
+
+    async def read_events(self) -> bool:
+        """Read the events after :attr:`seq`. Keep request outcomes in
+        :attr:`outcomes` and human comments in :attr:`comments`. Read
+        all the pages. Return ``True`` when there were events."""
+        async with self.events_lock:
+            found_any = False
+            while True:
+                before = self.seq
+                try:
+                    found = await self.api.events(self.seq)
+                except (api.Refused, httpx.HTTPError) as err:
+                    LOGGER.warning('Events of %s: %s', self.api.short_id, err)
+                    return found_any
+                found_any = found_any or bool(found)
+                self._take_events(found)
+                if len(found) < api.EVENTS_PAGE or self.seq <= before:
+                    return found_any
+
+    def _take_events(self, found: list[Body]) -> None:
+        """Keep the outcomes and comments of ``found``; move
+        :attr:`seq` to the newest event. Call it with
+        :attr:`events_lock` held."""
+        for event in found:
+            seq = int(event.get('seq') or 0)
+            self.seq = max(self.seq, seq)
+            payload: Body = event.get('payload') or {}
+            kind = event.get('type')
+            if kind == 'turn' and event.get('actor_kind') == 'human':
+                self.comments.append(
+                    {
+                        'seq': seq,
+                        'at': event.get('at'),
+                        'kind': 'comment',
+                        'actor': event.get('actor_id'),
+                        'text': payload.get('body') or '',
+                    }
+                )
+                continue
+            answered = payload.get('request_id')
+            if answered is None:
+                continue
+            if kind == 'request.resolved':
+                self.recorder.saw_input(seq)
+                self.outcomes[str(answered)] = payload
+            elif kind == 'request.expired':
+                self.outcomes[str(answered)] = {'status': 'expired'}
+
+    def take_comments(self) -> str:
+        """The comments for the model; they are then seen."""
+        comments, self.comments = self.comments, []
+        self.recorder.saw_input(max(c['seq'] for c in comments))
+        text = '\n'.join(_entry(c) for c in comments)
+        return f'New comments on the ticket, oldest first:\n{text}'
 
     def _check_plugins(self, message: typing.Any) -> None:
         """Fail the task when a pinned plugin did not load (plan 5.2)."""
@@ -2010,26 +2192,7 @@ class TaskRun:
         while not self.stopped:
             if request_id in self.outcomes:
                 return self.outcomes.pop(request_id)
-            try:
-                found = await self.api.events(self.seq)
-            except (api.Refused, httpx.HTTPError) as err:
-                LOGGER.warning('Events of %s: %s', self.api.short_id, err)
-                found = []
-            for event in found:
-                seq = int(event.get('seq') or 0)
-                self.seq = max(self.seq, seq)
-                payload: Body = event.get('payload') or {}
-                answered = payload.get('request_id')
-                if answered is None:
-                    continue
-                if event.get('type') == 'request.resolved':
-                    self.recorder.saw_input(seq)
-                    self.outcomes[str(answered)] = payload
-                elif event.get('type') == 'request.expired':
-                    self.outcomes[str(answered)] = {'status': 'expired'}
-            if request_id in self.outcomes:
-                return self.outcomes.pop(request_id)
-            if not found:
+            if not await self.read_events():
                 await self.nap()
         return {'status': 'stopped'}
 

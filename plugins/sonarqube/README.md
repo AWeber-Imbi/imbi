@@ -8,9 +8,12 @@ module-level `PLUGIN` attribute. Its manifest declares:
 
 - a `service_url` integration-level option (the SonarQube base URL),
 - an `api_token` credential (the integration's only credential) holding a
-  SonarQube **user** token, and
+  SonarQube **user** token,
 - one `webhook-actions` capability cataloging the
-  `update_project_from_webhook` action.
+  `update_project_from_webhook` action,
+- an `analysis` capability (the Project Doctor), and
+- a `lifecycle` capability that deletes the SonarQube project when the
+  Imbi project is archived or deleted.
 
 When a SonarQube webhook arrives at `imbi-gateway` and a matching
 `WebhookRule` dispatches to `sonarqube#update_project_from_webhook`, the
@@ -34,7 +37,64 @@ scanner uses and answer `403` to every request this plugin makes, including
 restriction rides on the token *type*, so issuing an analysis token from an
 administrator account does not help. Grant the token's account Browse on the
 projects being read, plus Create Projects if the Project Doctor should create
-missing SonarQube projects.
+missing SonarQube projects and Administer on a project whose main branch it
+should switch or that the lifecycle capability should delete.
+
+## Lifecycle
+
+The `lifecycle` capability handles two events, `archived` and `deleted`, and
+does the same thing for both: `POST /api/projects/delete` with the
+`EXISTS_IN` edge's identifier as the component key, then asks the host to
+drop the edge and the `sonarqube` dashboard link. A project with no edge is
+`skipped` -- the `<team-slug>:<project-slug>` convention the Doctor falls
+back on is a guess, and a delete must not act on one. A project SonarQube
+no longer has is also `skipped` (the edge and
+link are still removed); a refused call -- `403` when the token's account
+lacks Administer on the project -- is `failed` and leaves the edge in place.
+There is no create hook, and an unarchived project is not re-created: an
+analysis or the Project Doctor's repair creates it again.
+
+Any project writer can link any key, so the capability deletes only the
+key `<owning-team-slug>:<project-slug>` of the project. It does not use the
+convention to find a key; the edge must name it. Another key is `skipped`
+and not deleted, and the skip is logged. A key that another Imbi project
+also links, through any SonarQube Integration of the organization, is
+`skipped` and not deleted.
+To keep keys apart, the plugin declares its identifier not shareable, so
+the host refuses a manual link to a key that another project holds through
+the same Integration. A plugin writeback is refused only by a project whose
+edge the plugin verified. Only an admin can change the verified key that a
+plugin writeback records. A manual edit changes only the linked key, and
+the key check above still applies to it.
+
+## Project Doctor
+
+The `analysis` capability checks three things, offering a fix for the
+first two:
+
+1. **The `EXISTS_IN` edge** — that the component key
+   (`<team-slug>:<project-slug>`, or the edge's own identifier) exists in
+   SonarQube, and that the edge's canonical URL and `sonarqube` dashboard link
+   match it. The fix searches for the component, creates it when absent, and
+   writes the edge.
+2. **The main branch** (`main-branch`) — SonarQube reports a project's state
+   from the single branch flagged `isMain`, so a repository that moved from
+   `master` to `main` keeps syncing measures from an analysis that stopped
+   running. When `/api/project_branches/list` shows the expected branch and it
+   is *not* the main branch, the finding fails and the fix `POST`s
+   `/api/project_branches/set_main`.
+3. **The main branch is missing** (`main-branch-missing`) — when SonarQube has
+   no such branch at all, the finding fails with **no** fix offered: SonarQube
+   only records a branch once an analysis has run on it, so nothing this plugin
+   can call will create one. Either CI needs to analyze that branch, or the
+   project genuinely uses a different one and `main_branch` should say so.
+
+The expected branch is the capability's `main_branch` option, defaulting to
+`main`. Set it on the Integration's *Project doctor* capability for the
+org-wide convention; because the host layers capability options
+(Integration < project-type `USES` edge < project `USES` edge), a project
+type or single project whose trunk is named something else can override it
+without changing the default.
 
 A typical webhook rule:
 

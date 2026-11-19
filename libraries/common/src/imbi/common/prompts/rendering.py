@@ -669,6 +669,7 @@ _TYPES: dict[str, tuple[type, ...]] = {
     'bool': (bool,),
     'list': (list,),
     'object': (dict,),
+    'any': (object,),
 }
 
 
@@ -752,6 +753,11 @@ def check_syntax(
             raise RenderError(f'{label}: {e}') from e
 
 
+#: Template providers, by the name a template calls them with. A
+#: variable cannot have one of these names.
+PROVIDER_NAMES: frozenset[str] = frozenset({'project'})
+
+
 def check_variable_schema(
     schema: collections.abc.Mapping[str, models.PromptVariable],
     provider_names: collections.abc.Collection[str],
@@ -833,7 +839,9 @@ def validate_variables(
         allowed = _TYPES[spec.type]
         # ``bool`` is an ``int`` in Python; do not accept it as a number.
         is_bool = isinstance(value, bool)
-        if not isinstance(value, allowed) or (is_bool and spec.type != 'bool'):
+        if not isinstance(value, allowed) or (
+            is_bool and spec.type in ('int', 'float')
+        ):
             raise RenderError(f'Variable {name!r} must be of type {spec.type}')
 
 

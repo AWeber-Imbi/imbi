@@ -52,7 +52,7 @@ const FILTERS: [Filter, string][] = [
 const RECENT_RUNS = 8
 
 // The admin "Scheduled jobs" section. The scheduler calls these tasks; the
-// UI says "jobs" so they are not confused with agent tasks.
+// UI says "jobs" so they are not confused with tickets.
 export function ScheduledJobsManagement() {
   const { slug, viewMode } = useAdminNav()
   if (viewMode === 'create') return <ScheduledJobForm slug={null} />

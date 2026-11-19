@@ -2,6 +2,7 @@
 
 import asyncio
 import datetime
+import json
 import typing
 import uuid
 from collections import abc
@@ -12,7 +13,14 @@ import psycopg.errors
 from fastapi import testclient
 
 from apps.api.tests import support
-from imbi.api import agent_tasks, harness, models, secret_broker, workflows
+from imbi.api import (
+    harness,
+    model_calls,
+    models,
+    secret_broker,
+    tickets,
+    workflows,
+)
 from imbi.common import graph, relational
 
 
@@ -275,11 +283,53 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
             response.json()['detail'],
         )
 
+    def test_list_organization_members(self) -> None:
+        """Members carry their id and active state."""
+        member = {
+            'id': 'u1',
+            'email': 'ada@example.com',
+            'display_name': 'Ada',
+            'role': 'admin',
+            'is_active': True,
+        }
+        self.mock_db.execute.return_value = [
+            {'o': {'slug': 'engineering'}, 'members': [member]},
+        ]
+
+        response = self.client.get('/organizations/engineering/members')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), [member])
+
+    def test_list_organization_members_without_members(self) -> None:
+        """The null row an organization with no members yields is dropped."""
+        self.mock_db.execute.return_value = [
+            {
+                'o': {'slug': 'engineering'},
+                'members': [
+                    {
+                        'id': None,
+                        'email': None,
+                        'display_name': None,
+                        'role': None,
+                        'is_active': False,
+                    },
+                ],
+            },
+        ]
+
+        response = self.client.get('/organizations/engineering/members')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), [])
+
     def test_delete_organization(self) -> None:
         """An empty organization is deleted."""
-        # org id, contents, delete
+        # org id, contents, prompt versions, prompts, delete
         self.mock_db.execute.side_effect = [
             [{'id': 'org-1'}],
+            [],
+            [],
             [],
             [{'deleted': 1}],
         ]
@@ -298,10 +348,28 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(
             self.mock_db.execute.await_args.args[1], {'org_id': 'org-1'}
         )
+        # The organization's prompts go with it, so that a later
+        # organization with the same slug does not get them.
+        prompt_calls = self.mock_db.execute.await_args_list[2:4]
+        for call, needle in zip(
+            prompt_calls, ('DETACH DELETE v', 'DETACH DELETE p'), strict=True
+        ):
+            self.assertIn(needle, call.args[0])
+            self.assertIn("p.slug STARTS WITH (o.slug + '.')", call.args[0])
+            self.assertEqual(
+                call.args[1],
+                {'org_id': 'org-1', 'namespaces': ['agents', 'workflows']},
+            )
 
     def test_delete_organization_changed_during_delete(self) -> None:
         """A delete that matches no node is refused, not reported done."""
-        self.mock_db.execute.side_effect = [[{'id': 'org-1'}], [], []]
+        self.mock_db.execute.side_effect = [
+            [{'id': 'org-1'}],
+            [],
+            [],
+            [],
+            [],
+        ]
 
         response = self.client.delete('/organizations/engineering')
 
@@ -411,10 +479,11 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
     def test_patch_organization_slug_conflict(self) -> None:
         """Test slug rename to conflicting slug returns 409."""
         self.mock_db.match.return_value = [self.test_org]
-        # First call fetches existing previous_slugs (L9), then the
-        # actual SET raises the unique-violation we're testing for.
+        # The first two calls fetch previous_slugs (L9), before and
+        # under the lock, then the SET raises the unique violation.
         self.mock_db.execute.side_effect = [
-            [{'previous_slugs': None}],
+            [{'previous_slugs': None, 'id': self.test_org.id}],
+            [{'previous_slugs': None, 'id': self.test_org.id}],
             psycopg.errors.UniqueViolation('Duplicate'),
         ]
 
@@ -464,8 +533,11 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
     def test_patch_organization_rename_captures_previous_slug(self) -> None:
         """L9: renaming an org appends the old slug to previous_slugs."""
         self.mock_db.match.return_value = [self.test_org]
-        # 1st execute = fetch previous_slugs (none yet); 2nd execute
-        # = SET; 3rd execute = the count query in _persist_organization.
+        # 1st execute = fetch previous_slugs (none yet); 2nd = fetch
+        # them again under the lock (a rename to `middle` and back
+        # committed since); 3rd = SET; 4th to 6th = the prompt moves
+        # (no workflows); 7th = the count query.
+        self.cursor.fetchall.return_value = []
         renamed_org = {
             'id': self.test_org.id,
             'name': self.test_org.name,
@@ -477,8 +549,12 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
             'previous_slugs': ['engineering'],
         }
         self.mock_db.execute.side_effect = [
-            [{'previous_slugs': None}],
+            [{'previous_slugs': None, 'id': self.test_org.id}],
+            [{'previous_slugs': ['middle'], 'id': self.test_org.id}],
             [{'n': renamed_org}],
+            [],
+            [],
+            [],
             [
                 {
                     'team_count': 0,
@@ -494,13 +570,17 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        # The SET call (call_args_list[1]) should have received the
-        # original slug as the new previous_slugs entry.
-        set_call = self.mock_db.execute.call_args_list[1]
+        # The SET call gets the history read under the lock, with the
+        # original slug added.
+        set_call = self.mock_db.execute.call_args_list[2]
         params = set_call.args[1]
-        self.assertEqual(params['previous_slugs'], ['engineering'])
+        self.assertEqual(params['previous_slugs'], ['middle', 'engineering'])
         self.assertEqual(params['slug'], 'eng')
         self.assertEqual(params['original_slug'], 'engineering')
+        # The lookups and the SET match the id that the endpoint read.
+        for call in self.mock_db.execute.call_args_list[:3]:
+            self.assertIn('id: {org_id}', call.args[0])
+            self.assertEqual(call.args[1]['org_id'], self.test_org.id)
 
     def test_patch_organization_no_rename_skips_previous_slugs(
         self,
@@ -538,6 +618,7 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
         set_call = self.mock_db.execute.call_args_list[0]
         params = set_call.args[1]
         self.assertNotIn('previous_slugs', params)
+        self.assertEqual(params['org_id'], self.test_org.id)
 
     def test_patch_organization_tag_formats(self) -> None:
         """Patching tag_formats persists the list in the SET params."""
@@ -596,13 +677,14 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
 
         self.org = f'orgdel-{uuid.uuid4().hex[:10]}'
         await graph.initialize()
-        await agent_tasks.initialize()
+        await tickets.initialize()
         await workflows.initialize()
         await secret_broker.initialize()
         await harness.initialize()
+        await model_calls.initialize()
         self.graph = graph.Graph()
         await self.graph.open()
-        self.pool = agent_tasks.create_pool()
+        self.pool = tickets.create_pool()
         await self.pool.open()
         self.addAsyncCleanup(self._cleanup)
         await self.graph.execute(
@@ -624,7 +706,7 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
                 user=admin,
                 session_id='test-session',
                 auth_method='jwt',
-                permissions={'organization:delete'},
+                permissions={'organization:delete', 'organization:update'},
             )
 
         overrides = self.test_app.dependency_overrides
@@ -645,10 +727,10 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
         )
         async with self.pool.connection() as conn:
             for table in (
-                'agent_runtime.task_dependencies',
-                'agent_runtime.task_projects',
-                'agent_runtime.tasks',
-                'agent_runtime.task_id_sequences',
+                'tickets.ticket_dependencies',
+                'tickets.ticket_projects',
+                'tickets.tickets',
+                'tickets.ticket_id_sequences',
                 'workflow_runtime.runs',
                 'workflows.trigger_bindings',
                 'workflows.workflows',
@@ -676,7 +758,7 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
     async def _insert_task(self, conn: typing.Any, short_id: str) -> uuid.UUID:
         task_id = uuid.uuid4()
         await conn.execute(
-            'INSERT INTO agent_runtime.tasks (id, organization_id, short_id,'
+            'INSERT INTO tickets.tickets (id, organization_id, short_id,'
             ' agent_id, agent_version, service_account_id, title,'
             ' description, origin_kind, origin_id, origin, owner)'
             " VALUES (%s, %s, %s, 'a', 1, 'sa', 't', 'd', 'human', 'u',"
@@ -690,25 +772,26 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
             first = await self._insert_task(conn, 'T-1')
             second = await self._insert_task(conn, 'T-2')
             await conn.execute(
-                'INSERT INTO agent_runtime.task_dependencies (organization_id,'
-                ' dependent_task_id, prerequisite_task_id, created_by_kind,'
-                " created_by) VALUES (%s, %s, %s, 'human', 'u')",
+                'INSERT INTO tickets.ticket_dependencies (organization_id,'
+                ' dependent_ticket_id, prerequisite_ticket_id,'
+                " created_by_kind, created_by) VALUES (%s, %s, %s, 'human',"
+                " 'u')",
                 (self.org, second, first),
             )
             await conn.execute(
-                'INSERT INTO agent_runtime.task_projects (organization_id,'
-                ' task_id, project_id, project_slug, added_by_kind,'
+                'INSERT INTO tickets.ticket_projects (organization_id,'
+                ' ticket_id, project_id, project_slug, added_by_kind,'
                 " added_by) VALUES (%s, %s, 'p', 'p', 'human', 'u')",
                 (self.org, first),
             )
             await conn.execute(
-                'INSERT INTO agent_runtime.events (task_id, seq, event_id,'
+                'INSERT INTO tickets.events (ticket_id, seq, event_id,'
                 " type, actor_kind, channel) VALUES (%s, 1, %s, 'x', 'human',"
                 " 'c')",
                 (first, uuid.uuid4()),
             )
             await conn.execute(
-                'INSERT INTO agent_runtime.task_id_sequences'
+                'INSERT INTO tickets.ticket_id_sequences'
                 ' (organization_id, last_value) VALUES (%s, 2)',
                 (self.org,),
             )
@@ -724,16 +807,16 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
 
         self.assertEqual(response.status_code, 204, response.text)
         for table in (
-            'agent_runtime.tasks',
-            'agent_runtime.task_dependencies',
-            'agent_runtime.task_projects',
-            'agent_runtime.task_id_sequences',
+            'tickets.tickets',
+            'tickets.ticket_dependencies',
+            'tickets.ticket_projects',
+            'tickets.ticket_id_sequences',
             'workflow_runtime.runs',
         ):
             self.assertEqual(await self._count(table), 0, table)
         async with self.pool.connection() as conn:
             cursor = await conn.execute(
-                'SELECT count(*) FROM agent_runtime.events WHERE task_id = %s',
+                'SELECT count(*) FROM tickets.events WHERE ticket_id = %s',
                 (first,),
             )
             self.assertEqual(await cursor.fetchone(), (0,))
@@ -743,6 +826,234 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
             ['id'],
         )
         self.assertEqual(records, [])
+
+    async def test_prompts_of_the_organization_are_deleted(self) -> None:
+        # A later organization with the same slug must not get them.
+        # The prompt of another organization whose slug starts with
+        # this slug stays.
+        other = f'{self.org}x.wf.step'
+        for slug in (f'{self.org}.wf.step', other):
+            await self.graph.execute(
+                "CREATE (p:Prompt {{id: {slug}, namespace: 'workflows',"
+                ' slug: {slug}}})'
+                ' CREATE (:PromptVersion {{prompt_id: {slug}, n: 1}})'
+                '-[:VERSION_OF]->(p) RETURN p.id AS id',
+                {'slug': slug},
+                ['id'],
+            )
+        for label in ('Prompt', 'PromptVersion'):
+            self.addAsyncCleanup(
+                self.graph.execute,
+                f'MATCH (n:{label}) WHERE n.id = {{slug}}'
+                ' OR n.prompt_id = {slug} DETACH DELETE n',
+                {'slug': other},
+                [],
+            )
+
+        response = await self.client.delete(f'/organizations/{self.org}')
+
+        self.assertEqual(response.status_code, 204, response.text)
+        records = await self.graph.execute(
+            'MATCH (p:Prompt) WHERE p.slug STARTS WITH {org}'
+            ' RETURN p.slug AS slug',
+            {'org': self.org},
+            ['slug'],
+        )
+        self.assertEqual(
+            [graph.parse_agtype(r['slug']) for r in records], [other]
+        )
+        records = await self.graph.execute(
+            'MATCH (v:PromptVersion) WHERE v.prompt_id STARTS WITH {org}'
+            ' RETURN v.prompt_id AS id',
+            {'org': self.org},
+            ['id'],
+        )
+        self.assertEqual(
+            [graph.parse_agtype(r['id']) for r in records], [other]
+        )
+
+    async def test_rename_moves_the_prompts_and_references(self) -> None:
+        """#780: the prompts and their references get the new slug."""
+        new = f'{self.org}-new'
+        other = f'{self.org}x.bot'
+        for namespace, slug in (
+            ('agents', f'{self.org}.bot'),
+            ('workflows', f'{self.org}.wf.step'),
+            ('agents', other),
+        ):
+            await self.graph.execute(
+                'CREATE (:Prompt {{id: {id}, namespace: {namespace},'
+                ' slug: {slug}}})',
+                {
+                    'id': f'{namespace}/{slug}',
+                    'namespace': namespace,
+                    'slug': slug,
+                },
+                [],
+            )
+        snapshot = {'prompt_ref': f'agents/{self.org}.bot@stable'}
+        await self.graph.execute(
+            'MATCH (o:Organization {{id: {org}}})'
+            ' CREATE (a:Agent {{id: {org}, prompt_ref: {ref}}})'
+            '-[:BELONGS_TO]->(o)'
+            ' CREATE (:AgentVersion {{agent_id: {org}, n: 1,'
+            ' snapshot: {snapshot}}})-[:VERSION_OF]->(a)',
+            {
+                'org': self.org,
+                'ref': snapshot['prompt_ref'],
+                'snapshot': json.dumps(snapshot),
+            },
+            [],
+        )
+        # This reference names no prompt, so the rename must not move
+        # it: it could come to name a prompt that has the new slug.
+        ghost = f'agents/{self.org}.ghost@1'
+        await self.graph.execute(
+            'MATCH (o:Organization {{id: {org}}})'
+            " CREATE (:Agent {{id: {org} + '-ghost', prompt_ref: {ref}}})"
+            '-[:BELONGS_TO]->(o)',
+            {'org': self.org, 'ref': ghost},
+            [],
+        )
+        for query in (
+            'MATCH (p:Prompt) WHERE p.slug STARTS WITH {org} DETACH DELETE p',
+            'MATCH (v:AgentVersion {{agent_id: {org}}}) DETACH DELETE v',
+            'MATCH (a:Agent) WHERE a.id STARTS WITH {org} DETACH DELETE a',
+        ):
+            self.addAsyncCleanup(
+                self.graph.execute, query, {'org': self.org}, []
+            )
+        wf_graph = {
+            'nodes': [
+                {
+                    'id': 'n1',
+                    'key': 'step',
+                    'type': 'llm_call',
+                    'params': {
+                        'prompt_ref': f'workflows/{self.org}.wf.step',
+                        'prompt_version': 3,
+                    },
+                }
+            ]
+        }
+        workflow_id = uuid.uuid4()
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'INSERT INTO workflows.workflows (id, organization_id, slug,'
+                " name, owner_team_id, created_by) VALUES (%s, %s, 'wf',"
+                " 'W', 't', 'u')",
+                (workflow_id, self.org),
+            )
+            await conn.execute(
+                'INSERT INTO workflows.workflow_versions (workflow_id,'
+                ' version, graph, settings, validation, created_by)'
+                " VALUES (%s, 1, %s, '{}', '{}', 'u')",
+                (workflow_id, json.dumps(wf_graph)),
+            )
+
+        response = await self.client.patch(
+            f'/organizations/{self.org}',
+            json=[{'op': 'replace', 'path': '/slug', 'value': new}],
+        )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        records = await self.graph.execute(
+            'MATCH (p:Prompt) WHERE p.slug STARTS WITH {org}'
+            ' RETURN p.namespace AS ns, p.slug AS slug',
+            {'org': self.org},
+            ['ns', 'slug'],
+        )
+        self.assertCountEqual(
+            [
+                (graph.parse_agtype(r['ns']), graph.parse_agtype(r['slug']))
+                for r in records
+            ],
+            [
+                ('agents', f'{new}.bot'),
+                ('workflows', f'{new}.wf.step'),
+                ('agents', other),
+            ],
+        )
+        records = await self.graph.execute(
+            'MATCH (v:AgentVersion)-[:VERSION_OF]->(a:Agent {{id: {org}}})'
+            ' RETURN a.prompt_ref AS ref, v.snapshot AS snapshot',
+            {'org': self.org},
+            ['ref', 'snapshot'],
+        )
+        ref = f'agents/{new}.bot@stable'
+        self.assertEqual(graph.parse_agtype(records[0]['ref']), ref)
+        self.assertEqual(
+            json.loads(graph.parse_agtype(records[0]['snapshot'])),
+            {'prompt_ref': ref},
+        )
+        records = await self.graph.execute(
+            "MATCH (a:Agent {{id: {org} + '-ghost'}})"
+            ' RETURN a.prompt_ref AS ref',
+            {'org': self.org},
+            ['ref'],
+        )
+        self.assertEqual(graph.parse_agtype(records[0]['ref']), ghost)
+        async with self.pool.connection() as conn:
+            cursor = await conn.execute(
+                'SELECT graph FROM workflows.workflow_versions'
+                ' WHERE workflow_id = %s',
+                (workflow_id,),
+            )
+            row = await cursor.fetchone()
+        assert row is not None
+        self.assertEqual(
+            row[0]['nodes'][0]['params'],
+            {
+                'prompt_ref': f'workflows/{new}.wf.step',
+                'prompt_version': 3,
+            },
+        )
+
+    async def test_rename_rejects_a_slug_taken_by_another_org(self) -> None:
+        """#829: the locked rename matches the id, not only the slug."""
+        other = f'{self.org}-b'
+        self.addAsyncCleanup(
+            self.graph.execute,
+            'MATCH (o:Organization {{id: {id}}}) DETACH DELETE o',
+            {'id': other},
+            [],
+        )
+        response = await self._assert_waits_for_delete(
+            lambda: self.client.patch(
+                f'/organizations/{self.org}',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/slug',
+                        'value': f'{self.org}-new',
+                    }
+                ],
+            ),
+            # While the rename waits: the organization is renamed, and
+            # another organization takes its old slug.
+            lambda: self.graph.execute(
+                'MATCH (o:Organization {{id: {org}}})'
+                " SET o.slug = {org} + '-moved'"
+                ' CREATE (:Organization {{id: {other}, slug: {org},'
+                ' name: {other}}})',
+                {'org': self.org, 'other': other},
+                [],
+            ),
+        )
+        self.assertEqual(response.status_code, 404, response.text)
+        records = await self.graph.execute(
+            'MATCH (o:Organization) WHERE o.id IN [{org}, {other}]'
+            ' RETURN o.id AS id, o.slug AS slug',
+            {'org': self.org, 'other': other},
+            ['id', 'slug'],
+        )
+        self.assertEqual(
+            {
+                graph.parse_agtype(r['id']): graph.parse_agtype(r['slug'])
+                for r in records
+            },
+            {self.org: f'{self.org}-moved', other: self.org},
+        )
 
     async def test_workflows_and_bindings_block_the_delete(self) -> None:
         workflow_id = uuid.uuid4()
@@ -770,7 +1081,7 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
             ' bindings (1), workflows (1). Delete these first.',
         )
         # Nothing was deleted.
-        self.assertEqual(await self._count('agent_runtime.tasks'), 1)
+        self.assertEqual(await self._count('tickets.tickets'), 1)
 
     async def _insert_resolution(
         self, conn: typing.Any, state: str, revocation_state: str
@@ -900,8 +1211,11 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
         self.assertIsNone(await secrets.identity_source(self.org))
 
     async def _assert_waits_for_delete(
-        self, write: abc.Callable[[], abc.Awaitable[typing.Any]]
-    ) -> None:
+        self,
+        write: abc.Callable[[], abc.Awaitable[typing.Any]],
+        while_locked: abc.Callable[[], abc.Awaitable[typing.Any]]
+        | None = None,
+    ) -> typing.Any:
         async with self.pool.connection() as conn, conn.transaction():
             await conn.execute(
                 'SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))',
@@ -910,7 +1224,9 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
             task = asyncio.create_task(write())
             await asyncio.sleep(0.5)
             self.assertFalse(task.done())
-        await asyncio.wait_for(task, 10)
+            if while_locked is not None:
+                await while_locked()
+        return await asyncio.wait_for(task, 10)
 
     async def test_writers_wait_for_a_delete(self) -> None:
         store = workflows.WorkflowStore(self.pool)
@@ -929,7 +1245,10 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
         await self._assert_waits_for_delete(
             lambda: store.activate(self.org, 'w', 1, 'u', [])
         )
-        task = agent_tasks.NewTask(
+        await self._assert_waits_for_delete(
+            lambda: store.delete(self.org, 'w')
+        )
+        task = tickets.NewTask(
             organization_id=self.org,
             agent_id='a',
             agent_version=1,
@@ -945,8 +1264,8 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
             budget=None,
         )
         await self._assert_waits_for_delete(
-            lambda: agent_tasks.TaskStore(self.pool).create(
-                task, agent_tasks.Actor('human', 'u', 'web'), {}
+            lambda: tickets.TicketStore(self.pool).create(
+                task, tickets.Actor('human', 'u', 'web'), {}
             )
         )
         secrets = secret_broker.store.SecretStore(self.pool)

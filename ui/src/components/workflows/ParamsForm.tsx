@@ -3,9 +3,9 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Plus, X } from 'lucide-react'
 
-import { listTeams } from '@/api/endpoints'
+import { listOrganizationMembers, listTeams } from '@/api/endpoints'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Combobox } from '@/components/ui/combobox'
+import { Combobox, type ComboboxOption } from '@/components/ui/combobox'
 import { FormField } from '@/components/ui/form-field'
 import { Input } from '@/components/ui/input'
 import {
@@ -19,6 +19,7 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
+import type { OrganizationMember } from '@/types'
 
 import type { Condition } from './conditions'
 import { ConditionsField } from './ConditionsField'
@@ -31,6 +32,7 @@ import type { ReferenceGroup } from './references'
 import type { ManualInput } from './runs'
 import {
   type FieldSource,
+  hasTemplate,
   isIdOrReference,
   isRecord,
   type ParamField,
@@ -55,6 +57,12 @@ interface ParamsFormProps {
 interface Recipient {
   id: string
   kind: 'team' | 'user'
+}
+
+/** A recipient in the form, with a key that stays with it on removal. */
+interface RecipientRow extends Recipient {
+  key: string
+  referencing: boolean
 }
 
 /** The inspector form for a node's `params`, built from its type's schema. */
@@ -297,6 +305,7 @@ function FieldControl({
           id={id}
           onChange={onChange}
           orgSlug={orgSlug}
+          references={references}
           value={Array.isArray(value) ? (value as Recipient[]) : []}
         />
       )
@@ -425,19 +434,21 @@ function ListField({
 }
 
 /**
- * Email recipients: teams by graph node id from the teams list. No
- * org-scoped endpoint lists users with their ids, so a user recipient
- * takes a typed id.
+ * Email recipients: teams and users by graph node id, picked from the
+ * organization's teams and active members. A user recipient can also be
+ * a reference, such as a user that an earlier step returns.
  */
 function RecipientsField({
   id,
   onChange,
   orgSlug,
+  references,
   value,
 }: {
   id: string
   onChange: (value: Recipient[]) => void
   orgSlug: string
+  references: ReferenceGroup[]
   value: Recipient[]
 }) {
   const teams = useQuery({
@@ -447,56 +458,57 @@ function RecipientsField({
     select: (rows) =>
       rows.flatMap((t) => (t.id ? [{ label: t.name, value: t.id }] : [])),
   })
-  const set = (index: number, patch: Partial<Recipient>) =>
-    onChange(value.map((r, i) => (i === index ? { ...r, ...patch } : r)))
+  const [rows, setRows] = useState(() => value.map(recipientRow))
+  const update = (next: RecipientRow[]) => {
+    setRows(next)
+    onChange(next.map((row) => ({ id: row.id, kind: row.kind })))
+  }
+  const set = (index: number, patch: Partial<RecipientRow>) =>
+    update(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)))
   return (
     <div className="flex flex-col gap-2" id={id}>
-      {value.map((recipient, i) => (
-        <div className="flex items-center gap-1.5" key={i}>
+      {rows.map((row, i) => (
+        <div className="flex items-center gap-1.5" key={row.key}>
           <div className="w-24 shrink-0">
             <SelectField
               id={`${id}-${i}-kind`}
               onChange={(kind) =>
-                set(i, { id: '', kind: kind as Recipient['kind'] })
+                set(i, {
+                  id: '',
+                  kind: kind as Recipient['kind'],
+                  referencing: false,
+                })
               }
               options={[
                 { label: 'Team', value: 'team' },
                 { label: 'User', value: 'user' },
               ]}
-              value={recipient.kind}
+              value={row.kind}
             />
           </div>
           <div className="min-w-0 flex-1">
-            {recipient.kind === 'team' ? (
+            {row.kind === 'team' ? (
               <SelectField
                 id={`${id}-${i}-id`}
                 onChange={(teamId) => set(i, { id: teamId })}
                 options={teams.data ?? []}
-                value={recipient.id}
+                value={row.id}
               />
             ) : (
-              <>
-                <Input
-                  aria-invalid={!isIdOrReference(recipient.id)}
-                  aria-label={`Recipient ${i + 1} user id`}
-                  className="font-mono text-xs"
-                  onChange={(e) => set(i, { id: e.target.value })}
-                  placeholder="User id or {{ trigger.user }}"
-                  value={recipient.id}
-                />
-                {!isIdOrReference(recipient.id) && (
-                  <p className="text-danger mt-1 text-xs">
-                    Use a user id or one reference such as{' '}
-                    {'{{ trigger.user }}'}.
-                  </p>
-                )}
-              </>
+              <UserRecipientField
+                id={`${id}-${i}-id`}
+                onChange={(patch) => set(i, patch)}
+                orgSlug={orgSlug}
+                references={references}
+                referencing={row.referencing}
+                value={row.id}
+              />
             )}
           </div>
           <button
             aria-label={`Remove recipient ${i + 1}`}
             className="text-secondary hover:bg-secondary flex size-7 shrink-0 items-center justify-center rounded-md"
-            onClick={() => onChange(value.filter((_, j) => j !== i))}
+            onClick={() => update(rows.filter((_, j) => j !== i))}
             type="button"
           >
             <X className="size-3.5" />
@@ -505,7 +517,9 @@ function RecipientsField({
       ))}
       <button
         className="border-input text-secondary hover:border-amber-border hover:text-primary flex h-8.5 items-center justify-center gap-1.5 rounded-md border border-dashed text-sm"
-        onClick={() => onChange([...value, { id: '', kind: 'team' }])}
+        onClick={() =>
+          update([...rows, recipientRow({ id: '', kind: 'team' })])
+        }
         type="button"
       >
         <Plus className="size-3.5" />
@@ -557,5 +571,95 @@ function SourceField({
         </p>
       )}
     </>
+  )
+}
+
+const USE_REFERENCE = '__reference__'
+
+function memberOptions(members: OrganizationMember[]): ComboboxOption[] {
+  return members
+    .filter((member) => member.is_active)
+    .map((member) => ({
+      label: member.display_name
+        ? `${member.display_name} <${member.email}>`
+        : member.email,
+      value: member.id,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label))
+}
+
+function recipientRow(recipient: Recipient): RecipientRow {
+  return {
+    ...recipient,
+    key: crypto.randomUUID(),
+    referencing: recipient.kind === 'user' && hasTemplate(recipient.id),
+  }
+}
+
+function UserRecipientField({
+  id,
+  onChange,
+  orgSlug,
+  references,
+  referencing,
+  value,
+}: {
+  id: string
+  onChange: (patch: { id: string; referencing?: boolean }) => void
+  orgSlug: string
+  references: ReferenceGroup[]
+  referencing: boolean
+  value: string
+}) {
+  const members = useQuery({
+    queryFn: ({ signal }) => listOrganizationMembers(orgSlug, signal),
+    queryKey: queryKeys.organizationMembers(orgSlug),
+    select: memberOptions,
+  })
+  if (referencing) {
+    return (
+      <>
+        <TemplateInput
+          className="font-mono text-xs"
+          groups={references}
+          id={id}
+          multiline={false}
+          onChange={(next) => onChange({ id: next })}
+          value={value}
+        />
+        {!isIdOrReference(value) && (
+          <p className="text-danger mt-1 text-xs">
+            Use a user id or one reference such as {'{{ trigger.user }}'}.
+          </p>
+        )}
+        <button
+          className="text-secondary hover:text-primary mt-1 text-xs"
+          onClick={() => onChange({ id: '', referencing: false })}
+          type="button"
+        >
+          Pick a user
+        </button>
+      </>
+    )
+  }
+  const options = members.data ?? []
+  const known =
+    !value || members.isPending || options.some((o) => o.value === value)
+  return (
+    <Combobox
+      id={id}
+      onChange={(next) =>
+        onChange(
+          next === USE_REFERENCE ? { id: '', referencing: true } : { id: next },
+        )
+      }
+      options={[
+        ...options,
+        ...(known ? [] : [{ label: value, value }]),
+        { label: 'Use a reference…', value: USE_REFERENCE },
+      ]}
+      placeholder={members.isPending ? 'Loading…' : 'Choose a user…'}
+      value={value}
+    />
   )
 }

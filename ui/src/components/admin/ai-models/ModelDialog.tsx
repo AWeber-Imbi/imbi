@@ -55,6 +55,8 @@ export interface ModelFormValues {
   name: string
   output_cost_per_million: null | number
   provider_id: string
+  supports_forced_tool_choice: boolean
+  supports_structured_output: boolean
 }
 
 interface ModelDialogProps {
@@ -383,6 +385,45 @@ export function ModelDialog({
                       value={text.default_top_p}
                     />
                   </div>
+                  <div className="border-tertiary flex items-center justify-between rounded-md border p-3">
+                    <div>
+                      <div className="text-primary text-sm font-medium">
+                        Structured output
+                      </div>
+                      <p className="text-tertiary text-sm">
+                        The model can return JSON that matches a schema.
+                        Workflow LLM Call steps with output fields need it.
+                      </p>
+                    </div>
+                    <Switch
+                      aria-label="Structured output"
+                      checked={values.supports_structured_output}
+                      onCheckedChange={(on) =>
+                        set('supports_structured_output', on)
+                      }
+                    />
+                  </div>
+                  {values.supports_structured_output && (
+                    <div className="border-tertiary flex items-center justify-between rounded-md border p-3">
+                      <div>
+                        <div className="text-primary text-sm font-medium">
+                          Forced tool choice
+                        </div>
+                        <p className="text-tertiary text-sm">
+                          Anthropic and Bedrock: the model accepts a forced tool
+                          choice. Turn off for a model that refuses it, such as
+                          a model with extended thinking.
+                        </p>
+                      </div>
+                      <Switch
+                        aria-label="Forced tool choice"
+                        checked={values.supports_forced_tool_choice}
+                        onCheckedChange={(on) =>
+                          set('supports_forced_tool_choice', on)
+                        }
+                      />
+                    </div>
+                  )}
                 </>
               )}
               <NumberField
@@ -550,6 +591,8 @@ function initialValues(
       name: '',
       output_cost_per_million: null,
       provider_id: defaultProviderId ?? '',
+      supports_forced_tool_choice: true,
+      supports_structured_output: false,
     }
   }
   return {
@@ -574,6 +617,8 @@ function initialValues(
     name: model.name,
     output_cost_per_million: decimalToNumber(model.output_cost_per_million),
     provider_id: model.provider_id,
+    supports_forced_tool_choice: model.supports_forced_tool_choice,
+    supports_structured_output: model.supports_structured_output,
   }
 }
 

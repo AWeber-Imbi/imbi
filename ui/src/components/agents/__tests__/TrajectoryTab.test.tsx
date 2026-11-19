@@ -10,7 +10,7 @@ import {
   waitFor,
   within,
 } from '@/test/utils'
-import type { AgentTask } from '@/types'
+import type { Ticket } from '@/types'
 
 import { inspectedSeq, startedText, tabsFor } from '../TrajectoryInspector'
 import { focusedBy, totalText } from '../TrajectoryOverview'
@@ -64,8 +64,8 @@ const LOG = [
   }),
 ]
 
-function renderTab(status: AgentTask['status'] = 'closed', events = LOG) {
-  const t = task({ status }) as unknown as AgentTask
+function renderTab(status: Ticket['status'] = 'closed', events = LOG) {
+  const t = task({ status }) as unknown as Ticket
   return render(
     <div className="flex h-150 flex-col">
       <TrajectoryTab events={events} task={t} />
@@ -86,7 +86,7 @@ function rows() {
 }
 
 beforeEach(() => {
-  window.history.replaceState(null, '', '/agents/tasks/acme/T-1/trajectory')
+  window.history.replaceState(null, '', '/tickets/acme/T-1/trajectory')
 })
 
 describe('TrajectoryTab ledger', () => {
@@ -178,17 +178,13 @@ describe('TrajectoryTab ledger', () => {
   })
 
   it('selects the record of a #e link, falling back to the one before', () => {
-    window.history.replaceState(
-      null,
-      '',
-      '/agents/tasks/acme/T-1/trajectory#e4',
-    )
+    window.history.replaceState(null, '', '/tickets/acme/T-1/trajectory#e4')
     renderTab()
     expect(rows()[2]).toHaveAttribute('aria-selected', 'true')
   })
 
   it('selects the record again when a #e link comes back', async () => {
-    const path = '/agents/tasks/acme/T-1/trajectory'
+    const path = '/tickets/acme/T-1/trajectory'
     const go = (url: string) =>
       act(() => {
         window.history.pushState(null, '', url)
@@ -209,22 +205,14 @@ describe('TrajectoryTab ledger', () => {
 
 describe('TrajectoryTab links and live tasks', () => {
   it('falls back to the record before a seq no record holds', () => {
-    window.history.replaceState(
-      null,
-      '',
-      '/agents/tasks/acme/T-1/trajectory#e50',
-    )
+    window.history.replaceState(null, '', '/tickets/acme/T-1/trajectory#e50')
     renderTab()
     expect(rows()[rows().length - 1]).toHaveAttribute('aria-selected', 'true')
   })
 
   it('moves a fallback link to its event once the event arrives', () => {
-    window.history.replaceState(
-      null,
-      '',
-      '/agents/tasks/acme/T-1/trajectory#e12',
-    )
-    const t = task({ status: 'running' }) as unknown as AgentTask
+    window.history.replaceState(null, '', '/tickets/acme/T-1/trajectory#e12')
+    const t = task({ status: 'running' }) as unknown as Ticket
     const view = render(
       <div className="flex h-150 flex-col">
         <TrajectoryTab events={LOG} task={t} />
@@ -259,7 +247,7 @@ describe('TrajectoryTab links and live tasks', () => {
     { actor_kind: 'subagent' },
   )
   function renderLive(events: typeof early) {
-    const t = task({ status: 'running' }) as unknown as AgentTask
+    const t = task({ status: 'running' }) as unknown as Ticket
     const ui = (list: typeof early) => (
       <div className="flex h-150 flex-col">
         <TrajectoryTab events={list} task={t} />
@@ -270,7 +258,7 @@ describe('TrajectoryTab links and live tasks', () => {
   }
 
   it('keeps a selected request once a subagent report leaves the list', async () => {
-    window.history.replaceState(null, '', '/agents/tasks/acme/T-1/trajectory')
+    window.history.replaceState(null, '', '/tickets/acme/T-1/trajectory')
     const update = renderLive(early)
     await userEvent.click(screen.getByRole('button', { name: 'Request #3' }))
     update([...early, joined])
@@ -281,11 +269,7 @@ describe('TrajectoryTab links and live tasks', () => {
   })
 
   it('follows a linked subagent report to its Agent call', () => {
-    window.history.replaceState(
-      null,
-      '',
-      '/agents/tasks/acme/T-1/trajectory#e4',
-    )
+    window.history.replaceState(null, '', '/tickets/acme/T-1/trajectory#e4')
     const update = renderLive(early)
     expect(
       rows().find((r) => r.getAttribute('data-record') === early[3].event_id),
@@ -298,7 +282,7 @@ describe('TrajectoryTab links and live tasks', () => {
   })
 
   it('treats a blocked task as live, so a running call is Pending', async () => {
-    window.history.replaceState(null, '', '/agents/tasks/acme/T-1/trajectory')
+    window.history.replaceState(null, '', '/tickets/acme/T-1/trajectory')
     renderTab('blocked', [
       ...LOG,
       event(
@@ -318,15 +302,15 @@ describe('TrajectoryTab links and live tasks', () => {
   })
 
   it('keeps a running call selected once it is written', async () => {
-    window.history.replaceState(null, '', '/agents/tasks/acme/T-1/trajectory')
+    window.history.replaceState(null, '', '/tickets/acme/T-1/trajectory')
     const sub = event(
       12,
       'tool.called',
       { call_id: 's1', duration_ms: 5, parent_call_id: 'a1', tool: 'Grep' },
       { actor_kind: 'subagent' },
     )
-    const t = (status: AgentTask['status']) =>
-      task({ status }) as unknown as AgentTask
+    const t = (status: Ticket['status']) =>
+      task({ status }) as unknown as Ticket
     const view = render(
       <div className="flex h-150 flex-col">
         <TrajectoryTab events={[...LOG, sub]} task={t('running')} />
@@ -359,7 +343,7 @@ describe('TrajectoryTab links and live tasks', () => {
   })
 
   it('clears the search when a span re-selects a hidden record', async () => {
-    window.history.replaceState(null, '', '/agents/tasks/acme/T-1/trajectory')
+    window.history.replaceState(null, '', '/tickets/acme/T-1/trajectory')
     renderTab()
     await userEvent.click(rows()[3])
     const search = screen.getByRole('searchbox', { name: 'Search trajectory' })
@@ -372,7 +356,7 @@ describe('TrajectoryTab links and live tasks', () => {
   })
 
   it('moves between inspector tabs with the arrow keys', async () => {
-    window.history.replaceState(null, '', '/agents/tasks/acme/T-1/trajectory')
+    window.history.replaceState(null, '', '/tickets/acme/T-1/trajectory')
     renderTab()
     await userEvent.click(rows()[3])
     const summary = within(inspector()).getByRole('tab', { name: 'Summary' })
@@ -700,7 +684,7 @@ describe('TrajectoryTab overview', () => {
       )
     const original = Element.prototype.scrollTo
     Element.prototype.scrollTo = scrollTo
-    const t = task({ status: 'running' }) as unknown as AgentTask
+    const t = task({ status: 'running' }) as unknown as Ticket
     const ui = (events: typeof LOG) => (
       <div className="flex h-150 flex-col">
         <TrajectoryTab events={events} task={t} />
@@ -728,7 +712,7 @@ describe('TrajectoryTab overview', () => {
       )
     const original = Element.prototype.scrollTo
     Element.prototype.scrollTo = scrollTo
-    const t = task({ status: 'running' }) as unknown as AgentTask
+    const t = task({ status: 'running' }) as unknown as Ticket
     const ui = (events: typeof LOG) => (
       <div className="flex h-150 flex-col">
         <TrajectoryTab events={events} task={t} />
@@ -772,7 +756,7 @@ describe('TrajectoryTab overview', () => {
   })
 
   it('moves a range with its records when live rows land before it', () => {
-    const t = task({ status: 'running' }) as unknown as AgentTask
+    const t = task({ status: 'running' }) as unknown as Ticket
     const sub = (seq: number, id: string) =>
       event(
         seq,
@@ -825,7 +809,7 @@ describe('TrajectoryTab overview', () => {
   })
 
   it('keeps a range ordered when its subagent requests leave', () => {
-    const t = task({ status: 'running' }) as unknown as AgentTask
+    const t = task({ status: 'running' }) as unknown as Ticket
     const base = [
       event(1, 'task.created', { title: 'T' }),
       event(2, 'usage.reported', { message_id: 'm1', tokens_in: 1 }),
@@ -1329,7 +1313,7 @@ describe('TrajectoryTab inspector', () => {
 
 describe('TrajectoryTab selection and the conversation', () => {
   function renderWith(onShow = vi.fn(), events = LOG) {
-    const t = task({ status: 'closed' }) as unknown as AgentTask
+    const t = task({ status: 'closed' }) as unknown as Ticket
     render(
       <div className="flex h-150 flex-col">
         <TrajectoryTab events={events} onShowInConversation={onShow} task={t} />
@@ -1518,12 +1502,8 @@ describe('TrajectoryTab with many rows', () => {
 
   it('scrolls to a record a late #e link points at', () => {
     const scrollTo = vi.fn()
-    window.history.replaceState(
-      null,
-      '',
-      '/agents/tasks/acme/T-1/trajectory#e434',
-    )
-    const t = task({ status: 'running' }) as unknown as AgentTask
+    window.history.replaceState(null, '', '/tickets/acme/T-1/trajectory#e434')
+    const t = task({ status: 'running' }) as unknown as Ticket
     const view = render(
       <div className="flex h-150 flex-col">
         <TrajectoryTab events={LONG.slice(0, 20)} task={t} />
@@ -1579,7 +1559,7 @@ describe('TrajectoryTab with many rows', () => {
     scrollPane(ledger(), 0)
     const dot = within(rows()[4]).getByRole('button', { name: /^Request #/ })
     dot.focus()
-    const t = task({ status: 'closed' }) as unknown as AgentTask
+    const t = task({ status: 'closed' }) as unknown as Ticket
     view.rerender(
       <div className="flex h-150 flex-col">
         <TrajectoryTab
@@ -1823,12 +1803,8 @@ describe('TrajectoryTab folds across tasks', () => {
     vi.mocked(window.localStorage.getItem).mockImplementation((key: string) =>
       key === 'imbi.trajectory.folds' ? '["turns"]' : null,
     )
-    window.history.replaceState(
-      null,
-      '',
-      '/agents/tasks/acme/T-1/trajectory#e2',
-    )
-    const t = task({ status: 'running' }) as unknown as AgentTask
+    window.history.replaceState(null, '', '/tickets/acme/T-1/trajectory#e2')
+    const t = task({ status: 'running' }) as unknown as Ticket
     const view = render(
       <div className="flex h-150 flex-col">
         <TrajectoryTab events={LOG.slice(0, 2)} task={t} />

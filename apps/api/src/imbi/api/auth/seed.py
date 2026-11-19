@@ -173,6 +173,13 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'Move prompt labels and set the default label',
     ),
     ('prompt:delete', 'prompt', 'delete', 'Delete prompts'),
+    # A run spends provider credit, so it is not part of ``read``.
+    (
+        'prompt:run',
+        'prompt',
+        'run',
+        'Run saved generative prompts against their AI model',
+    ),
     (
         'prompt:evaluate',
         'prompt',
@@ -498,6 +505,25 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'delete',
         'Delete closed agent tasks',
     ),
+    # Tickets (ADR 0028): the new names of the `agent_task` permissions.
+    # Every role that has one of them has the other, and every check
+    # accepts either name until release B removes the old ones.
+    ('ticket:read', 'ticket', 'read', 'View tickets and their events'),
+    ('ticket:create', 'ticket', 'create', 'Create tickets'),
+    (
+        'ticket:manage',
+        'ticket',
+        'manage',
+        'Pause, resume, cancel, and reassign tickets',
+    ),
+    (
+        'ticket:resolve',
+        'ticket',
+        'resolve',
+        'Answer feedback requests and resolve approvals of tickets',
+    ),
+    # Granted to no non-admin default role.
+    ('ticket:delete', 'ticket', 'delete', 'Delete closed tickets'),
     # Workflows (ADR 0021)
     (
         'workflow:read',
@@ -634,6 +660,12 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'admin',
         'maintenance:cve-sync',
         'Start the cve-sync maintenance operation',
+    ),
+    (
+        'admin:maintenance:ai-model-calls-prune',
+        'admin',
+        'maintenance:ai-model-calls-prune',
+        'Start the ai-model-calls-prune maintenance operation',
     ),
     # Project plugin access
     (
@@ -837,11 +869,15 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
         [
             'agent:create',
             'agent_task:create',
+            'ticket:create',
             'agent:read',
             'agent_task:read',
+            'ticket:read',
             'agent:write',
             'agent_task:manage',
+            'ticket:manage',
             'agent_task:resolve',
+            'ticket:resolve',
             'blueprint:read',
             'blueprint:write',
             'workflow:create',
@@ -862,6 +898,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'prompt:create',
             'prompt:read',
             'prompt:update',
+            'prompt:run',
             'environment:read',
             'link_definition:read',
             'link_definition:write',
@@ -925,6 +962,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
         [
             'agent:read',
             'agent_task:read',
+            'ticket:read',
             'blueprint:read',
             'component:read',
             'workflow:read',
@@ -964,6 +1002,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
         [
             'agent:read',
             'agent_task:read',
+            'ticket:read',
             'blueprint:read',
             'component:read',
             'workflow:read',
@@ -1020,13 +1059,17 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             # who can make a task that runs as this account could then
             # start any operation, including the purges.
             'admin:maintenance:marketplace-sync',
-            # The cve-sync system task, for the same reason.
+            # The cve-sync and ai-model-calls-prune system tasks, for
+            # the same reason.
             'admin:maintenance:cve-sync',
+            'admin:maintenance:ai-model-calls-prune',
             'agent:read',
             # An `api` task can start agent work with a `schedule`
             # origin (ADR 0020).
             'agent_task:create',
+            'ticket:create',
             'agent_task:read',
+            'ticket:read',
             # The task of a workflow's schedule trigger starts its runs
             # (ADR 0021).
             'workflow:run',
@@ -1068,6 +1111,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             # The `create_agent_task` action, with a `webhook` origin
             # (ADR 0020).
             'agent_task:create',
+            'ticket:create',
             # The `start_workflow` action, with a `webhook` origin
             # (ADR 0021).
             'workflow:run',
@@ -1091,6 +1135,8 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'scheduled_task:create',
             'scheduled_task:write',
             'scheduled_task:delete',
+            # The LLM Call step runs its saved prompt.
+            'prompt:run',
             # Not `integration:act-as-service`: an operator grants it,
             # as ADR 0017 requires for every autonomous principal.
         ],

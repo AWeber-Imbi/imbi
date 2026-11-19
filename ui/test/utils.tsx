@@ -37,5 +37,12 @@ const customRender = (
   options?: Omit<RenderOptions, 'wrapper'>,
 ) => render(ui, { wrapper: AllTheProviders, ...options })
 
+/** True when a JSON reviver gets `context.source`; not every Node has it. */
+export const JSON_SOURCE = JSON.parse(
+  '1',
+  (_key, _value, context?: { source?: string }) =>
+    context?.source !== undefined,
+) as boolean
+
 export * from '@testing-library/react'
 export { customRender as render }

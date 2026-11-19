@@ -5,8 +5,11 @@ A reference is ``namespace/slug``, ``namespace/slug@label``, or
 not have, or no ``@`` at all, falls back to the prompt's default label.
 """
 
+import collections.abc
 import re
 import typing
+
+import fastapi
 
 from imbi.common import graph, models
 
@@ -30,7 +33,24 @@ RETURN v
 
 MODEL_DRIVER_QUERY: typing.LiteralString = """
 MATCH (m:AIModel {{slug: {slug}}})-[:SERVED_BY]->(p:AIProvider)
-RETURN m.model_id AS model_id, m.enabled AS enabled, p.driver AS driver
+RETURN m.model_id AS model_id, m.enabled AS enabled, p.driver AS driver,
+       m.access_scope AS access_scope
+"""
+
+ALLOWED_MEMBER_QUERY: typing.LiteralString = """
+MATCH (:AIModel {{slug: {slug}}})-[:ALLOWED_FOR]->(t:Team)
+      <-[:MEMBER_OF]-(:User {{email: {email}}})
+RETURN t.id AS id
+"""
+
+MODEL_ID_SCOPES_QUERY: typing.LiteralString = """
+MATCH (m:AIModel {{model_id: {model_id}}})
+RETURN m.slug AS slug, m.access_scope AS access_scope, m.enabled AS enabled
+"""
+
+ALLOWED_TEAM_QUERY: typing.LiteralString = """
+MATCH (:AIModel {{slug: {slug}}})-[:ALLOWED_FOR]->(t:Team {{id: {team}}})
+RETURN t.id AS id
 """
 
 
@@ -44,6 +64,21 @@ class InvalidRef(PromptError):
 
 class PromptNotFound(PromptError):
     """The prompt, version, or a usable label does not exist."""
+
+
+class ModelNotAllowed(fastapi.HTTPException):
+    """A ``restricted`` model does not allow the caller or the team
+    (403 ``model_not_allowed``)."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(
+            status_code=403,
+            detail={
+                'error': 'model_not_allowed',
+                'retry': False,
+                'message': message,
+            },
+        )
 
 
 def vertex_props(raw: typing.Any) -> dict[str, typing.Any] | None:
@@ -155,12 +190,16 @@ class ModelInfo(typing.NamedTuple):
     model_id: str
     enabled: bool
     driver: str
+    #: ``organization`` or ``restricted`` (only the allowed teams).
+    access_scope: str | None = None
 
 
 async def model_info(db: graph.Graph, slug: str) -> ModelInfo | None:
     """Return the catalog model ``slug`` and its provider's driver."""
     records = await db.execute(
-        MODEL_DRIVER_QUERY, {'slug': slug}, ['model_id', 'enabled', 'driver']
+        MODEL_DRIVER_QUERY,
+        {'slug': slug},
+        ['model_id', 'enabled', 'driver', 'access_scope'],
     )
     if not records:
         return None
@@ -169,4 +208,92 @@ async def model_info(db: graph.Graph, slug: str) -> ModelInfo | None:
         model_id=str(graph.parse_agtype(record['model_id'])),
         enabled=graph.parse_agtype(record['enabled']) is not False,
         driver=str(graph.parse_agtype(record['driver'])),
+        access_scope=graph.parse_agtype(record.get('access_scope')),
     )
+
+
+async def member_allowed(db: graph.Graph, slug: str, email: str) -> bool:
+    """Whether the user ``email`` is a member of a team that a
+    ``restricted`` model allows."""
+    params = {'slug': slug, 'email': email}
+    return bool(await db.execute(ALLOWED_MEMBER_QUERY, params, ['id']))
+
+
+async def member_may_use_model_id(
+    db: graph.Graph, model_id: str, email: str, default: str | None = None
+) -> bool:
+    """Whether the user ``email`` may use the provider model id
+    ``model_id``.
+
+    Only enabled catalog models count. Allowed when one of them is not
+    ``restricted`` or a ``restricted`` one allows the user. An id with
+    no enabled catalog model is refused, except ``default`` (the
+    configured default model, which need not be in the catalog).
+    """
+    return await _may_use_model_id(
+        db, model_id, default, lambda slug: member_allowed(db, slug, email)
+    )
+
+
+async def team_may_use_model_id(
+    db: graph.Graph, model_id: str, team_id: str
+) -> bool:
+    """Whether the team ``team_id`` may use the provider model id
+    ``model_id``: the rule of :func:`member_may_use_model_id`, with no
+    default."""
+    return await _may_use_model_id(
+        db, model_id, None, lambda slug: team_allowed(db, slug, team_id)
+    )
+
+
+async def _may_use_model_id(
+    db: graph.Graph,
+    model_id: str,
+    default: str | None,
+    allowed: collections.abc.Callable[[str], collections.abc.Awaitable[bool]],
+) -> bool:
+    records = await db.execute(
+        MODEL_ID_SCOPES_QUERY,
+        {'model_id': model_id},
+        ['slug', 'access_scope', 'enabled'],
+    )
+    rows = [{k: graph.parse_agtype(v) for k, v in r.items()} for r in records]
+    rows = [r for r in rows if r.get('enabled') is not False]
+    if not rows:
+        return model_id == default
+    if any(r['access_scope'] != 'restricted' for r in rows):
+        return True
+    for row in rows:
+        if await allowed(str(row['slug'])):
+            return True
+    return False
+
+
+async def team_allowed(db: graph.Graph, slug: str, team_id: str) -> bool:
+    """Whether a ``restricted`` model allows the team ``team_id``."""
+    params = {'slug': slug, 'team': team_id}
+    return bool(await db.execute(ALLOWED_TEAM_QUERY, params, ['id']))
+
+
+async def check_model_teams(
+    db: graph.Graph,
+    slug: str,
+    message: str,
+    *,
+    email: str | None = None,
+    team_id: str | None = None,
+) -> None:
+    """Refuse the ``restricted`` model ``slug`` unless it allows the
+    user ``email`` and the team ``team_id``. A ``None`` value is not
+    checked. With neither, the caller is refused.
+
+    Raises:
+        ModelNotAllowed: With ``message``.
+
+    """
+    if email is None and team_id is None:
+        raise ModelNotAllowed(message)
+    if email is not None and not await member_allowed(db, slug, email):
+        raise ModelNotAllowed(message)
+    if team_id is not None and not await team_allowed(db, slug, team_id):
+        raise ModelNotAllowed(message)

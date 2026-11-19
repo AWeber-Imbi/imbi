@@ -2,7 +2,7 @@
 
 These run against the live Postgres that ``root:services`` boots: the
 graph for organizations, agents, and service accounts, and the
-``agent_runtime`` schema for task state. Each test makes its own
+``tickets`` schema for task state. Each test makes its own
 organizations, so tests do not share task counters.
 
 The caller is a member of ``org`` and ``other_org``, and not of
@@ -14,6 +14,7 @@ import datetime
 import decimal
 import json
 import typing
+import unittest
 import uuid
 from unittest import mock
 
@@ -23,9 +24,10 @@ import slugify
 from psycopg import sql
 
 from apps.api.tests import support
-from imbi.api import agent_tasks, harness, models, secret_broker, workflows
+from imbi.api import harness, models, secret_broker, tickets, workflows
 from imbi.api.auth import permissions
 from imbi.api.endpoints import agents
+from imbi.api.endpoints import tickets as tickets_api
 from imbi.api.graph_sql import props_template
 from imbi.api.harness import auth as harness_auth
 from imbi.common import graph
@@ -60,13 +62,13 @@ class AgentTaskTestCase(support.SharedAppAsyncTestCase):
         self.user_id = f'dev-{suffix}'
 
         await graph.initialize()
-        await agent_tasks.initialize()
+        await tickets.initialize()
         await harness.initialize()
         self.graph = graph.Graph()
         await self.graph.open()
-        self.pool = agent_tasks.create_pool()
+        self.pool = tickets.create_pool()
         await self.pool.open()
-        self.store = agent_tasks.TaskStore(self.pool)
+        self.store = tickets.TicketStore(self.pool)
         self.harness = harness.HarnessStore(self.pool)
         self.addAsyncCleanup(self._cleanup)
 
@@ -127,7 +129,7 @@ class AgentTaskTestCase(support.SharedAppAsyncTestCase):
         overrides = self.test_app.dependency_overrides
         overrides[permissions.get_current_user] = current_user
         overrides[graph._inject_graph] = lambda: self.graph
-        overrides[agent_tasks._inject_store] = lambda: self.store
+        overrides[tickets._inject_store] = lambda: self.store
         overrides[harness._inject_store] = lambda: self.harness
 
         async def harness_caller(
@@ -189,20 +191,19 @@ class AgentTaskTestCase(support.SharedAppAsyncTestCase):
         )
         async with self.pool.connection() as conn:
             # The relation keys RESTRICT the delete of a task.
-            for table in ('task_dependencies', 'task_projects'):
+            for table in ('ticket_dependencies', 'ticket_projects'):
                 await conn.execute(
                     sql.SQL(
                         'DELETE FROM {} WHERE organization_id = ANY(%s)'
-                    ).format(sql.Identifier('agent_runtime', table)),
+                    ).format(sql.Identifier('tickets', table)),
                     ([self.org, self.other_org, self.foreign_org],),
                 )
             await conn.execute(
-                'DELETE FROM agent_runtime.tasks'
-                ' WHERE organization_id = ANY(%s)',
+                'DELETE FROM tickets.tickets WHERE organization_id = ANY(%s)',
                 ([self.org, self.other_org, self.foreign_org],),
             )
             await conn.execute(
-                'DELETE FROM agent_runtime.task_id_sequences'
+                'DELETE FROM tickets.ticket_id_sequences'
                 ' WHERE organization_id = ANY(%s)',
                 ([self.org, self.other_org, self.foreign_org],),
             )
@@ -301,8 +302,11 @@ class AgentTaskTestCase(support.SharedAppAsyncTestCase):
             for record in records
         ]
 
+    #: The tickets path (ADR 0028). :class:`OldPathTests` uses the old.
+    prefix = 'tickets'
+
     def url(self, path: str = '', org: str | None = None) -> str:
-        return f'/organizations/{org or self.org}/agent-tasks/{path}'
+        return f'/organizations/{org or self.org}/{self.prefix}/{path}'
 
     async def create_task(
         self, org: str | None = None, **body: typing.Any
@@ -318,13 +322,11 @@ class AgentTaskTestCase(support.SharedAppAsyncTestCase):
     async def open_session(self, task_id: str) -> None:
         async with self.pool.connection() as conn:
             await conn.execute(
-                'INSERT INTO agent_runtime.sessions (id, task_id)'
-                ' VALUES (%s, %s)',
+                'INSERT INTO tickets.sessions (id, ticket_id) VALUES (%s, %s)',
                 (uuid.uuid4(), uuid.UUID(task_id)),
             )
             await conn.execute(
-                "UPDATE agent_runtime.tasks SET status = 'running'"
-                ' WHERE id = %s',
+                "UPDATE tickets.tickets SET status = 'running' WHERE id = %s",
                 (uuid.UUID(task_id),),
             )
 
@@ -358,7 +360,7 @@ class CreateTaskTests(AgentTaskTestCase):
         response = await self.client.get(self.url('T-1/events'))
         (event,) = response.json()
         self.assertEqual(event['seq'], 1)
-        self.assertEqual(event['type'], 'task.created')
+        self.assertEqual(event['type'], 'ticket.created')
         self.assertEqual(event['actor_kind'], 'human')
         self.assertEqual(event['actor_id'], self.email)
         self.assertEqual(event['channel'], 'web')
@@ -711,7 +713,7 @@ class TriggerOriginTests(AgentTaskTestCase):
             self.assertNotEqual(response.json()['id'], task['id'])
 
         (event,) = (await self.client.get(self.url('T-1/events'))).json()
-        self.assertEqual(event['type'], 'task.created')
+        self.assertEqual(event['type'], 'ticket.created')
         self.assertEqual(event['actor_kind'], 'system')
         self.assertEqual(event['actor_id'], 'imbi-scheduler')
         self.assertEqual(event['payload']['origin'], origin)
@@ -783,7 +785,7 @@ class TriggerOriginTests(AgentTaskTestCase):
 
     async def test_webhook_needs_a_person_who_can_create(self) -> None:
         await self.act_as_internal_service('imbi-gateway')
-        with self.assertLogs('imbi.api.endpoints.agent_tasks', 'WARNING'):
+        with self.assertLogs('imbi.api.endpoints.tickets', 'WARNING'):
             response = await self.post(self.delivery(self.unset_webhook_id))
         self.assert_refused(response, 'owner_forbidden')
         await self.graph.execute(
@@ -826,7 +828,7 @@ class TriggerOriginTests(AgentTaskTestCase):
             self.org,
             'T-1',
             self.email,
-            agent_tasks.Actor('human', self.email, 'web'),
+            tickets.Actor('human', self.email, 'web'),
         )
         task = await self.store.get(self.org, 'T-1')
         assert task is not None
@@ -848,10 +850,13 @@ class ReadTaskTests(AgentTaskTestCase):
         )
         await self.create_task(title='Rotate keys')
 
-    async def list_ids(self, **params: typing.Any) -> list[str]:
+    async def list_tasks(self, **params: typing.Any) -> list[typing.Any]:
         response = await self.client.get(self.url(), params=params)
         self.assertEqual(response.status_code, 200, response.text)
-        return [task['short_id'] for task in response.json()]
+        return typing.cast('list[typing.Any]', response.json())
+
+    async def list_ids(self, **params: typing.Any) -> list[str]:
+        return [task['short_id'] for task in await self.list_tasks(**params)]
 
     async def test_get_by_short_id(self) -> None:
         response = await self.client.get(self.url('t-2'))
@@ -882,6 +887,100 @@ class ReadTaskTests(AgentTaskTestCase):
         self.assertEqual(await self.list_ids(q=self.project_id), ['T-2'])
         self.assertEqual(await self.list_ids(q='%'), [])
 
+    async def test_text_query_highlights(self) -> None:
+        def highlights() -> typing.Any:
+            return [task['highlights'] for task in found]
+
+        found = await self.list_tasks(q='BUILD')
+        self.assertEqual(
+            highlights(),
+            [
+                [
+                    {
+                        'field': 'title',
+                        'id': None,
+                        'parts': [
+                            {'text': 'Fix the ', 'match': False},
+                            {'text': 'build', 'match': True},
+                        ],
+                    }
+                ]
+            ],
+        )
+        found = await self.list_tasks(q='deployer')
+        self.assertEqual(
+            highlights(),
+            [
+                [
+                    {
+                        'field': 'agent',
+                        'id': found[0]['agent_id'],
+                        'parts': [{'text': 'Deployer', 'match': True}],
+                    }
+                ]
+            ],
+        )
+        found = await self.list_tasks(q=self.project_id)
+        self.assertEqual(
+            highlights(),
+            [
+                [
+                    {
+                        'field': 'project',
+                        'id': self.project_id,
+                        'parts': [{'text': self.project_id, 'match': True}],
+                    }
+                ]
+            ],
+        )
+        found = await self.list_tasks(q='t')
+        self.assertEqual(
+            found[0]['highlights'][0],
+            {
+                'field': 'short_id',
+                'id': None,
+                'parts': [
+                    {'text': 'T', 'match': True},
+                    {'text': '-3', 'match': False},
+                ],
+            },
+        )
+        found = await self.list_tasks()
+        self.assertEqual(highlights(), [[], [], []])
+
+    async def test_project_icons(self) -> None:
+        async def icons() -> list[typing.Any]:
+            return [task['project_icons'] for task in await self.list_tasks()]
+
+        self.assertEqual(await icons(), [{}, {}, {}])
+        type_id = f'type-{self.project_id}'
+        await self.graph.execute(
+            'MATCH (p:Project {{id: {project}}})'
+            ' CREATE (t:ProjectType {{id: {type}, slug: {type},'
+            ' icon: {icon}}})'
+            ' CREATE (p)-[:TYPE]->(t)'
+            ' RETURN t.id AS id',
+            {'project': self.project_id, 'type': type_id, 'icon': 'server'},
+            ['id'],
+        )
+        self.addAsyncCleanup(
+            self.graph.execute,
+            'MATCH (t:ProjectType {{id: {id}}}) DETACH DELETE t'
+            ' RETURN 1 AS ok',
+            {'id': type_id},
+            ['ok'],
+        )
+        self.assertEqual(await icons(), [{}, {self.project_id: 'server'}, {}])
+        await self.graph.execute(
+            'MATCH (p:Project {{id: {project}}}) SET p.icon = {icon}'
+            ' RETURN p.id AS id',
+            {'project': self.project_id, 'icon': 'si-github'},
+            ['id'],
+        )
+        self.assertEqual(
+            await icons(), [{}, {self.project_id: 'si-github'}, {}]
+        )
+
     async def test_filters(self) -> None:
         await self.client.post(self.url('T-1/pause'))
         await self.client.post(self.url('T-2/cancel'))
@@ -896,6 +995,22 @@ class ReadTaskTests(AgentTaskTestCase):
         )
         self.assertEqual(await self.list_ids(owner=self.member), ['T-3'])
         self.assertEqual(await self.list_ids(mine='true'), ['T-2', 'T-1'])
+        builder = (await self.client.get(self.url('T-1'))).json()['agent_id']
+        self.assertEqual(
+            await self.list_ids(agent_id=[deploy, builder]),
+            ['T-3', 'T-2', 'T-1'],
+        )
+        self.assertEqual(
+            await self.list_ids(owner=[self.member, self.email]),
+            ['T-3', 'T-2', 'T-1'],
+        )
+        self.assertEqual(
+            await self.list_ids(owner=self.member, mine='true'),
+            ['T-3', 'T-2', 'T-1'],
+        )
+        self.assertEqual(
+            await self.list_ids(owner=self.member, agent_id=deploy), []
+        )
 
     async def test_projects(self) -> None:
         response = await self.client.get(self.url('T-2'))
@@ -915,7 +1030,7 @@ class ReadTaskTests(AgentTaskTestCase):
         await self.store.open_request(
             self.org,
             short_id,
-            agent_tasks.NewRequest(
+            tickets.NewRequest(
                 kind='feedback',
                 title=title,
                 why=None,
@@ -925,7 +1040,7 @@ class ReadTaskTests(AgentTaskTestCase):
                 expires_at=expires_at,
                 session_id=None,
             ),
-            agent_tasks.Actor('agent', 'triage', 'harness'),
+            tickets.Actor('agent', 'triage', 'harness'),
         )
 
     async def waiting(self) -> tuple[int, dict[str, str | None]]:
@@ -971,6 +1086,79 @@ class ReadTaskTests(AgentTaskTestCase):
         self.assertEqual(count, 0)
         self.assertIsNone(since['T-1'])
         self.assertIsNone(since['T-2'])
+
+    async def counts(self, **params: typing.Any) -> dict[str, int]:
+        response = await self.client.get(self.url('counts'), params=params)
+        self.assertEqual(response.status_code, 200, response.text)
+        return typing.cast('dict[str, int]', response.json())
+
+    async def test_groups_count_and_page_in_inbox_order(self) -> None:
+        await self.create_task(title='Draft notes')
+        await self.create_task(title='Review notes')
+        await self.open_request('T-1', 'First')
+        await self.open_request('T-5', 'Second')
+        await self.client.post(self.url('T-2/pause'))
+        await self.client.post(self.url('T-3/cancel'))
+        self.assertEqual(
+            await self.counts(),
+            {'input': 2, 'running': 0, 'paused': 1, 'queued': 1, 'closed': 1},
+        )
+        self.assertEqual(await self.list_ids(group='input'), ['T-1', 'T-5'])
+        self.assertEqual(
+            await self.list_ids(group='input', offset=1, limit=1), ['T-5']
+        )
+        self.assertEqual(await self.list_ids(group='paused'), ['T-2'])
+        self.assertEqual(await self.list_ids(group='queued'), ['T-4'])
+        self.assertEqual(await self.list_ids(group='closed'), ['T-3'])
+        self.assertEqual(await self.list_ids(status='blocked'), ['T-5', 'T-1'])
+        self.assertEqual(
+            await self.counts(status='blocked'),
+            {'input': 2, 'running': 0, 'paused': 0, 'queued': 0, 'closed': 0},
+        )
+        self.assertEqual((await self.counts(q='deployer'))['paused'], 1)
+        self.assertEqual(sum((await self.counts(q='deployer')).values()), 1)
+        response = await self.client.get(
+            self.url(), params={'group': 'input', 'cursor': 'x'}
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+        response = await self.client.get(self.url(), params={'offset': 1})
+        self.assertEqual(response.status_code, 400, response.text)
+        response = await self.client.get(
+            self.url(), params={'group': 'input', 'limit': 1}
+        )
+        self.assertNotIn('cursor=', response.headers.get('Link', ''))
+        for short_id, where in [
+            ('T-1', {'group': 'input', 'index': 0}),
+            ('t-5', {'group': 'input', 'index': 1}),
+            ('T-3', {'group': 'closed', 'index': 0}),
+            ('T-4', {'group': 'queued', 'index': 0}),
+        ]:
+            response = await self.client.get(self.url(f'{short_id}/position'))
+            self.assertEqual(response.json(), where, short_id)
+        response = await self.client.get(
+            self.url('T-5/position'), params={'status': 'running'}
+        )
+        self.assertEqual(response.status_code, 404, response.text)
+
+    async def test_reads_the_statuses_of_a_later_release(self) -> None:
+        # Release A+1 reads what P1 to P4 write (ADR 0028).
+        async with self.pool.connection() as conn:
+            for short_id, status in [
+                ('T-1', 'held'),
+                ('T-2', 'open'),
+                ('T-3', 'in_progress'),
+            ]:
+                await conn.execute(
+                    'UPDATE tickets.tickets SET status = %s'
+                    ' WHERE organization_id = %s AND short_id = %s',
+                    (status, self.org, short_id),
+                )
+        response = await self.client.get(self.url('T-3'))
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['status'], 'in_progress')
+        self.assertEqual(await self.list_ids(group='queued'), ['T-2', 'T-1'])
+        self.assertEqual(await self.list_ids(group='running'), ['T-3'])
+        self.assertEqual(await self.list_ids(status='held'), ['T-1'])
 
     async def test_events_page_by_seq(self) -> None:
         await self.client.post(self.url('T-1/pause'))
@@ -1028,7 +1216,7 @@ class ControlTests(AgentTaskTestCase):
         self.assertEqual(
             await self.event_types('T-1'),
             [
-                'task.created',
+                'ticket.created',
                 'control.changed',
                 'state.changed',
                 'control.changed',
@@ -1053,13 +1241,13 @@ class ControlTests(AgentTaskTestCase):
         self.assertEqual(task['control'], 'cancel')
         self.assertEqual(task['outcome'], 'cancelled_by_human')
         self.assertEqual(
-            task['outcome_reason'], agent_tasks.store.CANCELLED_WITHOUT_SESSION
+            task['outcome_reason'], tickets.store.CANCELLED_WITHOUT_SESSION
         )
         self.assertIsNotNone(task['closed_at'])
         self.assertEqual(
             await self.event_types('T-1'),
             [
-                'task.created',
+                'ticket.created',
                 'control.changed',
                 'state.changed',
                 'outcome.set',
@@ -1081,7 +1269,7 @@ class ControlTests(AgentTaskTestCase):
             self.assertEqual(response.status_code, 409, response.text)
         self.assertEqual(
             await self.event_types('T-1'),
-            ['task.created', 'control.changed', 'control.changed'],
+            ['ticket.created', 'control.changed', 'control.changed'],
         )
 
     async def test_close_writes_a_trigger_outbox_row(self) -> None:
@@ -1092,7 +1280,7 @@ class ControlTests(AgentTaskTestCase):
             return {str(r['id']) for r in await self.store.pending_triggers()}
 
         self.assertNotIn(self.task['id'], await ids())
-        with mock.patch.object(agent_tasks.store, '_close_hooks', []):
+        with mock.patch.object(tickets.store, '_close_hooks', []):
             await self.post('cancel')
         self.assertIn(self.task['id'], await ids())
         await self.store.triggers_started(uuid.UUID(self.task['id']))
@@ -1117,6 +1305,25 @@ class ControlTests(AgentTaskTestCase):
         )
         response = await self.post('reassign', owner='stranger@example.com')
         self.assertEqual(response.status_code, 422, response.text)
+
+    async def test_priority(self) -> None:
+        self.assertEqual(self.task['priority'], 'normal')
+        response = await self.post('priority', priority='urgent')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['priority'], 'urgent')
+        events = (await self.client.get(self.url('T-1/events'))).json()
+        self.assertEqual(events[-1]['type'], 'priority.changed')
+        self.assertEqual(
+            events[-1]['payload'], {'from': 'normal', 'to': 'urgent'}
+        )
+        response = await self.post('priority', priority='critical')
+        self.assertEqual(response.status_code, 422, response.text)
+        response = await self.create_task(priority='low')
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(response.json()['priority'], 'low')
+        await self.post('cancel')
+        response = await self.post('priority', priority='high')
+        self.assertEqual(response.status_code, 409, response.text)
 
     async def test_unknown_task_is_404(self) -> None:
         response = await self.client.post(self.url('T-9/pause'))
@@ -1170,19 +1377,19 @@ class RetryTests(AgentTaskTestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
         await self.make_agent()
-        await self.create_task(project_ids=[self.project_id])
+        await self.create_task(project_ids=[self.project_id], priority='high')
 
     async def fail(
         self, turn: str | None = 'I could not read\nthe secret.'
     ) -> None:
         """Close T-1 as failed, after an agent turn."""
-        actor = agent_tasks.Actor('agent', 'triage', 'harness')
+        actor = tickets.Actor('agent', 'triage', 'harness')
         if turn is not None:
             await self.store.append_events(
                 self.org,
                 'T-1',
                 [
-                    agent_tasks.NewEvent(
+                    tickets.NewEvent(
                         event_id=uuid.uuid4(),
                         type='turn',
                         payload={'body': turn},
@@ -1213,6 +1420,7 @@ class RetryTests(AgentTaskTestCase):
         task = response.json()
         self.assertEqual(task['short_id'], 'T-2')
         self.assertEqual(task['title'], 'Look at the build')
+        self.assertEqual(task['priority'], 'high')
         self.assertEqual(
             [p['project_id'] for p in task['projects']], [self.project_id]
         )
@@ -1253,12 +1461,12 @@ class RetryTests(AgentTaskTestCase):
         await self.fail(turn=None)
         async with self.pool.connection() as conn:
             await conn.execute(
-                'UPDATE agent_runtime.tasks SET log_archived_at = NOW()'
+                'UPDATE tickets.tickets SET log_archived_at = NOW()'
                 ' WHERE organization_id = %s AND short_id = %s',
                 (self.org, 'T-1'),
             )
         with mock.patch.object(
-            agent_tasks.log,
+            tickets.log,
             'last_archived_agent_turn',
             mock.AsyncMock(return_value='From the archive.'),
         ):
@@ -1284,14 +1492,14 @@ class DeleteTests(AgentTaskTestCase):
         self.assertEqual(response.status_code, 200, response.text)
         async with self.pool.connection() as conn:
             await conn.execute(
-                'UPDATE agent_runtime.tasks SET log_archived_at = NOW()'
+                'UPDATE tickets.tickets SET log_archived_at = NOW()'
                 ' WHERE organization_id = %s AND short_id = %s',
                 (self.org, short_id),
             )
             # As if the task_completed trigger started its runs.
             await conn.execute(
-                'DELETE FROM agent_runtime.trigger_outbox WHERE task_id ='
-                ' (SELECT id FROM agent_runtime.tasks'
+                'DELETE FROM tickets.trigger_outbox WHERE ticket_id ='
+                ' (SELECT id FROM tickets.tickets'
                 '  WHERE organization_id = %s AND short_id = %s)',
                 (self.org, short_id),
             )
@@ -1326,7 +1534,7 @@ class DeleteTests(AgentTaskTestCase):
         child = (await self.create_task()).json()
         async with self.pool.connection() as conn:
             await conn.execute(
-                "UPDATE agent_runtime.tasks SET origin_kind = 'task',"
+                "UPDATE tickets.tickets SET origin_kind = 'task',"
                 ' origin_id = %s WHERE id = %s',
                 (self.task['id'], uuid.UUID(child['id'])),
             )
@@ -1338,7 +1546,7 @@ class DeleteTests(AgentTaskTestCase):
         child = (await self.create_task()).json()
         async with self.pool.connection() as conn:
             await conn.execute(
-                'UPDATE agent_runtime.tasks SET chain_id = %s WHERE id = %s',
+                'UPDATE tickets.tickets SET chain_id = %s WHERE id = %s',
                 (uuid.UUID(self.task['id']), uuid.UUID(child['id'])),
             )
         await self.cancel('T-2')
@@ -1349,11 +1557,11 @@ class DeleteTests(AgentTaskTestCase):
         child = (await self.create_task()).json()
         async with self.pool.connection() as conn:
             await conn.execute(
-                'UPDATE agent_runtime.tasks SET chain_id = NULL WHERE id = %s',
+                'UPDATE tickets.tickets SET chain_id = NULL WHERE id = %s',
                 (uuid.UUID(self.task['id']),),
             )
             await conn.execute(
-                'UPDATE agent_runtime.tasks SET chain_id = %s WHERE id = %s',
+                'UPDATE tickets.tickets SET chain_id = %s WHERE id = %s',
                 (uuid.UUID(self.task['id']), uuid.UUID(child['id'])),
             )
         await self.cancel('T-2')
@@ -1378,15 +1586,14 @@ class DeleteTests(AgentTaskTestCase):
         child = (await self.create_task()).json()
         async with self.pool.connection() as conn:
             await conn.execute(
-                'UPDATE agent_runtime.tasks SET chain_id = %s WHERE id = %s',
+                'UPDATE tickets.tickets SET chain_id = %s WHERE id = %s',
                 (uuid.UUID(self.task['id']), uuid.UUID(child['id'])),
             )
         await self.cancel('T-1')
         await self.cancel('T-2')
         async with self.pool.connection() as conn:
             await conn.execute(
-                'INSERT INTO agent_runtime.trigger_outbox (task_id)'
-                ' VALUES (%s)',
+                'INSERT INTO tickets.trigger_outbox (ticket_id) VALUES (%s)',
                 (uuid.UUID(child['id']),),
             )
         response = await self.client.delete(self.url('T-1'))
@@ -1413,6 +1620,8 @@ class PermissionTests(AgentTaskTestCase):
             ),
             ('agent_task:read', 'GET', '', None),
             ('agent_task:read', 'GET', 'waiting', None),
+            ('agent_task:read', 'GET', 'counts', None),
+            ('agent_task:read', 'GET', 'T-1/position', None),
             ('agent_task:read', 'GET', 'T-1', None),
             ('agent_task:read', 'GET', 'T-1/events', None),
             ('agent_task:manage', 'POST', 'T-1/pause', None),
@@ -1444,6 +1653,58 @@ class PermissionTests(AgentTaskTestCase):
                 )
                 self.assertEqual(response.status_code, 403, response.text)
                 self.assertIn(permission, response.text)
+
+
+class TicketPermissionTests(AgentTaskTestCase):
+    async def test_ticket_names_work_without_agent_task_names(self) -> None:
+        """ADR 0028: a role with only ``ticket:*`` passes every check."""
+        await self.make_agent()
+        self.permissions = {
+            name.replace('agent_task:', 'ticket:') for name in ALL_PERMISSIONS
+        }
+        response = await self.create_task()
+        self.assertEqual(response.status_code, 201, response.text)
+        for method, path in (
+            ('GET', ''),
+            ('GET', 'T-1'),
+            ('POST', 'T-1/pause'),
+            ('POST', 'T-1/cancel'),
+            ('DELETE', 'T-1'),
+        ):
+            with self.subTest(path=path):
+                response = await self.client.request(method, self.url(path))
+                self.assertNotEqual(response.status_code, 403, response.text)
+
+
+class OldPathTests(AgentTaskTestCase):
+    """The routes at ``/agent-tasks``, which stay until release B."""
+
+    prefix = 'agent-tasks'
+
+    async def test_old_path_serves_the_same_tickets(self) -> None:
+        await self.make_agent()
+        response = await self.create_task()
+        self.assertEqual(response.status_code, 201, response.text)
+        for method, path in (
+            ('GET', ''),
+            ('GET', 'waiting'),
+            ('GET', 'T-1'),
+            ('GET', 'T-1/events'),
+            ('GET', 'T-1/relations'),
+            ('GET', 'T-1/projects'),
+            ('POST', 'T-1/pause'),
+            ('POST', 'T-1/resume'),
+            ('POST', 'T-1/cancel'),
+            ('POST', 'T-1/acknowledge'),
+        ):
+            with self.subTest(method=method, path=path):
+                response = await self.client.request(method, self.url(path))
+                self.assertEqual(response.status_code, 200, response.text)
+        # The same ticket at the new path.
+        response = await self.client.get(
+            f'/organizations/{self.org}/tickets/T-1'
+        )
+        self.assertEqual(response.json()['status'], 'closed')
 
 
 class ServiceAccountTests(AgentTaskTestCase):
@@ -1557,8 +1818,8 @@ class ServiceAccountTests(AgentTaskTestCase):
 
 
 class StoreTests(AgentTaskTestCase):
-    def new_task(self, key: str | None) -> agent_tasks.NewTask:
-        return agent_tasks.NewTask(
+    def new_task(self, key: str | None) -> tickets.NewTask:
+        return tickets.NewTask(
             organization_id=self.org,
             agent_id='agent-1',
             agent_version=1,
@@ -1577,7 +1838,7 @@ class StoreTests(AgentTaskTestCase):
     async def test_key_collision_returns_first_task(self) -> None:
         # The endpoint checks the key first. Two concurrent requests can
         # both pass that check; the unique index stops the second.
-        actor = agent_tasks.Actor('human', self.email, 'api')
+        actor = tickets.Actor('human', self.email, 'api')
         first, created = await self.store.create(self.new_task('k'), actor, {})
         self.assertTrue(created)
         second, created = await self.store.create(
@@ -1593,7 +1854,7 @@ class MembershipTests(AgentTaskTestCase):
     async def test_non_member_is_refused_on_every_route(self) -> None:
         await self.make_agent(org=self.foreign_org)
         await self.store.create(
-            agent_tasks.NewTask(
+            tickets.NewTask(
                 organization_id=self.foreign_org,
                 agent_id='agent-1',
                 agent_version=1,
@@ -1608,7 +1869,7 @@ class MembershipTests(AgentTaskTestCase):
                 owner='someone@example.com',
                 budget=None,
             ),
-            agent_tasks.Actor('human', 'someone@example.com', 'web'),
+            tickets.Actor('human', 'someone@example.com', 'web'),
             {},
         )
         cases: list[tuple[str, str, dict[str, typing.Any] | None]] = [
@@ -1619,6 +1880,8 @@ class MembershipTests(AgentTaskTestCase):
             ),
             ('GET', '', None),
             ('GET', 'waiting', None),
+            ('GET', 'counts', None),
+            ('GET', 'T-1/position', None),
             ('GET', 'T-1', None),
             ('GET', 'T-1/events', None),
             ('POST', 'T-1/pause', None),
@@ -1656,3 +1919,19 @@ class MembershipTests(AgentTaskTestCase):
         self.assertEqual(
             response.json()['detail']['error'], 'organization_forbidden'
         )
+
+
+class MayCreateTestCase(unittest.IsolatedAsyncioTestCase):
+    """The create permission of an owner comes from the target org only."""
+
+    async def test_reads_permissions_of_the_target_org(self) -> None:
+        db = mock.AsyncMock()
+        db.execute.return_value = [{'is_admin': 'false', 'is_active': 'true'}]
+        with mock.patch.object(
+            tickets_api.common_permissions,
+            'load_principal_permissions',
+            mock.AsyncMock(return_value=set()),
+        ) as load:
+            allowed = await tickets_api.may_create(db, 'b', 'a@example.com')
+        self.assertFalse(allowed)
+        self.assertEqual(load.await_args.kwargs, {'org_slug': 'b'})

@@ -1,5 +1,6 @@
-import type { AgentTaskEvent } from '@/types'
+import type { TicketEvent } from '@/types'
 
+import { isCreated } from './taskEvents'
 import { systemText } from './taskText'
 import { isError, timeline, type TimelineEntry } from './taskTimeline'
 import { isRecord, toolLabel, toolSummary } from './toolCalls'
@@ -40,7 +41,7 @@ export interface TrajectoryRecord {
   /** Ms since the epoch; null while it runs. */
   endedAt: null | number
   error: boolean
-  events: AgentTaskEvent[]
+  events: TicketEvent[]
   id: string
   kind: TrajectoryKind
   /** The tool record a subtool ran under. */
@@ -65,7 +66,7 @@ export interface TrajectoryRequest {
   subtoolCalls: number
   toolCalls: number
   turn: number
-  usage: AgentTaskEvent | null
+  usage: null | TicketEvent
 }
 
 export type TrajectoryRow =
@@ -85,7 +86,7 @@ export interface TrajectorySubrequest {
   /** The request that made the Agent call, once the call is logged. */
   request: null | number
   turn: null | number
-  usage: AgentTaskEvent
+  usage: TicketEvent
 }
 
 export interface TrajectoryTool {
@@ -131,7 +132,7 @@ const LANE: Record<TrajectoryKind, 0 | 1 | 2> = {
  * call instead.
  */
 export function buildTrajectory(
-  events: AgentTaskEvent[],
+  events: TicketEvent[],
   live: boolean,
 ): Trajectory {
   const records: TrajectoryRecord[] = []
@@ -157,7 +158,7 @@ export function buildTrajectory(
     state.turn += 1
     state.step = 0
   }
-  const open = (usage: AgentTaskEvent | null, seq: number) => {
+  const open = (usage: null | TicketEvent, seq: number) => {
     if (state.turn === 0) state.turn = 1
     state.step += 1
     const request: TrajectoryRequest = {
@@ -203,7 +204,7 @@ export function buildTrajectory(
       open(e, e.seq)
       continue
     }
-    if (e?.type === 'task.created') {
+    if (e && isCreated(e)) {
       startTurn()
       const brief = String(e.payload.description || e.payload.title || '')
       push(instant(e, 'user', preview(brief), state.turn))
@@ -462,7 +463,7 @@ export function spansOf(
   }
 }
 
-function at(e: AgentTaskEvent): number {
+function at(e: TicketEvent): number {
   return Date.parse(e.at)
 }
 
@@ -513,7 +514,7 @@ function finishRequest(
 }
 
 function instant(
-  e: AgentTaskEvent,
+  e: TicketEvent,
   kind: TrajectoryKind,
   text: string,
   turn: number,
@@ -540,7 +541,7 @@ function join(a: string, b: string): string {
   return a ? `${a}\n\n${b}` : b
 }
 
-function lineFor(e: AgentTaskEvent): string {
+function lineFor(e: TicketEvent): string {
   return systemText(e)
 }
 
@@ -584,9 +585,9 @@ function searchText(record: TrajectoryRecord): string {
  * `parent_call_id` names the Agent call. A report with no
  * `message_id`, or none that joins, stays in `main`.
  */
-function splitUsage(events: AgentTaskEvent[]): {
-  main: AgentTaskEvent[]
-  sub: { agent: string; usage: AgentTaskEvent }[]
+function splitUsage(events: TicketEvent[]): {
+  main: TicketEvent[]
+  sub: { agent: string; usage: TicketEvent }[]
 } {
   const agentOf = new Map<string, string>()
   for (const e of events) {
@@ -599,8 +600,8 @@ function splitUsage(events: AgentTaskEvent[]): {
     )
       agentOf.set(id, parent)
   }
-  const main: AgentTaskEvent[] = []
-  const sub: { agent: string; usage: AgentTaskEvent }[] = []
+  const main: TicketEvent[] = []
+  const sub: { agent: string; usage: TicketEvent }[] = []
   for (const e of events) {
     const id = e.payload.message_id
     const agent =
@@ -655,7 +656,7 @@ function toolRecord(
         ]
       : [],
   )
-  const owned: AgentTaskEvent[] = []
+  const owned: TicketEvent[] = []
   const walk = (x: TimelineEntry) => {
     for (const c of x.children)
       if (c.event && c.event.type !== 'tool.called') {

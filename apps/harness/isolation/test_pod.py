@@ -139,9 +139,11 @@ def setUpModule() -> None:
     wait_for_runner()
 
 
-def run_task(script: list[Row], timeout: float = 180) -> Row:
+def run_task(
+    script: list[Row], timeout: float = 180, **body: typing.Any
+) -> Row:
     """Queue a task, wait until the runner finishes its chain."""
-    task = fake_api('POST', '/test/tasks', {'script': script})
+    task = fake_api('POST', '/test/tasks', {'script': script, **body})
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         chains = fake_api('GET', '/test/state')['chains']
@@ -812,7 +814,10 @@ class TaskFlowTests(unittest.TestCase):
         paths = [p['path'] for p in init['data']['plugins']]
         self.assertTrue(
             any(
-                p.startswith(f'/run/plugins/{self.task["chain_id"]}/tools-')
+                p.startswith(
+                    f'/run/plugins/{self.task["chain_id"]}/'
+                    f'{self.task["short_id"]}-tools-'
+                )
                 for p in paths
             ),
             paths,
@@ -1454,3 +1459,32 @@ class RelayTests(unittest.TestCase):
                 ('transcript', transcript),
             ):
                 self.assertNotIn(token, text, where)
+
+
+class HistoryTests(unittest.TestCase):
+    """A new session gets the ticket history after the description."""
+
+    def test_model_gets_the_history_as_untrusted(self) -> None:
+        task = run_task(
+            [],
+            history=[
+                {
+                    'kind': 'comment',
+                    'at': '2026-01-02T00:00:00Z',
+                    'actor': 'a@example.com',
+                    'text': 'HISTORY-MARKER',
+                },
+                {
+                    'kind': 'prerequisite',
+                    'at': '2026-01-03T00:00:00Z',
+                    'text': 'T-0 Hook: closed, done_acted',
+                    'webhook': True,
+                },
+            ],
+        )
+        requests = fake_api(
+            'GET', f'/test/model-requests?task={task["short_id"]}'
+        )
+        prompt = json.dumps(requests)
+        self.assertIn('HISTORY-MARKER', prompt)
+        self.assertIn('<untrusted source=\\"webhook\\">', prompt)

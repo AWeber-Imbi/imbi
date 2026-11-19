@@ -6,13 +6,17 @@ import { fireEvent, render, screen } from '@/test/utils'
 
 import { InputsField } from '../InputsField'
 
-function renderField(initial: Record<string, unknown> = {}) {
+function renderField(
+  initial: Record<string, unknown> = {},
+  keywords?: 'jinja' | 'python',
+) {
   const onChange = vi.fn()
   function Harness() {
     const [value, setValue] = useState(initial)
     return (
       <InputsField
         id="inputs"
+        keywords={keywords}
         label="Inputs"
         onChange={(next) => {
           setValue(next)
@@ -72,6 +76,37 @@ describe('InputsField', () => {
     })
     expect(
       screen.getByText('This name is a Python keyword.'),
+    ).toBeInTheDocument()
+  })
+
+  it('accepts a Python keyword in a Jinja2 prompt', () => {
+    const onChange = renderField({ limit: 3 }, 'jinja')
+    fireEvent.change(screen.getByLabelText('Input 1 name'), {
+      target: { value: 'lambda' },
+    })
+    expect(
+      screen.queryByText('This name is a Python keyword.'),
+    ).not.toBeInTheDocument()
+    expect(onChange).toHaveBeenLastCalledWith({ lambda: 3 })
+  })
+
+  it('refuses a Jinja2 reserved name in a Jinja2 prompt', () => {
+    renderField({ limit: 3 }, 'jinja')
+    fireEvent.change(screen.getByLabelText('Input 1 name'), {
+      target: { value: 'none' },
+    })
+    expect(
+      screen.getByText('This name is reserved in a prompt.'),
+    ).toBeInTheDocument()
+  })
+
+  it('refuses the name of a prompt provider in a Jinja2 prompt', () => {
+    renderField({ limit: 3 }, 'jinja')
+    fireEvent.change(screen.getByLabelText('Input 1 name'), {
+      target: { value: 'project' },
+    })
+    expect(
+      screen.getByText('This name is reserved in a prompt.'),
     ).toBeInTheDocument()
   })
 

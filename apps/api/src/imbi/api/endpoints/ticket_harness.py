@@ -39,12 +39,12 @@ import jsonschema
 import orjson
 import pydantic
 
-from imbi.api import agent_tasks, harness
-from imbi.api.agent_tasks import store as task_store
+from imbi.api import harness, tickets
 from imbi.api.auth import autonomous
-from imbi.api.endpoints import agent_tasks as tasks_api
+from imbi.api.endpoints import tickets as tasks_api
 from imbi.api.harness import auth as harness_auth
 from imbi.api.harness import store as harness_store
+from imbi.api.tickets import store as task_store
 from imbi.common import graph, models
 from imbi.common.workflows.registry import agent as agent_step
 
@@ -70,7 +70,7 @@ HarnessEventType = typing.Literal[
 _REASON_PATTERN = r'^[a-z0-9][a-z0-9_.-]*$'
 
 #: The actor of the events that Imbi writes when it enforces a limit.
-_SYSTEM = agent_tasks.Actor('system', 'imbi', 'harness')
+_SYSTEM = tickets.Actor('system', 'imbi', 'harness')
 
 
 # --- Schemas -----------------------------------------------------------
@@ -349,7 +349,7 @@ _PRICE_COLUMNS = (
 async def _harness_task(
     org_id: harness_auth.HarnessOrgId,
     short_id: str,
-    store: agent_tasks.Store,
+    store: tickets.Store,
     runners: harness.Store,
     caller: harness_auth.Caller,
 ) -> dict[str, typing.Any]:
@@ -405,8 +405,8 @@ HarnessTask = typing.Annotated[
 ]
 
 
-def _agent_actor(task: dict[str, typing.Any]) -> agent_tasks.Actor:
-    return agent_tasks.Actor('agent', task['agent_id'], 'harness')
+def _agent_actor(task: dict[str, typing.Any]) -> tickets.Actor:
+    return tickets.Actor('agent', task['agent_id'], 'harness')
 
 
 async def _agent_settings(
@@ -479,40 +479,45 @@ def _conflict(error: str, message: str) -> fastapi.HTTPException:
 
 
 _STORE_ERRORS = (
-    agent_tasks.TaskNotFound,
-    agent_tasks.SessionNotFound,
-    agent_tasks.TaskClosed,
-    agent_tasks.CancelPending,
-    agent_tasks.SessionClosed,
-    agent_tasks.ConcurrencyLimit,
-    agent_tasks.EventIdConflict,
-    agent_tasks.RequestKeyConflict,
+    tickets.TaskNotFound,
+    tickets.SessionNotFound,
+    tickets.TaskClosed,
+    tickets.CancelPending,
+    tickets.SessionClosed,
+    tickets.ConcurrencyLimit,
+    tickets.EventIdConflict,
+    tickets.RequestKeyConflict,
+    tickets.TicketHeld,
 )
 
 
 def _translate(err: Exception, short_id: str) -> fastapi.HTTPException:
     """Return the HTTP error of a store error in :data:`_STORE_ERRORS`."""
-    if isinstance(err, agent_tasks.TaskNotFound):
+    if isinstance(err, tickets.TaskNotFound):
         return fastapi.HTTPException(
             status_code=404, detail=f'Task {short_id!r} not found'
         )
-    if isinstance(err, agent_tasks.SessionNotFound):
+    if isinstance(err, tickets.SessionNotFound):
         return fastapi.HTTPException(
             status_code=404, detail=f'Session {err} not found'
         )
-    if isinstance(err, agent_tasks.TaskClosed):
+    if isinstance(err, tickets.TaskClosed):
         return _conflict('task_closed', f'Task {short_id} is closed')
-    if isinstance(err, agent_tasks.CancelPending):
+    if isinstance(err, tickets.CancelPending):
         return _conflict(
             'task_cancelled', f'Task {short_id} has control cancel'
         )
-    if isinstance(err, agent_tasks.SessionClosed):
+    if isinstance(err, tickets.SessionClosed):
         return _conflict('session_closed', f'Session {err} is closed')
-    if isinstance(err, agent_tasks.EventIdConflict):
+    if isinstance(err, tickets.EventIdConflict):
         return _conflict(
             'event_id_conflict', 'Another task has an event with this id'
         )
-    if isinstance(err, agent_tasks.RequestKeyConflict):
+    if isinstance(err, tickets.TicketHeld):
+        return _conflict(
+            'task_held', f'Task {short_id} is held by a gating prerequisite'
+        )
+    if isinstance(err, tickets.RequestKeyConflict):
         return _conflict(
             'request_key_conflict',
             f'Request {err} has other artifact_digests; use a new key',
@@ -525,10 +530,10 @@ def _translate(err: Exception, short_id: str) -> fastapi.HTTPException:
 
 # --- Endpoints ---------------------------------------------------------
 
-agent_task_harness_router = fastapi.APIRouter(tags=['Agent Task Harness'])
+ticket_harness_router = fastapi.APIRouter(tags=['Agent Task Harness'])
 
 
-@agent_task_harness_router.post(
+@ticket_harness_router.post(
     '/{short_id}/sessions',
     status_code=201,
     response_model=SessionOpenResponse,
@@ -547,7 +552,7 @@ async def open_agent_task_session(
     data: SessionOpen,
     response: fastapi.Response,
     db: graph.Pool,
-    store: agent_tasks.Store,
+    store: tickets.Store,
 ) -> SessionOpenResponse:
     """Open a harness session on a task.
 
@@ -558,7 +563,8 @@ async def open_agent_task_session(
     Raises:
         403: The caller is not the service account of the task's agent.
         404: No such task.
-        409: ``task_closed``, ``task_cancelled`` (control is cancel), or
+        409: ``task_closed``, ``task_cancelled`` (control is cancel),
+            ``task_held`` (a gating prerequisite is open), or
             ``concurrency_limit`` (``settings.max_concurrent_tasks``
             other tasks of the agent have an open session).
 
@@ -583,7 +589,7 @@ async def open_agent_task_session(
     )
 
 
-@agent_task_harness_router.post(
+@ticket_harness_router.post(
     '/{short_id}/sessions/{session_id}/heartbeat', response_model=TaskState
 )
 async def heartbeat_agent_task_session(
@@ -591,7 +597,7 @@ async def heartbeat_agent_task_session(
     task: HarnessTask,
     session_id: uuid.UUID,
     db: graph.Pool,
-    store: agent_tasks.Store,
+    store: tickets.Store,
 ) -> TaskState:
     """Record a heartbeat; return the control value, seq, and budget.
 
@@ -620,7 +626,7 @@ async def heartbeat_agent_task_session(
     return task_state(row)
 
 
-@agent_task_harness_router.post(
+@ticket_harness_router.post(
     '/{short_id}/sessions/{session_id}/close', response_model=TaskState
 )
 async def close_agent_task_session(
@@ -628,7 +634,7 @@ async def close_agent_task_session(
     task: HarnessTask,
     session_id: uuid.UUID,
     data: SessionClose,
-    store: agent_tasks.Store,
+    store: tickets.Store,
 ) -> TaskState:
     """Close a session. Closing a closed session changes nothing.
 
@@ -655,7 +661,7 @@ async def close_agent_task_session(
     return task_state(row)
 
 
-@agent_task_harness_router.post(
+@ticket_harness_router.post(
     '/{short_id}/events',
     status_code=201,
     response_model=AppendEventsResponse,
@@ -671,7 +677,7 @@ async def append_agent_task_events(
     task: HarnessTask,
     data: EventBatch,
     response: fastapi.Response,
-    store: agent_tasks.Store,
+    store: tickets.Store,
 ) -> AppendEventsResponse:
     """Write a batch of harness events, in order.
 
@@ -721,11 +727,11 @@ async def append_agent_task_events(
             org_id,
             task['short_id'],
             [
-                agent_tasks.NewEvent(
+                tickets.NewEvent(
                     event_id=event.event_id,
                     type=event.type,
                     payload=event.payload,
-                    actor=agent_tasks.Actor(
+                    actor=tickets.Actor(
                         event.actor_kind,
                         event.actor_id or task['agent_id'],
                         'harness',
@@ -746,7 +752,7 @@ async def append_agent_task_events(
     )
 
 
-@agent_task_harness_router.post(
+@ticket_harness_router.post(
     '/{short_id}/usage',
     status_code=201,
     response_model=UsageResponse,
@@ -765,7 +771,7 @@ async def report_agent_task_usage(
     data: UsageReport,
     response: fastapi.Response,
     db: graph.Pool,
-    store: agent_tasks.Store,
+    store: tickets.Store,
 ) -> UsageResponse:
     """Report the tokens of one model call; return the remaining budget.
 
@@ -787,7 +793,7 @@ async def report_agent_task_usage(
         row, ledger, created = await store.report_usage(
             org_id,
             task['short_id'],
-            agent_tasks.Usage(
+            tickets.Usage(
                 idempotency_key=data.idempotency_key,
                 model_id=data.model_id,
                 tokens_in=data.tokens_in,
@@ -808,7 +814,7 @@ async def report_agent_task_usage(
     return UsageResponse.model_validate({**ledger, 'task': task_state(row)})
 
 
-@agent_task_harness_router.post(
+@ticket_harness_router.post(
     '/{short_id}/requests',
     status_code=201,
     response_model=RequestOpenResponse,
@@ -826,7 +832,7 @@ async def open_agent_task_request(
     task: HarnessTask,
     data: RequestCreate,
     response: fastapi.Response,
-    store: agent_tasks.Store,
+    store: tickets.Store,
 ) -> RequestOpenResponse:
     """Ask a person for feedback or an approval; block the task.
 
@@ -851,7 +857,7 @@ async def open_agent_task_request(
         row, request, created = await store.open_request(
             org_id,
             task['short_id'],
-            agent_tasks.NewRequest(
+            tickets.NewRequest(
                 kind=data.kind,
                 title=data.title,
                 why=data.why,
@@ -913,14 +919,12 @@ def _invalid_output(message: str) -> fastapi.HTTPException:
     )
 
 
-@agent_task_harness_router.post(
-    '/{short_id}/outcome', response_model=TaskState
-)
+@ticket_harness_router.post('/{short_id}/outcome', response_model=TaskState)
 async def set_agent_task_outcome(
     org_id: harness_auth.HarnessOrgId,
     task: HarnessTask,
     data: OutcomeSet,
-    store: agent_tasks.Store,
+    store: tickets.Store,
 ) -> TaskState:
     """Close the task with a terminal outcome (F5).
 

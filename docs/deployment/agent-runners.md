@@ -7,7 +7,7 @@ page tells you how to deploy a pool, connect it to Imbi, and find problems.
 For the design, see
 [ADR 0022](../api/adr/0022-agent-harness-and-secrets-broker.md). For the
 agents and tasks that the runners execute, see [Agents](../admin/agents.md)
-and [Agent Tasks](../admin/agent-tasks.md).
+and [Tickets](../admin/tickets.md).
 
 ## How a runner works
 
@@ -680,6 +680,7 @@ Find the error code first:
 
 | Reason | Cause | Fix |
 |---|---|---|
+| `model_not_allowed` | No enabled catalog model with the model id of the agent's prompt version allows the owner team of the agent: the model is restricted to other teams, disabled, or gone. Imbi closes the task when a runner claims it; the task does not run | Allow the owner team on the model in **Admin > AI Models**, or point the agent at a prompt version with another model. The closed task keeps its prompt version, so then retry the task (**Retry**, `POST .../tasks/{short_id}/retry`) or submit a new one. The retry uses the current versions of the agent |
 | `prompt_render_failed` | The agent's pinned prompt version did not render, usually because the template uses a variable that its variable schema does not declare. The runner log shows `Prompt of <task> did not render` with the error | Declare the variable in a new prompt version and point the agent at it |
 | `model_key_missing` | The platform configuration has no `model_upstream.key_ref` | Do [step 5](#5-configure-the-model-key) |
 | `model_upstream_insecure` | The model upstream URL uses `http://` and `model_upstream.allow_insecure_http` is off. The runner does not send the key without TLS | Change the **Base URL** to `https://`. For a protected in-cluster upstream only, turn on **Allow http://**. See [step 5](#5-configure-the-model-key) |

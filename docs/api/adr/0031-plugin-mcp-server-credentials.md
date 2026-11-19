@@ -1,4 +1,4 @@
-# ADR 0030: Plugin MCP Server Credentials
+# ADR 0031: Plugin MCP Server Credentials
 
 Date: 2026-11-17
 

@@ -19,6 +19,7 @@ from psycopg import sql
 from psycopg.types import json as pg_json
 
 from imbi.common import graph, models
+from imbi.common.auth import permissions as auth_permissions
 from imbi.common.prompts import pool as render_pool
 from imbi.common.prompts import rendering
 from imbi.common.workflows import graph as wf
@@ -312,7 +313,7 @@ class Engine:
             if isinstance(raw, list)
             else set[str]()
         )
-        return required <= held
+        return all(auth_permissions.holds(name, held) for name in required)
 
     async def _start(self, run: store.Row, wf_graph: wf.Graph) -> None:
         """Write a step row per node and mark the run ``running``.
@@ -432,6 +433,8 @@ class Engine:
                         params=step['input'] or {},
                         state=step['state'],
                         idempotency_key=f'{run["id"]}:{node.key}',
+                        attempt=step['attempt'],
+                        time_limit=limit,
                     )
                 )
         except executors.StepError as e:
@@ -495,13 +498,24 @@ class Engine:
                 await self._fail(conn, run, step, code)
                 return _now()
             attempt = step['attempt'] + 1
+            # The state stays: a deploy or rollback resumes its run.
+            # After a timeout, the outcome of the last call is unknown.
+            # ``key_attempt`` lets a step (LLM Call) send the key of that
+            # call again; after a known error it sends a new one.
+            state = {
+                k: v for k, v in step['state'].items() if k != 'key_attempt'
+            }
+            if code == 'timeout':
+                state['key_attempt'] = step['state'].get(
+                    'key_attempt', step['attempt']
+                )
             await store.update(
                 conn,
                 'step_runs',
                 {'run_id': run['id'], 'node_id': step['node_id']},
                 attempt=attempt,
                 error=code,
-                state={},
+                state=state,
                 call_started_at=None,
                 started_at=_now(),
             )

@@ -177,6 +177,8 @@ two steps.
 | Output cost / 1M tokens | USD per one million output tokens. |
 | Default temperature | Between 0 and 2. Generative models only. |
 | Default top_p | Between 0 and 1. Generative models only. |
+| Structured output | The model can return JSON that matches a schema. See [Structured output](#structured-output). |
+| Forced tool choice | Shown when **Structured output** is on. The model accepts a forced tool choice. See [Forced tool choice](#forced-tool-choice). |
 | Monthly spend cap | USD per month. |
 | Allowed teams | See [Team access](#team-access). |
 | Enable immediately | Makes the model selectable as soon as it is created. |
@@ -193,6 +195,49 @@ unknown or set by contract. Enter `0` for a self-hosted model.
 Two rules apply within the catalog. A model's display name must produce a slug
 that is unique in the catalog. A model identifier must be unique within
 its provider. Imbi returns `409` when either rule fails.
+
+## Structured output
+
+Set **Structured output** on a model that can return JSON that matches a
+schema. A workflow [LLM Call step](workflows.md#llm-call) with output
+fields can use only such a model. The switch is off by default, and
+discovery does not set it, so set it on each model that supports it.
+
+Imbi asks for the structured answer in the form of the driver:
+
+| Driver | Form |
+|---|---|
+| Anthropic, AWS Bedrock | One `submit_result` tool call, forced unless [Forced tool choice](#forced-tool-choice) is off |
+| OpenAI, OpenAI-compatible | A strict `json_schema` response format |
+| Google Vertex AI | A JSON response schema (Gemini) |
+
+Turn the switch off when the provider refuses the request. Imbi checks
+the switch at two times:
+
+- **Save.** Imbi does not save a workflow that has an LLM Call step
+  with output fields on a model with the switch off. The `422` error
+  says that the model does not support structured output.
+- **Run.** When you turn the switch off after you save the workflow,
+  the step fails at run time with `model_no_structured_output`.
+
+### Forced tool choice
+
+For Anthropic and AWS Bedrock, Imbi forces the model to call one tool,
+`submit_result`. Some models refuse a forced tool choice, for example a
+Claude model with extended thinking. The call then fails with
+`model_unsupported`.
+
+Turn **Forced tool choice** off for such a model. Imbi then sends the
+tool with the tool choice `auto`, and adds an instruction to the
+system prompt that tells the model to call the tool. Imbi checks the
+answer against the schema. When the model does not call the tool, or
+calls it more than one time, the call fails with `model_answer_invalid` and the step can try again. The
+switch is on by default. Other drivers do not use it.
+
+!!! note
+    An LLM Call step on Google Vertex AI calls Gemini models only, and
+    needs an API key on the provider. The runtime IAM role does not work
+    for these calls.
 
 ## Discover and import models
 
@@ -263,6 +308,48 @@ Select the **All teams** chip to return to access for every team. The team
 picker lists the teams of the organization you have selected. A
 restricted model must name at least one team. Imbi rejects an empty team list
 with `422`.
+
+A prompt run (generative or decision) checks the teams of a restricted
+model. A user must be a member of an allowed team. An LLM Call step of a workflow runs for the
+owner team of the workflow, and only the workflows service can run it that
+way. Otherwise the run fails with `403` (`model_not_allowed`). Admins can run
+every model.
+
+A workflow save checks the same rule. The model of an LLM Call step must allow
+the owner team of the workflow, and the user who saves must be a member of an
+allowed team. An admin does not need to be a member. Otherwise the save fails
+with `403` (`model_not_allowed`).
+
+An agent uses the model of its prompt version. The model must allow the owner
+team of the agent:
+
+- An agent save that changes the team or the prompt fails with `403`
+  (`model_not_allowed`) when the team is not allowed. An agent without a
+  pinned prompt version is not checked, because its tasks use the model of the
+  runner.
+- When a runner claims a task, Imbi checks the model id that the runner gets,
+  because the catalog and the prompt label can change after the save. The task
+  fails this check when no enabled catalog model has that model id, or every
+  enabled catalog model with that model id is restricted to teams that do not
+  include the owner team. A task that fails this check closes with
+  `failed_external` (`model_not_allowed`) and does not run.
+- A task without a prompt model uses the model of the runner
+  (`IMBI_HARNESS_MODEL`, or the default of the agent CLI). The operator sets
+  this model, so Imbi does not check it.
+
+A model id is allowed for a user or a team when one enabled catalog model with
+that model id is not restricted, or a restricted one includes the user or the
+team.
+
+The assistant and the Slack bot use the model of their system prompt only when
+the user may use its model id. Other users get the configured model
+(`IMBI_ASSISTANT_MODEL` or `IMBI_SLACKBOT_MODEL`). The assistant selects the
+model when a conversation starts, and checks the selected model, also when it
+is `IMBI_ASSISTANT_MODEL`. A non-admin gets `403` (`model_not_allowed`) when no
+enabled catalog model allows the model id. `IMBI_ASSISTANT_MODEL` is allowed
+only when no enabled catalog model has its model id. The assistant checks the
+model of the conversation again on each message, because the allowed teams can
+change. Admins can use every model.
 
 Deleting a team does not update the models that name it. Review restricted
 models after you delete a team.

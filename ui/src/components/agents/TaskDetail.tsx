@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
@@ -17,10 +17,11 @@ import {
 
 import { ApiError } from '@/api/client'
 import {
-  controlAgentTask,
-  deleteAgentTask,
-  reassignAgentTask,
-  retryAgentTask,
+  controlTicket,
+  deleteTicket,
+  reassignTicket,
+  retryTicket,
+  setTicketPriority,
 } from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -39,7 +40,7 @@ import { useHasPermission } from '@/hooks/useHasPermission'
 import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
-import type { AgentTask, AgentTaskEvent } from '@/types'
+import type { Ticket, TicketEvent } from '@/types'
 
 import {
   type ActivityView,
@@ -48,9 +49,10 @@ import {
 } from './activityView'
 import { formatMoney } from './agentDraft'
 import { useAgentList } from './agentQueries'
-import { agentsPath } from './agentsNav'
+import { agentsPath, ticketsPath } from './agentsNav'
 import { ConversationTab } from './ConversationTab'
 import type { RevealState } from './conversationTurns'
+import { PriorityBadge, priorityLabel, PriorityPicker } from './priority'
 import { StatisticsTab } from './StatisticsTab'
 import {
   checksFrom,
@@ -64,9 +66,10 @@ import {
 } from './taskEvents'
 import {
   errorMessage,
-  useAgentTask,
-  useAgentTaskEvents,
-  useAgentTaskMutation,
+  useTaskReply,
+  useTicket,
+  useTicketEvents,
+  useTicketMutation,
 } from './taskQueries'
 import { AssociatedProjectsTab, RelatedTasksTab } from './TaskRelations'
 import { TaskSearchProvider } from './taskSearch'
@@ -108,10 +111,10 @@ export function TaskDetail({
   tab?: string
 }) {
   const navigate = useNavigate()
-  const { hash } = useLocation()
-  const task = useAgentTask(orgSlug, shortId)
+  const { hash, search } = useLocation()
+  const task = useTicket(orgSlug, shortId)
   const live = !!task.data && task.data.status !== 'closed'
-  const events = useAgentTaskEvents(orgSlug, shortId, live)
+  const events = useTicketEvents(orgSlug, shortId, live)
   const now = useNow(live)
   const [lastTab, setLastTab] = useStoredState<RouteKey>(
     'imbi.task.tab',
@@ -123,6 +126,9 @@ export function TaskDetail({
     'conversation',
     (raw) => (isActivityView(raw) ? raw : undefined),
   )
+  const [draft, setDraft] = useState('')
+  const pointer = useRef<null | string>(null)
+  const reply = useTaskReply(orgSlug, shortId)
   useEffect(() => {
     const shown = legacyRoute(tab)
     if (isRouteKey(shown)) setLastTab(shown)
@@ -134,11 +140,12 @@ export function TaskDetail({
   )
   useEffect(() => {
     const linked = /^#e\d+$/.test(hash)
+    // Keep the search, so the inbox filters stay.
     if (tab === undefined) {
       navigate(
         linked
-          ? `${agentsPath('tasks', orgSlug, shortId, 'trajectory')}${hash}`
-          : agentsPath('tasks', orgSlug, shortId, lastTab),
+          ? `${ticketsPath(orgSlug, shortId, 'trajectory')}${search}${hash}`
+          : `${ticketsPath(orgSlug, shortId, lastTab)}${search}`,
         { replace: true },
       )
       return
@@ -149,10 +156,10 @@ export function TaskDetail({
         (tab === 'activity' || tab === 'conversation' || tab === 'actions'))
     if (!old) return
     navigate(
-      `${agentsPath('tasks', orgSlug, shortId, 'trajectory')}${linked ? hash : ''}`,
+      `${ticketsPath(orgSlug, shortId, 'trajectory')}${search}${linked ? hash : ''}`,
       { replace: true },
     )
-  }, [hash, lastTab, navigate, orgSlug, shortId, tab])
+  }, [hash, lastTab, navigate, orgSlug, search, shortId, tab])
 
   if (task.isLoading) {
     return <p className="text-tertiary p-6 text-sm">Loading…</p>
@@ -184,7 +191,7 @@ export function TaskDetail({
       key: 'checks',
       label: 'Signals and checks',
     },
-    { key: 'related', label: 'Related tasks' },
+    { key: 'related', label: 'Related tickets' },
     { key: 'projects', label: 'Associated projects' },
   ]
   const wanted = legacyRoute(tab)
@@ -199,12 +206,18 @@ export function TaskDetail({
       ? lastView
       : null
   const current: TabKey = view ? 'activity' : (route as TabKey)
-  const go = (key: RouteKey) =>
-    navigate(agentsPath('tasks', orgSlug, shortId, key))
+  const go = (key: RouteKey) => navigate(ticketsPath(orgSlug, shortId, key))
   const showInConversation = (seq: number) =>
-    navigate(agentsPath('tasks', orgSlug, shortId, 'conversation'), {
+    navigate(ticketsPath(orgSlug, shortId, 'conversation'), {
       state: { revealSeq: seq } satisfies RevealState,
     })
+  const inspectInTrajectory = (seq: number) => {
+    if (tab !== 'conversation')
+      navigate(`${ticketsPath(orgSlug, shortId, 'conversation')}${search}`, {
+        replace: true,
+      })
+    navigate(`${ticketsPath(orgSlug, shortId, 'trajectory')}#e${seq}`)
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -249,6 +262,18 @@ export function TaskDetail({
           {view === 'conversation' ? (
             <ConversationTab
               events={log}
+              footer={
+                t.status === 'closed' ? undefined : (
+                  <Composer
+                    body={draft}
+                    onBodyChange={setDraft}
+                    orgSlug={orgSlug}
+                    pointer={pointer}
+                    reply={reply}
+                  />
+                )
+              }
+              onInspect={inspectInTrajectory}
               orgSlug={orgSlug}
               requests={requests}
               task={t}
@@ -268,7 +293,12 @@ export function TaskDetail({
           ) : (
             <div className="min-h-0 flex-1 overflow-y-auto">
               {current === 'overview' && (
-                <OverviewTab end={end} events={log} task={t} />
+                <OverviewTab
+                  end={end}
+                  events={log}
+                  orgSlug={orgSlug}
+                  task={t}
+                />
               )}
               {current === 'input' && (
                 <InputRequiredTab
@@ -288,7 +318,6 @@ export function TaskDetail({
           )}
         </ToolbarLead.Provider>
       </TaskSearchProvider>
-      {t.status !== 'closed' && <Composer orgSlug={orgSlug} task={t} />}
     </div>
   )
 }
@@ -314,19 +343,47 @@ function legacyRoute(tab: string | undefined): string | undefined {
 function OverviewTab({
   end,
   events,
+  orgSlug,
   task,
 }: {
   end: number
-  events: AgentTaskEvent[]
-  task: AgentTask
+  events: TicketEvent[]
+  orgSlug: string
+  task: Ticket
 }) {
   const [raw, setRaw] = useState(false)
+  const canManage = useHasPermission('ticket:manage', orgSlug)
+  const priority = useTicketMutation(
+    orgSlug,
+    task.short_id,
+    (to: Ticket['priority']) => setTicketPriority(orgSlug, task.short_id, to),
+  )
   const todos = [...events].reverse().find((e) => e.type === 'todos.updated')
     ?.payload.todos as undefined | { done?: boolean; title?: string }[]
   const rows: { name: string; value: ReactNode }[] = [
     {
       name: 'Owner',
       value: <UserIdentity email={task.owner} size="small" />,
+    },
+    {
+      name: 'Priority',
+      value:
+        canManage && task.status !== 'closed' ? (
+          <>
+            <PriorityPicker
+              disabled={priority.isPending}
+              onChange={(to) => priority.mutate(to)}
+              value={task.priority}
+            />
+            {priority.error && (
+              <span className="text-danger block text-xs" role="alert">
+                {errorMessage(priority.error)}
+              </span>
+            )}
+          </>
+        ) : (
+          priorityLabel(task.priority)
+        ),
     },
     { name: 'Started', value: new Date(task.created_at).toLocaleString() },
   ]
@@ -433,23 +490,23 @@ function OverviewTab({
 
 /**
  * Pause or resume, cancel, and reassign. Hidden without
- * `agent_task:manage`.
+ * `ticket:manage`.
  */
-function TaskControls({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
-  const canManage = useHasPermission('agent_task:manage', orgSlug)
+function TaskControls({ orgSlug, task }: { orgSlug: string; task: Ticket }) {
+  const canManage = useHasPermission('ticket:manage', orgSlug)
   const [owner, setOwner] = useState('')
   const [open, setOpen] = useState(false)
   const [confirmCancel, setConfirmCancel] = useState(false)
   const { users } = useUserDisplayNames()
   const paused = task.control === 'pause'
-  const control = useAgentTaskMutation(orgSlug, task.short_id, () =>
-    controlAgentTask(orgSlug, task.short_id, paused ? 'resume' : 'pause'),
+  const control = useTicketMutation(orgSlug, task.short_id, () =>
+    controlTicket(orgSlug, task.short_id, paused ? 'resume' : 'pause'),
   )
-  const cancel = useAgentTaskMutation(orgSlug, task.short_id, () =>
-    controlAgentTask(orgSlug, task.short_id, 'cancel'),
+  const cancel = useTicketMutation(orgSlug, task.short_id, () =>
+    controlTicket(orgSlug, task.short_id, 'cancel'),
   )
-  const reassign = useAgentTaskMutation(orgSlug, task.short_id, (to: string) =>
-    reassignAgentTask(orgSlug, task.short_id, to),
+  const reassign = useTicketMutation(orgSlug, task.short_id, (to: string) =>
+    reassignTicket(orgSlug, task.short_id, to),
   )
   if (!canManage || task.status === 'closed') return null
   const cancelling = task.control === 'cancel'
@@ -461,7 +518,7 @@ function TaskControls({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
   return (
     <div className="flex shrink-0 items-center gap-1">
       <Button
-        aria-label={paused ? 'Resume task' : 'Pause task'}
+        aria-label={paused ? 'Resume ticket' : 'Pause ticket'}
         disabled={pending || cancelling}
         onClick={() => control.mutate(undefined)}
         size="sm"
@@ -471,7 +528,7 @@ function TaskControls({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
         {paused ? <Play className="size-4" /> : <Pause className="size-4" />}
       </Button>
       <Button
-        aria-label="Cancel task"
+        aria-label="Cancel ticket"
         disabled={pending || cancelling}
         onClick={() => setConfirmCancel(true)}
         size="sm"
@@ -481,8 +538,8 @@ function TaskControls({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
         <Ban className="size-4" />
       </Button>
       <ConfirmDialog
-        confirmLabel="Cancel task"
-        description="Imbi closes the task as cancelled_by_human. A runner that holds it stops first. You cannot resume a cancelled task."
+        confirmLabel="Cancel ticket"
+        description="Imbi closes the ticket as cancelled_by_human. A runner that holds it stops first. You cannot resume a cancelled ticket."
         onCancel={() => setConfirmCancel(false)}
         onConfirm={() => {
           setConfirmCancel(false)
@@ -494,7 +551,7 @@ function TaskControls({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
       <Popover onOpenChange={setOpen} open={open}>
         <PopoverTrigger asChild>
           <Button
-            aria-label="Reassign task"
+            aria-label="Reassign ticket"
             size="sm"
             title="Reassign"
             variant="outline"
@@ -560,23 +617,23 @@ function TaskControls({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
   )
 }
 
-/** Delete a closed task. Hidden without `agent_task:delete`. */
-function TaskDelete({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
-  const canDelete = useHasPermission('agent_task:delete', orgSlug)
+/** Delete a closed task. Hidden without `ticket:delete`. */
+function TaskDelete({ orgSlug, task }: { orgSlug: string; task: Ticket }) {
+  const canDelete = useHasPermission('ticket:delete', orgSlug)
   const navigate = useNavigate()
   const [confirm, setConfirm] = useState(false)
   const queryClient = useQueryClient()
   // Navigate before the refresh, so the deleted task is not read again.
   const remove = useMutation({
-    mutationFn: () => deleteAgentTask(orgSlug, task.short_id),
+    mutationFn: () => deleteTicket(orgSlug, task.short_id),
     onSuccess: () => {
-      navigate(agentsPath('tasks'))
+      navigate(ticketsPath())
       queryClient.removeQueries({
-        queryKey: queryKeys.agentTask(orgSlug, task.short_id),
+        queryKey: queryKeys.ticket(orgSlug, task.short_id),
       })
       for (const queryKey of [
-        queryKeys.agentTasks(orgSlug),
-        queryKeys.agentTasksWaiting(orgSlug),
+        queryKeys.tickets(orgSlug),
+        queryKeys.ticketsWaiting(orgSlug),
       ])
         void queryClient.invalidateQueries({ queryKey })
     },
@@ -585,7 +642,7 @@ function TaskDelete({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
   return (
     <div className="flex shrink-0 items-center gap-1">
       <Button
-        aria-label="Delete task"
+        aria-label="Delete ticket"
         disabled={remove.isPending}
         onClick={() => setConfirm(true)}
         size="sm"
@@ -595,8 +652,8 @@ function TaskDelete({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
         <Trash2 className="size-4" />
       </Button>
       <ConfirmDialog
-        confirmLabel="Delete task"
-        description="Imbi removes the task, its events, and its relations. The secret audit and the usage records stay. You cannot undo this."
+        confirmLabel="Delete ticket"
+        description="Imbi removes the ticket, its events, and its relations. The secret audit and the usage records stay. You cannot undo this."
         onCancel={() => setConfirm(false)}
         onConfirm={() => {
           setConfirm(false)
@@ -625,9 +682,9 @@ function TaskHeader({
   task,
 }: {
   end: number
-  events: AgentTaskEvent[]
+  events: TicketEvent[]
   orgSlug: string
-  task: AgentTask
+  task: Ticket
 }) {
   const { data: agents } = useAgentList(orgSlug)
   const agent = agents?.find((a) => a.id === task.agent_id)
@@ -643,6 +700,7 @@ function TaskHeader({
         <h2 className="min-w-0 flex-1 text-lg font-medium text-pretty">
           {task.title}
         </h2>
+        <PriorityBadge priority={task.priority} />
         <Badge variant={statusVariant(task)}>{statusLabel(task)}</Badge>
         <TaskControls orgSlug={orgSlug} task={task} />
         <TaskRetry orgSlug={orgSlug} task={task} />
@@ -724,10 +782,10 @@ function TaskHeader({
 /**
  * Retry a failed task as a new task, with what happened to it and an
  * optional note, then open the new task. Hidden without
- * `agent_task:create`.
+ * `ticket:create`.
  */
-function TaskRetry({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
-  const canCreate = useHasPermission('agent_task:create', orgSlug)
+function TaskRetry({ orgSlug, task }: { orgSlug: string; task: Ticket }) {
+  const canCreate = useHasPermission('ticket:create', orgSlug)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
@@ -737,7 +795,7 @@ function TaskRetry({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
   const [retryKey, setRetryKey] = useState(() => crypto.randomUUID())
   const retry = useMutation({
     mutationFn: () =>
-      retryAgentTask(orgSlug, task.short_id, {
+      retryTicket(orgSlug, task.short_id, {
         idempotency_key: retryKey,
         note: note.trim() || null,
       }),
@@ -746,9 +804,9 @@ function TaskRetry({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
       setOpen(false)
       setNote('')
       void queryClient.invalidateQueries({
-        queryKey: queryKeys.agentTasks(orgSlug),
+        queryKey: queryKeys.tickets(orgSlug),
       })
-      navigate(agentsPath('tasks', orgSlug, copy.short_id))
+      navigate(ticketsPath(orgSlug, copy.short_id))
     },
   })
   // A 400 or 422 means the API did not make the task, so the note
@@ -761,9 +819,9 @@ function TaskRetry({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
     <Popover onOpenChange={setOpen} open={open}>
       <PopoverTrigger asChild>
         <Button
-          aria-label="Retry task"
+          aria-label="Retry ticket"
           size="sm"
-          title="Retry as a new task"
+          title="Retry as a new ticket"
           variant="outline"
         >
           <RotateCcw className="size-4" />
@@ -771,7 +829,7 @@ function TaskRetry({ orgSlug, task }: { orgSlug: string; task: AgentTask }) {
       </PopoverTrigger>
       <PopoverContent align="end" className="flex w-96 flex-col gap-3">
         <p className="text-secondary text-sm">
-          Imbi makes a new task with the same agent and description, and adds
+          Imbi makes a new ticket with the same agent and description, and adds
           the outcome and the last agent message of {task.short_id}.
         </p>
         <form

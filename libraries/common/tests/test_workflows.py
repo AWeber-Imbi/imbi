@@ -408,6 +408,7 @@ class RegistryTestCase(unittest.TestCase):
                 'schedule',
                 'webhook',
                 'task_completed',
+                'ticket_closed',
                 'wait',
                 'model_decision',
                 'script',
@@ -416,6 +417,7 @@ class RegistryTestCase(unittest.TestCase):
                 'deploy',
                 'rollback',
                 'agent',
+                'llm_call',
                 'condition',
             },
         )
@@ -438,6 +440,9 @@ class RegistryTestCase(unittest.TestCase):
             registry.STEP_TYPES['agent'].required_permissions({}),
             {'agent_task:create'},
         )
+        slack = registry.STEP_TYPES['slack'].required_permissions
+        self.assertEqual(slack({'channel': 'C0123456789'}), set())
+        self.assertEqual(slack({'ticket': 'T-12'}), {'agent_task:read'})
 
     def test_agent_budget_follows_the_task_budget(self) -> None:
         # The limits of AgentTaskCreate.budget: 14 digits, 6 places.
@@ -483,6 +488,19 @@ class RegistryTestCase(unittest.TestCase):
                 {'invalid_param'},
             ),
             ({'channel': 'C0123456789'}, {'missing_param'}),
+            ({'channel': 'C0123456789', 'text': 'x', 'ticket': 'T-12'}, set()),
+            (
+                {
+                    'channel': 'C0123456789',
+                    'text': 'x',
+                    'ticket': '{{ trigger.task_id }}',
+                },
+                set(),
+            ),
+            (
+                {'channel': 'C0123456789', 'text': 'x', 'ticket': '12'},
+                {'invalid_param'},
+            ),
         ):
             issues = _check(
                 [_node('start', 'manual'), _node('tell', 'slack', params)],

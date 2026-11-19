@@ -1,4 +1,4 @@
-import type { AgentTaskEvent } from '@/types'
+import type { TicketEvent, TicketStatus } from '@/types'
 
 import { useAgentList } from './agentQueries'
 import { formatTokens, statusLabel, type TaskRequestView } from './taskEvents'
@@ -12,10 +12,11 @@ export const RESOLVED: Record<TaskRequestView['status'], string> = {
   expired: 'Expired',
   open: 'Open',
   rejected: 'Rejected',
+  withdrawn: 'Withdrawn',
 }
 
 /** One line for an event that is not a turn. */
-export function systemText(e: AgentTaskEvent): string {
+export function systemText(e: TicketEvent): string {
   const p = e.payload
   switch (e.type) {
     case 'check.reported':
@@ -32,8 +33,16 @@ export function systemText(e: AgentTaskEvent): string {
       return `Closed as ${statusLabel({ outcome: String(p.outcome), status: 'closed' }).toLowerCase()}${p.reason ? `: ${String(p.reason).replace(/_/g, ' ')}` : ''}`
     case 'owner.changed':
       return `Owner ${p.from} → ${p.to}`
+    case 'parent.changed':
+      return p.to
+        ? `Moved under ${p.to}`
+        : p.from
+          ? `Moved from ${p.from} to the root`
+          : 'Parent changed'
     case 'phase.changed':
       return `Phase ${p.phase}`
+    case 'priority.changed':
+      return `Priority ${p.from} → ${p.to}`
     case 'project.associated':
       return `Linked to project ${String(p.project_slug ?? p.project_id)}`
     case 'project.dissociated':
@@ -51,7 +60,8 @@ export function systemText(e: AgentTaskEvent): string {
     case 'state.changed':
       return stateText(String(p.from), String(p.to), p.reason)
     case 'task.created':
-      return 'Task created'
+    case 'ticket.created':
+      return 'Ticket created'
     case 'todos.updated':
       return 'Plan updated'
     case 'usage.reported':
@@ -90,7 +100,9 @@ function stateWord(from: string, to: string): string {
   if (to === 'blocked') return 'Waiting for input'
   if (to === 'queued') return 'Queued'
   if (to === 'closed') return 'Stopped'
-  return `Moved from ${from} to ${to}`
+  return (
+    statusLabel({ status: to as TicketStatus }) ?? `Moved from ${from} to ${to}`
+  )
 }
 
 function words(type: string): string {

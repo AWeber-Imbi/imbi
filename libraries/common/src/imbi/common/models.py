@@ -860,6 +860,13 @@ class AIModel(Node):
     monthly_spend_cap: decimal.Decimal | None = pydantic.Field(
         default=None, ge=0
     )
+    #: Set by an admin. ``False`` means an unknown model: a workflow
+    #: ``llm_call`` step with output fields does not use it.
+    supports_structured_output: bool = False
+    #: ``False`` for a model that refuses a forced tool choice, such as
+    #: a Claude model with extended thinking. Structured output then
+    #: uses ``tool_choice: auto`` and an instruction to call the tool.
+    supports_forced_tool_choice: bool = True
 
 
 #: Namespaces, prompt slugs, and label names share one shape, so a
@@ -915,6 +922,10 @@ class Prompt(Node):
     #: or names a label the prompt does not have.
     default_label: PromptName = 'stable'
     labels: list[PromptLabel] = []
+    #: Set when the owner of the prompt is deleted. An archived prompt
+    #: is not listed and gets no new versions or label moves, but each
+    #: version still resolves by number.
+    archived_at: datetime.datetime | None = None
 
     @pydantic.field_validator('labels', mode='before')
     @classmethod
@@ -943,7 +954,10 @@ class PromptParams(pydantic.BaseModel):
 class PromptVariable(pydantic.BaseModel):
     """The declared type of one template variable."""
 
-    type: typing.Literal['str', 'int', 'float', 'bool', 'list', 'object']
+    #: ``any`` accepts every value, such as a whole workflow reference.
+    type: typing.Literal[
+        'str', 'int', 'float', 'bool', 'list', 'object', 'any'
+    ]
     required: bool = False
     description: str | None = None
 

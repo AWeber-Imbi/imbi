@@ -11,7 +11,7 @@ It serves four things on one port:
   binding for the setup purposes, and the static model key. A lease
   sweep marks a runner offline, revokes its resolutions, and requeues
   its chain after a grace period.
-- The ADR 0020 task routes of ``imbi.api.endpoints.agent_task_harness``
+- The ADR 0020 task routes of ``imbi.api.endpoints.ticket_harness``
   that the runner calls with the agent token: sessions, heartbeat,
   events (with the 1 MiB continuation rules), usage (one price per
   token, so a small budget runs out), and outcome.
@@ -410,6 +410,8 @@ def _new_task(body: Row, chain_id: str, origin: Row) -> Row:
         'outcome_reason': None,
         'sessions': {},
         'events': [],
+        # The entries of GET /harness/tickets/<id>/history, oldest first.
+        'history': body.get('history') or [],
         'usage': [],
         'requests': {},
         'tool_counts': {},
@@ -674,7 +676,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if url.path.startswith('/git/'):
                 return self._git()
             parts = url.path.strip('/').split('/')
-            if parts[:2] == ['harness', 'tasks'] and parts[3:] == ['events']:
+            if parts[:2] == ['harness', 'tickets'] and parts[3:] == ['events']:
                 with LOCK:
                     return self._json(
                         200,
@@ -683,6 +685,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             parts[2],
                             int(query.get('after_seq', 0)),
                         ),
+                    )
+            if parts[:2] == ['harness', 'tickets'] and parts[3:] == [
+                'history'
+            ]:
+                with LOCK:
+                    return self._json(
+                        200, _history(_bearer(self.headers), parts[2])
                     )
             return self._json(404, {'detail': 'not found'})
         except Fail as err:
@@ -864,11 +873,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 'expires_at': _iso(resolution['expires_at']),
                 'delivery': resolution['delivery'],
             }
-        if parts[:2] == ['harness', 'tasks']:
+        if parts[:2] == ['harness', 'tickets']:
             return _harness_task_route(
                 token, parts[2], '/'.join(parts[3:]), body
             )
-        if parts[:3] == ['organizations', 'test', 'agent-tasks']:
+        if parts[:3] == ['organizations', 'test', 'tickets']:
             return _task_route(token, parts[3], '/'.join(parts[4:]), body)
         if path == '/harness/executor/secret-materializations':
             return 200, _materialize(token, body)
@@ -1138,7 +1147,7 @@ def _close(task: Row, outcome: str, reason: str | None) -> None:
 
 
 def _check_event(event: Row) -> None:
-    """The checks of ``agent_task_harness.HarnessEvent`` and the size
+    """The checks of ``ticket_harness.HarnessEvent`` and the size
     limits of ``append_agent_task_events``."""
     kind = event.get('type')
     payload = event.get('payload') or {}
@@ -1243,10 +1252,17 @@ def _events_after(token: str, short_id: str, after: int) -> list[Row]:
     return [e for e in task['events'] if e['seq'] > after]
 
 
+def _history(token: str, short_id: str) -> Row:
+    task = TASKS.get(short_id)
+    if task is None or _task_for_token(token) is not task:
+        raise Fail(403, 'chain_forbidden')
+    return {'entries': task['history'], 'cut': 0}
+
+
 def _harness_task_route(
     token: str, short_id: str, action: str, body: Row
 ) -> tuple[int, typing.Any]:
-    """The ``/harness/tasks`` routes of ``harness.py``: child tasks and
+    """The ``/harness/tickets`` routes of ``harness.py``: child tasks and
     the rate-limit check."""
     task = TASKS.get(short_id)
     if task is None or _task_for_token(token) is not task:

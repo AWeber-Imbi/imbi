@@ -443,6 +443,21 @@ class CreateModelTestCase(AIModelTestBase):
         )
         self.assertEqual(response.status_code, 422)
 
+    def test_create_stores_structured_output_flag(self) -> None:
+        """The structured output flag is stored and returned."""
+        router = self.route(
+            (GET_PROVIDER, [{'p': provider_tests.provider_props()}]),
+            (CREATE, [{'m': model_props(supports_structured_output=True)}]),
+        )
+        response = self.client.post(
+            BASE + '/', json=self._body(supports_structured_output=True)
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertTrue(response.json()['supports_structured_output'])
+        self.assertTrue(
+            router.params_for(CREATE)['supports_structured_output']
+        )
+
 
 class PatchModelTestCase(AIModelTestBase):
     """``PATCH`` with RFC 6902 operations."""
@@ -474,6 +489,46 @@ class PatchModelTestCase(AIModelTestBase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()['enabled'])
         self.assertFalse(router.params_for(UPDATE)['enabled'])
+
+    def test_patch_structured_output_flag(self) -> None:
+        """A replace on /supports_structured_output is persisted."""
+        self._installed()
+        router = typing.cast('typing.Any', self.mock_db.execute.side_effect)
+        response = self.client.patch(
+            f'{BASE}/mdl-1',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/supports_structured_output',
+                    'value': True,
+                }
+            ],
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertTrue(response.json()['supports_structured_output'])
+        self.assertTrue(
+            router.params_for(UPDATE)['supports_structured_output']
+        )
+
+    def test_patch_forced_tool_choice_flag(self) -> None:
+        """A replace on /supports_forced_tool_choice is persisted."""
+        self._installed()
+        router = typing.cast('typing.Any', self.mock_db.execute.side_effect)
+        response = self.client.patch(
+            f'{BASE}/mdl-1',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/supports_forced_tool_choice',
+                    'value': False,
+                }
+            ],
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertFalse(response.json()['supports_forced_tool_choice'])
+        self.assertFalse(
+            router.params_for(UPDATE)['supports_forced_tool_choice']
+        )
 
     def test_patch_cache_price(self) -> None:
         """A replace on a cache price is persisted."""

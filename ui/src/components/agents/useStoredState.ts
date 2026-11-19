@@ -7,7 +7,7 @@ export function useStoredState<T>(
   key: string,
   fallback: T,
   parse: (raw: unknown) => T | undefined,
-): [T, (next: T) => void] {
+): [T, (next: ((current: T) => T) | T) => void] {
   const [value, setValue] = useState<T>(() => {
     try {
       const raw = storage.getItem(key)
@@ -17,9 +17,15 @@ export function useStoredState<T>(
     }
   })
   const update = useCallback(
-    (next: T) => {
-      setValue(next)
-      storage.setItem(key, JSON.stringify(next))
+    (next: ((current: T) => T) | T) => {
+      setValue((current) => {
+        const value =
+          typeof next === 'function'
+            ? (next as (current: T) => T)(current)
+            : next
+        storage.setItem(key, JSON.stringify(value))
+        return value
+      })
     },
     [key],
   )

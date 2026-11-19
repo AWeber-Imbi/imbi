@@ -45,9 +45,22 @@ describe('groupTasks', () => {
       groups.map((g) => [g.label, g.tasks.map((t) => t.short_id)]),
     ).toEqual([
       ['Human input required', ['T-3', 'T-7', 'T-5']],
-      ['Running', ['T-4', 'T-2']],
+      ['Running', ['T-2']],
+      ['Paused', ['T-4']],
       ['Queued', ['T-6']],
       ['Recently closed', ['T-0', 'T-1']],
+    ])
+  })
+
+  it('groups the statuses of a later release (ADR 0028)', () => {
+    const groups = groupTasks([
+      task({ short_id: 'T-3', status: 'held' }),
+      task({ short_id: 'T-2', status: 'open' }),
+      task({ short_id: 'T-1', status: 'in_progress' }),
+    ])
+    expect(groups.map((g) => [g.id, g.tasks.map((t) => t.short_id)])).toEqual([
+      ['running', ['T-1']],
+      ['queued', ['T-3', 'T-2']],
     ])
   })
 
@@ -94,6 +107,14 @@ describe('requestsFrom', () => {
       ['c', 'expired', null, null],
     ])
     expect(requests[1].options).toEqual(['yes', 'no'])
+  })
+
+  it('folds a withdrawn request', () => {
+    const requests = requestsFrom(
+      [opened(1, 'a'), event(2, 'request.withdrawn', { request_id: 'a' })],
+      Date.parse('2026-10-08T12:01:00Z'),
+    )
+    expect(requests.map((r) => r.status)).toEqual(['withdrawn'])
   })
 })
 

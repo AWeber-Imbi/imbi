@@ -5,7 +5,8 @@ SonarQube server URL as an integration-level option, the API token as the
 integration's only credential, a ``webhook-actions`` capability that
 catalogs the ``update_project_from_webhook`` action, and an ``analysis``
 capability (the project doctor) that validates and repairs the project's
-SonarQube component binding.
+SonarQube component binding, and a ``lifecycle`` capability that deletes
+the SonarQube project when the Imbi project is archived or deleted.
 """
 
 import logging
@@ -16,6 +17,7 @@ from imbi.plugins.sonarqube.doctor import (
     MAIN_BRANCH_OPTION,
     SonarQubeDoctor,
 )
+from imbi.plugins.sonarqube.lifecycle import SonarQubeLifecycle
 
 LOGGER = logging.getLogger(__name__)
 
@@ -68,6 +70,9 @@ class SonarQubePlugin(plugins.Plugin):
                 'facts.'
             ),
             'auth_type': 'api_token',
+            # The lifecycle deletes the project an edge names, so one
+            # project must not link a key that another project holds.
+            'shareable_service_identifier': False,
             'options': [
                 {
                     'name': 'service_url',
@@ -94,11 +99,22 @@ class SonarQubePlugin(plugins.Plugin):
                         'needs Browse on the projects being read, plus '
                         'Create Projects if the Project Doctor should create '
                         'missing SonarQube projects and Administer on a '
-                        'project whose main branch it should switch.'
+                        'project whose main branch it should switch or '
+                        'that the lifecycle capability should delete.'
                     ),
                 }
             ],
             'capabilities': [
+                {
+                    'kind': 'lifecycle',
+                    'label': 'Project lifecycle',
+                    'description': (
+                        'Delete the SonarQube project when the Imbi '
+                        'project is archived or deleted.'
+                    ),
+                    'hints': {'lifecycle_events': ['archived', 'deleted']},
+                    'handler': SonarQubeLifecycle,
+                },
                 {
                     'kind': 'webhook-actions',
                     'label': 'Webhook actions',
