@@ -12446,7 +12446,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "queued" | "running" | "blocked" | "paused" | "closed";
+            status: "held" | "queued" | "running" | "paused" | "open" | "in_progress" | "blocked" | "closed";
             /**
              * Control
              * @enum {string}
@@ -12647,7 +12647,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "queued" | "running" | "blocked" | "paused" | "closed";
+            status: "held" | "queued" | "running" | "paused" | "open" | "in_progress" | "blocked" | "closed";
             /**
              * Control
              * @enum {string}
@@ -19830,7 +19830,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "queued" | "running" | "blocked" | "paused" | "closed";
+            status: "held" | "queued" | "running" | "paused" | "open" | "in_progress" | "blocked" | "closed";
             /** Outcome */
             outcome?: string | null;
             /**
@@ -22414,7 +22414,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "queued" | "running" | "blocked" | "paused" | "closed";
+            status: "held" | "queued" | "running" | "paused" | "open" | "in_progress" | "blocked" | "closed";
             /**
              * Control
              * @enum {string}
@@ -32633,7 +32633,7 @@ export interface operations {
     list_agent_tasks_api_organizations__org_slug__agent_tasks__get: {
         parameters: {
             query?: {
-                status?: ("queued" | "running" | "blocked" | "paused" | "closed")[] | null;
+                status?: ("held" | "queued" | "running" | "paused" | "open" | "in_progress" | "blocked" | "closed")[] | null;
                 agent_id?: string[] | null;
                 owner?: string[] | null;
                 mine?: boolean;
@@ -32725,7 +32725,7 @@ export interface operations {
     count_agent_tasks_api_organizations__org_slug__agent_tasks_counts_get: {
         parameters: {
             query?: {
-                status?: ("queued" | "running" | "blocked" | "paused" | "closed")[] | null;
+                status?: ("held" | "queued" | "running" | "paused" | "open" | "in_progress" | "blocked" | "closed")[] | null;
                 agent_id?: string[] | null;
                 owner?: string[] | null;
                 mine?: boolean;
@@ -32762,7 +32762,7 @@ export interface operations {
     get_agent_task_position_api_organizations__org_slug__agent_tasks__short_id__position_get: {
         parameters: {
             query?: {
-                status?: ("queued" | "running" | "blocked" | "paused" | "closed")[] | null;
+                status?: ("held" | "queued" | "running" | "paused" | "open" | "in_progress" | "blocked" | "closed")[] | null;
                 agent_id?: string[] | null;
                 owner?: string[] | null;
                 mine?: boolean;
@@ -33452,7 +33452,7 @@ export interface operations {
     list_tickets_api_organizations__org_slug__tickets__get: {
         parameters: {
             query?: {
-                status?: ("queued" | "running" | "blocked" | "paused" | "closed")[] | null;
+                status?: ("held" | "queued" | "running" | "paused" | "open" | "in_progress" | "blocked" | "closed")[] | null;
                 agent_id?: string[] | null;
                 owner?: string[] | null;
                 mine?: boolean;
@@ -33544,7 +33544,7 @@ export interface operations {
     count_tickets_api_organizations__org_slug__tickets_counts_get: {
         parameters: {
             query?: {
-                status?: ("queued" | "running" | "blocked" | "paused" | "closed")[] | null;
+                status?: ("held" | "queued" | "running" | "paused" | "open" | "in_progress" | "blocked" | "closed")[] | null;
                 agent_id?: string[] | null;
                 owner?: string[] | null;
                 mine?: boolean;
@@ -33581,7 +33581,7 @@ export interface operations {
     get_ticket_position_api_organizations__org_slug__tickets__short_id__position_get: {
         parameters: {
             query?: {
-                status?: ("queued" | "running" | "blocked" | "paused" | "closed")[] | null;
+                status?: ("held" | "queued" | "running" | "paused" | "open" | "in_progress" | "blocked" | "closed")[] | null;
                 agent_id?: string[] | null;
                 owner?: string[] | null;
                 mine?: boolean;

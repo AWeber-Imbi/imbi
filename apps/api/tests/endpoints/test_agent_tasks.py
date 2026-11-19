@@ -360,7 +360,7 @@ class CreateTaskTests(AgentTaskTestCase):
         response = await self.client.get(self.url('T-1/events'))
         (event,) = response.json()
         self.assertEqual(event['seq'], 1)
-        self.assertEqual(event['type'], 'task.created')
+        self.assertEqual(event['type'], 'ticket.created')
         self.assertEqual(event['actor_kind'], 'human')
         self.assertEqual(event['actor_id'], self.email)
         self.assertEqual(event['channel'], 'web')
@@ -713,7 +713,7 @@ class TriggerOriginTests(AgentTaskTestCase):
             self.assertNotEqual(response.json()['id'], task['id'])
 
         (event,) = (await self.client.get(self.url('T-1/events'))).json()
-        self.assertEqual(event['type'], 'task.created')
+        self.assertEqual(event['type'], 'ticket.created')
         self.assertEqual(event['actor_kind'], 'system')
         self.assertEqual(event['actor_id'], 'imbi-scheduler')
         self.assertEqual(event['payload']['origin'], origin)
@@ -1140,6 +1140,26 @@ class ReadTaskTests(AgentTaskTestCase):
         )
         self.assertEqual(response.status_code, 404, response.text)
 
+    async def test_reads_the_statuses_of_a_later_release(self) -> None:
+        # Release A+1 reads what P1 to P4 write (ADR 0028).
+        async with self.pool.connection() as conn:
+            for short_id, status in [
+                ('T-1', 'held'),
+                ('T-2', 'open'),
+                ('T-3', 'in_progress'),
+            ]:
+                await conn.execute(
+                    'UPDATE tickets.tickets SET status = %s'
+                    ' WHERE organization_id = %s AND short_id = %s',
+                    (status, self.org, short_id),
+                )
+        response = await self.client.get(self.url('T-3'))
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['status'], 'in_progress')
+        self.assertEqual(await self.list_ids(group='queued'), ['T-2', 'T-1'])
+        self.assertEqual(await self.list_ids(group='running'), ['T-3'])
+        self.assertEqual(await self.list_ids(status='held'), ['T-1'])
+
     async def test_events_page_by_seq(self) -> None:
         await self.client.post(self.url('T-1/pause'))
         await self.client.post(self.url('T-1/resume'))
@@ -1196,7 +1216,7 @@ class ControlTests(AgentTaskTestCase):
         self.assertEqual(
             await self.event_types('T-1'),
             [
-                'task.created',
+                'ticket.created',
                 'control.changed',
                 'state.changed',
                 'control.changed',
@@ -1227,7 +1247,7 @@ class ControlTests(AgentTaskTestCase):
         self.assertEqual(
             await self.event_types('T-1'),
             [
-                'task.created',
+                'ticket.created',
                 'control.changed',
                 'state.changed',
                 'outcome.set',
@@ -1249,7 +1269,7 @@ class ControlTests(AgentTaskTestCase):
             self.assertEqual(response.status_code, 409, response.text)
         self.assertEqual(
             await self.event_types('T-1'),
-            ['task.created', 'control.changed', 'control.changed'],
+            ['ticket.created', 'control.changed', 'control.changed'],
         )
 
     async def test_close_writes_a_trigger_outbox_row(self) -> None:

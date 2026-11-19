@@ -47,8 +47,11 @@ LOGGER = logging.getLogger(__name__)
 SCHEMA = 'tickets'
 
 #: The origin kinds of a child ticket, which an agent made from its own
-#: ticket. Release A writes ``task`` and reads both; release A+1 writes
-#: ``ticket`` (ADR 0028).
+#: ticket. Releases A and A+1 write ``task`` and read both (ADR 0028).
+#: The unique index of idempotency keys includes the origin kind, so a
+#: pod that wrote ``ticket`` while a pod of the previous release wrote
+#: ``task`` for the same key would make two children. The write changes
+#: in release B, with the index.
 CHILD_ORIGIN_KINDS = ('task', 'ticket')
 
 #: The unique index of idempotency keys. It keeps its ADR 0020 name until
@@ -90,7 +93,19 @@ async def run_close_hooks(task: Row) -> None:
             )
 
 
-Status = typing.Literal['queued', 'running', 'blocked', 'paused', 'closed']
+#: ``held``, ``open``, and ``in_progress`` are read but not written yet:
+#: a later release writes them (ADR 0028), and this release must read
+#: its rows.
+Status = typing.Literal[
+    'held',
+    'queued',
+    'running',
+    'paused',
+    'open',
+    'in_progress',
+    'blocked',
+    'closed',
+]
 Control = typing.Literal['run', 'pause', 'cancel']
 ActorKind = typing.Literal['human', 'agent', 'subagent', 'system']
 Channel = typing.Literal['web', 'slack', 'mcp', 'api', 'harness']
@@ -109,10 +124,15 @@ _OPEN_REQUESTS = sql.SQL(
 Group = typing.Literal['input', 'running', 'paused', 'queued', 'closed']
 
 #: The inbox group of task ``t``: ``input`` when it waits on a person
-#: (blocked, or not closed with an open request), else its status.
+#: (blocked, or not closed with an open request), else its status. A
+#: ticket that has not started (``held``, ``open``) is ``queued``; a
+#: person ticket in work (``in_progress``) is ``running``.
 _GROUP = sql.SQL(
     "CASE WHEN t.status = 'blocked' OR (t.status <> 'closed'"
-    ' AND EXISTS (SELECT 1 {open})) THEN {input} ELSE t.status::text END'
+    ' AND EXISTS (SELECT 1 {open})) THEN {input}'
+    " WHEN t.status IN ('held', 'open') THEN 'queued'"
+    " WHEN t.status = 'in_progress' THEN 'running'"
+    ' ELSE t.status::text END'
 ).format(open=_OPEN_REQUESTS, input=sql.Literal('input'))
 
 #: The order of the tasks in each inbox group: oldest block first (O2)
@@ -557,20 +577,29 @@ class TicketStore:
     async def find_by_idempotency_key(
         self, organization_id: str, origin_kind: str, origin_id: str, key: str
     ) -> Row | None:
-        """Return the task that the origin principal made with ``key``."""
+        """Return the task that the origin principal made with ``key``.
+
+        A child kind matches every child kind, so a retry finds the child
+        that a pod of the previous release wrote as ``task``.
+        """
+        kinds = (
+            list(CHILD_ORIGIN_KINDS)
+            if origin_kind in CHILD_ORIGIN_KINDS
+            else [origin_kind]
+        )
         async with self._pool.connection() as conn:
             return await _fetch_one(
                 conn,
                 _SELECT_TASKS
-                + ' WHERE organization_id = %s AND origin_kind = %s'
+                + ' WHERE organization_id = %s AND origin_kind = ANY(%s)'
                 ' AND origin_id = %s AND idempotency_key = %s',
-                (organization_id, origin_kind, origin_id, key),
+                (organization_id, kinds, origin_id, key),
             )
 
     async def create(
         self, task: NewTask, actor: Actor, event_payload: Row
     ) -> tuple[Row, bool]:
-        """Insert ``task`` with its short id and ``task.created`` event.
+        """Insert ``task`` with its short id and ``ticket.created`` event.
 
         Return the task and ``True``. When a concurrent request made a
         task with the same idempotency key first, return that task and
@@ -669,7 +698,7 @@ class TicketStore:
                             ],
                         )
                 event = await _append_event(
-                    conn, task_id, 'task.created', event_payload, actor
+                    conn, task_id, 'ticket.created', event_payload, actor
                 )
                 row = await _fetch_task(conn, task_id)
         except psycopg.errors.UniqueViolation as err:

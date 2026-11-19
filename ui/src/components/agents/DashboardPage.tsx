@@ -45,6 +45,9 @@ import {
 } from './taskEvents'
 import { errorMessage, useTickets, useWaitingTaskCount } from './taskQueries'
 
+// Only the statuses that 2.54.0 (release A) accepts: a pod of that
+// release refuses the filter `held`, `open`, or `in_progress` during the
+// rollout. Add them in the release that writes them (ADR 0028).
 const OPEN: TicketStatus[] = ['blocked', 'running', 'paused', 'queued']
 
 // ponytail: like the inbox, the dashboard reads the newest 100 open and

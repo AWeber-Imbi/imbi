@@ -2,8 +2,11 @@
 
 ``task_completed`` is the earlier name of the trigger (ADR 0028). Both
 start runs. A run and a ticket that this trigger starts still record
-the old name as their origin kind, which the previous release reads;
-both names are read.
+the old name as their origin kind until release B (R4), and both names
+are read. The unique key of a run includes its origin kind. If this
+release wrote the new name, a sweep of the previous release that
+retries the same outbox row with the old name would start a second
+run.
 
 A ticket close hook (:func:`imbi.api.tickets.store.
 register_close_hook`). It reads the enabled bindings of the active
@@ -37,7 +40,8 @@ from imbi.common.workflows.registry import ticket_closed
 
 LOGGER = logging.getLogger(__name__)
 
-#: The origin kind that this trigger writes.
+#: The origin kind that this trigger writes. It stays the old name until
+#: release B; see the module docstring.
 KIND = 'task_completed'
 
 #: The most runs in one chain of task -> run -> task -> run.

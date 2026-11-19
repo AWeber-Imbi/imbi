@@ -39,7 +39,13 @@ export interface TaskRequestView {
   options: unknown[]
   resolved_at: null | string
   resolved_by: null | string
-  status: 'answered' | 'approved' | 'expired' | 'open' | 'rejected'
+  status:
+    | 'answered'
+    | 'approved'
+    | 'expired'
+    | 'open'
+    | 'rejected'
+    | 'withdrawn'
   title: string
   why: null | string
 }
@@ -52,9 +58,14 @@ export const INBOX_GROUPS: { id: InboxGroupId; label: string }[] = [
   { id: 'closed', label: 'Recently closed' },
 ]
 
+// A ticket that has not started (`held`, `open`) is queued; a person
+// ticket in work (`in_progress`) is running. The API groups them the same.
 const GROUP_OF: Record<TicketStatus, InboxGroupId> = {
   blocked: 'input',
   closed: 'closed',
+  held: 'queued',
+  in_progress: 'running',
+  open: 'queued',
   paused: 'paused',
   queued: 'queued',
   running: 'running',
@@ -99,9 +110,17 @@ const OUTCOME_LABELS: Record<string, string> = {
   unmapped_subject: 'Unmapped',
 }
 
+/** The first event of a task; `task.created` is its old name (ADR 0028). */
+export function isCreated(e: null | TicketEvent | undefined): boolean {
+  return e?.type === 'task.created' || e?.type === 'ticket.created'
+}
+
 const STATUS_LABELS: Record<TicketStatus, string> = {
   blocked: 'Needs input',
   closed: 'Closed',
+  held: 'Held',
+  in_progress: 'In progress',
+  open: 'Open',
   paused: 'Paused',
   queued: 'Queued',
   running: 'Running',
@@ -191,7 +210,7 @@ export function phaseTimeline(events: TicketEvent[], end: number): PhaseSpan[] {
 
 /**
  * The requests of a task, oldest first, from `request.opened`,
- * `request.resolved`, and `request.expired` events. A request past its
+ * `request.resolved`, `request.expired`, and `request.withdrawn` events. A request past its
  * `expires_at` is expired even before an event says so.
  */
 export function requestsFrom(
@@ -227,6 +246,8 @@ export function requestsFrom(
       known.answer = (p.answer as null | string) ?? null
     } else if (e.type === 'request.expired' && known) {
       known.status = 'expired'
+    } else if (e.type === 'request.withdrawn' && known) {
+      known.status = 'withdrawn'
     }
   }
   const requests = [...byId.values()]

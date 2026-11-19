@@ -148,7 +148,7 @@ class DependencyTests(RelationTestCase):
             events = await self.events(short_id)
             self.assertEqual(
                 [e['type'] for e in events],
-                ['task.created', 'dependency.added', 'dependency.removed'],
+                ['ticket.created', 'dependency.added', 'dependency.removed'],
             )
             removed = events[-1]['payload']
             # The removal keeps the whole row that it removed.
@@ -345,7 +345,8 @@ class ProjectTests(RelationTestCase):
             self.assertEqual(response.status_code, 204, response.text)
         events = await self.events('T-1')
         self.assertEqual(
-            [e['type'] for e in events], ['task.created', 'project.associated']
+            [e['type'] for e in events],
+            ['ticket.created', 'project.associated'],
         )
         added = events[-1]['payload']
         self.assertEqual(added['project_id'], self.second_project)

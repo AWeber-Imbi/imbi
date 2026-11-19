@@ -864,6 +864,32 @@ describe('WorkflowsManagement', () => {
     ])
   })
 
+  it('offers ticket_closed, not task_completed, for a new step', async () => {
+    const trigger = { category: 'trigger' as const, trigger: true }
+    vi.mocked(endpoints.listWorkflowStepTypes).mockResolvedValue([
+      ...STEP_TYPES,
+      stepType({
+        ...trigger,
+        description: 'Old name',
+        label: 'Task completed',
+        type: 'task_completed',
+      }),
+      stepType({
+        ...trigger,
+        description: 'A ticket closes',
+        label: 'Ticket closed',
+        type: 'ticket_closed',
+      }),
+    ])
+    renderAt('/agents/workflows/deploy-guard')
+    expect(
+      await screen.findByRole('button', { name: /^Ticket closed\s*A ticket/ }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /^Task completed/ }),
+    ).not.toBeInTheDocument()
+  })
+
   it('offers no Duplicate for a step of a retired type', async () => {
     vi.mocked(endpoints.listWorkflowStepTypes).mockResolvedValue([
       ...STEP_TYPES,

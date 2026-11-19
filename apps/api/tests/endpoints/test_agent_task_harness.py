@@ -192,7 +192,7 @@ class AccessTests(HarnessTestCase):
         response = await self.client.get(self.url('T-1/events'))
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(
-            [e['type'] for e in response.json()], ['task.created']
+            [e['type'] for e in response.json()], ['ticket.created']
         )
         # It still cannot list the tasks of the organization.
         response = await self.client.get(self.url())
@@ -264,7 +264,7 @@ class SessionTests(HarnessTestCase):
         self.assertEqual(
             [e['type'] for e in events],
             [
-                'task.created',
+                'ticket.created',
                 'session.opened',
                 'state.changed',
                 'session.opened',
@@ -607,7 +607,7 @@ class EventTests(HarnessTestCase):
 
     async def test_imbi_event_types_are_refused(self) -> None:
         for event_type in (
-            'task.created',
+            'ticket.created',
             'state.changed',
             'control.changed',
             'owner.changed',
