@@ -1,31 +1,24 @@
-"""Start the ``ticket_closed`` triggers of a ticket that closes.
+"""Start the ``ticket_state_changed`` triggers of a ticket that changes.
 
-``task_completed`` is the earlier name of the trigger (ADR 0028). Both
-start runs. Since release B a run that this trigger starts records
-``ticket_closed`` as its origin kind; older runs have
-``task_completed``, and both names are read. The idempotency key of a
-run makes the two names one kind
-(``runs_closed_ticket_idempotency_key``), so a sweep of the previous
-release that retries the same outbox row with the old name cannot
-start a second run.
+A ticket change hook (:func:`imbi.api.tickets.store.
+register_change_hook`). The transaction that creates a ticket or
+changes its status writes a ``trigger_outbox`` row for the change, when
+a binding of the org can match it. The hook reads the rows of the
+ticket, and for each one reads the enabled bindings of the active
+workflows of the ticket's org and starts a run for each trigger whose
+params match. The ticket id and the trigger node id with the outbox row
+id are the idempotency key, so a repeat starts no second run.
 
-A ticket close hook (:func:`imbi.api.tickets.store.
-register_close_hook`). It reads the enabled bindings of the active
-workflows of the task's org, and starts a run for each trigger whose
-agent and outcomes match. The task id and the trigger node id are the
-idempotency key, so a repeat starts no second run.
-
-The transaction that closes a task writes a ``trigger_outbox`` row.
-The trigger deletes the row when no run failed to start; else the
+The trigger deletes a row when no run failed to start; else the
 workflow sweep calls the trigger again
 (:func:`imbi.api.workflows.sweeper.retry_task_triggers`).
 
-A run that a closed task starts can give an agent a task, which can
-close (or delegate a child task that closes) and start a run again.
-:data:`MAX_DEPTH` stops such a chain: the run origin records its depth,
-an agent step copies the run origin into its task, and the depth is
-read from the root task of the closed task's chain, which every
-delegated child shares.
+A run that a ticket change starts can give an agent a ticket, which
+changes (or delegates a child ticket that changes) and starts a run
+again. :data:`MAX_DEPTH` stops such a chain: the run origin records its
+depth, an agent step copies the run origin into its ticket, and the
+depth is read from the root ticket of the changed ticket's chain, which
+every delegated child shares.
 """
 
 import logging
@@ -37,40 +30,49 @@ from imbi.api.workflows import runs as runs_module
 from imbi.api.workflows import store, tickets
 from imbi.common import graph as graph_db
 from imbi.common.workflows import graph, validation
-from imbi.common.workflows.registry import ticket_closed
 
 LOGGER = logging.getLogger(__name__)
 
-#: The origin kind that this trigger writes; see the module docstring.
-KIND = 'ticket_closed'
+#: The trigger type, and the origin kind of the runs that it starts.
+KIND = 'ticket_state_changed'
 
-#: The most runs in one chain of task -> run -> task -> run.
+#: The most runs in one chain of ticket -> run -> ticket -> run.
 MAX_DEPTH = 5
 
 
-def _matches(binding: store.Row, task: store.Row) -> bool:
-    """Return whether the closed task starts a run of ``binding``.
+def _matches(binding: store.Row, task: store.Row, change: store.Row) -> bool:
+    """Return whether a change of ``task`` starts a run of ``binding``.
 
-    A workflow activated after the task closed does not match, so the
-    sweep that calls the trigger again starts no run that the close
-    hook could not have started.
+    ``states`` names the new state; ``created`` also names a creation.
+    ``outcomes`` applies only to a close. A workflow activated after
+    the change does not match, so the sweep that calls the trigger
+    again starts no run that the change hook could not have started.
     """
     params: dict[str, typing.Any] = binding['params']
     agent_id = params.get('agent_id')
+    states: list[str] = params.get('states') or []
     outcomes: list[str] = params.get('outcomes') or []
+    to_state = change['to_state']
     return (
-        binding['activated_at'] <= task['closed_at']
+        binding['activated_at'] <= change['created_at']
         and (not agent_id or agent_id == task['agent_id'])
-        and (not outcomes or task['outcome'] in outcomes)
+        and (
+            not states
+            or to_state in states
+            or (change['from_state'] is None and 'created' in states)
+        )
+        and (
+            to_state != 'closed' or not outcomes or task['outcome'] in outcomes
+        )
     )
 
 
 def _depth(root: store.Row | None) -> int:
-    """Return the depth of a run that a task of the chain of ``root``
+    """Return the depth of a run that a ticket of the chain of ``root``
     starts. A missing root counts as the deepest chain."""
     if root is None:
         return MAX_DEPTH + 1
-    if root['origin_kind'] not in ticket_closed.TYPES:
+    if root['origin_kind'] != KIND:
         return 1
     origin: dict[str, typing.Any] = root['origin'] or {}
     return int(origin.get('depth', 0)) + 1
@@ -84,39 +86,58 @@ class TaskTrigger:
         tasks: task_store.TicketStore,
         db: abc.Callable[[], graph_db.Graph | None],
     ) -> None:
-        """``db`` returns the graph, for the slugs of the task's org and
-        agent (:func:`tickets.attributes`)."""
+        """``db`` returns the graph, for the slugs of the ticket's org
+        and agent (:func:`tickets.attributes`)."""
         self._definitions = definitions
         self._runs = runs
         self._tasks = tasks
         self._db = db
 
     async def __call__(self, task: store.Row) -> None:
-        """Start a run for each trigger that the closed task matches."""
+        """Start the runs of each pending change of ``task``."""
+        changes = await self._tasks.state_changes(task['id'])
+        if not changes:
+            return
         depth = _depth(await self._tasks.chain_root(task))
         if depth > MAX_DEPTH:
             LOGGER.warning(
-                'Task %s starts no workflow runs: the chain is %d deep',
+                'Ticket %s starts no workflow runs: the chain is %d deep',
                 task['id'],
                 MAX_DEPTH,
             )
-            await self._tasks.triggers_started(task['id'])
+            await self._tasks.triggers_started([c['id'] for c in changes])
             return
+        bindings = await self._definitions.active_bindings(
+            task['organization_id'], [KIND]
+        )
+        for change in changes:
+            if await self._start(task, change, bindings, depth):
+                await self._tasks.triggers_started([change['id']])
+
+    async def _start(
+        self,
+        task: store.Row,
+        change: store.Row,
+        bindings: list[store.Row],
+        depth: int,
+    ) -> bool:
+        """Start a run for each binding that ``change`` matches. Return
+        ``False`` when a run failed to start."""
         org = task['organization_id']
         failed = False
-        # Built for the first match only: most closed tasks start no run.
+        # Built for the first match only: most changes start no run.
         payload: dict[str, typing.Any] | None = None
-        bindings = await self._definitions.active_bindings(
-            org, ticket_closed.TYPES
-        )
         for binding in bindings:
-            if not _matches(binding, task):
+            if not _matches(binding, task, change):
                 continue
             if payload is None:
+                closed = change['to_state'] == 'closed'
                 payload = {
                     'task_id': task['short_id'],
                     'agent_id': task['agent_id'],
-                    'outcome': task['outcome'],
+                    'outcome': task['outcome'] if closed else None,
+                    'from_state': change['from_state'],
+                    'to_state': change['to_state'],
                     **await tickets.attributes(self._db(), task),
                 }
             workflow_id = binding['workflow_id']
@@ -135,7 +156,8 @@ class TaskTrigger:
                             'task_id': task['short_id'],
                             'depth': depth,
                         },
-                        idempotency_key=binding['node_id'],
+                        # One run per binding and change.
+                        idempotency_key=f'{binding["node_id"]}:{change["id"]}',
                         payload=payload,
                         concurrency_key=validation.concurrency_key(
                             settings, str(workflow_id), payload
@@ -150,9 +172,8 @@ class TaskTrigger:
                 # A workflow that is no longer active has no run to start.
                 failed = failed or not isinstance(error, runs_module.NotActive)
                 LOGGER.exception(
-                    'Task %s did not start workflow %s',
+                    'Ticket %s did not start workflow %s',
                     task['id'],
                     workflow_id,
                 )
-        if not failed:
-            await self._tasks.triggers_started(task['id'])
+        return not failed

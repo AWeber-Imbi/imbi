@@ -6,8 +6,9 @@ managed like ``tickets``: the declarative schemata are applied on
 every start. imbi-api owns both; imbi-workflows executes the runs.
 
 The store lifespan also runs the archive sweep of the run log and the
-reconcile of agent step tasks and the retry of missed ``task_completed``
-runs (:mod:`imbi.api.workflows.sweeper`), because they need the pool.
+reconcile of agent step tasks and the retry of missed
+``ticket_state_changed`` runs (:mod:`imbi.api.workflows.sweeper`),
+because they need the pool.
 """
 
 import asyncio
@@ -73,7 +74,7 @@ async def store_lifespan() -> abc.AsyncGenerator[WorkflowStore]:
         definitions = WorkflowStore(pool)
         tasks = TicketStore(pool)
         trigger = ticket_trigger.TaskTrigger(definitions, _runs, tasks, _graph)
-        task_store.register_close_hook(trigger)
+        task_store.register_change_hook(trigger)
         stop = asyncio.Event()
         sweep = asyncio.create_task(
             sweeper.run_sweeper(_runs, tasks, trigger, stop=stop)
@@ -81,7 +82,7 @@ async def store_lifespan() -> abc.AsyncGenerator[WorkflowStore]:
         try:
             yield definitions
         finally:
-            task_store.unregister_close_hook(trigger)
+            task_store.unregister_change_hook(trigger)
             stop.set()
             sweep.cancel()
             with contextlib.suppress(asyncio.CancelledError):

@@ -64,7 +64,6 @@ import { manualTrigger, runResults, testResults } from './runs'
 import { paramSummary } from './schemaFields'
 import { StartRunDialog } from './StartRunDialog'
 import {
-  RETIRED_STEP_TYPES,
   type StepType,
   type TestRunResult,
   type ValidationIssue,
@@ -548,7 +547,7 @@ export function WorkflowEditor({
           <Palette
             onAdd={onPaletteAdd}
             onClose={() => setPaletteOpen(false)}
-            types={stepTypes.filter((t) => !RETIRED_STEP_TYPES.has(t.type))}
+            types={stepTypes}
           />
         )}
         <Group
@@ -625,26 +624,17 @@ export function WorkflowEditor({
                   updateGraph((g) => updateNode(g, selectedNode.id, patch))
                 }
                 onDelete={deleteSelection}
-                onDuplicate={
-                  // A copy would make a new step of a retired type.
-                  RETIRED_STEP_TYPES.has(selectedNode.type)
-                    ? undefined
-                    : () => {
-                        const copy = duplicateNode(
-                          draft.graph,
-                          selectedNode.id,
-                        ).node
-                        if (!copy) return
-                        updateGraph((g) => ({
-                          ...g,
-                          nodes: [...g.nodes, copy],
-                        }))
-                        const edited = nodePrompt(prompts, selectedNode.id)
-                        if (edited)
-                          setPrompts((p) => ({ ...p, [copy.id]: edited }))
-                        setSelection({ id: copy.id, kind: 'node' })
-                      }
-                }
+                onDuplicate={() => {
+                  const copy = duplicateNode(draft.graph, selectedNode.id).node
+                  if (!copy) return
+                  updateGraph((g) => ({
+                    ...g,
+                    nodes: [...g.nodes, copy],
+                  }))
+                  const edited = nodePrompt(prompts, selectedNode.id)
+                  if (edited) setPrompts((p) => ({ ...p, [copy.id]: edited }))
+                  setSelection({ id: copy.id, kind: 'node' })
+                }}
                 onPromptChange={(prompt) => {
                   setPrompts((p) => ({ ...p, [selectedNode.id]: prompt }))
                   markDirty()

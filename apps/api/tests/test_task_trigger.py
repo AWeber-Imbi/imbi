@@ -1,4 +1,4 @@
-"""Tests for the ``task_completed`` workflow trigger.
+"""Tests for the ``ticket_state_changed`` workflow trigger.
 
 These run against the live Postgres that ``root:services`` boots.
 """
@@ -17,9 +17,9 @@ from apps.api.tests.endpoints.test_workflow_runs import HeldRunStore
 from imbi.api import workflows
 from imbi.api.workflows import runs as runs_module
 from imbi.api.workflows import ticket_trigger, tickets
-from imbi.common.workflows.registry import task_completed
+from imbi.common.workflows.registry import ticket_state_changed
 
-# ``activated_at`` comes from the Postgres clock and ``closed_at`` from
+# ``activated_at`` comes from the Postgres clock and the change time from
 # the test clock. Fixed times far from now keep their order when the two
 # clocks are not the same.
 CLOSED_AFTER_ACTIVATION = datetime.datetime(2999, 1, 1, tzinfo=datetime.UTC)
@@ -38,17 +38,44 @@ def _task(**changes: typing.Any) -> dict[str, typing.Any]:
         'origin_kind': 'human',
         'origin': {'kind': 'human'},
         'chain_id': None,
-        'closed_at': CLOSED_AFTER_ACTIVATION,
         **changes,
     }
 
 
 class FakeTasks:
-    """Returns chain roots from a dict, as ``TicketStore.chain_root``."""
+    """Returns chain roots and outbox rows from dicts, as the
+    ``TicketStore``."""
 
     def __init__(self) -> None:
         self.roots: dict[uuid.UUID, dict[str, typing.Any]] = {}
+        self.changes: dict[uuid.UUID, list[dict[str, typing.Any]]] = {}
         self.started: list[uuid.UUID] = []
+
+    def change(
+        self,
+        task: dict[str, typing.Any],
+        from_state: str | None = 'running',
+        to_state: str = 'closed',
+        created_at: datetime.datetime = CLOSED_AFTER_ACTIVATION,
+    ) -> dict[str, typing.Any]:
+        """Add an outbox row for a change of ``task`` and return it."""
+        row = {
+            'id': uuid.uuid4(),
+            'ticket_id': task['id'],
+            'from_state': from_state,
+            'to_state': to_state,
+            'created_at': created_at,
+        }
+        self.changes.setdefault(task['id'], []).append(row)
+        return row
+
+    async def state_changes(
+        self, task_id: uuid.UUID
+    ) -> list[dict[str, typing.Any]]:
+        started = set(self.started)
+        return [
+            c for c in self.changes.get(task_id, []) if c['id'] not in started
+        ]
 
     async def chain_root(
         self, task: dict[str, typing.Any]
@@ -56,8 +83,8 @@ class FakeTasks:
         chain_id = task['chain_id'] or task['id']
         return task if chain_id == task['id'] else self.roots.get(chain_id)
 
-    async def triggers_started(self, task_id: uuid.UUID) -> None:
-        self.started.append(task_id)
+    async def triggers_started(self, change_ids: list[uuid.UUID]) -> None:
+        self.started.extend(change_ids)
 
 
 class FakeGraph:
@@ -70,9 +97,14 @@ class FakeGraph:
 
 
 class ParamsTestCase(unittest.TestCase):
+    def test_unknown_state_is_refused(self) -> None:
+        for state in ('open', 'in_progress', 'done'):
+            with self.assertRaises(pydantic.ValidationError):
+                ticket_state_changed.Params.model_validate({'states': [state]})
+
     def test_unknown_outcome_is_refused(self) -> None:
         with self.assertRaises(pydantic.ValidationError):
-            task_completed.Params.model_validate({'outcomes': ['done']})
+            ticket_state_changed.Params.model_validate({'outcomes': ['done']})
 
 
 class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
@@ -125,7 +157,7 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
             self.slug,
             1,
             'ops@example.com',
-            [workflows.Trigger('done', 'task_completed', params)],
+            [workflows.Trigger('done', ticket_trigger.KIND, params)],
         )
 
     async def _runs(self) -> list[dict[str, typing.Any]]:
@@ -133,7 +165,7 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
             cur = await conn.execute(
                 'SELECT trigger_node_id, origin_kind, origin_id, origin,'
                 ' payload FROM workflow_runtime.runs'
-                ' WHERE organization_id = %s',
+                ' WHERE organization_id = %s ORDER BY created_at',
                 (self.org,),
             )
             names = [c.name for c in cur.description or []]
@@ -141,7 +173,16 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
                 dict(zip(names, r, strict=True)) for r in await cur.fetchall()
             ]
 
-    async def test_matching_task_starts_one_run(self) -> None:
+    async def _trigger(
+        self, task: dict[str, typing.Any], **change: typing.Any
+    ) -> dict[str, typing.Any]:
+        """Add a change of ``task``, call the trigger, and return the
+        change."""
+        row = self.tasks.change(task, **change)
+        await self.trigger(task)
+        return row
+
+    async def test_close_starts_one_run(self) -> None:
         await self._activate(
             agent_id='mender', outcomes=['failed_external', 'failed_at_gate']
         )
@@ -150,17 +191,16 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
         with mock.patch.object(
             tickets.settings, 'get_server_config', return_value=config
         ):
-            await self.trigger(task)
-            await self.trigger(task)  # a repeat starts no second run
+            await self._trigger(task)
         self.assertEqual(
             await self._runs(),
             [
                 {
                     'trigger_node_id': 'done',
-                    'origin_kind': 'ticket_closed',
+                    'origin_kind': 'ticket_state_changed',
                     'origin_id': str(task['id']),
                     'origin': {
-                        'kind': 'ticket_closed',
+                        'kind': 'ticket_state_changed',
                         'task_id': 'T-7',
                         'depth': 1,
                     },
@@ -168,6 +208,8 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
                         'task_id': 'T-7',
                         'agent_id': 'mender',
                         'outcome': 'failed_external',
+                        'from_state': 'running',
+                        'to_state': 'closed',
                         'title': 'Fix the build',
                         'url': 'https://imbi.example.com/tickets/eng/T-7',
                         'project': 'web',
@@ -178,25 +220,60 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
-    async def test_old_kind_and_new_kind_start_one_run(self) -> None:
-        # A sweep of the release before B retries with `task_completed`
-        # (ADR 0028), before or after a pod of this release.
+    async def test_creation_starts_a_run_with_no_from_state(self) -> None:
+        await self._activate(states=['created'])
+        task = _task(organization_id=self.org, outcome=None)
+        await self._trigger(task, from_state=None, to_state='queued')
+        [run] = await self._runs()
+        self.assertIsNone(run['payload']['from_state'])
+        self.assertEqual(run['payload']['to_state'], 'queued')
+        self.assertIsNone(run['payload']['outcome'])
+
+    async def test_each_change_starts_its_own_run(self) -> None:
         await self._activate()
-        for first, second in (
-            ('task_completed', ticket_trigger.KIND),
-            (ticket_trigger.KIND, 'task_completed'),
-        ):
-            task = _task(organization_id=self.org, id=uuid.uuid4())
-            with mock.patch.object(ticket_trigger, 'KIND', first):
-                await self.trigger(task)
-            with mock.patch.object(ticket_trigger, 'KIND', second):
-                await self.trigger(task)
-            kinds = [
-                run['origin_kind']
-                for run in await self._runs()
-                if run['origin_id'] == str(task['id'])
-            ]
-            self.assertEqual(kinds, [first])
+        task = _task(organization_id=self.org, outcome=None)
+        self.tasks.change(task, from_state=None, to_state='queued')
+        self.tasks.change(task, from_state='queued', to_state='running')
+        await self.trigger(task)
+        self.assertEqual(
+            [
+                (r['payload']['from_state'], r['payload']['to_state'])
+                for r in await self._runs()
+            ],
+            [(None, 'queued'), ('queued', 'running')],
+        )
+        self.assertEqual(
+            self.tasks.started,
+            [c['id'] for c in self.tasks.changes[task['id']]],
+        )
+
+    async def test_retry_of_a_change_starts_no_second_run(self) -> None:
+        await self._activate()
+        task = _task(organization_id=self.org)
+        change = self.tasks.change(task)
+        await self.trigger(task)
+        self.tasks.started.remove(change['id'])  # as if the delete failed
+        await self.trigger(task)
+        self.assertEqual(len(await self._runs()), 1)
+
+    async def test_states_filter(self) -> None:
+        await self._activate(states=['blocked', 'closed'])
+        task = _task(organization_id=self.org, outcome=None)
+        await self._trigger(task, from_state='queued', to_state='running')
+        await self._trigger(task, from_state=None, to_state='queued')
+        self.assertEqual(await self._runs(), [])
+        await self._trigger(task, from_state='running', to_state='blocked')
+        [run] = await self._runs()
+        self.assertEqual(run['payload']['to_state'], 'blocked')
+
+    async def test_outcomes_apply_only_to_a_close(self) -> None:
+        await self._activate(outcomes=['done_acted'])
+        task = _task(organization_id=self.org)
+        await self._trigger(task)  # closes with failed_external
+        self.assertEqual(await self._runs(), [])
+        await self._trigger(task, from_state='queued', to_state='paused')
+        [run] = await self._runs()
+        self.assertEqual(run['payload']['to_state'], 'paused')
 
     async def test_dedupe_key_skips_a_repeat(self) -> None:
         async with self.pool.connection() as conn:
@@ -215,9 +292,9 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
                 ),
             )
         await self._activate(agent_id='mender')
-        await self.trigger(_task(organization_id=self.org))
-        await self.trigger(_task(organization_id=self.org))
-        await self.trigger(
+        await self._trigger(_task(organization_id=self.org))
+        await self._trigger(_task(organization_id=self.org))
+        await self._trigger(
             _task(organization_id=self.org, outcome='done_acted')
         )
         async with self.pool.connection() as conn:
@@ -237,23 +314,32 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
-    async def test_empty_filters_match_any_task(self) -> None:
+    async def test_empty_filters_match_any_change(self) -> None:
         await self._activate()
-        await self.trigger(
+        await self._trigger(
             _task(organization_id=self.org, agent_id='x', outcome='done_acted')
         )
         self.assertEqual(len(await self._runs()), 1)
 
     async def test_other_agent_or_outcome_starts_nothing(self) -> None:
         await self._activate(agent_id='mender', outcomes=['done_acted'])
-        await self.trigger(_task(organization_id=self.org, agent_id='other'))
-        await self.trigger(_task(organization_id=self.org))
+        await self._trigger(_task(organization_id=self.org, agent_id='other'))
+        await self._trigger(_task(organization_id=self.org))
         self.assertEqual(await self._runs(), [])
+
+    async def test_no_change_does_nothing(self) -> None:
+        await self._activate()
+        with mock.patch.object(
+            self.definitions, 'active_bindings', mock.AsyncMock()
+        ) as bindings:
+            await self.trigger(_task(organization_id=self.org))
+        bindings.assert_not_called()
 
     async def test_outbox_row_stays_until_the_runs_start(self) -> None:
         """A failed run start keeps the outbox row for the sweep."""
         await self._activate()
         task = _task(organization_id=self.org)
+        change = self.tasks.change(task)
         runs = typing.cast(typing.Any, self.trigger)._runs
         with mock.patch.object(
             runs, 'create', mock.AsyncMock(side_effect=RuntimeError('down'))
@@ -261,7 +347,7 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
             await self.trigger(task)
         self.assertEqual(self.tasks.started, [])
         await self.trigger(task)
-        self.assertEqual(self.tasks.started, [task['id']])
+        self.assertEqual(self.tasks.started, [change['id']])
         self.assertEqual(len(await self._runs()), 1)
 
     async def test_inactive_workflow_clears_the_outbox_row(self) -> None:
@@ -273,22 +359,23 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
             'create',
             mock.AsyncMock(side_effect=runs_module.NotActive('gone')),
         ):
-            await self.trigger(task)
-        self.assertEqual(self.tasks.started, [task['id']])
+            change = await self._trigger(task)
+        self.assertEqual(self.tasks.started, [change['id']])
 
-    async def test_task_closed_before_activation_starts_nothing(self) -> None:
-        """The sweep calls the trigger again after the task closed; a
+    async def test_change_before_activation_starts_nothing(self) -> None:
+        """The sweep calls the trigger again after the change; a
         workflow activated since then must not start a run."""
         await self._activate()
-        await self.trigger(
-            _task(organization_id=self.org, closed_at=CLOSED_BEFORE_ACTIVATION)
+        await self._trigger(
+            _task(organization_id=self.org),
+            created_at=CLOSED_BEFORE_ACTIVATION,
         )
         self.assertEqual(await self._runs(), [])
 
     async def test_paused_workflow_starts_nothing(self) -> None:
         await self._activate()
         await self.definitions.pause(self.org, self.slug)
-        await self.trigger(_task(organization_id=self.org))
+        await self._trigger(_task(organization_id=self.org))
         self.assertEqual(await self._runs(), [])
 
     async def test_chain_stops_at_max_depth(self) -> None:
@@ -297,42 +384,44 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
         def chained(depth: int) -> dict[str, typing.Any]:
             return _task(
                 organization_id=self.org,
-                origin_kind='task_completed',
-                origin={'kind': 'task_completed', 'depth': depth},
+                origin_kind=ticket_trigger.KIND,
+                origin={'kind': ticket_trigger.KIND, 'depth': depth},
             )
 
-        await self.trigger(chained(ticket_trigger.MAX_DEPTH))
+        deepest = chained(ticket_trigger.MAX_DEPTH)
+        change = await self._trigger(deepest)
         self.assertEqual(await self._runs(), [])
-        await self.trigger(chained(ticket_trigger.MAX_DEPTH - 1))
+        self.assertEqual(self.tasks.started, [change['id']])
+        await self._trigger(chained(ticket_trigger.MAX_DEPTH - 1))
         [run] = await self._runs()
         self.assertEqual(run['origin']['depth'], ticket_trigger.MAX_DEPTH)
 
     async def test_delegated_child_keeps_the_chain_depth(self) -> None:
-        """A child task that an agent delegates has origin ``task``; its
-        depth comes from the root of its chain, so delegation cannot
+        """A child ticket that an agent delegates has origin ``ticket``;
+        its depth comes from the root of its chain, so delegation cannot
         reset the loop guard."""
         await self._activate()
         root = _task(
             organization_id=self.org,
-            origin_kind='task_completed',
+            origin_kind=ticket_trigger.KIND,
             origin={
-                'kind': 'task_completed',
+                'kind': ticket_trigger.KIND,
                 'depth': ticket_trigger.MAX_DEPTH,
             },
         )
         self.tasks.roots[root['id']] = root
         child = _task(
             organization_id=self.org,
-            origin_kind='task',
-            origin={'kind': 'task'},
+            origin_kind='ticket',
+            origin={'kind': 'ticket'},
             chain_id=root['id'],
         )
-        await self.trigger(child)
+        await self._trigger(child)
         self.assertEqual(await self._runs(), [])
 
     async def test_missing_chain_root_starts_nothing(self) -> None:
         await self._activate()
-        await self.trigger(
+        await self._trigger(
             _task(organization_id=self.org, chain_id=uuid.uuid4())
         )
         self.assertEqual(await self._runs(), [])

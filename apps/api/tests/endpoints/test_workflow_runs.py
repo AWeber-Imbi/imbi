@@ -1786,7 +1786,9 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
         self.assertEqual((await output())['title'], 'Secret title')
         self.assertEqual((await output())['cost_usd'], 1.25)
 
-    async def test_task_completed_run_hides_ticket_attributes(self) -> None:
+    async def test_ticket_state_changed_run_hides_ticket_attributes(
+        self,
+    ) -> None:
         payload = {
             'task_id': 'T-1',
             'agent_id': self.agent,
@@ -1805,13 +1807,14 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
         async with self.pool.connection() as conn:
             await conn.execute(
                 'UPDATE workflow_runtime.runs SET payload = %s,'
-                " origin_kind = 'task_completed' WHERE id = %s",
+                " origin_kind = 'ticket_state_changed' WHERE id = %s",
                 (workflows.runs.pg_json.Jsonb(payload), self.run_id),
             )
             await conn.execute(
                 'INSERT INTO workflow_runtime.step_runs (run_id, node_id,'
                 ' node_key, node_type, title, status, output) VALUES (%s,'
-                " 'start', 'start', 'task_completed', 'Start', 'succeeded',"
+                " 'start', 'start', 'ticket_state_changed', 'Start',"
+                " 'succeeded',"
                 ' %s) ON CONFLICT (run_id, node_id) DO UPDATE'
                 ' SET node_type = EXCLUDED.node_type,'
                 ' output = EXCLUDED.output',
@@ -2373,7 +2376,7 @@ class RunForTestCase(unittest.TestCase):
     def test_error_quoting_a_ticket_title_keeps_only_the_code(self) -> None:
         run = {
             **self.RUN,
-            'origin_kind': 'task_completed',
+            'origin_kind': 'ticket_state_changed',
             'error': self.QUOTED,
         }
         steps = [{**self.STEPS[1], 'error': self.QUOTED}]
@@ -2418,10 +2421,10 @@ class RunForTestCase(unittest.TestCase):
         # A manual payload is not task content: only the keys go.
         self.assertEqual(found['payload'], {'title': 'x'})
 
-    def test_task_completed_list_row_hides_keys(self) -> None:
+    def test_ticket_state_changed_list_row_hides_keys(self) -> None:
         auth = mock.Mock(is_admin=False, permissions=set())
         found = workflow_runs._run_for(
-            auth, {**self.RUN, 'origin_kind': 'task_completed'}
+            auth, {**self.RUN, 'origin_kind': 'ticket_state_changed'}
         )
         self.assertIsNone(found['dedupe_key'])
         self.assertIsNone(found['concurrency_key'])

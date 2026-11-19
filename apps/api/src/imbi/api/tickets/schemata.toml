@@ -235,6 +235,27 @@ sql = '''
 ALTER TABLE tickets.tickets VALIDATE CONSTRAINT tickets_parent_fkey;
 '''
 
+# Before `ticket_state_changed`, the outbox had one row per closed
+# ticket, keyed by `ticket_id`. A ticket now has one row per change, so
+# the key moves to the new `id` column, which the table walk added with
+# a value on each old row.
+[[steps]]
+name = "trigger-outbox-row-per-change"
+after_tables = true
+when = """
+SELECT EXISTS (
+         SELECT 1 FROM pg_constraint AS c
+           JOIN pg_attribute AS a
+             ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
+          WHERE c.conrelid = 'tickets.trigger_outbox'::regclass
+            AND c.contype = 'p' AND a.attname = 'ticket_id')
+"""
+sql = '''
+ALTER TABLE tickets.trigger_outbox
+  DROP CONSTRAINT trigger_outbox_pkey,
+  ADD PRIMARY KEY (id);
+'''
+
 # One row per ticket.
 #
 # `last_seq` is the sequence number of the newest event. An event write
@@ -530,16 +551,29 @@ added_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 [tables.primary_key]
 columns = ["organization_id", "ticket_id", "project_id"]
 
-# One row per closed task whose workflow `task_completed` triggers have
-# not all started their runs. The transaction that closes the task
-# writes the row. The trigger deletes it after it starts the runs; the
-# workflow sweep calls the trigger again for each row that stays.
+# One row per ticket change (a creation or a status change) whose
+# workflow `ticket_state_changed` triggers have not all started their
+# runs. The transaction that changes the ticket writes the row, and only
+# when an active binding of the org can match the change. The trigger
+# deletes the row after it starts the runs; the workflow sweep calls the
+# trigger again for each row that stays. `from_state` is NULL on
+# creation.
 [[tables]]
 name = "trigger_outbox"
 
 [tables.columns]
+id = "UUID NOT NULL DEFAULT gen_random_uuid()"
 ticket_id = "UUID NOT NULL REFERENCES tickets.tickets (id) ON DELETE CASCADE"
+from_state = "TEXT"
+# The default is for a row that a pod of the release before
+# `ticket_state_changed` writes during a rolling deploy: it wrote a row
+# only for a close.
+to_state = "TEXT NOT NULL DEFAULT 'closed'"
 created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 
 [tables.primary_key]
+columns = ["id"]
+
+[[tables.indexes]]
+name = "trigger_outbox_ticket_idx"
 columns = ["ticket_id"]

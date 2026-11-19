@@ -11639,15 +11639,15 @@ export interface components {
          *
          *     A ``schedule`` origin also has ``scheduled_task_id``. A ``webhook``
          *     origin also has ``webhook_id`` and ``delivery_id``. A
-         *     ``task_completed`` origin is a workflow run that a closed task
-         *     started; it also has ``task_id``.
+         *     ``ticket_state_changed`` origin is a workflow run that a ticket
+         *     change started; it also has ``task_id``.
          */
         AgentTaskOrigin: {
             /**
              * Kind
              * @enum {string}
              */
-            kind: "human" | "schedule" | "webhook" | "task" | "ticket" | "task_completed" | "ticket_closed";
+            kind: "human" | "schedule" | "webhook" | "task" | "ticket" | "ticket_state_changed";
             /** User */
             user?: string | null;
         } & {

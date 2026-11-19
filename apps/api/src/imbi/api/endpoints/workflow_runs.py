@@ -57,7 +57,6 @@ from imbi.common.workflows import history, registry, validation, walk
 from imbi.common.workflows.registry import agent as agent_step
 from imbi.common.workflows.registry import email as email_step
 from imbi.common.workflows.registry import slack as slack_step
-from imbi.common.workflows.registry import ticket_closed
 
 LOGGER = logging.getLogger(__name__)
 
@@ -829,7 +828,7 @@ def _run_for(
     keeps only the code of the run error of each run.
     """
     found = list(steps or [])
-    from_task = run['origin_kind'] in ticket_closed.TYPES
+    from_task = run['origin_kind'] == 'ticket_state_changed'
     task_content = from_task or any(s['node_type'] == 'agent' for s in found)
     if _can_read_tasks(auth) or (steps is not None and not task_content):
         return run if steps is None else {**run, 'steps': found}

@@ -53,6 +53,9 @@ from imbi.common import lifespan, relational
 from imbi.common import settings as common_settings
 
 SCHEMATA_PATH = pathlib.Path(__file__).parent / 'schemata.toml'
+WORKFLOWS_SCHEMATA_PATH = (
+    pathlib.Path(__file__).parent.parent / 'workflows' / 'schemata.toml'
+)
 
 #: The advisory lock of the initializer. It keeps the key of the
 #: ``agent_runtime`` schema, so that a pod of the previous release and
@@ -65,6 +68,14 @@ async def initialize() -> None:
     ``agent_runtime`` tables of an earlier install there."""
     await relational.initialize(
         SCHEMA, relational.load_schemata(SCHEMATA_PATH), LOCK_KEY
+    )
+    # A ticket change reads the workflow trigger bindings
+    # (store._write_outbox), so they must exist first. Idempotent, and
+    # the same lock as imbi.api.workflows.initialize.
+    await relational.initialize(
+        'workflows',
+        relational.load_schemata(WORKFLOWS_SCHEMATA_PATH),
+        'imbi.api.initialize.workflows',
     )
     await relational.initialize_deleted_organizations()
 

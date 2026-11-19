@@ -15,9 +15,9 @@ leaves nothing half made: the next pass tries again.
   the Webhook that the trigger names. A pause keeps it, because the run
   endpoint refuses a paused workflow with ``409`` and the gateway records
   that delivery as no effect.
-- A ``task_completed`` or ``ticket_closed`` binding has nothing to
-  write: imbi-api reads the binding itself when a task closes. It is
-  marked ``synced``.
+- A ``ticket_state_changed`` binding has nothing to write: imbi-api
+  reads the binding itself when a ticket changes. It is marked
+  ``synced``.
 
 A pass that leaves a binding ``failed`` schedules the next one early,
 after each of ``RETRY_DELAYS`` in turn. Once they run out, passes go back
@@ -36,7 +36,6 @@ from psycopg import rows
 from imbi.common import graph
 from imbi.common.auth import permissions
 from imbi.common.graph import cypher
-from imbi.common.workflows.registry import ticket_closed
 from imbi.workflows import executors, settings, store
 
 LOGGER = logging.getLogger(__name__)
@@ -179,7 +178,7 @@ class Reconciler:
             try:
                 if binding['type'] == 'schedule':
                     target_id = await self._schedule(binding)
-                elif binding['type'] in ticket_closed.TYPES:
+                elif binding['type'] == 'ticket_state_changed':
                     target_id = None
                 else:
                     target_id = await self._webhook(binding)

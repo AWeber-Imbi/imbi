@@ -87,9 +87,9 @@ a report fails with `failed_external` and the reason
 tell whether the work is done. Tell the agent to call `report_outcome` in
 its prompt if it often forgets.
 
-When a ticket closes, Imbi starts each active [workflow](workflows.md)
-with a **Ticket closed** trigger (`ticket_closed`) that matches it. A
-workflow saved with the old `task_completed` trigger still works.
+When a ticket is created or changes its status, Imbi starts each active
+[workflow](workflows.md) with a **Ticket state changed** trigger
+(`ticket_state_changed`) that matches the change.
 
 ## Create a ticket
 

@@ -24,10 +24,10 @@ The same round cancels the agent tasks whose agent step has ended
 its step or its run ends, but only as best effort; this is what makes
 the cancel certain.
 
-It also starts again the ``task_completed`` runs of the closed tasks
-that keep a ``trigger_outbox`` row (:func:`retry_task_triggers`). The
-close hook starts them once, after the commit, and a failure there is
-only logged. The run idempotency key makes a repeat start no second
+It also starts again the ``ticket_state_changed`` runs of the ticket
+changes that keep a ``trigger_outbox`` row (:func:`retry_task_triggers`).
+The change hook starts them once, after the commit, and a failure there
+is only logged. The run idempotency key makes a repeat start no second
 run.
 """
 
@@ -178,16 +178,16 @@ async def cancel_orphan_agent_tasks(
 
 
 async def retry_task_triggers(
-    tasks: tickets.TicketStore, trigger: task_store.CloseHook
+    tasks: tickets.TicketStore, trigger: task_store.ChangeHook
 ) -> None:
-    """Call ``trigger`` again for each task with a ``trigger_outbox``
+    """Call ``trigger`` again for each ticket with a ``trigger_outbox``
     row."""
     for task in await tasks.pending_triggers():
         try:
             await trigger(task)
         except Exception:  # noqa: BLE001 -- the next round tries again
             LOGGER.warning(
-                'task_completed retry failed for task %s',
+                'ticket_state_changed retry failed for ticket %s',
                 task['id'],
                 exc_info=True,
             )
@@ -196,12 +196,12 @@ async def retry_task_triggers(
 async def sweep_once(
     store: run_store.RunStore,
     tasks: tickets.TicketStore | None = None,
-    trigger: task_store.CloseHook | None = None,
+    trigger: task_store.ChangeHook | None = None,
 ) -> SweepResult:
     """Republish what ClickHouse does not have and archive complete runs.
 
     With ``tasks``, also cancel the tasks of agent steps that ended, and
-    with ``trigger`` too, start the missed runs of closed tasks.
+    with ``trigger`` too, start the missed runs of ticket changes.
     """
     result = SweepResult()
     if not await _try_sweep_lock():
@@ -215,7 +215,9 @@ async def sweep_once(
             try:
                 await retry_task_triggers(tasks, trigger)
             except Exception:  # noqa: BLE001 -- the next round tries again
-                LOGGER.warning('task_completed retry failed', exc_info=True)
+                LOGGER.warning(
+                    'ticket_state_changed retry failed', exc_info=True
+                )
     after: tuple[str, uuid.UUID] | None = None
     while page := await store.unarchived(after, PAGE_SIZE):
         after = (page[-1]['organization_id'], page[-1]['id'])
@@ -231,7 +233,7 @@ async def sweep_once(
 async def run_sweeper(
     store: run_store.RunStore,
     tasks: tickets.TicketStore,
-    trigger: task_store.CloseHook,
+    trigger: task_store.ChangeHook,
     *,
     stop: asyncio.Event,
 ) -> None:

@@ -30,7 +30,7 @@ import {
 } from './graph'
 import { QuickAddMenu } from './QuickAddMenu'
 import { CATEGORY_TILE, stepIcon } from './stepStyle'
-import { RETIRED_STEP_TYPES, type StepType, type WorkflowGraph } from './types'
+import { type StepType, type WorkflowGraph } from './types'
 
 export type Selection =
   | null
@@ -276,9 +276,7 @@ export function Canvas({
   const byId = new Map(graph.nodes.map((n) => [n.id, n]))
   const used = new Set(graph.edges.map((e) => `${e.source}:${e.port}`))
   const selectedEdge = selection?.kind === 'edge' ? selection.index : -1
-  const triggers = Object.values(types).filter(
-    (t) => t.trigger && !RETIRED_STEP_TYPES.has(t.type),
-  )
+  const triggers = Object.values(types).filter((t) => t.trigger)
   const grid = GRID * view.zoom
 
   return (

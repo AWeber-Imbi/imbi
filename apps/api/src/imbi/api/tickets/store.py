@@ -14,7 +14,8 @@ ledger rows) go to the permanent log in ClickHouse: see
 :mod:`imbi.api.tickets.log`. They go after the commit, never inside
 the transaction, so ClickHouse never holds an event that Postgres rolled
 back. When the transaction closed the task, the close hooks run next
-(:func:`register_close_hook`).
+(:func:`register_close_hook`). When it created the ticket or changed its
+status, the change hooks run (:func:`register_change_hook`).
 """
 
 import contextlib
@@ -88,6 +89,46 @@ async def run_close_hooks(task: Row) -> None:
         except Exception:  # noqa: BLE001 - the close committed already
             LOGGER.warning(
                 'Close hook %s failed for task %s',
+                getattr(hook, '__qualname__', repr(hook)),
+                task['id'],
+                exc_info=True,
+            )
+
+
+#: A change hook gets the ticket row after a transaction that created
+#: the ticket or changed its status commits. The workflow
+#: ``ticket_state_changed`` trigger registers here.
+type ChangeHook = abc.Callable[[Row], abc.Awaitable[None]]
+
+_change_hooks: list[ChangeHook] = []
+
+#: The event types of a creation and a status change.
+_CHANGE_EVENTS = frozenset({'ticket.created', 'state.changed'})
+
+
+def register_change_hook(hook: ChangeHook) -> None:
+    """Add a change hook."""
+    if hook not in _change_hooks:
+        _change_hooks.append(hook)
+
+
+def unregister_change_hook(hook: ChangeHook) -> None:
+    """Remove a change hook."""
+    if hook in _change_hooks:
+        _change_hooks.remove(hook)
+
+
+async def run_change_hooks(task: Row, events: abc.Iterable[Row]) -> None:
+    """Call every change hook when ``events`` created the ticket or
+    changed its status. A failure is logged; the change stays."""
+    if not any(event['type'] in _CHANGE_EVENTS for event in events):
+        return
+    for hook in list(_change_hooks):
+        try:
+            await hook(task)
+        except Exception:  # noqa: BLE001 - the change committed already
+            LOGGER.warning(
+                'Change hook %s failed for ticket %s',
                 getattr(hook, '__qualname__', repr(hook)),
                 task['id'],
                 exc_info=True,
@@ -486,16 +527,13 @@ class _Write:
     async def update(self, changes: Row) -> Row:
         """Change columns of the task and keep the new row.
 
-        A change that closes the task also writes its ``trigger_outbox``
-        row, so its ``task_completed`` runs start even when the close
-        hook fails.
+        A change of the status also writes its ``trigger_outbox`` row
+        (:func:`_write_outbox`).
         """
+        old = self.task['status']
         self.task = await _update_task(self.conn, self.task['id'], changes)
-        if changes.get('status') == 'closed':
-            await self.conn.execute(
-                'INSERT INTO tickets.trigger_outbox (ticket_id) VALUES (%s)',
-                (self.task['id'],),
-            )
+        if self.task['status'] != old:
+            await _write_outbox(self.conn, self.task, old)
         return self.task
 
 
@@ -651,6 +689,9 @@ class TicketStore:
         # The lock refuses a closed task, so this write closed it.
         if write.task['status'] == 'closed':
             await run_close_hooks(write.task)
+        await run_change_hooks(write.task, write.events)
+        for task, events in write.released:
+            await run_change_hooks(task, events)
 
     async def move_legacy_projects(self) -> int:
         """Move the old single project of each task (``tasks.project_id``)
@@ -808,6 +849,7 @@ class TicketStore:
                     conn, task_id, 'ticket.created', event_payload, actor
                 )
                 row = await _fetch_task(conn, task_id)
+                await _write_outbox(conn, row, None)
         except psycopg.errors.UniqueViolation as err:
             if (
                 err.diag.constraint_name not in ORIGIN_IDEMPOTENCY_KEYS
@@ -824,6 +866,7 @@ class TicketStore:
                 raise
             return existing, False
         await log.publish(row, [event])
+        await run_change_hooks(row, [event])
         return row, True
 
     async def get(self, organization_id: str, short_id: str) -> Row | None:
@@ -1054,23 +1097,37 @@ class TicketStore:
         return None if body is None else str(body)
 
     async def pending_triggers(self) -> list[Row]:
-        """Return the closed tasks that have a ``trigger_outbox`` row."""
+        """Return the tickets that have a ``trigger_outbox`` row."""
         async with (
             self._pool.connection() as conn,
             conn.cursor(row_factory=rows.dict_row) as cursor,
         ):
             await cursor.execute(
-                _SELECT_TASKS + ' JOIN tickets.trigger_outbox AS o'
-                ' ON o.ticket_id = t.id ORDER BY o.created_at'
+                _SELECT_TASKS  # noqa: S608 - constant SQL
+                + ' WHERE t.id IN'
+                ' (SELECT ticket_id FROM tickets.trigger_outbox)'
             )
             return await cursor.fetchall()
 
-    async def triggers_started(self, task_id: uuid.UUID) -> None:
-        """Delete the ``trigger_outbox`` row of a task."""
+    async def state_changes(self, task_id: uuid.UUID) -> list[Row]:
+        """Return the ``trigger_outbox`` rows of a ticket, oldest first."""
+        async with (
+            self._pool.connection() as conn,
+            conn.cursor(row_factory=rows.dict_row) as cursor,
+        ):
+            await cursor.execute(
+                'SELECT * FROM tickets.trigger_outbox WHERE ticket_id = %s'
+                ' ORDER BY created_at, id',
+                (task_id,),
+            )
+            return await cursor.fetchall()
+
+    async def triggers_started(self, change_ids: list[uuid.UUID]) -> None:
+        """Delete ``trigger_outbox`` rows."""
         async with self._pool.connection() as conn:
             await conn.execute(
-                'DELETE FROM tickets.trigger_outbox WHERE ticket_id = %s',
-                (task_id,),
+                'DELETE FROM tickets.trigger_outbox WHERE id = ANY(%s)',
+                (change_ids,),
             )
 
     async def unarchived(self) -> list[Row]:
@@ -1242,6 +1299,7 @@ class TicketStore:
             )
         for dependent, events in released:
             await log.publish(dependent, events)
+            await run_change_hooks(dependent, events)
         return task
 
     async def set_control(
@@ -1413,6 +1471,7 @@ class TicketStore:
                 ]
         for task, events in published:
             await log.publish(task, events)
+            await run_change_hooks(task, events)
 
     @_retry_deadlock
     async def add_dependency(
@@ -2888,6 +2947,35 @@ def _dependency_payload(relate: _Relate, row: Row) -> abc.Callable[[Row], Row]:
             else 'prerequisite'
         ),
     }
+
+
+async def _write_outbox(conn: Conn, task: Row, from_state: str | None) -> None:
+    """Write the ``trigger_outbox`` row of a creation (``from_state`` is
+    ``None``) or a status change of ``task``, in its transaction, so its
+    ``ticket_state_changed`` runs start even when the change hook fails.
+
+    Most changes start no run, so the row is written only when an
+    enabled binding of an active workflow of the org can match the new
+    state. The trigger checks the rest of the params.
+    """
+    await conn.execute(
+        'INSERT INTO tickets.trigger_outbox (ticket_id, from_state, to_state)'
+        ' SELECT %(id)s, %(from)s, %(to)s WHERE EXISTS (SELECT 1'
+        ' FROM workflows.trigger_bindings AS b'
+        ' JOIN workflows.workflows AS w ON w.id = b.workflow_id'
+        ' WHERE b.organization_id = %(org)s'
+        " AND b.type = 'ticket_state_changed'"
+        " AND b.enabled AND NOT b.removed AND w.status = 'active'"
+        " AND (coalesce(jsonb_array_length(b.params->'states'), 0) = 0"
+        " OR b.params->'states' ? %(to)s"
+        " OR (%(from)s::text IS NULL AND b.params->'states' ? 'created')))",
+        {
+            'id': task['id'],
+            'from': from_state,
+            'to': task['status'],
+            'org': task['organization_id'],
+        },
+    )
 
 
 async def _update_task(

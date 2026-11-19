@@ -18,7 +18,6 @@ from psycopg.types import json as pg_json
 from imbi.api.workflows import store
 from imbi.common.auth import permissions
 from imbi.common.workflows import history, runtime
-from imbi.common.workflows.registry import ticket_closed
 
 #: A side effect with no response for this long is stale: its call has
 #: stopped (ADR 0021, unknown-outcome reconciliation).
@@ -154,8 +153,7 @@ class RunStore:
         """Write a queued run. Return it, and ``False`` for a repeat.
 
         A repeat of an idempotency key for the same workflow returns
-        the first run. The closed-ticket trigger kinds are one kind for
-        the key (ADR 0028).
+        the first run.
 
         A duplicate (:func:`_duplicate_of`) is written ``skipped`` and
         closed, with ``duplicate_of``, when ``run.skip_duplicate`` is
@@ -196,8 +194,7 @@ class RunStore:
                 ' status, closed_at) VALUES'
                 ' (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
                 ' %s, CASE WHEN %s THEN NOW() END)'
-                # No conflict target: a repeat can also hit
-                # runs_closed_ticket_idempotency_key.
+                # A repeat hits runs_workflow_idempotency_key.
                 ' ON CONFLICT DO NOTHING RETURNING *',
                 (
                     uuid.uuid4(),
@@ -223,16 +220,12 @@ class RunStore:
                 await cur.execute(
                     'SELECT * FROM workflow_runtime.runs'
                     ' WHERE organization_id = %s AND workflow_id = %s'
-                    ' AND origin_kind = ANY(%s) AND origin_id = %s'
+                    ' AND origin_kind = %s AND origin_id = %s'
                     ' AND idempotency_key = %s',
                     (
                         run.organization_id,
                         run.workflow_id,
-                        list(
-                            ticket_closed.TYPES
-                            if run.origin_kind in ticket_closed.TYPES
-                            else [run.origin_kind]
-                        ),
+                        run.origin_kind,
                         run.origin_id,
                         run.idempotency_key,
                     ),

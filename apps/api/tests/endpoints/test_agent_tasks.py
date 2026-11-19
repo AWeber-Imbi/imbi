@@ -1272,19 +1272,90 @@ class ControlTests(AgentTaskTestCase):
             ['ticket.created', 'control.changed', 'control.changed'],
         )
 
-    async def test_close_writes_a_trigger_outbox_row(self) -> None:
-        """The close transaction writes the row, so a close hook that
-        does not run still leaves the task for the sweep."""
+    async def bind(self, **params: typing.Any) -> None:
+        """Activate a workflow of the org with a ``ticket_state_changed``
+        trigger."""
+        definitions = workflows.WorkflowStore(self.pool)
+        await definitions.create(
+            self.org,
+            'follow-up',
+            workflows.Definition(
+                name='Follow up',
+                description='',
+                owner_team_id='team',
+                graph={'nodes': [], 'edges': []},
+                settings={},
+                validation={'issues': []},
+                author='ops@example.com',
+            ),
+        )
+        await definitions.activate(
+            self.org,
+            'follow-up',
+            1,
+            'ops@example.com',
+            [workflows.Trigger('start', 'ticket_state_changed', params)],
+        )
 
-        async def ids() -> set[str]:
-            return {str(r['id']) for r in await self.store.pending_triggers()}
+        async def cleanup() -> None:
+            async with self.pool.connection() as conn:
+                for table in ('trigger_bindings', 'workflows'):
+                    await conn.execute(
+                        f'DELETE FROM workflows.{table}'
+                        ' WHERE organization_id = %s',
+                        (self.org,),
+                    )
 
-        self.assertNotIn(self.task['id'], await ids())
-        with mock.patch.object(tickets.store, '_close_hooks', []):
+        self.addAsyncCleanup(cleanup)
+
+    async def changes(self, task_id: str) -> list[tuple[str | None, str]]:
+        return [
+            (c['from_state'], c['to_state'])
+            for c in await self.store.state_changes(uuid.UUID(task_id))
+        ]
+
+    async def test_change_without_binding_writes_no_outbox_row(self) -> None:
+        await self.post('pause')
+        await self.post('cancel')
+        self.assertEqual(await self.changes(self.task['id']), [])
+
+    async def test_status_change_writes_a_trigger_outbox_row(self) -> None:
+        """The change transaction writes the row, so a change hook that
+        does not run still leaves the change for the sweep. A write
+        that does not change the status, or a change that no binding
+        can match, writes none."""
+        await self.bind(states=['paused', 'closed'])
+        with mock.patch.object(tickets.store, '_change_hooks', []):
+            await self.post('pause')
+            await self.post('reassign', owner=self.member)
+            await self.post('resume')
             await self.post('cancel')
-        self.assertIn(self.task['id'], await ids())
-        await self.store.triggers_started(uuid.UUID(self.task['id']))
-        self.assertNotIn(self.task['id'], await ids())
+        self.assertEqual(
+            await self.changes(self.task['id']),
+            [('queued', 'paused'), ('queued', 'closed')],
+        )
+        self.assertIn(
+            self.task['id'],
+            {str(r['id']) for r in await self.store.pending_triggers()},
+        )
+        rows = await self.store.state_changes(uuid.UUID(self.task['id']))
+        await self.store.triggers_started([r['id'] for r in rows])
+        self.assertEqual(await self.changes(self.task['id']), [])
+
+    async def test_creation_writes_a_trigger_outbox_row(self) -> None:
+        await self.bind(states=['created'])
+        with mock.patch.object(tickets.store, '_change_hooks', []):
+            task = (await self.create_task()).json()
+        self.assertEqual(await self.changes(task['id']), [(None, 'queued')])
+
+    async def test_change_hook_gets_the_ticket(self) -> None:
+        hook = mock.AsyncMock()
+        with mock.patch.object(tickets.store, '_change_hooks', [hook]):
+            await self.post('reassign', owner=self.member)
+            hook.assert_not_called()
+            await self.post('pause')
+        [call] = hook.await_args_list
+        self.assertEqual(call.args[0]['status'], 'paused')
 
     async def test_closed_task_refuses_changes(self) -> None:
         await self.post('cancel')
@@ -1496,7 +1567,7 @@ class DeleteTests(AgentTaskTestCase):
                 ' WHERE organization_id = %s AND short_id = %s',
                 (self.org, short_id),
             )
-            # As if the task_completed trigger started its runs.
+            # As if the ticket_state_changed trigger started its runs.
             await conn.execute(
                 'DELETE FROM tickets.trigger_outbox WHERE ticket_id ='
                 ' (SELECT id FROM tickets.tickets'
@@ -1598,7 +1669,8 @@ class DeleteTests(AgentTaskTestCase):
             )
         response = await self.client.delete(self.url('T-1'))
         self.assertEqual(response.status_code, 409, response.text)
-        await self.store.triggers_started(uuid.UUID(child['id']))
+        rows = await self.store.state_changes(uuid.UUID(child['id']))
+        await self.store.triggers_started([r['id'] for r in rows])
         response = await self.client.delete(self.url('T-1'))
         self.assertEqual(response.status_code, 204, response.text)
 

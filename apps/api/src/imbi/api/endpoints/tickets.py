@@ -171,25 +171,22 @@ class AgentTaskOrigin(pydantic.BaseModel):
 
     A ``schedule`` origin also has ``scheduled_task_id``. A ``webhook``
     origin also has ``webhook_id`` and ``delivery_id``. A
-    ``task_completed`` origin is a workflow run that a closed task
-    started; it also has ``task_id``.
+    ``ticket_state_changed`` origin is a workflow run that a ticket
+    change started; it also has ``task_id``.
     """
 
     model_config = pydantic.ConfigDict(extra='allow')
 
-    #: ``ticket`` and ``ticket_closed`` are the ADR 0028 names of
-    #: ``task`` and ``task_completed``. Release B writes the new names;
-    #: rows of older releases have the old ones (see
-    #: :data:`imbi.api.tickets.store.CHILD_ORIGIN_KINDS` and
-    #: :mod:`imbi.api.workflows.ticket_trigger`).
+    #: ``ticket`` is the ADR 0028 name of ``task``. Release B writes
+    #: the new name; rows of older releases have the old one (see
+    #: :data:`imbi.api.tickets.store.CHILD_ORIGIN_KINDS`).
     kind: typing.Literal[
         'human',
         'schedule',
         'webhook',
         'task',
         'ticket',
-        'task_completed',
-        'ticket_closed',
+        'ticket_state_changed',
     ]
     #: The email of the person, for a ``human`` origin.
     user: str | None = None

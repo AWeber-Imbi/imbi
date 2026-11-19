@@ -17,7 +17,6 @@ from psycopg.types import json as pg_json
 
 from imbi.common import relational
 from imbi.common.workflows import runtime
-from imbi.common.workflows.registry import ticket_closed
 
 type Pool = psycopg_pool.AsyncConnectionPool[
     psycopg.AsyncConnection[typing.Any]
@@ -363,7 +362,7 @@ class WorkflowStore:
         """Return how many workflows use the agent.
 
         A workflow uses the agent when an agent step or a
-        ``task_completed`` trigger names it in its latest or active
+        ``ticket_state_changed`` trigger names it in its latest or active
         version, or in the pinned version of a run
         that is not closed. Other versions cannot run.
         """
@@ -382,7 +381,7 @@ class WorkflowStore:
             (
                 organization_id,
                 list(runtime.CLOSED),
-                ['agent', *ticket_closed.TYPES],
+                ['agent', 'ticket_state_changed'],
                 agent_id,
             ),
         )
