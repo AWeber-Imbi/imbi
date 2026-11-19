@@ -74,11 +74,11 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
-## Unreleased (release A+1): tickets write the new names (ADR 0028)
+## Unreleased: tickets write the new names (ADR 0028, release A+1)
 
 Set the version of this section when the release is cut.
 
-1. **Before you deploy**, deploy release A (the section below)
+1. **Before you deploy**, deploy 2.54.0 (release A)
    everywhere and let its rollout finish. This release writes values
    that only release A and later can read: the origin kind `ticket` on
    a child ticket and the event type `ticket.created`.
@@ -93,11 +93,9 @@ them, and a pod of this release can then read its rows during that
 rollout. Workflow runs that a closed ticket starts keep the origin kind
 `task_completed` until release B.
 
-## Unreleased: agent tasks become tickets (ADR 0028, release A)
+## 2.54.0
 
-Set the version of this section when the release is cut.
-
-1. **Before you deploy**, deploy the release before this one everywhere
+1. **Before you deploy**, deploy 2.53.0 everywhere
    and let its rollout finish. That release skips a relational table
    that is a view. Without it, an imbi-api pod of an older release that
    restarts during this rollout cannot start.
