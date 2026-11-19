@@ -662,7 +662,9 @@ function TaskInbox({
                 ) : task ? (
                   <TaskRow
                     active={task.short_id.toUpperCase() === selectedId}
-                    agent={agentsById.get(task.agent_id)}
+                    agent={
+                      task.agent_id ? agentsById.get(task.agent_id) : undefined
+                    }
                     group={row.group}
                     orgSlug={orgSlug}
                     task={task}
