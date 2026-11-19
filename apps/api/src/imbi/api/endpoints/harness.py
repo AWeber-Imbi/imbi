@@ -1969,10 +1969,7 @@ async def create_harness_child_task(
     origin_id = str(parent['id'])
     if data.idempotency_key is not None:
         existing = await store.find_by_idempotency_key(
-            parent['organization_id'],
-            'ticket',
-            origin_id,
-            data.idempotency_key,
+            parent['organization_id'], 'task', origin_id, data.idempotency_key
         )
         if existing is not None:
             response.status_code = 200
@@ -2027,7 +2024,7 @@ async def create_harness_child_task(
     agent_version = int(agent.get('version') or 1)
     prompt_version = agent.get('prompt_version')
     origin = {
-        'kind': 'ticket',
+        'kind': 'task',
         'task_id': origin_id,
         'short_id': parent['short_id'],
         'agent_id': parent['agent_id'],
@@ -2042,7 +2039,7 @@ async def create_harness_child_task(
                 service_account_id=service_account_id,
                 title=data.title,
                 description=data.description,
-                origin_kind='ticket',
+                origin_kind='task',
                 origin_id=origin_id,
                 origin=origin,
                 idempotency_key=data.idempotency_key,

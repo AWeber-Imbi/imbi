@@ -23,7 +23,7 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
-import type { AgentUsage, TicketListItem } from '@/types'
+import type { AgentUsage, TicketListItem, TicketStatus } from '@/types'
 
 import { formatMoney } from './agentDraft'
 import { useAgentList, useAgentUsage } from './agentQueries'
@@ -40,11 +40,15 @@ import {
 import {
   formatElapsed,
   groupTasks,
-  OPEN_STATUSES,
   statusLabel,
   statusVariant,
 } from './taskEvents'
 import { errorMessage, useTickets, useWaitingTaskCount } from './taskQueries'
+
+// Only the statuses that 2.54.0 (release A) accepts: a pod of that
+// release refuses the filter `held`, `open`, or `in_progress` during the
+// rollout. Add them in the release that writes them (ADR 0028).
+const OPEN: TicketStatus[] = ['blocked', 'running', 'paused', 'queued']
 
 // ponytail: like the inbox, the dashboard reads the newest 100 open and
 // 50 recent tasks; an org with more needs a summary endpoint.
@@ -175,7 +179,7 @@ function Card({
 }
 
 function Dashboard({ orgSlug }: { orgSlug: string }) {
-  const open = useTickets(orgSlug, { limit: OPEN_LIMIT, status: OPEN_STATUSES })
+  const open = useTickets(orgSlug, { limit: OPEN_LIMIT, status: OPEN })
   const recent = useTickets(orgSlug, { limit: RECENT_LIMIT })
   const { data: waitingCount } = useWaitingTaskCount(orgSlug)
   const usage = useAgentUsage(orgSlug)

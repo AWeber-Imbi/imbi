@@ -29,10 +29,12 @@ delegated child shares.
 
 import logging
 import typing
+from collections import abc
 
 from imbi.api.tickets import store as task_store
 from imbi.api.workflows import runs as runs_module
-from imbi.api.workflows import store
+from imbi.api.workflows import store, tickets
+from imbi.common import graph as graph_db
 from imbi.common.workflows import graph, validation
 from imbi.common.workflows.registry import ticket_closed
 
@@ -80,10 +82,14 @@ class TaskTrigger:
         definitions: store.WorkflowStore,
         runs: runs_module.RunStore,
         tasks: task_store.TicketStore,
+        db: abc.Callable[[], graph_db.Graph | None],
     ) -> None:
+        """``db`` returns the graph, for the slugs of the task's org and
+        agent (:func:`tickets.attributes`)."""
         self._definitions = definitions
         self._runs = runs
         self._tasks = tasks
+        self._db = db
 
     async def __call__(self, task: store.Row) -> None:
         """Start a run for each trigger that the closed task matches."""
@@ -96,19 +102,23 @@ class TaskTrigger:
             )
             await self._tasks.triggers_started(task['id'])
             return
-        payload = {
-            'task_id': task['short_id'],
-            'agent_id': task['agent_id'],
-            'outcome': task['outcome'],
-        }
         org = task['organization_id']
         failed = False
+        # Built for the first match only: most closed tasks start no run.
+        payload: dict[str, typing.Any] | None = None
         bindings = await self._definitions.active_bindings(
             org, ticket_closed.TYPES
         )
         for binding in bindings:
             if not _matches(binding, task):
                 continue
+            if payload is None:
+                payload = {
+                    'task_id': task['short_id'],
+                    'agent_id': task['agent_id'],
+                    'outcome': task['outcome'],
+                    **await tickets.attributes(self._db(), task),
+                }
             workflow_id = binding['workflow_id']
             try:
                 settings = graph.Settings.model_validate(binding['settings'])
