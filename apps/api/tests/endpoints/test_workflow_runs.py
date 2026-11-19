@@ -938,9 +938,13 @@ class EngineSlackTestCase(WorkflowRunTestCase):
 
     async def _cleanup_tasks(self) -> None:
         async with self.task_pool.connection() as conn:
-            for table in ('task_projects', 'tasks', 'task_id_sequences'):
+            for table in (
+                'ticket_projects',
+                'tickets',
+                'ticket_id_sequences',
+            ):
                 await conn.execute(
-                    f'DELETE FROM agent_runtime.{table}'
+                    f'DELETE FROM tickets.{table}'
                     ' WHERE organization_id = ANY(%s)',
                     ([self.org, self.other_org],),
                 )
