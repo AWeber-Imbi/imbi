@@ -377,6 +377,9 @@ The API is `POST /organizations/{org}/tickets/{short_id}/reopen` with
   retry. The agent must be enabled, the ticket gets the agent version
   that the agent has now, and its budget must be in the task budget of
   the agent.
+- The cost that the ticket spent stays. A ticket that closed on its
+  budget runs out again at once when it reopens to an agent. Raise its
+  budget or hand it off first.
 - An agent ticket starts its own chain, also when an agent made it as a
   child of another ticket.
 - To give the ticket a new assignee in the same request, add
