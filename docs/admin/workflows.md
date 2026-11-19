@@ -230,8 +230,9 @@ A new ticket matches `created` and also its first status (usually
 
 A run that a ticket change starts can make tickets with an Agent task
 step, and those tickets change too. Imbi stops such a chain after five
-levels of runs. All the tickets that come from one first ticket start
-no more than 25 runs in total.
+levels of runs. The tickets that come from one first ticket start at
+most 25 runs in total. Imbi checks this limit when each change starts
+its runs, so changes that occur at the same time can start more runs.
 
 **Output:** the attributes of the ticket and the change. Use
 `{{ trigger.<field> }}`.
