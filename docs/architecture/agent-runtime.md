@@ -207,13 +207,13 @@ report, the runner sets `failed_external` with the reason
 `no_outcome_reported`. A report never changes the outcome of a run that
 the SDK ended with an error (for example `partial_capped`). Then:
 
-- The close hooks release the secrets of the task. If a hook fails, a
-  sweep does its work again.
-- The change hooks start the runs of the matching workflow
-  `ticket_state_changed` triggers. This also occurs when a ticket is
-  created or changes to another status. The transaction that makes the
-  change writes a `trigger_outbox` row when an active trigger can match
-  it, and the sweep retries until the runs start and the row is deleted.
+- The change hooks release the secrets of the task, and start the runs
+  of the matching workflow `ticket_state_changed` triggers. The trigger
+  runs also start when a ticket is created or changes to another status.
+  If a hook fails, a sweep does its work again. The transaction that
+  makes the change writes a `trigger_outbox` row when the organization
+  has an active `ticket_state_changed` trigger, and the sweep retries
+  until the runs start and the row is deleted.
 - The outcome goes to the [Operations Log](../admin/tickets.md#operations-log).
 - A workflow `agent` step that waits on the task continues.
 - The task inbox shows the result. See

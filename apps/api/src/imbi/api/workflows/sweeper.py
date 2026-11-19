@@ -184,7 +184,7 @@ async def retry_task_triggers(
     row."""
     for task in await tasks.pending_triggers():
         try:
-            await trigger(task)
+            await trigger(task, True)
         except Exception:  # noqa: BLE001 -- the next round tries again
             LOGGER.warning(
                 'ticket_state_changed retry failed for ticket %s',

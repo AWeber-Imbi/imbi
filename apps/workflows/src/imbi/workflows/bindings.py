@@ -36,6 +36,7 @@ from psycopg import rows
 from imbi.common import graph
 from imbi.common.auth import permissions
 from imbi.common.graph import cypher
+from imbi.common.workflows.registry import ticket_state_changed
 from imbi.workflows import executors, settings, store
 
 LOGGER = logging.getLogger(__name__)
@@ -178,7 +179,7 @@ class Reconciler:
             try:
                 if binding['type'] == 'schedule':
                     target_id = await self._schedule(binding)
-                elif binding['type'] == 'ticket_state_changed':
+                elif binding['type'] == ticket_state_changed.TYPE:
                     target_id = None
                 else:
                     target_id = await self._webhook(binding)

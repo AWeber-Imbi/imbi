@@ -17,6 +17,7 @@ from psycopg.types import json as pg_json
 
 from imbi.common import relational
 from imbi.common.workflows import runtime
+from imbi.common.workflows.registry import ticket_state_changed
 
 type Pool = psycopg_pool.AsyncConnectionPool[
     psycopg.AsyncConnection[typing.Any]
@@ -381,7 +382,7 @@ class WorkflowStore:
             (
                 organization_id,
                 list(runtime.CLOSED),
-                ['agent', 'ticket_state_changed'],
+                ['agent', ticket_state_changed.TYPE],
                 agent_id,
             ),
         )

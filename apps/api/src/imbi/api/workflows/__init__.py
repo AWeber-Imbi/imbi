@@ -75,6 +75,7 @@ async def store_lifespan() -> abc.AsyncGenerator[WorkflowStore]:
         tasks = TicketStore(pool)
         trigger = ticket_trigger.TaskTrigger(definitions, _runs, tasks, _graph)
         task_store.register_change_hook(trigger)
+        task_store.register_outbox_filter(ticket_trigger.has_bindings)
         stop = asyncio.Event()
         sweep = asyncio.create_task(
             sweeper.run_sweeper(_runs, tasks, trigger, stop=stop)
@@ -83,6 +84,7 @@ async def store_lifespan() -> abc.AsyncGenerator[WorkflowStore]:
             yield definitions
         finally:
             task_store.unregister_change_hook(trigger)
+            task_store.register_outbox_filter(None)
             stop.set()
             sweep.cancel()
             with contextlib.suppress(asyncio.CancelledError):

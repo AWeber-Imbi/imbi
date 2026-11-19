@@ -16,6 +16,18 @@ after_tables = true
 when = "SELECT to_regclass('workflow_runtime.runs_closed_ticket_idempotency_key') IS NOT NULL"
 sql = "DROP INDEX workflow_runtime.runs_closed_ticket_idempotency_key"
 
+# The lineage cap of `ticket_state_changed` runs counts the runs of a
+# lineage (imbi.api.workflows.ticket_trigger).
+[[steps]]
+name = "runs-lineage-index"
+after_tables = true
+when = "SELECT to_regclass('workflow_runtime.runs_lineage_idx') IS NULL"
+sql = """
+CREATE INDEX runs_lineage_idx
+  ON workflow_runtime.runs (organization_id, (origin->>'lineage'))
+  WHERE origin_kind = 'ticket_state_changed'
+"""
+
 # One row per run. The row stays after archive (W4).
 #
 # `last_seq` is the sequence number of the newest event. An event write

@@ -30,6 +30,7 @@ from imbi.api.endpoints import agents
 from imbi.api.endpoints import tickets as tickets_api
 from imbi.api.graph_sql import props_template
 from imbi.api.harness import auth as harness_auth
+from imbi.api.workflows import ticket_trigger
 from imbi.common import graph
 
 ALL_PERMISSIONS = frozenset(
@@ -1274,7 +1275,13 @@ class ControlTests(AgentTaskTestCase):
 
     async def bind(self, **params: typing.Any) -> None:
         """Activate a workflow of the org with a ``ticket_state_changed``
-        trigger."""
+        trigger, and register the outbox filter."""
+        await workflows.initialize()
+        filter_patch = mock.patch.object(
+            tickets.store, '_outbox_filter', ticket_trigger.has_bindings
+        )
+        filter_patch.start()
+        self.addCleanup(filter_patch.stop)
         definitions = workflows.WorkflowStore(self.pool)
         await definitions.create(
             self.org,
@@ -1316,23 +1323,26 @@ class ControlTests(AgentTaskTestCase):
 
     async def test_change_without_binding_writes_no_outbox_row(self) -> None:
         await self.post('pause')
-        await self.post('cancel')
+        with mock.patch.object(
+            tickets.store, '_outbox_filter', ticket_trigger.has_bindings
+        ):
+            await self.post('cancel')
         self.assertEqual(await self.changes(self.task['id']), [])
 
     async def test_status_change_writes_a_trigger_outbox_row(self) -> None:
         """The change transaction writes the row, so a change hook that
         does not run still leaves the change for the sweep. A write
-        that does not change the status, or a change that no binding
-        can match, writes none."""
-        await self.bind(states=['paused', 'closed'])
+        that does not change the status writes none."""
+        await self.bind(states=['paused'])
         with mock.patch.object(tickets.store, '_change_hooks', []):
             await self.post('pause')
             await self.post('reassign', owner=self.member)
             await self.post('resume')
             await self.post('cancel')
+        # Every change of an org with a binding; the trigger matches.
         self.assertEqual(
             await self.changes(self.task['id']),
-            [('queued', 'paused'), ('queued', 'closed')],
+            [('queued', 'paused'), ('paused', 'queued'), ('queued', 'closed')],
         )
         self.assertIn(
             self.task['id'],
@@ -1356,6 +1366,7 @@ class ControlTests(AgentTaskTestCase):
             await self.post('pause')
         [call] = hook.await_args_list
         self.assertEqual(call.args[0]['status'], 'paused')
+        self.assertFalse(call.args[1])  # no outbox filter, no row
 
     async def test_closed_task_refuses_changes(self) -> None:
         await self.post('cancel')

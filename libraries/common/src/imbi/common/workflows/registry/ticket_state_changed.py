@@ -12,6 +12,9 @@ import pydantic
 from imbi.common.workflows import step_type
 from imbi.common.workflows.registry import agent
 
+#: The step type, and the origin kind of the runs that it starts.
+TYPE = 'ticket_state_changed'
+
 #: The ticket statuses that imbi-api writes, and ``created``, which is
 #: the creation of a ticket.
 State = typing.Literal[
@@ -60,7 +63,7 @@ def required_permissions(_params: dict[str, typing.Any]) -> set[str]:
 
 
 STEP = step_type.StepType(
-    type='ticket_state_changed',
+    type=TYPE,
     category='trigger',
     label='Ticket state changed',
     description='A ticket that is created or changes state starts a run.',

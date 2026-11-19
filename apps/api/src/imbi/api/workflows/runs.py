@@ -249,16 +249,16 @@ class RunStore:
         await history.publish_since(self._pool, created['id'], 0)
         return created, True
 
-    async def lineage_runs(
-        self, organization_id: str, origin_kind: str, lineage: str
-    ) -> int:
-        """Return how many runs of ``origin_kind`` have ``lineage`` in
-        their origin (:mod:`imbi.api.workflows.ticket_trigger`)."""
+    async def lineage_runs(self, organization_id: str, lineage: str) -> int:
+        """Return how many ``ticket_state_changed`` runs have
+        ``lineage`` in their origin
+        (:mod:`imbi.api.workflows.ticket_trigger`)."""
         found = await self._all(
             'SELECT count(*) AS n FROM workflow_runtime.runs'
-            ' WHERE organization_id = %s AND origin_kind = %s'
-            " AND origin->>'lineage' = %s",
-            (organization_id, origin_kind, lineage),
+            # A literal kind, so the planner uses runs_lineage_idx.
+            " WHERE origin_kind = 'ticket_state_changed'"
+            " AND organization_id = %s AND origin->>'lineage' = %s",
+            (organization_id, lineage),
         )
         return int(found[0]['n'])
 

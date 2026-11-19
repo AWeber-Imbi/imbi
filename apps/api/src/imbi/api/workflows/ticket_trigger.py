@@ -1,13 +1,14 @@
 """Start the ``ticket_state_changed`` triggers of a ticket that changes.
 
 A ticket change hook (:func:`imbi.api.tickets.store.
-register_change_hook`). The transaction that creates a ticket or
-changes its status writes a ``trigger_outbox`` row for the change, when
-a binding of the org can match it. The hook reads the rows of the
-ticket, and for each one reads the enabled bindings of the active
-workflows of the ticket's org and starts a run for each trigger whose
-params match. The ticket id and the trigger node id with the outbox row
-id are the idempotency key, so a repeat starts no second run.
+register_change_hook`). The transaction that creates a ticket or changes
+its status writes a ``trigger_outbox`` row for the change, when the org
+has a binding (:func:`has_bindings`, the outbox filter). The hook reads
+the rows of the ticket, and for each one reads the enabled bindings of
+the active workflows of the ticket's org and starts a run for each
+trigger whose params match. The ticket id and the trigger node id with
+the outbox row id are the idempotency key, so a repeat starts no second
+run.
 
 The trigger deletes a row when no run failed to start; else the
 workflow sweep calls the trigger again
@@ -35,11 +36,11 @@ from imbi.api.workflows import runs as runs_module
 from imbi.api.workflows import store, tickets
 from imbi.common import graph as graph_db
 from imbi.common.workflows import graph, validation
+from imbi.common.workflows.registry import ticket_state_changed
 
 LOGGER = logging.getLogger(__name__)
 
-#: The trigger type, and the origin kind of the runs that it starts.
-KIND = 'ticket_state_changed'
+KIND = ticket_state_changed.TYPE
 
 #: The most runs in one chain of ticket -> run -> ticket -> run.
 MAX_DEPTH = 5
@@ -48,6 +49,24 @@ MAX_DEPTH = 5
 #: A hook call checks it before it starts runs, so one call can go past
 #: it by the runs of that call.
 MAX_LINEAGE_RUNS = 25
+
+
+async def has_bindings(conn: task_store.Conn, organization_id: str) -> bool:
+    """Return whether the org has an enabled ``ticket_state_changed``
+    binding of an active workflow: the outbox filter of the ticket store
+    (:func:`imbi.api.tickets.store.register_outbox_filter`). It runs in
+    the transaction of each ticket change, so it reads one partial
+    index (``trigger_bindings_ticket_state_changed_idx``)."""
+    cursor = await conn.execute(
+        'SELECT EXISTS (SELECT 1 FROM workflows.trigger_bindings AS b'
+        ' JOIN workflows.workflows AS w ON w.id = b.workflow_id'
+        # A literal type, so the planner uses the partial index.
+        " WHERE b.type = 'ticket_state_changed' AND b.organization_id = %s"
+        " AND b.enabled AND NOT b.removed AND w.status = 'active')",
+        (organization_id,),
+    )
+    row = await cursor.fetchone()
+    return bool(row and row[0])
 
 
 def _matches(binding: store.Row, task: store.Row, change: store.Row) -> bool:
@@ -112,32 +131,27 @@ class TaskTrigger:
         self._tasks = tasks
         self._db = db
 
-    async def __call__(self, task: store.Row) -> None:
-        """Start the runs of each pending change of ``task``."""
+    async def __call__(self, task: store.Row, outbox: bool = True) -> None:
+        """Start the runs of each pending change of ``task``. Without an
+        ``outbox`` row from the change, there is nothing to start."""
+        if not outbox:
+            return
         changes = await self._tasks.state_changes(task['id'])
         if not changes:
             return
         root = await self._tasks.chain_root(task)
         depth = _depth(root)
-        if depth > MAX_DEPTH:
-            LOGGER.warning(
-                'Ticket %s starts no workflow runs: the chain is %d deep',
-                task['id'],
-                MAX_DEPTH,
-            )
-            await self._tasks.triggers_started([c['id'] for c in changes])
-            return
-        lineage = _lineage(typing.cast(store.Row, root))
+        lineage = '' if root is None else _lineage(root)
         if (
-            await self._runs.lineage_runs(
-                task['organization_id'], KIND, lineage
-            )
+            depth > MAX_DEPTH
+            or await self._runs.lineage_runs(task['organization_id'], lineage)
             >= MAX_LINEAGE_RUNS
         ):
             LOGGER.warning(
-                'Ticket %s starts no workflow runs: its lineage %s started'
-                ' %d runs',
+                'Ticket %s starts no workflow runs: its chain is past %d'
+                ' deep or its lineage %s started %d runs',
                 task['id'],
+                MAX_DEPTH,
                 lineage,
                 MAX_LINEAGE_RUNS,
             )
@@ -146,9 +160,13 @@ class TaskTrigger:
         bindings = await self._definitions.active_bindings(
             task['organization_id'], [KIND]
         )
-        for change in changes:
-            if await self._start(task, change, bindings, depth, lineage):
-                await self._tasks.triggers_started([change['id']])
+        await self._tasks.triggers_started(
+            [
+                change['id']
+                for change in changes
+                if await self._start(task, change, bindings, depth, lineage)
+            ]
+        )
 
     async def _start(
         self,

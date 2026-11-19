@@ -13,9 +13,8 @@ After the transaction commits, the events it wrote (and the budget
 ledger rows) go to the permanent log in ClickHouse: see
 :mod:`imbi.api.tickets.log`. They go after the commit, never inside
 the transaction, so ClickHouse never holds an event that Postgres rolled
-back. When the transaction closed the task, the close hooks run next
-(:func:`register_close_hook`). When it created the ticket or changed its
-status, the change hooks run (:func:`register_change_hook`).
+back. When the transaction created the ticket or changed its status,
+the change hooks run next (:func:`register_change_hook`).
 """
 
 import contextlib
@@ -61,46 +60,20 @@ ORIGIN_IDEMPOTENCY_KEYS = frozenset(
     {'tasks_origin_idempotency_key', 'tickets_origin_idempotency_key'}
 )
 
-#: A close hook gets the task row after the transaction that closed the
-#: task commits. The secrets broker registers its release here.
-type CloseHook = abc.Callable[[Row], abc.Awaitable[None]]
-
-_close_hooks: list[CloseHook] = []
-
-
-def register_close_hook(hook: CloseHook) -> None:
-    """Add a close hook."""
-    if hook not in _close_hooks:
-        _close_hooks.append(hook)
-
-
-def unregister_close_hook(hook: CloseHook) -> None:
-    """Remove a close hook."""
-    if hook in _close_hooks:
-        _close_hooks.remove(hook)
-
-
-async def run_close_hooks(task: Row) -> None:
-    """Call every close hook. A failure is logged; the task stays
-    closed."""
-    for hook in list(_close_hooks):
-        try:
-            await hook(task)
-        except Exception:  # noqa: BLE001 - the close committed already
-            LOGGER.warning(
-                'Close hook %s failed for task %s',
-                getattr(hook, '__qualname__', repr(hook)),
-                task['id'],
-                exc_info=True,
-            )
-
-
 #: A change hook gets the ticket row after a transaction that created
-#: the ticket or changed its status commits. The workflow
-#: ``ticket_state_changed`` trigger registers here.
-type ChangeHook = abc.Callable[[Row], abc.Awaitable[None]]
+#: the ticket or changed its status commits, and whether the
+#: transaction wrote a ``trigger_outbox`` row. The secrets broker
+#: releases the resolutions of a closed ticket here; the workflow
+#: ``ticket_state_changed`` trigger starts its runs.
+type ChangeHook = abc.Callable[[Row, bool], abc.Awaitable[None]]
+
+#: Tells, in the transaction of a change, whether the org of the ticket
+#: can start ``ticket_state_changed`` runs, so that a ``trigger_outbox``
+#: row is needed. The workflow trigger registers it.
+type OutboxFilter = abc.Callable[[Conn, str], abc.Awaitable[bool]]
 
 _change_hooks: list[ChangeHook] = []
+_outbox_filter: OutboxFilter | None = None
 
 #: The event types of a creation and a status change.
 _CHANGE_EVENTS = frozenset({'ticket.created', 'state.changed'})
@@ -118,14 +91,29 @@ def unregister_change_hook(hook: ChangeHook) -> None:
         _change_hooks.remove(hook)
 
 
-async def run_change_hooks(task: Row, events: abc.Iterable[Row]) -> None:
-    """Call every change hook when ``events`` created the ticket or
-    changed its status. A failure is logged; the change stays."""
+def register_outbox_filter(outbox_filter: OutboxFilter | None) -> None:
+    """Set the outbox filter. ``None`` writes no ``trigger_outbox``
+    rows."""
+    global _outbox_filter
+    _outbox_filter = outbox_filter
+
+
+async def after_commit(
+    task: Row,
+    events: list[Row],
+    ledger: list[Row] | None = None,
+    *,
+    outbox: bool = False,
+) -> None:
+    """Publish the events of a commit, then call every change hook when
+    they created the ticket or changed its status. A hook failure is
+    logged; the change stays."""
+    await log.publish(task, events, ledger)
     if not any(event['type'] in _CHANGE_EVENTS for event in events):
         return
     for hook in list(_change_hooks):
         try:
-            await hook(task)
+            await hook(task, outbox)
         except Exception:  # noqa: BLE001 - the change committed already
             LOGGER.warning(
                 'Change hook %s failed for ticket %s',
@@ -509,10 +497,10 @@ class _Write:
     task: Row
     events: list[Row] = dataclasses.field(default_factory=list[Row])
     ledger: list[Row] = dataclasses.field(default_factory=list[Row])
-    #: The dependents that a close released, with their events.
-    released: list[tuple[Row, list[Row]]] = dataclasses.field(
-        default_factory=list[tuple[Row, list[Row]]]
-    )
+    #: Whether the transaction wrote a ``trigger_outbox`` row.
+    outbox: bool = False
+    #: The writes of the dependents that a close released.
+    released: list[_Write] = dataclasses.field(default_factory=list)
 
     async def event(
         self, event_type: str, payload: Row, actor: Actor, **kwargs: typing.Any
@@ -533,7 +521,7 @@ class _Write:
         old = self.task['status']
         self.task = await _update_task(self.conn, self.task['id'], changes)
         if self.task['status'] != old:
-            await _write_outbox(self.conn, self.task, old)
+            self.outbox |= await _write_outbox(self.conn, self.task, old)
         return self.task
 
 
@@ -552,6 +540,8 @@ class _Relate:
     events: dict[uuid.UUID, list[Row]] = dataclasses.field(
         default_factory=dict[uuid.UUID, list[Row]]
     )
+    #: The tasks that got a ``trigger_outbox`` row.
+    outbox: set[uuid.UUID] = dataclasses.field(default_factory=set[uuid.UUID])
 
     async def event(
         self,
@@ -577,6 +567,8 @@ class _Relate:
         write = _Write(self.conn, task)
         await _sync_gate(write, actor)
         self.events.setdefault(task['id'], []).extend(write.events)
+        if write.outbox:
+            self.outbox.add(task['id'])
 
 
 def _search_filters(
@@ -683,15 +675,13 @@ class TicketStore:
                 if write.events:
                     # Event writes change ``last_seq``.
                     write.task = await _fetch_task(conn, write.task['id'])
-        await log.publish(write.task, write.events, write.ledger)
-        for task, events in write.released:
-            await log.publish(task, events)
-        # The lock refuses a closed task, so this write closed it.
-        if write.task['status'] == 'closed':
-            await run_close_hooks(write.task)
-        await run_change_hooks(write.task, write.events)
-        for task, events in write.released:
-            await run_change_hooks(task, events)
+        await after_commit(
+            write.task, write.events, write.ledger, outbox=write.outbox
+        )
+        for released in write.released:
+            await after_commit(
+                released.task, released.events, outbox=released.outbox
+            )
 
     async def move_legacy_projects(self) -> int:
         """Move the old single project of each task (``tasks.project_id``)
@@ -849,7 +839,7 @@ class TicketStore:
                     conn, task_id, 'ticket.created', event_payload, actor
                 )
                 row = await _fetch_task(conn, task_id)
-                await _write_outbox(conn, row, None)
+                outbox = await _write_outbox(conn, row, None)
         except psycopg.errors.UniqueViolation as err:
             if (
                 err.diag.constraint_name not in ORIGIN_IDEMPOTENCY_KEYS
@@ -865,8 +855,7 @@ class TicketStore:
             if existing is None:  # pragma: no cover - the key just collided
                 raise
             return existing, False
-        await log.publish(row, [event])
-        await run_change_hooks(row, [event])
+        await after_commit(row, [event], outbox=outbox)
         return row, True
 
     async def get(self, organization_id: str, short_id: str) -> Row | None:
@@ -1124,6 +1113,8 @@ class TicketStore:
 
     async def triggers_started(self, change_ids: list[uuid.UUID]) -> None:
         """Delete ``trigger_outbox`` rows."""
+        if not change_ids:
+            return
         async with self._pool.connection() as conn:
             await conn.execute(
                 'DELETE FROM tickets.trigger_outbox WHERE id = ANY(%s)',
@@ -1259,7 +1250,7 @@ class TicketStore:
                 raise TaskOpen(short_id)
             # The lease sweep still needs the chain row of a root that
             # waits for its fencers, and Broker.sweep joins the open
-            # resolutions of a failed close hook to the task. A pending
+            # resolutions of a failed change hook to the task. A pending
             # trigger_outbox row of the task, or of a task in the chain
             # of a root, needs the root for its depth (ticket_trigger).
             cursor = await conn.execute(
@@ -1297,9 +1288,10 @@ class TicketStore:
             await conn.execute(
                 'DELETE FROM tickets.tickets WHERE id = %s', (task['id'],)
             )
-        for dependent, events in released:
-            await log.publish(dependent, events)
-            await run_change_hooks(dependent, events)
+        for dependent in released:
+            await after_commit(
+                dependent.task, dependent.events, outbox=dependent.outbox
+            )
         return task
 
     async def set_control(
@@ -1470,8 +1462,9 @@ class TicketStore:
                     for task_id, events in relate.events.items()
                 ]
         for task, events in published:
-            await log.publish(task, events)
-            await run_change_hooks(task, events)
+            await after_commit(
+                task, events, outbox=task['id'] in relate.outbox
+            )
 
     @_retry_deadlock
     async def add_dependency(
@@ -2498,7 +2491,7 @@ class TicketStore:
 
 async def requeue_chain(
     conn: Conn, chain_id: uuid.UUID, attempt: int, actor: Actor
-) -> list[tuple[Row, list[Row]]]:
+) -> list[_Write]:
     """Put the open tasks of a chain back in the queue (ADR 0022).
 
     Use this in the transaction that unpins the chain from a lost
@@ -2509,7 +2502,8 @@ async def requeue_chain(
     it, ``pause`` makes it ``paused``, an open request makes it
     ``blocked``, else it is ``queued``.
 
-    Return each task and its events, to publish after the commit.
+    Return the write of each task, to publish after the commit
+    (:func:`after_commit`).
     """
     async with conn.cursor(row_factory=rows.dict_row) as cursor:
         await cursor.execute(
@@ -2519,7 +2513,7 @@ async def requeue_chain(
             (chain_id, chain_id),
         )
         tasks = await cursor.fetchall()
-    published: list[tuple[Row, list[Row]]] = []
+    published: list[_Write] = []
     for task in tasks:
         write = _Write(conn, task)
         cursor = await conn.execute(
@@ -2553,7 +2547,8 @@ async def requeue_chain(
             )
         elif task['status'] != status:
             await _set_status(write, status, 'runner_lost', actor)
-        published.append((await _fetch_task(conn, task['id']), write.events))
+        write.task = await _fetch_task(conn, task['id'])
+        published.append(write)
     return published
 
 
@@ -2682,15 +2677,15 @@ async def _sync_gate(write: _Write, actor: Actor) -> None:
 
 async def _release_dependents(
     conn: Conn, dependent_ids: list[uuid.UUID], actor: Actor
-) -> list[tuple[Row, list[Row]]]:
+) -> list[_Write]:
     """Release each ``held`` ticket of ``dependent_ids`` that no gate
     holds; see :func:`_sync_gate`.
 
     The caller holds the lock of the prerequisite. The dependents lock
     after it, in task id order. Every change to a dependency locks the
     prerequisite first, so it waits for this transaction or this one
-    waits for it. Return each released ticket and its events, to
-    publish after the commit.
+    waits for it. Return the write of each released ticket, to publish
+    after the commit.
     """
     if not dependent_ids:
         return []
@@ -2701,12 +2696,12 @@ async def _release_dependents(
             (dependent_ids,),
         )
         dependents = await cursor.fetchall()
-    released: list[tuple[Row, list[Row]]] = []
+    released: list[_Write] = []
     for dependent in dependents:
         write = _Write(conn, dependent)
         await _sync_gate(write, actor)
         if write.events:
-            released.append((write.task, write.events))
+            released.append(write)
     return released
 
 
@@ -2949,33 +2944,24 @@ def _dependency_payload(relate: _Relate, row: Row) -> abc.Callable[[Row], Row]:
     }
 
 
-async def _write_outbox(conn: Conn, task: Row, from_state: str | None) -> None:
+async def _write_outbox(conn: Conn, task: Row, from_state: str | None) -> bool:
     """Write the ``trigger_outbox`` row of a creation (``from_state`` is
     ``None``) or a status change of ``task``, in its transaction, so its
     ``ticket_state_changed`` runs start even when the change hook fails.
 
-    Most changes start no run, so the row is written only when an
-    enabled binding of an active workflow of the org can match the new
-    state. The trigger checks the rest of the params.
+    Most changes start no run, so the row is written only when the
+    outbox filter says the org can start one. Return whether it was.
     """
+    if _outbox_filter is None or not await _outbox_filter(
+        conn, task['organization_id']
+    ):
+        return False
     await conn.execute(
         'INSERT INTO tickets.trigger_outbox (ticket_id, from_state, to_state)'
-        ' SELECT %(id)s, %(from)s, %(to)s WHERE EXISTS (SELECT 1'
-        ' FROM workflows.trigger_bindings AS b'
-        ' JOIN workflows.workflows AS w ON w.id = b.workflow_id'
-        ' WHERE b.organization_id = %(org)s'
-        " AND b.type = 'ticket_state_changed'"
-        " AND b.enabled AND NOT b.removed AND w.status = 'active'"
-        " AND (coalesce(jsonb_array_length(b.params->'states'), 0) = 0"
-        " OR b.params->'states' ? %(to)s"
-        " OR (%(from)s::text IS NULL AND b.params->'states' ? 'created')))",
-        {
-            'id': task['id'],
-            'from': from_state,
-            'to': task['status'],
-            'org': task['organization_id'],
-        },
+        ' VALUES (%s, %s, %s)',
+        (task['id'], from_state, task['status']),
     )
+    return True
 
 
 async def _update_task(

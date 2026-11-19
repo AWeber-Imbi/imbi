@@ -45,6 +45,7 @@ from imbi.common.workflows import (
 from imbi.common.workflows.registry import agent as agent_step
 from imbi.common.workflows.registry import llm_call as llm_call_step
 from imbi.common.workflows.registry import script as script_step
+from imbi.common.workflows.registry import ticket_state_changed
 
 LOGGER = logging.getLogger(__name__)
 
@@ -55,7 +56,7 @@ Status = typing.Literal['draft', 'active', 'paused']
 #: Trigger types that get a binding: a scheduler task, a gateway rule,
 #: or (``ticket_state_changed``) only the binding, which the change hook
 #: reads.
-BOUND_TRIGGERS = ('schedule', 'webhook', 'ticket_state_changed')
+BOUND_TRIGGERS = ('schedule', 'webhook', ticket_state_changed.TYPE)
 
 
 # --- Schemas -----------------------------------------------------------
@@ -306,13 +307,13 @@ def _resource_ids(
             add('project', node.id, params.get('project_id'))
         elif node.type == 'webhook':
             add('webhook', node.id, params.get('webhook_id'))
-        elif node.type in ('agent', 'ticket_state_changed'):
+        elif node.type in ('agent', ticket_state_changed.TYPE):
             # A trigger's agent filter cannot be a template.
             add(
                 'agent',
                 node.id,
                 params.get('agent_id'),
-                literal=node.type == 'ticket_state_changed',
+                literal=node.type == ticket_state_changed.TYPE,
             )
             if node.type == 'agent':
                 add('project', node.id, params.get('project_id'))

@@ -336,6 +336,14 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
             await self.trigger(_task(organization_id=self.org))
         bindings.assert_not_called()
 
+    async def test_change_without_outbox_row_does_nothing(self) -> None:
+        await self._activate()
+        task = _task(organization_id=self.org)
+        self.tasks.change(task)
+        await self.trigger(task, False)
+        self.assertEqual(await self._runs(), [])
+        self.assertEqual(self.tasks.started, [])
+
     async def test_outbox_row_stays_until_the_runs_start(self) -> None:
         """A failed run start keeps the outbox row for the sweep."""
         await self._activate()
