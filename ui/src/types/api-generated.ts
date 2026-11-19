@@ -1771,7 +1771,9 @@ export interface paths {
          * @description Return the history of a ticket of the chain, for a new session.
          *
          *     A new session reads events only after ``last_seq``, so it reads
-         *     what happened before here: comments (human turns), resolved
+         *     what happened before here. It sends ``last_seq`` as ``max_seq``, so
+         *     a comment written after the session opened is not here as well as
+         *     in the events. The history has comments (human turns), resolved
          *     requests, and the status and outcome of child and prerequisite
          *     tickets, oldest first. When the text is larger
          *     than :data:`MAX_HISTORY_BYTES`, the oldest entries are left out
@@ -26536,7 +26538,9 @@ export interface operations {
     };
     read_harness_ticket_history_api_harness_tickets__short_id__history_get: {
         parameters: {
-            query?: never;
+            query?: {
+                max_seq?: number | null;
+            };
             header?: never;
             path: {
                 short_id: string;
