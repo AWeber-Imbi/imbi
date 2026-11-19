@@ -227,17 +227,6 @@ class AccessTests(HarnessTestCase):
         self.assertEqual(response.status_code, 404, response.text)
 
 
-class OldPathTests(HarnessTestCase):
-    """Release B removes the harness routes at ``/agent-tasks`` (ADR
-    0028)."""
-
-    prefix = 'agent-tasks'
-
-    async def test_old_path_is_gone(self) -> None:
-        response = await self.post('sessions', {'session_key': 's-1'})
-        self.assertEqual(response.status_code, 404, response.text)
-
-
 class SessionTests(HarnessTestCase):
     async def test_open_is_idempotent_and_starts_the_task(self) -> None:
         first = await self.open_session()
@@ -439,6 +428,31 @@ class ConcurrencyTests(HarnessTestCase):
         await self.post(f'sessions/{session["id"]}/close', {'reason': 'x'})
         response = await self.post('sessions', {'session_key': 'b'}, 'T-2')
         self.assertEqual(response.status_code, 201, response.text)
+
+    async def test_a_child_of_the_same_agent_gets_a_place(self) -> None:
+        # A parent that waits for its child keeps its session open. A
+        # child of the same agent, in the parent's chain, still opens
+        # its session; a task of another chain does not.
+        self.act_as_user()
+        await self.create_task()
+        await self.create_task()
+        self.act_as(self.account)
+        await self.open_session()
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE tickets.tickets AS c'
+                " SET chain_id = p.id, origin_kind = 'ticket'"
+                ' FROM tickets.tickets AS p'
+                " WHERE p.short_id = 'T-1' AND c.short_id = 'T-2'"
+                ' AND p.organization_id = c.organization_id',
+            )
+        response = await self.post('sessions', {'session_key': 'c'}, 'T-2')
+        self.assertEqual(response.status_code, 201, response.text)
+        response = await self.post('sessions', {'session_key': 'd'}, 'T-3')
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'concurrency_limit'
+        )
 
 
 class EventTests(HarnessTestCase):

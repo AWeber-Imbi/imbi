@@ -154,6 +154,72 @@ While pods of both releases run, if a person ticket exists:
 - The 2.56.0 UI shows a person ticket with no agent name. It cannot
   make one.
 
+## Unreleased: release B+1 (ADR 0028)
+
+This release removes the old names of ADR 0028 that 2.56.0 (release B)
+kept for the pods of 2.55.0. No pod of 2.56.0 uses them.
+
+1. **Before you deploy**, deploy 2.56.0 everywhere and let its
+   rollout finish. A pod older than 2.56.0 uses the objects that this
+   release drops.
+2. **Before you deploy**, make sure that 2.56.0 copied every event of
+   `agent_task_events` to `ticket_events`. This release drops the old
+   table. The result must be `0`:
+
+    ```sql
+    SELECT uniqExact(task_id, seq) FROM imbi.agent_task_events
+     WHERE (task_id, seq) NOT IN (SELECT ticket_id, seq FROM imbi.ticket_events)
+    ```
+
+   If it is not `0`, run `imbi-api setup-clickhouse` in a 2.56.0 pod,
+   then run the query again.
+3. **Before you deploy**, change each scheduled task whose `api` target
+   path has `/agent-tasks` to use `/tickets`. This release removes the
+   `/organizations/{org}/agent-tasks` paths, so a run of such a task
+   gets `404` and fails. Find the tasks in PostgreSQL (the schema is
+   `IMBI_SCHEDULER_SCHEMA`, default `scheduler`):
+
+    ```sql
+    SELECT slug, organization, target ->> 'path' AS path
+      FROM scheduler.tasks
+     WHERE target ->> 'kind' = 'api'
+       AND (target ->> 'path' LIKE '%/agent-tasks%'
+            OR target ->> 'path' LIKE '%{{%'
+            OR target ->> 'path' LIKE '%{\%%')
+    ```
+
+   The path is a Jinja2 template, so the query also returns each path
+   that has a template expression (`{{` or `{%`). Such a path can render
+   a different path on each run. Read its template: check each branch
+   and each value that the task gets when it runs (for example `now`),
+   not only one rendered path. If any of them can render an
+   `/agent-tasks` path, change the task too. If the query returns no
+   rows, no task uses the old path. To change a
+   task, send a JSON Patch of `/target/path` to
+   [`PATCH /tasks/{slug}`](../scheduler/tasks.md) on imbi-scheduler.
+   Also change the scripts that call the old path.
+4. Deploy imbi-api first, then imbi-mcp, the harness runners,
+   imbi-gateway, imbi-slackbot, and imbi-workflows. At its first start,
+   imbi-api:
+   - moves the primary keys of `harness.chains` and `harness.claims` to
+     `root_ticket_id` and `ticket_id`, and drops the old columns
+     (`root_task_id`, `task_id`), the trigger that kept them equal, and
+     the function `harness.mirror_ticket_id()`, and
+   - changes the origin kind `task` to `ticket` in each child ticket that
+     a 2.55.0 pod made after the last start of a 2.56.0 pod.
+
+   You do not run a command for this. The harness change locks
+   `harness.chains` and `harness.claims` while it builds the two new
+   primary keys.
+5. Run `imbi-api setup-clickhouse` in a new imbi-api pod (pick the pod by
+   name, as for 2.54.0). It drops the `agent_task_events` table. There
+   is no iggy-connect restart: 2.56.0 removed the old stream.
+
+While pods of both releases run:
+
+- If you run `setup-clickhouse` in a 2.56.0 pod, it makes an empty
+  `agent_task_events` table again. Run it again in a new pod to drop it.
+
 ## 2.56.0
 
 This release is release B of ADR 0028. It removes the old names that no

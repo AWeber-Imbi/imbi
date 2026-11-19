@@ -303,6 +303,16 @@ class TaskApi:
         )
         return _body(response)
 
+    async def detach_project(self, project: str) -> Body:
+        """Remove a project, by id or slug, from this task."""
+        response = await self.client.request(
+            'DELETE',
+            f'/harness/tickets/{self.short_id}/projects/'
+            f'{urllib.parse.quote(project, safe="")}',
+            self.token,
+        )
+        return _body(response)
+
     async def check_tool(self, tool_key: str) -> Body:
         """Count a call against the tool's rate limit, across runners."""
         response = await self.client.post(

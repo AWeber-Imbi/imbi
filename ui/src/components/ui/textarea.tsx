@@ -28,11 +28,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
     // Covers values set programmatically, e.g. an AI-drafted release note.
     React.useLayoutEffect(grow, [autoResize, props.value])
 
-    // Strip leading whitespace as the user types or pastes; a leading space is
-    // never meaningful in our text inputs.
     const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      const stripped = e.target.value.replace(/^\s+/, '')
-      if (stripped !== e.target.value) e.target.value = stripped
       grow()
       onChange?.(e)
     }

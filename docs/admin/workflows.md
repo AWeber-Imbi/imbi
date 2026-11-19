@@ -907,6 +907,10 @@ starts. To run a newer saved version, activate it first (see
 active and have a **Manual run** trigger. If the trigger declares inputs,
 enter them, then click **Run workflow**.
 
+You can also start a run from the workflow list. On the row of an active
+workflow, click **Manual run** in the **Trigger** column. The editor then
+opens with the new run.
+
 Schedule and webhook triggers start runs without a person.
 
 ### Run history

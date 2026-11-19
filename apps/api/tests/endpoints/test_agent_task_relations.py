@@ -567,20 +567,6 @@ class ParentTests(RelationTestCase):
         self.assertEqual(response.status_code, 204, response.text)
 
 
-class OldPathParentTests(RelationTestCase):
-    """The parent route at ``/agent-tasks``, which stays until release B."""
-
-    prefix = 'agent-tasks'
-
-    async def test_old_path_moves_the_ticket(self) -> None:
-        response = await self.client.put(
-            self.url('T-1/parent'), json={'parent': 'T-2'}
-        )
-        self.assertEqual(response.status_code, 204, response.text)
-        relations = (await self.client.get(self.url('T-1/relations'))).json()
-        self.assertEqual(relations['parent']['short_id'], 'T-2')
-
-
 class GatingTests(RelationTestCase):
     """Gating dependencies (ADR 0028)."""
 
@@ -845,20 +831,6 @@ class GatingTests(RelationTestCase):
         self.assertEqual(response.status_code, 204, response.text)
         self.assertEqual(calls, 2)
         self.assertEqual(await self.status('T-1'), 'held')
-
-
-class OldPathGatingTests(RelationTestCase):
-    """Gating at ``/agent-tasks``, which stays until release B."""
-
-    prefix = 'agent-tasks'
-    gate = GatingTests.gate
-    status = GatingTests.status
-    test_gate_holds_a_queued_ticket = (
-        GatingTests.test_gate_holds_a_queued_ticket
-    )
-    test_gate_is_refused_on_a_started_ticket = (
-        GatingTests.test_gate_is_refused_on_a_started_ticket
-    )
 
 
 class AccessTests(RelationTestCase):

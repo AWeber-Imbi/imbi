@@ -7,67 +7,30 @@
 #
 # The schema name is fixed: `harness`.
 
-# ADR 0028 renames `chains.root_task_id` to `root_ticket_id` and
-# `claims.task_id` to `ticket_id` without downtime. Release A adds the new
-# columns and this trigger, which fills the column that a writer omits
-# and refuses a row where the two differ. Release B uses only the new
-# columns and does not declare the old ones, so a new install does not
-# have them and gets no trigger. On an older install the trigger keeps
-# the old columns filled for pods of the previous release. The release
-# after B moves the keys to the new columns and drops the old columns
-# and the trigger.
-#
-# After the tables, because on a new install the tables do not exist
-# before. The trigger locks out writers of the previous release until
-# the copy commits, so no row stays without the new column.
+# ADR 0028 renamed `chains.root_task_id` to `root_ticket_id` and
+# `claims.task_id` to `ticket_id` without downtime. Release A added the
+# new columns and a trigger that kept the old and new columns equal;
+# release B used only the new columns. This release moves the primary
+# keys to the new columns and drops the old columns, the trigger, and
+# its function, so that an older install is the same as a new install
+# of this file. Release B pods do not use the old columns, so they keep
+# working. The unique indexes on the new columns duplicate the keys; a
+# later release drops them.
 [[steps]]
-name = "mirror-ticket-ids"
-after_tables = true
+name = "drop-old-ticket-ids"
 when = """
 SELECT EXISTS (SELECT 1 FROM pg_attribute
                 WHERE attrelid = to_regclass('harness.chains')
                   AND attname = 'root_task_id' AND NOT attisdropped)
-   AND NOT EXISTS (SELECT 1 FROM pg_trigger
-                    WHERE tgname = 'chains_mirror_ticket_id'
-                      AND tgrelid = to_regclass('harness.chains'))
 """
 sql = '''
-CREATE OR REPLACE FUNCTION harness.mirror_ticket_id() RETURNS trigger
-LANGUAGE plpgsql AS $fn$
-DECLARE
-  task_column text := TG_ARGV[0];
-  ticket_column text := TG_ARGV[1];
-  task_id text := to_jsonb(NEW) ->> task_column;
-  ticket_id text := to_jsonb(NEW) ->> ticket_column;
-BEGIN
-  -- An update that sets one of the two columns sets both.
-  IF TG_OP = 'UPDATE' THEN
-    IF ticket_id IS NOT DISTINCT FROM to_jsonb(OLD) ->> ticket_column THEN
-      ticket_id := NULL;
-    ELSIF task_id IS NOT DISTINCT FROM to_jsonb(OLD) ->> task_column THEN
-      task_id := NULL;
-    END IF;
-  END IF;
-  IF task_id <> ticket_id THEN
-    RAISE EXCEPTION '%.%: % and % differ', TG_TABLE_SCHEMA, TG_TABLE_NAME,
-      task_column, ticket_column
-      USING ERRCODE = 'check_violation';
-  END IF;
-  task_id := COALESCE(task_id, ticket_id);
-  NEW := jsonb_populate_record(
-    NEW, jsonb_build_object(task_column, task_id, ticket_column, task_id));
-  RETURN NEW;
-END
-$fn$;
-CREATE TRIGGER chains_mirror_ticket_id BEFORE INSERT OR UPDATE
-  ON harness.chains FOR EACH ROW
-  EXECUTE FUNCTION harness.mirror_ticket_id('root_task_id', 'root_ticket_id');
-CREATE TRIGGER claims_mirror_ticket_id BEFORE INSERT OR UPDATE
-  ON harness.claims FOR EACH ROW
-  EXECUTE FUNCTION harness.mirror_ticket_id('task_id', 'ticket_id');
-UPDATE harness.chains SET root_ticket_id = root_task_id
- WHERE root_ticket_id IS NULL;
-UPDATE harness.claims SET ticket_id = task_id WHERE ticket_id IS NULL;
+DROP TRIGGER IF EXISTS chains_mirror_ticket_id ON harness.chains;
+DROP TRIGGER IF EXISTS claims_mirror_ticket_id ON harness.claims;
+DROP FUNCTION IF EXISTS harness.mirror_ticket_id();
+ALTER TABLE harness.chains DROP COLUMN root_task_id,
+  ADD PRIMARY KEY (root_ticket_id);
+ALTER TABLE harness.claims DROP COLUMN task_id,
+  ADD PRIMARY KEY (ticket_id, attempt);
 '''
 
 # One row per runner pool. The Kubernetes Deployment of the pool has the
@@ -154,10 +117,7 @@ columns = ["state", "lease_expires_at"]
 name = "chains"
 
 [tables.columns]
-# Before ADR 0028 the name was `root_task_id`. The key makes it NOT
-# NULL on a new install. On an older install the key stays on
-# `root_task_id` until the release after B, and the trigger fills this
-# column.
+# Before ADR 0028 the name was `root_task_id`. The key makes it NOT NULL.
 root_ticket_id = "UUID REFERENCES tickets.tickets (id) ON DELETE CASCADE"
 organization_id = "TEXT NOT NULL"
 runner_id = "UUID REFERENCES harness.runners (id) ON DELETE SET NULL"
@@ -188,9 +148,7 @@ columns = ["state"]
 name = "claims"
 
 [tables.columns]
-# Before ADR 0028 the name was `task_id`. The key makes it NOT NULL on a
-# new install. On an older install the key stays on `task_id` until the
-# release after B, and the trigger fills this column.
+# Before ADR 0028 the name was `task_id`. The key makes it NOT NULL.
 ticket_id = "UUID REFERENCES tickets.tickets (id) ON DELETE CASCADE"
 attempt = "INTEGER NOT NULL"
 chain_id = "UUID NOT NULL"

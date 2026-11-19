@@ -2598,6 +2598,45 @@ class AttachProjectTestCase(TaskTestCase):
         self.assertIn('`attach_project`', self.run_task.instructions())
 
 
+class DetachProjectTestCase(TaskTestCase):
+    async def test_detaches_by_id_or_slug(self) -> None:
+        response = mock.Mock()
+        response.json.return_value = {
+            'project_id': 'p1',
+            'project_slug': 'control-panel',
+        }
+        self.client.request.return_value = response
+        result = await self.run_task.detach_project_tool().handler(
+            {'project': ' control-panel '}
+        )
+        self.assertNotIn('is_error', result)
+        self.assertIn(
+            'control-panel (p1) is not on the task',
+            result['content'][0]['text'],
+        )
+        method, path, _token = self.client.request.await_args.args
+        self.assertEqual(method, 'DELETE')
+        self.assertTrue(path.endswith('/projects/control-panel'), path)
+
+    async def test_errors(self) -> None:
+        for args in ({}, {'project': ' '}, {'project': 1}):
+            result = await self.run_task.detach_project(args)
+            self.assertTrue(result['is_error'], args)
+        self.client.request.assert_not_awaited()
+        self.client.request.side_effect = api.Refused(422, '422')
+        result = await self.run_task.detach_project({'project': 'nope'})
+        self.assertIn("No project 'nope'", result['content'][0]['text'])
+        self.client.request.side_effect = api.Refused(409, 'task_closed')
+        result = await self.run_task.detach_project({'project': 'nope'})
+        self.assertIn('task_closed', result['content'][0]['text'])
+        self.client.request.side_effect = httpx.ConnectError('down')
+        result = await self.run_task.detach_project({'project': 'nope'})
+        self.assertIn('not available', result['content'][0]['text'])
+
+    def test_rules_name_the_tool(self) -> None:
+        self.assertIn('`detach_project`', self.run_task.instructions())
+
+
 class UntrustedTestCase(TaskTestCase):
     def test_webhook_text_is_wrapped(self) -> None:
         self.run_task.task['origin'] = {'kind': 'webhook'}

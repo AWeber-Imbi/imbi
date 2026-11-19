@@ -38,7 +38,6 @@ function Harness({
   queryClient = useQueryClient()
   return (
     <SubagentsTab
-      agentId="agt-1"
       onChange={(next) => {
         changes.push(next)
         setValue(next)
@@ -67,15 +66,15 @@ describe('SubagentsTab', () => {
     ])
   })
 
-  it('lists the other enabled agents and the selected disabled ones', async () => {
+  it('lists the enabled agents, itself included, and the selected disabled ones', async () => {
     render(<Harness initial={[{ agent_id: 'agt-4', instructions: '' }]} />)
-    expect(await screen.findByText('1 of 3 agents')).toBeInTheDocument()
+    expect(await screen.findByText('1 of 4 agents')).toBeInTheDocument()
     expect(screen.getByText('Herald')).toBeInTheDocument()
     expect(screen.getByText('Posts summaries.')).toBeInTheDocument()
     expect(screen.getByText('Warden')).toBeInTheDocument()
     expect(screen.getByText('Disabled')).toBeInTheDocument()
-    // Not the agent itself, and not a disabled agent that is not selected.
-    expect(screen.queryByText('Mender')).not.toBeInTheDocument()
+    // The agent itself, but not a disabled agent that is not selected.
+    expect(screen.getByText('Mender')).toBeInTheDocument()
     expect(screen.queryByText('Auditor')).not.toBeInTheDocument()
     expect(screen.getByText(/Delegation depth is capped at 2/)).toBeVisible()
     expect(
@@ -92,7 +91,7 @@ describe('SubagentsTab', () => {
         ]}
       />,
     )
-    expect(await screen.findByText('1 of 2 agents')).toBeInTheDocument()
+    expect(await screen.findByText('1 of 3 agents')).toBeInTheDocument()
   })
 
   it('keeps a saved disabled agent after you clear it', async () => {
@@ -103,7 +102,7 @@ describe('SubagentsTab', () => {
     })
     fireEvent.click(warden)
     expect(last()).toEqual([])
-    expect(screen.getByText('0 of 3 agents')).toBeInTheDocument()
+    expect(screen.getByText('0 of 4 agents')).toBeInTheDocument()
     fireEvent.click(
       screen.getByRole('checkbox', { name: 'Delegate to Warden' }),
     )
@@ -122,7 +121,7 @@ describe('SubagentsTab', () => {
       { agent_id: 'agt-3', instructions: '' },
       { agent_id: 'agt-2', instructions: '' },
     ])
-    expect(screen.getByText('2 of 2 agents')).toBeInTheDocument()
+    expect(screen.getByText('2 of 3 agents')).toBeInTheDocument()
 
     const [first] = screen.getAllByRole('button', { name: /Add instructions/ })
     fireEvent.click(first)
