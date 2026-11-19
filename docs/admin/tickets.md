@@ -148,8 +148,9 @@ ticket. The status changes in the same write:
   session_open` or `chain_pinned`). To take a running ticket, pause it,
   and hand it off when its session closes.
 - Each open request closes as **Withdrawn**, with no answer.
-- An agent gets the ticket at the agent version that it has now, and the
-  agent budget when the ticket has no budget. The budget counts the cost
+- An agent gets the ticket at the agent version that it has now. The
+  task budget of the agent caps the budget of the ticket; a ticket with
+  no budget gets the task budget. The budget counts the cost
   of every agent period of the ticket. The task timeout counts from the
   first session after the last handoff.
 - An agent ticket cannot go to another agent.

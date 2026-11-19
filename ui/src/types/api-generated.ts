@@ -5611,13 +5611,16 @@ export interface paths {
          *     Its status changes in the same write: ``held`` stays ``held``;
          *     otherwise a person gets it ``open`` and an agent ``queued``. Open
          *     requests close as ``withdrawn``. An agent gets the ticket at the
-         *     agent version that it has now. A person ticket to another person
-         *     changes only the assignee. The owner and the assignee make this
-         *     change; other callers need ``ticket:manage``. To an agent, the
-         *     caller also needs ``ticket:create``, and the owner must be able to
-         *     make tickets (see :func:`may_create`), as for a create: the agent
-         *     works for the owner. An agent hands off its own ticket, to a person
-         *     only, with the harness tool ``hand_off``.
+         *     agent version that it has now, and its task budget caps the budget
+         *     of the ticket (a create refuses a budget above it; a handoff
+         *     lowers it, because the caller did not choose the budget). A person
+         *     ticket to another person changes only the assignee. The owner and
+         *     the assignee make this change; other callers need
+         *     ``ticket:manage``. To an agent, the caller also needs
+         *     ``ticket:create``, and the owner must be able to make tickets (see
+         *     :func:`may_create`), as for a create: the agent works for the
+         *     owner. An agent hands off its own ticket, to a person only, with
+         *     the harness tool ``hand_off``.
          *
          *     Raises:
          *         403: The caller is not the owner or the assignee and has no

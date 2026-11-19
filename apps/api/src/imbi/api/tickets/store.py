@@ -467,8 +467,8 @@ class HandOff:
     """The new assignee of a ticket in a handoff (ADR 0028).
 
     A person has ``assignee``; an agent has the agent columns, with the
-    version of the agent now. ``budget`` applies only to a ticket that
-    has no budget yet.
+    version of the agent now. ``budget`` is the task budget of the
+    agent: it caps the budget of the ticket.
     """
 
     assignee_kind: AssigneeKind
@@ -2742,9 +2742,10 @@ class TicketStore:
         becomes ``open`` (to a person) or ``queued`` (to an agent). The
         control value goes back to ``run``. Each open request closes as
         ``withdrawn`` with a ``request.withdrawn`` event. To an agent,
-        the agent columns are set; the ticket keeps its budget (a ticket
-        with no budget gets ``to.budget``) and its cost total, so the
-        budget counts every agent period. A ``done`` chain goes back to
+        the agent columns are set; the budget becomes the lower of the
+        budget of the ticket and ``to.budget`` (the task budget of the
+        agent), and the cost total stays, so the budget counts every
+        agent period. A ``done`` chain goes back to
         ``queued`` with a new attempt, so that a runner claims the
         ticket. From a person to another person, only ``assignee``
         changes, with ``assignee.changed``.
@@ -3135,8 +3136,10 @@ async def _hand_off(write: _Write, to: HandOff, actor: Actor) -> None:
         'handed_off_at': datetime.datetime.now(datetime.UTC),
     }
     if to.assignee_kind == 'agent':
-        if task['budget'] is None:
-            changes['budget'] = to.budget
+        # The task budget of the agent caps the budget of the ticket, as
+        # for a create.
+        budgets = [b for b in (task['budget'], to.budget) if b is not None]
+        changes['budget'] = min(budgets, default=None)
         await write.conn.execute(
             "UPDATE harness.chains SET state = 'queued',"
             ' attempt = attempt + 1, updated_at = NOW()'

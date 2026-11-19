@@ -140,6 +140,29 @@ class HandOffTests(HandOffTestCase):
             (await self.types('T-2'))[-2:], ['handed_off', 'state.changed']
         )
 
+    async def test_agent_budget_caps_the_ticket(self) -> None:
+        # The agent has task_budget 1 (HarnessTestCase).
+        await self.to_person()
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE tickets.tickets SET budget = 50 WHERE id = %s',
+                (uuid.UUID(self.task['id']),),
+            )
+        response = await self.to_agent()
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(decimal.Decimal(response.json()['budget']), 1)
+        # A lower budget stays.
+        await self.to_person()
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE tickets.tickets SET budget = 0.5 WHERE id = %s',
+                (uuid.UUID(self.task['id']),),
+            )
+        response = await self.to_agent()
+        self.assertEqual(
+            decimal.Decimal(response.json()['budget']), decimal.Decimal('0.5')
+        )
+
     async def test_open_requests_are_withdrawn(self) -> None:
         await self.open_session()
         response = await self.post(
