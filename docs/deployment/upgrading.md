@@ -109,8 +109,10 @@ kept for the pods of 2.55.0. No pod of 2.56.0 uses them.
     ```
 
    The path is a Jinja2 template, so the query also returns each path
-   that has a template expression (`{{` or `{%`). For such a path, find
-   the path that it renders when the task runs. If it renders an
+   that has a template expression (`{{` or `{%`). Such a path can render
+   a different path on each run. Read its template: check each branch
+   and each value that the task gets when it runs (for example `now`),
+   not only one rendered path. If any of them can render an
    `/agent-tasks` path, change the task too. If the query returns no
    rows, no task uses the old path. To change a
    task, send a JSON Patch of `/target/path` to
