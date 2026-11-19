@@ -383,9 +383,12 @@ ticket until the prerequisite closes with `done_acted` or
   dependent becomes `queued` (`paused` if a person paused it while it was
   held), in the same transaction as the close.
 - When a gating prerequisite closes with another outcome, the dependent
-  stays `held`. Cancel it, remove the dependency, or add a new
-  prerequisite. When you remove the last gate, or delete the prerequisite,
-  the dependent is released.
+  stays `held`. Cancel it, or remove the failed gate or make it a plain
+  link. To use a replacement prerequisite, first remove or downgrade the
+  failed gate, then add the replacement. A new prerequisite alone does not
+  release the dependent. When you remove the last gate, or delete the
+  prerequisite, the dependent is released.
+- A held ticket refuses a harness session with `409` and `task_held`.
 - Pause and resume change only the control value of a held ticket. Cancel
   closes it.
 

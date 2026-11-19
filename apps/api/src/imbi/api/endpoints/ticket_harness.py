@@ -487,6 +487,7 @@ _STORE_ERRORS = (
     tickets.ConcurrencyLimit,
     tickets.EventIdConflict,
     tickets.RequestKeyConflict,
+    tickets.TicketHeld,
 )
 
 
@@ -511,6 +512,10 @@ def _translate(err: Exception, short_id: str) -> fastapi.HTTPException:
     if isinstance(err, tickets.EventIdConflict):
         return _conflict(
             'event_id_conflict', 'Another task has an event with this id'
+        )
+    if isinstance(err, tickets.TicketHeld):
+        return _conflict(
+            'task_held', f'Task {short_id} is held by a gating prerequisite'
         )
     if isinstance(err, tickets.RequestKeyConflict):
         return _conflict(
@@ -558,7 +563,8 @@ async def open_agent_task_session(
     Raises:
         403: The caller is not the service account of the task's agent.
         404: No such task.
-        409: ``task_closed``, ``task_cancelled`` (control is cancel), or
+        409: ``task_closed``, ``task_cancelled`` (control is cancel),
+            ``task_held`` (a gating prerequisite is open), or
             ``concurrency_limit`` (``settings.max_concurrent_tasks``
             other tasks of the agent have an open session).
 

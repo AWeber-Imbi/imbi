@@ -21,6 +21,7 @@ import contextlib
 import dataclasses
 import datetime
 import decimal
+import functools
 import logging
 import typing
 import uuid
@@ -296,6 +297,10 @@ class SelfDependency(ValueError):
 
 class TicketStarted(ValueError):
     """The ticket has started, so a gating dependency cannot hold it."""
+
+
+class TicketHeld(ValueError):
+    """An open gating prerequisite holds the ticket; it cannot start."""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -579,6 +584,33 @@ def _search_filters(
             text_project_ids or [],
         ]
     return conditions, params
+
+
+def _retry_deadlock[**P, R](
+    method: abc.Callable[P, abc.Awaitable[R]],
+) -> abc.Callable[P, abc.Awaitable[R]]:
+    """Run ``method`` again once when PostgreSQL aborts it in a deadlock.
+
+    A change that locks two or more tickets cannot use one lock order
+    for all others: a parent move locks the child, then the parent; a
+    dependency change locks the prerequisite, then the dependent; a
+    ``done_*`` close locks the ticket, then its held dependents. When
+    the orders cross, PostgreSQL aborts one transaction. The aborted
+    transaction wrote nothing and published nothing, so it runs again
+    after the other one ends.
+    """
+
+    @functools.wraps(method)
+    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        try:
+            return await method(*args, **kwargs)
+        except psycopg.errors.DeadlockDetected:
+            # ponytail: one retry covers a pair; loop if three-way
+            # deadlocks show up.
+            LOGGER.warning('Deadlock in %s; retrying', method.__name__)
+            return await method(*args, **kwargs)
+
+    return wrapper
 
 
 class TicketStore:
@@ -1107,6 +1139,7 @@ class TicketStore:
             )
         return True
 
+    @_retry_deadlock
     async def delete(
         self, organization_id: str, short_id: str, actor: Actor
     ) -> Row:
@@ -1349,6 +1382,7 @@ class TicketStore:
         for task, events in published:
             await log.publish(task, events)
 
+    @_retry_deadlock
     async def add_dependency(
         self,
         organization_id: str,
@@ -1373,8 +1407,8 @@ class TicketStore:
             SelfDependency: The two short ids are the same.
             TaskNotFound: No such task.
             TaskArchived: Both tasks are archived.
-            TicketStarted: ``gates`` and the dependent is not ``queued``
-                or ``held``.
+            TicketStarted: ``gates``, the dependent is not ``queued`` or
+                ``held``, and the dependency does not gate already.
 
         """
         if dependent == prerequisite:
@@ -1385,7 +1419,19 @@ class TicketStore:
             by_short_id = {task['short_id']: task for task in relate.tasks}
             task = by_short_id[dependent]
             if gates and task['status'] not in ('queued', 'held'):
-                raise TicketStarted(dependent)
+                cursor = await relate.conn.execute(
+                    'SELECT 1 FROM tickets.ticket_dependencies'
+                    ' WHERE organization_id = %s AND dependent_ticket_id = %s'
+                    ' AND prerequisite_ticket_id = %s AND gates',
+                    (
+                        organization_id,
+                        task['id'],
+                        by_short_id[prerequisite]['id'],
+                    ),
+                )
+                if await cursor.fetchone() is None:
+                    raise TicketStarted(dependent)
+                return False  # The same value: nothing changes.
             row = await _fetch_one(
                 relate.conn,
                 'INSERT INTO tickets.ticket_dependencies'
@@ -1413,6 +1459,7 @@ class TicketStore:
                     await relate.sync_gate(task, actor)
         return row is not None
 
+    @_retry_deadlock
     async def remove_dependency(
         self,
         organization_id: str,
@@ -1581,6 +1628,7 @@ class TicketStore:
             'tree': tree,
         }
 
+    @_retry_deadlock
     async def set_parent(
         self,
         organization_id: str,
@@ -1711,6 +1759,7 @@ class TicketStore:
             CancelPending: The control value is ``cancel``.
             ConcurrencyLimit: ``max_concurrent`` other tasks of the
                 agent have an open session.
+            TicketHeld: An open gating prerequisite holds the task.
 
         """
         async with self._write(organization_id, short_id) as write:
@@ -1725,6 +1774,8 @@ class TicketStore:
             )
             if session is not None:
                 return task, session, False
+            if task['status'] == 'held':
+                raise TicketHeld(short_id)
             if max_concurrent is not None:
                 await _check_concurrency(
                     write.conn, task['agent_id'], task['id'], max_concurrent
@@ -1816,8 +1867,9 @@ class TicketStore:
         sign of life (``heartbeat_at``, else ``opened_at``) is older.
         When no session remains open, the status follows the control
         value, as in :meth:`set_control`: ``pause`` moves the task to
-        ``paused``, ``run`` moves a ``running`` task back to ``queued``,
-        and ``cancel`` closes it with ``cancelled_by_human``.
+        ``paused`` (a ``held`` task stays ``held``), ``run`` moves a
+        ``running`` task back to ``queued``, and ``cancel`` closes it with
+        ``cancelled_by_human``.
 
         Raises:
             TaskNotFound: No such task.
@@ -1854,7 +1906,7 @@ class TicketStore:
                         actor,
                     )
                 elif task['control'] == 'pause':
-                    if task['status'] != 'paused':
+                    if task['status'] not in ('paused', 'held'):
                         await _set_status(
                             write, 'paused', 'session_closed', actor
                         )
@@ -1961,7 +2013,7 @@ class TicketStore:
 
         Return the task, the request, and whether the request is new. A
         repeat with the same ``request_key`` returns the first request
-        of the task.
+        of the task. A ``held`` task stays ``held``.
 
         Raises:
             TaskNotFound: No such task.
@@ -2033,7 +2085,8 @@ class TicketStore:
                 actor,
                 session_id=request.session_id,
             )
-            if task['status'] != 'blocked':
+            # Only a release moves a held ticket on.
+            if task['status'] not in ('blocked', 'held'):
                 await _set_status(write, 'blocked', 'request_opened', actor)
         return write.task, row, True
 
@@ -2286,6 +2339,7 @@ class TicketStore:
             row = await _ledger_row(conn, task['id'], key)
         return None if row is None else (task, row)
 
+    @_retry_deadlock
     async def set_outcome(
         self,
         organization_id: str,

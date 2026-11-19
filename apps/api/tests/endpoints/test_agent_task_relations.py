@@ -735,6 +735,84 @@ class GatingTests(RelationTestCase):
             self.assertEqual(results, [True, None])
             self.assertEqual(await self.status(dependent), 'queued')
 
+    async def test_same_gate_on_a_started_ticket_changes_nothing(
+        self,
+    ) -> None:
+        await self.gate('T-1', 'T-2')
+        await self.close('T-2', 'failed_external')
+        await self.client.post(self.url('T-1/cancel'))
+        before = await self.last_seq('T-1')
+        response = await self.gate('T-1', 'T-2')
+        self.assertEqual(response.status_code, 204, response.text)
+        self.assertEqual(await self.last_seq('T-1'), before)
+        # A new gate is still refused.
+        response = await self.gate('T-1', 'T-3')
+        self.assertEqual(response.status_code, 409, response.text)
+
+    async def test_held_ticket_refuses_a_session(self) -> None:
+        await self.gate('T-1', 'T-2')
+        with self.assertRaises(tickets.TicketHeld):
+            await self.store.open_session(
+                self.org,
+                'T-1',
+                key='session-1',
+                harness_instance=None,
+                max_concurrent=None,
+                actor=self.actor,
+            )
+        self.assertEqual(await self.status('T-1'), 'held')
+
+    async def test_request_keeps_a_ticket_held(self) -> None:
+        await self.gate('T-1', 'T-2')
+        _, request, _ = await self.store.open_request(
+            self.org,
+            'T-1',
+            tickets.NewRequest(
+                kind='feedback',
+                title='Which branch?',
+                why=None,
+                options=None,
+                artifacts=None,
+                artifact_digests=None,
+                expires_at=None,
+                session_id=None,
+            ),
+            self.actor,
+        )
+        self.assertEqual(await self.status('T-1'), 'held')
+        await self.store.resolve_request(
+            self.org,
+            'T-1',
+            request['id'],
+            tickets.Resolution(
+                status='answered',
+                answer='main',
+                constraints=None,
+                artifact_digests=None,
+            ),
+            tickets.Actor('human', self.email, 'web'),
+        )
+        self.assertEqual(await self.status('T-1'), 'held')
+        await self.close('T-2', 'done_acted')
+        self.assertEqual(await self.status('T-1'), 'queued')
+
+    async def test_deadlock_runs_the_change_again(self) -> None:
+        original = tickets.store._lock_tasks
+        calls = 0
+
+        async def deadlock_once(*args: typing.Any) -> typing.Any:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise psycopg.errors.DeadlockDetected('deadlock detected')
+            return await original(*args)
+
+        with mock.patch.object(tickets.store, '_lock_tasks', deadlock_once):
+            response = await self.gate('T-1', 'T-2')
+        self.assertEqual(response.status_code, 204, response.text)
+        self.assertEqual(calls, 2)
+        self.assertEqual(await self.status('T-1'), 'held')
+
 
 class OldPathGatingTests(RelationTestCase):
     """Gating at ``/agent-tasks``, which stays until release B."""

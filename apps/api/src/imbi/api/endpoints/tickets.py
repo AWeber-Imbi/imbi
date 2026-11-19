@@ -1978,8 +1978,8 @@ async def add_agent_task_dependency(
             or is not a member of the org.
         404: No such task.
         409: ``task_archived``: both tasks are archived.
-            ``ticket_started``: ``gates`` and the task is not ``queued``
-            or ``held``.
+            ``ticket_started``: ``gates``, the task is not ``queued``
+            or ``held``, and the dependency does not gate already.
         422: The two tasks are the same.
 
     """
