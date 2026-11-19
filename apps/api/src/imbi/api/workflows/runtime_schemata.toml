@@ -17,16 +17,28 @@ when = "SELECT to_regclass('workflow_runtime.runs_closed_ticket_idempotency_key'
 sql = "DROP INDEX workflow_runtime.runs_closed_ticket_idempotency_key"
 
 # The lineage cap of `ticket_state_changed` runs counts the runs of a
-# lineage (imbi.api.workflows.ticket_trigger).
+# lineage (imbi.api.workflows.ticket_trigger). The build is CONCURRENTLY,
+# so run writes do not wait for it. A failed CONCURRENTLY build leaves an
+# INVALID index, so `when` is true until a valid index exists, and the
+# step drops a leftover index before it builds again.
 [[steps]]
 name = "runs-lineage-index"
 after_tables = true
-when = "SELECT to_regclass('workflow_runtime.runs_lineage_idx') IS NULL"
-sql = """
-CREATE INDEX runs_lineage_idx
+transaction = false
+when = """
+SELECT NOT EXISTS (
+  SELECT 1 FROM pg_index
+   WHERE indexrelid = to_regclass('workflow_runtime.runs_lineage_idx')
+     AND indisvalid)
+"""
+sql = [
+  "DROP INDEX CONCURRENTLY IF EXISTS workflow_runtime.runs_lineage_idx",
+  """
+CREATE INDEX CONCURRENTLY runs_lineage_idx
   ON workflow_runtime.runs (organization_id, (origin->>'lineage'))
   WHERE origin_kind = 'ticket_state_changed'
-"""
+""",
+]
 
 # One row per run. The row stays after archive (W4).
 #
