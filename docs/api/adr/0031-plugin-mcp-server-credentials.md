@@ -258,9 +258,11 @@ resolved again, so a revoked grant takes effect at the next task.
 The relay opens a session again only after a connection error, for
 example when the server closes an idle session. By then the server has
 dropped the old session and any state it kept there, such as a selected
-workspace. The relay cannot restore that state. It starts the result of
-the first call in the new session with a note that the server session
-was reset, so the model can repeat its setup calls.
+workspace. The relay cannot restore that state, so it does not run the
+failed call again in the new session. It returns an error that says the
+server session was reset and the call did not complete. The model then
+repeats its setup calls before it retries, and no call runs against
+state the model did not set up.
 
 If a refresh is denied, the relay closes the server's session before
 the old credential expires. Each later call to that server returns an
@@ -333,8 +335,10 @@ checked with Claude Agent SDK 0.2.164 and Claude Code 2.1.292:
   secret. A credential with an expiry works until its next refresh,
   which is denied, and the relay then closes the session.
 - A server that keeps state in a session loses it when the session
-  drops. The model learns of the reset from the next result and must
-  set the state up again.
+  drops. The call that finds the dropped session fails instead of
+  running against the new session's default state, so the model must
+  set the state up again and retry. A call that broke off mid-request
+  may or may not have run on the server.
 - The CLI does not know a relayed server's URL, so two relayed servers
   with the same URL both load. Only the checkboxes prevent this.
 - A server that needs `headersHelper`, OAuth, or a URL variable still
