@@ -260,9 +260,13 @@ export function WorkflowEditor({
         `Failed to save the workflow: ${extractApiErrorDetail(error)}`,
       ),
     onSuccess: ({ pins, saved, saving }) => {
-      setDraft((d) => ({ ...d, graph: pinNodes(d.graph, pins) }))
-      stored(saved)
       const clean = saving === revision.current
+      setDraft((d) => ({
+        ...d,
+        description: clean ? saved.description : d.description,
+        graph: pinNodes(d.graph, pins),
+      }))
+      stored(saved)
       if (clean) setDirty(false)
       setIssues(saved.version.validation.issues)
       // Not `slug`: `stored` sets it when the save creates the workflow.
