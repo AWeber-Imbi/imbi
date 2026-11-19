@@ -67,6 +67,7 @@ import {
   useAgentTask,
   useAgentTaskEvents,
   useAgentTaskMutation,
+  useTaskReply,
 } from './taskQueries'
 import { AssociatedProjectsTab, RelatedTasksTab } from './TaskRelations'
 import { TaskSearchProvider } from './taskSearch'
@@ -124,6 +125,7 @@ export function TaskDetail({
     (raw) => (isActivityView(raw) ? raw : undefined),
   )
   const [draft, setDraft] = useState('')
+  const reply = useTaskReply(orgSlug, shortId)
   useEffect(() => {
     const shown = legacyRoute(tab)
     if (isRouteKey(shown)) setLastTab(shown)
@@ -256,7 +258,7 @@ export function TaskDetail({
                     body={draft}
                     onBodyChange={setDraft}
                     orgSlug={orgSlug}
-                    task={t}
+                    reply={reply}
                   />
                 )
               }

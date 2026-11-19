@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 
 import { ApiError } from '@/api/client'
-import { replyAgentTask, resolveAgentTaskRequest } from '@/api/endpoints'
+import { resolveAgentTaskRequest } from '@/api/endpoints'
 import { StageCardShell } from '@/components/deployments/StageCardShell'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -42,7 +42,11 @@ import type { AgentTask, AgentTaskEvent, AgentTaskResolve } from '@/types'
 import { useAgentList } from './agentQueries'
 import { checksFrom, type TaskRequestView } from './taskEvents'
 import { AgentMark, PersonMark } from './TaskFilterBar'
-import { errorMessage, useAgentTaskMutation } from './taskQueries'
+import {
+  errorMessage,
+  type TaskReply,
+  useAgentTaskMutation,
+} from './taskQueries'
 import { RESOLVED, useActorName } from './taskText'
 
 const HONEY = '#C9A227'
@@ -129,20 +133,14 @@ export function Composer({
   body,
   onBodyChange,
   orgSlug,
-  task,
+  reply,
 }: {
   body: string
   onBodyChange: Dispatch<SetStateAction<string>>
   orgSlug: string
-  task: AgentTask
+  reply: TaskReply
 }) {
   const canManage = useHasPermission('agent_task:manage', orgSlug)
-  const reply = useAgentTaskMutation(
-    orgSlug,
-    task.short_id,
-    ({ hold, text }: { hold: boolean; text: string }) =>
-      replyAgentTask(orgSlug, task.short_id, text.trim(), hold),
-  )
   if (!canManage) return null
   const ready = body.trim() !== '' && !reply.isPending
   const send = (hold: boolean) => {

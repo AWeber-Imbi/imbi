@@ -19,10 +19,13 @@ import {
   listAgentTaskEvents,
   listAgentTaskProjects,
   listAgentTasks,
+  replyAgentTask,
 } from '@/api/endpoints'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { queryKeys } from '@/lib/queryKeys'
 import type { AgentTask, AgentTaskEvent } from '@/types'
+
+export type TaskReply = ReturnType<typeof useTaskReply>
 
 /** How often a live task reads new events (O4). */
 export const EVENT_POLL_MS = 3000
@@ -247,6 +250,19 @@ export function useAgentTasks(orgSlug: string, params: AgentTaskListParams) {
  * The number of tasks in the org that wait on a person (not closed, a
  * request open), for the badge (O1).
  */
+/**
+ * The reply mutation of a task, owned above the views so a pending reply
+ * stays pending when the composer remounts.
+ */
+export function useTaskReply(orgSlug: string, shortId: string) {
+  return useAgentTaskMutation(
+    orgSlug,
+    shortId,
+    ({ hold, text }: { hold: boolean; text: string }) =>
+      replyAgentTask(orgSlug, shortId, text.trim(), hold),
+  )
+}
+
 export function useWaitingTaskCount(orgSlug: string | undefined) {
   const canRead = useHasPermission('agent_task:read', orgSlug)
   return useQuery({

@@ -1387,6 +1387,41 @@ describe('Tasks', () => {
     expect(screen.getByLabelText('Reply')).toHaveValue('Second.')
   })
 
+  it('keeps a pending reply pending across Activity views', async () => {
+    let finish: (task: typeof BLOCKED) => void = () => undefined
+    vi.mocked(endpoints.replyAgentTask).mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    renderAt('/agents/tasks/acme/T-3/conversation')
+    const box = await screen.findByLabelText('Reply')
+    fireEvent.change(box, { target: { value: 'Only once.' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    await waitFor(() =>
+      expect(endpoints.replyAgentTask).toHaveBeenCalledTimes(1),
+    )
+    fireEvent.click(screen.getByRole('radio', { name: /^Trajectory/ }))
+    await waitFor(() =>
+      expect(screen.queryByLabelText('Reply')).not.toBeInTheDocument(),
+    )
+    fireEvent.click(screen.getByRole('radio', { name: /^Conversation/ }))
+    const again = await screen.findByLabelText('Reply')
+    expect(again).toHaveValue('Only once.')
+    expect(screen.getByRole('button', { name: 'Send reply' })).toBeDisabled()
+    expect(
+      screen.getByRole('button', { name: 'Reply and hold' }),
+    ).toBeDisabled()
+    fireEvent.keyDown(again, { key: 'Enter' })
+    expect(endpoints.replyAgentTask).toHaveBeenCalledTimes(1)
+    finish(BLOCKED)
+    await waitFor(() => expect(screen.getByLabelText('Reply')).toHaveValue(''))
+    fireEvent.change(screen.getByLabelText('Reply'), {
+      target: { value: 'Next.' },
+    })
+    expect(screen.getByRole('button', { name: 'Send reply' })).toBeEnabled()
+  })
+
   it('sends a reply on Enter and keeps Shift+Enter for a new line', async () => {
     vi.mocked(endpoints.replyAgentTask).mockResolvedValue(BLOCKED)
     renderAt('/agents/tasks/acme/T-3/conversation')
