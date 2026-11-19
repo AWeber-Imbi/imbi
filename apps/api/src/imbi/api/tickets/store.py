@@ -47,8 +47,11 @@ LOGGER = logging.getLogger(__name__)
 SCHEMA = 'tickets'
 
 #: The origin kinds of a child ticket, which an agent made from its own
-#: ticket. Release A writes ``task`` and reads both; release A+1 writes
-#: ``ticket`` and reads both (ADR 0028).
+#: ticket. Releases A and A+1 write ``task`` and read both (ADR 0028).
+#: The unique index of idempotency keys includes the origin kind, so a
+#: pod that wrote ``ticket`` while a pod of the previous release wrote
+#: ``task`` for the same key would make two children. The write changes
+#: in release B, with the index.
 CHILD_ORIGIN_KINDS = ('task', 'ticket')
 
 #: The unique index of idempotency keys. It keeps its ADR 0020 name until

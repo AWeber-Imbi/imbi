@@ -1287,7 +1287,7 @@ def _harness_task_route(
                 'repository': task['options']['repository'],
             },
             task['chain_id'],
-            {'kind': 'ticket', 'task_id': task['id']},
+            {'kind': 'task', 'task_id': task['id']},
         )
         new['idempotency_key'] = body.get('idempotency_key')
         return 201, {'short_id': new['short_id'], 'id': new['id']}

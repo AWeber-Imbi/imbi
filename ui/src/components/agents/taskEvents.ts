@@ -110,11 +110,6 @@ const OUTCOME_LABELS: Record<string, string> = {
   unmapped_subject: 'Unmapped',
 }
 
-/** Every status but `closed`. */
-export const OPEN_STATUSES = (Object.keys(GROUP_OF) as TicketStatus[]).filter(
-  (s) => s !== 'closed',
-)
-
 /** The first event of a task; `task.created` is its old name (ADR 0028). */
 export function isCreated(e: null | TicketEvent | undefined): boolean {
   return e?.type === 'task.created' || e?.type === 'ticket.created'
