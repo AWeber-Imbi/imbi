@@ -68,6 +68,9 @@ export function WorkflowList({
     org: string
     slug: string
   }>(null)
+  // The organization selected now, for a run that starts after a switch.
+  const orgRef = useRef(orgSlug)
+  orgRef.current = orgSlug
   // The organization comes from the click, not from the current render.
   const start = useMutation({
     mutationFn: (v: {
@@ -76,9 +79,12 @@ export function WorkflowList({
       slug: string
     }) => startWorkflowRun(v.org, v.slug, v.inputs),
     onError: startFailed,
-    // The editor opens the run panel for `?run=<id>`.
-    onSuccess: (run, { slug }) =>
-      navigate(`${agentsPath('workflows', slug)}?run=${run.id}`),
+    // The editor opens the run panel for `?run=<id>`. The editor reads
+    // the selected organization, so do not open it after a switch.
+    onSuccess: (run, { org, slug }) => {
+      if (org !== orgRef.current) toast.success(`Started a run of ${slug}.`)
+      else navigate(`${agentsPath('workflows', slug)}?run=${run.id}`)
+    },
   })
   // Blocks a second click from the version fetch through the run start.
   const launching = useRef(false)
