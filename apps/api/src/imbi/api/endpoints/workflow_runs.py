@@ -1076,8 +1076,13 @@ async def get_run(
     steps = [] if row['log_archived_at'] else await runs.steps(run_id)
     if not steps and row['log_archived_at'] is None:
         # The archive can commit between the two reads and delete the
-        # step rows. Read the run again to get its archive state.
-        row = await _run(runs, workflow, run_id)
+        # step rows. Read the run again to get its archive state. Keep
+        # the first row when the run is not archived: the engine can
+        # add a step and set the run error after the step read, and
+        # that error must not go out with a step list that is empty.
+        again = await _run(runs, workflow, run_id)
+        if again['log_archived_at'] is not None:
+            row = again
     if row['log_archived_at'] is not None:
         try:
             steps = await history.archived_steps(row)

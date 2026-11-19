@@ -532,6 +532,44 @@ class OrgRunsTestCase(RunHistoryTestCase):
         self.assertEqual([s['node_key'] for s in run['steps']], ['review'])
         self.assertIsNone(run['steps'][0]['output'])
 
+    async def test_get_run_keeps_first_row_when_not_archived(self) -> None:
+        """When get_run finds no steps and the run is still not
+        archived, it returns the first run row. A later row can carry
+        an error from a step that the step read did not see."""
+        url = await self._workflow()
+        run_id = await self._start(url)
+        await self._fail(run_id)
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE workflow_runtime.runs SET error = %s WHERE id = %s',
+                ("invalid_params: 'Secret title' is not a channel", run_id),
+            )
+        read_run = workflow_runs._run
+        calls = 0
+
+        async def error_after_first_read(
+            *args: typing.Any, **kwargs: typing.Any
+        ) -> dict[str, typing.Any]:
+            nonlocal calls
+            calls += 1
+            row = await read_run(*args, **kwargs)
+            # The first read sees the run before the engine sets the error.
+            return {**row, 'error': None} if calls == 1 else row
+
+        with (
+            mock.patch.object(workflow_runs, '_run', error_after_first_read),
+            mock.patch.object(
+                self.runs, 'steps', mock.AsyncMock(return_value=[])
+            ),
+        ):
+            response = await self.client.get(f'{url}/runs/{run_id}')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(calls, 2)
+        run = response.json()
+        self.assertIsNone(run['log_archived_at'])
+        self.assertIsNone(run['error'])
+        self.assertEqual(run['steps'], [])
+
     async def test_stuck_run_is_flagged(self) -> None:
         url = await self._workflow()
         run_id = await self._start(url)
