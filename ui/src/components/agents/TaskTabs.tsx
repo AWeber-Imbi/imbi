@@ -4,11 +4,11 @@ import { Activity, Check, Clock, Hand, type LucideIcon, X } from 'lucide-react'
 
 import { ApiError } from '@/api/client'
 import { replyAgentTask, resolveAgentTaskRequest } from '@/api/endpoints'
+import { StageCardShell } from '@/components/deployments/StageCardShell'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Questionnaire,
-  QuestionnaireActions,
   QuestionnaireChoice,
   QuestionnaireChoices,
   QuestionnaireError,
@@ -19,8 +19,9 @@ import {
 } from '@/components/ui/questionnaire'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import { Textarea } from '@/components/ui/textarea'
+import { useTheme } from '@/contexts/ThemeContext'
 import { useHasPermission } from '@/hooks/useHasPermission'
-import { cn } from '@/lib/utils'
+import { deriveChipColors } from '@/lib/chip-colors'
 import type { AgentTask, AgentTaskEvent, AgentTaskResolve } from '@/types'
 
 import { useAgentList } from './agentQueries'
@@ -29,13 +30,16 @@ import { AgentMark, PersonMark } from './TaskFilterBar'
 import { errorMessage, useAgentTaskMutation } from './taskQueries'
 import { RESOLVED, useActorName } from './taskText'
 
+const HONEY = '#C9A227'
+const STONE = '#7A7873'
+
 const OUTCOME: Partial<
-  Record<TaskRequestView['status'], { icon: LucideIcon; tone: string }>
+  Record<TaskRequestView['status'], { icon: LucideIcon; swatch: string }>
 > = {
-  answered: { icon: Check, tone: 'text-success' },
-  approved: { icon: Check, tone: 'text-success' },
-  expired: { icon: Clock, tone: 'text-tertiary' },
-  rejected: { icon: X, tone: 'text-danger' },
+  answered: { icon: Check, swatch: '#6B9A3F' },
+  approved: { icon: Check, swatch: '#6B9A3F' },
+  expired: { icon: Clock, swatch: STONE },
+  rejected: { icon: X, swatch: '#C86B5E' },
 }
 
 /** The badge of the check verdicts the design knows; others show as is. */
@@ -198,6 +202,7 @@ export function RequestCard({
 }) {
   const canResolve = useHasPermission('agent_task:resolve', orgSlug)
   const actorName = useActorName(orgSlug)
+  const { isDarkMode } = useTheme()
   const { data: agents } = useAgentList(orgSlug)
   // Someone else resolved it first: collapse in place (I4).
   const [taken, setTaken] = useState<null | { by: string; status: string }>(
@@ -238,154 +243,177 @@ export function RequestCard({
 
   if (r.status !== 'open' || taken) {
     const outcome = (taken?.status ?? r.status) as TaskRequestView['status']
-    const Outcome = OUTCOME[outcome] ?? {
-      icon: Check,
-      tone: 'text-secondary',
-    }
+    const Outcome = OUTCOME[outcome] ?? { icon: Check, swatch: STONE }
     const by = taken?.by ?? r.resolved_by
+    const answer = taken ? null : r.answer
     return (
-      <div className="border-secondary flex flex-col gap-2.5 rounded-lg border px-4 py-3">
-        <div className="text-secondary flex items-start gap-2.5 text-sm">
-          <AgentMark agent={asker} className="mt-px" />
-          <span className="line-clamp-2 min-w-0 flex-1 wrap-break-word">
-            {r.title}
-          </span>
-        </div>
-        <div className="flex items-start gap-2.5">
-          <span className="flex size-5 shrink-0 items-center justify-center">
-            <Outcome.icon className={cn('size-4', Outcome.tone)} />
-          </span>
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <div className="text-secondary flex min-h-5 flex-wrap items-center gap-x-1.5 text-xs">
-              <span>
-                {RESOLVED[outcome] ?? outcome}
-                {by && ' by'}
-              </span>
-              {by && (
-                <span className="text-primary flex min-w-0 items-center gap-1.5">
-                  <PersonMark email={by} title={by} />
-                  <span className="truncate">{by}</span>
-                </span>
-              )}
-              {r.resolved_at && !taken && (
-                <span className="text-tertiary">
-                  · <RelativeTime tooltip={false} value={r.resolved_at} />
-                </span>
-              )}
-            </div>
-            {r.answer && !taken && (
-              <p className="text-primary text-sm leading-relaxed whitespace-pre-wrap">
-                {r.answer}
-              </p>
+      <StageCardShell
+        accent={deriveChipColors(Outcome.swatch, isDarkMode)}
+        icon={Outcome.icon}
+        subtitle={
+          <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
+            {RESOLVED[outcome] ?? outcome}
+            {by && (
+              <>
+                {' by'}
+                <PersonMark email={by} title={by} />
+                <span className="truncate">{by}</span>
+              </>
             )}
+            {r.resolved_at && !taken && (
+              <>
+                <span aria-hidden="true">·</span>
+                <RelativeTime tooltip={false} value={r.resolved_at} />
+              </>
+            )}
+          </span>
+        }
+        title={<span className="line-clamp-2 wrap-break-word">{r.title}</span>}
+      >
+        {answer ? (
+          <div className="px-4 py-3">
+            <p className="text-tertiary mb-1.5 text-xs tracking-wider uppercase">
+              Answer
+            </p>
+            <p className="text-sm leading-relaxed whitespace-pre-wrap">
+              {answer}
+            </p>
           </div>
-        </div>
-      </div>
+        ) : null}
+      </StageCardShell>
     )
   }
 
   const actionable = canResolve && task.status !== 'closed'
-  return (
-    <section
-      aria-label="Waiting on you"
-      className="border-amber-border bg-primary flex flex-col gap-4 rounded-lg border p-4"
-    >
-      <header className="flex items-center gap-2.5">
-        <AgentMark agent={asker} />
-        <span className="min-w-0 truncate text-sm font-medium">
-          {asker.name}
-        </span>
-        <span className="text-tertiary shrink-0 text-xs">
-          asked <RelativeTime tooltip={false} value={r.opened_at} />
-        </span>
-        <span className="bg-amber-bg text-amber-text ml-auto flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium">
-          <Hand className="size-3.5" />
-          Waiting on you
-        </span>
-      </header>
-      <div className="flex flex-col gap-1.5">
+  const feedback = actionable && r.kind === 'feedback'
+  const body = (
+    <div className="flex flex-col gap-4 px-4 py-4">
+      <section>
+        <p className="text-tertiary mb-1.5 text-xs tracking-wider uppercase">
+          {r.kind === 'approval' ? 'Approval requested' : 'Question'}
+        </p>
         <h3 className="text-sm leading-relaxed font-medium text-pretty wrap-break-word">
           {r.title}
         </h3>
         {r.why && (
-          <p className="text-secondary text-sm leading-relaxed whitespace-pre-wrap">
+          <p className="text-secondary mt-1 text-sm leading-relaxed whitespace-pre-wrap">
             {r.why}
           </p>
         )}
-      </div>
+      </section>
       {r.artifacts.length > 0 && (
-        <div className="flex flex-col gap-2">
-          {r.artifacts.map((a, i) => (
-            <div
-              className="border-secondary bg-secondary truncate rounded-md border px-3 py-2 font-mono text-xs"
-              key={i}
+        <section>
+          <p className="text-tertiary mb-2 text-xs tracking-wider uppercase">
+            Artifacts
+          </p>
+          <div className="border-tertiary divide-tertiary divide-y overflow-hidden rounded-md border">
+            {r.artifacts.map((a, i) => (
+              <div className="truncate px-3 py-2 font-mono text-xs" key={i}>
+                {label(a)}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+      {feedback && (
+        <QuestionnaireItem name="answer" required>
+          <QuestionnaireTitle className="text-tertiary text-xs font-normal tracking-wider uppercase">
+            {r.options.length > 0 ? 'Pick an answer' : 'Your answer'}
+          </QuestionnaireTitle>
+          <QuestionnaireChoices className="border-tertiary gap-0 overflow-hidden rounded-md border">
+            {r.options.map((o, i) => (
+              <QuestionnaireChoice
+                className="border-tertiary data-checked:border-tertiary rounded-none border-0 border-b"
+                key={i}
+                value={label(o)}
+              >
+                {label(o)}
+              </QuestionnaireChoice>
+            ))}
+            <QuestionnaireInput
+              aria-label="Answer"
+              className="rounded-none border-0 focus-visible:ring-0"
+              placeholder={
+                r.options.length > 0
+                  ? 'Something else…'
+                  : 'Answer in your own words'
+              }
+            />
+          </QuestionnaireChoices>
+          <QuestionnaireError className="text-xs">
+            Pick an answer or write one.
+          </QuestionnaireError>
+        </QuestionnaireItem>
+      )}
+    </div>
+  )
+  const footer =
+    actionable || resolve.error ? (
+      <div className="border-tertiary flex items-center justify-end gap-2 border-t px-4 py-3">
+        {resolve.error && (
+          <p className="text-danger mr-auto text-xs" role="alert">
+            {errorMessage(resolve.error)}
+          </p>
+        )}
+        {actionable && r.kind === 'approval' && (
+          <>
+            <Button
+              disabled={resolve.isPending}
+              onClick={() => submit({ status: 'rejected' })}
+              size="sm"
+              variant="ghost"
             >
-              {label(a)}
-            </div>
-          ))}
-        </div>
-      )}
-      {actionable && r.kind === 'approval' && (
-        <div className="flex items-center gap-2">
-          <Button
-            disabled={resolve.isPending}
-            onClick={() =>
-              submit({
-                artifact_digests: r.artifact_digests ?? [],
-                status: 'approved',
-              })
-            }
-            size="sm"
-          >
-            Approve
-          </Button>
-          <Button
-            disabled={resolve.isPending}
-            onClick={() => submit({ status: 'rejected' })}
-            size="sm"
-            variant="outline"
-          >
-            Reject
-          </Button>
-        </div>
-      )}
-      {actionable && r.kind === 'feedback' && (
-        <Questionnaire onSubmit={send}>
-          <QuestionnaireItem name="answer" required>
-            <QuestionnaireTitle className="sr-only">
-              {r.title}
-            </QuestionnaireTitle>
-            <QuestionnaireChoices>
-              {r.options.map((o, i) => (
-                <QuestionnaireChoice key={i} value={label(o)}>
-                  {label(o)}
-                </QuestionnaireChoice>
-              ))}
-              <QuestionnaireInput
-                aria-label="Answer"
-                placeholder={
-                  r.options.length > 0
-                    ? 'Something else…'
-                    : 'Answer in your own words'
-                }
-              />
-            </QuestionnaireChoices>
-            <QuestionnaireError>
-              Pick an answer or write one.
-            </QuestionnaireError>
-          </QuestionnaireItem>
-          <QuestionnaireActions>
-            <QuestionnaireSubmit disabled={resolve.isPending}>
-              Send answer
-            </QuestionnaireSubmit>
-          </QuestionnaireActions>
-        </Questionnaire>
-      )}
-      {resolve.error && (
-        <p className="text-danger text-xs" role="alert">
-          {errorMessage(resolve.error)}
-        </p>
-      )}
+              Reject
+            </Button>
+            <Button
+              disabled={resolve.isPending}
+              onClick={() =>
+                submit({
+                  artifact_digests: r.artifact_digests ?? [],
+                  status: 'approved',
+                })
+              }
+              size="sm"
+            >
+              Approve
+            </Button>
+          </>
+        )}
+        {feedback && (
+          <QuestionnaireSubmit disabled={resolve.isPending}>
+            Send answer
+          </QuestionnaireSubmit>
+        )}
+      </div>
+    ) : null
+  return (
+    <section aria-label="Waiting on you">
+      <StageCardShell
+        accent={deriveChipColors(HONEY, isDarkMode)}
+        icon={Hand}
+        subtitle={
+          <span className="flex min-w-0 items-center gap-1.5">
+            <AgentMark agent={asker} />
+            <span className="truncate">{asker.name}</span>
+            <span className="shrink-0">
+              asked <RelativeTime tooltip={false} value={r.opened_at} />
+            </span>
+          </span>
+        }
+        title="Waiting on you"
+      >
+        {feedback ? (
+          <Questionnaire className="gap-0" onSubmit={send}>
+            {body}
+            {footer}
+          </Questionnaire>
+        ) : (
+          <>
+            {body}
+            {footer}
+          </>
+        )}
+      </StageCardShell>
     </section>
   )
 }
