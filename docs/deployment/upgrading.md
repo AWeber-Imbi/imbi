@@ -74,6 +74,20 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
+## Unreleased: ticket state changed trigger
+
+Set the version of this section when the release is cut.
+
+1. Deploy the new image. There is no setup command. At start, imbi-api
+   adds the `tickets.trigger_outbox` columns and the indexes of the
+   `ticket_state_changed` trigger.
+2. Activate a workflow with the `ticket_state_changed` trigger only after
+   every imbi-api pod runs this release. During a rolling deploy, the
+   workflow sweep of an older pod can delete the pending change of a
+   ticket before its runs start.
+
+This release removes the `ticket_closed` and `task_completed` triggers.
+
 ## Unreleased: person tickets (ADR 0028)
 
 Set the version of this section when the release is cut.
