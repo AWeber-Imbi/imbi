@@ -82,6 +82,7 @@ export function WorkflowList({
     // The editor opens the run panel for `?run=<id>`. The editor reads
     // the selected organization, so do not open it after a switch.
     onSuccess: (run, { org, slug }) => {
+      setAsking(null)
       if (org !== orgRef.current) toast.success(`Started a run of ${slug}.`)
       else navigate(`${agentsPath('workflows', slug)}?run=${run.id}`)
     },
