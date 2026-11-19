@@ -13,6 +13,7 @@ import {
 } from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -296,6 +297,7 @@ export function LinkTaskDialog({
   const q = useDebouncedValue(text.trim(), 250)
   const [pick, setPick] = useState<null | string>(null)
   const [kind, setKind] = useState<LinkKind>(kinds[0])
+  const [gates, setGates] = useState(false)
   const { data: agents } = useAgentList(orgSlug)
   const found = useQuery({
     queryFn: ({ signal }) =>
@@ -306,8 +308,8 @@ export function LinkTaskDialog({
     kind === 'parent'
       ? setTicketParent(orgSlug, shortId, other)
       : KINDS[kind].requires
-        ? setTicketDependency(orgSlug, shortId, other, true)
-        : setTicketDependency(orgSlug, other, shortId, true),
+        ? setTicketDependency(orgSlug, shortId, other, true, gates)
+        : setTicketDependency(orgSlug, other, shortId, true, gates),
   )
   const results = (found.data ?? []).filter((t) => t.short_id !== shortId)
   const blocked = (k: LinkKind) =>
@@ -394,6 +396,16 @@ export function LinkTaskDialog({
                 ? linkHint(shortId, pick, kind)
                 : 'Choose a ticket above, then set the relationship.'}
             </p>
+            {kind !== 'parent' && (
+              <label className="text-secondary flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={gates}
+                  disabled={!pick}
+                  onCheckedChange={(c) => setGates(c === true)}
+                />
+                Gating: hold the dependent until the prerequisite is done
+              </label>
+            )}
           </div>
           {link.error && (
             <p className="text-danger text-sm" role="alert">
@@ -440,14 +452,14 @@ export function RelatedTasksTab({
   const rows: Row[] = r
     ? [
         ...r.requires.map((t) => ({
-          alias: 'blocked by',
+          alias: t.gates ? 'gated by' : 'blocked by',
           kind: 'Requires',
           link: [task.short_id, t.short_id] as [string, string],
           task: t,
           tone: 'info' as const,
         })),
         ...r.required_by.map((t) => ({
-          alias: 'blocks',
+          alias: t.gates ? 'gates' : 'blocks',
           kind: 'Required by',
           link: [t.short_id, task.short_id] as [string, string],
           task: t,
@@ -468,6 +480,15 @@ export function RelatedTasksTab({
         })),
       ]
     : []
+  // The gating prerequisites that hold a held ticket.
+  const holding =
+    task.status === 'held'
+      ? (r?.requires ?? []).filter(
+          (t) =>
+            t.gates &&
+            !(t.status === 'closed' && t.outcome?.startsWith('done_')),
+        )
+      : []
   const linked = new Set([
     task.short_id,
     ...(r?.requires ?? []).map((t) => t.short_id),
@@ -496,6 +517,19 @@ export function RelatedTasksTab({
             {r.tree.root_short_id}
           </Link>{' '}
           {r.tree.root_title}: {r.tree.open} of {r.tree.tickets} tickets open
+        </p>
+      )}
+      {holding.length > 0 && (
+        <p className="border-tertiary text-secondary border-b px-6 py-3 text-xs">
+          Held: waiting on{' '}
+          {holding.map((t, i) => (
+            <span key={t.short_id}>
+              {i > 0 && ', '}
+              <Link className="font-mono" to={ticketsPath(orgSlug, t.short_id)}>
+                {t.short_id}
+              </Link>
+            </span>
+          ))}
         </p>
       )}
       {relations.error && (

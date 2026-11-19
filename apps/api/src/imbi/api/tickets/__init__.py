@@ -44,6 +44,8 @@ from imbi.api.tickets.store import (
     TaskClosed,
     TaskNotFound,
     TaskOpen,
+    TicketHeld,
+    TicketStarted,
     TicketStore,
     Usage,
 )
@@ -134,6 +136,8 @@ __all__ = [
     'TaskClosed',
     'TaskNotFound',
     'TaskOpen',
+    'TicketHeld',
+    'TicketStarted',
     'TicketStore',
     'Usage',
     'create_pool',

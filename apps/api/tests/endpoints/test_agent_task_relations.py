@@ -581,6 +581,286 @@ class OldPathParentTests(RelationTestCase):
         self.assertEqual(relations['parent']['short_id'], 'T-2')
 
 
+class GatingTests(RelationTestCase):
+    """Gating dependencies (ADR 0028)."""
+
+    actor = tickets.Actor('agent', 'triage', 'harness')
+
+    async def gate(
+        self, dependent: str, prerequisite: str, *, gates: bool = True
+    ) -> httpx.Response:
+        return await self.client.put(
+            self.url(f'{dependent}/requires/{prerequisite}'),
+            json={'gates': gates},
+        )
+
+    async def status(self, short_id: str) -> str:
+        task = await self.store.get(self.org, short_id)
+        assert task is not None
+        return str(task['status'])
+
+    async def close(self, short_id: str, outcome: tickets.Outcome) -> None:
+        await self.store.set_outcome(
+            self.org, short_id, outcome, None, self.actor
+        )
+
+    async def test_gate_holds_a_queued_ticket(self) -> None:
+        response = await self.gate('T-1', 'T-2')
+        self.assertEqual(response.status_code, 204, response.text)
+        self.assertEqual(await self.status('T-1'), 'held')
+        added, held = (await self.events('T-1'))[-2:]
+        self.assertTrue(added['payload']['gates'])
+        self.assertEqual(held['type'], 'state.changed')
+        self.assertEqual(
+            held['payload'],
+            {'from': 'queued', 'to': 'held', 'reason': 'gated'},
+        )
+        relations = (await self.client.get(self.url('T-1/relations'))).json()
+        self.assertTrue(relations['requires'][0]['gates'])
+        # A plain link does not hold.
+        response = await self.put('T-3/requires/T-2')
+        self.assertEqual(response.status_code, 204, response.text)
+        self.assertEqual(await self.status('T-3'), 'queued')
+
+    async def test_gate_is_refused_on_a_started_ticket(self) -> None:
+        await self.open_session(self.tickets['T-1']['id'])
+        response = await self.gate('T-1', 'T-2')
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(response.json()['detail']['error'], 'ticket_started')
+        relations = (await self.client.get(self.url('T-1/relations'))).json()
+        self.assertEqual(relations['requires'], [])
+        self.assertEqual(await self.status('T-1'), 'running')
+        # A plain link is still allowed.
+        response = await self.put('T-1/requires/T-2')
+        self.assertEqual(response.status_code, 204, response.text)
+
+    async def test_done_close_releases_dependents(self) -> None:
+        await self.gate('T-1', 'T-2')
+        await self.close('T-2', 'done_acted')
+        self.assertEqual(await self.status('T-1'), 'queued')
+        released = (await self.events('T-1'))[-1]
+        self.assertEqual(
+            released['payload'],
+            {'from': 'held', 'to': 'queued', 'reason': 'released'},
+        )
+
+    async def test_release_is_in_the_close_transaction(self) -> None:
+        await self.gate('T-1', 'T-2')
+        with (
+            mock.patch.object(
+                tickets.store,
+                '_sync_gate',
+                side_effect=RuntimeError('release failed'),
+            ),
+            self.assertRaises(RuntimeError),
+        ):
+            await self.close('T-2', 'done_nothing_to_act_on')
+        # The close rolled back with the release.
+        self.assertEqual(await self.status('T-2'), 'queued')
+        self.assertEqual(await self.status('T-1'), 'held')
+
+    async def test_other_outcomes_keep_dependents_held(self) -> None:
+        await self.gate('T-1', 'T-2')
+        await self.gate('T-3', 'T-1')
+        await self.close('T-2', 'failed_external')
+        self.assertEqual(await self.status('T-1'), 'held')
+        response = await self.client.post(self.url('T-1/cancel'))
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(await self.status('T-3'), 'held')
+        # The owner removes the dependency: T-3 is released.
+        response = await self.delete('T-3/requires/T-1')
+        self.assertEqual(response.status_code, 204, response.text)
+        self.assertEqual(await self.status('T-3'), 'queued')
+
+    async def test_release_waits_for_every_gate(self) -> None:
+        await self.gate('T-1', 'T-2')
+        await self.gate('T-1', 'T-3')
+        await self.close('T-2', 'done_acted')
+        self.assertEqual(await self.status('T-1'), 'held')
+        await self.close('T-3', 'done_acted')
+        self.assertEqual(await self.status('T-1'), 'queued')
+
+    async def test_closed_prerequisite_holds_unless_done(self) -> None:
+        await self.close('T-2', 'done_acted')
+        await self.gate('T-1', 'T-2')
+        self.assertEqual(await self.status('T-1'), 'queued')
+        self.tickets['T-4'] = (await self.create_task()).json()
+        await self.close('T-4', 'failed_external')
+        await self.gate('T-3', 'T-4')
+        self.assertEqual(await self.status('T-3'), 'held')
+        # The same dependency without ``gates`` releases it.
+        response = await self.put('T-3/requires/T-4')
+        self.assertEqual(response.status_code, 204, response.text)
+        self.assertEqual(await self.status('T-3'), 'queued')
+        relations = (await self.client.get(self.url('T-3/relations'))).json()
+        self.assertFalse(relations['requires'][0]['gates'])
+
+    async def test_held_ticket_keeps_its_control(self) -> None:
+        await self.gate('T-1', 'T-2')
+        for action in ('pause', 'resume'):
+            response = await self.client.post(self.url(f'T-1/{action}'))
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()['status'], 'held')
+        await self.client.post(self.url('T-1/pause'))
+        await self.close('T-2', 'done_acted')
+        self.assertEqual(await self.status('T-1'), 'paused')
+
+    async def test_delete_of_a_prerequisite_releases(self) -> None:
+        await self.gate('T-1', 'T-2')
+        await self.archive('T-2')
+        self.assertEqual(await self.status('T-1'), 'held')
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'DELETE FROM tickets.trigger_outbox WHERE ticket_id = %s',
+                (uuid.UUID(self.tickets['T-2']['id']),),
+            )
+        response = await self.client.delete(self.url('T-2'))
+        self.assertEqual(response.status_code, 204, response.text)
+        self.assertEqual(await self.status('T-1'), 'queued')
+
+    async def test_close_and_gate_at_once_never_strand(self) -> None:
+        # Whichever commits first, the dependent ends queued: the gate
+        # sees the done close, or the close sees the gate.
+        human = tickets.Actor('human', self.email, 'web')
+        for _ in range(5):
+            dependent = (await self.create_task()).json()['short_id']
+            prerequisite = (await self.create_task()).json()['short_id']
+            results = await asyncio.gather(
+                self.store.add_dependency(
+                    self.org, dependent, prerequisite, human, gates=True
+                ),
+                self.close(prerequisite, 'done_acted'),
+                return_exceptions=True,
+            )
+            self.assertEqual(results, [True, None])
+            self.assertEqual(await self.status(dependent), 'queued')
+
+    async def test_same_gate_on_a_started_ticket_changes_nothing(
+        self,
+    ) -> None:
+        await self.gate('T-1', 'T-2')
+        await self.close('T-2', 'failed_external')
+        await self.client.post(self.url('T-1/cancel'))
+        before = await self.last_seq('T-1')
+        response = await self.gate('T-1', 'T-2')
+        self.assertEqual(response.status_code, 204, response.text)
+        self.assertEqual(await self.last_seq('T-1'), before)
+        # A new gate is still refused.
+        response = await self.gate('T-1', 'T-3')
+        self.assertEqual(response.status_code, 409, response.text)
+
+    async def test_held_ticket_refuses_a_session(self) -> None:
+        await self.gate('T-1', 'T-2')
+        with self.assertRaises(tickets.TicketHeld):
+            await self.store.open_session(
+                self.org,
+                'T-1',
+                key='session-1',
+                harness_instance=None,
+                max_concurrent=None,
+                actor=self.actor,
+            )
+        self.assertEqual(await self.status('T-1'), 'held')
+
+    async def test_request_keeps_a_ticket_held(self) -> None:
+        await self.gate('T-1', 'T-2')
+        _, request, _ = await self.store.open_request(
+            self.org,
+            'T-1',
+            tickets.NewRequest(
+                kind='feedback',
+                title='Which branch?',
+                why=None,
+                options=None,
+                artifacts=None,
+                artifact_digests=None,
+                expires_at=None,
+                session_id=None,
+            ),
+            self.actor,
+        )
+        self.assertEqual(await self.status('T-1'), 'held')
+        await self.store.resolve_request(
+            self.org,
+            'T-1',
+            request['id'],
+            tickets.Resolution(
+                status='answered',
+                answer='main',
+                constraints=None,
+                artifact_digests=None,
+            ),
+            tickets.Actor('human', self.email, 'web'),
+        )
+        self.assertEqual(await self.status('T-1'), 'held')
+        await self.close('T-2', 'done_acted')
+        self.assertEqual(await self.status('T-1'), 'queued')
+
+    async def test_release_with_an_open_request_blocks(self) -> None:
+        await self.gate('T-1', 'T-2')
+        _, request, _ = await self.store.open_request(
+            self.org,
+            'T-1',
+            tickets.NewRequest(
+                kind='feedback',
+                title='Which branch?',
+                why=None,
+                options=None,
+                artifacts=None,
+                artifact_digests=None,
+                expires_at=None,
+                session_id=None,
+            ),
+            self.actor,
+        )
+        await self.close('T-2', 'done_acted')
+        self.assertEqual(await self.status('T-1'), 'blocked')
+        await self.store.resolve_request(
+            self.org,
+            'T-1',
+            request['id'],
+            tickets.Resolution(
+                status='answered',
+                answer='main',
+                constraints=None,
+                artifact_digests=None,
+            ),
+            tickets.Actor('human', self.email, 'web'),
+        )
+        self.assertEqual(await self.status('T-1'), 'queued')
+
+    async def test_deadlock_runs_the_change_again(self) -> None:
+        original = tickets.store._lock_tasks
+        calls = 0
+
+        async def deadlock_once(*args: typing.Any) -> typing.Any:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise psycopg.errors.DeadlockDetected('deadlock detected')
+            return await original(*args)
+
+        with mock.patch.object(tickets.store, '_lock_tasks', deadlock_once):
+            response = await self.gate('T-1', 'T-2')
+        self.assertEqual(response.status_code, 204, response.text)
+        self.assertEqual(calls, 2)
+        self.assertEqual(await self.status('T-1'), 'held')
+
+
+class OldPathGatingTests(RelationTestCase):
+    """Gating at ``/agent-tasks``, which stays until release B."""
+
+    prefix = 'agent-tasks'
+    gate = GatingTests.gate
+    status = GatingTests.status
+    test_gate_holds_a_queued_ticket = (
+        GatingTests.test_gate_holds_a_queued_ticket
+    )
+    test_gate_is_refused_on_a_started_ticket = (
+        GatingTests.test_gate_is_refused_on_a_started_ticket
+    )
+
+
 class AccessTests(RelationTestCase):
     def routes(self) -> list[tuple[str, str, str]]:
         project = self.second_project

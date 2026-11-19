@@ -5839,15 +5839,20 @@ export interface paths {
          * @deprecated
          * @description Make the task require the ``prerequisite`` task, in the same org.
          *
-         *     A dependency is information only: it does not change a status. Each
-         *     task gets a ``dependency.added`` event; an archived task gets none.
-         *     When the dependency exists, nothing changes.
+         *     A dependency is information only, unless it ``gates`` (ADR 0028): a
+         *     ``queued`` task then becomes ``held`` until the prerequisite closes
+         *     with a ``done_*`` outcome. Each task gets a ``dependency.added``
+         *     event; an archived task gets none. When the dependency exists with
+         *     the same ``gates`` value, nothing changes; with another value, the
+         *     value changes.
          *
          *     Raises:
          *         403: The caller is not a person, has no ``agent_task:manage``,
          *             or is not a member of the org.
          *         404: No such task.
          *         409: ``task_archived``: both tasks are archived.
+         *             ``ticket_started``: ``gates``, the task is not ``queued``
+         *             or ``held``, and the dependency does not gate already.
          *         422: The two tasks are the same.
          */
         put: operations["add_agent_task_dependency_api_organizations__org_slug__agent_tasks__short_id__requires__prerequisite__put"];
@@ -5858,8 +5863,8 @@ export interface paths {
          * @description Remove the dependency of the task on the ``prerequisite`` task.
          *
          *     Each task gets a ``dependency.removed`` event with the removed row;
-         *     an archived task gets none. When there is no such dependency,
-         *     nothing changes.
+         *     an archived task gets none. A ``held`` task that no other gate holds
+         *     is released. When there is no such dependency, nothing changes.
          *
          *     Raises:
          *         403: The caller is not a person, has no ``agent_task:manage``,
@@ -6503,15 +6508,20 @@ export interface paths {
          * Add Agent Task Dependency
          * @description Make the task require the ``prerequisite`` task, in the same org.
          *
-         *     A dependency is information only: it does not change a status. Each
-         *     task gets a ``dependency.added`` event; an archived task gets none.
-         *     When the dependency exists, nothing changes.
+         *     A dependency is information only, unless it ``gates`` (ADR 0028): a
+         *     ``queued`` task then becomes ``held`` until the prerequisite closes
+         *     with a ``done_*`` outcome. Each task gets a ``dependency.added``
+         *     event; an archived task gets none. When the dependency exists with
+         *     the same ``gates`` value, nothing changes; with another value, the
+         *     value changes.
          *
          *     Raises:
          *         403: The caller is not a person, has no ``agent_task:manage``,
          *             or is not a member of the org.
          *         404: No such task.
          *         409: ``task_archived``: both tasks are archived.
+         *             ``ticket_started``: ``gates``, the task is not ``queued``
+         *             or ``held``, and the dependency does not gate already.
          *         422: The two tasks are the same.
          */
         put: operations["add_ticket_dependency_api_organizations__org_slug__tickets__short_id__requires__prerequisite__put"];
@@ -6521,8 +6531,8 @@ export interface paths {
          * @description Remove the dependency of the task on the ``prerequisite`` task.
          *
          *     Each task gets a ``dependency.removed`` event with the removed row;
-         *     an archived task gets none. When there is no such dependency,
-         *     nothing changes.
+         *     an archived task gets none. A ``held`` task that no other gate holds
+         *     is released. When there is no such dependency, nothing changes.
          *
          *     Raises:
          *         403: The caller is not a person, has no ``agent_task:manage``,
@@ -6775,7 +6785,8 @@ export interface paths {
          *     Raises:
          *         403: The caller is not the service account of the task's agent.
          *         404: No such task.
-         *         409: ``task_closed``, ``task_cancelled`` (control is cancel), or
+         *         409: ``task_closed``, ``task_cancelled`` (control is cancel),
+         *             ``task_held`` (a gating prerequisite is open), or
          *             ``concurrency_limit`` (``settings.max_concurrent_tasks``
          *             other tasks of the agent have an open session).
          */
@@ -6970,7 +6981,8 @@ export interface paths {
          *     Raises:
          *         403: The caller is not the service account of the task's agent.
          *         404: No such task.
-         *         409: ``task_closed``, ``task_cancelled`` (control is cancel), or
+         *         409: ``task_closed``, ``task_cancelled`` (control is cancel),
+         *             ``task_held`` (a gating prerequisite is open), or
          *             ``concurrency_limit`` (``settings.max_concurrent_tasks``
          *             other tasks of the agent have an open session).
          */
@@ -12699,8 +12711,9 @@ export interface components {
          *
          *     ``requires`` are the prerequisites of this task; ``required_by`` are
          *     the tasks that have this task as a prerequisite. A prerequisite is a
-         *     link only: a runner can still claim a task whose prerequisite is
-         *     open. ``parent`` and ``children`` come from the parent of each
+         *     link only, unless it ``gates``: a gating prerequisite holds the task
+         *     (status ``held``, never claimed) until it closes with a ``done_*``
+         *     outcome. ``parent`` and ``children`` come from the parent of each
          *     ticket. ``tree`` is the state of the tree of the ticket.
          */
         AgentTaskRelations: {
@@ -19995,6 +20008,8 @@ export interface components {
             linked_by?: string | null;
             /** Linked At */
             linked_at?: string | null;
+            /** Gates */
+            gates?: boolean | null;
         };
         /**
          * RelationshipLink
@@ -22690,6 +22705,18 @@ export interface components {
             port: number;
             /** Port Name */
             port_name: string;
+        };
+        /**
+         * TicketDependencySet
+         * @description The kind of a dependency.
+         */
+        TicketDependencySet: {
+            /**
+             * Gates
+             * @description Hold the ticket until the prerequisite closes with a ``done_*`` outcome. Only a ticket that has not started (``queued`` or ``held``) can get a gating prerequisite.
+             * @default false
+             */
+            gates: boolean;
         };
         /** TicketHistory */
         TicketHistory: {
@@ -33518,7 +33545,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["TicketDependencySet"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             204: {
@@ -34407,7 +34438,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["TicketDependencySet"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             204: {
