@@ -16,6 +16,11 @@ import {
   scrollPane,
 } from './virtualLayout'
 
+// fallow-ignore-next-line unresolved-import
+vi.mock('@/contexts/ThemeContext', () => ({
+  useTheme: () => ({ isDarkMode: false }),
+}))
+
 vi.mock('@/hooks/useHasPermission', () => ({
   useHasPermission: () => false,
 }))
