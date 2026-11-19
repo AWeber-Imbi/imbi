@@ -101,6 +101,35 @@ END
 $step$;
 '''
 
+# A pod of the previous release can run beside this release and makes a
+# child without `parent_id`. This trigger gives such a child its parent
+# from its origin on insert. It does not run on update, so a move of a
+# child to the root stays. A later release can drop it.
+[[steps]]
+name = "tickets-parent-from-origin"
+after_tables = true
+when = """
+SELECT NOT EXISTS (SELECT 1 FROM pg_trigger
+                    WHERE tgname = 'tickets_parent_from_origin'
+                      AND tgrelid = 'tickets.tickets'::regclass)
+"""
+sql = '''
+CREATE OR REPLACE FUNCTION tickets.parent_from_origin() RETURNS trigger
+LANGUAGE plpgsql AS $fn$
+BEGIN
+  IF NEW.parent_id IS NULL AND NEW.origin_kind IN ('task', 'ticket') THEN
+    SELECT p.id INTO NEW.parent_id FROM tickets.tickets AS p
+     WHERE p.organization_id = NEW.organization_id
+       AND p.id::text = NEW.origin_id;
+  END IF;
+  RETURN NEW;
+END
+$fn$;
+CREATE TRIGGER tickets_parent_from_origin BEFORE INSERT
+  ON tickets.tickets FOR EACH ROW
+  EXECUTE FUNCTION tickets.parent_from_origin();
+'''
+
 # Give `tickets.parent_id` its foreign key (ADR 0028). The initializer
 # adds a constraint only to a new table, and a new install also makes
 # the column after the table, so the step runs after the tables.

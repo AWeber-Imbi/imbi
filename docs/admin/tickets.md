@@ -362,7 +362,8 @@ A reply or an answer can be up to 64 KiB.
 
 ## Relations and associated projects
 
-You need `ticket:manage` to change them.
+You need `ticket:manage` to change them. The owner of a ticket can also
+move it under a parent.
 
 **Related tickets**: click **Link ticket**. Find a ticket, then select the
 relation:
@@ -386,7 +387,7 @@ children, and the tree: its root and how many of its tickets are open.
 - To move a ticket, select **Parent** in **Link ticket**. To make it a
   root, remove its **Parent** row.
 - Holders of `ticket:manage` can move a ticket. The owner of the ticket
-  can also move it with the API.
+  can also move it in the UI or with the API.
 - A move that makes a ticket its own ancestor gets `409` with
   `parent_cycle`.
 - Open and closed tickets can move. A move changes no status, assignee,

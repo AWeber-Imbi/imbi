@@ -235,6 +235,8 @@ export function useTicketRelations(orgSlug: string, shortId: string) {
   return useQuery({
     queryFn: ({ signal }) => getTicketRelations(orgSlug, shortId, signal),
     queryKey: queryKeys.ticketRelations(orgSlug, shortId),
+    // A move of another ticket under this one emits no event here.
+    refetchInterval: LIST_POLL_MS,
   })
 }
 

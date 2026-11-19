@@ -667,3 +667,10 @@ class RenameTestCase(unittest.IsolatedAsyncioTestCase):
             'SELECT parent_id FROM tickets.tickets WHERE id = %s', (CHILD,)
         )
         self.assertEqual(await cursor.fetchone(), {'parent_id': None})
+        # A writer of the previous release gives no parent: the trigger
+        # takes it from the origin.
+        await _new_task(conn, NEW, 'task', str(ROOT))
+        cursor = await conn.execute(
+            'SELECT parent_id FROM tickets.tickets WHERE id = %s', (NEW,)
+        )
+        self.assertEqual(await cursor.fetchone(), {'parent_id': ROOT})
