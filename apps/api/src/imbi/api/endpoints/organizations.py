@@ -219,15 +219,16 @@ organizations_router.include_router(
     agents_router,
     prefix='/{org_slug}/agents',
 )
-# ADR 0028: tickets at /tickets, with ticket operation ids, and at the
-# old /agent-tasks path with the old operation ids, which imbi-mcp turns
-# into tool names that clients call. Release B removes /agent-tasks.
+# ADR 0028: tickets at /tickets, with ticket operation ids. The old
+# /agent-tasks path stays out of the OpenAPI document, so imbi-mcp has no
+# tools with the old names, but a saved scheduled job or script that
+# posts to it keeps working. The release after B removes it.
 # The agent token rules (imbi.api.auth.agent_api) key a route by its
 # endpoint, so both paths share the rule of the path mounted last.
 organizations_router.include_router(
     tickets_router,
     prefix='/{org_slug}/agent-tasks',
-    deprecated=True,
+    include_in_schema=False,
 )
 organizations_router.include_router(
     tickets_router,
@@ -244,13 +245,7 @@ organizations_router.include_router(
 )
 # The harness routes take the organization-membership dependency of the
 # task routes, in the variant that also accepts an agent token (ADR
-# 0022), so no route under /tickets or /agent-tasks can skip it.
-organizations_router.include_router(
-    ticket_harness_router,
-    prefix='/{org_slug}/agent-tasks',
-    dependencies=[fastapi.Depends(harness_auth.harness_member_org_id)],
-    deprecated=True,
-)
+# 0022), so no route under /tickets can skip it.
 organizations_router.include_router(
     ticket_harness_router,
     prefix='/{org_slug}/tickets',

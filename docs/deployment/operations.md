@@ -397,7 +397,7 @@ Back up these data stores:
 Back up the whole database with `pg_dump`. Do not select schemas. The
 database holds the graph schema (`imbi`), the AGE catalog (`ag_catalog`),
 the embeddings table (`public.embeddings`), and the `scheduler`,
-`agent_runtime`, `workflows`, `workflow_runtime`, `secrets`, and `harness`
+`tickets`, `workflows`, `workflow_runtime`, `secrets`, and `harness`
 schemas.
 
 ```bash

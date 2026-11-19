@@ -823,7 +823,7 @@ class ProxyTokenTests(EgressTestCase):
         runner = await self.register()
         claim = (await self.claim_with_pod(runner)).json()
         response = await self.client.post(
-            '/harness/tasks/T-1/children',
+            '/harness/tickets/T-1/children',
             json={
                 'agent_slug': 'helper',
                 'title': 'Help',
@@ -896,7 +896,7 @@ class ChildEgressTests(EgressTestCase):
 
     async def child(self, agent_slug: str) -> typing.Any:
         return await self.client.post(
-            '/harness/tasks/T-1/children',
+            '/harness/tickets/T-1/children',
             json={
                 'agent_slug': agent_slug,
                 'title': 'Help',

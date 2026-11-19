@@ -1,0 +1,329 @@
+# Relational schema for the runner pool and dispatch (ADR 0022).
+#
+# The initializer (imbi.common.relational) walks this file and issues
+# idempotent DDL, like the `tickets` schema. Rows refer to graph
+# nodes (organization, service account) by id or slug, and to tickets
+# by their `tickets.tickets` id.
+#
+# The schema name is fixed: `harness`.
+
+# ADR 0028 renames `chains.root_task_id` to `root_ticket_id` and
+# `claims.task_id` to `ticket_id` without downtime. Release A adds the new
+# columns (declared below) and this trigger, which fills the column that
+# a writer omits and refuses a row where the two differ. The previous
+# release writes the old columns and this release writes the new ones.
+# Release B moves the keys to the new columns and drops the old ones.
+#
+# After the tables, because on a new install the tables do not exist
+# before. The trigger locks out writers of the previous release until
+# the copy commits, so no row stays without the new column.
+[[steps]]
+name = "mirror-ticket-ids"
+after_tables = true
+when = """
+SELECT to_regclass('harness.chains') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM pg_trigger
+                    WHERE tgname = 'chains_mirror_ticket_id'
+                      AND tgrelid = to_regclass('harness.chains'))
+"""
+sql = '''
+CREATE OR REPLACE FUNCTION harness.mirror_ticket_id() RETURNS trigger
+LANGUAGE plpgsql AS $fn$
+DECLARE
+  task_column text := TG_ARGV[0];
+  ticket_column text := TG_ARGV[1];
+  task_id text := to_jsonb(NEW) ->> task_column;
+  ticket_id text := to_jsonb(NEW) ->> ticket_column;
+BEGIN
+  -- An update that sets one of the two columns sets both.
+  IF TG_OP = 'UPDATE' THEN
+    IF ticket_id IS NOT DISTINCT FROM to_jsonb(OLD) ->> ticket_column THEN
+      ticket_id := NULL;
+    ELSIF task_id IS NOT DISTINCT FROM to_jsonb(OLD) ->> task_column THEN
+      task_id := NULL;
+    END IF;
+  END IF;
+  IF task_id <> ticket_id THEN
+    RAISE EXCEPTION '%.%: % and % differ', TG_TABLE_SCHEMA, TG_TABLE_NAME,
+      task_column, ticket_column
+      USING ERRCODE = 'check_violation';
+  END IF;
+  task_id := COALESCE(task_id, ticket_id);
+  NEW := jsonb_populate_record(
+    NEW, jsonb_build_object(task_column, task_id, ticket_column, task_id));
+  RETURN NEW;
+END
+$fn$;
+CREATE TRIGGER chains_mirror_ticket_id BEFORE INSERT OR UPDATE
+  ON harness.chains FOR EACH ROW
+  EXECUTE FUNCTION harness.mirror_ticket_id('root_task_id', 'root_ticket_id');
+CREATE TRIGGER claims_mirror_ticket_id BEFORE INSERT OR UPDATE
+  ON harness.claims FOR EACH ROW
+  EXECUTE FUNCTION harness.mirror_ticket_id('task_id', 'ticket_id');
+UPDATE harness.chains SET root_ticket_id = root_task_id
+ WHERE root_ticket_id IS NULL;
+UPDATE harness.claims SET ticket_id = task_id WHERE ticket_id IS NULL;
+'''
+
+# One row per runner pool. The Kubernetes Deployment of the pool has the
+# same name. `organization_ids` is the allowlist; empty means all
+# organizations. `service_account_id` is the immutable id of the service
+# account whose client credential (the pool credential) registers
+# runners; registration compares it, so a new service account with the
+# slug of a deleted one cannot register. `service_account` is its slug,
+# for display. A pool made before the id column has no id and refuses
+# every registration until an update sets the service account again.
+# An `exclusive` pool claims only agents that require at least one label
+# (all of them in `labels`): a pool for special runners, such as a
+# browser image, takes no general work.
+[[tables]]
+name = "pools"
+
+[tables.columns]
+name = "TEXT NOT NULL"
+description = "TEXT"
+labels = "TEXT[] NOT NULL DEFAULT '{}'"
+organization_ids = "TEXT[] NOT NULL DEFAULT '{}'"
+exclusive = "BOOLEAN NOT NULL DEFAULT FALSE"
+service_account = "TEXT NOT NULL"
+service_account_id = "TEXT"
+created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+updated_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["name"]
+
+# One row per registered runner (one pod). `state` is `idle`, `busy`,
+# `offline`, or `fenced`: a busy runner whose lease expired is `fenced`
+# until its chain is back in the queue, then `offline`. The runner and
+# executor credentials are stored only as SHA-256 hashes; they have 256
+# random bits, so no key or salt is needed.
+[[tables]]
+name = "runners"
+
+[tables.columns]
+id = "UUID NOT NULL"
+pool = "TEXT NOT NULL REFERENCES harness.pools (name) ON DELETE CASCADE"
+instance = "TEXT"
+state = "TEXT NOT NULL DEFAULT 'idle'"
+chain_id = "UUID"
+image_version = "TEXT"
+runner_token_hash = "TEXT NOT NULL"
+executor_token_hash = "TEXT NOT NULL"
+registered_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+last_heartbeat = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+lease_expires_at = "TIMESTAMP WITH TIME ZONE NOT NULL"
+offline_at = "TIMESTAMP WITH TIME ZONE"
+
+[tables.primary_key]
+columns = ["id"]
+
+[[tables.indexes]]
+name = "runners_runner_token_key"
+columns = ["runner_token_hash"]
+unique = true
+
+[[tables.indexes]]
+name = "runners_executor_token_key"
+columns = ["executor_token_hash"]
+unique = true
+
+[[tables.indexes]]
+name = "runners_state_lease_idx"
+columns = ["state", "lease_expires_at"]
+
+# One row per chain that a runner claimed: the chain pin. The key is
+# the id of the root task. `attempt` goes up when the runner is lost, so
+# the agent tokens of the old attempt stop working at once.
+#
+# `state`:
+#   running  pinned to `runner_id`
+#   fencing  the runner is lost; the fencers run, then the grace period
+#   stuck    a fencer failed; the sweep tries again each round
+#   queued   back in the queue; the next claim pins it again
+#   done     every task is closed
+#
+# `egress` is the egress allowlist that the root claim gave the pod of
+# the chain (slug, generation, cidrs, ports). Child claims get it too.
+[[tables]]
+name = "chains"
+
+[tables.columns]
+root_task_id = "UUID NOT NULL REFERENCES tickets.tickets (id) ON DELETE CASCADE"
+# The new name of `root_task_id` (ADR 0028). Nullable until release B.
+root_ticket_id = "UUID REFERENCES tickets.tickets (id) ON DELETE CASCADE"
+organization_id = "TEXT NOT NULL"
+runner_id = "UUID REFERENCES harness.runners (id) ON DELETE SET NULL"
+attempt = "INTEGER NOT NULL DEFAULT 1"
+state = "TEXT NOT NULL DEFAULT 'running'"
+claimed_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+fenced_at = "TIMESTAMP WITH TIME ZONE"
+fencers_ok_at = "TIMESTAMP WITH TIME ZONE"
+fence_error = "TEXT"
+egress = "JSONB NOT NULL DEFAULT '[]'"
+updated_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["root_task_id"]
+
+[[tables.indexes]]
+name = "chains_root_ticket_id_key"
+columns = ["root_ticket_id"]
+unique = true
+
+[[tables.indexes]]
+name = "chains_state_idx"
+columns = ["state"]
+
+# The tasks that a runner claimed in each attempt of a chain, so that a
+# claim never returns a task two times in one attempt.
+[[tables]]
+name = "claims"
+
+[tables.columns]
+task_id = "UUID NOT NULL REFERENCES tickets.tickets (id) ON DELETE CASCADE"
+# The new name of `task_id` (ADR 0028). Nullable until release B.
+ticket_id = "UUID REFERENCES tickets.tickets (id) ON DELETE CASCADE"
+attempt = "INTEGER NOT NULL"
+chain_id = "UUID NOT NULL"
+runner_id = "UUID NOT NULL"
+claimed_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["task_id", "attempt"]
+
+[[tables.indexes]]
+name = "claims_ticket_key"
+columns = ["ticket_id", "attempt"]
+unique = true
+
+# Tool call counters for `AgentToolConfig.rate_limit`, across all
+# runners. One row per agent, tool, period, and window start.
+[[tables]]
+name = "tool_call_counts"
+
+[tables.columns]
+agent_id = "TEXT NOT NULL"
+tool_key = "TEXT NOT NULL"
+period = "TEXT NOT NULL"
+window_start = "TIMESTAMP WITH TIME ZONE NOT NULL"
+count = "INTEGER NOT NULL"
+
+[tables.primary_key]
+columns = ["agent_id", "tool_key", "period", "window_start"]
+
+# The agent platform configuration of an organization (ADR 0022). Each
+# change writes a new version; a task pins the newest version when it
+# is made (`tickets.tickets.platform_config_version`).
+[[tables]]
+name = "platform_configs"
+
+[tables.columns]
+organization_id = "TEXT NOT NULL"
+version = "INTEGER NOT NULL"
+config = "JSONB NOT NULL"
+created_by = "TEXT NOT NULL"
+created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["organization_id", "version"]
+
+# A Claude Code plugin marketplace that an organization registered by
+# git URL. The sync reads `.claude-plugin/marketplace.json` at the head
+# of the default branch and stores the plugin catalog in `plugins`.
+# `name` is the name in marketplace.json. A failed sync keeps the last
+# catalog and sets `sync_error`.
+[[tables]]
+name = "marketplaces"
+
+[tables.columns]
+id = "UUID NOT NULL"
+organization_id = "TEXT NOT NULL"
+slug = "TEXT NOT NULL"
+url = "TEXT NOT NULL"
+name = "TEXT"
+description = "TEXT"
+default_branch = "TEXT"
+head_sha = "TEXT"
+plugins = "JSONB NOT NULL DEFAULT '[]'"
+synced_at = "TIMESTAMP WITH TIME ZONE"
+sync_error = "TEXT"
+created_by = "TEXT NOT NULL"
+created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+updated_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["id"]
+
+[[tables.indexes]]
+name = "marketplaces_organization_slug_key"
+columns = ["organization_id", "slug"]
+unique = true
+
+# An internal network destination that runner pods may reach (the
+# egress allowlist). It has `cidrs` or `hostnames`, not both; a host
+# name destination has `cidrs = '{}'` and only port 443/TCP, and the
+# egress proxy accepts it. `generation` goes up on each change to
+# `cidrs`, `hostnames`, or `ports`; the egress sync writes one
+# ClusterNetworkPolicy for each generation of a CIDR destination and
+# sets `applied_generation` when it exists. A host name destination
+# needs no policy: each write sets `applied_generation = generation`.
+# A claim gives a destination only when the two are equal. `organization_ids`
+# limits the agents that may get it; empty means all. An `is_global`
+# destination goes to every chain. A deleted row stays with
+# `deleted_at`, so a new destination with the same slug continues the
+# generations and never reuses the label of an old pod.
+[[tables]]
+name = "egress_destinations"
+
+[tables.columns]
+slug = "TEXT NOT NULL"
+name = "TEXT NOT NULL"
+description = "TEXT"
+cidrs = "TEXT[] NOT NULL"
+hostnames = "TEXT[] NOT NULL DEFAULT '{}'"
+ports = "JSONB NOT NULL"
+is_global = "BOOLEAN NOT NULL DEFAULT FALSE"
+organization_ids = "TEXT[] NOT NULL DEFAULT '{}'"
+generation = "INTEGER NOT NULL DEFAULT 1"
+applied_generation = "INTEGER"
+created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+updated_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+deleted_at = "TIMESTAMP WITH TIME ZONE"
+
+[tables.primary_key]
+columns = ["slug"]
+
+# The audit trail of the egress destinations: one row per change, with
+# the row before and after.
+[[tables]]
+name = "egress_destination_changes"
+
+[tables.columns]
+id = "UUID NOT NULL"
+slug = "TEXT NOT NULL"
+action = "TEXT NOT NULL"
+actor = "TEXT NOT NULL"
+before = "JSONB"
+after = "JSONB"
+created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["id"]
+
+[[tables.indexes]]
+name = "egress_destination_changes_slug_idx"
+columns = ["slug", "created_at"]
+
+# The last report of the egress sync. One row.
+[[tables]]
+name = "egress_sync"
+constraints = ["CONSTRAINT egress_sync_one_row CHECK (id)"]
+
+[tables.columns]
+id = "BOOLEAN NOT NULL DEFAULT TRUE"
+synced_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+synced_by = "TEXT NOT NULL"
+
+[tables.primary_key]
+columns = ["id"]

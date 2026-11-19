@@ -36,11 +36,11 @@ ALL_PERMISSIONS = frozenset(
     {
         'agent:create',
         'agent:delete',
-        'agent_task:read',
-        'agent_task:create',
-        'agent_task:manage',
-        'agent_task:resolve',
-        'agent_task:delete',
+        'ticket:read',
+        'ticket:create',
+        'ticket:manage',
+        'ticket:resolve',
+        'ticket:delete',
     }
 )
 
@@ -529,7 +529,7 @@ class CreateTaskTests(AgentTaskTestCase):
 class TriggerOriginTests(AgentTaskTestCase):
     """Tasks that the scheduler and the gateway make (P6, CC9).
 
-    ``creator`` holds ``agent_task:create`` through a role of this
+    ``creator`` holds ``ticket:create`` through a role of this
     test; ``bystander`` is a member with a role that grants nothing.
     """
 
@@ -547,7 +547,7 @@ class TriggerOriginTests(AgentTaskTestCase):
             """
             MATCH (o:Organization {{slug: {org}}})
             MATCH (x:Organization {{slug: {other}}})
-            MERGE (p:Permission {{name: 'agent_task:create'}})
+            MERGE (p:Permission {{name: 'ticket:create'}})
             CREATE (g:Role {{slug: {grants}, name: {grants}}})
             CREATE (n:Role {{slug: {nothing}, name: {nothing}}})
             CREATE (g)-[:GRANTS]->(p)
@@ -662,7 +662,7 @@ class TriggerOriginTests(AgentTaskTestCase):
             return permissions.AuthContext(
                 service_account=account,
                 auth_method='client_credentials',
-                permissions={'agent_task:create', 'agent_task:read'},
+                permissions={'ticket:create', 'ticket:read'},
             )
 
         self.test_app.dependency_overrides[permissions.get_current_user] = (
@@ -1613,33 +1613,33 @@ class PermissionTests(AgentTaskTestCase):
         await self.create_task()
         cases: list[tuple[str, str, str, dict[str, typing.Any] | None]] = [
             (
-                'agent_task:create',
+                'ticket:create',
                 'POST',
                 '',
                 {'agent_slug': 'triage', 'title': 'x', 'description': 'y'},
             ),
-            ('agent_task:read', 'GET', '', None),
-            ('agent_task:read', 'GET', 'waiting', None),
-            ('agent_task:read', 'GET', 'counts', None),
-            ('agent_task:read', 'GET', 'T-1/position', None),
-            ('agent_task:read', 'GET', 'T-1', None),
-            ('agent_task:read', 'GET', 'T-1/events', None),
-            ('agent_task:manage', 'POST', 'T-1/pause', None),
-            ('agent_task:manage', 'POST', 'T-1/resume', None),
-            ('agent_task:manage', 'POST', 'T-1/cancel', None),
+            ('ticket:read', 'GET', '', None),
+            ('ticket:read', 'GET', 'waiting', None),
+            ('ticket:read', 'GET', 'counts', None),
+            ('ticket:read', 'GET', 'T-1/position', None),
+            ('ticket:read', 'GET', 'T-1', None),
+            ('ticket:read', 'GET', 'T-1/events', None),
+            ('ticket:manage', 'POST', 'T-1/pause', None),
+            ('ticket:manage', 'POST', 'T-1/resume', None),
+            ('ticket:manage', 'POST', 'T-1/cancel', None),
             (
-                'agent_task:manage',
+                'ticket:manage',
                 'POST',
                 'T-1/reassign',
                 {'owner': self.member},
             ),
-            ('agent_task:manage', 'POST', 'T-1/reply', {'body': 'Hi.'}),
-            ('agent_task:manage', 'POST', 'T-1/acknowledge', None),
-            ('agent_task:create', 'POST', 'T-1/retry', {}),
-            ('agent_task:read', 'POST', 'T-1/retry', {}),
-            ('agent_task:delete', 'DELETE', 'T-1', None),
+            ('ticket:manage', 'POST', 'T-1/reply', {'body': 'Hi.'}),
+            ('ticket:manage', 'POST', 'T-1/acknowledge', None),
+            ('ticket:create', 'POST', 'T-1/retry', {}),
+            ('ticket:read', 'POST', 'T-1/retry', {}),
+            ('ticket:delete', 'DELETE', 'T-1', None),
             (
-                'agent_task:resolve',
+                'ticket:resolve',
                 'POST',
                 f'T-1/requests/{uuid.uuid4()}/resolve',
                 {'status': 'answered', 'answer': 'yes'},
@@ -1656,11 +1656,13 @@ class PermissionTests(AgentTaskTestCase):
 
 
 class TicketPermissionTests(AgentTaskTestCase):
-    async def test_ticket_names_work_without_agent_task_names(self) -> None:
-        """ADR 0028: a role with only ``ticket:*`` passes every check."""
+    async def test_old_names_pass_the_ticket_checks(self) -> None:
+        """ADR 0028: an ``agent_task:*`` name, in a scope or in a custom
+        role before ``setup-permissions`` runs, passes the check of its
+        ``ticket:*`` name."""
         await self.make_agent()
         self.permissions = {
-            name.replace('agent_task:', 'ticket:') for name in ALL_PERMISSIONS
+            name.replace('ticket:', 'agent_task:') for name in ALL_PERMISSIONS
         }
         response = await self.create_task()
         self.assertEqual(response.status_code, 201, response.text)
@@ -1677,34 +1679,21 @@ class TicketPermissionTests(AgentTaskTestCase):
 
 
 class OldPathTests(AgentTaskTestCase):
-    """The routes at ``/agent-tasks``, which stay until release B."""
+    """Release B keeps the routes at ``/agent-tasks`` for saved scheduled
+    jobs, but not in the OpenAPI document, so imbi-mcp has no tools with
+    the old names (ADR 0028)."""
 
     prefix = 'agent-tasks'
 
-    async def test_old_path_serves_the_same_tickets(self) -> None:
+    async def test_old_path_works_but_is_not_documented(self) -> None:
         await self.make_agent()
         response = await self.create_task()
         self.assertEqual(response.status_code, 201, response.text)
-        for method, path in (
-            ('GET', ''),
-            ('GET', 'waiting'),
-            ('GET', 'T-1'),
-            ('GET', 'T-1/events'),
-            ('GET', 'T-1/relations'),
-            ('GET', 'T-1/projects'),
-            ('POST', 'T-1/pause'),
-            ('POST', 'T-1/resume'),
-            ('POST', 'T-1/cancel'),
-            ('POST', 'T-1/acknowledge'),
-        ):
-            with self.subTest(method=method, path=path):
-                response = await self.client.request(method, self.url(path))
-                self.assertEqual(response.status_code, 200, response.text)
-        # The same ticket at the new path.
-        response = await self.client.get(
-            f'/organizations/{self.org}/tickets/T-1'
-        )
-        self.assertEqual(response.json()['status'], 'closed')
+        response = await self.client.get(self.url('T-1'))
+        self.assertEqual(response.status_code, 200, response.text)
+        paths = self.test_app.openapi()['paths']
+        self.assertFalse([path for path in paths if 'agent-tasks' in path])
+        self.assertTrue([path for path in paths if '/tickets/' in path])
 
 
 class ServiceAccountTests(AgentTaskTestCase):

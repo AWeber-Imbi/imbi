@@ -244,7 +244,7 @@ class ResolveAccessTests(ActionTestCase):
     async def test_unauthorized_user_cannot_approve(self) -> None:
         opened = await self.open_request(APPROVAL)
         self.permissions = set(test_agent_tasks.ALL_PERMISSIONS) - {
-            'agent_task:resolve'
+            'ticket:resolve'
         }
         response = await self.resolve(
             opened['request']['id'],
@@ -252,7 +252,7 @@ class ResolveAccessTests(ActionTestCase):
             artifact_digests=['sha256:ab'],
         )
         self.assertEqual(response.status_code, 403, response.text)
-        self.assertIn('agent_task:resolve', response.text)
+        self.assertIn('ticket:resolve', response.text)
         self.assertEqual((await self.task_row())['status'], 'blocked')
 
     async def test_agent_cannot_resolve_its_own_request(self) -> None:
@@ -263,7 +263,7 @@ class ResolveAccessTests(ActionTestCase):
             return permissions.AuthContext(
                 service_account=self.account,
                 auth_method='client_credentials',
-                permissions={'agent_task:resolve'},
+                permissions={'ticket:resolve'},
             )
 
         self.test_app.dependency_overrides[permissions.get_current_user] = (

@@ -185,6 +185,8 @@ class RenderClusterPlaceholdersTestCase(unittest.TestCase):
         """Every shipped DDL statement carries the {on_cluster} placeholder."""
         ch = client.Clickhouse.get_instance()
         for query in ch._load_schemata_queries():
+            if not query.ddl:
+                continue  # a replicated table sends the rows
             self.assertIn(
                 client.ON_CLUSTER_PLACEHOLDER,
                 query.query,

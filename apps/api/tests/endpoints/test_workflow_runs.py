@@ -1556,7 +1556,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
         self.assertEqual(
             response.json()['detail'], {'error': 'agent_not_found'}
         )
-        # The activator is a member with no agent_task:create.
+        # The activator is a member with no ticket:create.
         await self._agent_run({'agent_id': self.agent, 'instruction': 'Go.'})
         await self._agent_step(
             {'agent_id': self.agent, 'instruction': 'Go.'},
@@ -1776,7 +1776,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
                 user=user.user,
                 session_id='test-session',
                 auth_method='jwt',
-                permissions={*user.permissions, 'agent_task:read'},
+                permissions={*user.permissions, 'ticket:read'},
             )
 
         overrides[permissions.get_current_user] = reader
@@ -1866,7 +1866,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
                 user=user.user,
                 session_id='test-session',
                 auth_method='jwt',
-                permissions={*user.permissions, 'agent_task:read'},
+                permissions={*user.permissions, 'ticket:read'},
             )
 
         overrides[permissions.get_current_user] = reader
@@ -2393,7 +2393,7 @@ class RunForTestCase(unittest.TestCase):
         failure = workflow_runs._failure(step, task_content=False)
         assert failure is not None
         self.assertEqual(failure['error'], 'invalid_params')
-        reader = mock.Mock(is_admin=False, permissions={'agent_task:read'})
+        reader = mock.Mock(is_admin=False, permissions={'ticket:read'})
         found = workflow_runs._run_for(reader, run, steps)
         self.assertEqual(found['error'], self.QUOTED)
         self.assertEqual(found['steps'][0]['error'], self.QUOTED)
@@ -2436,7 +2436,7 @@ class RunForTestCase(unittest.TestCase):
         )
 
     def test_task_reader_sees_everything(self) -> None:
-        auth = mock.Mock(is_admin=False, permissions={'agent_task:read'})
+        auth = mock.Mock(is_admin=False, permissions={'ticket:read'})
         self.assertEqual(
             workflow_runs._run_for(auth, self.RUN, self.STEPS),
             {**self.RUN, 'steps': self.STEPS},

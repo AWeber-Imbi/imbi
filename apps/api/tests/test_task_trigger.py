@@ -157,10 +157,10 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
             [
                 {
                     'trigger_node_id': 'done',
-                    'origin_kind': 'task_completed',
+                    'origin_kind': 'ticket_closed',
                     'origin_id': str(task['id']),
                     'origin': {
-                        'kind': 'task_completed',
+                        'kind': 'ticket_closed',
                         'task_id': 'T-7',
                         'depth': 1,
                     },
@@ -177,6 +177,26 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
                 }
             ],
         )
+
+    async def test_old_kind_and_new_kind_start_one_run(self) -> None:
+        # A sweep of the release before B retries with `task_completed`
+        # (ADR 0028), before or after a pod of this release.
+        await self._activate()
+        for first, second in (
+            ('task_completed', ticket_trigger.KIND),
+            (ticket_trigger.KIND, 'task_completed'),
+        ):
+            task = _task(organization_id=self.org, id=uuid.uuid4())
+            with mock.patch.object(ticket_trigger, 'KIND', first):
+                await self.trigger(task)
+            with mock.patch.object(ticket_trigger, 'KIND', second):
+                await self.trigger(task)
+            kinds = [
+                run['origin_kind']
+                for run in await self._runs()
+                if run['origin_id'] == str(task['id'])
+            ]
+            self.assertEqual(kinds, [first])
 
     async def test_dedupe_key_skips_a_repeat(self) -> None:
         async with self.pool.connection() as conn:

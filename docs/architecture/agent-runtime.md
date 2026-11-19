@@ -56,7 +56,7 @@ make it stricter.
 
 ## 2. Task creation
 
-A task is a row in the `agent_runtime` schema in Postgres. It starts as
+A task is a row in the `tickets` schema in Postgres. It starts as
 `queued`. When Imbi creates it, Imbi pins the agent version, the prompt
 version, and the base configuration version. A later change to the agent
 does not change a task that exists.
@@ -189,8 +189,8 @@ sends it.
 
 imbi-api writes each change and its event in one Postgres transaction.
 After the commit, it publishes the event to the Iggy topic
-`agent_tasks` of the stream `agent_task_events`, and each usage row to the
-stream `agent_usage`. iggy-connect writes them to the ClickHouse tables of
+`tickets` of the stream `ticket_events`, and each usage row to the topic
+`agent_tasks` of the stream `agent_usage`. iggy-connect writes them to the ClickHouse tables of
 the same names. If a publish fails, the archive sweep publishes the row
 again. When ClickHouse has all the events of a closed task, the sweep
 deletes them from Postgres.

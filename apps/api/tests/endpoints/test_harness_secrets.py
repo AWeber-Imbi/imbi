@@ -470,7 +470,7 @@ class RouteTests(SecretRunnerTestCase):
         helper_id = await self.make_agent('helper', name='Helper')
         await self.make_version({'subagents': [{'agent_id': helper_id}]})
         response = await self.client.post(
-            '/harness/tasks/T-1/children',
+            '/harness/tickets/T-1/children',
             json={
                 'agent_slug': 'helper',
                 'title': 'Help',

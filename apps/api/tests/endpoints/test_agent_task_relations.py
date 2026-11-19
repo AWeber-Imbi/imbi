@@ -446,12 +446,12 @@ class AccessTests(RelationTestCase):
     def routes(self) -> list[tuple[str, str, str]]:
         project = self.second_project
         return [
-            ('agent_task:read', 'GET', 'T-1/relations'),
-            ('agent_task:read', 'GET', 'T-1/projects'),
-            ('agent_task:manage', 'PUT', 'T-1/requires/T-2'),
-            ('agent_task:manage', 'DELETE', 'T-1/requires/T-2'),
-            ('agent_task:manage', 'PUT', f'T-1/projects/{project}'),
-            ('agent_task:manage', 'DELETE', f'T-1/projects/{project}'),
+            ('ticket:read', 'GET', 'T-1/relations'),
+            ('ticket:read', 'GET', 'T-1/projects'),
+            ('ticket:manage', 'PUT', 'T-1/requires/T-2'),
+            ('ticket:manage', 'DELETE', 'T-1/requires/T-2'),
+            ('ticket:manage', 'PUT', f'T-1/projects/{project}'),
+            ('ticket:manage', 'DELETE', f'T-1/projects/{project}'),
         ]
 
     async def test_each_route_needs_its_permission(self) -> None:
@@ -478,14 +478,14 @@ class AccessTests(RelationTestCase):
                 )
 
     async def test_own_service_account_needs_read_permission(self) -> None:
-        # Its own task, but no agent_task:read: the relations show
+        # Its own task, but no ticket:read: the relations show
         # other tasks and the people who linked them.
         await self.act_as_agent(set())
         for path in ('T-1/relations', 'T-1/projects'):
             with self.subTest(path=path):
                 response = await self.client.get(self.url(path))
                 self.assertEqual(response.status_code, 403, response.text)
-                self.assertIn('agent_task:read', response.text)
+                self.assertIn('ticket:read', response.text)
         # It can still read its task.
         response = await self.client.get(self.url('T-1'))
         self.assertEqual(response.status_code, 200, response.text)
@@ -517,7 +517,7 @@ class AccessTests(RelationTestCase):
         for permission, method, path in self.routes():
             with self.subTest(method=method, path=path):
                 response = await self.client.request(method, self.url(path))
-                if permission == 'agent_task:read':
+                if permission == 'ticket:read':
                     self.assertEqual(response.status_code, 200, response.text)
                     continue
                 self.assertEqual(response.status_code, 403, response.text)

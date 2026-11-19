@@ -190,7 +190,7 @@ class RunTurnTests(helpers.TestCase):
 
     async def test_task_creates_get_idempotency_keys(self) -> None:
         create = 'create_ticket_api_organizations__org_slug__tickets__post'
-        # The name an imbi-mcp of the release before ADR 0028 serves.
+        # The name that imbi-mcp served before ADR 0028 gets no key.
         create_old = (
             'create_agent_task_api_organizations__org_slug__agent_tasks__post'
         )
@@ -220,13 +220,10 @@ class RunTurnTests(helpers.TestCase):
         )
         inputs = [tool_input for _, tool_input, _ in manager.executed]
         self.assertEqual({'org_slug': 'o'}, inputs[0])
+        self.assertEqual({'agent_slug': 'triage'}, inputs[2])
         self.assertEqual(
-            [
-                'slack:C1:1.5:mender:1',
-                'slack:C1:1.5:triage:1',
-                'slack:C1:1.5:mender:2',
-            ],
-            [tool_input['idempotency_key'] for tool_input in inputs[1:]],
+            ['slack:C1:1.5:mender:1', 'slack:C1:1.5:mender:2'],
+            [inputs[1]['idempotency_key'], inputs[3]['idempotency_key']],
         )
 
     async def test_no_prefix_leaves_task_create_input(self) -> None:

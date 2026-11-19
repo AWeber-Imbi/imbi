@@ -66,7 +66,7 @@ _BUSY: typing.LiteralString = """
   WHERE b.agent_id = t.agent_id
     AND b.status <> 'closed'
     AND (EXISTS (SELECT 1 FROM harness.chains AS bc
-                  WHERE bc.root_task_id = COALESCE(b.chain_id, b.id)
+                  WHERE bc.root_ticket_id = COALESCE(b.chain_id, b.id)
                     AND bc.state = ANY(%(pinned)s))
          OR EXISTS (SELECT 1 FROM tickets.sessions AS s
                      WHERE s.ticket_id = b.id
@@ -82,13 +82,13 @@ _CLAIMABLE: typing.LiteralString = ''.join(
         """
   FROM tickets.tickets AS t
   LEFT JOIN harness.chains AS c
-    ON c.root_task_id = COALESCE(t.chain_id, t.id)
+    ON c.root_ticket_id = COALESCE(t.chain_id, t.id)
  WHERE t.status = 'queued'
    AND t.control = 'run'
    AND t.agent_id = ANY(%(agents)s)
    AND (cardinality(%(orgs)s::text[]) = 0
         OR t.organization_id = ANY(%(orgs)s))
-   AND ((c.root_task_id IS NULL
+   AND ((c.root_ticket_id IS NULL
         AND NOT (t.origin_kind = ANY(%(child_kinds)s)))
         OR c.state = 'queued')
    AND NOT EXISTS (
@@ -135,7 +135,7 @@ _CHAIN_CLAIM_QUERY: typing.LiteralString = (
    AND t.status = 'queued'
    AND t.control = 'run'
    AND NOT EXISTS (SELECT 1 FROM harness.claims AS k
-                    WHERE k.task_id = t.id AND k.attempt = %(attempt)s)
+                    WHERE k.ticket_id = t.id AND k.attempt = %(attempt)s)
  ORDER BY t.created_at, t.id
  LIMIT 1
    FOR UPDATE OF t SKIP LOCKED
@@ -153,7 +153,7 @@ SELECT r.id, r.pool, r.instance, p.labels, r.state, r.chain_id,
        t.short_id AS chain_short_id
   FROM harness.runners AS r
   JOIN harness.pools AS p ON p.name = r.pool
-  LEFT JOIN harness.chains AS c ON c.root_task_id = r.chain_id
+  LEFT JOIN harness.chains AS c ON c.root_ticket_id = r.chain_id
   LEFT JOIN tickets.tickets AS t ON t.id = r.chain_id
  WHERE r.state <> 'offline'
    AND (%(pools)s::text[] IS NULL OR r.pool = ANY(%(pools)s))
@@ -435,7 +435,7 @@ class HarnessStore:
             ' FROM harness.chains AS c'
             ' LEFT JOIN harness.runners AS r ON r.id = c.runner_id'
             ' LEFT JOIN harness.pools AS p ON p.name = r.pool'
-            ' WHERE c.root_task_id = %s',
+            ' WHERE c.root_ticket_id = %s',
             (chain_id,),
         )
 
@@ -471,8 +471,9 @@ class HarnessStore:
             chain_id = task['chain_id'] or task['id']
             chain = await _fetch_one(
                 conn,
-                # The new column; a trigger fills `root_task_id`, which
-                # the previous release reads (ADR 0028).
+                # Only the new column; on an install made before ADR
+                # 0028 a trigger fills `root_task_id`, which release A+1
+                # reads.
                 'INSERT INTO harness.chains (root_ticket_id, organization_id,'
                 ' runner_id) VALUES (%s, %s, %s)'
                 ' ON CONFLICT (root_ticket_id) DO UPDATE SET'
@@ -502,7 +503,7 @@ class HarnessStore:
         async with self._pool.connection() as conn, conn.transaction():
             chain = await _fetch_one(
                 conn,
-                'SELECT * FROM harness.chains WHERE root_task_id = %s'
+                'SELECT * FROM harness.chains WHERE root_ticket_id = %s'
                 " AND runner_id = %s AND state = 'running' FOR UPDATE",
                 (runner['chain_id'], runner['id']),
             )
@@ -512,7 +513,7 @@ class HarnessStore:
                 conn,
                 _CHAIN_CLAIM_QUERY,
                 {
-                    'chain': chain['root_task_id'],
+                    'chain': chain['root_ticket_id'],
                     'attempt': chain['attempt'],
                     'child_kinds': list(task_store.CHILD_ORIGIN_KINDS),
                 },
@@ -534,7 +535,7 @@ class HarnessStore:
         """
         async with self._pool.connection() as conn, conn.transaction():
             await conn.execute(
-                'DELETE FROM harness.claims WHERE task_id = %s'
+                'DELETE FROM harness.claims WHERE ticket_id = %s'
                 ' AND attempt = %s',
                 (task['id'], chain['attempt']),
             )
@@ -542,14 +543,14 @@ class HarnessStore:
                 return
             state: ChainState = (
                 'queued'
-                if await _chain_open(conn, chain['root_task_id'])
+                if await _chain_open(conn, chain['root_ticket_id'])
                 else 'done'
             )
             await conn.execute(
                 'UPDATE harness.chains SET state = %s, runner_id = NULL,'
-                ' updated_at = NOW() WHERE root_task_id = %s'
+                ' updated_at = NOW() WHERE root_ticket_id = %s'
                 ' AND runner_id = %s',
-                (state, chain['root_task_id'], runner_id),
+                (state, chain['root_ticket_id'], runner_id),
             )
             await conn.execute(
                 "UPDATE harness.runners SET state = 'idle', chain_id = NULL"
@@ -570,28 +571,28 @@ class HarnessStore:
             if runner['chain_id'] is not None:
                 chain = await _fetch_one(
                     conn,
-                    'SELECT * FROM harness.chains WHERE root_task_id = %s'
+                    'SELECT * FROM harness.chains WHERE root_ticket_id = %s'
                     " AND runner_id = %s AND state = 'running' FOR UPDATE",
                     (runner['chain_id'], runner['id']),
                 )
             if chain is not None:
-                if await _chain_open(conn, chain['root_task_id']):
+                if await _chain_open(conn, chain['root_ticket_id']):
                     state = 'fenced'
                     chain = await _fetch_one(
                         conn,
                         "UPDATE harness.chains SET state = 'fencing',"
                         ' attempt = attempt + 1, fenced_at = NOW(),'
-                        ' updated_at = NOW() WHERE root_task_id = %s'
+                        ' updated_at = NOW() WHERE root_ticket_id = %s'
                         ' RETURNING *',
-                        (chain['root_task_id'],),
+                        (chain['root_ticket_id'],),
                     )
                 else:
                     chain = await _fetch_one(
                         conn,
                         "UPDATE harness.chains SET state = 'done',"
-                        ' updated_at = NOW() WHERE root_task_id = %s'
+                        ' updated_at = NOW() WHERE root_ticket_id = %s'
                         ' RETURNING *',
-                        (chain['root_task_id'],),
+                        (chain['root_ticket_id'],),
                     )
             await conn.execute(
                 'UPDATE harness.runners SET state = %s, offline_at = NOW()'
@@ -978,10 +979,10 @@ class HarnessStore:
         """Keep the egress allowlist that a root claim gave the pod."""
         await self._execute(
             'UPDATE harness.chains SET egress = %s'
-            ' WHERE root_task_id = %s AND attempt = %s',
+            ' WHERE root_ticket_id = %s AND attempt = %s',
             (
                 pg_json.Jsonb([g.model_dump(mode='json') for g in grants]),
-                chain['root_task_id'],
+                chain['root_ticket_id'],
                 chain['attempt'],
             ),
         )
@@ -1073,13 +1074,13 @@ class HarnessStore:
         return await self._fetch_one(
             'UPDATE harness.chains SET state = %s, fence_error = %s,'
             ' fencers_ok_at = CASE WHEN %s THEN NOW() END,'
-            ' updated_at = NOW() WHERE root_task_id = %s AND attempt = %s'
+            ' updated_at = NOW() WHERE root_ticket_id = %s AND attempt = %s'
             " AND state IN ('fencing', 'stuck') RETURNING *",
             (
                 'stuck' if error else 'fencing',
                 error,
                 error is None,
-                chain['root_task_id'],
+                chain['root_ticket_id'],
                 chain['attempt'],
             ),
         )
@@ -1096,7 +1097,7 @@ class HarnessStore:
             async with conn.transaction():
                 chain = await _fetch_one(
                     conn,
-                    'SELECT * FROM harness.chains WHERE root_task_id = %s'
+                    'SELECT * FROM harness.chains WHERE root_ticket_id = %s'
                     " AND state = 'fencing' AND fencers_ok_at IS NOT NULL"
                     ' AND fenced_at <= NOW() - make_interval(secs => %s)'
                     ' FOR UPDATE',
@@ -1112,7 +1113,7 @@ class HarnessStore:
                 )
                 await conn.execute(
                     'UPDATE harness.chains SET state = %s, runner_id = NULL,'
-                    ' updated_at = NOW() WHERE root_task_id = %s',
+                    ' updated_at = NOW() WHERE root_ticket_id = %s',
                     (state, chain_id),
                 )
                 await conn.execute(
@@ -1180,7 +1181,7 @@ async def _record_claim(
     await conn.execute(
         'INSERT INTO harness.claims (ticket_id, attempt, chain_id, runner_id)'
         ' VALUES (%s, %s, %s, %s)',
-        (task['id'], chain['attempt'], chain['root_task_id'], runner_id),
+        (task['id'], chain['attempt'], chain['root_ticket_id'], runner_id),
     )
 
 

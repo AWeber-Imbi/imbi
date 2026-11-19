@@ -28,7 +28,7 @@ vi.mock('@/api/endpoints', () => ({
   setTicketProject: vi.fn(),
 }))
 
-const auth = { permissions: ['agent:read', 'agent_task:manage'] }
+const auth = { permissions: ['agent:read', 'ticket:manage'] }
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/hooks/useAuth', () => ({
@@ -111,7 +111,7 @@ function slimProject(id: string, name: string, team: string) {
 describe('Related tasks', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    auth.permissions = ['agent:read', 'agent_task:manage']
+    auth.permissions = ['agent:read', 'ticket:manage']
     vi.mocked(endpoints.listAgents).mockResolvedValue([agent()])
     vi.mocked(endpoints.getTicketRelations).mockResolvedValue(RELATIONS)
     vi.mocked(endpoints.setTicketDependency).mockResolvedValue(undefined)
@@ -157,7 +157,7 @@ describe('Related tasks', () => {
     )
   })
 
-  it('hides changes without agent_task:manage', async () => {
+  it('hides changes without ticket:manage', async () => {
     auth.permissions = ['agent:read']
     render(<RelatedTasksTab orgSlug="acme" task={task()} />)
     await screen.findByText('Task T-2')
@@ -315,7 +315,7 @@ describe('Link task dialog', () => {
 describe('Associated projects', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    auth.permissions = ['agent:read', 'agent_task:manage']
+    auth.permissions = ['agent:read', 'ticket:manage']
     vi.mocked(endpoints.listTicketProjects).mockResolvedValue(PROJECTS)
     vi.mocked(endpoints.setTicketProject).mockResolvedValue(undefined)
   })

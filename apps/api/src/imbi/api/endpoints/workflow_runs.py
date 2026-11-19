@@ -786,7 +786,7 @@ def _task_key_conflict() -> fastapi.HTTPException:
 
 def _can_read_tasks(auth: permissions.AuthContext) -> bool:
     return auth.is_admin or common_permissions.holds(
-        'agent_task:read', auth.permissions
+        'ticket:read', auth.permissions
     )
 
 
@@ -1067,7 +1067,7 @@ async def get_run(
     A later step can render agent task content into its ``input`` and
     ``output``. For a run that a closed task started or that has an
     agent step, only a caller who can read agent tasks
-    (``agent_task:read``) gets the step ``input`` and ``output``, the
+    (``ticket:read``) gets the step ``input`` and ``output``, the
     dedupe key, and the ticket attributes of the payload.
 
     Raises:

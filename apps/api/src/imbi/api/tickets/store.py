@@ -47,17 +47,17 @@ LOGGER = logging.getLogger(__name__)
 SCHEMA = 'tickets'
 
 #: The origin kinds of a child ticket, which an agent made from its own
-#: ticket. Releases A and A+1 write ``task`` and read both (ADR 0028).
-#: The unique index of idempotency keys includes the origin kind, so a
-#: pod that wrote ``ticket`` while a pod of the previous release wrote
-#: ``task`` for the same key would make two children. The write changes
-#: in release B, with the index.
+#: ticket. Release B writes ``ticket``; older releases wrote ``task``
+#: (ADR 0028). Both are read. The unique index of idempotency keys makes
+#: them one kind, so pods of two releases cannot make two children for
+#: one key.
 CHILD_ORIGIN_KINDS = ('task', 'ticket')
 
-#: The unique index of idempotency keys. It keeps its ADR 0020 name until
-#: release B, because the previous release finds a repeated key by this
-#: name in the error of its insert through the view (ADR 0028).
-ORIGIN_IDEMPOTENCY_KEY = 'tasks_origin_idempotency_key'
+#: The names of the unique index of idempotency keys. It keeps its ADR
+#: 0020 name until the release after B, which renames it (ADR 0028).
+ORIGIN_IDEMPOTENCY_KEYS = frozenset(
+    {'tasks_origin_idempotency_key', 'tickets_origin_idempotency_key'}
+)
 
 #: A close hook gets the task row after the transaction that closed the
 #: task commits. The secrets broker registers its release here.
@@ -706,7 +706,7 @@ class TicketStore:
                 row = await _fetch_task(conn, task_id)
         except psycopg.errors.UniqueViolation as err:
             if (
-                err.diag.constraint_name != ORIGIN_IDEMPOTENCY_KEY
+                err.diag.constraint_name not in ORIGIN_IDEMPOTENCY_KEYS
                 or task.idempotency_key is None
             ):
                 raise
@@ -1098,7 +1098,7 @@ class TicketStore:
             # trigger_outbox row of the task, or of a task in the chain
             # of a root, needs the root for its depth (ticket_trigger).
             cursor = await conn.execute(
-                'SELECT 1 FROM harness.chains WHERE root_task_id = %s'
+                'SELECT 1 FROM harness.chains WHERE root_ticket_id = %s'
                 " AND state IN ('running', 'fencing', 'stuck')"
                 ' UNION ALL SELECT 1 FROM secrets.resolutions'
                 " WHERE task_id = %s AND state IN ('pending', 'active')"

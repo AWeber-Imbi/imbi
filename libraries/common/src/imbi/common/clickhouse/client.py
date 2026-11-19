@@ -47,6 +47,8 @@ class SchemataQuery(pydantic.BaseModel):
     name: str
     query: str
     enabled: bool = True
+    #: ``False`` for a data step, such as a copy, that creates no object.
+    ddl: bool = True
 
 
 #: Placeholder in ``schemata.toml`` DDL replaced with an ``ON CLUSTER

@@ -446,7 +446,7 @@ class OrgRunsTestCase(RunHistoryTestCase):
 
         async def reader() -> permissions.AuthContext:
             auth = await user_auth()
-            auth.permissions.add('agent_task:read')
+            auth.permissions.add('ticket:read')
             return auth
 
         overrides[permissions.get_current_user] = reader
@@ -483,7 +483,7 @@ class OrgRunsTestCase(RunHistoryTestCase):
 
         async def reader() -> permissions.AuthContext:
             auth = await user_auth()
-            auth.permissions.add('agent_task:read')
+            auth.permissions.add('ticket:read')
             return auth
 
         overrides[permissions.get_current_user] = reader

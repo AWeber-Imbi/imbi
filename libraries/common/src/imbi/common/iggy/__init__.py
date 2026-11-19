@@ -32,7 +32,6 @@ __all__ = [
 #: runtime reads this mapping once at startup, so a topic added here
 #: reaches ClickHouse after the connectors runtime restarts.
 TOPICS: dict[str, tuple[str, ...]] = {
-    'agent_task_events': ('agent_tasks',),
     'agent_usage': ('agent_tasks',),
     'commit_drift': ('drift',),
     'commits': ('github', 'maintenance'),

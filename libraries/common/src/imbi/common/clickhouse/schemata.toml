@@ -581,6 +581,10 @@ enabled = true
 # No TTL: this is the audit trail (F10, N6). If a retention decision is
 # made, the TTL must be on a column every row has, with no DELETE WHERE,
 # so ReplacingMergeTree cannot bring back a removed row.
+#
+# Not written since release A (ADR 0028). Release B copies it to
+# `ticket_events`; the release after B drops it, because pods of the
+# release before B still read it.
 [agent_task_events]
 query = """
 CREATE TABLE IF NOT EXISTS imbi.agent_task_events {on_cluster}(
@@ -607,10 +611,9 @@ ORDER BY (organization_id, task_id, seq);
 enabled = true
 
 # The permanent log of tickets (ADR 0028): `agent_task_events` under its
-# new name, with `ticket_id` for `task_id`. Release A writes here only;
-# readers read both tables, removing a row that both hold by
-# `(ticket_id, seq)`, until release B copies the old table here and drops
-# it. Postgres (`tickets.events`) holds the same rows until the archive
+# new name, with `ticket_id` for `task_id`. Release A writes here only.
+# Release B copies the old table here (the next entry) and reads only
+# this table; the release after B drops the old table. Postgres (`tickets.events`) holds the same rows until the archive
 # sweep confirms every `seq` of a ticket is in ClickHouse. No TTL, like
 # `agent_task_events`.
 [ticket_events]
@@ -637,6 +640,30 @@ PARTITION BY toYYYYMM(at)
 ORDER BY (organization_id, ticket_id, seq);
 """
 enabled = true
+
+# Release B (ADR 0028): copy the events of `agent_task_events` that this
+# table does not have. Nothing writes the old table since release A, so
+# the source does not change. ReplacingMergeTree removes a duplicate only
+# when it merges parts, so the copy skips each `(ticket_id, seq)` that
+# this table has (only the keys of old tickets, so the set stays small),
+# and a second run copies nothing. Not DDL (`ddl = false`), so no
+# `{on_cluster}`: the replicated table sends the rows to each replica.
+[copy_agent_task_events]
+query = """
+INSERT INTO imbi.ticket_events (
+  organization_id, ticket_id, short_id, agent_id, agent_version,
+  project_id, seq, event_id, type, schema_version, actor_kind, actor_id,
+  channel, session_id, at, payload)
+SELECT organization_id, task_id AS ticket_id, short_id, agent_id,
+       agent_version, project_id, seq, event_id, type, schema_version,
+       actor_kind, actor_id, channel, session_id, at, payload
+FROM imbi.agent_task_events
+WHERE (task_id, seq) NOT IN (
+  SELECT ticket_id, seq FROM imbi.ticket_events
+   WHERE ticket_id IN (SELECT task_id FROM imbi.agent_task_events))
+"""
+enabled = true
+ddl = false
 
 # One row per agent usage report (ADR 0020), for the Usage page (N2, N7).
 # `report_id` is the `tickets.budget_ledger` id, so a republish by

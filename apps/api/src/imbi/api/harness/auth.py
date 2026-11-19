@@ -4,7 +4,7 @@ The harness routes accept credentials that no other route accepts:
 
 - A runner credential, for the runner routes (:func:`current_runner`).
 - An agent token, for the ADR 0020 harness routes, the
-  ``/harness/tasks`` routes, and ``/harness/secret-resolutions``
+  ``/harness/tickets`` routes, and ``/harness/secret-resolutions``
   (:func:`harness_caller`). It is valid only while its chain is pinned
   to its runner in its attempt.
 - An executor credential, for the ``/harness/executor`` secret routes

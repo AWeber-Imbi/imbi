@@ -465,13 +465,17 @@ class ApiKeyAccessLogPrincipalTestCase(unittest.IsolatedAsyncioTestCase):
 
 
 class HeldTestCase(unittest.TestCase):
-    def test_ticket_and_agent_task_names_match(self) -> None:
+    def test_an_old_name_counts_for_its_ticket_name(self) -> None:
+        # A scope or role of the release before B (ADR 0028).
         self.assertEqual(
-            {'agent_task:read', 'ticket:create'},
+            {'ticket:read', 'ticket:create'},
             permissions.held(
-                {'agent_task:read', 'ticket:create', 'project:read'},
-                {'ticket:read', 'agent_task:create'},
+                {'ticket:read', 'ticket:create', 'project:read'},
+                {'agent_task:read', 'ticket:create'},
             ),
+        )
+        self.assertEqual(
+            set(), permissions.held({'agent_task:read'}, {'ticket:read'})
         )
 
 
@@ -532,21 +536,19 @@ class NarrowToAccountableTestCase(unittest.IsolatedAsyncioTestCase):
         # A copy: a cached context must not change.
         self.assertEqual({'project:read', 'workflow:run'}, ctx.permissions)
 
-    async def test_ticket_and_agent_task_names_are_one_permission(
-        self,
-    ) -> None:
+    async def test_an_old_name_counts_for_its_ticket_name(self) -> None:
         ctx = self._scheduler()
         ctx = ctx.model_copy(
-            update={'permissions': {'agent_task:read', 'ticket:create'}}
+            update={'permissions': {'ticket:read', 'ticket:create'}}
         )
         narrowed = await self._narrow(
             ctx,
             'dev@example.com',
             principals=[self._user()],
-            granted={'ticket:read', 'agent_task:create'},
+            granted={'agent_task:read', 'ticket:create'},
         )
         self.assertEqual(
-            {'agent_task:read', 'ticket:create'}, narrowed.permissions
+            {'ticket:read', 'ticket:create'}, narrowed.permissions
         )
 
     async def test_refuses_an_inactive_accountable_user(self) -> None:

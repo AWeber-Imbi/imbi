@@ -85,7 +85,7 @@ import { useVirtualRows } from './virtualRows'
 
 /**
  * A short id: an old link (`/agents/tasks/<short id>`) has no org.
- * Remove in release B, with the redirect in App.tsx.
+ * It stays with the redirect in App.tsx.
  */
 const SHORT_ID = /^T-\d+$/
 
@@ -138,7 +138,7 @@ export function TasksPage() {
     )
   }
 
-  // Remove in release B (ADR 0028).
+  // An old link without the org (ADR 0028).
   if (legacy) {
     const rest = [orgSlug, shortId!, ...(tab ? [tab] : [])]
     return <Navigate replace to={`${ticketsPath(...rest)}${search}${hash}`} />

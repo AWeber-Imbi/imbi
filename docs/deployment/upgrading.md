@@ -74,6 +74,78 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
+## Unreleased: release B (ADR 0028)
+
+This release removes the old names of ADR 0028 that no pod of 2.55.0
+uses. The old objects that 2.55.0 still reads stay until the next
+release removes them.
+
+1. **Before you deploy**, deploy 2.55.0 everywhere and let its rollout
+   finish.
+2. **Before you deploy**, make sure that no MCP client calls a tool with
+   an old name (`*_agent_task_*`). imbi-mcp gets its tools from the API
+   document. This release removes the `/organizations/{org}/agent-tasks`
+   paths from that document and removes the `/harness/tasks` paths, so
+   the old tools go. Use the `*_ticket_*` tools.
+3. Deploy imbi-api first, then imbi-mcp, the harness runners,
+   imbi-gateway, imbi-slackbot, and imbi-workflows. At its first start,
+   imbi-api:
+   - drops the `agent_runtime` schema and its views, which only 2.53.0
+     used,
+   - makes the child origin kinds `task` and `ticket` one kind in the
+     unique index of ticket idempotency keys, and changes `task` to
+     `ticket` in every ticket (each start does this again for a child
+     ticket that a 2.55.0 pod made during the rollout), and
+   - adds a unique index that makes the run origin kinds
+     `task_completed` and `ticket_closed` one kind.
+
+   You do not run a command for this. The index changes lock writes to
+   `tickets.tickets` and `workflow_runtime.runs` while they run.
+4. As soon as the first new imbi-api pod is up, run
+   `imbi-api setup-clickhouse` in that pod (pick the pod by name, as for
+   2.54.0). It copies the events of `agent_task_events` that
+   `ticket_events` does not have. This release reads only
+   `ticket_events`, so until the copy is done a new pod shows an
+   incomplete log for a ticket that was archived before 2.54.0. The old
+   table has no TTL, so the copy can be large. Before you deploy, count
+   its rows:
+
+    ```sql
+    SELECT count() FROM imbi.agent_task_events
+    ```
+
+   Then make sure that every event was copied. The result must be `0`:
+
+    ```sql
+    SELECT uniqExact(task_id, seq) FROM imbi.agent_task_events
+     WHERE (task_id, seq) NOT IN (SELECT ticket_id, seq FROM imbi.ticket_events)
+    ```
+
+5. Run `imbi-api setup-permissions`. It gives each role that has an
+   `agent_task` permission, custom roles too, the `ticket` permission with
+   the same action, then removes the `agent_task` permissions. Every
+   check accepts either name until this command runs. An API key scope
+   that names an `agent_task` permission keeps working.
+6. When the imbi-api rollout is complete, restart iggy-connect. The
+   `agent_task_events` stream is not in its configuration anymore.
+7. Change each scheduled job whose `api` target path has `/agent-tasks`
+   to use `/tickets`. The old path still works in this release, but the
+   next release removes it.
+
+While pods of both releases run:
+
+- A new pod writes `ticket` as the origin kind of a child ticket, and
+  `ticket_closed` as the origin kind of a run that a closed ticket
+  starts. 2.55.0 reads both. When a 2.55.0 workflow sweep retries a
+  closed ticket whose run a new pod started, the unique index stops a
+  second run. The 2.55.0 pod then logs that the task did not start the
+  workflow, until a new pod takes the retry.
+- The harness tables keep `chains.root_task_id` and `claims.task_id`,
+  which 2.55.0 reads. This release uses only `root_ticket_id` and
+  `ticket_id`; a trigger fills the old columns. The next release moves
+  the keys and drops the old columns, the trigger, the
+  `agent_task_events` table, and the `/agent-tasks` paths.
+
 ## 2.55.0
 
 1. **Before you deploy**, deploy 2.54.0

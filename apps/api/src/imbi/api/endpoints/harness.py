@@ -9,7 +9,7 @@
 - **Runners** (``/harness/runners``): a runner registers with its pool
   credential (the client credential of the pool's service account),
   then heartbeats, claims, and finishes with its runner credential.
-- **Tasks** (``/harness/tasks``): the routes that a runner calls with
+- **Tickets** (``/harness/tickets``): the routes that a runner calls with
   an agent token for a task of its chain: read events, make a child
   task, and check a tool rate limit.
 - **Secrets** (plan 9.3): the runner asks for a resolution with an
@@ -870,7 +870,7 @@ async def _claim(
         raise _NoServiceAccount(task['short_id'])
     org_slugs = await organization_slugs(db, [task['organization_id']])
     grant = tokens.AgentGrant(
-        chain_id=chain['root_task_id'],
+        chain_id=chain['root_ticket_id'],
         attempt=chain['attempt'],
         runner_id=runner['id'],
         organization_id=task['organization_id'],
@@ -897,7 +897,7 @@ async def _claim(
         else [harness_egress.Grant.model_validate(g) for g in chain['egress']]
     )
     return Claim(
-        chain_id=chain['root_task_id'],
+        chain_id=chain['root_ticket_id'],
         attempt=chain['attempt'],
         organization_slug=org_slug,
         task=tasks_api.AgentTaskResponse.model_validate(task),
@@ -933,7 +933,7 @@ def _proxy_token(
         return None
     token = tokens.mint_proxy_token(
         secret,
-        chain_id=chain['root_task_id'],
+        chain_id=chain['root_ticket_id'],
         attempt=chain['attempt'],
         pod=pod,
         hosts=hosts,
@@ -975,8 +975,8 @@ async def _root_egress(
     the list for the claims of its child tasks.
     """
     root = task
-    if task['id'] != chain['root_task_id']:
-        root = await store.task_agent(chain['root_task_id']) or task
+    if task['id'] != chain['root_ticket_id']:
+        root = await store.task_agent(chain['root_ticket_id']) or task
     slugs = await _egress_slugs(db, root['agent_id'], root['agent_version'])
     grants, pending = harness_egress.grants(
         await store.egress_destinations(), slugs, task['organization_id']
@@ -1535,7 +1535,7 @@ async def _renew_api_tokens(
     ):
         return {}
     grant = tokens.AgentGrant(
-        chain_id=chain['root_task_id'],
+        chain_id=chain['root_ticket_id'],
         attempt=chain['attempt'],
         runner_id=runner['id'],
         organization_id=chain['organization_id'],
@@ -1546,7 +1546,7 @@ async def _renew_api_tokens(
         task = await tasks.get(chain['organization_id'], short_id.upper())
         if (
             task is None
-            or (task['chain_id'] or task['id']) != chain['root_task_id']
+            or (task['chain_id'] or task['id']) != chain['root_ticket_id']
             or task['status'] == 'closed'
         ):
             continue
@@ -1710,11 +1710,6 @@ async def finish_harness_runner(
     response_model=list[tasks_api.AgentTaskEventResponse],
     name='list_harness_ticket_events',
 )
-@harness_router.get(
-    '/tasks/{short_id}/events',
-    response_model=list[tasks_api.AgentTaskEventResponse],
-    deprecated=True,
-)
 async def list_harness_task_events(
     short_id: str,
     caller: harness_auth.AgentCaller,
@@ -1849,11 +1844,6 @@ async def read_harness_ticket_history(
     response_model=AttachedProject,
     name='attach_harness_ticket_project',
 )
-@harness_router.put(
-    '/tasks/{short_id}/projects/{project}',
-    response_model=AttachedProject,
-    deprecated=True,
-)
 async def attach_harness_task_project(
     short_id: str,
     project: str,
@@ -1907,18 +1897,6 @@ async def attach_harness_task_project(
         },
     },
     name='create_harness_child_ticket',
-)
-@harness_router.post(
-    '/tasks/{short_id}/children',
-    status_code=201,
-    response_model=tasks_api.AgentTaskResponse,
-    responses={
-        200: {
-            'model': tasks_api.AgentTaskResponse,
-            'description': 'A child with this idempotency key exists.',
-        },
-    },
-    deprecated=True,
 )
 async def create_harness_child_task(
     short_id: str,
@@ -2024,7 +2002,7 @@ async def create_harness_child_task(
     agent_version = int(agent.get('version') or 1)
     prompt_version = agent.get('prompt_version')
     origin = {
-        'kind': 'task',
+        'kind': 'ticket',
         'task_id': origin_id,
         'short_id': parent['short_id'],
         'agent_id': parent['agent_id'],
@@ -2039,7 +2017,7 @@ async def create_harness_child_task(
                 service_account_id=service_account_id,
                 title=data.title,
                 description=data.description,
-                origin_kind='task',
+                origin_kind='ticket',
                 origin_id=origin_id,
                 origin=origin,
                 idempotency_key=data.idempotency_key,
@@ -2070,11 +2048,6 @@ async def create_harness_child_task(
     '/tickets/{short_id}/tool-calls/check',
     response_model=ToolCallVerdict,
     name='check_harness_tool_call',
-)
-@harness_router.post(
-    '/tasks/{short_id}/tool-calls/check',
-    response_model=ToolCallVerdict,
-    deprecated=True,
 )
 async def check_harness_tool_call(
     short_id: str,

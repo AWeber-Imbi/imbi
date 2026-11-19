@@ -7,7 +7,7 @@ are referred to by email, as everywhere in this API.
 
 Every route needs the caller to be a member of the organization
 (``MEMBER_OF``), because task content is sensitive and the
-``agent_task:*`` permissions are not scoped to an organization. A
+``ticket:*`` permissions are not scoped to an organization. A
 caller that is not a member gets ``403 organization_forbidden``: see
 :mod:`imbi.api.auth.organizations`. There is no admin bypass.
 
@@ -178,8 +178,8 @@ class AgentTaskOrigin(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra='allow')
 
     #: ``ticket`` and ``ticket_closed`` are the ADR 0028 names of
-    #: ``task`` and ``task_completed``. Child tickets keep ``task`` and
-    #: runs keep ``task_completed`` until release B (see
+    #: ``task`` and ``task_completed``. Release B writes the new names;
+    #: rows of older releases have the old ones (see
     #: :data:`imbi.api.tickets.store.CHILD_ORIGIN_KINDS` and
     #: :mod:`imbi.api.workflows.ticket_trigger`).
     kind: typing.Literal[
@@ -763,7 +763,7 @@ async def _get_task(
     return task
 
 
-_require_read = permissions.require_permission('agent_task:read')
+_require_read = permissions.require_permission('ticket:read')
 
 
 async def _readable_task(
@@ -776,7 +776,7 @@ async def _readable_task(
 ) -> dict[str, typing.Any]:
     """Return the task when the caller can read it.
 
-    The caller needs ``agent_task:read``. The service account of the
+    The caller needs ``ticket:read``. The service account of the
     task's agent can also read its own task and events without it, so
     its harness can poll the log for human input.
 
@@ -830,7 +830,7 @@ async def may_create(db: graph.Graph, org_slug: str, email: str) -> bool:
     """Return whether the person can make agent tasks in the org.
 
     The person must be an active member of the org, and an admin or a
-    holder of ``agent_task:create``, as for a create of their own.
+    holder of ``ticket:create``, as for a create of their own.
     """
     records = await db.execute(
         _OWNER_QUERY,
@@ -842,7 +842,7 @@ async def may_create(db: graph.Graph, org_slug: str, email: str) -> bool:
     if graph.parse_agtype(records[0]['is_admin']):
         return True
     return common_permissions.holds(
-        'agent_task:create',
+        'ticket:create',
         await common_permissions.load_principal_permissions(
             db, 'User', 'email', email, org_slug=org_slug
         ),
@@ -961,15 +961,15 @@ def relation_errors() -> abc.Generator[None]:
         raise _unprocessable(f'Task {str(e)!r} cannot require itself') from e
 
 
-#: A caller with ``agent_task:read``, with no exception for the service
+#: A caller with ``ticket:read``, with no exception for the service
 #: account of the task's agent (see :func:`_readable_task`).
 TaskReader = typing.Annotated[
     permissions.AuthContext, fastapi.Depends(_require_read)
 ]
 
-_require_manage = permissions.require_permission('agent_task:manage')
+_require_manage = permissions.require_permission('ticket:manage')
 
-#: A person with ``agent_task:manage``. Agents cannot change relations.
+#: A person with ``ticket:manage``. Agents cannot change relations.
 ManagingPerson = typing.Annotated[
     permissions.AuthContext, fastapi.Depends(_require_manage)
 ]
@@ -977,9 +977,8 @@ ManagingPerson = typing.Annotated[
 
 def ticket_operation_id(route: fastapi.routing.APIRoute) -> str:
     """Return the operation id of a route at ``/tickets``: the default
-    id, with ``ticket`` for ``agent_task`` in the function name.
-
-    The routes at ``/agent-tasks`` keep the default ids (ADR 0028).
+    id, with ``ticket`` for ``agent_task`` in the function name (ADR
+    0028).
     """
     name = route.name.replace('agent_task', 'ticket')
     return name + fastapi_utils.generate_unique_id(route)[len(route.name) :]
@@ -1016,7 +1015,7 @@ async def create_agent_task(
     store: tickets.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('agent_task:create')),
+        fastapi.Depends(permissions.require_permission('ticket:create')),
     ],
     scheduled_task: typing.Annotated[
         str | None, _header('X-Imbi-Scheduled-Task')
@@ -1204,7 +1203,7 @@ async def list_agent_tasks(
     store: tickets.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('agent_task:read')),
+        fastapi.Depends(permissions.require_permission('ticket:read')),
     ],
     status: typing.Annotated[list[Status] | None, fastapi.Query()] = None,
     agent_id: typing.Annotated[list[str] | None, fastapi.Query()] = None,
@@ -1305,7 +1304,7 @@ async def count_agent_tasks(
     store: tickets.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('agent_task:read')),
+        fastapi.Depends(permissions.require_permission('ticket:read')),
     ],
     status: typing.Annotated[list[Status] | None, fastapi.Query()] = None,
     agent_id: typing.Annotated[list[str] | None, fastapi.Query()] = None,
@@ -1345,7 +1344,7 @@ async def get_agent_task_position(
     store: tickets.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('agent_task:read')),
+        fastapi.Depends(permissions.require_permission('ticket:read')),
     ],
     status: typing.Annotated[list[Status] | None, fastapi.Query()] = None,
     agent_id: typing.Annotated[list[str] | None, fastapi.Query()] = None,
@@ -1410,7 +1409,7 @@ async def count_waiting_agent_tasks(
     store: tickets.Store,
     _auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('agent_task:read')),
+        fastapi.Depends(permissions.require_permission('ticket:read')),
     ],
 ) -> dict[str, int]:
     """Count the tasks in the organization that wait on a person.
@@ -1465,7 +1464,7 @@ async def pause_agent_task(
     store: tickets.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('agent_task:manage')),
+        fastapi.Depends(permissions.require_permission('ticket:manage')),
     ],
 ) -> dict[str, typing.Any]:
     """Set the control value of a task to ``pause``.
@@ -1486,7 +1485,7 @@ async def resume_agent_task(
     store: tickets.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('agent_task:manage')),
+        fastapi.Depends(permissions.require_permission('ticket:manage')),
     ],
 ) -> dict[str, typing.Any]:
     """Set the control value of a task to ``run``.
@@ -1507,7 +1506,7 @@ async def cancel_agent_task(
     store: tickets.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('agent_task:manage')),
+        fastapi.Depends(permissions.require_permission('ticket:manage')),
     ],
 ) -> dict[str, typing.Any]:
     """Set the control value of a task to ``cancel``.
@@ -1528,7 +1527,7 @@ async def delete_agent_task(
     store: tickets.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('agent_task:delete')),
+        fastapi.Depends(permissions.require_permission('ticket:delete')),
     ],
 ) -> None:
     """Delete a closed task, with its events and relations.
@@ -1536,7 +1535,7 @@ async def delete_agent_task(
     The secret audit and the usage records of the task stay.
 
     Raises:
-        403: The caller has no ``agent_task:delete``, or is not a member
+        403: The caller has no ``ticket:delete``, or is not a member
             of the org.
         404: No such task.
         409: The task, or a task in its chain, is not closed.
@@ -1654,7 +1653,7 @@ async def retry_agent_task(
     store: tickets.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('agent_task:create')),
+        fastapi.Depends(permissions.require_permission('ticket:create')),
     ],
 ) -> dict[str, typing.Any]:
     """Make a new task that does a closed task again.
@@ -1662,7 +1661,7 @@ async def retry_agent_task(
     The new task has the agent, title, and projects of the closed task.
     Its description adds what happened to the closed task, and the note
     of the person. The closed task does not change. The caller also
-    needs ``agent_task:read``, because the new description shows the
+    needs ``ticket:read``, because the new description shows the
     log of the closed task.
 
     Raises:
@@ -1728,7 +1727,7 @@ async def reassign_agent_task(
     store: tickets.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('agent_task:manage')),
+        fastapi.Depends(permissions.require_permission('ticket:manage')),
     ],
 ) -> dict[str, typing.Any]:
     """Give a task a new owner.
@@ -1766,7 +1765,7 @@ async def set_agent_task_priority(
     store: tickets.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('agent_task:manage')),
+        fastapi.Depends(permissions.require_permission('ticket:manage')),
     ],
 ) -> dict[str, typing.Any]:
     """Set the priority of a task.
@@ -1814,7 +1813,7 @@ async def resolve_agent_task_request(
     store: tickets.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('agent_task:resolve')),
+        fastapi.Depends(permissions.require_permission('ticket:resolve')),
     ],
 ) -> dict[str, typing.Any]:
     """Answer a feedback request, or approve or reject an approval.
@@ -1831,7 +1830,7 @@ async def resolve_agent_task_request(
     ``409 request_resolved`` that names who resolved it (I4).
 
     Raises:
-        403: The caller is not a person, has no ``agent_task:resolve``,
+        403: The caller is not a person, has no ``ticket:resolve``,
             or is not a member of the org.
         404: No such task or request.
         409: ``task_closed``, ``request_resolved``, ``request_expired``,
@@ -1899,7 +1898,7 @@ async def reply_agent_task(
     store: tickets.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('agent_task:manage')),
+        fastapi.Depends(permissions.require_permission('ticket:manage')),
     ],
 ) -> dict[str, typing.Any]:
     """Write a reply from a person to the agent (H3).
@@ -1910,7 +1909,7 @@ async def reply_agent_task(
     transaction (Reply and hold).
 
     Raises:
-        403: The caller is not a person, has no ``agent_task:manage``,
+        403: The caller is not a person, has no ``ticket:manage``,
             or is not a member of the org.
         404: No such task.
         409: The task is closed, or ``hold`` and a cancel is not done
@@ -1946,7 +1945,7 @@ async def get_agent_task_relations(
     """List the tasks related to a task: the tasks it requires, the
     tasks that require it, and its parent and children (delegation).
 
-    The caller needs ``agent_task:read``, also the service account of the
+    The caller needs ``ticket:read``, also the service account of the
     task's agent: the relations show other tasks.
     """
     return await store.relations(task)
@@ -1967,7 +1966,7 @@ async def add_agent_task_dependency(
     When the dependency exists, nothing changes.
 
     Raises:
-        403: The caller is not a person, has no ``agent_task:manage``,
+        403: The caller is not a person, has no ``ticket:manage``,
             or is not a member of the org.
         404: No such task.
         409: ``task_archived``: both tasks are archived.
@@ -1996,7 +1995,7 @@ async def remove_agent_task_dependency(
     nothing changes.
 
     Raises:
-        403: The caller is not a person, has no ``agent_task:manage``,
+        403: The caller is not a person, has no ``ticket:manage``,
             or is not a member of the org.
         404: No such task.
         409: ``task_archived``: both tasks are archived.
@@ -2021,7 +2020,7 @@ async def list_agent_task_projects(
 ) -> list[dict[str, typing.Any]]:
     """List the projects of a task, oldest first.
 
-    The caller needs ``agent_task:read``, also the service account of the
+    The caller needs ``ticket:read``, also the service account of the
     task's agent: the rows show who associated each project.
 
     A project that is no longer in the org is not ``available``; its
@@ -2064,7 +2063,7 @@ async def associate_agent_task_project(
     associated, nothing changes.
 
     Raises:
-        403: The caller is not a person, has no ``agent_task:manage``,
+        403: The caller is not a person, has no ``ticket:manage``,
             or is not a member of the org.
         404: No such task.
         409: ``task_archived``.
@@ -2094,7 +2093,7 @@ async def dissociate_agent_task_project(
     project is not associated, nothing changes.
 
     Raises:
-        403: The caller is not a person, has no ``agent_task:manage``,
+        403: The caller is not a person, has no ``ticket:manage``,
             or is not a member of the org.
         404: No such task.
         409: ``task_archived``.

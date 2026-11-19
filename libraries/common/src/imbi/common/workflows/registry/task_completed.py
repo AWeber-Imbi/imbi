@@ -36,7 +36,7 @@ def required_permissions(_params: dict[str, typing.Any]) -> set[str]:
     """The run payload tells which tasks closed and how. The activator
     must be able to read agent tasks.
     """
-    return {'agent_task:read'}
+    return {'ticket:read'}
 
 
 STEP = step_type.StepType(

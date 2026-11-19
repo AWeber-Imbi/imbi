@@ -3,7 +3,9 @@
 Each test uses a database of its own, because the step moves the
 fixed schema names. The schemata of release A-1 are fixtures, and so is
 the SQL of its store and claim query: the pods of that release run it
-through the views during the rolling deploy.
+through the views during the rolling deploy. The schemata of release A
+(2.55.0) are fixtures too: release B removes the views and must run on
+a database of release A, beside its pods.
 """
 
 import os
@@ -25,6 +27,7 @@ from imbi.common import relational, settings
 dotenv.load_dotenv()
 
 FIXTURES = pathlib.Path(__file__).parent / 'fixtures' / 'release_a_minus_1'
+RELEASE_A = FIXTURES.parent / 'release_a'
 
 ORG = 'org-1'
 AGENT = 'agent-1'
@@ -217,9 +220,49 @@ async def _old_install() -> None:
 
 
 async def _new_install() -> None:
-    """Initialize as this release does: tickets, then the harness."""
+    """Initialize as release A does: tickets, then the harness."""
+    for schema, path, lock_key in (
+        ('tickets', 'tickets_schemata.toml', tickets.LOCK_KEY),
+        ('harness', 'harness_schemata.toml', 'imbi.api.initialize.harness'),
+    ):
+        await relational.initialize(
+            schema, relational.load_schemata(RELEASE_A / path), lock_key
+        )
+    await relational.initialize_deleted_organizations()
+
+
+async def _release_b_install() -> None:
+    """Initialize as this release (B) does: tickets, then the harness."""
     await tickets.initialize()
     await harness.initialize()
+
+
+async def _insert_ticket(
+    conn: Conn, ticket_id: uuid.UUID, origin_kind: str, key: str | None
+) -> None:
+    """Write a child of ``ROOT`` with the SQL of release A or B."""
+    await conn.execute(
+        'INSERT INTO tickets.tickets (id, organization_id, short_id,'
+        ' agent_id, agent_version, service_account_id, title,'
+        ' description, origin_kind, origin_id, origin, idempotency_key,'
+        ' owner, chain_id) VALUES (%s, %s, %s, %s, 1, %s, %s, %s, %s, %s,'
+        ' %s, %s, %s, %s)',
+        (
+            ticket_id,
+            ORG,
+            f'T-{ticket_id.int}',
+            AGENT,
+            'sa-1',
+            't',
+            'd',
+            origin_kind,
+            str(ROOT),
+            pg_json.Jsonb({'kind': origin_kind}),
+            key,
+            'owner@example.com',
+            ROOT,
+        ),
+    )
 
 
 async def _new_task(
@@ -253,7 +296,7 @@ async def _new_task(
     )
 
 
-class RenameTestCase(unittest.IsolatedAsyncioTestCase):
+class DatabaseTestCase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         self.databases: list[str] = []
         self.addAsyncCleanup(self._drop_databases)
@@ -406,12 +449,16 @@ class RenameTestCase(unittest.IsolatedAsyncioTestCase):
         return catalog
 
     async def _migrated(self) -> Conn:
-        """Install release A-1 with rows, then initialize this release."""
+        """Install release A-1 with rows, then initialize release A."""
         await _old_install()
         conn = await self._connect()
         await self._write_as_release_a_minus_1(conn)
         await _new_install()
         return conn
+
+
+class RenameTestCase(DatabaseTestCase):
+    """Release A on a database of release A-1."""
 
     async def test_moves_every_row(self) -> None:
         conn = await self._migrated()
@@ -643,3 +690,109 @@ class RenameTestCase(unittest.IsolatedAsyncioTestCase):
             # A pod of release A-1 that starts after the move.
             await _old_install()
         self.assertEqual(before, await self._catalog(conn))
+
+
+class ReleaseBTestCase(DatabaseTestCase):
+    """Release B on a database of release A, with rows of release A-1."""
+
+    async def _release_b(self) -> Conn:
+        conn = await self._migrated()
+        await _release_b_install()
+        return conn
+
+    async def test_a_second_run_changes_nothing(self) -> None:
+        conn = await self._release_b()
+        before = await self._catalog(conn)
+        with self.assertNoLogs('imbi.common.relational', 'INFO'):
+            await _release_b_install()
+            # A pod of release A that starts during the rollout.
+            await _new_install()
+        self.assertEqual(before, await self._catalog(conn))
+
+    async def test_drops_the_views_and_rewrites_child_kinds(self) -> None:
+        conn = await self._release_b()
+        cursor = await conn.execute(
+            "SELECT to_regnamespace('agent_runtime') AS schema"
+        )
+        self.assertEqual(await cursor.fetchone(), {'schema': None})
+        cursor = await conn.execute(
+            "SELECT origin_kind, origin ->> 'kind' AS kind"
+            ' FROM tickets.tickets WHERE id = %s',
+            (CHILD,),
+        )
+        self.assertEqual(
+            await cursor.fetchone(),
+            {'origin_kind': 'ticket', 'kind': 'ticket'},
+        )
+        # A child that a pod of release A writes during the rollout:
+        # the next start rewrites it.
+        await _insert_ticket(conn, NEW, 'task', None)
+        await _release_b_install()
+        cursor = await conn.execute(
+            'SELECT origin_kind FROM tickets.tickets WHERE id = %s', (NEW,)
+        )
+        self.assertEqual(await cursor.fetchone(), {'origin_kind': 'ticket'})
+
+    async def test_child_kinds_share_one_idempotency_key(self) -> None:
+        conn = await self._release_b()
+        # Release A writes `task`, release B `ticket`: in either order,
+        # the second insert fails on the index that release A knows.
+        for first, second in (('task', 'ticket'), ('ticket', 'task')):
+            key = f'key-{first}'
+            await _insert_ticket(conn, uuid.uuid4(), first, key)
+            with self.subTest(first=first):
+                with self.assertRaises(
+                    psycopg.errors.UniqueViolation
+                ) as raised:
+                    await _insert_ticket(conn, uuid.uuid4(), second, key)
+                self.assertEqual(
+                    raised.exception.diag.constraint_name,
+                    'tasks_origin_idempotency_key',
+                )
+        # Other kinds keep their own key.
+        await _insert_ticket(conn, uuid.uuid4(), 'human', 'key-task')
+
+    async def test_release_a_reads_the_old_harness_columns(self) -> None:
+        conn = await self._release_b()
+        await _insert_ticket(conn, NEW, 'human', None)
+        # A writer of release B gives the new columns only.
+        await conn.execute(
+            'INSERT INTO harness.chains (root_ticket_id, organization_id)'
+            ' VALUES (%s, %s)',
+            (NEW, ORG),
+        )
+        await conn.execute(
+            'INSERT INTO harness.claims'
+            ' (ticket_id, attempt, chain_id, runner_id)'
+            ' VALUES (%s, 1, %s, %s)',
+            (NEW, NEW, RUNNER),
+        )
+        # The SQL of release A reads the old columns.
+        cursor = await conn.execute(
+            'SELECT count(*) AS n FROM harness.chains WHERE root_task_id = %s',
+            (NEW,),
+        )
+        self.assertEqual(await cursor.fetchone(), {'n': 1})
+        cursor = await conn.execute(
+            'SELECT count(*) AS n FROM harness.claims WHERE task_id = %s',
+            (NEW,),
+        )
+        self.assertEqual(await cursor.fetchone(), {'n': 1})
+
+    async def test_a_new_install_has_only_the_new_names(self) -> None:
+        await _release_b_install()
+        conn = await self._connect()
+        catalog = await self._catalog(conn)
+        columns = {row[2] for row in catalog['columns'] if row[0] == 'harness'}
+        self.assertIn('root_ticket_id', columns)
+        self.assertNotIn('root_task_id', columns)
+        self.assertNotIn('task_id', columns)
+        self.assertEqual(catalog['triggers'], [])
+        cursor = await conn.execute(
+            'SELECT pg_get_constraintdef(oid) AS definition'
+            " FROM pg_constraint WHERE conname = 'chains_pkey'"
+        )
+        self.assertEqual(
+            await cursor.fetchone(),
+            {'definition': 'PRIMARY KEY (root_ticket_id)'},
+        )

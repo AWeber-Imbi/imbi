@@ -38,16 +38,6 @@ export function useHasPermission(
   return hasPermission(user, permission, orgSlug)
 }
 
-/**
- * Return whether `held` has `permission`. Until release B (ADR 0028), a
- * `ticket:*` check also accepts the old `agent_task:*` name, because an
- * API older than release A gives only the old name.
- */
 function holds(held: null | string[] | undefined, permission: string) {
-  const names = held ?? []
-  return (
-    names.includes(permission) ||
-    (permission.startsWith('ticket:') &&
-      names.includes(permission.replace('ticket:', 'agent_task:')))
-  )
+  return (held ?? []).includes(permission)
 }

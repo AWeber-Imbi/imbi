@@ -52,13 +52,8 @@ class AgentUsageTests(test_agent_task_log.ClickHouseTestCase):
         task: str = 'T-1',
         days_ago: int = 0,
         event_type: str = 'task.created',
-        old_table: bool = False,
     ) -> None:
-        """Publish the ``task.created`` event of ``task``.
-
-        ``old_table`` publishes it to ``agent_task_events``, as release
-        A-1 did (ADR 0028).
-        """
+        """Publish the ``task.created`` event of ``task``."""
         event = {
             'seq': 1,
             'event_id': uuid.uuid4(),
@@ -72,11 +67,7 @@ class AgentUsageTests(test_agent_task_log.ClickHouseTestCase):
             'payload': {},
         }
         row = log.event_row(_task(org or self.org, task, agent), event)
-        stream = log.EVENTS_STREAM
-        if old_table:
-            stream = 'agent_task_events'
-            row['task_id'] = row.pop('ticket_id')
-        await iggy.publish_rows(stream, log.EVENTS_TOPIC, [row])
+        await iggy.publish_rows(log.EVENTS_STREAM, log.EVENTS_TOPIC, [row])
 
     async def publish(
         self,
@@ -182,18 +173,15 @@ class AgentUsageTests(test_agent_task_log.ClickHouseTestCase):
             ],
         )
 
-    async def test_runs_from_both_event_tables(self) -> None:
-        # T-1 is in both tables and counts one time (ADR 0028).
-        await self.create(task='T-1', old_table=True)
+    async def test_runs_of_both_created_event_types(self) -> None:
         await self.create(task='T-1')
         await self.create(task='T-2', event_type='ticket.created')
-        await self.create(task='T-3', old_table=True)
 
         usage = await self.get_usage()
 
         self.assertEqual(
             [(row['agent_id'], row['tasks']) for row in usage['agents']],
-            [('agent-a', 3)],
+            [('agent-a', 2)],
         )
 
     async def test_range_and_agent_filters(self) -> None:
@@ -262,7 +250,7 @@ class AgentUsageTests(test_agent_task_log.ClickHouseTestCase):
         self.assertEqual(response.status_code, 403, response.text)
 
     async def test_needs_agent_task_read(self) -> None:
-        self.permissions.discard('agent_task:read')
+        self.permissions.discard('ticket:read')
         response = await self.client.get(
             f'/organizations/{self.org}/agent-usage/'
         )
