@@ -1810,7 +1810,7 @@ export interface paths {
         put?: never;
         /**
          * Create Harness Child Ticket
-         * @description Make a child task (origin ``task``) in the chain of a task.
+         * @description Make a child ticket (origin ``ticket``) in the chain of a ticket.
          *
          *     The child agent must be a subagent of the parent's pinned agent
          *     version.

@@ -42,9 +42,12 @@ _TOO_LONG_MESSAGE = (
 _GENERIC_ERROR_MESSAGE = (
     'Sorry — I hit an error talking to the model. Please try again.'
 )
-#: The name of the ticket create tool, without the suffix that FastMCP
-#: makes from the API's mount path and method.
-_CREATE_TICKET_TOOL = 'create_ticket_'
+#: The names of the ticket create tools, without the suffix that FastMCP
+#: makes from the API's mount path and method. ``create_agent_task_`` is
+#: in the catalog when the bot starts against a pod of 2.55.0, and the
+#: retained ``/agent-tasks`` route still creates tickets. Remove it with
+#: that route.
+_CREATE_TICKET_TOOLS = ('create_ticket_', 'create_agent_task_')
 
 _TOOL_RESULT_TOO_LARGE = (
     'ERROR: the tool returned too much data to process. Narrow the '
@@ -208,7 +211,7 @@ async def run_turn(
         for tool_use in tool_uses:
             tool_input = tool_use['input']
             if idempotency_prefix and str(tool_use['name']).startswith(
-                _CREATE_TICKET_TOOL
+                _CREATE_TICKET_TOOLS
             ):
                 agent_slug = str(tool_input.get('agent_slug', ''))
                 creates[agent_slug] += 1

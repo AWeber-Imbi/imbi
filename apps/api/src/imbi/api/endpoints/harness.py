@@ -1913,7 +1913,7 @@ async def create_harness_child_task(
     store: tickets.Store,
     runners: harness.Store,
 ) -> dict[str, typing.Any]:
-    """Make a child task (origin ``task``) in the chain of a task.
+    """Make a child ticket (origin ``ticket``) in the chain of a ticket.
 
     The child agent must be a subagent of the parent's pinned agent
     version.

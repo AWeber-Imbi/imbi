@@ -104,8 +104,9 @@ release removes them.
 4. As soon as the first new imbi-api pod is up, run
    `imbi-api setup-clickhouse` in that pod (pick the pod by name, as for
    2.54.0). It copies the events of `agent_task_events` that
-   `ticket_events` does not have. This release reads only
-   `ticket_events`, so until the copy is done a new pod shows an
+   `ticket_events` does not have. Nothing writes to `agent_task_events`
+   since 2.54.0, so no event arrives there after the copy. This release
+   reads only `ticket_events`, so until the copy is done a new pod shows an
    incomplete log for a ticket that was archived before 2.54.0. The old
    table has no TTL, so the copy can be large. Before you deploy, count
    its rows:
@@ -121,11 +122,25 @@ release removes them.
      WHERE (task_id, seq) NOT IN (SELECT ticket_id, seq FROM imbi.ticket_events)
     ```
 
-5. Run `imbi-api setup-permissions`. It gives each role that has an
-   `agent_task` permission, custom roles too, the `ticket` permission with
-   the same action, then removes the `agent_task` permissions. Every
-   check accepts either name until this command runs. An API key scope
-   that names an `agent_task` permission keeps working.
+5. Run `imbi-api setup-permissions` in the same pod, right after
+   `setup-clickhouse`. It gives each role that has an `agent_task`
+   permission, custom roles too, the `ticket` permission with the same
+   action, then removes the `agent_task` permissions. An API key scope
+   that names an `agent_task` permission keeps working. A new pod does
+   not accept an `agent_task` permission of a role, so until this
+   command runs, a custom role that has only the `agent_task` name of a
+   permission (2.54.0 gave the `ticket` names to the default roles only)
+   cannot use the tickets in the UI. Before you deploy, find such roles:
+
+    ```cypher
+    MATCH (r:Role)-[:GRANTS]->(p:Permission)
+    WHERE p.name STARTS WITH 'agent_task:'
+      AND NOT EXISTS { MATCH (r)-[:GRANTS]->(q:Permission)
+                       WHERE q.name = 'ticket:' + substring(p.name, 11) }
+    RETURN r.slug, p.name
+    ```
+
+   If the query returns no rows, nobody loses access.
 6. When the imbi-api rollout is complete, restart iggy-connect. The
    `agent_task_events` stream is not in its configuration anymore.
 7. Change each scheduled job whose `api` target path has `/agent-tasks`

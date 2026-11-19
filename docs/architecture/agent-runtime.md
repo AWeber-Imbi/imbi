@@ -66,7 +66,7 @@ does not change a task that exists.
 | `human` | A person in the UI, with the API, or through the Slack bot |
 | `schedule` | imbi-scheduler, from a scheduled task with an `api` target |
 | `webhook` | imbi-gateway, from the `create_agent_task` action. The delivery must have a verified signature |
-| `task` | A parent task, when its agent delegates to a subagent |
+| `ticket` | A parent ticket, when its agent delegates to a subagent (`task` in rows from before 2.56.0) |
 
 A workflow `agent` step also makes a task. The task keeps the origin of
 the workflow run. imbi-workflows reads the task until it closes, then
