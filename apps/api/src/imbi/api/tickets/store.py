@@ -1959,7 +1959,6 @@ class TicketStore:
                     write.conn,
                     task['agent_id'],
                     task['id'],
-                    task['chain_id'] or task['id'],
                     max_concurrent,
                 )
             session = await _fetch_one(
@@ -2924,7 +2923,6 @@ async def _check_concurrency(
     conn: Conn,
     agent_id: str,
     task_id: uuid.UUID,
-    chain_id: uuid.UUID,
     max_concurrent: int,
 ) -> None:
     """Raise when ``max_concurrent`` other tasks of the agent run.
@@ -2932,9 +2930,11 @@ async def _check_concurrency(
     A task runs when it has an open session. The count excludes
     ``task_id``: a new session on a task that already runs (for example
     after a harness restart) does not start a new concurrent task. It
-    also excludes the other tasks of the chain ``chain_id``: a parent
-    that waits for its child keeps its session open, so a child of the
-    same agent would otherwise never get a place.
+    also excludes the ancestors of ``task_id`` (its parent, up to the
+    root): a parent that waits for its child keeps its session open, so
+    a child of the same agent would otherwise never get a place. The
+    siblings of the task and their descendants still count, so one
+    chain cannot use more than ``max_concurrent`` places.
 
     The advisory lock makes concurrent opens for one agent count one at
     a time, so two opens cannot both take the last place.
@@ -2946,12 +2946,17 @@ async def _check_concurrency(
         (f'agent_runtime.sessions:{agent_id}',),
     )
     cursor = await conn.execute(
-        'SELECT count(DISTINCT s.ticket_id) FROM tickets.sessions AS s'
+        # UNION (not UNION ALL) stops the walk if parent_id makes a loop.
+        'WITH RECURSIVE lineage (id) AS ('
+        ' SELECT %s::uuid'
+        ' UNION SELECT p.parent_id FROM tickets.tickets AS p'
+        ' JOIN lineage AS l ON p.id = l.id'
+        ' WHERE p.parent_id IS NOT NULL)'
+        ' SELECT count(DISTINCT s.ticket_id) FROM tickets.sessions AS s'
         ' JOIN tickets.tickets AS t ON t.id = s.ticket_id'
         ' WHERE t.agent_id = %s AND s.closed_at IS NULL'
-        ' AND s.ticket_id <> %s'
-        ' AND COALESCE(t.chain_id, t.id) <> %s',
-        (agent_id, task_id, chain_id),
+        ' AND s.ticket_id NOT IN (SELECT id FROM lineage)',
+        (task_id, agent_id),
     )
     row = await cursor.fetchone()
     if row and row[0] >= max_concurrent:
