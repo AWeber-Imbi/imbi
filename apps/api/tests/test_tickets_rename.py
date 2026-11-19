@@ -840,9 +840,6 @@ B_RECORD_CLAIM = (
     'INSERT INTO harness.claims (ticket_id, attempt, chain_id, runner_id)'
     ' VALUES (%s, %s, %s, %s)'
 )
-B_ORIGIN_IDEMPOTENCY_KEYS = frozenset(
-    {'tasks_origin_idempotency_key', 'tickets_origin_idempotency_key'}
-)
 
 
 class ReleaseB1TestCase(DatabaseTestCase):
@@ -858,11 +855,29 @@ class ReleaseB1TestCase(DatabaseTestCase):
         return conn
 
     async def _index_names(self, conn: Conn) -> list[str]:
+        """The unique indexes of the ticket keys, in both schemas."""
         cursor = await conn.execute(
-            "SELECT indexname FROM pg_indexes WHERE schemaname = 'tickets'"
-            " AND indexname LIKE '%origin_idempotency_key'"
+            'SELECT indexname FROM pg_indexes'
+            " WHERE (schemaname = 'tickets'"
+            "        AND indexname LIKE '%origin_idempotency_key')"
+            " OR (schemaname = 'harness'"
+            "     AND tablename IN ('chains', 'claims')"
+            "     AND indexdef LIKE 'CREATE UNIQUE%')"
+            ' ORDER BY indexname'
         )
         return [row['indexname'] for row in await cursor.fetchall()]
+
+    def _assert_no_old_harness_names(
+        self, catalog: dict[str, list[typing.Any]]
+    ) -> None:
+        columns = {row[2] for row in catalog['columns'] if row[0] == 'harness'}
+        self.assertIn('root_ticket_id', columns)
+        self.assertNotIn('root_task_id', columns)
+        self.assertNotIn('task_id', columns)
+        self.assertEqual(
+            [t for t in catalog['triggers'] if t[0].startswith('harness.')],
+            [],
+        )
 
     async def test_migrated_install_matches_a_new_install(self) -> None:
         migrated = await self._catalog(await self._release_b1())
@@ -879,14 +894,7 @@ class ReleaseB1TestCase(DatabaseTestCase):
 
     async def test_moves_the_harness_keys(self) -> None:
         conn = await self._release_b1()
-        catalog = await self._catalog(conn)
-        columns = {row[2] for row in catalog['columns'] if row[0] == 'harness'}
-        self.assertNotIn('root_task_id', columns)
-        self.assertNotIn('task_id', columns)
-        self.assertEqual(
-            [t for t in catalog['triggers'] if t[0].startswith('harness.')],
-            [],
-        )
+        self._assert_no_old_harness_names(await self._catalog(conn))
         cursor = await conn.execute(
             "SELECT to_regprocedure('harness.mirror_ticket_id()') AS fn"
         )
@@ -920,7 +928,7 @@ class ReleaseB1TestCase(DatabaseTestCase):
             [{'root_ticket_id': ROOT}, {'root_ticket_id': ROOT}],
         )
 
-    async def test_rewrites_child_kinds_and_renames_the_index(self) -> None:
+    async def test_rewrites_the_last_child_kinds(self) -> None:
         conn = await self._release_b1()
         cursor = await conn.execute(
             "SELECT id, origin_kind, origin ->> 'kind' AS kind"
@@ -933,9 +941,6 @@ class ReleaseB1TestCase(DatabaseTestCase):
                 {'id': CHILD, 'origin_kind': 'ticket', 'kind': 'ticket'},
                 {'id': NEW, 'origin_kind': 'ticket', 'kind': 'ticket'},
             ],
-        )
-        self.assertEqual(
-            await self._index_names(conn), ['tickets_origin_idempotency_key']
         )
 
     async def test_release_b_sql_works(self) -> None:
@@ -955,47 +960,43 @@ class ReleaseB1TestCase(DatabaseTestCase):
             'DELETE FROM harness.claims WHERE ticket_id = %s AND attempt = %s',
             (NEW, 1),
         )
-        # A repeated key: release B finds it by either index name.
+        # A repeated key: release B finds it by the name of the index.
         with self.assertRaises(psycopg.errors.UniqueViolation) as raised:
             await _insert_ticket(conn, uuid.uuid4(), 'ticket', 'key-new')
-        self.assertIn(
-            raised.exception.diag.constraint_name, B_ORIGIN_IDEMPOTENCY_KEYS
-        )
-        self.assertLessEqual(
-            B_ORIGIN_IDEMPOTENCY_KEYS, tickets.store.ORIGIN_IDEMPOTENCY_KEYS
+        self.assertEqual(
+            raised.exception.diag.constraint_name,
+            'tasks_origin_idempotency_key',
         )
 
-    async def test_a_release_b_restart_during_the_rollout(self) -> None:
+    async def test_restarts_during_the_rollout_keep_one_index(self) -> None:
         conn = await self._release_b1()
         before = await self._catalog(conn)
-        # A release B pod that starts makes the old index again.
+        self.assertEqual(
+            await self._index_names(conn),
+            ['chains_pkey', 'claims_pkey', 'tasks_origin_idempotency_key'],
+        )
+        # A release B pod that starts makes the harness unique indexes
+        # again, and leaves the ticket index as it is.
         await _release_b_install()
         self.assertEqual(
-            sorted(await self._index_names(conn)),
-            ['tasks_origin_idempotency_key', 'tickets_origin_idempotency_key'],
+            await self._index_names(conn),
+            [
+                'chains_pkey',
+                'chains_root_ticket_id_key',
+                'claims_pkey',
+                'claims_ticket_key',
+                'tasks_origin_idempotency_key',
+            ],
         )
-        with self.assertRaises(psycopg.errors.UniqueViolation) as raised:
-            await _insert_ticket(conn, uuid.uuid4(), 'ticket', 'key-new')
-        self.assertIn(
-            raised.exception.diag.constraint_name,
-            tickets.store.ORIGIN_IDEMPOTENCY_KEYS,
-        )
-        # The next start of this release drops it.
+        # The next start of this release drops them.
         await _install()
         self.assertEqual(before, await self._catalog(conn))
 
     async def test_a_new_install_has_only_the_new_names(self) -> None:
         await _install()
         conn = await self._connect()
-        catalog = await self._catalog(conn)
-        columns = {row[2] for row in catalog['columns'] if row[0] == 'harness'}
-        self.assertIn('root_ticket_id', columns)
-        self.assertNotIn('root_task_id', columns)
-        self.assertNotIn('task_id', columns)
+        self._assert_no_old_harness_names(await self._catalog(conn))
         self.assertEqual(
-            [t for t in catalog['triggers'] if t[0].startswith('harness.')],
-            [],
-        )
-        self.assertEqual(
-            await self._index_names(conn), ['tickets_origin_idempotency_key']
+            await self._index_names(conn),
+            ['chains_pkey', 'claims_pkey', 'tasks_origin_idempotency_key'],
         )

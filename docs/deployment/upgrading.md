@@ -114,34 +114,25 @@ kept for the pods of 2.55.0. No pod of 2.56.0 uses them.
    imbi-gateway, imbi-slackbot, and imbi-workflows. At its first start,
    imbi-api:
    - moves the primary keys of `harness.chains` and `harness.claims` to
-     `root_ticket_id` and `ticket_id`, and drops the old columns
-     (`root_task_id`, `task_id`), the trigger that kept them equal, and
-     the function `harness.mirror_ticket_id()`,
+     the existing unique indexes on `root_ticket_id` and `ticket_id`, and
+     drops the old columns (`root_task_id`, `task_id`), the trigger that
+     kept them equal, and the function `harness.mirror_ticket_id()`, and
    - changes the origin kind `task` to `ticket` in each child ticket that
-     a 2.55.0 pod made after the last start of a 2.56.0 pod, and
-   - renames the unique index of ticket idempotency keys from
-     `tasks_origin_idempotency_key` to `tickets_origin_idempotency_key`.
+     a 2.55.0 pod made after the last start of a 2.56.0 pod.
 
-   You do not run a command for this. The harness change locks
-   `harness.chains` and `harness.claims` while it builds the two new
-   primary keys.
+   You do not run a command for this. The harness change builds no index.
+   It locks `harness.chains` and `harness.claims` while it checks that
+   the key columns have no `NULL`.
 5. Run `imbi-api setup-clickhouse` in a new imbi-api pod (pick the pod by
    name, as for 2.54.0). It drops the `agent_task_events` table. There
    is no iggy-connect restart: 2.56.0 removed the old stream.
 
 While pods of both releases run:
 
-- A 2.56.0 pod that starts makes the old index
-  `tasks_origin_idempotency_key` again, and locks writes to
-  `tickets.tickets` while it builds it. Both releases know both index
-  names, so nothing fails. The next start of a new pod drops the old
-  index. When the rollout is complete, this query must return `NULL`;
-  if it does not, restart one imbi-api pod:
-
-    ```sql
-    SELECT to_regclass('tickets.tasks_origin_idempotency_key')
-    ```
-
+- A 2.56.0 pod that starts makes the unique indexes
+  `harness.chains_root_ticket_id_key` and `harness.claims_ticket_key`
+  again. They duplicate the new primary keys and do no harm. The next
+  start of a new pod drops them.
 - If you run `setup-clickhouse` in a 2.56.0 pod, it makes an empty
   `agent_task_events` table again. Run it again in a new pod to drop it.
 

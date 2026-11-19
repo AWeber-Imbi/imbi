@@ -119,52 +119,48 @@ sql = "DROP SCHEMA agent_runtime CASCADE"
 # ticket of another with its key. NULL keys are distinct, so tickets
 # without a key do not collide.
 #
-# Before ADR 0028 a child ticket had the origin kind `task`; since
-# release B it has `ticket`. Release B rewrote the old kind at each
-# start, and made the two kinds one kind in this index, under its ADR
-# 0020 name `tasks_origin_idempotency_key`. This release does the last
-# rewrite (for the children that 2.55.0 pods made after the last start
-# of a release B pod) and renames the index. The `CASE` stays, so that
-# the rename does not build the index again. An expression index, so a
-# step makes it, after the table.
-#
-# A release B pod that starts after the rename makes the old index
-# again. The next start of a pod of this release drops it. Until then an
-# insert can fail on either index, so the store knows both names
-# (`ORIGIN_IDEMPOTENCY_KEYS`).
+# The child origin kinds `task` and `ticket` are one kind in the key, so
+# a pod that writes `ticket` and a pod of the previous release that
+# writes `task` for the same key cannot both make a child (ADR 0028).
+# The index keeps its ADR 0020 name: a release B pod that starts makes
+# the index again when it does not find this name, so a rename must wait
+# until no release B pod runs (ADR 0028). An expression index, so a step makes it, after the
+# table.
 [[steps]]
-name = "tickets-origin-idempotency-key"
+name = "origin-idempotency-key-for-both-child-kinds"
 after_tables = true
 when = """
-SELECT to_regclass('tickets.tickets_origin_idempotency_key') IS NULL
-    OR to_regclass('tickets.tasks_origin_idempotency_key') IS NOT NULL
+SELECT COALESCE(
+  pg_get_indexdef(to_regclass('tickets.tasks_origin_idempotency_key'))
+    NOT LIKE '%CASE%', TRUE)
 """
-sql = '''
+sql = """
+DROP INDEX IF EXISTS tickets.tasks_origin_idempotency_key;
+CREATE UNIQUE INDEX tasks_origin_idempotency_key ON tickets.tickets
+  (organization_id,
+   (CASE origin_kind WHEN 'task' THEN 'ticket' ELSE origin_kind END),
+   origin_id, idempotency_key);
+"""
+
+# Since release B a child ticket has the origin kind `ticket`; rows of
+# older releases have `task` (ADR 0028). This rewrites the rows that a
+# 2.55.0 pod wrote after the last start of a release B pod. No release
+# since B writes `task`, so after one run the guard stays false.
+[[steps]]
+name = "rewrite-child-origin-kind"
+after_tables = true
+when = "SELECT EXISTS (SELECT 1 FROM tickets.tickets WHERE origin_kind = 'task')"
+sql = """
 UPDATE tickets.tickets
    SET origin_kind = 'ticket',
        origin = jsonb_set(origin, '{kind}', '"ticket"')
- WHERE origin_kind = 'task';
-DO $step$
-BEGIN
-  IF to_regclass('tickets.tickets_origin_idempotency_key') IS NOT NULL THEN
-    DROP INDEX IF EXISTS tickets.tasks_origin_idempotency_key;
-  ELSIF to_regclass('tickets.tasks_origin_idempotency_key') IS NOT NULL THEN
-    ALTER INDEX tickets.tasks_origin_idempotency_key
-      RENAME TO tickets_origin_idempotency_key;
-  ELSE
-    CREATE UNIQUE INDEX tickets_origin_idempotency_key ON tickets.tickets
-      (organization_id,
-       (CASE origin_kind WHEN 'task' THEN 'ticket' ELSE origin_kind END),
-       origin_id, idempotency_key);
-  END IF;
-END
-$step$;
-'''
+ WHERE origin_kind = 'task'
+"""
 
-# A pod of the previous release can run beside this release and makes a
-# child without `parent_id`. This trigger gives such a child its parent
-# from its origin on insert. It does not run on update, so a move of a
-# child to the root stays. A later release can drop it.
+# A 2.55.0 pod made a child without `parent_id`. This trigger gave such
+# a child its parent from its origin on insert. It does not run on
+# update, so a move of a child to the root stays. No release since B
+# needs it; a later release can drop it.
 [[steps]]
 name = "tickets-parent-from-origin"
 after_tables = true
