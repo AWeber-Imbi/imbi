@@ -234,6 +234,11 @@ levels of runs. The tickets that come from one first ticket start at
 most 25 runs in total. Imbi checks this limit when each change starts
 its runs, so changes that occur at the same time can start more runs.
 
+Activate a workflow with this trigger only after every imbi-api pod runs
+the release that adds it. During a rolling deploy, the workflow sweep of
+a pod of the previous release can delete the pending change of a ticket
+before its runs start.
+
 **Output:** the attributes of the ticket and the change. Use
 `{{ trigger.<field> }}`.
 

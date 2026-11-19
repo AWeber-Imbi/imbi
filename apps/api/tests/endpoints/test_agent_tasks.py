@@ -1327,6 +1327,7 @@ class ControlTests(AgentTaskTestCase):
         ]
 
     async def test_change_without_binding_writes_no_outbox_row(self) -> None:
+        await workflows.initialize()
         await self.post('pause')
         with mock.patch.object(
             tickets.store, '_outbox_filter', ticket_trigger.has_bindings

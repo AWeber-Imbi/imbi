@@ -612,7 +612,9 @@ ticket_id = "UUID NOT NULL REFERENCES tickets.tickets (id) ON DELETE CASCADE"
 from_state = "TEXT"
 # The default is for a row that a pod of the release before
 # `ticket_state_changed` writes during a rolling deploy: it wrote a row
-# only for a close.
+# only for a close. The sweep of such a pod deletes every row of a
+# ticket, so activate a `ticket_state_changed` workflow only after the
+# rollout (docs/admin/workflows.md).
 to_state = "TEXT NOT NULL DEFAULT 'closed'"
 # The outcome of a close, from its transaction: the trigger can read a
 # later snapshot of the ticket. NULL on other changes and on a row of
