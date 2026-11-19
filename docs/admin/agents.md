@@ -203,7 +203,12 @@ this agent, this binding, and that purpose. For the App setup, see the
 A running agent can add a project of the organization to its own task with
 the `attach_project` tool, by id or slug. The task gets a
 `project.associated` event, and the next secret that the agent requests
-covers the project's repository.
+covers the project's repository. The `detach_project` tool removes one
+again (`project.dissociated`), so the next secret no longer covers it. A
+GitHub token covers the repositories of every project on the task, and
+those must be in one GitHub organization, so an agent that works in
+repositories of two organizations detaches one before it attaches the
+other.
 
 **Secrets** lists the secrets that the agent can request with
 `run_with_secret`. Each secret goes into the environment of one command.
@@ -227,12 +232,15 @@ An agent can give work to other agents. Each such call makes a child task
 (see [Related tasks](tickets.md#relations-and-associated-projects)).
 
 1. Select each agent that this agent can delegate to. The list shows the
-   enabled agents of the organization.
+   enabled agents of the organization, this agent included.
 2. Optional: click **Add instructions** and enter the delegation
    instructions for that subagent.
 
-An agent cannot name itself. Cycles are allowed. A link uses the id of the
-subagent, so a rename does not break it.
+An agent can name itself, for example to give each repository of a ticket
+its own child task. Cycles are allowed. Delegation depth is capped at 2: a
+child task gets no subagents, and the harness refuses a child of a child
+with `delegation_depth`. A link uses the id of the subagent, so a rename
+does not break it.
 
 ### Settings
 

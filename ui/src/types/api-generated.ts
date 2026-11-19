@@ -1793,7 +1793,24 @@ export interface paths {
          */
         put: operations["attach_harness_ticket_project_api_harness_tickets__short_id__projects__project__put"];
         post?: never;
-        delete?: never;
+        /**
+         * Detach Harness Ticket Project
+         * @description Remove a project of the org from a task of the chain.
+         *
+         *     ``project`` is a project id or slug. The task gets a
+         *     ``project.dissociated`` event, with the agent as the actor. A secret
+         *     resolution reads the task's projects when it is made, so the next
+         *     one no longer covers the project. When the project is not
+         *     associated, nothing changes.
+         *
+         *     Raises:
+         *         401: Not a current agent token.
+         *         403: Another chain or another agent.
+         *         404: No such task.
+         *         409: ``task_closed`` or ``task_archived``.
+         *         422: The project is not in the org, or the slug is not unique.
+         */
+        delete: operations["detach_harness_ticket_project_api_harness_tickets__short_id__projects__project__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1821,11 +1838,12 @@ export interface paths {
          *
          *     Raises:
          *         401: Not a current agent token.
-         *         403: Another chain or another agent, ``subagent_forbidden`` (the
-         *             child agent is not in the ``subagents`` of the parent's
-         *             pinned agent version), or ``owner_forbidden`` (the owner of
-         *             the parent can no longer make agent tasks in the
-         *             organization).
+         *         403: Another chain or another agent, ``delegation_depth`` (the
+         *             parent is itself a child ticket: delegation depth is capped
+         *             at 2), ``subagent_forbidden`` (the child agent is not in the
+         *             ``subagents`` of the parent's pinned agent version), or
+         *             ``owner_forbidden`` (the owner of the parent can no longer
+         *             make agent tasks in the organization).
          *         404: No such task.
          *         409: The parent is closed, the child agent is disabled, or the
          *             runner of the chain does not have a label that the child
@@ -25637,6 +25655,38 @@ export interface operations {
         };
     };
     attach_harness_ticket_project_api_harness_tickets__short_id__projects__project__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachedProject"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    detach_harness_ticket_project_api_harness_tickets__short_id__projects__project__delete: {
         parameters: {
             query?: never;
             header?: never;
