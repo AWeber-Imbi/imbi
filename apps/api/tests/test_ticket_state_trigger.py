@@ -57,6 +57,7 @@ class FakeTasks:
         from_state: str | None = 'running',
         to_state: str = 'closed',
         created_at: datetime.datetime = CLOSED_AFTER_ACTIVATION,
+        outcome: str | None = None,
     ) -> dict[str, typing.Any]:
         """Add an outbox row for a change of ``task`` and return it."""
         row = {
@@ -64,6 +65,7 @@ class FakeTasks:
             'ticket_id': task['id'],
             'from_state': from_state,
             'to_state': to_state,
+            'outcome': outcome,
             'created_at': created_at,
         }
         self.changes.setdefault(task['id'], []).append(row)
@@ -430,6 +432,37 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(found), 3)
         self.assertEqual({r['origin']['lineage'] for r in found}, {lineage})
         self.assertEqual(len(self.tasks.started), 5)  # every row cleared
+
+    async def test_lineage_cap_applies_within_one_call(self) -> None:
+        """One call with several changes stops at the cap."""
+        await self._activate()
+        task = _task(organization_id=self.org)
+        for _ in range(3):
+            self.tasks.change(task)
+        with mock.patch.object(ticket_trigger, 'MAX_LINEAGE_RUNS', 2):
+            await self.trigger(task)
+        self.assertEqual(len(await self._runs()), 2)
+        self.assertEqual(len(self.tasks.started), 3)  # every row cleared
+
+    async def test_previous_release_close_is_not_a_creation(self) -> None:
+        """A close row of the release before ``ticket_state_changed``
+        has no ``from_state``; it must not match a creation filter."""
+        await self._activate(states=['created'])
+        await self._trigger(
+            _task(organization_id=self.org), from_state=None, to_state='closed'
+        )
+        self.assertEqual(await self._runs(), [])
+
+    async def test_outcome_comes_from_the_change(self) -> None:
+        """A hook can get a snapshot of the ticket from before the
+        close; the outbox row keeps the outcome of the close."""
+        await self._activate(outcomes=['done_acted'])
+        await self._trigger(
+            _task(organization_id=self.org, outcome=None),
+            outcome='done_acted',
+        )
+        [run] = await self._runs()
+        self.assertEqual(run['payload']['outcome'], 'done_acted')
 
     async def test_delegated_child_keeps_the_chain_depth(self) -> None:
         """A child ticket that an agent delegates has origin ``ticket``;

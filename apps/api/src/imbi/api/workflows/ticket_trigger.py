@@ -29,6 +29,7 @@ records the lineage: the id of the first ticket, which no run started.
 
 import logging
 import typing
+import uuid
 from collections import abc
 
 from imbi.api.tickets import store as task_store
@@ -46,8 +47,8 @@ KIND = ticket_state_changed.TYPE
 MAX_DEPTH = 5
 
 #: The most runs that the tickets of one lineage start, at all depths.
-#: A hook call checks it before it starts runs, so one call can go past
-#: it by the runs of that call.
+#: A hook call reads the count once and stops at the cap; two calls of
+#: one lineage at the same time can go past it.
 MAX_LINEAGE_RUNS = 25
 
 
@@ -69,29 +70,43 @@ async def has_bindings(conn: task_store.Conn, organization_id: str) -> bool:
     return bool(row and row[0])
 
 
+def _outcome(task: store.Row, change: store.Row) -> str | None:
+    """Return the outcome of a close. The outbox row keeps it, as
+    ``task`` can be a snapshot from before the close; a row of the
+    release before ``ticket_state_changed`` has none."""
+    outcome: str | None = change.get('outcome') or task['outcome']
+    return outcome
+
+
 def _matches(binding: store.Row, task: store.Row, change: store.Row) -> bool:
     """Return whether a change of ``task`` starts a run of ``binding``.
 
     ``states`` names the new state; ``created`` also names a creation.
-    ``outcomes`` applies only to a close. A workflow activated after
-    the change does not match, so the sweep that calls the trigger
-    again starts no run that the change hook could not have started.
+    A close row of the release before ``ticket_state_changed`` also has
+    no ``from_state``, so a creation is a change to a state that is not
+    ``closed``. ``outcomes`` applies only to a close. A workflow
+    activated after the change does not match, so the sweep that calls
+    the trigger again starts no run that the change hook could not have
+    started.
     """
     params: dict[str, typing.Any] = binding['params']
     agent_id = params.get('agent_id')
     states: list[str] = params.get('states') or []
     outcomes: list[str] = params.get('outcomes') or []
     to_state = change['to_state']
+    created = change['from_state'] is None and to_state != 'closed'
     return (
         binding['activated_at'] <= change['created_at']
         and (not agent_id or agent_id == task['agent_id'])
         and (
             not states
             or to_state in states
-            or (change['from_state'] is None and 'created' in states)
+            or (created and 'created' in states)
         )
         and (
-            to_state != 'closed' or not outcomes or task['outcome'] in outcomes
+            to_state != 'closed'
+            or not outcomes
+            or _outcome(task, change) in outcomes
         )
     )
 
@@ -142,30 +157,36 @@ class TaskTrigger:
         root = await self._tasks.chain_root(task)
         depth = _depth(root)
         lineage = '' if root is None else _lineage(root)
-        if (
-            depth > MAX_DEPTH
-            or await self._runs.lineage_runs(task['organization_id'], lineage)
-            >= MAX_LINEAGE_RUNS
-        ):
-            LOGGER.warning(
-                'Ticket %s starts no workflow runs: its chain is past %d'
-                ' deep or its lineage %s started %d runs',
-                task['id'],
-                MAX_DEPTH,
-                lineage,
-                MAX_LINEAGE_RUNS,
+        capacity = 0
+        if depth <= MAX_DEPTH:
+            capacity = MAX_LINEAGE_RUNS - await self._runs.lineage_runs(
+                task['organization_id'], lineage
             )
+        if capacity <= 0:
+            self._warn_capped(task, lineage)
             await self._tasks.triggers_started([c['id'] for c in changes])
             return
         bindings = await self._definitions.active_bindings(
             task['organization_id'], [KIND]
         )
-        await self._tasks.triggers_started(
-            [
-                change['id']
-                for change in changes
-                if await self._start(task, change, bindings, depth, lineage)
-            ]
+        started: list[uuid.UUID] = []
+        for change in changes:
+            ok, capacity = await self._start(
+                task, change, bindings, depth, lineage, capacity
+            )
+            if ok:
+                started.append(change['id'])
+        await self._tasks.triggers_started(started)
+
+    @staticmethod
+    def _warn_capped(task: store.Row, lineage: str) -> None:
+        LOGGER.warning(
+            'Ticket %s starts no more workflow runs: its chain is past %d'
+            ' deep or its lineage %s started %d runs',
+            task['id'],
+            MAX_DEPTH,
+            lineage,
+            MAX_LINEAGE_RUNS,
         )
 
     async def _start(
@@ -175,9 +196,11 @@ class TaskTrigger:
         bindings: list[store.Row],
         depth: int,
         lineage: str,
-    ) -> bool:
-        """Start a run for each binding that ``change`` matches. Return
-        ``False`` when a run failed to start."""
+        capacity: int,
+    ) -> tuple[bool, int]:
+        """Start a run for each binding that ``change`` matches, while
+        the lineage has ``capacity`` for new runs. Return ``False`` when
+        a run failed to start, and the capacity that remains."""
         org = task['organization_id']
         failed = False
         # Built for the first match only: most changes start no run.
@@ -185,12 +208,15 @@ class TaskTrigger:
         for binding in bindings:
             if not _matches(binding, task, change):
                 continue
+            if capacity <= 0:
+                self._warn_capped(task, lineage)
+                break
             if payload is None:
                 closed = change['to_state'] == 'closed'
                 payload = {
                     'task_id': task['short_id'],
                     'agent_id': task['agent_id'],
-                    'outcome': task['outcome'] if closed else None,
+                    'outcome': _outcome(task, change) if closed else None,
                     'from_state': change['from_state'],
                     'to_state': change['to_state'],
                     **await tickets.attributes(self._db(), task),
@@ -198,7 +224,7 @@ class TaskTrigger:
             workflow_id = binding['workflow_id']
             try:
                 settings = graph.Settings.model_validate(binding['settings'])
-                await self._runs.create(
+                _, created = await self._runs.create(
                     runs_module.NewRun(
                         organization_id=org,
                         workflow_id=workflow_id,
@@ -224,6 +250,7 @@ class TaskTrigger:
                         skip_duplicate=True,
                     )
                 )
+                capacity -= created
             except Exception as error:  # one workflow must not stop the rest
                 # A workflow that is no longer active has no run to start.
                 failed = failed or not isinstance(error, runs_module.NotActive)
@@ -232,4 +259,4 @@ class TaskTrigger:
                     task['id'],
                     workflow_id,
                 )
-        return not failed
+        return not failed, capacity

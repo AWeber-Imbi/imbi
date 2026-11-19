@@ -2957,9 +2957,14 @@ async def _write_outbox(conn: Conn, task: Row, from_state: str | None) -> bool:
     ):
         return False
     await conn.execute(
-        'INSERT INTO tickets.trigger_outbox (ticket_id, from_state, to_state)'
-        ' VALUES (%s, %s, %s)',
-        (task['id'], from_state, task['status']),
+        'INSERT INTO tickets.trigger_outbox'
+        ' (ticket_id, from_state, to_state, outcome) VALUES (%s, %s, %s, %s)',
+        (
+            task['id'],
+            from_state,
+            task['status'],
+            task['outcome'] if task['status'] == 'closed' else None,
+        ),
     )
     return True
 

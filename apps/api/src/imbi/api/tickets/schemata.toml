@@ -569,6 +569,10 @@ from_state = "TEXT"
 # `ticket_state_changed` writes during a rolling deploy: it wrote a row
 # only for a close.
 to_state = "TEXT NOT NULL DEFAULT 'closed'"
+# The outcome of a close, from its transaction: the trigger can read a
+# later snapshot of the ticket. NULL on other changes and on a row of
+# the release before `ticket_state_changed`.
+outcome = "TEXT"
 created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 
 [tables.primary_key]
