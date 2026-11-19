@@ -247,18 +247,26 @@ export function WorkflowEditor({
     // A retry after a failed save of a new workflow updates it.
     mutationFn: () => {
       const saving = revision.current
-      return saveWorkflow(orgSlug, slug, draft, prompts, stored).then(
-        (result) => ({ ...result, saving }),
-      )
+      return saveWorkflow(
+        orgSlug,
+        slug,
+        { ...draft, description: draft.description.trim() },
+        prompts,
+        stored,
+      ).then((result) => ({ ...result, saving }))
     },
     onError: (error) =>
       toast.error(
         `Failed to save the workflow: ${extractApiErrorDetail(error)}`,
       ),
     onSuccess: ({ pins, saved, saving }) => {
-      setDraft((d) => ({ ...d, graph: pinNodes(d.graph, pins) }))
-      stored(saved)
       const clean = saving === revision.current
+      setDraft((d) => ({
+        ...d,
+        description: clean ? saved.description : d.description,
+        graph: pinNodes(d.graph, pins),
+      }))
+      stored(saved)
       if (clean) setDirty(false)
       setIssues(saved.version.validation.issues)
       // Not `slug`: `stored` sets it when the save creates the workflow.
