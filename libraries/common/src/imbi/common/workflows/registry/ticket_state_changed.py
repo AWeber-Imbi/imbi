@@ -18,7 +18,15 @@ TYPE = 'ticket_state_changed'
 #: The ticket statuses that imbi-api writes, and ``created``, which is
 #: the creation of a ticket.
 State = typing.Literal[
-    'created', 'held', 'queued', 'running', 'paused', 'blocked', 'closed'
+    'created',
+    'held',
+    'queued',
+    'running',
+    'paused',
+    'open',
+    'in_progress',
+    'blocked',
+    'closed',
 ]
 
 

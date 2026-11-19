@@ -100,7 +100,7 @@ class FakeGraph:
 
 class ParamsTestCase(unittest.TestCase):
     def test_unknown_state_is_refused(self) -> None:
-        for state in ('open', 'in_progress', 'done'):
+        for state in ('open_', 'started', 'done'):
             with self.assertRaises(pydantic.ValidationError):
                 ticket_state_changed.Params.model_validate({'states': [state]})
 

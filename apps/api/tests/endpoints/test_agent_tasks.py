@@ -1142,15 +1142,20 @@ class ReadTaskTests(AgentTaskTestCase):
         self.assertEqual(response.status_code, 404, response.text)
 
     async def test_reads_the_statuses_of_a_later_release(self) -> None:
-        # Release A+1 reads what P1 to P4 write (ADR 0028).
+        # Release A+1 reads what P1 to P4 write (ADR 0028). The open
+        # and in progress tickets are person tickets.
         async with self.pool.connection() as conn:
-            for short_id, status in [
-                ('T-1', 'held'),
-                ('T-2', 'open'),
-                ('T-3', 'in_progress'),
-            ]:
+            await conn.execute(
+                "UPDATE tickets.tickets SET status = 'held'"
+                " WHERE organization_id = %s AND short_id = 'T-1'",
+                (self.org,),
+            )
+            for short_id, status in [('T-2', 'open'), ('T-3', 'in_progress')]:
                 await conn.execute(
-                    'UPDATE tickets.tickets SET status = %s'
+                    'UPDATE tickets.tickets SET status = %s,'
+                    " assignee_kind = 'person', assignee = owner,"
+                    ' agent_id = NULL, agent_version = NULL,'
+                    ' service_account_id = NULL'
                     ' WHERE organization_id = %s AND short_id = %s',
                     (status, self.org, short_id),
                 )
@@ -1762,21 +1767,15 @@ class TicketPermissionTests(AgentTaskTestCase):
 
 
 class OldPathTests(AgentTaskTestCase):
-    """Release B keeps the routes at ``/agent-tasks`` for saved scheduled
-    jobs, but not in the OpenAPI document, so imbi-mcp has no tools with
-    the old names (ADR 0028)."""
+    """The release after B removes the routes at ``/agent-tasks`` (ADR
+    0028)."""
 
     prefix = 'agent-tasks'
 
-    async def test_old_path_works_but_is_not_documented(self) -> None:
+    async def test_old_path_is_gone(self) -> None:
         await self.make_agent()
         response = await self.create_task()
-        self.assertEqual(response.status_code, 201, response.text)
-        response = await self.client.get(self.url('T-1'))
-        self.assertEqual(response.status_code, 200, response.text)
-        paths = self.test_app.openapi()['paths']
-        self.assertFalse([path for path in paths if 'agent-tasks' in path])
-        self.assertTrue([path for path in paths if '/tickets/' in path])
+        self.assertEqual(response.status_code, 404, response.text)
 
 
 class ServiceAccountTests(AgentTaskTestCase):

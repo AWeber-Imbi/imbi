@@ -1,6 +1,7 @@
 # Tickets
 
-A **ticket** is one piece of work for one [agent](agents.md). Before
+A **ticket** is one piece of work for one [agent](agents.md) or one
+person (a [person ticket](#person-tickets)). Before
 release A of [ADR 0028](../api/adr/0028-tasks-become-tickets.md), a
 ticket was named an "agent task". Each ticket has a short id, for
 example `T-42`. The id is unique in the organization.
@@ -54,7 +55,13 @@ when it has the permission.
 | `running` | Running | A runner works on the ticket |
 | `blocked` | Needs input | The agent waits for an answer or an approval |
 | `paused` | Paused | A person paused the ticket |
+| `open` | Open | A person ticket that its assignee has not started |
+| `in_progress` | In progress | The assignee of a person ticket started work |
 | `closed` | Closed | The ticket is done. It has an outcome |
+
+An agent ticket is never `open` or `in_progress`; a person ticket is
+never `queued`, `running`, or `paused`. A person ticket is `blocked` when
+its assignee waits on something.
 
 A ticket also has a control value: `run`, `pause`, or `cancel`. People change
 it. When a runner holds the ticket, the runner reads the control value and
@@ -91,6 +98,29 @@ When a ticket is created or changes its status, Imbi starts each active
 [workflow](workflows.md) with a **Ticket state changed** trigger
 (`ticket_state_changed`) that matches the change.
 
+## Person tickets
+
+A person ticket goes to one person (the **assignee**), by email. The
+assignee must be a member of the organization. The owner and the
+assignee can be different people. A runner never takes a person ticket,
+and it has no budget, sessions, or usage.
+
+A person ticket starts **Open**. Its assignee, or a person with
+`ticket:manage`, moves it on the ticket page or with
+`POST /organizations/{org}/tickets/{id}/status`:
+
+| From | To | Body |
+|---|---|---|
+| `open` | `in_progress` | `{"status": "in_progress"}` |
+| `open`, `in_progress` | `blocked` | `{"status": "blocked", "reason": "Waiting on ops"}` |
+| `blocked` | `open`, `in_progress` | `{"status": "in_progress"}` |
+| every status | `closed` | `{"status": "closed", "outcome": "done_acted"}` |
+
+The outcome of a person ticket is `done_acted`, `done_nothing_to_act_on`,
+`superseded`, or `cancelled_by_human`. Pause, resume, cancel, and retry
+apply to agent tickets only. A `held` person ticket opens when its gating
+prerequisites are done.
+
 ## Create a ticket
 
 You need `ticket:create`. There are three places to start:
@@ -102,17 +132,23 @@ You need `ticket:create`. There are three places to start:
 
 In the **New ticket** dialog:
 
-1. In **What should the agent do?**, describe the outcome that you want.
+1. In **What should be done?**, describe the outcome that you want.
    The first line, without its links, becomes the title (96 characters
    maximum).
 2. Optional: paste a link. The dialog shows it as the **Source**: a Sentry
    issue, a pull request, a Slack thread, or a link.
-3. Select an **Agent**. The list shows enabled agents only.
+3. In **Assign to**, select **Agent** and an agent, or **Person** and
+   the email of a person. The list shows enabled agents only.
 4. Optional: select a **Priority**. The default is **Normal**.
 5. Select a **Project**. Archived projects are not in the list.
-6. Click **Create ticket**.
+6. Optional: in **Requires**, type the short ids of the tickets that this
+   ticket requires. Select **Hold this ticket until they are done** to
+   make them gating prerequisites.
+7. Click **Create ticket**.
 
-The ticket starts as **Queued**. You are its owner. The ticket page opens.
+An agent ticket starts as **Queued**, a person ticket as **Open**. With
+an open gating prerequisite, the ticket starts as **Held**. You are its
+owner. The ticket page opens.
 
 ### With the API
 
@@ -134,6 +170,11 @@ POST /organizations/{org}/tickets/
 `project_ids`, `budget`, and `idempotency_key` are optional. A repeat with
 the same `idempotency_key` returns the first ticket with `200`. A disabled
 agent returns `409`.
+
+For a person ticket, send `"assignee_kind": "person"` and `"assignee":
+"<email>"` instead of `agent_slug`, and no `budget`. Send `requires` to
+add prerequisites, for example
+`"requires": [{"short_id": "T-12", "gates": true}]`.
 
 ## Triggers
 
@@ -157,9 +198,7 @@ the origin of the workflow run.
 ### Schedules
 
 Use a scheduled task with an `api` target that posts to
-`/tickets/`. The scheduled task must name the organization. A scheduled
-task that posts to the old path, `/agent-tasks/`, still works, but a
-later release removes that path. See
+`/tickets/`. The scheduled task must name the organization. See
 [Scheduled Tasks](../scheduler/tasks.md#api). A retry of a run returns the
 first ticket.
 

@@ -471,9 +471,6 @@ class HarnessStore:
             chain_id = task['chain_id'] or task['id']
             chain = await _fetch_one(
                 conn,
-                # Only the new column; on an install made before ADR
-                # 0028 a trigger fills `root_task_id`, which release A+1
-                # reads.
                 'INSERT INTO harness.chains (root_ticket_id, organization_id,'
                 ' runner_id) VALUES (%s, %s, %s)'
                 ' ON CONFLICT (root_ticket_id) DO UPDATE SET'

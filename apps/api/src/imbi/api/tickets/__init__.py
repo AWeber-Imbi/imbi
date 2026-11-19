@@ -47,7 +47,9 @@ from imbi.api.tickets.store import (
     TicketHeld,
     TicketStarted,
     TicketStore,
+    TransitionInvalid,
     Usage,
+    WrongAssigneeKind,
 )
 from imbi.common import lifespan, relational
 from imbi.common import settings as common_settings
@@ -139,7 +141,9 @@ __all__ = [
     'TicketHeld',
     'TicketStarted',
     'TicketStore',
+    'TransitionInvalid',
     'Usage',
+    'WrongAssigneeKind',
     'create_pool',
     'initialize',
     'log',

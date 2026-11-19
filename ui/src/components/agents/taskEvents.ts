@@ -71,6 +71,14 @@ const GROUP_OF: Record<TicketStatus, InboxGroupId> = {
   running: 'running',
 }
 
+/** Who works a ticket: its person, or its agent by `nameOf` (ADR 0028). */
+export function assigneeOf(
+  task: { agent_id?: null | string; assignee?: null | string },
+  nameOf: (id: string) => string,
+): string {
+  return task.assignee ?? nameOf(task.agent_id ?? '')
+}
+
 /**
  * The inbox group of a task. A task that waits on a person (it has
  * `blocked_since`: it is not closed and a request is open) needs human

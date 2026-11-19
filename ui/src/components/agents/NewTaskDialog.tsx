@@ -7,6 +7,7 @@ import { Box, Check, Plus, Search, X } from 'lucide-react'
 
 import { createTicket, getProjectsSlim } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -14,8 +15,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { EntityIcon } from '@/components/ui/entity-icon'
+import { Input } from '@/components/ui/input'
+import {
+  SegmentedControl,
+  SegmentedControlItem,
+} from '@/components/ui/segmented-control'
 import { Textarea } from '@/components/ui/textarea'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
 import type { Agent } from '@/types'
@@ -29,9 +36,10 @@ import { errorMessage } from './taskQueries'
 const PROJECTS_SHOWN = 6
 
 /**
- * Hand a piece of work to an agent (origin `human`) and open the task.
- * A runner starts a queued task for its agent; nothing else is needed.
- * `agent` selects an agent first (the Run button of an agent).
+ * Hand a piece of work to an agent or a person (ADR 0028), and open the
+ * ticket. A runner starts a queued ticket for its agent; a person ticket
+ * starts open. `agent` selects an agent first (the Run button of an
+ * agent).
  */
 export function NewTaskDialog({
   agent,
@@ -51,10 +59,19 @@ export function NewTaskDialog({
   const [projectIds, setProjectIds] = useState<string[]>([])
   const [priority, setPriority] = useState<Priority>('normal')
   const [query, setQuery] = useState('')
+  const [kind, setKind] = useState<'agent' | 'person'>('agent')
+  const [assignee, setAssignee] = useState('')
+  const [requires, setRequires] = useState('')
+  const [gates, setGates] = useState(false)
+  const { users } = useUserDisplayNames()
 
   useEffect(() => {
     if (!isOpen) return
     setRequest('')
+    setKind('agent')
+    setAssignee('')
+    setRequires('')
+    setGates(false)
     setAgentSlug(agent?.slug ?? '')
     setProjectIds([])
     setPriority('normal')
@@ -96,18 +113,25 @@ export function NewTaskDialog({
   }, [projectList, projectIds, query])
 
   const source = detectSource(request)
+  const person = kind === 'person'
   const missing = [
     !request.trim() && 'a description',
-    !agentSlug && 'an agent',
+    person ? !assignee.trim() && 'a person' : !agentSlug && 'an agent',
   ].filter((m): m is string => !!m)
 
   const create = useMutation({
     mutationFn: () =>
       createTicket(orgSlug, {
-        agent_slug: agentSlug,
+        ...(person
+          ? { assignee: assignee.trim(), assignee_kind: 'person' }
+          : { agent_slug: agentSlug, assignee_kind: 'agent' }),
         description: request.trim(),
         priority,
         project_ids: projectIds,
+        requires: requires
+          .split(/[\s,]+/)
+          .filter(Boolean)
+          .map((short_id) => ({ gates, short_id })),
         title: titleFrom(request),
       }),
     onSuccess: (task) => {
@@ -136,8 +160,8 @@ export function NewTaskDialog({
             New ticket
           </DialogTitle>
           <DialogDescription className="text-secondary mt-0.5 text-[12.5px]">
-            Hand a piece of work to an agent. It shows up in your Inbox as soon
-            as you create it.
+            Hand a piece of work to an agent or a person. It shows up in your
+            Inbox as soon as you create it.
           </DialogDescription>
         </div>
         <form
@@ -149,9 +173,9 @@ export function NewTaskDialog({
           }}
         >
           <label className="flex flex-col gap-2">
-            <Overline>What should the agent do?</Overline>
+            <Overline>What should be done?</Overline>
             <Textarea
-              aria-label="What should the agent do?"
+              aria-label="What should be done?"
               onChange={(e) => setRequest(e.target.value)}
               placeholder="Describe the outcome you want. Paste a Sentry issue, pull request, or Slack thread link to use it as the source."
               rows={4}
@@ -171,9 +195,40 @@ export function NewTaskDialog({
             )}
           </label>
 
-          <div className="flex flex-col gap-2">
-            <Overline>Agent</Overline>
-            {agents.length === 0 ? (
+          <div className="flex flex-col items-start gap-2">
+            <Overline>Assign to</Overline>
+            {!agent && (
+              <SegmentedControl
+                ariaLabel="Assignee kind"
+                onValueChange={(v) => setKind(v as 'agent' | 'person')}
+                value={kind}
+              >
+                <SegmentedControlItem value="agent">Agent</SegmentedControlItem>
+                <SegmentedControlItem value="person">
+                  Person
+                </SegmentedControlItem>
+              </SegmentedControl>
+            )}
+            {person ? (
+              <>
+                <Input
+                  aria-label="Assignee email"
+                  className="h-8.5 text-[13px]"
+                  list="new-ticket-assignees"
+                  onChange={(e) => setAssignee(e.target.value)}
+                  placeholder="person@example.com"
+                  type="email"
+                  value={assignee}
+                />
+                <datalist id="new-ticket-assignees">
+                  {users.map((u) => (
+                    <option key={u.email} value={u.email}>
+                      {u.display_name}
+                    </option>
+                  ))}
+                </datalist>
+              </>
+            ) : agents.length === 0 ? (
               <p className="text-tertiary text-sm">No enabled agents.</p>
             ) : (
               <div
@@ -191,6 +246,24 @@ export function NewTaskDialog({
                 ))}
               </div>
             )}
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Overline>Requires (optional)</Overline>
+            <Input
+              aria-label="Required tickets"
+              className="h-8.5 font-mono text-[13px]"
+              onChange={(e) => setRequires(e.target.value)}
+              placeholder="T-12, T-15"
+              value={requires}
+            />
+            <label className="text-secondary flex items-center gap-2 text-[12.5px]">
+              <Checkbox
+                checked={gates}
+                onCheckedChange={(v) => setGates(v === true)}
+              />
+              Hold this ticket until they are done
+            </label>
           </div>
 
           <div className="flex flex-col items-start gap-2">
@@ -276,7 +349,7 @@ export function NewTaskDialog({
           <span className="text-tertiary min-w-0 text-xs">
             {missing.length
               ? `Needs ${missing.join(', ').replace(/, ([^,]*)$/, ' and $1')}.`
-              : 'Starts as Queued. Esc to cancel.'}
+              : `Starts as ${person ? 'Open' : 'Queued'}${gates && requires.trim() ? ', or Held while a prerequisite is open' : ''}. Esc to cancel.`}
           </span>
           <Button
             className="ml-auto"

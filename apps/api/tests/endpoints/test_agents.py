@@ -1911,14 +1911,23 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db._execute_batch.assert_not_awaited()
 
     def test_put_self_as_subagent(self) -> None:
-        self.mock_db.execute.return_value = [self._row()]
+        # An agent can delegate to itself; the harness caps the depth.
+        # fetch, subagents, batch (version, set), fetch
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=2)],
+            self._found('agent-1'),
+            [self._row(latest=3)],
+        ]
         response = self.client.put(
             BASE + '/triage',
             json={'subagents': [{'agent_id': 'agent-1'}]},
         )
-        self.assertEqual(response.status_code, 422)
-        self.assertIn('own subagent', response.json()['detail'])
-        self.mock_db._execute_batch.assert_not_awaited()
+        self.assertEqual(response.status_code, 200, response.text)
+        (version,) = self._version_writes()
+        self.assertEqual(
+            json.loads(version['snapshot'])['subagents'],
+            [{'agent_id': 'agent-1', 'instructions': ''}],
+        )
 
     def test_put_subagents_writes_new_version(self) -> None:
         # fetch, subagents, batch (version, set), fetch

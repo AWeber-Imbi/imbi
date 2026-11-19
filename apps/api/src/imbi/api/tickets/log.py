@@ -9,9 +9,8 @@ ClickHouse does not have and publishes them again.
 Both tables are ReplacingMergeTree tables keyed on the identity of the
 row, so a row that is published two times is stored one time.
 
-Before ADR 0028 events went to ``agent_task_events``. Release B copies
-that table to ``ticket_events`` (``setup-clickhouse``) and reads only
-``ticket_events`` (:data:`EVENTS`).
+Before ADR 0028 events went to ``agent_task_events``. Release B copied
+that table to ``ticket_events``, and the release after B dropped it.
 
 Request resolutions and terminal outcomes also go to the Operations Log
 (I9, N9), as a projection of their events: see :func:`opslog_rows`.
@@ -113,8 +112,10 @@ def event_row(task: Row, event: Row) -> Row:
         'organization_id': task['organization_id'],
         'ticket_id': str(task['id']),
         'short_id': task['short_id'],
-        'agent_id': task['agent_id'],
-        'agent_version': task['agent_version'],
+        # Empty on a person ticket: the ClickHouse columns are not
+        # nullable (ADR 0028).
+        'agent_id': task['agent_id'] or '',
+        'agent_version': task['agent_version'] or 0,
         'project_id': _project_ids(task),
         'seq': event['seq'],
         'event_id': str(event['event_id']),

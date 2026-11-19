@@ -113,6 +113,71 @@ describe('WorkflowsManagement', () => {
     expect(screen.getByText('Dependency sweep')).toBeInTheDocument()
   })
 
+  it('starts a run from the trigger cell of an active manual workflow', async () => {
+    const active = workflow({ active_version: 2, status: 'active' })
+    const { version: _version, ...summary } = active
+    vi.mocked(endpoints.listWorkflows).mockResolvedValue([
+      summary,
+      { ...summary, name: 'Draft one', slug: 'draft', status: 'draft' },
+    ])
+    vi.mocked(endpoints.getWorkflowVersion).mockResolvedValue(active.version)
+    vi.mocked(endpoints.startWorkflowRun).mockResolvedValue(RUN)
+    vi.mocked(endpoints.getWorkflow).mockResolvedValue(active)
+    vi.mocked(endpoints.getWorkflowRun).mockResolvedValue({
+      ...RUN,
+      steps: [],
+    })
+    renderAt('/agents/workflows')
+
+    const draft = (await screen.findByText('Draft one')).closest('tr')!
+    await waitFor(() => expect(draft).toHaveTextContent('Manual run'))
+    expect(within(draft).queryByRole('button')).not.toBeInTheDocument()
+
+    const row = screen.getByText('Deploy guard').closest('tr')!
+    fireEvent.click(within(row).getByRole('button', { name: /Manual run/ }))
+    await waitFor(() =>
+      expect(endpoints.startWorkflowRun).toHaveBeenCalledWith(
+        'acme',
+        'deploy-guard',
+        {},
+      ),
+    )
+    expect(endpoints.getWorkflowVersion).toHaveBeenCalledWith(
+      'acme',
+      'deploy-guard',
+      2,
+      expect.anything(),
+    )
+    await waitFor(() => expect(window.location.search).toBe(`?run=${RUN.id}`))
+  })
+
+  it('starts one run when the trigger cell is clicked twice', async () => {
+    const active = workflow({ active_version: 2, status: 'active' })
+    const { version: _version, ...summary } = active
+    vi.mocked(endpoints.listWorkflows).mockResolvedValue([summary])
+    let resolveVersion!: (v: typeof active.version) => void
+    vi.mocked(endpoints.getWorkflowVersion).mockReturnValue(
+      new Promise((resolve) => (resolveVersion = resolve)),
+    )
+    vi.mocked(endpoints.startWorkflowRun).mockResolvedValue(RUN)
+    vi.mocked(endpoints.getWorkflow).mockResolvedValue(active)
+    vi.mocked(endpoints.getWorkflowRun).mockResolvedValue({
+      ...RUN,
+      steps: [],
+    })
+    renderAt('/agents/workflows')
+
+    const row = (await screen.findByText('Deploy guard')).closest('tr')!
+    const button = await within(row).findByRole('button', {
+      name: /Manual run/,
+    })
+    fireEvent.click(button)
+    fireEvent.click(button)
+    resolveVersion(active.version)
+    await waitFor(() => expect(window.location.search).toBe(`?run=${RUN.id}`))
+    expect(endpoints.startWorkflowRun).toHaveBeenCalledTimes(1)
+  })
+
   it('shows runs in 30 days, the last outcome, and failures in 7 days', async () => {
     const { version: _version, ...summary } = workflow()
     vi.mocked(endpoints.listWorkflows).mockResolvedValue([

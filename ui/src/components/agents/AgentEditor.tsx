@@ -289,7 +289,6 @@ function AgentEditorForm({
       )}
       {tab === 'subagents' && (
         <SubagentsTab
-          agentId={agent?.id ?? null}
           onChange={(subagents) => update({ subagents })}
           orgSlug={orgSlug}
           saved={agent?.subagents}

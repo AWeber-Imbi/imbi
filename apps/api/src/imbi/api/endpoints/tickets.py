@@ -42,9 +42,11 @@ from imbi.api.endpoints._pagination import (
 )
 from imbi.api.tickets.store import (
     ActorKind,
+    AssigneeKind,
     Channel,
     Control,
     Group,
+    PersonOutcome,
     Priority,
     ResolvedStatus,
     Status,
@@ -93,11 +95,38 @@ _ShortText = typing.Annotated[
 # --- Schemas -----------------------------------------------------------
 
 
+class TicketRequirement(pydantic.BaseModel):
+    """A prerequisite of a new ticket."""
+
+    short_id: str = pydantic.Field(min_length=1, max_length=50)
+    gates: bool = pydantic.Field(
+        default=False,
+        description='Hold the ticket until the prerequisite closes with a '
+        '``done_*`` outcome.',
+    )
+
+
 class AgentTaskCreate(pydantic.BaseModel):
-    agent_slug: str = pydantic.Field(min_length=1)
+    assignee_kind: AssigneeKind = 'agent'
+    agent_slug: str | None = pydantic.Field(
+        default=None,
+        min_length=1,
+        description='The agent of an agent ticket.',
+    )
+    assignee: pydantic.EmailStr | None = pydantic.Field(
+        default=None,
+        description='The email of the person of a person ticket. Must be '
+        'in the org.',
+    )
     title: str = pydantic.Field(min_length=1)
     description: str = pydantic.Field(
-        min_length=1, description='The instruction for the agent.'
+        min_length=1, description='What the assignee should do.'
+    )
+    requires: list[TicketRequirement] = pydantic.Field(
+        default_factory=list,
+        max_length=50,
+        description='The prerequisites of the ticket, by short id. An open '
+        'gating prerequisite makes the ticket start ``held``.',
     )
     project_ids: list[_ShortText] = pydantic.Field(
         default_factory=list,
@@ -139,6 +168,27 @@ class AgentTaskCreate(pydantic.BaseModel):
                 raise ValueError('send project_ids or project_id, not both')
             fields['project_ids'] = [] if legacy is None else [legacy]
         return fields
+
+    @pydantic.model_validator(mode='after')
+    def _assignee(self) -> typing.Self:
+        """An agent ticket names an agent; a person ticket names a
+        person and has no budget."""
+        if self.assignee_kind == 'agent':
+            if self.agent_slug is None or self.assignee is not None:
+                raise ValueError('an agent ticket needs agent_slug only')
+        elif (
+            self.assignee is None
+            or self.agent_slug is not None
+            or self.budget is not None
+        ):
+            raise ValueError(
+                'a person ticket needs assignee, and no agent_slug or budget'
+            )
+        if len({r.short_id.upper() for r in self.requires}) < len(
+            self.requires
+        ):
+            raise ValueError('requires names a ticket more than once')
+        return self
 
 
 class AgentTaskRetry(pydantic.BaseModel):
@@ -200,15 +250,17 @@ class TaskProject(pydantic.BaseModel):
 class AgentTaskResponse(pydantic.BaseModel):
     id: uuid.UUID
     short_id: str
-    #: ``None`` on a ticket assigned to a person, which the next release
-    #: writes; this release reads such a ticket during that rollout.
-    agent_id: str | None
-    agent_version: int | None
+    #: ``agent``: the agent columns are set. ``person``: ``assignee`` is
+    #: set and the agent columns are ``None`` (ADR 0028).
+    assignee_kind: AssigneeKind = 'agent'
+    assignee: str | None = None
+    agent_id: str | None = None
+    agent_version: int | None = None
     prompt_version: int | None = None
     #: The version of the organization's agent platform configuration
     #: when the task was made. ``None``: the defaults apply.
     platform_config_version: int | None = None
-    service_account_id: str | None
+    service_account_id: str | None = None
     #: The projects of the task, oldest first. Each slug is the slug
     #: when the project was associated.
     projects: list[TaskProject]
@@ -383,8 +435,9 @@ class RelatedTask(pydantic.BaseModel):
 
     short_id: str
     title: str
-    #: ``None`` on a ticket assigned to a person.
-    agent_id: str | None
+    assignee_kind: AssigneeKind = 'agent'
+    assignee: str | None = None
+    agent_id: str | None = None
     status: Status
     outcome: str | None = None
     created_at: datetime.datetime
@@ -435,6 +488,29 @@ class TicketDependencySet(pydantic.BaseModel):
         '``done_*`` outcome. Only a ticket that has not started (``queued`` '
         'or ``held``) can get a gating prerequisite.',
     )
+
+
+class TicketStatusSet(pydantic.BaseModel):
+    """A status change of a person ticket (ADR 0028)."""
+
+    status: typing.Literal['open', 'in_progress', 'blocked', 'closed']
+    outcome: PersonOutcome | None = pydantic.Field(
+        default=None, description='Required to close, else not allowed.'
+    )
+    reason: str | None = pydantic.Field(
+        default=None,
+        min_length=1,
+        max_length=MAX_TEXT_LENGTH,
+        description='Why. Required to block.',
+    )
+
+    @pydantic.model_validator(mode='after')
+    def _fields(self) -> typing.Self:
+        if (self.status == 'closed') != (self.outcome is not None):
+            raise ValueError('send outcome to close, and only to close')
+        if self.status == 'blocked' and self.reason is None:
+            raise ValueError('send a reason to block')
+        return self
 
 
 class TicketParentSet(pydantic.BaseModel):
@@ -554,6 +630,15 @@ def check_payload_size(
             },
         )
     return size
+
+
+def _person_ticket(short_id: str) -> fastapi.HTTPException:
+    """409 for a change that applies only to an agent ticket."""
+    return _conflict(
+        'person_ticket',
+        f'Task {short_id!r} is a person ticket; this applies only to an '
+        'agent ticket',
+    )
 
 
 def _conflict(
@@ -860,6 +945,8 @@ async def _set_control(
             status_code=409,
             detail=f'Task {short_id!r} has a cancel that is not done yet',
         ) from e
+    except tickets.WrongAssigneeKind as e:
+        raise _person_ticket(short_id) from e
 
 
 async def may_create(db: graph.Graph, org_slug: str, email: str) -> bool:
@@ -1078,8 +1165,11 @@ async def create_agent_task(
         str | None, _header('Idempotency-Key')
     ] = None,
 ) -> dict[str, typing.Any]:
-    """Make a task for an agent.
+    """Make a ticket for an agent or, with ``assignee_kind`` ``person``,
+    for a person (ADR 0028).
 
+    An agent ticket starts ``queued`` and a person ticket ``open``; an
+    open gating prerequisite in ``requires`` makes it start ``held``.
     A person owns the tasks that they make. The scheduler and the
     gateway also make tasks, with a ``schedule`` or a ``webhook``
     origin that they name in headers (see :func:`task_origin`). The
@@ -1096,10 +1186,11 @@ async def create_agent_task(
             :func:`_owner`).
         404: No such organization.
         409: The agent is disabled.
-        422: The agent or the project is not in the org, the budget is
-            more than the agent's task budget, a service does not name
-            its origin, the webhook does not exist, or the key has the
-            shape of a workflow step key (``<uuid>:<node_key>``).
+        422: The agent, the assignee, or the project is not in the org,
+            the budget is more than the agent's task budget, a service
+            does not name its origin, the webhook does not exist, a
+            prerequisite is not found, or the key has the shape of a
+            workflow step key (``<uuid>:<node_key>``).
 
     """
     origin = task_origin(
@@ -1176,7 +1267,8 @@ async def make_task(
     actor: tickets.Actor,
     output_schema: dict[str, typing.Any] | None = None,
 ) -> tuple[dict[str, typing.Any], bool]:
-    """Make a task with the agent and prompt versions that it has now.
+    """Make a ticket. An agent ticket gets the agent and prompt
+    versions that the agent has now.
 
     Return the task, and ``False`` when a task with the key exists.
     ``output_schema`` is the JSON Schema of the structured output that
@@ -1184,59 +1276,81 @@ async def make_task(
 
     Raises:
         409: The agent is disabled.
-        422: The agent or the project is not in the org, or the budget
-            is more than the agent's task budget.
+        422: The agent, the assignee, or the project is not in the org,
+            the budget is more than the agent's task budget, or a
+            prerequisite is not found.
 
     """
-    agent = await _fetch_agent(db, org_slug, data.agent_slug)
-    if not agent.get('enabled', True):
-        raise fastapi.HTTPException(
-            status_code=409, detail=f'Agent {data.agent_slug!r} is disabled'
-        )
-    raw_settings: typing.Any = agent.get('settings') or {}
-    settings = (
-        models.AgentSettings.model_validate_json(raw_settings)
-        if isinstance(raw_settings, str)
-        else models.AgentSettings.model_validate(raw_settings)
-    )
-    budget = task_budget(settings, data.budget)
     projects = await project_slugs(db, org_slug, data.project_ids)
-    agent_id = str(agent['id'])
-    service_account_id = await agents.ensure_service_account(
-        db, agent_id, str(agent.get('name', data.agent_slug))
-    )
-    agent_version = int(agent.get('version') or 1)
-    prompt_version = agent.get('prompt_version')
-    return await store.create(
-        tickets.NewTask(
-            organization_id=org_id,
-            agent_id=agent_id,
-            agent_version=agent_version,
-            prompt_version=prompt_version,
-            service_account_id=service_account_id,
-            projects=projects,
-            title=data.title,
-            description=data.description,
-            origin_kind=origin.kind,
-            origin_id=origin.id,
-            origin=origin.record,
-            idempotency_key=key,
-            owner=owner,
-            budget=budget,
-            output_schema=output_schema,
-            priority=data.priority,
-        ),
-        actor,
-        {
-            'title': data.title,
-            'description': data.description,
-            'origin': origin.record,
-            'budget': None if budget is None else str(budget),
-            'agent_version': agent_version,
-            'prompt_version': prompt_version,
-            'priority': data.priority,
-        },
-    )
+    agent_id = service_account_id = None
+    agent_version = prompt_version = budget = None
+    if data.assignee_kind == 'person':
+        if not await db.execute(
+            _MEMBER_QUERY,
+            {'email': data.assignee, 'org_slug': org_slug},
+            ['email'],
+        ):
+            raise _unprocessable(f'User {data.assignee!r} is not in the org')
+    else:
+        slug = data.agent_slug or ''
+        agent = await _fetch_agent(db, org_slug, slug)
+        if not agent.get('enabled', True):
+            raise fastapi.HTTPException(
+                status_code=409, detail=f'Agent {slug!r} is disabled'
+            )
+        raw_settings: typing.Any = agent.get('settings') or {}
+        settings = (
+            models.AgentSettings.model_validate_json(raw_settings)
+            if isinstance(raw_settings, str)
+            else models.AgentSettings.model_validate(raw_settings)
+        )
+        budget = task_budget(settings, data.budget)
+        agent_id = str(agent['id'])
+        service_account_id = await agents.ensure_service_account(
+            db, agent_id, str(agent.get('name', slug))
+        )
+        agent_version = int(agent.get('version') or 1)
+        prompt_version = agent.get('prompt_version')
+    try:
+        return await store.create(
+            tickets.NewTask(
+                organization_id=org_id,
+                agent_id=agent_id,
+                agent_version=agent_version,
+                prompt_version=prompt_version,
+                service_account_id=service_account_id,
+                projects=projects,
+                title=data.title,
+                description=data.description,
+                origin_kind=origin.kind,
+                origin_id=origin.id,
+                origin=origin.record,
+                idempotency_key=key,
+                owner=owner,
+                budget=budget,
+                output_schema=output_schema,
+                priority=data.priority,
+                assignee_kind=data.assignee_kind,
+                assignee=data.assignee,
+                requires=[
+                    (r.short_id.upper(), r.gates) for r in data.requires
+                ],
+            ),
+            actor,
+            {
+                'title': data.title,
+                'description': data.description,
+                'origin': origin.record,
+                'budget': None if budget is None else str(budget),
+                'agent_version': agent_version,
+                'prompt_version': prompt_version,
+                'priority': data.priority,
+                'assignee_kind': data.assignee_kind,
+                'assignee': data.assignee,
+            },
+        )
+    except tickets.TaskNotFound as e:
+        raise _unprocessable(f'Prerequisite {str(e)!r} not found') from e
 
 
 @tickets_router.get('/', response_model=list[AgentTaskListItem])
@@ -1721,6 +1835,8 @@ async def retry_agent_task(
     user = auth.require_user
     await _require_read(auth)
     task = await _get_task(store, org_id, short_id)
+    if task['assignee_kind'] == 'person':
+        raise _person_ticket(short_id)
     if task['status'] != 'closed':
         raise fastapi.HTTPException(
             status_code=409, detail=f'Task {short_id!r} is not closed'
@@ -1801,6 +1917,60 @@ async def reassign_agent_task(
         raise fastapi.HTTPException(
             status_code=409, detail=f'Task {short_id!r} is closed'
         ) from e
+
+
+@tickets_router.post('/{short_id}/status', response_model=AgentTaskResponse)
+async def set_ticket_status(
+    org_id: OrgId,
+    short_id: str,
+    data: TicketStatusSet,
+    store: tickets.Store,
+    auth: typing.Annotated[
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
+    ],
+) -> dict[str, typing.Any]:
+    """Move a person ticket to a status, or close it (ADR 0028).
+
+    ``open`` -> ``in_progress``; ``open`` or ``in_progress`` ->
+    ``blocked`` (with a ``reason``) and back; ``closed`` with an
+    ``outcome`` from every status. A ``held`` ticket opens when its
+    gating prerequisites are done. The assignee makes these changes;
+    other people need ``ticket:manage``.
+
+    Raises:
+        403: The caller is not a person, or is not the assignee and has
+            no ``ticket:manage``.
+        404: No such task.
+        409: The task is closed (``Task ... is closed``), is an agent
+            ticket (``agent_ticket``), or cannot move from its status
+            (``transition_invalid``).
+
+    """
+    user = auth.require_user
+    task = await _get_task(store, org_id, short_id)
+    if (task['assignee'] or '').lower() != user.email.lower():
+        await _require_manage(auth)
+    try:
+        return await store.set_person_status(
+            org_id,
+            task['short_id'],
+            data.status,
+            _actor(auth),
+            outcome=data.outcome,
+            reason=data.reason,
+        )
+    except tickets.TaskClosed as e:
+        raise fastapi.HTTPException(
+            status_code=409, detail=f'Task {short_id!r} is closed'
+        ) from e
+    except tickets.WrongAssigneeKind as e:
+        raise _conflict(
+            'agent_ticket',
+            f'Task {short_id!r} is an agent ticket; its status follows its '
+            'sessions',
+        ) from e
+    except tickets.TransitionInvalid as e:
+        raise _conflict('transition_invalid', str(e)) from e
 
 
 @tickets_router.post('/{short_id}/priority', response_model=AgentTaskResponse)
@@ -1982,6 +2152,8 @@ async def reply_agent_task(
             status_code=409,
             detail=f'Task {short_id!r} has a cancel that is not done yet',
         ) from e
+    except tickets.WrongAssigneeKind as e:
+        raise _person_ticket(short_id) from e
 
 
 @tickets_router.get('/{short_id}/relations', response_model=AgentTaskRelations)

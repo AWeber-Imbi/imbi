@@ -222,7 +222,7 @@ status starts no run.
 | Parameter | What to enter | Default |
 |---|---|---|
 | `agent_id` | Start a run only for the tickets of this agent | None (any agent) |
-| `states` | Start a run only for a change to one of these statuses: `held`, `queued`, `running`, `paused`, `blocked`, `closed`. `created` is the creation of a ticket | None (every change) |
+| `states` | Start a run only for a change to one of these statuses: `held`, `queued`, `running`, `paused`, `open`, `in_progress`, `blocked`, `closed`. `created` is the creation of a ticket | None (every change) |
 | `outcomes` | Start a run for a close only when the ticket closes with one of these outcomes. A change to another status ignores this parameter | None (any outcome) |
 
 A new ticket matches `created` and also its first status (usually
@@ -919,6 +919,10 @@ starts. To run a newer saved version, activate it first (see
 [Activate a workflow](#activate-a-workflow)). The workflow must be
 active and have a **Manual run** trigger. If the trigger declares inputs,
 enter them, then click **Run workflow**.
+
+You can also start a run from the workflow list. On the row of an active
+workflow, click **Manual run** in the **Trigger** column. The editor then
+opens with the new run.
 
 Schedule and webhook triggers start runs without a person.
 
