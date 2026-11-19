@@ -206,7 +206,7 @@ function Dashboard({ orgSlug }: { orgSlug: string }) {
   // Oldest block first (O2).
   const waiting = group('input')
   const names = new Map(agents.map((a) => [a.id, a.name]))
-  const nameOf = (id: string) => names.get(id) ?? id
+  const nameOf = (id: null | string) => (id ? (names.get(id) ?? id) : '')
   const runs = sumTotals(usage.data.agents).tasks
   const mtd = usage.data.month_to_date
   const monthToDate = Object.values(mtd).reduce((n, v) => n + Number(v), 0)
@@ -455,7 +455,7 @@ function RecentRuns({
   orgSlug,
   tasks,
 }: {
-  nameOf: (id: string) => string
+  nameOf: (id: null | string) => string
   orgSlug: string
   tasks: TicketListItem[]
 }) {

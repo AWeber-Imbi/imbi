@@ -176,14 +176,14 @@ Set the version of this section when the release is cut.
    to validate the checks, and stops writes to `tickets.tickets` while
    it runs.
 3. Do not make person tickets until every imbi-api pod runs this
-   release. Only a new pod can make one, but a release B pod cannot
-   handle one.
+   release. Only a new pod can make one. A release B pod reads one, but
+   some of its writes fail on one (see below).
 
 While pods of both releases run, if a person ticket exists:
 
-- A release B pod returns 500 for every response that has a person
-  ticket: the ticket list, the ticket, its relations, and a change to
-  it. Its response schema requires the agent columns.
+- A release B pod reads a person ticket: the ticket list, the ticket,
+  and its relations show it with no agent. Release B makes the agent
+  columns optional in its responses for this reason.
 - A release B pod that closes a ticket with a `done_*` outcome, and the
   ticket gates a held person ticket, tries to move the person ticket to
   `queued`. The check refuses that, so the whole close fails with 500,
