@@ -230,7 +230,7 @@ describe('WorkflowsManagement', () => {
     expect(screen.getByText('refused').tagName).toBe('STRONG')
     expect(screen.getByRole('link', { name: 'Open task T-9' })).toHaveAttribute(
       'href',
-      '/agents/tasks/acme/T-9',
+      '/tickets/acme/T-9',
     )
     expect(await screen.findByText('Ship it')).toBeInTheDocument()
     expect(screen.getByText('Not reached')).toBeInTheDocument()
@@ -862,6 +862,57 @@ describe('WorkflowsManagement', () => {
     expect(version.messages).toEqual([
       { content: 'Edited during save', role: 'user' },
     ])
+  })
+
+  it('offers no Duplicate for a step of a retired type', async () => {
+    vi.mocked(endpoints.listWorkflowStepTypes).mockResolvedValue([
+      ...STEP_TYPES,
+      stepType({
+        category: 'trigger',
+        label: 'Task completed',
+        params_schema: { properties: {}, type: 'object' },
+        trigger: true,
+        type: 'task_completed',
+      }),
+    ])
+    const base = workflow()
+    vi.mocked(endpoints.getWorkflow).mockResolvedValue({
+      ...base,
+      version: {
+        ...base.version,
+        graph: {
+          edges: [],
+          nodes: [
+            node({
+              id: 'old',
+              key: 'closed',
+              title: 'Old trigger',
+              type: 'task_completed',
+            }),
+            node({
+              id: 'w',
+              key: 'settle',
+              position: { x: 320, y: 0 },
+              title: 'Let traffic settle',
+              type: 'wait',
+            }),
+          ],
+        },
+      },
+    })
+    renderAt('/agents/workflows/deploy-guard')
+    fireEvent.pointerDown(await screen.findByText('Old trigger'), { button: 0 })
+    expect(
+      await screen.findByRole('button', { name: 'Delete step' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Duplicate' }),
+    ).not.toBeInTheDocument()
+
+    fireEvent.pointerDown(screen.getByText('Let traffic settle'), { button: 0 })
+    expect(
+      await screen.findByRole('button', { name: 'Duplicate' }),
+    ).toBeInTheDocument()
   })
 
   it('shows each step key, and the type when the title differs', async () => {

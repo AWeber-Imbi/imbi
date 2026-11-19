@@ -72,6 +72,7 @@ to its table. See [Iggy](iggy.md) for `TOPICS` and the publish API.
 | `maintenance_log` | table | `MergeTree` | `(occurred_at, id)` | `maintenance` |
 | `email_audit` | table | `MergeTree` | `(sent_at, to_email_hash)` | `email` |
 | `agent_task_events` | table | `ReplacingMergeTree` | `(organization_id, task_id, seq)` | `agent_tasks` |
+| `ticket_events` | table | `ReplacingMergeTree` | `(organization_id, ticket_id, seq)` | `tickets` |
 | `agent_usage` | table | `ReplacingMergeTree` | `(organization_id, task_id, report_id)` | `agent_tasks` |
 | `workflow_run_events` | table | `ReplacingMergeTree` | `(organization_id, run_id, seq)` | `workflows` |
 | `workflow_runs` | table | `ReplacingMergeTree` | `(organization_id, workflow_id, run_id)` | `workflows` |

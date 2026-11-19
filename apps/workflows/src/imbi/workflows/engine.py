@@ -19,6 +19,7 @@ from psycopg import sql
 from psycopg.types import json as pg_json
 
 from imbi.common import graph, models
+from imbi.common.auth import permissions as auth_permissions
 from imbi.common.prompts import pool as render_pool
 from imbi.common.prompts import rendering
 from imbi.common.workflows import graph as wf
@@ -312,7 +313,7 @@ class Engine:
             if isinstance(raw, list)
             else set[str]()
         )
-        return required <= held
+        return all(auth_permissions.holds(name, held) for name in required)
 
     async def _start(self, run: store.Row, wf_graph: wf.Graph) -> None:
         """Write a step row per node and mark the run ``running``.

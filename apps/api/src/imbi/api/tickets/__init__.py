@@ -1,11 +1,11 @@
-"""Agent task state in Postgres (ADR 0020).
+"""Ticket state in Postgres (ADR 0020, ADR 0028).
 
-The ``agent_runtime`` schema holds task state. It is a plain Postgres
+The ``tickets`` schema holds ticket state. It is a plain Postgres
 schema next to the graph, managed like the scheduler store: the
 declarative ``schemata.toml`` is applied on every start.
 
 The store lifespan also runs the archive sweep
-(:mod:`imbi.api.agent_tasks.sweeper`), because the sweep needs the
+(:mod:`imbi.api.tickets.sweeper`), because the sweep needs the
 store's connection pool.
 """
 
@@ -18,8 +18,8 @@ from collections import abc
 import fastapi
 import psycopg_pool
 
-from imbi.api.agent_tasks import log, sweeper
-from imbi.api.agent_tasks.store import (
+from imbi.api.tickets import log, sweeper
+from imbi.api.tickets.store import (
     SCHEMA,
     Actor,
     CancelPending,
@@ -29,6 +29,7 @@ from imbi.api.agent_tasks.store import (
     NewEvent,
     NewRequest,
     NewTask,
+    Outcome,
     Pool,
     RequestKeyConflict,
     RequestNotFound,
@@ -42,7 +43,7 @@ from imbi.api.agent_tasks.store import (
     TaskClosed,
     TaskNotFound,
     TaskOpen,
-    TaskStore,
+    TicketStore,
     Usage,
 )
 from imbi.common import lifespan, relational
@@ -50,13 +51,17 @@ from imbi.common import settings as common_settings
 
 SCHEMATA_PATH = pathlib.Path(__file__).parent / 'schemata.toml'
 
+#: The advisory lock of the initializer. It keeps the key of the
+#: ``agent_runtime`` schema, so that a pod of the previous release and
+#: this one never initialize at the same time (ADR 0028).
+LOCK_KEY = 'imbi.api.initialize.agent_runtime'
+
 
 async def initialize() -> None:
-    """Create the ``agent_runtime`` schema, tables, and indexes."""
+    """Create the ``tickets`` schema, tables, and indexes, and move the
+    ``agent_runtime`` tables of an earlier install there."""
     await relational.initialize(
-        SCHEMA,
-        relational.load_schemata(SCHEMATA_PATH),
-        f'imbi.api.initialize.{SCHEMA}',
+        SCHEMA, relational.load_schemata(SCHEMATA_PATH), LOCK_KEY
     )
     await relational.initialize_deleted_organizations()
 
@@ -73,13 +78,13 @@ def create_pool() -> Pool:
 
 
 @contextlib.asynccontextmanager
-async def store_lifespan() -> abc.AsyncGenerator[TaskStore]:
+async def store_lifespan() -> abc.AsyncGenerator[TicketStore]:
     """Initialize the schema, hold the task store open, and sweep."""
     await initialize()
     pool = create_pool()
     try:
         await pool.open()
-        store = TaskStore(pool)
+        store = TicketStore(pool)
         await store.move_legacy_projects()
         stop = asyncio.Event()
         sweep = asyncio.create_task(sweeper.run_sweeper(store, stop=stop))
@@ -96,11 +101,11 @@ async def store_lifespan() -> abc.AsyncGenerator[TaskStore]:
 
 async def _inject_store(
     context: lifespan.InjectLifespan,
-) -> abc.AsyncIterator[TaskStore]:
+) -> abc.AsyncIterator[TicketStore]:
     yield context.get_state(store_lifespan)
 
 
-Store = typing.Annotated[TaskStore, fastapi.Depends(_inject_store)]
+Store = typing.Annotated[TicketStore, fastapi.Depends(_inject_store)]
 
 __all__ = [
     'SCHEMA',
@@ -112,6 +117,7 @@ __all__ = [
     'NewEvent',
     'NewRequest',
     'NewTask',
+    'Outcome',
     'Pool',
     'RequestKeyConflict',
     'RequestNotFound',
@@ -126,7 +132,7 @@ __all__ = [
     'TaskClosed',
     'TaskNotFound',
     'TaskOpen',
-    'TaskStore',
+    'TicketStore',
     'Usage',
     'create_pool',
     'initialize',

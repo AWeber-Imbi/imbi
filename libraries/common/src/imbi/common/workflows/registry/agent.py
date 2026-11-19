@@ -401,7 +401,7 @@ class TicketAttributes(pydantic.BaseModel):
 #: The sample values of :class:`TicketAttributes`.
 SAMPLE_ATTRIBUTES: dict[str, typing.Any] = {
     'title': 'Sample task',
-    'url': 'https://imbi.example.com/agents/tasks/example/T-1',
+    'url': 'https://imbi.example.com/tickets/example/T-1',
     'project': 'sample-project',
     'agent': 'sample-agent',
     'cost_usd': 0.25,

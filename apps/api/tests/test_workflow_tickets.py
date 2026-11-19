@@ -41,7 +41,7 @@ class TicketBlockTestCase(unittest.TestCase):
         self.assertEqual(len(text), slack.MAX_TEXT)
         self.assertTrue(
             text.endswith(
-                '\n\n*<https://imbi.example.com/agents/tasks/eng/T-3|'
+                '\n\n*<https://imbi.example.com/tickets/eng/T-3|'
                 'T-3: Fix &lt;!here&gt;>*\n'
                 'Status: closed | Outcome: done_acted | Project: none'
             )

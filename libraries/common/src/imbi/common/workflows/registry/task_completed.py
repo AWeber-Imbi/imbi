@@ -1,7 +1,7 @@
 """Task completed trigger: an agent task that closes starts a run.
 
 imbi-api starts the run when the task closes, from its close hook
-(:mod:`imbi.api.workflows.task_trigger`).
+(:mod:`imbi.api.workflows.ticket_trigger`).
 """
 
 import typing

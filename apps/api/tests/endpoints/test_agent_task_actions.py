@@ -17,9 +17,9 @@ from apps.api.tests.endpoints import (
     test_agent_task_harness,
     test_agent_tasks,
 )
-from imbi.api import agent_tasks, models
+from imbi.api import models, tickets
 from imbi.api.auth import permissions
-from scripts import agent_task_client
+from scripts import ticket_client
 
 FEEDBACK = {'kind': 'feedback', 'title': 'Which repo?', 'options': ['a']}
 APPROVAL = {
@@ -85,7 +85,7 @@ class ResolveTests(ActionTestCase):
         self.assertEqual(body['task']['status'], 'queued')
 
         # The harness reads the answer by seq, as its service account.
-        harness = agent_task_client.HarnessClient(self.client, self.org, 'T-1')
+        harness = ticket_client.HarnessClient(self.client, self.org, 'T-1')
         event = await harness.wait_for_answer(
             request_id, opened['task']['last_seq'], interval=0.01
         )
@@ -214,7 +214,7 @@ class ResolveTests(ActionTestCase):
         opened = await self.open_request(FEEDBACK)
         async with self.pool.connection() as conn:
             await conn.execute(
-                'UPDATE agent_runtime.requests'
+                'UPDATE tickets.requests'
                 " SET expires_at = NOW() - INTERVAL '1 minute' WHERE id = %s",
                 (uuid.UUID(opened['request']['id']),),
             )
@@ -334,7 +334,7 @@ class ReplyTests(ActionTestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()['status'], 'running')
         self.assertEqual(response.json()['control'], 'run')
-        harness = agent_task_client.HarnessClient(self.client, self.org, 'T-1')
+        harness = ticket_client.HarnessClient(self.client, self.org, 'T-1')
         (turn,) = await harness.events(last_seq)
         self.assertEqual(turn['type'], 'turn')
         self.assertEqual(turn['actor_kind'], 'human')
@@ -384,14 +384,14 @@ class ClientWaitTests(ActionTestCase):
     async def test_client_waits_for_the_answer_and_finishes(self) -> None:
         slug = f'opus-{uuid.uuid4().hex[:8]}'
         await self.make_model(slug, slug)
-        harness = agent_task_client.HarnessClient(self.client, self.org, 'T-1')
+        harness = ticket_client.HarnessClient(self.client, self.org, 'T-1')
 
         async def answer() -> None:
             while True:
                 async with self.pool.connection() as conn:
                     cursor = await conn.execute(
-                        'SELECT id FROM agent_runtime.requests'
-                        " WHERE task_id = %s AND status = 'open'",
+                        'SELECT id FROM tickets.requests'
+                        " WHERE ticket_id = %s AND status = 'open'",
                         (uuid.UUID(self.task['id']),),
                     )
                     row = await cursor.fetchone()
@@ -402,13 +402,13 @@ class ClientWaitTests(ActionTestCase):
                 self.org,
                 'T-1',
                 row[0],
-                agent_tasks.Resolution('answered', 'yes', None, None),
-                agent_tasks.Actor('human', self.email, 'web'),
+                tickets.Resolution('answered', 'yes', None, None),
+                tickets.Actor('human', self.email, 'web'),
             )
 
         state, _ = await asyncio.wait_for(
             asyncio.gather(
-                agent_task_client.run_task(
+                ticket_client.run_task(
                     harness, model_id=slug, ask=True, wait=True, interval=0.01
                 ),
                 answer(),
@@ -428,8 +428,8 @@ class ClientWaitTests(ActionTestCase):
         while True:
             async with self.pool.connection() as conn:
                 cursor = await conn.execute(
-                    'SELECT id FROM agent_runtime.requests'
-                    " WHERE task_id = %s AND status = 'open'",
+                    'SELECT id FROM tickets.requests'
+                    " WHERE ticket_id = %s AND status = 'open'",
                     (uuid.UUID(self.task['id']),),
                 )
                 row = await cursor.fetchone()
@@ -440,10 +440,10 @@ class ClientWaitTests(ActionTestCase):
     async def run_client(self, person: typing.Any) -> dict[str, typing.Any]:
         slug = f'opus-{uuid.uuid4().hex[:8]}'
         await self.make_model(slug, slug)
-        harness = agent_task_client.HarnessClient(self.client, self.org, 'T-1')
+        harness = ticket_client.HarnessClient(self.client, self.org, 'T-1')
         state, _ = await asyncio.wait_for(
             asyncio.gather(
-                agent_task_client.run_task(
+                ticket_client.run_task(
                     harness, model_id=slug, ask=True, wait=True, interval=0.01
                 ),
                 person(),
@@ -453,7 +453,7 @@ class ClientWaitTests(ActionTestCase):
         return state
 
     async def test_client_stops_when_the_task_is_cancelled(self) -> None:
-        human = agent_tasks.Actor('human', self.email, 'web')
+        human = tickets.Actor('human', self.email, 'web')
 
         async def cancel() -> None:
             await self.wait_for_open_request()
@@ -464,7 +464,7 @@ class ClientWaitTests(ActionTestCase):
         self.assertEqual(state['outcome'], 'cancelled_by_human')
 
     async def test_client_waits_for_run_after_a_pause(self) -> None:
-        human = agent_tasks.Actor('human', self.email, 'web')
+        human = tickets.Actor('human', self.email, 'web')
 
         async def pause_then_run() -> None:
             request_id = await self.wait_for_open_request()
@@ -473,7 +473,7 @@ class ClientWaitTests(ActionTestCase):
                 self.org,
                 'T-1',
                 request_id,
-                agent_tasks.Resolution('answered', 'yes', None, None),
+                tickets.Resolution('answered', 'yes', None, None),
                 human,
             )
             # Read the database, not the API: the API client is the
@@ -482,8 +482,8 @@ class ClientWaitTests(ActionTestCase):
             while True:
                 async with self.pool.connection() as conn:
                     cursor = await conn.execute(
-                        'SELECT count(*) FROM agent_runtime.sessions'
-                        " WHERE task_id = %s AND session_key LIKE '%%-2'",
+                        'SELECT count(*) FROM tickets.sessions'
+                        " WHERE ticket_id = %s AND session_key LIKE '%%-2'",
                         (task_id,),
                     )
                     row = await cursor.fetchone()
@@ -493,8 +493,8 @@ class ClientWaitTests(ActionTestCase):
             # The paused client writes no work.
             async with self.pool.connection() as conn:
                 cursor = await conn.execute(
-                    'SELECT count(*) FROM agent_runtime.events'
-                    " WHERE task_id = %s AND type = 'turn'"
+                    'SELECT count(*) FROM tickets.events'
+                    " WHERE ticket_id = %s AND type = 'turn'"
                     " AND payload->>'body' = 'The answer is yes.'",
                     (task_id,),
                 )

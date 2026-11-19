@@ -126,7 +126,7 @@ with one output port has no port name.
 | `manual` | Manual run | Triggers | One |
 | `schedule` | Schedule | Triggers | One |
 | `webhook` | Webhook | Triggers | One |
-| `task_completed` | Task completed | Triggers | One |
+| `ticket_closed` | Ticket closed | Triggers | One |
 | `wait` | Wait | Logic | One |
 | `model_decision` | Model decision | Logic | One for each branch |
 | `condition` | Condition | Logic | `True`, `False` |
@@ -210,9 +210,10 @@ A delivery to a gateway Webhook starts a run.
 
 Create the Webhook first at **Admin > \<organization\> Admin > Webhooks**.
 
-### Task completed
+### Ticket closed
 
-An agent task of the organization that closes starts a run.
+A ticket of the organization that closes starts a run. `task_completed` is
+the earlier name of this trigger. Both names work.
 
 | Parameter | What to enter | Default |
 |---|---|---|
@@ -539,7 +540,7 @@ below the message: the short id and title (a link to the task when
 task. Each value from the task is escaped like a template value, so a
 task title cannot add a mention. If the message and the block are longer
 than 40,000 characters, Imbi cuts the end of the message. A workflow
-with a `ticket` needs `agent_task:read` to activate.
+with a `ticket` needs `ticket:read` to activate.
 
 **Output:** `channel`, `ts` (the message timestamp), and `permalink` (a
 link to the message, or empty when Slack did not return one).
@@ -588,7 +589,7 @@ rollback fails the run.
 ### Agent task
 
 Gives an agent a task and waits for its outcome. See
-[Agent tasks](agent-tasks.md).
+[Tickets](tickets.md).
 
 | Parameter | What to enter | Default |
 |---|---|---|
@@ -619,8 +620,8 @@ with "used in N workflow(s)".
 of the agent), `result` (the structured output), and the attributes of
 the task: `title`, `url`, `project`, `agent`, and `cost_usd`. These
 attributes are the same as in the output of a
-[Task completed](#task-completed) trigger. Run detail shows `reason`,
-`summary`, and `result` only to people with `agent_task:read`.
+[Ticket closed](#ticket-closed) trigger. Run detail shows `reason`,
+`summary`, and `result` only to people with `ticket:read`.
 
 ## References
 
@@ -629,7 +630,7 @@ is the sandboxed Jinja of [Prompts](prompts.md).
 
 | Reference | Value |
 |---|---|
-| `{{ trigger.<name> }}` | A manual input, `fired_at` of a schedule, `payload` of a webhook, or a field of a task completed trigger |
+| `{{ trigger.<name> }}` | A manual input, `fired_at` of a schedule, `payload` of a webhook, or a field of a ticket closed trigger |
 | `{{ <key>.<field> }}` | An output field of a step before this one, by its key |
 
 Examples:
@@ -729,7 +730,7 @@ Set **Dedupe key** to a [key template](#key-templates) that names the
 thing a run works on. Set **Dedupe window (days)** to how long a key
 skips a repeat. Leave the window empty to skip repeats forever.
 
-When a **Webhook** or **Task completed** trigger starts a run, Imbi
+When a **Webhook** or **Ticket closed** trigger starts a run, Imbi
 fills the key from the payload. If a run of the same workflow with the
 same key was made within the window, Imbi does not start the new run. It
 records it as `skipped`, with a link to the earlier run.
@@ -833,10 +834,10 @@ only. The permissions that steps need:
 | Schedule | `scheduled_task:create` |
 | Webhook | `webhook:update` |
 | Deploy, Rollback | `project:deployment:write` |
-| Task completed | `agent_task:read` |
-| Agent task | `agent_task:create` |
+| Ticket closed | `ticket:read` |
+| Agent task | `ticket:create` |
 | LLM Call | `prompt:run` |
-| Slack message with a `ticket` | `agent_task:read` |
+| Slack message with a `ticket` | `ticket:read` |
 
 Imbi records who activated the workflow. A workflow cannot do more than
 that person can do. When a run starts, the engine checks the person again.
@@ -958,7 +959,7 @@ status:
 **Failure causes** groups the failed runs by reason. Click a reason to show
 only its runs. The reason comes from the failed step, not from the error of
 the run: the reason of the agent task of an agent step, else the error of
-the step, else the error of the run. Only people with `agent_task:read`
+the step, else the error of the run. Only people with `ticket:read`
 see the reason and summary of an agent task.
 
 The **Definitions** tab shows **Failed 7d** for each workflow: the failed
@@ -1155,5 +1156,5 @@ processes for script steps, and imbi-api keeps two for **Run script**. Allow
 memory for them in the pod limits. The preview always uses the default
 limits.
 
-See also [Agents](agents.md), [Agent tasks](agent-tasks.md), and
+See also [Agents](agents.md), [Tickets](tickets.md), and
 [Agent runners](../deployment/agent-runners.md).

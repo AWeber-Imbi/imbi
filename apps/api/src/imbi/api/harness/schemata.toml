@@ -1,11 +1,69 @@
 # Relational schema for the runner pool and dispatch (ADR 0022).
 #
 # The initializer (imbi.common.relational) walks this file and issues
-# idempotent DDL, like the `agent_runtime` schema. Rows refer to graph
-# nodes (organization, service account) by id or slug, and to agent
-# tasks by their `agent_runtime.tasks` id.
+# idempotent DDL, like the `tickets` schema. Rows refer to graph
+# nodes (organization, service account) by id or slug, and to tickets
+# by their `tickets.tickets` id.
 #
 # The schema name is fixed: `harness`.
+
+# ADR 0028 renames `chains.root_task_id` to `root_ticket_id` and
+# `claims.task_id` to `ticket_id` without downtime. Release A adds the new
+# columns (declared below) and this trigger, which fills the column that
+# a writer omits and refuses a row where the two differ. The previous
+# release writes the old columns and this release writes the new ones.
+# Release B moves the keys to the new columns and drops the old ones.
+#
+# After the tables, because on a new install the tables do not exist
+# before. The trigger locks out writers of the previous release until
+# the copy commits, so no row stays without the new column.
+[[steps]]
+name = "mirror-ticket-ids"
+after_tables = true
+when = """
+SELECT to_regclass('harness.chains') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM pg_trigger
+                    WHERE tgname = 'chains_mirror_ticket_id'
+                      AND tgrelid = to_regclass('harness.chains'))
+"""
+sql = '''
+CREATE OR REPLACE FUNCTION harness.mirror_ticket_id() RETURNS trigger
+LANGUAGE plpgsql AS $fn$
+DECLARE
+  task_column text := TG_ARGV[0];
+  ticket_column text := TG_ARGV[1];
+  task_id text := to_jsonb(NEW) ->> task_column;
+  ticket_id text := to_jsonb(NEW) ->> ticket_column;
+BEGIN
+  -- An update that sets one of the two columns sets both.
+  IF TG_OP = 'UPDATE' THEN
+    IF ticket_id IS NOT DISTINCT FROM to_jsonb(OLD) ->> ticket_column THEN
+      ticket_id := NULL;
+    ELSIF task_id IS NOT DISTINCT FROM to_jsonb(OLD) ->> task_column THEN
+      task_id := NULL;
+    END IF;
+  END IF;
+  IF task_id <> ticket_id THEN
+    RAISE EXCEPTION '%.%: % and % differ', TG_TABLE_SCHEMA, TG_TABLE_NAME,
+      task_column, ticket_column
+      USING ERRCODE = 'check_violation';
+  END IF;
+  task_id := COALESCE(task_id, ticket_id);
+  NEW := jsonb_populate_record(
+    NEW, jsonb_build_object(task_column, task_id, ticket_column, task_id));
+  RETURN NEW;
+END
+$fn$;
+CREATE TRIGGER chains_mirror_ticket_id BEFORE INSERT OR UPDATE
+  ON harness.chains FOR EACH ROW
+  EXECUTE FUNCTION harness.mirror_ticket_id('root_task_id', 'root_ticket_id');
+CREATE TRIGGER claims_mirror_ticket_id BEFORE INSERT OR UPDATE
+  ON harness.claims FOR EACH ROW
+  EXECUTE FUNCTION harness.mirror_ticket_id('task_id', 'ticket_id');
+UPDATE harness.chains SET root_ticket_id = root_task_id
+ WHERE root_ticket_id IS NULL;
+UPDATE harness.claims SET ticket_id = task_id WHERE ticket_id IS NULL;
+'''
 
 # One row per runner pool. The Kubernetes Deployment of the pool has the
 # same name. `organization_ids` is the allowlist; empty means all
@@ -91,7 +149,9 @@ columns = ["state", "lease_expires_at"]
 name = "chains"
 
 [tables.columns]
-root_task_id = "UUID NOT NULL REFERENCES agent_runtime.tasks (id) ON DELETE CASCADE"
+root_task_id = "UUID NOT NULL REFERENCES tickets.tickets (id) ON DELETE CASCADE"
+# The new name of `root_task_id` (ADR 0028). Nullable until release B.
+root_ticket_id = "UUID REFERENCES tickets.tickets (id) ON DELETE CASCADE"
 organization_id = "TEXT NOT NULL"
 runner_id = "UUID REFERENCES harness.runners (id) ON DELETE SET NULL"
 attempt = "INTEGER NOT NULL DEFAULT 1"
@@ -107,6 +167,11 @@ updated_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 columns = ["root_task_id"]
 
 [[tables.indexes]]
+name = "chains_root_ticket_id_key"
+columns = ["root_ticket_id"]
+unique = true
+
+[[tables.indexes]]
 name = "chains_state_idx"
 columns = ["state"]
 
@@ -116,7 +181,9 @@ columns = ["state"]
 name = "claims"
 
 [tables.columns]
-task_id = "UUID NOT NULL REFERENCES agent_runtime.tasks (id) ON DELETE CASCADE"
+task_id = "UUID NOT NULL REFERENCES tickets.tickets (id) ON DELETE CASCADE"
+# The new name of `task_id` (ADR 0028). Nullable until release B.
+ticket_id = "UUID REFERENCES tickets.tickets (id) ON DELETE CASCADE"
 attempt = "INTEGER NOT NULL"
 chain_id = "UUID NOT NULL"
 runner_id = "UUID NOT NULL"
@@ -124,6 +191,11 @@ claimed_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 
 [tables.primary_key]
 columns = ["task_id", "attempt"]
+
+[[tables.indexes]]
+name = "claims_ticket_key"
+columns = ["ticket_id", "attempt"]
+unique = true
 
 # Tool call counters for `AgentToolConfig.rate_limit`, across all
 # runners. One row per agent, tool, period, and window start.
@@ -142,7 +214,7 @@ columns = ["agent_id", "tool_key", "period", "window_start"]
 
 # The agent platform configuration of an organization (ADR 0022). Each
 # change writes a new version; a task pins the newest version when it
-# is made (`agent_runtime.tasks.platform_config_version`).
+# is made (`tickets.tickets.platform_config_version`).
 [[tables]]
 name = "platform_configs"
 

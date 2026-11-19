@@ -21,7 +21,7 @@ def url(org_slug: str, short_id: str) -> str | None:
     """Return the UI link of a task. ``None`` when ``IMBI_UI_URL`` is
     not set."""
     base = settings.get_server_config().ui_url
-    return f'{base}/agents/tasks/{org_slug}/{short_id}' if base else None
+    return f'{base}/tickets/{org_slug}/{short_id}' if base else None
 
 
 def project(task: dict[str, typing.Any]) -> str | None:

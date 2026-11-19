@@ -13,9 +13,9 @@ import httpx
 import psycopg.errors
 
 from apps.api.tests.endpoints import test_agent_task_log, test_agent_tasks
-from imbi.api import agent_tasks, models
-from imbi.api.agent_tasks import sweeper
+from imbi.api import models, tickets
 from imbi.api.auth import permissions
+from imbi.api.tickets import sweeper
 from imbi.common import iggy
 
 
@@ -48,10 +48,10 @@ class RelationTestCase(test_agent_tasks.AgentTaskTestCase):
             ['ok'],
         )
         await self.make_agent()
-        self.agent_tasks: dict[str, dict[str, typing.Any]] = {}
+        self.tickets: dict[str, dict[str, typing.Any]] = {}
         for body in ({'project_ids': [self.project_id]}, {}, {}):
             task = (await self.create_task(**body)).json()
-            self.agent_tasks[task['short_id']] = task
+            self.tickets[task['short_id']] = task
 
     async def put(self, path: str, org: str | None = None) -> httpx.Response:
         return await self.client.put(self.url(path, org))
@@ -77,13 +77,13 @@ class RelationTestCase(test_agent_tasks.AgentTaskTestCase):
         self.assertEqual(response.status_code, 200, response.text)
         async with self.pool.connection() as conn:
             await conn.execute(
-                'DELETE FROM agent_runtime.events WHERE task_id = %s',
-                (uuid.UUID(self.agent_tasks[short_id]['id']),),
+                'DELETE FROM tickets.events WHERE ticket_id = %s',
+                (uuid.UUID(self.tickets[short_id]['id']),),
             )
             await conn.execute(
-                'UPDATE agent_runtime.tasks SET log_archived_at = NOW()'
+                'UPDATE tickets.tickets SET log_archived_at = NOW()'
                 ' WHERE id = %s',
-                (uuid.UUID(self.agent_tasks[short_id]['id']),),
+                (uuid.UUID(self.tickets[short_id]['id']),),
             )
 
 
@@ -104,11 +104,11 @@ class DependencyTests(RelationTestCase):
             self.assertEqual(event['payload']['prerequisite_short_id'], 'T-2')
             self.assertEqual(
                 event['payload']['dependent_task_id'],
-                self.agent_tasks['T-1']['id'],
+                self.tickets['T-1']['id'],
             )
             self.assertEqual(
                 event['payload']['prerequisite_task_id'],
-                self.agent_tasks['T-2']['id'],
+                self.tickets['T-2']['id'],
             )
             self.assertEqual(event['payload']['created_by'], self.email)
             self.assertEqual(event['payload']['created_by_kind'], 'human')
@@ -181,13 +181,13 @@ class DependencyTests(RelationTestCase):
         response = await self.put('T-1/requires/T-1')
         self.assertEqual(response.status_code, 422, response.text)
         self.assertEqual(await self.last_seq('T-1'), 1)
-        task_id = uuid.UUID(self.agent_tasks['T-1']['id'])
+        task_id = uuid.UUID(self.tickets['T-1']['id'])
         with self.assertRaises(psycopg.errors.CheckViolation):
             async with self.pool.connection() as conn:
                 await conn.execute(
-                    'INSERT INTO agent_runtime.task_dependencies'
-                    ' (organization_id, dependent_task_id,'
-                    ' prerequisite_task_id, created_by_kind, created_by)'
+                    'INSERT INTO tickets.ticket_dependencies'
+                    ' (organization_id, dependent_ticket_id,'
+                    ' prerequisite_ticket_id, created_by_kind, created_by)'
                     " VALUES (%s, %s, %s, 'human', 'x')",
                     (self.org, task_id, task_id),
                 )
@@ -210,24 +210,24 @@ class DependencyTests(RelationTestCase):
             ):
                 async with self.pool.connection() as conn:
                     await conn.execute(
-                        'INSERT INTO agent_runtime.task_dependencies'
-                        ' (organization_id, dependent_task_id,'
-                        ' prerequisite_task_id, created_by_kind,'
+                        'INSERT INTO tickets.ticket_dependencies'
+                        ' (organization_id, dependent_ticket_id,'
+                        ' prerequisite_ticket_id, created_by_kind,'
                         " created_by) VALUES (%s, %s, %s, 'human', 'x')",
                         (
                             org,
-                            uuid.UUID(self.agent_tasks['T-1']['id']),
+                            uuid.UUID(self.tickets['T-1']['id']),
                             uuid.UUID(other['id']),
                         ),
                     )
         with self.assertRaises(psycopg.errors.ForeignKeyViolation):
             async with self.pool.connection() as conn:
                 await conn.execute(
-                    'INSERT INTO agent_runtime.task_projects'
-                    ' (organization_id, task_id, project_id, project_slug,'
+                    'INSERT INTO tickets.ticket_projects'
+                    ' (organization_id, ticket_id, project_id, project_slug,'
                     " added_by_kind, added_by) VALUES (%s, %s, 'p', 'p',"
                     " 'human', 'x')",
-                    (self.other_org, uuid.UUID(self.agent_tasks['T-1']['id'])),
+                    (self.other_org, uuid.UUID(self.tickets['T-1']['id'])),
                 )
 
     async def test_unknown_task_is_404(self) -> None:
@@ -257,7 +257,7 @@ class DependencyTests(RelationTestCase):
         self.assertEqual(event['payload']['prerequisite_short_id'], 'T-2')
         self.assertEqual(
             event['payload']['prerequisite_task_id'],
-            self.agent_tasks['T-2']['id'],
+            self.tickets['T-2']['id'],
         )
         relations = (await self.client.get(self.url('T-2/relations'))).json()
         self.assertEqual(
@@ -283,7 +283,7 @@ class DependencyTests(RelationTestCase):
         self, parent: dict[str, typing.Any]
     ) -> dict[str, typing.Any]:
         child, _ = await self.store.create(
-            agent_tasks.NewTask(
+            tickets.NewTask(
                 organization_id=self.org,
                 agent_id=parent['agent_id'],
                 agent_version=1,
@@ -298,7 +298,7 @@ class DependencyTests(RelationTestCase):
                 owner=self.email,
                 budget=None,
             ),
-            agent_tasks.Actor('agent', parent['agent_id'], 'harness'),
+            tickets.Actor('agent', parent['agent_id'], 'harness'),
             {},
         )
         return child
@@ -306,14 +306,14 @@ class DependencyTests(RelationTestCase):
     async def test_child_gets_the_projects_of_its_parent(self) -> None:
         response = await self.put(f'T-1/projects/{self.second_project}')
         self.assertEqual(response.status_code, 204, response.text)
-        child = await self.delegate(self.agent_tasks['T-1'])
+        child = await self.delegate(self.tickets['T-1'])
         self.assertEqual(
             {p['project_id'] for p in child['projects']},
             {self.project_id, self.second_project},
         )
 
     async def test_delegation_is_parent_and_children(self) -> None:
-        child = await self.delegate(self.agent_tasks['T-2'])
+        child = await self.delegate(self.tickets['T-2'])
         relations = (await self.client.get(self.url('T-2/relations'))).json()
         self.assertEqual(
             [t['short_id'] for t in relations['children']],
@@ -326,10 +326,10 @@ class DependencyTests(RelationTestCase):
         self.assertEqual(relations['parent']['short_id'], 'T-2')
 
     async def test_delegation_from_closed_parent_is_refused(self) -> None:
-        parent = self.agent_tasks['T-2']
+        parent = self.tickets['T-2']
         response = await self.client.post(self.url('T-2/cancel'))
         self.assertEqual(response.status_code, 200, response.text)
-        with self.assertRaises(agent_tasks.TaskClosed):
+        with self.assertRaises(tickets.TaskClosed):
             await self.delegate(parent)
 
 
@@ -492,7 +492,7 @@ class AccessTests(RelationTestCase):
     async def act_as_agent(self, granted: set[str]) -> None:
         """Authenticate as the service account of the agent of T-1."""
         (account,) = await self.service_accounts(
-            self.agent_tasks['T-1']['agent_id']
+            self.tickets['T-1']['agent_id']
         )
 
         async def agent() -> permissions.AuthContext:

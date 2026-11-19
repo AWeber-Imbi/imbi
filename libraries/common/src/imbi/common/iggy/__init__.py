@@ -53,6 +53,7 @@ TOPICS: dict[str, tuple[str, ...]] = {
     'score_history': ('scoring',),
     'secret_audit_events': ('secrets',),
     'tags': ('github',),
+    'ticket_events': ('tickets',),
     'workflow_run_events': ('workflows',),
     'workflow_runs': ('workflows',),
 }

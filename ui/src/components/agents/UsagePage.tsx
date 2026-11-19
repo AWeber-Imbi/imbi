@@ -64,7 +64,7 @@ interface FocusProps {
 export function UsagePage() {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
-  const canRead = useHasPermission('agent_task:read', orgSlug)
+  const canRead = useHasPermission('ticket:read', orgSlug)
   const [range, setRange] = useState('30')
   const [agentId, setAgentId] = useState(ALL)
   const [metric, setMetric] = useState<Metric>('cost')
@@ -80,7 +80,7 @@ export function UsagePage() {
   if (!canRead) {
     return (
       <div className="p-8">
-        <Alert>You need the agent_task:read permission to see usage.</Alert>
+        <Alert>You need the ticket:read permission to see usage.</Alert>
       </div>
     )
   }
@@ -340,7 +340,7 @@ function UsageTable({
         <thead>
           <tr className="border-border border-b">
             <th className={`${head} text-left`}>Agent</th>
-            <th className={head}>Tasks</th>
+            <th className={head}>Tickets</th>
             <th className={head}>Tokens in</th>
             <th className={head}>Tokens out</th>
             <th className={head}>Cache hit</th>

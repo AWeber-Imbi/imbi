@@ -16,7 +16,7 @@ from psycopg.types import json as pg_json
 from apps.api.tests.endpoints.test_workflow_runs import HeldRunStore
 from imbi.api import workflows
 from imbi.api.workflows import runs as runs_module
-from imbi.api.workflows import task_trigger, tickets
+from imbi.api.workflows import ticket_trigger, tickets
 from imbi.common.workflows.registry import task_completed
 
 
@@ -38,7 +38,7 @@ def _task(**changes: typing.Any) -> dict[str, typing.Any]:
 
 
 class FakeTasks:
-    """Returns chain roots from a dict, as ``TaskStore.chain_root``."""
+    """Returns chain roots from a dict, as ``TicketStore.chain_root``."""
 
     def __init__(self) -> None:
         self.roots: dict[uuid.UUID, dict[str, typing.Any]] = {}
@@ -93,7 +93,7 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
             ),
         )
         self.tasks = FakeTasks()
-        self.trigger = task_trigger.TaskTrigger(
+        self.trigger = ticket_trigger.TaskTrigger(
             self.definitions,
             HeldRunStore(self.pool),
             typing.cast(typing.Any, self.tasks),
@@ -163,7 +163,7 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
                         'agent_id': 'mender',
                         'outcome': 'failed_external',
                         'title': 'Fix the build',
-                        'url': 'https://imbi.example.com/agents/tasks/eng/T-7',
+                        'url': 'https://imbi.example.com/tickets/eng/T-7',
                         'project': 'web',
                         'agent': 'mender',
                         'cost_usd': 1.25,
@@ -274,11 +274,11 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
                 origin={'kind': 'task_completed', 'depth': depth},
             )
 
-        await self.trigger(chained(task_trigger.MAX_DEPTH))
+        await self.trigger(chained(ticket_trigger.MAX_DEPTH))
         self.assertEqual(await self._runs(), [])
-        await self.trigger(chained(task_trigger.MAX_DEPTH - 1))
+        await self.trigger(chained(ticket_trigger.MAX_DEPTH - 1))
         [run] = await self._runs()
-        self.assertEqual(run['origin']['depth'], task_trigger.MAX_DEPTH)
+        self.assertEqual(run['origin']['depth'], ticket_trigger.MAX_DEPTH)
 
     async def test_delegated_child_keeps_the_chain_depth(self) -> None:
         """A child task that an agent delegates has origin ``task``; its
@@ -288,7 +288,10 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
         root = _task(
             organization_id=self.org,
             origin_kind='task_completed',
-            origin={'kind': 'task_completed', 'depth': task_trigger.MAX_DEPTH},
+            origin={
+                'kind': 'task_completed',
+                'depth': ticket_trigger.MAX_DEPTH,
+            },
         )
         self.tasks.roots[root['id']] = root
         child = _task(

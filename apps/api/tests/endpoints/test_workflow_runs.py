@@ -18,10 +18,10 @@ import httpx
 from slack_sdk import errors as slack_errors
 
 from apps.api.tests import support
-from imbi.api import agent_tasks, email, models, workflows
+from imbi.api import email, models, tickets, workflows
 from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import project_deployments, workflow_runs
-from imbi.api.workflows import tickets
+from imbi.api.workflows import tickets as workflow_tickets
 from imbi.common import graph
 from imbi.common.plugins import base as plugin_base
 from imbi.common.workflows import graph as wf
@@ -928,13 +928,13 @@ class EngineSlackTestCase(WorkflowRunTestCase):
         self.addAsyncCleanup(self._forget, str(self.run_id))
         self.post_url = f'{self.url}/runs/{self.run_id}/steps/post/slack'
         self.headers = {'Idempotency-Key': f'{self.run_id}:post'}
-        await agent_tasks.initialize()
-        self.task_pool = agent_tasks.create_pool()
+        await tickets.initialize()
+        self.task_pool = tickets.create_pool()
         await self.task_pool.open()
-        self.tasks = agent_tasks.TaskStore(self.task_pool)
+        self.tasks = tickets.TicketStore(self.task_pool)
         self.other_org = f'{self.org}-other'
         self.addAsyncCleanup(self._cleanup_tasks)
-        overrides[agent_tasks._inject_store] = lambda: self.tasks
+        overrides[tickets._inject_store] = lambda: self.tasks
 
     async def _cleanup_tasks(self) -> None:
         async with self.task_pool.connection() as conn:
@@ -948,7 +948,7 @@ class EngineSlackTestCase(WorkflowRunTestCase):
 
     async def _make_task(self, org: str, title: str) -> str:
         task, _ = await self.tasks.create(
-            agent_tasks.NewTask(
+            tickets.NewTask(
                 organization_id=org,
                 agent_id='fixer',
                 agent_version=1,
@@ -964,7 +964,7 @@ class EngineSlackTestCase(WorkflowRunTestCase):
                 budget=None,
                 projects=[(self.project, self.project)],
             ),
-            agent_tasks.Actor('human', self.email, 'web'),
+            tickets.Actor('human', self.email, 'web'),
             {},
         )
         return str(task['short_id'])
@@ -987,7 +987,7 @@ class EngineSlackTestCase(WorkflowRunTestCase):
             )
         config = mock.Mock(ui_url='https://imbi.example.com')
         with mock.patch.object(
-            tickets.settings, 'get_server_config', return_value=config
+            workflow_tickets.settings, 'get_server_config', return_value=config
         ):
             return await self.client.post(self.post_url, headers=self.headers)
 
@@ -997,7 +997,7 @@ class EngineSlackTestCase(WorkflowRunTestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.slack.chat_postMessage.assert_awaited_once_with(
             channel='C0123456789',
-            text='*Done*\n\n*<https://imbi.example.com/agents/tasks/'
+            text='*Done*\n\n*<https://imbi.example.com/tickets/'
             f'{self.org}/{short_id}|{short_id}: &lt;!channel&gt; &amp; fix>*'
             f'\nStatus: queued | Outcome: none | Project: {self.project}',
             unfurl_links=False,
@@ -1278,10 +1278,10 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
             },
             ['id'],
         )
-        await agent_tasks.initialize()
-        self.task_pool = agent_tasks.create_pool()
+        await tickets.initialize()
+        self.task_pool = tickets.create_pool()
         await self.task_pool.open()
-        self.tasks = agent_tasks.TaskStore(self.task_pool)
+        self.tasks = tickets.TicketStore(self.task_pool)
         self.addAsyncCleanup(self._cleanup_tasks)
         await self._agent_run({'agent_id': self.agent, 'instruction': 'Go.'})
         engine = permissions.AuthContext(
@@ -1294,7 +1294,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
         self.user_auth = overrides[permissions.get_current_user]
         overrides[permissions.get_current_user] = lambda: engine
         overrides[organizations.member_org_id] = lambda: self.org
-        overrides[agent_tasks._inject_store] = lambda: self.tasks
+        overrides[tickets._inject_store] = lambda: self.tasks
 
     async def _agent_run(
         self,
@@ -1384,16 +1384,16 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
         )
         async with self.task_pool.connection() as conn:
             await conn.execute(
-                'DELETE FROM agent_runtime.task_projects'
+                'DELETE FROM tickets.ticket_projects'
                 ' WHERE organization_id = %s',
                 (self.org,),
             )
             await conn.execute(
-                'DELETE FROM agent_runtime.tasks WHERE organization_id = %s',
+                'DELETE FROM tickets.tickets WHERE organization_id = %s',
                 (self.org,),
             )
             await conn.execute(
-                'DELETE FROM agent_runtime.task_id_sequences'
+                'DELETE FROM tickets.ticket_id_sequences'
                 ' WHERE organization_id = %s',
                 (self.org,),
             )
@@ -1402,7 +1402,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
     async def _count(self) -> int:
         async with self.task_pool.connection() as conn:
             cur = await conn.execute(
-                'SELECT COUNT(*) FROM agent_runtime.tasks'
+                'SELECT COUNT(*) FROM tickets.tickets'
                 ' WHERE organization_id = %s',
                 (self.org,),
             )
@@ -1478,12 +1478,12 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
             task_id,
             'done_acted',
             None,
-            agent_tasks.Actor('agent', self.agent, 'harness'),
+            tickets.Actor('agent', self.agent, 'harness'),
             {'n': 3},
         )
         config = mock.Mock(ui_url='https://imbi.example.com')
         with mock.patch.object(
-            tickets.settings, 'get_server_config', return_value=config
+            workflow_tickets.settings, 'get_server_config', return_value=config
         ):
             response = await self.client.post(self.step_url)
         self.assertEqual(response.json()['result'], {'n': 3})
@@ -1494,7 +1494,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
             },
             {
                 'title': 'Agent guard: Ask',
-                'url': 'https://imbi.example.com/agents/tasks/'
+                'url': 'https://imbi.example.com/tickets/'
                 f'{self.org}/{task_id}',
                 'project': None,
                 'agent': self.agent,
@@ -1677,7 +1677,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
     async def _plant(self, origin: dict[str, typing.Any], agent: str) -> str:
         """Make a task with the step's origin and key, not by the step."""
         task, _ = await self.tasks.create(
-            agent_tasks.NewTask(
+            tickets.NewTask(
                 organization_id=self.org,
                 agent_id=agent,
                 agent_version=1,
@@ -1692,7 +1692,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
                 owner=self.email,
                 budget=None,
             ),
-            agent_tasks.Actor('human', self.email, 'web'),
+            tickets.Actor('human', self.email, 'web'),
             {},
         )
         return task['short_id']

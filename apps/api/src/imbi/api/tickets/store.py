@@ -11,7 +11,7 @@ numbers and the sequence has no gaps.
 
 After the transaction commits, the events it wrote (and the budget
 ledger rows) go to the permanent log in ClickHouse: see
-:mod:`imbi.api.agent_tasks.log`. They go after the commit, never inside
+:mod:`imbi.api.tickets.log`. They go after the commit, never inside
 the transaction, so ClickHouse never holds an event that Postgres rolled
 back. When the transaction closed the task, the close hooks run next
 (:func:`register_close_hook`).
@@ -32,7 +32,7 @@ import psycopg_pool
 from psycopg import rows, sql
 from psycopg.types import json as pg_json
 
-from imbi.api.agent_tasks import log
+from imbi.api.tickets import log
 from imbi.common import relational
 from imbi.common.workflows.registry import agent as agent_step
 
@@ -44,7 +44,17 @@ type Conn = psycopg.AsyncConnection[typing.Any]
 
 LOGGER = logging.getLogger(__name__)
 
-SCHEMA = 'agent_runtime'
+SCHEMA = 'tickets'
+
+#: The origin kinds of a child ticket, which an agent made from its own
+#: ticket. Release A writes ``task`` and reads both; release A+1 writes
+#: ``ticket`` (ADR 0028).
+CHILD_ORIGIN_KINDS = ('task', 'ticket')
+
+#: The unique index of idempotency keys. It keeps its ADR 0020 name until
+#: release B, because the previous release finds a repeated key by this
+#: name in the error of its insert through the view (ADR 0028).
+ORIGIN_IDEMPOTENCY_KEY = 'tasks_origin_idempotency_key'
 
 #: A close hook gets the task row after the transaction that closed the
 #: task commits. The secrets broker registers its release here.
@@ -90,7 +100,7 @@ Outcome = agent_step.Outcome
 #: A task that is not closed and has one waits on a person (O1), also
 #: when it is paused (Reply and hold).
 _OPEN_REQUESTS = sql.SQL(
-    'FROM agent_runtime.requests AS r WHERE r.task_id = t.id'
+    'FROM tickets.requests AS r WHERE r.ticket_id = t.id'
     " AND r.status = 'open'"
     ' AND (r.expires_at IS NULL OR r.expires_at > NOW())'
 )
@@ -118,14 +128,14 @@ PROJECTS: typing.LiteralString = (
     '(SELECT coalesce(jsonb_agg(jsonb_build_object('
     "'project_id', p.project_id, 'project_slug', p.project_slug)"
     " ORDER BY p.added_at, p.project_id), '[]'::jsonb)"
-    ' FROM agent_runtime.task_projects AS p'
-    ' WHERE p.organization_id = t.organization_id AND p.task_id = t.id)'
+    ' FROM tickets.ticket_projects AS p'
+    ' WHERE p.organization_id = t.organization_id AND p.ticket_id = t.id)'
     ' AS projects'
 )
 
 #: A task row with its projects. Continue it with a WHERE clause.
 _SELECT_TASKS: typing.LiteralString = (
-    'SELECT t.*, ' + PROJECTS + ' FROM agent_runtime.tasks AS t'  # noqa: S608
+    'SELECT t.*, ' + PROJECTS + ' FROM tickets.tickets AS t'  # noqa: S608
 )
 
 #: The tasks at the other end of the dependencies of a task, with the
@@ -133,8 +143,8 @@ _SELECT_TASKS: typing.LiteralString = (
 _LINKED_TASKS = sql.SQL(
     'SELECT t.*, d.created_by_kind AS linked_by_kind,'
     ' d.created_by AS linked_by, d.created_at AS linked_at'
-    ' FROM agent_runtime.task_dependencies AS d'
-    ' JOIN agent_runtime.tasks AS t'
+    ' FROM tickets.ticket_dependencies AS d'
+    ' JOIN tickets.tickets AS t'
     ' ON t.organization_id = d.organization_id AND t.id = d.{other}'
     ' WHERE d.organization_id = %s AND d.{this} = %s'
     ' ORDER BY d.created_at, t.id'
@@ -396,8 +406,7 @@ class _Write:
         self.task = await _update_task(self.conn, self.task['id'], changes)
         if changes.get('status') == 'closed':
             await self.conn.execute(
-                'INSERT INTO agent_runtime.trigger_outbox (task_id)'
-                ' VALUES (%s)',
+                'INSERT INTO tickets.trigger_outbox (ticket_id) VALUES (%s)',
                 (self.task['id'],),
             )
         return self.task
@@ -476,9 +485,9 @@ def _search_filters(
             sql.SQL(
                 '(title ILIKE %s OR short_id ILIKE %s'
                 ' OR agent_id = ANY(%s) OR EXISTS (SELECT 1'
-                ' FROM agent_runtime.task_projects AS tp'
+                ' FROM tickets.ticket_projects AS tp'
                 ' WHERE tp.organization_id = t.organization_id'
-                ' AND tp.task_id = t.id AND tp.project_id = ANY(%s)))'
+                ' AND tp.ticket_id = t.id AND tp.project_id = ANY(%s)))'
             )
         )
         params += [
@@ -490,8 +499,8 @@ def _search_filters(
     return conditions, params
 
 
-class TaskStore:
-    """Repository over the ``agent_runtime`` schema."""
+class TicketStore:
+    """Repository over the ``tickets`` schema."""
 
     def __init__(self, pool: Pool) -> None:
         self._pool = pool
@@ -530,14 +539,14 @@ class TaskStore:
         """
         async with self._pool.connection() as conn, conn.transaction():
             cursor = await conn.execute(
-                'WITH moved AS (UPDATE agent_runtime.tasks AS t'
+                'WITH moved AS (UPDATE tickets.tickets AS t'
                 ' SET project_id = NULL, project_slug = NULL'
-                ' FROM agent_runtime.tasks AS o'
+                ' FROM tickets.tickets AS o'
                 ' WHERE o.id = t.id AND o.project_id IS NOT NULL'
                 ' RETURNING t.organization_id, t.id, t.created_at,'
                 ' o.project_id, o.project_slug)'
-                ' INSERT INTO agent_runtime.task_projects (organization_id,'
-                ' task_id, project_id, project_slug, added_by_kind,'
+                ' INSERT INTO tickets.ticket_projects (organization_id,'
+                ' ticket_id, project_id, project_slug, added_by_kind,'
                 ' added_by, added_at)'
                 ' SELECT organization_id, id, project_id,'
                 " coalesce(project_slug, project_id), 'system', 'migration',"
@@ -577,11 +586,11 @@ class TaskStore:
                 await relational.lock_organization_shared(
                     conn, task.organization_id
                 )
-                if task.origin_kind == 'task':
+                if task.origin_kind in CHILD_ORIGIN_KINDS:
                     # The lock conflicts with the lock in delete, so a
                     # parent cannot go while its child is made.
                     cursor = await conn.execute(
-                        'SELECT 1 FROM agent_runtime.tasks WHERE id = %s::uuid'
+                        'SELECT 1 FROM tickets.tickets WHERE id = %s::uuid'
                         " AND status <> 'closed' FOR KEY SHARE",
                         (task.origin_id,),
                     )
@@ -589,7 +598,7 @@ class TaskStore:
                         raise TaskClosed(task.origin_id)
                 short_id = await _next_short_id(conn, task.organization_id)
                 await conn.execute(
-                    'INSERT INTO agent_runtime.tasks (id, organization_id,'
+                    'INSERT INTO tickets.tickets (id, organization_id,'
                     ' short_id, agent_id, agent_version, prompt_version,'
                     ' service_account_id, title,'
                     ' description, origin_kind, origin_id, origin,'
@@ -620,17 +629,17 @@ class TaskStore:
                         task.organization_id,
                     ),
                 )
-                if task.origin_kind == 'task':
+                if task.origin_kind in CHILD_ORIGIN_KINDS:
                     # The parent row is locked, so its projects cannot
                     # change until this commits.
                     await conn.execute(
-                        'INSERT INTO agent_runtime.task_projects'
-                        ' (organization_id, task_id, project_id,'
+                        'INSERT INTO tickets.ticket_projects'
+                        ' (organization_id, ticket_id, project_id,'
                         ' project_slug, added_by_kind, added_by)'
                         ' SELECT organization_id, %s, project_id,'
                         ' project_slug, %s, %s'
-                        ' FROM agent_runtime.task_projects'
-                        ' WHERE organization_id = %s AND task_id = %s::uuid',
+                        ' FROM tickets.ticket_projects'
+                        ' WHERE organization_id = %s AND ticket_id = %s::uuid',
                         (
                             task_id,
                             actor.kind,
@@ -642,8 +651,8 @@ class TaskStore:
                 elif task.projects:
                     async with conn.cursor() as cursor:
                         await cursor.executemany(
-                            'INSERT INTO agent_runtime.task_projects'
-                            ' (organization_id, task_id, project_id,'
+                            'INSERT INTO tickets.ticket_projects'
+                            ' (organization_id, ticket_id, project_id,'
                             ' project_slug, added_by_kind, added_by)'
                             ' VALUES (%s, %s, %s, %s, %s, %s)'
                             ' ON CONFLICT DO NOTHING',
@@ -665,7 +674,7 @@ class TaskStore:
                 row = await _fetch_task(conn, task_id)
         except psycopg.errors.UniqueViolation as err:
             if (
-                err.diag.constraint_name != 'tasks_origin_idempotency_key'
+                err.diag.constraint_name != ORIGIN_IDEMPOTENCY_KEY
                 or task.idempotency_key is None
             ):
                 raise
@@ -752,7 +761,7 @@ class TaskStore:
             'SELECT t.*, ' + PROJECTS + ','  # noqa: S608
             " CASE WHEN t.status <> 'closed' THEN"
             ' (SELECT min(r.opened_at) {open}) END AS blocked_since'
-            ' FROM agent_runtime.tasks AS t WHERE {where}'
+            ' FROM tickets.tickets AS t WHERE {where}'
             ' ORDER BY {order} LIMIT %s OFFSET %s'
         ).format(
             open=_OPEN_REQUESTS,
@@ -799,7 +808,7 @@ class TaskStore:
             ' ASC NULLS LAST, CASE WHEN {group} = {closed} THEN t.closed_at'
             ' END DESC NULLS LAST, CASE WHEN {group} <> {closed}'
             ' THEN t.created_at END DESC, t.id DESC) - 1 AS n'
-            ' FROM agent_runtime.tasks AS t WHERE {where}) AS s'
+            ' FROM tickets.tickets AS t WHERE {where}) AS s'
             ' WHERE short_id = %s'
         ).format(
             group=_GROUP,
@@ -842,7 +851,7 @@ class TaskStore:
         )
         statement = sql.SQL(
             'SELECT {group} AS inbox_group, count(*)'
-            ' FROM agent_runtime.tasks AS t WHERE {where} GROUP BY 1'
+            ' FROM tickets.tickets AS t WHERE {where} GROUP BY 1'
         ).format(group=_GROUP, where=sql.SQL(' AND ').join(conditions))
         async with self._pool.connection() as conn:
             cursor = await conn.execute(statement, params)
@@ -856,7 +865,7 @@ class TaskStore:
         async with self._pool.connection() as conn:
             cursor = await conn.execute(
                 sql.SQL(
-                    'SELECT count(*) FROM agent_runtime.tasks AS t'
+                    'SELECT count(*) FROM tickets.tickets AS t'
                     " WHERE t.organization_id = %s AND t.status <> 'closed'"
                     ' AND EXISTS (SELECT 1 {open})'
                 ).format(open=_OPEN_REQUESTS),
@@ -874,8 +883,8 @@ class TaskStore:
             conn.cursor(row_factory=rows.dict_row) as cursor,
         ):
             await cursor.execute(
-                'SELECT * FROM agent_runtime.events'
-                ' WHERE task_id = %s AND seq > %s ORDER BY seq LIMIT %s',
+                'SELECT * FROM tickets.events'
+                ' WHERE ticket_id = %s AND seq > %s ORDER BY seq LIMIT %s',
                 (task_id, after_seq, limit),
             )
             return await cursor.fetchall()
@@ -894,10 +903,10 @@ class TaskStore:
         async with self._pool.connection() as conn:
             cursor = await conn.execute(
                 'SELECT t.log_archived_at IS NOT NULL,'
-                " (SELECT e.payload->>'body' FROM agent_runtime.events AS e"
-                "   WHERE e.task_id = t.id AND e.type = 'turn'"
+                " (SELECT e.payload->>'body' FROM tickets.events AS e"
+                "   WHERE e.ticket_id = t.id AND e.type = 'turn'"
                 "   AND e.actor_kind = 'agent' ORDER BY e.seq DESC LIMIT 1)"
-                ' FROM agent_runtime.tasks AS t WHERE t.id = %s',
+                ' FROM tickets.tickets AS t WHERE t.id = %s',
                 (task['id'],),
             )
             row = await cursor.fetchone()
@@ -915,8 +924,8 @@ class TaskStore:
             conn.cursor(row_factory=rows.dict_row) as cursor,
         ):
             await cursor.execute(
-                _SELECT_TASKS + ' JOIN agent_runtime.trigger_outbox AS o'
-                ' ON o.task_id = t.id ORDER BY o.created_at'
+                _SELECT_TASKS + ' JOIN tickets.trigger_outbox AS o'
+                ' ON o.ticket_id = t.id ORDER BY o.created_at'
             )
             return await cursor.fetchall()
 
@@ -924,7 +933,7 @@ class TaskStore:
         """Delete the ``trigger_outbox`` row of a task."""
         async with self._pool.connection() as conn:
             await conn.execute(
-                'DELETE FROM agent_runtime.trigger_outbox WHERE task_id = %s',
+                'DELETE FROM tickets.trigger_outbox WHERE ticket_id = %s',
                 (task_id,),
             )
 
@@ -939,9 +948,9 @@ class TaskStore:
         ):
             await cursor.execute(
                 'SELECT t.*, ' + PROJECTS + ','  # noqa: S608
-                ' (SELECT count(*) FROM agent_runtime.budget_ledger'
-                ' AS l WHERE l.task_id = t.id) AS ledger_count'
-                ' FROM agent_runtime.tasks AS t'
+                ' (SELECT count(*) FROM tickets.budget_ledger'
+                ' AS l WHERE l.ticket_id = t.id) AS ledger_count'
+                ' FROM tickets.tickets AS t'
                 ' WHERE t.log_archived_at IS NULL'
                 ' ORDER BY t.organization_id, t.id'
             )
@@ -956,8 +965,8 @@ class TaskStore:
             conn.cursor(row_factory=rows.dict_row) as cursor,
         ):
             await cursor.execute(
-                'SELECT * FROM agent_runtime.events'
-                ' WHERE task_id = %s AND seq = ANY(%s) ORDER BY seq',
+                'SELECT * FROM tickets.events'
+                ' WHERE ticket_id = %s AND seq = ANY(%s) ORDER BY seq',
                 (task_id, seqs),
             )
             return await cursor.fetchall()
@@ -969,8 +978,8 @@ class TaskStore:
             conn.cursor(row_factory=rows.dict_row) as cursor,
         ):
             await cursor.execute(
-                'SELECT * FROM agent_runtime.budget_ledger'
-                ' WHERE task_id = %s ORDER BY recorded_at, id',
+                'SELECT * FROM tickets.budget_ledger'
+                ' WHERE ticket_id = %s ORDER BY recorded_at, id',
                 (task_id,),
             )
             return await cursor.fetchall()
@@ -984,7 +993,7 @@ class TaskStore:
         """
         async with self._pool.connection() as conn, conn.transaction():
             cursor = await conn.execute(
-                'SELECT 1 FROM agent_runtime.tasks WHERE id = %s'
+                'SELECT 1 FROM tickets.tickets WHERE id = %s'
                 " AND status = 'closed' AND log_archived_at IS NULL"
                 ' AND last_seq = %s FOR UPDATE',
                 (task_id, last_seq),
@@ -992,11 +1001,11 @@ class TaskStore:
             if await cursor.fetchone() is None:
                 return False
             await conn.execute(
-                'DELETE FROM agent_runtime.events WHERE task_id = %s',
+                'DELETE FROM tickets.events WHERE ticket_id = %s',
                 (task_id,),
             )
             await conn.execute(
-                'UPDATE agent_runtime.tasks SET log_archived_at = NOW()'
+                'UPDATE tickets.tickets SET log_archived_at = NOW()'
                 ' WHERE id = %s',
                 (task_id,),
             )
@@ -1036,11 +1045,18 @@ class TaskStore:
             # stored chain_id.
             chain_id = task['chain_id'] or task['id']
             cursor = await conn.execute(
-                'SELECT 1 FROM agent_runtime.tasks'
+                'SELECT 1 FROM tickets.tickets'
                 " WHERE status <> 'closed' AND (id = %s OR chain_id = %s"
                 ' OR (chain_id IS NULL AND id = %s)'
-                " OR (origin_kind = 'task' AND origin_id = %s)) LIMIT 1",
-                (task['id'], chain_id, chain_id, str(task['id'])),
+                ' OR (origin_kind = ANY(%s) AND origin_id = %s))'
+                ' LIMIT 1',
+                (
+                    task['id'],
+                    chain_id,
+                    chain_id,
+                    list(CHILD_ORIGIN_KINDS),
+                    str(task['id']),
+                ),
             )
             if await cursor.fetchone() is not None:
                 raise TaskOpen(short_id)
@@ -1048,14 +1064,14 @@ class TaskStore:
             # waits for its fencers, and Broker.sweep joins the open
             # resolutions of a failed close hook to the task. A pending
             # trigger_outbox row of the task, or of a task in the chain
-            # of a root, needs the root for its depth (task_trigger).
+            # of a root, needs the root for its depth (ticket_trigger).
             cursor = await conn.execute(
                 'SELECT 1 FROM harness.chains WHERE root_task_id = %s'
                 " AND state IN ('running', 'fencing', 'stuck')"
                 ' UNION ALL SELECT 1 FROM secrets.resolutions'
                 " WHERE task_id = %s AND state IN ('pending', 'active')"
-                ' UNION ALL SELECT 1 FROM agent_runtime.trigger_outbox AS o'
-                ' JOIN agent_runtime.tasks AS c ON c.id = o.task_id'
+                ' UNION ALL SELECT 1 FROM tickets.trigger_outbox AS o'
+                ' JOIN tickets.tickets AS c ON c.id = o.ticket_id'
                 ' WHERE c.id = %s OR c.chain_id = %s'
                 ' LIMIT 1',
                 (task['id'], task['id'], task['id'], task['id']),
@@ -1063,18 +1079,19 @@ class TaskStore:
             if await cursor.fetchone() is not None:
                 raise TaskOpen(short_id)
             await conn.execute(
-                'DELETE FROM agent_runtime.task_dependencies'
+                'DELETE FROM tickets.ticket_dependencies'
                 ' WHERE organization_id = %s'
-                ' AND (dependent_task_id = %s OR prerequisite_task_id = %s)',
+                ' AND (dependent_ticket_id = %s'
+                ' OR prerequisite_ticket_id = %s)',
                 (organization_id, task['id'], task['id']),
             )
             await conn.execute(
-                'DELETE FROM agent_runtime.task_projects'
-                ' WHERE organization_id = %s AND task_id = %s',
+                'DELETE FROM tickets.ticket_projects'
+                ' WHERE organization_id = %s AND ticket_id = %s',
                 (organization_id, task['id']),
             )
             await conn.execute(
-                'DELETE FROM agent_runtime.tasks WHERE id = %s', (task['id'],)
+                'DELETE FROM tickets.tickets WHERE id = %s', (task['id'],)
             )
         return task
 
@@ -1172,7 +1189,7 @@ class TaskStore:
         async with self._pool.connection() as conn:
             task = await _fetch_one(
                 conn,
-                'UPDATE agent_runtime.tasks AS t'  # noqa: S608
+                'UPDATE tickets.tickets AS t'  # noqa: S608
                 ' SET acknowledged_at = COALESCE(acknowledged_at, NOW()),'
                 ' acknowledged_by = COALESCE(acknowledged_by, %s)'
                 ' WHERE organization_id = %s AND short_id = %s'
@@ -1182,7 +1199,7 @@ class TaskStore:
             if task is not None:
                 return task
             cursor = await conn.execute(
-                'SELECT 1 FROM agent_runtime.tasks'
+                'SELECT 1 FROM tickets.tickets'
                 ' WHERE organization_id = %s AND short_id = %s',
                 (organization_id, short_id),
             )
@@ -1249,9 +1266,10 @@ class TaskStore:
             ids = {task['short_id']: task['id'] for task in relate.tasks}
             row = await _fetch_one(
                 relate.conn,
-                'INSERT INTO agent_runtime.task_dependencies'
-                ' (organization_id, dependent_task_id, prerequisite_task_id,'
-                ' created_by_kind, created_by) VALUES (%s, %s, %s, %s, %s)'
+                'INSERT INTO tickets.ticket_dependencies'
+                ' (organization_id, dependent_ticket_id,'
+                ' prerequisite_ticket_id, created_by_kind, created_by)'
+                ' VALUES (%s, %s, %s, %s, %s)'
                 ' ON CONFLICT DO NOTHING RETURNING *',
                 (
                     organization_id,
@@ -1291,9 +1309,9 @@ class TaskStore:
             ids = {task['short_id']: task['id'] for task in relate.tasks}
             row = await _fetch_one(
                 relate.conn,
-                'DELETE FROM agent_runtime.task_dependencies'
-                ' WHERE organization_id = %s AND dependent_task_id = %s'
-                ' AND prerequisite_task_id = %s RETURNING *',
+                'DELETE FROM tickets.ticket_dependencies'
+                ' WHERE organization_id = %s AND dependent_ticket_id = %s'
+                ' AND prerequisite_ticket_id = %s RETURNING *',
                 (organization_id, ids[dependent], ids[prerequisite]),
             )
             if row is not None:
@@ -1326,8 +1344,9 @@ class TaskStore:
         async with self._relate(organization_id, [short_id]) as relate:
             row = await _fetch_one(
                 relate.conn,
-                'INSERT INTO agent_runtime.task_projects (organization_id,'
-                ' task_id, project_id, project_slug, added_by_kind, added_by)'
+                'INSERT INTO tickets.ticket_projects (organization_id,'
+                ' ticket_id, project_id, project_slug, added_by_kind,'
+                ' added_by)'
                 ' VALUES (%s, %s, %s, %s, %s, %s)'
                 ' ON CONFLICT DO NOTHING RETURNING *',
                 (
@@ -1364,8 +1383,8 @@ class TaskStore:
         async with self._relate(organization_id, [short_id]) as relate:
             row = await _fetch_one(
                 relate.conn,
-                'DELETE FROM agent_runtime.task_projects'
-                ' WHERE organization_id = %s AND task_id = %s'
+                'DELETE FROM tickets.ticket_projects'
+                ' WHERE organization_id = %s AND ticket_id = %s'
                 ' AND project_id = %s RETURNING *',
                 (organization_id, relate.tasks[0]['id'], project_id),
             )
@@ -1392,22 +1411,22 @@ class TaskStore:
         ):
             await cursor.execute(
                 _LINKED_TASKS.format(
-                    other=sql.Identifier('prerequisite_task_id'),
-                    this=sql.Identifier('dependent_task_id'),
+                    other=sql.Identifier('prerequisite_ticket_id'),
+                    this=sql.Identifier('dependent_ticket_id'),
                 ),
                 params,
             )
             requires = await cursor.fetchall()
             await cursor.execute(
                 _LINKED_TASKS.format(
-                    other=sql.Identifier('dependent_task_id'),
-                    this=sql.Identifier('prerequisite_task_id'),
+                    other=sql.Identifier('dependent_ticket_id'),
+                    this=sql.Identifier('prerequisite_ticket_id'),
                 ),
                 params,
             )
             required_by = await cursor.fetchall()
             parent: Row | None = None
-            if task['origin_kind'] == 'task':
+            if task['origin_kind'] in CHILD_ORIGIN_KINDS:
                 await cursor.execute(
                     _SELECT_TASKS
                     + ' WHERE organization_id = %s AND id::text = %s',
@@ -1416,9 +1435,14 @@ class TaskStore:
                 parent = await cursor.fetchone()
             await cursor.execute(
                 _SELECT_TASKS
-                + " WHERE organization_id = %s AND origin_kind = 'task'"
+                + ' WHERE organization_id = %s'
+                + ' AND origin_kind = ANY(%s)'
                 ' AND origin_id = %s ORDER BY created_at, id',
-                (task['organization_id'], str(task['id'])),
+                (
+                    task['organization_id'],
+                    list(CHILD_ORIGIN_KINDS),
+                    str(task['id']),
+                ),
             )
             children = await cursor.fetchall()
         return {
@@ -1435,8 +1459,8 @@ class TaskStore:
             conn.cursor(row_factory=rows.dict_row) as cursor,
         ):
             await cursor.execute(
-                'SELECT * FROM agent_runtime.task_projects'
-                ' WHERE organization_id = %s AND task_id = %s'
+                'SELECT * FROM tickets.ticket_projects'
+                ' WHERE organization_id = %s AND ticket_id = %s'
                 ' ORDER BY added_at, project_id',
                 (task['organization_id'], task['id']),
             )
@@ -1474,8 +1498,8 @@ class TaskStore:
                 raise CancelPending(short_id)
             session = await _fetch_one(
                 write.conn,
-                'SELECT * FROM agent_runtime.sessions'
-                ' WHERE task_id = %s AND session_key = %s',
+                'SELECT * FROM tickets.sessions'
+                ' WHERE ticket_id = %s AND session_key = %s',
                 (task['id'], key),
             )
             if session is not None:
@@ -1486,8 +1510,8 @@ class TaskStore:
                 )
             session = await _fetch_one(
                 write.conn,
-                'INSERT INTO agent_runtime.sessions'
-                ' (id, task_id, session_key, harness_instance)'
+                'INSERT INTO tickets.sessions'
+                ' (id, ticket_id, session_key, harness_instance)'
                 ' VALUES (%s, %s, %s, %s) RETURNING *',
                 (uuid.uuid4(), task['id'], key, harness_instance),
             )
@@ -1537,14 +1561,14 @@ class TaskStore:
                 write.conn, write.task['id'], session_id
             )
             await write.conn.execute(
-                'UPDATE agent_runtime.sessions SET heartbeat_at = NOW()'
+                'UPDATE tickets.sessions SET heartbeat_at = NOW()'
                 ' WHERE id = %s',
                 (session['id'],),
             )
             if timeout_seconds is not None:
                 cursor = await write.conn.execute(
                     'SELECT NOW() - min(opened_at) > make_interval(secs => %s)'
-                    ' FROM agent_runtime.sessions WHERE task_id = %s',
+                    ' FROM tickets.sessions WHERE ticket_id = %s',
                     (timeout_seconds, write.task['id']),
                 )
                 row = await cursor.fetchone()
@@ -1590,7 +1614,7 @@ class TaskStore:
             ):
                 return task
             await write.conn.execute(
-                'UPDATE agent_runtime.sessions'
+                'UPDATE tickets.sessions'
                 ' SET closed_at = NOW(), close_reason = %s WHERE id = %s',
                 (reason, session_id),
             )
@@ -1629,8 +1653,8 @@ class TaskStore:
         ):
             await cursor.execute(
                 'SELECT s.id, t.organization_id, t.short_id'
-                ' FROM agent_runtime.sessions AS s'
-                ' JOIN agent_runtime.tasks AS t ON t.id = s.task_id'
+                ' FROM tickets.sessions AS s'
+                ' JOIN tickets.tickets AS t ON t.id = s.ticket_id'
                 ' WHERE s.closed_at IS NULL'
                 ' AND COALESCE(s.heartbeat_at, s.opened_at)'
                 ' < NOW() - make_interval(secs => %s)',
@@ -1669,8 +1693,8 @@ class TaskStore:
                         write.conn, write.task['id'], session_id
                     )
                 cursor = await write.conn.execute(
-                    'SELECT event_id FROM agent_runtime.events'
-                    ' WHERE task_id = %s AND event_id = ANY(%s)',
+                    'SELECT event_id FROM tickets.events'
+                    ' WHERE ticket_id = %s AND event_id = ANY(%s)',
                     (write.task['id'], [event.event_id for event in events]),
                 )
                 seen: set[uuid.UUID] = {
@@ -1734,8 +1758,8 @@ class TaskStore:
                 # Two opens with one key wait for the same task lock.
                 existing = await _fetch_one(
                     write.conn,
-                    'SELECT * FROM agent_runtime.requests'
-                    ' WHERE task_id = %s AND request_key = %s',
+                    'SELECT * FROM tickets.requests'
+                    ' WHERE ticket_id = %s AND request_key = %s',
                     (task['id'], request.request_key),
                 )
                 if existing is not None:
@@ -1748,7 +1772,7 @@ class TaskStore:
                 await _open_session(write.conn, task['id'], request.session_id)
             row = await _fetch_one(
                 write.conn,
-                'INSERT INTO agent_runtime.requests (id, task_id,'
+                'INSERT INTO tickets.requests (id, ticket_id,'
                 ' session_id, kind, title, why, options, artifacts,'
                 ' artifact_digests, expires_at, request_key)'
                 ' VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
@@ -1822,8 +1846,8 @@ class TaskStore:
             task = write.task
             request = await _fetch_one(
                 write.conn,
-                'SELECT * FROM agent_runtime.requests'
-                ' WHERE id = %s AND task_id = %s FOR UPDATE',
+                'SELECT * FROM tickets.requests'
+                ' WHERE id = %s AND ticket_id = %s FOR UPDATE',
                 (request_id, task['id']),
             )
             if request is None:
@@ -1869,7 +1893,7 @@ class TaskStore:
             }
             request = await _fetch_one(
                 write.conn,
-                'UPDATE agent_runtime.requests SET status = %s,'
+                'UPDATE tickets.requests SET status = %s,'
                 ' resolved_by = %s, resolved_at = %s, resolution = %s'
                 ' WHERE id = %s RETURNING *',
                 (
@@ -1960,7 +1984,7 @@ class TaskStore:
                 cost = usage_cost(counts, prices)
                 row = await _fetch_one(
                     write.conn,
-                    'INSERT INTO agent_runtime.budget_ledger (id, task_id,'
+                    'INSERT INTO tickets.budget_ledger (id, ticket_id,'
                     ' session_id, idempotency_key, model_id, tokens_in,'
                     ' tokens_out, cache_read_tokens, cache_write_tokens,'
                     ' input_cost_per_million, output_cost_per_million,'
@@ -2077,7 +2101,7 @@ async def requeue_chain(
     runner. For each task that is not closed, in task id order: close
     its open sessions (reason ``runner_lost``), write ``attempt_marker``
     with the new ``attempt``, and set the status as for a task with no
-    session (see :meth:`TaskStore.close_session`): ``cancel`` closes
+    session (see :meth:`TicketStore.close_session`): ``cancel`` closes
     it, ``pause`` makes it ``paused``, an open request makes it
     ``blocked``, else it is ``queued``.
 
@@ -2095,9 +2119,9 @@ async def requeue_chain(
     for task in tasks:
         write = _Write(conn, task)
         cursor = await conn.execute(
-            'UPDATE agent_runtime.sessions'
+            'UPDATE tickets.sessions'
             " SET closed_at = NOW(), close_reason = 'runner_lost'"
-            ' WHERE task_id = %s AND closed_at IS NULL RETURNING id',
+            ' WHERE ticket_id = %s AND closed_at IS NULL RETURNING id',
             (task['id'],),
         )
         for (session_id,) in await cursor.fetchall():
@@ -2158,7 +2182,7 @@ async def append_event(
 async def _apply_control(
     write: _Write, control: Control, actor: Actor, short_id: str
 ) -> None:
-    """Set the control value; see :meth:`TaskStore.set_control`."""
+    """Set the control value; see :meth:`TicketStore.set_control`."""
     task = write.task
     if task['control'] == control:
         return
@@ -2228,9 +2252,9 @@ async def _close(
     ``state.changed`` and ``outcome.set``.
     """
     cursor = await write.conn.execute(
-        'UPDATE agent_runtime.sessions'
+        'UPDATE tickets.sessions'
         " SET closed_at = NOW(), close_reason = 'task_closed'"
-        ' WHERE task_id = %s AND closed_at IS NULL RETURNING id',
+        ' WHERE ticket_id = %s AND closed_at IS NULL RETURNING id',
         (write.task['id'],),
     )
     for (session_id,) in await cursor.fetchall():
@@ -2267,7 +2291,7 @@ async def _session(
 ) -> Row:
     session = await _fetch_one(
         conn,
-        'SELECT * FROM agent_runtime.sessions WHERE id = %s AND task_id = %s',
+        'SELECT * FROM tickets.sessions WHERE id = %s AND ticket_id = %s',
         (session_id, task_id),
     )
     if session is None:
@@ -2290,7 +2314,7 @@ async def _stale(
     cursor = await conn.execute(
         'SELECT COALESCE(heartbeat_at, opened_at)'
         ' < NOW() - make_interval(secs => %s)'
-        ' FROM agent_runtime.sessions WHERE id = %s',
+        ' FROM tickets.sessions WHERE id = %s',
         (stale_seconds, session_id),
     )
     row = await cursor.fetchone()
@@ -2311,13 +2335,15 @@ async def _check_concurrency(
     """
     await conn.execute(
         'SELECT pg_advisory_xact_lock(hashtext(%s))',
+        # The key of the previous release, which opens sessions too
+        # during a rolling deploy (ADR 0028).
         (f'agent_runtime.sessions:{agent_id}',),
     )
     cursor = await conn.execute(
-        'SELECT count(DISTINCT s.task_id) FROM agent_runtime.sessions AS s'
-        ' JOIN agent_runtime.tasks AS t ON t.id = s.task_id'
+        'SELECT count(DISTINCT s.ticket_id) FROM tickets.sessions AS s'
+        ' JOIN tickets.tickets AS t ON t.id = s.ticket_id'
         ' WHERE t.agent_id = %s AND s.closed_at IS NULL'
-        ' AND s.task_id <> %s',
+        ' AND s.ticket_id <> %s',
         (agent_id, task_id),
     )
     row = await cursor.fetchone()
@@ -2328,16 +2354,16 @@ async def _check_concurrency(
 async def _ledger_row(conn: Conn, task_id: uuid.UUID, key: str) -> Row | None:
     return await _fetch_one(
         conn,
-        'SELECT * FROM agent_runtime.budget_ledger'
-        ' WHERE task_id = %s AND idempotency_key = %s',
+        'SELECT * FROM tickets.budget_ledger'
+        ' WHERE ticket_id = %s AND idempotency_key = %s',
         (task_id, key),
     )
 
 
 async def _request_open(conn: Conn, task_id: uuid.UUID) -> bool:
     cursor = await conn.execute(
-        'SELECT EXISTS (SELECT 1 FROM agent_runtime.requests'
-        " WHERE task_id = %s AND status = 'open')",
+        'SELECT EXISTS (SELECT 1 FROM tickets.requests'
+        " WHERE ticket_id = %s AND status = 'open')",
         (task_id,),
     )
     row = await cursor.fetchone()
@@ -2410,9 +2436,14 @@ async def _lock_tasks(
 
 
 def _json_row(row: Row) -> Row:
-    """Return a relation row as event payload: ids and times as text."""
+    """Return a relation row as event payload: ids and times as text.
+
+    The keys keep the column names of ADR 0020 (``task_id``,
+    ``dependent_task_id``), so that the payloads of logged events do not
+    change with the rename of ADR 0028.
+    """
     return {
-        key: value.isoformat()
+        key.replace('ticket', 'task'): value.isoformat()
         if isinstance(value, datetime.datetime)
         else str(value)
         if isinstance(value, uuid.UUID)
@@ -2427,14 +2458,14 @@ def _dependency_payload(relate: _Relate, row: Row) -> abc.Callable[[Row], Row]:
     short_ids = {task['id']: task['short_id'] for task in relate.tasks}
     common: Row = {
         **_json_row(row),
-        'dependent_short_id': short_ids[row['dependent_task_id']],
-        'prerequisite_short_id': short_ids[row['prerequisite_task_id']],
+        'dependent_short_id': short_ids[row['dependent_ticket_id']],
+        'prerequisite_short_id': short_ids[row['prerequisite_ticket_id']],
     }
     return lambda task: {
         **common,
         'side': (
             'dependent'
-            if task['id'] == row['dependent_task_id']
+            if task['id'] == row['dependent_ticket_id']
             else 'prerequisite'
         ),
     }
@@ -2446,7 +2477,7 @@ async def _update_task(
     changes: Row,
 ) -> Row:
     statement = sql.SQL(
-        'UPDATE agent_runtime.tasks AS t SET {sets}, updated_at = NOW()'  # noqa: S608
+        'UPDATE tickets.tickets AS t SET {sets}, updated_at = NOW()'  # noqa: S608
         ' WHERE id = %s RETURNING t.*, ' + PROJECTS
     ).format(
         sets=sql.SQL(', ').join(
@@ -2466,8 +2497,8 @@ async def _session_open(
     conn: psycopg.AsyncConnection[typing.Any], task_id: uuid.UUID
 ) -> bool:
     cursor = await conn.execute(
-        'SELECT EXISTS (SELECT 1 FROM agent_runtime.sessions'
-        ' WHERE task_id = %s AND closed_at IS NULL)',
+        'SELECT EXISTS (SELECT 1 FROM tickets.sessions'
+        ' WHERE ticket_id = %s AND closed_at IS NULL)',
         (task_id,),
     )
     row = await cursor.fetchone()
@@ -2483,10 +2514,10 @@ async def _next_short_id(
     the number.
     """
     cursor = await conn.execute(
-        'INSERT INTO agent_runtime.task_id_sequences'
+        'INSERT INTO tickets.ticket_id_sequences'
         ' (organization_id, last_value) VALUES (%s, 1)'
         ' ON CONFLICT (organization_id) DO UPDATE'
-        ' SET last_value = task_id_sequences.last_value + 1'
+        ' SET last_value = ticket_id_sequences.last_value + 1'
         ' RETURNING last_value',
         (organization_id,),
     )
@@ -2516,7 +2547,7 @@ async def _append_event(
     the transaction.
     """
     cursor = await conn.execute(
-        'UPDATE agent_runtime.tasks SET last_seq = last_seq + 1'
+        'UPDATE tickets.tickets SET last_seq = last_seq + 1'
         ' WHERE id = %s RETURNING last_seq',
         (task_id,),
     )
@@ -2525,7 +2556,7 @@ async def _append_event(
         raise TaskNotFound(str(task_id))
     event = await _fetch_one(
         conn,
-        'INSERT INTO agent_runtime.events (task_id, seq, event_id, type,'
+        'INSERT INTO tickets.events (ticket_id, seq, event_id, type,'
         ' schema_version, actor_kind, actor_id, channel, session_id, at,'
         ' payload) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s,'
         ' COALESCE(%s, NOW()), %s) RETURNING *',

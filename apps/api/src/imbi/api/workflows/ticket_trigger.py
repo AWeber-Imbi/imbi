@@ -1,6 +1,11 @@
-"""Start the ``task_completed`` triggers of a task that closes.
+"""Start the ``ticket_closed`` triggers of a ticket that closes.
 
-An agent task close hook (:func:`imbi.api.agent_tasks.store.
+``task_completed`` is the earlier name of the trigger (ADR 0028). Both
+start runs. A run and a ticket that this trigger starts still record
+the old name as their origin kind, which the previous release reads;
+both names are read.
+
+A ticket close hook (:func:`imbi.api.tickets.store.
 register_close_hook`). It reads the enabled bindings of the active
 workflows of the task's org, and starts a run for each trigger whose
 agent and outcomes match. The task id and the trigger node id are the
@@ -23,14 +28,16 @@ import logging
 import typing
 from collections import abc
 
-from imbi.api.agent_tasks import store as task_store
+from imbi.api.tickets import store as task_store
 from imbi.api.workflows import runs as runs_module
 from imbi.api.workflows import store, tickets
 from imbi.common import graph as graph_db
 from imbi.common.workflows import graph, validation
+from imbi.common.workflows.registry import ticket_closed
 
 LOGGER = logging.getLogger(__name__)
 
+#: The origin kind that this trigger writes.
 KIND = 'task_completed'
 
 #: The most runs in one chain of task -> run -> task -> run.
@@ -59,7 +66,7 @@ def _depth(root: store.Row | None) -> int:
     starts. A missing root counts as the deepest chain."""
     if root is None:
         return MAX_DEPTH + 1
-    if root['origin_kind'] != KIND:
+    if root['origin_kind'] not in ticket_closed.TYPES:
         return 1
     origin: dict[str, typing.Any] = root['origin'] or {}
     return int(origin.get('depth', 0)) + 1
@@ -70,7 +77,7 @@ class TaskTrigger:
         self,
         definitions: store.WorkflowStore,
         runs: runs_module.RunStore,
-        tasks: task_store.TaskStore,
+        tasks: task_store.TicketStore,
         db: abc.Callable[[], graph_db.Graph | None],
     ) -> None:
         """``db`` returns the graph, for the slugs of the task's org and
@@ -95,7 +102,10 @@ class TaskTrigger:
         failed = False
         # Built for the first match only: most closed tasks start no run.
         payload: dict[str, typing.Any] | None = None
-        for binding in await self._definitions.active_bindings(org, KIND):
+        bindings = await self._definitions.active_bindings(
+            org, ticket_closed.TYPES
+        )
+        for binding in bindings:
             if not _matches(binding, task):
                 continue
             if payload is None:
