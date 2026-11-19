@@ -19,6 +19,11 @@ again. :data:`MAX_DEPTH` stops such a chain: the run origin records its
 depth, an agent step copies the run origin into its ticket, and the
 depth is read from the root ticket of the changed ticket's chain, which
 every delegated child shares.
+
+Each ticket changes state many times, so each level can start several
+runs, and the depth alone does not bound the work. The run origin also
+records the lineage: the id of the first ticket, which no run started.
+:data:`MAX_LINEAGE_RUNS` caps the runs of one lineage.
 """
 
 import logging
@@ -38,6 +43,11 @@ KIND = 'ticket_state_changed'
 
 #: The most runs in one chain of ticket -> run -> ticket -> run.
 MAX_DEPTH = 5
+
+#: The most runs that the tickets of one lineage start, at all depths.
+#: A hook call checks it before it starts runs, so one call can go past
+#: it by the runs of that call.
+MAX_LINEAGE_RUNS = 25
 
 
 def _matches(binding: store.Row, task: store.Row, change: store.Row) -> bool:
@@ -65,6 +75,15 @@ def _matches(binding: store.Row, task: store.Row, change: store.Row) -> bool:
             to_state != 'closed' or not outcomes or task['outcome'] in outcomes
         )
     )
+
+
+def _lineage(root: store.Row) -> str:
+    """Return the lineage of the runs that a ticket of the chain of
+    ``root`` starts."""
+    if root['origin_kind'] == KIND:
+        origin: dict[str, typing.Any] = root['origin'] or {}
+        return str(origin.get('lineage') or root['id'])
+    return str(root['id'])
 
 
 def _depth(root: store.Row | None) -> int:
@@ -98,7 +117,8 @@ class TaskTrigger:
         changes = await self._tasks.state_changes(task['id'])
         if not changes:
             return
-        depth = _depth(await self._tasks.chain_root(task))
+        root = await self._tasks.chain_root(task)
+        depth = _depth(root)
         if depth > MAX_DEPTH:
             LOGGER.warning(
                 'Ticket %s starts no workflow runs: the chain is %d deep',
@@ -107,11 +127,27 @@ class TaskTrigger:
             )
             await self._tasks.triggers_started([c['id'] for c in changes])
             return
+        lineage = _lineage(typing.cast(store.Row, root))
+        if (
+            await self._runs.lineage_runs(
+                task['organization_id'], KIND, lineage
+            )
+            >= MAX_LINEAGE_RUNS
+        ):
+            LOGGER.warning(
+                'Ticket %s starts no workflow runs: its lineage %s started'
+                ' %d runs',
+                task['id'],
+                lineage,
+                MAX_LINEAGE_RUNS,
+            )
+            await self._tasks.triggers_started([c['id'] for c in changes])
+            return
         bindings = await self._definitions.active_bindings(
             task['organization_id'], [KIND]
         )
         for change in changes:
-            if await self._start(task, change, bindings, depth):
+            if await self._start(task, change, bindings, depth, lineage):
                 await self._tasks.triggers_started([change['id']])
 
     async def _start(
@@ -120,6 +156,7 @@ class TaskTrigger:
         change: store.Row,
         bindings: list[store.Row],
         depth: int,
+        lineage: str,
     ) -> bool:
         """Start a run for each binding that ``change`` matches. Return
         ``False`` when a run failed to start."""
@@ -155,6 +192,7 @@ class TaskTrigger:
                             'kind': KIND,
                             'task_id': task['short_id'],
                             'depth': depth,
+                            'lineage': lineage,
                         },
                         # One run per binding and change.
                         idempotency_key=f'{binding["node_id"]}:{change["id"]}',

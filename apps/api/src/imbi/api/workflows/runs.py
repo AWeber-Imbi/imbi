@@ -249,6 +249,19 @@ class RunStore:
         await history.publish_since(self._pool, created['id'], 0)
         return created, True
 
+    async def lineage_runs(
+        self, organization_id: str, origin_kind: str, lineage: str
+    ) -> int:
+        """Return how many runs of ``origin_kind`` have ``lineage`` in
+        their origin (:mod:`imbi.api.workflows.ticket_trigger`)."""
+        found = await self._all(
+            'SELECT count(*) AS n FROM workflow_runtime.runs'
+            ' WHERE organization_id = %s AND origin_kind = %s'
+            " AND origin->>'lineage' = %s",
+            (organization_id, origin_kind, lineage),
+        )
+        return int(found[0]['n'])
+
     async def list_runs(
         self, workflow_id: uuid.UUID, limit: int
     ) -> list[store.Row]:

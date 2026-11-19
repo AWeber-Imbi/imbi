@@ -203,6 +203,7 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
                         'kind': 'ticket_state_changed',
                         'task_id': 'T-7',
                         'depth': 1,
+                        'lineage': str(task['id']),
                     },
                     'payload': {
                         'task_id': 'T-7',
@@ -395,6 +396,32 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
         await self._trigger(chained(ticket_trigger.MAX_DEPTH - 1))
         [run] = await self._runs()
         self.assertEqual(run['origin']['depth'], ticket_trigger.MAX_DEPTH)
+
+    async def test_lineage_cap_stops_a_fan_out(self) -> None:
+        """Every change of every ticket in a lineage can start a run, so
+        the lineage caps the runs, not only the depth."""
+        await self._activate()
+        first = _task(organization_id=self.org)
+        await self._trigger(first)
+        [run] = await self._runs()
+        lineage = run['origin']['lineage']
+        self.assertEqual(lineage, str(first['id']))
+
+        def made_by_a_run() -> dict[str, typing.Any]:
+            # A ticket of an agent step copies the run origin.
+            return _task(
+                organization_id=self.org,
+                origin_kind=ticket_trigger.KIND,
+                origin={'kind': ticket_trigger.KIND, **run['origin']},
+            )
+
+        with mock.patch.object(ticket_trigger, 'MAX_LINEAGE_RUNS', 3):
+            for _ in range(4):
+                await self._trigger(made_by_a_run())
+        found = await self._runs()
+        self.assertEqual(len(found), 3)
+        self.assertEqual({r['origin']['lineage'] for r in found}, {lineage})
+        self.assertEqual(len(self.tasks.started), 5)  # every row cleared
 
     async def test_delegated_child_keeps_the_chain_depth(self) -> None:
         """A child ticket that an agent delegates has origin ``ticket``;
