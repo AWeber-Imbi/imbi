@@ -26,6 +26,7 @@ import {
   SegmentedControl,
   SegmentedControlItem,
 } from '@/components/ui/segmented-control'
+import { useAuth } from '@/hooks/useAuth'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { useProjectsSlimMap } from '@/hooks/useProjectsSlimMap'
@@ -273,14 +274,20 @@ export function LinkProjectDialog({
   )
 }
 
-/** Pick a task and the relation, then link it (design: "Link task"). */
+/**
+ * Pick a task and the relation, then link it (design: "Link task").
+ * `exclude` blocks the dependency kinds only: a task that is a
+ * dependency can also be the parent.
+ */
 export function LinkTaskDialog({
   exclude,
+  kinds = LINK_KINDS,
   onClose,
   orgSlug,
   shortId,
 }: {
   exclude: Set<string>
+  kinds?: LinkKind[]
   onClose: () => void
   orgSlug: string
   shortId: string
@@ -288,7 +295,7 @@ export function LinkTaskDialog({
   const [text, setText] = useState('')
   const q = useDebouncedValue(text.trim(), 250)
   const [pick, setPick] = useState<null | string>(null)
-  const [kind, setKind] = useState<LinkKind>('requires')
+  const [kind, setKind] = useState<LinkKind>(kinds[0])
   const { data: agents } = useAgentList(orgSlug)
   const found = useQuery({
     queryFn: ({ signal }) =>
@@ -302,7 +309,9 @@ export function LinkTaskDialog({
         ? setTicketDependency(orgSlug, shortId, other, true)
         : setTicketDependency(orgSlug, other, shortId, true),
   )
-  const results = (found.data ?? []).filter((t) => !exclude.has(t.short_id))
+  const results = (found.data ?? []).filter((t) => t.short_id !== shortId)
+  const blocked = (k: LinkKind) =>
+    !pick || (k !== 'parent' && exclude.has(pick))
   return (
     <Dialog onOpenChange={(o) => !o && onClose()} open>
       <DialogContent className="max-w-3xl">
@@ -334,9 +343,10 @@ export function LinkTaskDialog({
                     'flex w-full items-center gap-3 px-4 py-3 text-left transition-colors',
                     pick === t.short_id ? 'bg-amber-bg' : 'hover:bg-secondary',
                   )}
-                  onClick={() =>
+                  onClick={() => {
                     setPick(pick === t.short_id ? null : t.short_id)
-                  }
+                    if (exclude.has(t.short_id)) setKind('parent')
+                  }}
                   type="button"
                 >
                   <span className="text-tertiary shrink-0 font-mono text-xs tabular-nums">
@@ -373,8 +383,8 @@ export function LinkTaskDialog({
               onValueChange={(v) => setKind(v as LinkKind)}
               value={kind}
             >
-              {LINK_KINDS.map((k) => (
-                <SegmentedControlItem disabled={!pick} key={k} value={k}>
+              {kinds.map((k) => (
+                <SegmentedControlItem disabled={blocked(k)} key={k} value={k}>
                   {KINDS[k].label}
                 </SegmentedControlItem>
               ))}
@@ -392,7 +402,7 @@ export function LinkTaskDialog({
           )}
           <Button
             className="self-end"
-            disabled={!pick || link.isPending}
+            disabled={blocked(kind) || link.isPending}
             onClick={() => link.mutate(pick!, { onSuccess: onClose })}
           >
             <Link2 className="mr-2 size-4" />
@@ -413,6 +423,9 @@ export function RelatedTasksTab({
   task: Ticket
 }) {
   const canManage = useHasPermission('ticket:manage', orgSlug)
+  const { user } = useAuth()
+  // The API lets the owner move the task without ticket:manage.
+  const canMove = canManage || (!!user?.email && user.email === task.owner)
   const relations = useTicketRelations(orgSlug, task.short_id)
   const { data: agents } = useAgentList(orgSlug)
   const [open, setOpen] = useState(false)
@@ -464,7 +477,7 @@ export function RelatedTasksTab({
     <div>
       <PanelHeader
         action={
-          canManage && (
+          canMove && (
             <Button onClick={() => setOpen(true)} size="sm" variant="outline">
               Link ticket
             </Button>
@@ -527,7 +540,7 @@ export function RelatedTasksTab({
                 value={row.task.created_at}
               />
             </Link>
-            {canManage && row.link ? (
+            {row.link && (row.link === 'parent' ? canMove : canManage) ? (
               <button
                 aria-label={`Remove ${row.kind.toLowerCase()} ${row.task.short_id}`}
                 className="text-tertiary hover:text-danger flex size-8 shrink-0 items-center justify-center rounded-md transition-colors"
@@ -539,7 +552,7 @@ export function RelatedTasksTab({
                 <Trash2 className="size-3.5" />
               </button>
             ) : (
-              canManage && <span className="size-8 shrink-0" />
+              canMove && <span className="size-8 shrink-0" />
             )}
           </li>
         ))}
@@ -552,6 +565,7 @@ export function RelatedTasksTab({
       {open && (
         <LinkTaskDialog
           exclude={linked}
+          kinds={canManage ? LINK_KINDS : ['parent']}
           onClose={() => setOpen(false)}
           orgSlug={orgSlug}
           shortId={task.short_id}

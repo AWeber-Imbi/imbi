@@ -1386,6 +1386,26 @@ class HistoryTests(RunnerTestCase):
         self.assertIn('Quoted payload', child['text'])
         self.assertTrue(child['webhook'])
 
+    async def test_moved_child_stays_in_history(self) -> None:
+        helper_id = await self.make_agent('helper', name='Helper')
+        await self.make_version({'subagents': [{'agent_id': helper_id}]})
+        response = await self.client.post(
+            '/harness/tickets/T-1/children',
+            json={
+                'agent_slug': 'helper',
+                'title': 'Moved child',
+                'description': 'Help out.',
+            },
+            headers={'Authorization': f'Bearer {self.token}'},
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        short_id = response.json()['short_id']
+        person = task_store.Actor('human', self.email, 'web')
+        await self.store.set_parent(self.org, short_id, None, person)
+        entries = (await self.history())['entries']
+        [child] = [e for e in entries if e['kind'] == 'child']
+        self.assertIn('Moved child', child['text'])
+
     async def test_byte_limit_keeps_the_newest(self) -> None:
         limit = len(b'Last comment.') + len(
             b'feedback request "Which branch?": answered\n'

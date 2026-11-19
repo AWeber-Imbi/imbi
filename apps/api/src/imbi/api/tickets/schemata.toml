@@ -111,6 +111,11 @@ $step$;
 # move of a child to the root is not undone.
 #
 # A delete of a parent makes its children roots.
+#
+# The step adds the constraint as NOT VALID, so it does not scan the
+# table while it holds the lock that stops ticket writes. The
+# `tickets-parent-fkey-validate` step then does the scan with a lock
+# that lets reads and writes continue.
 [[steps]]
 name = "tickets-parent-fkey"
 after_tables = true
@@ -128,7 +133,21 @@ UPDATE tickets.tickets AS c SET parent_id = p.id
 ALTER TABLE tickets.tickets ADD CONSTRAINT tickets_parent_fkey
   FOREIGN KEY (organization_id, parent_id)
   REFERENCES tickets.tickets (organization_id, id)
-  ON DELETE SET NULL (parent_id);
+  ON DELETE SET NULL (parent_id) NOT VALID;
+'''
+
+[[steps]]
+name = "tickets-parent-fkey-validate"
+after_tables = true
+when = """
+SELECT EXISTS (
+         SELECT 1 FROM pg_constraint
+          WHERE conrelid = 'tickets.tickets'::regclass
+            AND conname = 'tickets_parent_fkey'
+            AND NOT convalidated)
+"""
+sql = '''
+ALTER TABLE tickets.tickets VALIDATE CONSTRAINT tickets_parent_fkey;
 '''
 
 # One row per ticket.

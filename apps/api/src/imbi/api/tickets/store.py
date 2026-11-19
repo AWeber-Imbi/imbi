@@ -1470,12 +1470,20 @@ class TicketStore:
         is the state of the tree of the task, computed now: its root
         ticket, and the number of tickets in the tree and of those that
         are not closed.
+
+        All reads use one snapshot, and the parent comes from the current
+        row, not from ``task``. Thus a move that occurs after the caller
+        read ``task`` cannot give a parent and a tree that disagree.
         """
         params = (task['organization_id'], task['id'])
         async with (
             self._pool.connection() as conn,
+            conn.transaction(),
             conn.cursor(row_factory=rows.dict_row) as cursor,
         ):
+            await cursor.execute(
+                'SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY'
+            )
             await cursor.execute(
                 _LINKED_TASKS.format(
                     other=sql.Identifier('prerequisite_ticket_id'),
@@ -1492,13 +1500,14 @@ class TicketStore:
                 params,
             )
             required_by = await cursor.fetchall()
-            parent: Row | None = None
-            if task['parent_id'] is not None:
-                await cursor.execute(
-                    _SELECT_TASKS + ' WHERE organization_id = %s AND id = %s',
-                    (task['organization_id'], task['parent_id']),
-                )
-                parent = await cursor.fetchone()
+            await cursor.execute(
+                _SELECT_TASKS  # noqa: S608
+                + ' WHERE t.organization_id = %s AND t.id = ('
+                'SELECT c.parent_id FROM tickets.tickets AS c'
+                ' WHERE c.organization_id = %s AND c.id = %s)',
+                (task['organization_id'], *params),
+            )
+            parent = await cursor.fetchone()
             await cursor.execute(
                 _SELECT_TASKS + ' WHERE organization_id = %s'
                 ' AND parent_id = %s ORDER BY created_at, id',
@@ -1620,6 +1629,29 @@ class TicketStore:
                 (task['id'],),
             )
             return turns, await cursor.fetchall()
+
+    async def delegated(self, task: Row) -> list[Row]:
+        """Return the tickets that ``task`` delegated, oldest first.
+
+        They come from the origin link, not from ``parent_id``, so a
+        ticket that a person moves to another parent stays in the
+        history of the ticket that delegated it.
+        """
+        async with (
+            self._pool.connection() as conn,
+            conn.cursor(row_factory=rows.dict_row) as cursor,
+        ):
+            await cursor.execute(
+                _SELECT_TASKS + ' WHERE organization_id = %s'
+                ' AND origin_kind = ANY(%s) AND origin_id = %s'
+                ' ORDER BY created_at, id',
+                (
+                    task['organization_id'],
+                    list(CHILD_ORIGIN_KINDS),
+                    str(task['id']),
+                ),
+            )
+            return await cursor.fetchall()
 
     # --- Harness ------------------------------------------------------
 

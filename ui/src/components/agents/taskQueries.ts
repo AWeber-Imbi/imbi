@@ -113,7 +113,9 @@ export function useTicketEvents(
   // reference is the `last_seq` of the cached task, because the task
   // can change between the two reads. The relations do not use that
   // reference: they are a different read, so the first event read
-  // refreshes them if it contains a relation event.
+  // refreshes them if it contains a relation event. A move changes the
+  // children of the old and new parents and the tree of each ticket in
+  // the two trees, so it refreshes the relations of all tickets.
   const data = query.data
   const seenSeq = useRef(0)
   useEffect(() => {
@@ -130,9 +132,12 @@ export function useTicketEvents(
         queryKeys.tickets(orgSlug),
         queryKeys.ticketsWaiting(orgSlug),
       )
-    if (data?.some((e) => e.seq > previousSeq && RELATION_EVENTS.has(e.type)))
+    const fresh = data?.filter((e) => e.seq > previousSeq) ?? []
+    if (fresh.some((e) => RELATION_EVENTS.has(e.type)))
       keys.push(
-        queryKeys.ticketRelations(orgSlug, shortId),
+        fresh.some((e) => e.type === 'parent.changed')
+          ? queryKeys.ticketRelations(orgSlug)
+          : queryKeys.ticketRelations(orgSlug, shortId),
         queryKeys.ticketProjects(orgSlug, shortId),
       )
     for (const key of keys)
