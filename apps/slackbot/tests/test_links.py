@@ -37,12 +37,10 @@ class LinksTests(helpers.TestCase):
     def test_fallback_task_link_has_the_org(self) -> None:
         # A short id is unique only in its org.
         self.assertIn(
-            '`/agents/tasks/{org_slug}/{short_id}`',
+            '`/tickets/{org_slug}/{short_id}`',
             links.FALLBACK_URL_PATTERNS,
         )
-        self.assertNotIn(
-            '`/agents/tasks/{short_id}`', links.FALLBACK_URL_PATTERNS
-        )
+        self.assertNotIn('`/tickets/{short_id}`', links.FALLBACK_URL_PATTERNS)
 
     async def test_fetch_success(self) -> None:
         body = '- `/projects`: the project list.'

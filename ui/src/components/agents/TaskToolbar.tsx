@@ -23,7 +23,7 @@ import { Separator } from '@/components/ui/separator'
 import { Toggle } from '@/components/ui/toggle'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { IconTooltip } from '@/components/ui/tooltip'
-import type { AgentTask } from '@/types'
+import type { Ticket } from '@/types'
 
 import { conversationMarkdown } from './conversationMarkdown'
 import { turns } from './conversationTurns'
@@ -48,7 +48,7 @@ export function TaskCopyMenu({
   task,
 }: {
   events: Parameters<typeof timeline>[0]
-  task: AgentTask
+  task: Ticket
 }) {
   const [copied, setCopied] = useState<null | string>(null)
   const [error, setError] = useState<null | string>(null)

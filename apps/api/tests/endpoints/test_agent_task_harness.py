@@ -16,7 +16,7 @@ from psycopg.types import json as pg_json
 from apps.api.tests.endpoints import test_agent_tasks
 from imbi.api import models
 from imbi.api.auth import permissions
-from imbi.api.endpoints import agent_task_harness
+from imbi.api.endpoints import ticket_harness
 from imbi.api.graph_sql import props_template
 
 
@@ -227,6 +227,27 @@ class AccessTests(HarnessTestCase):
         self.assertEqual(response.status_code, 404, response.text)
 
 
+class OldPathTests(HarnessTestCase):
+    """The harness routes at ``/agent-tasks``, which stay until release B
+    (ADR 0028)."""
+
+    prefix = 'agent-tasks'
+
+    async def test_each_route_works_at_the_old_path(self) -> None:
+        session = (await self.open_session())['session']
+        for path, body in (
+            (f'sessions/{session["id"]}/heartbeat', None),
+            ('events', {'events': [{'event_id': new_id(), 'type': 'turn'}]}),
+            ('usage', {'idempotency_key': 'u', 'model_id': 'm'}),
+            ('requests', {'kind': 'feedback', 'title': 'Which one?'}),
+            (f'sessions/{session["id"]}/close', {'reason': 'done'}),
+            ('outcome', {'outcome': 'done_acted'}),
+        ):
+            with self.subTest(path=path):
+                response = await self.post(path, body)
+                self.assertLess(response.status_code, 300, response.text)
+
+
 class SessionTests(HarnessTestCase):
     async def test_open_is_idempotent_and_starts_the_task(self) -> None:
         first = await self.open_session()
@@ -358,8 +379,8 @@ class SessionTests(HarnessTestCase):
         task = await self.task_row(short_id)
         async with self.pool.connection() as conn:
             cursor = await conn.execute(
-                'SELECT id, heartbeat_at FROM agent_runtime.sessions'
-                ' WHERE task_id = %s ORDER BY opened_at',
+                'SELECT id, heartbeat_at FROM tickets.sessions'
+                ' WHERE ticket_id = %s ORDER BY opened_at',
                 (task['id'],),
             )
             return [
@@ -379,7 +400,7 @@ class TimeoutTests(HarnessTestCase):
         self.assertEqual((await self.post(path)).json()['status'], 'running')
         async with self.pool.connection() as conn:
             await conn.execute(
-                'UPDATE agent_runtime.sessions'
+                'UPDATE tickets.sessions'
                 " SET opened_at = NOW() - INTERVAL '2 minutes'"
                 ' WHERE id = %s',
                 (uuid.UUID(session['id']),),
@@ -642,7 +663,7 @@ class EventTests(HarnessTestCase):
         self.assertEqual((await self.task_row())['last_seq'], 1)
 
     async def test_payload_size_is_capped(self) -> None:
-        big = 'x' * agent_task_harness.MAX_PAYLOAD_BYTES
+        big = 'x' * ticket_harness.MAX_PAYLOAD_BYTES
         response = await self.post(
             'events',
             {
@@ -767,7 +788,7 @@ class RequestTests(HarnessTestCase):
             {
                 'kind': 'feedback',
                 'title': 'Big',
-                'options': ['x' * agent_task_harness.MAX_PAYLOAD_BYTES],
+                'options': ['x' * ticket_harness.MAX_PAYLOAD_BYTES],
             },
         )
         self.assertEqual(response.status_code, 413, response.text)
@@ -778,8 +799,7 @@ class OutcomeTests(HarnessTestCase):
     async def set_output_schema(self, schema: dict[str, typing.Any]) -> None:
         async with self.pool.connection() as conn:
             await conn.execute(
-                'UPDATE agent_runtime.tasks SET output_schema = %s'
-                ' WHERE id = %s',
+                'UPDATE tickets.tickets SET output_schema = %s WHERE id = %s',
                 (pg_json.Jsonb(schema), uuid.UUID(self.task['id'])),
             )
 
@@ -818,7 +838,7 @@ class OutcomeTests(HarnessTestCase):
         self.assertEqual(
             response.json()['detail']['error'], 'invalid_structured_output'
         )
-        big = 'x' * agent_task_harness.MAX_STRUCTURED_OUTPUT_BYTES
+        big = 'x' * ticket_harness.MAX_STRUCTURED_OUTPUT_BYTES
         response = await self.post(
             'outcome',
             {'outcome': 'done_acted', 'structured_output': {'n': 1, 's': big}},
@@ -931,8 +951,8 @@ class OutcomeTests(HarnessTestCase):
         self.assertIsNotNone(task['closed_at'])
         async with self.pool.connection() as conn:
             cursor = await conn.execute(
-                'SELECT count(*) FROM agent_runtime.sessions'
-                ' WHERE task_id = %s AND closed_at IS NULL',
+                'SELECT count(*) FROM tickets.sessions'
+                ' WHERE ticket_id = %s AND closed_at IS NULL',
                 (task['id'],),
             )
             self.assertEqual(await cursor.fetchone(), (0,))

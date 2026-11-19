@@ -45,6 +45,7 @@ class TopicsTestCase(unittest.TestCase):
                 'score_history',
                 'secret_audit_events',
                 'tags',
+                'ticket_events',
                 'workflow_run_events',
                 'workflow_runs',
             },

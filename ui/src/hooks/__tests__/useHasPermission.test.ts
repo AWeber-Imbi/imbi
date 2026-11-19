@@ -53,6 +53,13 @@ describe('useHasPermission', () => {
     expect(has('agent:read', 'beta')).toBe(true)
   })
 
+  it('accepts the old agent_task name for a ticket check', () => {
+    expect(has('ticket:manage')).toBe(true)
+    expect(has('ticket:manage', 'acme')).toBe(true)
+    expect(has('ticket:manage', 'beta')).toBe(false)
+    expect(has('ticket:delete', 'acme')).toBe(false)
+  })
+
   it('denies an organization the user is not a member of', () => {
     expect(has('agent:read', 'gamma')).toBe(false)
   })

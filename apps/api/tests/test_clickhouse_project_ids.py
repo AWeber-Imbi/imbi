@@ -10,8 +10,8 @@ import unittest
 import uuid
 
 from imbi.api import commit_pushed_at_repair, drift
-from imbi.api.agent_tasks import log
 from imbi.api.endpoints import project_deployments, projects
+from imbi.api.tickets import log
 from imbi.common import clickhouse
 from imbi.common.clickhouse import client
 from imbi.plugins.github import commits
@@ -200,7 +200,43 @@ class OtherCallersTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             {task_id: (1, 3)}, await log.event_counts(org, task_ids)
         )
+        # ADR 0028: the new table too, and a seq in both counts once.
+        for seq in (3, 4):
+            await clickhouse.command(
+                'INSERT INTO imbi.ticket_events (organization_id,'
+                ' ticket_id, seq) VALUES ({org:String}, {task:String},'
+                ' {seq:UInt64})',
+                {'org': org, 'task': task_id, 'seq': seq},
+            )
+        self.assertEqual(
+            {task_id: (2, 4)}, await log.event_counts(org, task_ids)
+        )
         self.assertEqual({}, await log.usage_counts(org, task_ids))
+
+    async def test_archived_events_from_both_tables(self) -> None:
+        """ADR 0028: a seq that both tables hold is read one time."""
+        org = f'o664-{uuid.uuid4().hex}'
+        task = {'organization_id': org, 'id': uuid.uuid4()}
+        for table, column, seqs in (
+            ('agent_task_events', 'task_id', (1, 2)),
+            ('ticket_events', 'ticket_id', (2, 3)),
+        ):
+            for seq in seqs:
+                await clickhouse.command(
+                    f'INSERT INTO imbi.{table} (organization_id, {column},'
+                    ' seq, event_id, type, at, payload) VALUES'
+                    ' ({org:String}, {task:String}, {seq:UInt64},'
+                    " {event:String}, 'note', now64(6), '{}')",
+                    {
+                        'org': org,
+                        'task': str(task['id']),
+                        'seq': seq,
+                        'event': str(uuid.uuid4()),
+                    },
+                )
+        events = await log.archived_events(task, 0, 10)
+        self.assertEqual([1, 2, 3], [event['seq'] for event in events])
+        self.assertEqual({1, 2, 3}, await log.stored_seqs(task))
 
     async def _insert_commit(self, sha: str, pushed_at: str) -> None:
         await clickhouse.command(

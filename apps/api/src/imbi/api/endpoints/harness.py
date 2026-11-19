@@ -39,14 +39,14 @@ import fastapi
 import pydantic
 from fastapi import responses
 
-from imbi.api import agent_tasks, harness, secret_broker
+from imbi.api import harness, secret_broker, tickets
 from imbi.api import settings as api_settings
 from imbi.api.auth import autonomous, organizations, permissions
 from imbi.api.endpoints import _helpers
-from imbi.api.endpoints import agent_tasks as tasks_api
 from imbi.api.endpoints import agents as agents_api
 from imbi.api.endpoints import auth as auth_endpoints
 from imbi.api.endpoints import secret_broker as secrets_api
+from imbi.api.endpoints import tickets as tasks_api
 from imbi.api.harness import auth as harness_auth
 from imbi.api.harness import egress as harness_egress
 from imbi.api.harness import platform, tokens
@@ -773,14 +773,14 @@ class _EgressTokenTooLarge(ValueError):
 
 
 #: The actor of the outcome of a task that cannot run.
-_SYSTEM = agent_tasks.Actor('system', 'imbi', 'harness')
+_SYSTEM = tickets.Actor('system', 'imbi', 'harness')
 
 
 async def _deliver(
     db: graph.Graph,
     store: harness.HarnessStore,
     secrets: secret_store.SecretStore,
-    tasks: agent_tasks.TaskStore,
+    tasks: tickets.TicketStore,
     runner: dict[str, typing.Any],
     claimed: tuple[dict[str, typing.Any], dict[str, typing.Any]],
     *,
@@ -1058,7 +1058,7 @@ async def _chain_task(
     caller: harness_auth.HarnessCaller,
     short_id: str,
     db: graph.Graph,
-    store: agent_tasks.TaskStore,
+    store: tickets.TicketStore,
 ) -> dict[str, typing.Any]:
     """Return a task of the agent token's chain, of the token's agent.
 
@@ -1448,7 +1448,7 @@ async def heartbeat_harness_runner(
     runner: harness_auth.Runner,
     store: harness.Store,
     db: graph.Pool,
-    tasks: agent_tasks.Store,
+    tasks: tickets.Store,
     data: RunnerHeartbeat | None = None,
 ) -> RunnerLease:
     """Renew the lease of the runner, and the agent API tokens of the
@@ -1493,7 +1493,7 @@ async def heartbeat_harness_runner(
 async def _renew_api_tokens(
     db: graph.Graph,
     store: harness.HarnessStore,
-    tasks: agent_tasks.TaskStore,
+    tasks: tickets.TicketStore,
     runner: dict[str, typing.Any],
     short_ids: list[str],
 ) -> dict[str, ApiToken]:
@@ -1570,7 +1570,7 @@ async def claim_harness_task(
     db: graph.Pool,
     store: harness.Store,
     secrets: secret_broker.Store,
-    tasks: agent_tasks.Store,
+    tasks: tickets.Store,
     wait: typing.Annotated[
         int,
         fastapi.Query(
@@ -1638,7 +1638,7 @@ async def claim_harness_child_task(
     db: graph.Pool,
     store: harness.Store,
     secrets: secret_broker.Store,
-    tasks: agent_tasks.Store,
+    tasks: tickets.Store,
     pod: _PodQuery = None,
 ) -> Claim | fastapi.Response:
     """Claim the oldest queued child task of the runner's chain.
@@ -1681,14 +1681,20 @@ async def finish_harness_runner(
 
 
 @harness_router.get(
+    '/tickets/{short_id}/events',
+    response_model=list[tasks_api.AgentTaskEventResponse],
+    name='list_harness_ticket_events',
+)
+@harness_router.get(
     '/tasks/{short_id}/events',
     response_model=list[tasks_api.AgentTaskEventResponse],
+    deprecated=True,
 )
 async def list_harness_task_events(
     short_id: str,
     caller: harness_auth.AgentCaller,
     db: graph.Pool,
-    store: agent_tasks.Store,
+    store: tickets.Store,
     after_seq: typing.Annotated[int, fastapi.Query(ge=0)] = 0,
     limit: typing.Annotated[int, fastapi.Query(ge=1, le=1000)] = 100,
 ) -> list[dict[str, typing.Any]]:
@@ -1704,19 +1710,26 @@ async def list_harness_task_events(
     """
     task = await _chain_task(caller, short_id, db, store)
     if task['log_archived_at'] is not None:
-        return await agent_tasks.log.archived_events(task, after_seq, limit)
+        return await tickets.log.archived_events(task, after_seq, limit)
     return await store.events(task['id'], after_seq, limit)
 
 
 @harness_router.put(
-    '/tasks/{short_id}/projects/{project}', response_model=AttachedProject
+    '/tickets/{short_id}/projects/{project}',
+    response_model=AttachedProject,
+    name='attach_harness_ticket_project',
+)
+@harness_router.put(
+    '/tasks/{short_id}/projects/{project}',
+    response_model=AttachedProject,
+    deprecated=True,
 )
 async def attach_harness_task_project(
     short_id: str,
     project: str,
     caller: harness_auth.AgentCaller,
     db: graph.Pool,
-    store: agent_tasks.Store,
+    store: tickets.Store,
 ) -> dict[str, str]:
     """Associate a project of the org with a task of the chain.
 
@@ -1748,11 +1761,23 @@ async def attach_harness_task_project(
             task['short_id'],
             project_id,
             slug,
-            agent_tasks.Actor('agent', task['agent_id'], 'harness'),
+            tickets.Actor('agent', task['agent_id'], 'harness'),
         )
     return {'project_id': project_id, 'project_slug': slug}
 
 
+@harness_router.post(
+    '/tickets/{short_id}/children',
+    status_code=201,
+    response_model=tasks_api.AgentTaskResponse,
+    responses={
+        200: {
+            'model': tasks_api.AgentTaskResponse,
+            'description': 'A child with this idempotency key exists.',
+        },
+    },
+    name='create_harness_child_ticket',
+)
 @harness_router.post(
     '/tasks/{short_id}/children',
     status_code=201,
@@ -1763,6 +1788,7 @@ async def attach_harness_task_project(
             'description': 'A child with this idempotency key exists.',
         },
     },
+    deprecated=True,
 )
 async def create_harness_child_task(
     short_id: str,
@@ -1770,7 +1796,7 @@ async def create_harness_child_task(
     response: fastapi.Response,
     caller: harness_auth.AgentCaller,
     db: graph.Pool,
-    store: agent_tasks.Store,
+    store: tickets.Store,
     runners: harness.Store,
 ) -> dict[str, typing.Any]:
     """Make a child task (origin ``task``) in the chain of a task.
@@ -1875,7 +1901,7 @@ async def create_harness_child_task(
     }
     try:
         task, created = await store.create(
-            agent_tasks.NewTask(
+            tickets.NewTask(
                 organization_id=parent['organization_id'],
                 agent_id=agent_id,
                 agent_version=agent_version,
@@ -1891,7 +1917,7 @@ async def create_harness_child_task(
                 budget=budget,
                 chain_id=chain_id,
             ),
-            agent_tasks.Actor('agent', parent['agent_id'], 'harness'),
+            tickets.Actor('agent', parent['agent_id'], 'harness'),
             {
                 'title': data.title,
                 'description': data.description,
@@ -1901,7 +1927,7 @@ async def create_harness_child_task(
                 'prompt_version': prompt_version,
             },
         )
-    except agent_tasks.TaskClosed as e:
+    except tickets.TaskClosed as e:
         raise _conflict(
             'task_closed', f'Task {parent["short_id"]} is closed'
         ) from e
@@ -1911,14 +1937,21 @@ async def create_harness_child_task(
 
 
 @harness_router.post(
-    '/tasks/{short_id}/tool-calls/check', response_model=ToolCallVerdict
+    '/tickets/{short_id}/tool-calls/check',
+    response_model=ToolCallVerdict,
+    name='check_harness_tool_call',
+)
+@harness_router.post(
+    '/tasks/{short_id}/tool-calls/check',
+    response_model=ToolCallVerdict,
+    deprecated=True,
 )
 async def check_harness_tool_call(
     short_id: str,
     data: ToolCallCheck,
     caller: harness_auth.AgentCaller,
     db: graph.Pool,
-    store: agent_tasks.Store,
+    store: tickets.Store,
     runners: harness.Store,
 ) -> ToolCallVerdict:
     """Count a call of a tool against its rate limit, across runners.
@@ -1974,7 +2007,7 @@ async def create_harness_secret_resolution(
     response: fastapi.Response,
     caller: harness_auth.AgentCaller,
     db: graph.Pool,
-    store: agent_tasks.Store,
+    store: tickets.Store,
     service: secret_broker.Broker,
     idempotency_key: typing.Annotated[
         str | None,

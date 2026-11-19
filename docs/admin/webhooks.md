@@ -157,7 +157,7 @@ the rules do: an agent task that a rule makes belongs to them.
 When `created_by` is not a person who can create agent tasks in the
 organization, Imbi refuses the task. To fix it, a person who can create
 agent tasks opens the webhook and saves it. See
-[Agent tasks](agent-tasks.md).
+[Tickets](tickets.md).
 
 ## Delivery history
 
@@ -192,5 +192,5 @@ error from the gateway, but the gateway does nothing with the deliveries.
 - [Gateway](../gateway/index.md)
 - [Webhook Rule Filter Expressions](../gateway/webhook-filter-expressions.md)
 - [Integrations and Plugins](integrations-and-plugins.md)
-- [Agent tasks](agent-tasks.md)
+- [Tickets](tickets.md)
 - [Workflows](workflows.md)

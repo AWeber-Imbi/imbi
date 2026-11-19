@@ -20,10 +20,10 @@ import orjson
 from apps.api.tests import secret_support
 from apps.api.tests.secret_support import MATERIAL
 from imbi.api import secret_broker
-from imbi.api.agent_tasks import store as task_store
 from imbi.api.endpoints import secret_broker as secrets_api
 from imbi.api.harness import sweeper
 from imbi.api.secret_broker import audit, broker, providers, store
+from imbi.api.tickets import store as task_store
 from imbi.common.auth import encryption
 
 
@@ -358,8 +358,7 @@ class CreateResolutionTestCase(secret_support.SecretCase):
     async def test_closed_task_is_denied(self) -> None:
         async with self.pool.connection() as conn:
             await conn.execute(
-                "UPDATE agent_runtime.tasks SET status = 'closed'"
-                ' WHERE id = %s',
+                "UPDATE tickets.tickets SET status = 'closed' WHERE id = %s",
                 (self.task_id,),
             )
         await self._denied('secret_access_denied')
@@ -878,13 +877,12 @@ class MaterializeTestCase(secret_support.SecretCase):
                 created = await self._create()
                 async with self.pool.connection() as conn:
                     row = await conn.execute(
-                        f'SELECT {column} FROM agent_runtime.tasks'
-                        ' WHERE id = %s',
+                        f'SELECT {column} FROM tickets.tickets WHERE id = %s',
                         (self.task_id,),
                     )
                     before = (await row.fetchone() or [None])[0]
                     await conn.execute(
-                        f'UPDATE agent_runtime.tasks SET {column} = %s'
+                        f'UPDATE tickets.tickets SET {column} = %s'
                         ' WHERE id = %s',
                         (value, self.task_id),
                     )
@@ -899,7 +897,7 @@ class MaterializeTestCase(secret_support.SecretCase):
                 )
                 async with self.pool.connection() as conn:
                     await conn.execute(
-                        f'UPDATE agent_runtime.tasks SET {column} = %s'
+                        f'UPDATE tickets.tickets SET {column} = %s'
                         ' WHERE id = %s',
                         (before, self.task_id),
                     )
@@ -918,8 +916,8 @@ class MaterializeTestCase(secret_support.SecretCase):
         )
         async with self.pool.connection() as conn:
             await conn.execute(
-                'DELETE FROM agent_runtime.task_projects'
-                ' WHERE task_id = %s AND project_id = %s',
+                'DELETE FROM tickets.ticket_projects'
+                ' WHERE ticket_id = %s AND project_id = %s',
                 (self.task_id, 'other-project'),
             )
         # The refusal used nothing: the handle still works.
@@ -931,8 +929,7 @@ class MaterializeTestCase(secret_support.SecretCase):
         created = await self._create()
         async with self.pool.connection() as conn:
             await conn.execute(
-                "UPDATE agent_runtime.tasks SET status = 'closed'"
-                ' WHERE id = %s',
+                "UPDATE tickets.tickets SET status = 'closed' WHERE id = %s",
                 (self.task_id,),
             )
         await self.broker.sweep()
@@ -1223,15 +1220,15 @@ class LeaseTestCase(secret_support.SecretCase):
     async def test_task_closed_during_a_provider_call(self) -> None:
         # As if the close hook failed: the resolution is still active.
         await self._change_during_provider_call(
-            "UPDATE agent_runtime.tasks SET status = 'closed' WHERE id = %s"
+            "UPDATE tickets.tickets SET status = 'closed' WHERE id = %s"
         )
 
     async def test_project_added_during_a_provider_call(self) -> None:
         await self._change_during_provider_call(
-            'INSERT INTO agent_runtime.task_projects (organization_id,'
-            ' task_id, project_id, project_slug, added_by_kind, added_by)'
+            'INSERT INTO tickets.ticket_projects (organization_id,'
+            ' ticket_id, project_id, project_slug, added_by_kind, added_by)'
             " SELECT organization_id, id, 'proj-late', 'late', 'human', 'test'"
-            ' FROM agent_runtime.tasks WHERE id = %s'
+            ' FROM tickets.tickets WHERE id = %s'
         )
 
     async def test_runner_fenced_during_a_provider_call(self) -> None:
@@ -1328,8 +1325,8 @@ class NoLeakTestCase(secret_support.SecretCase):
                 ' UNION ALL SELECT row_to_json(p)::TEXT'
                 ' FROM secrets.providers AS p WHERE organization_id = %s'
                 ' UNION ALL SELECT row_to_json(e)::TEXT'
-                ' FROM agent_runtime.events AS e JOIN agent_runtime.tasks'
-                ' AS t ON t.id = e.task_id WHERE t.organization_id = %s',
+                ' FROM tickets.events AS e JOIN tickets.tickets'
+                ' AS t ON t.id = e.ticket_id WHERE t.organization_id = %s',
                 (self.org,) * 5,
             )
             stored = '\n'.join(r[0] for r in await cur.fetchall())
@@ -1596,7 +1593,7 @@ class TaskEventTestCase(secret_support.SecretCase):
     async def test_archived_task_gets_no_event(self) -> None:
         async with self.pool.connection() as conn:
             await conn.execute(
-                'UPDATE agent_runtime.tasks SET log_archived_at = NOW()'
+                'UPDATE tickets.tickets SET log_archived_at = NOW()'
                 ' WHERE id = %s',
                 (self.task_id,),
             )

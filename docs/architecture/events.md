@@ -90,6 +90,7 @@ run `uv run python scripts/docs_iggy_topics.py` and paste the output.
 | `score_history` | `scoring` | `MergeTree()` | none |
 | `secret_audit_events` | `secrets` | `ReplacingMergeTree()` | none |
 | `tags` | `github` | `ReplacingMergeTree(recorded_at)` | none |
+| `ticket_events` | `tickets` | `ReplacingMergeTree()` | none |
 | `workflow_run_events` | `workflows` | `ReplacingMergeTree()` | none |
 | `workflow_runs` | `workflows` | `ReplacingMergeTree(_row_version)` | none |
 

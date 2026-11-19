@@ -189,7 +189,9 @@ class RunTurnTests(helpers.TestCase):
                 patch.stop()
 
     async def test_task_creates_get_idempotency_keys(self) -> None:
-        create = (
+        create = 'create_ticket_api_organizations__org_slug__tickets__post'
+        # The name an imbi-mcp of the release before ADR 0028 serves.
+        create_old = (
             'create_agent_task_api_organizations__org_slug__agent_tasks__post'
         )
         client = FakeClient(
@@ -202,7 +204,7 @@ class RunTurnTests(helpers.TestCase):
                             create,
                             {'agent_slug': 'mender', 'idempotency_key': 'x'},
                         ),
-                        _tool('t3', create, {'agent_slug': 'triage'}),
+                        _tool('t3', create_old, {'agent_slug': 'triage'}),
                     ],
                     'tool_use',
                 ),
@@ -228,7 +230,7 @@ class RunTurnTests(helpers.TestCase):
         )
 
     async def test_no_prefix_leaves_task_create_input(self) -> None:
-        create = 'create_agent_task_organizations__org_slug__agent_tasks__post'
+        create = 'create_ticket_organizations__org_slug__tickets__post'
         client = FakeClient(
             [
                 Response(

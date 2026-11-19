@@ -40,14 +40,15 @@ import pydantic
 from slack_sdk import errors as slack_errors
 from slack_sdk.web import async_client as slack_client
 
-from imbi.api import agent_tasks as agent_runtime
 from imbi.api import email, workflows
 from imbi.api import settings as api_settings
+from imbi.api import tickets as ticket_store
 from imbi.api.auth import organizations, permissions
 from imbi.api.email import client as email_client
-from imbi.api.endpoints import agent_tasks, project_deployments
+from imbi.api.endpoints import project_deployments, tickets
 from imbi.api.plugins.resolution import ResolvedCapability
 from imbi.common import graph, lifespan
+from imbi.common.auth import permissions as common_permissions
 from imbi.common.plugins.base import DeploymentRun
 from imbi.common.workflows import graph as wf
 from imbi.common.workflows import history, registry, validation, walk
@@ -415,7 +416,7 @@ async def _service_trigger(
     workflow: workflows.Row,
     wf_graph: wf.Graph,
     data: RunCreate,
-    origin: agent_tasks.TaskOrigin,
+    origin: tickets.TaskOrigin,
 ) -> wf.Node:
     """Return the schedule or webhook trigger that the service names.
 
@@ -664,7 +665,7 @@ async def _agent_step(
     workflow: workflows.Row,
     run_id: uuid.UUID,
     node_id: str,
-) -> tuple[workflows.Row, workflows.Row, agent_tasks.TaskOrigin, str]:
+) -> tuple[workflows.Row, workflows.Row, tickets.TaskOrigin, str]:
     """Return the run, its agent step, and the origin and key of its task.
 
     The task has the root origin of the run, and its origin record
@@ -689,7 +690,7 @@ async def _agent_step(
         raise fastapi.HTTPException(
             status_code=409, detail=f'Step {node_id!r} is not an agent step'
         )
-    origin = agent_tasks.TaskOrigin(
+    origin = tickets.TaskOrigin(
         run['origin_kind'],
         run['origin_id'],
         {
@@ -716,7 +717,7 @@ async def _pinned_agent_ids(
     the run's origin, which only the gateway sets. Any other pinned
     reference, such as the output of an earlier agent step, is the
     value that the engine rendered into the step input: a project id or
-    slug, which :func:`agent_tasks.make_task` checks is in the org.
+    slug, which :func:`tickets.make_task` checks is in the org.
 
     Raises:
         422: ``agent_params_not_literal``: the agent id is a template.
@@ -872,7 +873,7 @@ async def start_run(
 
     A person starts a manual trigger. The scheduler starts a schedule
     trigger, and the gateway a webhook trigger, with the origin in
-    headers (see :func:`agent_tasks.task_origin`). The idempotency key
+    headers (see :func:`tickets.task_origin`). The idempotency key
     is the ``Idempotency-Key`` header (the scheduler sends its run id),
     or the delivery id for a webhook. A repeat by the same origin
     returns the first run.
@@ -897,7 +898,7 @@ async def start_run(
             ``Idempotency-Key``.
 
     """
-    origin = agent_tasks.task_origin(auth, scheduled_task, webhook, delivery)
+    origin = tickets.task_origin(auth, scheduled_task, webhook, delivery)
     workflow = await _workflow(store, org_id, slug)
     if workflow['status'] != 'active' or workflow['active_version'] is None:
         raise fastapi.HTTPException(
@@ -907,7 +908,7 @@ async def start_run(
         store, org_id, slug, workflow['active_version']
     )
     project_id: str | None = None
-    if origin.kind == agent_tasks.HUMAN_ORIGIN:
+    if origin.kind == tickets.HUMAN_ORIGIN:
         trigger = _manual_trigger(wf_graph, data.trigger)
         await _check_who(db, trigger, workflow, auth)
         _check_inputs(trigger, data.inputs)
@@ -945,7 +946,7 @@ async def start_run(
         raise fastapi.HTTPException(
             status_code=422,
             detail=['The input that the concurrency key uses is empty']
-            if origin.kind == agent_tasks.HUMAN_ORIGIN
+            if origin.kind == tickets.HUMAN_ORIGIN
             else {'error': str(e)},
         ) from e
     try:
@@ -964,7 +965,7 @@ async def start_run(
                 activated_by=workflow['activated_by'],
                 dedupe_key=validation.dedupe_key(settings, payload),
                 dedupe_window_seconds=settings.dedupe_window_seconds,
-                skip_duplicate=origin.kind != agent_tasks.HUMAN_ORIGIN,
+                skip_duplicate=origin.kind != tickets.HUMAN_ORIGIN,
                 project_id=project_id,
             )
         )
@@ -1020,7 +1021,10 @@ async def get_run(
             raise fastapi.HTTPException(
                 status_code=503, detail='The run history is not available'
             ) from e
-    if not (auth.is_admin or 'agent_task:read' in auth.permissions):
+    if not (
+        auth.is_admin
+        or common_permissions.holds('agent_task:read', auth.permissions)
+    ):
         steps = [_without_task_content(s) for s in steps]
     return {**row, 'steps': steps}
 
@@ -1122,7 +1126,9 @@ async def list_org_runs(
         )
     else:
         steps |= from_archive
-    task_content = auth.is_admin or 'agent_task:read' in auth.permissions
+    task_content = auth.is_admin or common_permissions.holds(
+        'agent_task:read', auth.permissions
+    )
     return [
         {**r, 'failure': _failure(steps.get(str(r['id'])), task_content)}
         for r in found
@@ -1538,7 +1544,7 @@ async def step_agent_task(
     db: graph.Pool,
     store: workflows.Store,
     runs: workflows.Runs,
-    tasks: agent_runtime.Store,
+    tasks: ticket_store.Store,
     auth: EngineAuth,
 ) -> dict[str, typing.Any]:
     """Make the task of a running agent step, or return it. Engine only.
@@ -1561,7 +1567,7 @@ async def step_agent_task(
         422: ``agent_not_found``, ``agent_params_not_literal``,
             ``trigger_project_missing``, ``project_not_rendered``, or the
             project or the budget is not valid (see
-            :func:`agent_tasks.make_task`).
+            :func:`tickets.make_task`).
 
     """
     workflow = await _workflow(store, org_id, slug)
@@ -1578,7 +1584,7 @@ async def step_agent_task(
                 status_code=409,
                 detail=f'Step {node_id!r} is not a running agent step',
             )
-        if not await agent_tasks.may_create(db, org_slug, run['activated_by']):
+        if not await tickets.may_create(db, org_slug, run['activated_by']):
             raise fastapi.HTTPException(
                 status_code=403, detail={'error': 'owner_forbidden'}
             )
@@ -1591,7 +1597,7 @@ async def step_agent_task(
             )
         try:
             params = agent_step.Params.model_validate(step['input'] or {})
-            data = agent_tasks.AgentTaskCreate(
+            data = tickets.AgentTaskCreate(
                 agent_slug=str(graph.parse_agtype(records[0]['slug'])),
                 title=params.task_title
                 or f'{workflow["name"]}: {step["title"]}',
@@ -1603,7 +1609,7 @@ async def step_agent_task(
             raise fastapi.HTTPException(
                 status_code=422, detail={'error': 'invalid_params'}
             ) from e
-        task, _ = await agent_tasks.make_task(
+        task, _ = await tickets.make_task(
             db,
             tasks,
             org_slug,
@@ -1612,7 +1618,7 @@ async def step_agent_task(
             origin,
             key,
             run['activated_by'],
-            agent_runtime.Actor('system', auth.principal_name, 'api'),
+            ticket_store.Actor('system', auth.principal_name, 'api'),
             agent_step.output_schema(params.output_fields),
         )
     if (
@@ -1639,7 +1645,7 @@ async def cancel_step_agent_task(
     node_id: str,
     store: workflows.Store,
     runs: workflows.Runs,
-    tasks: agent_runtime.Store,
+    tasks: ticket_store.Store,
     auth: EngineAuth,
 ) -> None:
     """Cancel the task of an agent step, when it is open. Engine only.
@@ -1670,9 +1676,9 @@ async def cancel_step_agent_task(
             org_id,
             task['short_id'],
             'cancel',
-            agent_runtime.Actor('system', auth.principal_name, 'api'),
+            ticket_store.Actor('system', auth.principal_name, 'api'),
         )
-    except (agent_runtime.TaskClosed, agent_runtime.CancelPending):
+    except (ticket_store.TaskClosed, ticket_store.CancelPending):
         pass
 
 

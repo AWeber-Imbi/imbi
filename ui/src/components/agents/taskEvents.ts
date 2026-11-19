@@ -6,11 +6,7 @@ import {
   Webhook,
 } from 'lucide-react'
 
-import type {
-  AgentTaskEvent,
-  AgentTaskListItem,
-  AgentTaskStatus,
-} from '@/types'
+import type { TicketEvent, TicketListItem, TicketStatus } from '@/types'
 
 // Pure helpers for the Tasks inbox and the task detail. The detail reads
 // everything from the event log (ADR 0020), so the requests, the phase
@@ -19,7 +15,7 @@ import type {
 export interface InboxGroup {
   id: InboxGroupId
   label: string
-  tasks: AgentTaskListItem[]
+  tasks: TicketListItem[]
 }
 
 export type InboxGroupId = 'closed' | 'input' | 'paused' | 'queued' | 'running'
@@ -56,7 +52,7 @@ export const INBOX_GROUPS: { id: InboxGroupId; label: string }[] = [
   { id: 'closed', label: 'Recently closed' },
 ]
 
-const GROUP_OF: Record<AgentTaskStatus, InboxGroupId> = {
+const GROUP_OF: Record<TicketStatus, InboxGroupId> = {
   blocked: 'input',
   closed: 'closed',
   paused: 'paused',
@@ -69,7 +65,7 @@ const GROUP_OF: Record<AgentTaskStatus, InboxGroupId> = {
  * `blocked_since`: it is not closed and a request is open) needs human
  * input whatever its status, also when it is paused.
  */
-export function groupOf(task: AgentTaskListItem): InboxGroupId {
+export function groupOf(task: TicketListItem): InboxGroupId {
   return task.blocked_since ? 'input' : GROUP_OF[task.status]
 }
 
@@ -78,7 +74,10 @@ export const TRIGGERS = {
   human: { icon: Play, label: 'Manual' },
   schedule: { icon: Timer, label: 'Schedule' },
   task: { icon: CornerDownRight, label: 'Delegation' },
-  task_completed: { icon: CircleCheck, label: 'Task completed' },
+  task_completed: { icon: CircleCheck, label: 'Ticket closed' },
+  // The ADR 0028 names of `task` and `task_completed`.
+  ticket: { icon: CornerDownRight, label: 'Delegation' },
+  ticket_closed: { icon: CircleCheck, label: 'Ticket closed' },
   webhook: { icon: Webhook, label: 'Webhook' },
 } as const
 
@@ -100,7 +99,7 @@ const OUTCOME_LABELS: Record<string, string> = {
   unmapped_subject: 'Unmapped',
 }
 
-const STATUS_LABELS: Record<AgentTaskStatus, string> = {
+const STATUS_LABELS: Record<TicketStatus, string> = {
   blocked: 'Needs input',
   closed: 'Closed',
   paused: 'Paused',
@@ -112,8 +111,8 @@ const STATUS_LABELS: Record<AgentTaskStatus, string> = {
  * The latest `check.reported` event of each check, by `payload.name`,
  * in the order each check first reported (J2).
  */
-export function checksFrom(events: AgentTaskEvent[]): AgentTaskEvent[] {
-  const byName = new Map<string, AgentTaskEvent>()
+export function checksFrom(events: TicketEvent[]): TicketEvent[] {
+  const byName = new Map<string, TicketEvent>()
   for (const e of events)
     if (e.type === 'check.reported') byName.set(String(e.payload.name), e)
   return [...byName.values()]
@@ -149,7 +148,7 @@ export function formatTokens(n: number): string {
  * person are oldest block first (O2); the closed group is newest close first; the
  * others keep the list order (newest first).
  */
-export function groupTasks(tasks: AgentTaskListItem[]): InboxGroup[] {
+export function groupTasks(tasks: TicketListItem[]): InboxGroup[] {
   const time = (value: null | string | undefined) =>
     value ? Date.parse(value) : 0
   return INBOX_GROUPS.map(({ id, label }) => {
@@ -165,7 +164,7 @@ export function groupTasks(tasks: AgentTaskListItem[]): InboxGroup[] {
 /** A closed task that did not reach its goal. */
 export function isFailed(task: {
   outcome?: null | string
-  status: AgentTaskStatus
+  status: TicketStatus
 }): boolean {
   return (
     task.status === 'closed' &&
@@ -176,10 +175,7 @@ export function isFailed(task: {
 }
 
 /** The phases of a task in order, with the time spent in each (F7). */
-export function phaseTimeline(
-  events: AgentTaskEvent[],
-  end: number,
-): PhaseSpan[] {
+export function phaseTimeline(events: TicketEvent[], end: number): PhaseSpan[] {
   const changes = events.filter(
     (e) => e.type === 'phase.changed' && typeof e.payload.phase === 'string',
   )
@@ -199,7 +195,7 @@ export function phaseTimeline(
  * `expires_at` is expired even before an event says so.
  */
 export function requestsFrom(
-  events: AgentTaskEvent[],
+  events: TicketEvent[],
   now: number,
 ): TaskRequestView[] {
   const byId = new Map<string, TaskRequestView>()
@@ -244,7 +240,7 @@ export function requestsFrom(
 /** The badge text of a task: its outcome when closed, else its status. */
 export function statusLabel(task: {
   outcome?: null | string
-  status: AgentTaskStatus
+  status: TicketStatus
 }): string {
   if (task.status === 'closed' && task.outcome)
     return OUTCOME_LABELS[task.outcome] ?? task.outcome
@@ -254,7 +250,7 @@ export function statusLabel(task: {
 /** The badge variant of a task. */
 export function statusVariant(task: {
   outcome?: null | string
-  status: AgentTaskStatus
+  status: TicketStatus
 }): 'danger' | 'info' | 'neutral' | 'success' | 'warning' {
   if (task.status === 'blocked') return 'warning'
   if (task.status === 'running') return 'info'

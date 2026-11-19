@@ -12,7 +12,7 @@ from unittest import mock
 
 from psycopg.types import json as pg_json
 
-from imbi.api import agent_tasks, harness, secret_broker
+from imbi.api import harness, secret_broker, tickets
 from imbi.api.secret_broker import audit, broker, providers, store
 
 #: The secret value of the fake provider. Every leak check looks for it.
@@ -65,10 +65,10 @@ class SecretCase(unittest.IsolatedAsyncioTestCase):
         #: A live runner: materialization checks its state.
         self.runner = str(uuid.uuid4())
         self.runner_pool = f'pool-{suffix}'
-        await agent_tasks.initialize()
+        await tickets.initialize()
         await harness.initialize()
         await secret_broker.initialize()
-        self.pool = agent_tasks.create_pool()
+        self.pool = tickets.create_pool()
         await self.pool.open()
         async with self.pool.connection() as conn:
             await conn.execute(
@@ -150,10 +150,9 @@ class SecretCase(unittest.IsolatedAsyncioTestCase):
                     f'DELETE FROM secrets.{table} WHERE organization_id = %s',
                     (self.org,),
                 )
-            for table in ('task_projects', 'tasks'):
+            for table in ('ticket_projects', 'tickets'):
                 await conn.execute(
-                    f'DELETE FROM agent_runtime.{table}'
-                    ' WHERE organization_id = %s',
+                    f'DELETE FROM tickets.{table} WHERE organization_id = %s',
                     (self.org,),
                 )
             await conn.execute(
@@ -180,8 +179,8 @@ class SecretCase(unittest.IsolatedAsyncioTestCase):
         """Return the secret events of a task, in order."""
         async with self.pool.connection() as conn:
             cur = await conn.execute(
-                'SELECT actor_kind, payload FROM agent_runtime.events'
-                ' WHERE task_id = %s AND type = %s ORDER BY seq',
+                'SELECT actor_kind, payload FROM tickets.events'
+                ' WHERE ticket_id = %s AND type = %s ORDER BY seq',
                 (task_id or self.task_id, broker.TASK_EVENT_TYPE),
             )
             return [
@@ -230,7 +229,7 @@ class SecretCase(unittest.IsolatedAsyncioTestCase):
         task_id = uuid.uuid4()
         async with self.pool.connection() as conn:
             await conn.execute(
-                'INSERT INTO agent_runtime.tasks (id, organization_id,'
+                'INSERT INTO tickets.tickets (id, organization_id,'
                 ' short_id, agent_id, agent_version, service_account_id,'
                 ' title, description, origin_kind, origin_id,'
                 ' origin, owner) VALUES (%s, %s, %s, %s, 1, %s, %s, %s,'
@@ -255,8 +254,8 @@ class SecretCase(unittest.IsolatedAsyncioTestCase):
         self, conn: typing.Any, task_id: uuid.UUID, project_id: str
     ) -> None:
         await conn.execute(
-            'INSERT INTO agent_runtime.task_projects (organization_id,'
-            ' task_id, project_id, project_slug, added_by_kind, added_by)'
+            'INSERT INTO tickets.ticket_projects (organization_id,'
+            ' ticket_id, project_id, project_slug, added_by_kind, added_by)'
             " VALUES (%s, %s, %s, %s, 'human', 'test')",
             (self.org, task_id, project_id, project_id),
         )

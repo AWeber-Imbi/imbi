@@ -1,4 +1,4 @@
-import type { AgentTaskEvent } from '@/types'
+import type { TicketEvent } from '@/types'
 
 // The Conversation tab is one timeline over the task log: turns, tool
 // calls, requests, and state changes in seq order. Subagent events nest
@@ -12,7 +12,7 @@ export interface TimelineEntry {
    * harness writes a call when its result arrives, so its subagent
    * events are in the log before it.
    */
-  event: AgentTaskEvent | null
+  event: null | TicketEvent
   /** `event_id`, or `pending:<call id>` for a call not yet written. */
   id: string
   /** The call id that `children` name as their `parent_call_id`. */
@@ -60,13 +60,13 @@ export function isError(entry: TimelineEntry): boolean {
  * the event of its first part. A part that has not arrived yet leaves
  * a gap: the parts that are in the log are joined in order.
  */
-export function joinParts(events: AgentTaskEvent[]): AgentTaskEvent[] {
-  const groups = new Map<string, AgentTaskEvent[]>()
+export function joinParts(events: TicketEvent[]): TicketEvent[] {
+  const groups = new Map<string, TicketEvent[]>()
   for (const e of events) {
     const key = partKey(e)
     if (key) groups.set(key, [...(groups.get(key) ?? []), e])
   }
-  const out: AgentTaskEvent[] = []
+  const out: TicketEvent[] = []
   for (const e of events) {
     const key = partKey(e)
     if (!key) {
@@ -99,11 +99,11 @@ export function joinParts(events: AgentTaskEvent[]): AgentTaskEvent[] {
  * the place of its first child, so it reads where the work started.
  */
 export function timeline(
-  events: AgentTaskEvent[],
+  events: TicketEvent[],
   show: (type: string) => boolean = (type) => SHOWN.has(type),
 ): TimelineEntry[] {
   const shown = joinParts(events).filter((e) => show(e.type))
-  const callId = (e: AgentTaskEvent) =>
+  const callId = (e: TicketEvent) =>
     e.type === 'tool.called' && typeof e.payload.call_id === 'string'
       ? e.payload.call_id
       : null
@@ -149,7 +149,7 @@ export function timeline(
   return sort(roots)
 }
 
-function partKey(e: AgentTaskEvent): null | string {
+function partKey(e: TicketEvent): null | string {
   const p = e.payload
   if (!(e.type in SPLIT_FIELD) || p.parts == null) return null
   return `${e.type}:${String(p.call_id)}`

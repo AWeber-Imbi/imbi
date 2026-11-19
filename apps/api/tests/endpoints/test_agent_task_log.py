@@ -18,11 +18,11 @@ from apps.api.tests.endpoints import (
     test_agent_task_harness,
     test_agent_tasks,
 )
-from imbi.api import agent_tasks
-from imbi.api.agent_tasks import log, sweeper
+from imbi.api import tickets
+from imbi.api.tickets import log, sweeper
 from imbi.common import clickhouse, iggy
 from imbi.common.clickhouse import client
-from scripts import agent_task_client
+from scripts import ticket_client
 
 
 class ClickHouseTestCase(test_agent_tasks.AgentTaskTestCase):
@@ -49,8 +49,8 @@ class ClickHouseTestCase(test_agent_tasks.AgentTaskTestCase):
     async def stored_events(self, task_id: str) -> list[dict[str, typing.Any]]:
         """Return the ClickHouse rows of a task, with duplicates."""
         return await clickhouse.query(
-            'SELECT * FROM imbi.agent_task_events'
-            ' WHERE task_id = {task_id:String} ORDER BY seq',
+            'SELECT * FROM imbi.ticket_events'
+            ' WHERE ticket_id = {task_id:String} ORDER BY seq',
             {'task_id': task_id},
         )
 
@@ -203,8 +203,8 @@ class SweepTests(ClickHouseTestCase):
         self.assertFalse(await self.store.archive(task['id'], 6))
 
     async def test_last_agent_turn_reads_the_archive(self) -> None:
-        actor = agent_tasks.Actor('agent', 'triage', 'harness')
-        turn = agent_tasks.NewEvent(
+        actor = tickets.Actor('agent', 'triage', 'harness')
+        turn = tickets.NewEvent(
             event_id=uuid.uuid4(),
             type='turn',
             payload={'body': 'I could not read the secret.'},
@@ -227,7 +227,7 @@ class SweepTests(ClickHouseTestCase):
         )
 
     async def test_sweep_republishes_usage_rows(self) -> None:
-        actor = agent_tasks.Actor('agent', 'agent-1', 'harness')
+        actor = tickets.Actor('agent', 'agent-1', 'harness')
         prices: dict[str, decimal.Decimal | None] = {
             'input_cost_per_million': decimal.Decimal(3),
             'output_cost_per_million': decimal.Decimal(15),
@@ -239,7 +239,7 @@ class SweepTests(ClickHouseTestCase):
             _task, row, _created = await self.store.report_usage(
                 self.org,
                 'T-1',
-                agent_tasks.Usage('u-1', 'opus', 1000, 100, None, None, None),
+                tickets.Usage('u-1', 'opus', 1000, 100, None, None, None),
                 prices,
                 actor=actor,
                 system=actor,
@@ -273,8 +273,8 @@ class ReferenceClientTests(
         await self.make_model(self.slug, self.slug)
 
     async def test_run_task_end_to_end(self) -> None:
-        harness = agent_task_client.HarnessClient(self.client, self.org, 'T-1')
-        state = await agent_task_client.run_task(harness, model_id=self.slug)
+        harness = ticket_client.HarnessClient(self.client, self.org, 'T-1')
+        state = await ticket_client.run_task(harness, model_id=self.slug)
         self.assertEqual(state['status'], 'closed')
         self.assertEqual(state['outcome'], 'done_acted')
         self.assertEqual(state['phase'], 'done')
@@ -329,8 +329,8 @@ class ReferenceClientTests(
         self.assertGreater(task['cost_total'], 0)
 
     async def test_run_task_with_a_request_leaves_it_blocked(self) -> None:
-        harness = agent_task_client.HarnessClient(self.client, self.org, 'T-1')
-        state = await agent_task_client.run_task(
+        harness = ticket_client.HarnessClient(self.client, self.org, 'T-1')
+        state = await ticket_client.run_task(
             harness, model_id=self.slug, ask=True
         )
         self.assertEqual(state['status'], 'blocked')
@@ -339,10 +339,8 @@ class ReferenceClientTests(
     async def test_run_task_rich_writes_every_conversation_event(
         self,
     ) -> None:
-        harness = agent_task_client.HarnessClient(self.client, self.org, 'T-1')
-        state = await agent_task_client.run_rich_task(
-            harness, model_id=self.slug
-        )
+        harness = ticket_client.HarnessClient(self.client, self.org, 'T-1')
+        state = await ticket_client.run_rich_task(harness, model_id=self.slug)
         self.assertEqual(state['status'], 'closed')
         events = await self.postgres_events(self.task['id'])
         payloads = [e['payload'] for e in events]
@@ -450,7 +448,7 @@ class OpsLogTests(test_agent_task_harness.HarnessTestCase, ClickHouseTestCase):
 
         # A republish by the sweep collapses on the id.
         task = await self.task_row('T-2')
-        await agent_tasks.log.publish(
+        await tickets.log.publish(
             task, await self.postgres_events(str(task['id']))
         )
         self.assertEqual(len(await self.opslog(ids)), 2)
@@ -477,7 +475,7 @@ class StaleSessionTests(
         """Move a session's opened_at and heartbeat_at minutes back."""
         async with self.pool.connection() as conn:
             await conn.execute(
-                'UPDATE agent_runtime.sessions'
+                'UPDATE tickets.sessions'
                 ' SET opened_at = NOW() - make_interval(mins => %s),'
                 ' heartbeat_at = NOW() - make_interval(mins => %s)'
                 ' WHERE id = %s',

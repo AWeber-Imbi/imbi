@@ -552,7 +552,7 @@ rollback fails the run.
 ### Agent task
 
 Gives an agent a task and waits for its outcome. See
-[Agent tasks](agent-tasks.md).
+[Tickets](tickets.md).
 
 | Parameter | What to enter | Default |
 |---|---|---|
@@ -581,7 +581,7 @@ with "used in N workflow(s)".
 
 **Output:** `task_id`, `outcome`, `reason`, and `summary` (the last
 message of the agent). Run detail shows `reason` and `summary` only to
-people with `agent_task:read`.
+people with `ticket:read`.
 
 ## References
 
@@ -689,7 +689,7 @@ Set **Dedupe key** to a [key template](#key-templates) that names the
 thing a run works on. Set **Dedupe window (days)** to how long a key
 skips a repeat. Leave the window empty to skip repeats forever.
 
-When a **Webhook** or **Task completed** trigger starts a run, Imbi
+When a **Webhook** or **Ticket closed** trigger starts a run, Imbi
 fills the key from the payload. If a run of the same workflow with the
 same key was made within the window, Imbi does not start the new run. It
 records it as `skipped`, with a link to the earlier run.
@@ -793,7 +793,7 @@ only. The permissions that steps need:
 | Schedule | `scheduled_task:create` |
 | Webhook | `webhook:update` |
 | Deploy, Rollback | `project:deployment:write` |
-| Agent task | `agent_task:create` |
+| Agent task | `ticket:create` |
 | LLM Call | `prompt:run` |
 
 Imbi records who activated the workflow. A workflow cannot do more than
@@ -916,7 +916,7 @@ status:
 **Failure causes** groups the failed runs by reason. Click a reason to show
 only its runs. The reason comes from the failed step, not from the error of
 the run: the reason of the agent task of an agent step, else the error of
-the step, else the error of the run. Only people with `agent_task:read`
+the step, else the error of the run. Only people with `ticket:read`
 see the reason and summary of an agent task.
 
 The **Definitions** tab shows **Failed 7d** for each workflow: the failed
@@ -1113,5 +1113,5 @@ processes for script steps, and imbi-api keeps two for **Run script**. Allow
 memory for them in the pod limits. The preview always uses the default
 limits.
 
-See also [Agents](agents.md), [Agent tasks](agent-tasks.md), and
+See also [Agents](agents.md), [Tickets](tickets.md), and
 [Agent runners](../deployment/agent-runners.md).

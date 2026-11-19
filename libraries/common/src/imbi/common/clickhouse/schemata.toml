@@ -569,7 +569,7 @@ TTL toDateTime(sent_at) + INTERVAL 1 YEAR;
 enabled = true
 
 # The permanent log of agent tasks (ADR 0020). One row per task event.
-# Postgres (`agent_runtime.events`) holds the same rows until the archive
+# Postgres (`tickets.events`) holds the same rows until the archive
 # sweep confirms every `seq` of a task is here, then deletes them; after
 # that the events endpoint reads this table.
 #
@@ -606,8 +606,40 @@ ORDER BY (organization_id, task_id, seq);
 """
 enabled = true
 
+# The permanent log of tickets (ADR 0028): `agent_task_events` under its
+# new name, with `ticket_id` for `task_id`. Release A writes here only;
+# readers read both tables, removing a row that both hold by
+# `(ticket_id, seq)`, until release B copies the old table here and drops
+# it. Postgres (`tickets.events`) holds the same rows until the archive
+# sweep confirms every `seq` of a ticket is in ClickHouse. No TTL, like
+# `agent_task_events`.
+[ticket_events]
+query = """
+CREATE TABLE IF NOT EXISTS imbi.ticket_events {on_cluster}(
+  organization_id  LowCardinality(String),
+  ticket_id        String,
+  short_id         String,
+  agent_id         LowCardinality(String),
+  agent_version    UInt32,
+  project_id       LowCardinality(String) DEFAULT '',
+  seq              UInt64,
+  event_id         String,
+  type             LowCardinality(String),
+  schema_version   UInt16 DEFAULT 1,
+  actor_kind       LowCardinality(String),
+  actor_id         Nullable(String),
+  channel          LowCardinality(String),
+  session_id       Nullable(String),
+  at               DateTime64(6, 'UTC'),
+  payload          String
+) ENGINE = {replicated}ReplacingMergeTree()
+PARTITION BY toYYYYMM(at)
+ORDER BY (organization_id, ticket_id, seq);
+"""
+enabled = true
+
 # One row per agent usage report (ADR 0020), for the Usage page (N2, N7).
-# `report_id` is the `agent_runtime.budget_ledger` id, so a republish by
+# `report_id` is the `tickets.budget_ledger` id, so a republish by
 # the sweep collapses into one row. NULL token counts are unmeasured, not
 # zero; NULL cost and rates mean the model or a price was unknown.
 # Postgres keeps the ledger, so this table is analytics, not the budget

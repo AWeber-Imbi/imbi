@@ -1,4 +1,4 @@
-import type { AgentTask, AgentTaskEvent } from '@/types'
+import type { Ticket, TicketEvent } from '@/types'
 
 import { TRIGGERS } from './taskEvents'
 import {
@@ -60,7 +60,7 @@ export interface TaskStatistics {
  * Their tokens still count in the task total.
  */
 export function taskStatistics(
-  task: AgentTask,
+  task: Ticket,
   trajectory: Trajectory,
   basis: ContextBasis,
 ): TaskStatistics {
@@ -266,7 +266,7 @@ function sumCells(steps: StatsStep[], basis: ContextBasis): StatsCells {
 }
 
 function triggerOf(
-  task: AgentTask,
+  task: Ticket,
   turn: number,
   user: TrajectoryRecord | undefined,
 ): StatsTurn['trigger'] {
@@ -277,7 +277,7 @@ function triggerOf(
   return { badge: true, text: turn === 1 ? 'Manual' : 'Resumed' }
 }
 
-function usageOf(e: AgentTaskEvent | null) {
+function usageOf(e: null | TicketEvent) {
   const p = e?.payload ?? {}
   return {
     cacheRead: num(p.cache_read_tokens),

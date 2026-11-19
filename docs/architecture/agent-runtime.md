@@ -70,7 +70,7 @@ does not change a task that exists.
 
 A workflow `agent` step also makes a task. The task keeps the origin of
 the workflow run. imbi-workflows reads the task until it closes, then
-continues the run. See [Agent Tasks](../admin/agent-tasks.md#triggers)
+continues the run. See [Tickets](../admin/tickets.md#triggers)
 and [Workflows](../admin/workflows.md).
 
 ## 3. Dispatch and leases
@@ -183,7 +183,7 @@ command. See [Secrets](../admin/secrets.md) and
 ## 6. Events and usage
 
 The runner opens a session on the task and calls the task routes under
-`/organizations/{org}/agent-tasks/{short_id}/`: `sessions`, `events`,
+`/organizations/{org}/tickets/{short_id}/`: `sessions`, `events`,
 `usage`, `requests`, and `outcome`. It redacts each payload before it
 sends it.
 
@@ -208,14 +208,14 @@ report, the runner sets `failed_external` with the reason
 the SDK ended with an error (for example `partial_capped`). Then:
 
 - The close hooks release the secrets of the task and start the runs of
-  the matching workflow `task_completed` triggers. If a hook fails, a
+  the matching workflow `ticket_closed` triggers. If a hook fails, a
   sweep does its work again. For the trigger runs, the transaction that
   closes the task writes a `trigger_outbox` row, and the sweep retries
   until the runs start and the row is deleted.
-- The outcome goes to the [Operations Log](../admin/agent-tasks.md#operations-log).
+- The outcome goes to the [Operations Log](../admin/tickets.md#operations-log).
 - A workflow `agent` step that waits on the task continues.
 - The task inbox shows the result. See
-  [Outcomes](../admin/agent-tasks.md#outcomes).
+  [Outcomes](../admin/tickets.md#outcomes).
 
 When every task of the chain is closed, the runner finishes and exits.
 The pool starts a clean pod.

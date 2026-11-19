@@ -1,13 +1,17 @@
-"""The permanent task log in ClickHouse (ADR 0020).
+"""The permanent ticket log in ClickHouse (ADR 0020, ADR 0028).
 
-Every task event goes through Iggy to ``agent_task_events``, and every
+Every ticket event goes through Iggy to ``ticket_events``, and every
 budget ledger row to ``agent_usage``, after its Postgres transaction
 commits. A publish failure is logged and does not fail the write: the
-archive sweep (:mod:`imbi.api.agent_tasks.sweeper`) finds the rows that
+archive sweep (:mod:`imbi.api.tickets.sweeper`) finds the rows that
 ClickHouse does not have and publishes them again.
 
 Both tables are ReplacingMergeTree tables keyed on the identity of the
 row, so a row that is published two times is stored one time.
+
+Before ADR 0028 events went to ``agent_task_events``. Release B copies
+that table to ``ticket_events``; until then every read reads both
+(:data:`EVENTS`), and a row that both tables hold counts one time.
 
 Request resolutions and terminal outcomes also go to the Operations Log
 (I9, N9), as a projection of their events: see :func:`opslog_rows`.
@@ -26,43 +30,58 @@ LOGGER = logging.getLogger(__name__)
 
 type Row = dict[str, typing.Any]
 
-EVENTS_STREAM = 'agent_task_events'
+EVENTS_STREAM = 'ticket_events'
+EVENTS_TOPIC = 'tickets'
 USAGE_STREAM = 'agent_usage'
-TOPIC = 'agent_tasks'
+USAGE_TOPIC = 'agent_tasks'
 OPSLOG_STREAM = 'operations_log'
 OPSLOG_TOPIC = 'api'
 #: The event types that the Operations Log shows.
 OPSLOG_EVENT_TYPES = frozenset({'request.resolved', 'outcome.set'})
 
-_ARCHIVED_EVENTS_QUERY = """
+#: The events of both tables, as one table with ``ticket_id``. A row can
+#: be in both, so a read that needs each event one time removes the
+#: copies with ``LIMIT 1 BY ticket_id, seq``.
+EVENTS = """(
+SELECT organization_id, task_id AS ticket_id, agent_id, seq, event_id, type,
+       schema_version, actor_kind, actor_id, channel, session_id, at, payload
+FROM imbi.agent_task_events
+UNION ALL
+SELECT organization_id, ticket_id, agent_id, seq, event_id, type,
+       schema_version, actor_kind, actor_id, channel, session_id, at, payload
+FROM imbi.ticket_events
+)"""
+
+_ARCHIVED_EVENTS_QUERY = f"""
 SELECT event_id, seq, type, schema_version, actor_kind, actor_id, channel,
        session_id, at, payload
-FROM imbi.agent_task_events FINAL
-WHERE organization_id = {organization_id:String}
-  AND task_id = {task_id:String}
-  AND seq > {after_seq:UInt64}
+FROM {EVENTS}
+WHERE organization_id = {{organization_id:String}}
+  AND ticket_id = {{ticket_id:String}}
+  AND seq > {{after_seq:UInt64}}
 ORDER BY seq
-LIMIT {limit:UInt32}
-"""
+LIMIT 1 BY seq
+LIMIT {{limit:UInt32}}
+"""  # noqa: S608 - EVENTS is a constant
 
-_LAST_AGENT_TURN_QUERY = """
+_LAST_AGENT_TURN_QUERY = f"""
 SELECT JSONExtractString(payload, 'body') AS body
-FROM imbi.agent_task_events
-WHERE organization_id = {organization_id:String}
-  AND task_id = {task_id:String}
+FROM {EVENTS}
+WHERE organization_id = {{organization_id:String}}
+  AND ticket_id = {{ticket_id:String}}
   AND type = 'turn'
   AND actor_kind = 'agent'
 ORDER BY seq DESC
 LIMIT 1
-"""
+"""  # noqa: S608 - EVENTS is a constant
 
-_EVENT_COUNTS_QUERY = """
-SELECT task_id, uniqExact(seq) AS events, max(seq) AS max_seq
-FROM imbi.agent_task_events
-WHERE organization_id = {organization_id:String}
-  AND task_id IN (SELECT id FROM task_ids)
-GROUP BY task_id
-"""
+_EVENT_COUNTS_QUERY = f"""
+SELECT ticket_id, uniqExact(seq) AS events, max(seq) AS max_seq
+FROM {EVENTS}
+WHERE organization_id = {{organization_id:String}}
+  AND ticket_id IN (SELECT id FROM task_ids)
+GROUP BY ticket_id
+"""  # noqa: S608 - EVENTS is a constant
 
 _USAGE_COUNTS_QUERY = """
 SELECT task_id, uniqExact(report_id) AS reports
@@ -72,12 +91,12 @@ WHERE organization_id = {organization_id:String}
 GROUP BY task_id
 """
 
-_STORED_SEQS_QUERY = """
+_STORED_SEQS_QUERY = f"""
 SELECT DISTINCT seq
-FROM imbi.agent_task_events
-WHERE organization_id = {organization_id:String}
-  AND task_id = {task_id:String}
-"""
+FROM {EVENTS}
+WHERE organization_id = {{organization_id:String}}
+  AND ticket_id = {{ticket_id:String}}
+"""  # noqa: S608 - EVENTS is a constant
 
 _STORED_REPORTS_QUERY = """
 SELECT DISTINCT report_id
@@ -97,10 +116,10 @@ def _project_ids(task: Row) -> str:
 
 
 def event_row(task: Row, event: Row) -> Row:
-    """Return the ``agent_task_events`` row of one Postgres event."""
+    """Return the ``ticket_events`` row of one Postgres event."""
     return {
         'organization_id': task['organization_id'],
-        'task_id': str(task['id']),
+        'ticket_id': str(task['id']),
         'short_id': task['short_id'],
         'agent_id': task['agent_id'],
         'agent_version': task['agent_version'],
@@ -207,15 +226,19 @@ async def publish(
             await iggy.publish_rows(OPSLOG_STREAM, OPSLOG_TOPIC, opslog)
         if events:
             await iggy.publish_rows(
-                EVENTS_STREAM, TOPIC, [event_row(task, e) for e in events]
+                EVENTS_STREAM,
+                EVENTS_TOPIC,
+                [event_row(task, e) for e in events],
             )
         if ledger:
             await iggy.publish_rows(
-                USAGE_STREAM, TOPIC, [usage_row(task, row) for row in ledger]
+                USAGE_STREAM,
+                USAGE_TOPIC,
+                [usage_row(task, row) for row in ledger],
             )
     except Exception:  # noqa: BLE001 - the sweep publishes the rows again
         LOGGER.warning(
-            'Agent task %s: publish failed; the sweep retries it',
+            'Ticket %s: publish failed; the sweep retries it',
             task['id'],
             exc_info=True,
         )
@@ -224,13 +247,13 @@ async def publish(
 async def archived_events(task: Row, after_seq: int, limit: int) -> list[Row]:
     """Return events of an archived task from ClickHouse, by seq.
 
-    The rows have the shape of ``agent_runtime.events`` rows.
+    The rows have the shape of ``tickets.events`` rows.
     """
     rows = await clickhouse.query(
         _ARCHIVED_EVENTS_QUERY,
         {
             'organization_id': task['organization_id'],
-            'task_id': str(task['id']),
+            'ticket_id': str(task['id']),
             'after_seq': after_seq,
             'limit': limit,
         },
@@ -260,7 +283,7 @@ async def last_archived_agent_turn(task: Row) -> str | None:
         _LAST_AGENT_TURN_QUERY,
         {
             'organization_id': task['organization_id'],
-            'task_id': str(task['id']),
+            'ticket_id': str(task['id']),
         },
     )
     return str(rows[0]['body']) if rows else None
@@ -276,7 +299,7 @@ async def event_counts(
         tables={'task_ids': task_ids},
     )
     return {
-        row['task_id']: (int(row['events']), int(row['max_seq']))
+        row['ticket_id']: (int(row['events']), int(row['max_seq']))
         for row in rows
     }
 
@@ -299,7 +322,7 @@ async def stored_seqs(task: Row) -> set[int]:
         _STORED_SEQS_QUERY,
         {
             'organization_id': task['organization_id'],
-            'task_id': str(task['id']),
+            'ticket_id': str(task['id']),
         },
     )
     return {int(row['seq']) for row in rows}
