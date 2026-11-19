@@ -92,12 +92,19 @@ LLM_CALL_POLL_SECONDS = 15
 
 
 class StepError(Exception):
-    """A step call failed. ``code`` is stored as the step's error."""
+    """A step call failed. ``code`` is stored as the step's error.
 
-    def __init__(self, code: str, *, retry: bool) -> None:
+    ``detail`` is the ``detail`` of the imbi-api error response, when
+    there is one, for a step that reports why it was refused.
+    """
+
+    def __init__(
+        self, code: str, *, retry: bool, detail: typing.Any = None
+    ) -> None:
         super().__init__(code)
         self.code = code
         self.retry = retry
+        self.detail = detail
 
 
 @dataclasses.dataclass
@@ -211,8 +218,6 @@ class Api:
             )
         except httpx.HTTPError as e:
             raise StepError(type(e).__name__, retry=True) from e
-        if response.status_code == HTTP_FORBIDDEN:
-            raise StepError('forbidden', retry=False)
         if response.status_code >= HTTP_CLIENT_ERROR:
             try:
                 body: typing.Any = response.json()
@@ -224,15 +229,20 @@ class Api:
                 if isinstance(body, dict)
                 else None
             )
+            if response.status_code == HTTP_FORBIDDEN:
+                raise StepError('forbidden', retry=False, detail=detail)
             if isinstance(detail, dict):
                 found = typing.cast('dict[str, typing.Any]', detail)
                 if found.get('error'):
                     raise StepError(
-                        str(found['error']), retry=found.get('retry') is True
+                        str(found['error']),
+                        retry=found.get('retry') is True,
+                        detail=detail,
                     )
             raise StepError(
                 f'http_{response.status_code}',
                 retry=response.status_code >= HTTP_SERVER_ERROR,
+                detail=detail,
             )
         if not response.content:  # 204
             return {}

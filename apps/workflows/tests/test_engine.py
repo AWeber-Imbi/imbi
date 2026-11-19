@@ -2422,6 +2422,61 @@ class AppTestCase(unittest.IsolatedAsyncioTestCase):
                 self.assertIsInstance(runner, engine.Engine)
 
 
+class ApiErrorTestCase(unittest.IsolatedAsyncioTestCase):
+    """``Api.request`` keeps the ``detail`` of an error response."""
+
+    async def _error(self, response: httpx.Response) -> executors.StepError:
+        def answer(request: httpx.Request) -> httpx.Response:
+            if request.url.path.endswith('/auth/token'):
+                return httpx.Response(
+                    200, json={'access_token': 'token', 'expires_in': 900}
+                )
+            return response
+
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(answer)
+        ) as client:
+            api = executors.Api(
+                client,
+                settings.Workflows(
+                    sa_client_id='client',
+                    sa_client_secret='secret',
+                    api_url='http://api',
+                ),
+            )
+            with self.assertRaises(executors.StepError) as raised:
+                await api.request('POST', '/deployments')
+        return raised.exception
+
+    async def test_text_detail(self) -> None:
+        error = await self._error(
+            httpx.Response(409, json={'detail': 'Release 1.4.0 is blocked'})
+        )
+        self.assertEqual(error.code, 'http_409')
+        self.assertFalse(error.retry)
+        self.assertEqual(error.detail, 'Release 1.4.0 is blocked')
+
+    async def test_forbidden_keeps_its_detail(self) -> None:
+        detail = {'error': 'autonomous_not_allowed', 'message': 'No.'}
+        error = await self._error(httpx.Response(403, json={'detail': detail}))
+        self.assertEqual(error.code, 'forbidden')
+        self.assertFalse(error.retry)
+        self.assertEqual(error.detail, detail)
+
+    async def test_error_code_keeps_its_detail(self) -> None:
+        detail = {'error': 'slack_unreachable', 'retry': True}
+        error = await self._error(httpx.Response(502, json={'detail': detail}))
+        self.assertEqual(error.code, 'slack_unreachable')
+        self.assertTrue(error.retry)
+        self.assertEqual(error.detail, detail)
+
+    async def test_no_body(self) -> None:
+        error = await self._error(httpx.Response(502, text='<html>'))
+        self.assertEqual(error.code, 'http_502')
+        self.assertTrue(error.retry)
+        self.assertIsNone(error.detail)
+
+
 class RenderTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_agent_results(self) -> None:
         fields = [
