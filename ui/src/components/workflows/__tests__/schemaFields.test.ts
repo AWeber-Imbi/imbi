@@ -230,6 +230,23 @@ describe('paramFields for the slack step', () => {
       },
     ])
   })
+
+  it('takes an optional ticket as a text field', () => {
+    expect(
+      paramFields({
+        properties: {
+          ticket: {
+            anyOf: [{ type: 'string' }, { type: 'null' }],
+            default: null,
+            title: 'Ticket',
+          },
+        },
+        type: 'object',
+      }),
+    ).toEqual([
+      { kind: 'text', label: 'Ticket', name: 'ticket', required: false },
+    ])
+  })
 })
 
 describe('paramFields for the condition step', () => {

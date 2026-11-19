@@ -67,6 +67,11 @@ async def _on_graph_startup(db: graph.Graph) -> None:
 graph.set_on_startup(_on_graph_startup)
 
 
+def get_graph() -> graph.Graph | None:
+    """Return the graph pool, once it is open."""
+    return _graph
+
+
 @contextlib.asynccontextmanager
 async def clickhouse_hook() -> abc.AsyncGenerator[None]:
     """Initialize and manage the ClickHouse connection."""

@@ -31,7 +31,7 @@ from imbi.api.workflows.store import (
     WorkflowStore,
     agent_ids,
 )
-from imbi.common import lifespan, relational
+from imbi.common import graph, lifespan, relational
 from imbi.common.workflows import runtime
 
 SCHEMATA_PATH = pathlib.Path(__file__).parent / 'schemata.toml'
@@ -54,6 +54,13 @@ async def initialize() -> None:
     await relational.initialize_deleted_organizations()
 
 
+def _graph() -> graph.Graph | None:
+    # Imported here: imbi.api.lifespans imports this package.
+    from imbi.api import lifespans
+
+    return lifespans.get_graph()
+
+
 @contextlib.asynccontextmanager
 async def store_lifespan() -> abc.AsyncGenerator[WorkflowStore]:
     """Initialize the schemas, hold the workflow stores open, and sweep."""
@@ -65,7 +72,7 @@ async def store_lifespan() -> abc.AsyncGenerator[WorkflowStore]:
         _runs = RunStore(pool)
         definitions = WorkflowStore(pool)
         tasks = TicketStore(pool)
-        trigger = ticket_trigger.TaskTrigger(definitions, _runs, tasks)
+        trigger = ticket_trigger.TaskTrigger(definitions, _runs, tasks, _graph)
         task_store.register_close_hook(trigger)
         stop = asyncio.Event()
         sweep = asyncio.create_task(

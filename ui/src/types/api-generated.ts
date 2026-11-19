@@ -7402,9 +7402,11 @@ export interface paths {
          * Get Run
          * @description Return a run with its step records.
          *
-         *     The ``reason``, ``summary``, and ``result`` of an agent step's
-         *     output come from the agent task. Only a caller who can read agent
-         *     tasks (``agent_task:read``) gets them.
+         *     A later step can render agent task content into its ``input`` and
+         *     ``output``. For a run that a closed task started or that has an
+         *     agent step, only a caller who can read agent tasks
+         *     (``agent_task:read``) gets the step ``input`` and ``output``, the
+         *     dedupe key, and the ticket attributes of the payload.
          *
          *     Raises:
          *         404: No such workflow or run.
@@ -7493,13 +7495,18 @@ export interface paths {
          *         404: No such workflow, run, or step.
          *         409: The step is not a running slack step, or
          *             ``outcome_unknown``: a call with the key did not finish.
-         *         422: ``invalid_channel``: the channel is not a Slack channel id.
+         *         422: ``invalid_channel``: the channel is not a Slack channel id,
+         *             or ``ticket_not_found``: the ticket is not a task of the
+         *             organization.
          *         502: ``slack_unreachable``: the call to Slack failed, and Slack
          *             may have posted the message.
          *         503: ``slack_not_configured``: imbi-api has no bot token.
          *
          *     A refusal from Slack is not an error here: the response has its
          *     code in ``error``, and the engine fails the step.
+         *
+         *     A step with a ``ticket`` shows the task below the message (see
+         *     :func:`workflow_tickets.with_ticket_block`).
          */
         post: operations["send_step_slack_api_organizations__org_slug__workflows__slug__runs__run_id__steps__node_id__slack_post"];
         delete?: never;
@@ -20973,7 +20980,8 @@ export interface components {
          *
          *     ``task_id``, ``outcome``, ``reason``, and ``summary`` come from the
          *     agent task of an ``agent`` step. ``reason`` and ``summary`` are
-         *     ``None`` for a caller who cannot read agent tasks.
+         *     ``None`` for a caller who cannot read agent tasks, and ``error``
+         *     has only its code.
          */
         RunFailure: {
             /** Node Key */
@@ -22258,8 +22266,22 @@ export interface components {
              */
             status: "ok" | "initializing" | "error";
         };
-        /** StepAgentTask */
+        /**
+         * StepAgentTask
+         * @description The attributes of :class:`agent_step.TicketAttributes` are set
+         *     when the task is closed.
+         */
         StepAgentTask: {
+            /** Title */
+            title?: string | null;
+            /** Url */
+            url?: string | null;
+            /** Project */
+            project?: string | null;
+            /** Agent */
+            agent?: string | null;
+            /** Cost Usd */
+            cost_usd?: number | null;
             /** Task Id */
             task_id: string;
             /** Status */
@@ -35674,10 +35696,10 @@ export interface operations {
                 "Idempotency-Key": string;
             };
             path: {
+                org_slug: string;
                 slug: string;
                 run_id: string;
                 node_id: string;
-                org_slug: string;
             };
             cookie?: never;
         };

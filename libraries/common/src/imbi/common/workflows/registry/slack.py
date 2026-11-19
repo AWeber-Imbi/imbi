@@ -1,6 +1,7 @@
 """Slack: post a message to a Slack channel as the Imbi bot."""
 
 import re
+import typing
 
 import pydantic
 
@@ -10,13 +11,18 @@ from imbi.common.workflows import step_type
 #: channel.
 CHANNEL_ID = re.compile(r'^[CG][A-Z0-9]{8,}$')
 
-#: A channel id, or one plain reference to a run-time value, as for the
-#: ids of an email step. A rendered reference that is not a channel id
-#: fails the step with ``invalid_params``.
-_CHANNEL = (
-    r'^(?:[CG][A-Z0-9]{8,}'
-    r'|\{\{\s*[a-z][a-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+\s*\}\})$'
-)
+#: One plain reference to a run-time value, as for the ids of an email
+#: step.
+_REFERENCE = r'\{\{\s*[a-z][a-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+\s*\}\}'
+
+#: A channel id, or one plain reference. A rendered reference that is
+#: not a channel id fails the step with ``invalid_params``.
+_CHANNEL = rf'^(?:[CG][A-Z0-9]{{8,}}|{_REFERENCE})$'
+
+#: The short id of an agent task (a ticket, ADR 0028), or one plain
+#: reference. A rendered reference that
+#: is not a short id fails the step with ``invalid_params``.
+_TICKET = rf'^(?:T-[0-9]+|{_REFERENCE})$'
 
 
 def escape(value: str) -> str:
@@ -47,6 +53,13 @@ class Params(pydantic.BaseModel):
         max_length=MAX_TEXT,
         description='The message, in Slack mrkdwn. Templates are allowed.',
     )
+    ticket: str | None = pydantic.Field(
+        default=None,
+        pattern=_TICKET,
+        description='A ticket to show below the message: its title as a '
+        'link, status, outcome, and project. A short id, for example '
+        'T-12, or a reference such as {{ trigger.task_id }}.',
+    )
 
 
 class Output(pydantic.BaseModel):
@@ -55,6 +68,11 @@ class Output(pydantic.BaseModel):
     #: unknown send done.
     ts: str | None
     permalink: str | None
+
+
+def required_permissions(params: dict[str, typing.Any]) -> set[str]:
+    """A step with a ticket reads an agent task."""
+    return {'agent_task:read'} if params.get('ticket') else set()
 
 
 STEP = step_type.StepType(
@@ -74,4 +92,5 @@ STEP = step_type.StepType(
     timeout_seconds=120,
     # Only ``slack_ratelimited`` is retried: nothing posted.
     retries=3,
+    required_permissions=required_permissions,
 )
