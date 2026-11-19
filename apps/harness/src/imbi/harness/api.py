@@ -8,6 +8,9 @@ import httpx
 
 type Body = dict[str, typing.Any]
 
+#: The most events that one :meth:`TaskApi.events` call returns.
+EVENTS_PAGE = 1000
+
 
 def items(body: Body, key: str) -> list[typing.Any]:
     """The list at ``key``; empty when it is missing or ``None``."""
@@ -265,7 +268,7 @@ class TaskApi:
             'GET',
             f'/harness/tickets/{self.short_id}/events',
             self.token,
-            params={'after_seq': after_seq, 'limit': 1000},
+            params={'after_seq': after_seq, 'limit': EVENTS_PAGE},
         )
         return typing.cast('list[Body]', response.json())
 

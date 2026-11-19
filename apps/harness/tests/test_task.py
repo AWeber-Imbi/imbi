@@ -1706,6 +1706,34 @@ class RunTestCase(TaskTestCase):
         await self.run_task.run()
         self.assertEqual(len(FakeClient.prompts), 1)
 
+    async def test_comment_on_a_later_page_starts_another_turn(
+        self,
+    ) -> None:
+        FakeClient.messages = [result_message(), result_message()]
+        other = {'seq': 4, 'type': 'tool.called', 'payload': {}}
+        self.events = [[], [other], [self.comment(5, 'Use main.')]]
+        with mock.patch.object(api, 'EVENTS_PAGE', 1):
+            await self.run_task.run()
+        self.assertEqual(len(FakeClient.prompts), 2)
+        self.assertEqual(self.run_task.seq, 5)
+
+    async def test_no_turn_for_comments_read_during_a_stop(self) -> None:
+        FakeClient.messages = [result_message(), result_message()]
+        self.events = [[], [self.comment(5, 'Use main.')]]
+        request = self.client.request.side_effect
+
+        async def stop_on_read(
+            method: str, path: str, *args: typing.Any, **kwargs: typing.Any
+        ) -> typing.Any:
+            # The stop comes while the events after the turn are read.
+            if path.endswith('/events') and len(self.events) == 1:
+                self.run_task.stopping = mock.Mock()
+            return await request(method, path, *args, **kwargs)
+
+        self.client.request.side_effect = stop_on_read
+        await self.run_task.run()
+        self.assertEqual(len(FakeClient.prompts), 1)
+
     def background_turn(self) -> list[typing.Any]:
         """A turn that starts a background subagent and ends before it."""
         return [

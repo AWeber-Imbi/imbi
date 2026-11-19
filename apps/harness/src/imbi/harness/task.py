@@ -1861,6 +1861,9 @@ class TaskRun:
                 # Comments written after the session opened are not in
                 # the history.
                 await self.read_events()
+                # A stop can come while the events are read.
+                if self.stopping is not None:
+                    return None
                 prompt = self.instruction()
                 if self.comments:
                     prompt += f'\n\n{self.take_comments()}'
@@ -1954,46 +1957,58 @@ class TaskRun:
         if not self._can_go_on(result):
             return False
         await self.read_events()
-        if not self.comments:
+        # A stop can come while the events are read.
+        if self.stopping is not None or not self.comments:
             return False
         await client.query(self.take_comments())
         return True
 
     async def read_events(self) -> bool:
         """Read the events after :attr:`seq`. Keep request outcomes in
-        :attr:`outcomes` and human comments in :attr:`comments`.
-        Return ``True`` when there were events."""
+        :attr:`outcomes` and human comments in :attr:`comments`. Read
+        all the pages. Return ``True`` when there were events."""
         async with self.events_lock:
-            try:
-                found = await self.api.events(self.seq)
-            except (api.Refused, httpx.HTTPError) as err:
-                LOGGER.warning('Events of %s: %s', self.api.short_id, err)
-                return False
-            for event in found:
-                seq = int(event.get('seq') or 0)
-                self.seq = max(self.seq, seq)
-                payload: Body = event.get('payload') or {}
-                kind = event.get('type')
-                if kind == 'turn' and event.get('actor_kind') == 'human':
-                    self.comments.append(
-                        {
-                            'seq': seq,
-                            'at': event.get('at'),
-                            'kind': 'comment',
-                            'actor': event.get('actor_id'),
-                            'text': payload.get('body') or '',
-                        }
-                    )
-                    continue
-                answered = payload.get('request_id')
-                if answered is None:
-                    continue
-                if kind == 'request.resolved':
-                    self.recorder.saw_input(seq)
-                    self.outcomes[str(answered)] = payload
-                elif kind == 'request.expired':
-                    self.outcomes[str(answered)] = {'status': 'expired'}
-            return bool(found)
+            found_any = False
+            while True:
+                before = self.seq
+                try:
+                    found = await self.api.events(self.seq)
+                except (api.Refused, httpx.HTTPError) as err:
+                    LOGGER.warning('Events of %s: %s', self.api.short_id, err)
+                    return found_any
+                found_any = found_any or bool(found)
+                self._take_events(found)
+                if len(found) < api.EVENTS_PAGE or self.seq <= before:
+                    return found_any
+
+    def _take_events(self, found: list[Body]) -> None:
+        """Keep the outcomes and comments of ``found``; move
+        :attr:`seq` to the newest event. Call it with
+        :attr:`events_lock` held."""
+        for event in found:
+            seq = int(event.get('seq') or 0)
+            self.seq = max(self.seq, seq)
+            payload: Body = event.get('payload') or {}
+            kind = event.get('type')
+            if kind == 'turn' and event.get('actor_kind') == 'human':
+                self.comments.append(
+                    {
+                        'seq': seq,
+                        'at': event.get('at'),
+                        'kind': 'comment',
+                        'actor': event.get('actor_id'),
+                        'text': payload.get('body') or '',
+                    }
+                )
+                continue
+            answered = payload.get('request_id')
+            if answered is None:
+                continue
+            if kind == 'request.resolved':
+                self.recorder.saw_input(seq)
+                self.outcomes[str(answered)] = payload
+            elif kind == 'request.expired':
+                self.outcomes[str(answered)] = {'status': 'expired'}
 
     def take_comments(self) -> str:
         """The comments for the model; they are then seen."""
