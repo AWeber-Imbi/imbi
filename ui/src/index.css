@@ -235,6 +235,7 @@
 
 /* --- Design system tokens (light) --- */
 :root {
+  --dock-h: 0px;
   --ds-radius-md: 8px;
   --ds-radius-lg: 12px;
 

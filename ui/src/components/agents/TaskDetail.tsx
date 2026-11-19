@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
@@ -66,6 +66,7 @@ import {
 } from './taskEvents'
 import {
   errorMessage,
+  useTaskReply,
   useTicket,
   useTicketEvents,
   useTicketMutation,
@@ -125,6 +126,9 @@ export function TaskDetail({
     'conversation',
     (raw) => (isActivityView(raw) ? raw : undefined),
   )
+  const [draft, setDraft] = useState('')
+  const pointer = useRef<null | string>(null)
+  const reply = useTaskReply(orgSlug, shortId)
   useEffect(() => {
     const shown = legacyRoute(tab)
     if (isRouteKey(shown)) setLastTab(shown)
@@ -258,6 +262,17 @@ export function TaskDetail({
           {view === 'conversation' ? (
             <ConversationTab
               events={log}
+              footer={
+                t.status === 'closed' ? undefined : (
+                  <Composer
+                    body={draft}
+                    onBodyChange={setDraft}
+                    orgSlug={orgSlug}
+                    pointer={pointer}
+                    reply={reply}
+                  />
+                )
+              }
               onInspect={inspectInTrajectory}
               orgSlug={orgSlug}
               requests={requests}
@@ -303,7 +318,6 @@ export function TaskDetail({
           )}
         </ToolbarLead.Provider>
       </TaskSearchProvider>
-      {t.status !== 'closed' && <Composer orgSlug={orgSlug} task={t} />}
     </div>
   )
 }
