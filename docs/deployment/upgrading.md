@@ -74,11 +74,9 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
-## Unreleased: agent tasks become tickets (ADR 0028, release A)
+## 2.54.0
 
-Set the version of this section when the release is cut.
-
-1. **Before you deploy**, deploy the release before this one everywhere
+1. **Before you deploy**, deploy 2.53.0 everywhere
    and let its rollout finish. That release skips a relational table
    that is a view. Without it, an imbi-api pod of an older release that
    restarts during this rollout cannot start.
