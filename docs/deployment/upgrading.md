@@ -78,10 +78,10 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 
 Set the version of this section when the release is cut.
 
-1. **Before you deploy**, deploy release A+1 (the section below)
+1. **Before you deploy**, deploy 2.55.0
    everywhere and let its rollout finish. This release writes the event
-   type `parent.changed` and the status `held`, which only release A+1
-   and later can read.
+   type `parent.changed` and the status `held`, which only 2.55.0 and
+   later can read.
 2. Deploy the new image. There is no setup command. At start, imbi-api
    adds `tickets.tickets.parent_id` and its foreign key. Before it adds
    the key, it sets the parent of each child ticket that an agent made
@@ -97,13 +97,11 @@ first new pod starts has no parent. To give it its parent, move it on
 the ticket page. A ticket that stays `held` after its prerequisites are
 done: remove the gating dependency, or add it again as a link only.
 
-## Unreleased: tickets write the new names (ADR 0028, release A+1)
+## 2.55.0
 
-Set the version of this section when the release is cut.
-
-1. **Before you deploy**, deploy 2.54.0 (release A)
+1. **Before you deploy**, deploy 2.54.0
    everywhere and let its rollout finish. This release writes a value
-   that only release A and later can read: the event type
+   that only 2.54.0 and later can read: the event type
    `ticket.created`.
 2. Deploy the new image. There is no setup command and no schema
    change.
