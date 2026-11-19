@@ -5536,11 +5536,17 @@ export interface paths {
          *     needs ``ticket:read``, because the new description shows the
          *     log of the closed task.
          *
+         *     A task that a workflow's agent step made is refused: the copy would
+         *     not belong to the run, so the run would never see its result and
+         *     its later steps would not run (ADR 0021, Agent tasks from
+         *     workflows).
+         *
          *     Raises:
          *         403: The caller is not a person, not a member of the org, or
          *             cannot read tasks.
          *         404: No such task.
-         *         409: The task is not closed, or its agent is disabled.
+         *         409: The task is not closed, its agent is disabled, or
+         *             ``workflow_step_task``: a workflow step made it.
          *         422: The agent or a project is no longer in the org.
          */
         post: operations["retry_ticket_api_organizations__org_slug__tickets__short_id__retry_post"];

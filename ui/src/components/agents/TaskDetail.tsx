@@ -830,6 +830,37 @@ function TaskRetry({ orgSlug, task }: { orgSlug: string; task: Ticket }) {
     retry.error instanceof ApiError &&
     (retry.error.status === 400 || retry.error.status === 422)
   if (!canCreate || !isFailed(task)) return null
+  // A workflow's agent step made this task. The API refuses to retry
+  // it: a copy would not belong to the run, so the run would not go on.
+  const stepRunId = task.origin.workflow_run_id
+  if (typeof stepRunId === 'string' && stepRunId) {
+    return (
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            aria-label="Retry ticket"
+            size="sm"
+            title="A workflow step made this ticket"
+            variant="outline"
+          >
+            <RotateCcw className="size-4" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-96">
+          <p className="text-secondary text-sm" role="note">
+            Step{' '}
+            <span className="font-mono">
+              {String(task.origin.node_key ?? '')}
+            </span>{' '}
+            of workflow run <span className="font-mono">{stepRunId}</span> made
+            this ticket. A retry would not belong to the run, so the run would
+            not continue. Start a new run of the workflow instead, for example
+            with Retry run on the page of the run.
+          </p>
+        </PopoverContent>
+      </Popover>
+    )
+  }
   return (
     <Popover onOpenChange={setOpen} open={open}>
       <PopoverTrigger asChild>
