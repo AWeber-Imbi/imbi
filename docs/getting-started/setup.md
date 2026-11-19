@@ -128,7 +128,7 @@ prompt as version 1 with a `stable` label only when the prompt does not exist.
 It never changes an existing prompt.
 
 `setup-postgres` does the same work that imbi-api does at startup, so you
-seldom need it. imbi-api also applies its relational schemas (`agent_runtime`,
+seldom need it. imbi-api also applies its relational schemas (`tickets`,
 `workflows`, `workflow_runtime`, `secrets`, and `harness`) at startup. No
 command applies them.
 

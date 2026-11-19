@@ -297,13 +297,13 @@ class RouteTests(AgentApiTestCase):
             'secrets': ('GET', f'{org}/secret-providers/'),
             'secret grants': ('GET', f'{org}/secret-grants/'),
             'harness pools': ('GET', '/harness/pools'),
-            'harness task routes': ('POST', f'{org}/agent-tasks/T-1/sessions'),
+            'harness task routes': ('POST', f'{org}/tickets/T-1/sessions'),
             'mcp servers': ('GET', '/mcp-servers/'),
             'user writes': ('PATCH', '/users/someone@example.com'),
             'agent writes': ('POST', f'{org}/agents/'),
             'own approval': (
                 'POST',
-                f'{org}/agent-tasks/T-1/requests/r1/resolve',
+                f'{org}/tickets/T-1/requests/r1/resolve',
             ),
             'platform config': ('PUT', f'{org}/agent-platform-config/'),
             'graph query': ('POST', '/admin/graph/query'),
@@ -341,7 +341,7 @@ class RouteTests(AgentApiTestCase):
 
     async def test_harness_routes_refuse_the_api_token(self) -> None:
         response = await self.client.post(
-            '/harness/tasks/T-1/tool-calls/check',
+            '/harness/tickets/T-1/tool-calls/check',
             json={'tool_key': 'a.b'},
             headers={'Authorization': f'Bearer {self.api_token}'},
         )

@@ -9,10 +9,13 @@
 
 # ADR 0028 renames `chains.root_task_id` to `root_ticket_id` and
 # `claims.task_id` to `ticket_id` without downtime. Release A adds the new
-# columns (declared below) and this trigger, which fills the column that
-# a writer omits and refuses a row where the two differ. The previous
-# release writes the old columns and this release writes the new ones.
-# Release B moves the keys to the new columns and drops the old ones.
+# columns and this trigger, which fills the column that a writer omits
+# and refuses a row where the two differ. Release B uses only the new
+# columns and does not declare the old ones, so a new install does not
+# have them and gets no trigger. On an older install the trigger keeps
+# the old columns filled for pods of the previous release. The release
+# after B moves the keys to the new columns and drops the old columns
+# and the trigger.
 #
 # After the tables, because on a new install the tables do not exist
 # before. The trigger locks out writers of the previous release until
@@ -21,7 +24,9 @@
 name = "mirror-ticket-ids"
 after_tables = true
 when = """
-SELECT to_regclass('harness.chains') IS NOT NULL
+SELECT EXISTS (SELECT 1 FROM pg_attribute
+                WHERE attrelid = to_regclass('harness.chains')
+                  AND attname = 'root_task_id' AND NOT attisdropped)
    AND NOT EXISTS (SELECT 1 FROM pg_trigger
                     WHERE tgname = 'chains_mirror_ticket_id'
                       AND tgrelid = to_regclass('harness.chains'))
@@ -149,8 +154,10 @@ columns = ["state", "lease_expires_at"]
 name = "chains"
 
 [tables.columns]
-root_task_id = "UUID NOT NULL REFERENCES tickets.tickets (id) ON DELETE CASCADE"
-# The new name of `root_task_id` (ADR 0028). Nullable until release B.
+# Before ADR 0028 the name was `root_task_id`. The key makes it NOT
+# NULL on a new install. On an older install the key stays on
+# `root_task_id` until the release after B, and the trigger fills this
+# column.
 root_ticket_id = "UUID REFERENCES tickets.tickets (id) ON DELETE CASCADE"
 organization_id = "TEXT NOT NULL"
 runner_id = "UUID REFERENCES harness.runners (id) ON DELETE SET NULL"
@@ -164,7 +171,7 @@ egress = "JSONB NOT NULL DEFAULT '[]'"
 updated_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 
 [tables.primary_key]
-columns = ["root_task_id"]
+columns = ["root_ticket_id"]
 
 [[tables.indexes]]
 name = "chains_root_ticket_id_key"
@@ -181,8 +188,9 @@ columns = ["state"]
 name = "claims"
 
 [tables.columns]
-task_id = "UUID NOT NULL REFERENCES tickets.tickets (id) ON DELETE CASCADE"
-# The new name of `task_id` (ADR 0028). Nullable until release B.
+# Before ADR 0028 the name was `task_id`. The key makes it NOT NULL on a
+# new install. On an older install the key stays on `task_id` until the
+# release after B, and the trigger fills this column.
 ticket_id = "UUID REFERENCES tickets.tickets (id) ON DELETE CASCADE"
 attempt = "INTEGER NOT NULL"
 chain_id = "UUID NOT NULL"
@@ -190,7 +198,7 @@ runner_id = "UUID NOT NULL"
 claimed_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 
 [tables.primary_key]
-columns = ["task_id", "attempt"]
+columns = ["ticket_id", "attempt"]
 
 [[tables.indexes]]
 name = "claims_ticket_key"

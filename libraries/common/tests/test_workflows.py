@@ -438,11 +438,11 @@ class RegistryTestCase(unittest.TestCase):
         )
         self.assertEqual(
             registry.STEP_TYPES['agent'].required_permissions({}),
-            {'agent_task:create'},
+            {'ticket:create'},
         )
         slack = registry.STEP_TYPES['slack'].required_permissions
         self.assertEqual(slack({'channel': 'C0123456789'}), set())
-        self.assertEqual(slack({'ticket': 'T-12'}), {'agent_task:read'})
+        self.assertEqual(slack({'ticket': 'T-12'}), {'ticket:read'})
 
     def test_agent_budget_follows_the_task_budget(self) -> None:
         # The limits of AgentTaskCreate.budget: 14 digits, 6 places.

@@ -28,7 +28,8 @@ class Params(pydantic.BaseModel):
 class Output(agent.TicketAttributes):
     #: The short id of the task, such as ``T-12``.
     task_id: str
-    agent_id: str
+    #: ``None`` on a ticket assigned to a person.
+    agent_id: str | None
     outcome: agent.Outcome
 
 
@@ -36,7 +37,7 @@ def required_permissions(_params: dict[str, typing.Any]) -> set[str]:
     """The run payload tells which tasks closed and how. The activator
     must be able to read agent tasks.
     """
-    return {'agent_task:read'}
+    return {'ticket:read'}
 
 
 STEP = step_type.StepType(

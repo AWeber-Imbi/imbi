@@ -35,8 +35,10 @@ A runner pod runs the ticket. See
 | `ticket:resolve` | Answer feedback requests and resolve approvals | `admin`, `developer` |
 | `ticket:delete` | Delete closed tickets | `admin` |
 
-The old `agent_task:*` permissions still work until release B. Each check
-accepts the old name or the new name with the same action.
+Before ADR 0028 these permissions were `agent_task:*`. `imbi-api
+setup-permissions` gives each role that has an old permission the new
+one, then removes the old one. An API key or token scope that names an old
+permission still gives the new permission with the same action.
 
 You must also be a member of the organization. The permissions come from
 your role in that organization only. Only a person can resolve a
@@ -133,9 +135,6 @@ POST /organizations/{org}/tickets/
 the same `idempotency_key` returns the first ticket with `200`. A disabled
 agent returns `409`.
 
-The old `/organizations/{org}/agent-tasks/` paths still work until
-release B. They are deprecated.
-
 ## Triggers
 
 The trigger of a ticket says what started it. It comes from the caller, not
@@ -146,7 +145,7 @@ from the request body.
 | Manual | `human` | A person: the UI, the API, or the Slack bot | That person |
 | Schedule | `schedule` | The `imbi-scheduler` service account | The person accountable for the scheduled task |
 | Webhook | `webhook` | The `imbi-gateway` service account | The person who last edited the webhook |
-| Delegation | `task` | A parent ticket, when its agent calls a subagent | The owner of the parent ticket |
+| Delegation | `ticket` (`task` before ADR 0028) | A parent ticket, when its agent calls a subagent | The owner of the parent ticket |
 
 Any other service account gets `403`. The owner of a schedule or webhook
 ticket must be an active user, a member of the organization, and hold
@@ -158,7 +157,9 @@ the origin of the workflow run.
 ### Schedules
 
 Use a scheduled task with an `api` target that posts to
-`/tickets/`. The scheduled task must name the organization. See
+`/tickets/`. The scheduled task must name the organization. A scheduled
+task that posts to the old path, `/agent-tasks/`, still works, but a
+later release removes that path. See
 [Scheduled Tasks](../scheduler/tasks.md#api). A retry of a run returns the
 first ticket.
 

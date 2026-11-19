@@ -168,8 +168,8 @@ function App() {
                   }
                   path="/tickets/:slug?/:action?/:tab?"
                 />
-                {/* Tickets were Agents > Tasks before ADR 0028.
-                    Remove in release B. */}
+                {/* Tickets were Agents > Tasks before ADR 0028. Old
+                    bookmarks and links use these URLs. */}
                 <Route
                   element={<LegacyTasksRedirect />}
                   path="/agents/tasks/:slug?/:action?/:tab?"

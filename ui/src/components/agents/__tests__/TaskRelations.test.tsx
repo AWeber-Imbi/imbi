@@ -31,7 +31,7 @@ vi.mock('@/api/endpoints', () => ({
 
 const auth = {
   email: undefined as string | undefined,
-  permissions: ['agent:read', 'agent_task:manage'],
+  permissions: ['agent:read', 'ticket:manage'],
 }
 
 // fallow-ignore-next-line unresolved-import
@@ -118,7 +118,7 @@ describe('Related tasks', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     auth.email = undefined
-    auth.permissions = ['agent:read', 'agent_task:manage']
+    auth.permissions = ['agent:read', 'ticket:manage']
     vi.mocked(endpoints.listAgents).mockResolvedValue([agent()])
     vi.mocked(endpoints.getTicketRelations).mockResolvedValue(RELATIONS)
     vi.mocked(endpoints.setTicketDependency).mockResolvedValue(undefined)
@@ -195,14 +195,14 @@ describe('Related tasks', () => {
     expect(screen.getAllByText('gated by')).toHaveLength(2)
   })
 
-  it('hides changes without agent_task:manage', async () => {
+  it('hides changes without ticket:manage', async () => {
     auth.permissions = ['agent:read']
     render(<RelatedTasksTab orgSlug="acme" task={task()} />)
     await screen.findByText('Task T-2')
     expect(screen.queryByRole('button')).toBeNull()
   })
 
-  it('lets the owner move the task without agent_task:manage', async () => {
+  it('lets the owner move the task without ticket:manage', async () => {
     auth.email = 'dev@example.com'
     auth.permissions = ['agent:read']
     vi.mocked(endpoints.listTickets).mockResolvedValue([])
@@ -426,7 +426,7 @@ describe('Link task dialog', () => {
 describe('Associated projects', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    auth.permissions = ['agent:read', 'agent_task:manage']
+    auth.permissions = ['agent:read', 'ticket:manage']
     vi.mocked(endpoints.listTicketProjects).mockResolvedValue(PROJECTS)
     vi.mocked(endpoints.setTicketProject).mockResolvedValue(undefined)
   })

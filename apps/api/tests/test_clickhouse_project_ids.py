@@ -6,6 +6,8 @@ The ``project_ids`` external table goes as a file part instead.
 """
 
 import datetime
+import importlib.resources
+import tomllib
 import unittest
 import uuid
 
@@ -191,17 +193,9 @@ class OtherCallersTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_task_event_counts(self) -> None:
         org = f'o664-{uuid.uuid4().hex}'
         task_id = str(uuid.uuid4())
-        await clickhouse.command(
-            'INSERT INTO imbi.agent_task_events (organization_id,'
-            ' task_id, seq) VALUES ({org:String}, {task:String}, 3)',
-            {'org': org, 'task': task_id},
-        )
         task_ids = [str(uuid.uuid4()) for _ in range(5000)] + [task_id]
-        self.assertEqual(
-            {task_id: (1, 3)}, await log.event_counts(org, task_ids)
-        )
-        # ADR 0028: the new table too, and a seq in both counts once.
-        for seq in (3, 4):
+        # A seq that the sweep published two times counts once.
+        for seq in (3, 3, 4):
             await clickhouse.command(
                 'INSERT INTO imbi.ticket_events (organization_id,'
                 ' ticket_id, seq) VALUES ({org:String}, {task:String},'
@@ -213,8 +207,9 @@ class OtherCallersTestCase(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual({}, await log.usage_counts(org, task_ids))
 
-    async def test_archived_events_from_both_tables(self) -> None:
-        """ADR 0028: a seq that both tables hold is read one time."""
+    async def test_copy_of_the_old_event_table(self) -> None:
+        """ADR 0028, release B: ``setup-clickhouse`` copies the events
+        of ``agent_task_events`` that ``ticket_events`` does not have."""
         org = f'o664-{uuid.uuid4().hex}'
         task = {'organization_id': org, 'id': uuid.uuid4()}
         for table, column, seqs in (
@@ -234,6 +229,29 @@ class OtherCallersTestCase(unittest.IsolatedAsyncioTestCase):
                         'event': str(uuid.uuid4()),
                     },
                 )
+        schemata = tomllib.loads(
+            importlib.resources.files('imbi.common.clickhouse')
+            .joinpath('schemata.toml')
+            .read_text()
+        )
+        for _ in range(2):  # a second run copies nothing
+            await clickhouse.command(
+                schemata['copy_agent_task_events']['query']
+            )
+        counts = await clickhouse.query(
+            'SELECT (SELECT count() FROM imbi.ticket_events'
+            '         WHERE organization_id = {org:String}) AS rows,'
+            '       (SELECT uniqExact(ticket_id, seq) FROM imbi.ticket_events'
+            '         WHERE organization_id = {org:String}) AS keys,'
+            '       (SELECT uniqExact(task_id, seq)'
+            '          FROM imbi.agent_task_events'
+            '         WHERE organization_id = {org:String}'
+            '           AND (task_id, seq) NOT IN'
+            '               (SELECT ticket_id, seq FROM imbi.ticket_events)'
+            '       ) AS missing',
+            {'org': org},
+        )
+        self.assertEqual([{'rows': 3, 'keys': 3, 'missing': 0}], counts)
         events = await log.archived_events(task, 0, 10)
         self.assertEqual([1, 2, 3], [event['seq'] for event in events])
         self.assertEqual({1, 2, 3}, await log.stored_seqs(task))

@@ -84,7 +84,7 @@ The organization routes are these routes under
 | Area | Routes |
 |---|---|
 | Agents | `agents` |
-| Tickets | `tickets`, `agent-tasks` (deprecated) |
+| Tickets | `tickets` |
 | Agent usage | `agent-usage` |
 | Agent platform | `agent-platform-config`, `agent-marketplaces` |
 | Workflows | `workflows`, `workflow-step-types`, `workflow-runs` |
@@ -254,11 +254,6 @@ it.
 | `agent:read` | View agents and their versions | yes | yes | yes | yes | yes |  |  |  |  |
 | `agent:write` | Update and restore agents | yes | yes |  |  |  |  |  |  |  |
 | `agent:delete` | Delete agents | yes |  |  |  |  |  |  |  |  |
-| `agent_task:read` | View agent tasks and their events | yes | yes | yes | yes | yes |  |  |  |  |
-| `agent_task:create` | Create agent tasks | yes | yes |  |  | yes | yes |  |  |  |
-| `agent_task:manage` | Pause, resume, cancel, and reassign agent tasks | yes | yes |  |  |  |  |  |  |  |
-| `agent_task:resolve` | Answer feedback requests and resolve approvals of agent tasks | yes | yes |  |  |  |  |  |  |  |
-| `agent_task:delete` | Delete closed agent tasks | yes |  |  |  |  |  |  |  |  |
 | `ticket:read` | View tickets and their events | yes | yes | yes | yes | yes |  |  |  |  |
 | `ticket:create` | Create tickets | yes | yes |  |  | yes | yes |  |  |  |
 | `ticket:manage` | Pause, resume, cancel, and reassign tickets | yes | yes |  |  |  |  |  |  |  |

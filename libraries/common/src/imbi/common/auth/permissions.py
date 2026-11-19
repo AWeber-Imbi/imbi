@@ -974,22 +974,21 @@ async def get_current_user_cookie_fallback(
     )
 
 
-#: Permission prefixes that have one meaning (ADR 0028). A holder of
-#: ``agent_task:read`` holds ``ticket:read`` and the reverse, so roles
-#: of the previous release and new roles work with every check. Release
-#: B removes the ``agent_task`` names.
-_ALIASES = {'agent_task:': 'ticket:', 'ticket:': 'agent_task:'}
-
-
 def holds(permission: str, held: collections.abc.Container[str]) -> bool:
-    """Whether ``held`` has ``permission`` or a name of it in
-    :data:`_ALIASES`."""
-    if permission in held:
-        return True
-    for prefix, alias in _ALIASES.items():
-        if permission.startswith(prefix):
-            return alias + permission.removeprefix(prefix) in held
-    return False
+    """Whether ``held`` has ``permission``, or its old name (ADR 0028).
+
+    A holder of ``agent_task:read`` holds ``ticket:read``.
+    ``setup-permissions`` removes the ``agent_task`` permissions and
+    grants (release B), but the scopes of API keys and client
+    credentials can still name them, and a custom role has them until
+    ``setup-permissions`` runs.
+    """
+    # ponytail: keep until no API key scope names `agent_task:*`;
+    # rewriting the stored scopes would let this go.
+    return permission in held or (
+        permission.startswith('ticket:')
+        and 'agent_task:' + permission.removeprefix('ticket:') in held
+    )
 
 
 def held(
@@ -997,8 +996,8 @@ def held(
     granted: collections.abc.Container[str],
 ) -> set[str]:
     """The names in ``permissions`` that ``granted`` also has, by
-    :func:`holds`: an intersection where an ``agent_task:*`` and a
-    ``ticket:*`` name are one permission (ADR 0028)."""
+    :func:`holds`: an intersection where an old name in ``granted``
+    counts for its ``ticket:*`` name (ADR 0028)."""
     return {p for p in permissions if holds(p, granted)}
 
 

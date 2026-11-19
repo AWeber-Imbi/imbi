@@ -214,13 +214,13 @@ class AccessTests(HarnessTestCase):
                 self.assertEqual(response.status_code, 403, response.text)
         self.act_as_user()
         self.permissions = set(test_agent_tasks.ALL_PERMISSIONS) - {
-            'agent_task:read'
+            'ticket:read'
         }
         for path in ('T-1', 'T-1/events'):
             with self.subTest(path=path):
                 response = await self.client.get(self.url(path))
                 self.assertEqual(response.status_code, 403, response.text)
-                self.assertIn('agent_task:read', response.text)
+                self.assertIn('ticket:read', response.text)
 
     async def test_unknown_task_is_404(self) -> None:
         response = await self.post('sessions', {'session_key': 'k'}, 'T-9')
@@ -228,24 +228,14 @@ class AccessTests(HarnessTestCase):
 
 
 class OldPathTests(HarnessTestCase):
-    """The harness routes at ``/agent-tasks``, which stay until release B
-    (ADR 0028)."""
+    """Release B removes the harness routes at ``/agent-tasks`` (ADR
+    0028)."""
 
     prefix = 'agent-tasks'
 
-    async def test_each_route_works_at_the_old_path(self) -> None:
-        session = (await self.open_session())['session']
-        for path, body in (
-            (f'sessions/{session["id"]}/heartbeat', None),
-            ('events', {'events': [{'event_id': new_id(), 'type': 'turn'}]}),
-            ('usage', {'idempotency_key': 'u', 'model_id': 'm'}),
-            ('requests', {'kind': 'feedback', 'title': 'Which one?'}),
-            (f'sessions/{session["id"]}/close', {'reason': 'done'}),
-            ('outcome', {'outcome': 'done_acted'}),
-        ):
-            with self.subTest(path=path):
-                response = await self.post(path, body)
-                self.assertLess(response.status_code, 300, response.text)
+    async def test_old_path_is_gone(self) -> None:
+        response = await self.post('sessions', {'session_key': 's-1'})
+        self.assertEqual(response.status_code, 404, response.text)
 
 
 class SessionTests(HarnessTestCase):

@@ -420,7 +420,7 @@ class Output(TicketAttributes):
 
 
 def required_permissions(_params: dict[str, typing.Any]) -> set[str]:
-    return {'agent_task:create'}
+    return {'ticket:create'}
 
 
 STEP = step_type.StepType(

@@ -478,36 +478,8 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
     ('agent:read', 'agent', 'read', 'View agents and their versions'),
     ('agent:write', 'agent', 'write', 'Update and restore agents'),
     ('agent:delete', 'agent', 'delete', 'Delete agents'),
-    # Agent tasks (ADR 0020)
-    (
-        'agent_task:read',
-        'agent_task',
-        'read',
-        'View agent tasks and their events',
-    ),
-    ('agent_task:create', 'agent_task', 'create', 'Create agent tasks'),
-    (
-        'agent_task:manage',
-        'agent_task',
-        'manage',
-        'Pause, resume, cancel, and reassign agent tasks',
-    ),
-    (
-        'agent_task:resolve',
-        'agent_task',
-        'resolve',
-        'Answer feedback requests and resolve approvals of agent tasks',
-    ),
-    # Granted to no non-admin default role.
-    (
-        'agent_task:delete',
-        'agent_task',
-        'delete',
-        'Delete closed agent tasks',
-    ),
-    # Tickets (ADR 0028): the new names of the `agent_task` permissions.
-    # Every role that has one of them has the other, and every check
-    # accepts either name until release B removes the old ones.
+    # Tickets (ADR 0020, ADR 0028). Before ADR 0028 the names were
+    # `agent_task:*` (see RENAMED_PERMISSIONS).
     ('ticket:read', 'ticket', 'read', 'View tickets and their events'),
     ('ticket:create', 'ticket', 'create', 'Create tickets'),
     (
@@ -846,6 +818,15 @@ RETIRED_PERMISSIONS: list[str] = [
     'third_party_service:delete',
 ]
 
+# Permissions renamed by ADR 0028 (tasks become tickets), old name to new
+# name. ``cleanup_retired_permissions`` gives the new permission to each
+# role that has the old one, custom roles included, then removes the
+# old one.
+RENAMED_PERMISSIONS: dict[str, str] = {
+    f'agent_task:{action}': f'ticket:{action}'
+    for action in ('read', 'create', 'manage', 'resolve', 'delete')
+}
+
 # Default role definitions.
 #
 # The 6th tuple element marks the role auto-assigned to newly-logging-in
@@ -868,15 +849,11 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
         500,
         [
             'agent:create',
-            'agent_task:create',
             'ticket:create',
             'agent:read',
-            'agent_task:read',
             'ticket:read',
             'agent:write',
-            'agent_task:manage',
             'ticket:manage',
-            'agent_task:resolve',
             'ticket:resolve',
             'blueprint:read',
             'blueprint:write',
@@ -961,7 +938,6 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
         150,
         [
             'agent:read',
-            'agent_task:read',
             'ticket:read',
             'blueprint:read',
             'component:read',
@@ -1001,7 +977,6 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
         100,
         [
             'agent:read',
-            'agent_task:read',
             'ticket:read',
             'blueprint:read',
             'component:read',
@@ -1066,9 +1041,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'agent:read',
             # An `api` task can start agent work with a `schedule`
             # origin (ADR 0020).
-            'agent_task:create',
             'ticket:create',
-            'agent_task:read',
             'ticket:read',
             # The task of a workflow's schedule trigger starts its runs
             # (ADR 0021).
@@ -1110,7 +1083,6 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'user:read',
             # The `create_agent_task` action, with a `webhook` origin
             # (ADR 0020).
-            'agent_task:create',
             'ticket:create',
             # The `start_workflow` action, with a `webhook` origin
             # (ADR 0021).
@@ -1173,18 +1145,20 @@ if sum(role[5] for role in DEFAULT_ROLES) != 1:
 
 
 async def cleanup_retired_permissions(db: graph.Graph) -> int:
-    """Detach-delete permissions retired by the Integration rename.
+    """Detach-delete retired and renamed permissions.
 
     Installs seeded before the ThirdPartyService -> Integration rename
     retain orphaned ``third_party_service:*`` :class:`Permission` nodes and
     any GRANTS edges pointing at them. Remove them so role grants stay
-    clean. Idempotent: a no-op once the retired nodes are gone.
+    clean. A role that has a :data:`RENAMED_PERMISSIONS` name gets the new
+    name first, so it keeps its access. Must run after
+    ``seed_permissions``, which makes the new names. Idempotent: a no-op
+    once the retired nodes are gone.
     """
-    placeholders = ', '.join(
-        f'{{r_{i}}}' for i in range(len(RETIRED_PERMISSIONS))
-    )
+    names = RETIRED_PERMISSIONS + list(RENAMED_PERMISSIONS)
+    placeholders = ', '.join(f'{{r_{i}}}' for i in range(len(names)))
     params: dict[str, typing.Any] = {
-        f'r_{i}': name for i, name in enumerate(RETIRED_PERMISSIONS)
+        f'r_{i}': name for i, name in enumerate(names)
     }
     count_query: str = (
         'UNWIND [' + placeholders + '] AS name '
@@ -1197,6 +1171,15 @@ async def cleanup_retired_permissions(db: graph.Graph) -> int:
         raw = graph.parse_agtype(records[0].get('removed'))
         removed = int(raw or 0)
     if removed:
+        for old, new in RENAMED_PERMISSIONS.items():
+            await db.execute(
+                'MATCH (r:Role)-[:GRANTS]->(:Permission {{name: {old}}}) '
+                'MATCH (p:Permission {{name: {new}}}) '
+                'MERGE (r)-[:GRANTS]->(p) '
+                'RETURN count(p) AS granted',
+                {'old': old, 'new': new},
+                columns=['granted'],
+            )
         delete_query: str = (
             'UNWIND [' + placeholders + '] AS name '
             'MATCH (p:Permission {{name: name}}) '
@@ -1388,15 +1371,16 @@ async def seed_default_organization(
 
 
 async def seed_permissions_and_roles(db: graph.Graph) -> dict[str, int]:
-    """Prune retired permissions, then seed permissions and default roles.
+    """Seed permissions, prune retired permissions, then seed default
+    roles.
 
     Organization-independent half of :func:`bootstrap_auth_system`, so a
     deployment that only needs to pick up newly declared permissions can
     run it without re-seeding an organization or touching users. The
-    call order is load-bearing: ``seed_default_roles`` MATCHes the
-    ``Permission`` nodes it grants, so ``seed_permissions`` must run
-    first or roles silently come up without their GRANTS edges.
-    Idempotent.
+    call order is load-bearing: ``cleanup_retired_permissions`` and
+    ``seed_default_roles`` MATCH the ``Permission`` nodes they grant, so
+    ``seed_permissions`` must run first or roles silently come up
+    without their GRANTS edges. Idempotent.
 
     Args:
         db: Graph database connection.
@@ -1408,8 +1392,8 @@ async def seed_permissions_and_roles(db: graph.Graph) -> dict[str, int]:
             - 'roles': Number of roles created
 
     """
-    retired = await cleanup_retired_permissions(db)
     permissions_created = await seed_permissions(db)
+    retired = await cleanup_retired_permissions(db)
     roles_created = await seed_default_roles(db)
     return {
         'retired': retired,

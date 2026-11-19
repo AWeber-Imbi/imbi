@@ -87,7 +87,7 @@ async def sweep_once(store: harness_store.HarnessStore) -> None:
         except Exception:  # noqa: BLE001 - the next chain still sweeps
             LOGGER.warning(
                 'Lease sweep failed for chain %s',
-                chain['root_task_id'],
+                chain['root_ticket_id'],
                 exc_info=True,
             )
 
@@ -105,14 +105,14 @@ async def _sweep_chain(
         updated = await store.set_fence_result(chain, error)
         if error is not None:
             LOGGER.warning(
-                'Chain %s is stuck: %s', chain['root_task_id'], error
+                'Chain %s is stuck: %s', chain['root_ticket_id'], error
             )
         if updated is None or error is not None:
             return
-    if await store.requeue(chain['root_task_id']):
+    if await store.requeue(chain['root_ticket_id']):
         LOGGER.info(
             'Chain %s is back in the queue (attempt %s)',
-            chain['root_task_id'],
+            chain['root_ticket_id'],
             chain['attempt'],
         )
 

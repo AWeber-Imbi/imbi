@@ -250,7 +250,7 @@ REFUSED_ROUTES: frozenset[str] = frozenset(
         'PUT /prompts/{namespace}/{slug}/default-label',
         'PUT /prompts/{namespace}/{slug}/labels/{label}',
         'PUT /prompts/{namespace}/{slug}/versions/{n}/evaluation',
-        # Tickets (and /agent-tasks, which shares these rules until release B): an agent works on its tickets through the harness routes only, so it cannot answer its own approval or question, reassign, or start another agent outside its chain
+        # Tickets: an agent works on its tickets through the harness routes only, so it cannot answer its own approval or question, reassign, or start another agent outside its chain
         'DELETE /organizations/{org_slug}/tickets/{short_id}',
         'DELETE /organizations/{org_slug}/tickets/{short_id}/projects/{project_id}',
         'DELETE /organizations/{org_slug}/tickets/{short_id}/requires/{prerequisite}',

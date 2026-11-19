@@ -26,7 +26,8 @@ export function extractDynamicFields(
 
 /**
  * Move the localStorage keys that ADR 0028 renamed. Call once at startup,
- * before a page reads them. Remove in release B.
+ * before a page reads them. A browser that last ran a UI older than ADR
+ * 0028 still has the old keys.
  */
 export function migrateLegacyStorage(): void {
   migrateStorageKey(

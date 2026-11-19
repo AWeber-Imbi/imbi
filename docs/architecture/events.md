@@ -69,7 +69,6 @@ run `uv run python scripts/docs_iggy_topics.py` and paste the output.
 
 | Stream and ClickHouse table | Topics | Engine | TTL |
 |---|---|---|---|
-| `agent_task_events` | `agent_tasks` | `ReplacingMergeTree()` | none |
 | `agent_usage` | `agent_tasks` | `ReplacingMergeTree()` | none |
 | `commit_drift` | `drift` | `ReplacingMergeTree(recorded_at)` | none |
 | `commits` | `github`, `maintenance` | `ReplacingMergeTree(recorded_at)` | none |

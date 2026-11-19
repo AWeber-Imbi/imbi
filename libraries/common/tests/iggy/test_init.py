@@ -24,7 +24,6 @@ class TopicsTestCase(unittest.TestCase):
     def test_every_analytics_table_has_a_stream(self) -> None:
         self.assertEqual(
             {
-                'agent_task_events',
                 'agent_usage',
                 'commit_drift',
                 'commits',

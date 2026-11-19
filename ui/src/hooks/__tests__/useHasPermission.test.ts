@@ -28,10 +28,10 @@ function twoOrgUser(is_admin = false): UserResponse {
     email: 'pat@example.com',
     is_admin,
     organizations: [
-      membership('acme', 'developer', ['agent:read', 'agent_task:manage']),
+      membership('acme', 'developer', ['agent:read', 'ticket:manage']),
       membership('beta', 'readonly', ['agent:read']),
     ],
-    permissions: ['agent:read', 'agent_task:manage'],
+    permissions: ['agent:read', 'ticket:manage'],
     user_type: 'internal',
     username: 'pat',
   }
@@ -43,21 +43,14 @@ describe('useHasPermission', () => {
   })
 
   it('checks the union without an organization', () => {
-    expect(has('agent_task:manage')).toBe(true)
+    expect(has('ticket:manage')).toBe(true)
     expect(has('agent:delete')).toBe(false)
   })
 
   it('checks only the role in the given organization', () => {
-    expect(has('agent_task:manage', 'acme')).toBe(true)
-    expect(has('agent_task:manage', 'beta')).toBe(false)
-    expect(has('agent:read', 'beta')).toBe(true)
-  })
-
-  it('accepts the old agent_task name for a ticket check', () => {
-    expect(has('ticket:manage')).toBe(true)
     expect(has('ticket:manage', 'acme')).toBe(true)
     expect(has('ticket:manage', 'beta')).toBe(false)
-    expect(has('ticket:delete', 'acme')).toBe(false)
+    expect(has('agent:read', 'beta')).toBe(true)
   })
 
   it('denies an organization the user is not a member of', () => {

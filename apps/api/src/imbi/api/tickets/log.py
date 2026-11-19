@@ -10,8 +10,8 @@ Both tables are ReplacingMergeTree tables keyed on the identity of the
 row, so a row that is published two times is stored one time.
 
 Before ADR 0028 events went to ``agent_task_events``. Release B copies
-that table to ``ticket_events``; until then every read reads both
-(:data:`EVENTS`), and a row that both tables hold counts one time.
+that table to ``ticket_events`` (``setup-clickhouse``) and reads only
+``ticket_events`` (:data:`EVENTS`).
 
 Request resolutions and terminal outcomes also go to the Operations Log
 (I9, N9), as a projection of their events: see :func:`opslog_rows`.
@@ -39,18 +39,10 @@ OPSLOG_TOPIC = 'api'
 #: The event types that the Operations Log shows.
 OPSLOG_EVENT_TYPES = frozenset({'request.resolved', 'outcome.set'})
 
-#: The events of both tables, as one table with ``ticket_id``. A row can
-#: be in both, so a read that needs each event one time removes the
-#: copies with ``LIMIT 1 BY ticket_id, seq``.
-EVENTS = """(
-SELECT organization_id, task_id AS ticket_id, agent_id, seq, event_id, type,
-       schema_version, actor_kind, actor_id, channel, session_id, at, payload
-FROM imbi.agent_task_events
-UNION ALL
-SELECT organization_id, ticket_id, agent_id, seq, event_id, type,
-       schema_version, actor_kind, actor_id, channel, session_id, at, payload
-FROM imbi.ticket_events
-)"""
+#: The table of ticket events. A row that the sweep published again can
+#: be in it two times until a merge, so a read that needs each event one
+#: time removes the copies with ``LIMIT 1 BY ticket_id, seq``.
+EVENTS = 'imbi.ticket_events'
 
 _ARCHIVED_EVENTS_QUERY = f"""
 SELECT event_id, seq, type, schema_version, actor_kind, actor_id, channel,

@@ -1,9 +1,11 @@
 """Tests for authentication system seeding."""
 
 import unittest
+import uuid
 from unittest import mock
 
 from imbi.api.auth import seed
+from imbi.common import graph
 
 
 class SeedPermissionsTestCase(unittest.IsolatedAsyncioTestCase):
@@ -51,8 +53,16 @@ class SeedPermissionsTestCase(unittest.IsolatedAsyncioTestCase):
             removed = await seed.cleanup_retired_permissions(mock_db)
 
         self.assertEqual(removed, 4)
-        # One query to count, one to detach-delete.
-        self.assertEqual(mock_db.execute.await_count, 2)
+        # One query to count, one for each renamed permission to move
+        # its grants, one to detach-delete.
+        self.assertEqual(
+            mock_db.execute.await_count, len(seed.RENAMED_PERMISSIONS) + 2
+        )
+        grant = mock_db.execute.await_args_list[1]
+        self.assertIn('MERGE (r)-[:GRANTS]->(p)', grant.args[0])
+        self.assertEqual(
+            grant.args[1], {'old': 'agent_task:read', 'new': 'ticket:read'}
+        )
 
     async def test_cleanup_retired_permissions_noop(self) -> None:
         """No delete is issued when nothing retired remains."""
@@ -305,7 +315,6 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             non_read,
             {
-                'agent_task:create',
                 'ticket:create',
                 'workflow:run',
                 'admin:maintenance:marketplace-sync',
@@ -319,7 +328,6 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
             {perm for perm in gateway[4] if ':read' not in perm},
             {
                 'project:write',
-                'agent_task:create',
                 'ticket:create',
                 'workflow:run',
             },
@@ -558,3 +566,56 @@ class StandardPermissionsTests(unittest.TestCase):
         for action in ('create', 'read', 'update', 'delete'):
             with self.subTest(action=action):
                 self.assertIn(f'operations_log:{action}', slugs)
+
+
+class RenamedPermissionsTestCase(unittest.IsolatedAsyncioTestCase):
+    """ADR 0028, release B, on the graph: a custom role keeps its access
+    when the ``agent_task`` permissions go."""
+
+    async def asyncSetUp(self) -> None:
+        self.role = f'custom-{uuid.uuid4().hex[:10]}'
+        await graph.initialize()
+        self.graph = graph.Graph()
+        await self.graph.open()
+        self.addAsyncCleanup(self._cleanup)
+        await self.graph.execute(
+            'MERGE (old:Permission {{name: {old}}}) '
+            'MERGE (new:Permission {{name: {new}}}) '
+            'CREATE (r:Role {{slug: {role}}})-[:GRANTS]->(old) '
+            'RETURN 1 AS ok',
+            {
+                'old': 'agent_task:read',
+                'new': 'ticket:read',
+                'role': self.role,
+            },
+            ['ok'],
+        )
+
+    async def _cleanup(self) -> None:
+        await self.graph.execute(
+            'MATCH (r:Role {{slug: {role}}}) DETACH DELETE r RETURN 1 AS ok',
+            {'role': self.role},
+            ['ok'],
+        )
+        await self.graph.close()
+
+    async def _grants(self) -> list[str]:
+        records = await self.graph.execute(
+            'MATCH (:Role {{slug: {role}}})-[:GRANTS]->(p:Permission) '
+            'RETURN p.name AS name',
+            {'role': self.role},
+            ['name'],
+        )
+        return sorted(graph.parse_agtype(r['name']) for r in records)
+
+    async def test_the_role_gets_the_new_name(self) -> None:
+        for _ in range(2):  # a second run changes nothing
+            await seed.cleanup_retired_permissions(self.graph)
+            self.assertEqual(await self._grants(), ['ticket:read'])
+        records = await self.graph.execute(
+            "MATCH (p:Permission {{name: 'agent_task:read'}}) "
+            'RETURN count(p) AS n',
+            {},
+            ['n'],
+        )
+        self.assertEqual(graph.parse_agtype(records[0]['n']), 0)

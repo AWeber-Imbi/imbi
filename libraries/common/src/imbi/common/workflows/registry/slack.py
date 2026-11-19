@@ -72,7 +72,7 @@ class Output(pydantic.BaseModel):
 
 def required_permissions(params: dict[str, typing.Any]) -> set[str]:
     """A step with a ticket reads an agent task."""
-    return {'agent_task:read'} if params.get('ticket') else set()
+    return {'ticket:read'} if params.get('ticket') else set()
 
 
 STEP = step_type.StepType(

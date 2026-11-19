@@ -57,6 +57,8 @@ def main() -> None:
         '|---|---|---|---|---|',
     ]
     for name, section in schemata.items():
+        if not section.get('ddl', True):
+            continue  # a data step, such as a copy, not an object
         kind, engine, order = describe(section['query'])
         feeds = ', '.join(f'`{t}`' for t in streams.get(name, ()))
         lines.append(f'| `{name}` | {kind} | {engine} | {order} | {feeds} |')

@@ -163,7 +163,7 @@ async def get_agent_usage(
     org_id: organizations.MemberOrgId,
     auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('agent_task:read')),
+        fastapi.Depends(permissions.require_permission('ticket:read')),
     ],
     zone: _local_time.LocalZone,
     start: datetime.date | None = None,

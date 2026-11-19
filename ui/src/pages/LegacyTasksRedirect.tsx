@@ -3,7 +3,8 @@ import { Navigate, useLocation, useParams } from 'react-router-dom'
 /**
  * An old `/agents/tasks/...` link: go to the same ticket under `/tickets`
  * (ADR 0028). App.tsx imports this module directly, not lazily, so the
- * redirect does not wait for the tickets chunk. Remove in release B.
+ * redirect does not wait for the tickets chunk. Old bookmarks and links
+ * use these URLs, so it stays.
  */
 export function LegacyTasksRedirect() {
   const { action, slug, tab } = useParams()

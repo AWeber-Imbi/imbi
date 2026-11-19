@@ -42,11 +42,11 @@ _TOO_LONG_MESSAGE = (
 _GENERIC_ERROR_MESSAGE = (
     'Sorry — I hit an error talking to the model. Please try again.'
 )
-#: The names of the ticket create tool, without the suffix that FastMCP
-#: makes from the API's mount path and method. An imbi-mcp of the release
-#: before ADR 0028 serves only the old name.
-# ponytail: drop 'create_agent_task_' in tickets plan R4, when no imbi-mcp
-# serves the old operation ids.
+#: The names of the ticket create tools, without the suffix that FastMCP
+#: makes from the API's mount path and method. ``create_agent_task_`` is
+#: in the catalog when the bot starts against a pod of 2.55.0, and the
+#: retained ``/agent-tasks`` route still creates tickets. Remove it with
+#: that route.
 _CREATE_TICKET_TOOLS = ('create_ticket_', 'create_agent_task_')
 
 _TOOL_RESULT_TOO_LARGE = (

@@ -54,7 +54,7 @@ class RunnerTestCase(test_agent_task_harness.HarnessTestCase):
         # The owner of a parent task must be able to make agent tasks
         # (the check of child task creation), as with a seeded role.
         await self.graph.execute(
-            'MERGE (p:Permission {{name: "agent_task:create"}})'
+            'MERGE (p:Permission {{name: "ticket:create"}})'
             ' CREATE (r:Role {{slug: {role}, name: {role}}})'
             ' CREATE (r)-[:GRANTS]->(p)'
             ' WITH r MATCH (:User {{email: {email}}})-[m:MEMBER_OF]->()'
@@ -171,7 +171,7 @@ class RunnerTestCase(test_agent_task_harness.HarnessTestCase):
             await conn.execute(
                 'UPDATE harness.chains'
                 " SET fenced_at = NOW() - interval '1 hour'"
-                ' WHERE root_task_id = %s',
+                ' WHERE root_ticket_id = %s',
                 (uuid.UUID(chain_id),),
             )
 
@@ -706,7 +706,7 @@ class QueueLimitTests(RunnerTestCase):
         row = await self.task_row()
         async with self.pool.connection() as conn:
             await conn.execute(
-                'INSERT INTO harness.chains (root_task_id, organization_id,'
+                'INSERT INTO harness.chains (root_ticket_id, organization_id,'
                 " state) VALUES (%s, %s, 'queued')",
                 (row['id'], row['organization_id']),
             )
@@ -805,14 +805,18 @@ class AgentTokenTests(RunnerTestCase):
             {'events': [{'event_id': new_id(), 'type': 'turn'}]},
         )
         self.assertEqual(response.status_code, 201, response.text)
-        # ADR 0028: the new path and the old one.
-        for prefix in ('/harness/tickets', '/harness/tasks'):
-            response = await self.client.get(
-                f'{prefix}/T-1/events',
-                headers={'Authorization': f'Bearer {self.token}'},
-            )
-            self.assertEqual(response.status_code, 200, response.text)
-            self.assertEqual(response.json()[-1]['type'], 'turn')
+        response = await self.client.get(
+            '/harness/tickets/T-1/events',
+            headers={'Authorization': f'Bearer {self.token}'},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()[-1]['type'], 'turn')
+        # Release B removes the old path (ADR 0028).
+        response = await self.client.get(
+            '/harness/tasks/T-1/events',
+            headers={'Authorization': f'Bearer {self.token}'},
+        )
+        self.assertEqual(response.status_code, 404, response.text)
 
     async def test_token_for_chain_a_cannot_write_chain_b(self) -> None:
         self.act_as_user()
@@ -833,7 +837,7 @@ class AgentTokenTests(RunnerTestCase):
                     response.json()['detail']['error'], 'chain_forbidden'
                 )
         response = await self.client.get(
-            '/harness/tasks/T-2/events',
+            '/harness/tickets/T-2/events',
             headers={'Authorization': f'Bearer {self.token}'},
         )
         self.assertEqual(response.status_code, 403, response.text)
@@ -879,7 +883,7 @@ class AgentTokenTests(RunnerTestCase):
             ['ok'],
         )
         response = await self.client.get(
-            '/harness/tasks/T-1/events',
+            '/harness/tickets/T-1/events',
             headers={'Authorization': f'Bearer {self.token}'},
         )
         self.assertEqual(response.status_code, 403, response.text)
@@ -1073,7 +1077,7 @@ class FencingTests(RunnerTestCase):
         async def fail_first(
             chain: dict[str, typing.Any], error: str | None
         ) -> typing.Any:
-            if str(chain['root_task_id']) == self.chain_id:
+            if str(chain['root_ticket_id']) == self.chain_id:
                 raise RuntimeError('bad chain')
             return await real(chain, error)
 
@@ -1109,7 +1113,7 @@ class ChildTaskTests(RunnerTestCase):
         self, agent_slug: str, **body: typing.Any
     ) -> httpx.Response:
         return await self.client.post(
-            '/harness/tasks/T-1/children',
+            '/harness/tickets/T-1/children',
             json={
                 'agent_slug': agent_slug,
                 'title': 'Help',
@@ -1156,8 +1160,9 @@ class ChildTaskTests(RunnerTestCase):
         self.assertEqual(response.status_code, 403, response.text)
         self.assertEqual(response.json()['detail']['error'], 'owner_forbidden')
 
-    async def test_repeat_finds_a_child_of_the_new_origin_kind(self) -> None:
-        # A pod of release B writes the child as ``ticket`` (ADR 0028).
+    async def test_repeat_finds_a_child_of_the_old_origin_kind(self) -> None:
+        # A pod of the release before B wrote the child as ``task`` (ADR
+        # 0028).
         helper_id = await self.make_agent('helper', name='Helper')
         await self.make_version({'subagents': [{'agent_id': helper_id}]})
         response = await self.child('helper', idempotency_key='k')
@@ -1165,7 +1170,7 @@ class ChildTaskTests(RunnerTestCase):
         child = response.json()
         async with self.pool.connection() as conn:
             await conn.execute(
-                "UPDATE tickets.tickets SET origin_kind = 'ticket'"
+                "UPDATE tickets.tickets SET origin_kind = 'task'"
                 ' WHERE id = %s',
                 (child['id'],),
             )
@@ -1180,7 +1185,7 @@ class ChildTaskTests(RunnerTestCase):
         self.assertEqual(response.status_code, 201, response.text)
         child = response.json()
         self.assertEqual(child['chain_id'], self.chain_id)
-        self.assertEqual(child['origin']['kind'], 'task')
+        self.assertEqual(child['origin']['kind'], 'ticket')
         self.assertEqual(child['origin']['task_id'], self.task['id'])
         self.assertEqual(child['agent_id'], helper_id)
         repeat = await self.child('helper', idempotency_key='k')
@@ -1243,7 +1248,7 @@ class AttachProjectTests(RunnerTestCase):
 
     async def attach(self, project: str) -> httpx.Response:
         return await self.client.put(
-            f'/harness/tasks/T-1/projects/{project}',
+            f'/harness/tickets/T-1/projects/{project}',
             headers={'Authorization': f'Bearer {self.token}'},
         )
 
@@ -1496,7 +1501,7 @@ class RateLimitTests(RunnerTestCase):
 
     async def check(self, token: str, short_id: str, tool: str) -> typing.Any:
         response = await self.client.post(
-            f'/harness/tasks/{short_id}/tool-calls/check',
+            f'/harness/tickets/{short_id}/tool-calls/check',
             json={'tool_key': tool},
             headers={'Authorization': f'Bearer {token}'},
         )

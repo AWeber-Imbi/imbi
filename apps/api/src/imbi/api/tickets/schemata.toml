@@ -19,7 +19,7 @@
 # with every old column under its old name. A simple view is updatable:
 # INSERT ... ON CONFLICT, RETURNING, UPDATE, DELETE, and FOR UPDATE SKIP
 # LOCKED work through it. The previous release skips a declared table
-# that is a view (R1). Release B drops the views.
+# that is a view (R1). Release B drops the views (the next step).
 #
 # On a new install `agent_runtime.tasks` does not exist, so the step does
 # not run and the tables below are made with the new names.
@@ -100,6 +100,61 @@ BEGIN
 END
 $step$;
 '''
+
+# Release B: drop the views that release A left under the old names.
+# No release after A uses them. Only when `agent_runtime` has no table,
+# so that CASCADE can drop views only.
+[[steps]]
+name = "drop-agent-runtime-views"
+when = """
+SELECT to_regnamespace('agent_runtime') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM pg_class
+                    WHERE relnamespace = to_regnamespace('agent_runtime')
+                      AND relkind IN ('r', 'p'))
+"""
+sql = "DROP SCHEMA agent_runtime CASCADE"
+
+# A repeat of an idempotency key returns the first ticket. The key is
+# scoped to the origin principal, so one principal cannot get the
+# ticket of another with its key. NULL keys are distinct, so tickets
+# without a key do not collide.
+#
+# The child origin kinds `task` and `ticket` are one kind in the key, so
+# a pod that writes `ticket` and a pod of the previous release that
+# writes `task` for the same key cannot both make a child (ADR 0028).
+# The index keeps its ADR 0020 name until the release after B, because
+# the previous release finds a repeated key by this name in the error
+# of its insert. An expression index, so a step makes it, after the
+# table.
+[[steps]]
+name = "origin-idempotency-key-for-both-child-kinds"
+after_tables = true
+when = """
+SELECT COALESCE(
+  pg_get_indexdef(to_regclass('tickets.tasks_origin_idempotency_key'))
+    NOT LIKE '%CASE%', TRUE)
+"""
+sql = """
+DROP INDEX IF EXISTS tickets.tasks_origin_idempotency_key;
+CREATE UNIQUE INDEX tasks_origin_idempotency_key ON tickets.tickets
+  (organization_id,
+   (CASE origin_kind WHEN 'task' THEN 'ticket' ELSE origin_kind END),
+   origin_id, idempotency_key);
+"""
+
+# Release B writes the origin kind `ticket` for a child ticket; rows of
+# older releases have `task` (ADR 0028). Each start rewrites the rows
+# that a pod of the previous release wrote during the rollout.
+[[steps]]
+name = "rewrite-child-origin-kind"
+after_tables = true
+when = "SELECT EXISTS (SELECT 1 FROM tickets.tickets WHERE origin_kind = 'task')"
+sql = """
+UPDATE tickets.tickets
+   SET origin_kind = 'ticket',
+       origin = jsonb_set(origin, '{kind}', '"ticket"')
+ WHERE origin_kind = 'task'
+"""
 
 # A pod of the previous release can run beside this release and makes a
 # child without `parent_id`. This trigger gives such a child its parent
@@ -271,17 +326,6 @@ columns = ["status", "created_at", "id"]
 [[tables.indexes]]
 name = "tickets_short_id_key"
 columns = ["organization_id", "short_id"]
-unique = true
-
-# A repeat with the same key returns the first task. The key is scoped
-# to the origin principal, so one principal cannot get the task of
-# another with its key. NULL keys are distinct, so tasks without a key
-# do not collide.
-[[tables.indexes]]
-# It keeps its ADR 0020 name until release B: the previous release finds
-# a repeated key by this name in the error of its insert.
-name = "tasks_origin_idempotency_key"
-columns = ["organization_id", "origin_kind", "origin_id", "idempotency_key"]
 unique = true
 
 # The list query's access path: newest first in an organization.
