@@ -5,7 +5,9 @@ fixed schema names. The schemata of release A-1 are fixtures, and so is
 the SQL of its store and claim query: the pods of that release run it
 through the views during the rolling deploy. The schemata of release A
 (2.55.0) are fixtures too: release B removes the views and must run on
-a database of release A, beside its pods.
+a database of release A, beside its pods. The schemata of release B are
+fixtures for the release after B, which drops the old names that
+release B kept for release A pods.
 """
 
 import os
@@ -28,6 +30,7 @@ dotenv.load_dotenv()
 
 FIXTURES = pathlib.Path(__file__).parent / 'fixtures' / 'release_a_minus_1'
 RELEASE_A = FIXTURES.parent / 'release_a'
+RELEASE_B = FIXTURES.parent / 'release_b'
 
 ORG = 'org-1'
 AGENT = 'agent-1'
@@ -219,20 +222,31 @@ async def _old_install() -> None:
         )
 
 
-async def _new_install() -> None:
-    """Initialize as release A does: tickets, then the harness."""
+async def _fixture_install(release: pathlib.Path) -> None:
+    """Initialize as the release of the fixtures in ``release`` does:
+    tickets, then the harness."""
     for schema, path, lock_key in (
         ('tickets', 'tickets_schemata.toml', tickets.LOCK_KEY),
         ('harness', 'harness_schemata.toml', 'imbi.api.initialize.harness'),
     ):
         await relational.initialize(
-            schema, relational.load_schemata(RELEASE_A / path), lock_key
+            schema, relational.load_schemata(release / path), lock_key
         )
     await relational.initialize_deleted_organizations()
 
 
+async def _new_install() -> None:
+    """Initialize as release A does."""
+    await _fixture_install(RELEASE_A)
+
+
 async def _release_b_install() -> None:
-    """Initialize as this release (B) does: tickets, then the harness."""
+    """Initialize as release B (2.56.0) does."""
+    await _fixture_install(RELEASE_B)
+
+
+async def _install() -> None:
+    """Initialize as this release (after B) does."""
     await tickets.initialize()
     await harness.initialize()
 
@@ -779,27 +793,6 @@ class ReleaseBTestCase(DatabaseTestCase):
         )
         self.assertEqual(await cursor.fetchone(), {'n': 1})
 
-    async def test_a_new_install_has_only_the_new_names(self) -> None:
-        await _release_b_install()
-        conn = await self._connect()
-        catalog = await self._catalog(conn)
-        columns = {row[2] for row in catalog['columns'] if row[0] == 'harness'}
-        self.assertIn('root_ticket_id', columns)
-        self.assertNotIn('root_task_id', columns)
-        self.assertNotIn('task_id', columns)
-        self.assertEqual(
-            [t for t in catalog['triggers'] if t[0].startswith('harness.')],
-            [],
-        )
-        cursor = await conn.execute(
-            'SELECT pg_get_constraintdef(oid) AS definition'
-            " FROM pg_constraint WHERE conname = 'chains_pkey'"
-        )
-        self.assertEqual(
-            await cursor.fetchone(),
-            {'definition': 'PRIMARY KEY (root_ticket_id)'},
-        )
-
     async def test_child_gets_its_parent_from_its_origin(self) -> None:
         conn = await self._release_b()
         cursor = await conn.execute(
@@ -832,17 +825,191 @@ class ReleaseBTestCase(DatabaseTestCase):
         self.assertEqual(await cursor.fetchone(), {'parent_id': ROOT})
 
 
-PERSON_TICKETS = FIXTURES.parent / 'release_person_tickets'
+#: The SQL of release B that runs beside this release.
+B_PIN_CHAIN = (
+    'INSERT INTO harness.chains (root_ticket_id, organization_id,'
+    ' runner_id) VALUES (%s, %s, %s)'
+    ' ON CONFLICT (root_ticket_id) DO UPDATE SET'
+    " runner_id = EXCLUDED.runner_id, state = 'running',"
+    ' claimed_at = NOW(), fenced_at = NULL,'
+    ' fencers_ok_at = NULL, fence_error = NULL,'
+    " updated_at = NOW() WHERE chains.state = 'queued'"
+    ' RETURNING *'
+)
+B_RECORD_CLAIM = (
+    'INSERT INTO harness.claims (ticket_id, attempt, chain_id, runner_id)'
+    ' VALUES (%s, %s, %s, %s)'
+)
 
 
-async def _person_tickets_install() -> None:
-    """Initialize ``tickets`` as the previous release (person tickets)
+class ReleaseB1TestCase(DatabaseTestCase):
+    """The release after B on a database of release B, with rows of
+    release A-1 and a child that a release A pod wrote after the last
+    start of a release B pod."""
+
+    async def _release_b1(self) -> Conn:
+        conn = await self._migrated()
+        await _release_b_install()
+        await _insert_ticket(conn, NEW, 'task', 'key-new')
+        await _install()
+        return conn
+
+    async def _index_names(self, conn: Conn) -> list[str]:
+        """The unique indexes of the ticket keys, in both schemas."""
+        cursor = await conn.execute(
+            'SELECT indexname FROM pg_indexes'
+            " WHERE (schemaname = 'tickets'"
+            "        AND indexname LIKE '%origin_idempotency_key')"
+            " OR (schemaname = 'harness'"
+            "     AND tablename IN ('chains', 'claims')"
+            "     AND indexdef LIKE 'CREATE UNIQUE%')"
+            ' ORDER BY indexname'
+        )
+        return [row['indexname'] for row in await cursor.fetchall()]
+
+    def _assert_no_old_harness_names(
+        self, catalog: dict[str, list[typing.Any]]
+    ) -> None:
+        columns = {row[2] for row in catalog['columns'] if row[0] == 'harness'}
+        self.assertIn('root_ticket_id', columns)
+        self.assertNotIn('root_task_id', columns)
+        self.assertNotIn('task_id', columns)
+        self.assertEqual(
+            [t for t in catalog['triggers'] if t[0].startswith('harness.')],
+            [],
+        )
+
+    async def test_migrated_install_matches_a_new_install(self) -> None:
+        migrated = await self._catalog(await self._release_b1())
+        await self._use_database()
+        await _install()
+        self.assertEqual(migrated, await self._catalog(await self._connect()))
+
+    async def test_a_second_run_changes_nothing(self) -> None:
+        conn = await self._release_b1()
+        before = await self._catalog(conn)
+        with self.assertNoLogs('imbi.common.relational', 'INFO'):
+            await _install()
+        self.assertEqual(before, await self._catalog(conn))
+
+    async def test_moves_the_harness_keys(self) -> None:
+        conn = await self._release_b1()
+        self._assert_no_old_harness_names(await self._catalog(conn))
+        cursor = await conn.execute(
+            "SELECT to_regprocedure('harness.mirror_ticket_id()') AS fn"
+        )
+        self.assertEqual(await cursor.fetchone(), {'fn': None})
+        cursor = await conn.execute(
+            'SELECT conname, pg_get_constraintdef(oid) AS definition'
+            " FROM pg_constraint WHERE contype = 'p'"
+            " AND connamespace = 'harness'::regnamespace"
+            " AND conname IN ('chains_pkey', 'claims_pkey') ORDER BY 1"
+        )
+        self.assertEqual(
+            await cursor.fetchall(),
+            [
+                {
+                    'conname': 'chains_pkey',
+                    'definition': 'PRIMARY KEY (root_ticket_id)',
+                },
+                {
+                    'conname': 'claims_pkey',
+                    'definition': 'PRIMARY KEY (ticket_id, attempt)',
+                },
+            ],
+        )
+        # The rows of release A-1 keep their keys.
+        cursor = await conn.execute(
+            'SELECT root_ticket_id FROM harness.chains'
+            ' UNION ALL SELECT ticket_id FROM harness.claims'
+        )
+        self.assertEqual(
+            await cursor.fetchall(),
+            [{'root_ticket_id': ROOT}, {'root_ticket_id': ROOT}],
+        )
+
+    async def test_rewrites_the_last_child_kinds(self) -> None:
+        conn = await self._release_b1()
+        cursor = await conn.execute(
+            "SELECT id, origin_kind, origin ->> 'kind' AS kind"
+            ' FROM tickets.tickets WHERE id IN (%s, %s) ORDER BY id',
+            (CHILD, NEW),
+        )
+        self.assertEqual(
+            await cursor.fetchall(),
+            [
+                {'id': CHILD, 'origin_kind': 'ticket', 'kind': 'ticket'},
+                {'id': NEW, 'origin_kind': 'ticket', 'kind': 'ticket'},
+            ],
+        )
+
+    async def test_release_b_sql_works(self) -> None:
+        conn = await self._release_b1()
+        await _insert_ticket(conn, uuid.uuid4(), 'human', None)
+        cursor = await conn.execute(B_PIN_CHAIN, (NEW, ORG, RUNNER))
+        self.assertIsNotNone(await cursor.fetchone())
+        await conn.execute("UPDATE harness.chains SET state = 'queued'")
+        cursor = await conn.execute(B_PIN_CHAIN, (NEW, ORG, RUNNER))
+        pinned = await cursor.fetchone()
+        assert pinned is not None
+        self.assertEqual(pinned['state'], 'running')
+        await conn.execute(B_RECORD_CLAIM, (NEW, 1, NEW, RUNNER))
+        with self.assertRaises(psycopg.errors.UniqueViolation):
+            await conn.execute(B_RECORD_CLAIM, (NEW, 1, NEW, RUNNER))
+        await conn.execute(
+            'DELETE FROM harness.claims WHERE ticket_id = %s AND attempt = %s',
+            (NEW, 1),
+        )
+        # A repeated key: release B finds it by the name of the index.
+        with self.assertRaises(psycopg.errors.UniqueViolation) as raised:
+            await _insert_ticket(conn, uuid.uuid4(), 'ticket', 'key-new')
+        self.assertEqual(
+            raised.exception.diag.constraint_name,
+            'tasks_origin_idempotency_key',
+        )
+
+    async def test_restarts_during_the_rollout_keep_one_index(self) -> None:
+        conn = await self._release_b1()
+        before = await self._catalog(conn)
+        self.assertEqual(
+            await self._index_names(conn),
+            [
+                'chains_pkey',
+                'chains_root_ticket_id_key',
+                'claims_pkey',
+                'claims_ticket_key',
+                'tasks_origin_idempotency_key',
+            ],
+        )
+        # A release B pod that starts, then a pod of this release.
+        with self.assertNoLogs('imbi.common.relational', 'INFO'):
+            await _release_b_install()
+            await _install()
+        self.assertEqual(before, await self._catalog(conn))
+
+    async def test_a_new_install_has_only_the_new_names(self) -> None:
+        await _install()
+        conn = await self._connect()
+        self._assert_no_old_harness_names(await self._catalog(conn))
+        self.assertEqual(
+            await self._index_names(conn),
+            [
+                'chains_pkey',
+                'chains_root_ticket_id_key',
+                'claims_pkey',
+                'claims_ticket_key',
+                'tasks_origin_idempotency_key',
+            ],
+        )
+
+
+RELEASE_B1 = FIXTURES.parent / 'release_b1'
+
+
+async def _release_b1_install() -> None:
+    """Initialize as the previous release (B+1, with person tickets)
     does."""
-    await relational.initialize(
-        'tickets',
-        relational.load_schemata(PERSON_TICKETS / 'tickets_schemata.toml'),
-        tickets.LOCK_KEY,
-    )
+    await _fixture_install(RELEASE_B1)
 
 
 class ReopenReleaseTestCase(DatabaseTestCase):
@@ -850,16 +1017,17 @@ class ReopenReleaseTestCase(DatabaseTestCase):
 
     async def _reopen_release(self) -> Conn:
         conn = await self._migrated()
-        await _person_tickets_install()
         await _release_b_install()
+        await _release_b1_install()
+        await _install()
         return conn
 
     async def test_previous_release_restart_changes_nothing(self) -> None:
         conn = await self._reopen_release()
         before = await self._catalog(conn)
         with self.assertNoLogs('imbi.common.relational', 'INFO'):
-            await _person_tickets_install()
-            await _release_b_install()
+            await _release_b1_install()
+            await _install()
         self.assertEqual(before, await self._catalog(conn))
 
     async def test_outbox_key_matches_a_new_install(self) -> None:
@@ -882,7 +1050,7 @@ class ReopenReleaseTestCase(DatabaseTestCase):
             ],
         )
         await self._use_database()
-        await _release_b_install()
+        await _install()
         cursor = await (await self._connect()).execute(query)
         self.assertEqual(await cursor.fetchall(), migrated)
 
@@ -935,7 +1103,7 @@ class ReopenReleaseTestCase(DatabaseTestCase):
             ' WHERE id = %s',
             (str(uuid.uuid4()), orphan),
         )
-        await _release_b_install()
+        await _install()
         cursor = await conn.execute(
             'SELECT id, chain_id FROM tickets.tickets ORDER BY id'
         )
@@ -949,4 +1117,4 @@ class ReopenReleaseTestCase(DatabaseTestCase):
             ],
         )
         with self.assertNoLogs('imbi.common.relational', 'INFO'):
-            await _release_b_install()
+            await _install()

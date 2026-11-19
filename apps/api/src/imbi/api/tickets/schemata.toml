@@ -122,9 +122,9 @@ sql = "DROP SCHEMA agent_runtime CASCADE"
 # The child origin kinds `task` and `ticket` are one kind in the key, so
 # a pod that writes `ticket` and a pod of the previous release that
 # writes `task` for the same key cannot both make a child (ADR 0028).
-# The index keeps its ADR 0020 name until the release after B, because
-# the previous release finds a repeated key by this name in the error
-# of its insert. An expression index, so a step makes it, after the
+# The index keeps its ADR 0020 name: a release B pod that starts makes
+# the index again when it does not find this name, so a rename must wait
+# until no release B pod runs (ADR 0028). An expression index, so a step makes it, after the
 # table.
 [[steps]]
 name = "origin-idempotency-key-for-both-child-kinds"
@@ -142,9 +142,10 @@ CREATE UNIQUE INDEX tasks_origin_idempotency_key ON tickets.tickets
    origin_id, idempotency_key);
 """
 
-# Release B writes the origin kind `ticket` for a child ticket; rows of
-# older releases have `task` (ADR 0028). Each start rewrites the rows
-# that a pod of the previous release wrote during the rollout.
+# Since release B a child ticket has the origin kind `ticket`; rows of
+# older releases have `task` (ADR 0028). This rewrites the rows that a
+# 2.55.0 pod wrote after the last start of a release B pod. No release
+# since B writes `task`, so after one run the guard stays false.
 [[steps]]
 name = "rewrite-child-origin-kind"
 after_tables = true
@@ -156,10 +157,10 @@ UPDATE tickets.tickets
  WHERE origin_kind = 'task'
 """
 
-# A pod of the previous release can run beside this release and makes a
-# child without `parent_id`. This trigger gives such a child its parent
-# from its origin on insert. It does not run on update, so a move of a
-# child to the root stays. A later release can drop it.
+# A 2.55.0 pod made a child without `parent_id`. This trigger gave such
+# a child its parent from its origin on insert. It does not run on
+# update, so a move of a child to the root stays. No release since B
+# needs it; a later release can drop it.
 [[steps]]
 name = "tickets-parent-from-origin"
 after_tables = true
@@ -307,7 +308,7 @@ $step$;
 '''
 
 # Reopen (ADR 0028): a ticket can close more than one time, so each
-# close writes its own `trigger_outbox` row, with a new `close_id`. The
+# close writes its own `trigger_outbox` row, with its `close_id`. The
 # primary key was `(ticket_id)`. The previous release does not name the
 # key in its SQL, and its restart does not change a primary key, so the
 # step runs one time.

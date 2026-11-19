@@ -49,8 +49,9 @@ export interface AdminTableColumn<T> {
   headerAlign?: 'center' | 'left' | 'right'
   // When the cell renders its own interactive content (links, buttons,
   // toggles), set this so the cell stacks above the row link overlay and
-  // stays clickable.
-  interactive?: boolean
+  // stays clickable. A function decides per row, so a cell without
+  // interactive content keeps the row link.
+  interactive?: ((row: T) => boolean) | boolean
   key: string
   render: (row: T) => ReactNode
 }
@@ -474,7 +475,9 @@ function AdminTableRow<T>({
         <TableCell
           className={cn(
             CELL_ALIGN[col.cellAlign ?? 'left'],
-            col.interactive && 'relative z-10',
+            (typeof col.interactive === 'function'
+              ? col.interactive(row)
+              : col.interactive) && 'relative z-10',
           )}
           key={col.key}
         >

@@ -13,11 +13,17 @@ function ControlledTextarea() {
 }
 
 describe('Textarea', () => {
-  it('strips leading whitespace as the user types', async () => {
+  it('keeps a newline typed before existing text', async () => {
     render(<ControlledTextarea />)
-    const textarea = screen.getByRole('textbox')
-    await userEvent.type(textarea, '   A description')
-    expect(textarea).toHaveValue('A description')
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement
+    await userEvent.type(textarea, 'existing')
+    textarea.setSelectionRange(0, 0)
+    await userEvent.type(textarea, '{Enter}', {
+      initialSelectionEnd: 0,
+      initialSelectionStart: 0,
+    })
+    expect(textarea).toHaveValue('\nexisting')
+    expect(textarea.selectionStart).toBe(1)
   })
 
   it('preserves interior and trailing whitespace', async () => {

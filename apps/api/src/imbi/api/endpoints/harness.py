@@ -761,7 +761,13 @@ async def _identity(
                 }
             ),
             'repositories': await _repositories(db, store, task, settings),
-            'subagents': await _subagents(db, bundle.snapshot),
+            # Delegation depth is capped at 2: a child ticket cannot
+            # start children, so it gets no subagents.
+            'subagents': (
+                []
+                if task['origin_kind'] in ticket_store.CHILD_ORIGIN_KINDS
+                else await _subagents(db, bundle.snapshot)
+            ),
         }
     )
 
@@ -1890,6 +1896,63 @@ async def attach_harness_task_project(
     return {'project_id': project_id, 'project_slug': slug}
 
 
+@harness_router.delete(
+    '/tickets/{short_id}/projects/{project}',
+    response_model=AttachedProject,
+    name='detach_harness_ticket_project',
+)
+async def detach_harness_task_project(
+    short_id: str,
+    project: str,
+    caller: harness_auth.AgentCaller,
+    db: graph.Pool,
+    store: tickets.Store,
+) -> dict[str, str]:
+    """Remove a project of the org from a task of the chain.
+
+    ``project`` is a project id or slug. The task gets a
+    ``project.dissociated`` event, with the agent as the actor. A secret
+    resolution reads the task's projects when it is made, so the next
+    one no longer covers the project. When the project is not
+    associated, nothing changes.
+
+    The task keeps at least one project: a grant that lists projects
+    never matches a task with none, so its next ``model_inference`` key
+    renewal would fail. Attach the next project first.
+
+    Raises:
+        401: Not a current agent token.
+        403: Another chain or another agent.
+        404: No such task.
+        409: ``task_closed``, ``task_archived``, or ``last_project``
+            (it is the task's only project).
+        422: The project is not in the org, or the slug is not unique.
+
+    """
+    task = await _chain_task(caller, short_id, db, store)
+    if task['status'] == 'closed':
+        raise _conflict('task_closed', f'Task {task["short_id"]} is closed')
+    org_id = task['organization_id']
+    org_slug = (await organization_slugs(db, [org_id])).get(org_id, '')
+    [(project_id, slug)] = await tasks_api.project_slugs(
+        db, org_slug, [project]
+    )
+    if [p['project_id'] for p in task['projects']] == [project_id]:
+        raise _conflict(
+            'last_project',
+            f'Project {slug} is the only project of task '
+            f'{task["short_id"]}; attach the next project first',
+        )
+    with tasks_api.relation_errors():
+        await store.dissociate_project(
+            org_id,
+            task['short_id'],
+            project_id,
+            tickets.Actor('agent', task['agent_id'], 'harness'),
+        )
+    return {'project_id': project_id, 'project_slug': slug}
+
+
 @harness_router.post(
     '/tickets/{short_id}/children',
     status_code=201,
@@ -1922,11 +1985,12 @@ async def create_harness_child_task(
 
     Raises:
         401: Not a current agent token.
-        403: Another chain or another agent, ``subagent_forbidden`` (the
-            child agent is not in the ``subagents`` of the parent's
-            pinned agent version), or ``owner_forbidden`` (the owner of
-            the parent can no longer make agent tasks in the
-            organization).
+        403: Another chain or another agent, ``delegation_depth`` (the
+            parent is itself a child ticket: delegation depth is capped
+            at 2), ``subagent_forbidden`` (the child agent is not in the
+            ``subagents`` of the parent's pinned agent version), or
+            ``owner_forbidden`` (the owner of the parent can no longer
+            make agent tasks in the organization).
         404: No such task.
         409: The parent is closed, the child agent is disabled, or the
             runner of the chain does not have a label that the child
@@ -1939,6 +2003,12 @@ async def create_harness_child_task(
     parent = await _chain_task(caller, short_id, db, store)
     if parent['status'] == 'closed':
         raise _conflict('task_closed', f'Task {parent["short_id"]} is closed')
+    if parent['origin_kind'] in ticket_store.CHILD_ORIGIN_KINDS:
+        raise autonomous.forbidden(
+            'delegation_depth',
+            f'Task {parent["short_id"]} is a child ticket; delegation '
+            'depth is capped at 2.',
+        )
     org_slugs = await organization_slugs(db, [parent['organization_id']])
     if not await tasks_api.may_create(
         db, org_slugs.get(parent['organization_id'], ''), parent['owner']

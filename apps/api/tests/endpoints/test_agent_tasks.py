@@ -1684,21 +1684,15 @@ class TicketPermissionTests(AgentTaskTestCase):
 
 
 class OldPathTests(AgentTaskTestCase):
-    """Release B keeps the routes at ``/agent-tasks`` for saved scheduled
-    jobs, but not in the OpenAPI document, so imbi-mcp has no tools with
-    the old names (ADR 0028)."""
+    """The release after B removes the routes at ``/agent-tasks`` (ADR
+    0028)."""
 
     prefix = 'agent-tasks'
 
-    async def test_old_path_works_but_is_not_documented(self) -> None:
+    async def test_old_path_is_gone(self) -> None:
         await self.make_agent()
         response = await self.create_task()
-        self.assertEqual(response.status_code, 201, response.text)
-        response = await self.client.get(self.url('T-1'))
-        self.assertEqual(response.status_code, 200, response.text)
-        paths = self.test_app.openapi()['paths']
-        self.assertFalse([path for path in paths if 'agent-tasks' in path])
-        self.assertTrue([path for path in paths if '/tickets/' in path])
+        self.assertEqual(response.status_code, 404, response.text)
 
 
 class ServiceAccountTests(AgentTaskTestCase):

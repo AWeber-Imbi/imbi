@@ -28,7 +28,8 @@ export function InlineTextarea({
   const ref = useRef<HTMLTextAreaElement>(null)
   const handleCommit = useCallback(
     async (next: string) => {
-      await onCommit(next === '' ? null : next)
+      const trimmed = next.trim()
+      await onCommit(trimmed === '' ? null : trimmed)
     },
     [onCommit],
   )

@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { queryOptions, useQuery } from '@tanstack/react-query'
 
 import {
   getProjectsSlim,
@@ -164,10 +164,20 @@ export function useWorkflowVersion(
   version: null | number,
 ) {
   return useQuery({
+    ...workflowVersionQuery(orgSlug, slug ?? '', version ?? 0),
     enabled: !!slug && version !== null,
-    queryFn: ({ signal }) =>
-      getWorkflowVersion(orgSlug, slug!, version!, signal),
-    queryKey: [...queryKeys.workflow(orgSlug, slug ?? ''), 'versions', version],
+  })
+}
+
+/** The query of one saved version, shared by the hook and `fetchQuery`. */
+export function workflowVersionQuery(
+  orgSlug: string,
+  slug: string,
+  version: number,
+) {
+  return queryOptions({
+    queryFn: ({ signal }) => getWorkflowVersion(orgSlug, slug, version, signal),
+    queryKey: [...queryKeys.workflow(orgSlug, slug), 'versions', version],
     // A version never changes.
     staleTime: Infinity,
   })

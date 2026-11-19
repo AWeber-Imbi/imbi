@@ -55,7 +55,7 @@ SCHEMA = 'tickets'
 CHILD_ORIGIN_KINDS = ('task', 'ticket')
 
 #: The names of the unique index of idempotency keys. It keeps its ADR
-#: 0020 name until the release after B, which renames it (ADR 0028).
+#: 0020 name until a later release renames it (ADR 0028).
 ORIGIN_IDEMPOTENCY_KEYS = frozenset(
     {'tasks_origin_idempotency_key', 'tickets_origin_idempotency_key'}
 )
@@ -2040,7 +2040,11 @@ class TicketStore:
                 raise TicketHeld(short_id)
             if max_concurrent is not None:
                 await _check_concurrency(
-                    write.conn, task['agent_id'], task['id'], max_concurrent
+                    write.conn,
+                    task['agent_id'],
+                    task['id'],
+                    task['chain_id'] or task['id'],
+                    max_concurrent,
                 )
             session = await _fetch_one(
                 write.conn,
@@ -3115,13 +3119,20 @@ async def _stale(
 
 
 async def _check_concurrency(
-    conn: Conn, agent_id: str, task_id: uuid.UUID, max_concurrent: int
+    conn: Conn,
+    agent_id: str,
+    task_id: uuid.UUID,
+    chain_id: uuid.UUID,
+    max_concurrent: int,
 ) -> None:
     """Raise when ``max_concurrent`` other tasks of the agent run.
 
     A task runs when it has an open session. The count excludes
     ``task_id``: a new session on a task that already runs (for example
-    after a harness restart) does not start a new concurrent task.
+    after a harness restart) does not start a new concurrent task. It
+    also excludes the other tasks of the chain ``chain_id``: a parent
+    that waits for its child keeps its session open, so a child of the
+    same agent would otherwise never get a place.
 
     The advisory lock makes concurrent opens for one agent count one at
     a time, so two opens cannot both take the last place.
@@ -3136,8 +3147,9 @@ async def _check_concurrency(
         'SELECT count(DISTINCT s.ticket_id) FROM tickets.sessions AS s'
         ' JOIN tickets.tickets AS t ON t.id = s.ticket_id'
         ' WHERE t.agent_id = %s AND s.closed_at IS NULL'
-        ' AND s.ticket_id <> %s',
-        (agent_id, task_id),
+        ' AND s.ticket_id <> %s'
+        ' AND COALESCE(t.chain_id, t.id) <> %s',
+        (agent_id, task_id, chain_id),
     )
     row = await cursor.fetchone()
     if row and row[0] >= max_concurrent:

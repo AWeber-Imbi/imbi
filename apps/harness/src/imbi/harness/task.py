@@ -169,7 +169,9 @@ _RULES = """\
 - The secret references that you may request:{secrets}
 - Use `attach_project` to add a project of the organization to this
   task, by id or slug, when the work needs its repository. The next
-  secret you request covers it.
+  secret you request covers it. Use `detach_project` to remove one;
+  the next secret no longer covers it. A task keeps at least one
+  project, so attach the next project before you detach the last one.
 - Use `request_input` to ask a person a question. Use
   `create_child_task` to give work to another agent: {subagents}.
 - Before you stop, use `report_outcome` once: `done_acted` when you
@@ -1760,6 +1762,7 @@ class TaskRun:
                 self.request_input_tool(),
                 self.child_task_tool(),
                 self.attach_project_tool(),
+                self.detach_project_tool(),
                 self.report_outcome_tool(),
             ],
         )
@@ -2340,6 +2343,46 @@ class TaskRun:
                     'type': 'text',
                     'text': f'Project {attached["project_slug"]} '
                     f'({attached["project_id"]}) is on the task.',
+                }
+            ]
+        }
+
+    # --- detach_project -----------------------------------------------
+
+    def detach_project_tool(self) -> sdk.SdkMcpTool[typing.Any]:
+        @sdk.tool(
+            'detach_project',
+            'Remove a project from this task, by id or slug. Secrets that '
+            'you request after it no longer cover the project.',
+            _ATTACH_PROJECT_SCHEMA,
+        )
+        async def detach_project(args: Body) -> Body:
+            return await self.detach_project(args)
+
+        return detach_project
+
+    async def detach_project(self, args: Body) -> Body:
+        """Remove a project from the task through imbi-api."""
+        project = args.get('project')
+        if not isinstance(project, str) or not project.strip():
+            return _tool_error('The project must be an id or a slug')
+        try:
+            detached = await self.api.detach_project(project.strip())
+        except api.Refused as err:
+            if err.status == http.HTTPStatus.UNPROCESSABLE_ENTITY:
+                return _tool_error(
+                    f'No project {project!r} in the organization, or more '
+                    'than one project has that slug'
+                )
+            return _tool_error(f'The project was refused: {err.code}')
+        except httpx.HTTPError:
+            return _tool_error('Imbi is not available')
+        return {
+            'content': [
+                {
+                    'type': 'text',
+                    'text': f'Project {detached["project_slug"]} '
+                    f'({detached["project_id"]}) is not on the task.',
                 }
             ]
         }

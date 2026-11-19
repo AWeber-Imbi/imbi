@@ -28,6 +28,17 @@ describe('InlineTextarea', () => {
     await waitFor(() => expect(onCommit).toHaveBeenCalledWith('there'))
   })
 
+  it('trims the committed value', async () => {
+    const onCommit = vi.fn().mockResolvedValue(undefined)
+    render(<InlineTextarea onCommit={onCommit} value="hi" />)
+    await userEvent.click(screen.getByText('hi'))
+    const ta = screen.getByRole('textbox') as HTMLTextAreaElement
+    await userEvent.clear(ta)
+    await userEvent.type(ta, '{Enter}  there  ')
+    await userEvent.keyboard('{Control>}{Enter}{/Control}')
+    await waitFor(() => expect(onCommit).toHaveBeenCalledWith('there'))
+  })
+
   it('plain Enter inserts a newline and does not commit', async () => {
     const onCommit = vi.fn()
     render(<InlineTextarea onCommit={onCommit} value="hi" />)
