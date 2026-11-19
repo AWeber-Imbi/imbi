@@ -1464,8 +1464,16 @@ describe('Tasks', () => {
     fireEvent.pointerDown(box, { pointerType: 'touch' })
     fireEvent.keyDown(box, { key: 'Enter' })
     expect(endpoints.replyTicket).not.toHaveBeenCalled()
-    fireEvent.pointerDown(box, { pointerType: 'mouse' })
-    fireEvent.keyDown(box, { key: 'Enter' })
+    fireEvent.click(screen.getByRole('radio', { name: /^Trajectory/ }))
+    await waitFor(() =>
+      expect(screen.queryByLabelText('Reply')).not.toBeInTheDocument(),
+    )
+    fireEvent.click(screen.getByRole('radio', { name: /^Conversation/ }))
+    const again = await screen.findByLabelText('Reply')
+    fireEvent.keyDown(again, { key: 'Enter' })
+    expect(endpoints.replyTicket).not.toHaveBeenCalled()
+    fireEvent.pointerDown(again, { pointerType: 'mouse' })
+    fireEvent.keyDown(again, { key: 'Enter' })
     await waitFor(() =>
       expect(endpoints.replyTicket).toHaveBeenCalledWith(
         'acme',
@@ -1474,6 +1482,31 @@ describe('Tasks', () => {
         false,
       ),
     )
+  })
+
+  it('sends on Enter after a mouse press on a coarse pointer', async () => {
+    vi.mocked(endpoints.replyTicket).mockResolvedValue(BLOCKED)
+    const fine = window.matchMedia
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      ...fine(query),
+      matches: query === '(pointer: coarse)',
+    }))
+    renderAt('/tickets/acme/T-3/conversation')
+    const box = await screen.findByLabelText('Reply')
+    fireEvent.change(box, { target: { value: 'With a mouse.' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(endpoints.replyTicket).not.toHaveBeenCalled()
+    fireEvent.pointerDown(box, { pointerType: 'mouse' })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    await waitFor(() =>
+      expect(endpoints.replyTicket).toHaveBeenCalledWith(
+        'acme',
+        'T-3',
+        'With a mouse.',
+        false,
+      ),
+    )
+    vi.unstubAllGlobals()
   })
 
   it('does not send an empty reply', async () => {

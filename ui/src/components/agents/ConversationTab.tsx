@@ -289,7 +289,9 @@ export function ConversationTab({
     const fit = () => {
       host.style.setProperty('--dock-h', `${el.offsetHeight}px`)
       const box = scroller.current
-      if (box && pinned.current) box.scrollTop = box.scrollHeight
+      if (box && pinned.current && follow.current) {
+        box.scrollTop = box.scrollHeight
+      }
     }
     fit()
     const observer = new ResizeObserver(fit)

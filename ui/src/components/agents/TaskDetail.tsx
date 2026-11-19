@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
@@ -127,6 +127,7 @@ export function TaskDetail({
     (raw) => (isActivityView(raw) ? raw : undefined),
   )
   const [draft, setDraft] = useState('')
+  const pointer = useRef<null | string>(null)
   const reply = useTaskReply(orgSlug, shortId)
   useEffect(() => {
     const shown = legacyRoute(tab)
@@ -260,6 +261,7 @@ export function TaskDetail({
                     body={draft}
                     onBodyChange={setDraft}
                     orgSlug={orgSlug}
+                    pointer={pointer}
                     reply={reply}
                   />
                 )

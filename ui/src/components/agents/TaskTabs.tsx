@@ -2,8 +2,8 @@ import {
   type Dispatch,
   type FormEvent,
   type KeyboardEvent,
+  type RefObject,
   type SetStateAction,
-  useRef,
   useState,
 } from 'react'
 
@@ -130,15 +130,16 @@ export function Composer({
   body,
   onBodyChange,
   orgSlug,
+  pointer,
   reply,
 }: {
   body: string
   onBodyChange: Dispatch<SetStateAction<string>>
   orgSlug: string
+  pointer: RefObject<null | string>
   reply: TaskReply
 }) {
   const canManage = useHasPermission('ticket:manage', orgSlug)
-  const touched = useRef(false)
   if (!canManage) return null
   const ready = body.trim() !== '' && !reply.isPending
   const send = (hold: boolean) => {
@@ -150,12 +151,15 @@ export function Composer({
       .catch(() => undefined)
   }
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    const touch =
+      pointer.current === null
+        ? !!window.matchMedia?.('(pointer: coarse)').matches
+        : pointer.current !== 'mouse'
     if (
       event.key !== 'Enter' ||
       event.shiftKey ||
       event.nativeEvent.isComposing ||
-      touched.current ||
-      window.matchMedia?.('(pointer: coarse)').matches
+      touch
     )
       return
     event.preventDefault()
@@ -177,7 +181,7 @@ export function Composer({
           onChange={(e) => onBodyChange(e.target.value)}
           onKeyDown={onKeyDown}
           onPointerDown={(e) => {
-            touched.current = e.pointerType !== 'mouse'
+            pointer.current = e.pointerType
           }}
           placeholder="Add a comment, answer a question, or steer the agent"
           rows={1}
