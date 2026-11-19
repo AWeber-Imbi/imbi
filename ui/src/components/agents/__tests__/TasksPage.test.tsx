@@ -1456,6 +1456,26 @@ describe('Tasks', () => {
     await waitFor(() => expect(screen.getByLabelText('Reply')).toHaveValue(''))
   })
 
+  it('keeps Enter as a new line after a touch on the reply box', async () => {
+    vi.mocked(endpoints.replyTicket).mockResolvedValue(BLOCKED)
+    renderAt('/tickets/acme/T-3/conversation')
+    const box = await screen.findByLabelText('Reply')
+    fireEvent.change(box, { target: { value: 'From a tablet.' } })
+    fireEvent.pointerDown(box, { pointerType: 'touch' })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(endpoints.replyTicket).not.toHaveBeenCalled()
+    fireEvent.pointerDown(box, { pointerType: 'mouse' })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    await waitFor(() =>
+      expect(endpoints.replyTicket).toHaveBeenCalledWith(
+        'acme',
+        'T-3',
+        'From a tablet.',
+        false,
+      ),
+    )
+  })
+
   it('does not send an empty reply', async () => {
     renderAt('/tickets/acme/T-3/conversation')
     const box = await screen.findByLabelText('Reply')

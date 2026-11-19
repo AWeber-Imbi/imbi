@@ -3,6 +3,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
   type SetStateAction,
+  useRef,
   useState,
 } from 'react'
 
@@ -137,6 +138,7 @@ export function Composer({
   reply: TaskReply
 }) {
   const canManage = useHasPermission('ticket:manage', orgSlug)
+  const touched = useRef(false)
   if (!canManage) return null
   const ready = body.trim() !== '' && !reply.isPending
   const send = (hold: boolean) => {
@@ -152,6 +154,7 @@ export function Composer({
       event.key !== 'Enter' ||
       event.shiftKey ||
       event.nativeEvent.isComposing ||
+      touched.current ||
       window.matchMedia?.('(pointer: coarse)').matches
     )
       return
@@ -173,6 +176,9 @@ export function Composer({
           className="max-h-50 min-h-17.5 rounded-none border-0 bg-transparent px-4 pt-3.5 pb-1 leading-relaxed focus-visible:ring-0 focus-visible:ring-offset-0"
           onChange={(e) => onBodyChange(e.target.value)}
           onKeyDown={onKeyDown}
+          onPointerDown={(e) => {
+            touched.current = e.pointerType !== 'mouse'
+          }}
           placeholder="Add a comment, answer a question, or steer the agent"
           rows={1}
           value={body}
