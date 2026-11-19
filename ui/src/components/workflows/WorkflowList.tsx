@@ -65,13 +65,16 @@ export function WorkflowList({
   // The workflow whose manual trigger asks for inputs before a run.
   const [asking, setAsking] = useState<null | {
     inputs: ManualInput[]
+    org: string
     slug: string
   }>(null)
+  // The organization comes from the click, not from the current render.
   const start = useMutation({
     mutationFn: (v: {
       inputs: Record<string, boolean | number | string>
+      org: string
       slug: string
-    }) => startWorkflowRun(orgSlug!, v.slug, v.inputs),
+    }) => startWorkflowRun(v.org, v.slug, v.inputs),
     onError: startFailed,
     // The editor opens the run panel for `?run=<id>`.
     onSuccess: (run, { slug }) =>
@@ -85,18 +88,19 @@ export function WorkflowList({
     if (launching.current) return
     launching.current = true
     setFetching(true)
+    const org = orgSlug!
     try {
       const { graph } = await queryClient.fetchQuery(
-        workflowVersionQuery(orgSlug!, w.slug, w.active_version!),
+        workflowVersionQuery(org, w.slug, w.active_version!),
       )
       const trigger = manualTrigger(graph)
       if (!trigger) toast.error('The active version has no manual trigger.')
       else if (trigger.inputs.length)
-        setAsking({ inputs: trigger.inputs, slug: w.slug })
+        setAsking({ inputs: trigger.inputs, org, slug: w.slug })
       // onError reports a failed start.
       else
         await start
-          .mutateAsync({ inputs: {}, slug: w.slug })
+          .mutateAsync({ inputs: {}, org, slug: w.slug })
           .catch(() => undefined)
     } catch (error) {
       startFailed(error)
@@ -105,6 +109,11 @@ export function WorkflowList({
       setFetching(false)
     }
   }
+  const runnable = (w: WorkflowSummary) =>
+    canRun &&
+    w.status === 'active' &&
+    w.active_version !== null &&
+    w.trigger_types.includes('manual')
   const [search, setSearch] = useState('')
   const labels = useMemo(
     () => Object.fromEntries(stepTypes.map((t) => [t.type, t.label])),
@@ -152,19 +161,13 @@ export function WorkflowList({
           },
           {
             header: 'Trigger',
-            interactive: true,
+            // Only a Run button stacks above the row link.
+            interactive: runnable,
             key: 'trigger',
             render: (w) => (
               <TriggerCell
                 labels={labels}
-                onRun={
-                  canRun &&
-                  w.status === 'active' &&
-                  w.active_version !== null &&
-                  w.trigger_types.includes('manual')
-                    ? () => void onRun(w)
-                    : undefined
-                }
+                onRun={runnable(w) ? () => void onRun(w) : undefined}
                 pending={fetching || start.isPending}
                 types={w.trigger_types}
               />
@@ -218,7 +221,9 @@ export function WorkflowList({
         <StartRunDialog
           inputs={asking.inputs}
           onClose={() => setAsking(null)}
-          onStart={(inputs) => start.mutate({ inputs, slug: asking.slug })}
+          onStart={(inputs) =>
+            start.mutate({ inputs, org: asking.org, slug: asking.slug })
+          }
           open
           pending={start.isPending}
         />
