@@ -590,6 +590,45 @@ class ConcurrencyTests(RunnerTestCase):
             sorted(c is None for c in (first, second)), [False, True]
         )
 
+    async def test_self_delegated_child_completes_at_limit(self) -> None:
+        # The parent holds the agent's only place while it waits for
+        # its child, which is the same agent.
+        runner = await self.register()
+        claim = await self.claim(runner)
+        assert claim is not None
+        token = claim['agent_token']
+        response = await self.as_agent(
+            token, 'POST', 'T-1/sessions', {'session_key': 'p'}
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        await self.make_version({'subagents': [{'agent_id': self.agent_id}]})
+        response = await self.client.post(
+            '/harness/tickets/T-1/children',
+            json={
+                'agent_slug': 'triage',
+                'title': 'Repo',
+                'description': 'One repository.',
+            },
+            headers={'Authorization': f'Bearer {token}'},
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        child = response.json()['short_id']
+        response = await self.runner_post(runner, 'chain/claim')
+        self.assertEqual(response.status_code, 200, response.text)
+        child_token = response.json()['agent_token']
+        response = await self.as_agent(
+            child_token, 'POST', f'{child}/sessions', {'session_key': 'c'}
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        response = await self.as_agent(
+            child_token, 'POST', f'{child}/outcome', {'outcome': 'done_acted'}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        task = await self.store.get(self.org, child)
+        assert task is not None
+        self.assertEqual(task['status'], 'closed')
+        self.assertEqual(task['outcome'], 'done_acted')
+
 
 class QueueTests(RunnerTestCase):
     """``GET /harness/pools/{name}/queue`` and the pool gauges."""
@@ -1147,6 +1186,33 @@ class ChildTaskTests(RunnerTestCase):
             (await self.child('helper')).status_code, 201, 'a subagent'
         )
 
+    async def test_agent_delegates_to_itself_one_level(self) -> None:
+        await self.make_version({'subagents': [{'agent_id': self.agent_id}]})
+        response = await self.child('triage')
+        self.assertEqual(response.status_code, 201, response.text)
+        child = response.json()
+        self.assertEqual(child['agent_id'], self.agent_id)
+        response = await self.runner_post(self.runner, 'chain/claim')
+        self.assertEqual(response.status_code, 200, response.text)
+        claim = response.json()
+        self.assertEqual(claim['task']['short_id'], child['short_id'])
+        # A child ticket starts no children: it gets no subagents, and
+        # the harness refuses one.
+        self.assertEqual(claim['bundle']['subagents'], [])
+        response = await self.client.post(
+            f'/harness/tickets/{child["short_id"]}/children',
+            json={
+                'agent_slug': 'triage',
+                'title': 'Deeper',
+                'description': 'Go deeper.',
+            },
+            headers={'Authorization': f'Bearer {claim["agent_token"]}'},
+        )
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'delegation_depth'
+        )
+
     async def test_owner_must_still_make_tasks(self) -> None:
         helper_id = await self.make_agent('helper', name='Helper')
         await self.make_version({'subagents': [{'agent_id': helper_id}]})
@@ -1290,6 +1356,59 @@ class AttachProjectTests(RunnerTestCase):
         # An id wins over a slug that other projects share.
         response = await self.attach(self.extra['dup_a'])
         self.assertEqual(response.status_code, 200, response.text)
+
+    async def detach(self, project: str) -> httpx.Response:
+        return await self.client.delete(
+            f'/harness/tickets/T-1/projects/{project}',
+            headers={'Authorization': f'Bearer {self.token}'},
+        )
+
+    async def test_detach_by_slug_or_id(self) -> None:
+        for project in (self.extra['id'], self.extra['dup_a']):
+            response = await self.attach(project)
+            self.assertEqual(response.status_code, 200, response.text)
+        response = await self.detach(self.extra['slug'])
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            response.json(),
+            {
+                'project_id': self.extra['id'],
+                'project_slug': self.extra['slug'],
+            },
+        )
+        # A repeat by id changes nothing.
+        response = await self.detach(self.extra['id'])
+        self.assertEqual(response.status_code, 200, response.text)
+        task = await self.store.get(self.org, 'T-1')
+        assert task is not None
+        self.assertNotIn(
+            self.extra['id'], [p['project_id'] for p in task['projects']]
+        )
+        events = [
+            e
+            for e in await self.store.events(task['id'], 0, 1000)
+            if e['type'] == 'project.dissociated'
+        ]
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]['actor_kind'], 'agent')
+        self.assertEqual(events[0]['actor_id'], task['agent_id'])
+
+    async def test_detach_keeps_the_last_project(self) -> None:
+        response = await self.attach(self.extra['dup_a'])
+        self.assertEqual(response.status_code, 200, response.text)
+        task = await self.store.get(self.org, 'T-1')
+        assert task is not None
+        for row in task['projects']:
+            if row['project_id'] != self.extra['dup_a']:
+                response = await self.detach(row['project_id'])
+                self.assertEqual(response.status_code, 200, response.text)
+        response = await self.detach(self.extra['dup_a'])
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(response.json()['detail']['error'], 'last_project')
+
+    async def test_detach_unknown_project_is_422(self) -> None:
+        response = await self.detach('p-missing')
+        self.assertEqual(response.status_code, 422, response.text)
 
 
 class HistoryTests(RunnerTestCase):
