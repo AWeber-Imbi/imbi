@@ -1087,6 +1087,28 @@ describe('Tasks', () => {
       ).toHaveTextContent('Failed')
     })
 
+    it('goes Back from an inspection to the Conversation', async () => {
+      renderAt('/tickets/acme/T-3/activity')
+      fireEvent.click(await screen.findByRole('radio', { name: 'Verbose' }))
+      fireEvent.click(
+        await screen.findByRole('button', { name: /Bash uv run pytest -q/ }),
+      )
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Inspect Bash in the trajectory' }),
+      )
+      await waitFor(() =>
+        expect(window.location.pathname).toBe('/tickets/acme/T-3/trajectory'),
+      )
+      await ledgerRows()
+      window.history.back()
+      await waitFor(() =>
+        expect(window.location.pathname).toBe('/tickets/acme/T-3/conversation'),
+      )
+      expect(
+        await screen.findByRole('radio', { name: /^Conversation/ }),
+      ).toHaveAttribute('aria-checked', 'true')
+    })
+
     it('inspects a subagent call in the Trajectory', async () => {
       renderAt('/tickets/acme/T-3/conversation')
       fireEvent.click(await screen.findByRole('radio', { name: 'Verbose' }))
