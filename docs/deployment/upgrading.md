@@ -171,8 +171,8 @@ While pods of both releases run:
 
 Set the version of this section when the release is cut.
 
-1. **Before you deploy**, deploy release B everywhere and let its rollout
-   finish.
+1. **Before you deploy**, deploy release B (2.56.0) everywhere and let
+   its rollout finish.
 2. Deploy the new image. There is no setup command. At start, imbi-api
    adds `tickets.tickets.assignee_kind` (default `agent`) and
    `tickets.tickets.assignee`, makes `agent_id`, `agent_version`, and
