@@ -203,13 +203,15 @@ class TaskProject(pydantic.BaseModel):
 class AgentTaskResponse(pydantic.BaseModel):
     id: uuid.UUID
     short_id: str
-    agent_id: str
-    agent_version: int
+    #: ``None`` on a ticket assigned to a person, which the next release
+    #: writes; this release reads such a ticket during that rollout.
+    agent_id: str | None
+    agent_version: int | None
     prompt_version: int | None = None
     #: The version of the organization's agent platform configuration
     #: when the task was made. ``None``: the defaults apply.
     platform_config_version: int | None = None
-    service_account_id: str
+    service_account_id: str | None
     #: The projects of the task, oldest first. Each slug is the slug
     #: when the project was associated.
     projects: list[TaskProject]
@@ -384,7 +386,8 @@ class RelatedTask(pydantic.BaseModel):
 
     short_id: str
     title: str
-    agent_id: str
+    #: ``None`` on a ticket assigned to a person.
+    agent_id: str | None
     status: Status
     outcome: str | None = None
     created_at: datetime.datetime

@@ -11540,15 +11540,15 @@ export interface components {
             /** Short Id */
             short_id: string;
             /** Agent Id */
-            agent_id: string;
+            agent_id: string | null;
             /** Agent Version */
-            agent_version: number;
+            agent_version: number | null;
             /** Prompt Version */
             prompt_version?: number | null;
             /** Platform Config Version */
             platform_config_version?: number | null;
             /** Service Account Id */
-            service_account_id: string;
+            service_account_id: string | null;
             /** Projects */
             projects: components["schemas"]["TaskProject"][];
             /** Title */
@@ -11757,15 +11757,15 @@ export interface components {
             /** Short Id */
             short_id: string;
             /** Agent Id */
-            agent_id: string;
+            agent_id: string | null;
             /** Agent Version */
-            agent_version: number;
+            agent_version: number | null;
             /** Prompt Version */
             prompt_version?: number | null;
             /** Platform Config Version */
             platform_config_version?: number | null;
             /** Service Account Id */
-            service_account_id: string;
+            service_account_id: string | null;
             /** Projects */
             projects: components["schemas"]["TaskProject"][];
             /** Title */
@@ -18967,7 +18967,7 @@ export interface components {
             /** Title */
             title: string;
             /** Agent Id */
-            agent_id: string;
+            agent_id: string | null;
             /**
              * Status
              * @enum {string}
