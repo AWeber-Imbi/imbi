@@ -44,7 +44,7 @@ import {
   statusLabel,
   statusVariant,
 } from './taskEvents'
-import { errorMessage, useTickets, useWaitingTaskCount } from './taskQueries'
+import { errorMessage, useTicketCounts, useTickets } from './taskQueries'
 
 // Only the statuses that 2.54.0 (release A) accepts: a pod of that
 // release refuses the filter `held`, `open`, or `in_progress` during the
@@ -182,7 +182,8 @@ function Card({
 function Dashboard({ orgSlug }: { orgSlug: string }) {
   const open = useTickets(orgSlug, { limit: OPEN_LIMIT, status: OPEN })
   const recent = useTickets(orgSlug, { limit: RECENT_LIMIT })
-  const { data: waitingCount } = useWaitingTaskCount(orgSlug)
+  // The org-wide count; the Waiting on me count is the caller's own.
+  const { data: counts } = useTicketCounts(orgSlug, {})
   const usage = useAgentUsage(orgSlug)
   const { data: agents = [] } = useAgentList(orgSlug)
 
@@ -290,7 +291,7 @@ function Dashboard({ orgSlug }: { orgSlug: string }) {
               : 'nobody waiting'
           }
           to={ticketsPath()}
-          value={formatCount(waitingCount ?? waiting.length)}
+          value={formatCount(counts?.input ?? waiting.length)}
           warn={waiting.length > 0}
         />
         <Tile

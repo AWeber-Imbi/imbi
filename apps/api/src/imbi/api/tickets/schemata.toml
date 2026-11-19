@@ -272,6 +272,25 @@ ALTER TABLE tickets.tickets
       AND status IN ('held', 'open', 'in_progress', 'blocked', 'closed')));
 '''
 
+# Waiting on me (ADR 0028) finds the open tickets of a person by owner
+# or assignee, without case, on each poll of the navigation badge.
+# Expression indexes, so a step makes them, after the columns. A pod of
+# the previous release does not use or drop them.
+[[steps]]
+name = "tickets-waiting-indexes"
+after_tables = true
+when = """
+SELECT to_regclass('tickets.tickets_owner_open_idx') IS NULL
+    OR to_regclass('tickets.tickets_assignee_open_idx') IS NULL
+"""
+sql = """
+CREATE INDEX IF NOT EXISTS tickets_owner_open_idx ON tickets.tickets
+  (organization_id, lower(owner)) WHERE status <> 'closed';
+CREATE INDEX IF NOT EXISTS tickets_assignee_open_idx ON tickets.tickets
+  (organization_id, lower(assignee))
+  WHERE assignee_kind = 'person' AND status <> 'closed';
+"""
+
 # One row per ticket.
 #
 # `last_seq` is the sequence number of the newest event. An event write
@@ -350,6 +369,9 @@ priority = "TEXT NOT NULL DEFAULT 'normal'"
 # release gets the default.
 assignee_kind = "TEXT NOT NULL DEFAULT 'agent'"
 assignee = "TEXT"
+# When the last handoff changed the assignee kind (ADR 0028). The task
+# timeout of an agent counts from the first session after it.
+handed_off_at = "TIMESTAMP WITH TIME ZONE"
 
 [tables.primary_key]
 columns = ["id"]
