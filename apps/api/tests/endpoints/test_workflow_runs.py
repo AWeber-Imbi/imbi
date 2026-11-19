@@ -1390,6 +1390,26 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
         response = await self.client.post(self.step_url)
         self.assertEqual(response.json()['result'], {'n': 3})
 
+    async def _task_title(self, params: dict[str, typing.Any]) -> str:
+        await self._agent_step(
+            {'agent_id': self.agent, 'instruction': 'Go.', **params}
+        )
+        response = await self.client.post(self.step_url)
+        self.assertEqual(response.status_code, 200, response.text)
+        task = await self.tasks.get(self.org, response.json()['task_id'])
+        assert task is not None
+        return str(task['title'])
+
+    async def test_task_title_defaults_to_the_step(self) -> None:
+        self.assertEqual(await self._task_title({}), 'Agent guard: Ask')
+
+    async def test_task_title_from_the_step_input(self) -> None:
+        # The engine renders task_title like the instruction.
+        self.assertEqual(
+            await self._task_title({'task_title': 'ENG-1: implement'}),
+            'ENG-1: implement',
+        )
+
     async def test_malformed_input_is_422(self) -> None:
         # Not a 500: the engine would retry it, and it fails each time.
         for params in ({'agent_id': self.agent}, {'budget': 'x'}):

@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Box, Check, Plus, Search, X } from 'lucide-react'
 
-import { createAgentTask, getProjectsSlim } from '@/api/endpoints'
+import { createTicket, getProjectsSlim } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -21,7 +21,7 @@ import { cn } from '@/lib/utils'
 import type { Agent } from '@/types'
 
 import { useAgentList } from './agentQueries'
-import { agentsPath } from './agentsNav'
+import { ticketsPath } from './agentsNav'
 import { detectSource, titleFrom } from './newTask'
 import { errorMessage } from './taskQueries'
 
@@ -100,7 +100,7 @@ export function NewTaskDialog({
 
   const create = useMutation({
     mutationFn: () =>
-      createAgentTask(orgSlug, {
+      createTicket(orgSlug, {
         agent_slug: agentSlug,
         description: request.trim(),
         project_ids: projectIds,
@@ -108,10 +108,10 @@ export function NewTaskDialog({
       }),
     onSuccess: (task) => {
       void queryClient.invalidateQueries({
-        queryKey: queryKeys.agentTasks(orgSlug),
+        queryKey: queryKeys.tickets(orgSlug),
       })
       onClose()
-      navigate(agentsPath('tasks', orgSlug, task.short_id))
+      navigate(ticketsPath(orgSlug, task.short_id))
     },
   })
   const ready = missing.length === 0 && !create.isPending
@@ -129,7 +129,7 @@ export function NewTaskDialog({
       <DialogContent className="max-h-[calc(100vh-48px)] max-w-160 gap-0 overflow-hidden p-0">
         <div className="border-tertiary shrink-0 border-b px-5 pt-4.5 pr-12 pb-3.5">
           <DialogTitle className="text-[17px] font-semibold">
-            New task
+            New ticket
           </DialogTitle>
           <DialogDescription className="text-secondary mt-0.5 text-[12.5px]">
             Hand a piece of work to an agent. It shows up in your Inbox as soon
@@ -286,7 +286,7 @@ export function NewTaskDialog({
             type="submit"
           >
             <Plus className="mr-1 size-3.5" />
-            Create task
+            Create ticket
           </Button>
         </div>
       </DialogContent>

@@ -242,7 +242,7 @@ describe('AgentsArea', () => {
     expect(screen.queryByText(/had no price/)).not.toBeInTheDocument()
   })
 
-  it('says so when the user may not read agent tasks', () => {
+  it('says so when the user may not read tickets', () => {
     auth.user = {
       is_admin: false,
       organizations: [
@@ -251,7 +251,7 @@ describe('AgentsArea', () => {
       permissions: ['agent:read'],
     }
     renderAt('/agents/usage')
-    expect(screen.getByText(/agent_task:read/)).toBeInTheDocument()
+    expect(screen.getByText(/ticket:read/)).toBeInTheDocument()
     expect(endpoints.getAgentUsage).not.toHaveBeenCalled()
   })
 

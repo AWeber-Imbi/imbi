@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/hover-card'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
-import type { AgentTask, AgentTaskEvent } from '@/types'
+import type { Ticket, TicketEvent } from '@/types'
 
 import { formatMoney } from './agentDraft'
 import { formatElapsed, formatTokens } from './taskEvents'
@@ -25,8 +25,8 @@ export function TaskActivityCard({
   task,
 }: {
   elapsedMs: number
-  events: AgentTaskEvent[]
-  task: AgentTask
+  events: TicketEvent[]
+  task: Ticket
 }) {
   const live = task.status !== 'closed'
   const activity = useMemo(
@@ -67,8 +67,8 @@ export function TaskUsageCard({
   events,
   task,
 }: {
-  events: AgentTaskEvent[]
-  task: AgentTask
+  events: TicketEvent[]
+  task: Ticket
 }) {
   const models = useMemo(() => taskUsage(events).models, [events])
   const prompt =

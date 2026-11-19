@@ -518,22 +518,19 @@ async def _check_model_teams(
 ) -> None:
     """Refuse a restricted model that the caller or the owner team
     may not use."""
-    caller_allowed = auth.is_admin or (
-        auth.user is not None
-        and await prompt_resolve.member_allowed(db, model, auth.user.email)
+    message = (
+        f'Step {node.key!r}: the model {model!r} is restricted to teams '
+        'that do not include you or the owner team'
     )
-    if not caller_allowed or not await prompt_resolve.team_allowed(
-        db, model, owner_team_id
-    ):
-        raise fastapi.HTTPException(
-            status_code=403,
-            detail={
-                'error': 'model_not_allowed',
-                'message': f'Step {node.key!r}: the model {model!r} is '
-                'restricted to teams that do not include you or the '
-                'owner team',
-            },
-        )
+    if auth.is_admin:
+        email = None
+    elif auth.user is None:
+        raise prompt_resolve.ModelNotAllowed(message)
+    else:
+        email = auth.user.email
+    await prompt_resolve.check_model_teams(
+        db, model, message, email=email, team_id=owner_team_id
+    )
 
 
 def _llm_call_error(node: wf.Node, message: str) -> fastapi.HTTPException:

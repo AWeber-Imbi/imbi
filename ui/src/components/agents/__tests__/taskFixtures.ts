@@ -1,12 +1,12 @@
-import type { AgentTaskEvent, AgentTaskListItem } from '@/types'
+import type { TicketEvent, TicketListItem } from '@/types'
 
 /** An event of T-1; `seq` also picks the time (12:00:<seq>). */
 export function event(
   seq: number,
   type: string,
   payload: Record<string, unknown> = {},
-  overrides: Partial<AgentTaskEvent> = {},
-): AgentTaskEvent {
+  overrides: Partial<TicketEvent> = {},
+): TicketEvent {
   return {
     actor_id: 'agt-1',
     actor_kind: 'agent',
@@ -22,9 +22,7 @@ export function event(
 }
 
 /** T-1 for Mender (agt-1), queued, owned by dev@example.com. */
-export function task(
-  overrides: Partial<AgentTaskListItem> = {},
-): AgentTaskListItem {
+export function task(overrides: Partial<TicketListItem> = {}): TicketListItem {
   return {
     agent_id: 'agt-1',
     agent_version: 3,

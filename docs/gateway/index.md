@@ -318,7 +318,7 @@ action drops the SBOM and logs a warning.
 
 The action runs only for a signed delivery with a valid delivery id. A
 redelivery makes no second task. See
-[Agent Tasks](../admin/agent-tasks.md#webhooks).
+[Tickets](../admin/tickets.md#webhooks).
 
 ### start_workflow
 
@@ -369,7 +369,7 @@ needs these:
 
 The actions call imbi-api as the `imbi-gateway` service account. Its role,
 also `imbi-gateway`, grants `project:read`, `project:write`, `user:read`,
-`agent_task:create`, and `workflow:run`.
+`ticket:create`, and `workflow:run`.
 
 - `imbi-api setup` makes the account and its API key. When
   `IMBI_GATEWAY_API_TOKEN` is set, setup uses that value. When it is not

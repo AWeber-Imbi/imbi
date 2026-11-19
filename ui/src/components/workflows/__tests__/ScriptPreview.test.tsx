@@ -154,6 +154,8 @@ describe('ScriptPreview', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Run script' })).toBeDisabled(),
     )
-    expect(screen.getByText('Write a JSON object.')).toBeInTheDocument()
+    const sample = screen.getByLabelText('Sample inputs')
+    expect(sample).toHaveAttribute('aria-invalid', 'true')
+    expect(sample).toHaveAccessibleDescription('Write a JSON object.')
   })
 })

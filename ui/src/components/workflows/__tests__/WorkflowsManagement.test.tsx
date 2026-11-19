@@ -230,7 +230,7 @@ describe('WorkflowsManagement', () => {
     expect(screen.getByText('refused').tagName).toBe('STRONG')
     expect(screen.getByRole('link', { name: 'Open task T-9' })).toHaveAttribute(
       'href',
-      '/agents/tasks/acme/T-9',
+      '/tickets/acme/T-9',
     )
     expect(await screen.findByText('Ship it')).toBeInTheDocument()
     expect(screen.getByText('Not reached')).toBeInTheDocument()
@@ -505,6 +505,63 @@ describe('WorkflowsManagement', () => {
       1,
       expect.anything(),
     )
+  })
+
+  it('shows a newer saved version and activates it', async () => {
+    const stale = workflow({
+      active_version: 1,
+      latest_version: 2,
+      status: 'active',
+    })
+    vi.mocked(endpoints.getWorkflow).mockResolvedValue(stale)
+    vi.mocked(endpoints.getWorkflowVersion).mockResolvedValue({
+      ...stale.version,
+      version: 1,
+    })
+    vi.mocked(endpoints.activateWorkflow).mockResolvedValue({
+      ...stale,
+      active_version: 2,
+    })
+    renderAt('/agents/workflows/deploy-guard')
+    expect(
+      await screen.findByText('Active: v1 · Saved: v2'),
+    ).toBeInTheDocument()
+    const run = screen.getByRole('button', { name: 'Run' })
+    await waitFor(() => expect(run).toBeEnabled())
+    expect(run).toHaveAttribute(
+      'title',
+      'Starts a run of v1, the active version.',
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Activate v2' }))
+    await waitFor(() =>
+      expect(endpoints.activateWorkflow).toHaveBeenCalledWith(
+        'acme',
+        'deploy-guard',
+        2,
+      ),
+    )
+    expect(await screen.findByText('Saved · v2')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Activate v2' }),
+    ).not.toBeInTheDocument()
+    expect(run).toHaveAttribute(
+      'title',
+      'Starts a run of v2, the active version.',
+    )
+  })
+
+  it.each([
+    ['the active version is the latest', 2, 'active'],
+    ['the workflow is paused', 1, 'paused'],
+  ] as const)('hides Activate when %s', async (_, active_version, status) => {
+    vi.mocked(endpoints.getWorkflow).mockResolvedValue(
+      workflow({ active_version, latest_version: 2, status }),
+    )
+    renderAt('/agents/workflows/deploy-guard')
+    expect(await screen.findByText('Saved · v2')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /^Activate v/ }),
+    ).not.toBeInTheDocument()
   })
 
   it('shows a skipped run as a duplicate and links to the first', async () => {
@@ -805,6 +862,57 @@ describe('WorkflowsManagement', () => {
     expect(version.messages).toEqual([
       { content: 'Edited during save', role: 'user' },
     ])
+  })
+
+  it('offers no Duplicate for a step of a retired type', async () => {
+    vi.mocked(endpoints.listWorkflowStepTypes).mockResolvedValue([
+      ...STEP_TYPES,
+      stepType({
+        category: 'trigger',
+        label: 'Task completed',
+        params_schema: { properties: {}, type: 'object' },
+        trigger: true,
+        type: 'task_completed',
+      }),
+    ])
+    const base = workflow()
+    vi.mocked(endpoints.getWorkflow).mockResolvedValue({
+      ...base,
+      version: {
+        ...base.version,
+        graph: {
+          edges: [],
+          nodes: [
+            node({
+              id: 'old',
+              key: 'closed',
+              title: 'Old trigger',
+              type: 'task_completed',
+            }),
+            node({
+              id: 'w',
+              key: 'settle',
+              position: { x: 320, y: 0 },
+              title: 'Let traffic settle',
+              type: 'wait',
+            }),
+          ],
+        },
+      },
+    })
+    renderAt('/agents/workflows/deploy-guard')
+    fireEvent.pointerDown(await screen.findByText('Old trigger'), { button: 0 })
+    expect(
+      await screen.findByRole('button', { name: 'Delete step' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Duplicate' }),
+    ).not.toBeInTheDocument()
+
+    fireEvent.pointerDown(screen.getByText('Let traffic settle'), { button: 0 })
+    expect(
+      await screen.findByRole('button', { name: 'Duplicate' }),
+    ).toBeInTheDocument()
   })
 
   it('shows each step key, and the type when the title differs', async () => {

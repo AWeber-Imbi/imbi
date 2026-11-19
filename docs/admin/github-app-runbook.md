@@ -138,6 +138,11 @@ token with more permissions than the App has.
 | `github_read` | `actions: read`, `contents: read`, `issues: read`, `pull_requests: read` |
 | `github_write` | `contents: write`, `pull_requests: write`, `issues: write` |
 
+`github_read` and `github_write` also ask for `checks: read` and
+`statuses: read`, and `github_write` for `actions: read`, but only the
+ones the installation grants. Give the App those Read-only permissions
+when its agent waits for or reads CI results.
+
 For an agent that only reads, such as a check, set every permission above
 to Read-only and grant `github_read`, not `github_write` (step 8).
 

@@ -552,12 +552,13 @@ rollback fails the run.
 ### Agent task
 
 Gives an agent a task and waits for its outcome. See
-[Agent tasks](agent-tasks.md).
+[Tickets](tickets.md).
 
 | Parameter | What to enter | Default |
 |---|---|---|
 | `agent_id` | An agent of the organization. It must be a literal id | Required |
 | `instruction` | What the agent must do. Templates are allowed | Required |
+| `task_title` | The title of the agent task, up to 200 characters. Templates are allowed, for example `{{ trigger.ticket_key }}: implement` | `<workflow name>: <step title>` |
 | `project_id` | The project of the task: a literal id, or one plain reference such as `{{ trigger.project }}` or `{{ review.result.project }}`. A reference can render to a project id or slug | None |
 | `budget` | A limit in USD. It cannot be more than the task budget of the agent | The task budget of the agent |
 
@@ -580,7 +581,7 @@ with "used in N workflow(s)".
 
 **Output:** `task_id`, `outcome`, `reason`, and `summary` (the last
 message of the agent). Run detail shows `reason` and `summary` only to
-people with `agent_task:read`.
+people with `ticket:read`.
 
 ## References
 
@@ -688,7 +689,7 @@ Set **Dedupe key** to a [key template](#key-templates) that names the
 thing a run works on. Set **Dedupe window (days)** to how long a key
 skips a repeat. Leave the window empty to skip repeats forever.
 
-When a **Webhook** or **Task completed** trigger starts a run, Imbi
+When a **Webhook** or **Ticket closed** trigger starts a run, Imbi
 fills the key from the payload. If a run of the same workflow with the
 same key was made within the window, Imbi does not start the new run. It
 records it as `skipped`, with a link to the earlier run.
@@ -770,6 +771,13 @@ graph is too large.
 Activation makes the latest version the active version. Runs that already
 started keep the version that they started with.
 
+When you save an active workflow, the new version does not become active.
+The header then shows both versions, for example `Active: v3 · Saved: v5`,
+and an **Activate v5** button. Click the button to make the latest version
+the active version. The workflow stays active, so schedule and webhook
+triggers continue to start runs. The button is off while there are unsaved
+changes. Activation can fail for the same causes as the switch.
+
 Activation fails in these cases:
 
 | Response | Cause | Fix |
@@ -785,7 +793,7 @@ only. The permissions that steps need:
 | Schedule | `scheduled_task:create` |
 | Webhook | `webhook:update` |
 | Deploy, Rollback | `project:deployment:write` |
-| Agent task | `agent_task:create` |
+| Agent task | `ticket:create` |
 | LLM Call | `prompt:run` |
 
 Imbi records who activated the workflow. A workflow cannot do more than
@@ -849,7 +857,10 @@ output.
 
 ### Run
 
-Click **Run** to start a run of the active version. The workflow must be
+Click **Run** to start a run of the active version. This is not always
+the version in the editor: the tooltip of **Run** names the version that it
+starts. To run a newer saved version, activate it first (see
+[Activate a workflow](#activate-a-workflow)). The workflow must be
 active and have a **Manual run** trigger. If the trigger declares inputs,
 enter them, then click **Run workflow**.
 
@@ -905,7 +916,7 @@ status:
 **Failure causes** groups the failed runs by reason. Click a reason to show
 only its runs. The reason comes from the failed step, not from the error of
 the run: the reason of the agent task of an agent step, else the error of
-the step, else the error of the run. Only people with `agent_task:read`
+the step, else the error of the run. Only people with `ticket:read`
 see the reason and summary of an agent task.
 
 The **Definitions** tab shows **Failed 7d** for each workflow: the failed
@@ -1102,5 +1113,5 @@ processes for script steps, and imbi-api keeps two for **Run script**. Allow
 memory for them in the pod limits. The preview always uses the default
 limits.
 
-See also [Agents](agents.md), [Agent tasks](agent-tasks.md), and
+See also [Agents](agents.md), [Tickets](tickets.md), and
 [Agent runners](../deployment/agent-runners.md).

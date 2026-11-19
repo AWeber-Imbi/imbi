@@ -21,7 +21,7 @@ import { Button } from '@/components/ui/button'
 import { JsonView } from '@/components/ui/json-view'
 import { useClipboard } from '@/hooks/useClipboard'
 import { cn } from '@/lib/utils'
-import type { AgentTaskEvent } from '@/types'
+import type { TicketEvent } from '@/types'
 
 import { Prose } from './taskEntryViews'
 import { KindTag } from './TrajectoryLedger'
@@ -730,7 +730,7 @@ function Timing({
   )
 }
 
-function totals(reports: (AgentTaskEvent | null)[]): UsageTotals {
+function totals(reports: (null | TicketEvent)[]): UsageTotals {
   const sum: UsageTotals = {
     cacheRead: 0,
     cacheWrite: 0,
@@ -801,7 +801,7 @@ function UsageView({
 }
 
 /** What a person said, in full: the brief or their message. */
-function userText(e: AgentTaskEvent | undefined): string {
+function userText(e: TicketEvent | undefined): string {
   if (!e) return ''
   const p = e.payload
   return e.type === 'task.created'

@@ -35,7 +35,7 @@ table as a canvas, and a code block as a file snippet.
 
 Ask the bot to make an agent task, for example: "@imbi create a task to fix
 the issue in this thread and give it to mender". You own the task. See
-[Agent Tasks](../admin/agent-tasks.md#slack).
+[Tickets](../admin/tickets.md#slack).
 
 ## How the bot knows who you are
 
