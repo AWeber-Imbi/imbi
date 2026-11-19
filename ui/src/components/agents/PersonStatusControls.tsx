@@ -66,7 +66,7 @@ export function PersonStatusControls({
       : ['closed']
   return (
     <div className="flex shrink-0 items-center gap-1">
-      {task.status === 'open' && (
+      {(task.status === 'open' || task.status === 'blocked') && (
         <Button
           disabled={move.isPending}
           onClick={() => submit({ status: 'in_progress' })}
@@ -74,18 +74,7 @@ export function PersonStatusControls({
           variant="outline"
         >
           <Play className="mr-1 size-3.5" />
-          Start
-        </Button>
-      )}
-      {task.status === 'blocked' && (
-        <Button
-          disabled={move.isPending}
-          onClick={() => submit({ status: 'in_progress' })}
-          size="sm"
-          variant="outline"
-        >
-          <Play className="mr-1 size-3.5" />
-          Unblock
+          {task.status === 'open' ? 'Start' : 'Unblock'}
         </Button>
       )}
       {forms.map((to) => (

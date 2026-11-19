@@ -900,9 +900,11 @@ class TicketStore:
                         _dependency_payload(relate, link),
                         actor,
                     )
+                    # The publish reads no column that the events change.
                     linked += [
-                        (await _fetch_task(conn, ticket_id), events)
-                        for ticket_id, events in relate.events.items()
+                        (t, relate.events[t['id']])
+                        for t in relate.tasks
+                        if t['id'] in relate.events
                     ]
                 if prerequisites:
                     row = await _fetch_task(conn, task_id)
