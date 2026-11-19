@@ -1004,9 +1004,19 @@ async def _set_control(
     auth: permissions.AuthContext,
 ) -> dict[str, typing.Any]:
     try:
-        return await store.set_control(
-            org_id, short_id.upper(), control, _actor(auth)
-        )
+        with write_errors(short_id):
+            return await store.set_control(
+                org_id, short_id.upper(), control, _actor(auth)
+            )
+    except tickets.WrongAssigneeKind as e:
+        raise _person_ticket(short_id) from e
+
+
+@contextlib.contextmanager
+def write_errors(short_id: str) -> abc.Generator[None]:
+    """Map the errors of a change to an agent ticket to HTTP errors."""
+    try:
+        yield
     except tickets.TaskNotFound as e:
         raise fastapi.HTTPException(
             status_code=404, detail=f'Task {short_id!r} not found'
@@ -1020,8 +1030,6 @@ async def _set_control(
             status_code=409,
             detail=f'Task {short_id!r} has a cancel that is not done yet',
         ) from e
-    except tickets.WrongAssigneeKind as e:
-        raise _person_ticket(short_id) from e
 
 
 async def may_create(db: graph.Graph, org_slug: str, email: str) -> bool:
@@ -1176,6 +1184,7 @@ TaskReader = typing.Annotated[
 ]
 
 _require_manage = permissions.require_permission('ticket:manage')
+_require_create = permissions.require_permission('ticket:create')
 
 #: A person with ``ticket:manage``. Agents cannot change relations.
 ManagingPerson = typing.Annotated[
@@ -1683,8 +1692,10 @@ async def count_waiting_agent_tasks(
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('ticket:read')),
     ],
+    lists: bool = False,
 ) -> dict[str, typing.Any]:
-    """List what waits on the caller (ADR 0028).
+    """Count, and with ``lists`` list, what waits on the caller (ADR
+    0028).
 
     ``requests`` are the open requests that have not expired on the
     tickets that the caller owns and that are not closed, whatever
@@ -1693,8 +1704,9 @@ async def count_waiting_agent_tasks(
     to the caller that are not closed. ``held`` are the held tickets
     that the caller owns with a gating prerequisite that closed with an
     outcome that does not release them. ``count`` is the number of
-    items, for the navigation badge. A caller that is not a person has
-    none.
+    items. Without ``lists`` (the navigation badge, which polls), only
+    ``count`` is sent and the lists are empty. A caller that is not a
+    person has none.
 
     Raises:
         403: The caller is not a member of the org.
@@ -1703,8 +1715,7 @@ async def count_waiting_agent_tasks(
     """
     if auth.user is None:
         return {'count': 0}
-    found = await store.waiting(org_id, auth.user.email)
-    return {'count': sum(len(items) for items in found.values()), **found}
+    return await store.waiting(org_id, auth.user.email, lists=lists)
 
 
 @tickets_router.get('/{short_id}', response_model=AgentTaskResponse)
@@ -2113,12 +2124,17 @@ async def hand_off_ticket(
     requests close as ``withdrawn``. An agent gets the ticket at the
     agent version that it has now. A person ticket to another person
     changes only the assignee. The owner and the assignee make this
-    change; other callers need ``ticket:manage``. An agent hands off
-    its own ticket with the harness tool ``hand_off``.
+    change; other callers need ``ticket:manage``. To an agent, the
+    caller also needs ``ticket:create``, and the owner must be able to
+    make tickets (see :func:`may_create`), as for a create: the agent
+    works for the owner. An agent hands off its own ticket, to a person
+    only, with the harness tool ``hand_off``.
 
     Raises:
         403: The caller is not the owner or the assignee and has no
-            ``ticket:manage``.
+            ``ticket:manage``; or, to an agent, the caller has no
+            ``ticket:create`` or the owner cannot make tickets
+            (``owner_forbidden``).
         404: No such task.
         409: The task is closed, is an agent ticket and goes to an agent
             (``agent_ticket``), has an open session (``session_open``),
@@ -2136,25 +2152,26 @@ async def hand_off_ticket(
     if data.assignee_kind == 'person':
         to = await person_assignee(db, org_slug, data.assignee)
     else:
+        # An agent works for the owner: as for a create, the caller needs
+        # ticket:create, and the owner must be able to make tickets.
+        await _require_create(auth)
+        if not await may_create(db, org_slug, task['owner']):
+            raise autonomous.forbidden(
+                'owner_forbidden',
+                f'{task["owner"]!r} cannot make agent tickets in '
+                f'organization {org_slug!r}.',
+            )
         to = await agent_assignee(db, org_slug, data.agent_slug or '')
     try:
-        return await store.hand_off(
-            org_id,
-            task['short_id'],
-            dataclasses.replace(to, note=data.note),
-            _actor(auth),
-        )
-    except tickets.TaskClosed as e:
-        raise fastapi.HTTPException(
-            status_code=409, detail=f'Task {short_id!r} is closed'
-        ) from e
+        with write_errors(short_id):
+            return await store.hand_off(
+                org_id,
+                task['short_id'],
+                dataclasses.replace(to, note=data.note),
+                _actor(auth),
+            )
     except tickets.WrongAssigneeKind as e:
         raise _agent_ticket(short_id) from e
-    except tickets.CancelPending as e:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=f'Task {short_id!r} has a cancel that is not done yet',
-        ) from e
     except tickets.SessionOpen as e:
         raise _conflict(
             'session_open',

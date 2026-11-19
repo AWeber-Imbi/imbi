@@ -80,8 +80,12 @@ Set the version of this section when the release is cut.
 
 1. **Before you deploy**, deploy the person ticket release (the
    section below) everywhere and let its rollout finish.
-2. Deploy the new image. There is no setup command and no schema
-   change. A handoff writes values that the person ticket release reads
+2. Deploy the new image. There is no setup command. At start, imbi-api
+   adds the column `tickets.tickets.handed_off_at` and two indexes for
+   Waiting on me, `tickets_owner_open_idx` and
+   `tickets_assignee_open_idx`. The index build stops writes to
+   `tickets.tickets` while it runs. A pod of the previous release does
+   not use or drop them. A handoff writes values that the person ticket release reads
    already: the request status `withdrawn` and the event types
    `handed_off`, `assignee.changed`, and `request.withdrawn`.
 3. Deploy the runner image when you like, before or after imbi-api. An
@@ -105,8 +109,8 @@ While pods of both releases run:
 - When an agent hands off its ticket, the runner keeps the chain until
   it finishes. The chain then has an open ticket, so it goes to
   `fencing`, as for a paused ticket.
-- `GET /tickets/waiting` now returns what waits on the caller, with
-  three lists, and `count` counts the caller's own items. Before, it
+- `GET /tickets/waiting` now counts what waits on the caller, and
+  returns the three lists with `?lists=true`. Before, it
   counted every ticket of the organization with an open request. While
   pods of both releases run, the badge can show either count, and the
   new **Waiting on me** page shows empty lists when a pod of the

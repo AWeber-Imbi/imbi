@@ -81,7 +81,7 @@ export function Navigation({ currentView }: NavigationProps) {
     'ticket:read',
     selectedOrganization?.slug,
   )
-  const waiting = useWaitingTaskCount(selectedOrganization?.slug)
+  const { data: waiting } = useWaitingTaskCount(selectedOrganization?.slug)
   // The dialog lists agents, so it needs agent:read too.
   const canCreateTask =
     useHasPermission('ticket:create', selectedOrganization?.slug) &&

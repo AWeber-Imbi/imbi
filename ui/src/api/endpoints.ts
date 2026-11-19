@@ -3890,16 +3890,23 @@ export const getTicketPosition = (
     ...params,
   })
 
-/**
- * What waits on the caller (ADR 0028): open requests on their tickets,
- * person tickets assigned to them, and their held tickets whose gate
- * failed. `count` is the "waiting on you" badge. A previous-release API
- * sends `count` only.
- */
+/** The number of items that wait on the caller (the "waiting on you" badge). */
 export const countWaitingTickets = (orgSlug: string, signal?: AbortSignal) =>
   apiClient.get<TicketWaiting>(
     `${ticketsApiPath(orgSlug)}/waiting`,
     undefined,
+    signal,
+  )
+
+/**
+ * What waits on the caller (ADR 0028): open requests on their tickets,
+ * person tickets assigned to them, and their held tickets whose gate
+ * failed. A previous-release API sends `count` only.
+ */
+export const listWaitingTickets = (orgSlug: string, signal?: AbortSignal) =>
+  apiClient.get<TicketWaiting>(
+    `${ticketsApiPath(orgSlug)}/waiting`,
+    { lists: true },
     signal,
   )
 

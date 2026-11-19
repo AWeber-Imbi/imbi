@@ -14,7 +14,9 @@ class WaitingTests(test_agent_tasks.AgentTaskTestCase):
         self.agent = tickets.Actor('agent', 'triage', 'harness')
 
     async def waiting(self) -> dict[str, typing.Any]:
-        response = await self.client.get(self.url('waiting'))
+        response = await self.client.get(
+            self.url('waiting'), params={'lists': 'true'}
+        )
         self.assertEqual(response.status_code, 200, response.text)
         return response.json()
 
@@ -108,6 +110,12 @@ class WaitingTests(test_agent_tasks.AgentTaskTestCase):
             [('T-6', ['T-5'])],
         )
         self.assertEqual(body['count'], 3)
+        # The badge reads the count only.
+        response = await self.client.get(self.url('waiting'))
+        self.assertEqual(
+            response.json(),
+            {'count': 3, 'requests': [], 'assigned': [], 'held': []},
+        )
 
         # A closed ticket waits on nobody.
         await self.store.set_outcome(

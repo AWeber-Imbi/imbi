@@ -5289,7 +5289,8 @@ export interface paths {
         };
         /**
          * Count Waiting Agent Tasks
-         * @description List what waits on the caller (ADR 0028).
+         * @description Count, and with ``lists`` list, what waits on the caller (ADR
+         *     0028).
          *
          *     ``requests`` are the open requests that have not expired on the
          *     tickets that the caller owns and that are not closed, whatever
@@ -5298,8 +5299,9 @@ export interface paths {
          *     to the caller that are not closed. ``held`` are the held tickets
          *     that the caller owns with a gating prerequisite that closed with an
          *     outcome that does not release them. ``count`` is the number of
-         *     items, for the navigation badge. A caller that is not a person has
-         *     none.
+         *     items. Without ``lists`` (the navigation badge, which polls), only
+         *     ``count`` is sent and the lists are empty. A caller that is not a
+         *     person has none.
          *
          *     Raises:
          *         403: The caller is not a member of the org.
@@ -5611,12 +5613,17 @@ export interface paths {
          *     requests close as ``withdrawn``. An agent gets the ticket at the
          *     agent version that it has now. A person ticket to another person
          *     changes only the assignee. The owner and the assignee make this
-         *     change; other callers need ``ticket:manage``. An agent hands off
-         *     its own ticket with the harness tool ``hand_off``.
+         *     change; other callers need ``ticket:manage``. To an agent, the
+         *     caller also needs ``ticket:create``, and the owner must be able to
+         *     make tickets (see :func:`may_create`), as for a create: the agent
+         *     works for the owner. An agent hands off its own ticket, to a person
+         *     only, with the harness tool ``hand_off``.
          *
          *     Raises:
          *         403: The caller is not the owner or the assignee and has no
-         *             ``ticket:manage``.
+         *             ``ticket:manage``; or, to an agent, the caller has no
+         *             ``ticket:create`` or the owner cannot make tickets
+         *             (``owner_forbidden``).
          *         404: No such task.
          *         409: The task is closed, is an agent ticket and goes to an agent
          *             (``agent_ticket``), has an open session (``session_open``),
@@ -32153,7 +32160,9 @@ export interface operations {
     };
     count_waiting_tickets_api_organizations__org_slug__tickets_waiting_get: {
         parameters: {
-            query?: never;
+            query?: {
+                lists?: boolean;
+            };
             header?: never;
             path: {
                 org_slug: string;

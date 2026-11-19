@@ -12,7 +12,30 @@ from imbi.api.endpoints import harness as harness_api
 
 
 class HandOffTestCase(test_agent_task_harness.HarnessTestCase):
-    """``T-1`` is a queued agent ticket of ``triage``, owned by ``email``."""
+    """``T-1`` is a queued agent ticket of ``triage``, owned by ``email``.
+
+    The owner can make tickets (a role with ``ticket:create``), so an
+    agent can work for them.
+    """
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        self.role = f'handoff-{self.org}'
+        await self.graph.execute(
+            'MERGE (p:Permission {{name: "ticket:create"}})'
+            ' CREATE (r:Role {{slug: {role}, name: {role}}})'
+            ' CREATE (r)-[:GRANTS]->(p)'
+            ' WITH r MATCH (:User {{email: {email}}})-[m:MEMBER_OF]->()'
+            ' SET m.role = {role} RETURN 1 AS ok',
+            {'role': self.role, 'email': self.email},
+            ['ok'],
+        )
+        self.addAsyncCleanup(
+            self.graph.execute,
+            'MATCH (r:Role {{slug: {role}}}) DETACH DELETE r RETURN 1 AS ok',
+            {'role': self.role},
+            ['ok'],
+        )
 
     async def hand_off(
         self, short_id: str = 'T-1', **body: typing.Any
@@ -268,6 +291,36 @@ class HandOffTests(HandOffTestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.permissions = {'ticket:manage'}
         response = await self.to_person()
+        self.assertEqual(response.status_code, 200, response.text)
+
+    async def test_agent_target_needs_create(self) -> None:
+        await self.to_person()
+        # The caller is the assignee, not the owner, with no
+        # ticket:create: a person target is allowed, an agent is not.
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE tickets.tickets SET owner = %s, assignee = %s'
+                ' WHERE organization_id = %s',
+                (self.member, self.email, self.org),
+            )
+        self.permissions = {'ticket:read'}
+        response = await self.to_agent()
+        self.assertEqual(response.status_code, 403, response.text)
+        response = await self.to_person(assignee=self.email)
+        self.assertEqual(response.status_code, 200, response.text)
+        # With ticket:create, the owner must still be able to make
+        # tickets: the agent works for them.
+        self.permissions = {'ticket:read', 'ticket:create'}
+        response = await self.to_agent()
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(response.json()['detail']['error'], 'owner_forbidden')
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE tickets.tickets SET owner = %s'
+                ' WHERE organization_id = %s',
+                (self.email, self.org),
+            )
+        response = await self.to_agent()
         self.assertEqual(response.status_code, 200, response.text)
 
     async def test_done_chain_is_queued_again(self) -> None:

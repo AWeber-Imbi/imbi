@@ -6,7 +6,7 @@ import { render, screen, within } from '@/test/utils'
 import { WaitingOnMe } from '../WaitingOnMe'
 
 // fallow-ignore-next-line unresolved-import
-vi.mock('@/api/endpoints', () => ({ countWaitingTickets: vi.fn() }))
+vi.mock('@/api/endpoints', () => ({ listWaitingTickets: vi.fn() }))
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/contexts/OrganizationContext', () => ({
@@ -40,7 +40,7 @@ describe('WaitingOnMe', () => {
   })
 
   it('lists the three groups', async () => {
-    vi.mocked(endpoints.countWaitingTickets).mockResolvedValue({
+    vi.mocked(endpoints.listWaitingTickets).mockResolvedValue({
       assigned: [
         { ...TICKET, short_id: 'T-2', status: 'open', title: 'Rotate' },
       ],
@@ -82,7 +82,7 @@ describe('WaitingOnMe', () => {
   })
 
   it('shows empty groups for a previous-release API', async () => {
-    vi.mocked(endpoints.countWaitingTickets).mockResolvedValue({ count: 2 })
+    vi.mocked(endpoints.listWaitingTickets).mockResolvedValue({ count: 2 })
     render(<WaitingOnMe />)
     expect(await screen.findByText('No questions wait on you.')).toBeTruthy()
     expect(screen.getByText('No tickets are assigned to you.')).toBeTruthy()

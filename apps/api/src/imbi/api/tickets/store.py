@@ -143,6 +143,65 @@ _OPEN_REQUESTS = sql.SQL(
     ' AND (r.expires_at IS NULL OR r.expires_at > NOW())'
 )
 
+#: The open requests on the open tickets of ``%(email)s``.
+_WAITING_REQUESTS: typing.LiteralString = (
+    ' FROM tickets.requests AS r'
+    ' JOIN tickets.tickets AS t ON t.id = r.ticket_id'
+    ' WHERE t.organization_id = %(org)s AND lower(t.owner) = %(email)s'
+    " AND t.status <> 'closed' AND r.status = 'open'"
+    ' AND (r.expires_at IS NULL OR r.expires_at > NOW())'
+)
+
+#: The open person tickets assigned to ``%(email)s``.
+_WAITING_ASSIGNED: typing.LiteralString = (
+    ' FROM tickets.tickets AS t WHERE t.organization_id = %(org)s'
+    " AND t.assignee_kind = 'person' AND lower(t.assignee) = %(email)s"
+    " AND t.status <> 'closed'"
+)
+
+#: The gating prerequisites of ticket ``t`` that closed with an outcome
+#: that does not release it (not in ``%(done)s``).
+_FAILED_GATES: typing.LiteralString = (
+    'SELECT p.short_id FROM tickets.ticket_dependencies AS d'
+    ' JOIN tickets.tickets AS p ON p.organization_id = d.organization_id'
+    ' AND p.id = d.prerequisite_ticket_id'
+    ' WHERE d.dependent_ticket_id = t.id AND d.gates'
+    " AND p.status = 'closed' AND NOT p.outcome = ANY(%(done)s)"
+)
+
+#: The held tickets of ``%(email)s`` with a failed gating prerequisite.
+_WAITING_HELD: typing.LiteralString = (
+    ' FROM tickets.tickets AS t WHERE t.organization_id = %(org)s'
+    " AND lower(t.owner) = %(email)s AND t.status = 'held'"
+    ' AND EXISTS (' + _FAILED_GATES + ')'
+)
+
+#: The lists of :meth:`TicketStore.waiting`, oldest first.
+_WAITING_LISTS: dict[str, typing.LiteralString] = {
+    'requests': 'SELECT r.*, t.short_id, t.title AS ticket_title'
+    + _WAITING_REQUESTS
+    + ' ORDER BY r.opened_at, r.id',
+    'assigned': 'SELECT t.*'
+    + _WAITING_ASSIGNED
+    + ' ORDER BY t.created_at, t.id',
+    'held': 'SELECT t.*, ARRAY('
+    + _FAILED_GATES
+    + ' ORDER BY p.created_at, p.id) AS failed'
+    + _WAITING_HELD
+    + ' ORDER BY t.created_at, t.id',
+}
+
+#: The number of items in the lists of :meth:`TicketStore.waiting`.
+_WAITING_COUNT: typing.LiteralString = (
+    'SELECT (SELECT count(*)'
+    + _WAITING_REQUESTS
+    + ') + (SELECT count(*)'
+    + _WAITING_ASSIGNED
+    + ') + (SELECT count(*)'
+    + _WAITING_HELD
+    + ') AS count'
+)
+
 #: The inbox groups of the task list, in order.
 Group = typing.Literal['input', 'running', 'paused', 'queued', 'closed']
 
@@ -236,6 +295,12 @@ _TREE: typing.LiteralString = (
     ' min(root_title) AS root_title, count(*) AS tickets,'
     " count(*) FILTER (WHERE status <> 'closed') AS open FROM down"
 )
+
+#: The chain states in which a runner holds a chain (ADR 0022); see
+#: :data:`imbi.api.harness.store.PINNED`.
+PINNED_CHAIN_STATES: tuple[
+    typing.Literal['running', 'fencing', 'stuck'], ...
+] = ('running', 'fencing', 'stuck')
 
 #: The statuses of a ticket that has not started: a gating
 #: prerequisite can still hold it.
@@ -1124,7 +1189,9 @@ class TicketStore:
             found = await cursor.fetchall()
         return {str(group): int(count) for group, count in found}
 
-    async def waiting(self, organization_id: str, email: str) -> Row:
+    async def waiting(
+        self, organization_id: str, email: str, *, lists: bool = True
+    ) -> Row:
         """Return what waits on the person ``email`` (ADR 0028):
 
         - ``requests``: the open requests on the tickets that they own
@@ -1136,47 +1203,28 @@ class TicketStore:
           prerequisite that closed with an outcome that does not release
           them, oldest first, with those prerequisites in ``failed``.
 
-        Emails match without case.
+        ``count`` is the number of items in the three lists. Without
+        ``lists``, only ``count`` is returned, from one query: the
+        navigation badge polls it. Emails match without case.
         """
+        params = {
+            'org': organization_id,
+            'email': email.lower(),
+            'done': list(DONE_OUTCOMES),
+        }
         async with (
             self._pool.connection() as conn,
             conn.cursor(row_factory=rows.dict_row) as cursor,
         ):
-            await cursor.execute(
-                'SELECT r.*, t.short_id, t.title AS ticket_title'
-                ' FROM tickets.requests AS r'
-                ' JOIN tickets.tickets AS t ON t.id = r.ticket_id'
-                ' WHERE t.organization_id = %s AND lower(t.owner) = %s'
-                " AND t.status <> 'closed' AND r.status = 'open'"
-                ' AND (r.expires_at IS NULL OR r.expires_at > NOW())'
-                ' ORDER BY r.opened_at, r.id',
-                (organization_id, email.lower()),
-            )
-            requests = await cursor.fetchall()
-            await cursor.execute(
-                _SELECT_TASKS + ' WHERE organization_id = %s'
-                " AND assignee_kind = 'person' AND lower(assignee) = %s"
-                " AND status <> 'closed' ORDER BY created_at, id",
-                (organization_id, email.lower()),
-            )
-            assigned = await cursor.fetchall()
-            await cursor.execute(
-                'SELECT * FROM (SELECT t.*, ' + PROJECTS + ','  # noqa: S608
-                ' ARRAY(SELECT p.short_id'
-                ' FROM tickets.ticket_dependencies AS d'
-                ' JOIN tickets.tickets AS p'
-                ' ON p.organization_id = d.organization_id'
-                ' AND p.id = d.prerequisite_ticket_id'
-                ' WHERE d.dependent_ticket_id = t.id AND d.gates'
-                " AND p.status = 'closed' AND NOT p.outcome = ANY(%s)"
-                ' ORDER BY p.created_at, p.id) AS failed'
-                ' FROM tickets.tickets AS t WHERE t.organization_id = %s'
-                " AND lower(t.owner) = %s AND t.status = 'held') AS h"
-                " WHERE failed <> '{}' ORDER BY created_at, id",
-                (list(DONE_OUTCOMES), organization_id, email.lower()),
-            )
-            held = await cursor.fetchall()
-        return {'requests': requests, 'assigned': assigned, 'held': held}
+            if not lists:
+                await cursor.execute(_WAITING_COUNT, params)
+                row = await cursor.fetchone()
+                return {'count': int(row['count']) if row else 0}
+            found: Row = {}
+            for key, query in _WAITING_LISTS.items():
+                await cursor.execute(query, params)
+                found[key] = await cursor.fetchall()
+        return {'count': sum(map(len, found.values())), **found}
 
     async def events(
         self, task_id: uuid.UUID, after_seq: int, limit: int
@@ -2090,10 +2138,12 @@ class TicketStore:
                 cursor = await write.conn.execute(
                     'SELECT NOW() - min(opened_at) > make_interval(secs => %s)'
                     ' FROM tickets.sessions WHERE ticket_id = %s'
-                    ' AND opened_at > COALESCE((SELECT max(at)'
-                    ' FROM tickets.events WHERE ticket_id = %s'
-                    " AND type = 'handed_off'), '-infinity')",
-                    (timeout_seconds, write.task['id'], write.task['id']),
+                    " AND opened_at > COALESCE(%s, '-infinity')",
+                    (
+                        timeout_seconds,
+                        write.task['id'],
+                        write.task['handed_off_at'],
+                    ),
                 )
                 row = await cursor.fetchone()
                 if row and row[0]:
@@ -2727,7 +2777,7 @@ class TicketStore:
                 await _close_sessions(write, 'handed_off', actor)
             elif await _session_open(write.conn, task['id']):
                 raise SessionOpen(short_id)
-            elif await _chain_state(write.conn, task) in _PINNED:
+            elif await _chain_state(write.conn, task) in PINNED_CHAIN_STATES:
                 raise ChainPinned(short_id)
             if to.assignee_kind == task['assignee_kind']:
                 if to.assignee != task['assignee']:
@@ -3013,11 +3063,6 @@ async def _close(
         )
 
 
-#: The chain states in which a runner holds a chain; the same as
-#: :data:`imbi.api.harness.store.PINNED`.
-_PINNED = ('running', 'fencing', 'stuck')
-
-
 async def _chain_state(conn: Conn, task: Row) -> str | None:
     """Lock the chain row of ``task`` and return its state; ``None``
     when no runner claimed the chain yet."""
@@ -3048,18 +3093,20 @@ async def _hand_off(write: _Write, to: HandOff, actor: Actor) -> None:
         "UPDATE tickets.requests SET status = 'withdrawn',"
         ' resolved_at = NOW(), resolved_by = %s'
         " WHERE ticket_id = %s AND status = 'open'"
-        ' RETURNING id, opened_at',
+        ' RETURNING id',
         (actor.id, task['id']),
     )
-    for request_id, _opened in sorted(
-        await cursor.fetchall(), key=lambda row: (row[1], row[0])
-    ):
+    for (request_id,) in sorted(await cursor.fetchall()):
         await write.event(
             'request.withdrawn', {'request_id': str(request_id)}, actor
         )
-    status: Status = 'open' if to.assignee_kind == 'person' else 'queued'
-    if task['status'] == 'held':
-        status = 'held'
+    status: Status = (
+        'held'
+        if task['status'] == 'held'
+        else 'open'
+        if to.assignee_kind == 'person'
+        else 'queued'
+    )
     await write.event(
         'handed_off',
         {
@@ -3085,6 +3132,7 @@ async def _hand_off(write: _Write, to: HandOff, actor: Actor) -> None:
         'prompt_version': to.prompt_version,
         'service_account_id': to.service_account_id,
         'control': 'run',
+        'handed_off_at': datetime.datetime.now(datetime.UTC),
     }
     if to.assignee_kind == 'agent':
         if task['budget'] is None:
