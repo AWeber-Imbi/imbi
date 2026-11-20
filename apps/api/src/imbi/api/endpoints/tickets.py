@@ -585,6 +585,42 @@ class TicketHandOff(pydantic.BaseModel):
         return self
 
 
+class TicketReopen(pydantic.BaseModel):
+    """A reopen of a closed ticket (ADR 0028)."""
+
+    reason: str = pydantic.Field(
+        min_length=1,
+        max_length=MAX_TEXT_LENGTH,
+        description='Why the ticket reopens.',
+    )
+    assignee_kind: AssigneeKind | None = pydantic.Field(
+        default=None,
+        description='Give the ticket a new assignee of this kind. '
+        '``null`` keeps the assignee.',
+    )
+    agent_slug: str | None = pydantic.Field(
+        default=None, min_length=1, description='The new agent.'
+    )
+    assignee: pydantic.EmailStr | None = pydantic.Field(
+        default=None,
+        description='The email of the new person. Must be in the org.',
+    )
+
+    @pydantic.model_validator(mode='after')
+    def _assignee(self) -> typing.Self:
+        agent = self.agent_slug is not None
+        person = self.assignee is not None
+        if (agent, person) != (
+            self.assignee_kind == 'agent',
+            self.assignee_kind == 'person',
+        ):
+            raise ValueError(
+                'send agent_slug with the kind agent, assignee with the '
+                'kind person, or neither'
+            )
+        return self
+
+
 class TicketParentSet(pydantic.BaseModel):
     """The new parent of a ticket."""
 
@@ -626,6 +662,12 @@ RETURN agent_ids, agent_names, collect(p.id) AS project_ids,
 
 _AGENT_QUERY: typing.LiteralString = """
 MATCH (a:Agent {{slug: {slug}}})
+      -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+RETURN a
+"""
+
+_AGENT_BY_ID_QUERY: typing.LiteralString = """
+MATCH (a:Agent {{id: {slug}}})
       -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
 RETURN a
 """
@@ -728,11 +770,16 @@ OrgId = organizations.MemberOrgId
 
 
 async def _fetch_agent(
-    db: graph.Graph, org_slug: str, slug: str
+    db: graph.Graph, org_slug: str, slug: str, *, by_id: bool = False
 ) -> dict[str, typing.Any]:
-    """Return the properties of an agent in the org, or raise 422."""
+    """Return the properties of an agent in the org, or raise 422.
+
+    With ``by_id``, ``slug`` is the id of the agent.
+    """
     records = await db.execute(
-        _AGENT_QUERY, {'slug': slug, 'org_slug': org_slug}, ['a']
+        _AGENT_BY_ID_QUERY if by_id else _AGENT_QUERY,
+        {'slug': slug, 'org_slug': org_slug},
+        ['a'],
     )
     props: typing.Any = (
         graph.parse_agtype(records[0]['a']) if records else None
@@ -1357,10 +1404,12 @@ async def agent_assignee(
     org_slug: str,
     slug: str,
     budget: decimal.Decimal | None = None,
+    *,
+    by_id: bool = False,
 ) -> tickets.HandOff:
     """Return an agent as an assignee: its service account, the agent
     and prompt versions that it has now, and the budget (see
-    :func:`task_budget`).
+    :func:`task_budget`). With ``by_id``, ``slug`` is the agent id.
 
     Raises:
         409: The agent is disabled.
@@ -1368,7 +1417,7 @@ async def agent_assignee(
             agent's task budget.
 
     """
-    agent = await _fetch_agent(db, org_slug, slug)
+    agent = await _fetch_agent(db, org_slug, slug, by_id=by_id)
     if not agent.get('enabled', True):
         raise fastapi.HTTPException(
             status_code=409, detail=f'Agent {slug!r} is disabled'
@@ -1740,9 +1789,7 @@ async def list_agent_task_events(
     ClickHouse, in the same shape. The service account of the task's
     agent can read the events of its own task.
     """
-    if task['log_archived_at'] is not None:
-        return await tickets.log.archived_events(task, after_seq, limit)
-    return await store.events(task['id'], after_seq, limit)
+    return await store.read_log(task, after_seq, limit)
 
 
 @tickets_router.post('/{short_id}/pause', response_model=AgentTaskResponse)
@@ -2144,24 +2191,15 @@ async def hand_off_ticket(
 
     """
     task = await _get_task(store, org_id, short_id)
-    people = {task['owner'].lower(), (task['assignee'] or '').lower()}
-    if auth.user is None or auth.user.email.lower() not in people:
-        await _require_manage(auth)
+    await _require_party_or_manage(auth, task)
     if data.assignee_kind == 'agent' == task['assignee_kind']:
         raise _agent_ticket(short_id)
     if data.assignee_kind == 'person':
         to = await person_assignee(db, org_slug, data.assignee)
     else:
-        # An agent works for the owner: as for a create, the caller needs
-        # ticket:create, and the owner must be able to make tickets.
-        await _require_create(auth)
-        if not await may_create(db, org_slug, task['owner']):
-            raise autonomous.forbidden(
-                'owner_forbidden',
-                f'{task["owner"]!r} cannot make agent tickets in '
-                f'organization {org_slug!r}.',
-            )
-        to = await agent_assignee(db, org_slug, data.agent_slug or '')
+        to = await _agent_for_owner(
+            db, org_slug, task['owner'], auth, data.agent_slug or ''
+        )
     try:
         with write_errors(short_id):
             return await store.hand_off(
@@ -2184,6 +2222,111 @@ async def hand_off_ticket(
             f'A runner holds the chain of task {short_id!r}; hand it off '
             'when the runner lets it go',
         ) from e
+
+
+async def _require_party_or_manage(
+    auth: permissions.AuthContext, task: dict[str, typing.Any]
+) -> None:
+    """Pass the owner and the assignee of the ticket; other callers,
+    also a caller that is not a person, need ``ticket:manage``."""
+    people = {task['owner'].lower(), (task['assignee'] or '').lower()}
+    if auth.user is None or auth.user.email.lower() not in people:
+        await _require_manage(auth)
+
+
+async def _agent_for_owner(
+    db: graph.Graph,
+    org_slug: str,
+    owner: str,
+    auth: permissions.AuthContext,
+    slug: str,
+    *,
+    by_id: bool = False,
+) -> tickets.HandOff:
+    """Return the agent ``slug`` as the assignee of a ticket of
+    ``owner``. As for a create, the caller needs ``ticket:create``, and
+    the owner must be able to make tickets: the agent works for the
+    owner.
+
+    Raises:
+        403: The caller has no ``ticket:create``, or the owner cannot
+            make tickets (``owner_forbidden``).
+        409: The agent is disabled.
+        422: The agent is not in the org.
+
+    """
+    await _require_create(auth)
+    if not await may_create(db, org_slug, owner):
+        raise autonomous.forbidden(
+            'owner_forbidden',
+            f'{owner!r} cannot make agent tickets in organization '
+            f'{org_slug!r}.',
+        )
+    return await agent_assignee(db, org_slug, slug, by_id=by_id)
+
+
+@tickets_router.post('/{short_id}/reopen', response_model=AgentTaskResponse)
+async def reopen_ticket(
+    org_slug: str,
+    org_id: OrgId,
+    short_id: str,
+    data: TicketReopen,
+    db: graph.Pool,
+    store: tickets.Store,
+    auth: typing.Annotated[
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
+    ],
+) -> dict[str, typing.Any]:
+    """Reopen a closed ticket (ADR 0028).
+
+    The outcome and ``closed_at`` clear, and the ``reopened`` event
+    records the old outcome and the reason. A person ticket returns to
+    ``open``, an agent ticket to ``queued`` with a new chain, so a new
+    session starts. The ticket keeps its assignee, or gets the new
+    assignee of the request. The owner and the assignee can reopen a
+    ticket; other people need ``ticket:manage``. A reopen to an agent,
+    kept or new, is checked as a handoff to an agent: the caller needs
+    ``ticket:create``, the owner must be able to make tickets, and the
+    agent must be enabled. The ticket gets the agent version that the
+    agent has now, and the task budget of the agent caps its budget.
+
+    Raises:
+        403: The caller is not a person, or has no permission; or the
+            owner cannot make tickets (``owner_forbidden``).
+        404: No such task.
+        409: The task is not closed (``not_closed``), a runner holds its
+            chain (``chain_pinned``), the workflow runs of its last
+            close have not all started (``triggers_pending``), or the
+            agent is disabled.
+        422: The assignee is not in the org.
+
+    """
+    _ = auth.require_user  # Only a person reopens a ticket.
+    task = await _get_task(store, org_id, short_id)
+    await _require_party_or_manage(auth, task)
+    owner = task['owner']
+    if data.assignee_kind == 'person':
+        to = await person_assignee(db, org_slug, data.assignee)
+    elif data.assignee_kind == 'agent':
+        slug = data.agent_slug or ''
+        to = await _agent_for_owner(db, org_slug, owner, auth, slug)
+    elif task['assignee_kind'] == 'agent':
+        # The agent of the ticket, at what it has now.
+        to = await _agent_for_owner(
+            db, org_slug, owner, auth, task['agent_id'], by_id=True
+        )
+    else:
+        to = tickets.HandOff('person', assignee=task['assignee'])
+    try:
+        return await store.reopen(
+            org_id, task['short_id'], data.reason, _actor(auth), to
+        )
+    except tickets.TaskOpen as e:
+        raise _conflict(
+            'not_closed', f'Task {short_id!r} is not closed'
+        ) from e
+    except tickets.ReopenRefused as e:
+        raise _conflict(e.reason, str(e)) from e
 
 
 def _agent_ticket(short_id: str) -> fastapi.HTTPException:

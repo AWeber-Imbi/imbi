@@ -2469,7 +2469,7 @@ class TaskRun:
         # The session ends with the handoff; later events are refused.
         await self.flush()
         try:
-            state = await self.api.hand_off(self.session_id, body)
+            state = await self._send_hand_off(body)
         except (api.Refused, httpx.HTTPError) as err:
             detail = err.detail if isinstance(err, api.Refused) else str(err)
             return _tool_error(
@@ -2485,6 +2485,15 @@ class TaskRun:
                 {'type': 'text', 'text': 'The task is with the person. Stop.'}
             ]
         }
+
+    async def _send_hand_off(self, body: Body) -> Body:
+        """Send the handoff; repeat it one time after a connection error.
+        imbi-api can commit before the response is lost, and it answers a
+        repeat of a committed handoff with the state of the ticket."""
+        try:
+            return await self.api.hand_off(self.session_id, body)
+        except httpx.HTTPError:
+            return await self.api.hand_off(self.session_id, body)
 
     # --- run_with_secret ----------------------------------------------
 

@@ -78,7 +78,9 @@ _BUSY: typing.LiteralString = """
 #: The tasks that a runner may claim. ``%(agents)s`` are the agents
 #: that the runner may run; ``%(limits)s`` maps an agent id to its
 #: ``max_concurrent_tasks``. A root task needs no chain row; any task of
-#: a chain that is back in the queue (``queued``) is claimable too.
+#: a chain that is back in the queue (``queued``) is claimable too. A
+#: root is a task that is its own chain, not a task of an origin kind,
+#: so a reopened child, which starts a new chain, is a root (ADR 0028).
 _CLAIMABLE: typing.LiteralString = ''.join(
     (
         """
@@ -90,8 +92,7 @@ _CLAIMABLE: typing.LiteralString = ''.join(
    AND t.agent_id = ANY(%(agents)s)
    AND (cardinality(%(orgs)s::text[]) = 0
         OR t.organization_id = ANY(%(orgs)s))
-   AND ((c.root_ticket_id IS NULL
-        AND NOT (t.origin_kind = ANY(%(child_kinds)s)))
+   AND ((c.root_ticket_id IS NULL AND COALESCE(t.chain_id, t.id) = t.id)
         OR c.state = 'queued')
    AND NOT EXISTS (
        SELECT 1 FROM jsonb_each_text(%(limits)s) AS l(agent_id, max)
@@ -133,7 +134,7 @@ _CHAIN_CLAIM_QUERY: typing.LiteralString = (
     + """
   FROM tickets.tickets AS t
  WHERE t.chain_id = %(chain)s
-   AND t.origin_kind = ANY(%(child_kinds)s)
+   AND t.id <> %(chain)s
    AND t.status = 'queued'
    AND t.control = 'run'
    AND NOT EXISTS (SELECT 1 FROM harness.claims AS k
@@ -186,7 +187,6 @@ def _claim_params(
         'orgs': pool['organization_ids'],
         'limits': pg_json.Jsonb(limits),
         'pinned': list(PINNED),
-        'child_kinds': list(task_store.CHILD_ORIGIN_KINDS),
     }
 
 
@@ -514,7 +514,6 @@ class HarnessStore:
                 {
                     'chain': chain['root_ticket_id'],
                     'attempt': chain['attempt'],
-                    'child_kinds': list(task_store.CHILD_ORIGIN_KINDS),
                 },
             )
             if task is None:

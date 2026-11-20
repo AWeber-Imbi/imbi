@@ -5664,6 +5664,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/tickets/{short_id}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reopen Ticket
+         * @description Reopen a closed ticket (ADR 0028).
+         *
+         *     The outcome and ``closed_at`` clear, and the ``reopened`` event
+         *     records the old outcome and the reason. A person ticket returns to
+         *     ``open``, an agent ticket to ``queued`` with a new chain, so a new
+         *     session starts. The ticket keeps its assignee, or gets the new
+         *     assignee of the request. The owner and the assignee can reopen a
+         *     ticket; other people need ``ticket:manage``. A reopen to an agent,
+         *     kept or new, is checked as a handoff to an agent: the caller needs
+         *     ``ticket:create``, the owner must be able to make tickets, and the
+         *     agent must be enabled. The ticket gets the agent version that the
+         *     agent has now, and the task budget of the agent caps its budget.
+         *
+         *     Raises:
+         *         403: The caller is not a person, or has no permission; or the
+         *             owner cannot make tickets (``owner_forbidden``).
+         *         404: No such task.
+         *         409: The task is not closed (``not_closed``), a runner holds its
+         *             chain (``chain_pinned``), the workflow runs of its last
+         *             close have not all started (``triggers_pending``), or the
+         *             agent is disabled.
+         *         422: The assignee is not in the org.
+         */
+        post: operations["reopen_ticket_api_organizations__org_slug__tickets__short_id__reopen_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/tickets/{short_id}/priority": {
         parameters: {
             query?: never;
@@ -6165,6 +6206,10 @@ export interface paths {
          *     in the same write. Open requests close as ``withdrawn``. The runner
          *     keeps the chain; the ticket is not claimed again until it goes back
          *     to an agent.
+         *
+         *     A repeat with the agent token of the chain, after the handoff of the
+         *     session committed, returns the state of the ticket: the harness
+         *     repeats a call whose response it lost.
          *
          *     Raises:
          *         403: The caller is not the service account of the task's agent.
@@ -15285,7 +15330,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "comment" | "request" | "handoff" | "child" | "prerequisite";
+            kind: "comment" | "request" | "handoff" | "reopen" | "child" | "prerequisite";
             /**
              * At
              * Format: date-time
@@ -21959,6 +22004,32 @@ export interface components {
              * @description The short id of the new parent. ``null`` makes the ticket a root.
              */
             parent: string | null;
+        };
+        /**
+         * TicketReopen
+         * @description A reopen of a closed ticket (ADR 0028).
+         */
+        TicketReopen: {
+            /**
+             * Reason
+             * @description Why the ticket reopens.
+             */
+            reason: string;
+            /**
+             * Assignee Kind
+             * @description Give the ticket a new assignee of this kind. ``null`` keeps the assignee.
+             */
+            assignee_kind?: ("agent" | "person") | null;
+            /**
+             * Agent Slug
+             * @description The new agent.
+             */
+            agent_slug?: string | null;
+            /**
+             * Assignee
+             * @description The email of the new person. Must be in the org.
+             */
+            assignee?: string | null;
         };
         /**
          * TicketRequirement
@@ -32672,6 +32743,42 @@ export interface operations {
             };
         };
     };
+    reopen_ticket_api_organizations__org_slug__tickets__short_id__reopen_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TicketReopen"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     set_ticket_priority_api_organizations__org_slug__tickets__short_id__priority_post: {
         parameters: {
             query?: never;
@@ -33331,8 +33438,8 @@ export interface operations {
             header?: never;
             path: {
                 org_slug: string;
-                session_id: string;
                 short_id: string;
+                session_id: string;
             };
             cookie?: never;
         };

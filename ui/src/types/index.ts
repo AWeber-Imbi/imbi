@@ -1845,6 +1845,8 @@ export type TicketRelated = Schemas['RelatedTask']
 
 export type TicketRelations = Schemas['AgentTaskRelations']
 
+export type TicketReopen = Schemas['TicketReopen']
+
 export type TicketResolve = Schemas['AgentTaskRequestResolve']
 
 export type TicketRetry = Schemas['AgentTaskRetry']

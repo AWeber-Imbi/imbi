@@ -47,6 +47,8 @@ export function systemText(e: TicketEvent): string {
       return `Linked to project ${String(p.project_slug ?? p.project_id)}`
     case 'project.dissociated':
       return `Unlinked from project ${String(p.project_slug ?? p.project_id)}`
+    case 'reopened':
+      return `Reopened${p.reason ? `: ${p.reason}` : ''}`
     case 'request.opened':
       return `Asked for ${p.kind === 'approval' ? 'approval' : 'input'}: ${p.title}`
     case 'request.resolved':

@@ -331,6 +331,48 @@ class AgentTaskTestCase(support.SharedAppAsyncTestCase):
                 (uuid.UUID(task_id),),
             )
 
+    async def bind(self, **params: typing.Any) -> None:
+        """Activate a workflow of the org with a ``ticket_state_changed``
+        trigger, and register the outbox filter."""
+        await workflows.initialize()
+        filter_patch = mock.patch.object(
+            tickets.store, '_outbox_filter', ticket_trigger.has_bindings
+        )
+        filter_patch.start()
+        self.addCleanup(filter_patch.stop)
+        definitions = workflows.WorkflowStore(self.pool)
+        await definitions.create(
+            self.org,
+            'follow-up',
+            workflows.Definition(
+                name='Follow up',
+                description='',
+                owner_team_id='team',
+                graph={'nodes': [], 'edges': []},
+                settings={},
+                validation={'issues': []},
+                author='ops@example.com',
+            ),
+        )
+        await definitions.activate(
+            self.org,
+            'follow-up',
+            1,
+            'ops@example.com',
+            [workflows.Trigger('start', 'ticket_state_changed', params)],
+        )
+
+        async def cleanup() -> None:
+            async with self.pool.connection() as conn:
+                for table in ('trigger_bindings', 'workflows'):
+                    await conn.execute(
+                        f'DELETE FROM workflows.{table}'
+                        ' WHERE organization_id = %s',
+                        (self.org,),
+                    )
+
+        self.addAsyncCleanup(cleanup)
+
     async def event_types(self, short_id: str) -> list[str]:
         response = await self.client.get(self.url(f'{short_id}/events'))
         self.assertEqual(response.status_code, 200, response.text)
@@ -1281,48 +1323,6 @@ class ControlTests(AgentTaskTestCase):
             await self.event_types('T-1'),
             ['ticket.created', 'control.changed', 'control.changed'],
         )
-
-    async def bind(self, **params: typing.Any) -> None:
-        """Activate a workflow of the org with a ``ticket_state_changed``
-        trigger, and register the outbox filter."""
-        await workflows.initialize()
-        filter_patch = mock.patch.object(
-            tickets.store, '_outbox_filter', ticket_trigger.has_bindings
-        )
-        filter_patch.start()
-        self.addCleanup(filter_patch.stop)
-        definitions = workflows.WorkflowStore(self.pool)
-        await definitions.create(
-            self.org,
-            'follow-up',
-            workflows.Definition(
-                name='Follow up',
-                description='',
-                owner_team_id='team',
-                graph={'nodes': [], 'edges': []},
-                settings={},
-                validation={'issues': []},
-                author='ops@example.com',
-            ),
-        )
-        await definitions.activate(
-            self.org,
-            'follow-up',
-            1,
-            'ops@example.com',
-            [workflows.Trigger('start', 'ticket_state_changed', params)],
-        )
-
-        async def cleanup() -> None:
-            async with self.pool.connection() as conn:
-                for table in ('trigger_bindings', 'workflows'):
-                    await conn.execute(
-                        f'DELETE FROM workflows.{table}'
-                        ' WHERE organization_id = %s',
-                        (self.org,),
-                    )
-
-        self.addAsyncCleanup(cleanup)
 
     async def changes(self, task_id: str) -> list[tuple[str | None, str]]:
         return [

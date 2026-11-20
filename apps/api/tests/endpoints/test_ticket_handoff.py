@@ -346,6 +346,47 @@ class HandOffTests(HandOffTestCase):
         response = await self.to_agent()
         self.assertEqual(response.status_code, 200, response.text)
 
+    async def test_person_to_person_while_the_chain_is_held(self) -> None:
+        # The agent handed the ticket to a person, and its runner still
+        # holds the chain (fencing) or a fencer failed (stuck).
+        await self.to_person()
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'INSERT INTO harness.chains'
+                ' (root_ticket_id, organization_id, state)'
+                " VALUES (%s, %s, 'stuck')",
+                (uuid.UUID(self.task['id']), self.org),
+            )
+        response = await self.to_person(assignee=self.email)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['assignee'], self.email)
+        # Back to an agent waits for the runner.
+        response = await self.to_agent()
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(response.json()['detail']['error'], 'chain_pinned')
+
+    async def test_agent_gets_the_current_platform_config(self) -> None:
+        await self.to_person()
+        self.assertIsNone((await self.task_row())['platform_config_version'])
+        config = await self.harness.add_platform_config(
+            self.org, {'denied_tools': ['Bash']}, self.email
+        )
+        self.addAsyncCleanup(self.drop_platform_configs)
+        response = await self.to_agent()
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            (await self.task_row())['platform_config_version'],
+            config['version'],
+        )
+
+    async def drop_platform_configs(self) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'DELETE FROM harness.platform_configs'
+                ' WHERE organization_id = %s',
+                (self.org,),
+            )
+
     async def test_done_chain_is_queued_again(self) -> None:
         await self.to_person()
         async with self.pool.connection() as conn:
@@ -415,9 +456,30 @@ class HarnessHandOffTests(test_harness.RunnerTestCase):
         handed = next(e for e in session if e['type'] == 'handed_off')
         self.assertEqual(handed['actor_kind'], 'agent')
         self.assertEqual(handed['payload']['note'], 'Merge the PR; I cannot.')
-        # The ticket left the agent: its token no longer works on it.
+        # A repeat after a lost response gets the state again.
         response = await self.agent_hand_off()
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['status'], 'open')
+        # To another person, it is not the same handoff.
+        response = await self.agent_hand_off(assignee=self.member)
         self.assertEqual(response.status_code, 403, response.text)
+        # The ticket left the agent: its token no longer works on it.
+        response = await self.as_agent(self.token, 'GET', 'T-1/events')
+        self.assertIn(response.status_code, (403, 404), response.text)
+
+    async def test_session_closed_by_a_cancel_is_not_handed_off(self) -> None:
+        response = await self.as_user('POST', 'T-1/cancel')
+        self.assertEqual(response.status_code, 200, response.text)
+        response = await self.as_agent(
+            self.token,
+            'POST',
+            f'T-1/sessions/{self.session_id}/close',
+            {'reason': 'cancelled'},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        response = await self.agent_hand_off()
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual((await self.task_row())['assignee_kind'], 'agent')
 
     async def test_history_has_the_handoff(self) -> None:
         response = await self.agent_hand_off(assignee=self.member)
