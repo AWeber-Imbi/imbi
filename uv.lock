@@ -1914,7 +1914,7 @@ requires-dist = [
     { name = "pydantic", specifier = "~=2.12" },
     { name = "sentry-sdk", specifier = ">=2.48.0" },
     { name = "slack-bolt", specifier = ">=1.21" },
-    { name = "slackwright", specifier = ">=0.1.0" },
+    { name = "slackwright", specifier = ">=0.1.1" },
 ]
 
 [[package]]
@@ -4124,7 +4124,7 @@ wheels = [
 
 [[package]]
 name = "slackwright"
-version = "0.1.0"
+version = "0.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -4133,9 +4133,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "slack-sdk" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e1/84/d47e13c3be98642c6a7899b6c359abd33c54d77f699bddc184ca72849b81/slackwright-0.1.0.tar.gz", hash = "sha256:a5e5604e2370a103796c202efd0616b7716ab2e3d355536c2140789bf1b1b8ae", size = 174683, upload-time = "2026-11-20T03:30:55.172Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b7/c9/981128019330934466944ef279ada1d2821e00ebc728fc1782064f5724a4/slackwright-0.1.1.tar.gz", hash = "sha256:8609529fcb75233688d6fe9dbedf46e14d880d793ff1a17724416ecfb119502c", size = 176245, upload-time = "2026-11-20T17:29:40.631Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6e/63/16f7d443040ace66a42011d0ada2c2833a5ea72adce61b8b0a792011a23b/slackwright-0.1.0-py3-none-any.whl", hash = "sha256:39f65d4b7000cc62c121fb4fc95d2cfaa2b92d1d016acf31c91686bdef6b43ec", size = 35905, upload-time = "2026-11-20T03:30:54.108Z" },
+    { url = "https://files.pythonhosted.org/packages/2c/3b/27bcc576d3ce6a556387a362838824fdd1e89c7c58b855d82f5f0ccc2ac7/slackwright-0.1.1-py3-none-any.whl", hash = "sha256:4be8251b210de019da104a2153df23bbebdde9d26059092647d136a01609120e", size = 36627, upload-time = "2026-11-20T17:29:39.596Z" },
 ]
 
 [[package]]
