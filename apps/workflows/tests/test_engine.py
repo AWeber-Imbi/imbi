@@ -2190,7 +2190,12 @@ class WaitTestCase(EngineTestCase):
         self.assertEqual(run['steps']['hold']['output'], {'waited_seconds': 1})
 
     async def test_rendered_value_that_is_not_a_duration(self) -> None:
-        for hold in ('soon', '{{ trigger.other }}', '999999999999d'):
+        for hold in (
+            'soon',
+            '{{ trigger.other }}',
+            '999999999999d',
+            '9' * 4301 + 'd',
+        ):
             with self.subTest(hold):
                 hold_step = (await self._hold(hold))['steps']['hold']
                 self.assertEqual(

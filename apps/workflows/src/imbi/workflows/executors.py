@@ -352,13 +352,13 @@ class Executors:
         if match is None:
             # The rendered value is itself a reference.
             raise StepError('invalid_params', retry=False)
-        seconds = int(match.group(1)) * _UNITS[match.group(2)]
+        try:
+            seconds = int(match.group(1)) * _UNITS[match.group(2)]
+            resume_at = _now() + datetime.timedelta(seconds=seconds)
+        except (OverflowError, ValueError) as e:
+            raise StepError('invalid_params', retry=False) from e
         until = call.state.get('until')
         if until is None:
-            try:
-                resume_at = _now() + datetime.timedelta(seconds=seconds)
-            except OverflowError as e:
-                raise StepError('invalid_params', retry=False) from e
             return Outcome(
                 resume_at=resume_at, state={'until': resume_at.isoformat()}
             )
