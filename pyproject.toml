@@ -833,6 +833,11 @@ apache-iggy = false
 # CA bundle updates are security fixes: take them without the 7-day wait.
 certifi = false
 clickhouse-connect = false
+# First-party (gmr/slackwright): releases ship together with slackbot changes.
+slackwright = false
+# slackwright needs slack-sdk>=3.47 (chat streaming, task cards). A fixed
+# cutoff, not false: later slack-sdk releases get the normal 7-day wait.
+slack-sdk = "2026-11-20T06:00:00Z"
 
 [tool.uv.workspace]
 members = ["apps/*", "libraries/*", "plugins/*"]

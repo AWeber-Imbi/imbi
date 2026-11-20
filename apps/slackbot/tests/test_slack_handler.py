@@ -2,9 +2,11 @@ import json
 import types
 from unittest import mock
 
+from slackwright import inflight
+
 from apps.slackbot.tests import helpers
 from imbi.common.prompts import system as prompt_system
-from imbi.slackbot import identity, inflight, settings, slack_handler
+from imbi.slackbot import identity, settings, slack_handler
 
 
 class Resp(dict):
@@ -13,6 +15,17 @@ class Resp(dict):
     @property
     def data(self):
         return self
+
+
+class Pages:
+    """A paged Slack response, iterated with ``async for`` like the SDK's."""
+
+    def __init__(self, pages) -> None:
+        self._pages = pages
+
+    async def __aiter__(self):
+        for page in self._pages:
+            yield page
 
 
 class FakeSlackClient:
@@ -27,7 +40,7 @@ class FakeSlackClient:
     async def conversations_replies(self, channel, ts, limit=None):
         if self._error:
             raise RuntimeError('nope')
-        return Resp(messages=list(self._replies))
+        return Pages([Resp(messages=list(self._replies))])
 
     async def users_info(self, user):
         return Resp(user={'profile': {'display_name': user}})
@@ -304,6 +317,27 @@ class HandleEventTests(helpers.TestCase):
             [('add', mock.ANY), ('remove', mock.ANY)], client.reactions
         )
         self.assertEqual(1, len(client.deletes))
+
+    async def test_answer_cannot_broadcast(self) -> None:
+        user = identity.ImbiUser('ada@example.com', 'Ada')
+        event = {'channel': 'C', 'ts': '1', 'user': 'U1', 'text': '<@BOT> hi'}
+        client = FakeSlackClient(replies=[])
+        with (
+            mock.patch.object(
+                slack_handler.identity,
+                'resolve',
+                new=mock.AsyncMock(return_value=user),
+            ),
+            mock.patch.object(
+                slack_handler.agent,
+                'run_turn',
+                new=mock.AsyncMock(return_value='<!here> deploy is done'),
+            ),
+        ):
+            await slack_handler.handle_event(event, client, bot_user_id='BOT')
+        self.assertEqual(
+            '<\u200b!here> deploy is done', client.posts[-1]['markdown_text']
+        )
 
     async def test_prompt_settings_reach_run_turn(self) -> None:
         user = identity.ImbiUser('ada@example.com', 'Ada')

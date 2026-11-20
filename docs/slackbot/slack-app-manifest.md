@@ -29,10 +29,8 @@ The bot also needs `ANTHROPIC_API_KEY`, the shared `IMBI_AUTH_JWT_SECRET`, and
   request is being processed.
 - `files:read` — download files a user attaches (images, PDFs, text) so they
   can be passed to the model.
-- `files:write` — upload long code blocks and oversized tables as file
-  snippets.
-- `canvases:write` — render Markdown tables as a channel canvas (falls back
-  to a `files:write` snippet when unavailable).
+- `files:write` — upload a single code block or table that is too long
+  for one message as a file.
 
 ## Manifest
 
@@ -58,7 +56,6 @@ oauth_config:
       - reactions:write
       - files:read
       - files:write
-      - canvases:write
 settings:
   event_subscriptions:
     bot_events:
