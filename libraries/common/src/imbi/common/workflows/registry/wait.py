@@ -4,10 +4,12 @@ import pydantic
 
 from imbi.common.workflows import graph, step_type
 
+DURATION = r'([1-9][0-9]*)([smhd])'
+
 
 class Params(pydantic.BaseModel):
     duration: str = pydantic.Field(
-        pattern=rf'^(?:[1-9][0-9]*[smhd]|{graph.REFERENCE})$',
+        pattern=rf'^(?:{DURATION}|{graph.REFERENCE})$',
         description=(
             'A number and a unit: s, m, h, or d. Example: 10m. Or one '
             'reference that renders to one, such as '

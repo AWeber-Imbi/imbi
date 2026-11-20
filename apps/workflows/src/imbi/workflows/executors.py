@@ -71,7 +71,7 @@ LOGGER = logging.getLogger(__name__)
 _ID = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$')
 _REF = re.compile(r'^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$')
 
-_DURATION = re.compile(r'^([1-9][0-9]*)([smhd])$')
+_DURATION = re.compile(rf'^{wait.DURATION}$')
 _UNITS = {'s': 1, 'm': 60, 'h': 3600, 'd': 86400}
 
 #: Statuses of a deployment run that end it, and the port they take.
