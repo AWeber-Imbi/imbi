@@ -2,8 +2,8 @@
 
 A workflow is a graph of steps that runs without a person at each step. A
 trigger starts a run. The steps after the trigger wait, ask a decision
-model, send email, post to Slack, deploy, roll back, or give a task to an
-agent.
+model, send email, post to Slack, release, deploy, roll back, or give a task
+to an agent.
 
 Open the section at **Agents > Settings > Workflows**. Each organization has its own
 workflows. The `imbi-workflows` service runs them.
@@ -138,6 +138,7 @@ with one output port has no port name.
 | `email` | Send email | Actions | One |
 | `slack` | Slack message | Actions | One |
 | `deploy` | Deploy | Actions | `Succeeded`, `Failed` |
+| `release` | Release | Actions | `Succeeded`, `Failed` |
 | `rollback` | Rollback | Actions | One |
 | `agent` | Agent task | Actions | `Succeeded`, `Failed` |
 
@@ -153,7 +154,7 @@ count:
 | `llm_call` | 5 minutes. One model call stops at 165 seconds, which includes the time to get provider credentials | 2 |
 | `email` | 2 minutes | 0 |
 | `slack` | 2 minutes | 3, for a Slack rate limit only |
-| `deploy`, `rollback` | 1 hour | 2 |
+| `deploy`, `release`, `rollback` | 1 hour | 2 |
 | `agent` | None. The max run time limits it | 2 |
 
 The API also accepts `timeout_seconds` and `retries` (0 to 10) on a node to
@@ -584,6 +585,42 @@ The `imbi-workflows` service account does the deployment. See
 
 **Output:** `deployment_id` and `status`.
 
+### Release
+
+Cuts a new tag at a commit and promotes it to an environment, as
+**Promote** does, then waits for the build and the rollout.
+
+| Parameter | What to enter | Default |
+|---|---|---|
+| `project_id` | A project id, or one reference | Required |
+| `from_environment` | The environment slug that runs the commit | Required |
+| `environment` | The environment slug to release to | Required |
+| `commit` | The commit to release | Required |
+| `tag` | The tag to cut | Drafted |
+| `release_notes` | Markdown | Drafted |
+
+An empty `tag` or `release_notes` is drafted as **Promote** drafts it: from
+the commits since the newest tag of the project, or from the history for a
+first release. The step never releases a commit whose CI failed, and
+`environment` must allow promotion. To deploy a commit that already has a
+tag, use a deploy step.
+
+The step takes `Succeeded` when the deployment succeeds. It takes `Failed`
+when the step fails after its retries, or with the reason in `error`:
+
+| `error` | Why |
+|---|---|
+| `build_failed`, `deploy_failed`, `failed`, `deployment_<status>` | The build or the deployment failed. Imbi's reason follows, when it gives one |
+| `promote_not_watched` | Imbi started the build but cannot follow it |
+| Imbi's warning | The tag was cut, but the deployment did not start |
+| `tag_exists: <tag>` | The tag exists. Cutting it again would ship its code |
+| `commit_already_tagged: <tag>` | The commit has a tag. Deploy it with a deploy step |
+| `commit_has_several_tags: <tags>` | The commit has more than one tag |
+| Imbi's reason | For example an open release blocker or a failing CI |
+
+**Output:** `deployment_id`, `status`, `tag`, `release_notes`, `degraded`
+(the draft was made without the model), and `error`.
+
 ### Rollback
 
 Deploys an earlier version of a project again.
@@ -674,7 +711,7 @@ different organization:
 | Parameter | Allowed |
 |---|---|
 | `webhook_id`, and `agent_id` of an agent step | A literal id only |
-| `project_id` of agent, deploy, and rollback steps, email recipient ids | A literal id, or one plain reference such as `{{ trigger.project }}` |
+| `project_id` of agent, deploy, release, and rollback steps, email recipient ids | A literal id, or one plain reference such as `{{ trigger.project }}` |
 | `ticket` of a Slack step | A literal short id, or one plain reference. Imbi reads the task in the organization of the run only |
 
 A literal id must exist in the organization. Otherwise validation shows
@@ -695,7 +732,7 @@ A step with more than one input has a join. Set it in **Run when**:
   will not arrive, and at least one arrived.
 
 A branching step (model decision, condition, script with branches, deploy,
-agent task) takes one port. The steps on its other ports are `skipped`. A
+release, agent task) takes one port. The steps on its other ports are `skipped`. A
 step whose inputs are all from skipped paths is `skipped` too.
 
 Validation warns when an **Any input arrives** step can get two inputs in
@@ -852,7 +889,7 @@ only. The permissions that steps need:
 |---|---|
 | Schedule | `scheduled_task:create` |
 | Webhook | `webhook:update` |
-| Deploy, Rollback | `project:deployment:write` |
+| Deploy, Release, Rollback | `project:deployment:write` |
 | Ticket state changed | `ticket:read` |
 | Agent task | `ticket:create` |
 | LLM Call | `prompt:run` |
@@ -1015,7 +1052,7 @@ step.
 - **Max run time.** The engine counts it from when Imbi made the run. A run
   that passes it closes as `timed_out`.
 
-Deploy, rollback, email, and Slack send the idempotency key
+Deploy, release, rollback, email, and Slack send the idempotency key
 `<run_id>:<node_key>` to imbi-api. After a crash, imbi-api returns the first
 result, so the step does not deploy, send, or post two times. If the first call
 did not finish, imbi-api returns `409 outcome_unknown`, and the step fails
@@ -1037,8 +1074,8 @@ call:
    step's version to the step's environment that started at most one
    minute before the call. Another deploy of the same version and
    environment at that time also shows, so make sure that you select the
-   correct one. If the plugin cannot search (only GitHub can), look in the
-   deployment provider yourself. For an email, ask the recipients. For a
+   correct one. If the plugin cannot search (only GitHub can), or the step
+   is a release, look in the deployment provider yourself. For an email, ask the recipients. For a
    Slack message, look in the channel.
 2. Set **Retry step** before you resolve the call. When it is selected,
    the run opens again and the step runs again when you resolve the call.
@@ -1131,8 +1168,9 @@ You can also add the accounts in the Admin UI:
 4. Do steps 2 and 3 again for `imbi-scheduler` with the `imbi-scheduler`
    role, and for `imbi-gateway` with the `imbi-gateway` role.
 
-For deploy and rollback steps, the `imbi-workflows` account also needs the
-bounds of [ADR 0017](../api/adr/0017-autonomous-deployment-principals.md):
+For deploy, release, and rollback steps, the `imbi-workflows` account also
+needs the bounds of
+[ADR 0017](../api/adr/0017-autonomous-deployment-principals.md):
 
 1. Grant `integration:act-as-service` to the `imbi-workflows` role at
    **Admin > Global Admin > Roles**. Imbi does not grant it by default.
