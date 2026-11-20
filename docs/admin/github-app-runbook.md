@@ -143,6 +143,13 @@ token with more permissions than the App has.
 ones the installation grants. Give the App those Read-only permissions
 when its agent waits for or reads CI results.
 
+`github_write` also asks for `workflows: write` when the installation
+grants it. GitHub refuses a push that changes a file under
+`.github/workflows/` without it. Give the App Workflows: Read and write
+when its agent edits GitHub Actions workflows. An organization owner then
+approves the new permission on each existing installation; until then,
+that installation's token leaves out `workflows`.
+
 For an agent that only reads, such as a check, set every permission above
 to Read-only and grant `github_read`, not `github_write` (step 8).
 

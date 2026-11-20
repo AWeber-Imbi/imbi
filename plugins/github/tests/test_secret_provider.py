@@ -448,6 +448,46 @@ class GitHubAppTestCase(unittest.IsolatedAsyncioTestCase):
         )
 
     @respx.mock
+    async def test_workflows_write_only_when_the_installation_grants_it(
+        self,
+    ) -> None:
+        """A write token can push workflow files when the App may."""
+        respx.get(INSTALLATION_URL).mock(
+            return_value=httpx.Response(
+                200,
+                json=INSTALLATION
+                | {
+                    'permissions': {
+                        'contents': 'write',
+                        'workflows': 'write',
+                        'metadata': 'read',
+                    }
+                },
+            )
+        )
+        route = respx.post(TOKENS_URL).mock(
+            return_value=httpx.Response(
+                201,
+                json={'token': TOKEN, 'expires_at': '2099-01-01T00:00:00Z'},
+            )
+        )
+        await APP.resolve(CONFIG, LOCATOR, None, _context('github_write'))
+        self.assertEqual(
+            json.loads(route.calls.last.request.content)['permissions'],
+            {
+                'contents': 'write',
+                'issues': 'write',
+                'pull_requests': 'write',
+                'workflows': 'write',
+            },
+        )
+        await APP.resolve(CONFIG, LOCATOR, None, _context('github_read'))
+        self.assertNotIn(
+            'workflows',
+            json.loads(route.calls.last.request.content)['permissions'],
+        )
+
+    @respx.mock
     async def test_disallowed_host_gets_no_jwt(self) -> None:
         """A host that left the allowlist after the provider was saved."""
         route = respx.route().mock(return_value=httpx.Response(200))
