@@ -972,13 +972,11 @@ describe('TrajectoryTab inspector', () => {
 
   it('fits the assistant tag to its label in the header', async () => {
     renderTab()
-    const row = rows().find((r) => within(r).queryByText('ASSISTANT'))!
-    expect(within(row).getByText('ASSISTANT').parentElement).toHaveClass(
-      'w-full',
-    )
+    const row = rows().find((r) => within(r).queryByText('AGENT'))!
+    expect(within(row).getByText('AGENT').parentElement).toHaveClass('w-full')
     await userEvent.click(row)
     expect(
-      within(inspector()).getByText('ASSISTANT').parentElement,
+      within(inspector()).getByText('AGENT').parentElement,
     ).not.toHaveClass('w-full')
   })
 
