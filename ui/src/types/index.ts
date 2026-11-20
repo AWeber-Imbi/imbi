@@ -1832,6 +1832,8 @@ export type TicketCreate = Schemas['AgentTaskCreate']
 
 export type TicketEvent = Schemas['AgentTaskEventResponse']
 
+export type TicketHandOff = Schemas['TicketHandOff']
+
 export type TicketListItem = Schemas['AgentTaskListItem']
 
 export type TicketPosition = Schemas['AgentTaskPosition']
@@ -1852,6 +1854,8 @@ export type TicketRetry = Schemas['AgentTaskRetry']
 export type TicketStatus = Ticket['status']
 
 export type TicketStatusSet = Schemas['TicketStatusSet']
+
+export type TicketWaiting = Schemas['AgentTaskWaiting']
 
 export type TokenResponse = Schemas['TokenResponse']
 

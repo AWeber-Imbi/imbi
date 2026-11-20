@@ -12,7 +12,7 @@ import { task } from './taskFixtures'
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', () => ({
   acknowledgeTicket: vi.fn(),
-  countWaitingTickets: vi.fn(),
+  countTickets: vi.fn(),
   getAgentUsage: vi.fn(),
   listAdminUsers: vi.fn(),
   listAgents: vi.fn(),
@@ -119,7 +119,7 @@ describe('Dashboard', () => {
       agent(),
       agent({ id: 'agt-2', name: 'Herald', slug: 'herald' }),
     ])
-    vi.mocked(endpoints.countWaitingTickets).mockResolvedValue({ count: 3 })
+    vi.mocked(endpoints.countTickets).mockResolvedValue({ input: 3 })
     vi.mocked(endpoints.listTickets).mockImplementation(async (_org, params) =>
       params.status ? OPEN : RECENT,
     )
@@ -239,7 +239,7 @@ describe('Dashboard', () => {
 
   it('shows empty states', async () => {
     vi.mocked(endpoints.listAgents).mockResolvedValue([])
-    vi.mocked(endpoints.countWaitingTickets).mockResolvedValue({ count: 0 })
+    vi.mocked(endpoints.countTickets).mockResolvedValue({ input: 0 })
     vi.mocked(endpoints.listTickets).mockResolvedValue([])
     vi.mocked(endpoints.getAgentUsage).mockResolvedValue(
       usage({ agents: [], days: [], month_to_date: {} }),

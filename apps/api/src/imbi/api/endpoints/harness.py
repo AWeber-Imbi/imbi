@@ -314,12 +314,13 @@ MAX_HISTORY_BYTES = 64 * 1024
 
 
 class HistoryEntry(pydantic.BaseModel):
-    """One part of the history of a ticket. Handoffs are not stored
-    yet, so the history has none."""
+    """One part of the history of a ticket."""
 
-    kind: typing.Literal['comment', 'request', 'child', 'prerequisite']
+    kind: typing.Literal[
+        'comment', 'request', 'handoff', 'child', 'prerequisite'
+    ]
     at: datetime.datetime
-    #: The person who wrote a comment or resolved a request.
+    #: Who wrote a comment, resolved a request, or handed off.
     actor: str | None = None
     text: str
     #: The text came from a webhook payload: it is untrusted.
@@ -1761,6 +1762,43 @@ def _linked_entry(
     )
 
 
+def _side(side: dict[str, typing.Any]) -> str:
+    """One side of a handoff: the person, or the agent."""
+    if side.get('kind') == 'person':
+        return str(side.get('assignee'))
+    return f'agent {side.get("agent_id")}'
+
+
+def _event_entry(event: dict[str, typing.Any], webhook: bool) -> HistoryEntry:
+    """A human comment, a reopen with its reason (as a comment), or a
+    handoff with its note.
+
+    An agent can quote the text of a webhook ticket in the note of its
+    handoff, so the handoff of a webhook ticket is untrusted.
+    """
+    payload: dict[str, typing.Any] = event['payload']
+    if event['type'] in ('turn', 'reopened'):
+        text = payload.get('body') or ''
+        if event['type'] == 'reopened':
+            text = f'Reopened (was {payload["outcome"]}): {payload["reason"]}'
+        return HistoryEntry(
+            kind='comment', at=event['at'], actor=event['actor_id'], text=text
+        )
+    text = (
+        f'from {_side(payload.get("from") or {})}'
+        f' to {_side(payload.get("to") or {})}'
+    )
+    if payload.get('note'):
+        text += f'\nNote: {payload["note"]}'
+    return HistoryEntry(
+        kind='handoff',
+        at=event['at'],
+        actor=event['actor_id'],
+        text=text,
+        webhook=webhook,
+    )
+
+
 def _request_entry(row: dict[str, typing.Any], webhook: bool) -> HistoryEntry:
     """A resolved request: what the agent asked and what it got.
 
@@ -1811,12 +1849,12 @@ async def read_harness_ticket_history(
     A new session reads events only after ``last_seq``, so it reads
     what happened before here. It sends ``last_seq`` as ``max_seq``, so
     a comment written after the session opened is not here as well as
-    in the events. The history has comments (human turns), resolved
-    requests, and the status and outcome of prerequisite tickets and of
-    the tickets that it delegated (also after a move to another
-    parent), oldest first. When the text is larger
-    than :data:`MAX_HISTORY_BYTES`, the oldest entries are left out
-    and ``cut`` is their number. ``webhook`` marks untrusted text.
+    in the events. The history has comments (human turns), handoffs,
+    resolved and withdrawn requests, and the status and outcome of
+    prerequisite tickets and of the tickets that it delegated (also
+    after a move to another parent), oldest first. When the text is
+    larger than :data:`MAX_HISTORY_BYTES`, the oldest entries are left
+    out and ``cut`` is their number. ``webhook`` marks untrusted text.
 
     Raises:
         401: Not a current agent token.
@@ -1825,22 +1863,14 @@ async def read_harness_ticket_history(
 
     """
     task = await _chain_task(caller, short_id, db, store)
-    (turns, requests), relations, delegated = await asyncio.gather(
+    (events, requests), relations, delegated = await asyncio.gather(
         store.history(task, max_seq),
         store.relations(task),
         store.delegated(task),
     )
     webhook = task['origin_kind'] == 'webhook'
     entries = [
-        *(
-            HistoryEntry(
-                kind='comment',
-                at=turn['at'],
-                actor=turn['actor_id'],
-                text=turn['body'] or '',
-            )
-            for turn in turns
-        ),
+        *(_event_entry(event, webhook) for event in events),
         *(_request_entry(row, webhook) for row in requests),
         *(_linked_entry('child', row) for row in delegated),
         *(_linked_entry('prerequisite', row) for row in relations['requires']),

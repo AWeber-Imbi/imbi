@@ -67,15 +67,16 @@ ORDER BY seq DESC
 LIMIT 1
 """  # noqa: S608 - EVENTS is a constant
 
-#: The comments (human turns) and reopens of a ticket up to a seq, for
-#: the history of a new session (ADR 0028).
+#: The comments (human turns), handoffs, and reopens of a ticket up to
+#: a seq, for the history of a new session (ADR 0028).
 _HISTORY_QUERY = f"""
-SELECT at, actor_id, type, payload
+SELECT type, at, actor_id, payload
 FROM {EVENTS}
 WHERE organization_id = {{organization_id:String}}
   AND ticket_id = {{ticket_id:String}}
   AND seq <= {{until_seq:UInt64}}
-  AND ((type = 'turn' AND actor_kind = 'human') OR type = 'reopened')
+  AND ((type = 'turn' AND actor_kind = 'human')
+       OR type IN ('handed_off', 'reopened'))
 ORDER BY seq
 LIMIT 1 BY seq
 """  # noqa: S608 - EVENTS is a constant
@@ -286,9 +287,9 @@ async def archived_events(
 
 
 async def archived_history(task: Row, until_seq: int) -> list[Row]:
-    """Return the human turns and ``reopened`` events of a task in
-    ClickHouse up to ``until_seq``, by seq, with ``at``, ``actor_id``,
-    ``type``, and ``payload``."""
+    """Return the human turns, ``handed_off``, and ``reopened`` events
+    of a task in ClickHouse up to ``until_seq``, by seq, in the shape of
+    :meth:`imbi.api.tickets.store.TicketStore.history`."""
     rows = await clickhouse.query(
         _HISTORY_QUERY,
         {

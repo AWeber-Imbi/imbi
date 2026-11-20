@@ -18,6 +18,7 @@ a control change also changes the status at once: see
 """
 
 import contextlib
+import dataclasses
 import datetime
 import decimal
 import logging
@@ -346,9 +347,49 @@ class AgentTaskPosition(pydantic.BaseModel):
     index: int
 
 
+class WaitingRequest(pydantic.BaseModel):
+    """An open request on a ticket of the caller."""
+
+    id: uuid.UUID
+    kind: str
+    title: str
+    opened_at: datetime.datetime
+    expires_at: datetime.datetime | None = None
+    #: The ticket of the request.
+    short_id: str
+    ticket_title: str
+
+
+class WaitingTicket(pydantic.BaseModel):
+    """A ticket that waits on the caller."""
+
+    short_id: str
+    title: str
+    status: Status
+    priority: Priority = 'normal'
+    assignee_kind: AssigneeKind = 'agent'
+    assignee: str | None = None
+    agent_id: str | None = None
+    owner: str
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+    #: For a held ticket: its gating prerequisites that closed with an
+    #: outcome that does not release it.
+    failed: list[str] = pydantic.Field(default_factory=list)
+
+
 class AgentTaskWaiting(pydantic.BaseModel):
-    #: The number of tasks in the organization that wait on a person (O1).
+    """What waits on the caller (ADR 0028), for the navigation badge
+    and the Waiting on me page."""
+
+    #: The number of items in the three lists.
     count: int
+    #: Open requests on the tickets that the caller owns.
+    requests: list[WaitingRequest] = pydantic.Field(default_factory=list)
+    #: Person tickets assigned to the caller that are not closed.
+    assigned: list[WaitingTicket] = pydantic.Field(default_factory=list)
+    #: Held tickets of the caller with a gating prerequisite that failed.
+    held: list[WaitingTicket] = pydantic.Field(default_factory=list)
 
 
 class AgentTaskEventResponse(pydantic.BaseModel):
@@ -513,6 +554,37 @@ class TicketStatusSet(pydantic.BaseModel):
             raise ValueError('send outcome to close, and only to close')
         if self.status == 'blocked' and self.reason is None:
             raise ValueError('send a reason to block')
+        return self
+
+
+class TicketHandOff(pydantic.BaseModel):
+    """The new assignee of a ticket (ADR 0028)."""
+
+    assignee_kind: AssigneeKind
+    agent_slug: str | None = pydantic.Field(
+        default=None, min_length=1, description='The agent, for an agent.'
+    )
+    assignee: pydantic.EmailStr | None = pydantic.Field(
+        default=None,
+        description='The email of the person, for a person. Must be in the '
+        'org.',
+    )
+    note: str | None = pydantic.Field(
+        default=None,
+        min_length=1,
+        max_length=MAX_TEXT_LENGTH,
+        description='Why, for the new assignee.',
+    )
+
+    @pydantic.model_validator(mode='after')
+    def _assignee(self) -> typing.Self:
+        person = self.assignee_kind == 'person'
+        if person != (self.assignee is not None) or person == (
+            self.agent_slug is not None
+        ):
+            raise ValueError(
+                'send agent_slug for an agent, or assignee for a person'
+            )
         return self
 
 
@@ -968,9 +1040,19 @@ async def _set_control(
     auth: permissions.AuthContext,
 ) -> dict[str, typing.Any]:
     try:
-        return await store.set_control(
-            org_id, short_id.upper(), control, _actor(auth)
-        )
+        with write_errors(short_id):
+            return await store.set_control(
+                org_id, short_id.upper(), control, _actor(auth)
+            )
+    except tickets.WrongAssigneeKind as e:
+        raise _person_ticket(short_id) from e
+
+
+@contextlib.contextmanager
+def write_errors(short_id: str) -> abc.Generator[None]:
+    """Map the errors of a change to an agent ticket to HTTP errors."""
+    try:
+        yield
     except tickets.TaskNotFound as e:
         raise fastapi.HTTPException(
             status_code=404, detail=f'Task {short_id!r} not found'
@@ -984,8 +1066,6 @@ async def _set_control(
             status_code=409,
             detail=f'Task {short_id!r} has a cancel that is not done yet',
         ) from e
-    except tickets.WrongAssigneeKind as e:
-        raise _person_ticket(short_id) from e
 
 
 async def may_create(db: graph.Graph, org_slug: str, email: str) -> bool:
@@ -1295,38 +1375,36 @@ async def _create_task(
     return task
 
 
-async def _person_assignee(
-    db: graph.Graph, org_slug: str, email: str
-) -> dict[str, typing.Any]:
-    """Return the assignee columns of a person ticket, or raise 422."""
+async def person_assignee(
+    db: graph.Graph, org_slug: str, email: str | None
+) -> tickets.HandOff:
+    """Return a person as an assignee, or raise 422.
+
+    Raises:
+        422: The person is not a member of the org.
+
+    """
     if not await db.execute(
         _MEMBER_QUERY, {'email': email, 'org_slug': org_slug}, ['email']
     ):
         raise _unprocessable(f'User {email!r} is not in the org')
-    return {
-        'assignee_kind': 'person',
-        'assignee': email,
-        'agent_id': None,
-        'agent_version': None,
-        'prompt_version': None,
-        'service_account_id': None,
-        'budget': None,
-    }
+    return tickets.HandOff('person', assignee=email)
 
 
-async def _agent_assignee(
+async def agent_assignee(
     db: graph.Graph,
     org_slug: str,
     slug: str,
-    requested: decimal.Decimal | None,
-) -> dict[str, typing.Any]:
-    """Return the assignee columns of an agent ticket: the agent and
-    the versions that it has now, its service account, and the budget.
+    budget: decimal.Decimal | None = None,
+) -> tickets.HandOff:
+    """Return an agent as an assignee: its service account, the agent
+    and prompt versions that it has now, and the budget (see
+    :func:`task_budget`).
 
     Raises:
         409: The agent is disabled.
-        422: The agent is not in the org, or ``requested`` is more than
-            its task budget.
+        422: The agent is not in the org, or the budget is more than the
+            agent's task budget.
 
     """
     agent = await _fetch_agent(db, org_slug, slug)
@@ -1340,31 +1418,18 @@ async def _agent_assignee(
         if isinstance(raw_settings, str)
         else models.AgentSettings.model_validate(raw_settings)
     )
+    budget = task_budget(settings, budget)
     agent_id = str(agent['id'])
-    return {
-        'assignee_kind': 'agent',
-        'assignee': None,
-        'agent_id': agent_id,
-        'agent_version': int(agent.get('version') or 1),
-        'prompt_version': agent.get('prompt_version'),
-        'service_account_id': await agents.ensure_service_account(
+    return tickets.HandOff(
+        'agent',
+        agent_id=agent_id,
+        agent_version=int(agent.get('version') or 1),
+        prompt_version=agent.get('prompt_version'),
+        service_account_id=await agents.ensure_service_account(
             db, agent_id, str(agent.get('name', slug))
         ),
-        'budget': task_budget(settings, requested),
-    }
-
-
-async def _assignee_columns(
-    db: graph.Graph,
-    org_slug: str,
-    data: AgentTaskCreate | TicketReopen,
-    budget: decimal.Decimal | None,
-) -> dict[str, typing.Any]:
-    """Return the assignee columns that ``data`` names; see
-    :func:`_person_assignee` and :func:`_agent_assignee`."""
-    if data.assignee_kind == 'person':
-        return await _person_assignee(db, org_slug, data.assignee or '')
-    return await _agent_assignee(db, org_slug, data.agent_slug or '', budget)
+        budget=budget,
+    )
 
 
 async def make_task(
@@ -1394,18 +1459,23 @@ async def make_task(
 
     """
     projects = await project_slugs(db, org_slug, data.project_ids)
-    columns = await _assignee_columns(db, org_slug, data, data.budget)
-    agent_version = columns['agent_version']
-    prompt_version = columns['prompt_version']
-    budget = columns['budget']
+    if data.assignee_kind == 'person':
+        assignee = await person_assignee(db, org_slug, data.assignee)
+    else:
+        assignee = await agent_assignee(
+            db, org_slug, data.agent_slug or '', data.budget
+        )
+    budget = assignee.budget
+    agent_version = assignee.agent_version
+    prompt_version = assignee.prompt_version
     try:
         return await store.create(
             tickets.NewTask(
                 organization_id=org_id,
-                agent_id=columns['agent_id'],
+                agent_id=assignee.agent_id,
                 agent_version=agent_version,
                 prompt_version=prompt_version,
-                service_account_id=columns['service_account_id'],
+                service_account_id=assignee.service_account_id,
                 projects=projects,
                 title=data.title,
                 description=data.description,
@@ -1654,24 +1724,34 @@ async def _text_matches(
 async def count_waiting_agent_tasks(
     org_id: OrgId,
     store: tickets.Store,
-    _auth: typing.Annotated[
+    auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('ticket:read')),
     ],
-) -> dict[str, int]:
-    """Count the tasks in the organization that wait on a person.
+    lists: bool = False,
+) -> dict[str, typing.Any]:
+    """Count, and with ``lists`` list, what waits on the caller (ADR
+    0028).
 
-    A task waits when it is not closed and has an open request that has
-    not expired, whatever its status: a task that is paused with an open
-    request (Reply and hold) still waits. The count is for the whole
-    organization, for the navigation badge (O1).
+    ``requests`` are the open requests that have not expired on the
+    tickets that the caller owns and that are not closed, whatever
+    their status: a ticket that is paused with an open request (Reply
+    and hold) still waits. ``assigned`` are the person tickets assigned
+    to the caller that are not closed. ``held`` are the held tickets
+    that the caller owns with a gating prerequisite that closed with an
+    outcome that does not release them. ``count`` is the number of
+    items. Without ``lists`` (the navigation badge, which polls), only
+    ``count`` is sent and the lists are empty. A caller that is not a
+    person has none.
 
     Raises:
         403: The caller is not a member of the org.
         404: No such organization.
 
     """
-    return {'count': await store.count_waiting(org_id)}
+    if auth.user is None:
+        return {'count': 0}
+    return await store.waiting(org_id, auth.user.email, lists=lists)
 
 
 @tickets_router.get('/{short_id}', response_model=AgentTaskResponse)
@@ -2058,6 +2138,113 @@ async def set_ticket_status(
         raise _conflict('transition_invalid', str(e)) from e
 
 
+@tickets_router.post('/{short_id}/hand-off', response_model=AgentTaskResponse)
+async def hand_off_ticket(
+    org_slug: str,
+    org_id: OrgId,
+    short_id: str,
+    data: TicketHandOff,
+    db: graph.Pool,
+    store: tickets.Store,
+    auth: typing.Annotated[
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
+    ],
+) -> dict[str, typing.Any]:
+    """Hand a ticket to an agent or to a person (ADR 0028).
+
+    The ticket keeps its id, log, owner, parent, dependencies, and cost.
+    Its status changes in the same write: ``held`` stays ``held``;
+    otherwise a person gets it ``open`` and an agent ``queued``. Open
+    requests close as ``withdrawn``. An agent gets the ticket at the
+    agent version that it has now, and its task budget caps the budget
+    of the ticket (a create refuses a budget above it; a handoff
+    lowers it, because the caller did not choose the budget). A person
+    ticket to another person changes only the assignee. The owner and
+    the assignee make this change; other callers need
+    ``ticket:manage``. To an agent, the caller also needs
+    ``ticket:create``, and the owner must be able to make tickets (see
+    :func:`may_create`), as for a create: the agent works for the
+    owner. An agent hands off its own ticket, to a person only, with
+    the harness tool ``hand_off``.
+
+    Raises:
+        403: The caller is not the owner or the assignee and has no
+            ``ticket:manage``; or, to an agent, the caller has no
+            ``ticket:create`` or the owner cannot make tickets
+            (``owner_forbidden``).
+        404: No such task.
+        409: The task is closed, is an agent ticket and goes to an agent
+            (``agent_ticket``), has an open session (``session_open``),
+            has a pinned chain (``chain_pinned``), or a cancel is not
+            done yet. The agent is disabled.
+        422: The agent or the person is not in the org.
+
+    """
+    task = await _get_task(store, org_id, short_id)
+    people = {task['owner'].lower(), (task['assignee'] or '').lower()}
+    if auth.user is None or auth.user.email.lower() not in people:
+        await _require_manage(auth)
+    if data.assignee_kind == 'agent' == task['assignee_kind']:
+        raise _agent_ticket(short_id)
+    if data.assignee_kind == 'person':
+        to = await person_assignee(db, org_slug, data.assignee)
+    else:
+        to = await _agent_for_owner(
+            db, org_slug, task['owner'], auth, data.agent_slug or ''
+        )
+    try:
+        with write_errors(short_id):
+            return await store.hand_off(
+                org_id,
+                task['short_id'],
+                dataclasses.replace(to, note=data.note),
+                _actor(auth),
+            )
+    except tickets.WrongAssigneeKind as e:
+        raise _agent_ticket(short_id) from e
+    except tickets.SessionOpen as e:
+        raise _conflict(
+            'session_open',
+            f'Task {short_id!r} has an open session; pause it and hand it '
+            'off when the session closes',
+        ) from e
+    except tickets.ChainPinned as e:
+        raise _conflict(
+            'chain_pinned',
+            f'A runner holds the chain of task {short_id!r}; hand it off '
+            'when the runner lets it go',
+        ) from e
+
+
+async def _agent_for_owner(
+    db: graph.Graph,
+    org_slug: str,
+    owner: str,
+    auth: permissions.AuthContext,
+    slug: str,
+) -> tickets.HandOff:
+    """Return the agent ``slug`` as the assignee of a ticket of
+    ``owner``. As for a create, the caller needs ``ticket:create``, and
+    the owner must be able to make tickets: the agent works for the
+    owner.
+
+    Raises:
+        403: The caller has no ``ticket:create``, or the owner cannot
+            make tickets (``owner_forbidden``).
+        409: The agent is disabled.
+        422: The agent is not in the org.
+
+    """
+    await _require_create(auth)
+    if not await may_create(db, org_slug, owner):
+        raise autonomous.forbidden(
+            'owner_forbidden',
+            f'{owner!r} cannot make agent tickets in organization '
+            f'{org_slug!r}.',
+        )
+    return await agent_assignee(db, org_slug, slug)
+
+
 @tickets_router.post('/{short_id}/reopen', response_model=AgentTaskResponse)
 async def reopen_ticket(
     org_slug: str,
@@ -2078,19 +2265,20 @@ async def reopen_ticket(
     session starts. The ticket keeps its assignee, or gets the new
     assignee of the request. The owner and the assignee can reopen a
     ticket; other people need ``ticket:manage``. A reopen to an agent,
-    kept or new, also needs ``ticket:create``, an enabled agent, and a
-    budget within the agent's task budget; the ticket pins the agent
-    version that the agent has now.
+    kept or new, is checked as a handoff to an agent: the caller needs
+    ``ticket:create``, the owner must be able to make tickets, and the
+    agent must be enabled. The ticket gets the agent version that the
+    agent has now, and the task budget of the agent caps its budget.
 
     Raises:
-        403: The caller is not a person, or has no permission.
+        403: The caller is not a person, or has no permission; or the
+            owner cannot make tickets (``owner_forbidden``).
         404: No such task.
         409: The task is not closed (``not_closed``), a runner holds its
             chain (``chain_pinned``), the workflow runs of its last
             close have not all started (``triggers_pending``), or the
             agent is disabled.
-        422: The assignee is not in the org, or the budget is more than
-            the agent's task budget.
+        422: The assignee is not in the org.
 
     """
     user = auth.require_user
@@ -2098,13 +2286,10 @@ async def reopen_ticket(
     email = user.email.lower()
     if email not in (task['owner'].lower(), (task['assignee'] or '').lower()):
         await _require_manage(auth)
-    columns: dict[str, typing.Any] | None = None
+    to: tickets.HandOff | None = None
     if data.assignee_kind == 'person':
-        columns = await _assignee_columns(db, org_slug, data, None)
+        to = await person_assignee(db, org_slug, data.assignee)
     elif data.assignee_kind == 'agent' or task['assignee_kind'] == 'agent':
-        # The agent runs again, as for a new ticket or a retry: the
-        # agent must be enabled, and the budget within its cap.
-        await _require_create(auth)
         slug = data.agent_slug
         if slug is None:
             records = await db.execute(
@@ -2115,11 +2300,10 @@ async def reopen_ticket(
             if not records:
                 raise _unprocessable('The agent of the task is not in the org')
             slug = str(graph.parse_agtype(records[0]['slug']))
-        budget = None if data.agent_slug else task['budget']
-        columns = await _agent_assignee(db, org_slug, slug, budget)
+        to = await _agent_for_owner(db, org_slug, task['owner'], auth, slug)
     try:
         return await store.reopen(
-            org_id, task['short_id'], data.reason, _actor(auth), columns
+            org_id, task['short_id'], data.reason, _actor(auth), to
         )
     except tickets.TaskOpen as e:
         raise _conflict(
@@ -2127,6 +2311,14 @@ async def reopen_ticket(
         ) from e
     except tickets.ReopenRefused as e:
         raise _conflict(e.reason, str(e)) from e
+
+
+def _agent_ticket(short_id: str) -> fastapi.HTTPException:
+    """409 for a handoff of an agent ticket to an agent."""
+    return _conflict(
+        'agent_ticket',
+        f'Task {short_id!r} is an agent ticket; hand it off to a person',
+    )
 
 
 @tickets_router.post('/{short_id}/priority', response_model=AgentTaskResponse)

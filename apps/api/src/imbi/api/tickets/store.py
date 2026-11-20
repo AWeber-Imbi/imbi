@@ -156,6 +156,65 @@ _OPEN_REQUESTS = sql.SQL(
     ' AND (r.expires_at IS NULL OR r.expires_at > NOW())'
 )
 
+#: The open requests on the open tickets of ``%(email)s``.
+_WAITING_REQUESTS: typing.LiteralString = (
+    ' FROM tickets.requests AS r'
+    ' JOIN tickets.tickets AS t ON t.id = r.ticket_id'
+    ' WHERE t.organization_id = %(org)s AND lower(t.owner) = %(email)s'
+    " AND t.status <> 'closed' AND r.status = 'open'"
+    ' AND (r.expires_at IS NULL OR r.expires_at > NOW())'
+)
+
+#: The open person tickets assigned to ``%(email)s``.
+_WAITING_ASSIGNED: typing.LiteralString = (
+    ' FROM tickets.tickets AS t WHERE t.organization_id = %(org)s'
+    " AND t.assignee_kind = 'person' AND lower(t.assignee) = %(email)s"
+    " AND t.status <> 'closed'"
+)
+
+#: The gating prerequisites of ticket ``t`` that closed with an outcome
+#: that does not release it (not in ``%(done)s``).
+_FAILED_GATES: typing.LiteralString = (
+    'SELECT p.short_id FROM tickets.ticket_dependencies AS d'
+    ' JOIN tickets.tickets AS p ON p.organization_id = d.organization_id'
+    ' AND p.id = d.prerequisite_ticket_id'
+    ' WHERE d.dependent_ticket_id = t.id AND d.gates'
+    " AND p.status = 'closed' AND NOT p.outcome = ANY(%(done)s)"
+)
+
+#: The held tickets of ``%(email)s`` with a failed gating prerequisite.
+_WAITING_HELD: typing.LiteralString = (
+    ' FROM tickets.tickets AS t WHERE t.organization_id = %(org)s'
+    " AND lower(t.owner) = %(email)s AND t.status = 'held'"
+    ' AND EXISTS (' + _FAILED_GATES + ')'
+)
+
+#: The lists of :meth:`TicketStore.waiting`, oldest first.
+_WAITING_LISTS: dict[str, typing.LiteralString] = {
+    'requests': 'SELECT r.*, t.short_id, t.title AS ticket_title'
+    + _WAITING_REQUESTS
+    + ' ORDER BY r.opened_at, r.id',
+    'assigned': 'SELECT t.*'
+    + _WAITING_ASSIGNED
+    + ' ORDER BY t.created_at, t.id',
+    'held': 'SELECT t.*, ARRAY('
+    + _FAILED_GATES
+    + ' ORDER BY p.created_at, p.id) AS failed'
+    + _WAITING_HELD
+    + ' ORDER BY t.created_at, t.id',
+}
+
+#: The number of items in the lists of :meth:`TicketStore.waiting`.
+_WAITING_COUNT: typing.LiteralString = (
+    'SELECT (SELECT count(*)'
+    + _WAITING_REQUESTS
+    + ') + (SELECT count(*)'
+    + _WAITING_ASSIGNED
+    + ') + (SELECT count(*)'
+    + _WAITING_HELD
+    + ') AS count'
+)
+
 #: The inbox groups of the task list, in order.
 Group = typing.Literal['input', 'running', 'paused', 'queued', 'closed']
 
@@ -249,6 +308,12 @@ _TREE: typing.LiteralString = (
     ' min(root_title) AS root_title, count(*) AS tickets,'
     " count(*) FILTER (WHERE status <> 'closed') AS open FROM down"
 )
+
+#: The chain states in which a runner holds a chain (ADR 0022); see
+#: :data:`imbi.api.harness.store.PINNED`.
+PINNED_CHAIN_STATES: tuple[
+    typing.Literal['running', 'fencing', 'stuck'], ...
+] = ('running', 'fencing', 'stuck')
 
 #: The statuses of a ticket that has not started: a gating
 #: prerequisite can still hold it.
@@ -361,6 +426,15 @@ class ReopenRefused(ValueError):
         self.reason = reason
 
 
+class SessionOpen(ValueError):
+    """A harness session is open on the ticket."""
+
+
+class ChainPinned(ValueError):
+    """A runner holds the chain of the ticket (ADR 0022): it is
+    ``running``, ``fencing``, or ``stuck``."""
+
+
 class TransitionInvalid(ValueError):
     """A person ticket cannot move from its status to the one asked."""
 
@@ -412,6 +486,25 @@ class NewTask:
     #: The short ids of the prerequisites of the ticket, each with its
     #: ``gates`` value (ADR 0028).
     requires: abc.Sequence[tuple[str, bool]] = ()
+
+
+@dataclasses.dataclass(frozen=True)
+class HandOff:
+    """The new assignee of a ticket in a handoff (ADR 0028).
+
+    A person has ``assignee``; an agent has the agent columns, with the
+    version of the agent now. ``budget`` is the task budget of the
+    agent: it caps the budget of the ticket.
+    """
+
+    assignee_kind: AssigneeKind
+    assignee: str | None = None
+    agent_id: str | None = None
+    agent_version: int | None = None
+    prompt_version: int | None = None
+    service_account_id: str | None = None
+    budget: decimal.Decimal | None = None
+    note: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1129,21 +1222,42 @@ class TicketStore:
             found = await cursor.fetchall()
         return {str(group): int(count) for group, count in found}
 
-    async def count_waiting(self, organization_id: str) -> int:
-        """Return the number of tasks in the organization that wait on
-        a person: tasks that are not closed and have an open request.
+    async def waiting(
+        self, organization_id: str, email: str, *, lists: bool = True
+    ) -> Row:
+        """Return what waits on the person ``email`` (ADR 0028):
+
+        - ``requests``: the open requests on the tickets that they own
+          and that are not closed, oldest first, with ``short_id`` and
+          ``ticket_title`` of the ticket.
+        - ``assigned``: the person tickets assigned to them that are
+          not closed, oldest first.
+        - ``held``: the held tickets that they own with a gating
+          prerequisite that closed with an outcome that does not release
+          them, oldest first, with those prerequisites in ``failed``.
+
+        ``count`` is the number of items in the three lists. Without
+        ``lists``, only ``count`` is returned, from one query: the
+        navigation badge polls it. Emails match without case.
         """
-        async with self._pool.connection() as conn:
-            cursor = await conn.execute(
-                sql.SQL(
-                    'SELECT count(*) FROM tickets.tickets AS t'
-                    " WHERE t.organization_id = %s AND t.status <> 'closed'"
-                    ' AND EXISTS (SELECT 1 {open})'
-                ).format(open=_OPEN_REQUESTS),
-                (organization_id,),
-            )
-            row = await cursor.fetchone()
-        return int(row[0]) if row else 0
+        params = {
+            'org': organization_id,
+            'email': email.lower(),
+            'done': list(DONE_OUTCOMES),
+        }
+        async with (
+            self._pool.connection() as conn,
+            conn.cursor(row_factory=rows.dict_row) as cursor,
+        ):
+            if not lists:
+                await cursor.execute(_WAITING_COUNT, params)
+                row = await cursor.fetchone()
+                return {'count': int(row['count']) if row else 0}
+            found: Row = {}
+            for key, query in _WAITING_LISTS.items():
+                await cursor.execute(query, params)
+                found[key] = await cursor.fetchall()
+        return {'count': sum(map(len, found.values())), **found}
 
     async def events(
         self, task_id: uuid.UUID, after_seq: int, limit: int
@@ -1932,13 +2046,12 @@ class TicketStore:
     async def history(
         self, task: Row, max_seq: int | None = None
     ) -> tuple[list[Row], list[Row]]:
-        """Return the human ``turn`` events, the reopens, and the
-        resolved requests of ``task``, oldest first, for the history of
-        a new session. A turn and a reopen have ``at``, ``actor_id``,
-        and ``body``.
+        """Return the human ``turn``, ``handed_off``, and ``reopened``
+        events and the resolved requests of ``task``, oldest first, for
+        the history of a new session. A withdrawn request is resolved.
 
-        When ``max_seq`` is set, only turns with ``seq <= max_seq`` are
-        returned. The session reads the later turns as events.
+        When ``max_seq`` is set, only events with ``seq <= max_seq`` are
+        returned. The session reads the later events as events.
 
         A closed task opens no session, so the log is not archived. The
         turns up to ``archived_seq`` of a task that was reopened after
@@ -1955,15 +2068,14 @@ class TicketStore:
             conn.cursor(row_factory=rows.dict_row) as cursor,
         ):
             await cursor.execute(
-                'SELECT at, actor_id, type, payload'
+                'SELECT type, at, actor_id, payload'
                 ' FROM tickets.events WHERE ticket_id = %s'
                 " AND ((type = 'turn' AND actor_kind = 'human')"
-                " OR type = 'reopened')"
+                " OR type IN ('handed_off', 'reopened'))"
                 ' AND (%s::bigint IS NULL OR seq <= %s) ORDER BY seq',
                 (task['id'], max_seq, max_seq),
             )
-            turns = [_history_turn(r) for r in archived]
-            turns += [_history_turn(r) for r in await cursor.fetchall()]
+            turns = archived + await cursor.fetchall()
             await cursor.execute(
                 'SELECT * FROM tickets.requests WHERE ticket_id = %s'
                 ' AND resolved_at IS NOT NULL ORDER BY resolved_at, id',
@@ -2085,7 +2197,8 @@ class TicketStore:
         """Record a heartbeat of an open session; return the task.
 
         When the task has run longer than ``timeout_seconds`` since its
-        first session opened, close it with ``exceeded_ceiling``.
+        first session after its last handoff opened, close it with
+        ``exceeded_ceiling``.
 
         Raises:
             TaskNotFound: No such task.
@@ -2104,10 +2217,17 @@ class TicketStore:
                 (session['id'],),
             )
             if timeout_seconds is not None:
+                # The timeout counts from the first session after the
+                # last handoff: an agent period starts there (ADR 0028).
                 cursor = await write.conn.execute(
                     'SELECT NOW() - min(opened_at) > make_interval(secs => %s)'
-                    ' FROM tickets.sessions WHERE ticket_id = %s',
-                    (timeout_seconds, write.task['id']),
+                    ' FROM tickets.sessions WHERE ticket_id = %s'
+                    " AND opened_at > COALESCE(%s::timestamptz, '-infinity')",
+                    (
+                        timeout_seconds,
+                        write.task['id'],
+                        write.task['handed_off_at'],
+                    ),
                 )
                 row = await cursor.fetchone()
                 if row and row[0]:
@@ -2696,16 +2816,19 @@ class TicketStore:
         short_id: str,
         reason: str,
         actor: Actor,
-        assignee: Row | None = None,
+        to: HandOff | None = None,
     ) -> Row:
         """Reopen a closed ticket (ADR 0028).
 
         Clear the outcome and ``closed_at``, write ``reopened`` with the
-        old outcome and ``reason``, and ``state.changed``. ``assignee``
-        has the assignee columns of a new assignee of either kind; the
-        ticket keeps its assignee when it is ``None``. A person ticket
+        old outcome and ``reason``, and ``state.changed``. ``to`` is the
+        assignee of either kind, as in a handoff: an agent at the
+        version that it has now, whose task budget caps the budget of
+        the ticket. ``None`` keeps a person assignee. A person ticket
         returns to ``open``, an agent ticket to ``queued``, or to
-        ``held`` when a gating prerequisite holds it.
+        ``held`` when a gating prerequisite holds it. The reopen starts
+        a new agent period, as a handoff does: the task timeout counts
+        from the first session after it (``handed_off_at``).
 
         The ticket starts a new chain (``chain_id`` is its id), so a
         reopened child can be claimed. When it is an agent ticket and
@@ -2734,13 +2857,7 @@ class TicketStore:
                 raise ReopenRefused(short_id, 'triggers_pending')
             # A chain never changes while a runner holds it. The lock
             # makes a claim of the chain wait for this change.
-            cursor = await write.conn.execute(
-                'SELECT state FROM harness.chains'
-                ' WHERE root_ticket_id = %s FOR UPDATE',
-                (task['chain_id'] or task['id'],),
-            )
-            row = await cursor.fetchone()
-            if row and row[0] in ('running', 'fencing', 'stuck'):
+            if await _chain_state(write.conn, task) in PINNED_CHAIN_STATES:
                 raise ReopenRefused(short_id, 'chain_pinned')
             changes: Row = {
                 'outcome': None,
@@ -2751,17 +2868,19 @@ class TicketStore:
                 'acknowledged_by': None,
                 'chain_id': task['id'],
                 'close_id': uuid.uuid4(),
-                **(assignee or {}),
+                'handed_off_at': datetime.datetime.now(datetime.UTC),
             }
+            if to is not None:
+                changes |= _assignee_columns(task, to)
             payload: Row = {
                 'outcome': task['outcome'],
                 'outcome_reason': task['outcome_reason'],
                 'reason': reason,
             }
-            if assignee is not None:
+            if to is not None:
                 payload['assignee'] = {
                     'from': _assignee_of(task),
-                    'to': _assignee_of({**task, **assignee}),
+                    'to': _assignee_of({**task, **changes}),
                 }
             if task['log_archived_at'] is not None:
                 changes['log_archived_at'] = None
@@ -2784,6 +2903,76 @@ class TicketStore:
                     (task['id'],),
                 )
             await _sync_gate(write, actor)
+        return write.task
+
+    async def hand_off(
+        self,
+        organization_id: str,
+        short_id: str,
+        to: HandOff,
+        actor: Actor,
+        *,
+        session_id: uuid.UUID | None = None,
+    ) -> Row:
+        """Give the ticket to another assignee (ADR 0028).
+
+        A change of kind writes ``handed_off`` and changes the status in
+        the same write: ``held`` stays ``held``, every other status
+        becomes ``open`` (to a person) or ``queued`` (to an agent). The
+        control value goes back to ``run``. Each open request closes as
+        ``withdrawn`` with a ``request.withdrawn`` event. To an agent,
+        the agent columns are set; the budget becomes the lower of the
+        budget of the ticket and ``to.budget`` (the task budget of the
+        agent), and the cost total stays, so the budget counts every
+        agent period. A ``done`` chain goes back to
+        ``queued`` with a new attempt, so that a runner claims the
+        ticket. From a person to another person, only ``assignee``
+        changes, with ``assignee.changed``.
+
+        Without ``session_id``, the handoff is refused while a session is
+        open or the chain is pinned. With ``session_id``, the agent of
+        that open session hands its own ticket to a person: its sessions
+        close (reason ``handed_off``) in the same write, and the runner
+        keeps the chain.
+
+        Raises:
+            TaskNotFound: No such task.
+            TaskClosed: The task is closed.
+            SessionNotFound: The task has no such session.
+            SessionClosed: The session is closed.
+            SessionOpen: A session is open.
+            ChainPinned: A runner holds the chain.
+            WrongAssigneeKind: An agent ticket goes to an agent.
+            CancelPending: A cancel waits for the harness.
+
+        """
+        async with self._write(organization_id, short_id) as write:
+            task = write.task
+            if to.assignee_kind == 'agent' == task['assignee_kind']:
+                raise WrongAssigneeKind(short_id)
+            if task['control'] == 'cancel':
+                raise CancelPending(short_id)
+            if session_id is not None:
+                await _open_session(write.conn, task['id'], session_id)
+                await _close_sessions(write, 'handed_off', actor)
+            elif await _session_open(write.conn, task['id']):
+                raise SessionOpen(short_id)
+            elif await _chain_state(write.conn, task) in PINNED_CHAIN_STATES:
+                raise ChainPinned(short_id)
+            if to.assignee_kind == task['assignee_kind']:
+                if to.assignee != task['assignee']:
+                    await write.event(
+                        'assignee.changed',
+                        {
+                            'from': task['assignee'],
+                            'to': to.assignee,
+                            'note': to.note,
+                        },
+                        actor,
+                    )
+                    await write.update({'assignee': to.assignee})
+            else:
+                await _hand_off(write, to, actor)
         return write.task
 
 
@@ -2977,23 +3166,6 @@ async def _sync_gate(write: _Write, actor: Actor) -> None:
         await _set_status(write, status, 'released', actor)
 
 
-def _history_turn(event: Row) -> Row:
-    """A human turn or a ``reopened`` event, for :meth:`TicketStore.
-    history`."""
-    payload: Row = event['payload']
-    body = payload.get('body')
-    if event['type'] == 'reopened':
-        body = f'Reopened (was {payload["outcome"]}): {payload["reason"]}'
-    return {'at': event['at'], 'actor_id': event['actor_id'], 'body': body}
-
-
-def _assignee_of(task: Row) -> Row:
-    """The assignee of a ticket, for the ``reopened`` event."""
-    if task['assignee_kind'] == 'person':
-        return {'kind': 'person', 'assignee': task['assignee']}
-    return {'kind': 'agent', 'agent_id': task['agent_id']}
-
-
 def _done(task: Row) -> bool:
     """Whether ``task`` closed with an outcome that releases the tickets
     that it gates."""
@@ -3039,19 +3211,7 @@ async def _close(
     ``state.changed`` and ``outcome.set``. A ``done_*`` outcome
     releases the dependents that the task gates, in this transaction.
     """
-    cursor = await write.conn.execute(
-        'UPDATE tickets.sessions'
-        " SET closed_at = NOW(), close_reason = 'task_closed'"
-        ' WHERE ticket_id = %s AND closed_at IS NULL RETURNING id',
-        (write.task['id'],),
-    )
-    for (session_id,) in await cursor.fetchall():
-        await write.event(
-            'session.closed',
-            {'session_id': str(session_id), 'reason': 'task_closed'},
-            actor,
-            session_id=session_id,
-        )
+    await _close_sessions(write, 'task_closed', actor)
     await write.event(
         'state.changed',
         {
@@ -3080,6 +3240,119 @@ async def _close(
         )
         write.released = await _release_dependents(
             write.conn, [row[0] for row in await cursor.fetchall()], actor
+        )
+
+
+async def _chain_state(conn: Conn, task: Row) -> str | None:
+    """Lock the chain row of ``task`` and return its state; ``None``
+    when no runner claimed the chain yet."""
+    cursor = await conn.execute(
+        'SELECT state FROM harness.chains WHERE root_ticket_id = %s'
+        ' FOR UPDATE',
+        (task['chain_id'] or task['id'],),
+    )
+    row = await cursor.fetchone()
+    return None if row is None else str(row[0])
+
+
+def _assignee_of(row: Row) -> Row:
+    """One side of a ``handed_off`` event."""
+    if row['assignee_kind'] == 'person':
+        return {'kind': 'person', 'assignee': row['assignee']}
+    return {
+        'kind': 'agent',
+        'agent_id': row['agent_id'],
+        'agent_version': row['agent_version'],
+    }
+
+
+def _assignee_columns(task: Row, to: HandOff) -> Row:
+    """The assignee columns of ``task`` for the assignee ``to``.
+
+    The task budget of an agent caps the budget of the ticket, as for a
+    create. A person ticket keeps its budget, which the agent periods
+    count against.
+    """
+    columns: Row = {
+        'assignee_kind': to.assignee_kind,
+        'assignee': to.assignee,
+        'agent_id': to.agent_id,
+        'agent_version': to.agent_version,
+        'prompt_version': to.prompt_version,
+        'service_account_id': to.service_account_id,
+    }
+    if to.assignee_kind == 'agent':
+        budgets = [b for b in (task['budget'], to.budget) if b is not None]
+        columns['budget'] = min(budgets, default=None)
+    return columns
+
+
+async def _hand_off(write: _Write, to: HandOff, actor: Actor) -> None:
+    """Change the assignee kind; see :meth:`TicketStore.hand_off`."""
+    task = write.task
+    cursor = await write.conn.execute(
+        "UPDATE tickets.requests SET status = 'withdrawn',"
+        ' resolved_at = NOW(), resolved_by = %s'
+        " WHERE ticket_id = %s AND status = 'open'"
+        ' RETURNING id',
+        (actor.id, task['id']),
+    )
+    for (request_id,) in sorted(await cursor.fetchall()):
+        await write.event(
+            'request.withdrawn', {'request_id': str(request_id)}, actor
+        )
+    status: Status = (
+        'held'
+        if task['status'] == 'held'
+        else 'open'
+        if to.assignee_kind == 'person'
+        else 'queued'
+    )
+    await write.event(
+        'handed_off',
+        {
+            'from': _assignee_of(task),
+            'to': _assignee_of(dataclasses.asdict(to)),
+            'note': to.note,
+        },
+        actor,
+    )
+    if status != task['status']:
+        await write.event(
+            'state.changed',
+            {'from': task['status'], 'to': status, 'reason': 'handed_off'},
+            actor,
+        )
+    # One write, so the checks of the assignee kind hold on the row.
+    changes: Row = {
+        'status': status,
+        'control': 'run',
+        'handed_off_at': datetime.datetime.now(datetime.UTC),
+        **_assignee_columns(task, to),
+    }
+    if to.assignee_kind == 'agent':
+        await write.conn.execute(
+            "UPDATE harness.chains SET state = 'queued',"
+            ' attempt = attempt + 1, updated_at = NOW()'
+            " WHERE root_ticket_id = %s AND state = 'done'",
+            (task['chain_id'] or task['id'],),
+        )
+    await write.update(changes)
+
+
+async def _close_sessions(write: _Write, reason: str, actor: Actor) -> None:
+    """Close every open session of the task, each with ``session.closed``."""
+    cursor = await write.conn.execute(
+        'UPDATE tickets.sessions SET closed_at = NOW(), close_reason = %s'
+        ' WHERE ticket_id = %s AND closed_at IS NULL RETURNING id',
+        (reason, write.task['id']),
+    )
+    for (session_id,) in await cursor.fetchall():
+        await write.event(
+            'session.closed',
+            {'session_id': str(session_id), 'reason': reason},
+            actor,
+            session_id=session_id,
         )
 
 

@@ -16,6 +16,28 @@ from imbi.api.tickets import sweeper
 
 
 class ReopenTestCase(test_person_tickets.PersonTicketTestCase):
+    """The owner can make tickets (a role with ``ticket:create``), so an
+    agent can work for them."""
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        role = f'reopen-{self.org}'
+        await self.graph.execute(
+            'MERGE (p:Permission {{name: "ticket:create"}})'
+            ' CREATE (r:Role {{slug: {role}, name: {role}}})'
+            ' CREATE (r)-[:GRANTS]->(p)'
+            ' WITH r MATCH (:User {{email: {email}}})-[m:MEMBER_OF]->()'
+            ' SET m.role = {role} RETURN 1 AS ok',
+            {'role': role, 'email': self.email},
+            ['ok'],
+        )
+        self.addAsyncCleanup(
+            self.graph.execute,
+            'MATCH (r:Role {{slug: {role}}}) DETACH DELETE r RETURN 1 AS ok',
+            {'role': role},
+            ['ok'],
+        )
+
     async def reopen(
         self, short_id: str, **body: typing.Any
     ) -> httpx.Response:
@@ -143,7 +165,11 @@ class PersonReopenTests(ReopenTestCase):
             event['payload']['assignee'],
             {
                 'from': {'kind': 'person', 'assignee': self.member},
-                'to': {'kind': 'agent', 'agent_id': agent_id},
+                'to': {
+                    'kind': 'agent',
+                    'agent_id': agent_id,
+                    'agent_version': 3,
+                },
             },
         )
 
@@ -174,7 +200,8 @@ class AgentReopenTests(ReopenTestCase):
         self.assertEqual(reopened['status'], 'open')
         self.assertEqual(reopened['assignee'], self.member)
         self.assertIsNone(reopened['agent_id'])
-        self.assertIsNone(reopened['budget'])
+        # The budget stays, as in a handoff.
+        self.assertEqual(reopened['budget'], task['budget'])
 
     async def test_agent_reopen_needs_create_and_an_enabled_agent(
         self,
@@ -375,11 +402,14 @@ class ArchivedReopenTests(
         # The history of a new session has the reopen and the comment.
         turns, _requests = await self.store.history(row)
         self.assertEqual(
-            [t['body'] for t in turns],
             [
-                'Look at the logs',
-                'Reopened (was cancelled_by_human): Not fixed',
-                'Try again',
+                (t['type'], t['payload'].get('body') or t['payload']['reason'])
+                for t in turns
+            ],
+            [
+                ('turn', 'Look at the logs'),
+                ('reopened', 'Not fixed'),
+                ('turn', 'Try again'),
             ],
         )
 

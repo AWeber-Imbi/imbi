@@ -74,13 +74,20 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
-## Unreleased: ticket reopen (ADR 0028)
+## Unreleased: handoff, waiting on me, and reopen (ADR 0028)
 
 Set the version of this section when the release is cut.
 
 1. **Before you deploy**, deploy 2.57.0 everywhere and let its rollout
    finish.
 2. Deploy the new image. There is no setup command. At start, imbi-api:
+    - adds the column `tickets.tickets.handed_off_at` and two indexes for
+      Waiting on me, `tickets_owner_open_idx` and
+      `tickets_assignee_open_idx`. The index build stops writes to
+      `tickets.tickets` while it runs. A 2.57.0 pod does not use or drop
+      them. A handoff writes values that 2.57.0 reads already: the
+      request status `withdrawn` and the event types `handed_off`,
+      `assignee.changed`, and `request.withdrawn`;
     - adds `tickets.tickets.archived_seq` (NULL),
       `tickets.tickets.close_id`, and `tickets.trigger_outbox.close_id`.
       Both `close_id` columns have the nil UUID as default, so every row
@@ -96,8 +103,14 @@ Set the version of this section when the release is cut.
       closed, because a delete needs every child closed). This changes
       no ticket that a release since ADR 0022 made, and a later start
       finds no such child, so the step runs one time.
-3. Do not reopen tickets until every imbi-api pod runs this release.
-   Only a new pod can reopen a ticket.
+3. Deploy the runner image when you like, before or after imbi-api. An
+   agent gets the `hand_off` tool from the new runner. Against an older
+   imbi-api, the tool tells the agent that the handoff failed, and the
+   ticket stays with the agent.
+4. Do not reopen tickets until every imbi-api pod runs this release.
+   Only a new pod can reopen a ticket. A reopened agent ticket that had
+   sessions has the same task timeout risk as a handoff back to an agent
+   (see below): the new release counts the timeout from the reopen.
 
 A 2.57.0 pod that restarts during the rollout does not
 change the schema back. Its schema file declares the old primary key of
@@ -106,6 +119,27 @@ table that exists, and it does not drop the new columns.
 
 While pods of both releases run:
 
+- A pod of the previous release reads a handed-off ticket as a plain
+  agent ticket or person ticket. A withdrawn request is not open for it,
+  and its history of a new session shows the request as withdrawn.
+- Do not hand a ticket back to an agent until the rollout is done when
+  the ticket had agent sessions before. A pod of the previous release
+  counts the task timeout from the first session of the ticket, so its
+  heartbeat can close the ticket with `exceeded_ceiling`
+  (`task_timeout`). The new release counts from the first session after
+  the last handoff.
+- The new UI shows **Hand off** on a ticket. When a pod of the previous
+  release takes the request, it fails with `404`; try again.
+- When an agent hands off its ticket, the runner keeps the chain until
+  it finishes. The chain then has an open ticket, so it goes to
+  `fencing`, as for a paused ticket.
+- `GET /tickets/waiting` now counts what waits on the caller, and
+  returns the three lists with `?lists=true`. Before, it
+  counted every ticket of the organization with an open request. While
+  pods of both releases run, the badge can show either count, and the
+  new **Waiting on me** page shows empty lists when a pod of the
+  previous release answers. The **Waiting on people** tile of the agent
+  dashboard keeps the count for the organization.
 - A 2.57.0 pod writes tickets and `trigger_outbox` rows
   without `close_id`. They get the nil UUID, which is the value of a
   first close, so the trigger of either release starts the same runs.

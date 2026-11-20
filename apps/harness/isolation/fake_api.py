@@ -1196,6 +1196,23 @@ def _task_route(
         raise Fail(409, 'task_closed')
     if action.endswith('/heartbeat'):
         return 200, _task_state(task)
+    if action.endswith('/hand-off'):
+        if task['control'] == 'cancel':
+            raise Fail(409, 'task_cancelled')
+        session_id = action.split('/')[1]
+        if not any(
+            s['id'] == session_id and not s['closed']
+            for s in task['sessions'].values()
+        ):
+            raise Fail(409, 'session_closed')
+        for session in task['sessions'].values():
+            session['closed'] = True
+        for request in task['requests'].values():
+            if request['status'] == 'open':
+                request['status'] = 'withdrawn'
+        task['status'] = 'held' if task['status'] == 'held' else 'open'
+        task['handed_off'] = body
+        return 200, _task_state(task)
     if action.endswith('/close'):
         if not any(not s['closed'] for s in task['sessions'].values()):
             return 200, _task_state(task)

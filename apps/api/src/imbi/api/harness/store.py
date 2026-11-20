@@ -43,8 +43,10 @@ GRACE_SECONDS = 120
 
 RunnerState = typing.Literal['idle', 'busy', 'offline', 'fenced']
 ChainState = typing.Literal['running', 'fencing', 'stuck', 'queued', 'done']
-#: The chain states that hold the chain away from other runners.
-PINNED: tuple[ChainState, ...] = ('running', 'fencing', 'stuck')
+#: The chain states that hold the chain away from other runners. The
+#: tickets store reads them too (a handoff waits for them), and this
+#: module imports that store, so they are declared there.
+PINNED: tuple[ChainState, ...] = task_store.PINNED_CHAIN_STATES
 
 _SYSTEM = task_store.Actor('system', 'imbi', 'harness')
 
