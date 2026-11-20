@@ -74,29 +74,14 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
-## Unreleased: ticket attributes and AI subjects
-
-1. Run `imbi-api setup-prompts`. It adds the `imbi-api/ticket-subject`
-   prompt to the prompt CMS, where you can edit it and choose its model.
-   Without it, imbi-api uses the packaged prompt and its default
-   Anthropic model. With no Anthropic key, the subject is the first
-   line of the description without its links, cut to 96 characters,
-   or `Work from a link` when no text remains.
-2. Activate a workflow with an **Assign ticket to role** step only after
-   every imbi-api and imbi-workflows pod runs this release: a pod of the
-   previous release does not know the step.
-
-The new ticket columns (`type`, `due_date`, `labels`, `roles`,
-`backlog_rank`) and the label index are added when imbi-api starts. No
-manual step is needed for them.
-
-## Unreleased: ticket state changed trigger
-
-Set the version of this section when the release is cut.
+## 2.59.0
 
 1. **Before you deploy**, deploy 2.58.0 everywhere and let its rollout
    finish.
-2. Deploy the new image. There is no setup command. At start, imbi-api:
+2. Deploy the new image. At start, imbi-api:
+    - adds the ticket columns `type`, `due_date`, `labels`, `roles`, and
+      `backlog_rank`, and the label index. A row of 2.58.0 gets the
+      defaults;
     - changes `tickets.trigger_outbox` to one row per ticket change for
       the `ticket_state_changed` trigger: it adds the columns `id` (a
       random UUID on each row that exists), `from_state`, `to_state`
@@ -110,15 +95,21 @@ Set the version of this section when the release is cut.
     - adds the partial index `trigger_bindings_ticket_state_changed_idx`
       on `workflows.trigger_bindings` and the index `runs_lineage_idx` on
       `workflow_runtime.runs`, and drops
-      `runs_closed_ticket_idempotency_key`. The build of
-      `runs_lineage_idx` stops writes to `workflow_runtime.runs` while it
-      runs.
-3. Activate a workflow with the `ticket_state_changed` trigger only after
-   every imbi-api pod runs this release. During a rolling deploy, the
-   workflow sweep of a 2.58.0 pod deletes outbox rows by `ticket_id`
-   and `close_id`. A row of this release has the nil `close_id`, so that
-   sweep can delete the pending change of a ticket before its runs
-   start.
+      `runs_closed_ticket_idempotency_key`. `runs_lineage_idx` is built
+      `CONCURRENTLY`, so run writes do not wait for it.
+3. Run `imbi-api setup-prompts`. It adds the `imbi-api/ticket-subject`
+   prompt to the prompt CMS, where you can edit it and choose its model.
+   Without it, imbi-api uses the packaged prompt and its default
+   Anthropic model. With no Anthropic key, the subject is the first
+   line of the description without its links, cut to 96 characters,
+   or `Work from a link` when no text remains.
+4. Activate a workflow with the `ticket_state_changed` trigger or an
+   **Assign ticket to role** step only after every imbi-api and
+   imbi-workflows pod runs this release. A 2.58.0 pod does not know the
+   step. During a rolling deploy, the workflow sweep of a 2.58.0 pod
+   deletes outbox rows by `ticket_id` and `close_id`. A row of this
+   release has the nil `close_id`, so that sweep can delete the pending
+   change of a ticket before its runs start.
 
 This release removes the `ticket_closed` and `task_completed` triggers.
 
@@ -131,6 +122,10 @@ initializer does not drop columns.
 While pods of both releases run, a 2.58.0 pod writes a `trigger_outbox`
 row only for a close, with `ticket_id` and `close_id`. The row gets a
 new `id` and the `to_state` `closed`.
+
+Optional: imbi-slackbot no longer needs the `canvases:write` Slack scope,
+and a GitHub App that must let agents edit `.github/workflows/` needs
+Workflows: Read and write on its installations.
 
 ## 2.58.0
 
