@@ -1001,3 +1001,120 @@ class ReleaseB1TestCase(DatabaseTestCase):
                 'tasks_origin_idempotency_key',
             ],
         )
+
+
+RELEASE_B1 = FIXTURES.parent / 'release_b1'
+
+
+async def _release_b1_install() -> None:
+    """Initialize as the previous release (B+1, with person tickets)
+    does."""
+    await _fixture_install(RELEASE_B1)
+
+
+class ReopenReleaseTestCase(DatabaseTestCase):
+    """This release (reopen) on a database of the previous release."""
+
+    async def _reopen_release(self) -> Conn:
+        conn = await self._migrated()
+        await _release_b_install()
+        await _release_b1_install()
+        await _install()
+        return conn
+
+    async def test_previous_release_restart_changes_nothing(self) -> None:
+        conn = await self._reopen_release()
+        before = await self._catalog(conn)
+        with self.assertNoLogs('imbi.common.relational', 'INFO'):
+            await _release_b1_install()
+            await _install()
+        self.assertEqual(before, await self._catalog(conn))
+
+    async def test_outbox_key_matches_a_new_install(self) -> None:
+        conn = await self._reopen_release()
+        query = (
+            'SELECT conname, pg_get_constraintdef(oid) AS definition'
+            ' FROM pg_constraint'
+            " WHERE conrelid = 'tickets.trigger_outbox'::regclass"
+            " AND contype = 'p'"
+        )
+        cursor = await conn.execute(query)
+        migrated = await cursor.fetchall()
+        self.assertEqual(
+            migrated,
+            [
+                {
+                    'conname': 'trigger_outbox_pkey',
+                    'definition': 'PRIMARY KEY (ticket_id, close_id)',
+                }
+            ],
+        )
+        await self._use_database()
+        await _install()
+        cursor = await (await self._connect()).execute(query)
+        self.assertEqual(await cursor.fetchall(), migrated)
+
+    async def test_previous_release_writes_the_first_close(self) -> None:
+        conn = await self._reopen_release()
+        # The SQL of the previous release, which names no close.
+        await conn.execute(
+            'INSERT INTO tickets.trigger_outbox (ticket_id) VALUES (%s)',
+            (ROOT,),
+        )
+        await conn.execute(
+            'INSERT INTO tickets.trigger_outbox (ticket_id, close_id)'
+            ' VALUES (%s, %s)',
+            (ROOT, NEW),
+        )
+        # A ticket that the previous release writes is in its first cycle.
+        await _insert_ticket(conn, NEW, 'ticket', None)
+        cursor = await conn.execute(
+            'SELECT close_id FROM tickets.tickets WHERE id = %s', (NEW,)
+        )
+        self.assertEqual(
+            await cursor.fetchone(),
+            {'close_id': tickets.store.FIRST_CLOSE_ID},
+        )
+        cursor = await conn.execute(
+            'SELECT close_id FROM tickets.trigger_outbox ORDER BY close_id'
+        )
+        self.assertEqual(
+            await cursor.fetchall(),
+            [{'close_id': tickets.store.FIRST_CLOSE_ID}, {'close_id': NEW}],
+        )
+        await conn.execute(
+            'DELETE FROM tickets.trigger_outbox WHERE ticket_id = %s', (ROOT,)
+        )
+
+    async def test_old_children_get_the_chain_of_their_origin(self) -> None:
+        conn = await self._reopen_release()
+        # A grandchild of ROOT, and rows made before `chain_id` existed.
+        await _insert_ticket(conn, NEW, 'ticket', None)
+        await conn.execute(
+            'UPDATE tickets.tickets SET origin_id = %s WHERE id = %s',
+            (str(CHILD), NEW),
+        )
+        await conn.execute('UPDATE tickets.tickets SET chain_id = NULL')
+        # A child whose origin ticket is gone.
+        orphan = uuid.UUID('00000000-0000-0000-0000-000000000004')
+        await _insert_ticket(conn, orphan, 'ticket', None)
+        await conn.execute(
+            'UPDATE tickets.tickets SET origin_id = %s, chain_id = NULL'
+            ' WHERE id = %s',
+            (str(uuid.uuid4()), orphan),
+        )
+        await _install()
+        cursor = await conn.execute(
+            'SELECT id, chain_id FROM tickets.tickets ORDER BY id'
+        )
+        self.assertEqual(
+            await cursor.fetchall(),
+            [
+                {'id': ROOT, 'chain_id': None},
+                {'id': CHILD, 'chain_id': ROOT},
+                {'id': NEW, 'chain_id': ROOT},
+                {'id': orphan, 'chain_id': orphan},
+            ],
+        )
+        with self.assertNoLogs('imbi.common.relational', 'INFO'):
+            await _install()

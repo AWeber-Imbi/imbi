@@ -60,6 +60,19 @@ ORIGIN_IDEMPOTENCY_KEYS = frozenset(
     {'tasks_origin_idempotency_key', 'tickets_origin_idempotency_key'}
 )
 
+#: The ``close_id`` of the first close cycle of a ticket (ADR 0028).
+FIRST_CLOSE_ID = uuid.UUID(int=0)
+
+
+def close_key(key: str, close_id: uuid.UUID) -> str:
+    """Return an idempotency key for one close of a ticket.
+
+    The first close keeps ``key``, as the previous release has it; a
+    close after a reopen adds its ``close_id``.
+    """
+    return key if close_id == FIRST_CLOSE_ID else f'{key}:{close_id}'
+
+
 #: A close hook gets the task row after the transaction that closed the
 #: task commits. The secrets broker registers its release here.
 type CloseHook = abc.Callable[[Row], abc.Awaitable[None]]
@@ -400,6 +413,19 @@ class WrongAssigneeKind(ValueError):
     person statuses only to a person ticket (ADR 0028)."""
 
 
+class ReopenRefused(ValueError):
+    """The closed ticket cannot reopen now (ADR 0028).
+
+    ``reason`` is ``chain_pinned`` (a runner holds the chain of the
+    ticket) or ``triggers_pending`` (the workflow runs of the last
+    close have not all started).
+    """
+
+    def __init__(self, short_id: str, reason: str) -> None:
+        super().__init__(f'{short_id} cannot reopen: {reason}')
+        self.reason = reason
+
+
 class SessionOpen(ValueError):
     """A harness session is open on the ticket."""
 
@@ -621,14 +647,15 @@ class _Write:
         """Change columns of the task and keep the new row.
 
         A change that closes the task also writes its ``trigger_outbox``
-        row, so its ``task_completed`` runs start even when the close
-        hook fails.
+        row, with the ``close_id`` of the task, so its ``task_completed``
+        runs start even when the close hook fails.
         """
         self.task = await _update_task(self.conn, self.task['id'], changes)
         if changes.get('status') == 'closed':
             await self.conn.execute(
-                'INSERT INTO tickets.trigger_outbox (ticket_id) VALUES (%s)',
-                (self.task['id'],),
+                'INSERT INTO tickets.trigger_outbox (ticket_id, close_id)'
+                ' VALUES (%s, %s)',
+                (self.task['id'], self.task['close_id']),
             )
         return self.task
 
@@ -761,19 +788,25 @@ class TicketStore:
 
     @contextlib.asynccontextmanager
     async def _write(
-        self, organization_id: str, short_id: str
+        self, organization_id: str, short_id: str, *, closed: bool = False
     ) -> abc.AsyncGenerator[_Write]:
         """Lock an open task for a change, then publish what changed.
+
+        With ``closed``, lock a closed task instead (a reopen).
 
         Raises:
             TaskNotFound: No such task.
             TaskClosed: The task is closed.
+            TaskOpen: ``closed`` and the task is not closed.
 
         """
         async with self._pool.connection() as conn:
             async with conn.transaction():
                 write = _Write(
-                    conn, await _lock_task(conn, organization_id, short_id)
+                    conn,
+                    await _lock_task(
+                        conn, organization_id, short_id, closed=closed
+                    ),
                 )
                 yield write
                 if write.events:
@@ -1241,10 +1274,35 @@ class TicketStore:
             )
             return await cursor.fetchall()
 
+    async def read_log(
+        self, task: Row, after_seq: int, limit: int
+    ) -> list[Row]:
+        """Return events of a task with ``seq`` after ``after_seq``.
+
+        An archived log comes from ClickHouse. A task that was reopened
+        after an archive has the events up to ``archived_seq`` in
+        ClickHouse and the later events in Postgres (ADR 0028).
+        """
+        if task['log_archived_at'] is not None:
+            return await log.archived_events(task, after_seq, limit)
+        archived_seq = task['archived_seq'] or 0
+        events: list[Row] = []
+        if after_seq < archived_seq:
+            events = await log.archived_events(
+                task, after_seq, limit, archived_seq
+            )
+            if len(events) == limit:
+                return events
+            after_seq = archived_seq
+        return events + await self.events(
+            task['id'], after_seq, limit - len(events)
+        )
+
     async def last_agent_turn(self, task: Row) -> str | None:
         """Return the body of the newest ``turn`` of the agent.
 
-        It reads ClickHouse when the log of the task is archived.
+        It reads ClickHouse when the log of the task is archived, or
+        when Postgres has no turn and an earlier log is archived.
         ``None`` when the agent wrote no turn.
         """
         if task['log_archived_at'] is not None:
@@ -1265,28 +1323,43 @@ class TicketStore:
         if row is None:
             return None
         archived, body = row
-        if archived:
+        if archived or (body is None and task['archived_seq']):
             return await log.last_archived_agent_turn(task)
         return None if body is None else str(body)
 
     async def pending_triggers(self) -> list[Row]:
-        """Return the closed tasks that have a ``trigger_outbox`` row."""
+        """Return the closed tasks that have a ``trigger_outbox`` row,
+        one row for each close.
+
+        ``close_id`` is the one of the row. A reopen waits for the row,
+        so it is of the last close, but a pod of the previous release
+        writes the nil ``close_id`` also after a reopen.
+        """
         async with (
             self._pool.connection() as conn,
             conn.cursor(row_factory=rows.dict_row) as cursor,
         ):
             await cursor.execute(
-                _SELECT_TASKS + ' JOIN tickets.trigger_outbox AS o'
+                'SELECT t.*, '  # noqa: S608
+                + PROJECTS
+                + ', o.close_id AS outbox_close_id'
+                ' FROM tickets.tickets AS t JOIN tickets.trigger_outbox AS o'
                 ' ON o.ticket_id = t.id ORDER BY o.created_at'
             )
-            return await cursor.fetchall()
+            return [
+                {**row, 'close_id': row.pop('outbox_close_id')}
+                for row in await cursor.fetchall()
+            ]
 
-    async def triggers_started(self, task_id: uuid.UUID) -> None:
-        """Delete the ``trigger_outbox`` row of a task."""
+    async def triggers_started(
+        self, task_id: uuid.UUID, close_id: uuid.UUID
+    ) -> None:
+        """Delete the ``trigger_outbox`` row of a close of a task."""
         async with self._pool.connection() as conn:
             await conn.execute(
-                'DELETE FROM tickets.trigger_outbox WHERE ticket_id = %s',
-                (task_id,),
+                'DELETE FROM tickets.trigger_outbox'
+                ' WHERE ticket_id = %s AND close_id = %s',
+                (task_id, close_id),
             )
 
     async def unarchived(self) -> list[Row]:
@@ -1973,16 +2046,23 @@ class TicketStore:
     async def history(
         self, task: Row, max_seq: int | None = None
     ) -> tuple[list[Row], list[Row]]:
-        """Return the human ``turn`` and the ``handed_off`` events and the
-        resolved requests of ``task``, oldest first, for the history of a
-        new session. A withdrawn request is resolved.
+        """Return the human ``turn``, ``handed_off``, and ``reopened``
+        events and the resolved requests of ``task``, oldest first, for
+        the history of a new session. A withdrawn request is resolved.
 
         When ``max_seq`` is set, only events with ``seq <= max_seq`` are
         returned. The session reads the later events as events.
 
-        It reads only Postgres: only a closed task has an archived log,
-        and a closed task opens no session.
+        A closed task opens no session, so the log is not archived. The
+        turns up to ``archived_seq`` of a task that was reopened after
+        an archive come from ClickHouse.
         """
+        archived: list[Row] = []
+        if task['archived_seq']:
+            until = task['archived_seq']
+            if max_seq is not None:
+                until = min(until, max_seq)
+            archived = await log.archived_history(task, until)
         async with (
             self._pool.connection() as conn,
             conn.cursor(row_factory=rows.dict_row) as cursor,
@@ -1991,11 +2071,11 @@ class TicketStore:
                 'SELECT type, at, actor_id, payload'
                 ' FROM tickets.events WHERE ticket_id = %s'
                 " AND ((type = 'turn' AND actor_kind = 'human')"
-                " OR type = 'handed_off')"
+                " OR type IN ('handed_off', 'reopened'))"
                 ' AND (%s::bigint IS NULL OR seq <= %s) ORDER BY seq',
                 (task['id'], max_seq, max_seq),
             )
-            turns = await cursor.fetchall()
+            turns = archived + await cursor.fetchall()
             await cursor.execute(
                 'SELECT * FROM tickets.requests WHERE ticket_id = %s'
                 ' AND resolved_at IS NOT NULL ORDER BY resolved_at, id',
@@ -2145,7 +2225,7 @@ class TicketStore:
                     (
                         timeout_seconds,
                         write.task['id'],
-                        write.task['handed_off_at'],
+                        write.task['period_started_at'],
                     ),
                 )
                 row = await cursor.fetchone()
@@ -2729,6 +2809,110 @@ class TicketStore:
         return write.task
 
     @_retry_deadlock
+    async def reopen(
+        self,
+        organization_id: str,
+        short_id: str,
+        reason: str,
+        actor: Actor,
+        to: HandOff,
+    ) -> Row:
+        """Reopen a closed ticket (ADR 0028).
+
+        Clear the outcome and ``closed_at``, write ``reopened`` with the
+        old outcome and ``reason``, and ``state.changed``. ``to`` is the
+        assignee of either kind, also when it does not change, as in a
+        handoff: an agent at the version and the platform configuration
+        that it has now, whose task budget caps the budget of the
+        ticket. A person ticket
+        returns to ``open``, an agent ticket to ``queued``, or to
+        ``held`` when a gating prerequisite holds it. The reopen starts
+        a new agent period, as a handoff does: the task timeout counts
+        from the first session after it (``period_started_at``).
+
+        The ticket starts a new chain (``chain_id`` is its id), so a
+        reopened child can be claimed. When it is an agent ticket and
+        its chain row is ``done``, the row returns to ``queued`` with a
+        new attempt. An archived log is not archived after this:
+        ``archived_seq`` keeps the last seq that only ClickHouse has.
+
+        Raises:
+            TaskNotFound: No such task.
+            TaskOpen: The task is not closed.
+            ReopenRefused: The chain of the ticket is pinned, or the
+                workflow runs of the last close have not all started.
+
+        """
+        async with self._write(
+            organization_id, short_id, closed=True
+        ) as write:
+            task = write.task
+            cursor = await write.conn.execute(
+                'SELECT EXISTS (SELECT 1 FROM tickets.trigger_outbox'
+                ' WHERE ticket_id = %s)',
+                (task['id'],),
+            )
+            row = await cursor.fetchone()
+            if row and row[0]:
+                raise ReopenRefused(short_id, 'triggers_pending')
+            # A chain never changes while a runner holds it. The lock
+            # makes a claim of the chain wait for this change.
+            if await _chain_state(write.conn, task) in PINNED_CHAIN_STATES:
+                raise ReopenRefused(short_id, 'chain_pinned')
+            changes: Row = {
+                'outcome': None,
+                'outcome_reason': None,
+                'closed_at': None,
+                'control': 'run',
+                'acknowledged_at': None,
+                'acknowledged_by': None,
+                'chain_id': task['id'],
+                'close_id': uuid.uuid4(),
+                'period_started_at': datetime.datetime.now(datetime.UTC),
+                **await _assignee_columns(write.conn, task, to),
+            }
+            payload: Row = {
+                'outcome': task['outcome'],
+                'outcome_reason': task['outcome_reason'],
+                'reason': reason,
+            }
+            before, after = _assignee_of(task), _assignee_of(changes)
+            if before != after:
+                payload['assignee'] = {'from': before, 'to': after}
+            if task['log_archived_at'] is not None:
+                changes['log_archived_at'] = None
+                changes['archived_seq'] = task['last_seq']
+            agent = to.assignee_kind == 'agent'
+            status: Status = 'queued' if agent else 'open'
+            await write.event('reopened', payload, actor)
+            await write.event(
+                'state.changed',
+                {'from': 'closed', 'to': status, 'reason': 'reopened'},
+                actor,
+            )
+            await write.update({**changes, 'status': status})
+            if agent:
+                await _queue_done_chain(write.conn, task['id'])
+            await _sync_gate(write, actor)
+        return write.task
+
+    async def handed_off(
+        self, organization_id: str, short_id: str, session_id: uuid.UUID
+    ) -> Row | None:
+        """Return the ticket when the session handed it to a person (the
+        session closed with the reason ``handed_off``) and it is still a
+        person ticket; else ``None``."""
+        async with self._pool.connection() as conn:
+            return await _fetch_one(
+                conn,
+                _SELECT_TASKS + ' JOIN tickets.sessions AS s'
+                ' ON s.ticket_id = t.id AND s.id = %s'
+                " AND s.close_reason = 'handed_off'"
+                ' WHERE t.organization_id = %s AND t.short_id = %s'
+                " AND t.assignee_kind = 'person'",
+                (session_id, organization_id, short_id),
+            )
+
     async def hand_off(
         self,
         organization_id: str,
@@ -2754,8 +2938,11 @@ class TicketStore:
         changes, with ``assignee.changed``.
 
         Without ``session_id``, the handoff is refused while a session is
-        open or the chain is pinned. With ``session_id``, the agent of
-        that open session hands its own ticket to a person: its sessions
+        open or the chain is pinned, except from a person to a person: no
+        agent works the ticket then. An agent target gets the platform
+        configuration that the organization has now. With
+        ``session_id``, the agent of that open session hands its own
+        ticket to a person: its sessions
         close (reason ``handed_off``) in the same write, and the runner
         keeps the chain.
 
@@ -2779,10 +2966,12 @@ class TicketStore:
             if session_id is not None:
                 await _open_session(write.conn, task['id'], session_id)
                 await _close_sessions(write, 'handed_off', actor)
-            elif await _session_open(write.conn, task['id']):
-                raise SessionOpen(short_id)
-            elif await _chain_state(write.conn, task) in PINNED_CHAIN_STATES:
-                raise ChainPinned(short_id)
+            elif 'agent' in (task['assignee_kind'], to.assignee_kind):
+                # Only a change that involves an agent waits for it.
+                if await _session_open(write.conn, task['id']):
+                    raise SessionOpen(short_id)
+                if await _chain_state(write.conn, task) in PINNED_CHAIN_STATES:
+                    raise ChainPinned(short_id)
             if to.assignee_kind == task['assignee_kind']:
                 if to.assignee != task['assignee']:
                     await write.event(
@@ -3090,6 +3279,47 @@ def _assignee_of(row: Row) -> Row:
     }
 
 
+async def _assignee_columns(conn: Conn, task: Row, to: HandOff) -> Row:
+    """The assignee columns of ``task`` for the assignee ``to``.
+
+    The task budget of an agent caps the budget of the ticket, as for a
+    create. A person ticket keeps its budget, which the agent periods
+    count against. An agent works under the platform configuration that
+    the organization has now, as a new ticket does, not the one of the
+    create.
+    """
+    columns: Row = {
+        'assignee_kind': to.assignee_kind,
+        'assignee': to.assignee,
+        'agent_id': to.agent_id,
+        'agent_version': to.agent_version,
+        'prompt_version': to.prompt_version,
+        'service_account_id': to.service_account_id,
+    }
+    if to.assignee_kind == 'agent':
+        budgets = [b for b in (task['budget'], to.budget) if b is not None]
+        columns['budget'] = min(budgets, default=None)
+        cursor = await conn.execute(
+            'SELECT max(version) FROM harness.platform_configs'
+            ' WHERE organization_id = %s',
+            (task['organization_id'],),
+        )
+        row = await cursor.fetchone()
+        columns['platform_config_version'] = row[0] if row else None
+    return columns
+
+
+async def _queue_done_chain(conn: Conn, chain_id: uuid.UUID) -> None:
+    """Put a ``done`` chain back in the queue with a new attempt, so
+    that a runner claims its ticket again."""
+    await conn.execute(
+        "UPDATE harness.chains SET state = 'queued',"
+        ' attempt = attempt + 1, runner_id = NULL, updated_at = NOW()'
+        " WHERE root_ticket_id = %s AND state = 'done'",
+        (chain_id,),
+    )
+
+
 async def _hand_off(write: _Write, to: HandOff, actor: Actor) -> None:
     """Change the assignee kind; see :meth:`TicketStore.hand_off`."""
     task = write.task
@@ -3129,26 +3359,12 @@ async def _hand_off(write: _Write, to: HandOff, actor: Actor) -> None:
     # One write, so the checks of the assignee kind hold on the row.
     changes: Row = {
         'status': status,
-        'assignee_kind': to.assignee_kind,
-        'assignee': to.assignee,
-        'agent_id': to.agent_id,
-        'agent_version': to.agent_version,
-        'prompt_version': to.prompt_version,
-        'service_account_id': to.service_account_id,
         'control': 'run',
-        'handed_off_at': datetime.datetime.now(datetime.UTC),
+        'period_started_at': datetime.datetime.now(datetime.UTC),
+        **await _assignee_columns(write.conn, task, to),
     }
     if to.assignee_kind == 'agent':
-        # The task budget of the agent caps the budget of the ticket, as
-        # for a create.
-        budgets = [b for b in (task['budget'], to.budget) if b is not None]
-        changes['budget'] = min(budgets, default=None)
-        await write.conn.execute(
-            "UPDATE harness.chains SET state = 'queued',"
-            ' attempt = attempt + 1, updated_at = NOW()'
-            " WHERE root_ticket_id = %s AND state = 'done'",
-            (task['chain_id'] or task['id'],),
-        )
+        await _queue_done_chain(write.conn, task['chain_id'] or task['id'])
     await write.update(changes)
 
 
@@ -3306,8 +3522,13 @@ async def _lock_task(
     conn: psycopg.AsyncConnection[typing.Any],
     organization_id: str,
     short_id: str,
+    *,
+    closed: bool = False,
 ) -> Row:
-    """Lock and return an open task, for a change in this transaction."""
+    """Lock and return an open task, for a change in this transaction.
+
+    With ``closed``, the task must be closed instead.
+    """
     task = await _fetch_one(
         conn,
         _SELECT_TASKS
@@ -3316,7 +3537,9 @@ async def _lock_task(
     )
     if task is None:
         raise TaskNotFound(short_id)
-    if task['status'] == 'closed':
+    if closed and task['status'] != 'closed':
+        raise TaskOpen(short_id)
+    if not closed and task['status'] == 'closed':
         raise TaskClosed(short_id)
     return task
 

@@ -20,6 +20,13 @@ The trigger deletes the row when no run failed to start; else the
 workflow sweep calls the trigger again
 (:func:`imbi.api.workflows.sweeper.retry_task_triggers`).
 
+A reopened ticket closes again (ADR 0028), and each close starts its
+own runs: the idempotency key is
+:func:`imbi.api.tickets.store.close_key` of the node id and the
+``close_id`` of the close. The first close keeps the node id, so that
+a sweep of the previous release that retries it cannot start a second
+run.
+
 A run that a closed task starts can give an agent a task, which can
 close (or delegate a child task that closes) and start a run again.
 :data:`MAX_DEPTH` stops such a chain: the run origin records its depth,
@@ -30,6 +37,7 @@ delegated child shares.
 
 import logging
 import typing
+import uuid
 from collections import abc
 
 from imbi.api.tickets import store as task_store
@@ -100,9 +108,10 @@ class TaskTrigger:
                 task['id'],
                 MAX_DEPTH,
             )
-            await self._tasks.triggers_started(task['id'])
+            await self._tasks.triggers_started(task['id'], task['close_id'])
             return
         org = task['organization_id']
+        close_id: uuid.UUID = task['close_id']
         failed = False
         # Built for the first match only: most closed tasks start no run.
         payload: dict[str, typing.Any] | None = None
@@ -135,7 +144,9 @@ class TaskTrigger:
                             'task_id': task['short_id'],
                             'depth': depth,
                         },
-                        idempotency_key=binding['node_id'],
+                        idempotency_key=task_store.close_key(
+                            binding['node_id'], close_id
+                        ),
                         payload=payload,
                         concurrency_key=validation.concurrency_key(
                             settings, str(workflow_id), payload
@@ -155,4 +166,4 @@ class TaskTrigger:
                     workflow_id,
                 )
         if not failed:
-            await self._tasks.triggers_started(task['id'])
+            await self._tasks.triggers_started(task['id'], close_id)

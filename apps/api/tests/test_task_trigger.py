@@ -15,6 +15,7 @@ from psycopg.types import json as pg_json
 
 from apps.api.tests.endpoints.test_workflow_runs import HeldRunStore
 from imbi.api import workflows
+from imbi.api.tickets import store as task_store
 from imbi.api.workflows import runs as runs_module
 from imbi.api.workflows import ticket_trigger, tickets
 from imbi.common.workflows.registry import task_completed
@@ -39,6 +40,7 @@ def _task(**changes: typing.Any) -> dict[str, typing.Any]:
         'origin': {'kind': 'human'},
         'chain_id': None,
         'closed_at': CLOSED_AFTER_ACTIVATION,
+        'close_id': task_store.FIRST_CLOSE_ID,
         **changes,
     }
 
@@ -49,6 +51,7 @@ class FakeTasks:
     def __init__(self) -> None:
         self.roots: dict[uuid.UUID, dict[str, typing.Any]] = {}
         self.started: list[uuid.UUID] = []
+        self.closes: list[uuid.UUID] = []
 
     async def chain_root(
         self, task: dict[str, typing.Any]
@@ -56,8 +59,11 @@ class FakeTasks:
         chain_id = task['chain_id'] or task['id']
         return task if chain_id == task['id'] else self.roots.get(chain_id)
 
-    async def triggers_started(self, task_id: uuid.UUID) -> None:
+    async def triggers_started(
+        self, task_id: uuid.UUID, close_id: uuid.UUID
+    ) -> None:
         self.started.append(task_id)
+        self.closes.append(close_id)
 
 
 class FakeGraph:
@@ -176,6 +182,28 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
                     },
                 }
             ],
+        )
+
+    async def test_each_close_of_a_reopened_ticket_starts_runs(self) -> None:
+        """ADR 0028: a ticket that reopens and closes again starts its
+        runs again, and a repeat of either close starts nothing."""
+        await self._activate()
+        first = _task(organization_id=self.org)
+        second = {**first, 'close_id': uuid.uuid4()}
+        for task in (first, second, first, second):
+            await self.trigger(task)
+        async with self.pool.connection() as conn:
+            cur = await conn.execute(
+                'SELECT idempotency_key FROM workflow_runtime.runs'
+                ' WHERE organization_id = %s ORDER BY created_at',
+                (self.org,),
+            )
+            keys = [row[0] for row in await cur.fetchall()]
+        # The first close keeps the key of the previous release.
+        self.assertEqual(keys, ['done', f'done:{second["close_id"]}'])
+        self.assertEqual(
+            self.tasks.closes,
+            [first['close_id'], second['close_id']] * 2,
         )
 
     async def test_old_kind_and_new_kind_start_one_run(self) -> None:

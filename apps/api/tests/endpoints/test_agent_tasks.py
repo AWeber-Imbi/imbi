@@ -1292,7 +1292,9 @@ class ControlTests(AgentTaskTestCase):
         with mock.patch.object(tickets.store, '_close_hooks', []):
             await self.post('cancel')
         self.assertIn(self.task['id'], await ids())
-        await self.store.triggers_started(uuid.UUID(self.task['id']))
+        await self.store.triggers_started(
+            uuid.UUID(self.task['id']), tickets.store.FIRST_CLOSE_ID
+        )
         self.assertNotIn(self.task['id'], await ids())
 
     async def test_closed_task_refuses_changes(self) -> None:
@@ -1607,7 +1609,9 @@ class DeleteTests(AgentTaskTestCase):
             )
         response = await self.client.delete(self.url('T-1'))
         self.assertEqual(response.status_code, 409, response.text)
-        await self.store.triggers_started(uuid.UUID(child['id']))
+        await self.store.triggers_started(
+            uuid.UUID(child['id']), tickets.store.FIRST_CLOSE_ID
+        )
         response = await self.client.delete(self.url('T-1'))
         self.assertEqual(response.status_code, 204, response.text)
 

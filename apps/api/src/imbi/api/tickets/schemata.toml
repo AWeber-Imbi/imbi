@@ -272,6 +272,61 @@ ALTER TABLE tickets.tickets
       AND status IN ('held', 'open', 'in_progress', 'blocked', 'closed')));
 '''
 
+# Reopen (ADR 0028): the claim query finds a chain root by
+# `COALESCE(chain_id, id) = id`. A child ticket made before `chain_id`
+# existed has no `chain_id`, so it gets the chain of its origin ticket
+# here. The step repeats the update until no child is left whose origin
+# ticket has a known chain, so a child of such a child also gets it. A
+# child whose origin ticket is gone (a delete needs every child closed)
+# becomes the root of its own chain, so that no child is left without a
+# chain and the guard is false after one run. Every release since ADR
+# 0022 writes `chain_id`, so the previous release adds no such child.
+[[steps]]
+name = "tickets-chain-id-from-origin"
+after_tables = true
+when = """
+SELECT EXISTS (SELECT 1 FROM tickets.tickets
+                WHERE chain_id IS NULL AND origin_kind IN ('task', 'ticket'))
+"""
+sql = '''
+DO $step$
+BEGIN
+  LOOP
+    UPDATE tickets.tickets AS c SET chain_id = COALESCE(p.chain_id, p.id)
+      FROM tickets.tickets AS p
+     WHERE c.chain_id IS NULL AND c.origin_kind IN ('task', 'ticket')
+       AND p.organization_id = c.organization_id
+       AND p.id::text = c.origin_id
+       AND (p.chain_id IS NOT NULL
+            OR p.origin_kind NOT IN ('task', 'ticket'));
+    EXIT WHEN NOT FOUND;
+  END LOOP;
+  UPDATE tickets.tickets SET chain_id = id
+   WHERE chain_id IS NULL AND origin_kind IN ('task', 'ticket');
+END
+$step$;
+'''
+
+# Reopen (ADR 0028): a ticket can close more than one time, so each
+# close writes its own `trigger_outbox` row, with its `close_id`. The
+# primary key was `(ticket_id)`. The previous release does not name the
+# key in its SQL, and its restart does not change a primary key, so the
+# step runs one time.
+[[steps]]
+name = "trigger-outbox-close-id-key"
+after_tables = true
+when = """
+SELECT NOT EXISTS (
+         SELECT 1 FROM pg_constraint
+          WHERE conrelid = 'tickets.trigger_outbox'::regclass
+            AND contype = 'p' AND cardinality(conkey) = 2)
+"""
+sql = '''
+ALTER TABLE tickets.trigger_outbox
+  DROP CONSTRAINT trigger_outbox_pkey,
+  ADD CONSTRAINT trigger_outbox_pkey PRIMARY KEY (ticket_id, close_id);
+'''
+
 # Waiting on me (ADR 0028) finds the open tickets of a person by owner
 # or assignee, without case, on each poll of the navigation badge.
 # Expression indexes, so a step makes them, after the columns. A pod of
@@ -341,6 +396,15 @@ created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 updated_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 closed_at = "TIMESTAMP WITH TIME ZONE"
 log_archived_at = "TIMESTAMP WITH TIME ZONE"
+# The last seq that only ClickHouse holds, for a ticket whose log was
+# archived and that was then reopened (ADR 0028). A log read takes the
+# events up to it from ClickHouse and the later events from Postgres.
+# NULL when the ticket was never reopened after an archive.
+archived_seq = "BIGINT"
+# The close cycle of the ticket (ADR 0028). The first cycle has the nil
+# UUID, also on a row of the previous release; each reopen sets a new
+# UUID. A close writes it to `trigger_outbox`.
+close_id = "UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'"
 # The id of the root task of the chain (ADR 0022): the task itself for a
 # root task, the chain of the parent for a child task (origin `task`).
 # NULL for tasks made before this column existed; read it as
@@ -369,9 +433,10 @@ priority = "TEXT NOT NULL DEFAULT 'normal'"
 # release gets the default.
 assignee_kind = "TEXT NOT NULL DEFAULT 'agent'"
 assignee = "TEXT"
-# When the last handoff changed the assignee kind (ADR 0028). The task
-# timeout of an agent counts from the first session after it.
-handed_off_at = "TIMESTAMP WITH TIME ZONE"
+# The start of the current agent period (ADR 0028): the last handoff
+# that changed the assignee kind, or the last reopen. The task timeout
+# of an agent counts from the first session after it.
+period_started_at = "TIMESTAMP WITH TIME ZONE"
 
 [tables.primary_key]
 columns = ["id"]
@@ -597,16 +662,22 @@ added_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 [tables.primary_key]
 columns = ["organization_id", "ticket_id", "project_id"]
 
-# One row per closed task whose workflow `task_completed` triggers have
-# not all started their runs. The transaction that closes the task
-# writes the row. The trigger deletes it after it starts the runs; the
-# workflow sweep calls the trigger again for each row that stays.
+# One row per close of a ticket whose workflow `ticket_closed` triggers
+# have not all started their runs. The transaction that closes the
+# ticket writes the row. The trigger deletes it after it starts the
+# runs; the workflow sweep calls the trigger again for each row that
+# stays.
+#
+# `close_id` is the `tickets.close_id` of the close (ADR 0028: a
+# reopened ticket closes again). The previous release does not write
+# it, so its row gets the nil UUID of a first close.
 [[tables]]
 name = "trigger_outbox"
 
 [tables.columns]
 ticket_id = "UUID NOT NULL REFERENCES tickets.tickets (id) ON DELETE CASCADE"
 created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+close_id = "UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'"
 
 [tables.primary_key]
-columns = ["ticket_id"]
+columns = ["ticket_id", "close_id"]
