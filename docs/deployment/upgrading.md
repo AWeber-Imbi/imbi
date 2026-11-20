@@ -74,6 +74,48 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
+## Unreleased: ticket state changed trigger
+
+Set the version of this section when the release is cut.
+
+1. **Before you deploy**, deploy 2.58.0 everywhere and let its rollout
+   finish.
+2. Deploy the new image. There is no setup command. At start, imbi-api:
+    - changes `tickets.trigger_outbox` to one row per ticket change for
+      the `ticket_state_changed` trigger: it adds the columns `id` (a
+      random UUID on each row that exists), `from_state`, `to_state`
+      (default `closed`), `outcome`, and `agent_id`. Then it moves the
+      primary key from `(ticket_id, close_id)` to `(ticket_id, id)`, one
+      time. The table holds only the changes whose workflow runs have
+      not started, so the step is short. It stops writes to the table
+      while it runs;
+    - keeps `tickets.tickets.close_id` and `tickets.trigger_outbox.close_id`
+      for 2.58.0 pods. This release does not read or write them;
+    - adds the partial index `trigger_bindings_ticket_state_changed_idx`
+      on `workflows.trigger_bindings` and the index `runs_lineage_idx` on
+      `workflow_runtime.runs`, and drops
+      `runs_closed_ticket_idempotency_key`. The build of
+      `runs_lineage_idx` stops writes to `workflow_runtime.runs` while it
+      runs.
+3. Activate a workflow with the `ticket_state_changed` trigger only after
+   every imbi-api pod runs this release. During a rolling deploy, the
+   workflow sweep of a 2.58.0 pod deletes outbox rows by `ticket_id`
+   and `close_id`. A row of this release has the nil `close_id`, so that
+   sweep can delete the pending change of a ticket before its runs
+   start.
+
+This release removes the `ticket_closed` and `task_completed` triggers.
+
+A 2.58.0 pod that restarts during the rollout does not change the
+`tickets` schema back. Its schema file declares the
+`(ticket_id, close_id)` key of `trigger_outbox`, but its step that
+sets that key runs only when the key does not have two columns, and the
+initializer does not drop columns.
+
+While pods of both releases run, a 2.58.0 pod writes a `trigger_outbox`
+row only for a close, with `ticket_id` and `close_id`. The row gets a
+new `id` and the `to_state` `closed`.
+
 ## 2.58.0
 
 1. **Before you deploy**, deploy 2.57.0 everywhere and let its rollout

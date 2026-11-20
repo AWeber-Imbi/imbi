@@ -1,0 +1,683 @@
+# Relational schema for tickets (ADR 0020, ADR 0028).
+#
+# The initializer (imbi.common.relational) walks this file and issues
+# idempotent DDL, so adding a column is a data change, not a code change.
+# Rows refer to graph nodes (organization, agent, project, service account)
+# by id. People are referred to by email, because the API addresses users
+# by email. Application code validates these references on write.
+#
+# The schema name is fixed: `tickets`. Before ADR 0028 it was
+# `agent_runtime`, with `task` where the names now have `ticket`.
+
+# Move the tables of an install made before ADR 0028 from `agent_runtime`
+# to `tickets`, in one transaction (release A). Every name that has
+# `task` gets `ticket` instead: tables, columns, indexes, and constraints,
+# so that the result is the same as a new install of this file.
+#
+# Pods of the previous release still use the old names during the rolling
+# deploy, so the step leaves one view for each table in `agent_runtime`,
+# with every old column under its old name. A simple view is updatable:
+# INSERT ... ON CONFLICT, RETURNING, UPDATE, DELETE, and FOR UPDATE SKIP
+# LOCKED work through it. The previous release skips a declared table
+# that is a view (R1). Release B drops the views (the next step).
+#
+# On a new install `agent_runtime.tasks` does not exist, so the step does
+# not run and the tables below are made with the new names.
+[[steps]]
+name = "move-agent-runtime-to-tickets"
+when = """
+SELECT EXISTS (
+         SELECT 1 FROM pg_class AS c
+           JOIN pg_namespace AS n ON n.oid = c.relnamespace
+          WHERE n.nspname = 'agent_runtime' AND c.relname = 'tasks'
+            AND c.relkind = 'r')
+   AND to_regclass('tickets.tickets') IS NULL
+"""
+sql = '''
+DO $step$
+DECLARE
+  old_tables text[] := ARRAY[
+    'tasks', 'sessions', 'events', 'requests', 'budget_ledger',
+    'task_id_sequences', 'task_dependencies', 'task_projects',
+    'trigger_outbox'
+  ];
+  old_name text;
+  new_name text;
+  item record;
+  columns text;
+BEGIN
+  FOREACH old_name IN ARRAY old_tables LOOP
+    new_name := replace(old_name, 'task', 'ticket');
+    EXECUTE format(
+      'ALTER TABLE agent_runtime.%I SET SCHEMA tickets', old_name);
+    IF new_name <> old_name THEN
+      EXECUTE format(
+        'ALTER TABLE tickets.%I RENAME TO %I', old_name, new_name);
+    END IF;
+    FOR item IN
+      SELECT attname FROM pg_attribute
+       WHERE attrelid = format('tickets.%I', new_name)::regclass
+         AND attnum > 0 AND NOT attisdropped AND attname LIKE '%task%'
+    LOOP
+      EXECUTE format(
+        'ALTER TABLE tickets.%I RENAME COLUMN %I TO %I',
+        new_name, item.attname, replace(item.attname, 'task', 'ticket'));
+    END LOOP;
+  END LOOP;
+  FOR item IN
+    SELECT c.relname FROM pg_class AS c
+     WHERE c.relnamespace = 'tickets'::regnamespace AND c.relkind = 'i'
+       AND c.relname LIKE '%task%'
+       AND c.relname <> 'tasks_origin_idempotency_key'
+  LOOP
+    EXECUTE format(
+      'ALTER INDEX tickets.%I RENAME TO %I',
+      item.relname, replace(item.relname, 'task', 'ticket'));
+  END LOOP;
+  FOR item IN
+    SELECT c.conname, r.relname FROM pg_constraint AS c
+      JOIN pg_class AS r ON r.oid = c.conrelid
+     WHERE c.connamespace = 'tickets'::regnamespace
+       AND c.conname LIKE '%task%'
+  LOOP
+    EXECUTE format(
+      'ALTER TABLE tickets.%I RENAME CONSTRAINT %I TO %I',
+      item.relname, item.conname, replace(item.conname, 'task', 'ticket'));
+  END LOOP;
+  FOREACH old_name IN ARRAY old_tables LOOP
+    new_name := replace(old_name, 'task', 'ticket');
+    SELECT string_agg(
+             format('%I AS %I', attname, replace(attname, 'ticket', 'task')),
+             ', ' ORDER BY attnum)
+      INTO columns
+      FROM pg_attribute
+     WHERE attrelid = format('tickets.%I', new_name)::regclass
+       AND attnum > 0 AND NOT attisdropped;
+    EXECUTE format(
+      'CREATE VIEW agent_runtime.%I AS SELECT %s FROM tickets.%I',
+      old_name, columns, new_name);
+  END LOOP;
+END
+$step$;
+'''
+
+# Release B: drop the views that release A left under the old names.
+# No release after A uses them. Only when `agent_runtime` has no table,
+# so that CASCADE can drop views only.
+[[steps]]
+name = "drop-agent-runtime-views"
+when = """
+SELECT to_regnamespace('agent_runtime') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM pg_class
+                    WHERE relnamespace = to_regnamespace('agent_runtime')
+                      AND relkind IN ('r', 'p'))
+"""
+sql = "DROP SCHEMA agent_runtime CASCADE"
+
+# A repeat of an idempotency key returns the first ticket. The key is
+# scoped to the origin principal, so one principal cannot get the
+# ticket of another with its key. NULL keys are distinct, so tickets
+# without a key do not collide.
+#
+# The child origin kinds `task` and `ticket` are one kind in the key, so
+# a pod that writes `ticket` and a pod of the previous release that
+# writes `task` for the same key cannot both make a child (ADR 0028).
+# The index keeps its ADR 0020 name: a release B pod that starts makes
+# the index again when it does not find this name, so a rename must wait
+# until no release B pod runs (ADR 0028). An expression index, so a step makes it, after the
+# table.
+[[steps]]
+name = "origin-idempotency-key-for-both-child-kinds"
+after_tables = true
+when = """
+SELECT COALESCE(
+  pg_get_indexdef(to_regclass('tickets.tasks_origin_idempotency_key'))
+    NOT LIKE '%CASE%', TRUE)
+"""
+sql = """
+DROP INDEX IF EXISTS tickets.tasks_origin_idempotency_key;
+CREATE UNIQUE INDEX tasks_origin_idempotency_key ON tickets.tickets
+  (organization_id,
+   (CASE origin_kind WHEN 'task' THEN 'ticket' ELSE origin_kind END),
+   origin_id, idempotency_key);
+"""
+
+# Since release B a child ticket has the origin kind `ticket`; rows of
+# older releases have `task` (ADR 0028). This rewrites the rows that a
+# 2.55.0 pod wrote after the last start of a release B pod. No release
+# since B writes `task`, so after one run the guard stays false.
+[[steps]]
+name = "rewrite-child-origin-kind"
+after_tables = true
+when = "SELECT EXISTS (SELECT 1 FROM tickets.tickets WHERE origin_kind = 'task')"
+sql = """
+UPDATE tickets.tickets
+   SET origin_kind = 'ticket',
+       origin = jsonb_set(origin, '{kind}', '"ticket"')
+ WHERE origin_kind = 'task'
+"""
+
+# A 2.55.0 pod made a child without `parent_id`. This trigger gave such
+# a child its parent from its origin on insert. It does not run on
+# update, so a move of a child to the root stays. No release since B
+# needs it; a later release can drop it.
+[[steps]]
+name = "tickets-parent-from-origin"
+after_tables = true
+when = """
+SELECT NOT EXISTS (SELECT 1 FROM pg_trigger
+                    WHERE tgname = 'tickets_parent_from_origin'
+                      AND tgrelid = 'tickets.tickets'::regclass)
+"""
+sql = '''
+CREATE OR REPLACE FUNCTION tickets.parent_from_origin() RETURNS trigger
+LANGUAGE plpgsql AS $fn$
+BEGIN
+  IF NEW.parent_id IS NULL AND NEW.origin_kind IN ('task', 'ticket')
+     AND NEW.origin_id ~ '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$' THEN
+    SELECT p.id INTO NEW.parent_id FROM tickets.tickets AS p
+     WHERE p.organization_id = NEW.organization_id
+       AND p.id = NEW.origin_id::uuid;
+  END IF;
+  RETURN NEW;
+END
+$fn$;
+CREATE TRIGGER tickets_parent_from_origin BEFORE INSERT
+  ON tickets.tickets FOR EACH ROW
+  EXECUTE FUNCTION tickets.parent_from_origin();
+'''
+
+# Give `tickets.parent_id` its foreign key (ADR 0028). The initializer
+# adds a constraint only to a new table, and a new install also makes
+# the column after the table, so the step runs after the tables.
+#
+# First, a child that an agent made from its own ticket before the
+# column existed gets its parent from its origin. The step runs once,
+# because it adds the constraint that its guard looks for, so a later
+# move of a child to the root is not undone.
+#
+# A delete of a parent makes its children roots.
+#
+# The step adds the constraint as NOT VALID, so it does not scan the
+# table while it holds the lock that stops ticket writes. The
+# `tickets-parent-fkey-validate` step then does the scan with a lock
+# that lets reads and writes continue.
+[[steps]]
+name = "tickets-parent-fkey"
+after_tables = true
+when = """
+SELECT NOT EXISTS (
+         SELECT 1 FROM pg_constraint
+          WHERE conrelid = 'tickets.tickets'::regclass
+            AND conname = 'tickets_parent_fkey')
+"""
+sql = '''
+UPDATE tickets.tickets AS c SET parent_id = p.id
+  FROM tickets.tickets AS p
+ WHERE c.origin_kind IN ('task', 'ticket') AND c.parent_id IS NULL
+   AND p.organization_id = c.organization_id AND p.id::text = c.origin_id;
+ALTER TABLE tickets.tickets ADD CONSTRAINT tickets_parent_fkey
+  FOREIGN KEY (organization_id, parent_id)
+  REFERENCES tickets.tickets (organization_id, id)
+  ON DELETE SET NULL (parent_id) NOT VALID;
+'''
+
+[[steps]]
+name = "tickets-parent-fkey-validate"
+after_tables = true
+when = """
+SELECT EXISTS (
+         SELECT 1 FROM pg_constraint
+          WHERE conrelid = 'tickets.tickets'::regclass
+            AND conname = 'tickets_parent_fkey'
+            AND NOT convalidated)
+"""
+sql = '''
+ALTER TABLE tickets.tickets VALIDATE CONSTRAINT tickets_parent_fkey;
+'''
+
+# Person tickets (ADR 0028). The agent columns become nullable, and the
+# first checks on `tickets` tie the assignee columns and the status to
+# the assignee kind. The step runs after the tables, so that the
+# `assignee_kind` and `assignee` columns exist. A row of the previous
+# release is an agent ticket with a status of the agent set, so the
+# checks hold for it.
+[[steps]]
+name = "tickets-assignee-checks"
+after_tables = true
+when = """
+SELECT NOT EXISTS (
+         SELECT 1 FROM pg_constraint
+          WHERE conrelid = 'tickets.tickets'::regclass
+            AND conname = 'tickets_assignee_kind_check')
+"""
+sql = '''
+ALTER TABLE tickets.tickets
+  ALTER COLUMN agent_id DROP NOT NULL,
+  ALTER COLUMN agent_version DROP NOT NULL,
+  ALTER COLUMN service_account_id DROP NOT NULL,
+  ADD CONSTRAINT tickets_assignee_kind_check
+    CHECK (assignee_kind IN ('agent', 'person')),
+  ADD CONSTRAINT tickets_agent_assignee_check
+    CHECK (assignee_kind <> 'agent' OR (
+      agent_id IS NOT NULL AND agent_version IS NOT NULL
+      AND service_account_id IS NOT NULL AND assignee IS NULL
+      AND status IN ('held', 'queued', 'running', 'paused', 'blocked',
+                     'closed'))),
+  ADD CONSTRAINT tickets_person_assignee_check
+    CHECK (assignee_kind <> 'person' OR (
+      assignee IS NOT NULL AND assignee <> ''
+      AND agent_id IS NULL AND agent_version IS NULL
+      AND service_account_id IS NULL
+      AND status IN ('held', 'open', 'in_progress', 'blocked', 'closed')));
+'''
+
+# Reopen (ADR 0028): the claim query finds a chain root by
+# `COALESCE(chain_id, id) = id`. A child ticket made before `chain_id`
+# existed has no `chain_id`, so it gets the chain of its origin ticket
+# here. The step repeats the update until no child is left whose origin
+# ticket has a known chain, so a child of such a child also gets it. A
+# child whose origin ticket is gone (a delete needs every child closed)
+# becomes the root of its own chain, so that no child is left without a
+# chain and the guard is false after one run. Every release since ADR
+# 0022 writes `chain_id`, so the previous release adds no such child.
+[[steps]]
+name = "tickets-chain-id-from-origin"
+after_tables = true
+when = """
+SELECT EXISTS (SELECT 1 FROM tickets.tickets
+                WHERE chain_id IS NULL AND origin_kind IN ('task', 'ticket'))
+"""
+sql = '''
+DO $step$
+BEGIN
+  LOOP
+    UPDATE tickets.tickets AS c SET chain_id = COALESCE(p.chain_id, p.id)
+      FROM tickets.tickets AS p
+     WHERE c.chain_id IS NULL AND c.origin_kind IN ('task', 'ticket')
+       AND p.organization_id = c.organization_id
+       AND p.id::text = c.origin_id
+       AND (p.chain_id IS NOT NULL
+            OR p.origin_kind NOT IN ('task', 'ticket'));
+    EXIT WHEN NOT FOUND;
+  END LOOP;
+  UPDATE tickets.tickets SET chain_id = id
+   WHERE chain_id IS NULL AND origin_kind IN ('task', 'ticket');
+END
+$step$;
+'''
+
+# Reopen (ADR 0028): a ticket can close more than one time, so each
+# close writes its own `trigger_outbox` row, with its `close_id`. The
+# primary key was `(ticket_id)`. The previous release does not name the
+# key in its SQL, and its restart does not change a primary key, so the
+# step runs one time.
+[[steps]]
+name = "trigger-outbox-close-id-key"
+after_tables = true
+when = """
+SELECT NOT EXISTS (
+         SELECT 1 FROM pg_constraint
+          WHERE conrelid = 'tickets.trigger_outbox'::regclass
+            AND contype = 'p' AND cardinality(conkey) = 2)
+"""
+sql = '''
+ALTER TABLE tickets.trigger_outbox
+  DROP CONSTRAINT trigger_outbox_pkey,
+  ADD CONSTRAINT trigger_outbox_pkey PRIMARY KEY (ticket_id, close_id);
+'''
+
+# Waiting on me (ADR 0028) finds the open tickets of a person by owner
+# or assignee, without case, on each poll of the navigation badge.
+# Expression indexes, so a step makes them, after the columns. A pod of
+# the previous release does not use or drop them.
+[[steps]]
+name = "tickets-waiting-indexes"
+after_tables = true
+when = """
+SELECT to_regclass('tickets.tickets_owner_open_idx') IS NULL
+    OR to_regclass('tickets.tickets_assignee_open_idx') IS NULL
+"""
+sql = """
+CREATE INDEX IF NOT EXISTS tickets_owner_open_idx ON tickets.tickets
+  (organization_id, lower(owner)) WHERE status <> 'closed';
+CREATE INDEX IF NOT EXISTS tickets_assignee_open_idx ON tickets.tickets
+  (organization_id, lower(assignee))
+  WHERE assignee_kind = 'person' AND status <> 'closed';
+"""
+
+# One row per ticket.
+#
+# `last_seq` is the sequence number of the newest event. An event write
+# increments it in the same transaction, which locks the row, so the
+# per-task sequence has no gaps.
+[[tables]]
+name = "tickets"
+
+[tables.columns]
+id = "UUID NOT NULL"
+organization_id = "TEXT NOT NULL"
+short_id = "TEXT NOT NULL"
+# The agent, its pinned version, and its service account. NULL on a
+# person ticket; the `tickets-assignee-checks` step requires them on an
+# agent ticket (ADR 0028).
+agent_id = "TEXT"
+agent_version = "INTEGER"
+prompt_version = "INTEGER"
+service_account_id = "TEXT"
+# Not used. A task had one primary project here before it had a list
+# of projects (`task_projects`). Each start of imbi-api moves a value
+# that it finds to `task_projects` and clears it.
+project_id = "TEXT"
+project_slug = "TEXT"
+title = "TEXT NOT NULL"
+description = "TEXT NOT NULL"
+origin_kind = "TEXT NOT NULL"
+# The principal that started the task: the user id for a `human` origin,
+# the scheduler task id for `schedule`, the webhook id for `webhook`, and
+# the parent task id for `task`.
+origin_id = "TEXT NOT NULL"
+origin = "JSONB NOT NULL"
+idempotency_key = "TEXT"
+owner = "TEXT NOT NULL"
+budget = "NUMERIC(14, 6)"
+status = "TEXT NOT NULL DEFAULT 'queued'"
+control = "TEXT NOT NULL DEFAULT 'run'"
+phase = "TEXT"
+outcome = "TEXT"
+outcome_reason = "TEXT"
+cost_total = "NUMERIC(14, 6) NOT NULL DEFAULT 0"
+tokens_in = "BIGINT NOT NULL DEFAULT 0"
+tokens_out = "BIGINT NOT NULL DEFAULT 0"
+cache_read_tokens = "BIGINT NOT NULL DEFAULT 0"
+cache_write_tokens = "BIGINT NOT NULL DEFAULT 0"
+last_seq = "BIGINT NOT NULL DEFAULT 0"
+created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+updated_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+closed_at = "TIMESTAMP WITH TIME ZONE"
+log_archived_at = "TIMESTAMP WITH TIME ZONE"
+# The last seq that only ClickHouse holds, for a ticket whose log was
+# archived and that was then reopened (ADR 0028). A log read takes the
+# events up to it from ClickHouse and the later events from Postgres.
+# NULL when the ticket was never reopened after an archive.
+archived_seq = "BIGINT"
+# The close cycle of the ticket (ADR 0028). The first cycle has the nil
+# UUID, also on a row of the previous release; each reopen sets a new
+# UUID. A close writes it to `trigger_outbox`.
+close_id = "UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'"
+# The id of the root task of the chain (ADR 0022): the task itself for a
+# root task, the chain of the parent for a child task (origin `task`).
+# NULL for tasks made before this column existed; read it as
+# `COALESCE(chain_id, id)`.
+chain_id = "UUID"
+# The version of the agent platform configuration of the organization
+# (`harness.platform_configs`) when the task was made. NULL when the
+# organization had no configuration: the defaults apply.
+platform_config_version = "INTEGER"
+# When a person marked a closed task as needing no more attention, and
+# the email of that person. The dashboard does not show it then.
+acknowledged_at = "TIMESTAMP WITH TIME ZONE"
+acknowledged_by = "TEXT"
+# The JSON Schema of the structured output that the agent must return,
+# and the output that it returned. NULL when the task asks for none.
+output_schema = "JSONB"
+structured_output = "JSONB"
+# The parent ticket, in the same organization (ADR 0028). A ticket that
+# an agent makes from its own ticket starts with its parent set. NULL
+# for a root ticket. The `tickets-parent-fkey` step adds the foreign key.
+parent_id = "UUID"
+# How urgent the ticket is: `low`, `normal`, `high`, or `urgent`.
+priority = "TEXT NOT NULL DEFAULT 'normal'"
+# Who works the ticket (ADR 0028): `agent` (the agent columns) or
+# `person` (`assignee`, the email of the person). A row of the previous
+# release gets the default.
+assignee_kind = "TEXT NOT NULL DEFAULT 'agent'"
+assignee = "TEXT"
+# The start of the current agent period (ADR 0028): the last handoff
+# that changed the assignee kind, or the last reopen. The task timeout
+# of an agent counts from the first session after it.
+period_started_at = "TIMESTAMP WITH TIME ZONE"
+
+[tables.primary_key]
+columns = ["id"]
+
+# The children of a ticket.
+[[tables.indexes]]
+name = "tickets_parent_idx"
+columns = ["organization_id", "parent_id"]
+
+[[tables.indexes]]
+name = "tickets_chain_idx"
+columns = ["chain_id"]
+
+# The claim query's access path: the oldest queued task.
+[[tables.indexes]]
+name = "tickets_status_created_idx"
+columns = ["status", "created_at", "id"]
+
+[[tables.indexes]]
+name = "tickets_short_id_key"
+columns = ["organization_id", "short_id"]
+unique = true
+
+# The list query's access path: newest first in an organization.
+[[tables.indexes]]
+name = "tickets_organization_created_idx"
+columns = ["organization_id", "created_at", "id"]
+
+[[tables.indexes]]
+name = "tickets_agent_idx"
+columns = ["agent_id"]
+
+# The key that task relations refer to, so that a relation can never join
+# tasks in two organizations. A unique index, not a constraint, because
+# the initializer adds indexes to a table that exists.
+[[tables.indexes]]
+name = "tickets_organization_id_key"
+columns = ["organization_id", "id"]
+unique = true
+
+# One row per period in which a harness works a task. A session is a
+# tracking record, not an execution lease. An open session has no
+# `closed_at`.
+[[tables]]
+name = "sessions"
+
+[tables.columns]
+id = "UUID NOT NULL"
+ticket_id = "UUID NOT NULL REFERENCES tickets.tickets (id) ON DELETE CASCADE"
+# The client key that makes a session open idempotent.
+session_key = "TEXT"
+harness_instance = "TEXT"
+opened_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+heartbeat_at = "TIMESTAMP WITH TIME ZONE"
+closed_at = "TIMESTAMP WITH TIME ZONE"
+close_reason = "TEXT"
+
+[tables.primary_key]
+columns = ["id"]
+
+[[tables.indexes]]
+name = "sessions_ticket_key"
+columns = ["ticket_id", "session_key"]
+unique = true
+
+# The event buffer of tasks that are not archived. ClickHouse holds the
+# permanent log; the archive sweep deletes these rows.
+[[tables]]
+name = "events"
+
+[tables.columns]
+ticket_id = "UUID NOT NULL REFERENCES tickets.tickets (id) ON DELETE CASCADE"
+seq = "BIGINT NOT NULL"
+event_id = "UUID NOT NULL"
+type = "TEXT NOT NULL"
+schema_version = "INTEGER NOT NULL DEFAULT 1"
+actor_kind = "TEXT NOT NULL"
+actor_id = "TEXT"
+channel = "TEXT NOT NULL"
+session_id = "UUID"
+at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+payload = "JSONB NOT NULL DEFAULT '{}'"
+
+[tables.primary_key]
+columns = ["ticket_id", "seq"]
+
+[[tables.indexes]]
+name = "events_event_id_key"
+columns = ["event_id"]
+unique = true
+
+# Feedback and approval requests and their resolution.
+[[tables]]
+name = "requests"
+
+[tables.columns]
+id = "UUID NOT NULL"
+ticket_id = "UUID NOT NULL REFERENCES tickets.tickets (id) ON DELETE CASCADE"
+session_id = "UUID"
+kind = "TEXT NOT NULL"
+status = "TEXT NOT NULL DEFAULT 'open'"
+title = "TEXT NOT NULL"
+why = "TEXT"
+options = "JSONB"
+artifacts = "JSONB"
+artifact_digests = "TEXT[]"
+expires_at = "TIMESTAMP WITH TIME ZONE"
+opened_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+resolved_by = "TEXT"
+resolved_at = "TIMESTAMP WITH TIME ZONE"
+resolution = "JSONB"
+# The client key that makes a request open idempotent.
+request_key = "TEXT"
+
+[tables.primary_key]
+columns = ["id"]
+
+[[tables.indexes]]
+name = "requests_ticket_idx"
+columns = ["ticket_id", "status"]
+
+# A repeat with the same key returns the first request of the task. NULL
+# keys are distinct, so requests without a key do not collide.
+[[tables.indexes]]
+name = "requests_request_key"
+columns = ["ticket_id", "request_key"]
+unique = true
+
+# One row per usage report, with the rates used. Rows never change: a
+# correction is a new row. NULL token counts mean unmeasured, not zero.
+[[tables]]
+name = "budget_ledger"
+
+[tables.columns]
+id = "UUID NOT NULL"
+ticket_id = "UUID NOT NULL REFERENCES tickets.tickets (id) ON DELETE CASCADE"
+session_id = "UUID"
+idempotency_key = "TEXT NOT NULL"
+model_id = "TEXT"
+tokens_in = "BIGINT"
+tokens_out = "BIGINT"
+cache_read_tokens = "BIGINT"
+cache_write_tokens = "BIGINT"
+input_cost_per_million = "NUMERIC(14, 6)"
+output_cost_per_million = "NUMERIC(14, 6)"
+cache_read_cost_per_million = "NUMERIC(14, 6)"
+cache_write_cost_per_million = "NUMERIC(14, 6)"
+cost = "NUMERIC(14, 6)"
+recorded_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["id"]
+
+[[tables.indexes]]
+name = "budget_ledger_idempotency_key"
+columns = ["ticket_id", "idempotency_key"]
+unique = true
+
+# One counter per organization for `T-<n>` short ids.
+[[tables]]
+name = "ticket_id_sequences"
+
+[tables.columns]
+organization_id = "TEXT NOT NULL"
+last_value = "BIGINT NOT NULL"
+
+[tables.primary_key]
+columns = ["organization_id"]
+
+# One row per dependency: the dependent task requires the prerequisite
+# task, and the prerequisite blocks the dependent. A dependency is
+# information only, unless `gates` is true (ADR 0028): then the
+# dependent stays `held` until the prerequisite closes with a `done_*`
+# outcome. Cycles longer than one task are allowed.
+#
+# The foreign keys include the organization, so both tasks are in the
+# organization of the row. RESTRICT, because task rows are never
+# deleted in normal operation.
+[[tables]]
+name = "ticket_dependencies"
+constraints = [
+  "CONSTRAINT ticket_dependencies_not_self CHECK (dependent_ticket_id <> prerequisite_ticket_id)",
+  "CONSTRAINT ticket_dependencies_dependent_fkey FOREIGN KEY (organization_id, dependent_ticket_id) REFERENCES tickets.tickets (organization_id, id) ON DELETE RESTRICT",
+  "CONSTRAINT ticket_dependencies_prerequisite_fkey FOREIGN KEY (organization_id, prerequisite_ticket_id) REFERENCES tickets.tickets (organization_id, id) ON DELETE RESTRICT",
+]
+
+[tables.columns]
+organization_id = "TEXT NOT NULL"
+dependent_ticket_id = "UUID NOT NULL"
+prerequisite_ticket_id = "UUID NOT NULL"
+created_by_kind = "TEXT NOT NULL"
+created_by = "TEXT NOT NULL"
+created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+# The prerequisite holds the dependent (ADR 0028). A row that the
+# previous release writes through its view gets the default.
+gates = "BOOLEAN NOT NULL DEFAULT FALSE"
+
+[tables.primary_key]
+columns = ["organization_id", "dependent_ticket_id", "prerequisite_ticket_id"]
+
+# The "required by" direction.
+[[tables.indexes]]
+name = "ticket_dependencies_prerequisite_idx"
+columns = ["organization_id", "prerequisite_ticket_id"]
+
+# One row per project of a task (F13). The project is a graph node; `project_slug` is its slug
+# when the row was added, so the UI can name a project that was deleted.
+[[tables]]
+name = "ticket_projects"
+constraints = [
+  "CONSTRAINT ticket_projects_ticket_fkey FOREIGN KEY (organization_id, ticket_id) REFERENCES tickets.tickets (organization_id, id) ON DELETE RESTRICT",
+]
+
+[tables.columns]
+organization_id = "TEXT NOT NULL"
+ticket_id = "UUID NOT NULL"
+project_id = "TEXT NOT NULL"
+project_slug = "TEXT NOT NULL"
+added_by_kind = "TEXT NOT NULL"
+added_by = "TEXT NOT NULL"
+added_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[tables.primary_key]
+columns = ["organization_id", "ticket_id", "project_id"]
+
+# One row per close of a ticket whose workflow `ticket_closed` triggers
+# have not all started their runs. The transaction that closes the
+# ticket writes the row. The trigger deletes it after it starts the
+# runs; the workflow sweep calls the trigger again for each row that
+# stays.
+#
+# `close_id` is the `tickets.close_id` of the close (ADR 0028: a
+# reopened ticket closes again). The previous release does not write
+# it, so its row gets the nil UUID of a first close.
+[[tables]]
+name = "trigger_outbox"
+
+[tables.columns]
+ticket_id = "UUID NOT NULL REFERENCES tickets.tickets (id) ON DELETE CASCADE"
+created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+close_id = "UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'"
+
+[tables.primary_key]
+columns = ["ticket_id", "close_id"]

@@ -7,7 +7,7 @@ from collections import abc
 
 import pydantic
 
-Category = typing.Literal['trigger', 'logic', 'action', 'agent']
+Category = typing.Literal['trigger', 'logic', 'action']
 
 
 def _no_permissions(_params: dict[str, typing.Any]) -> set[str]:

@@ -7,7 +7,7 @@ import { node, stepType, TYPES } from './fixtures'
 const types = {
   ...TYPES,
   agent: stepType({
-    category: 'agent',
+    category: 'action',
     output_schema: {
       properties: {
         outcome: { type: 'string' },

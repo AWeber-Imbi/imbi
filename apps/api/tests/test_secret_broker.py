@@ -1605,14 +1605,10 @@ class TaskEventTestCase(secret_support.SecretCase):
 
 
 class LifespanTestCase(unittest.IsolatedAsyncioTestCase):
-    async def test_registers_the_fencer_and_the_close_hook(self) -> None:
+    async def test_registers_the_fencer_and_the_change_hook(self) -> None:
         async with secret_broker.store_lifespan():
             service = secret_broker.get_broker()
             self.assertIn(service.release_runner_resolutions, sweeper._fencers)
-            self.assertIn(
-                service.release_task_resolutions, task_store._close_hooks
-            )
+            self.assertIn(service.ticket_changed, task_store._change_hooks)
         self.assertNotIn(service.release_runner_resolutions, sweeper._fencers)
-        self.assertNotIn(
-            service.release_task_resolutions, task_store._close_hooks
-        )
+        self.assertNotIn(service.ticket_changed, task_store._change_hooks)

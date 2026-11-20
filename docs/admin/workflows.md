@@ -57,11 +57,14 @@ Each save makes a new version. The header shows `Saved · v<n>`, or
 The editor has three parts: the step palette on the left, the canvas in
 the middle, and the inspector on the right.
 
-The **palette** shows the step types in four groups: **Triggers**,
-**Logic**, **Actions**, and **Agents**. Use **Search steps** to find a type.
+The **palette** shows the step types in three groups: **Triggers**,
+**Logic**, and **Actions**. Use **Search steps** to find a type.
 
 - Click a step type to add it after the selected step.
 - Drag a step type onto the canvas to put it at that position.
+- Click **Collapse steps** to show the palette as a narrow column of step
+  icons. Click or drag an icon to add that step. Click **Expand steps** to
+  show the full palette again. Imbi keeps your choice in this browser.
 
 On the **canvas**:
 
@@ -126,7 +129,7 @@ with one output port has no port name.
 | `manual` | Manual run | Triggers | One |
 | `schedule` | Schedule | Triggers | One |
 | `webhook` | Webhook | Triggers | One |
-| `ticket_closed` | Ticket closed | Triggers | One |
+| `ticket_state_changed` | Ticket state changed | Triggers | One |
 | `wait` | Wait | Logic | One |
 | `model_decision` | Model decision | Logic | One for each branch |
 | `condition` | Condition | Logic | `True`, `False` |
@@ -136,7 +139,7 @@ with one output port has no port name.
 | `slack` | Slack message | Actions | One |
 | `deploy` | Deploy | Actions | `Succeeded`, `Failed` |
 | `rollback` | Rollback | Actions | One |
-| `agent` | Agent task | Agents | `Succeeded`, `Failed` |
+| `agent` | Agent task | Actions | `Succeeded`, `Failed` |
 
 Each step that is not a trigger has a default timeout and a default retry
 count:
@@ -210,31 +213,47 @@ A delivery to a gateway Webhook starts a run.
 
 Create the Webhook first at **Admin > \<organization\> Admin > Webhooks**.
 
-### Ticket closed
+### Ticket state changed
 
-A ticket of the organization that closes starts a run. `task_completed` is
-the earlier name of this trigger. Both names work.
+A ticket of the organization that is created or changes its status starts
+a run. Each change starts its own run. A save that does not change the
+status starts no run.
 
 | Parameter | What to enter | Default |
 |---|---|---|
-| `agent_id` | Start a run only for the tasks of this agent | None (any agent) |
-| `outcomes` | Start a run only for the tasks that close with one of these outcomes | None (any outcome) |
+| `agent_id` | Start a run only for the tickets of this agent | None (any agent) |
+| `states` | Start a run only for a change to one of these statuses: `held`, `queued`, `running`, `paused`, `open`, `in_progress`, `blocked`, `closed`. `created` is the creation of a ticket | None (every change) |
+| `outcomes` | Start a run for a close only when the ticket closes with one of these outcomes. A change to another status ignores this parameter | None (any outcome) |
 
-**Output:** the attributes of the task. Use `{{ trigger.<field> }}`.
+A new ticket matches `created` and also its first status (usually
+`queued`).
+
+A run that a ticket change starts can make tickets with an Agent task
+step, and those tickets change too. Imbi stops such a chain after five
+levels of runs. The tickets that come from one first ticket start at
+most 25 runs in total. Imbi checks this limit when each change starts
+its runs, so changes that occur at the same time can start more runs.
+
+Activate a workflow with this trigger only after every imbi-api pod runs
+the release that adds it. During a rolling deploy, the workflow sweep of
+a pod of the previous release can delete the pending change of a ticket
+before its runs start.
+
+**Output:** the attributes of the ticket and the change. Use
+`{{ trigger.<field> }}`.
 
 | Field | Value |
 |---|---|
-| `task_id` | The short id of the task, for example `T-12` |
+| `task_id` | The short id of the ticket, for example `T-12` |
 | `agent_id` | The id of the agent |
-| `outcome` | The outcome of the task |
+| `from_state` | The status before the change. `null` when the ticket was created |
+| `to_state` | The status after the change. On creation, the first status of the ticket |
+| `outcome` | The outcome of the ticket when `to_state` is `closed`, else `null` |
 | `title` | The title of the task |
 | `url` | The link to the task in the UI. `null` when `IMBI_UI_URL` is not set |
 | `project` | The slug of the first project of the task. `null` when the task has no project |
 | `agent` | The slug of the agent |
 | `cost_usd` | The cost of the task in USD |
-
-The fields after `outcome` are `null` in a run that started before Imbi
-added them.
 
 ### Wait
 
@@ -620,7 +639,7 @@ with "used in N workflow(s)".
 of the agent), `result` (the structured output), and the attributes of
 the task: `title`, `url`, `project`, `agent`, and `cost_usd`. These
 attributes are the same as in the output of a
-[Ticket closed](#ticket-closed) trigger. Run detail shows `reason`,
+[Ticket state changed](#ticket-state-changed) trigger. Run detail shows `reason`,
 `summary`, and `result` only to people with `ticket:read`.
 
 ## References
@@ -630,7 +649,7 @@ is the sandboxed Jinja of [Prompts](prompts.md).
 
 | Reference | Value |
 |---|---|
-| `{{ trigger.<name> }}` | A manual input, `fired_at` of a schedule, `payload` of a webhook, or a field of a ticket closed trigger |
+| `{{ trigger.<name> }}` | A manual input, `fired_at` of a schedule, `payload` of a webhook, or a field of a ticket state changed trigger |
 | `{{ <key>.<field> }}` | An output field of a step before this one, by its key |
 
 Examples:
@@ -730,7 +749,7 @@ Set **Dedupe key** to a [key template](#key-templates) that names the
 thing a run works on. Set **Dedupe window (days)** to how long a key
 skips a repeat. Leave the window empty to skip repeats forever.
 
-When a **Webhook** or **Ticket closed** trigger starts a run, Imbi
+When a **Webhook** or **Ticket state changed** trigger starts a run, Imbi
 fills the key from the payload. If a run of the same workflow with the
 same key was made within the window, Imbi does not start the new run. It
 records it as `skipped`, with a link to the earlier run.
@@ -834,7 +853,7 @@ only. The permissions that steps need:
 | Schedule | `scheduled_task:create` |
 | Webhook | `webhook:update` |
 | Deploy, Rollback | `project:deployment:write` |
-| Ticket closed | `ticket:read` |
+| Ticket state changed | `ticket:read` |
 | Agent task | `ticket:create` |
 | LLM Call | `prompt:run` |
 | Slack message with a `ticket` | `ticket:read` |

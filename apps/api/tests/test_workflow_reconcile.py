@@ -21,7 +21,7 @@ class CancelOrphanAgentTasksTestCase(unittest.IsolatedAsyncioTestCase):
 
 class RetryTaskTriggersTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_sweep_calls_trigger_for_pending_tasks(self) -> None:
-        """A run that the close hook failed to start is started by the
+        """A run that the change hook failed to start is started by the
         sweep, and one failing task does not stop the rest."""
         store = mock.AsyncMock()
         store.orphan_agent_tasks.return_value = []
@@ -36,5 +36,5 @@ class RetryTaskTriggersTestCase(unittest.IsolatedAsyncioTestCase):
         tasks.pending_triggers.assert_awaited_once_with()
         self.assertEqual(
             trigger.await_args_list,
-            [mock.call({'id': 'a'}), mock.call({'id': 'b'})],
+            [mock.call({'id': 'a'}, True), mock.call({'id': 'b'}, True)],
         )

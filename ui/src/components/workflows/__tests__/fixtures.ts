@@ -57,7 +57,7 @@ export const STEP_TYPES: StepType[] = [
     type: 'deploy',
   }),
   stepType({
-    category: 'agent',
+    category: 'action',
     description: 'Gives an agent a task and waits for its outcome.',
     label: 'Agent task',
     params_schema: {

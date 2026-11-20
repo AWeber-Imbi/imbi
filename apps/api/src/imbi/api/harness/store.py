@@ -1119,11 +1119,10 @@ class HarnessStore:
                     " WHERE id = %s AND state = 'fenced'",
                     (chain['runner_id'],),
                 )
-        for task, events in published:
-            await log.publish(task, events)
-            # A task with control ``cancel`` closed in the transaction.
-            if task['status'] == 'closed':
-                await task_store.run_close_hooks(task)
+        for write in published:
+            await task_store.after_commit(
+                write.task, write.events, outbox=write.outbox
+            )
         return True
 
     async def prune(self, days: int = 7) -> None:

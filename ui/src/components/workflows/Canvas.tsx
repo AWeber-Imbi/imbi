@@ -30,7 +30,7 @@ import {
 } from './graph'
 import { QuickAddMenu } from './QuickAddMenu'
 import { CATEGORY_TILE, stepIcon } from './stepStyle'
-import { RETIRED_STEP_TYPES, type StepType, type WorkflowGraph } from './types'
+import { type StepType, type WorkflowGraph } from './types'
 
 export type Selection =
   | null
@@ -49,7 +49,6 @@ interface CanvasProps {
   ) => void
   onConnect: (edge: { port: number; source: string; target: string }) => void
   onMove: (id: string, position: Point) => void
-  onOpenPalette: (() => void) | null
   onRemoveEdge: (index: number) => void
   onSelect: (selection: Selection) => void
   onView: (view: View) => void
@@ -78,7 +77,6 @@ export function Canvas({
   onAdd,
   onConnect,
   onMove,
-  onOpenPalette,
   onRemoveEdge,
   onSelect,
   onView,
@@ -276,9 +274,7 @@ export function Canvas({
   const byId = new Map(graph.nodes.map((n) => [n.id, n]))
   const used = new Set(graph.edges.map((e) => `${e.source}:${e.port}`))
   const selectedEdge = selection?.kind === 'edge' ? selection.index : -1
-  const triggers = Object.values(types).filter(
-    (t) => t.trigger && !RETIRED_STEP_TYPES.has(t.type),
-  )
+  const triggers = Object.values(types).filter((t) => t.trigger)
   const grid = GRID * view.zoom
 
   return (
@@ -423,7 +419,7 @@ export function Canvas({
               </span>
             </div>
             {triggers.map((t) => {
-              const Icon = stepIcon(t.type, t.category)
+              const Icon = stepIcon(t.type)
               return (
                 <button
                   className="border-tertiary hover:border-amber-border flex cursor-pointer items-center gap-3 rounded-md border p-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50"
@@ -459,18 +455,6 @@ export function Canvas({
             })}
           </div>
         </div>
-      )}
-
-      {onOpenPalette && (
-        <button
-          className="border-tertiary bg-primary hover:bg-secondary absolute top-4 left-4 flex h-8.5 items-center gap-1.5 rounded-md border px-3 text-sm font-medium"
-          onClick={onOpenPalette}
-          onPointerDown={(e) => e.stopPropagation()}
-          type="button"
-        >
-          <Plus className="size-3.5" />
-          Add step
-        </button>
       )}
 
       {quick && (

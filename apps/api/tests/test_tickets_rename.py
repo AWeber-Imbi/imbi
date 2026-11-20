@@ -1007,18 +1007,28 @@ RELEASE_B1 = FIXTURES.parent / 'release_b1'
 
 
 async def _release_b1_install() -> None:
-    """Initialize as the previous release (B+1, with person tickets)
-    does."""
+    """Initialize as release B+1 (2.57.0, with person tickets) does."""
     await _fixture_install(RELEASE_B1)
 
 
+RELEASE_2_58 = FIXTURES.parent / 'release_2_58'
+
+
+async def _release_2_58_install() -> None:
+    """Initialize as the previous release (2.58.0, with reopen and the
+    `(ticket_id, close_id)` outbox key) does."""
+    await _fixture_install(RELEASE_2_58)
+
+
 class ReopenReleaseTestCase(DatabaseTestCase):
-    """This release (reopen) on a database of the previous release."""
+    """This release (`ticket_state_changed`) on a database of the
+    previous release (2.58.0)."""
 
     async def _reopen_release(self) -> Conn:
         conn = await self._migrated()
         await _release_b_install()
         await _release_b1_install()
+        await _release_2_58_install()
         await _install()
         return conn
 
@@ -1026,7 +1036,7 @@ class ReopenReleaseTestCase(DatabaseTestCase):
         conn = await self._reopen_release()
         before = await self._catalog(conn)
         with self.assertNoLogs('imbi.common.relational', 'INFO'):
-            await _release_b1_install()
+            await _release_2_58_install()
             await _install()
         self.assertEqual(before, await self._catalog(conn))
 
@@ -1045,7 +1055,7 @@ class ReopenReleaseTestCase(DatabaseTestCase):
             [
                 {
                     'conname': 'trigger_outbox_pkey',
-                    'definition': 'PRIMARY KEY (ticket_id, close_id)',
+                    'definition': 'PRIMARY KEY (ticket_id, id)',
                 }
             ],
         )
@@ -1054,33 +1064,23 @@ class ReopenReleaseTestCase(DatabaseTestCase):
         cursor = await (await self._connect()).execute(query)
         self.assertEqual(await cursor.fetchall(), migrated)
 
-    async def test_previous_release_writes_the_first_close(self) -> None:
+    async def test_previous_release_writes_a_close_row(self) -> None:
         conn = await self._reopen_release()
-        # The SQL of the previous release, which names no close.
-        await conn.execute(
-            'INSERT INTO tickets.trigger_outbox (ticket_id) VALUES (%s)',
-            (ROOT,),
-        )
-        await conn.execute(
-            'INSERT INTO tickets.trigger_outbox (ticket_id, close_id)'
-            ' VALUES (%s, %s)',
-            (ROOT, NEW),
-        )
-        # A ticket that the previous release writes is in its first cycle.
-        await _insert_ticket(conn, NEW, 'ticket', None)
+        # The SQL of the previous release, which names the close cycle.
+        # A reopened ticket that closes again gets a second row.
+        for close_id in (uuid.UUID(int=0), NEW):
+            await conn.execute(
+                'INSERT INTO tickets.trigger_outbox (ticket_id, close_id)'
+                ' VALUES (%s, %s)',
+                (ROOT, close_id),
+            )
         cursor = await conn.execute(
-            'SELECT close_id FROM tickets.tickets WHERE id = %s', (NEW,)
+            'SELECT count(DISTINCT id) AS ids, min(to_state) AS to_state,'
+            ' min(from_state) AS from_state FROM tickets.trigger_outbox'
         )
         self.assertEqual(
             await cursor.fetchone(),
-            {'close_id': tickets.store.FIRST_CLOSE_ID},
-        )
-        cursor = await conn.execute(
-            'SELECT close_id FROM tickets.trigger_outbox ORDER BY close_id'
-        )
-        self.assertEqual(
-            await cursor.fetchall(),
-            [{'close_id': tickets.store.FIRST_CLOSE_ID}, {'close_id': NEW}],
+            {'ids': 2, 'to_state': 'closed', 'from_state': None},
         )
         await conn.execute(
             'DELETE FROM tickets.trigger_outbox WHERE ticket_id = %s', (ROOT,)

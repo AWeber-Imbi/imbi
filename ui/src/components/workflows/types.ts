@@ -29,14 +29,6 @@ export type StepCategory = StepType['category']
 export type StepRun = Schemas['StepRun']
 export type StepRunStatus = StepRun['status']
 
-/**
- * Old step types that a saved graph can still use, but the editor does not
- * offer for a new step. `task_completed` is `ticket_closed` (ADR 0028).
- */
-export const RETIRED_STEP_TYPES: ReadonlySet<string> = new Set([
-  'task_completed',
-])
-
 export type StepType = Omit<
   Schemas['StepType'],
   'output_schema' | 'params_schema'

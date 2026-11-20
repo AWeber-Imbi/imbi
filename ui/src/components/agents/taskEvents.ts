@@ -93,10 +93,9 @@ export const TRIGGERS = {
   human: { icon: Play, label: 'Manual' },
   schedule: { icon: Timer, label: 'Schedule' },
   task: { icon: CornerDownRight, label: 'Delegation' },
-  task_completed: { icon: CircleCheck, label: 'Ticket closed' },
-  // The ADR 0028 names of `task` and `task_completed`.
+  // The ADR 0028 name of `task`.
   ticket: { icon: CornerDownRight, label: 'Delegation' },
-  ticket_closed: { icon: CircleCheck, label: 'Ticket closed' },
+  ticket_state_changed: { icon: CircleCheck, label: 'Ticket state changed' },
   webhook: { icon: Webhook, label: 'Webhook' },
 } as const
 

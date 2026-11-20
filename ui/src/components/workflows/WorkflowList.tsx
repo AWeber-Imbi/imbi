@@ -306,7 +306,7 @@ function TriggerCell({
   if (types.length === 0) {
     return <span className="text-tertiary text-sm">No trigger</span>
   }
-  const Icon = stepIcon(types[0], 'trigger')
+  const Icon = stepIcon(types[0])
   const Wrap = onRun ? 'button' : 'div'
   return (
     <Wrap

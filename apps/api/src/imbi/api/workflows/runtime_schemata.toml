@@ -6,22 +6,39 @@
 #
 # The schema name is fixed: `workflow_runtime`.
 
-# The trigger kinds `task_completed` and `ticket_closed` are one kind
-# for the idempotency key of a run (ADR 0028). Release B writes
-# `ticket_closed`; a sweep of the previous release that retries the same
-# closed ticket with `task_completed` then fails on this index and does
-# not start a second run. A partial index, so a step makes it, after the
-# table.
+# The `task_completed` and `ticket_closed` triggers had a partial unique
+# index that made their two names one kind. `ticket_state_changed`
+# replaced both, and `runs_workflow_idempotency_key` keeps its runs
+# unique, so the step drops the old index.
 [[steps]]
-name = "closed-ticket-run-idempotency-key"
+name = "drop-closed-ticket-run-idempotency-key"
 after_tables = true
-when = "SELECT to_regclass('workflow_runtime.runs_closed_ticket_idempotency_key') IS NULL"
-sql = """
-CREATE UNIQUE INDEX runs_closed_ticket_idempotency_key
-  ON workflow_runtime.runs
-  (organization_id, workflow_id, origin_id, idempotency_key)
-  WHERE origin_kind IN ('task_completed', 'ticket_closed')
+when = "SELECT to_regclass('workflow_runtime.runs_closed_ticket_idempotency_key') IS NOT NULL"
+sql = "DROP INDEX workflow_runtime.runs_closed_ticket_idempotency_key"
+
+# The lineage cap of `ticket_state_changed` runs counts the runs of a
+# lineage (imbi.api.workflows.ticket_trigger). The build is CONCURRENTLY,
+# so run writes do not wait for it. A failed CONCURRENTLY build leaves an
+# INVALID index, so `when` is true until a valid index exists, and the
+# step drops a leftover index before it builds again.
+[[steps]]
+name = "runs-lineage-index"
+after_tables = true
+transaction = false
+when = """
+SELECT NOT EXISTS (
+  SELECT 1 FROM pg_index
+   WHERE indexrelid = to_regclass('workflow_runtime.runs_lineage_idx')
+     AND indisvalid)
 """
+sql = [
+  "DROP INDEX CONCURRENTLY IF EXISTS workflow_runtime.runs_lineage_idx",
+  """
+CREATE INDEX CONCURRENTLY runs_lineage_idx
+  ON workflow_runtime.runs (organization_id, (origin->>'lineage'))
+  WHERE origin_kind = 'ticket_state_changed'
+""",
+]
 
 # One row per run. The row stays after archive (W4).
 #

@@ -307,24 +307,28 @@ END
 $step$;
 '''
 
-# Reopen (ADR 0028): a ticket can close more than one time, so each
-# close writes its own `trigger_outbox` row, with its `close_id`. The
-# primary key was `(ticket_id)`. The previous release does not name the
-# key in its SQL, and its restart does not change a primary key, so the
-# step runs one time.
+# Before `ticket_state_changed`, the outbox had one row per close,
+# keyed by `(ticket_id, close_id)` (2.58.0). A ticket now has one row
+# per change, so the key moves to `(ticket_id, id)`. The table walk
+# added `id` with a value on each old row. The key has two columns
+# because the `trigger-outbox-close-id-key` step of a 2.58.0 pod that
+# restarts during the rollout runs when the key does not, and would
+# put the old key back.
 [[steps]]
-name = "trigger-outbox-close-id-key"
+name = "trigger-outbox-row-per-change"
 after_tables = true
 when = """
 SELECT NOT EXISTS (
-         SELECT 1 FROM pg_constraint
-          WHERE conrelid = 'tickets.trigger_outbox'::regclass
-            AND contype = 'p' AND cardinality(conkey) = 2)
+         SELECT 1 FROM pg_constraint AS c
+           JOIN pg_attribute AS a
+             ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
+          WHERE c.conrelid = 'tickets.trigger_outbox'::regclass
+            AND c.contype = 'p' AND a.attname = 'id')
 """
 sql = '''
 ALTER TABLE tickets.trigger_outbox
   DROP CONSTRAINT trigger_outbox_pkey,
-  ADD CONSTRAINT trigger_outbox_pkey PRIMARY KEY (ticket_id, close_id);
+  ADD CONSTRAINT trigger_outbox_pkey PRIMARY KEY (ticket_id, id);
 '''
 
 # Waiting on me (ADR 0028) finds the open tickets of a person by owner
@@ -401,10 +405,6 @@ log_archived_at = "TIMESTAMP WITH TIME ZONE"
 # events up to it from ClickHouse and the later events from Postgres.
 # NULL when the ticket was never reopened after an archive.
 archived_seq = "BIGINT"
-# The close cycle of the ticket (ADR 0028). The first cycle has the nil
-# UUID, also on a row of the previous release; each reopen sets a new
-# UUID. A close writes it to `trigger_outbox`.
-close_id = "UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'"
 # The id of the root task of the chain (ADR 0022): the task itself for a
 # root task, the chain of the parent for a child task (origin `task`).
 # NULL for tasks made before this column existed; read it as
@@ -662,22 +662,36 @@ added_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 [tables.primary_key]
 columns = ["organization_id", "ticket_id", "project_id"]
 
-# One row per close of a ticket whose workflow `ticket_closed` triggers
-# have not all started their runs. The transaction that closes the
-# ticket writes the row. The trigger deletes it after it starts the
-# runs; the workflow sweep calls the trigger again for each row that
-# stays.
-#
-# `close_id` is the `tickets.close_id` of the close (ADR 0028: a
-# reopened ticket closes again). The previous release does not write
-# it, so its row gets the nil UUID of a first close.
+# One row per ticket change (a creation or a status change) whose
+# workflow `ticket_state_changed` triggers have not all started their
+# runs. The transaction that changes the ticket writes the row, and only
+# when an active binding of the org can match the change. The trigger
+# deletes the row after it starts the runs; the workflow sweep calls the
+# trigger again for each row that stays. `from_state` is NULL on
+# creation.
 [[tables]]
 name = "trigger_outbox"
 
 [tables.columns]
+id = "UUID NOT NULL DEFAULT gen_random_uuid()"
 ticket_id = "UUID NOT NULL REFERENCES tickets.tickets (id) ON DELETE CASCADE"
+from_state = "TEXT"
+# The default is for a row that a pod of the release before
+# `ticket_state_changed` writes during a rolling deploy: it wrote a row
+# only for a close. The sweep of such a pod deletes every row of a
+# ticket, so activate a `ticket_state_changed` workflow only after the
+# rollout (docs/admin/workflows.md).
+to_state = "TEXT NOT NULL DEFAULT 'closed'"
+# The outcome of a close, from its transaction: the trigger can read a
+# later snapshot of the ticket. NULL on other changes and on a row of
+# the release before `ticket_state_changed`.
+outcome = "TEXT"
+# The agent that held the ticket at the change, from its transaction: a
+# handoff before the trigger runs changes the agent of the ticket. NULL
+# for a person ticket and on a row of the release before
+# `ticket_state_changed`, which is older than every binding.
+agent_id = "TEXT"
 created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
-close_id = "UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'"
 
 [tables.primary_key]
-columns = ["ticket_id", "close_id"]
+columns = ["ticket_id", "id"]

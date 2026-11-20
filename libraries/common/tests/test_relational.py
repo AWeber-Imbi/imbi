@@ -226,3 +226,45 @@ class InitializeTestCase(unittest.IsolatedAsyncioTestCase):
             'SELECT obj_description(%s::regclass)', (f'{SCHEMA}.items',)
         )
         self.assertEqual(await cursor.fetchone(), ('done',))
+
+    async def test_step_without_transaction_replaces_an_invalid_index(
+        self,
+    ) -> None:
+        await relational.initialize(SCHEMA, SCHEMATA, 'test.relational')
+        # A failed CONCURRENTLY build leaves an INVALID index.
+        insert = sql.SQL('INSERT INTO {} VALUES (%s, %s)').format(
+            sql.Identifier(SCHEMA, 'items')
+        )
+        await self.conn.execute(f'DROP INDEX {SCHEMA}.items_name_key')
+        for _ in range(2):
+            await self.conn.execute(insert, (uuid.uuid4(), 'a'))
+        index = f'{SCHEMA}.items_id_name_idx'
+        with self.assertRaises(psycopg.errors.UniqueViolation):
+            await self.conn.execute(
+                'CREATE UNIQUE INDEX CONCURRENTLY items_id_name_idx'
+                f' ON {SCHEMA}.items (name)'
+            )
+        await self.conn.execute(f'DELETE FROM {SCHEMA}.items')
+        step = {
+            'name': 'items-name-index',
+            'transaction': False,
+            'when': (
+                'SELECT NOT EXISTS (SELECT 1 FROM pg_index'
+                f" WHERE indexrelid = to_regclass('{index}')"
+                ' AND indisvalid)'
+            ),
+            'sql': [
+                f'DROP INDEX CONCURRENTLY IF EXISTS {index}',
+                'CREATE UNIQUE INDEX CONCURRENTLY items_id_name_idx'
+                f' ON {SCHEMA}.items (name)',
+            ],
+        }
+        upgraded = {**SCHEMATA, 'steps': [step]}
+        upgraded['tables'] = [{**SCHEMATA['tables'][0], 'indexes': []}]
+        await relational.initialize(SCHEMA, upgraded, 'test.relational')
+        await relational.initialize(SCHEMA, upgraded, 'test.relational')
+        cursor = await self.conn.execute(
+            'SELECT indisvalid FROM pg_index WHERE indexrelid = %s::regclass',
+            (index,),
+        )
+        self.assertEqual(await cursor.fetchone(), (True,))

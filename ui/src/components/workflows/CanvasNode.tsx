@@ -41,7 +41,7 @@ export function CanvasNode({
   type,
   usedPorts,
 }: CanvasNodeProps) {
-  const Icon = stepIcon(node.type, type?.category)
+  const Icon = stepIcon(node.type)
   const single = isSinglePort(ports)
   const label = typeLabel(node, type)
   const port = (i: number, className: string) => (

@@ -10,10 +10,11 @@ from apps.api.tests.endpoints import (
     test_harness,
     test_person_tickets,
 )
-from imbi.api import secret_broker, tickets
+from imbi.api import secret_broker, tickets, workflows
 from imbi.api.endpoints import harness as harness_api
 from imbi.api.tickets import store as task_store
 from imbi.api.tickets import sweeper
+from imbi.api.workflows import ticket_trigger
 
 
 class ReopenTestCase(test_person_tickets.PersonTicketTestCase):
@@ -48,13 +49,12 @@ class ReopenTestCase(test_person_tickets.PersonTicketTestCase):
         )
 
     async def clear_outbox(self, short_id: str) -> None:
-        """Do what the ``ticket_closed`` trigger does after its runs."""
-        for row in await self.store.pending_triggers():
-            if (row['organization_id'], row['short_id']) == (
-                self.org,
-                short_id,
-            ):
-                await self.store.triggers_started(row['id'], row['close_id'])
+        """Do what the ``ticket_state_changed`` trigger does after its
+        runs."""
+        task = await self.store.get(self.org, short_id)
+        assert task is not None
+        changes = await self.store.state_changes(task['id'])
+        await self.store.triggers_started([c['id'] for c in changes])
 
     async def get_events(self, short_id: str) -> list[dict[str, typing.Any]]:
         response = await self.client.get(self.url(f'{short_id}/events'))
@@ -255,6 +255,7 @@ class AgentReopenTests(ReopenTestCase):
         self.assertEqual(row['platform_config_version'], config['version'])
 
     async def test_root_chain_row_returns_to_the_queue(self) -> None:
+        await self.bind()  # so the close writes an outbox row
         task = await self.closed_agent_ticket()
         task_id = uuid.UUID(task['id'])
         async with self.pool.connection() as conn:
@@ -299,29 +300,53 @@ class AgentReopenTests(ReopenTestCase):
                     response.json()['detail']['error'], 'chain_pinned'
                 )
 
-    async def test_two_close_cycles_write_two_outbox_rows(self) -> None:
-        closes: list[dict[str, typing.Any]] = []
+    async def test_reopen_and_second_close_start_new_runs(self) -> None:
+        """The reopen is a change (``closed`` to ``queued``), and the
+        second close is another change, so each starts its own
+        ``ticket_state_changed`` run."""
+        await self.bind()
+        trigger = ticket_trigger.TaskTrigger(
+            workflows.WorkflowStore(self.pool),
+            workflows.RunStore(self.pool),
+            self.store,
+            lambda: None,
+        )
+        task_store.register_change_hook(trigger)
+        self.addCleanup(task_store.unregister_change_hook, trigger)
 
-        async def hook(task: dict[str, typing.Any]) -> None:
-            closes.append(task)
+        async def drop_runs() -> None:
+            async with self.pool.connection() as conn:
+                await conn.execute(
+                    'DELETE FROM workflow_runtime.runs'
+                    ' WHERE organization_id = %s',
+                    (self.org,),
+                )
 
-        task_store.register_close_hook(hook)
-        self.addCleanup(task_store.unregister_close_hook, hook)
+        self.addAsyncCleanup(drop_runs)
         task = await self.closed_agent_ticket()
-        await self.clear_outbox(task['short_id'])
         response = await self.reopen(task['short_id'])
         self.assertEqual(response.status_code, 200, response.text)
         await self.client.post(self.url(f'{task["short_id"]}/cancel'))
-        (pending,) = [
-            row
-            for row in await self.store.pending_triggers()
-            if row['organization_id'] == self.org
-        ]
-        first, second = (close['close_id'] for close in closes)
-        self.assertEqual(first, task_store.FIRST_CLOSE_ID)
-        self.assertNotEqual(second, first)
-        self.assertEqual(pending['close_id'], second)
-        self.assertEqual(pending['status'], 'closed')
+        async with self.pool.connection() as conn:
+            cursor = await conn.execute(
+                "SELECT payload->>'from_state', payload->>'to_state'"
+                ' FROM workflow_runtime.runs WHERE organization_id = %s'
+                ' ORDER BY created_at',
+                (self.org,),
+            )
+            found = await cursor.fetchall()
+        self.assertEqual(
+            found,
+            [
+                (None, 'queued'),
+                ('queued', 'closed'),
+                ('closed', 'queued'),
+                ('queued', 'closed'),
+            ],
+        )
+        self.assertEqual(
+            await self.store.state_changes(uuid.UUID(task['id'])), []
+        )
 
 
 class ReopenedChildClaimTests(test_harness.RunnerTestCase):
@@ -355,7 +380,8 @@ class ReopenedChildClaimTests(test_harness.RunnerTestCase):
         self.assertEqual(response.json()['chain_state'], 'done')
         for row in await self.store.pending_triggers():
             if row['organization_id'] == self.org:
-                await self.store.triggers_started(row['id'], row['close_id'])
+                changes = await self.store.state_changes(row['id'])
+                await self.store.triggers_started([c['id'] for c in changes])
 
         self.act_as_user()
         response = await self.client.post(

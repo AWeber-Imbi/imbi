@@ -134,7 +134,7 @@ export function NodePanel({
   workflowSlug: string | undefined
 }) {
   const type = types[node.type]
-  const Icon = stepIcon(node.type, type?.category)
+  const Icon = stepIcon(node.type)
   const fields = useMemo(
     () => (type ? paramFields(type.params_schema, type.raw_params) : []),
     [type],

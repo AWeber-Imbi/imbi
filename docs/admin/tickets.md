@@ -94,9 +94,9 @@ a report fails with `failed_external` and the reason
 tell whether the work is done. Tell the agent to call `report_outcome` in
 its prompt if it often forgets.
 
-When a ticket closes, Imbi starts each active [workflow](workflows.md)
-with a **Ticket closed** trigger (`ticket_closed`) that matches it. A
-workflow saved with the old `task_completed` trigger still works.
+When a ticket is created or changes its status, Imbi starts each active
+[workflow](workflows.md) with a **Ticket state changed** trigger
+(`ticket_state_changed`) that matches the change.
 
 ## Person tickets
 
@@ -444,10 +444,11 @@ The API is `POST /organizations/{org}/tickets/{short_id}/reopen` with
   `"assignee_kind": "agent", "agent_slug": "<slug>"`.
 - The log stays one log, also when it was archived.
 - The request fails with 409 while a runner holds the chain of the
-  ticket (`chain_pinned`), or while the workflow runs of the last close
-  have not all started (`triggers_pending`). Try again later.
-- A ticket that closes again starts its `ticket_closed` workflow runs
-  again.
+  ticket (`chain_pinned`), or while the workflow runs of its earlier
+  changes have not all started (`triggers_pending`). Try again later.
+- The reopen is a status change (`closed` to `open` or `queued`), and
+  a ticket that closes again is another close. Each one starts its own
+  `ticket_state_changed` workflow runs.
 
 ## Answer a request
 

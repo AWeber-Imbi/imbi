@@ -8,7 +8,7 @@ grants, and resolutions. It is a plain Postgres schema, managed like
 The store lifespan also runs the expiry sweep and publishes the audit
 outbox, because both need the pool. It registers the broker's release
 of a runner as a fencer of the harness lease sweep, and its release of
-a task as a close hook of the task store.
+a task as a change hook of the task store.
 """
 
 import asyncio
@@ -77,9 +77,9 @@ async def store_lifespan() -> abc.AsyncGenerator[store.SecretStore]:
         await pool.open()
         _broker = broker.Broker(pool)
         fencer = _broker.release_runner_resolutions
-        close_hook = _broker.release_task_resolutions
+        change_hook = _broker.ticket_changed
         sweeper.register_fencer(fencer)
-        task_store.register_close_hook(close_hook)
+        task_store.register_change_hook(change_hook)
         stop = asyncio.Event()
         sweep = asyncio.create_task(run_sweeper(_broker, stop=stop))
         _store = store.SecretStore(pool)
@@ -87,7 +87,7 @@ async def store_lifespan() -> abc.AsyncGenerator[store.SecretStore]:
             yield _store
         finally:
             sweeper.unregister_fencer(fencer)
-            task_store.unregister_close_hook(close_hook)
+            task_store.unregister_change_hook(change_hook)
             stop.set()
             sweep.cancel()
             with contextlib.suppress(asyncio.CancelledError):

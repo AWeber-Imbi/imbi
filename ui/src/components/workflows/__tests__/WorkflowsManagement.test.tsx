@@ -827,6 +827,26 @@ describe('WorkflowsManagement', () => {
     expect(await screen.findByText('Saved · v3')).toBeInTheDocument()
   })
 
+  it('collapses the palette to an icon rail that still adds steps', async () => {
+    renderAt('/agents/workflows/deploy-guard')
+    expect(await screen.findByText('Let traffic settle')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse steps' }))
+    expect(screen.queryByLabelText('Search steps')).not.toBeInTheDocument()
+    expect(localStorage.setItem).toHaveBeenCalledWith(
+      'imbi:workflows:palette-collapsed',
+      'true',
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Deploy' }))
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand steps' }))
+    expect(screen.getByLabelText('Search steps')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /^Deploy\s*Ship a release/ }),
+    ).toBeInTheDocument()
+  })
+
   it('keeps an edit made during the first save of a new workflow', async () => {
     vi.mocked(endpoints.listTeams).mockResolvedValue([
       { id: 'team-1', name: 'Platform', slug: 'platform' },
@@ -929,80 +949,22 @@ describe('WorkflowsManagement', () => {
     ])
   })
 
-  it('offers ticket_closed, not task_completed, for a new step', async () => {
-    const trigger = { category: 'trigger' as const, trigger: true }
-    vi.mocked(endpoints.listWorkflowStepTypes).mockResolvedValue([
-      ...STEP_TYPES,
-      stepType({
-        ...trigger,
-        description: 'Old name',
-        label: 'Task completed',
-        type: 'task_completed',
-      }),
-      stepType({
-        ...trigger,
-        description: 'A ticket closes',
-        label: 'Ticket closed',
-        type: 'ticket_closed',
-      }),
-    ])
-    renderAt('/agents/workflows/deploy-guard')
-    expect(
-      await screen.findByRole('button', { name: /^Ticket closed\s*A ticket/ }),
-    ).toBeInTheDocument()
-    expect(
-      screen.queryByRole('button', { name: /^Task completed/ }),
-    ).not.toBeInTheDocument()
-  })
-
-  it('offers no Duplicate for a step of a retired type', async () => {
+  it('offers the ticket state changed trigger for a new step', async () => {
     vi.mocked(endpoints.listWorkflowStepTypes).mockResolvedValue([
       ...STEP_TYPES,
       stepType({
         category: 'trigger',
-        label: 'Task completed',
-        params_schema: { properties: {}, type: 'object' },
+        description: 'A ticket changes state',
+        label: 'Ticket state changed',
         trigger: true,
-        type: 'task_completed',
+        type: 'ticket_state_changed',
       }),
     ])
-    const base = workflow()
-    vi.mocked(endpoints.getWorkflow).mockResolvedValue({
-      ...base,
-      version: {
-        ...base.version,
-        graph: {
-          edges: [],
-          nodes: [
-            node({
-              id: 'old',
-              key: 'closed',
-              title: 'Old trigger',
-              type: 'task_completed',
-            }),
-            node({
-              id: 'w',
-              key: 'settle',
-              position: { x: 320, y: 0 },
-              title: 'Let traffic settle',
-              type: 'wait',
-            }),
-          ],
-        },
-      },
-    })
     renderAt('/agents/workflows/deploy-guard')
-    fireEvent.pointerDown(await screen.findByText('Old trigger'), { button: 0 })
     expect(
-      await screen.findByRole('button', { name: 'Delete step' }),
-    ).toBeInTheDocument()
-    expect(
-      screen.queryByRole('button', { name: 'Duplicate' }),
-    ).not.toBeInTheDocument()
-
-    fireEvent.pointerDown(screen.getByText('Let traffic settle'), { button: 0 })
-    expect(
-      await screen.findByRole('button', { name: 'Duplicate' }),
+      await screen.findByRole('button', {
+        name: /^Ticket state changed\s*A ticket/,
+      }),
     ).toBeInTheDocument()
   })
 

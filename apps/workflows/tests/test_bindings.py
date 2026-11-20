@@ -558,10 +558,10 @@ class RetryTestCase(ReconcilerTestCase):
             await loop
 
 
-class TaskCompletedTestCase(ReconcilerTestCase):
+class TicketStateChangedTestCase(ReconcilerTestCase):
     async def test_binding_syncs_without_a_call(self) -> None:
         await self._activate(
-            workflows.Trigger('done', 'task_completed', {'outcomes': []})
+            workflows.Trigger('done', 'ticket_state_changed', {'outcomes': []})
         )
         await self.reconciler.reconcile()
         [binding] = await self._bindings()
