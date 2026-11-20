@@ -602,6 +602,13 @@ Errors:
 | `ticket_closed` | The ticket is closed |
 | `session_open`, `chain_pinned` | An agent works the ticket now |
 | `cancel_pending` | A cancel of the ticket is not done yet |
+| `roles_changed` | The roles of the ticket changed while the step ran. Start the run again |
+| `outcome_unknown` | An earlier call of the step did not finish. The ticket may have moved. See [unknown outcome](#calls-with-an-unknown-outcome) |
+
+A failed hand-off is not retried in the same run. A person may have
+moved the ticket after the first call, and a second call could take the
+ticket back from them. Look at the ticket, then start the run again if
+necessary.
 
 A workflow with this step needs `ticket:manage` to activate.
 

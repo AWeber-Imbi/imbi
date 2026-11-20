@@ -338,7 +338,7 @@ export function normalizeLabel(value: string): string {
     .toLowerCase()
     .replace(/[\s_]+/g, '-')
     .replace(/-{2,}/g, '-')
-    .replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '')
+    .replace(/^[^\p{L}\p{M}\p{N}]+|[^\p{L}\p{M}\p{N}]+$/gu, '')
 }
 
 /** Choose one person of the org by name or email. */

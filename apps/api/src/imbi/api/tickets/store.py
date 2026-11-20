@@ -150,7 +150,7 @@ MAX_LABEL_LENGTH = 50
 
 _LABEL_SPACES = re.compile(r'[\s_]+')
 _LABEL_HYPHENS = re.compile(r'-{2,}')
-_LABEL_EDGES = re.compile(r'^[^a-z0-9]+|[^a-z0-9]+$')
+_LABEL_EDGES = re.compile(r'^[\W_]+|[\W_]+$')
 
 
 def normalize_label(value: str) -> str:
@@ -1777,6 +1777,7 @@ class TicketStore:
                 await write.update(changed)
         return write.task
 
+    @_retry_deadlock
     async def rank(
         self,
         organization_id: str,
