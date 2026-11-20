@@ -346,6 +346,47 @@ class HandOffTests(HandOffTestCase):
         response = await self.to_agent()
         self.assertEqual(response.status_code, 200, response.text)
 
+    async def test_person_to_person_while_the_chain_is_held(self) -> None:
+        # The agent handed the ticket to a person, and its runner still
+        # holds the chain (fencing) or a fencer failed (stuck).
+        await self.to_person()
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'INSERT INTO harness.chains'
+                ' (root_ticket_id, organization_id, state)'
+                " VALUES (%s, %s, 'stuck')",
+                (uuid.UUID(self.task['id']), self.org),
+            )
+        response = await self.to_person(assignee=self.email)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['assignee'], self.email)
+        # Back to an agent waits for the runner.
+        response = await self.to_agent()
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(response.json()['detail']['error'], 'chain_pinned')
+
+    async def test_agent_gets_the_current_platform_config(self) -> None:
+        await self.to_person()
+        self.assertIsNone((await self.task_row())['platform_config_version'])
+        config = await self.harness.add_platform_config(
+            self.org, {'denied_tools': ['Bash']}, self.email
+        )
+        self.addAsyncCleanup(self.drop_platform_configs)
+        response = await self.to_agent()
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            (await self.task_row())['platform_config_version'],
+            config['version'],
+        )
+
+    async def drop_platform_configs(self) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'DELETE FROM harness.platform_configs'
+                ' WHERE organization_id = %s',
+                (self.org,),
+            )
+
     async def test_done_chain_is_queued_again(self) -> None:
         await self.to_person()
         async with self.pool.connection() as conn:

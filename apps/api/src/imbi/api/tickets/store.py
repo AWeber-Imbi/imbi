@@ -2871,7 +2871,7 @@ class TicketStore:
                 'handed_off_at': datetime.datetime.now(datetime.UTC),
             }
             if to is not None:
-                changes |= _assignee_columns(task, to)
+                changes |= await _assignee_columns(write.conn, task, to)
             payload: Row = {
                 'outcome': task['outcome'],
                 'outcome_reason': task['outcome_reason'],
@@ -2930,8 +2930,11 @@ class TicketStore:
         changes, with ``assignee.changed``.
 
         Without ``session_id``, the handoff is refused while a session is
-        open or the chain is pinned. With ``session_id``, the agent of
-        that open session hands its own ticket to a person: its sessions
+        open or the chain is pinned, except from a person to a person: no
+        agent works the ticket then. An agent target gets the platform
+        configuration that the organization has now. With
+        ``session_id``, the agent of that open session hands its own
+        ticket to a person: its sessions
         close (reason ``handed_off``) in the same write, and the runner
         keeps the chain.
 
@@ -2955,6 +2958,8 @@ class TicketStore:
             if session_id is not None:
                 await _open_session(write.conn, task['id'], session_id)
                 await _close_sessions(write, 'handed_off', actor)
+            elif task['assignee_kind'] == to.assignee_kind == 'person':
+                pass  # No agent works the ticket; a chain cannot change.
             elif await _session_open(write.conn, task['id']):
                 raise SessionOpen(short_id)
             elif await _chain_state(write.conn, task) in PINNED_CHAIN_STATES:
@@ -3266,12 +3271,14 @@ def _assignee_of(row: Row) -> Row:
     }
 
 
-def _assignee_columns(task: Row, to: HandOff) -> Row:
+async def _assignee_columns(conn: Conn, task: Row, to: HandOff) -> Row:
     """The assignee columns of ``task`` for the assignee ``to``.
 
     The task budget of an agent caps the budget of the ticket, as for a
     create. A person ticket keeps its budget, which the agent periods
-    count against.
+    count against. An agent works under the platform configuration that
+    the organization has now, as a new ticket does, not the one of the
+    create.
     """
     columns: Row = {
         'assignee_kind': to.assignee_kind,
@@ -3284,6 +3291,13 @@ def _assignee_columns(task: Row, to: HandOff) -> Row:
     if to.assignee_kind == 'agent':
         budgets = [b for b in (task['budget'], to.budget) if b is not None]
         columns['budget'] = min(budgets, default=None)
+        cursor = await conn.execute(
+            'SELECT max(version) FROM harness.platform_configs'
+            ' WHERE organization_id = %s',
+            (task['organization_id'],),
+        )
+        row = await cursor.fetchone()
+        columns['platform_config_version'] = row[0] if row else None
     return columns
 
 
@@ -3328,7 +3342,7 @@ async def _hand_off(write: _Write, to: HandOff, actor: Actor) -> None:
         'status': status,
         'control': 'run',
         'handed_off_at': datetime.datetime.now(datetime.UTC),
-        **_assignee_columns(task, to),
+        **await _assignee_columns(write.conn, task, to),
     }
     if to.assignee_kind == 'agent':
         await write.conn.execute(

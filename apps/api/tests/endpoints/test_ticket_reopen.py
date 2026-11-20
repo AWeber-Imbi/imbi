@@ -231,6 +231,28 @@ class AgentReopenTests(ReopenTestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()['budget'], task['budget'])
 
+    async def test_agent_gets_the_current_platform_config(self) -> None:
+        task = await self.closed_agent_ticket()
+        await self.clear_outbox(task['short_id'])
+        config = await self.harness.add_platform_config(
+            self.org, {'denied_tools': ['Bash']}, self.email
+        )
+
+        async def drop() -> None:
+            async with self.pool.connection() as conn:
+                await conn.execute(
+                    'DELETE FROM harness.platform_configs'
+                    ' WHERE organization_id = %s',
+                    (self.org,),
+                )
+
+        self.addAsyncCleanup(drop)
+        response = await self.reopen(task['short_id'])
+        self.assertEqual(response.status_code, 200, response.text)
+        row = await self.store.get(self.org, task['short_id'])
+        assert row is not None
+        self.assertEqual(row['platform_config_version'], config['version'])
+
     async def test_root_chain_row_returns_to_the_queue(self) -> None:
         task = await self.closed_agent_ticket()
         task_id = uuid.UUID(task['id'])

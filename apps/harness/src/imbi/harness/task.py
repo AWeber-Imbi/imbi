@@ -708,6 +708,19 @@ async def _no_prompt() -> abc.AsyncIterator[dict[str, typing.Any]]:
     yield {}  # pragma: no cover - makes this an async generator
 
 
+#: The refusals of a repeated ``hand_off`` after the first one committed:
+#: the handoff closed the session, and the ticket is no longer the
+#: agent's.
+_HANDED_OFF_CODES = frozenset({'session_closed', 'agent_task_forbidden'})
+
+
+def _hand_off_failed(detail: str) -> Body:
+    return _tool_error(
+        f'The handoff failed ({detail}). The task is still yours: '
+        'use request_input to ask a person, or report_outcome.'
+    )
+
+
 class TaskRun:
     """Run one task of the runner's chain."""
 
@@ -2468,16 +2481,23 @@ class TaskRun:
             body['assignee'] = args['assignee']
         # The session ends with the handoff; later events are refused.
         await self.flush()
+        state: Body | None = None
         try:
-            state = await self.api.hand_off(self.session_id, body)
-        except (api.Refused, httpx.HTTPError) as err:
-            detail = err.detail if isinstance(err, api.Refused) else str(err)
-            return _tool_error(
-                f'The handoff failed ({detail}). The task is still yours: '
-                'use request_input to ask a person, or report_outcome.'
-            )
+            try:
+                state = await self.api.hand_off(self.session_id, body)
+            except httpx.HTTPError:
+                # imbi-api can have committed the handoff before the
+                # connection failed: a repeat tells.
+                state = await self.api.hand_off(self.session_id, body)
+        except api.Refused as err:
+            # The session or the token ended: the handoff committed.
+            if err.code not in _HANDED_OFF_CODES:
+                return _hand_off_failed(err.detail)
+        except httpx.HTTPError as err:
+            return _hand_off_failed(str(err))
         self.handed_off = True
-        self._state(state)
+        if state is not None:
+            self._state(state)
         self.closed = True
         self.stop()
         return {

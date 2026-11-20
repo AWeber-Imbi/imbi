@@ -1708,6 +1708,39 @@ class RunTestCase(TaskTestCase):
             [{'outcome': 'done_acted', 'reason': 'listed'}],
         )
 
+    async def test_hand_off_that_committed_ends_the_run(self) -> None:
+        # A repeat after a lost response finds the handoff done.
+        for refusal in (
+            api.Refused(409, 'session_closed'),
+            api.Refused(403, 'agent_task_forbidden'),
+        ):
+            lost = mock.AsyncMock(
+                side_effect=[httpx.ReadTimeout('lost'), refusal]
+            )
+            with (
+                self.subTest(refusal.code),
+                mock.patch.object(self.run_task.api, 'hand_off', lost),
+            ):
+                self.run_task.closed = False
+                result = await self.run_task.hand_off({'note': 'Merge it.'})
+                self.assertNotIn('is_error', result)
+                self.assertTrue(self.run_task.handed_off)
+                self.assertTrue(self.run_task.closed)
+
+    async def test_hand_off_retries_once_after_a_lost_response(self) -> None:
+        calls: list[str] = []
+
+        async def flaky(*_: typing.Any) -> typing.Any:
+            calls.append('call')
+            raise httpx.ConnectError('down')
+
+        with mock.patch.object(self.run_task.api, 'hand_off', flaky):
+            result = await self.run_task.hand_off({'note': 'Merge it.'})
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(result['is_error'])
+        self.assertIn('still yours', result['content'][0]['text'])
+        self.assertFalse(self.run_task.closed)
+
     async def test_hand_off_needs_a_note(self) -> None:
         for args in ({}, {'note': ' '}, {'note': 1}):
             result = await self.run_task.hand_off(args)
