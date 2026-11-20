@@ -7,6 +7,7 @@ import {
   CircleDot,
   ListFilter,
   type LucideIcon,
+  Tag,
   UserRound,
   X,
 } from 'lucide-react'
@@ -39,6 +40,7 @@ import {
   TASK_STATES,
   type TaskFilters,
 } from './taskFilters'
+import { normalizeLabel } from './ticketAttributes'
 
 const CHIP_MAX = 2
 const ROW = 'data-[selected=true]:bg-foreground/6'
@@ -60,7 +62,7 @@ interface Field {
   options: Option[]
 }
 
-type FieldKey = 'agent' | 'assignee' | 'state'
+type FieldKey = 'agent' | 'assignee' | 'label' | 'state'
 
 interface Option {
   badge?: ReturnType<typeof statusVariant>
@@ -126,16 +128,22 @@ export function TaskFilterBar({
   action,
   agents,
   filters,
+  labels = [],
   me,
   onChange,
+  onLabelSearch,
   owners,
   search,
 }: {
   action?: ReactNode
   agents: FilterAgent[]
   filters: TaskFilters
+  /** The labels of the org to offer, most used first. */
+  labels?: string[]
   me?: null | string
   onChange: (filters: TaskFilters) => void
+  /** The text typed in the menu, to look up more labels. */
+  onLabelSearch?: (text: string) => void
   owners: string[]
   search: ReactNode
 }) {
@@ -180,13 +188,26 @@ export function TaskFilterBar({
         value: a.id,
       })),
     },
+    {
+      icon: Tag,
+      key: 'label',
+      label: 'Label',
+      options: [...new Set([...filters.labels, ...labels])].map((l) => ({
+        label: l,
+        value: l,
+      })),
+    },
   ]
   const field = fields.find((f) => f.key === fieldKey)
   const count = activeCount(filters)
 
+  const type = (value: string) => {
+    setText(value)
+    onLabelSearch?.(value)
+  }
   const show = (key: FieldKey | null) => {
     setFieldKey(key)
-    setText('')
+    type('')
   }
   const openChange = (next: boolean) => {
     setOpen(next)
@@ -224,7 +245,7 @@ export function TaskFilterBar({
             </PopoverTrigger>
             <PopoverContent align="end" className="w-80 p-0">
               <Command
-                filter={contains}
+                filter={field?.key === 'label' ? containsLabel : contains}
                 onKeyDown={(e) => {
                   if (e.key === 'Backspace' && !text && field) {
                     e.preventDefault()
@@ -233,7 +254,7 @@ export function TaskFilterBar({
                 }}
               >
                 <CommandInput
-                  onValueChange={setText}
+                  onValueChange={type}
                   placeholder={field ? `${field.label}…` : 'Filter by…'}
                   value={text}
                 />
@@ -412,6 +433,7 @@ export function TaskFilterBar({
 const LISTS = {
   agent: 'agents',
   assignee: 'assignees',
+  label: 'labels',
   state: 'states',
 } as const satisfies Record<FieldKey, keyof TaskFilters>
 
@@ -426,6 +448,11 @@ function contains(value: string, search: string, keywords?: string[]) {
   )
     ? 1
     : 0
+}
+
+// The API matches labels by their normalized form, so match the same.
+function containsLabel(value: string, search: string, keywords?: string[]) {
+  return contains(value, normalizeLabel(search), keywords)
 }
 
 function initials(name: string) {

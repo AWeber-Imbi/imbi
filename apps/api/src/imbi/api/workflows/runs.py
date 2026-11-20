@@ -52,6 +52,8 @@ ENGINE_PRINCIPAL = permissions.WORKFLOWS_ACCOUNT
 #: took is not retryable, because a retry would reset only that step
 #: and the step that failed the run would close it again. An operator
 #: can still clear such a key, or mark it done, with no retry.
+#: ``step-assign-ticket`` is not retryable: a person may have moved the
+#: ticket after the first call, and a second hand-off would take it back.
 _STALE = """
 WITH e AS (
   SELECT key, created_at,

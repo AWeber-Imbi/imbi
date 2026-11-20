@@ -41,7 +41,9 @@ from imbi.api.endpoints._pagination import (
     decode_cursor,
     encode_cursor,
 )
+from imbi.api.llm.dependencies import InjectAnthropicClient
 from imbi.api.tickets.store import (
+    MAX_LABEL_LENGTH,
     ActorKind,
     AssigneeKind,
     Channel,
@@ -51,9 +53,13 @@ from imbi.api.tickets.store import (
     Priority,
     ResolvedStatus,
     Status,
+    TicketType,
+    normalize_label,
+    normalize_labels,
 )
 from imbi.common import graph, models
 from imbi.common.auth import permissions as common_permissions
+from imbi.common.prompts import system as system_prompts
 
 LOGGER = logging.getLogger(__name__)
 
@@ -94,6 +100,48 @@ _ShortText = typing.Annotated[
 
 
 # --- Schemas -----------------------------------------------------------
+
+
+def _checked(names: list[str]) -> list[str]:
+    """Return normalized names, or raise ValueError for an empty or long
+    one."""
+    for name in names:
+        if not name:
+            raise ValueError('a label or role has no letter or digit')
+        if len(name) > MAX_LABEL_LENGTH:
+            raise ValueError(
+                f'{name!r} is longer than {MAX_LABEL_LENGTH} characters'
+            )
+    return names
+
+
+def _labels(values: list[str]) -> list[str]:
+    """Return the normalized labels without repeats, in order."""
+    return _checked(normalize_labels(values))
+
+
+def _roles(values: dict[str, str]) -> dict[str, str]:
+    """Return the roles with normalized names."""
+    names = _checked([normalize_label(k) for k in values])
+    if len(set(names)) < len(names):
+        raise ValueError('two role names normalize to the same name')
+    return dict(zip(names, values.values(), strict=True))
+
+
+#: Labels: lowercase, with hyphens (``"API "`` is ``api``).
+Labels = typing.Annotated[
+    list[str],
+    pydantic.Field(max_length=20),
+    pydantic.AfterValidator(_labels),
+]
+
+#: The people in named roles, ``{role: email}``. Role names are
+#: normalized as labels are.
+Roles = typing.Annotated[
+    dict[str, pydantic.EmailStr],
+    pydantic.Field(max_length=10),
+    pydantic.AfterValidator(_roles),
+]
 
 
 class TicketRequirement(pydantic.BaseModel):
@@ -151,6 +199,14 @@ class AgentTaskCreate(pydantic.BaseModel):
         description='A repeat with the same key returns the first task.',
     )
     priority: Priority = 'normal'
+    type: TicketType = 'task'
+    due_date: datetime.date | None = None
+    labels: Labels = pydantic.Field(default_factory=list[str])
+    roles: Roles = pydantic.Field(
+        default_factory=dict[str, pydantic.EmailStr],
+        description='The people in named roles, as {role: email}. Each '
+        'must be in the org.',
+    )
 
     @pydantic.model_validator(mode='before')
     @classmethod
@@ -217,6 +273,48 @@ class AgentTaskPriority(pydantic.BaseModel):
     priority: Priority
 
 
+class TicketUpdate(pydantic.BaseModel):
+    """The fields to change; a field that is not sent stays."""
+
+    type: TicketType = 'task'
+    #: ``null`` clears the due date.
+    due_date: datetime.date | None = None
+    labels: Labels = []
+    roles: Roles = {}
+
+
+class TicketRank(pydantic.BaseModel):
+    after: str | None = pydantic.Field(
+        default=None,
+        min_length=1,
+        max_length=50,
+        description='The short id of the backlog ticket that this ticket '
+        'goes right after. ``null``: first in the backlog.',
+    )
+
+
+class TicketSubjectRequest(pydantic.BaseModel):
+    #: Only the first :data:`SUBJECT_INPUT_LENGTH` characters go to the
+    #: model, so a pasted document works.
+    description: str = pydantic.Field(min_length=1, max_length=1_000_000)
+
+
+class TicketSubject(pydantic.BaseModel):
+    subject: str = pydantic.Field(min_length=1)
+
+
+class TicketSubjectResponse(TicketSubject):
+    #: The model was not called or failed; ``subject`` is the first
+    #: line of the description.
+    degraded: bool
+
+
+class TicketLabelCount(pydantic.BaseModel):
+    name: str
+    #: The number of tickets in the org with the label.
+    count: int
+
+
 class AgentTaskOrigin(pydantic.BaseModel):
     """What started a task. It does not change.
 
@@ -274,6 +372,12 @@ class AgentTaskResponse(pydantic.BaseModel):
     status: Status
     control: Control
     priority: Priority = 'normal'
+    type: TicketType = 'task'
+    due_date: datetime.date | None = None
+    labels: list[str] = []
+    roles: dict[str, str] = {}
+    #: The place in the backlog, lower first. ``None``: not ranked.
+    backlog_rank: float | None = None
     phase: str | None = None
     outcome: str | None = None
     outcome_reason: str | None = None
@@ -1469,6 +1573,7 @@ async def make_task(
 
     """
     projects = await project_slugs(db, org_slug, data.project_ids)
+    await _role_members(db, org_slug, data.roles)
     if data.assignee_kind == 'person':
         assignee = await person_assignee(db, org_slug, data.assignee)
     else:
@@ -1502,6 +1607,10 @@ async def make_task(
                 requires=[
                     (r.short_id.upper(), r.gates) for r in data.requires
                 ],
+                type=data.type,
+                due_date=data.due_date,
+                labels=data.labels,
+                roles=data.roles,
             ),
             actor,
             {
@@ -1514,10 +1623,46 @@ async def make_task(
                 'priority': data.priority,
                 'assignee_kind': data.assignee_kind,
                 'assignee': data.assignee,
+                'type': data.type,
+                'due_date': data.due_date and data.due_date.isoformat(),
+                'labels': data.labels,
+                'roles': data.roles,
             },
         )
     except tickets.TaskNotFound as e:
         raise _unprocessable(f'Prerequisite {str(e)!r} not found') from e
+
+
+_MEMBERS_QUERY: typing.LiteralString = """
+MATCH (u:User)-[:MEMBER_OF]->(:Organization {{slug: {org_slug}}})
+WHERE u.email IN {emails}
+RETURN u.email AS email
+"""
+
+
+async def _role_members(
+    db: graph.Graph,
+    org_slug: str,
+    roles: dict[str, str],
+    known: abc.Mapping[str, str] | None = None,
+) -> None:
+    """Raise 422 unless each person in ``roles`` is in the org. A role
+    that ``known`` gives to the same person is not checked again."""
+    known = known or {}
+    emails = {e for r, e in roles.items() if known.get(r) != e}
+    if not emails:
+        return
+    found = {
+        graph.parse_agtype(r['email'])
+        for r in await db.execute(
+            _MEMBERS_QUERY,
+            {'org_slug': org_slug, 'emails': sorted(emails)},
+            ['email'],
+        )
+    }
+    missing = sorted(emails - found)
+    if missing:
+        raise _unprocessable(f'User {missing[0]!r} is not in the org')
 
 
 @tickets_router.get('/', response_model=list[AgentTaskListItem])
@@ -1535,6 +1680,7 @@ async def list_agent_tasks(
     status: typing.Annotated[list[Status] | None, fastapi.Query()] = None,
     agent_id: typing.Annotated[list[str] | None, fastapi.Query()] = None,
     owner: typing.Annotated[list[str] | None, fastapi.Query()] = None,
+    label: typing.Annotated[list[str] | None, fastapi.Query()] = None,
     mine: bool = False,
     q: str | None = None,
     limit: typing.Annotated[int, fastapi.Query(ge=1, le=100)] = 50,
@@ -1593,6 +1739,7 @@ async def list_agent_tasks(
         text=text or None,
         text_agent_ids=list(agents),
         text_project_ids=list(projects),
+        labels=label,
         group=group,
         before=before,
         offset=offset,
@@ -1636,6 +1783,7 @@ async def count_agent_tasks(
     status: typing.Annotated[list[Status] | None, fastapi.Query()] = None,
     agent_id: typing.Annotated[list[str] | None, fastapi.Query()] = None,
     owner: typing.Annotated[list[str] | None, fastapi.Query()] = None,
+    label: typing.Annotated[list[str] | None, fastapi.Query()] = None,
     mine: bool = False,
     q: str | None = None,
 ) -> dict[str, int]:
@@ -1659,6 +1807,7 @@ async def count_agent_tasks(
         text=text or None,
         text_agent_ids=list(agents),
         text_project_ids=list(projects),
+        labels=label,
     )
 
 
@@ -1676,6 +1825,7 @@ async def get_agent_task_position(
     status: typing.Annotated[list[Status] | None, fastapi.Query()] = None,
     agent_id: typing.Annotated[list[str] | None, fastapi.Query()] = None,
     owner: typing.Annotated[list[str] | None, fastapi.Query()] = None,
+    label: typing.Annotated[list[str] | None, fastapi.Query()] = None,
     mine: bool = False,
     q: str | None = None,
 ) -> dict[str, typing.Any]:
@@ -1700,6 +1850,7 @@ async def get_agent_task_position(
         text=text or None,
         text_agent_ids=list(agents),
         text_project_ids=list(projects),
+        labels=label,
     )
     if found is None:
         raise fastapi.HTTPException(
@@ -1762,6 +1913,110 @@ async def count_waiting_agent_tasks(
     if auth.user is None:
         return {'count': 0}
     return await store.waiting(org_id, auth.user.email, lists=lists)
+
+
+#: The CMS reference of the ticket subject prompt.
+SUBJECT_PROMPT = f'{system_prompts.TICKET_SUBJECT.ref}@stable'
+
+#: The longest subject, as the UI cuts a subject from a description.
+MAX_SUBJECT_LENGTH = 96
+
+#: The characters of a description that the model reads.
+SUBJECT_INPUT_LENGTH = 8000
+
+#: The reply format, added after the prompt in code, so that an edit of
+#: the prompt in the CMS cannot break the parse.
+_SUBJECT_FORMAT = (
+    '\n\nReply with only a JSON object with one key, "subject", whose '
+    'value is the subject. No other text, no markdown fences.'
+)
+
+_LINK = re.compile(r'https?://\S+')
+
+
+def subject_from(description: str) -> str:
+    """Return the first line of ``description`` without its links, cut
+    to :data:`MAX_SUBJECT_LENGTH`; the subject when no model answers."""
+    return _first_line(_LINK.sub('', description)) or 'Work from a link'
+
+
+def _first_line(text: str) -> str:
+    """Return the first line of ``text``, cut to
+    :data:`MAX_SUBJECT_LENGTH`."""
+    line = text.strip().split('\n')[0].strip()
+    if len(line) <= MAX_SUBJECT_LENGTH:
+        return line
+    return line[: MAX_SUBJECT_LENGTH - 1].rstrip() + '…'
+
+
+@tickets_router.post('/subject', response_model=TicketSubjectResponse)
+async def suggest_ticket_subject(
+    data: TicketSubjectRequest,
+    db: graph.Pool,
+    anthropic: InjectAnthropicClient,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('ticket:create')),
+    ],
+) -> dict[str, typing.Any]:
+    """Write a subject for a new ticket from its description, with the
+    ``imbi-api/ticket-subject`` prompt and its model (the packaged
+    prompt and the default model when the CMS has none). When no model
+    answers, the subject is the first line of the description and
+    ``degraded`` is true.
+
+    Raises:
+        403: The caller is not a member of the org.
+        404: No such organization.
+
+    """
+    description = data.description[:SUBJECT_INPUT_LENGTH]
+    fallback = TicketSubject(subject=subject_from(description))
+    if not anthropic.available:
+        return {'subject': fallback.subject, 'degraded': True}
+    prompt = await system_prompts.load_system_prompt(
+        db,
+        SUBJECT_PROMPT,
+        {},
+        system_prompts.TICKET_SUBJECT,
+        email=auth.user.email if auth.user else None,
+    )
+    result = await anthropic.complete_json(
+        description,
+        schema=TicketSubject,
+        fallback=fallback,
+        max_tokens=prompt.max_tokens or 200,
+        model=prompt.model_id,
+        system=prompt.text + _SUBJECT_FORMAT,
+    )
+    subject = _first_line(result.data.subject)
+    return {
+        'subject': subject or fallback.subject,
+        'degraded': result.degraded,
+    }
+
+
+@tickets_router.get('/labels', response_model=list[TicketLabelCount])
+async def list_ticket_labels(
+    org_id: OrgId,
+    store: tickets.Store,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('ticket:read')),
+    ],
+    q: str = '',
+    limit: typing.Annotated[int, fastapi.Query(ge=1, le=50)] = 10,
+) -> list[dict[str, typing.Any]]:
+    """List the labels of the org that start with ``q``, most used
+    first, each with its number of tickets. ``q`` is normalized as a
+    label is, so ``API `` finds ``api``.
+
+    Raises:
+        403: The caller is not a member of the org.
+        404: No such organization.
+
+    """
+    return await store.label_counts(org_id, normalize_label(q), limit)
 
 
 @tickets_router.get('/{short_id}', response_model=AgentTaskResponse)
@@ -2413,6 +2668,90 @@ async def set_agent_task_priority(
         raise fastapi.HTTPException(
             status_code=409, detail=f'Task {short_id!r} is closed'
         ) from e
+
+
+@tickets_router.patch('/{short_id}', response_model=AgentTaskResponse)
+async def update_ticket(
+    org_slug: str,
+    org_id: OrgId,
+    short_id: str,
+    data: TicketUpdate,
+    db: graph.Pool,
+    store: tickets.Store,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('ticket:manage')),
+    ],
+) -> dict[str, typing.Any]:
+    """Change the type, the due date, the labels, or the roles of a
+    ticket. Only the fields in the body change; each one that changes
+    writes ``<field>.changed``. Labels and role names are normalized.
+
+    Raises:
+        403: The caller is not a member of the org.
+        404: No such task.
+        409: The task is closed, or its roles changed while this
+            request checked them (``roles_changed``).
+        422: A person in ``roles`` is not in the org.
+
+    """
+    changes = data.model_dump(include=data.model_fields_set)
+    known: dict[str, str] | None = None
+    if data.roles:
+        task = await _get_task(store, org_id, short_id)
+        known = task['roles'] or {}
+        await _role_members(db, org_slug, data.roles, known)
+    with write_errors(short_id):
+        try:
+            # The roles that were not checked must still be there.
+            return await store.set_fields(
+                org_id,
+                short_id.upper(),
+                changes,
+                _actor(auth),
+                roles_read=known,
+            )
+        except tickets.RolesChanged as e:
+            raise _conflict(
+                'roles_changed',
+                f'The roles of task {short_id!r} changed; try again',
+            ) from e
+
+
+@tickets_router.post('/{short_id}/rank', response_model=AgentTaskResponse)
+async def rank_ticket(
+    org_id: OrgId,
+    short_id: str,
+    data: TicketRank,
+    store: tickets.Store,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('ticket:manage')),
+    ],
+) -> dict[str, typing.Any]:
+    """Move a ticket in the backlog: right after the backlog ticket
+    ``after``, or first. The backlog is the tickets that have not
+    started (``held``, ``queued``, ``open``): ranked ones by rank, then
+    the others newest first. Unranked tickets down to ``after`` get
+    ranks too, so the order that a person saw stays.
+
+    Raises:
+        403: The caller is not a member of the org.
+        404: No such task.
+        409: The task is closed.
+        422: ``after`` is not a backlog ticket of the org.
+
+    """
+    after = data.after.upper() if data.after else None
+    with write_errors(short_id):
+        try:
+            return await store.rank(
+                org_id, short_id.upper(), after, _actor(auth)
+            )
+        except tickets.TaskNotFound as e:
+            if after is None or str(e) != after:
+                raise
+            raise _unprocessable(f'{after!r} is not in the backlog') from e
 
 
 @tickets_router.post(

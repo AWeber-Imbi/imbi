@@ -137,6 +137,7 @@ with one output port has no port name.
 | `llm_call` | LLM Call | Logic | One |
 | `email` | Send email | Actions | One |
 | `slack` | Slack message | Actions | One |
+| `assign_ticket` | Assign ticket to role | Actions | `Assigned`, `No one in role` |
 | `deploy` | Deploy | Actions | `Succeeded`, `Failed` |
 | `release` | Release | Actions | `Succeeded`, `Failed` |
 | `rollback` | Rollback | Actions | One |
@@ -154,6 +155,7 @@ count:
 | `llm_call` | 5 minutes. One model call stops at 165 seconds, which includes the time to get provider credentials | 2 |
 | `email` | 2 minutes | 0 |
 | `slack` | 2 minutes | 3, for a Slack rate limit only |
+| `assign_ticket` | 1 minute | 0 |
 | `deploy`, `release`, `rollback` | 1 hour | 2 |
 | `agent` | None. The max run time limits it | 2 |
 
@@ -255,6 +257,11 @@ before its runs start.
 | `project` | The slug of the first project of the task. `null` when the task has no project |
 | `agent` | The slug of the agent |
 | `cost_usd` | The cost of the task in USD |
+| `type` | `bug`, `task`, or `feature` |
+| `priority` | `low`, `normal`, `high`, or `urgent` |
+| `due_date` | The due date as `YYYY-MM-DD`, or `null` |
+| `labels` | The labels of the ticket |
+| `roles` | The people in named roles, as `{role: email}`. Use `{{ trigger.roles.reviewer }}` |
 
 ### Wait
 
@@ -571,6 +578,43 @@ with a `ticket` needs `ticket:read` to activate.
 **Output:** `channel`, `ts` (the message timestamp), and `permalink` (a
 link to the message, or empty when Slack did not return one).
 
+### Assign ticket to role
+
+Gives a ticket to the person in one of its roles, as a handoff to a
+person. Use it to move a ticket to its reviewer when it changes state,
+for example.
+
+| Parameter | What to enter |
+|---|---|
+| `ticket` | A short id such as `T-12`, or one plain reference such as `{{ trigger.task_id }}` |
+| `role` | The role name, for example `reviewer`. Imbi normalizes it as it normalizes labels |
+
+When nobody is in the role, nothing changes and the step takes the
+`No one in role` port. When the person has the ticket already, nothing
+changes and the step takes the `Assigned` port.
+
+Errors:
+
+| Error | Cause |
+|---|---|
+| `ticket_not_found` | The organization has no ticket with this short id |
+| `assignee_not_member` | The person in the role is not in the organization |
+| `ticket_closed` | The ticket is closed |
+| `session_open`, `chain_pinned` | An agent works the ticket now |
+| `cancel_pending` | A cancel of the ticket is not done yet |
+| `roles_changed` | The roles of the ticket changed while the step ran. Start the run again |
+| `outcome_unknown` | An earlier call of the step did not finish. The ticket may have moved. See [unknown outcome](#calls-with-an-unknown-outcome) |
+
+A failed hand-off is not retried in the same run. A person may have
+moved the ticket after the first call, and a second call could take the
+ticket back from them. Look at the ticket, then start the run again if
+necessary.
+
+A workflow with this step needs `ticket:manage` to activate.
+
+**Output:** `task_id`, `role` (normalized), and `assignee` (the email of
+the person, or `null` when nobody is in the role).
+
 ### Deploy
 
 Deploys a version of a project to an environment, then waits for the
@@ -687,7 +731,8 @@ with "used in N workflow(s)".
 
 **Output:** `task_id`, `outcome`, `reason`, `summary` (the last message
 of the agent), `result` (the structured output), and the attributes of
-the task: `title`, `url`, `project`, `agent`, and `cost_usd`. These
+the task: `title`, `url`, `project`, `agent`, `cost_usd`, `type`,
+`priority`, `due_date`, `labels`, and `roles`. These
 attributes are the same as in the output of a
 [Ticket state changed](#ticket-state-changed) trigger. Run detail shows `reason`,
 `summary`, and `result` only to people with `ticket:read`.
@@ -910,6 +955,7 @@ only. The permissions that steps need:
 | Agent task | `ticket:create` |
 | LLM Call | `prompt:run` |
 | Slack message with a `ticket` | `ticket:read` |
+| Assign ticket to role | `ticket:manage` |
 
 Imbi records who activated the workflow. A workflow cannot do more than
 that person can do. When a run starts, the engine checks the person again.

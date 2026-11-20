@@ -48,6 +48,7 @@ from imbi.api.auth import organizations, permissions
 from imbi.api.email import client as email_client
 from imbi.api.endpoints import project_deployments, tickets
 from imbi.api.plugins.resolution import ResolvedCapability
+from imbi.api.tickets import store as ticket_rows
 from imbi.api.workflows import tickets as workflow_tickets
 from imbi.common import graph, lifespan
 from imbi.common.auth import permissions as common_permissions
@@ -55,6 +56,7 @@ from imbi.common.plugins.base import DeploymentRun
 from imbi.common.workflows import graph as wf
 from imbi.common.workflows import history, registry, validation, walk
 from imbi.common.workflows.registry import agent as agent_step
+from imbi.common.workflows.registry import assign_ticket as assign_step
 from imbi.common.workflows.registry import email as email_step
 from imbi.common.workflows.registry import slack as slack_step
 from imbi.common.workflows.registry import ticket_state_changed
@@ -1562,6 +1564,105 @@ async def send_step_slack(
 
     return await runs.once(
         auth.principal_name, 'step-slack', idempotency_key, call
+    )
+
+
+@workflow_runs_router.post(
+    '/{slug}/runs/{run_id}/steps/{node_id}/assign-ticket',
+    response_model=assign_step.Output,
+)
+async def assign_step_ticket(
+    org_slug: str,
+    org_id: OrgId,
+    slug: str,
+    run_id: uuid.UUID,
+    node_id: str,
+    db: graph.Pool,
+    store: workflows.Store,
+    runs: workflows.Runs,
+    tasks: ticket_store.Store,
+    auth: EngineAuth,
+    idempotency_key: IdempotencyKey,
+) -> dict[str, typing.Any]:
+    """Hand the ticket of a running assign_ticket step to the person in
+    its role. Engine only.
+
+    A role with nobody in it changes nothing and returns ``assignee``
+    ``None``. A ticket that the person has already is not changed. A
+    repeat with the same ``Idempotency-Key`` returns the first result
+    and changes nothing, so it cannot undo a later hand-off.
+
+    Raises:
+        404: No such workflow, run, or step.
+        409: The step is not a running assign_ticket step, or the
+            ticket cannot change now (``ticket_closed``,
+            ``session_open``, ``chain_pinned``, ``cancel_pending``), or
+            the role changed before the hand-off (``roles_changed``), or
+            a call with this key started and did not finish
+            (``outcome_unknown``).
+        422: ``ticket_not_found``: the ticket is not a ticket of the
+            organization, or ``assignee_not_member``: the person in the
+            role is not in the organization.
+
+    """
+    step = await _running_step(store, runs, org_id, slug, run_id, node_id)
+    if step['node_type'] != assign_step.STEP.type:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=f'Step {node_id!r} is not a running assign_ticket step',
+        )
+    params = assign_step.Params.model_validate(step['input'])
+
+    async def call() -> dict[str, typing.Any]:
+        task = await tasks.get(org_id, params.ticket.upper())
+        if task is None:
+            raise fastapi.HTTPException(
+                status_code=422, detail={'error': 'ticket_not_found'}
+            )
+        role = ticket_rows.normalize_label(params.role)
+        roles: dict[str, str] = task['roles'] or {}
+        email = roles.get(role)
+        result: dict[str, typing.Any] = {
+            'task_id': task['short_id'],
+            'role': role,
+            'assignee': email,
+        }
+        if email is None:
+            return result
+        try:
+            to = await tickets.person_assignee(db, org_slug, email)
+        except fastapi.HTTPException as e:
+            raise fastapi.HTTPException(
+                status_code=422, detail={'error': 'assignee_not_member'}
+            ) from e
+        # A ticket that closed after the person got it succeeds too.
+        if task['assignee_kind'] == 'person' and task['assignee'] == email:
+            return result
+        errors: dict[type[Exception], str] = {
+            ticket_store.TaskClosed: 'ticket_closed',
+            ticket_store.SessionOpen: 'session_open',
+            ticket_store.ChainPinned: 'chain_pinned',
+            ticket_store.CancelPending: 'cancel_pending',
+            ticket_store.RolesChanged: 'roles_changed',
+        }
+        try:
+            # The roles are read again under the lock, so a person who
+            # left the role does not get the ticket.
+            await tasks.hand_off(
+                org_id,
+                task['short_id'],
+                to,
+                ticket_store.Actor('system', auth.principal_name, 'api'),
+                roles_read=roles,
+            )
+        except tuple(errors) as e:
+            raise fastapi.HTTPException(
+                status_code=409, detail={'error': errors[type(e)]}
+            ) from e
+        return result
+
+    return await runs.once(
+        auth.principal_name, 'step-assign-ticket', idempotency_key, call
     )
 
 

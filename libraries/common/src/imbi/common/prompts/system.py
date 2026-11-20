@@ -86,7 +86,20 @@ SLACKBOT = DefaultPrompt(
     ),
 )
 
-DEFAULT_PROMPTS: tuple[DefaultPrompt, ...] = (ASSISTANT, SLACKBOT)
+TICKET_SUBJECT = DefaultPrompt(
+    namespace='imbi-api',
+    slug='ticket-subject',
+    name='Ticket subject',
+    description='Writes the subject of a new ticket from its description.',
+    template='imbi-api-ticket-subject.md',
+    variables=(),
+)
+
+DEFAULT_PROMPTS: tuple[DefaultPrompt, ...] = (
+    ASSISTANT,
+    SLACKBOT,
+    TICKET_SUBJECT,
+)
 
 
 @functools.cache

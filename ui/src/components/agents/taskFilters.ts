@@ -18,15 +18,25 @@ export const TASK_STATES: { label: string; value: TicketStatus }[] = [
 export interface TaskFilters {
   agents: string[]
   assignees: string[]
+  /** Tickets with every one of these labels. */
+  labels: string[]
   states: TicketStatus[]
 }
 
-export const NO_FILTERS: TaskFilters = { agents: [], assignees: [], states: [] }
+export const NO_FILTERS: TaskFilters = {
+  agents: [],
+  assignees: [],
+  labels: [],
+  states: [],
+}
 
 export function activeCount(filters: TaskFilters): number {
-  return [filters.agents, filters.assignees, filters.states].filter(
-    (values) => values.length > 0,
-  ).length
+  return [
+    filters.agents,
+    filters.assignees,
+    filters.labels,
+    filters.states,
+  ].filter((values) => values.length > 0).length
 }
 
 export function readFilters(search: string): TaskFilters {
@@ -35,11 +45,12 @@ export function readFilters(search: string): TaskFilters {
   return {
     agents: unique(params.getAll('agent')),
     assignees: unique(params.getAll('assignee')),
+    labels: unique(params.getAll('label')),
     states: TASK_STATES.map((s) => s.value).filter((s) => states.has(s)),
   }
 }
 
-const KEYS = ['agent', 'assignee', 'state']
+const KEYS = ['agent', 'assignee', 'label', 'state']
 
 /**
  * The inbox filters, which live in the address, so a link, Back, and
@@ -87,6 +98,7 @@ export function writeFilters(search: string, filters: TaskFilters): string {
   for (const state of filters.states) params.append('state', state)
   for (const agent of filters.agents) params.append('agent', agent)
   for (const assignee of filters.assignees) params.append('assignee', assignee)
+  for (const label of filters.labels) params.append('label', label)
   const text = params.toString()
   return text ? `?${text}` : ''
 }

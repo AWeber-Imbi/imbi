@@ -46,6 +46,10 @@ DECLARE
   item record;
   columns text;
 BEGIN
+  -- An install older than a table (a dev database of October 2026 has
+  -- no trigger_outbox) moves what it has; the table walk makes the rest.
+  SELECT array_agg(t) INTO old_tables FROM unnest(old_tables) AS t
+   WHERE to_regclass(format('agent_runtime.%I', t)) IS NOT NULL;
   FOREACH old_name IN ARRAY old_tables LOOP
     new_name := replace(old_name, 'task', 'ticket');
     EXECUTE format(
@@ -350,6 +354,17 @@ CREATE INDEX IF NOT EXISTS tickets_assignee_open_idx ON tickets.tickets
   WHERE assignee_kind = 'person' AND status <> 'closed';
 """
 
+# The label filter of the ticket list (`labels @> ...`) and the label
+# suggestions. A GIN index, so a step makes it, after the column.
+[[steps]]
+name = "tickets-labels-index"
+after_tables = true
+when = "SELECT to_regclass('tickets.tickets_labels_idx') IS NULL"
+sql = """
+CREATE INDEX IF NOT EXISTS tickets_labels_idx ON tickets.tickets
+  USING GIN (labels);
+"""
+
 # One row per ticket.
 #
 # `last_seq` is the sequence number of the newest event. An event write
@@ -437,6 +452,21 @@ assignee = "TEXT"
 # that changed the assignee kind, or the last reopen. The task timeout
 # of an agent counts from the first session after it.
 period_started_at = "TIMESTAMP WITH TIME ZONE"
+# The kind of work: `bug`, `task`, or `feature`. The API validates it.
+type = "TEXT NOT NULL DEFAULT 'task'"
+# The date the ticket is due. NULL: no due date.
+due_date = "DATE"
+# Normalized labels (lowercase, hyphens; see
+# `imbi.api.tickets.store.normalize_label`), in the order they were
+# added.
+labels = "TEXT[] NOT NULL DEFAULT '{}'"
+# The people in named roles on the ticket, as {role: email}. Role names
+# are normalized as labels are. Workflows read them and can hand the
+# ticket to the person in a role.
+roles = "JSONB NOT NULL DEFAULT '{}'"
+# The place of the ticket in the backlog: lower ranks first. NULL: not
+# ranked; unranked tickets follow the ranked ones.
+backlog_rank = "DOUBLE PRECISION"
 
 [tables.primary_key]
 columns = ["id"]

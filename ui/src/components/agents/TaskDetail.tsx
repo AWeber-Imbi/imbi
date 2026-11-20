@@ -19,9 +19,11 @@ import { ApiError } from '@/api/client'
 import {
   controlTicket,
   deleteTicket,
+  rankTicket,
   reassignTicket,
   retryTicket,
   setTicketPriority,
+  updateTicket,
 } from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -40,7 +42,7 @@ import { useHasPermission } from '@/hooks/useHasPermission'
 import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
-import type { Ticket, TicketEvent } from '@/types'
+import type { Ticket, TicketEvent, TicketUpdate } from '@/types'
 
 import {
   type ActivityView,
@@ -78,6 +80,18 @@ import { TaskSearchProvider } from './taskSearch'
 import { ChecksTab, Composer, InputRequiredTab } from './TaskTabs'
 import { ToolbarLead } from './TaskToolbar'
 import { TaskActivityCard, TaskUsageCard } from './TaskUsageCards'
+import {
+  DueDate,
+  LabelInput,
+  LabelLink,
+  roleErrors,
+  roleRows,
+  RolesEditor,
+  rolesOf,
+  TICKET_TYPES,
+  TypePicker,
+  usePeople,
+} from './ticketAttributes'
 import { TicketReopen } from './TicketReopen'
 import { buildTrajectory } from './trajectoryModel'
 import { TrajectoryTab } from './TrajectoryTab'
@@ -361,6 +375,12 @@ function OverviewTab({
     task.short_id,
     (to: Ticket['priority']) => setTicketPriority(orgSlug, task.short_id, to),
   )
+  const update = useTicketMutation(
+    orgSlug,
+    task.short_id,
+    (body: TicketUpdate) => updateTicket(orgSlug, task.short_id, body),
+  )
+  const editable = canManage && task.status !== 'closed'
   const todos = [...events].reverse().find((e) => e.type === 'todos.updated')
     ?.payload.todos as undefined | { done?: boolean; title?: string }[]
   const rows: { name: string; value: ReactNode }[] = [
@@ -387,6 +407,42 @@ function OverviewTab({
         ) : (
           priorityLabel(task.priority)
         ),
+    },
+    {
+      name: 'Type',
+      value: editable ? (
+        <TypePicker
+          disabled={update.isPending}
+          onChange={(type) => update.mutate({ type })}
+          value={task.type}
+        />
+      ) : (
+        TICKET_TYPES.find((t) => t.value === task.type)?.label
+      ),
+    },
+    {
+      name: 'Due',
+      value: editable ? (
+        <Input
+          aria-label="Due date"
+          className="h-8 w-40 text-sm"
+          defaultValue={task.due_date ?? ''}
+          disabled={update.isPending}
+          key={task.due_date}
+          // On blur, not on change: a date input changes on each typed
+          // digit of the year.
+          onBlur={(e) => {
+            const due = e.target.value || null
+            if (due !== (task.due_date ?? null))
+              update.mutate({ due_date: due })
+          }}
+          type="date"
+        />
+      ) : task.due_date ? (
+        <DueDate due={task.due_date} />
+      ) : (
+        '—'
+      ),
     },
     { name: 'Started', value: new Date(task.created_at).toLocaleString() },
   ]
@@ -443,7 +499,19 @@ function OverviewTab({
             </div>
           ))}
         </dl>
+        {update.error && (
+          <p className="text-danger mt-3 text-xs" role="alert">
+            {errorMessage(update.error)}
+          </p>
+        )}
       </Card>
+      <TicketPeopleAndLabels
+        editable={editable}
+        onUpdate={(body, onSuccess) => update.mutate(body, { onSuccess })}
+        orgSlug={orgSlug}
+        pending={update.isPending}
+        task={task}
+      />
       <Card className="overflow-hidden p-0">
         <div className="border-tertiary flex items-center justify-between border-b px-5 py-3">
           <h3 className="text-overline text-tertiary uppercase">Description</h3>
@@ -490,6 +558,9 @@ function OverviewTab({
     </div>
   )
 }
+
+/** The statuses of a ticket in the backlog (the Queued group). */
+const BACKLOG = new Set<Ticket['status']>(['held', 'open', 'queued'])
 
 /**
  * Pause or resume, cancel, and reassign. Hidden without
@@ -918,6 +989,133 @@ function TaskRetry({ orgSlug, task }: { orgSlug: string; task: Ticket }) {
         )}
       </PopoverContent>
     </Popover>
+  )
+}
+
+/**
+ * Labels (each opens the tickets with it), the people in roles, and
+ * the backlog place. Editable with `ticket:manage`.
+ */
+function TicketPeopleAndLabels({
+  editable,
+  onUpdate,
+  orgSlug,
+  pending,
+  task,
+}: {
+  editable: boolean
+  onUpdate: (body: TicketUpdate, onSuccess?: () => void) => void
+  orgSlug: string
+  pending: boolean
+  task: Ticket
+}) {
+  const { isError: peopleError, people } = usePeople(orgSlug)
+  const [roles, setRoles] = useState<null | ReturnType<typeof roleRows>>(null)
+  const top = useTicketMutation(orgSlug, task.short_id, () =>
+    rankTicket(orgSlug, task.short_id, null),
+  )
+  const roleList = Object.entries(task.roles)
+  return (
+    <Card className="flex flex-col gap-5 p-5">
+      <div className="flex flex-col gap-2">
+        <h3 className="text-overline text-tertiary uppercase">Labels</h3>
+        {editable ? (
+          <LabelInput
+            disabled={pending}
+            onChange={(labels) => onUpdate({ labels })}
+            orgSlug={orgSlug}
+            value={task.labels}
+          />
+        ) : null}
+        {task.labels.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {task.labels.map((l) => (
+              <LabelLink key={l} label={l} orgSlug={orgSlug} />
+            ))}
+          </div>
+        ) : (
+          !editable && <span className="text-tertiary text-sm">None</span>
+        )}
+      </div>
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <h3 className="text-overline text-tertiary uppercase">Roles</h3>
+          {editable && roles === null && (
+            <Button
+              className="ml-auto h-7 px-2 text-xs"
+              onClick={() => setRoles(roleRows(task.roles))}
+              size="sm"
+              variant="ghost"
+            >
+              Edit
+            </Button>
+          )}
+        </div>
+        {roles !== null ? (
+          <>
+            <RolesEditor
+              disabled={pending}
+              loadError={peopleError}
+              onChange={setRoles}
+              people={people}
+              rows={roles}
+            />
+            <div className="flex gap-2">
+              <Button
+                disabled={pending || roleErrors(roles).some((e) => !!e)}
+                // The rows stay until the save succeeds, to retry.
+                onClick={() =>
+                  onUpdate({ roles: rolesOf(roles) }, () => setRoles(null))
+                }
+                size="sm"
+              >
+                Save roles
+              </Button>
+              <Button
+                onClick={() => setRoles(null)}
+                size="sm"
+                variant="outline"
+              >
+                Cancel
+              </Button>
+            </div>
+          </>
+        ) : roleList.length ? (
+          <dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2">
+            {roleList.map(([role, email]) => (
+              <div className="contents" key={role}>
+                <dt className="text-secondary font-mono text-[13px]">{role}</dt>
+                <dd>
+                  <UserIdentity email={email} size="small" />
+                </dd>
+              </div>
+            ))}
+          </dl>
+        ) : (
+          <span className="text-tertiary text-sm">
+            None. Workflows can hand the ticket to the person in a role.
+          </span>
+        )}
+      </div>
+      {editable && BACKLOG.has(task.status) && (
+        <div className="flex items-center gap-2">
+          <h3 className="text-overline text-tertiary uppercase">Backlog</h3>
+          <span className="text-tertiary text-xs">
+            {task.backlog_rank == null ? 'Not ranked' : 'Ranked'}. Drag rows in
+            the Queued group to reorder.
+          </span>
+          <Button
+            className="ml-auto h-7 px-2 text-xs"
+            disabled={top.isPending}
+            onClick={() => top.mutate(undefined)}
+            size="sm"
+            variant="outline"
+          >
+            Move to top
+          </Button>
+        </div>
+      )}
+    </Card>
   )
 }
 

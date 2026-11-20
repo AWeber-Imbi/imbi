@@ -396,6 +396,15 @@ class TicketAttributes(pydantic.BaseModel):
     #: The slug of the agent.
     agent: str | None = None
     cost_usd: float | None = None
+    #: ``bug``, ``task``, or ``feature``.
+    type: str | None = None
+    #: ``low``, ``normal``, ``high``, or ``urgent``.
+    priority: str | None = None
+    #: The due date, as ``YYYY-MM-DD``.
+    due_date: str | None = None
+    labels: list[str] | None = None
+    #: The people in named roles, ``{role: email}``.
+    roles: dict[str, str] | None = None
 
 
 #: The sample values of :class:`TicketAttributes`.
@@ -405,6 +414,11 @@ SAMPLE_ATTRIBUTES: dict[str, typing.Any] = {
     'project': 'sample-project',
     'agent': 'sample-agent',
     'cost_usd': 0.25,
+    'type': 'task',
+    'priority': 'normal',
+    'due_date': '2026-01-31',
+    'labels': ['sample-label'],
+    'roles': {'reviewer': 'person@example.com'},
 }
 
 

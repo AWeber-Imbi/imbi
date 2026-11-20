@@ -27,8 +27,12 @@ export function systemText(e: TicketEvent): string {
       return `Dependency added: ${p.dependent_short_id} waits on ${p.prerequisite_short_id}`
     case 'dependency.removed':
       return `Dependency removed: ${p.dependent_short_id} no longer waits on ${p.prerequisite_short_id}`
+    case 'due_date.changed':
+      return p.to ? `Due ${p.to}` : 'Due date removed'
     case 'egress.destination_pending':
       return `Network access pending: ${String(p.slug ?? p.name ?? p.hostname ?? 'a destination')}`
+    case 'labels.changed':
+      return `Labels: ${listText(p.to as string[] | undefined)}`
     case 'outcome.set':
       return `Closed as ${statusLabel({ outcome: String(p.outcome), status: 'closed' }).toLowerCase()}${p.reason ? `: ${String(p.reason).replace(/_/g, ' ')}` : ''}`
     case 'owner.changed':
@@ -47,12 +51,18 @@ export function systemText(e: TicketEvent): string {
       return `Linked to project ${String(p.project_slug ?? p.project_id)}`
     case 'project.dissociated':
       return `Unlinked from project ${String(p.project_slug ?? p.project_id)}`
+    case 'rank.changed':
+      return p.after
+        ? `Moved in the backlog after ${p.after}`
+        : 'Moved to the top of the backlog'
     case 'reopened':
       return `Reopened${p.reason ? `: ${p.reason}` : ''}`
     case 'request.opened':
       return `Asked for ${p.kind === 'approval' ? 'approval' : 'input'}: ${p.title}`
     case 'request.resolved':
       return `${RESOLVED[p.status as TaskRequestView['status']] ?? p.status} by ${p.resolved_by ?? e.actor_id}`
+    case 'roles.changed':
+      return `Roles: ${listText(Object.entries(p.to ?? {}).map(([r, e]) => `${r} ${String(e)}`))}`
     case 'secret.resolution':
       return `Secret ${String(p.action ?? 'resolved')}: ${String(p.reference ?? p.purpose ?? '')}`
     case 'session.closed':
@@ -66,6 +76,8 @@ export function systemText(e: TicketEvent): string {
       return 'Ticket created'
     case 'todos.updated':
       return 'Plan updated'
+    case 'type.changed':
+      return `Type ${p.from} → ${p.to}`
     case 'usage.reported':
       return `Usage ${p.model_id}: ${formatTokens(Number(p.tokens_in ?? 0))} in, ${formatTokens(Number(p.tokens_out ?? 0))} out${p.cost != null ? `, $${Number(p.cost).toFixed(2)}` : ''}`
     default:
@@ -87,6 +99,10 @@ const ROUTINE = new Set([
   'session_closed',
   'session_opened',
 ])
+
+function listText(values: string[] | undefined): string {
+  return values?.length ? values.join(', ') : 'none'
+}
 
 function stateText(from: string, to: string, reason: unknown): string {
   const why =

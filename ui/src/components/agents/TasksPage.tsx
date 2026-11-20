@@ -15,7 +15,12 @@ import {
   useParams,
 } from 'react-router-dom'
 
-import { useQueryClient } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import {
   Bot,
   ChevronRight,
@@ -42,7 +47,11 @@ import {
 import { toast } from 'sonner'
 
 import { ApiError } from '@/api/client'
-import { getTicketPosition } from '@/api/endpoints'
+import {
+  getTicketPosition,
+  listTicketLabels,
+  rankTicket,
+} from '@/api/endpoints'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -79,8 +88,14 @@ import {
   TaskFilterBar,
 } from './TaskFilterBar'
 import { activeCount, ME, useTaskFilters } from './taskFilters'
-import { TASK_PAGE, useTicketCounts, useTicketGroupPages } from './taskQueries'
+import {
+  errorMessage,
+  TASK_PAGE,
+  useTicketCounts,
+  useTicketGroupPages,
+} from './taskQueries'
 import { SEARCH_MATCH, useMatchHighlight } from './taskSearch'
+import { DueDate, normalizeLabel, TypeIcon } from './ticketAttributes'
 import { useStoredState } from './useStoredState'
 import { useVirtualRows } from './virtualRows'
 
@@ -353,9 +368,11 @@ function TaskInbox({
   const queryClient = useQueryClient()
   useMatchHighlight(listRef, 'task-list-search')
   const canCreate = useHasPermission('ticket:create', orgSlug)
+  const canRank = useHasPermission('ticket:manage', orgSlug)
   const q = useDebouncedValue(text.trim(), 250) || undefined
   const params = {
     agent_id: nonEmpty(filters.agents),
+    label: nonEmpty(filters.labels),
     mine: filters.assignees.includes(ME),
     owner: nonEmpty(filters.assignees.filter((a) => a !== ME)),
     q,
@@ -460,6 +477,47 @@ function TaskInbox({
     () => new Map(agents.map((a) => [a.id, a])),
     [agents],
   )
+  // The filter menu asks for the labels that match what is typed, so
+  // a label past the most used ones can be found too.
+  const [labelText, setLabelText] = useState('')
+  const labelQ = useDebouncedValue(normalizeLabel(labelText), 150)
+  const { data: topLabels = [] } = useQuery({
+    placeholderData: keepPreviousData,
+    queryFn: ({ signal }) => listTicketLabels(orgSlug, labelQ, signal),
+    queryKey: queryKeys.ticketLabels(orgSlug, labelQ),
+    staleTime: 60_000,
+  })
+  const [dragging, setDragging] = useState<string>()
+  const rank = useMutation({
+    mutationFn: ({
+      after,
+      shortId,
+    }: {
+      after: null | string
+      shortId: string
+    }) => rankTicket(orgSlug, shortId, after),
+    onError: (err) => toast.error(`Could not move: ${errorMessage(err)}`),
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.tickets(orgSlug) }),
+  })
+  const taskAt = (group: InboxGroupId, index: number) =>
+    loaded.get(pageOf({ group, index }))?.[index % TASK_PAGE]
+  // A drop on the top half of a row goes before it; on the bottom
+  // half, after it.
+  const dropOn = (index: number, below: boolean) => {
+    const shortId = dragging
+    setDragging(undefined)
+    if (!shortId) return
+    const after = below
+      ? taskAt('queued', index)?.short_id
+      : index > 0
+        ? taskAt('queued', index - 1)?.short_id
+        : null
+    if (after === undefined || after === shortId) return
+    const target = taskAt('queued', index)?.short_id
+    if (target === shortId) return
+    rank.mutate({ after, shortId })
+  }
   const filtered = activeCount(filters) > 0
   const total = counts.data
     ? Object.values(counts.data).reduce((sum, n) => sum + n, 0)
@@ -578,8 +636,10 @@ function TaskInbox({
         }
         agents={agents}
         filters={filters}
+        labels={topLabels.map((l) => l.name)}
         me={user?.email}
         onChange={setFilters}
+        onLabelSearch={setLabelText}
         owners={owners}
         search={
           <div className="relative min-w-0 flex-1">
@@ -676,6 +736,16 @@ function TaskInbox({
                   <TaskRow
                     active={task.short_id.toUpperCase() === selectedId}
                     agent={agentsById.get(task.agent_id ?? '')}
+                    drag={
+                      canRank && row.group === 'queued'
+                        ? {
+                            dragging: dragging === task.short_id,
+                            onDragEnd: () => setDragging(undefined),
+                            onDragStart: () => setDragging(task.short_id),
+                            onDrop: (below) => dropOn(row.index, below),
+                          }
+                        : undefined
+                    }
                     group={row.group}
                     orgSlug={orgSlug}
                     task={task}
@@ -752,20 +822,62 @@ const GROUP_SAYS: Partial<Record<InboxGroupId, string>> = {
   running: 'Running',
 }
 
+/**
+ * Drag and drop of a backlog row (the Queued group) to set its rank.
+ * Without `ticket:manage` the rows do not move.
+ */
+interface RowDrag {
+  dragging: boolean
+  onDragEnd: () => void
+  onDragStart: () => void
+  /** `below`: the drop was on the bottom half of the row. */
+  onDrop: (below: boolean) => void
+}
+
 function TaskRow({
   active,
   agent,
+  drag,
   group,
   orgSlug,
   task,
 }: {
   active: boolean
   agent?: FilterAgent
+  drag?: RowDrag
   group: InboxGroupId
   orgSlug: string
   task: TicketListItem
 }) {
   const { search } = useLocation()
+  const [over, setOver] = useState<'above' | 'below'>()
+  const half = (e: React.DragEvent<HTMLElement>) => {
+    const box = e.currentTarget.getBoundingClientRect()
+    return e.clientY > box.top + box.height / 2 ? 'below' : 'above'
+  }
+  const dnd = drag && {
+    draggable: true,
+    onDragEnd: () => {
+      setOver(undefined)
+      drag.onDragEnd()
+    },
+    onDragLeave: () => setOver(undefined),
+    onDragOver: (e: React.DragEvent<HTMLElement>) => {
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'move'
+      setOver(half(e))
+    },
+    onDragStart: (e: React.DragEvent<HTMLElement>) => {
+      e.dataTransfer.effectAllowed = 'move'
+      e.dataTransfer.setData('text/plain', task.short_id)
+      drag.onDragStart()
+    },
+    onDrop: (e: React.DragEvent<HTMLElement>) => {
+      e.preventDefault()
+      setOver(undefined)
+      drag.onDrop(half(e) === 'below')
+    },
+  }
   const trigger = TRIGGERS[task.origin.kind]
   const TriggerIcon = trigger.icon
   const since =
@@ -789,8 +901,16 @@ function TaskRow({
       className={cn(
         'flex items-start gap-3 border-b border-tertiary px-4 py-3 transition-colors',
         active ? 'bg-secondary' : 'hover:bg-secondary',
+        drag && 'cursor-grab',
+        drag?.dragging && 'opacity-50',
+        over === 'above' &&
+          'shadow-[inset_0_2px_0_var(--border-color-amber-border)]',
+        over === 'below' &&
+          'shadow-[inset_0_-2px_0_var(--border-color-amber-border)]',
       )}
+      title={drag ? 'Drag to change the backlog order' : undefined}
       to={{ pathname: ticketsPath(orgSlug, task.short_id), search }}
+      {...dnd}
     >
       <span
         className="mt-px flex shrink-0"
@@ -838,7 +958,9 @@ function TaskRow({
               {label}
             </Badge>
           )}
+          <TypeIcon type={task.type} />
           <PriorityBadge priority={task.priority} />
+          <DueDate due={task.due_date} />
           {agentMatch && (
             <span className="text-secondary max-w-1/2 shrink-0 truncate">
               <Marked parts={agentMatch} text="" />
@@ -852,6 +974,13 @@ function TaskRow({
                 <Marked parts={p.parts} text={p.project_slug} />
               </Fragment>
             ))}
+            {task.labels.length > 0 && (
+              <span className="text-tertiary">
+                {projects.length > 0 && ' · '}
+                {task.labels.slice(0, 2).join(', ')}
+                {task.labels.length > 2 && ` +${task.labels.length - 2}`}
+              </span>
+            )}
           </span>
           <span className="flex shrink-0" title={trigger.label}>
             <TriggerIcon aria-hidden className="size-3" />
