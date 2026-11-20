@@ -22,6 +22,7 @@ import {
   replyTicket,
   type TicketListParams,
 } from '@/api/endpoints'
+import { useAuth } from '@/hooks/useAuth'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { queryKeys } from '@/lib/queryKeys'
 import type { Ticket, TicketEvent } from '@/types'
@@ -57,6 +58,20 @@ export function errorMessage(error: Error): string {
       return String(detail.message)
   }
   return error.message
+}
+
+/**
+ * Whether the caller may change who works the ticket (hand off, reopen):
+ * its owner, its assignee, or a holder of `ticket:manage`.
+ */
+export function useCanChangeTicket(orgSlug: string, task: Ticket): boolean {
+  const { user } = useAuth()
+  const canManage = useHasPermission('ticket:manage', orgSlug)
+  const email = user?.email?.toLowerCase()
+  const involved =
+    !!email &&
+    [task.owner, task.assignee].some((e) => e?.toLowerCase() === email)
+  return involved || canManage
 }
 
 /**

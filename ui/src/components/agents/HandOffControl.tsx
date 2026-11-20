@@ -15,13 +15,15 @@ import {
   SegmentedControlItem,
 } from '@/components/ui/segmented-control'
 import { Textarea } from '@/components/ui/textarea'
-import { useAuth } from '@/hooks/useAuth'
-import { useHasPermission } from '@/hooks/useHasPermission'
 import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import type { Ticket, TicketHandOff } from '@/types'
 
 import { useAgentList } from './agentQueries'
-import { errorMessage, useTicketMutation } from './taskQueries'
+import {
+  errorMessage,
+  useCanChangeTicket,
+  useTicketMutation,
+} from './taskQueries'
 
 /**
  * Hand a ticket to a person or an agent (ADR 0028). An agent ticket
@@ -36,8 +38,7 @@ export function HandOffControl({
   orgSlug: string
   task: Ticket
 }) {
-  const { user } = useAuth()
-  const canManage = useHasPermission('ticket:manage', orgSlug)
+  const allowed = useCanChangeTicket(orgSlug, task)
   const [open, setOpen] = useState(false)
   const [kind, setKind] = useState<'agent' | 'person'>('person')
   const [assignee, setAssignee] = useState('')
@@ -53,11 +54,7 @@ export function HandOffControl({
     task.short_id,
     (body: TicketHandOff) => handOffTicket(orgSlug, task.short_id, body),
   )
-  const email = user?.email?.toLowerCase()
-  const involved =
-    !!email &&
-    [task.owner, task.assignee].some((e) => e?.toLowerCase() === email)
-  if (task.status === 'closed' || !(involved || canManage)) return null
+  if (task.status === 'closed' || !allowed) return null
 
   const toAgent = isPerson && kind === 'agent'
   const agents = agentList.filter((a) => a.enabled)

@@ -2194,9 +2194,7 @@ async def hand_off_ticket(
 
     """
     task = await _get_task(store, org_id, short_id)
-    people = {task['owner'].lower(), (task['assignee'] or '').lower()}
-    if auth.user is None or auth.user.email.lower() not in people:
-        await _require_manage(auth)
+    await _require_party_or_manage(auth, task)
     if data.assignee_kind == 'agent' == task['assignee_kind']:
         raise _agent_ticket(short_id)
     if data.assignee_kind == 'person':
@@ -2227,6 +2225,16 @@ async def hand_off_ticket(
             f'A runner holds the chain of task {short_id!r}; hand it off '
             'when the runner lets it go',
         ) from e
+
+
+async def _require_party_or_manage(
+    auth: permissions.AuthContext, task: dict[str, typing.Any]
+) -> None:
+    """Pass the owner and the assignee of the ticket; other callers,
+    also a caller that is not a person, need ``ticket:manage``."""
+    people = {task['owner'].lower(), (task['assignee'] or '').lower()}
+    if auth.user is None or auth.user.email.lower() not in people:
+        await _require_manage(auth)
 
 
 async def _agent_for_owner(
@@ -2296,11 +2304,9 @@ async def reopen_ticket(
         422: The assignee is not in the org.
 
     """
-    user = auth.require_user
+    _ = auth.require_user  # Only a person reopens a ticket.
     task = await _get_task(store, org_id, short_id)
-    email = user.email.lower()
-    if email not in (task['owner'].lower(), (task['assignee'] or '').lower()):
-        await _require_manage(auth)
+    await _require_party_or_manage(auth, task)
     owner = task['owner']
     if data.assignee_kind == 'person':
         to = await person_assignee(db, org_slug, data.assignee)

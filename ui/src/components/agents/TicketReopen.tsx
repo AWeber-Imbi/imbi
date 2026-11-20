@@ -10,11 +10,13 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
-import { useAuth } from '@/hooks/useAuth'
-import { useHasPermission } from '@/hooks/useHasPermission'
 import type { Ticket } from '@/types'
 
-import { errorMessage, useTicketMutation } from './taskQueries'
+import {
+  errorMessage,
+  useCanChangeTicket,
+  useTicketMutation,
+} from './taskQueries'
 
 /**
  * Reopen a closed ticket with a reason (ADR 0028). The ticket keeps its
@@ -28,20 +30,13 @@ export function TicketReopen({
   orgSlug: string
   task: Ticket
 }) {
-  const { user } = useAuth()
-  const canManage = useHasPermission('ticket:manage', orgSlug)
+  const allowed = useCanChangeTicket(orgSlug, task)
   const [open, setOpen] = useState(false)
   const [reason, setReason] = useState('')
   const reopen = useTicketMutation(orgSlug, task.short_id, (text: string) =>
     reopenTicket(orgSlug, task.short_id, { reason: text }),
   )
-  if (task.status !== 'closed') return null
-  const email = user?.email?.toLowerCase()
-  const involved =
-    !!email &&
-    (email === task.owner?.toLowerCase() ||
-      email === task.assignee?.toLowerCase())
-  if (!(involved || canManage)) return null
+  if (task.status !== 'closed' || !allowed) return null
   return (
     <Popover onOpenChange={setOpen} open={open}>
       <PopoverTrigger asChild>
