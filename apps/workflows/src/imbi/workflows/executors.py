@@ -5,7 +5,7 @@ Each executor runs one call of one step and returns an
 rolls out) returns ``resume_at`` and its progress in ``state``; the
 engine calls it again with that state when the run is due.
 
-Deploy, rollback, email, and Slack go through imbi-api as the
+Deploy, release, rollback, email, and Slack go through imbi-api as the
 ``imbi-workflows`` service account, so the bounds of ADR 0017 apply to
 deployments, imbi-api sends email only to users and teams of the
 organization, and only imbi-api holds the Slack bot token. They send
@@ -42,7 +42,7 @@ import httpx
 import psycopg
 import pydantic
 
-from imbi.common import graph
+from imbi.common import graph, versioning
 from imbi.common.auth import encryption
 from imbi.common.llm import drivers, typesafe
 from imbi.common.workflows import graph as wf
@@ -54,6 +54,7 @@ from imbi.common.workflows.registry import (
     email,
     llm_call,
     model_decision,
+    release,
     rollback,
     script,
     slack,
@@ -75,6 +76,8 @@ _UNITS = {'s': 1, 'm': 60, 'h': 3600, 'd': 86400}
 
 #: Statuses of a deployment run that end it, and the port they take.
 _DEPLOYMENT_PORTS = {'success': 0, 'failure': 1, 'cancelled': 1}
+#: The same for the status of a ``Deployment`` node.
+_DEPLOYMENT_NODE_PORTS = {'success': 0, 'failed': 1, 'rolled_back': 1}
 
 HTTP_OK = 200
 HTTP_CLIENT_ERROR = 400
@@ -94,10 +97,13 @@ LLM_CALL_POLL_SECONDS = 15
 class StepError(Exception):
     """A step call failed. ``code`` is stored as the step's error."""
 
-    def __init__(self, code: str, *, retry: bool) -> None:
+    def __init__(
+        self, code: str, *, retry: bool, detail: typing.Any = None
+    ) -> None:
         super().__init__(code)
         self.code = code
         self.retry = retry
+        self.detail = detail
 
 
 @dataclasses.dataclass
@@ -211,8 +217,6 @@ class Api:
             )
         except httpx.HTTPError as e:
             raise StepError(type(e).__name__, retry=True) from e
-        if response.status_code == HTTP_FORBIDDEN:
-            raise StepError('forbidden', retry=False)
         if response.status_code >= HTTP_CLIENT_ERROR:
             try:
                 body: typing.Any = response.json()
@@ -224,15 +228,20 @@ class Api:
                 if isinstance(body, dict)
                 else None
             )
+            if response.status_code == HTTP_FORBIDDEN:
+                raise StepError('forbidden', retry=False, detail=detail)
             if isinstance(detail, dict):
                 found = typing.cast('dict[str, typing.Any]', detail)
                 if found.get('error'):
                     raise StepError(
-                        str(found['error']), retry=found.get('retry') is True
+                        str(found['error']),
+                        retry=found.get('retry') is True,
+                        detail=detail,
                     )
             raise StepError(
                 f'http_{response.status_code}',
                 retry=response.status_code >= HTTP_SERVER_ERROR,
+                detail=detail,
             )
         if not response.content:  # 204
             return {}
@@ -246,6 +255,31 @@ RETURN m.model_id AS model_id, m.enabled AS enabled,
        m.model_type AS model_type, p.driver AS driver,
        p.enabled AS provider_enabled, p.base_url AS base_url,
        p.credentials_encrypted AS credentials
+"""
+
+#: imbi-api records a release before its build; a failed build leaves
+#: it with an open ``build-failure`` blocker and no tag on the remote.
+_COMMIT_TAGS_QUERY: typing.LiteralString = """
+MATCH (:Project {{id: {project}}})-[:HAS_RELEASE]->(r:Release)
+WHERE COALESCE(r.tag, '') <> ''
+  AND (r.committish = {committish} OR r.promoted_committish = {committish})
+OPTIONAL MATCH (r)-[:BLOCKED_BY]->(b:Blocker)
+WHERE b.status = 'open' AND b.type = 'build-failure'
+RETURN r.tag AS tag, r.committish = {committish} AS exact,
+       count(b) AS failed
+"""
+
+_FAILED_BUILD_TAGS_QUERY: typing.LiteralString = """
+MATCH (:Project {{id: {project}}})-[:HAS_RELEASE]->(r:Release)
+      -[:BLOCKED_BY]->(b:Blocker)
+WHERE b.status = 'open' AND b.type = 'build-failure'
+  AND COALESCE(r.tag, '') <> ''
+RETURN DISTINCT r.tag AS tag
+"""
+
+_TAG_QUERY: typing.LiteralString = """
+MATCH (:Project {{id: {project}}})-[:HAS_RELEASE]->(r:Release {{tag: {tag}}})
+RETURN r.id AS id
 """
 
 _ORG_SLUG_QUERY: typing.LiteralString = """
@@ -303,6 +337,8 @@ class Executors:
                 return await self._deploy(call)
             case 'rollback':
                 return await self._rollback(call)
+            case 'release':
+                return await self._release(call)
             case 'agent':
                 return await self._agent(call)
             case 'llm_call':
@@ -717,9 +753,9 @@ class Executors:
             avoid = releases[0] if releases else None
         else:
             avoid = succeeded[0] if succeeded else None
-        for release in succeeded:
-            if release != avoid:
-                return release
+        for candidate in succeeded:
+            if candidate != avoid:
+                return candidate
         raise StepError('no_release_to_roll_back_to', retry=False)
 
     async def _deployment(
@@ -753,14 +789,15 @@ class Executors:
             run: dict[str, typing.Any] = started['run']
         else:
             run = await self.api.request('GET', base + _path('runs', run_id))
-        state = {'run_id': str(run['run_id']), 'version': version}
+        return self._run_outcome(run, {'version': version})
+
+    def _run_outcome(
+        self, run: dict[str, typing.Any], state: dict[str, typing.Any]
+    ) -> Outcome:
+        state = {**state, 'run_id': str(run['run_id'])}
         port = _DEPLOYMENT_PORTS.get(str(run.get('status')))
         if port is None:
-            return Outcome(
-                resume_at=_now()
-                + datetime.timedelta(seconds=self.config.deploy_poll_seconds),
-                state=state,
-            )
+            return Outcome(resume_at=self._poll_at(), state=state)
         return Outcome(
             output={
                 'deployment_id': str(run['run_id']),
@@ -769,6 +806,264 @@ class Executors:
             port=port,
             failed=port == 1,
         )
+
+    async def _release(self, call: Call) -> Outcome:
+        params = _params(release.Params, call)
+        _check('project_id', params.project_id, _ID)
+        _check('environment', params.environment, _ID)
+        _check('from_environment', params.from_environment, _ID)
+        _check('commit', params.commit, _REF)
+        _check('tag', params.tag or None, _REF)
+        base = await self._deployments_path(
+            call.organization_id, params.project_id
+        )
+        if 'tag' not in call.state:
+            try:
+                chosen = await self._choose(call, params, base)
+            except _Refused as e:
+                return _refused(e.reason)
+            # Kept before the promote: a retry sends the same release.
+            return Outcome(resume_at=_now(), state=chosen)
+        state = {k: call.state[k] for k in ('tag', 'notes', 'degraded', 'sha')}
+        if 'artifact_run_id' in call.state:
+            return await self._promote_status(
+                call, params, state, str(call.state['artifact_run_id'])
+            )
+        run_id = call.state.get('run_id')
+        if run_id is None:
+            return await self._promote(call, params, base, state)
+        run = await self.api.request('GET', base + _path('runs', run_id))
+        return _with_tag(self._run_outcome(run, state), state)
+
+    async def _promote(
+        self,
+        call: Call,
+        params: release.Params,
+        base: str,
+        state: dict[str, typing.Any],
+    ) -> Outcome:
+        try:
+            started = await self._refusable(
+                'POST',
+                base,
+                json={
+                    'action': 'promote',
+                    'from_environment': params.from_environment,
+                    'to_environment': params.environment,
+                    'from_committish': state['sha'],
+                    'tag': state['tag'],
+                    'release_notes_markdown': state['notes'],
+                },
+                headers={'Idempotency-Key': call.idempotency_key},
+            )
+        except _Refused as e:
+            return _tagged(state, '', 'refused', e.reason)
+        if started.get('phase') != 'building':
+            run: dict[str, typing.Any] = started['run']
+            if started.get('recorded') is False or not run.get('run_id'):
+                # imbi-api answers 202 when the deployment did not start,
+                # and says why in warning.
+                return _tagged(
+                    state,
+                    '',
+                    str(run.get('status')),
+                    started.get('warning') or 'deployment_not_reported',
+                )
+            return _with_tag(self._run_outcome(run, state), state)
+        # A Release workflow builds first; promote-status reports the rest.
+        artifact = str(started.get('artifact_run_id') or '')
+        if started.get('watched') is False:
+            # Nothing would move promote-status past building.
+            return _tagged(state, artifact, 'building', 'promote_not_watched')
+        return Outcome(
+            resume_at=self._poll_at(),
+            state={**state, 'artifact_run_id': artifact},
+        )
+
+    async def _promote_status(
+        self,
+        call: Call,
+        params: release.Params,
+        state: dict[str, typing.Any],
+        artifact: str,
+    ) -> Outcome:
+        base = await self._deployments_path(
+            call.organization_id, params.project_id
+        )
+        found = await self.api.request('GET', base + _path('promote-status'))
+        ours = (
+            found.get('artifact_run_id') == artifact
+            if artifact
+            else (found.get('tag'), found.get('environment'))
+            == (state['tag'], params.environment)
+        )
+        if not ours:
+            # One record per project, rewritten by each promote in flight.
+            return await self._tag_deployment(call, params, state, artifact)
+        status = str(found.get('status'))
+        if status in ('building', 'deploying'):
+            return Outcome(
+                resume_at=self._poll_at(),
+                state={**state, 'artifact_run_id': artifact},
+            )
+        if status == 'success':
+            return _tagged(state, artifact, status)
+        error = found.get('error')
+        return _tagged(
+            state, artifact, status, f'{status}: {error}' if error else status
+        )
+
+    async def _tag_deployment(
+        self,
+        call: Call,
+        params: release.Params,
+        state: dict[str, typing.Any],
+        artifact: str,
+    ) -> Outcome:
+        # The step cut the tag, so every deployment of it is this one.
+        deployed = [
+            d
+            for d in await self._deployments(call, params)
+            if d['tag'] == state['tag']
+        ]
+        status = str(deployed[0]['status']) if deployed else ''
+        port = _DEPLOYMENT_NODE_PORTS.get(status)
+        if port is not None:
+            return _tagged(
+                state,
+                artifact,
+                status,
+                f'deployment_{status}' if port else None,
+            )
+        if state['tag'] in await self._failed_build_tags(params):
+            return _tagged(state, artifact, 'build_failed', 'build_failed')
+        return Outcome(
+            resume_at=self._poll_at(),
+            state={**state, 'artifact_run_id': artifact},
+        )
+
+    def _poll_at(self) -> datetime.datetime:
+        return _now() + datetime.timedelta(
+            seconds=self.config.deploy_poll_seconds
+        )
+
+    async def _choose(
+        self, call: Call, params: release.Params, base: str
+    ) -> dict[str, typing.Any]:
+        commit = await self._refusable(
+            'GET', base + _path('commits', params.commit)
+        )
+        sha = str(commit['sha'])
+        existing = await self._commit_tag(params.project_id, sha)
+        if existing:
+            # A deploy step deploys an existing tag.
+            raise _Refused(f'commit_already_tagged: {existing}')
+        tag, notes = params.tag, params.release_notes
+        draft: dict[str, typing.Any] = {}
+        if not (tag and notes):
+            draft = await self._draft(call, params, base, sha)
+        tag = tag or str(draft['version'])
+        _check('tag', tag, _REF)
+        if await _values(
+            self.db,
+            _TAG_QUERY,
+            {'project': params.project_id, 'tag': tag},
+            ['id'],
+        ):
+            # Cutting it again would ship the code of the existing tag.
+            raise _Refused(f'tag_exists: {tag}')
+        return {
+            'tag': tag,
+            'notes': notes or str(draft.get('notes_markdown') or ''),
+            'degraded': draft.get('degraded') is True,
+            'sha': sha,
+        }
+
+    async def _draft(
+        self, call: Call, params: release.Params, base: str, sha: str
+    ) -> dict[str, typing.Any]:
+        drift = await self._refusable('GET', base + _path('release-drift'))
+        running = [
+            d
+            for d in await self._deployments(call, params)
+            if d['status'] == 'success'
+        ]
+        # As the promote card: from the newest tag, or the deployed one, or
+        # the history when there is none; the version also bumps past failed
+        # builds, whose tags are taken but never reached the remote.
+        bump_from = drift.get('latest_tag') or (
+            running[0]['tag'] if running else None
+        )
+        return await self._refusable(
+            'POST',
+            base + _path('draft-release-notes'),
+            json={
+                'base_sha': bump_from or '',
+                'head_sha': sha,
+                'last_tag': _newest(
+                    bump_from, *await self._failed_build_tags(params)
+                ),
+            },
+        )
+
+    async def _deployments(
+        self, call: Call, params: release.Params
+    ) -> list[dict[str, typing.Any]]:
+        found = await _values(
+            self.db,
+            _DEPLOYMENTS_QUERY,
+            {
+                'project': params.project_id,
+                'env': params.environment,
+                'org': call.organization_id,
+            },
+            ['tag', 'committish', 'status', 'at'],
+        )
+        return sorted(found, key=lambda d: str(d['at']), reverse=True)
+
+    async def _failed_build_tags(self, params: release.Params) -> list[str]:
+        found = await _values(
+            self.db,
+            _FAILED_BUILD_TAGS_QUERY,
+            {'project': params.project_id},
+            ['tag'],
+        )
+        return [str(f['tag']) for f in found]
+
+    async def _commit_tag(self, project_id: str, sha: str) -> str | None:
+        found = await _values(
+            self.db,
+            _COMMIT_TAGS_QUERY,
+            {
+                'project': project_id,
+                'committish': versioning.short_committish(sha),
+            },
+            ['tag', 'exact', 'failed'],
+        )
+        found = [f for f in found if not f['failed']]
+        exact = {str(f['tag']) for f in found if f['exact'] is True}
+        tags = sorted(exact or {str(f['tag']) for f in found})
+        if len(tags) > 1:
+            raise _Refused(f'commit_has_several_tags: {", ".join(tags)}')
+        return tags[0] if tags else None
+
+    async def _refusable(
+        self,
+        method: str,
+        path: str,
+        *,
+        json: dict[str, typing.Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, typing.Any]:
+        try:
+            return await self.api.request(
+                method, path, json=json, headers=headers
+            )
+        except StepError as e:
+            reason = _refusal(e)
+            if reason is None:
+                raise
+            raise _Refused(reason) from e
 
     async def _deployments_path(
         self, organization_id: str, project_id: str
@@ -785,6 +1080,84 @@ class Executors:
         if not found:
             raise StepError('organization_not_found', retry=False)
         return str(found[0]['slug'])
+
+
+def _tagged(
+    state: dict[str, typing.Any],
+    deployment_id: str,
+    status: str,
+    error: str | None = None,
+) -> Outcome:
+    return Outcome(
+        output=release.Output(
+            deployment_id=deployment_id,
+            status=status,
+            tag=state['tag'],
+            release_notes=state['notes'],
+            degraded=state['degraded'],
+            error=error,
+        ).model_dump(mode='json'),
+        port=0 if error is None else 1,
+        failed=error is not None,
+    )
+
+
+def _with_tag(outcome: Outcome, state: dict[str, typing.Any]) -> Outcome:
+    if outcome.output is None:
+        return outcome
+    status = str(outcome.output['status'])
+    return _tagged(
+        state,
+        str(outcome.output['deployment_id']),
+        status,
+        f'deployment_{status}' if outcome.failed else None,
+    )
+
+
+def _newest(*tags: typing.Any) -> str | None:
+    named = [str(t) for t in tags if t]
+    ranked = [
+        (key, t)
+        for t in named
+        if (key := versioning.release_version_key(t)) is not None
+    ]
+    if ranked:
+        return max(ranked)[1]
+    return named[0] if named else None
+
+
+class _Refused(Exception):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+_REFUSALS = frozenset({'http_400', 'http_404', 'http_409'})
+
+
+def _refusal(error: StepError) -> str | None:
+    """Return why imbi-api refused a promote, or ``None``.
+
+    imbi-api gives the reason as text (an open blocker, a failing CI, an
+    environment it cannot promote to), or as the code of a ``403``. A
+    detail with an error code, such as ``outcome_unknown``, is not one.
+    """
+    detail = error.detail
+    if error.code in _REFUSALS and isinstance(detail, str):
+        return detail
+    if error.code == 'forbidden' and isinstance(detail, dict):
+        found = typing.cast('dict[str, typing.Any]', detail)
+        if found.get('error'):
+            message = found.get('message')
+            code = str(found['error'])
+            return f'{code}: {message}' if message else code
+    return None
+
+
+def _refused(error: str) -> Outcome:
+    return _tagged(
+        {'tag': None, 'notes': '', 'degraded': False}, '', 'refused', error
+    )
 
 
 def _check(name: str, value: str | None, pattern: re.Pattern[str]) -> None:

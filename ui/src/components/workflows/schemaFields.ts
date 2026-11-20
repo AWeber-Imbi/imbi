@@ -44,6 +44,7 @@ interface FieldBase {
 const SOURCES: Record<string, FieldSource> = {
   agent_id: 'agent',
   environment: 'environment',
+  from_environment: 'environment',
   model_id: 'model',
   project_id: 'project',
   webhook_id: 'webhook',
@@ -55,6 +56,7 @@ const MULTILINE = new Set([
   'filter',
   'instruction',
   'prompt',
+  'release_notes',
   'text',
 ])
 const MONO = new Set(['filter'])

@@ -12,6 +12,7 @@ from imbi.common.workflows.registry import (
     llm_call,
     manual,
     model_decision,
+    release,
     rollback,
     schedule,
     script,
@@ -37,6 +38,7 @@ STEP_TYPES: dict[str, StepType] = {
         email,
         slack,
         deploy,
+        release,
         rollback,
         agent,
     )

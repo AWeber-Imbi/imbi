@@ -12,6 +12,7 @@ import {
   Sparkles,
   Split,
   SquareFunction,
+  Tag,
   Timer,
   Webhook,
 } from 'lucide-react'
@@ -26,6 +27,7 @@ const ICONS: Record<string, LucideIcon> = {
   llm_call: BrainCircuit,
   manual: Play,
   model_decision: Sparkles,
+  release: Tag,
   rollback: RotateCcw,
   schedule: Clock,
   script: Code,

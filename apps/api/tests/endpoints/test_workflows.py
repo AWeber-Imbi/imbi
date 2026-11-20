@@ -424,14 +424,23 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
         ]
 
     async def test_project_must_be_in_org(self) -> None:
-        params = {'environment': 'staging', 'version': '1'}
+        deployed = {'environment': 'staging', 'version': '1'}
+        released = {
+            'from_environment': 'testing',
+            'environment': 'staging',
+            'commit': 'abc1234',
+        }
         for project, expected in (
             (self.project, 0),
             ('{{ trigger.project }}', 0),
             (self.foreign['project'], 1),
             ('missing', 1),
         ):
-            for step in ('deploy', 'rollback'):
+            for step, params in (
+                ('deploy', deployed),
+                ('rollback', deployed),
+                ('release', released),
+            ):
                 issues = await self._resource_issues(
                     step, {**params, 'project_id': project}
                 )

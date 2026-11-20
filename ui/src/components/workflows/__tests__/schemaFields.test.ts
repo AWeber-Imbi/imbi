@@ -156,6 +156,24 @@ describe('paramFields', () => {
   })
 })
 
+describe('paramFields for the release step', () => {
+  it('picks both environments and takes the notes as markdown', () => {
+    const fields = paramFields({
+      properties: {
+        environment: { type: 'string' },
+        from_environment: { type: 'string' },
+        release_notes: { default: '', type: 'string' },
+      },
+      type: 'object',
+    })
+    expect(fields.map((f) => [f.name, f.kind])).toEqual([
+      ['environment', 'source'],
+      ['from_environment', 'source'],
+      ['release_notes', 'multiline'],
+    ])
+  })
+})
+
 describe('paramFields for the agent step', () => {
   it('picks the agent from live data and takes a long instruction', () => {
     const fields = paramFields({
