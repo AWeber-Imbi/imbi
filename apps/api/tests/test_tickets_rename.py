@@ -498,6 +498,21 @@ class RenameTestCase(DatabaseTestCase):
             await cursor.fetchall(), [{'task_id': ROOT, 'ticket_id': ROOT}]
         )
 
+    async def test_moves_an_install_without_every_table(self) -> None:
+        await _old_install()
+        conn = await self._connect()
+        await self._write_as_release_a_minus_1(conn)
+        await conn.execute('DROP TABLE agent_runtime.trigger_outbox')
+        await tickets.initialize()
+        cursor = await conn.execute(
+            'SELECT count(*) AS n FROM tickets.tickets'
+        )
+        self.assertEqual(await cursor.fetchone(), {'n': OLD_TABLES['tasks']})
+        cursor = await conn.execute(
+            "SELECT to_regclass('tickets.trigger_outbox') IS NOT NULL AS ok"
+        )
+        self.assertEqual(await cursor.fetchone(), {'ok': True})
+
     async def test_migrated_install_matches_a_new_install(self) -> None:
         migrated = await self._catalog(await self._migrated())
         await self._use_database()

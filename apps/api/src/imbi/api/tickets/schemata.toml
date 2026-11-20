@@ -46,6 +46,10 @@ DECLARE
   item record;
   columns text;
 BEGIN
+  -- An install older than a table (a dev database of October 2026 has
+  -- no trigger_outbox) moves what it has; the table walk makes the rest.
+  SELECT array_agg(t) INTO old_tables FROM unnest(old_tables) AS t
+   WHERE to_regclass(format('agent_runtime.%I', t)) IS NOT NULL;
   FOREACH old_name IN ARRAY old_tables LOOP
     new_name := replace(old_name, 'task', 'ticket');
     EXECUTE format(
