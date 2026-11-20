@@ -669,6 +669,12 @@ MATCH (a:Agent {{slug: {slug}}})
 RETURN a
 """
 
+_AGENT_BY_ID_QUERY: typing.LiteralString = """
+MATCH (a:Agent {{id: {slug}}})
+      -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+RETURN a
+"""
+
 _AGENT_SLUG_QUERY: typing.LiteralString = """
 MATCH (a:Agent {{id: {id}}})
       -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
@@ -767,11 +773,16 @@ OrgId = organizations.MemberOrgId
 
 
 async def _fetch_agent(
-    db: graph.Graph, org_slug: str, slug: str
+    db: graph.Graph, org_slug: str, slug: str, *, by_id: bool = False
 ) -> dict[str, typing.Any]:
-    """Return the properties of an agent in the org, or raise 422."""
+    """Return the properties of an agent in the org, or raise 422.
+
+    With ``by_id``, ``slug`` is the id of the agent.
+    """
     records = await db.execute(
-        _AGENT_QUERY, {'slug': slug, 'org_slug': org_slug}, ['a']
+        _AGENT_BY_ID_QUERY if by_id else _AGENT_QUERY,
+        {'slug': slug, 'org_slug': org_slug},
+        ['a'],
     )
     props: typing.Any = (
         graph.parse_agtype(records[0]['a']) if records else None
@@ -1396,10 +1407,12 @@ async def agent_assignee(
     org_slug: str,
     slug: str,
     budget: decimal.Decimal | None = None,
+    *,
+    by_id: bool = False,
 ) -> tickets.HandOff:
     """Return an agent as an assignee: its service account, the agent
     and prompt versions that it has now, and the budget (see
-    :func:`task_budget`).
+    :func:`task_budget`). With ``by_id``, ``slug`` is the agent id.
 
     Raises:
         409: The agent is disabled.
@@ -1407,7 +1420,7 @@ async def agent_assignee(
             agent's task budget.
 
     """
-    agent = await _fetch_agent(db, org_slug, slug)
+    agent = await _fetch_agent(db, org_slug, slug, by_id=by_id)
     if not agent.get('enabled', True):
         raise fastapi.HTTPException(
             status_code=409, detail=f'Agent {slug!r} is disabled'
@@ -2222,6 +2235,8 @@ async def _agent_for_owner(
     owner: str,
     auth: permissions.AuthContext,
     slug: str,
+    *,
+    by_id: bool = False,
 ) -> tickets.HandOff:
     """Return the agent ``slug`` as the assignee of a ticket of
     ``owner``. As for a create, the caller needs ``ticket:create``, and
@@ -2242,7 +2257,7 @@ async def _agent_for_owner(
             f'{owner!r} cannot make agent tickets in organization '
             f'{org_slug!r}.',
         )
-    return await agent_assignee(db, org_slug, slug)
+    return await agent_assignee(db, org_slug, slug, by_id=by_id)
 
 
 @tickets_router.post('/{short_id}/reopen', response_model=AgentTaskResponse)
@@ -2286,21 +2301,19 @@ async def reopen_ticket(
     email = user.email.lower()
     if email not in (task['owner'].lower(), (task['assignee'] or '').lower()):
         await _require_manage(auth)
-    to: tickets.HandOff | None = None
+    owner = task['owner']
     if data.assignee_kind == 'person':
         to = await person_assignee(db, org_slug, data.assignee)
-    elif data.assignee_kind == 'agent' or task['assignee_kind'] == 'agent':
-        slug = data.agent_slug
-        if slug is None:
-            records = await db.execute(
-                _AGENT_SLUG_QUERY,
-                {'id': task['agent_id'], 'org_slug': org_slug},
-                ['slug'],
-            )
-            if not records:
-                raise _unprocessable('The agent of the task is not in the org')
-            slug = str(graph.parse_agtype(records[0]['slug']))
-        to = await _agent_for_owner(db, org_slug, task['owner'], auth, slug)
+    elif data.assignee_kind == 'agent':
+        slug = data.agent_slug or ''
+        to = await _agent_for_owner(db, org_slug, owner, auth, slug)
+    elif task['assignee_kind'] == 'agent':
+        # The agent of the ticket, at what it has now.
+        to = await _agent_for_owner(
+            db, org_slug, owner, auth, task['agent_id'], by_id=True
+        )
+    else:
+        to = tickets.HandOff('person', assignee=task['assignee'])
     try:
         return await store.reopen(
             org_id, task['short_id'], data.reason, _actor(auth), to

@@ -11,6 +11,7 @@ from apps.api.tests.endpoints import (
     test_person_tickets,
 )
 from imbi.api import secret_broker, tickets
+from imbi.api.endpoints import harness as harness_api
 from imbi.api.tickets import store as task_store
 from imbi.api.tickets import sweeper
 
@@ -433,6 +434,12 @@ class ArchivedReopenTests(
                 ('reopened', 'Not fixed'),
                 ('turn', 'Try again'),
             ],
+        )
+
+        entry = harness_api._event_entry(turns[1], webhook=False)
+        self.assertEqual(
+            (entry.kind, entry.text),
+            ('reopen', 'was cancelled_by_human\nReason: Not fixed'),
         )
 
         # It closes and archives again; the log stays one log.

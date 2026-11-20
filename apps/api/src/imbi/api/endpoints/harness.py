@@ -317,7 +317,7 @@ class HistoryEntry(pydantic.BaseModel):
     """One part of the history of a ticket."""
 
     kind: typing.Literal[
-        'comment', 'request', 'handoff', 'child', 'prerequisite'
+        'comment', 'request', 'handoff', 'reopen', 'child', 'prerequisite'
     ]
     at: datetime.datetime
     #: Who wrote a comment, resolved a request, or handed off.
@@ -1770,31 +1770,37 @@ def _side(side: dict[str, typing.Any]) -> str:
 
 
 def _event_entry(event: dict[str, typing.Any], webhook: bool) -> HistoryEntry:
-    """A human comment, a reopen with its reason (as a comment), or a
-    handoff with its note.
+    """A human comment, a handoff with its note, or a reopen with the
+    outcome before it and its reason.
 
     An agent can quote the text of a webhook ticket in the note of its
     handoff, so the handoff of a webhook ticket is untrusted.
     """
     payload: dict[str, typing.Any] = event['payload']
-    if event['type'] in ('turn', 'reopened'):
-        text = payload.get('body') or ''
-        if event['type'] == 'reopened':
-            text = f'Reopened (was {payload["outcome"]}): {payload["reason"]}'
+    if event['type'] == 'turn':
         return HistoryEntry(
-            kind='comment', at=event['at'], actor=event['actor_id'], text=text
+            kind='comment',
+            at=event['at'],
+            actor=event['actor_id'],
+            text=payload.get('body') or '',
         )
-    text = (
-        f'from {_side(payload.get("from") or {})}'
-        f' to {_side(payload.get("to") or {})}'
+    reopen = event['type'] == 'reopened'
+    sides: dict[str, typing.Any] = (
+        payload.get('assignee') or {} if reopen else payload
     )
-    if payload.get('note'):
-        text += f'\nNote: {payload["note"]}'
+    lines = [f'was {payload["outcome"]}'] if reopen else []
+    if sides:
+        lines.append(
+            f'from {_side(sides.get("from") or {})}'
+            f' to {_side(sides.get("to") or {})}'
+        )
+    if text := payload.get('reason' if reopen else 'note'):
+        lines.append(f'{"Reason" if reopen else "Note"}: {text}')
     return HistoryEntry(
-        kind='handoff',
+        kind='reopen' if reopen else 'handoff',
         at=event['at'],
         actor=event['actor_id'],
-        text=text,
+        text='\n'.join(lines),
         webhook=webhook,
     )
 

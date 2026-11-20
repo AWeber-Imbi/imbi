@@ -684,11 +684,13 @@ async def close_agent_task_session(
 async def hand_off_agent_task_session(
     org_slug: str,
     org_id: harness_auth.HarnessOrgId,
-    task: HarnessTask,
+    short_id: str,
     session_id: uuid.UUID,
     data: HandOffSet,
     db: graph.Pool,
     store: tickets.Store,
+    runners: harness.Store,
+    caller: harness_auth.Caller,
 ) -> TaskState:
     """Hand the task of the session to a person, and end the session
     (ADR 0028).
@@ -699,6 +701,10 @@ async def hand_off_agent_task_session(
     keeps the chain; the ticket is not claimed again until it goes back
     to an agent.
 
+    A repeat with the agent token of the chain, after the handoff of the
+    session committed, returns the state of the ticket: the harness
+    repeats a call whose response it lost.
+
     Raises:
         403: The caller is not the service account of the task's agent.
         404: No such task or session.
@@ -706,6 +712,19 @@ async def hand_off_agent_task_session(
         422: The person is not in the org.
 
     """
+    try:
+        task = await _harness_task(org_id, short_id, store, runners, caller)
+    except fastapi.HTTPException:
+        done = await store.handed_off(org_id, short_id.upper(), session_id)
+        if (
+            done is None
+            or caller.grant is None
+            or caller.grant.chain_id != (done['chain_id'] or done['id'])
+            or done['assignee'].lower()
+            != (data.assignee or done['owner']).lower()
+        ):
+            raise
+        return task_state(done)
     person = await tasks_api.person_assignee(
         db, org_slug, data.assignee or task['owner']
     )

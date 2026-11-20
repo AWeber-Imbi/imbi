@@ -6207,6 +6207,10 @@ export interface paths {
          *     keeps the chain; the ticket is not claimed again until it goes back
          *     to an agent.
          *
+         *     A repeat with the agent token of the chain, after the handoff of the
+         *     session committed, returns the state of the ticket: the harness
+         *     repeats a call whose response it lost.
+         *
          *     Raises:
          *         403: The caller is not the service account of the task's agent.
          *         404: No such task or session.
@@ -15326,7 +15330,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "comment" | "request" | "handoff" | "child" | "prerequisite";
+            kind: "comment" | "request" | "handoff" | "reopen" | "child" | "prerequisite";
             /**
              * At
              * Format: date-time
@@ -33434,8 +33438,8 @@ export interface operations {
             header?: never;
             path: {
                 org_slug: string;
-                session_id: string;
                 short_id: string;
+                session_id: string;
             };
             cookie?: never;
         };

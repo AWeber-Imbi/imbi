@@ -456,9 +456,30 @@ class HarnessHandOffTests(test_harness.RunnerTestCase):
         handed = next(e for e in session if e['type'] == 'handed_off')
         self.assertEqual(handed['actor_kind'], 'agent')
         self.assertEqual(handed['payload']['note'], 'Merge the PR; I cannot.')
-        # The ticket left the agent: its token no longer works on it.
+        # A repeat after a lost response gets the state again.
         response = await self.agent_hand_off()
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['status'], 'open')
+        # To another person, it is not the same handoff.
+        response = await self.agent_hand_off(assignee=self.member)
         self.assertEqual(response.status_code, 403, response.text)
+        # The ticket left the agent: its token no longer works on it.
+        response = await self.as_agent(self.token, 'GET', 'T-1/events')
+        self.assertIn(response.status_code, (403, 404), response.text)
+
+    async def test_session_closed_by_a_cancel_is_not_handed_off(self) -> None:
+        response = await self.as_user('POST', 'T-1/cancel')
+        self.assertEqual(response.status_code, 200, response.text)
+        response = await self.as_agent(
+            self.token,
+            'POST',
+            f'T-1/sessions/{self.session_id}/close',
+            {'reason': 'cancelled'},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        response = await self.agent_hand_off()
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual((await self.task_row())['assignee_kind'], 'agent')
 
     async def test_history_has_the_handoff(self) -> None:
         response = await self.agent_hand_off(assignee=self.member)

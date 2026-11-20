@@ -2226,7 +2226,7 @@ class TicketStore:
                     (
                         timeout_seconds,
                         write.task['id'],
-                        write.task['handed_off_at'],
+                        write.task['period_started_at'],
                     ),
                 )
                 row = await cursor.fetchone()
@@ -2816,19 +2816,20 @@ class TicketStore:
         short_id: str,
         reason: str,
         actor: Actor,
-        to: HandOff | None = None,
+        to: HandOff,
     ) -> Row:
         """Reopen a closed ticket (ADR 0028).
 
         Clear the outcome and ``closed_at``, write ``reopened`` with the
         old outcome and ``reason``, and ``state.changed``. ``to`` is the
-        assignee of either kind, as in a handoff: an agent at the
-        version that it has now, whose task budget caps the budget of
-        the ticket. ``None`` keeps a person assignee. A person ticket
+        assignee of either kind, also when it does not change, as in a
+        handoff: an agent at the version and the platform configuration
+        that it has now, whose task budget caps the budget of the
+        ticket. A person ticket
         returns to ``open``, an agent ticket to ``queued``, or to
         ``held`` when a gating prerequisite holds it. The reopen starts
         a new agent period, as a handoff does: the task timeout counts
-        from the first session after it (``handed_off_at``).
+        from the first session after it (``period_started_at``).
 
         The ticket starts a new chain (``chain_id`` is its id), so a
         reopened child can be claimed. When it is an agent ticket and
@@ -2868,25 +2869,22 @@ class TicketStore:
                 'acknowledged_by': None,
                 'chain_id': task['id'],
                 'close_id': uuid.uuid4(),
-                'handed_off_at': datetime.datetime.now(datetime.UTC),
+                'period_started_at': datetime.datetime.now(datetime.UTC),
+                **await _assignee_columns(write.conn, task, to),
             }
-            if to is not None:
-                changes |= await _assignee_columns(write.conn, task, to)
             payload: Row = {
                 'outcome': task['outcome'],
                 'outcome_reason': task['outcome_reason'],
                 'reason': reason,
             }
-            if to is not None:
-                payload['assignee'] = {
-                    'from': _assignee_of(task),
-                    'to': _assignee_of({**task, **changes}),
-                }
+            before, after = _assignee_of(task), _assignee_of(changes)
+            if before != after:
+                payload['assignee'] = {'from': before, 'to': after}
             if task['log_archived_at'] is not None:
                 changes['log_archived_at'] = None
                 changes['archived_seq'] = task['last_seq']
-            agent = changes.get('assignee_kind', task['assignee_kind'])
-            status: Status = 'queued' if agent == 'agent' else 'open'
+            agent = to.assignee_kind == 'agent'
+            status: Status = 'queued' if agent else 'open'
             await write.event('reopened', payload, actor)
             await write.event(
                 'state.changed',
@@ -2894,16 +2892,27 @@ class TicketStore:
                 actor,
             )
             await write.update({**changes, 'status': status})
-            if agent == 'agent':
-                await write.conn.execute(
-                    "UPDATE harness.chains SET state = 'queued',"
-                    ' attempt = attempt + 1, runner_id = NULL,'
-                    ' updated_at = NOW() WHERE root_ticket_id = %s'
-                    " AND state = 'done'",
-                    (task['id'],),
-                )
+            if agent:
+                await _queue_done_chain(write.conn, task['id'])
             await _sync_gate(write, actor)
         return write.task
+
+    async def handed_off(
+        self, organization_id: str, short_id: str, session_id: uuid.UUID
+    ) -> Row | None:
+        """Return the ticket when the session handed it to a person (the
+        session closed with the reason ``handed_off``) and it is still a
+        person ticket; else ``None``."""
+        async with self._pool.connection() as conn:
+            return await _fetch_one(
+                conn,
+                _SELECT_TASKS + ' JOIN tickets.sessions AS s'
+                ' ON s.ticket_id = t.id AND s.id = %s'
+                " AND s.close_reason = 'handed_off'"
+                ' WHERE t.organization_id = %s AND t.short_id = %s'
+                " AND t.assignee_kind = 'person'",
+                (session_id, organization_id, short_id),
+            )
 
     async def hand_off(
         self,
@@ -2958,12 +2967,12 @@ class TicketStore:
             if session_id is not None:
                 await _open_session(write.conn, task['id'], session_id)
                 await _close_sessions(write, 'handed_off', actor)
-            elif task['assignee_kind'] == to.assignee_kind == 'person':
-                pass  # No agent works the ticket; a chain cannot change.
-            elif await _session_open(write.conn, task['id']):
-                raise SessionOpen(short_id)
-            elif await _chain_state(write.conn, task) in PINNED_CHAIN_STATES:
-                raise ChainPinned(short_id)
+            elif 'agent' in (task['assignee_kind'], to.assignee_kind):
+                # Only a change that involves an agent waits for it.
+                if await _session_open(write.conn, task['id']):
+                    raise SessionOpen(short_id)
+                if await _chain_state(write.conn, task) in PINNED_CHAIN_STATES:
+                    raise ChainPinned(short_id)
             if to.assignee_kind == task['assignee_kind']:
                 if to.assignee != task['assignee']:
                     await write.event(
@@ -3301,6 +3310,17 @@ async def _assignee_columns(conn: Conn, task: Row, to: HandOff) -> Row:
     return columns
 
 
+async def _queue_done_chain(conn: Conn, chain_id: uuid.UUID) -> None:
+    """Put a ``done`` chain back in the queue with a new attempt, so
+    that a runner claims its ticket again."""
+    await conn.execute(
+        "UPDATE harness.chains SET state = 'queued',"
+        ' attempt = attempt + 1, runner_id = NULL, updated_at = NOW()'
+        " WHERE root_ticket_id = %s AND state = 'done'",
+        (chain_id,),
+    )
+
+
 async def _hand_off(write: _Write, to: HandOff, actor: Actor) -> None:
     """Change the assignee kind; see :meth:`TicketStore.hand_off`."""
     task = write.task
@@ -3341,16 +3361,11 @@ async def _hand_off(write: _Write, to: HandOff, actor: Actor) -> None:
     changes: Row = {
         'status': status,
         'control': 'run',
-        'handed_off_at': datetime.datetime.now(datetime.UTC),
+        'period_started_at': datetime.datetime.now(datetime.UTC),
         **await _assignee_columns(write.conn, task, to),
     }
     if to.assignee_kind == 'agent':
-        await write.conn.execute(
-            "UPDATE harness.chains SET state = 'queued',"
-            ' attempt = attempt + 1, updated_at = NOW()'
-            " WHERE root_ticket_id = %s AND state = 'done'",
-            (task['chain_id'] or task['id'],),
-        )
+        await _queue_done_chain(write.conn, task['chain_id'] or task['id'])
     await write.update(changes)
 
 
@@ -3508,8 +3523,10 @@ async def _lock_task(
     )
     if task is None:
         raise TaskNotFound(short_id)
-    if (task['status'] == 'closed') != closed:
-        raise (TaskOpen if closed else TaskClosed)(short_id)
+    if closed and task['status'] != 'closed':
+        raise TaskOpen(short_id)
+    if not closed and task['status'] == 'closed':
+        raise TaskClosed(short_id)
     return task
 
 

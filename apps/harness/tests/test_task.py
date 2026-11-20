@@ -1709,23 +1709,31 @@ class RunTestCase(TaskTestCase):
         )
 
     async def test_hand_off_that_committed_ends_the_run(self) -> None:
-        # A repeat after a lost response finds the handoff done.
-        for refusal in (
-            api.Refused(409, 'session_closed'),
-            api.Refused(403, 'agent_task_forbidden'),
-        ):
-            lost = mock.AsyncMock(
-                side_effect=[httpx.ReadTimeout('lost'), refusal]
-            )
-            with (
-                self.subTest(refusal.code),
-                mock.patch.object(self.run_task.api, 'hand_off', lost),
-            ):
-                self.run_task.closed = False
-                result = await self.run_task.hand_off({'note': 'Merge it.'})
-                self.assertNotIn('is_error', result)
-                self.assertTrue(self.run_task.handed_off)
-                self.assertTrue(self.run_task.closed)
+        # The response was lost; imbi-api answers the repeat with the
+        # state of the ticket.
+        sent = mock.AsyncMock(
+            side_effect=[
+                httpx.ReadTimeout('lost'),
+                {'status': 'open', 'control': 'run', 'last_seq': 9},
+            ]
+        )
+        with mock.patch.object(self.run_task.api, 'hand_off', sent):
+            result = await self.run_task.hand_off({'note': 'Merge it.'})
+        self.assertNotIn('is_error', result)
+        self.assertTrue(self.run_task.handed_off)
+        self.assertTrue(self.run_task.closed)
+
+    async def test_closed_session_is_not_a_hand_off(self) -> None:
+        # A cancel or a pause closed the session first.
+        refused = mock.AsyncMock(
+            side_effect=api.Refused(409, 'session_closed')
+        )
+        with mock.patch.object(self.run_task.api, 'hand_off', refused):
+            result = await self.run_task.hand_off({'note': 'Merge it.'})
+        self.assertTrue(result['is_error'])
+        self.assertEqual(refused.await_count, 1)
+        self.assertFalse(self.run_task.handed_off)
+        self.assertFalse(self.run_task.closed)
 
     async def test_hand_off_retries_once_after_a_lost_response(self) -> None:
         calls: list[str] = []

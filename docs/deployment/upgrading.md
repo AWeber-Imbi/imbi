@@ -81,7 +81,7 @@ Set the version of this section when the release is cut.
 1. **Before you deploy**, deploy 2.57.0 everywhere and let its rollout
    finish.
 2. Deploy the new image. There is no setup command. At start, imbi-api:
-    - adds the column `tickets.tickets.handed_off_at` and two indexes for
+    - adds the column `tickets.tickets.period_started_at` and two indexes for
       Waiting on me, `tickets_owner_open_idx` and
       `tickets_assignee_open_idx`. The index build stops writes to
       `tickets.tickets` while it runs. A 2.57.0 pod does not use or drop
