@@ -307,25 +307,28 @@ END
 $step$;
 '''
 
-# Before `ticket_state_changed`, the outbox had one row per closed
-# ticket, keyed by `ticket_id`. A ticket now has one row per change, so
-# the key moves to the new `id` column, which the table walk added with
-# a value on each old row.
+# Before `ticket_state_changed`, the outbox had one row per close,
+# keyed by `(ticket_id, close_id)` (2.58.0). A ticket now has one row
+# per change, so the key moves to `(ticket_id, id)`. The table walk
+# added `id` with a value on each old row. The key has two columns
+# because the `trigger-outbox-close-id-key` step of a 2.58.0 pod that
+# restarts during the rollout runs when the key does not, and would
+# put the old key back.
 [[steps]]
 name = "trigger-outbox-row-per-change"
 after_tables = true
 when = """
-SELECT EXISTS (
+SELECT NOT EXISTS (
          SELECT 1 FROM pg_constraint AS c
            JOIN pg_attribute AS a
              ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
           WHERE c.conrelid = 'tickets.trigger_outbox'::regclass
-            AND c.contype = 'p' AND a.attname = 'ticket_id')
+            AND c.contype = 'p' AND a.attname = 'id')
 """
 sql = '''
 ALTER TABLE tickets.trigger_outbox
   DROP CONSTRAINT trigger_outbox_pkey,
-  ADD PRIMARY KEY (id);
+  ADD CONSTRAINT trigger_outbox_pkey PRIMARY KEY (ticket_id, id);
 '''
 
 # Waiting on me (ADR 0028) finds the open tickets of a person by owner
@@ -686,8 +689,4 @@ outcome = "TEXT"
 created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 
 [tables.primary_key]
-columns = ["id"]
-
-[[tables.indexes]]
-name = "trigger_outbox_ticket_idx"
-columns = ["ticket_id"]
+columns = ["ticket_id", "id"]

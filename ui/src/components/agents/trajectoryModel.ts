@@ -107,7 +107,7 @@ export interface TrajectoryTurn {
 }
 
 export const KIND_LABEL: Record<TrajectoryKind, string> = {
-  assistant: 'ASSISTANT',
+  assistant: 'AGENT',
   context: 'CONTEXT',
   subtool: 'SUBTOOL',
   system: 'SYSTEM',

@@ -74,9 +74,48 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
-## Unreleased: ticket state changed trigger, handoff, waiting on me, and reopen (ADR 0028)
+## Unreleased: ticket state changed trigger
 
 Set the version of this section when the release is cut.
+
+1. **Before you deploy**, deploy 2.58.0 everywhere and let its rollout
+   finish.
+2. Deploy the new image. There is no setup command. At start, imbi-api:
+    - changes `tickets.trigger_outbox` to one row per ticket change for
+      the `ticket_state_changed` trigger: it adds the columns `id` (a
+      random UUID on each row that exists), `from_state`, `to_state`
+      (default `closed`), and `outcome`. Then it moves the primary key
+      from `(ticket_id, close_id)` to `(ticket_id, id)`, one time. The
+      table holds only the changes whose workflow runs have not started,
+      so the step is short. It stops writes to the table while it runs;
+    - keeps `tickets.tickets.close_id` and `tickets.trigger_outbox.close_id`
+      for 2.58.0 pods. This release does not read or write them;
+    - adds the partial index `trigger_bindings_ticket_state_changed_idx`
+      on `workflows.trigger_bindings` and the index `runs_lineage_idx` on
+      `workflow_runtime.runs`, and drops
+      `runs_closed_ticket_idempotency_key`. The build of
+      `runs_lineage_idx` stops writes to `workflow_runtime.runs` while it
+      runs.
+3. Activate a workflow with the `ticket_state_changed` trigger only after
+   every imbi-api pod runs this release. During a rolling deploy, the
+   workflow sweep of a 2.58.0 pod deletes outbox rows by `ticket_id`
+   and `close_id`. A row of this release has the nil `close_id`, so that
+   sweep can delete the pending change of a ticket before its runs
+   start.
+
+This release removes the `ticket_closed` and `task_completed` triggers.
+
+A 2.58.0 pod that restarts during the rollout does not change the
+`tickets` schema back. Its schema file declares the
+`(ticket_id, close_id)` key of `trigger_outbox`, but its step that
+sets that key runs only when the key does not have two columns, and the
+initializer does not drop columns.
+
+While pods of both releases run, a 2.58.0 pod writes a `trigger_outbox`
+row only for a close, with `ticket_id` and `close_id`. The row gets a
+new `id` and the `to_state` `closed`.
+
+## 2.58.0
 
 1. **Before you deploy**, deploy 2.57.0 everywhere and let its rollout
    finish.
@@ -88,21 +127,15 @@ Set the version of this section when the release is cut.
       them. A handoff writes values that 2.57.0 reads already: the
       request status `withdrawn` and the event types `handed_off`,
       `assignee.changed`, and `request.withdrawn`;
-    - adds `tickets.tickets.archived_seq` (NULL);
-    - changes `tickets.trigger_outbox` to one row per ticket change for
-      the `ticket_state_changed` trigger: it adds the columns `id` (a
-      random UUID on each row that exists), `from_state`, `to_state`
-      (default `closed`), and `outcome`, and an index on `ticket_id`.
-      Then it moves the primary key from `(ticket_id)` to `(id)`, one
-      time. The table holds only the closes whose workflow runs have not
-      started, so the step is short. It stops writes to the table while
-      it runs;
-    - adds the partial index `trigger_bindings_ticket_state_changed_idx`
-      on `workflows.trigger_bindings` and the index `runs_lineage_idx` on
-      `workflow_runtime.runs`, and drops
-      `runs_closed_ticket_idempotency_key`. The build of
-      `runs_lineage_idx` stops writes to `workflow_runtime.runs` while it
-      runs;
+    - adds `tickets.tickets.archived_seq` (NULL),
+      `tickets.tickets.close_id`, and `tickets.trigger_outbox.close_id`.
+      Both `close_id` columns have the nil UUID as default, so every row
+      that exists gets it. The nil UUID marks the first close cycle of a
+      ticket; a reopen gives the ticket a new one;
+    - changes the primary key of `tickets.trigger_outbox` from
+      `(ticket_id)` to `(ticket_id, close_id)`, one time. The table holds
+      only the closes whose workflow runs have not started, so the step
+      is short. It stops writes to the table while it runs;
     - gives `chain_id` to each child ticket that was made before
       `chain_id` existed, from its origin ticket. A child whose origin
       ticket was deleted becomes the root of its own chain (it is
@@ -113,16 +146,10 @@ Set the version of this section when the release is cut.
    agent gets the `hand_off` tool from the new runner. Against an older
    imbi-api, the tool tells the agent that the handoff failed, and the
    ticket stays with the agent.
-4. Activate a workflow with the `ticket_state_changed` trigger only after
-   every imbi-api pod runs this release. During a rolling deploy, the
-   workflow sweep of an older pod can delete the pending change of a
-   ticket before its runs start.
-5. Do not reopen tickets until every imbi-api pod runs this release.
+4. Do not reopen tickets until every imbi-api pod runs this release.
    Only a new pod can reopen a ticket. A reopened agent ticket that had
    sessions has the same task timeout risk as a handoff back to an agent
    (see below): the new release counts the timeout from the reopen.
-
-This release removes the `ticket_closed` and `task_completed` triggers.
 
 A 2.57.0 pod that restarts during the rollout does not
 change the schema back. Its schema file declares the old primary key of
@@ -152,17 +179,24 @@ While pods of both releases run:
   new **Waiting on me** page shows empty lists when a pod of the
   previous release answers. The **Waiting on people** tile of the agent
   dashboard keeps the count for the organization.
-- A 2.57.0 pod writes a `trigger_outbox` row only for a close, with
-  `ticket_id` only. The row gets a new `id` and the `to_state`
-  `closed`.
+- A 2.57.0 pod writes tickets and `trigger_outbox` rows
+  without `close_id`. They get the nil UUID, which is the value of a
+  first close, so the trigger of either release starts the same runs.
 - No 2.57.0 pod fails with 500 on a reopened ticket. Each one
-  reads it as an open ticket with no outcome.
+  reads it as an open ticket with no outcome. The `ticket_closed` runs
+  of the first close of a ticket keep their idempotency key, so a sweep
+  of either release that retries them starts no second run.
 - A 2.57.0 pod shows only the events after `archived_seq` for
   a ticket that was archived and then reopened. It reads the events of
   a ticket that is not archived from Postgres only. The new pods show
   the whole log. The new-session history of the reopened ticket, when a
   2.57.0 pod serves it, does not have the comments from before
   the archive.
+- A 2.57.0 pod that closes a reopened ticket again writes the
+  nil `close_id` to `trigger_outbox`, and its trigger uses the key of
+  the first close. So no `ticket_closed` run starts for that close. A
+  new pod that closes it starts the runs. A new-pod sweep that retries
+  such a row uses the `close_id` of the row, so it deletes the row.
 - A claim that a 2.57.0 pod serves does not take a reopened child
   ticket: its claim query reads an origin kind, not the chain. A new pod
   claims it.
