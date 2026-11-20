@@ -1620,7 +1620,11 @@ async def assign_step_ticket(
         'role': role,
         'assignee': email,
     }
-    if email is None:
+    # A repeat for a ticket that closed after the first hand-off
+    # succeeds too: the person already has it.
+    if email is None or (
+        task['assignee_kind'] == 'person' and task['assignee'] == email
+    ):
         return result
     try:
         to = await tickets.person_assignee(db, org_slug, email)

@@ -84,6 +84,7 @@ import {
   DueDate,
   LabelInput,
   LabelLink,
+  roleErrors,
   roleRows,
   RolesEditor,
   rolesOf,
@@ -506,7 +507,7 @@ function OverviewTab({
       </Card>
       <TicketPeopleAndLabels
         editable={editable}
-        onUpdate={(body) => update.mutate(body)}
+        onUpdate={(body, onSuccess) => update.mutate(body, { onSuccess })}
         orgSlug={orgSlug}
         pending={update.isPending}
         task={task}
@@ -1003,12 +1004,12 @@ function TicketPeopleAndLabels({
   task,
 }: {
   editable: boolean
-  onUpdate: (body: TicketUpdate) => void
+  onUpdate: (body: TicketUpdate, onSuccess?: () => void) => void
   orgSlug: string
   pending: boolean
   task: Ticket
 }) {
-  const { people } = usePeople()
+  const { isError: peopleError, people } = usePeople(orgSlug)
   const [roles, setRoles] = useState<null | ReturnType<typeof roleRows>>(null)
   const top = useTicketMutation(orgSlug, task.short_id, () =>
     rankTicket(orgSlug, task.short_id, null),
@@ -1054,17 +1055,18 @@ function TicketPeopleAndLabels({
           <>
             <RolesEditor
               disabled={pending}
+              loadError={peopleError}
               onChange={setRoles}
               people={people}
               rows={roles}
             />
             <div className="flex gap-2">
               <Button
-                disabled={pending}
-                onClick={() => {
-                  onUpdate({ roles: rolesOf(roles) })
-                  setRoles(null)
-                }}
+                disabled={pending || roleErrors(roles).some((e) => !!e)}
+                // The rows stay until the save succeeds, to retry.
+                onClick={() =>
+                  onUpdate({ roles: rolesOf(roles) }, () => setRoles(null))
+                }
                 size="sm"
               >
                 Save roles

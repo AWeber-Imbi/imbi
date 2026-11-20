@@ -76,6 +76,7 @@ import { errorMessage } from './taskQueries'
 import {
   LabelInput,
   PersonPicker,
+  roleErrors,
   type RoleRow,
   RolesEditor,
   rolesOf,
@@ -118,7 +119,7 @@ export function NewTaskDialog({
   const me = user?.email ?? ''
   const orgSlug = agent?.organization.slug ?? selectedOrganization?.slug ?? ''
   const canManage = useHasPermission('ticket:manage', orgSlug)
-  const { nameOf, people } = usePeople()
+  const { isError: peopleError, nameOf, people } = usePeople(orgSlug)
   const [description, setDescription] = useState('')
   const [subject, setSubject] = useState<null | string>(null)
   const [kind, setKind] = useState<'agent' | 'person'>('agent')
@@ -230,16 +231,18 @@ export function NewTaskDialog({
         type,
       })
       // The ticket is made; a failure here only warns, and it opens.
-      try {
-        if (parent)
-          await setTicketParent(orgSlug, task.short_id, parent.short_id)
-        if (owner && owner !== me)
-          await reassignTicket(orgSlug, task.short_id, owner)
-      } catch (err) {
+      // Each step runs, also when the other fails.
+      const warn = (err: unknown) => {
         toast.error(
           `${task.short_id} was created, but: ${errorMessage(err as Error)}`,
         )
       }
+      if (parent)
+        await setTicketParent(orgSlug, task.short_id, parent.short_id).catch(
+          warn,
+        )
+      if (owner && owner !== me)
+        await reassignTicket(orgSlug, task.short_id, owner).catch(warn)
       return task
     },
     onSuccess: (task) => {
@@ -262,7 +265,8 @@ export function NewTaskDialog({
   useEffect(() => {
     if (isOpen) reset()
   }, [isOpen, reset])
-  const canSubmit = ready && !create.isPending
+  const canSubmit =
+    ready && roleErrors(roles).every((e) => !e) && !create.isPending
 
   const relationsSummary =
     [
@@ -351,6 +355,7 @@ export function NewTaskDialog({
               {person ? (
                 <PersonPicker
                   ariaLabel="Assignee"
+                  loadError={peopleError}
                   onChange={setAssignee}
                   people={people}
                   value={assignee}
@@ -422,6 +427,7 @@ export function NewTaskDialog({
               <PersonPicker
                 ariaLabel="Owner"
                 disabled={!canManage}
+                loadError={peopleError}
                 onChange={setOwner}
                 people={people}
                 value={ownerEmail}
@@ -440,7 +446,12 @@ export function NewTaskDialog({
                   : 'Reviewer, QA, approver…'
               }
             >
-              <RolesEditor onChange={setRoles} people={people} rows={roles} />
+              <RolesEditor
+                loadError={peopleError}
+                onChange={setRoles}
+                people={people}
+                rows={roles}
+              />
               <span className="text-tertiary text-[12.5px]">
                 Workflows read roles and can hand the ticket to the person in a
                 role.

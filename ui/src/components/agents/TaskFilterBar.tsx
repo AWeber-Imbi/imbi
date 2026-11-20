@@ -130,6 +130,7 @@ export function TaskFilterBar({
   labels = [],
   me,
   onChange,
+  onLabelSearch,
   owners,
   search,
 }: {
@@ -140,6 +141,8 @@ export function TaskFilterBar({
   labels?: string[]
   me?: null | string
   onChange: (filters: TaskFilters) => void
+  /** The text typed in the menu, to look up more labels. */
+  onLabelSearch?: (text: string) => void
   owners: string[]
   search: ReactNode
 }) {
@@ -197,9 +200,13 @@ export function TaskFilterBar({
   const field = fields.find((f) => f.key === fieldKey)
   const count = activeCount(filters)
 
+  const type = (value: string) => {
+    setText(value)
+    onLabelSearch?.(value)
+  }
   const show = (key: FieldKey | null) => {
     setFieldKey(key)
-    setText('')
+    type('')
   }
   const openChange = (next: boolean) => {
     setOpen(next)
@@ -246,7 +253,7 @@ export function TaskFilterBar({
                 }}
               >
                 <CommandInput
-                  onValueChange={setText}
+                  onValueChange={type}
                   placeholder={field ? `${field.label}…` : 'Filter by…'}
                   value={text}
                 />

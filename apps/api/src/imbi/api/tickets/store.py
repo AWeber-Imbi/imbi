@@ -851,11 +851,17 @@ class TicketStore:
 
     @contextlib.asynccontextmanager
     async def _write(
-        self, organization_id: str, short_id: str, *, closed: bool = False
+        self,
+        organization_id: str,
+        short_id: str,
+        *,
+        closed: bool = False,
+        advisory: str | None = None,
     ) -> abc.AsyncGenerator[_Write]:
         """Lock an open task for a change, then publish what changed.
 
-        With ``closed``, lock a closed task instead (a reopen).
+        With ``closed``, lock a closed task instead (a reopen). With
+        ``advisory``, take that advisory lock before the task row lock.
 
         Raises:
             TaskNotFound: No such task.
@@ -865,6 +871,11 @@ class TicketStore:
         """
         async with self._pool.connection() as conn:
             async with conn.transaction():
+                if advisory is not None:
+                    await conn.execute(
+                        'SELECT pg_advisory_xact_lock(hashtext(%s))',
+                        (advisory,),
+                    )
                 write = _Write(
                     conn,
                     await _lock_task(
@@ -1776,13 +1787,14 @@ class TicketStore:
             TaskClosed: The task is closed.
 
         """
-        async with self._write(organization_id, short_id) as write:
-            # One ranking at a time in an org, so two cannot read the
-            # same gap.
-            await write.conn.execute(
-                'SELECT pg_advisory_xact_lock(hashtext(%s))',
-                (f'tickets.rank:{organization_id}',),
-            )
+        # One ranking at a time in an org, so two cannot read the same
+        # gap. The org lock comes before the row lock: a ranking that
+        # holds it updates the rows of other tickets.
+        async with self._write(
+            organization_id,
+            short_id,
+            advisory=f'tickets.rank:{organization_id}',
+        ) as write:
             rank = await _rank_after(
                 write.conn, organization_id, write.task['id'], after
             )
@@ -1803,8 +1815,8 @@ class TicketStore:
         self, organization_id: str, prefix: str, limit: int
     ) -> list[Row]:
         """Return the labels of the org that start with ``prefix`` (a
-        normalized label), each with its number of tickets, most used
-        first.
+        normalized label), each with its number of tickets: the label
+        ``prefix`` itself first, then the most used.
         """
         async with (
             self._pool.connection() as conn,
@@ -1814,8 +1826,9 @@ class TicketStore:
                 'SELECT label AS name, count(*) AS count'
                 ' FROM tickets.tickets, unnest(labels) AS label'
                 ' WHERE organization_id = %s AND label LIKE %s'
-                ' GROUP BY label ORDER BY count(*) DESC, label LIMIT %s',
-                (organization_id, _escape_like(prefix) + '%', limit),
+                ' GROUP BY label'
+                ' ORDER BY label = %s DESC, count(*) DESC, label LIMIT %s',
+                (organization_id, _escape_like(prefix) + '%', prefix, limit),
             )
             return await cursor.fetchall()
 
@@ -3996,13 +4009,15 @@ async def _rank_after(
         return float(lo + hi) / 2
     # ponytail: renumbers every ranked ticket of the org; fine for
     # backlogs of thousands, use a text rank (LexoRank) past that.
+    # The moved task keeps its rank, so the caller compares the new
+    # rank with the rank that it read.
     await conn.execute(
-        'UPDATE tickets.tickets AS t SET backlog_rank = s.n'
+        'UPDATE tickets.tickets AS t SET backlog_rank = s.n'  # noqa: S608
         ' FROM (SELECT id, row_number() OVER (ORDER BY backlog_rank,'
         ' created_at DESC, id DESC) AS n FROM tickets.tickets'
-        ' WHERE organization_id = %s AND status = ANY(%s)'
-        ' AND backlog_rank IS NOT NULL) AS s WHERE t.id = s.id',
-        (organization_id, list(BACKLOG_STATUSES)),
+        ' WHERE ' + _BACKLOG + ' AND backlog_rank IS NOT NULL) AS s'
+        ' WHERE t.id = s.id',
+        backlog,
     )
     return await _rank_after(conn, organization_id, task_id, after)
 

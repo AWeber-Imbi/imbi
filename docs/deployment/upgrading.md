@@ -79,8 +79,9 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 1. Run `imbi-api setup-prompts`. It adds the `imbi-api/ticket-subject`
    prompt to the prompt CMS, where you can edit it and choose its model.
    Without it, imbi-api uses the packaged prompt and its default
-   Anthropic model, and with no Anthropic key the subject is the first
-   line of the description.
+   Anthropic model. With no Anthropic key, the subject is the first
+   line of the description without its links, cut to 96 characters,
+   or `Work from a link` when no text remains.
 2. Activate a workflow with an **Assign ticket to role** step only after
    every imbi-api and imbi-workflows pod runs this release: a pod of the
    previous release does not know the step.

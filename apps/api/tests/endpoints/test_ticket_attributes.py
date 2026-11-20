@@ -90,6 +90,29 @@ class TicketAttributeTests(test_person_tickets.PersonTicketTestCase):
         self.assertEqual(response.status_code, 422)
         self.assertIn('stranger@example.com', response.text)
 
+    async def test_update_checks_a_moved_role_person(self) -> None:
+        # A person who left the org keeps a role that does not change,
+        # but cannot take a different role.
+        task = await self.make()
+        await self.store.set_fields(
+            self.org,
+            task['short_id'],
+            {'roles': {'reviewer': 'gone@example.com'}},
+            store.Actor('human', self.email, 'web'),
+        )
+        url = self.url(task['short_id'])
+        response = await self.client.patch(
+            url, json={'roles': {'approver': 'gone@example.com'}}
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        response = await self.client.patch(
+            url,
+            json={
+                'roles': {'reviewer': 'gone@example.com', 'qa': self.member}
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+
     async def test_update_writes_one_event_per_change(self) -> None:
         task = await self.make(labels=['api'])
         response = await self.client.patch(
@@ -148,7 +171,8 @@ class TicketAttributeTests(test_person_tickets.PersonTicketTestCase):
     async def test_label_filter_and_suggestions(self) -> None:
         a = await self.make(labels=['api', 'web'])
         await self.make(labels=['api'])
-        await self.make(labels=['api-docs'])
+        for _ in range(3):
+            await self.make(labels=['api-docs'])
         response = await self.client.get(
             self.url(), params=[('label', 'API'), ('label', 'web')]
         )
@@ -159,10 +183,15 @@ class TicketAttributeTests(test_person_tickets.PersonTicketTestCase):
             self.url('labels'), params={'q': 'API'}
         )
         self.assertEqual(response.status_code, 200, response.text)
+        # The exact match comes first, also when it is used less.
         self.assertEqual(
             response.json(),
-            [{'name': 'api', 'count': 2}, {'name': 'api-docs', 'count': 1}],
+            [{'name': 'api', 'count': 2}, {'name': 'api-docs', 'count': 3}],
         )
+        response = await self.client.get(
+            self.url('labels'), params={'q': 'api', 'limit': 1}
+        )
+        self.assertEqual(response.json(), [{'name': 'api', 'count': 2}])
 
     async def test_rank_orders_the_backlog(self) -> None:
         t1 = (await self.make())['short_id']
@@ -195,6 +224,26 @@ class TicketAttributeTests(test_person_tickets.PersonTicketTestCase):
             await self.rank(t3, t1)
             await self.rank(t2, t1)
         self.assertEqual(await self.backlog(), [t1, t2, t3])
+
+    async def test_rank_renumber_moves_the_ticket(self) -> None:
+        # The renumber must not change the stored rank of the moved
+        # ticket to the rank that it then computes for it.
+        a, b, c, d = [(await self.make())['short_id'] for _ in range(4)]
+        async with self.pool.connection() as conn:
+            for short_id, rank in ((a, 0), (b, 2**-31), (c, 2**-30)):
+                await conn.execute(
+                    'UPDATE tickets.tickets SET backlog_rank = %s'
+                    ' WHERE organization_id = %s AND short_id = %s',
+                    (rank, self.org, short_id),
+                )
+            await conn.execute(
+                'UPDATE tickets.tickets SET backlog_rank = 1.5'
+                ' WHERE organization_id = %s AND short_id = %s',
+                (self.org, d),
+            )
+        response = await self.rank(d, a)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(await self.backlog(), [a, d, b, c])
 
     async def test_rank_after_unknown_ticket(self) -> None:
         task = await self.make()

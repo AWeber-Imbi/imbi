@@ -15,7 +15,7 @@ import {
   X,
 } from 'lucide-react'
 
-import { listTicketLabels } from '@/api/endpoints'
+import { listOrganizationMembers, listTicketLabels } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import {
   Command,
@@ -37,7 +37,6 @@ import {
 } from '@/components/ui/segmented-control'
 import { UserIdentity } from '@/components/ui/user-identity'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
-import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
 import type { TicketType } from '@/types'
@@ -74,6 +73,11 @@ const DUE_SOON_DAYS = 2
 const DAY_MS = 86_400_000
 
 const LABELS_SHOWN = 8
+
+/** The limits of the API: labels and roles of a ticket, and a name. */
+const MAX_LABELS = 20
+const MAX_ROLES = 10
+const MAX_NAME_LENGTH = 50
 
 /** A due date, colored when it is soon or past. */
 export function DueDate({ due }: { due: null | string | undefined }) {
@@ -127,7 +131,9 @@ export function LabelInput({
   const listId = useId()
   const [draft, setDraft] = useState('')
   const [open, setOpen] = useState(false)
-  const [active, setActive] = useState(0)
+  // The highlighted label, by name, so that a new list of suggestions
+  // cannot move the highlight to another label.
+  const [picked, setPicked] = useState<null | string>(null)
   const normalized = normalizeLabel(draft)
   const q = useDebouncedValue(normalized, 150)
   const { data: found = [] } = useQuery({
@@ -136,7 +142,10 @@ export function LabelInput({
     queryKey: queryKeys.ticketLabels(orgSlug, q),
     staleTime: 30_000,
   })
-  const existing = found.filter((l) => !value.includes(l.name))
+  // Suggestions for an earlier draft do not show until the lookup of
+  // this draft is done; the draft itself is always an option.
+  const existing =
+    q === normalized ? found.filter((l) => !value.includes(l.name)) : []
   const exact = existing.find((l) => l.name === normalized)
   const options = [
     ...(exact ? [exact] : []),
@@ -145,28 +154,45 @@ export function LabelInput({
       ? [{ count: 0, name: normalized }]
       : []),
   ]
+  // A draft highlights its first option; an empty draft highlights
+  // only what the arrow keys or the mouse pick.
+  const pickedAt = options.findIndex((o) => o.name === picked)
+  const active = pickedAt >= 0 ? pickedAt : normalized ? 0 : -1
+  const full = value.length >= MAX_LABELS
+  const limitError = !draft.trim()
+    ? undefined
+    : normalized.length > MAX_NAME_LENGTH
+      ? `A label can have ${MAX_NAME_LENGTH} characters at most.`
+      : full
+        ? `A ticket can have ${MAX_LABELS} labels at most.`
+        : undefined
   const add = (name: string) => {
-    if (name && !value.includes(name)) onChange([...value, name])
+    if (name && !value.includes(name)) {
+      if (full || name.length > MAX_NAME_LENGTH) return
+      onChange([...value, name])
+    }
     setDraft('')
-    setActive(0)
+    setPicked(null)
   }
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault()
       setOpen(true)
+      if (!options.length) return
       const step = e.key === 'ArrowDown' ? 1 : -1
-      setActive(
-        (i) => (i + step + options.length) % Math.max(options.length, 1),
-      )
+      const from = active < 0 && step < 0 ? 0 : active
+      setPicked(options[(from + step + options.length) % options.length].name)
     } else if (e.key === 'Enter' || e.key === ',') {
-      if (!draft.trim()) return
+      const option = open ? options[active] : undefined
+      if (!draft.trim() && !option) return
       e.preventDefault()
-      add(options[active]?.name ?? normalized)
+      add(option?.name ?? normalized)
     } else if (e.key === 'Backspace' && !draft && value.length) {
       onChange(value.slice(0, -1))
     } else if (e.key === 'Escape' && open) {
       e.stopPropagation()
       setOpen(false)
+      setPicked(null)
     }
   }
   const showMenu = open && (options.length > 0 || !!draft.trim())
@@ -205,10 +231,13 @@ export function LabelInput({
           className="h-6.5 min-w-15 flex-1 bg-transparent px-1 text-sm outline-none"
           disabled={disabled}
           id={id}
-          onBlur={() => setOpen(false)}
+          onBlur={() => {
+            setOpen(false)
+            setPicked(null)
+          }}
           onChange={(e) => {
             setDraft(e.target.value)
-            setActive(0)
+            setPicked(null)
             setOpen(true)
           }}
           onFocus={() => setOpen(true)}
@@ -218,6 +247,11 @@ export function LabelInput({
           value={draft}
         />
       </div>
+      {limitError && (
+        <p className="text-danger mt-1 text-xs" role="alert">
+          {limitError}
+        </p>
+      )}
       {showMenu && (
         <div className="border-secondary bg-primary absolute inset-x-0 top-full z-50 mt-1 overflow-hidden rounded-md border shadow-md">
           {draft.trim() && normalized !== draft && (
@@ -244,7 +278,7 @@ export function LabelInput({
                   e.preventDefault()
                   add(o.name)
                 }}
-                onMouseEnter={() => setActive(i)}
+                onMouseEnter={() => setPicked(o.name)}
                 role="option"
               >
                 <span className="bg-secondary inline-flex h-5.5 items-center rounded-sm px-2 font-mono text-[12.5px]">
@@ -312,6 +346,7 @@ export function PersonPicker({
   ariaLabel,
   className,
   disabled,
+  loadError,
   onChange,
   people,
   placeholder = 'Search people by name or email',
@@ -320,6 +355,8 @@ export function PersonPicker({
   ariaLabel: string
   className?: string
   disabled?: boolean
+  /** The people of the org could not load. */
+  loadError?: boolean
   onChange: (email: string) => void
   people: Person[]
   placeholder?: string
@@ -376,7 +413,9 @@ export function PersonPicker({
         <Command>
           <CommandInput placeholder={placeholder} />
           <CommandList>
-            <CommandEmpty>No people match.</CommandEmpty>
+            <CommandEmpty>
+              {loadError ? 'Could not load the people.' : 'No people match.'}
+            </CommandEmpty>
             <CommandGroup>
               {people.map((p) => (
                 <CommandItem
@@ -405,6 +444,25 @@ export function PersonPicker({
   )
 }
 
+/**
+ * The error of each role row, or `undefined`. A blank row is fine; it
+ * is left out.
+ */
+export function roleErrors(rows: RoleRow[]): (string | undefined)[] {
+  const names = rows.map((r) => normalizeLabel(r.name))
+  return rows.map((r, i) => {
+    const name = names[i]
+    if (!r.name.trim() && !r.email) return undefined
+    if (!name) return 'Enter a role name.'
+    if (!r.email) return 'Choose a person.'
+    if (name.length > MAX_NAME_LENGTH)
+      return `A role name can have ${MAX_NAME_LENGTH} characters at most.`
+    if (names.indexOf(name) !== names.lastIndexOf(name))
+      return `Another row is also the role ${name}.`
+    return undefined
+  })
+}
+
 /** The rows of the API's `{role: email}`. */
 export function roleRows(roles: Record<string, string>): RoleRow[] {
   return Object.entries(roles).map(([name, email]) => ({ email, name }))
@@ -416,16 +474,19 @@ export function roleRows(roles: Record<string, string>): RoleRow[] {
  */
 export function RolesEditor({
   disabled,
+  loadError,
   onChange,
   people,
   rows,
 }: {
   disabled?: boolean
+  loadError?: boolean
   onChange: (rows: RoleRow[]) => void
   people: Person[]
   rows: RoleRow[]
 }) {
   const listId = useId()
+  const errors = roleErrors(rows)
   const set = (i: number, row: Partial<RoleRow>) =>
     onChange(rows.map((r, j) => (j === i ? { ...r, ...row } : r)))
   return (
@@ -436,43 +497,57 @@ export function RolesEditor({
         ))}
       </datalist>
       {rows.map((row, i) => (
-        <div className="flex items-center gap-2" key={i}>
-          <Input
-            aria-label={`Role ${i + 1} name`}
-            className="h-9 w-36 shrink-0 font-mono text-[13px]"
-            disabled={disabled}
-            list={listId}
-            onBlur={() => set(i, { name: normalizeLabel(row.name) })}
-            onChange={(e) => set(i, { name: e.target.value })}
-            placeholder="reviewer"
-            value={row.name}
-          />
-          <PersonPicker
-            ariaLabel={`Person in role ${row.name || i + 1}`}
-            disabled={disabled}
-            onChange={(email) => set(i, { email })}
-            people={people}
-            placeholder="Choose a person"
-            value={row.email}
-          />
-          <Button
-            aria-label={`Remove role ${row.name || i + 1}`}
-            className="size-8 shrink-0"
-            disabled={disabled}
-            onClick={() => onChange(rows.filter((_, j) => j !== i))}
-            size="icon"
-            type="button"
-            variant="ghost"
-          >
-            <X className="size-3.5" />
-          </Button>
+        <div className="flex flex-col gap-1" key={i}>
+          <div className="flex items-center gap-2">
+            <Input
+              aria-invalid={!!errors[i]}
+              aria-label={`Role ${i + 1} name`}
+              className="h-9 w-36 shrink-0 font-mono text-[13px]"
+              disabled={disabled}
+              list={listId}
+              onBlur={() => set(i, { name: normalizeLabel(row.name) })}
+              onChange={(e) => set(i, { name: e.target.value })}
+              placeholder="reviewer"
+              value={row.name}
+            />
+            <PersonPicker
+              ariaLabel={`Person in role ${row.name || i + 1}`}
+              disabled={disabled}
+              loadError={loadError}
+              onChange={(email) => set(i, { email })}
+              people={people}
+              placeholder="Choose a person"
+              value={row.email}
+            />
+            <Button
+              aria-label={`Remove role ${row.name || i + 1}`}
+              className="size-8 shrink-0"
+              disabled={disabled}
+              onClick={() => onChange(rows.filter((_, j) => j !== i))}
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <X className="size-3.5" />
+            </Button>
+          </div>
+          {errors[i] && (
+            <p className="text-danger text-xs" role="alert">
+              {errors[i]}
+            </p>
+          )}
         </div>
       ))}
       <Button
         className="text-secondary h-8 self-start px-2 text-[13px]"
-        disabled={disabled}
+        disabled={disabled || rows.length >= MAX_ROLES}
         onClick={() => onChange([...rows, { email: '', name: '' }])}
         size="sm"
+        title={
+          rows.length >= MAX_ROLES
+            ? `A ticket can have ${MAX_ROLES} roles at most.`
+            : undefined
+        }
         type="button"
         variant="ghost"
       >
@@ -535,20 +610,29 @@ export function TypePicker({
   )
 }
 
-/** The active people, by name, and a lookup of a display name. */
-export function usePeople() {
-  const { displayNames, users } = useUserDisplayNames()
+/**
+ * The active people of the org, by name, and a lookup of a display
+ * name. The org roster needs only `organization:read`.
+ */
+export function usePeople(orgSlug: string) {
+  const { data: members = [], isError } = useQuery({
+    enabled: !!orgSlug,
+    queryFn: ({ signal }) => listOrganizationMembers(orgSlug, signal),
+    queryKey: queryKeys.organizationMembers(orgSlug),
+    staleTime: 5 * 60_000,
+  })
   const people = useMemo(
     () =>
-      users
-        .filter((u) => !!u.email)
+      members
+        .filter((m) => m.is_active && !!m.email)
         .sort((a, b) =>
           (a.display_name || a.email).localeCompare(b.display_name || b.email),
         ),
-    [users],
+    [members],
   )
-  const nameOf = (email: string) => displayNames.get(email) ?? email
-  return { nameOf, people }
+  const nameOf = (email: string) =>
+    people.find((p) => p.email === email)?.display_name || email
+  return { isError, nameOf, people }
 }
 
 function formatDue(due: string): string {

@@ -66,6 +66,8 @@ class FakeApi:
         self.slack_ratelimited = 0
         #: The raw path of every request.
         self.paths: list[str] = []
+        #: The method and raw path of every request.
+        self.requests: list[tuple[str, str]] = []
         #: The person in the role of the assign_ticket endpoint.
         self.assignee: str | None = 'person@example.com'
         #: Takes the agent task calls when set.
@@ -145,6 +147,7 @@ class FakeApi:
         self, request: httpx.Request
     ) -> httpx.Response | abc.Awaitable[httpx.Response]:
         self.paths.append(request.url.raw_path.decode())
+        self.requests.append((request.method, self.paths[-1]))
         path = request.url.path
         if '/agent-task' in path and self.agent is not None:
             return self.agent(request)
@@ -1160,7 +1163,7 @@ class CrashTestCase(EngineTestCase):
             {'on_failure': 'none'},
         )
 
-    async def _assign_run(self) -> dict[str, typing.Any]:
+    async def _assign_run(self) -> tuple[uuid.UUID, dict[str, typing.Any]]:
         workflow_id = await self._workflow(
             [
                 _node('start', 'manual'),
@@ -1173,22 +1176,29 @@ class CrashTestCase(EngineTestCase):
             [_edge('start', 'assign')],
             {'on_failure': 'none'},
         )
-        run = await self._drive(await self._start(workflow_id))
+        run_id = await self._start(workflow_id)
+        run = await self._drive(run_id)
         self.assertEqual(run['status'], 'succeeded', run)
-        return run['steps']['assign']
+        return run_id, run['steps']['assign']
 
     async def test_assign_ticket_takes_assigned_port(self) -> None:
-        step = await self._assign_run()
+        run_id, step = await self._assign_run()
         self.assertEqual(step['port'], 0)
         self.assertEqual(step['output']['assignee'], 'person@example.com')
-        self.assertIn(
-            f'/organizations/{self.org}/workflows/{self.slug}/runs/',
-            next(p for p in self.api.paths if p.endswith('/assign-ticket')),
+        self.assertEqual(
+            [r for r in self.api.requests if r[1].endswith('/assign-ticket')],
+            [
+                (
+                    'POST',
+                    f'/organizations/{self.org}/workflows/{self.slug}'
+                    f'/runs/{run_id}/steps/assign/assign-ticket',
+                )
+            ],
         )
 
     async def test_assign_ticket_empty_role_takes_second_port(self) -> None:
         self.api.assignee = None
-        step = await self._assign_run()
+        _, step = await self._assign_run()
         self.assertEqual(step['port'], 1)
 
     async def test_slack_posts_once(self) -> None:

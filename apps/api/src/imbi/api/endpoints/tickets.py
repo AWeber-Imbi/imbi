@@ -1644,11 +1644,12 @@ async def _role_members(
     db: graph.Graph,
     org_slug: str,
     roles: dict[str, str],
-    known: abc.Iterable[str] = (),
+    known: abc.Mapping[str, str] | None = None,
 ) -> None:
-    """Raise 422 unless each person in ``roles`` is in the org. The
-    emails in ``known`` are not checked again."""
-    emails = set(roles.values()) - set(known)
+    """Raise 422 unless each person in ``roles`` is in the org. A role
+    that ``known`` gives to the same person is not checked again."""
+    known = known or {}
+    emails = {e for r, e in roles.items() if known.get(r) != e}
     if not emails:
         return
     found = {
@@ -2697,7 +2698,7 @@ async def update_ticket(
     if data.roles:
         task = await _get_task(store, org_id, short_id)
         known: dict[str, str] = task['roles'] or {}
-        await _role_members(db, org_slug, data.roles, known.values())
+        await _role_members(db, org_slug, data.roles, known)
     with write_errors(short_id):
         return await store.set_fields(
             org_id, short_id.upper(), changes, _actor(auth)

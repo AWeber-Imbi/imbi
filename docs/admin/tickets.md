@@ -181,9 +181,11 @@ In the **New ticket** dialog:
 
 1. In **Describe the work**, describe the outcome that you want. When
    you stop typing, a model writes the **Subject** (tagged **AI**).
-   Until it answers, or when no model is available, the first line
-   without its links is the subject (tagged **Auto**, 96 characters
-   maximum). Type in **Subject** to use a different one.
+   The model writes a subject only for a description of 20 characters
+   or more. Until it answers, for a shorter description, or when no
+   model is available, the first line without its links is the subject
+   (tagged **Auto**, 96 characters maximum). Type in **Subject** to use
+   a different one.
 2. Optional: paste a link. The dialog shows it as the **Source**: a Sentry
    issue, a pull request, a Slack thread, or a link.
 3. In **Assign to**, select **Agent** and an agent, or **Person** and a
@@ -202,7 +204,8 @@ In the **New ticket** dialog:
 
 An agent ticket starts as **Queued**, a person ticket as **Open**. With
 an open gating prerequisite, the ticket starts as **Held**. You are its
-owner. The ticket page opens.
+owner, unless you selected a different **Owner**: when that change
+succeeds, that person is the owner. The ticket page opens.
 
 ### With the API
 

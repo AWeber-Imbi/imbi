@@ -7,14 +7,14 @@ import type { Agent } from '@/types'
 
 import { detectSource, titleFrom } from '../newTask'
 import { NewTaskDialog } from '../NewTaskDialog'
-import { normalizeLabel } from '../ticketAttributes'
+import { normalizeLabel, roleErrors } from '../ticketAttributes'
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', () => ({
   createTicket: vi.fn(),
   getProjectsSlim: vi.fn(),
-  listAdminUsers: vi.fn(),
   listAgents: vi.fn(),
+  listOrganizationMembers: vi.fn(),
   listTicketLabels: vi.fn(() => Promise.resolve([])),
   listTickets: vi.fn(),
   reassignTicket: vi.fn(),
@@ -91,9 +91,16 @@ describe('NewTaskDialog', () => {
       { archived: true, id: 'p-2', project_types: [], slug: 'old-billing' },
       { archived: false, id: 'p-3', project_types: [], slug: 'search' },
     ] as unknown as Awaited<ReturnType<typeof endpoints.getProjectsSlim>>)
-    vi.mocked(endpoints.listAdminUsers).mockResolvedValue([
-      { display_name: 'Ops Person', email: 'ops@example.com' },
-    ] as unknown as Awaited<ReturnType<typeof endpoints.listAdminUsers>>)
+    vi.mocked(endpoints.listOrganizationMembers).mockResolvedValue([
+      { display_name: 'Ops Person', email: 'ops@example.com', is_active: true },
+      {
+        display_name: 'Gone Person',
+        email: 'gone@example.com',
+        is_active: false,
+      },
+    ] as unknown as Awaited<
+      ReturnType<typeof endpoints.listOrganizationMembers>
+    >)
     vi.mocked(endpoints.listTickets).mockResolvedValue([
       { short_id: 'T-3', status: 'open', title: 'Rotate certs' },
     ] as unknown as Awaited<ReturnType<typeof endpoints.listTickets>>)
@@ -256,6 +263,31 @@ describe('NewTaskDialog', () => {
       roles: { 'code-reviewer': 'ops@example.com' },
       title: 'Rotate the deploy key',
     })
+  })
+})
+
+describe('roleErrors', () => {
+  it('flags incomplete, long, and repeated roles', () => {
+    const ops = 'ops@example.com'
+    expect(
+      roleErrors([
+        { email: '', name: '' },
+        { email: ops, name: 'qa' },
+        { email: '', name: 'reviewer' },
+        { email: ops, name: '' },
+        { email: ops, name: 'x'.repeat(51) },
+        { email: ops, name: 'Approver' },
+        { email: ops, name: 'approver' },
+      ]),
+    ).toEqual([
+      undefined,
+      undefined,
+      'Choose a person.',
+      'Enter a role name.',
+      'A role name can have 50 characters at most.',
+      'Another row is also the role approver.',
+      'Another row is also the role approver.',
+    ])
   })
 })
 

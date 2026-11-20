@@ -15,7 +15,12 @@ import {
   useParams,
 } from 'react-router-dom'
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import {
   Bot,
   ChevronRight,
@@ -90,7 +95,7 @@ import {
   useTicketGroupPages,
 } from './taskQueries'
 import { SEARCH_MATCH, useMatchHighlight } from './taskSearch'
-import { DueDate, TypeIcon } from './ticketAttributes'
+import { DueDate, normalizeLabel, TypeIcon } from './ticketAttributes'
 import { useStoredState } from './useStoredState'
 import { useVirtualRows } from './virtualRows'
 
@@ -472,9 +477,14 @@ function TaskInbox({
     () => new Map(agents.map((a) => [a.id, a])),
     [agents],
   )
+  // The filter menu asks for the labels that match what is typed, so
+  // a label past the most used ones can be found too.
+  const [labelText, setLabelText] = useState('')
+  const labelQ = useDebouncedValue(normalizeLabel(labelText), 150)
   const { data: topLabels = [] } = useQuery({
-    queryFn: ({ signal }) => listTicketLabels(orgSlug, '', signal),
-    queryKey: queryKeys.ticketLabels(orgSlug, ''),
+    placeholderData: keepPreviousData,
+    queryFn: ({ signal }) => listTicketLabels(orgSlug, labelQ, signal),
+    queryKey: queryKeys.ticketLabels(orgSlug, labelQ),
     staleTime: 60_000,
   })
   const [dragging, setDragging] = useState<string>()
@@ -629,6 +639,7 @@ function TaskInbox({
         labels={topLabels.map((l) => l.name)}
         me={user?.email}
         onChange={setFilters}
+        onLabelSearch={setLabelText}
         owners={owners}
         search={
           <div className="relative min-w-0 flex-1">

@@ -2556,7 +2556,17 @@ class EngineAssignTicketTestCase(WorkflowRunTestCase):
         task = await self.tasks.get(self.org, short_id)
         assert task is not None
         self.assertEqual(task['assignee'], self.email)
-        # A repeat changes nothing and succeeds.
+        # A repeat changes nothing and succeeds, also after the ticket
+        # closes.
+        response = await self.client.post(self.assign_url)
+        self.assertEqual(response.status_code, 200, response.text)
+        await self.tasks.set_person_status(
+            self.org,
+            short_id,
+            'closed',
+            tickets.Actor('human', self.email, 'web'),
+            outcome='done_acted',
+        )
         response = await self.client.post(self.assign_url)
         self.assertEqual(response.status_code, 200, response.text)
 
