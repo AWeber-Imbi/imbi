@@ -349,10 +349,16 @@ class Executors:
     def _wait(self, call: Call) -> Outcome:
         params = _params(wait.Params, call)
         match = _DURATION.match(params.duration)
-        seconds = int(match.group(1)) * _UNITS[match.group(2)] if match else 0
+        if match is None:
+            # The rendered value is itself a reference.
+            raise StepError('invalid_params', retry=False)
+        seconds = int(match.group(1)) * _UNITS[match.group(2)]
         until = call.state.get('until')
         if until is None:
-            resume_at = _now() + datetime.timedelta(seconds=seconds)
+            try:
+                resume_at = _now() + datetime.timedelta(seconds=seconds)
+            except OverflowError as e:
+                raise StepError('invalid_params', retry=False) from e
             return Outcome(
                 resume_at=resume_at, state={'until': resume_at.isoformat()}
             )
