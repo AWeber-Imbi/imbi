@@ -25,6 +25,7 @@ import functools
 import logging
 import re
 import typing
+import unicodedata
 import uuid
 from collections import abc
 
@@ -150,7 +151,12 @@ MAX_LABEL_LENGTH = 50
 
 _LABEL_SPACES = re.compile(r'[\s_]+')
 _LABEL_HYPHENS = re.compile(r'-{2,}')
-_LABEL_EDGES = re.compile(r'^[\W_]+|[\W_]+$')
+
+
+def _is_word(char: str) -> bool:
+    """Return true for a letter, a combining mark, or a digit, as the
+    UI's ``[\\p{L}\\p{M}\\p{N}]``."""
+    return unicodedata.category(char)[0] in 'LMN'
 
 
 def normalize_label(value: str) -> str:
@@ -161,8 +167,14 @@ def normalize_label(value: str) -> str:
     goes. ``"API"``, ``"api-"``, and ``" Api "`` are all ``"api"``. An
     empty result means the value has no letter or digit.
     """
-    value = _LABEL_SPACES.sub('-', value.strip().lower())
-    return _LABEL_EDGES.sub('', _LABEL_HYPHENS.sub('-', value))
+    value = _LABEL_HYPHENS.sub(
+        '-', _LABEL_SPACES.sub('-', value.strip().lower())
+    )
+    end = len(value)
+    start = next((i for i, c in enumerate(value) if _is_word(c)), end)
+    while end > start and not _is_word(value[end - 1]):
+        end -= 1
+    return value[start:end]
 
 
 def normalize_labels(values: abc.Iterable[str]) -> list[str]:

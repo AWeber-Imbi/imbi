@@ -27,6 +27,8 @@ class NormalizeLabelTests(unittest.TestCase):
             ('Café', 'café'),
             ('été!', 'été'),
             ('日本語', '日本語'),
+            ('का', 'का'),
+            ('_x_', 'x'),
         ]:
             with self.subTest(raw=raw):
                 self.assertEqual(store.normalize_label(raw), want)
