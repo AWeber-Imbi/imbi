@@ -202,14 +202,17 @@ import type {
   TicketCounts,
   TicketCreate,
   TicketEvent,
+  TicketHandOff,
   TicketListItem,
   TicketPosition,
   TicketProject,
   TicketRelations,
+  TicketReopen,
   TicketResolve,
   TicketRetry,
   TicketStatus,
   TicketStatusSet,
+  TicketWaiting,
   TokenResponse,
   Upload,
   UserResponse,
@@ -3888,11 +3891,23 @@ export const getTicketPosition = (
     ...params,
   })
 
-/** The number of blocked tasks in the org (the "waiting on you" badge). */
+/** The number of items that wait on the caller (the "waiting on you" badge). */
 export const countWaitingTickets = (orgSlug: string, signal?: AbortSignal) =>
-  apiClient.get<{ count: number }>(
+  apiClient.get<TicketWaiting>(
     `${ticketsApiPath(orgSlug)}/waiting`,
     undefined,
+    signal,
+  )
+
+/**
+ * What waits on the caller (ADR 0028): open requests on their tickets,
+ * person tickets assigned to them, and their held tickets whose gate
+ * failed. A previous-release API sends `count` only.
+ */
+export const listWaitingTickets = (orgSlug: string, signal?: AbortSignal) =>
+  apiClient.get<TicketWaiting>(
+    `${ticketsApiPath(orgSlug)}/waiting`,
+    { lists: true },
     signal,
   )
 
@@ -3944,12 +3959,26 @@ export const retryTicket = (
   body: TicketRetry,
 ) => apiClient.post<Ticket>(`${ticketPath(orgSlug, shortId)}/retry`, body)
 
+/** Reopen a closed ticket, with a reason (ADR 0028). */
+export const reopenTicket = (
+  orgSlug: string,
+  shortId: string,
+  body: TicketReopen,
+) => apiClient.post<Ticket>(`${ticketPath(orgSlug, shortId)}/reopen`, body)
+
 /** Move a person ticket to a status, or close it (ADR 0028). */
 export const setTicketStatus = (
   orgSlug: string,
   shortId: string,
   body: TicketStatusSet,
 ) => apiClient.post<Ticket>(`${ticketPath(orgSlug, shortId)}/status`, body)
+
+/** Hand a ticket to an agent or a person (ADR 0028). */
+export const handOffTicket = (
+  orgSlug: string,
+  shortId: string,
+  body: TicketHandOff,
+) => apiClient.post<Ticket>(`${ticketPath(orgSlug, shortId)}/hand-off`, body)
 
 export const reassignTicket = (
   orgSlug: string,

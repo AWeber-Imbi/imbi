@@ -1438,13 +1438,20 @@ class Broker:
             ok = await self._revoke(row) and ok
         return ok
 
+    async def ticket_changed(self, task: Row, _outbox: bool) -> None:
+        """Release the resolutions of a ticket that closed.
+
+        A change hook of the ticket store
+        (:func:`imbi.api.tickets.store.register_change_hook`).
+        """
+        if task['status'] == 'closed':
+            await self.release_task_resolutions(task)
+
     async def release_task_resolutions(self, task: Row) -> None:
         """Release the open resolutions of a task that closed, and
         revoke their provider leases.
 
-        The close hook of the task store
-        (:func:`imbi.api.tickets.store.register_close_hook`). When it
-        fails, the sweep releases them.
+        When it fails, the sweep releases them.
         """
         async with self._pool.connection() as conn:
             released = await _fetch(
@@ -1482,7 +1489,7 @@ class Broker:
                 ' AND expires_at <= NOW() RETURNING *',
                 (),
             )
-            # The close hook (release_task_resolutions) releases these at
+            # The change hook (release_task_resolutions) releases these at
             # once; this catches a task whose hook failed. Materialize
             # refuses them already.
             closed = await _fetch(

@@ -1501,6 +1501,13 @@ class Report:
     reason: str
 
 
+@dataclasses.dataclass
+class HandOff:
+    """A ``hand_off`` call of the model in a :class:`FakeClient` replay."""
+
+    note: str
+
+
 def result_message(**changes: typing.Any) -> sdk.ResultMessage:
     values: dict[str, typing.Any] = {
         'subtype': 'success',
@@ -1521,6 +1528,8 @@ class FakeClient:
     hang: typing.ClassVar[bool] = False
     #: The prompts that the harness sent.
     prompts: typing.ClassVar[list[str]] = []
+    #: The results of the ``hand_off`` calls of the replay.
+    tool_results: typing.ClassVar[list[typing.Any]] = []
 
     def __init__(
         self, options: sdk.ClaudeAgentOptions, **__: typing.Any
@@ -1549,6 +1558,13 @@ class FakeClient:
         for message in self.messages:
             if isinstance(message, Report):
                 self._report(message)
+            elif isinstance(message, HandOff):
+                hooks = self.options.hooks or {}
+                hook = typing.cast(typing.Any, hooks['PreToolUse'][0].hooks[0])
+                run = typing.cast(task.TaskRun, hook.__self__)
+                self.tool_results.append(
+                    await run.hand_off({'note': message.note})
+                )
             else:
                 yield message
         if self.hang:
@@ -1627,6 +1643,7 @@ class RunTestCase(TaskTestCase):
         ]
         FakeClient.hang = False
         FakeClient.prompts = []
+        FakeClient.tool_results = []
 
     async def executor(self, message: dict[str, typing.Any]) -> typing.Any:
         if message['op'] == 'fetch':
@@ -1654,6 +1671,90 @@ class RunTestCase(TaskTestCase):
         self.assertFalse(self.proxy.call_args.kwargs['litellm'])
         transcript = self.tmp / 'transcripts' / 't.jsonl'
         self.assertEqual(len(transcript.read_text().splitlines()), 4)
+
+    async def test_hand_off_ends_without_an_outcome(self) -> None:
+        self.responses['/hand-off'] = {
+            'status': 'open',
+            'control': 'run',
+            'last_seq': 9,
+        }
+        FakeClient.messages = [
+            sdk.AssistantMessage(content=[sdk.TextBlock('stuck')], model='m'),
+            HandOff('Merge the PR.'),
+            result_message(),
+        ]
+        await self.run_task.run()
+        self.assertEqual(self.posted('/hand-off'), [{'note': 'Merge the PR.'}])
+        self.assertEqual(self.posted('/outcome'), [])
+        # The events before the handoff went first.
+        self.assertTrue(self.posted('/events'))
+        self.assertEqual(self.run_task.summary()['status'], 'open')
+        self.assertTrue(self.run_task.closed)
+
+    async def test_refused_hand_off_leaves_the_task(self) -> None:
+        # imbi-api before ADR 0028 P4 has no route.
+        self.responses['/hand-off'] = api.Refused(404, '404')
+        FakeClient.messages = [
+            HandOff('Merge the PR.'),
+            Report('done_acted', 'listed'),
+            result_message(),
+        ]
+        await self.run_task.run()
+        (result,) = FakeClient.tool_results
+        self.assertTrue(result['is_error'])
+        self.assertIn('still yours', result['content'][0]['text'])
+        self.assertEqual(
+            self.posted('/outcome'),
+            [{'outcome': 'done_acted', 'reason': 'listed'}],
+        )
+
+    async def test_hand_off_that_committed_ends_the_run(self) -> None:
+        # The response was lost; imbi-api answers the repeat with the
+        # state of the ticket.
+        sent = mock.AsyncMock(
+            side_effect=[
+                httpx.ReadTimeout('lost'),
+                {'status': 'open', 'control': 'run', 'last_seq': 9},
+            ]
+        )
+        with mock.patch.object(self.run_task.api, 'hand_off', sent):
+            result = await self.run_task.hand_off({'note': 'Merge it.'})
+        self.assertNotIn('is_error', result)
+        self.assertTrue(self.run_task.handed_off)
+        self.assertTrue(self.run_task.closed)
+
+    async def test_closed_session_is_not_a_hand_off(self) -> None:
+        # A cancel or a pause closed the session first.
+        refused = mock.AsyncMock(
+            side_effect=api.Refused(409, 'session_closed')
+        )
+        with mock.patch.object(self.run_task.api, 'hand_off', refused):
+            result = await self.run_task.hand_off({'note': 'Merge it.'})
+        self.assertTrue(result['is_error'])
+        self.assertEqual(refused.await_count, 1)
+        self.assertFalse(self.run_task.handed_off)
+        self.assertFalse(self.run_task.closed)
+
+    async def test_hand_off_retries_once_after_a_lost_response(self) -> None:
+        calls: list[str] = []
+
+        async def flaky(*_: typing.Any) -> typing.Any:
+            calls.append('call')
+            raise httpx.ConnectError('down')
+
+        with mock.patch.object(self.run_task.api, 'hand_off', flaky):
+            result = await self.run_task.hand_off({'note': 'Merge it.'})
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(result['is_error'])
+        self.assertIn('still yours', result['content'][0]['text'])
+        self.assertFalse(self.run_task.closed)
+
+    async def test_hand_off_needs_a_note(self) -> None:
+        for args in ({}, {'note': ' '}, {'note': 1}):
+            result = await self.run_task.hand_off(args)
+            self.assertTrue(result['is_error'], args)
+        self.assertEqual(self.posted('/hand-off'), [])
+        self.assertIn('`hand_off`', self.run_task.instructions())
 
     @staticmethod
     def comment(seq: int, text: str) -> dict[str, typing.Any]:

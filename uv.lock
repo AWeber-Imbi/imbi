@@ -10,6 +10,8 @@ exclude-newer-span = "P7D"
 apache-iggy = false
 certifi = false
 clickhouse-connect = false
+slack-sdk = "2026-11-20T06:00:00Z"
+slackwright = false
 
 [manifest]
 members = [
@@ -1276,7 +1278,7 @@ wheels = [
 
 [[package]]
 name = "imbi"
-version = "2.56.0"
+version = "2.58.0"
 source = { editable = "." }
 dependencies = [
     { name = "imbi-api" },
@@ -1391,7 +1393,7 @@ docs = [
 
 [[package]]
 name = "imbi-api"
-version = "2.56.0"
+version = "2.58.0"
 source = { editable = "apps/api" }
 dependencies = [
     { name = "aioboto3" },
@@ -1477,7 +1479,7 @@ provides-extras = ["otel", "sentry"]
 
 [[package]]
 name = "imbi-assistant"
-version = "2.56.0"
+version = "2.58.0"
 source = { editable = "apps/assistant" }
 dependencies = [
     { name = "anthropic" },
@@ -1502,7 +1504,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-common"
-version = "2.56.0"
+version = "2.58.0"
 source = { editable = "libraries/common" }
 dependencies = [
     { name = "argon2-cffi" },
@@ -1620,7 +1622,7 @@ provides-extras = ["databases", "llm", "mcp", "otel", "posthog", "script", "sent
 
 [[package]]
 name = "imbi-gateway"
-version = "2.56.0"
+version = "2.58.0"
 source = { editable = "apps/gateway" }
 dependencies = [
     { name = "cel-python" },
@@ -1649,7 +1651,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-harness"
-version = "2.56.0"
+version = "2.58.0"
 source = { editable = "apps/harness" }
 dependencies = [
     { name = "claude-agent-sdk" },
@@ -1668,7 +1670,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-mcp"
-version = "2.56.0"
+version = "2.58.0"
 source = { editable = "apps/mcp" }
 dependencies = [
     { name = "fastmcp" },
@@ -1691,7 +1693,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-plugin-anthropic"
-version = "2.56.0"
+version = "2.58.0"
 source = { editable = "plugins/anthropic" }
 dependencies = [
     { name = "imbi-common" },
@@ -1706,7 +1708,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-plugin-aws"
-version = "2.56.0"
+version = "2.58.0"
 source = { editable = "plugins/aws" }
 dependencies = [
     { name = "aioboto3" },
@@ -1725,7 +1727,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-plugin-github"
-version = "2.56.0"
+version = "2.58.0"
 source = { editable = "plugins/github" }
 dependencies = [
     { name = "httpx" },
@@ -1744,7 +1746,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-plugin-google"
-version = "2.56.0"
+version = "2.58.0"
 source = { editable = "plugins/google" }
 dependencies = [
     { name = "httpx" },
@@ -1761,7 +1763,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-plugin-logzio"
-version = "2.56.0"
+version = "2.58.0"
 source = { editable = "plugins/logzio" }
 dependencies = [
     { name = "httpx" },
@@ -1778,7 +1780,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-plugin-oidc"
-version = "2.56.0"
+version = "2.58.0"
 source = { editable = "plugins/oidc" }
 dependencies = [
     { name = "httpx" },
@@ -1795,7 +1797,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-plugin-openai"
-version = "2.56.0"
+version = "2.58.0"
 source = { editable = "plugins/openai" }
 dependencies = [
     { name = "imbi-common" },
@@ -1810,7 +1812,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-plugin-pagerduty"
-version = "2.56.0"
+version = "2.58.0"
 source = { editable = "plugins/pagerduty" }
 dependencies = [
     { name = "httpx" },
@@ -1827,7 +1829,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-plugin-sentry"
-version = "2.56.0"
+version = "2.58.0"
 source = { editable = "plugins/sentry" }
 dependencies = [
     { name = "httpx" },
@@ -1844,7 +1846,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-plugin-sonarqube"
-version = "2.56.0"
+version = "2.58.0"
 source = { editable = "plugins/sonarqube" }
 dependencies = [
     { name = "httpx" },
@@ -1861,7 +1863,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-scheduler"
-version = "2.56.0"
+version = "2.58.0"
 source = { editable = "apps/scheduler" }
 dependencies = [
     { name = "croniter" },
@@ -1888,7 +1890,7 @@ requires-dist = [
 
 [[package]]
 name = "imbi-slackbot"
-version = "2.56.0"
+version = "2.58.0"
 source = { editable = "apps/slackbot" }
 dependencies = [
     { name = "anthropic" },
@@ -1896,10 +1898,10 @@ dependencies = [
     { name = "fastmcp" },
     { name = "httpx" },
     { name = "imbi-common", extra = ["databases", "mcp", "server"] },
-    { name = "markdown-it-py" },
     { name = "pydantic" },
     { name = "sentry-sdk" },
     { name = "slack-bolt" },
+    { name = "slackwright" },
 ]
 
 [package.metadata]
@@ -1909,15 +1911,15 @@ requires-dist = [
     { name = "fastmcp", specifier = ">=3.0.0" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "imbi-common", extras = ["databases", "mcp", "server"], editable = "libraries/common" },
-    { name = "markdown-it-py", specifier = ">=3.0" },
     { name = "pydantic", specifier = "~=2.12" },
     { name = "sentry-sdk", specifier = ">=2.48.0" },
     { name = "slack-bolt", specifier = ">=1.21" },
+    { name = "slackwright", specifier = ">=0.1.0" },
 ]
 
 [[package]]
 name = "imbi-workflows"
-version = "2.56.0"
+version = "2.58.0"
 source = { editable = "apps/workflows" }
 dependencies = [
     { name = "fastapi" },
@@ -4113,11 +4115,27 @@ wheels = [
 
 [[package]]
 name = "slack-sdk"
-version = "3.43.0"
+version = "3.48.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/13/75/a4964eb771a0c74d79ee7a3bee6fb5d9718909dd1b675e80d62a6a0ad90a/slack_sdk-3.43.0.tar.gz", hash = "sha256:0553152e46c4259eb69f7464cdadc35ba4802ca10f9f5a849c92cf03d6c2ba07", size = 252769, upload-time = "2026-06-30T18:04:41.59Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e9/5a/2f581566a103251e1b2a809dacdfbf1f42b5d6564588d0a7bd84f0896ec0/slack_sdk-3.48.0.tar.gz", hash = "sha256:e54389b4b9b221c9d57f1d98bc1e28f4918e4e0bc435cc5d430216cb1ab6ad7c", size = 277236, upload-time = "2026-11-20T05:53:59.924Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e4/55/42141b8338d46323d5b3c6095201b044c670c20f898643b322ea9b1543a1/slack_sdk-3.43.0-py2.py3-none-any.whl", hash = "sha256:4b6557c65577fc172f685af218b811f9f3b4909e24cddd839ada09565f10c585", size = 315866, upload-time = "2026-06-30T18:04:39.636Z" },
+    { url = "https://files.pythonhosted.org/packages/d1/3d/66cfaec5fe2a7c7c691fa169f4d1add600b5bc2ee3524d846db9530c79cf/slack_sdk-3.48.0-py2.py3-none-any.whl", hash = "sha256:1213726e5b8015eeded608fcb3665c4e9b48af7f7f383ecc1b90af886d6aaa03", size = 336355, upload-time = "2026-11-20T05:53:58.208Z" },
+]
+
+[[package]]
+name = "slackwright"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "httpx" },
+    { name = "markdown-it-py" },
+    { name = "pydantic" },
+    { name = "slack-sdk" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e1/84/d47e13c3be98642c6a7899b6c359abd33c54d77f699bddc184ca72849b81/slackwright-0.1.0.tar.gz", hash = "sha256:a5e5604e2370a103796c202efd0616b7716ab2e3d355536c2140789bf1b1b8ae", size = 174683, upload-time = "2026-11-20T03:30:55.172Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6e/63/16f7d443040ace66a42011d0ada2c2833a5ea72adce61b8b0a792011a23b/slackwright-0.1.0-py3-none-any.whl", hash = "sha256:39f65d4b7000cc62c121fb4fc95d2cfaa2b92d1d016acf31c91686bdef6b43ec", size = 35905, upload-time = "2026-11-20T03:30:54.108Z" },
 ]
 
 [[package]]

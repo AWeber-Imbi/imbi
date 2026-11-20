@@ -429,6 +429,18 @@ class ConcurrencyTests(HarnessTestCase):
         response = await self.post('sessions', {'session_key': 'b'}, 'T-2')
         self.assertEqual(response.status_code, 201, response.text)
 
+    async def make_child(self, child: str, parent: str) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE tickets.tickets AS c'
+                ' SET chain_id = COALESCE(p.chain_id, p.id),'
+                " parent_id = p.id, origin_kind = 'ticket'"
+                ' FROM tickets.tickets AS p'
+                ' WHERE p.short_id = %s AND c.short_id = %s'
+                ' AND p.organization_id = c.organization_id',
+                (parent, child),
+            )
+
     async def test_a_child_of_the_same_agent_gets_a_place(self) -> None:
         # A parent that waits for its child keeps its session open. A
         # child of the same agent, in the parent's chain, still opens
@@ -438,15 +450,34 @@ class ConcurrencyTests(HarnessTestCase):
         await self.create_task()
         self.act_as(self.account)
         await self.open_session()
-        async with self.pool.connection() as conn:
-            await conn.execute(
-                'UPDATE tickets.tickets AS c'
-                " SET chain_id = p.id, origin_kind = 'ticket'"
-                ' FROM tickets.tickets AS p'
-                " WHERE p.short_id = 'T-1' AND c.short_id = 'T-2'"
-                ' AND p.organization_id = c.organization_id',
-            )
+        await self.make_child('T-2', 'T-1')
         response = await self.post('sessions', {'session_key': 'c'}, 'T-2')
+        self.assertEqual(response.status_code, 201, response.text)
+        # The child holds the place, but a new session on the running
+        # parent (a harness restart) is not a new concurrent task.
+        response = await self.post('sessions', {'session_key': 'e'}, 'T-1')
+        self.assertEqual(response.status_code, 201, response.text)
+        response = await self.post('sessions', {'session_key': 'd'}, 'T-3')
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'concurrency_limit'
+        )
+
+    async def test_siblings_of_one_chain_count(self) -> None:
+        # Ancestors hold no place, but siblings and their descendants
+        # do: one chain cannot pass max_concurrent_tasks.
+        self.act_as_user()
+        for _ in range(3):
+            await self.create_task()
+        self.act_as(self.account)
+        await self.open_session()
+        for child in ('T-2', 'T-3'):
+            await self.make_child(child, 'T-1')
+        await self.make_child('T-4', 'T-2')
+        response = await self.post('sessions', {'session_key': 'b'}, 'T-2')
+        self.assertEqual(response.status_code, 201, response.text)
+        # A grandchild waits for no place that its ancestors hold.
+        response = await self.post('sessions', {'session_key': 'c'}, 'T-4')
         self.assertEqual(response.status_code, 201, response.text)
         response = await self.post('sessions', {'session_key': 'd'}, 'T-3')
         self.assertEqual(response.status_code, 409, response.text)

@@ -6,6 +6,19 @@
 #
 # The schema name is fixed: `workflows`.
 
+# Each ticket change checks whether its org has a `ticket_state_changed`
+# binding (imbi.api.workflows.ticket_trigger.has_bindings). A partial
+# index, so a step makes it, after the table.
+[[steps]]
+name = "trigger-bindings-ticket-state-changed-index"
+after_tables = true
+when = "SELECT to_regclass('workflows.trigger_bindings_ticket_state_changed_idx') IS NULL"
+sql = """
+CREATE INDEX trigger_bindings_ticket_state_changed_idx
+  ON workflows.trigger_bindings (organization_id)
+  WHERE type = 'ticket_state_changed' AND enabled AND NOT removed
+"""
+
 # One row per workflow. Save moves `latest_version`; activation sets
 # `active_version`, the only version that triggers run.
 [[tables]]

@@ -52,6 +52,7 @@ import { useAgentList } from './agentQueries'
 import { agentsPath, ticketsPath } from './agentsNav'
 import { ConversationTab } from './ConversationTab'
 import type { RevealState } from './conversationTurns'
+import { HandOffControl } from './HandOffControl'
 import { PersonStatusControls } from './PersonStatusControls'
 import { PriorityBadge, priorityLabel, PriorityPicker } from './priority'
 import { StatisticsTab } from './StatisticsTab'
@@ -77,6 +78,7 @@ import { TaskSearchProvider } from './taskSearch'
 import { ChecksTab, Composer, InputRequiredTab } from './TaskTabs'
 import { ToolbarLead } from './TaskToolbar'
 import { TaskActivityCard, TaskUsageCard } from './TaskUsageCards'
+import { TicketReopen } from './TicketReopen'
 import { buildTrajectory } from './trajectoryModel'
 import { TrajectoryTab } from './TrajectoryTab'
 import { useStoredState } from './useStoredState'
@@ -711,6 +713,8 @@ function TaskHeader({
             <TaskRetry orgSlug={orgSlug} task={task} />
           </>
         )}
+        <HandOffControl orgSlug={orgSlug} task={task} />
+        <TicketReopen orgSlug={orgSlug} task={task} />
         <TaskDelete orgSlug={orgSlug} task={task} />
       </div>
       <div className="flex flex-wrap items-center gap-x-5 gap-y-1">

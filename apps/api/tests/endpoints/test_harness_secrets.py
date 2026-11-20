@@ -38,10 +38,9 @@ class SecretRunnerTestCase(test_harness.RunnerTestCase):
         )
         self.addAsyncCleanup(self._cleanup_secrets)
         # The app lifespan registers these; the tests have no lifespan.
-        task_store.register_close_hook(self.broker.release_task_resolutions)
+        task_store.register_change_hook(self.broker.ticket_changed)
         self.addCleanup(
-            task_store.unregister_close_hook,
-            self.broker.release_task_resolutions,
+            task_store.unregister_change_hook, self.broker.ticket_changed
         )
         patcher = mock.patch.object(broker.log, 'publish', mock.AsyncMock())
         patcher.start()

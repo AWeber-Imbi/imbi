@@ -1,7 +1,8 @@
 """The attributes of an agent task (a ticket, ADR 0028) in a workflow.
 
-The output of an ``agent`` step, the payload of a ``task_completed``
-trigger, and the ticket block of a ``slack`` step show them.
+The output of an ``agent`` step, the payload of a
+``ticket_state_changed`` trigger, and the ticket block of a ``slack``
+step show them.
 """
 
 import typing

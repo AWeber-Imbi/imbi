@@ -3,7 +3,9 @@
 Builds a slack-bolt app that responds to @-mentions and direct messages
 by resolving the Slack user to an Imbi user, minting a per-user token,
 reconstructing the thread's context, running the Claude tool loop while
-showing progress, and rendering the reply as Slack-native formatting.
+showing progress, and posting the reply as Slack-native Markdown. Thread
+ingest, Markdown posting, and the in-flight drain come from
+`slackwright <https://github.com/gmr/slackwright>`_.
 
 """
 
@@ -17,16 +19,15 @@ from slack_bolt.adapter.socket_mode.async_handler import (
 )
 from slack_bolt.async_app import AsyncApp
 from slack_sdk import errors
+from slack_sdk.http_retry import builtin_async_handlers
+from slackwright import inflight, ingest, render
 
 from imbi.slackbot import (
     agent,
     client,
     identity,
-    inflight,
     mcp,
-    messages,
     settings,
-    slackdwn,
     system_prompt,
 )
 
@@ -144,12 +145,7 @@ async def _load_thread(
 ) -> list[dict[str, typing.Any]]:
     """Fetch a thread's messages, falling back to the triggering event."""
     try:
-        response = await slack_client.conversations_replies(
-            channel=channel,
-            ts=thread_ts,
-            limit=200,
-        )
-        thread: list[dict[str, typing.Any]] = response.get('messages') or []
+        thread = await ingest.replies(slack_client, channel, thread_ts)
     except Exception:
         LOGGER.exception('Failed to fetch thread %s/%s', channel, thread_ts)
         thread = []
@@ -209,13 +205,16 @@ async def _process(
 
     slackbot_settings = settings.get_slackbot_settings()
     replies = await _load_thread(slack_client, channel, thread_ts, event)
-    convo = await messages.reconstruct(
-        slack_client,
-        slackbot_settings.slack_bot_token,
-        replies,
-        bot_user_id,
-        slackbot_settings.max_thread_messages,
-    )
+    # The files client sends the bot token only to Slack file hosts.
+    async with ingest.http_client(
+        slackbot_settings.slack_bot_token
+    ) as files_client:
+        convo = await ingest.to_messages(
+            slack_client,
+            files_client,
+            replies[-slackbot_settings.max_thread_messages :],
+            bot_user_id,
+        )
     if not convo:
         await slack_client.chat_postMessage(
             channel=channel, text=_EMPTY_MESSAGE, thread_ts=thread_ts
@@ -255,13 +254,25 @@ async def _process(
     finally:
         await reporter.finish()
 
-    sender = slackdwn.MarkdownSender(slack_client)
-    await sender.send(channel, answer or _EMPTY_MESSAGE, thread_ts)
+    # The answer can quote tool output, so a broadcast mention in it must
+    # not notify the whole channel.
+    await render.post_markdown(
+        slack_client,
+        channel,
+        thread_ts,
+        render.neutralize_broadcasts(answer or _EMPTY_MESSAGE),
+    )
 
 
 def _build_app(bot_token: str) -> AsyncApp:
     """Create the slack-bolt app and register event handlers."""
     app = AsyncApp(token=bot_token)
+    # Retry only the request that Slack rejects with HTTP 429, so a long
+    # answer is not cut off part-way. Bolt copies these handlers into the
+    # client of each request.
+    app.client.retry_handlers.append(
+        builtin_async_handlers.AsyncRateLimitErrorRetryHandler()
+    )
 
     @app.event('app_mention')  # pyright: ignore[reportUnknownMemberType]
     async def _on_mention(  # pyright: ignore[reportUnusedFunction]

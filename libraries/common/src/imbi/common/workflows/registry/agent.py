@@ -425,7 +425,7 @@ def required_permissions(_params: dict[str, typing.Any]) -> set[str]:
 
 STEP = step_type.StepType(
     type='agent',
-    category='agent',
+    category='action',
     label='Agent task',
     description='Gives an agent a task and waits for its outcome.',
     params=Params,

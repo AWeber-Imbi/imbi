@@ -254,6 +254,10 @@ class TaskApi:
             body['structured_output'] = structured_output
         return await self._call('/outcome', body)
 
+    async def hand_off(self, session_id: str, body: Body) -> Body:
+        """Give the task to a person and end the session (ADR 0028)."""
+        return await self._call(f'/sessions/{session_id}/hand-off', body)
+
     async def create_resolution(self, body: Body) -> Body:
         return await self.client.create_resolution(
             self.token, {'short_id': self.short_id, **body}

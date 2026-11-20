@@ -970,15 +970,15 @@ describe('TrajectoryTab inspector', () => {
     expect(screen.queryByRole('complementary')).not.toBeInTheDocument()
   })
 
-  it('fits the assistant tag to its label in the header', async () => {
+  it('fits the agent tag to its label in the row and header', async () => {
     renderTab()
-    const row = rows().find((r) => within(r).queryByText('ASSISTANT'))!
-    expect(within(row).getByText('ASSISTANT').parentElement).toHaveClass(
+    const row = rows().find((r) => within(r).queryByText('AGENT'))!
+    expect(within(row).getByText('AGENT').parentElement).not.toHaveClass(
       'w-full',
     )
     await userEvent.click(row)
     expect(
-      within(inspector()).getByText('ASSISTANT').parentElement,
+      within(inspector()).getByText('AGENT').parentElement,
     ).not.toHaveClass('w-full')
   })
 

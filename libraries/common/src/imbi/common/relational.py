@@ -23,7 +23,12 @@ own transaction. A step runs only when ``when`` returns true, so ``when``
 must return false once the step is done. There is no table of completed
 steps. A step with ``after_tables = true`` runs after the tables instead,
 for a change to a table that the initializer may create in the same run
-(a trigger on it, for example).
+(a trigger on it, for example). A step with ``transaction = false`` runs
+on the autocommit connection, without a transaction, for a statement that
+cannot run in one (``CREATE INDEX CONCURRENTLY``, for example). Its ``sql``
+can be a list of statements, and each one runs separately. If a statement
+fails, the statements before it stay done, so ``when`` must also be true
+for that partial state.
 
 A declared table that is a view is skipped. After a step moves a table and
 leaves a view under the old name, an older release still declares the old
@@ -184,12 +189,25 @@ async def _create_schema(
 async def _run_step(
     conn: psycopg.AsyncConnection[typing.Any], step: dict[str, typing.Any]
 ) -> None:
-    async with conn.transaction():
-        cursor = await conn.execute(step['when'])
-        row = await cursor.fetchone()
-        if row and row[0]:
-            LOGGER.info('Running schema step %s', step['name'])
-            await conn.execute(step['sql'])
+    if step.get('transaction', True):
+        async with conn.transaction():
+            await _run_step_sql(conn, step)
+    else:
+        await _run_step_sql(conn, step)
+
+
+async def _run_step_sql(
+    conn: psycopg.AsyncConnection[typing.Any], step: dict[str, typing.Any]
+) -> None:
+    cursor = await conn.execute(step['when'])
+    row = await cursor.fetchone()
+    if row and row[0]:
+        LOGGER.info('Running schema step %s', step['name'])
+        statements: list[typing.Any] = step['sql']
+        if isinstance(statements, str):
+            statements = [statements]
+        for statement in statements:
+            await conn.execute(statement)
 
 
 async def _views(

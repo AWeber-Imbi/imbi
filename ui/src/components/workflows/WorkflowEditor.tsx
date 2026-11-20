@@ -64,7 +64,6 @@ import { manualTrigger, runResults, testResults } from './runs'
 import { paramSummary } from './schemaFields'
 import { StartRunDialog } from './StartRunDialog'
 import {
-  RETIRED_STEP_TYPES,
   type StepType,
   type TestRunResult,
   type ValidationIssue,
@@ -134,7 +133,6 @@ export function WorkflowEditor({
     setDirty(true)
   }
   const [selection, setSelection] = useState<Selection>(null)
-  const [paletteOpen, setPaletteOpen] = useState(true)
   const [view, setView] = useState<View>({ x: 80, y: 80, zoom: 1 })
   const [issues, setIssues] = useState<ValidationIssue[]>(
     workflow?.version.validation.issues ?? [],
@@ -552,13 +550,7 @@ export function WorkflowEditor({
       </div>
 
       <div className="flex min-h-0 flex-1">
-        {paletteOpen && !readOnly && (
-          <Palette
-            onAdd={onPaletteAdd}
-            onClose={() => setPaletteOpen(false)}
-            types={stepTypes.filter((t) => !RETIRED_STEP_TYPES.has(t.type))}
-          />
-        )}
+        {!readOnly && <Palette onAdd={onPaletteAdd} types={stepTypes} />}
         <Group
           className="min-w-0 flex-1"
           defaultLayout={defaultLayout}
@@ -573,9 +565,6 @@ export function WorkflowEditor({
               onConnect={(edge) => updateGraph((g) => connect(g, types, edge))}
               onMove={(id, position) =>
                 updateGraph((g) => updateNode(g, id, { position }))
-              }
-              onOpenPalette={
-                paletteOpen || readOnly ? null : () => setPaletteOpen(true)
               }
               onRemoveEdge={(index) => {
                 updateGraph((g) => removeEdge(g, index))
@@ -633,26 +622,17 @@ export function WorkflowEditor({
                   updateGraph((g) => updateNode(g, selectedNode.id, patch))
                 }
                 onDelete={deleteSelection}
-                onDuplicate={
-                  // A copy would make a new step of a retired type.
-                  RETIRED_STEP_TYPES.has(selectedNode.type)
-                    ? undefined
-                    : () => {
-                        const copy = duplicateNode(
-                          draft.graph,
-                          selectedNode.id,
-                        ).node
-                        if (!copy) return
-                        updateGraph((g) => ({
-                          ...g,
-                          nodes: [...g.nodes, copy],
-                        }))
-                        const edited = nodePrompt(prompts, selectedNode.id)
-                        if (edited)
-                          setPrompts((p) => ({ ...p, [copy.id]: edited }))
-                        setSelection({ id: copy.id, kind: 'node' })
-                      }
-                }
+                onDuplicate={() => {
+                  const copy = duplicateNode(draft.graph, selectedNode.id).node
+                  if (!copy) return
+                  updateGraph((g) => ({
+                    ...g,
+                    nodes: [...g.nodes, copy],
+                  }))
+                  const edited = nodePrompt(prompts, selectedNode.id)
+                  if (edited) setPrompts((p) => ({ ...p, [copy.id]: edited }))
+                  setSelection({ id: copy.id, kind: 'node' })
+                }}
                 onPromptChange={(prompt) => {
                   setPrompts((p) => ({ ...p, [selectedNode.id]: prompt }))
                   markDirty()

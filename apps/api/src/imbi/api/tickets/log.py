@@ -50,6 +50,7 @@ FROM {EVENTS}
 WHERE organization_id = {{organization_id:String}}
   AND ticket_id = {{ticket_id:String}}
   AND seq > {{after_seq:UInt64}}
+  AND seq <= {{until_seq:UInt64}}
 ORDER BY seq
 LIMIT 1 BY seq
 LIMIT {{limit:UInt32}}
@@ -64,6 +65,20 @@ WHERE organization_id = {{organization_id:String}}
   AND actor_kind = 'agent'
 ORDER BY seq DESC
 LIMIT 1
+"""  # noqa: S608 - EVENTS is a constant
+
+#: The comments (human turns), handoffs, and reopens of a ticket up to
+#: a seq, for the history of a new session (ADR 0028).
+_HISTORY_QUERY = f"""
+SELECT type, at, actor_id, payload
+FROM {EVENTS}
+WHERE organization_id = {{organization_id:String}}
+  AND ticket_id = {{ticket_id:String}}
+  AND seq <= {{until_seq:UInt64}}
+  AND ((type = 'turn' AND actor_kind = 'human')
+       OR type IN ('handed_off', 'reopened'))
+ORDER BY seq
+LIMIT 1 BY seq
 """  # noqa: S608 - EVENTS is a constant
 
 _EVENT_COUNTS_QUERY = f"""
@@ -237,9 +252,12 @@ async def publish(
         )
 
 
-async def archived_events(task: Row, after_seq: int, limit: int) -> list[Row]:
+async def archived_events(
+    task: Row, after_seq: int, limit: int, until_seq: int | None = None
+) -> list[Row]:
     """Return events of an archived task from ClickHouse, by seq.
 
+    ``until_seq`` is the last seq to read; the default is ``last_seq``.
     The rows have the shape of ``tickets.events`` rows.
     """
     rows = await clickhouse.query(
@@ -248,6 +266,7 @@ async def archived_events(task: Row, after_seq: int, limit: int) -> list[Row]:
             'organization_id': task['organization_id'],
             'ticket_id': str(task['id']),
             'after_seq': after_seq,
+            'until_seq': task['last_seq'] if until_seq is None else until_seq,
             'limit': limit,
         },
     )
@@ -260,6 +279,28 @@ async def archived_events(task: Row, after_seq: int, limit: int) -> list[Row]:
                 if row['session_id'] is None
                 else uuid.UUID(row['session_id'])
             ),
+            'at': clickhouse.as_utc(row['at']),
+            'payload': orjson.loads(row['payload']),
+        }
+        for row in rows
+    ]
+
+
+async def archived_history(task: Row, until_seq: int) -> list[Row]:
+    """Return the human turns, ``handed_off``, and ``reopened`` events
+    of a task in ClickHouse up to ``until_seq``, by seq, in the shape of
+    :meth:`imbi.api.tickets.store.TicketStore.history`."""
+    rows = await clickhouse.query(
+        _HISTORY_QUERY,
+        {
+            'organization_id': task['organization_id'],
+            'ticket_id': str(task['id']),
+            'until_seq': until_seq,
+        },
+    )
+    return [
+        {
+            **row,
             'at': clickhouse.as_utc(row['at']),
             'payload': orjson.loads(row['payload']),
         }

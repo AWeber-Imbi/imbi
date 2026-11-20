@@ -314,12 +314,13 @@ MAX_HISTORY_BYTES = 64 * 1024
 
 
 class HistoryEntry(pydantic.BaseModel):
-    """One part of the history of a ticket. Handoffs are not stored
-    yet, so the history has none."""
+    """One part of the history of a ticket."""
 
-    kind: typing.Literal['comment', 'request', 'child', 'prerequisite']
+    kind: typing.Literal[
+        'comment', 'request', 'handoff', 'reopen', 'child', 'prerequisite'
+    ]
     at: datetime.datetime
-    #: The person who wrote a comment or resolved a request.
+    #: Who wrote a comment, resolved a request, or handed off.
     actor: str | None = None
     text: str
     #: The text came from a webhook payload: it is untrusted.
@@ -1735,9 +1736,7 @@ async def list_harness_task_events(
 
     """
     task = await _chain_task(caller, short_id, db, store)
-    if task['log_archived_at'] is not None:
-        return await tickets.log.archived_events(task, after_seq, limit)
-    return await store.events(task['id'], after_seq, limit)
+    return await store.read_log(task, after_seq, limit)
 
 
 def _linked_entry(
@@ -1760,6 +1759,49 @@ def _linked_entry(
         text=text,
         webhook=row['origin_kind']
         in ('webhook', *ticket_store.CHILD_ORIGIN_KINDS),
+    )
+
+
+def _side(side: dict[str, typing.Any]) -> str:
+    """One side of a handoff: the person, or the agent."""
+    if side.get('kind') == 'person':
+        return str(side.get('assignee'))
+    return f'agent {side.get("agent_id")}'
+
+
+def _event_entry(event: dict[str, typing.Any], webhook: bool) -> HistoryEntry:
+    """A human comment, a handoff with its note, or a reopen with the
+    outcome before it and its reason.
+
+    An agent can quote the text of a webhook ticket in the note of its
+    handoff, so the handoff of a webhook ticket is untrusted.
+    """
+    payload: dict[str, typing.Any] = event['payload']
+    if event['type'] == 'turn':
+        return HistoryEntry(
+            kind='comment',
+            at=event['at'],
+            actor=event['actor_id'],
+            text=payload.get('body') or '',
+        )
+    reopen = event['type'] == 'reopened'
+    sides: dict[str, typing.Any] = (
+        payload.get('assignee') or {} if reopen else payload
+    )
+    lines = [f'was {payload["outcome"]}'] if reopen else []
+    if sides:
+        lines.append(
+            f'from {_side(sides.get("from") or {})}'
+            f' to {_side(sides.get("to") or {})}'
+        )
+    if text := payload.get('reason' if reopen else 'note'):
+        lines.append(f'{"Reason" if reopen else "Note"}: {text}')
+    return HistoryEntry(
+        kind='reopen' if reopen else 'handoff',
+        at=event['at'],
+        actor=event['actor_id'],
+        text='\n'.join(lines),
+        webhook=webhook,
     )
 
 
@@ -1813,12 +1855,12 @@ async def read_harness_ticket_history(
     A new session reads events only after ``last_seq``, so it reads
     what happened before here. It sends ``last_seq`` as ``max_seq``, so
     a comment written after the session opened is not here as well as
-    in the events. The history has comments (human turns), resolved
-    requests, and the status and outcome of prerequisite tickets and of
-    the tickets that it delegated (also after a move to another
-    parent), oldest first. When the text is larger
-    than :data:`MAX_HISTORY_BYTES`, the oldest entries are left out
-    and ``cut`` is their number. ``webhook`` marks untrusted text.
+    in the events. The history has comments (human turns), handoffs,
+    resolved and withdrawn requests, and the status and outcome of
+    prerequisite tickets and of the tickets that it delegated (also
+    after a move to another parent), oldest first. When the text is
+    larger than :data:`MAX_HISTORY_BYTES`, the oldest entries are left
+    out and ``cut`` is their number. ``webhook`` marks untrusted text.
 
     Raises:
         401: Not a current agent token.
@@ -1827,22 +1869,14 @@ async def read_harness_ticket_history(
 
     """
     task = await _chain_task(caller, short_id, db, store)
-    (turns, requests), relations, delegated = await asyncio.gather(
+    (events, requests), relations, delegated = await asyncio.gather(
         store.history(task, max_seq),
         store.relations(task),
         store.delegated(task),
     )
     webhook = task['origin_kind'] == 'webhook'
     entries = [
-        *(
-            HistoryEntry(
-                kind='comment',
-                at=turn['at'],
-                actor=turn['actor_id'],
-                text=turn['body'] or '',
-            )
-            for turn in turns
-        ),
+        *(_event_entry(event, webhook) for event in events),
         *(_request_entry(row, webhook) for row in requests),
         *(_linked_entry('child', row) for row in delegated),
         *(_linked_entry('prerequisite', row) for row in relations['requires']),

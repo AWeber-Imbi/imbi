@@ -29,6 +29,7 @@ Not in this version: larger payloads are refused rather than moved to
 object storage.
 """
 
+import dataclasses
 import datetime
 import decimal
 import typing
@@ -255,6 +256,21 @@ class OutcomeSet(pydantic.BaseModel):
         if self.outcome != 'done_acted' and not self.reason:
             raise ValueError(f'outcome {self.outcome} needs a reason')
         return self
+
+
+class HandOffSet(pydantic.BaseModel):
+    """The person who gets the ticket of an agent (ADR 0028)."""
+
+    assignee: pydantic.EmailStr | None = pydantic.Field(
+        default=None,
+        description='The email of a person in the org. The owner of the '
+        'ticket when not set.',
+    )
+    note: str = pydantic.Field(
+        min_length=1,
+        max_length=tasks_api.MAX_TEXT_LENGTH,
+        description='What the person must do, and why.',
+    )
 
 
 class TaskState(pydantic.BaseModel):
@@ -602,7 +618,8 @@ async def heartbeat_agent_task_session(
     """Record a heartbeat; return the control value, seq, and budget.
 
     When the task has run longer than the agent's
-    ``settings.task_timeout_seconds`` since its first session opened,
+    ``settings.task_timeout_seconds`` since its first session after its
+    last handoff opened,
     the task closes with ``exceeded_ceiling`` (reason ``task_timeout``)
     and the response has the closed status.
 
@@ -655,6 +672,69 @@ async def close_agent_task_session(
             session_id,
             data.reason,
             _agent_actor(task),
+        )
+    except _STORE_ERRORS as err:
+        raise _translate(err, task['short_id']) from err
+    return task_state(row)
+
+
+@ticket_harness_router.post(
+    '/{short_id}/sessions/{session_id}/hand-off', response_model=TaskState
+)
+async def hand_off_agent_task_session(
+    org_slug: str,
+    org_id: harness_auth.HarnessOrgId,
+    short_id: str,
+    session_id: uuid.UUID,
+    data: HandOffSet,
+    db: graph.Pool,
+    store: tickets.Store,
+    runners: harness.Store,
+    caller: harness_auth.Caller,
+) -> TaskState:
+    """Hand the task of the session to a person, and end the session
+    (ADR 0028).
+
+    Every open session closes with the reason ``handed_off``, and the
+    ticket becomes a person ticket, ``open`` (``held`` stays ``held``),
+    in the same write. Open requests close as ``withdrawn``. The runner
+    keeps the chain; the ticket is not claimed again until it goes back
+    to an agent.
+
+    A repeat with the agent token of the chain, after the handoff of the
+    session committed, returns the state of the ticket: the harness
+    repeats a call whose response it lost.
+
+    Raises:
+        403: The caller is not the service account of the task's agent.
+        404: No such task or session.
+        409: ``task_closed``, ``session_closed``, or ``task_cancelled``.
+        422: The person is not in the org.
+
+    """
+    try:
+        task = await _harness_task(org_id, short_id, store, runners, caller)
+    except fastapi.HTTPException:
+        done = await store.handed_off(org_id, short_id.upper(), session_id)
+        if (
+            done is None
+            or caller.grant is None
+            or caller.grant.chain_id != (done['chain_id'] or done['id'])
+            or done['assignee'].lower()
+            != (data.assignee or done['owner']).lower()
+        ):
+            raise
+        return task_state(done)
+    person = await tasks_api.person_assignee(
+        db, org_slug, data.assignee or task['owner']
+    )
+    try:
+        row = await store.hand_off(
+            org_id,
+            task['short_id'],
+            dataclasses.replace(person, note=data.note),
+            _agent_actor(task),
+            session_id=session_id,
         )
     except _STORE_ERRORS as err:
         raise _translate(err, task['short_id']) from err

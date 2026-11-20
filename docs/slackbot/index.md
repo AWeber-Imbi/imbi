@@ -28,8 +28,10 @@ up to 10 MB each.
 
 While the bot works, it adds a reaction to your message and posts a status
 message that names the tools it runs. It removes both when the answer is
-ready. The answer uses Slack formatting. The bot posts a large Markdown
-table as a canvas, and a code block as a file snippet.
+ready. The answer uses Slack's native Markdown, so tables, code blocks,
+and links show as written. A long answer is split into more than one
+message. Broadcast mentions such as `@here` in an answer do not notify
+the channel.
 
 ### Start an agent task
 

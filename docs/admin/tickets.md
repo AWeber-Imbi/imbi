@@ -32,7 +32,7 @@ A runner pod runs the ticket. See
 |---|---|---|
 | `ticket:read` | See tickets, their events, usage, and the dashboard | `admin`, `developer`, `default`, `readonly`, `imbi-scheduler` |
 | `ticket:create` | Create tickets | `admin`, `developer`, `imbi-scheduler`, `imbi-gateway` |
-| `ticket:manage` | Pause, resume, cancel, and reassign tickets. Reply. Change relations and associated projects | `admin`, `developer` |
+| `ticket:manage` | Pause, resume, cancel, reassign, and hand off tickets. Reply. Change relations and associated projects | `admin`, `developer` |
 | `ticket:resolve` | Answer feedback requests and resolve approvals | `admin`, `developer` |
 | `ticket:delete` | Delete closed tickets | `admin` |
 
@@ -94,9 +94,9 @@ a report fails with `failed_external` and the reason
 tell whether the work is done. Tell the agent to call `report_outcome` in
 its prompt if it often forgets.
 
-When a ticket closes, Imbi starts each active [workflow](workflows.md)
-with a **Ticket closed** trigger (`ticket_closed`) that matches it. A
-workflow saved with the old `task_completed` trigger still works.
+When a ticket is created or changes its status, Imbi starts each active
+[workflow](workflows.md) with a **Ticket state changed** trigger
+(`ticket_state_changed`) that matches the change.
 
 ## Person tickets
 
@@ -124,6 +124,48 @@ prerequisites are done.
 You cannot retry an agent ticket that a workflow step made. The retry
 returns `409` with `workflow_step_task`. Start a new run of the workflow
 instead. See [Agent task](workflows.md#agent-task).
+
+## Hand off a ticket
+
+A ticket can go from an agent to a person, from a person to an agent,
+and from a person to another person. It keeps its id, log, owner,
+parent, dependencies, projects, and cost. On the ticket page, click
+**Hand off** (the arrows icon), or use
+`POST /organizations/{org}/tickets/{id}/hand-off`:
+
+```json
+{"assignee_kind": "person", "assignee": "ops@example.com", "note": "Merge the PR"}
+{"assignee_kind": "agent", "agent_slug": "triage"}
+```
+
+The owner, the assignee, and people with `ticket:manage` can hand off a
+ticket. The status changes in the same write:
+
+| From | To a person | To an agent |
+|---|---|---|
+| `queued`, `paused` | `open` | |
+| `open`, `in_progress` | | `queued` |
+| `blocked` | `open` | `queued` |
+| `held` | `held` | `held` |
+
+- Imbi refuses a handoff while a runner holds the ticket (`409
+  session_open` or `chain_pinned`). To take a running ticket, pause it,
+  and hand it off when its session closes.
+- Each open request closes as **Withdrawn**, with no answer.
+- An agent gets the ticket at the agent version that it has now. The
+  task budget of the agent caps the budget of the ticket; a ticket with
+  no budget gets the task budget. The budget counts the cost
+  of every agent period of the ticket. The task timeout counts from the
+  first session after the last handoff.
+- An agent ticket cannot go to another agent.
+- From a person to another person, only the assignee changes
+  (`assignee.changed`). Other handoffs write `handed_off`.
+
+An agent gives its own ticket to a person with its `hand_off` tool, with
+a note. The default person is the owner. The tool ends the session; the
+ticket does not get an outcome. Use it when a person must do the rest of
+the work, or must decide something that can take days. A new session of
+an agent reads the handoffs and their notes in the ticket history.
 
 ## Create a ticket
 
@@ -281,8 +323,22 @@ four groups:
   grow.
 - The page and the open ticket update without a reload.
 
-The **Tickets** item in the top bar shows the number of tickets that
-wait on you.
+## Waiting on me
+
+The **Tickets** item in the top bar shows the number of items that wait
+on you. Click the hourglass on the Tickets page, or open
+`/tickets/waiting`, to see them. The page has three lists:
+
+| List | Items |
+|---|---|
+| Questions on your tickets | Open requests that have not expired, on the tickets that you own and that are not closed. Paused tickets are included |
+| Assigned to you | Person tickets assigned to you that are not closed |
+| Held: a prerequisite failed | Held tickets that you own with a gating prerequisite that closed with an outcome other than `done_*`, with those prerequisites |
+
+The count is the number of items in the three lists. The API is
+`GET /organizations/{org}/tickets/waiting`: it sends the count, and the
+lists with `?lists=true`. A caller that is not a person gets a count of
+`0`.
 
 A ticket URL is `/tickets/<organization slug>/<short id>`. Add `/<tab>` to
 open a tab. Old `/agents/tasks/...` URLs go to the new URL.
@@ -365,6 +421,38 @@ You need `ticket:manage`. The controls do not show on a closed ticket.
 - On the **Overview** tab, click a **Priority**. The API is
   `POST /organizations/{org}/tickets/{short_id}/priority` with
   `{"priority": "high"}`. The change writes a `priority.changed` event.
+
+### Reopen a closed ticket
+
+The owner, the assignee, and people with `ticket:manage` can reopen a
+closed ticket. Click **Reopen**, write why, and click **Reopen ticket**.
+The API is `POST /organizations/{org}/tickets/{short_id}/reopen` with
+`{"reason": "Still broken"}`.
+
+- The outcome and the close time clear. The `reopened` event records the
+  old outcome and the reason.
+- A person ticket returns to `open`. An agent ticket returns to `queued`,
+  and a runner starts a new session. The session history has the reason.
+- A reopen to an agent is checked as a handoff to an agent: you also
+  need `ticket:create`, the owner must be able to make tickets, and the
+  agent must be enabled. The ticket gets the agent version that the
+  agent has now, and the task budget of the agent caps its budget. The
+  task timeout counts from the first session after the reopen.
+- The cost that the ticket spent stays. A ticket that closed on its
+  budget runs out again at once when it reopens to an agent. Raise its
+  budget or hand it off first.
+- An agent ticket starts its own chain, also when an agent made it as a
+  child of another ticket.
+- To give the ticket a new assignee in the same request, add
+  `"assignee_kind": "person", "assignee": "<email>"` or
+  `"assignee_kind": "agent", "agent_slug": "<slug>"`.
+- The log stays one log, also when it was archived.
+- The request fails with 409 while a runner holds the chain of the
+  ticket (`chain_pinned`), or while the workflow runs of its earlier
+  changes have not all started (`triggers_pending`). Try again later.
+- The reopen is a status change (`closed` to `open` or `queued`), and
+  a ticket that closes again is another close. Each one starts its own
+  `ticket_state_changed` workflow runs.
 
 ## Answer a request
 

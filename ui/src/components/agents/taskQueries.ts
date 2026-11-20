@@ -18,9 +18,11 @@ import {
   listTicketEvents,
   listTicketProjects,
   listTickets,
+  listWaitingTickets,
   replyTicket,
   type TicketListParams,
 } from '@/api/endpoints'
+import { useAuth } from '@/hooks/useAuth'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { queryKeys } from '@/lib/queryKeys'
 import type { Ticket, TicketEvent } from '@/types'
@@ -56,6 +58,20 @@ export function errorMessage(error: Error): string {
       return String(detail.message)
   }
   return error.message
+}
+
+/**
+ * Whether the caller may change who works the ticket (hand off, reopen):
+ * its owner, its assignee, or a holder of `ticket:manage`.
+ */
+export function useCanChangeTicket(orgSlug: string, task: Ticket): boolean {
+  const { user } = useAuth()
+  const canManage = useHasPermission('ticket:manage', orgSlug)
+  const email = user?.email?.toLowerCase()
+  const involved =
+    !!email &&
+    [task.owner, task.assignee].some((e) => e?.toLowerCase() === email)
+  return involved || canManage
 }
 
 /**
@@ -264,9 +280,20 @@ export function useTickets(orgSlug: string, params: TicketListParams) {
   })
 }
 
+/** What waits on the caller in the org (ADR 0028, Waiting on me). */
+export function useWaiting(orgSlug: string | undefined) {
+  const canRead = useHasPermission('ticket:read', orgSlug)
+  return useQuery({
+    enabled: !!orgSlug && canRead,
+    queryFn: ({ signal }) => listWaitingTickets(orgSlug!, signal),
+    queryKey: [...queryKeys.ticketsWaiting(orgSlug ?? ''), 'lists'],
+    refetchInterval: LIST_POLL_MS,
+  })
+}
+
 /**
- * The number of tasks in the org that wait on a person (not closed, a
- * request open), for the badge (O1).
+ * The number of items that wait on the caller, for the badge. It polls
+ * the count only, not the lists.
  */
 export function useWaitingTaskCount(orgSlug: string | undefined) {
   const canRead = useHasPermission('ticket:read', orgSlug)

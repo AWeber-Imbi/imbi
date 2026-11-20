@@ -174,6 +174,9 @@ _RULES = """\
   project, so attach the next project before you detach the last one.
 - Use `request_input` to ask a person a question. Use
   `create_child_task` to give work to another agent: {subagents}.
+- Use `hand_off` to give the task to a person when a person must do
+  the rest of the work, or must decide something that can take days.
+  It ends this session: stop after it, with no `report_outcome`.
 - Before you stop, use `report_outcome` once: `done_acted` when you
   changed something, `done_nothing_to_act_on` when there was nothing to
   do, `failed_external` or `failed_at_gate` when you could not do the
@@ -223,6 +226,21 @@ _REPORT_OUTCOME_SCHEMA: dict[str, typing.Any] = {
         },
     },
     'required': ['outcome', 'reason'],
+}
+_HAND_OFF_SCHEMA: dict[str, typing.Any] = {
+    'type': 'object',
+    'properties': {
+        'note': {
+            'type': 'string',
+            'description': 'What the person must do, and why.',
+        },
+        'assignee': {
+            'type': 'string',
+            'description': 'The email of a person of the organization. '
+            'The owner of the task when not set.',
+        },
+    },
+    'required': ['note'],
 }
 _RUN_WITH_SECRET_SCHEMA: dict[str, typing.Any] = {
     'type': 'object',
@@ -782,6 +800,8 @@ class TaskRun:
         self.structured_output: Body | None = None
         #: The last ``report_outcome`` of the model: (outcome, reason).
         self.reported: tuple[str, str] | None = None
+        #: ``hand_off`` gave the task to a person: it has no outcome.
+        self.handed_off = False
         #: The ids of the background subagents and workflows that have
         #: not ended. Each end wakes the agent for another turn.
         self.background: set[str] = set()
@@ -840,7 +860,7 @@ class TaskRun:
                 self.task,
                 self.structured_output,
             )
-            if done == ('failed_external', NO_OUTCOME):
+            if done == ('failed_external', NO_OUTCOME) and not self.handed_off:
                 LOGGER.warning(
                     'Task %s ended without report_outcome (mutating tool '
                     'calls: %s)',
@@ -922,8 +942,12 @@ class TaskRun:
         (``exceeded_ceiling``, a timeout).
 
         With control ``cancel``, closing the session closes the task as
-        ``cancelled_by_human``.
+        ``cancelled_by_human``. A task that ``hand_off`` gave to a person
+        has no outcome.
         """
+        if self.handed_off:
+            LOGGER.info('Task %s handed off', self.api.short_id)
+            return
         try:
             if self.control == 'cancel':
                 state = await self.api.close_session(
@@ -1764,6 +1788,7 @@ class TaskRun:
                 self.attach_project_tool(),
                 self.detach_project_tool(),
                 self.report_outcome_tool(),
+                self.hand_off_tool(),
             ],
         )
         return sdk.ClaudeAgentOptions(
@@ -2417,6 +2442,58 @@ class TaskRun:
             )
         self.reported = (kind, reason)
         return {'content': [{'type': 'text', 'text': 'Outcome recorded.'}]}
+
+    # --- hand_off -----------------------------------------------------
+
+    def hand_off_tool(self) -> sdk.SdkMcpTool[typing.Any]:
+        @sdk.tool(
+            'hand_off',
+            'Give the task to a person, with a note, and end this session.',
+            _HAND_OFF_SCHEMA,
+        )
+        async def hand_off(args: Body) -> Body:
+            return await self.hand_off(args)
+
+        return hand_off
+
+    async def hand_off(self, args: Body) -> Body:
+        """Give the task to a person now, then stop as a closed task
+        stops. A refusal leaves the task with the agent, for example
+        when imbi-api is older than the route (ADR 0028)."""
+        note = args.get('note')
+        if not isinstance(note, str) or not note.strip():
+            return _tool_error('The note must say what the person must do.')
+        body: Body = {'note': note}
+        if args.get('assignee'):
+            body['assignee'] = args['assignee']
+        # The session ends with the handoff; later events are refused.
+        await self.flush()
+        try:
+            state = await self._send_hand_off(body)
+        except (api.Refused, httpx.HTTPError) as err:
+            detail = err.detail if isinstance(err, api.Refused) else str(err)
+            return _tool_error(
+                f'The handoff failed ({detail}). The task is still yours: '
+                'use request_input to ask a person, or report_outcome.'
+            )
+        self.handed_off = True
+        self._state(state)
+        self.closed = True
+        self.stop()
+        return {
+            'content': [
+                {'type': 'text', 'text': 'The task is with the person. Stop.'}
+            ]
+        }
+
+    async def _send_hand_off(self, body: Body) -> Body:
+        """Send the handoff; repeat it one time after a connection error.
+        imbi-api can commit before the response is lost, and it answers a
+        repeat of a committed handoff with the state of the ticket."""
+        try:
+            return await self.api.hand_off(self.session_id, body)
+        except httpx.HTTPError:
+            return await self.api.hand_off(self.session_id, body)
 
     # --- run_with_secret ----------------------------------------------
 

@@ -1054,16 +1054,17 @@ class FencingTests(RunnerTestCase):
         )
         self.assertEqual(response.status_code, 201, response.text)
 
-    async def test_requeue_runs_close_hooks_for_a_cancelled_task(
+    async def test_requeue_runs_change_hooks_for_a_cancelled_task(
         self,
     ) -> None:
         closed: list[dict[str, typing.Any]] = []
 
-        async def hook(task: dict[str, typing.Any]) -> None:
-            closed.append(task)
+        async def hook(task: dict[str, typing.Any], _outbox: bool) -> None:
+            if task['status'] == 'closed':
+                closed.append(task)
 
-        task_store.register_close_hook(hook)
-        self.addCleanup(task_store.unregister_close_hook, hook)
+        task_store.register_change_hook(hook)
+        self.addCleanup(task_store.unregister_change_hook, hook)
         self.fencer(True)
         response = await self.as_user('POST', 'T-1/cancel')
         self.assertEqual(response.status_code, 200, response.text)

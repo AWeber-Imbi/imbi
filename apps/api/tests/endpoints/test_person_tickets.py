@@ -349,12 +349,14 @@ class TransitionTests(PersonTicketTestCase):
         original = tickets.store._lock_task
         calls = 0
 
-        async def deadlock_once(*args: typing.Any) -> typing.Any:
+        async def deadlock_once(
+            *args: typing.Any, **kwargs: typing.Any
+        ) -> typing.Any:
             nonlocal calls
             calls += 1
             if calls == 1:
                 raise psycopg.errors.DeadlockDetected('deadlock detected')
-            return await original(*args)
+            return await original(*args, **kwargs)
 
         with mock.patch.object(tickets.store, '_lock_task', deadlock_once):
             response = await self.set_status('T-1', 'in_progress')

@@ -74,47 +74,139 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
-## Unreleased: person tickets (ADR 0028)
+## Unreleased: ticket state changed trigger
 
 Set the version of this section when the release is cut.
 
-1. **Before you deploy**, deploy 2.56.0 everywhere and let its rollout
+1. **Before you deploy**, deploy 2.58.0 everywhere and let its rollout
    finish.
-2. Deploy the new image. There is no setup command. At start, imbi-api
-   adds `tickets.tickets.assignee_kind` (default `agent`) and
-   `tickets.tickets.assignee`, makes `agent_id`, `agent_version`, and
-   `service_account_id` nullable, and adds three checks: the assignee
-   kind, the columns of each kind, and the statuses of each kind. Every
-   existing ticket is an agent ticket. The step reads the whole table
-   to validate the checks, and stops writes to `tickets.tickets` while
-   it runs.
-3. Do not make person tickets until every imbi-api pod runs this
-   release. Only a new pod can make one. A 2.56.0 pod reads one, but
-   some of its writes fail on one (see below).
+2. Deploy the new image. There is no setup command. At start, imbi-api:
+    - changes `tickets.trigger_outbox` to one row per ticket change for
+      the `ticket_state_changed` trigger: it adds the columns `id` (a
+      random UUID on each row that exists), `from_state`, `to_state`
+      (default `closed`), `outcome`, and `agent_id`. Then it moves the
+      primary key from `(ticket_id, close_id)` to `(ticket_id, id)`, one
+      time. The table holds only the changes whose workflow runs have
+      not started, so the step is short. It stops writes to the table
+      while it runs;
+    - keeps `tickets.tickets.close_id` and `tickets.trigger_outbox.close_id`
+      for 2.58.0 pods. This release does not read or write them;
+    - adds the partial index `trigger_bindings_ticket_state_changed_idx`
+      on `workflows.trigger_bindings` and the index `runs_lineage_idx` on
+      `workflow_runtime.runs`, and drops
+      `runs_closed_ticket_idempotency_key`. The build of
+      `runs_lineage_idx` stops writes to `workflow_runtime.runs` while it
+      runs.
+3. Activate a workflow with the `ticket_state_changed` trigger only after
+   every imbi-api pod runs this release. During a rolling deploy, the
+   workflow sweep of a 2.58.0 pod deletes outbox rows by `ticket_id`
+   and `close_id`. A row of this release has the nil `close_id`, so that
+   sweep can delete the pending change of a ticket before its runs
+   start.
 
-While pods of both releases run, if a person ticket exists:
+This release removes the `ticket_closed` and `task_completed` triggers.
 
-- A 2.56.0 pod reads a person ticket: the ticket list, the ticket,
-  and its relations show it with no agent. 2.56.0 makes the agent
-  columns optional in its responses for this reason.
-- A 2.56.0 pod that closes a ticket with a `done_*` outcome, and the
-  ticket gates a held person ticket, tries to move the person ticket to
-  `queued`. The check refuses that, so the whole close fails with 500,
-  also when the agent of the ticket reports its outcome. The close
-  works when a new pod takes the retry.
-- A 2.56.0 pod that pauses, resumes, or cancels a person ticket fails
-  with 500, and the ticket does not change.
-- No runner claims a person ticket: the claim query reads only `queued`
-  tickets, and a person ticket is never `queued`.
-- The events of a person ticket go to ClickHouse with an empty
-  `agent_id` and `agent_version` 0, from pods of both releases.
-- The 2.56.0 UI shows a person ticket with no agent name. It cannot
-  make one.
+A 2.58.0 pod that restarts during the rollout does not change the
+`tickets` schema back. Its schema file declares the
+`(ticket_id, close_id)` key of `trigger_outbox`, but its step that
+sets that key runs only when the key does not have two columns, and the
+initializer does not drop columns.
 
-## Unreleased: release B+1 (ADR 0028)
+While pods of both releases run, a 2.58.0 pod writes a `trigger_outbox`
+row only for a close, with `ticket_id` and `close_id`. The row gets a
+new `id` and the `to_state` `closed`.
 
-This release removes the old names of ADR 0028 that 2.56.0 (release B)
-kept for the pods of 2.55.0. No pod of 2.56.0 uses them.
+## 2.58.0
+
+1. **Before you deploy**, deploy 2.57.0 everywhere and let its rollout
+   finish.
+2. Deploy the new image. There is no setup command. At start, imbi-api:
+    - adds the column `tickets.tickets.period_started_at` and two indexes for
+      Waiting on me, `tickets_owner_open_idx` and
+      `tickets_assignee_open_idx`. The index build stops writes to
+      `tickets.tickets` while it runs. A 2.57.0 pod does not use or drop
+      them. A handoff writes values that 2.57.0 reads already: the
+      request status `withdrawn` and the event types `handed_off`,
+      `assignee.changed`, and `request.withdrawn`;
+    - adds `tickets.tickets.archived_seq` (NULL),
+      `tickets.tickets.close_id`, and `tickets.trigger_outbox.close_id`.
+      Both `close_id` columns have the nil UUID as default, so every row
+      that exists gets it. The nil UUID marks the first close cycle of a
+      ticket; a reopen gives the ticket a new one;
+    - changes the primary key of `tickets.trigger_outbox` from
+      `(ticket_id)` to `(ticket_id, close_id)`, one time. The table holds
+      only the closes whose workflow runs have not started, so the step
+      is short. It stops writes to the table while it runs;
+    - gives `chain_id` to each child ticket that was made before
+      `chain_id` existed, from its origin ticket. A child whose origin
+      ticket was deleted becomes the root of its own chain (it is
+      closed, because a delete needs every child closed). This changes
+      no ticket that a release since ADR 0022 made, and a later start
+      finds no such child, so the step runs one time.
+3. Deploy the runner image when you like, before or after imbi-api. An
+   agent gets the `hand_off` tool from the new runner. Against an older
+   imbi-api, the tool tells the agent that the handoff failed, and the
+   ticket stays with the agent.
+4. Do not reopen tickets until every imbi-api pod runs this release.
+   Only a new pod can reopen a ticket. A reopened agent ticket that had
+   sessions has the same task timeout risk as a handoff back to an agent
+   (see below): the new release counts the timeout from the reopen.
+
+A 2.57.0 pod that restarts during the rollout does not
+change the schema back. Its schema file declares the old primary key of
+`trigger_outbox`, but the initializer never changes the primary key of a
+table that exists, and it does not drop the new columns.
+
+While pods of both releases run:
+
+- A pod of the previous release reads a handed-off ticket as a plain
+  agent ticket or person ticket. A withdrawn request is not open for it,
+  and its history of a new session shows the request as withdrawn.
+- Do not hand a ticket back to an agent until the rollout is done when
+  the ticket had agent sessions before. A pod of the previous release
+  counts the task timeout from the first session of the ticket, so its
+  heartbeat can close the ticket with `exceeded_ceiling`
+  (`task_timeout`). The new release counts from the first session after
+  the last handoff.
+- The new UI shows **Hand off** on a ticket. When a pod of the previous
+  release takes the request, it fails with `404`; try again.
+- When an agent hands off its ticket, the runner keeps the chain until
+  it finishes. The chain then has an open ticket, so it goes to
+  `fencing`, as for a paused ticket.
+- `GET /tickets/waiting` now counts what waits on the caller, and
+  returns the three lists with `?lists=true`. Before, it
+  counted every ticket of the organization with an open request. While
+  pods of both releases run, the badge can show either count, and the
+  new **Waiting on me** page shows empty lists when a pod of the
+  previous release answers. The **Waiting on people** tile of the agent
+  dashboard keeps the count for the organization.
+- A 2.57.0 pod writes tickets and `trigger_outbox` rows
+  without `close_id`. They get the nil UUID, which is the value of a
+  first close, so the trigger of either release starts the same runs.
+- No 2.57.0 pod fails with 500 on a reopened ticket. Each one
+  reads it as an open ticket with no outcome. The `ticket_closed` runs
+  of the first close of a ticket keep their idempotency key, so a sweep
+  of either release that retries them starts no second run.
+- A 2.57.0 pod shows only the events after `archived_seq` for
+  a ticket that was archived and then reopened. It reads the events of
+  a ticket that is not archived from Postgres only. The new pods show
+  the whole log. The new-session history of the reopened ticket, when a
+  2.57.0 pod serves it, does not have the comments from before
+  the archive.
+- A 2.57.0 pod that closes a reopened ticket again writes the
+  nil `close_id` to `trigger_outbox`, and its trigger uses the key of
+  the first close. So no `ticket_closed` run starts for that close. A
+  new pod that closes it starts the runs. A new-pod sweep that retries
+  such a row uses the `close_id` of the row, so it deletes the row.
+- A claim that a 2.57.0 pod serves does not take a reopened child
+  ticket: its claim query reads an origin kind, not the chain. A new pod
+  claims it.
+
+## 2.57.0
+
+This release adds person tickets and removes the old names of ADR 0028
+that 2.56.0 (release B) kept for the pods of 2.55.0. No pod of 2.56.0
+uses them.
 
 1. **Before you deploy**, deploy 2.56.0 everywhere and let its
    rollout finish. A pod older than 2.56.0 uses the objects that this
@@ -161,21 +253,50 @@ kept for the pods of 2.55.0. No pod of 2.56.0 uses them.
    - moves the primary keys of `harness.chains` and `harness.claims` to
      `root_ticket_id` and `ticket_id`, and drops the old columns
      (`root_task_id`, `task_id`), the trigger that kept them equal, and
-     the function `harness.mirror_ticket_id()`, and
+     the function `harness.mirror_ticket_id()`,
    - changes the origin kind `task` to `ticket` in each child ticket that
-     a 2.55.0 pod made after the last start of a 2.56.0 pod.
+     a 2.55.0 pod made after the last start of a 2.56.0 pod, and
+   - adds `tickets.tickets.assignee_kind` (default `agent`) and
+     `tickets.tickets.assignee`, makes `agent_id`, `agent_version`, and
+     `service_account_id` nullable, and adds three checks: the assignee
+     kind, the columns of each kind, and the statuses of each kind.
+     Every existing ticket is an agent ticket.
 
    You do not run a command for this. The harness change locks
    `harness.chains` and `harness.claims` while it builds the two new
-   primary keys.
+   primary keys. The person ticket step reads the whole tickets table to
+   validate the checks, and stops writes to `tickets.tickets` while it
+   runs.
 5. Run `imbi-api setup-clickhouse` in a new imbi-api pod (pick the pod by
    name, as for 2.54.0). It drops the `agent_task_events` table. There
    is no iggy-connect restart: 2.56.0 removed the old stream.
+6. Do not make person tickets until every imbi-api pod runs this
+   release. Only a new pod can make one. A 2.56.0 pod reads one, but
+   some of its writes fail on one (see below).
 
 While pods of both releases run:
 
 - If you run `setup-clickhouse` in a 2.56.0 pod, it makes an empty
   `agent_task_events` table again. Run it again in a new pod to drop it.
+
+If a person ticket exists while pods of both releases run:
+
+- A 2.56.0 pod reads a person ticket: the ticket list, the ticket,
+  and its relations show it with no agent. 2.56.0 makes the agent
+  columns optional in its responses for this reason.
+- A 2.56.0 pod that closes a ticket with a `done_*` outcome, and the
+  ticket gates a held person ticket, tries to move the person ticket to
+  `queued`. The check refuses that, so the whole close fails with 500,
+  also when the agent of the ticket reports its outcome. The close
+  works when a new pod takes the retry.
+- A 2.56.0 pod that pauses, resumes, or cancels a person ticket fails
+  with 500, and the ticket does not change.
+- No runner claims a person ticket: the claim query reads only `queued`
+  tickets, and a person ticket is never `queued`.
+- The events of a person ticket go to ClickHouse with an empty
+  `agent_id` and `agent_version` 0, from pods of both releases.
+- The 2.56.0 UI shows a person ticket with no agent name. It cannot
+  make one.
 
 ## 2.56.0
 

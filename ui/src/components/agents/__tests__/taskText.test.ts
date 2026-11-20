@@ -17,6 +17,11 @@ describe('systemText', () => {
         }),
       ),
     ).toBe('Dependency added: T-2 waits on T-1')
+    expect(
+      systemText(
+        event(4, 'reopened', { outcome: 'done_acted', reason: 'Still broken' }),
+      ),
+    ).toBe('Reopened: Still broken')
   })
 
   it('says why a task stopped running unless the reason is routine', () => {
