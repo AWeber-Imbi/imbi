@@ -81,6 +81,13 @@ ANTHROPIC_API = 'https://api.anthropic.com'
 _OUTPUT_REFUSED = 'invalid_structured_output'
 #: The outcome reason of a run that ended without ``report_outcome``.
 NO_OUTCOME = 'no_outcome_reported'
+#: The prompt of the turn that asks an agent for its missing outcome.
+ASK_FOR_OUTCOME = (
+    'You ended without calling report_outcome, so the task will fail '
+    'even if the work is done. Call report_outcome now with the outcome '
+    'and reason that fit what you did. Do not redo any work. If the '
+    'task needs a structured output, give the same one again.'
+)
 #: The built-in tools when the organization allows all of them. The
 #: runner uses ``dontAsk``, so a tool must be listed to run: the CLI's
 #: default mode sends ``Bash`` to a classifier (P5a).
@@ -802,6 +809,8 @@ class TaskRun:
         self.reported: tuple[str, str] | None = None
         #: ``hand_off`` gave the task to a person: it has no outcome.
         self.handed_off = False
+        #: The harness asked the agent once to call ``report_outcome``.
+        self.asked_for_outcome = False
         #: The ids of the background subagents and workflows that have
         #: not ended. Each end wakes the agent for another turn.
         self.background: set[str] = set()
@@ -1935,6 +1944,7 @@ class TaskRun:
                 isinstance(message, sdk.ResultMessage)
                 and not self._waits(message)
                 and not await self._answer_comments(client, message)
+                and not await self._ask_for_outcome(client, message)
             ):
                 return
 
@@ -1989,6 +1999,29 @@ class TaskRun:
         if self.stopping is not None or not self.comments:
             return False
         await client.query(self.take_comments())
+        return True
+
+    async def _ask_for_outcome(
+        self, client: sdk.ClaudeSDKClient, result: sdk.ResultMessage
+    ) -> bool:
+        """Start one more turn when the agent ended a ``success`` turn
+        without ``report_outcome``. Return ``True`` when a turn starts.
+
+        Agents that write a structured output sometimes stop without
+        reporting, and the task then fails with ``no_outcome_reported``
+        after the work is done. The harness asks once; a second turn
+        without a report ends the task as before.
+        """
+        if (
+            self.asked_for_outcome
+            or self.reported is not None
+            or self.handed_off
+            or not self._can_go_on(result)
+        ):
+            return False
+        self.asked_for_outcome = True
+        LOGGER.info('Task %s asked for its outcome', self.api.short_id)
+        await client.query(ASK_FOR_OUTCOME)
         return True
 
     async def read_events(self) -> bool:

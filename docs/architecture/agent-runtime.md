@@ -202,9 +202,10 @@ stops the SDK. The **Agents > Usage** page reads `agent_usage`.
 ## 7. Outcome
 
 The agent reports its outcome with the `report_outcome` tool. The runner
-sets the outcome and closes the task. When the agent stops without a
-report, the runner sets `failed_external` with the reason
-`no_outcome_reported`. A report never changes the outcome of a run that
+sets the outcome and closes the task. When the agent ends a turn
+without a report, the runner asks it once, in one more turn, to call
+`report_outcome`. When that turn ends without a report too, the runner
+sets `failed_external` with the reason `no_outcome_reported`. A report never changes the outcome of a run that
 the SDK ended with an error (for example `partial_capped`). An agent
 that calls `hand_off` instead gives the ticket to a person: imbi-api
 closes the session in the same write, and the ticket gets no outcome

@@ -88,8 +88,9 @@ reason. The reason is a short slug, for example `project_not_found`.
 
 The agent reports its own outcome with the `report_outcome` tool:
 `done_acted`, `done_nothing_to_act_on`, `failed_external`, or
-`failed_at_gate`. The last report wins. A ticket whose agent stops without
-a report fails with `failed_external` and the reason
+`failed_at_gate`. The last report wins. When the agent stops without a
+report, the runner asks it once more to report. A ticket whose agent
+still does not report fails with `failed_external` and the reason
 `no_outcome_reported`, even when the agent changed something: Imbi cannot
 tell whether the work is done. Tell the agent to call `report_outcome` in
 its prompt if it often forgets.

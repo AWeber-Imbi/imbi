@@ -1768,7 +1768,11 @@ class RunTestCase(TaskTestCase):
         }
 
     async def test_comment_during_a_turn_starts_another(self) -> None:
-        FakeClient.messages = [result_message(), result_message()]
+        FakeClient.messages = [
+            result_message(),
+            Report('done_acted', 'listed'),
+            result_message(),
+        ]
         # None before the first turn; one comment at its end.
         self.events = [[], [self.comment(5, 'Use main.')]]
         await self.run_task.run()
@@ -1787,7 +1791,10 @@ class RunTestCase(TaskTestCase):
         self,
     ) -> None:
         # Written after open_session: not in the history (max_seq).
-        FakeClient.messages = [result_message()]
+        FakeClient.messages = [
+            Report('done_acted', 'listed'),
+            result_message(),
+        ]
         self.events = [[self.comment(3, 'Use main.')]]
         await self.run_task.run()
         [prompt] = FakeClient.prompts
@@ -1810,7 +1817,11 @@ class RunTestCase(TaskTestCase):
     async def test_comment_on_a_later_page_starts_another_turn(
         self,
     ) -> None:
-        FakeClient.messages = [result_message(), result_message()]
+        FakeClient.messages = [
+            result_message(),
+            Report('done_acted', 'listed'),
+            result_message(),
+        ]
         other = {'seq': 4, 'type': 'tool.called', 'payload': {}}
         self.events = [[], [other], [self.comment(5, 'Use main.')]]
         with mock.patch.object(api, 'EVENTS_PAGE', 1):
@@ -1933,7 +1944,8 @@ class RunTestCase(TaskTestCase):
         started = turn[1]
         assert isinstance(started, sdk.TaskStartedMessage)
         started.task_type = 'local_bash'
-        FakeClient.messages = turn
+        # The second result answers the ask for the outcome.
+        FakeClient.messages = [*turn, result_message()]
         FakeClient.hang = True
         with self.assertLogs('imbi.harness.task', 'WARNING'):
             await asyncio.wait_for(self.run_task.run(), 5)
@@ -1972,6 +1984,45 @@ class RunTestCase(TaskTestCase):
             [{'outcome': 'failed_external', 'reason': 'no_outcome_reported'}],
         )
         self.assertIn('without report_outcome', logs.output[0])
+
+    async def test_missing_outcome_gets_one_more_turn(self) -> None:
+        FakeClient.messages = [
+            result_message(),
+            Report('done_acted', 'listed'),
+            result_message(),
+        ]
+        await self.run_task.run()
+        self.assertEqual(len(FakeClient.prompts), 2)
+        self.assertEqual(FakeClient.prompts[1], task.ASK_FOR_OUTCOME)
+        self.assertEqual(
+            self.posted('/outcome'),
+            [{'outcome': 'done_acted', 'reason': 'listed'}],
+        )
+
+    async def test_asks_for_the_outcome_only_once(self) -> None:
+        FakeClient.messages = [result_message(), result_message()]
+        with self.assertLogs('imbi.harness.task', 'WARNING'):
+            await self.run_task.run()
+        self.assertEqual(len(FakeClient.prompts), 2)
+        self.assertEqual(
+            self.posted('/outcome'),
+            [{'outcome': 'failed_external', 'reason': 'no_outcome_reported'}],
+        )
+
+    async def test_no_ask_after_a_report(self) -> None:
+        FakeClient.messages = [
+            Report('done_acted', 'listed'),
+            result_message(),
+        ]
+        await self.run_task.run()
+        self.assertEqual(len(FakeClient.prompts), 1)
+
+    async def test_no_ask_after_an_error(self) -> None:
+        FakeClient.messages = [
+            result_message(is_error=True, subtype='error_max_turns')
+        ]
+        await self.run_task.run()
+        self.assertEqual(len(FakeClient.prompts), 1)
 
     async def test_keeps_the_reported_outcome(self) -> None:
         FakeClient.messages[-2] = Report('done_nothing_to_act_on', 'clean')
