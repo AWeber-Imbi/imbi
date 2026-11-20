@@ -1,14 +1,18 @@
-"""Wait: hold the run for a fixed duration."""
+"""Wait: hold the run for a duration."""
 
 import pydantic
 
-from imbi.common.workflows import step_type
+from imbi.common.workflows import graph, step_type
 
 
 class Params(pydantic.BaseModel):
     duration: str = pydantic.Field(
-        pattern=r'^[1-9][0-9]*[smhd]$',
-        description='A number and a unit: s, m, h, or d. Example: 10m.',
+        pattern=rf'^(?:[1-9][0-9]*[smhd]|{graph.REFERENCE})$',
+        description=(
+            'A number and a unit: s, m, h, or d. Example: 10m. Or one '
+            'reference that renders to one, such as '
+            '{{ calc.result.duration }}.'
+        ),
     )
 
 
@@ -20,7 +24,7 @@ STEP = step_type.StepType(
     type='wait',
     category='logic',
     label='Wait',
-    description='Holds the run for a fixed duration.',
+    description='Holds the run for a duration.',
     params=Params,
     output=Output,
     sample_output={'waited_seconds': 600},

@@ -8,6 +8,11 @@ import pydantic
 #: The pattern of a node key. A reference names a node by its key.
 KEY_PATTERN = r'^[a-z][a-z0-9_]*$'
 
+#: One plain reference to a run-time value, for the pattern of a param
+#: that takes a literal or a reference. The engine checks the rendered
+#: value against the same pattern.
+REFERENCE = r'\{\{\s*[a-z][a-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+\s*\}\}'
+
 WHOLE_REFERENCE = re.compile(
     r'^\{\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*)\s*\}\}$'
 )

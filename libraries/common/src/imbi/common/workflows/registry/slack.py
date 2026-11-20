@@ -5,24 +5,20 @@ import typing
 
 import pydantic
 
-from imbi.common.workflows import step_type
+from imbi.common.workflows import graph, step_type
 
 #: A Slack channel id: ``C`` for a channel, ``G`` for an older private
 #: channel.
 CHANNEL_ID = re.compile(r'^[CG][A-Z0-9]{8,}$')
 
-#: One plain reference to a run-time value, as for the ids of an email
-#: step.
-_REFERENCE = r'\{\{\s*[a-z][a-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+\s*\}\}'
-
 #: A channel id, or one plain reference. A rendered reference that is
 #: not a channel id fails the step with ``invalid_params``.
-_CHANNEL = rf'^(?:[CG][A-Z0-9]{{8,}}|{_REFERENCE})$'
+_CHANNEL = rf'^(?:[CG][A-Z0-9]{{8,}}|{graph.REFERENCE})$'
 
 #: The short id of an agent task (a ticket, ADR 0028), or one plain
 #: reference. A rendered reference that
 #: is not a short id fails the step with ``invalid_params``.
-_TICKET = rf'^(?:T-[0-9]+|{_REFERENCE})$'
+_TICKET = rf'^(?:T-[0-9]+|{graph.REFERENCE})$'
 
 
 def escape(value: str) -> str:
