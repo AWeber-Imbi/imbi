@@ -249,7 +249,9 @@ delivery mode:
 
 Both purposes add `checks`, `statuses` and (for `github_write`)
 `actions` read access when the App's installation grants them, so a
-writer can wait for CI with `gh pr checks`.
+writer can wait for CI with `gh pr checks`. `github_write` also adds
+`workflows` write access when the installation grants it, so a writer
+can push a change to a GitHub Actions workflow file.
 
 A grant allows each of its purposes with each of its delivery modes. Put
 purposes that need different delivery modes in separate grants.

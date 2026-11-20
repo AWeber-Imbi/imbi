@@ -76,15 +76,18 @@ PURPOSE_PERMISSIONS: dict[str, dict[str, str]] = {
     },
 }
 
-#: CI read permissions that a purpose adds when the installation grants
-#: them, so an agent can wait for and read checks. Asking for one the
-#: installation lacks would make GitHub refuse the whole token (422).
+#: Permissions that a purpose adds when the installation grants them:
+#: CI reads, so an agent can wait for and read checks, and for
+#: ``github_write`` also ``workflows``, which GitHub requires to push a
+#: change under ``.github/workflows/``. Asking for one the installation
+#: lacks would make GitHub refuse the whole token (422).
 PURPOSE_OPTIONAL_PERMISSIONS: dict[str, dict[str, str]] = {
     'github_read': {'checks': 'read', 'statuses': 'read'},
     'github_write': {
         'actions': 'read',
         'checks': 'read',
         'statuses': 'read',
+        'workflows': 'write',
     },
 }
 
