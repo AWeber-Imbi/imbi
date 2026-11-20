@@ -74,9 +74,7 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
-## Unreleased: handoff, waiting on me, and reopen (ADR 0028)
-
-Set the version of this section when the release is cut.
+## 2.58.0
 
 1. **Before you deploy**, deploy 2.57.0 everywhere and let its rollout
    finish.
