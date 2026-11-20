@@ -1059,12 +1059,16 @@ class ReadTaskTests(AgentTaskTestCase):
         await self.open_request('T-1', 'Second')
         await self.open_request('T-3', 'Third')
         count, since = await self.waiting()
-        self.assertEqual(count, 2)
+        # Each open request of a ticket of the caller counts.
+        self.assertEqual(count, 3)
         self.assertIsNone(since['T-2'])
         assert since['T-1'] is not None and since['T-3'] is not None
         self.assertLess(since['T-3'], since['T-1'])
         response = await self.client.get(self.url('waiting', self.other_org))
-        self.assertEqual(response.json(), {'count': 0})
+        self.assertEqual(
+            response.json(),
+            {'count': 0, 'requests': [], 'assigned': [], 'held': []},
+        )
 
     async def test_paused_task_with_open_request_still_waits(self) -> None:
         await self.open_request('T-1', 'Ask')

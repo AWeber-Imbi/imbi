@@ -205,7 +205,11 @@ The agent reports its outcome with the `report_outcome` tool. The runner
 sets the outcome and closes the task. When the agent stops without a
 report, the runner sets `failed_external` with the reason
 `no_outcome_reported`. A report never changes the outcome of a run that
-the SDK ended with an error (for example `partial_capped`). Then:
+the SDK ended with an error (for example `partial_capped`). An agent
+that calls `hand_off` instead gives the ticket to a person: imbi-api
+closes the session in the same write, and the ticket gets no outcome
+(see [Hand off a ticket](../admin/tickets.md#hand-off-a-ticket)). For a
+closed task:
 
 - The change hooks release the secrets of the task, and start the runs
   of the matching workflow `ticket_state_changed` triggers. The trigger

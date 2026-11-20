@@ -23,6 +23,7 @@ import {
   Clock,
   FolderKanban,
   Hand,
+  Hourglass,
   Inbox,
   Loader,
   LocateFixed,
@@ -546,6 +547,18 @@ function TaskInbox({
                 variant="outline"
               >
                 <LocateFixed />
+              </Button>
+            </IconTooltip>
+            <IconTooltip label="Waiting on me">
+              <Button
+                asChild
+                className="border-input size-8 shrink-0"
+                size="icon"
+                variant="outline"
+              >
+                <Link aria-label="Waiting on me" to={ticketsPath('waiting')}>
+                  <Hourglass />
+                </Link>
               </Button>
             </IconTooltip>
             {canCreate && (
