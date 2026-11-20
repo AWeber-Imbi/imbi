@@ -5433,7 +5433,8 @@ export interface paths {
          *     Raises:
          *         403: The caller is not a member of the org.
          *         404: No such task.
-         *         409: The task is closed.
+         *         409: The task is closed, or its roles changed while this
+         *             request checked them (``roles_changed``).
          *         422: A person in ``roles`` is not in the org.
          */
         patch: operations["update_ticket_api_organizations__org_slug__tickets__short_id__patch"];
@@ -6871,14 +6872,18 @@ export interface paths {
          *     its role. Engine only.
          *
          *     A role with nobody in it changes nothing and returns ``assignee``
-         *     ``None``. A ticket that the person has already is not changed, so
-         *     a repeat after a crash does no harm.
+         *     ``None``. A ticket that the person has already is not changed. A
+         *     repeat with the same ``Idempotency-Key`` returns the first result
+         *     and changes nothing, so it cannot undo a later hand-off.
          *
          *     Raises:
          *         404: No such workflow, run, or step.
          *         409: The step is not a running assign_ticket step, or the
          *             ticket cannot change now (``ticket_closed``,
-         *             ``session_open``, ``chain_pinned``, ``cancel_pending``).
+         *             ``session_open``, ``chain_pinned``, ``cancel_pending``), or
+         *             the role changed before the hand-off (``roles_changed``), or
+         *             a call with this key started and did not finish
+         *             (``outcome_unknown``).
          *         422: ``ticket_not_found``: the ticket is not a ticket of the
          *             organization, or ``assignee_not_member``: the person in the
          *             role is not in the organization.
@@ -34631,7 +34636,9 @@ export interface operations {
     assign_step_ticket_api_organizations__org_slug__workflows__slug__runs__run_id__steps__node_id__assign_ticket_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
             path: {
                 org_slug: string;
                 slug: string;

@@ -1597,11 +1597,12 @@ async def assign_step_ticket(
         409: The step is not a running assign_ticket step, or the
             ticket cannot change now (``ticket_closed``,
             ``session_open``, ``chain_pinned``, ``cancel_pending``), or
-            the role changed before the hand-off (``roles_changed``).
+            the role changed before the hand-off (``roles_changed``), or
+            a call with this key started and did not finish
+            (``outcome_unknown``).
         422: ``ticket_not_found``: the ticket is not a ticket of the
             organization, or ``assignee_not_member``: the person in the
-            role is not in the organization. A call with this key
-            started and did not finish (``409 outcome_unknown``).
+            role is not in the organization.
 
     """
     step = await _running_step(store, runs, org_id, slug, run_id, node_id)
