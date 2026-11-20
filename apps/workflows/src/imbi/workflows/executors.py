@@ -320,7 +320,7 @@ class Executors:
         self.config = config
         self.scripts = scripts
 
-    async def run(self, call: Call) -> Outcome:  # noqa: PLR0911
+    async def run(self, call: Call) -> Outcome:  # noqa: PLR0911, PLR0912
         match call.node.type:
             case 'wait':
                 return self._wait(call)
@@ -540,6 +540,9 @@ class Executors:
                 call.node.id,
                 'assign-ticket',
             ),
+            # A replay returns the first result, so it cannot undo a
+            # later hand-off.
+            headers={'Idempotency-Key': call.idempotency_key},
         )
         return Outcome(output=result, port=0 if result['assignee'] else 1)
 

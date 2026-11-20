@@ -2544,7 +2544,14 @@ class EngineAssignTicketTestCase(WorkflowRunTestCase):
                     ),
                 ),
             )
-        return str(task['short_id']), await self.client.post(self.assign_url)
+        return str(task['short_id']), await self._post()
+
+    async def _post(self, key: str = 'k1') -> httpx.Response:
+        # Keys stay between tests, so each run has its own.
+        return await self.client.post(
+            self.assign_url,
+            headers={'Idempotency-Key': f'{self.run_id}:{key}'},
+        )
 
     async def test_hands_the_ticket_to_the_role(self) -> None:
         short_id, response = await self._assign({'reviewer': self.email})
@@ -2557,8 +2564,8 @@ class EngineAssignTicketTestCase(WorkflowRunTestCase):
         assert task is not None
         self.assertEqual(task['assignee'], self.email)
         # A repeat changes nothing and succeeds, also after the ticket
-        # closes.
-        response = await self.client.post(self.assign_url)
+        # closes, with a new key too.
+        response = await self._post()
         self.assertEqual(response.status_code, 200, response.text)
         await self.tasks.set_person_status(
             self.org,
@@ -2567,8 +2574,23 @@ class EngineAssignTicketTestCase(WorkflowRunTestCase):
             tickets.Actor('human', self.email, 'web'),
             outcome='done_acted',
         )
-        response = await self.client.post(self.assign_url)
+        response = await self._post('k2')
         self.assertEqual(response.status_code, 200, response.text)
+
+    async def test_replay_keeps_a_later_hand_off(self) -> None:
+        short_id, response = await self._assign({'reviewer': self.email})
+        self.assertEqual(response.status_code, 200, response.text)
+        await self.tasks.hand_off(
+            self.org,
+            short_id,
+            tickets.HandOff('person', assignee='later@example.com'),
+            tickets.Actor('human', self.email, 'web'),
+        )
+        response = await self._post()
+        self.assertEqual(response.status_code, 200, response.text)
+        task = await self.tasks.get(self.org, short_id)
+        assert task is not None
+        self.assertEqual(task['assignee'], 'later@example.com')
 
     async def test_empty_role_changes_nothing(self) -> None:
         short_id, response = await self._assign({})
@@ -2580,6 +2602,13 @@ class EngineAssignTicketTestCase(WorkflowRunTestCase):
 
     async def test_role_person_not_in_org(self) -> None:
         _, response = await self._assign({'reviewer': 'out@example.com'})
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual(
+            response.json()['detail'], {'error': 'assignee_not_member'}
+        )
+
+    async def test_role_person_not_in_org_who_has_the_ticket(self) -> None:
+        _, response = await self._assign({'reviewer': 'someone@example.com'})
         self.assertEqual(response.status_code, 422, response.text)
         self.assertEqual(
             response.json()['detail'], {'error': 'assignee_not_member'}

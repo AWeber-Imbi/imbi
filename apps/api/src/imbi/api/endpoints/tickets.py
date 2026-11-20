@@ -2690,19 +2690,32 @@ async def update_ticket(
     Raises:
         403: The caller is not a member of the org.
         404: No such task.
-        409: The task is closed.
+        409: The task is closed, or its roles changed while this
+            request checked them (``roles_changed``).
         422: A person in ``roles`` is not in the org.
 
     """
     changes = data.model_dump(include=data.model_fields_set)
+    known: dict[str, str] | None = None
     if data.roles:
         task = await _get_task(store, org_id, short_id)
-        known: dict[str, str] = task['roles'] or {}
+        known = task['roles'] or {}
         await _role_members(db, org_slug, data.roles, known)
     with write_errors(short_id):
-        return await store.set_fields(
-            org_id, short_id.upper(), changes, _actor(auth)
-        )
+        try:
+            # The roles that were not checked must still be there.
+            return await store.set_fields(
+                org_id,
+                short_id.upper(),
+                changes,
+                _actor(auth),
+                roles_read=known,
+            )
+        except tickets.RolesChanged as e:
+            raise _conflict(
+                'roles_changed',
+                f'The roles of task {short_id!r} changed; try again',
+            ) from e
 
 
 @tickets_router.post('/{short_id}/rank', response_model=AgentTaskResponse)

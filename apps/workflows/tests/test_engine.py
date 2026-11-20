@@ -169,9 +169,9 @@ class FakeApi:
                 )
             return self._once(request, lambda: self._slack(request))
         if path.endswith('/assign-ticket'):
-            return httpx.Response(
-                200,
-                json={
+            return self._once(
+                request,
+                lambda: {
                     'task_id': 'T-1',
                     'role': 'reviewer',
                     'assignee': self.assignee,

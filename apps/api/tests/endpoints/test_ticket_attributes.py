@@ -113,6 +113,27 @@ class TicketAttributeTests(test_person_tickets.PersonTicketTestCase):
         )
         self.assertEqual(response.status_code, 200, response.text)
 
+    async def test_update_refuses_roles_changed_after_the_check(self) -> None:
+        # A role that was not checked must still be on the ticket when
+        # the change is written.
+        task = await self.make()
+        with self.assertRaises(store.RolesChanged):
+            await self.store.set_fields(
+                self.org,
+                task['short_id'],
+                {'roles': {'reviewer': 'gone@example.com'}},
+                store.Actor('human', self.email, 'web'),
+                roles_read={'reviewer': 'gone@example.com'},
+            )
+        with mock.patch.object(
+            self.store, 'set_fields', side_effect=store.RolesChanged('x')
+        ):
+            response = await self.client.patch(
+                self.url(task['short_id']), json={'roles': {'qa': self.member}}
+            )
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(response.json()['detail']['error'], 'roles_changed')
+
     async def test_update_writes_one_event_per_change(self) -> None:
         task = await self.make(labels=['api'])
         response = await self.client.patch(
@@ -244,6 +265,13 @@ class TicketAttributeTests(test_person_tickets.PersonTicketTestCase):
         response = await self.rank(d, a)
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(await self.backlog(), [a, d, b, c])
+        # The event shows the move in the new numbers: last to second.
+        events = await self.store.events(response.json()['id'], 0, 100)
+        self.assertEqual(events[-1]['type'], 'rank.changed')
+        self.assertEqual(
+            (events[-1]['payload']['from'], events[-1]['payload']['to']),
+            (4, 1.5),
+        )
 
     async def test_rank_after_unknown_ticket(self) -> None:
         task = await self.make()

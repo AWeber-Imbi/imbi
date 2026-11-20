@@ -392,6 +392,10 @@ class TaskClosed(ValueError):
     """The task is closed. A closed task does not change."""
 
 
+class RolesChanged(ValueError):
+    """The roles of the task are not the roles that the caller read."""
+
+
 class TaskOpen(ValueError):
     """The task, or a task that it delegated to, is not closed."""
 
@@ -1737,6 +1741,8 @@ class TicketStore:
         short_id: str,
         changes: Row,
         actor: Actor,
+        *,
+        roles_read: Row | None = None,
     ) -> Row:
         """Change ``type``, ``due_date``, ``labels``, or ``roles`` of the
         task. Each value that differs writes ``<field>.changed`` with
@@ -1745,9 +1751,15 @@ class TicketStore:
         Raises:
             TaskNotFound: No such task.
             TaskClosed: The task is closed.
+            RolesChanged: ``roles_read`` is given and the task has other
+                roles now.
 
         """
         async with self._write(organization_id, short_id) as write:
+            if roles_read is not None and (write.task['roles'] or {}) != (
+                roles_read
+            ):
+                raise RolesChanged(short_id)
             changed: Row = {}
             for field, value in changes.items():
                 old = write.task[field]
@@ -1798,11 +1810,19 @@ class TicketStore:
             rank = await _rank_after(
                 write.conn, organization_id, write.task['id'], after
             )
-            if write.task['backlog_rank'] != rank:
+            # A renumber can change the stored rank of this task too,
+            # so read it again.
+            cursor = await write.conn.execute(
+                'SELECT backlog_rank FROM tickets.tickets WHERE id = %s',
+                (write.task['id'],),
+            )
+            found = await cursor.fetchone()
+            old = found[0] if found else None
+            if old != rank:
                 await write.event(
                     'rank.changed',
                     {
-                        'from': write.task['backlog_rank'],
+                        'from': old,
                         'to': rank,
                         'after': after,
                     },
@@ -4009,15 +4029,16 @@ async def _rank_after(
         return float(lo + hi) / 2
     # ponytail: renumbers every ranked ticket of the org; fine for
     # backlogs of thousands, use a text rank (LexoRank) past that.
-    # The moved task keeps its rank, so the caller compares the new
-    # rank with the rank that it read.
+    # The moved task is renumbered too, so its stored rank shows its
+    # old position in the new numbers.
     await conn.execute(
-        'UPDATE tickets.tickets AS t SET backlog_rank = s.n'  # noqa: S608
+        'UPDATE tickets.tickets AS t SET backlog_rank = s.n'
         ' FROM (SELECT id, row_number() OVER (ORDER BY backlog_rank,'
         ' created_at DESC, id DESC) AS n FROM tickets.tickets'
-        ' WHERE ' + _BACKLOG + ' AND backlog_rank IS NOT NULL) AS s'
+        ' WHERE organization_id = %s AND status = ANY(%s)'
+        ' AND backlog_rank IS NOT NULL) AS s'
         ' WHERE t.id = s.id',
-        backlog,
+        backlog[:2],
     )
     return await _rank_after(conn, organization_id, task_id, after)
 

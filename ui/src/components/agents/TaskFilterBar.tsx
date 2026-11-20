@@ -40,6 +40,7 @@ import {
   TASK_STATES,
   type TaskFilters,
 } from './taskFilters'
+import { normalizeLabel } from './ticketAttributes'
 
 const CHIP_MAX = 2
 const ROW = 'data-[selected=true]:bg-foreground/6'
@@ -244,7 +245,7 @@ export function TaskFilterBar({
             </PopoverTrigger>
             <PopoverContent align="end" className="w-80 p-0">
               <Command
-                filter={contains}
+                filter={field?.key === 'label' ? containsLabel : contains}
                 onKeyDown={(e) => {
                   if (e.key === 'Backspace' && !text && field) {
                     e.preventDefault()
@@ -447,6 +448,11 @@ function contains(value: string, search: string, keywords?: string[]) {
   )
     ? 1
     : 0
+}
+
+// The API matches labels by their normalized form, so match the same.
+function containsLabel(value: string, search: string, keywords?: string[]) {
+  return contains(value, normalizeLabel(search), keywords)
 }
 
 function initials(name: string) {

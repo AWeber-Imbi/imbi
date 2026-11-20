@@ -1582,13 +1582,15 @@ async def assign_step_ticket(
     runs: workflows.Runs,
     tasks: ticket_store.Store,
     auth: EngineAuth,
+    idempotency_key: IdempotencyKey,
 ) -> dict[str, typing.Any]:
     """Hand the ticket of a running assign_ticket step to the person in
     its role. Engine only.
 
     A role with nobody in it changes nothing and returns ``assignee``
-    ``None``. A ticket that the person has already is not changed, so
-    a repeat after a crash does no harm.
+    ``None``. A ticket that the person has already is not changed. A
+    repeat with the same ``Idempotency-Key`` returns the first result
+    and changes nothing, so it cannot undo a later hand-off.
 
     Raises:
         404: No such workflow, run, or step.
@@ -1597,7 +1599,8 @@ async def assign_step_ticket(
             ``session_open``, ``chain_pinned``, ``cancel_pending``).
         422: ``ticket_not_found``: the ticket is not a ticket of the
             organization, or ``assignee_not_member``: the person in the
-            role is not in the organization.
+            role is not in the organization. A call with this key
+            started and did not finish (``409 outcome_unknown``).
 
     """
     step = await _running_step(store, runs, org_id, slug, run_id, node_id)
@@ -1607,49 +1610,54 @@ async def assign_step_ticket(
             detail=f'Step {node_id!r} is not a running assign_ticket step',
         )
     params = assign_step.Params.model_validate(step['input'])
-    task = await tasks.get(org_id, params.ticket.upper())
-    if task is None:
-        raise fastapi.HTTPException(
-            status_code=422, detail={'error': 'ticket_not_found'}
-        )
-    role = ticket_rows.normalize_label(params.role)
-    roles: dict[str, str] = task['roles'] or {}
-    email = roles.get(role)
-    result: dict[str, typing.Any] = {
-        'task_id': task['short_id'],
-        'role': role,
-        'assignee': email,
-    }
-    # A repeat for a ticket that closed after the first hand-off
-    # succeeds too: the person already has it.
-    if email is None or (
-        task['assignee_kind'] == 'person' and task['assignee'] == email
-    ):
+
+    async def call() -> dict[str, typing.Any]:
+        task = await tasks.get(org_id, params.ticket.upper())
+        if task is None:
+            raise fastapi.HTTPException(
+                status_code=422, detail={'error': 'ticket_not_found'}
+            )
+        role = ticket_rows.normalize_label(params.role)
+        roles: dict[str, str] = task['roles'] or {}
+        email = roles.get(role)
+        result: dict[str, typing.Any] = {
+            'task_id': task['short_id'],
+            'role': role,
+            'assignee': email,
+        }
+        if email is None:
+            return result
+        try:
+            to = await tickets.person_assignee(db, org_slug, email)
+        except fastapi.HTTPException as e:
+            raise fastapi.HTTPException(
+                status_code=422, detail={'error': 'assignee_not_member'}
+            ) from e
+        # A ticket that closed after the person got it succeeds too.
+        if task['assignee_kind'] == 'person' and task['assignee'] == email:
+            return result
+        errors: dict[type[Exception], str] = {
+            ticket_store.TaskClosed: 'ticket_closed',
+            ticket_store.SessionOpen: 'session_open',
+            ticket_store.ChainPinned: 'chain_pinned',
+            ticket_store.CancelPending: 'cancel_pending',
+        }
+        try:
+            await tasks.hand_off(
+                org_id,
+                task['short_id'],
+                to,
+                ticket_store.Actor('system', auth.principal_name, 'api'),
+            )
+        except tuple(errors) as e:
+            raise fastapi.HTTPException(
+                status_code=409, detail={'error': errors[type(e)]}
+            ) from e
         return result
-    try:
-        to = await tickets.person_assignee(db, org_slug, email)
-    except fastapi.HTTPException as e:
-        raise fastapi.HTTPException(
-            status_code=422, detail={'error': 'assignee_not_member'}
-        ) from e
-    errors: dict[type[Exception], str] = {
-        ticket_store.TaskClosed: 'ticket_closed',
-        ticket_store.SessionOpen: 'session_open',
-        ticket_store.ChainPinned: 'chain_pinned',
-        ticket_store.CancelPending: 'cancel_pending',
-    }
-    try:
-        await tasks.hand_off(
-            org_id,
-            task['short_id'],
-            to,
-            ticket_store.Actor('system', auth.principal_name, 'api'),
-        )
-    except tuple(errors) as e:
-        raise fastapi.HTTPException(
-            status_code=409, detail={'error': errors[type(e)]}
-        ) from e
-    return result
+
+    return await runs.once(
+        auth.principal_name, 'step-assign-ticket', idempotency_key, call
+    )
 
 
 @workflow_runs_router.post(
