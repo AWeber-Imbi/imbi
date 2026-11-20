@@ -71,7 +71,7 @@ LOGGER = logging.getLogger(__name__)
 _ID = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$')
 _REF = re.compile(r'^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$')
 
-_DURATION = re.compile(r'^([1-9][0-9]*)([smhd])$')
+_DURATION = re.compile(rf'^{wait.DURATION}$')
 _UNITS = {'s': 1, 'm': 60, 'h': 3600, 'd': 86400}
 
 #: Statuses of a deployment run that end it, and the port they take.
@@ -349,10 +349,16 @@ class Executors:
     def _wait(self, call: Call) -> Outcome:
         params = _params(wait.Params, call)
         match = _DURATION.match(params.duration)
-        seconds = int(match.group(1)) * _UNITS[match.group(2)] if match else 0
+        if match is None:
+            # The rendered value is itself a reference.
+            raise StepError('invalid_params', retry=False)
+        try:
+            seconds = int(match.group(1)) * _UNITS[match.group(2)]
+            resume_at = _now() + datetime.timedelta(seconds=seconds)
+        except (OverflowError, ValueError) as e:
+            raise StepError('invalid_params', retry=False) from e
         until = call.state.get('until')
         if until is None:
-            resume_at = _now() + datetime.timedelta(seconds=seconds)
             return Outcome(
                 resume_at=resume_at, state={'until': resume_at.isoformat()}
             )

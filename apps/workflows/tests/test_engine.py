@@ -2171,6 +2171,40 @@ class ReleaseStepTestCase(EngineTestCase):
                 self.assertEqual(ship['attempt'], 1)
 
 
+class WaitTestCase(EngineTestCase):
+    async def _hold(self, hold: str) -> dict[str, typing.Any]:
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'manual'),
+                _node('hold', 'wait', {'duration': '{{ trigger.hold }}'}),
+            ],
+            [_edge('start', 'hold')],
+        )
+        return await self._drive(
+            await self._start(workflow_id, payload={'hold': hold})
+        )
+
+    async def test_duration_from_the_trigger(self) -> None:
+        run = await self._hold('1s')
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(run['steps']['hold']['output'], {'waited_seconds': 1})
+
+    async def test_rendered_value_that_is_not_a_duration(self) -> None:
+        for hold in (
+            'soon',
+            '{{ trigger.other }}',
+            '999999999999d',
+            '9' * 4301 + 'd',
+        ):
+            with self.subTest(hold):
+                hold_step = (await self._hold(hold))['steps']['hold']
+                self.assertEqual(
+                    (hold_step['status'], hold_step['error']),
+                    ('failed', 'invalid_params'),
+                )
+                self.assertEqual(hold_step['attempt'], 1)
+
+
 class TimeoutTestCase(EngineTestCase):
     async def test_max_run_time(self) -> None:
         workflow_id = await self._workflow(
