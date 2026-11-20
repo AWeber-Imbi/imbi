@@ -19,6 +19,7 @@ from slack_bolt.adapter.socket_mode.async_handler import (
 )
 from slack_bolt.async_app import AsyncApp
 from slack_sdk import errors
+from slack_sdk.http_retry import builtin_async_handlers
 from slackwright import inflight, ingest, render
 
 from imbi.slackbot import (
@@ -266,6 +267,12 @@ async def _process(
 def _build_app(bot_token: str) -> AsyncApp:
     """Create the slack-bolt app and register event handlers."""
     app = AsyncApp(token=bot_token)
+    # Retry only the request that Slack rejects with HTTP 429, so a long
+    # answer is not cut off part-way. Bolt copies these handlers into the
+    # client of each request.
+    app.client.retry_handlers.append(
+        builtin_async_handlers.AsyncRateLimitErrorRetryHandler()
+    )
 
     @app.event('app_mention')  # pyright: ignore[reportUnknownMemberType]
     async def _on_mention(  # pyright: ignore[reportUnusedFunction]

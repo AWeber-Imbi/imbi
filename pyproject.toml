@@ -835,8 +835,9 @@ certifi = false
 clickhouse-connect = false
 # First-party (gmr/slackwright): releases ship together with slackbot changes.
 slackwright = false
-# slackwright needs slack-sdk>=3.47 (chat streaming, task cards). A fixed
-# cutoff, not false: later slack-sdk releases get the normal 7-day wait.
+# slackwright needs slack-sdk>=3.47 (chat streaming, task cards). This
+# fixed cutoff blocks every slack-sdk artifact uploaded after it, and it
+# does not expire. Remove this exception after 2026-11-27.
 slack-sdk = "2026-11-20T06:00:00Z"
 
 [tool.uv.workspace]

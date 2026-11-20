@@ -155,6 +155,7 @@ class FakeApp:
         self.token = token
         self.handlers: dict = {}
         self.client = mock.AsyncMock()
+        self.client.retry_handlers = []
         self.client.auth_test = mock.AsyncMock(
             return_value={'user_id': 'BOT', 'bot_id': 'B_IMBI'}
         )
@@ -235,6 +236,11 @@ class InitializeTests(helpers.TestCase):
             self.assertTrue(slack_handler._handler.connected)
 
             app = slack_handler._app
+            handlers = slack_handler.builtin_async_handlers
+            self.assertIsInstance(
+                app.client.retry_handlers[-1],
+                handlers.AsyncRateLimitErrorRetryHandler,
+            )
             client = mock.AsyncMock()
             with mock.patch.object(
                 slack_handler, 'handle_event', new=mock.AsyncMock()
