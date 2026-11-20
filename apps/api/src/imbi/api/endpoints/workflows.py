@@ -303,7 +303,7 @@ def _resource_ids(
 
     for node in wf_graph.nodes:
         params = node.params
-        if node.type in ('deploy', 'rollback'):
+        if node.type in ('deploy', 'rollback', 'release'):
             add('project', node.id, params.get('project_id'))
         elif node.type == 'webhook':
             add('webhook', node.id, params.get('webhook_id'))

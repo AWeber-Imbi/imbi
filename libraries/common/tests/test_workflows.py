@@ -414,6 +414,7 @@ class RegistryTestCase(unittest.TestCase):
                 'email',
                 'slack',
                 'deploy',
+                'release',
                 'rollback',
                 'agent',
                 'llm_call',

@@ -32,6 +32,8 @@ from imbi.common.workflows import history, script_runner
 from imbi.workflows import app, engine, executors, settings, store
 
 CLOSED = {'succeeded', 'failed', 'cancelled', 'timed_out'}
+#: The commit that the fake imbi-api resolves every version to.
+SHA = 'a' * 40
 
 
 class Crash(BaseException):
@@ -68,6 +70,25 @@ class FakeApi:
         self.agent: (
             abc.Callable[[httpx.Request], abc.Awaitable[httpx.Response]] | None
         ) = None
+        #: The bodies of the release-notes drafts.
+        self.drafts: list[dict[str, typing.Any]] = []
+        #: The answer of the release-notes draft endpoint.
+        self.draft: dict[str, typing.Any] = {
+            'bump': 'minor',
+            'version': '1.6.0',
+            'reasoning': 'New features.',
+            'notes_markdown': '- Add things',
+            'degraded': False,
+            'commits_considered': 2,
+        }
+        #: ``'building'``: a promote takes the Release workflow path.
+        self.promote_phase: str | None = None
+        #: Whether imbi-api watches the build of that path.
+        self.promote_watched = True
+        #: The newest tag of the project, as ``release-drift`` reports it.
+        self.latest_tag: str | None = None
+        #: The answers of ``promote-status``, in turn; the last repeats.
+        self.promote_statuses: list[dict[str, typing.Any]] = []
         #: Takes the prompt run calls when set.
         self.llm_call: (
             abc.Callable[
@@ -104,6 +125,20 @@ class FakeApi:
             'error': None,
         }
 
+    def _release(self, request: httpx.Request) -> httpx.Response | None:
+        path = request.url.path
+        if path.endswith('/deployments/promote-status'):
+            found = self.promote_statuses
+            return httpx.Response(
+                200, json=found.pop(0) if len(found) > 1 else found[0]
+            )
+        if path.endswith('/deployments/release-drift'):
+            return httpx.Response(200, json={'latest_tag': self.latest_tag})
+        if path.endswith('/deployments/draft-release-notes'):
+            self.drafts.append(json.loads(request.content))
+            return httpx.Response(200, json=self.draft)
+        return None
+
     def __call__(
         self, request: httpx.Request
     ) -> httpx.Response | abc.Awaitable[httpx.Response]:
@@ -132,13 +167,17 @@ class FakeApi:
             return httpx.Response(
                 200, json={'access_token': 'token', 'expires_in': 900}
             )
+        released = self._release(request)
+        if released is not None:
+            return released
         if '/commits/' in path:
             return httpx.Response(200, json={'sha': 'a' * 40})
         if request.method == 'POST' and path.endswith('/deployments'):
             key = request.headers['Idempotency-Key']
             if key not in self.by_key:
                 self.dispatches += 1
-                self.bodies.append(json.loads(request.content))
+                body = json.loads(request.content)
+                self.bodies.append(body)
                 self.by_key[key] = {
                     'run': {
                         'run_id': f'r{self.dispatches}',
@@ -147,6 +186,14 @@ class FakeApi:
                     'plugin_id': 'p',
                     'plugin_slug': 'github',
                 }
+                if body['action'] == 'promote' and self.promote_phase:
+                    self.by_key[key] |= {
+                        'run': {'run_id': '', 'status': 'queued'},
+                        'tag': body['tag'],
+                        'phase': self.promote_phase,
+                        'artifact_run_id': f'a{self.dispatches}',
+                        'watched': self.promote_watched,
+                    }
             return httpx.Response(202, json=self.by_key[key])
         if '/runs/' in path:
             run_id = path.rsplit('/', 1)[1]
@@ -1535,6 +1582,595 @@ class RollbackTestCase(EngineTestCase):
         )
 
 
+class ReleaseStepTestCase(EngineTestCase):
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        self.project = f'proj-{uuid.uuid4().hex[:8]}'
+        self.env = f'env-{uuid.uuid4().hex[:8]}'
+        self.addAsyncCleanup(self._delete_nodes)
+        await self.graph.execute(
+            """
+            CREATE (p:Project {{id: {project}, slug: {project}}})
+            CREATE (e:Environment {{id: {env}, slug: {env}}})
+            WITH e
+            MATCH (o:Organization {{id: {org}}})
+            CREATE (e)-[:BELONGS_TO]->(o)
+            RETURN e.id AS id
+            """,
+            {'project': self.project, 'env': self.env, 'org': self.org},
+            ['id'],
+        )
+
+    async def _delete_nodes(self) -> None:
+        await self.graph.execute(
+            """
+            MATCH (n) WHERE n.id IN {ids} OR n.id STARTS WITH {project}
+            DETACH DELETE n
+            RETURN 1 AS ok
+            """,
+            {'ids': [self.project, self.env], 'project': self.project},
+            ['ok'],
+        )
+
+    async def _deployed(self, *rows: tuple[str, str, str, str]) -> None:
+        """Record deployments to the destination: tag, commit, status, at."""
+        await self.graph.execute(
+            """
+            MATCH (p:Project {{id: {project}}}), (e:Environment {{id: {env}}})
+            UNWIND {rows} AS row
+            CREATE (r:Release {{id: {project} + row[0], tag: row[0],
+                                committish: row[1]}})
+            CREATE (d:Deployment {{id: {project} + '-' + row[0],
+                                   status: row[2], created_at: row[3]}})
+            CREATE (p)-[:HAS_RELEASE]->(r)
+            CREATE (d)-[:BELONGS_TO]->(p)
+            CREATE (d)-[:TARGETS]->(e)
+            CREATE (r)-[:HAS_DEPLOYMENT]->(d)
+            RETURN count(d) AS n
+            """,
+            {
+                'project': self.project,
+                'env': self.env,
+                'rows': [list(row) for row in rows],
+            },
+            ['n'],
+        )
+
+    async def _released(self, tag: str, committish: str) -> None:
+        """Record a release that the destination has not run."""
+        await self.graph.execute(
+            """
+            MATCH (p:Project {{id: {project}}})
+            CREATE (r:Release {{id: {project} + {tag}, tag: {tag},
+                                committish: {committish}}})
+            CREATE (p)-[:HAS_RELEASE]->(r)
+            RETURN r.id AS id
+            """,
+            {'project': self.project, 'tag': tag, 'committish': committish},
+            ['id'],
+        )
+
+    async def _failed_build(self, tag: str, committish: str) -> None:
+        await self._released(tag, committish)
+        await self.graph.execute(
+            """
+            MATCH (r:Release {{id: {release}}})
+            CREATE (b:Blocker {{id: {release} + '-b', status: 'open',
+                                type: 'build-failure'}})
+            CREATE (r)-[:BLOCKED_BY]->(b)
+            RETURN b.id AS id
+            """,
+            {'release': self.project + tag},
+            ['id'],
+        )
+
+    async def _promote(self, **params: typing.Any) -> uuid.UUID:
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'manual'),
+                _node(
+                    'ship',
+                    'release',
+                    {
+                        'project_id': self.project,
+                        'from_environment': 'testing',
+                        'environment': self.env,
+                        'commit': '0123abc',
+                        **params,
+                    },
+                ),
+                _node('ok', 'wait', {'duration': '1s'}),
+                _node('undo', 'wait', {'duration': '1s'}),
+            ],
+            [
+                _edge('start', 'ship'),
+                _edge('ship', 'ok', 0),
+                _edge('ship', 'undo', 1),
+            ],
+        )
+        return await self._start(workflow_id)
+
+    def _promotion(self, tag: str, notes: str) -> dict[str, typing.Any]:
+        return {
+            'action': 'promote',
+            'from_environment': 'testing',
+            'to_environment': self.env,
+            'from_committish': SHA,
+            'tag': tag,
+            'release_notes_markdown': notes,
+        }
+
+    async def test_promotes_once_and_never_acknowledges_ci(self) -> None:
+        run_id = await self._promote(tag='1.4.0', release_notes='Notes.')
+        run = await self._drive(run_id)
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(self.api.bodies, [self._promotion('1.4.0', 'Notes.')])
+        self.assertIn(f'{run_id}:ship', self.api.by_key)
+        self.assertEqual(self.api.drafts, [])
+        ship = run['steps']['ship']
+        self.assertEqual((ship['status'], ship['port']), ('succeeded', 0))
+        self.assertEqual(
+            ship['output'],
+            {
+                'deployment_id': 'r1',
+                'status': 'success',
+                'tag': '1.4.0',
+                'release_notes': 'Notes.',
+                'degraded': False,
+                'error': None,
+            },
+        )
+
+    async def test_untagged_source_drafts_the_release(self) -> None:
+        await self._deployed(
+            ('1.3.0', 'c130', 'success', '2026-01-01'),
+            ('1.4.0', 'c140', 'success', '2026-02-01'),
+            ('1.5.0', 'c150', 'failed', '2026-03-01'),
+        )
+        run = await self._drive(await self._promote())
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(
+            self.api.drafts,
+            [{'base_sha': '1.4.0', 'head_sha': SHA, 'last_tag': '1.4.0'}],
+        )
+        self.assertEqual(
+            self.api.bodies, [self._promotion('1.6.0', '- Add things')]
+        )
+        output = run['steps']['ship']['output']
+        self.assertEqual((output['tag'], output['degraded']), ('1.6.0', False))
+
+    async def test_draft_bumps_from_the_newest_tag(self) -> None:
+        await self._deployed(('1.4.0', 'c140', 'success', '2026-02-01'))
+        self.api.latest_tag = '1.5.0'
+        run = await self._drive(await self._promote())
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(
+            self.api.drafts,
+            [{'base_sha': '1.5.0', 'head_sha': SHA, 'last_tag': '1.5.0'}],
+        )
+
+    async def test_drafted_tag_that_exists_is_refused(self) -> None:
+        await self._deployed(
+            ('1.4.0', 'c140', 'success', '2026-02-01'),
+            ('1.3.0', 'c130', 'success', '2026-03-01'),
+        )
+        self.api.draft = {**self.api.draft, 'version': '1.4.0'}
+        run = await self._drive(await self._promote())
+        ship = run['steps']['ship']
+        self.assertEqual((ship['status'], ship['port']), ('failed', 1))
+        self.assertEqual(
+            (ship['output']['status'], ship['output']['error']),
+            ('refused', 'tag_exists: 1.4.0'),
+        )
+        self.assertEqual(self.api.bodies, [])
+
+    async def test_tagged_commit_is_refused(self) -> None:
+        await self._released('2.0.0', SHA[:7])
+        run = await self._drive(await self._promote())
+        ship = run['steps']['ship']
+        self.assertEqual((ship['status'], ship['port']), ('failed', 1))
+        self.assertEqual(
+            ship['output']['error'], 'commit_already_tagged: 2.0.0'
+        )
+        self.assertEqual(self.api.bodies, [])
+
+    async def test_given_tag_gets_drafted_notes(self) -> None:
+        await self._deployed(('1.4.0', 'c140', 'success', '2026-02-01'))
+        run = await self._drive(await self._promote(tag='1.9.0'))
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(
+            self.api.bodies, [self._promotion('1.9.0', '- Add things')]
+        )
+
+    async def test_failed_build_does_not_hold_the_next_tag(self) -> None:
+        await self._deployed(('1.4.0', 'c140', 'success', '2026-02-01'))
+        await self._failed_build('1.5.0', SHA[:7])
+        self.api.latest_tag = '1.4.0'
+        run = await self._drive(await self._promote())
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual([d['last_tag'] for d in self.api.drafts], ['1.5.0'])
+        self.assertEqual(
+            self.api.bodies, [self._promotion('1.6.0', '- Add things')]
+        )
+
+    async def test_given_notes_are_kept(self) -> None:
+        await self._deployed(('1.4.0', 'c140', 'success', '2026-02-01'))
+        run = await self._drive(await self._promote(release_notes='Mine.'))
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(self.api.bodies, [self._promotion('1.6.0', 'Mine.')])
+
+    async def test_given_tag_and_notes_are_not_drafted(self) -> None:
+        await self._deployed(('1.4.0', 'c140', 'success', '2026-02-01'))
+        run = await self._drive(
+            await self._promote(tag='1.9.0', release_notes='Mine.')
+        )
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(self.api.drafts, [])
+        self.assertEqual(self.api.bodies, [self._promotion('1.9.0', 'Mine.')])
+
+    async def test_commit_with_several_tags_is_refused(self) -> None:
+        await self._released('2.0.0', SHA[:7])
+        await self._released('2.0.1', SHA[:7])
+        run = await self._drive(await self._promote())
+        ship = run['steps']['ship']
+        self.assertEqual((ship['status'], ship['port']), ('failed', 1))
+        self.assertEqual(
+            ship['output']['error'], 'commit_has_several_tags: 2.0.0, 2.0.1'
+        )
+        self.assertEqual(self.api.bodies, [])
+
+    async def test_refused_draft_is_refused(self) -> None:
+        await self._deployed(('1.4.0', 'c140', 'success', '2026-02-01'))
+        original = FakeApi.__call__
+
+        def disabled(
+            api: FakeApi, request: httpx.Request
+        ) -> httpx.Response | abc.Awaitable[httpx.Response]:
+            if request.url.path.endswith('/draft-release-notes'):
+                return httpx.Response(
+                    409, json={'detail': 'Delivery is disabled.'}
+                )
+            return original(api, request)
+
+        run_id = await self._promote()
+        with mock.patch.object(FakeApi, '__call__', disabled):
+            run = await self._drive(run_id)
+        ship = run['steps']['ship']
+        self.assertEqual((ship['status'], ship['port']), ('failed', 1))
+        self.assertEqual(ship['output']['error'], 'Delivery is disabled.')
+        self.assertEqual(self.api.bodies, [])
+
+    async def test_degraded_draft_is_reported(self) -> None:
+        await self._deployed(('1.4.0', 'c140', 'success', '2026-02-01'))
+        self.api.draft = {**self.api.draft, 'degraded': True}
+        run = await self._drive(await self._promote())
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertTrue(run['steps']['ship']['output']['degraded'])
+
+    async def test_retry_does_not_draft_again(self) -> None:
+        await self._deployed(('1.4.0', 'c140', 'success', '2026-02-01'))
+        original = FakeApi.__call__
+        posts: list[str] = []
+
+        def flaky(
+            api: FakeApi, request: httpx.Request
+        ) -> httpx.Response | abc.Awaitable[httpx.Response]:
+            if request.method == 'POST' and request.url.path.endswith(
+                '/deployments'
+            ):
+                posts.append(request.url.path)
+                if len(posts) == 1:
+                    return httpx.Response(503, json={'detail': 'down'})
+            return original(api, request)
+
+        run_id = await self._promote()
+        with (
+            mock.patch.object(FakeApi, '__call__', flaky),
+            mock.patch.object(engine, 'RETRY_BACKOFF', 0),
+        ):
+            run = await self._drive(run_id)
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(run['steps']['ship']['attempt'], 2)
+        self.assertEqual(len(posts), 2)
+        self.assertEqual(len(self.api.drafts), 1)
+        self.assertEqual(
+            self.api.bodies, [self._promotion('1.6.0', '- Add things')]
+        )
+
+    async def test_first_release_drafts_from_history(self) -> None:
+        # A failed deployment is not a release the environment runs.
+        await self._deployed(('1.5.0', 'c150', 'failed', '2026-03-01'))
+        run = await self._drive(await self._promote())
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        self.assertEqual(
+            self.api.drafts,
+            [{'base_sha': '', 'head_sha': SHA, 'last_tag': None}],
+        )
+        self.assertEqual(
+            self.api.bodies, [self._promotion('1.6.0', '- Add things')]
+        )
+
+    def _status(
+        self,
+        status: str,
+        tag: str = '1.4.0',
+        error: str | None = None,
+        artifact: str = 'a1',
+    ) -> dict[str, typing.Any]:
+        return {
+            'status': status,
+            'tag': tag,
+            'committish': '0123abc',
+            'environment': self.env,
+            'from_environment': 'testing',
+            'artifact_run_id': artifact,
+            'error': error,
+        }
+
+    def _status_polls(self) -> int:
+        return sum(p.endswith('/promote-status') for p in self.api.paths)
+
+    async def test_release_workflow_is_followed_to_success(self) -> None:
+        self.api.promote_phase = 'building'
+        self.api.promote_statuses = [
+            self._status('building'),
+            self._status('deploying'),
+            self._status('success'),
+        ]
+        run = await self._drive(
+            await self._promote(tag='1.4.0', release_notes='Notes.')
+        )
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        ship = run['steps']['ship']
+        self.assertEqual((ship['status'], ship['port']), ('succeeded', 0))
+        self.assertEqual(
+            ship['output'],
+            {
+                'deployment_id': 'a1',
+                'status': 'success',
+                'tag': '1.4.0',
+                'release_notes': 'Notes.',
+                'degraded': False,
+                'error': None,
+            },
+        )
+        self.assertEqual(self._status_polls(), 3)
+        self.assertEqual(self.api.dispatches, 1)
+
+    async def test_release_workflow_failures_take_failed(self) -> None:
+        self.api.promote_phase = 'building'
+        for status in ('build_failed', 'deploy_failed', 'failed'):
+            with self.subTest(status):
+                self.api.dispatches = 0
+                self.api.promote_statuses = [
+                    self._status(status, error='Boom.')
+                ]
+                run = await self._drive(
+                    await self._promote(tag='1.4.0', release_notes='Notes.')
+                )
+                ship = run['steps']['ship']
+                self.assertEqual((ship['status'], ship['port']), ('failed', 1))
+                self.assertEqual(ship['output']['status'], status)
+                self.assertEqual(ship['output']['error'], f'{status}: Boom.')
+
+    async def test_the_status_of_another_build_is_skipped(self) -> None:
+        self.api.promote_phase = 'building'
+        self.api.promote_statuses = [
+            self._status('deploying', tag='1.5.0', artifact='a9'),
+            self._status('success', tag='1.5.0', artifact='a9'),
+            self._status('success'),
+        ]
+        run = await self._drive(
+            await self._promote(tag='1.4.0', release_notes='Notes.')
+        )
+        ship = run['steps']['ship']
+        self.assertEqual((ship['status'], ship['port']), ('succeeded', 0))
+        self.assertEqual(self._status_polls(), 3)
+
+    async def test_deployment_tells_the_end_under_another_build(
+        self,
+    ) -> None:
+        self.api.promote_phase = 'building'
+        self.api.promote_statuses = [
+            self._status('deploying', tag='1.5.0', artifact='a9')
+        ]
+        run_id = await self._promote(tag='1.4.0', release_notes='Notes.')
+        await self._drive(run_id, until=lambda _: self._status_polls() >= 1)
+        # Only now: a Release with the tag before the cut is refused.
+        await self._deployed(('1.4.0', SHA[:7], 'success', '2026-04-01'))
+        run = await self._drive(run_id)
+        ship = run['steps']['ship']
+        self.assertEqual((ship['status'], ship['port']), ('succeeded', 0))
+        self.assertEqual(
+            (ship['output']['deployment_id'], ship['output']['tag']),
+            ('a1', '1.4.0'),
+        )
+
+    async def test_failed_rollout_under_another_build(self) -> None:
+        self.api.promote_phase = 'building'
+        self.api.promote_statuses = [
+            self._status('deploying', tag='1.5.0', artifact='a9')
+        ]
+        run_id = await self._promote(tag='1.4.0', release_notes='Notes.')
+        await self._drive(run_id, until=lambda _: self._status_polls() >= 1)
+        await self._deployed(('1.4.0', SHA[:7], 'failed', '2026-04-01'))
+        run = await self._drive(run_id)
+        ship = run['steps']['ship']
+        self.assertEqual((ship['status'], ship['port']), ('failed', 1))
+        self.assertEqual(ship['output']['error'], 'deployment_failed')
+
+    async def test_failed_build_under_another_build(self) -> None:
+        self.api.promote_phase = 'building'
+        self.api.promote_statuses = [
+            self._status('deploying', tag='1.5.0', artifact='a9')
+        ]
+        run_id = await self._promote(tag='1.4.0', release_notes='Notes.')
+        await self._drive(run_id, until=lambda _: self._status_polls() >= 1)
+        await self._failed_build('1.4.0', SHA[:7])
+        run = await self._drive(run_id)
+        ship = run['steps']['ship']
+        self.assertEqual((ship['status'], ship['port']), ('failed', 1))
+        self.assertEqual(ship['output']['error'], 'build_failed')
+
+    async def test_unwatched_build_fails_at_once(self) -> None:
+        self.api.promote_phase = 'building'
+        self.api.promote_watched = False
+        run = await self._drive(
+            await self._promote(tag='1.4.0', release_notes='Notes.')
+        )
+        ship = run['steps']['ship']
+        self.assertEqual((ship['status'], ship['port']), ('failed', 1))
+        self.assertEqual(ship['output']['error'], 'promote_not_watched')
+        self.assertEqual(ship['output']['deployment_id'], 'a1')
+        self.assertEqual(self._status_polls(), 0)
+
+    async def test_legacy_path_follows_the_run(self) -> None:
+        original = FakeApi.__call__
+
+        def failing(
+            api: FakeApi, request: httpx.Request
+        ) -> httpx.Response | abc.Awaitable[httpx.Response]:
+            if '/runs/' in request.url.path:
+                return httpx.Response(
+                    200, json={'run_id': 'r1', 'status': 'failure'}
+                )
+            return original(api, request)
+
+        run_id = await self._promote(tag='1.4.0', release_notes='Notes.')
+        with mock.patch.object(FakeApi, '__call__', failing):
+            run = await self._drive(run_id)
+        ship = run['steps']['ship']
+        self.assertEqual((ship['status'], ship['port']), ('failed', 1))
+        self.assertEqual(
+            ship['output'],
+            {
+                'deployment_id': 'r1',
+                'status': 'failure',
+                'tag': '1.4.0',
+                'release_notes': 'Notes.',
+                'degraded': False,
+                'error': 'deployment_failure',
+            },
+        )
+        self.assertEqual(self._status_polls(), 0)
+
+    async def _drive_answered(
+        self, response: httpx.Response
+    ) -> dict[str, typing.Any]:
+        """Drive a tagged promote whose POST gets ``response``."""
+        original = FakeApi.__call__
+
+        def answer(
+            api: FakeApi, request: httpx.Request
+        ) -> httpx.Response | abc.Awaitable[httpx.Response]:
+            if request.method == 'POST' and request.url.path.endswith(
+                '/deployments'
+            ):
+                api.dispatches += 1
+                return response
+            return original(api, request)
+
+        run_id = await self._promote(tag='1.4.0', release_notes='Notes.')
+        with mock.patch.object(FakeApi, '__call__', answer):
+            run = await self._drive(run_id)
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+        return run['steps']['ship']
+
+    async def test_conflict_is_refused(self) -> None:
+        for status, detail in (
+            (409, "Release '1.4.0' is blocked and cannot be deployed"),
+            (
+                409,
+                'Release 1.4.0 is already building; wait for it to finish '
+                'before you promote it again.',
+            ),
+            (
+                409,
+                'CI failed for commit 0123abc. Review the failing checks '
+                'before you promote it.',
+            ),
+            (400, "Environment 'staging' cannot be promoted to."),
+            (404, 'Environment not found'),
+        ):
+            with self.subTest(detail):
+                self.api.dispatches = 0
+                ship = await self._drive_answered(
+                    httpx.Response(status, json={'detail': detail})
+                )
+                self.assertEqual((ship['status'], ship['port']), ('failed', 1))
+                self.assertEqual(ship['attempt'], 1)
+                self.assertEqual(
+                    ship['output'],
+                    {
+                        'deployment_id': '',
+                        'status': 'refused',
+                        'tag': '1.4.0',
+                        'release_notes': 'Notes.',
+                        'degraded': False,
+                        'error': detail,
+                    },
+                )
+                self.assertEqual(self.api.dispatches, 1)
+
+    async def test_autonomy_refusal_is_refused(self) -> None:
+        ship = await self._drive_answered(
+            httpx.Response(
+                403,
+                json={
+                    'detail': {
+                        'error': 'environment_not_autonomous',
+                        'message': 'Staging does not allow it.',
+                    }
+                },
+            )
+        )
+        self.assertEqual((ship['status'], ship['port']), ('failed', 1))
+        self.assertEqual(
+            ship['output']['error'],
+            'environment_not_autonomous: Staging does not allow it.',
+        )
+
+    async def test_unrecorded_promote_fails(self) -> None:
+        ship = await self._drive_answered(
+            httpx.Response(
+                202,
+                json={
+                    'run': {'run_id': '', 'status': 'queued'},
+                    'plugin_id': 'p',
+                    'plugin_slug': 'github',
+                    'recorded': False,
+                    'tag': '1.4.0',
+                    'warning': 'trigger_deployment failed: boom',
+                },
+            )
+        )
+        self.assertEqual((ship['status'], ship['port']), ('failed', 1))
+        self.assertEqual(
+            ship['output']['error'], 'trigger_deployment failed: boom'
+        )
+        self.assertEqual(ship['attempt'], 1)
+
+    async def test_errors_without_a_reason_stay_errors(self) -> None:
+        for response, code in (
+            (httpx.Response(403, json={'detail': 'Forbidden'}), 'forbidden'),
+            (httpx.Response(422, json={'detail': 'bad'}), 'http_422'),
+            (
+                httpx.Response(
+                    409, json={'detail': {'error': 'outcome_unknown'}}
+                ),
+                'outcome_unknown',
+            ),
+        ):
+            with self.subTest(code):
+                ship = await self._drive_answered(response)
+                self.assertEqual(
+                    (ship['status'], ship['port'], ship['error']),
+                    ('failed', 1, code),
+                )
+                self.assertIsNone(ship['output'])
+                self.assertEqual(ship['attempt'], 1)
+
+
 class TimeoutTestCase(EngineTestCase):
     async def test_max_run_time(self) -> None:
         workflow_id = await self._workflow(
@@ -2423,8 +3059,6 @@ class AppTestCase(unittest.IsolatedAsyncioTestCase):
 
 
 class ApiErrorTestCase(unittest.IsolatedAsyncioTestCase):
-    """``Api.request`` keeps the ``detail`` of an error response."""
-
     async def _error(self, response: httpx.Response) -> executors.StepError:
         def answer(request: httpx.Request) -> httpx.Response:
             if request.url.path.endswith('/auth/token'):
