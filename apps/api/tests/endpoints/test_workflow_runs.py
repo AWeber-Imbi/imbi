@@ -2592,6 +2592,20 @@ class EngineAssignTicketTestCase(WorkflowRunTestCase):
         assert task is not None
         self.assertEqual(task['assignee'], 'later@example.com')
 
+    async def test_hand_off_refuses_changed_roles(self) -> None:
+        short_id, _ = await self._assign({})
+        with self.assertRaises(tickets.RolesChanged):
+            await self.tasks.hand_off(
+                self.org,
+                short_id,
+                tickets.HandOff('person', assignee=self.email),
+                tickets.Actor('system', 'imbi-workflows', 'api'),
+                roles_read={'reviewer': self.email},
+            )
+        task = await self.tasks.get(self.org, short_id)
+        assert task is not None
+        self.assertEqual(task['assignee'], 'someone@example.com')
+
     async def test_empty_role_changes_nothing(self) -> None:
         short_id, response = await self._assign({})
         self.assertEqual(response.status_code, 200, response.text)

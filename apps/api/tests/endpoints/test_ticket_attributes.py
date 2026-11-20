@@ -273,6 +273,23 @@ class TicketAttributeTests(test_person_tickets.PersonTicketTestCase):
             (4, 1.5),
         )
 
+    async def test_rank_renumber_in_place_returns_new_rank(self) -> None:
+        # The renumber gives b the rank that the move computes, so no
+        # event is written, but the response shows the stored rank.
+        a, b, c = [(await self.make())['short_id'] for _ in range(3)]
+        async with self.pool.connection() as conn:
+            for short_id, rank in ((a, 0), (b, 2**-31), (c, 2**-30)):
+                await conn.execute(
+                    'UPDATE tickets.tickets SET backlog_rank = %s'
+                    ' WHERE organization_id = %s AND short_id = %s',
+                    (rank, self.org, short_id),
+                )
+        response = await self.rank(b, a)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['backlog_rank'], 2)
+        events = await self.store.events(response.json()['id'], 0, 100)
+        self.assertNotIn('rank.changed', [e['type'] for e in events])
+
     async def test_rank_after_unknown_ticket(self) -> None:
         task = await self.make()
         response = await self.rank(task['short_id'], 'T-999')

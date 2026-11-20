@@ -1829,6 +1829,9 @@ class TicketStore:
                     actor,
                 )
                 await write.update({'backlog_rank': rank})
+            elif old != write.task['backlog_rank']:
+                # A renumber moved the rank but not the position.
+                write.task = await _fetch_task(write.conn, write.task['id'])
         return write.task
 
     async def label_counts(
@@ -3137,6 +3140,7 @@ class TicketStore:
         actor: Actor,
         *,
         session_id: uuid.UUID | None = None,
+        roles_read: Row | None = None,
     ) -> Row:
         """Give the ticket to another assignee (ADR 0028).
 
@@ -3171,10 +3175,14 @@ class TicketStore:
             ChainPinned: A runner holds the chain.
             WrongAssigneeKind: An agent ticket goes to an agent.
             CancelPending: A cancel waits for the harness.
+            RolesChanged: ``roles_read`` is given and the task has other
+                roles now.
 
         """
         async with self._write(organization_id, short_id) as write:
             task = write.task
+            if roles_read is not None and (task['roles'] or {}) != roles_read:
+                raise RolesChanged(short_id)
             if to.assignee_kind == 'agent' == task['assignee_kind']:
                 raise WrongAssigneeKind(short_id)
             if task['control'] == 'cancel':

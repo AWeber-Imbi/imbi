@@ -1596,7 +1596,8 @@ async def assign_step_ticket(
         404: No such workflow, run, or step.
         409: The step is not a running assign_ticket step, or the
             ticket cannot change now (``ticket_closed``,
-            ``session_open``, ``chain_pinned``, ``cancel_pending``).
+            ``session_open``, ``chain_pinned``, ``cancel_pending``), or
+            the role changed before the hand-off (``roles_changed``).
         422: ``ticket_not_found``: the ticket is not a ticket of the
             organization, or ``assignee_not_member``: the person in the
             role is not in the organization. A call with this key
@@ -1641,13 +1642,17 @@ async def assign_step_ticket(
             ticket_store.SessionOpen: 'session_open',
             ticket_store.ChainPinned: 'chain_pinned',
             ticket_store.CancelPending: 'cancel_pending',
+            ticket_store.RolesChanged: 'roles_changed',
         }
         try:
+            # The roles are read again under the lock, so a person who
+            # left the role does not get the ticket.
             await tasks.hand_off(
                 org_id,
                 task['short_id'],
                 to,
                 ticket_store.Actor('system', auth.principal_name, 'api'),
+                roles_read=roles,
             )
         except tuple(errors) as e:
             raise fastapi.HTTPException(
