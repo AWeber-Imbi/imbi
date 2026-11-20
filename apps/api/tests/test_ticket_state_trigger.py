@@ -221,6 +221,11 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
                         'project': 'web',
                         'agent': 'mender',
                         'cost_usd': 1.25,
+                        'type': None,
+                        'priority': None,
+                        'due_date': None,
+                        'labels': None,
+                        'roles': None,
                     },
                 }
             ],

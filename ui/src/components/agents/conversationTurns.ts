@@ -56,12 +56,17 @@ export type TurnStatus = 'done' | 'failed' | 'running'
 const NOTE_TYPES = new Set([
   'check.reported',
   'control.changed',
+  'due_date.changed',
+  'labels.changed',
   'outcome.set',
   'owner.changed',
   'phase.changed',
   'priority.changed',
+  'rank.changed',
   'reopened',
+  'roles.changed',
   'state.changed',
+  'type.changed',
 ])
 
 /** The router state that asks the conversation to show an event's turn. */

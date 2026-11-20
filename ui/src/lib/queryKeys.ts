@@ -98,6 +98,8 @@ export const queryKeys = {
     ['ticket', orgSlug, ...shortId] as const,
   ticketEvents: (orgSlug: string, ...shortId: string[]) =>
     ['ticketEvents', orgSlug, ...shortId] as const,
+  ticketLabels: (orgSlug: string, q: string) =>
+    ['ticketLabels', orgSlug, q] as const,
   ticketProjects: (orgSlug: string, ...shortId: string[]) =>
     ['ticketProjects', orgSlug, ...shortId] as const,
   ticketRelations: (orgSlug: string, ...shortId: string[]) =>
@@ -105,6 +107,8 @@ export const queryKeys = {
   // Without params: the prefix of every task list of the org.
   tickets: (orgSlug: string, ...params: object[]) =>
     ['tickets', orgSlug, ...params] as const,
+  ticketSubject: (orgSlug: string, description: string) =>
+    ['ticketSubject', orgSlug, description] as const,
   ticketsWaiting: (orgSlug: string) => ['ticketsWaiting', orgSlug] as const,
   // Nested under `workflows` so a list invalidation refreshes each one.
   workflow: (orgSlug: string, slug: string) =>

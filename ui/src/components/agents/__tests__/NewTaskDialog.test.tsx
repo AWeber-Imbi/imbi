@@ -1,4 +1,4 @@
-import { fireEvent, waitFor, within } from '@testing-library/react'
+import { fireEvent, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as endpoints from '@/api/endpoints'
@@ -7,13 +7,19 @@ import type { Agent } from '@/types'
 
 import { detectSource, titleFrom } from '../newTask'
 import { NewTaskDialog } from '../NewTaskDialog'
+import { normalizeLabel } from '../ticketAttributes'
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', () => ({
   createTicket: vi.fn(),
   getProjectsSlim: vi.fn(),
-  listAdminUsers: vi.fn(() => Promise.resolve([])),
+  listAdminUsers: vi.fn(),
   listAgents: vi.fn(),
+  listTicketLabels: vi.fn(() => Promise.resolve([])),
+  listTickets: vi.fn(),
+  reassignTicket: vi.fn(),
+  setTicketParent: vi.fn(),
+  suggestTicketSubject: vi.fn(),
 }))
 
 // fallow-ignore-next-line unresolved-import
@@ -25,6 +31,7 @@ vi.mock('@/contexts/OrganizationContext', () => ({
 vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({
     user: {
+      email: 'me@example.com',
       is_admin: true,
       organizations: [{ organization_slug: 'acme', permissions: [] }],
       permissions: [],
@@ -43,6 +50,34 @@ function agent(slug: string, enabled = true): Agent {
   } as Agent
 }
 
+const BASE = {
+  description: 'Sync the schemas',
+  due_date: null,
+  labels: [],
+  priority: 'normal',
+  project_ids: [],
+  requires: [],
+  roles: {},
+  title: 'Sync the schemas',
+  type: 'task',
+}
+
+async function create(onClose: () => void) {
+  fireEvent.click(screen.getByRole('button', { name: 'Create ticket' }))
+  await waitFor(() => expect(onClose).toHaveBeenCalled())
+}
+
+function describeWork(text: string) {
+  fireEvent.change(screen.getByLabelText(/Describe the work/), {
+    target: { value: text },
+  })
+}
+
+async function pickAgent(name: string) {
+  fireEvent.click(screen.getByRole('button', { name: /Assign to/ }))
+  fireEvent.click(await screen.findByRole('option', { name: new RegExp(name) }))
+}
+
 describe('NewTaskDialog', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -56,6 +91,16 @@ describe('NewTaskDialog', () => {
       { archived: true, id: 'p-2', project_types: [], slug: 'old-billing' },
       { archived: false, id: 'p-3', project_types: [], slug: 'search' },
     ] as unknown as Awaited<ReturnType<typeof endpoints.getProjectsSlim>>)
+    vi.mocked(endpoints.listAdminUsers).mockResolvedValue([
+      { display_name: 'Ops Person', email: 'ops@example.com' },
+    ] as unknown as Awaited<ReturnType<typeof endpoints.listAdminUsers>>)
+    vi.mocked(endpoints.listTickets).mockResolvedValue([
+      { short_id: 'T-3', status: 'open', title: 'Rotate certs' },
+    ] as unknown as Awaited<ReturnType<typeof endpoints.listTickets>>)
+    vi.mocked(endpoints.suggestTicketSubject).mockResolvedValue({
+      degraded: true,
+      subject: 'ignored',
+    })
     vi.mocked(endpoints.createTicket).mockResolvedValue({
       short_id: 'T-1',
     } as Awaited<ReturnType<typeof endpoints.createTicket>>)
@@ -64,145 +109,163 @@ describe('NewTaskDialog', () => {
   it('says what is missing and lists enabled agents only', async () => {
     render(<NewTaskDialog isOpen onClose={vi.fn()} />)
     expect(
-      screen.getByText('Needs a description and an agent.'),
+      screen.getByText('Needs a description and an assignee.'),
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Create ticket' })).toBeDisabled()
-    const agents = await screen.findByRole('radiogroup', { name: 'Agent' })
-    expect(within(agents).getAllByRole('radio')).toHaveLength(2)
+    await waitFor(() => expect(endpoints.listAgents).toHaveBeenCalled())
+    fireEvent.click(screen.getByRole('button', { name: /Assign to/ }))
+    expect(await screen.findAllByRole('option')).toHaveLength(2)
     expect(screen.queryByText('Retired')).toBeNull()
   })
 
   it('keeps the agent of the Run button', () => {
     render(<NewTaskDialog agent={agent('mender')} isOpen onClose={vi.fn()} />)
-    expect(screen.getByRole('radio', { name: /Mender/ })).toBeChecked()
-    expect(
-      within(screen.getByRole('radiogroup', { name: 'Agent' })).getAllByRole(
-        'radio',
-      ),
-    ).toHaveLength(1)
+    expect(screen.getByRole('button', { name: /Assign to/ })).toHaveTextContent(
+      'Mender',
+    )
+    expect(screen.queryByRole('radio', { name: 'Person' })).toBeNull()
     expect(endpoints.listAgents).not.toHaveBeenCalled()
   })
 
   it('searches projects and leaves out archived ones', async () => {
     render(<NewTaskDialog isOpen onClose={vi.fn()} />)
-    fireEvent.change(screen.getByLabelText('Search projects'), {
-      target: { value: 'bill' },
-    })
+    const search = screen.getByLabelText('Projects')
+    fireEvent.focus(search)
+    fireEvent.change(search, { target: { value: 'bill' } })
     expect(await screen.findByText('billing')).toBeInTheDocument()
     expect(screen.queryByText('old-billing')).toBeNull()
     expect(screen.queryByText('search')).toBeNull()
   })
 
-  it('creates a task from the request', async () => {
+  it('creates an agent ticket with its attributes', async () => {
     const onClose = vi.fn()
     render(<NewTaskDialog isOpen onClose={onClose} />)
-    fireEvent.change(screen.getByLabelText('What should be done?'), {
-      target: {
-        value: 'Fix the crash https://sentry.io/issues/1\nIt fails on save.',
-      },
-    })
+    describeWork('Fix the crash https://sentry.io/issues/1\nIt fails on save.')
     expect(screen.getByText('Sentry issue')).toBeInTheDocument()
-    fireEvent.click(await screen.findByRole('radio', { name: /Forager/ }))
-    fireEvent.click(await screen.findByText('search'))
-    expect(screen.getByText('Starts as Queued. Esc to cancel.')).toBeVisible()
-    fireEvent.click(screen.getByRole('button', { name: 'Create ticket' }))
-    await waitFor(() => expect(onClose).toHaveBeenCalled())
+    expect(screen.getByLabelText('Subject')).toHaveValue('Fix the crash')
+    expect(screen.getByText('Auto')).toBeInTheDocument()
+    await pickAgent('Forager')
+    expect(screen.getByText('Runs now with Forager')).toBeInTheDocument()
+    const projects = screen.getByLabelText('Projects')
+    fireEvent.focus(projects)
+    fireEvent.mouseDown(await screen.findByText('search'))
+    fireEvent.click(screen.getByRole('radio', { name: 'Bug' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Urgent' }))
+    fireEvent.change(screen.getByLabelText('Due'), {
+      target: { value: '2026-12-01' },
+    })
+    const labels = screen.getByLabelText('Labels')
+    fireEvent.change(labels, { target: { value: 'API ' } })
+    fireEvent.keyDown(labels, { key: 'Enter' })
+    expect(
+      screen.getByRole('button', { name: 'Remove label api' }),
+    ).toBeInTheDocument()
+    await create(onClose)
     expect(endpoints.createTicket).toHaveBeenCalledWith('acme', {
+      ...BASE,
       agent_slug: 'forager',
       assignee_kind: 'agent',
       description:
         'Fix the crash https://sentry.io/issues/1\nIt fails on save.',
-      priority: 'normal',
-      project_ids: ['p-3'],
-      requires: [],
-      title: 'Fix the crash',
-    })
-  })
-
-  it('creates a task with two projects', async () => {
-    const onClose = vi.fn()
-    render(<NewTaskDialog isOpen onClose={onClose} />)
-    fireEvent.change(screen.getByLabelText('What should be done?'), {
-      target: { value: 'Sync the schemas' },
-    })
-    fireEvent.click(await screen.findByRole('radio', { name: /Forager/ }))
-    fireEvent.click(await screen.findByText('search'))
-    fireEvent.click(screen.getByText('billing'))
-    // A selected project leaves the list and can be removed.
-    expect(
-      screen.getByRole('button', { name: 'Remove project search' }),
-    ).toBeInTheDocument()
-    expect(
-      screen.queryAllByRole('button', { name: /^(billing|search)$/ }),
-    ).toHaveLength(0)
-    fireEvent.click(screen.getByRole('button', { name: 'Create ticket' }))
-    await waitFor(() => expect(onClose).toHaveBeenCalled())
-    expect(endpoints.createTicket).toHaveBeenCalledWith('acme', {
-      agent_slug: 'forager',
-      assignee_kind: 'agent',
-      description: 'Sync the schemas',
-      priority: 'normal',
-      project_ids: ['p-3', 'p-1'],
-      requires: [],
-      title: 'Sync the schemas',
-    })
-  })
-
-  it('creates an urgent task without a project', async () => {
-    const onClose = vi.fn()
-    render(<NewTaskDialog isOpen onClose={onClose} />)
-    fireEvent.change(screen.getByLabelText('What should be done?'), {
-      target: { value: 'Look for shell=True calls' },
-    })
-    fireEvent.click(await screen.findByRole('radio', { name: /Forager/ }))
-    fireEvent.click(screen.getByRole('radio', { name: 'Urgent' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Create ticket' }))
-    await waitFor(() => expect(onClose).toHaveBeenCalled())
-    expect(endpoints.createTicket).toHaveBeenCalledWith('acme', {
-      agent_slug: 'forager',
-      assignee_kind: 'agent',
-      description: 'Look for shell=True calls',
+      due_date: '2026-12-01',
+      labels: ['api'],
       priority: 'urgent',
-      project_ids: [],
-      requires: [],
-      title: 'Look for shell=True calls',
+      project_ids: ['p-3'],
+      title: 'Fix the crash',
+      type: 'bug',
     })
   })
 
-  it('creates a held person ticket', async () => {
+  it('uses the subject that the model writes', async () => {
+    vi.mocked(endpoints.suggestTicketSubject).mockResolvedValue({
+      degraded: false,
+      subject: 'Handle a null owner team',
+    })
+    const onClose = vi.fn()
+    render(<NewTaskDialog agent={agent('mender')} isOpen onClose={onClose} />)
+    describeWork('The deployments list returns a 500 with no owner team.')
+    await waitFor(
+      () =>
+        expect(screen.getByLabelText('Subject')).toHaveValue(
+          'Handle a null owner team',
+        ),
+      { timeout: 2000 },
+    )
+    expect(screen.getByText('AI')).toBeInTheDocument()
+    expect(endpoints.suggestTicketSubject).toHaveBeenCalledWith(
+      'acme',
+      'The deployments list returns a 500 with no owner team.',
+      expect.anything(),
+    )
+    await create(onClose)
+    expect(endpoints.createTicket).toHaveBeenCalledWith(
+      'acme',
+      expect.objectContaining({ title: 'Handle a null owner team' }),
+    )
+  })
+
+  it('keeps a subject that the person typed', async () => {
+    const onClose = vi.fn()
+    render(<NewTaskDialog agent={agent('mender')} isOpen onClose={onClose} />)
+    describeWork('Sync the schemas')
+    fireEvent.change(screen.getByLabelText('Subject'), {
+      target: { value: 'Schema sync' },
+    })
+    expect(screen.queryByText('Auto')).toBeNull()
+    await create(onClose)
+    expect(endpoints.createTicket).toHaveBeenCalledWith('acme', {
+      ...BASE,
+      agent_slug: 'mender',
+      assignee_kind: 'agent',
+      title: 'Schema sync',
+    })
+  })
+
+  it('creates a held person ticket with a role', async () => {
     const onClose = vi.fn()
     render(<NewTaskDialog isOpen onClose={onClose} />)
-    fireEvent.change(screen.getByLabelText('What should be done?'), {
-      target: { value: 'Rotate the deploy key' },
-    })
+    describeWork('Rotate the deploy key')
     fireEvent.click(screen.getByRole('radio', { name: 'Person' }))
-    expect(screen.getByText('Needs a person.')).toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText('Assignee email'), {
-      target: { value: 'ops@example.com' },
+    fireEvent.click(screen.getByRole('button', { name: 'Assignee' }))
+    fireEvent.click(await screen.findByRole('option', { name: /Ops Person/ }))
+    expect(screen.getByText('Assigns to Ops Person')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Roles/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add role' }))
+    fireEvent.change(screen.getByLabelText('Role 1 name'), {
+      target: { value: 'Code Reviewer' },
     })
-    fireEvent.change(screen.getByLabelText('Required tickets'), {
-      target: { value: 'T-3, t-4' },
-    })
-    fireEvent.click(screen.getByRole('checkbox'))
-    expect(
-      screen.getByText(
-        'Starts as Open, or Held while a prerequisite is open. Esc to cancel.',
-      ),
-    ).toBeVisible()
-    fireEvent.click(screen.getByRole('button', { name: 'Create ticket' }))
-    await waitFor(() => expect(onClose).toHaveBeenCalled())
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Person in role Code Reviewer' }),
+    )
+    fireEvent.click(await screen.findByRole('option', { name: /Ops Person/ }))
+
+    fireEvent.click(screen.getByRole('button', { name: /Relations/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add prerequisite' }))
+    fireEvent.click(await screen.findByRole('option', { name: /T-3/ }))
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Starts held: waits on T-3.',
+    )
+    await create(onClose)
     expect(endpoints.createTicket).toHaveBeenCalledWith('acme', {
+      ...BASE,
       assignee: 'ops@example.com',
       assignee_kind: 'person',
       description: 'Rotate the deploy key',
-      priority: 'normal',
-      project_ids: [],
-      requires: [
-        { gates: true, short_id: 'T-3' },
-        { gates: true, short_id: 't-4' },
-      ],
+      requires: [{ gates: true, short_id: 'T-3' }],
+      roles: { 'code-reviewer': 'ops@example.com' },
       title: 'Rotate the deploy key',
     })
+  })
+})
+
+describe('normalizeLabel', () => {
+  it('folds case, spaces, underscores, and edge punctuation', () => {
+    expect(normalizeLabel('API')).toBe('api')
+    expect(normalizeLabel('api-')).toBe('api')
+    expect(normalizeLabel('  Front_End  Work ')).toBe('front-end-work')
+    expect(normalizeLabel('a--b')).toBe('a-b')
+    expect(normalizeLabel('!!!')).toBe('')
   })
 })
 

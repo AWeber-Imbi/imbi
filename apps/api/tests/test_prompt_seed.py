@@ -10,7 +10,7 @@ from imbi.common.prompts import resolve, system
 class SeedDefaultPromptsTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_creates_missing_and_skips_existing(self) -> None:
         async def fetch(_db: object, namespace: str, slug: str) -> object:
-            if namespace == 'imbi-slackbot':
+            if namespace != 'imbi-assistant':
                 return object(), 3
             raise resolve.PromptNotFound(f'{namespace}/{slug}')
 
@@ -26,6 +26,7 @@ class SeedDefaultPromptsTestCase(unittest.IsolatedAsyncioTestCase):
             [
                 seed.SeedResult('imbi-assistant/system', created=True),
                 seed.SeedResult('imbi-slackbot/system', created=False),
+                seed.SeedResult('imbi-api/ticket-subject', created=False),
             ],
         )
         insert.assert_awaited_once()

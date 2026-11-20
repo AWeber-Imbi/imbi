@@ -1503,6 +1503,11 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
                 'project': None,
                 'agent': self.agent,
                 'cost_usd': 0.0,
+                'type': 'task',
+                'priority': 'normal',
+                'due_date': None,
+                'labels': [],
+                'roles': {},
             },
         )
 
@@ -2460,4 +2465,112 @@ class CheckInputsTestCase(unittest.TestCase):
             workflow_runs._check_inputs(trigger, {'notes': 1})
         self.assertEqual(
             raised.exception.detail, ["Input 'notes' must be a text"]
+        )
+
+
+class EngineAssignTicketTestCase(WorkflowRunTestCase):
+    """The engine-only route of the assign_ticket step."""
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        url = await self._workflow()
+        response = await self.client.post(
+            f'{url}/runs', json={'inputs': {'version': '1'}}
+        )
+        self.run_id = response.json()['id']
+        self.assign_url = (
+            f'{url}/runs/{self.run_id}/steps/assign/assign-ticket'
+        )
+        engine = permissions.AuthContext(
+            service_account=models.ServiceAccount(
+                slug='imbi-workflows', display_name='Imbi Workflows'
+            ),
+            auth_method='client_credentials',
+        )
+        overrides = self.test_app.dependency_overrides
+        overrides[permissions.get_current_user] = lambda: engine
+        overrides[organizations.member_org_id] = lambda: self.org
+        await tickets.initialize()
+        self.task_pool = tickets.create_pool()
+        await self.task_pool.open()
+        self.tasks = tickets.TicketStore(self.task_pool)
+        self.addAsyncCleanup(self._cleanup_tasks)
+        overrides[tickets._inject_store] = lambda: self.tasks
+
+    async def _cleanup_tasks(self) -> None:
+        async with self.task_pool.connection() as conn:
+            for table in ('tickets', 'ticket_id_sequences'):
+                await conn.execute(
+                    f'DELETE FROM tickets.{table} WHERE organization_id = %s',
+                    (self.org,),
+                )
+        await self.task_pool.close()
+
+    async def _assign(
+        self, roles: dict[str, str], role: str = 'Reviewer'
+    ) -> tuple[str, httpx.Response]:
+        task, _ = await self.tasks.create(
+            tickets.NewTask(
+                organization_id=self.org,
+                agent_id=None,
+                agent_version=None,
+                prompt_version=None,
+                service_account_id=None,
+                title='Review it',
+                description='Review it.',
+                origin_kind='human',
+                origin_id=self.email,
+                origin={'kind': 'human'},
+                idempotency_key=None,
+                owner=self.email,
+                budget=None,
+                assignee_kind='person',
+                assignee='someone@example.com',
+                roles=roles,
+            ),
+            tickets.Actor('human', self.email, 'web'),
+            {},
+        )
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'INSERT INTO workflow_runtime.step_runs (run_id, node_id,'
+                ' node_key, node_type, title, status, input)'
+                " VALUES (%s, 'assign', 'assign', 'assign_ticket', 'Assign',"
+                " 'running', %s)",
+                (
+                    self.run_id,
+                    workflows.runs.pg_json.Jsonb(
+                        {'ticket': task['short_id'], 'role': role}
+                    ),
+                ),
+            )
+        return str(task['short_id']), await self.client.post(self.assign_url)
+
+    async def test_hands_the_ticket_to_the_role(self) -> None:
+        short_id, response = await self._assign({'reviewer': self.email})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            response.json(),
+            {'task_id': short_id, 'role': 'reviewer', 'assignee': self.email},
+        )
+        task = await self.tasks.get(self.org, short_id)
+        assert task is not None
+        self.assertEqual(task['assignee'], self.email)
+        # A repeat changes nothing and succeeds.
+        response = await self.client.post(self.assign_url)
+        self.assertEqual(response.status_code, 200, response.text)
+
+    async def test_empty_role_changes_nothing(self) -> None:
+        short_id, response = await self._assign({})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIsNone(response.json()['assignee'])
+        task = await self.tasks.get(self.org, short_id)
+        assert task is not None
+        self.assertEqual(task['assignee'], 'someone@example.com')
+
+    async def test_role_person_not_in_org(self) -> None:
+        _, response = await self._assign({'reviewer': 'out@example.com'})
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual(
+            response.json()['detail'], {'error': 'assignee_not_member'}
         )

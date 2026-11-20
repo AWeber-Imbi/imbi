@@ -23,6 +23,7 @@ import datetime
 import decimal
 import functools
 import logging
+import re
 import typing
 import uuid
 from collections import abc
@@ -142,6 +143,32 @@ ActorKind = typing.Literal['human', 'agent', 'subagent', 'system']
 Channel = typing.Literal['web', 'slack', 'mcp', 'api', 'harness']
 Outcome = agent_step.Outcome
 AssigneeKind = typing.Literal['agent', 'person']
+TicketType = typing.Literal['bug', 'task', 'feature']
+
+#: The longest label or role name, after normalization.
+MAX_LABEL_LENGTH = 50
+
+_LABEL_SPACES = re.compile(r'[\s_]+')
+_LABEL_HYPHENS = re.compile(r'-{2,}')
+_LABEL_EDGES = re.compile(r'^[^a-z0-9]+|[^a-z0-9]+$')
+
+
+def normalize_label(value: str) -> str:
+    """Return the stored form of a label or role name.
+
+    Lowercase; each run of spaces and underscores becomes one hyphen,
+    and so does each run of hyphens; leading and trailing punctuation
+    goes. ``"API"``, ``"api-"``, and ``" Api "`` are all ``"api"``. An
+    empty result means the value has no letter or digit.
+    """
+    value = _LABEL_SPACES.sub('-', value.strip().lower())
+    return _LABEL_EDGES.sub('', _LABEL_HYPHENS.sub('-', value))
+
+
+def normalize_labels(values: abc.Iterable[str]) -> list[str]:
+    """Return the normalized labels without repeats, in order."""
+    return list(dict.fromkeys(normalize_label(v) for v in values))
+
 
 #: The statuses that a person sets on a person ticket, and the statuses
 #: that each one can come from (ADR 0028). ``held`` changes only by its
@@ -247,11 +274,21 @@ _GROUP = sql.SQL(
 ).format(open=_OPEN_REQUESTS, input=sql.Literal('input'))
 
 #: The order of the tasks in each inbox group: oldest block first (O2)
-#: for ``input``, newest close first for ``closed``, else newest first.
+#: for ``input``, newest close first for ``closed``, the backlog rank
+#: for ``queued`` (unranked last), else newest first.
 _GROUP_ORDER: dict[str, sql.SQL] = {
     'input': sql.SQL('blocked_since ASC NULLS LAST, created_at DESC, id DESC'),
     'closed': sql.SQL('closed_at DESC NULLS LAST, id DESC'),
+    'queued': sql.SQL('backlog_rank ASC NULLS LAST, created_at DESC, id DESC'),
 }
+
+#: The tickets that have not started: the backlog, which a person
+#: orders by rank. Their inbox group is ``queued``.
+BACKLOG_STATUSES: tuple[Status, ...] = ('held', 'queued', 'open')
+
+#: The smallest gap between two ranks before :meth:`TicketStore.rank`
+#: numbers the ranks again.
+_MIN_RANK_GAP = 1e-9
 
 #: The projects of task ``t`` (F13), oldest first, as a JSON list of
 #: ``project_id`` and ``project_slug``. Every task row has it.
@@ -502,6 +539,12 @@ class NewTask:
     #: The short ids of the prerequisites of the ticket, each with its
     #: ``gates`` value (ADR 0028).
     requires: abc.Sequence[tuple[str, bool]] = ()
+    type: TicketType = 'task'
+    due_date: datetime.date | None = None
+    #: Normalized labels (:func:`normalize_labels`).
+    labels: abc.Sequence[str] = ()
+    #: ``{role: email}``, with normalized role names.
+    roles: Row = dataclasses.field(default_factory=dict[str, typing.Any])
 
 
 @dataclasses.dataclass(frozen=True)
@@ -726,6 +769,7 @@ def _search_filters(
     text: str | None,
     text_agent_ids: list[str] | None,
     text_project_ids: list[str] | None,
+    labels: list[str] | None = None,
 ) -> tuple[list[sql.Composable], list[typing.Any]]:
     """The ``WHERE`` conditions of :meth:`Store.search` and their
     parameters.
@@ -749,6 +793,9 @@ def _search_filters(
     if owners:
         conditions.append(sql.SQL('owner = ANY(%s)'))
         params.append(list(owners))
+    if labels:
+        conditions.append(sql.SQL('labels @> %s'))
+        params.append(normalize_labels(labels))
     if text:
         pattern = '%' + _escape_like(text) + '%'
         conditions.append(
@@ -942,9 +989,11 @@ class TicketStore:
                     ' idempotency_key, owner, budget, chain_id,'
                     ' output_schema, parent_id, priority,'
                     ' assignee_kind, assignee, status,'
+                    ' type, due_date, labels, roles,'
                     ' platform_config_version)'
                     ' VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
                     ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
+                    ' %s, %s, %s, %s,'
                     ' (SELECT max(version) FROM harness.platform_configs'
                     ' WHERE organization_id = %s))',
                     (
@@ -972,6 +1021,10 @@ class TicketStore:
                         task.assignee_kind,
                         task.assignee,
                         status,
+                        task.type,
+                        task.due_date,
+                        list(task.labels),
+                        pg_json.Jsonb(task.roles),
                         task.organization_id,
                     ),
                 )
@@ -1102,6 +1155,7 @@ class TicketStore:
         text: str | None = None,
         text_agent_ids: list[str] | None = None,
         text_project_ids: list[str] | None = None,
+        labels: list[str] | None = None,
         group: Group | None = None,
         before: tuple[datetime.datetime, uuid.UUID] | None = None,
         offset: int = 0,
@@ -1129,6 +1183,7 @@ class TicketStore:
             text,
             text_agent_ids,
             text_project_ids,
+            labels,
         )
         if group is not None:
             conditions.append(sql.SQL('{group} = %s').format(group=_GROUP))
@@ -1169,6 +1224,7 @@ class TicketStore:
         text: str | None = None,
         text_agent_ids: list[str] | None = None,
         text_project_ids: list[str] | None = None,
+        labels: list[str] | None = None,
     ) -> tuple[str, int] | None:
         """Return the inbox group of the task ``short_id`` and its index
         in that group, in the order of :meth:`search` with the same
@@ -1182,13 +1238,16 @@ class TicketStore:
             text,
             text_agent_ids,
             text_project_ids,
+            labels,
         )
         statement = sql.SQL(
             'SELECT inbox_group, n FROM (SELECT t.short_id,'
             ' {group} AS inbox_group, row_number() OVER (PARTITION BY {group}'
             ' ORDER BY CASE WHEN {group} = {input} THEN {waiting} END'
             ' ASC NULLS LAST, CASE WHEN {group} = {closed} THEN t.closed_at'
-            ' END DESC NULLS LAST, CASE WHEN {group} <> {closed}'
+            ' END DESC NULLS LAST, CASE WHEN {group} = {queued}'
+            ' THEN t.backlog_rank END ASC NULLS LAST,'
+            ' CASE WHEN {group} <> {closed}'
             ' THEN t.created_at END DESC, t.id DESC) - 1 AS n'
             ' FROM tickets.tickets AS t WHERE {where}) AS s'
             ' WHERE short_id = %s'
@@ -1196,6 +1255,7 @@ class TicketStore:
             group=_GROUP,
             input=sql.Literal('input'),
             closed=sql.Literal('closed'),
+            queued=sql.Literal('queued'),
             waiting=sql.SQL(
                 "CASE WHEN t.status <> 'closed' THEN"
                 ' (SELECT min(r.opened_at) {open}) END'
@@ -1217,6 +1277,7 @@ class TicketStore:
         text: str | None = None,
         text_agent_ids: list[str] | None = None,
         text_project_ids: list[str] | None = None,
+        labels: list[str] | None = None,
     ) -> dict[str, int]:
         """Return the number of tasks in each inbox group that
         :meth:`search` with the same filters finds. A group with no
@@ -1230,6 +1291,7 @@ class TicketStore:
             text,
             text_agent_ids,
             text_project_ids,
+            labels,
         )
         statement = sql.SQL(
             'SELECT {group} AS inbox_group, count(*)'
@@ -1657,6 +1719,105 @@ class TicketStore:
                 )
                 await write.update({'priority': priority})
         return write.task
+
+    async def set_fields(
+        self,
+        organization_id: str,
+        short_id: str,
+        changes: Row,
+        actor: Actor,
+    ) -> Row:
+        """Change ``type``, ``due_date``, ``labels``, or ``roles`` of the
+        task. Each value that differs writes ``<field>.changed`` with
+        ``from`` and ``to``. Labels and role names must be normalized.
+
+        Raises:
+            TaskNotFound: No such task.
+            TaskClosed: The task is closed.
+
+        """
+        async with self._write(organization_id, short_id) as write:
+            changed: Row = {}
+            for field, value in changes.items():
+                old = write.task[field]
+                if old == value:
+                    continue
+                await write.event(
+                    f'{field}.changed',
+                    {'from': _event_value(old), 'to': _event_value(value)},
+                    actor,
+                )
+                changed[field] = (
+                    pg_json.Jsonb(value) if field == 'roles' else value
+                )
+            if changed:
+                await write.update(changed)
+        return write.task
+
+    async def rank(
+        self,
+        organization_id: str,
+        short_id: str,
+        after: str | None,
+        actor: Actor,
+    ) -> Row:
+        """Put the task in the backlog right after the task ``after``,
+        or first when ``after`` is ``None``, and write ``rank.changed``.
+
+        The backlog is the ``queued`` inbox group: ranked tickets by
+        rank, then unranked tickets newest first. When ``after`` is not
+        ranked, it and each unranked backlog ticket before it get ranks
+        first, in that order, so the backlog keeps the order a person
+        saw. When two ranks get too close, every ranked ticket of the
+        org gets a new rank in the same order.
+
+        Raises:
+            TaskNotFound: No such task, or no open task ``after``.
+            TaskClosed: The task is closed.
+
+        """
+        async with self._write(organization_id, short_id) as write:
+            # One ranking at a time in an org, so two cannot read the
+            # same gap.
+            await write.conn.execute(
+                'SELECT pg_advisory_xact_lock(hashtext(%s))',
+                (f'tickets.rank:{organization_id}',),
+            )
+            rank = await _rank_after(
+                write.conn, organization_id, write.task['id'], after
+            )
+            if write.task['backlog_rank'] != rank:
+                await write.event(
+                    'rank.changed',
+                    {
+                        'from': write.task['backlog_rank'],
+                        'to': rank,
+                        'after': after,
+                    },
+                    actor,
+                )
+                await write.update({'backlog_rank': rank})
+        return write.task
+
+    async def label_counts(
+        self, organization_id: str, prefix: str, limit: int
+    ) -> list[Row]:
+        """Return the labels of the org that start with ``prefix`` (a
+        normalized label), each with its number of tickets, most used
+        first.
+        """
+        async with (
+            self._pool.connection() as conn,
+            conn.cursor(row_factory=rows.dict_row) as cursor,
+        ):
+            await cursor.execute(
+                'SELECT label AS name, count(*) AS count'
+                ' FROM tickets.tickets, unnest(labels) AS label'
+                ' WHERE organization_id = %s AND label LIKE %s'
+                ' GROUP BY label ORDER BY count(*) DESC, label LIMIT %s',
+                (organization_id, _escape_like(prefix) + '%', limit),
+            )
+            return await cursor.fetchall()
 
     async def acknowledge(
         self, organization_id: str, short_id: str, actor_id: str | None
@@ -3760,6 +3921,90 @@ async def _append_event(
     if event is None:  # pragma: no cover - RETURNING always yields a row
         raise RuntimeError('event insert returned no row')
     return event
+
+
+def _event_value(value: typing.Any) -> typing.Any:
+    """Return a column value as JSON for an event payload."""
+    return value.isoformat() if isinstance(value, datetime.date) else value
+
+
+#: The backlog tickets of an org other than one, for :func:`_rank_after`.
+_BACKLOG = 'organization_id = %s AND status = ANY(%s) AND id <> %s'
+
+
+async def _rank_after(
+    conn: Conn, organization_id: str, task_id: uuid.UUID, after: str | None
+) -> float:
+    """Return the rank that puts a task right after the backlog task
+    ``after``, or first; see :meth:`TicketStore.rank`.
+
+    Raises:
+        TaskNotFound: ``after`` is not a backlog task of the org.
+
+    """
+    backlog = (organization_id, list(BACKLOG_STATUSES), task_id)
+
+    async def value(
+        query: typing.LiteralString, *args: typing.Any
+    ) -> typing.Any:
+        cursor = await conn.execute(query, (*backlog, *args))
+        found = await cursor.fetchone()
+        return found[0] if found else None
+
+    if after is None:
+        first = await value(
+            'SELECT min(backlog_rank) FROM tickets.tickets WHERE ' + _BACKLOG  # noqa: S608
+        )
+        return 0.0 if first is None else float(first) - 1.0
+    anchor = await _fetch_one(
+        conn,
+        'SELECT id, backlog_rank, created_at FROM tickets.tickets'  # noqa: S608
+        ' WHERE ' + _BACKLOG + ' AND short_id = %s',
+        (*backlog, after),
+    )
+    if anchor is None:
+        raise TaskNotFound(after)
+    lo = anchor['backlog_rank']
+    if lo is None:
+        # Rank the unranked tickets down to the anchor, in the order
+        # the backlog shows them: newest first, after the ranked ones.
+        last = await value(
+            'SELECT coalesce(max(backlog_rank), 0) FROM tickets.tickets'  # noqa: S608
+            ' WHERE ' + _BACKLOG
+        )
+        cursor = await conn.execute(
+            'UPDATE tickets.tickets AS t SET backlog_rank = %s + s.n'  # noqa: S608
+            ' FROM (SELECT id, row_number() OVER'
+            ' (ORDER BY created_at DESC, id DESC) AS n'
+            ' FROM tickets.tickets WHERE '
+            + _BACKLOG
+            + ' AND backlog_rank IS NULL AND (created_at, id) >= (%s, %s))'
+            ' AS s WHERE t.id = s.id',
+            (last, *backlog, anchor['created_at'], anchor['id']),
+        )
+        # The anchor is the oldest of the rows, so it has the last rank.
+        lo = float(last) + cursor.rowcount
+    hi = await value(
+        'SELECT min(backlog_rank) FROM tickets.tickets WHERE '  # noqa: S608
+        + _BACKLOG
+        + ' AND backlog_rank > %s',
+        lo,
+    )
+    if hi is None:
+        return float(lo) + 1.0
+    if hi - lo >= _MIN_RANK_GAP:
+        return float(lo + hi) / 2
+    # ponytail: renumbers every ranked ticket of the org; fine for
+    # backlogs of thousands, use a text rank (LexoRank) past that.
+    await conn.execute(
+        'UPDATE tickets.tickets AS t SET backlog_rank = s.n'
+        ' FROM (SELECT id, row_number() OVER (ORDER BY backlog_rank,'
+        ' created_at DESC, id DESC) AS n FROM tickets.tickets'
+        ' WHERE organization_id = %s AND status = ANY(%s)'
+        ' AND backlog_rank IS NOT NULL) AS s WHERE t.id = s.id',
+        (organization_id, list(BACKLOG_STATUSES)),
+    )
+    return await _rank_after(conn, organization_id, task_id, after)
 
 
 def _escape_like(value: str) -> str:

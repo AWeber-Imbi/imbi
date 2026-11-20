@@ -1658,10 +1658,11 @@ describe('Tasks', () => {
     renderAt('/agents/manage/mender')
     fireEvent.click(await screen.findByRole('button', { name: 'Run' }))
     const dialog = screen.getByRole('dialog')
-    fireEvent.change(within(dialog).getByLabelText(/What should be done/), {
+    fireEvent.change(within(dialog).getByLabelText(/Describe the work/), {
       target: { value: 'Check the build\nFind why it fails.' },
     })
-    fireEvent.click(await within(dialog).findByText('billing'))
+    fireEvent.focus(within(dialog).getByLabelText('Projects'))
+    fireEvent.mouseDown(await within(dialog).findByText('billing'))
     fireEvent.click(
       within(dialog).getByRole('button', { name: 'Create ticket' }),
     )
@@ -1670,10 +1671,14 @@ describe('Tasks', () => {
         agent_slug: 'mender',
         assignee_kind: 'agent',
         description: 'Check the build\nFind why it fails.',
+        due_date: null,
+        labels: [],
         priority: 'normal',
         project_ids: ['p-1'],
         requires: [],
+        roles: {},
         title: 'Check the build',
+        type: 'task',
       }),
     )
     await waitFor(() =>

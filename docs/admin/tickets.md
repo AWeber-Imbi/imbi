@@ -179,18 +179,25 @@ You need `ticket:create`. There are three places to start:
 
 In the **New ticket** dialog:
 
-1. In **What should be done?**, describe the outcome that you want.
-   The first line, without its links, becomes the title (96 characters
-   maximum).
+1. In **Describe the work**, describe the outcome that you want. When
+   you stop typing, a model writes the **Subject** (tagged **AI**).
+   Until it answers, or when no model is available, the first line
+   without its links is the subject (tagged **Auto**, 96 characters
+   maximum). Type in **Subject** to use a different one.
 2. Optional: paste a link. The dialog shows it as the **Source**: a Sentry
    issue, a pull request, a Slack thread, or a link.
-3. In **Assign to**, select **Agent** and an agent, or **Person** and
-   the email of a person. The list shows enabled agents only.
-4. Optional: select a **Priority**. The default is **Normal**.
-5. Select a **Project**. Archived projects are not in the list.
-6. Optional: in **Requires**, type the short ids of the tickets that this
-   ticket requires. Select **Hold this ticket until they are done** to
-   make them gating prerequisites.
+3. In **Assign to**, select **Agent** and an agent, or **Person** and a
+   person. The agent list shows enabled agents only, with the agents that
+   you used last at the top.
+4. Optional: select a **Type** (**Bug**, **Task**, or **Feature**), a
+   **Priority**, and a **Due** date. The defaults are **Task** and
+   **Normal**.
+5. Optional: add **Projects** and **Labels**. Archived projects are not in
+   the list. See [Labels](#labels).
+6. Optional: expand **Owner** to make another person the owner (needs
+   `ticket:manage`), **Roles** to put people in named roles, or
+   **Relations** to set a parent and prerequisites. A prerequisite is
+   gating by default: clear **Gating** to make it information only.
 7. Click **Create ticket**.
 
 An agent ticket starts as **Queued**, a person ticket as **Open**. With
@@ -214,7 +221,8 @@ POST /organizations/{org}/tickets/
 }
 ```
 
-`project_ids`, `budget`, and `idempotency_key` are optional. A repeat with
+`project_ids`, `budget`, `idempotency_key`, `type` (`bug`, `task`, or
+`feature`), `due_date` (`YYYY-MM-DD`), `labels`, and `roles` are optional. A repeat with
 the same `idempotency_key` returns the first ticket with `200`. A disabled
 agent returns `409`.
 
@@ -222,6 +230,82 @@ For a person ticket, send `"assignee_kind": "person"` and `"assignee":
 "<email>"` instead of `agent_slug`, and no `budget`. Send `requires` to
 add prerequisites, for example
 `"requires": [{"short_id": "T-12", "gates": true}]`.
+
+`roles` is an object of role names to member emails, for example
+`{"reviewer": "dev@example.com"}`. Each person must be in the
+organization. A workflow can read the roles and hand the ticket to the
+person in a role: see [Assign ticket to role](workflows.md).
+
+To change the type, the due date, the labels, or the roles later, send
+only those fields. You need `ticket:manage`. Each change writes a
+`<field>.changed` event; `"due_date": null` clears the due date.
+
+```http
+PATCH /organizations/{org}/tickets/{short_id}
+```
+
+The prompt that writes the subject is `imbi-api/ticket-subject` in the
+[prompt CMS](prompts.md). Edit it there, and choose its model; without a
+model it uses the default Anthropic model of imbi-api. Run
+`imbi-api setup-prompts` once to seed it on an install made before it
+existed.
+
+```http
+POST /organizations/{org}/tickets/subject
+```
+
+```json
+{"description": "The deployments list returns a 500 ..."}
+```
+
+The response has `subject`, and `degraded: true` when no model answered.
+You need `ticket:create`.
+
+## Labels
+
+A label groups tickets across projects. Imbi stores each label in one
+form, so `api`, `API`, and `api-` are the same label:
+
+- Letters become lowercase.
+- Each run of spaces, underscores, and hyphens becomes one hyphen.
+- Leading and trailing punctuation goes.
+
+The label field suggests the labels that the organization has, most used
+first, with their ticket count. A label that exists always wins over a new
+one. Click a label on a ticket to see every ticket with that label, or
+filter by **Label** on the Tickets page. More than one label filter
+matches tickets that have all of them.
+
+```http
+GET /organizations/{org}/tickets/labels?q=ap
+GET /organizations/{org}/tickets/?label=api&label=web
+```
+
+## Backlog order
+
+The **Queued** group on the Tickets page is the backlog: tickets that have
+not started (**Held**, **Queued**, and **Open**). Ranked tickets come
+first, in rank order; unranked tickets follow, newest first. Priority does
+not change the order.
+
+With `ticket:manage`, drag a ticket in the **Queued** group to set the
+order. A drop on the top half of a row puts the ticket before that row; on
+the bottom half, after it. **Move to top** on the ticket's **Overview**
+does the same without a drag. When you drop a ticket after an unranked
+ticket, the unranked tickets above it get ranks too, so the order that
+you saw stays.
+
+```http
+POST /organizations/{org}/tickets/{short_id}/rank
+```
+
+```json
+{"after": "T-12"}
+```
+
+`"after": null` puts the ticket first. The change writes a
+`rank.changed` event. Agent runners do not use the rank: they take the
+oldest queued ticket.
 
 ## Triggers
 
@@ -313,13 +397,15 @@ four groups:
 |---|---|
 | Human input required | Tickets with an open request, also paused tickets with an open request. The oldest request is first |
 | Running | Running tickets, and paused tickets without an open request |
-| Queued | Tickets that wait for a runner |
+| Queued | The backlog: tickets that have not started, in backlog order. See [Backlog order](#backlog-order) |
 | Recently closed | Closed tickets, newest first |
 
 - The filter field matches the title, the id, the agent, and the project.
-- **State** and **Assignee** filter by state and owner. **My tickets** shows
-  only your tickets.
-- A ticket with a priority other than **Normal** shows its priority.
+- **State**, **Assignee**, **Agent**, and **Label** filter the list. **My
+  tickets** shows only your tickets.
+- A ticket with a priority other than **Normal** shows its priority. A bug
+  or a feature shows an icon for its type. A due date shows in amber when
+  it is two days away or less, and in red when it is past.
 - The page loads more tickets as you scroll. A count shown as `N+` can still
   grow.
 - The page and the open ticket update without a reload.

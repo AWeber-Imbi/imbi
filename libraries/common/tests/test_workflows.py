@@ -413,6 +413,7 @@ class RegistryTestCase(unittest.TestCase):
                 'script',
                 'email',
                 'slack',
+                'assign_ticket',
                 'deploy',
                 'release',
                 'rollback',

@@ -49,6 +49,7 @@ from imbi.common.workflows import graph as wf
 from imbi.common.workflows import script_runner
 from imbi.common.workflows.registry import (
     agent,
+    assign_ticket,
     condition,
     deploy,
     email,
@@ -341,6 +342,8 @@ class Executors:
                 return await self._release(call)
             case 'agent':
                 return await self._agent(call)
+            case 'assign_ticket':
+                return await self._assign_ticket(call)
             case 'llm_call':
                 return await self._llm_call(call)
             case other:
@@ -520,6 +523,25 @@ class Executors:
                 'permalink': posted.get('permalink'),
             }
         )
+
+    async def _assign_ticket(self, call: Call) -> Outcome:
+        _params(assign_ticket.Params, call)
+        org = await self.org_slug(call.organization_id)
+        result = await self.api.request(
+            'POST',
+            _path(
+                'organizations',
+                org,
+                'workflows',
+                call.workflow_slug,
+                'runs',
+                call.run_id,
+                'steps',
+                call.node.id,
+                'assign-ticket',
+            ),
+        )
+        return Outcome(output=result, port=0 if result['assignee'] else 1)
 
     async def _agent(self, call: Call) -> Outcome:
         params = _params(agent.Params, call)

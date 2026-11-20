@@ -18,7 +18,7 @@ _CHANNEL = rf'^(?:[CG][A-Z0-9]{{8,}}|{graph.REFERENCE})$'
 #: The short id of an agent task (a ticket, ADR 0028), or one plain
 #: reference. A rendered reference that
 #: is not a short id fails the step with ``invalid_params``.
-_TICKET = rf'^(?:T-[0-9]+|{graph.REFERENCE})$'
+TICKET = rf'^(?:T-[0-9]+|{graph.REFERENCE})$'
 
 
 def escape(value: str) -> str:
@@ -51,7 +51,7 @@ class Params(pydantic.BaseModel):
     )
     ticket: str | None = pydantic.Field(
         default=None,
-        pattern=_TICKET,
+        pattern=TICKET,
         description='A ticket to show below the message: its title as a '
         'link, status, outcome, and project. A short id, for example '
         'T-12, or a reference such as {{ trigger.task_id }}.',

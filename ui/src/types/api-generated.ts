@@ -5339,6 +5339,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/tickets/subject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suggest Ticket Subject
+         * @description Write a subject for a new ticket from its description, with the
+         *     ``imbi-api/ticket-subject`` prompt and its model (the packaged
+         *     prompt and the default model when the CMS has none). When no model
+         *     answers, the subject is the first line of the description and
+         *     ``degraded`` is true.
+         *
+         *     Raises:
+         *         403: The caller is not a member of the org.
+         *         404: No such organization.
+         */
+        post: operations["suggest_ticket_subject_api_organizations__org_slug__tickets_subject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Ticket Labels
+         * @description List the labels of the org that start with ``q``, most used
+         *     first, each with its number of tickets. ``q`` is normalized as a
+         *     label is, so ``API `` finds ``api``.
+         *
+         *     Raises:
+         *         403: The caller is not a member of the org.
+         *         404: No such organization.
+         */
+        get: operations["list_ticket_labels_api_organizations__org_slug__tickets_labels_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/tickets/{short_id}": {
         parameters: {
             query?: never;
@@ -5370,7 +5424,19 @@ export interface paths {
         delete: operations["delete_ticket_api_organizations__org_slug__tickets__short_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Update Ticket
+         * @description Change the type, the due date, the labels, or the roles of a
+         *     ticket. Only the fields in the body change; each one that changes
+         *     writes ``<field>.changed``. Labels and role names are normalized.
+         *
+         *     Raises:
+         *         403: The caller is not a member of the org.
+         *         404: No such task.
+         *         409: The task is closed.
+         *         422: A person in ``roles`` is not in the org.
+         */
+        patch: operations["update_ticket_api_organizations__org_slug__tickets__short_id__patch"];
         trace?: never;
     };
     "/api/organizations/{org_slug}/tickets/{short_id}/events": {
@@ -5730,6 +5796,36 @@ export interface paths {
          *         409: The task is closed.
          */
         post: operations["set_ticket_priority_api_organizations__org_slug__tickets__short_id__priority_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tickets/{short_id}/rank": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rank Ticket
+         * @description Move a ticket in the backlog: right after the backlog ticket
+         *     ``after``, or first. The backlog is the tickets that have not
+         *     started (``held``, ``queued``, ``open``): ranked ones by rank, then
+         *     the others newest first. Unranked tickets down to ``after`` get
+         *     ranks too, so the order that a person saw stays.
+         *
+         *     Raises:
+         *         403: The caller is not a member of the org.
+         *         404: No such task.
+         *         409: The task is closed.
+         *         422: ``after`` is not a backlog ticket of the org.
+         */
+        post: operations["rank_ticket_api_organizations__org_slug__tickets__short_id__rank_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6754,6 +6850,40 @@ export interface paths {
          *     :func:`workflow_tickets.with_ticket_block`).
          */
         post: operations["send_step_slack_api_organizations__org_slug__workflows__slug__runs__run_id__steps__node_id__slack_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/workflows/{slug}/runs/{run_id}/steps/{node_id}/assign-ticket": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Assign Step Ticket
+         * @description Hand the ticket of a running assign_ticket step to the person in
+         *     its role. Engine only.
+         *
+         *     A role with nobody in it changes nothing and returns ``assignee``
+         *     ``None``. A ticket that the person has already is not changed, so
+         *     a repeat after a crash does no harm.
+         *
+         *     Raises:
+         *         404: No such workflow, run, or step.
+         *         409: The step is not a running assign_ticket step, or the
+         *             ticket cannot change now (``ticket_closed``,
+         *             ``session_open``, ``chain_pinned``, ``cancel_pending``).
+         *         422: ``ticket_not_found``: the ticket is not a ticket of the
+         *             organization, or ``assignee_not_member``: the person in the
+         *             role is not in the organization.
+         */
+        post: operations["assign_step_ticket_api_organizations__org_slug__workflows__slug__runs__run_id__steps__node_id__assign_ticket_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11711,6 +11841,23 @@ export interface components {
              * @enum {string}
              */
             priority: "low" | "normal" | "high" | "urgent";
+            /**
+             * Type
+             * @default task
+             * @enum {string}
+             */
+            type: "bug" | "task" | "feature";
+            /** Due Date */
+            due_date?: string | null;
+            /** Labels */
+            labels?: string[];
+            /**
+             * Roles
+             * @description The people in named roles, as {role: email}. Each must be in the org.
+             */
+            roles?: {
+                [key: string]: string;
+            };
         };
         /** AgentTaskEventResponse */
         AgentTaskEventResponse: {
@@ -11805,6 +11952,28 @@ export interface components {
              * @enum {string}
              */
             priority: "low" | "normal" | "high" | "urgent";
+            /**
+             * Type
+             * @default task
+             * @enum {string}
+             */
+            type: "bug" | "task" | "feature";
+            /** Due Date */
+            due_date?: string | null;
+            /**
+             * Labels
+             * @default []
+             */
+            labels: string[];
+            /**
+             * Roles
+             * @default {}
+             */
+            roles: {
+                [key: string]: string;
+            };
+            /** Backlog Rank */
+            backlog_rank?: number | null;
             /** Phase */
             phase?: string | null;
             /** Outcome */
@@ -12030,6 +12199,28 @@ export interface components {
              * @enum {string}
              */
             priority: "low" | "normal" | "high" | "urgent";
+            /**
+             * Type
+             * @default task
+             * @enum {string}
+             */
+            type: "bug" | "task" | "feature";
+            /** Due Date */
+            due_date?: string | null;
+            /**
+             * Labels
+             * @default []
+             */
+            labels: string[];
+            /**
+             * Roles
+             * @default {}
+             */
+            roles: {
+                [key: string]: string;
+            };
+            /** Backlog Rank */
+            backlog_rank?: number | null;
             /** Phase */
             phase?: string | null;
             /** Outcome */
@@ -17273,17 +17464,6 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
-        /** Output */
-        Output: {
-            /** Result */
-            result: {
-                [key: string]: unknown;
-            };
-            /** Branch */
-            branch?: string | null;
-            /** Stdout */
-            stdout?: string | null;
-        };
         /** OutputField */
         OutputField: {
             /** Name */
@@ -20676,7 +20856,7 @@ export interface components {
          * @description The output and port of a script, or the error that stopped it.
          */
         ScriptPreviewResult: {
-            output?: components["schemas"]["Output"] | null;
+            output?: components["schemas"]["imbi__common__workflows__registry__script__Output"] | null;
             /** Port */
             port?: number | null;
             /** Error */
@@ -21624,6 +21804,18 @@ export interface components {
             agent?: string | null;
             /** Cost Usd */
             cost_usd?: number | null;
+            /** Type */
+            type?: string | null;
+            /** Priority */
+            priority?: string | null;
+            /** Due Date */
+            due_date?: string | null;
+            /** Labels */
+            labels?: string[] | null;
+            /** Roles */
+            roles?: {
+                [key: string]: string;
+            } | null;
             /** Task Id */
             task_id: string;
             /** Status */
@@ -22000,6 +22192,13 @@ export interface components {
              */
             cut: number;
         };
+        /** TicketLabelCount */
+        TicketLabelCount: {
+            /** Name */
+            name: string;
+            /** Count */
+            count: number;
+        };
         /**
          * TicketParentSet
          * @description The new parent of a ticket.
@@ -22010,6 +22209,14 @@ export interface components {
              * @description The short id of the new parent. ``null`` makes the ticket a root.
              */
             parent: string | null;
+        };
+        /** TicketRank */
+        TicketRank: {
+            /**
+             * After
+             * @description The short id of the backlog ticket that this ticket goes right after. ``null``: first in the backlog.
+             */
+            after?: string | null;
         };
         /**
          * TicketReopen
@@ -22072,6 +22279,18 @@ export interface components {
              */
             reason?: string | null;
         };
+        /** TicketSubjectRequest */
+        TicketSubjectRequest: {
+            /** Description */
+            description: string;
+        };
+        /** TicketSubjectResponse */
+        TicketSubjectResponse: {
+            /** Subject */
+            subject: string;
+            /** Degraded */
+            degraded: boolean;
+        };
         /**
          * TicketTree
          * @description The tree of a ticket, computed on read (ADR 0028).
@@ -22085,6 +22304,32 @@ export interface components {
             tickets: number;
             /** Open */
             open: number;
+        };
+        /**
+         * TicketUpdate
+         * @description The fields to change; a field that is not sent stays.
+         */
+        TicketUpdate: {
+            /**
+             * Type
+             * @default task
+             * @enum {string}
+             */
+            type: "bug" | "task" | "feature";
+            /** Due Date */
+            due_date?: string | null;
+            /**
+             * Labels
+             * @default []
+             */
+            labels: string[];
+            /**
+             * Roles
+             * @default {}
+             */
+            roles: {
+                [key: string]: string;
+            };
         };
         /** TokenExchangerType */
         TokenExchangerType: {
@@ -22886,6 +23131,26 @@ export interface components {
             config: {
                 [key: string]: unknown;
             };
+        };
+        /** Output */
+        imbi__common__workflows__registry__assign_ticket__Output: {
+            /** Task Id */
+            task_id: string;
+            /** Role */
+            role: string;
+            /** Assignee */
+            assignee: string | null;
+        };
+        /** Output */
+        imbi__common__workflows__registry__script__Output: {
+            /** Result */
+            result: {
+                [key: string]: unknown;
+            };
+            /** Branch */
+            branch?: string | null;
+            /** Stdout */
+            stdout?: string | null;
         };
         /** Environment */
         EnvironmentBlueprintRequest: {
@@ -32132,6 +32397,7 @@ export interface operations {
                 status?: ("held" | "queued" | "running" | "paused" | "open" | "in_progress" | "blocked" | "closed")[] | null;
                 agent_id?: string[] | null;
                 owner?: string[] | null;
+                label?: string[] | null;
                 mine?: boolean;
                 q?: string | null;
                 limit?: number;
@@ -32224,6 +32490,7 @@ export interface operations {
                 status?: ("held" | "queued" | "running" | "paused" | "open" | "in_progress" | "blocked" | "closed")[] | null;
                 agent_id?: string[] | null;
                 owner?: string[] | null;
+                label?: string[] | null;
                 mine?: boolean;
                 q?: string | null;
             };
@@ -32261,6 +32528,7 @@ export interface operations {
                 status?: ("held" | "queued" | "running" | "paused" | "open" | "in_progress" | "blocked" | "closed")[] | null;
                 agent_id?: string[] | null;
                 owner?: string[] | null;
+                label?: string[] | null;
                 mine?: boolean;
                 q?: string | null;
             };
@@ -32326,6 +32594,75 @@ export interface operations {
             };
         };
     };
+    suggest_ticket_subject_api_organizations__org_slug__tickets_subject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TicketSubjectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketSubjectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_ticket_labels_api_organizations__org_slug__tickets_labels_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketLabelCount"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_ticket_api_organizations__org_slug__tickets__short_id__get: {
         parameters: {
             query?: never;
@@ -32376,6 +32713,42 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_ticket_api_organizations__org_slug__tickets__short_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TicketUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -32798,6 +33171,42 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["AgentTaskPriority"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rank_ticket_api_organizations__org_slug__tickets__short_id__rank_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                short_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TicketRank"];
             };
         };
         responses: {
@@ -34206,6 +34615,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SlackResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_step_ticket_api_organizations__org_slug__workflows__slug__runs__run_id__steps__node_id__assign_ticket_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                slug: string;
+                run_id: string;
+                node_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["imbi__common__workflows__registry__assign_ticket__Output"];
                 };
             };
             /** @description Validation Error */

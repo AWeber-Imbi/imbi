@@ -14,6 +14,7 @@ import {
   SquareFunction,
   Tag,
   Timer,
+  UserCheck,
   Webhook,
 } from 'lucide-react'
 
@@ -21,6 +22,7 @@ import type { StepCategory } from './types'
 
 const ICONS: Record<string, LucideIcon> = {
   agent: Bot,
+  assign_ticket: UserCheck,
   condition: Split,
   deploy: Rocket,
   email: Mail,

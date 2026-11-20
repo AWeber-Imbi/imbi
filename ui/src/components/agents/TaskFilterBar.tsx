@@ -7,6 +7,7 @@ import {
   CircleDot,
   ListFilter,
   type LucideIcon,
+  Tag,
   UserRound,
   X,
 } from 'lucide-react'
@@ -60,7 +61,7 @@ interface Field {
   options: Option[]
 }
 
-type FieldKey = 'agent' | 'assignee' | 'state'
+type FieldKey = 'agent' | 'assignee' | 'label' | 'state'
 
 interface Option {
   badge?: ReturnType<typeof statusVariant>
@@ -126,6 +127,7 @@ export function TaskFilterBar({
   action,
   agents,
   filters,
+  labels = [],
   me,
   onChange,
   owners,
@@ -134,6 +136,8 @@ export function TaskFilterBar({
   action?: ReactNode
   agents: FilterAgent[]
   filters: TaskFilters
+  /** The labels of the org to offer, most used first. */
+  labels?: string[]
   me?: null | string
   onChange: (filters: TaskFilters) => void
   owners: string[]
@@ -178,6 +182,15 @@ export function TaskFilterBar({
         icon: <AgentMark agent={a} />,
         label: a.name,
         value: a.id,
+      })),
+    },
+    {
+      icon: Tag,
+      key: 'label',
+      label: 'Label',
+      options: [...new Set([...filters.labels, ...labels])].map((l) => ({
+        label: l,
+        value: l,
       })),
     },
   ]
@@ -412,6 +425,7 @@ export function TaskFilterBar({
 const LISTS = {
   agent: 'agents',
   assignee: 'assignees',
+  label: 'labels',
   state: 'states',
 } as const satisfies Record<FieldKey, keyof TaskFilters>
 

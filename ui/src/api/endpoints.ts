@@ -203,6 +203,7 @@ import type {
   TicketCreate,
   TicketEvent,
   TicketHandOff,
+  TicketLabel,
   TicketListItem,
   TicketPosition,
   TicketProject,
@@ -212,6 +213,8 @@ import type {
   TicketRetry,
   TicketStatus,
   TicketStatusSet,
+  TicketSubject,
+  TicketUpdate,
   TicketWaiting,
   TokenResponse,
   Upload,
@@ -3850,6 +3853,8 @@ export interface TicketListParams {
   agent_id?: string[]
   /** One inbox group, in the order of the inbox; it pages with `offset`. */
   group?: keyof TicketCounts
+  /** Tickets with every one of these labels. */
+  label?: string[]
   limit?: number
   mine?: boolean
   offset?: number
@@ -3997,6 +4002,44 @@ export const setTicketPriority = (
   apiClient.post<Ticket>(`${ticketPath(orgSlug, shortId)}/priority`, {
     priority,
   })
+
+/** Change the type, due date, labels, or roles of a ticket. */
+export const updateTicket = (
+  orgSlug: string,
+  shortId: string,
+  body: TicketUpdate,
+) => apiClient.patch<Ticket>(ticketPath(orgSlug, shortId), body)
+
+/** Move a ticket in the backlog: right after `after`, or first. */
+export const rankTicket = (
+  orgSlug: string,
+  shortId: string,
+  after: null | string,
+) => apiClient.post<Ticket>(`${ticketPath(orgSlug, shortId)}/rank`, { after })
+
+/** A subject for a new ticket, written by a model from its description. */
+export const suggestTicketSubject = (
+  orgSlug: string,
+  description: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.post<TicketSubject>(
+    `${ticketsApiPath(orgSlug)}/subject`,
+    { description },
+    signal,
+  )
+
+/** The labels of the org that start with `q`, most used first. */
+export const listTicketLabels = (
+  orgSlug: string,
+  q: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<TicketLabel[]>(
+    `${ticketsApiPath(orgSlug)}/labels`,
+    { q },
+    signal,
+  )
 
 /** A reply from a person; `hold` also pauses the task. */
 export const replyTicket = (
