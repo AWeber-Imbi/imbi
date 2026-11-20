@@ -3145,9 +3145,13 @@ async def _write_outbox(conn: Conn, task: Row, from_state: str | None) -> bool:
         conn, task['organization_id']
     ):
         return False
+    # clock_timestamp(), not the NOW() default: a binding that the
+    # filter sees can be activated after this transaction started, and
+    # the trigger skips a change older than the binding.
     await conn.execute(
         'INSERT INTO tickets.trigger_outbox'
-        ' (ticket_id, from_state, to_state, outcome) VALUES (%s, %s, %s, %s)',
+        ' (ticket_id, from_state, to_state, outcome, created_at)'
+        ' VALUES (%s, %s, %s, %s, clock_timestamp())',
         (
             task['id'],
             from_state,

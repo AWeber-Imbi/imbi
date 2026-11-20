@@ -1358,6 +1358,30 @@ class ControlTests(AgentTaskTestCase):
         await self.store.triggers_started([r['id'] for r in rows])
         self.assertEqual(await self.changes(self.task['id']), [])
 
+    async def test_outbox_row_is_not_older_than_its_binding(self) -> None:
+        """A workflow activated after the change transaction starts,
+        but before its outbox insert, still matches the row."""
+        async with self.pool.connection() as conn, conn.transaction():
+            await conn.execute('SELECT 1')
+            await self.bind()
+            task = {
+                'id': uuid.UUID(self.task['id']),
+                'organization_id': self.org,
+                'status': 'paused',
+                'outcome': None,
+            }
+            self.assertTrue(
+                await tickets.store._write_outbox(conn, task, 'queued')
+            )
+        async with self.pool.connection() as conn:
+            cursor = await conn.execute(
+                'SELECT bool_and(o.created_at >= w.activated_at)'
+                ' FROM tickets.trigger_outbox AS o, workflows.workflows AS w'
+                ' WHERE o.ticket_id = %s AND w.organization_id = %s',
+                (uuid.UUID(self.task['id']), self.org),
+            )
+            self.assertEqual(await cursor.fetchone(), (True,))
+
     async def test_creation_writes_a_trigger_outbox_row(self) -> None:
         await self.bind(states=['created'])
         with mock.patch.object(tickets.store, '_change_hooks', []):
