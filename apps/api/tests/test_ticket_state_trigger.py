@@ -58,14 +58,17 @@ class FakeTasks:
         to_state: str = 'closed',
         created_at: datetime.datetime = CLOSED_AFTER_ACTIVATION,
         outcome: str | None = None,
+        agent_id: str | None = None,
     ) -> dict[str, typing.Any]:
-        """Add an outbox row for a change of ``task`` and return it."""
+        """Add an outbox row for a change of ``task`` and return it.
+        ``agent_id`` defaults to the agent of ``task``."""
         row = {
             'id': uuid.uuid4(),
             'ticket_id': task['id'],
             'from_state': from_state,
             'to_state': to_state,
             'outcome': outcome,
+            'agent_id': agent_id or task['agent_id'],
             'created_at': created_at,
         }
         self.changes.setdefault(task['id'], []).append(row)
@@ -463,6 +466,17 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
         )
         [run] = await self._runs()
         self.assertEqual(run['payload']['outcome'], 'done_acted')
+
+    async def test_agent_comes_from_the_change(self) -> None:
+        """A handoff before the sweep changes the agent of the ticket;
+        the outbox row keeps the agent that held it at the change."""
+        await self._activate(agent_id='mender')
+        await self._trigger(
+            _task(organization_id=self.org, agent_id=None), agent_id='mender'
+        )
+        [run] = await self._runs()
+        self.assertEqual(run['payload']['agent_id'], 'mender')
+        self.assertEqual(run['payload']['agent'], 'mender')
 
     async def test_delegated_child_keeps_the_chain_depth(self) -> None:
         """A child ticket that an agent delegates has origin ``ticket``;

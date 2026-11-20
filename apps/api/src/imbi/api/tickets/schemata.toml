@@ -686,6 +686,11 @@ to_state = "TEXT NOT NULL DEFAULT 'closed'"
 # later snapshot of the ticket. NULL on other changes and on a row of
 # the release before `ticket_state_changed`.
 outcome = "TEXT"
+# The agent that held the ticket at the change, from its transaction: a
+# handoff before the trigger runs changes the agent of the ticket. NULL
+# for a person ticket and on a row of the release before
+# `ticket_state_changed`, which is older than every binding.
+agent_id = "TEXT"
 created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 
 [tables.primary_key]

@@ -1373,6 +1373,7 @@ class ControlTests(AgentTaskTestCase):
                 'organization_id': self.org,
                 'status': 'paused',
                 'outcome': None,
+                'agent_id': None,
             }
             self.assertTrue(
                 await tickets.store._write_outbox(conn, task, 'queued')

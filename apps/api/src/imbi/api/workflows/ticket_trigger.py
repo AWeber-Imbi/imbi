@@ -84,7 +84,9 @@ def _matches(binding: store.Row, task: store.Row, change: store.Row) -> bool:
     ``states`` names the new state; ``created`` also names a creation.
     A close row of the release before ``ticket_state_changed`` also has
     no ``from_state``, so a creation is a change to a state that is not
-    ``closed``. ``outcomes`` applies only to a close. A workflow
+    ``closed``. ``outcomes`` applies only to a close. ``agent_id``
+    matches the agent that held the ticket at the change, which a later
+    handoff does not change. A workflow
     activated after the change does not match, so the sweep that calls
     the trigger again starts no run that the change hook could not have
     started.
@@ -97,7 +99,7 @@ def _matches(binding: store.Row, task: store.Row, change: store.Row) -> bool:
     created = change['from_state'] is None and to_state != 'closed'
     return (
         binding['activated_at'] <= change['created_at']
-        and (not agent_id or agent_id == task['agent_id'])
+        and (not agent_id or agent_id == change['agent_id'])
         and (
             not states
             or to_state in states
@@ -215,11 +217,13 @@ class TaskTrigger:
                 closed = change['to_state'] == 'closed'
                 payload = {
                     'task_id': task['short_id'],
-                    'agent_id': task['agent_id'],
+                    'agent_id': change['agent_id'],
                     'outcome': _outcome(task, change) if closed else None,
                     'from_state': change['from_state'],
                     'to_state': change['to_state'],
-                    **await tickets.attributes(self._db(), task),
+                    **await tickets.attributes(
+                        self._db(), {**task, 'agent_id': change['agent_id']}
+                    ),
                 }
             workflow_id = binding['workflow_id']
             try:

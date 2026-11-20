@@ -3641,13 +3641,14 @@ async def _write_outbox(conn: Conn, task: Row, from_state: str | None) -> bool:
     # the trigger skips a change older than the binding.
     await conn.execute(
         'INSERT INTO tickets.trigger_outbox'
-        ' (ticket_id, from_state, to_state, outcome, created_at)'
-        ' VALUES (%s, %s, %s, %s, clock_timestamp())',
+        ' (ticket_id, from_state, to_state, outcome, agent_id, created_at)'
+        ' VALUES (%s, %s, %s, %s, %s, clock_timestamp())',
         (
             task['id'],
             from_state,
             task['status'],
             task['outcome'] if task['status'] == 'closed' else None,
+            task['agent_id'],
         ),
     )
     return True

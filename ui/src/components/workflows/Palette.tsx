@@ -1,4 +1,4 @@
-import { type DragEvent, useState } from 'react'
+import { type DragEvent, useRef, useState } from 'react'
 
 import {
   ChevronDown,
@@ -37,6 +37,19 @@ export function Palette({
     false,
     (raw) => (typeof raw === 'boolean' ? raw : undefined),
   )
+  // Each presentation has its own toggle, so the focused one unmounts:
+  // focus the new one after a toggle, but not on the first render.
+  const toggled = useRef(false)
+  const toggle = (next: boolean) => {
+    toggled.current = true
+    setRail(next)
+  }
+  const toggleRef = (el: HTMLButtonElement | null) => {
+    if (el && toggled.current) {
+      toggled.current = false
+      el.focus()
+    }
+  }
   const [query, setQuery] = useState('')
   const [collapsed, setCollapsed] = useState<Set<StepCategory>>(new Set())
   const q = query.trim().toLowerCase()
@@ -66,7 +79,8 @@ export function Palette({
         <button
           aria-label="Expand steps"
           className="text-secondary hover:bg-secondary flex size-8 shrink-0 items-center justify-center rounded-md"
-          onClick={() => setRail(false)}
+          onClick={() => toggle(false)}
+          ref={toggleRef}
           title="Expand steps"
           type="button"
         >
@@ -113,7 +127,8 @@ export function Palette({
         <button
           aria-label="Collapse steps"
           className="text-secondary hover:bg-secondary flex size-8 items-center justify-center rounded-md"
-          onClick={() => setRail(true)}
+          onClick={() => toggle(true)}
+          ref={toggleRef}
           title="Collapse steps"
           type="button"
         >

@@ -84,10 +84,11 @@ Set the version of this section when the release is cut.
     - changes `tickets.trigger_outbox` to one row per ticket change for
       the `ticket_state_changed` trigger: it adds the columns `id` (a
       random UUID on each row that exists), `from_state`, `to_state`
-      (default `closed`), and `outcome`. Then it moves the primary key
-      from `(ticket_id, close_id)` to `(ticket_id, id)`, one time. The
-      table holds only the changes whose workflow runs have not started,
-      so the step is short. It stops writes to the table while it runs;
+      (default `closed`), `outcome`, and `agent_id`. Then it moves the
+      primary key from `(ticket_id, close_id)` to `(ticket_id, id)`, one
+      time. The table holds only the changes whose workflow runs have
+      not started, so the step is short. It stops writes to the table
+      while it runs;
     - keeps `tickets.tickets.close_id` and `tickets.trigger_outbox.close_id`
       for 2.58.0 pods. This release does not read or write them;
     - adds the partial index `trigger_bindings_ticket_state_changed_idx`
