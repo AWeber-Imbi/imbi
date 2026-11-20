@@ -12,7 +12,7 @@ class Params(pydantic.BaseModel):
         pattern=rf'^(?:{DURATION}|{graph.REFERENCE})$',
         description=(
             'A number and a unit: s, m, h, or d. Example: 10m. Or one '
-            'reference that renders to one, such as '
+            'reference to a value in that form, such as '
             '{{ calc.result.duration }}.'
         ),
     )

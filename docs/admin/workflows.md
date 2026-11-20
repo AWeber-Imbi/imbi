@@ -262,13 +262,13 @@ Holds the run for a time.
 
 | Parameter | What to enter |
 |---|---|
-| `duration` | A number and a unit: `s`, `m`, `h`, or `d`. Example: `10m`. Or one reference that renders to one, such as `{{ calc.result.duration }}` |
+| `duration` | A number and a unit: `s`, `m`, `h`, or `d`. Example: `10m`. Or one reference to a value in that form, such as `{{ calc.result.duration }}` |
 
 With a reference, an earlier step computes the time, for example a script
-that finds the next release window. The value must be text such as `2h`: a
-number of seconds, or an ISO 8601 duration such as `PT2H`, fails the step
-with `invalid_params`. The max run time of the workflow still limits the
-wait.
+that finds the next release window. Its value needs the unit too: `7200s`
+and `2h` work, but a bare number such as `7200`, or an ISO 8601 duration
+such as `PT2H`, fails the step with `invalid_params`. The max run time of
+the workflow still limits the wait.
 
 **Output:** `waited_seconds`.
 
