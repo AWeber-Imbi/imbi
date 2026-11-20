@@ -557,6 +557,23 @@ Adds the `llm_call` workflow step: it sends a saved prompt to a generative model
 
 ---
 
+#### [ADR 0031: Plugin MCP Server Credentials](adr/0031-plugin-mcp-server-credentials.md)
+
+*Date: 2026-11-17 | Status: Proposed*
+
+Lets a plugin's MCP server authenticate with a header credential from the secrets broker. The runner holds the credential and relays the server's tools to the CLI, so the credential never reaches the CLI's environment. The model can use it only if a person also grants the binding for `run_with_secret`.
+
+**Key Decisions:**
+
+- The marketplace sync reads each plugin's servers with the harness's rule (`plugin.json`, `.mcp.json`, or the marketplace entry), and stores header names but no header values
+- `AgentPlugin.mcp_servers` turns a server off or maps its header variables to secret references; the Tools and plugins section gives each server a checkbox and secret pickers, default plugins included
+- A new runner-only purpose, `mcp_header`, delivers the secret by `file_descriptor` only
+- The runner serves each relayed server to the CLI as an in-process server named `plugin:<plugin>:<server>`, so its tools keep the names the plugin's own server would give them
+- A credential goes only to the `https` origin a person saw when they picked the secret
+- Server failures, missing secrets, and refused sessions show as task warnings
+
+---
+
 ## ADR Format
 
 Our ADRs follow this structure:
