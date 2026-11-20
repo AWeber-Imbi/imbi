@@ -258,11 +258,17 @@ before its runs start.
 
 ### Wait
 
-Holds the run for a fixed time.
+Holds the run for a time.
 
 | Parameter | What to enter |
 |---|---|
-| `duration` | A number and a unit: `s`, `m`, `h`, or `d`. Example: `10m` |
+| `duration` | A number and a unit: `s`, `m`, `h`, or `d`. Example: `10m`. Or one reference that renders to one, such as `{{ calc.result.duration }}` |
+
+With a reference, an earlier step computes the time, for example a script
+that finds the next release window. The value must be text such as `2h`: a
+number of seconds, or an ISO 8601 duration such as `PT2H`, fails the step
+with `invalid_params`. The max run time of the workflow still limits the
+wait.
 
 **Output:** `waited_seconds`.
 
@@ -728,6 +734,9 @@ The Slack `channel` takes a literal channel ID or one plain reference, but
 a channel is not a resource of an organization, so Imbi does not check it.
 The bot can post only to the channels that it was invited to. Invite it
 only to the channels that workflows may post to.
+
+The `duration` of a Wait step also takes one plain reference. See
+[Wait](#wait).
 
 ## Joins
 
