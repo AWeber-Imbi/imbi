@@ -1934,6 +1934,42 @@ async def acknowledge_agent_task(
 RETRY_TURN_LIMIT = 16_000
 
 
+def workflow_step_origin(
+    task: dict[str, typing.Any],
+) -> tuple[str, str] | None:
+    """Return the run id and node key of the workflow step that made
+    ``task``, or ``None``.
+
+    Only the agent step route of imbi-api writes ``workflow_run_id`` in
+    an origin record (``workflow_runs._agent_step``).
+    """
+    origin: dict[str, typing.Any] = task['origin'] or {}
+    run_id = origin.get('workflow_run_id')
+    if not run_id:
+        return None
+    return str(run_id), str(origin.get('node_key') or '')
+
+
+def _workflow_step_task(
+    short_id: str, run_id: str, node_key: str
+) -> fastapi.HTTPException:
+    return fastapi.HTTPException(
+        status_code=409,
+        detail={
+            'error': 'workflow_step_task',
+            'message': (
+                f'Task {short_id} belongs to step {node_key!r} of workflow'
+                f' run {run_id}. A retry would not belong to the run, so'
+                ' the run would not continue. Start a new run of the'
+                ' workflow instead, for example with Retry run on the'
+                ' page of the run.'
+            ),
+            'workflow_run_id': run_id,
+            'node_key': node_key,
+        },
+    )
+
+
 def retry_description(
     task: dict[str, typing.Any],
     last_turn: str | None,
@@ -1999,11 +2035,17 @@ async def retry_agent_task(
     needs ``ticket:read``, because the new description shows the
     log of the closed task.
 
+    A task that a workflow's agent step made is refused: the copy would
+    not belong to the run, so the run would never see its result and
+    its later steps would not run (ADR 0021, Agent tasks from
+    workflows).
+
     Raises:
         403: The caller is not a person, not a member of the org, or
             cannot read tasks.
         404: No such task.
-        409: The task is not closed, or its agent is disabled.
+        409: The task is not closed, its agent is disabled, or
+            ``workflow_step_task``: a workflow step made it.
         422: The agent or a project is no longer in the org.
 
     """
@@ -2016,6 +2058,9 @@ async def retry_agent_task(
         raise fastapi.HTTPException(
             status_code=409, detail=f'Task {short_id!r} is not closed'
         )
+    step_origin = workflow_step_origin(task)
+    if step_origin is not None:
+        raise _workflow_step_task(short_id, *step_origin)
     # A repeat returns the first retry before the agent and log reads,
     # which can fail after the first retry succeeded.
     origin = task_origin(auth)

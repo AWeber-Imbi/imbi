@@ -22,6 +22,7 @@ import fastapi
 import httpx
 import slugify
 from psycopg import sql
+from psycopg.types import json as pg_json
 
 from apps.api.tests import support
 from imbi.api import harness, models, secret_broker, tickets, workflows
@@ -1596,6 +1597,30 @@ class RetryTests(AgentTaskTestCase):
         await self.act_as_service_account(member=True)
         response = await self.retry()
         self.assertEqual(response.status_code, 403, response.text)
+
+    async def test_workflow_step_task_is_refused(self) -> None:
+        run_id = str(uuid.uuid4())
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE tickets.tickets SET origin = origin || %s'
+                ' WHERE organization_id = %s AND short_id = %s',
+                (
+                    pg_json.Jsonb(
+                        {'workflow_run_id': run_id, 'node_key': 'fixup'}
+                    ),
+                    self.org,
+                    'T-1',
+                ),
+            )
+        await self.fail()
+        response = await self.retry(note='Try again.')
+        self.assertEqual(response.status_code, 409, response.text)
+        detail = response.json()['detail']
+        self.assertEqual(detail['error'], 'workflow_step_task')
+        self.assertEqual(detail['workflow_run_id'], run_id)
+        self.assertEqual(detail['node_key'], 'fixup')
+        self.assertIn('Start a new run', detail['message'])
+        self.assertIsNone(await self.store.get(self.org, 'T-2'))
 
 
 class DeleteTests(AgentTaskTestCase):

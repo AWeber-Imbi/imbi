@@ -632,6 +632,13 @@ has that id or slug.
 When you cancel the run, or the run passes its max run time, Imbi cancels
 the task. A step timeout does not cancel the task.
 
+You cannot retry the task of an agent step from its ticket. A copy of the
+task would not belong to the run, so the run would not see its outcome and
+its later steps would not run. The retry returns `409` with
+`workflow_step_task`, and the ticket page explains this in place of the
+retry form. To do the work again, start a new run of the workflow, for
+example with **Retry run** on the page of the failed run.
+
 You cannot delete an agent that a workflow uses. The delete returns `409`
 with "used in N workflow(s)".
 

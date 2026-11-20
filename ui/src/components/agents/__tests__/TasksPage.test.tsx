@@ -1400,6 +1400,29 @@ describe('Tasks', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('explains why a workflow step ticket has no retry', async () => {
+    vi.mocked(endpoints.getTicket).mockResolvedValue({
+      ...closedTask(1),
+      origin: {
+        kind: 'human',
+        node_key: 'fixup',
+        user: 'ann@example.com',
+        workflow_run_id: 'run-1',
+      },
+      outcome: 'failed_external',
+    })
+    renderAt('/tickets/acme/T-11')
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry ticket' }))
+    const note = await screen.findByRole('note')
+    expect(note).toHaveTextContent('Step fixup of workflow run run-1')
+    expect(note).toHaveTextContent('Start a new run of the workflow instead')
+    expect(note).toHaveTextContent('Retry run')
+    expect(
+      screen.queryByRole('button', { name: 'Retry' }),
+    ).not.toBeInTheDocument()
+    expect(endpoints.retryTicket).not.toHaveBeenCalled()
+  })
+
   it('returns focus to Cancel when the confirm closes', async () => {
     renderAt('/tickets/acme/T-3/conversation')
     const button = await screen.findByRole('button', { name: 'Cancel ticket' })

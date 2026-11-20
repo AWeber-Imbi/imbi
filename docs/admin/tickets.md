@@ -121,6 +121,10 @@ The outcome of a person ticket is `done_acted`, `done_nothing_to_act_on`,
 apply to agent tickets only. A `held` person ticket opens when its gating
 prerequisites are done.
 
+You cannot retry an agent ticket that a workflow step made. The retry
+returns `409` with `workflow_step_task`. Start a new run of the workflow
+instead. See [Agent task](workflows.md#agent-task).
+
 ## Hand off a ticket
 
 A ticket can go from an agent to a person, from a person to an agent,
