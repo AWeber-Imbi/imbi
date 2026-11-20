@@ -551,10 +551,7 @@ function RecordRow({
         )}
         <span className="flex justify-end">
           <span className="flex w-22 justify-end @max-[620px]/tj:w-auto">
-            <KindTag
-              className={record.kind === 'assistant' ? 'w-full' : undefined}
-              kind={record.kind}
-            />
+            <KindTag kind={record.kind} />
           </span>
         </span>
       </td>
