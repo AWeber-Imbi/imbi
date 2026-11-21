@@ -58,6 +58,24 @@ async def for_new(
     )
 
 
+async def declared_values(
+    db: graph.Graph,
+    type: str,
+    priority: str,
+    labels: abc.Sequence[str],
+    values: dict[str, typing.Any],
+) -> dict[str, typing.Any]:
+    """Return the values whose keys the blueprints that match a ticket
+    declare now. A hidden value (no matching blueprint declares its
+    key) is dropped, so a copy of the values does not fail the check."""
+    keys = {
+        name
+        for bp in await matched(db, type, priority, labels)
+        for name in bp.json_schema.properties or {}
+    }
+    return {k: v for k, v in values.items() if k in keys}
+
+
 async def filterable(
     db: graph.Graph,
 ) -> dict[str, blueprint_attributes.FilterableAttribute]:

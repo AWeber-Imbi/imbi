@@ -1856,8 +1856,9 @@ export interface paths {
          *             chain does not have an egress destination that the child
          *             agent has (``egress_destination_missing``).
          *         422: No such agent, a budget over its task budget, or a
-         *             required custom field with no default
-         *             (``custom_fields_invalid``).
+         *             required custom field with no value or default, or a custom
+         *             field that is not valid (``custom_fields_invalid``). A repeat
+         *             with the idempotency key returns the child before this check.
          */
         post: operations["create_harness_child_ticket_api_harness_tickets__short_id__children_post"];
         delete?: never;
@@ -13289,6 +13290,13 @@ export interface components {
             budget?: number | string | null;
             /** Idempotency Key */
             idempotency_key?: string | null;
+            /**
+             * Custom Fields
+             * @description The values of the custom fields of the child. The child also gets the values of the parent for the fields that its blueprints declare; a value here wins.
+             */
+            custom_fields?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * ChoiceQuestion

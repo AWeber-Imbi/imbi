@@ -1604,6 +1604,20 @@ class RetryTests(AgentTaskTestCase):
         self.assertEqual(task['team']['slug'], self.team_id)
         self.assertEqual(task['custom_fields'], {'severity': 'sev1'})
 
+    async def test_copy_drops_a_hidden_value(self) -> None:
+        # No blueprint declares ``gone`` now: a copy with it would get
+        # 422 that the person cannot fix.
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE tickets.tickets SET custom_fields = %s'
+                " WHERE organization_id = %s AND short_id = 'T-1'",
+                (json.dumps({'gone': 'x'}), self.org),
+            )
+        await self.fail()
+        response = await self.retry()
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(response.json()['custom_fields'], {})
+
     async def test_repeat_with_key_returns_first_copy(self) -> None:
         await self.fail(turn=None)
         first = await self.retry(idempotency_key='retry-1')

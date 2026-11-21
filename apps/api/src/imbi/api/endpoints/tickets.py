@@ -2595,7 +2595,13 @@ async def retry_agent_task(
         type=task['type'],
         labels=task['labels'] or [],
         team=team['slug'] if team else None,
-        custom_fields=task['custom_fields'] or {},
+        custom_fields=await custom_fields.declared_values(
+            db,
+            task['type'],
+            task['priority'],
+            task['labels'] or [],
+            task['custom_fields'] or {},
+        ),
     )
     return await _create_task(
         db,

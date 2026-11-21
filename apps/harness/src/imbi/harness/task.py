@@ -209,6 +209,12 @@ _CHILD_TASK_SCHEMA: dict[str, typing.Any] = {
         'title': {'type': 'string'},
         'instruction': {'type': 'string'},
         'budget': {'type': 'string', 'description': 'USD, optional.'},
+        'custom_fields': {
+            'type': 'object',
+            'description': 'Optional custom field values of the child, by '
+            'field name. The child gets the values of this ticket for '
+            'the fields that it has.',
+        },
     },
     'required': ['agent_slug', 'title', 'instruction'],
 }
@@ -2326,7 +2332,7 @@ class TaskRun:
         @sdk.tool(
             'create_child_task',
             'Give work to another agent in this workspace and wait for '
-            'its result.',
+            'its result. A child ticket can need custom field values.',
             _CHILD_TASK_SCHEMA,
         )
         async def create_child_task(args: Body) -> Body:
@@ -2356,6 +2362,8 @@ class TaskRun:
             }
             if args.get('budget'):
                 body['budget'] = str(args['budget'])
+            if args.get('custom_fields'):
+                body['custom_fields'] = dict(args['custom_fields'])
             body['idempotency_key'] = hashlib.sha256(
                 json.dumps(body, sort_keys=True).encode()
             ).hexdigest()

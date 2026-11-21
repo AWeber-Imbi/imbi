@@ -2634,6 +2634,12 @@ class ChildTaskTestCase(RoutedTestCase):
         self.assertEqual(first['idempotency_key'], second['idempotency_key'])
         await self.run_task.create_child_task(args | {'budget': '1.5'})
         self.assertEqual(self.posted('/children')[2]['budget'], '1.5')
+        await self.run_task.create_child_task(
+            args | {'custom_fields': {'severity': 'sev1'}}
+        )
+        self.assertEqual(
+            self.posted('/children')[3]['custom_fields'], {'severity': 'sev1'}
+        )
 
     async def test_errors(self) -> None:
         self.run_task.children = None
