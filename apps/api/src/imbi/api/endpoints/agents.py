@@ -35,7 +35,7 @@ import psycopg.errors
 import pydantic
 import slugify
 
-from imbi.api import agent_tools, harness, secret_broker, workflows
+from imbi.api import agent_tools, harness, secret_broker, teams, workflows
 from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import prompts
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
@@ -332,12 +332,6 @@ _SLUG_TAKEN_QUERY: typing.LiteralString = """
 MATCH (a:Agent {{slug: {slug}}})
       -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
 RETURN a.id AS id
-"""
-
-_TEAM_QUERY: typing.LiteralString = """
-MATCH (o:Organization {{slug: {org_slug}}})
-OPTIONAL MATCH (t:Team {{slug: {team_slug}}})-[:BELONGS_TO]->(o)
-RETURN t.id AS team_id
 """
 
 _DETACH_TEAM_QUERY: typing.LiteralString = """
@@ -792,27 +786,17 @@ async def _assert_slug_free(db: graph.Pool, org_slug: str, slug: str) -> None:
         )
 
 
-async def _team_id(db: graph.Pool, org_slug: str, team_slug: str) -> str:
-    """Return the id of a team in the org, or raise 404 or 422."""
-    records = await db.execute(
-        _TEAM_QUERY,
-        {'org_slug': org_slug, 'team_slug': team_slug},
-        ['team_id'],
-    )
-    if not records:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=f'Organization with slug {org_slug!r} not found',
-        )
-    team_id = graph.parse_agtype(records[0]['team_id'])
-    if not team_id:
+async def _team_id(db: graph.Pool, org_id: str, team_slug: str) -> str:
+    """Return the id of a team in the org, or raise 422."""
+    found = await teams.ids_by_slug(db, org_id, [team_slug])
+    if team_slug not in found:
         raise _unprocessable(f'Team {team_slug!r} not found')
-    return str(team_id)
+    return found[team_slug]
 
 
 async def _check_model_teams(
     db: graph.Pool,
-    org_slug: str,
+    org_id: str,
     snapshot: AgentSnapshot,
     team_id: str | None,
 ) -> None:
@@ -845,7 +829,7 @@ async def _check_model_teams(
         version.model,
         f'The model {version.model!r} is restricted to teams that do not '
         f'include {snapshot.team!r}',
-        team_id=team_id or await _team_id(db, org_slug, snapshot.team),
+        team_id=team_id or await _team_id(db, org_id, snapshot.team),
     )
 
 
@@ -1165,13 +1149,13 @@ async def _apply(
             _check_prompt_scope(org_slug, target.prompt_ref)
         team_id: str | None = None
         if target.team != current.team:
-            team_id = await _team_id(db, org_slug, target.team)
+            team_id = await _team_id(db, org_id, target.team)
         if (target.team, target.prompt_ref, target.prompt_version) != (
             current.team,
             current.prompt_ref,
             current.prompt_version,
         ):
-            await _check_model_teams(db, org_slug, target, team_id)
+            await _check_model_teams(db, org_id, target, team_id)
         if target.tags != current.tags:
             await _validate_tag_slugs(db, org_slug, target.tags)
         if target.tools != current.tools:
@@ -1319,8 +1303,8 @@ async def create_agent(
     snapshot.settings = await _check_platform(
         store, org_id, snapshot.settings, None
     )
-    team_id = await _team_id(db, org_slug, data.team)
-    await _check_model_teams(db, org_slug, snapshot, team_id)
+    team_id = await _team_id(db, org_id, data.team)
+    await _check_model_teams(db, org_id, snapshot, team_id)
     await _validate_tag_slugs(db, org_slug, snapshot.tags)
     await _validate_tools(db, org_slug, snapshot.tools)
     await _validate_subagents(db, org_slug, snapshot.subagents)

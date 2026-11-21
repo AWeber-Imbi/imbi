@@ -207,6 +207,25 @@ def _matches_filter(
     return True
 
 
+async def matching_blueprints(
+    database: graph.Graph,
+    type_name: str,
+    context: dict[str, str | list[str]] | None = None,
+) -> list[models.Blueprint]:
+    """Return the enabled node blueprints of ``type_name`` whose filter
+    matches ``context``, by priority (see :func:`get_model`)."""
+    found = await database.match(
+        models.Blueprint,
+        {'type': type_name, 'enabled': True},
+        order_by='priority',
+    )
+    return [
+        bp
+        for bp in found
+        if bp.kind == 'node' and _matches_filter(bp, context)
+    ]
+
+
 async def get_model[ModelType: pydantic.BaseModel](
     database: graph.Graph,
     model: type[ModelType],
@@ -226,20 +245,9 @@ async def get_model[ModelType: pydantic.BaseModel](
                  'environment': 'production'}
 
     """
-    all_blueprints = await database.match(
-        models.Blueprint,
-        {
-            'type': model.__name__,
-            'enabled': True,
-        },
-        order_by='priority',
+    return apply_blueprints(
+        model, await matching_blueprints(database, model.__name__, context)
     )
-    matched = [
-        bp
-        for bp in all_blueprints
-        if bp.kind == 'node' and _matches_filter(bp, context)
-    ]
-    return apply_blueprints(model, matched)
 
 
 async def get_edge_model(

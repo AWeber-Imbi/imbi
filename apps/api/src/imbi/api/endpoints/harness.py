@@ -28,6 +28,7 @@
 import asyncio
 import base64
 import binascii
+import dataclasses
 import datetime
 import decimal
 import json
@@ -908,9 +909,7 @@ async def _claim(
         chain_id=chain['root_ticket_id'],
         attempt=chain['attempt'],
         organization_slug=org_slug,
-        task=tasks_api.AgentTaskResponse.model_validate(
-            await tasks_api.with_team(db, task)
-        ),
+        task=tasks_api.AgentTaskResponse.model_validate(task),
         bundle=await _identity(db, store, secrets, task, org_slug),
         agent_token=token,
         agent_token_expires_at=expires,
@@ -2066,7 +2065,7 @@ async def create_harness_child_task(
         )
         if existing is not None:
             response.status_code = 200
-            return await tasks_api.with_team(db, existing)
+            return existing
     records = await db.execute(
         _AGENT_QUERY,
         {'slug': data.agent_slug, 'org_id': parent['organization_id']},
@@ -2122,32 +2121,32 @@ async def create_harness_child_task(
         'short_id': parent['short_id'],
         'agent_id': parent['agent_id'],
     }
-    # A child ticket is a ``task`` of ``normal`` priority with no
-    # labels; it gets the defaults of the blueprints that match that.
-    values = custom_fields.validate(
-        await custom_fields.matched(db, 'task', 'normal', []),
-        {},
-        partial=False,
+    new_task = tickets.NewTask(
+        organization_id=parent['organization_id'],
+        agent_id=agent_id,
+        agent_version=agent_version,
+        prompt_version=prompt_version,
+        service_account_id=service_account_id,
+        title=data.title,
+        description=data.description,
+        origin_kind='ticket',
+        origin_id=origin_id,
+        origin=origin,
+        idempotency_key=data.idempotency_key,
+        owner=parent['owner'],
+        budget=budget,
+        chain_id=chain_id,
+    )
+    # The child gets the defaults of the blueprints that match it.
+    new_task = dataclasses.replace(
+        new_task,
+        custom_fields=await custom_fields.for_new(
+            db, new_task.type, new_task.priority, new_task.labels, {}
+        ),
     )
     try:
         task, created = await store.create(
-            tickets.NewTask(
-                organization_id=parent['organization_id'],
-                agent_id=agent_id,
-                agent_version=agent_version,
-                prompt_version=prompt_version,
-                service_account_id=service_account_id,
-                title=data.title,
-                description=data.description,
-                origin_kind='ticket',
-                origin_id=origin_id,
-                origin=origin,
-                idempotency_key=data.idempotency_key,
-                owner=parent['owner'],
-                budget=budget,
-                chain_id=chain_id,
-                custom_fields=values,
-            ),
+            new_task,
             tickets.Actor('agent', parent['agent_id'], 'harness'),
             {
                 'title': data.title,
@@ -2164,7 +2163,7 @@ async def create_harness_child_task(
         ) from e
     if not created:
         response.status_code = 200
-    return await tasks_api.with_team(db, task)
+    return task
 
 
 @harness_router.post(

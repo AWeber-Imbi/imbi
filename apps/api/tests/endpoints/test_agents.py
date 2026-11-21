@@ -215,7 +215,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         # team, tags, slug check, SA slug check, create, attach tags,
         # version, fetch
         self.mock_db.execute.side_effect = [
-            [{'team_id': 'team-1'}],
+            [{'slug': 'ops', 'id': 'team-1'}],
             [{'tag_slug': 'red', 'found': True}],
             [],
             [],
@@ -277,7 +277,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
 
     def test_create_slug_conflict(self) -> None:
         self.mock_db.execute.side_effect = [
-            [{'team_id': 'team-1'}],
+            [{'slug': 'ops', 'id': 'team-1'}],
             [{'id': 'other'}],
         ]
         response = self.client.post(
@@ -288,7 +288,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
 
     def test_create_copies_org_id(self) -> None:
         self.mock_db.execute.side_effect = [
-            [{'team_id': 'team-1'}],
+            [{'slug': 'ops', 'id': 'team-1'}],
             [],
             [],
             [{'id': 'agent-1'}],
@@ -304,7 +304,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
     def test_create_avoids_internal_service_account_slug(self) -> None:
         # team, slug check, create, version, fetch: no SA slug check
         self.mock_db.execute.side_effect = [
-            [{'team_id': 'team-1'}],
+            [{'slug': 'ops', 'id': 'team-1'}],
             [],
             [{'id': 'agent-1'}],
             [{'n': 1}],
@@ -325,7 +325,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
     def test_create_concurrent_slug_conflict(self) -> None:
         # The slug check passes, then the unique index stops the create.
         self.mock_db.execute.side_effect = [
-            [{'team_id': 'team-1'}],
+            [{'slug': 'ops', 'id': 'team-1'}],
             [],
             [],
             psycopg.errors.UniqueViolation(),
@@ -347,7 +347,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
             return_value=diag,
         ):
             self.mock_db.execute.side_effect = [
-                [{'team_id': 'team-1'}],
+                [{'slug': 'ops', 'id': 'team-1'}],
                 [],
                 [],
                 psycopg.errors.UniqueViolation(),
@@ -373,7 +373,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
             return_value=diag,
         ):
             self.mock_db.execute.side_effect = [
-                [{'team_id': 'team-1'}],
+                [{'slug': 'ops', 'id': 'team-1'}],
                 [],
                 [],
                 conflict,
@@ -394,7 +394,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
 
     def test_create_removes_agent_when_version_fails(self) -> None:
         self.mock_db.execute.side_effect = [
-            [{'team_id': 'team-1'}],
+            [{'slug': 'ops', 'id': 'team-1'}],
             [],
             [],
             [{'id': 'agent-1'}],
@@ -432,7 +432,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         resolve = self._restricted_prompt()
         # team, model, allowed team (none)
         self.mock_db.execute.side_effect = [
-            [{'team_id': 'team-1'}],
+            [{'slug': 'ops', 'id': 'team-1'}],
             [MODEL_INFO_ROW],
             [],
         ]
@@ -462,7 +462,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         # fetch, team, model, allowed team (none)
         self.mock_db.execute.side_effect = [
             [self._row(prompt_version=2)],
-            [{'team_id': 'team-2'}],
+            [{'slug': 'sre', 'id': 'team-2'}],
             [MODEL_INFO_ROW],
             [],
         ]
@@ -504,23 +504,16 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         resolve.assert_not_awaited()
 
     def test_create_unknown_team(self) -> None:
-        self.mock_db.execute.return_value = [{'team_id': None}]
+        self.mock_db.execute.return_value = []
         response = self.client.post(
             BASE + '/', json={'name': 'T', 'slug': 't', 'team': 'ghost'}
         )
         self.assertEqual(response.status_code, 422)
         self.assertIn('ghost', response.json()['detail'])
 
-    def test_create_unknown_org(self) -> None:
-        self.mock_db.execute.return_value = []
-        response = self.client.post(
-            BASE + '/', json={'name': 'T', 'slug': 't', 'team': 'ops'}
-        )
-        self.assertEqual(response.status_code, 404)
-
     def test_create_unknown_tag(self) -> None:
         self.mock_db.execute.side_effect = [
-            [{'team_id': 'team-1'}],
+            [{'slug': 'ops', 'id': 'team-1'}],
             [
                 {'tag_slug': 'red', 'found': True},
                 {'tag_slug': 'ghost', 'found': False},
@@ -685,7 +678,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         # fetch, team, tags, batch (version, team x2, tags x2, set), fetch
         self.mock_db.execute.side_effect = [
             [self._row(tags=['red'])],
-            [{'team_id': 'team-2'}],
+            [{'slug': 'dev', 'id': 'team-2'}],
             [{'tag_slug': 'blue', 'found': True}],
             [self._row(team='dev', tags=['blue'], latest=2)],
         ]
@@ -718,7 +711,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
     def test_put_unknown_team(self) -> None:
         self.mock_db.execute.side_effect = [
             [self._row()],
-            [{'team_id': None}],
+            [],
         ]
         response = self.client.put(BASE + '/triage', json={'team': 'ghost'})
         self.assertEqual(response.status_code, 422)
@@ -1002,7 +995,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.side_effect = [
             [self._row(latest=2)],
             [self._version(1, team='gone')],
-            [{'team_id': None}],
+            [],
         ]
         response = self.client.post(BASE + '/triage/versions/1/restore')
         self.assertEqual(response.status_code, 422)
@@ -1372,7 +1365,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
     def test_create_with_tools(self) -> None:
         # team, environments, slug check, SA slug check, create, version, fetch
         self.mock_db.execute.side_effect = [
-            [{'team_id': 'team-1'}],
+            [{'slug': 'ops', 'id': 'team-1'}],
             self._env_rows(production=True, staging=True),
             [],
             [],
@@ -1400,7 +1393,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
 
     def test_create_unknown_environment(self) -> None:
         self.mock_db.execute.side_effect = [
-            [{'team_id': 'team-1'}],
+            [{'slug': 'ops', 'id': 'team-1'}],
             self._env_rows(production=True, staging=False),
         ]
         response = self.client.post(
@@ -1448,7 +1441,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         }
         # team, slug check, SA slug check, create, version, fetch
         self.mock_db.execute.side_effect = [
-            [{'team_id': 'team-1'}],
+            [{'slug': 'ops', 'id': 'team-1'}],
             [],
             [],
             [{'id': 'agent-1'}],
@@ -1488,7 +1481,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         # The other built-in tools come from the organization.
         # create: team; put: fetch
         self.mock_db.execute.side_effect = [
-            [{'team_id': 'team-1'}],
+            [{'slug': 'ops', 'id': 'team-1'}],
             [self._row(latest=2)],
         ]
         response = self.client.post(
@@ -1826,7 +1819,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
     def test_create_with_subagents(self) -> None:
         # team, subagents, slug check, SA slug check, create, version, fetch
         self.mock_db.execute.side_effect = [
-            [{'team_id': 'team-1'}],
+            [{'slug': 'ops', 'id': 'team-1'}],
             self._found('writer', 'coder'),
             [],
             [],
@@ -1861,7 +1854,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
 
     def test_create_unknown_subagent(self) -> None:
         self.mock_db.execute.side_effect = [
-            [{'team_id': 'team-1'}],
+            [{'slug': 'ops', 'id': 'team-1'}],
             self._found('writer', missing=('other-org',)),
         ]
         response = self.client.post(

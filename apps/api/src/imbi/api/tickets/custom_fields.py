@@ -8,6 +8,7 @@ sends. A value whose field stops matching stays in the row.
 """
 
 import typing
+from collections import abc
 
 import fastapi
 import pydantic
@@ -31,20 +32,30 @@ async def all_blueprints(db: graph.Graph) -> list[models.Blueprint]:
 
 
 async def matched(
-    db: graph.Graph, type: str, priority: str, labels: list[str]
+    db: graph.Graph, type: str, priority: str, labels: abc.Sequence[str]
 ) -> list[models.Blueprint]:
     """Return the enabled ``Ticket`` blueprints that match a ticket,
     by priority."""
-    ticket: dict[str, str | list[str]] = {
-        'ticket_type': type,
-        'priority': priority,
-        'label': labels,
-    }
-    return [
-        bp
-        for bp in await all_blueprints(db)
-        if blueprints._matches_filter(bp, ticket)  # pyright: ignore[reportPrivateUsage]
-    ]
+    return await blueprints.matching_blueprints(
+        db,
+        'Ticket',
+        {'ticket_type': type, 'priority': priority, 'label': list(labels)},
+    )
+
+
+async def for_new(
+    db: graph.Graph,
+    type: str,
+    priority: str,
+    labels: abc.Sequence[str],
+    values: dict[str, typing.Any],
+) -> dict[str, typing.Any]:
+    """Return the clean custom fields of a new ticket, with the defaults
+    of the blueprints that match it, or raise 422 (see
+    :func:`validate`)."""
+    return validate(
+        await matched(db, type, priority, labels), values, partial=False
+    )
 
 
 async def filterable(
@@ -85,6 +96,8 @@ def validate(
             declares).
 
     """
+    if not matches and not values:
+        return {}
     model = blueprints.apply_blueprints(_Values, matches)
     sent = values
     if partial:
