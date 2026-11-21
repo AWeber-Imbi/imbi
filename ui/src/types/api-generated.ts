@@ -12850,7 +12850,7 @@ export interface components {
              */
             kind: "node" | "relationship";
             /** Type */
-            type?: ("Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration") | null;
+            type?: ("Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "Ticket") | null;
             /** Source */
             source?: string | null;
             /** Target */
@@ -12904,7 +12904,7 @@ export interface components {
              */
             kind: "node" | "relationship";
             /** Type */
-            type?: ("Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration") | null;
+            type?: ("Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "Ticket") | null;
             /** Source */
             source?: string | null;
             /** Target */
@@ -12949,6 +12949,21 @@ export interface components {
              * @default []
              */
             environment: string[];
+            /**
+             * Ticket Type
+             * @default []
+             */
+            ticket_type: string[];
+            /**
+             * Priority
+             * @default []
+             */
+            priority: string[];
+            /**
+             * Label
+             * @default []
+             */
+            label: string[];
         };
         /**
          * BlueprintSection
@@ -25469,7 +25484,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "relationship";
+                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "Ticket" | "relationship";
             };
             cookie?: never;
         };
@@ -25500,7 +25515,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "relationship";
+                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "Ticket" | "relationship";
                 slug: string;
             };
             cookie?: never;
@@ -25532,7 +25547,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "relationship";
+                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "Ticket" | "relationship";
                 slug: string;
             };
             cookie?: never;
@@ -25562,7 +25577,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "relationship";
+                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "Ticket" | "relationship";
                 slug: string;
             };
             cookie?: never;

@@ -492,7 +492,10 @@ function validateBlueprintShape(
     }
     parsedFilter = {
       environment: (f.environment as string[]) || [],
+      label: [],
+      priority: [],
       project_type: (f.project_type as string[]) || [],
+      ticket_type: [],
     }
   }
 

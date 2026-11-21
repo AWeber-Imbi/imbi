@@ -424,7 +424,10 @@ export function BlueprintForm({
       if (ptArr.length > 0 || envArr.length > 0) {
         filterObj = {
           environment: envArr,
+          label: [],
+          priority: [],
           project_type: ptArr,
+          ticket_type: [],
         }
       }
     }

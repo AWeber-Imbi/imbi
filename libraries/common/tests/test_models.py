@@ -139,6 +139,41 @@ class BlueprintFilterValidatorTestCase(unittest.TestCase):
         )
         self.assertEqual(bp.filter, bf)
 
+    def test_ticket_filter_round_trip(self) -> None:
+        bp = models.Blueprint(
+            name='test',
+            type='Ticket',
+            json_schema=self._schema(),
+            filter={
+                'ticket_type': ['bug'],
+                'priority': ['high', 'urgent'],
+                'label': ['Front End', 'front-end', 'API'],
+            },
+        )
+        assert bp.filter is not None
+        self.assertEqual(bp.filter.label, ['front-end', 'api'])
+        again = models.Blueprint.model_validate(bp.model_dump())
+        self.assertEqual(again.filter, bp.filter)
+
+    def test_filter_fields_must_fit_the_type(self) -> None:
+        for bp_type, bp_filter in (
+            ('Ticket', {'project_type': ['apis']}),
+            ('Ticket', {'environment': ['production']}),
+            ('Project', {'label': ['api']}),
+            ('Project', {'ticket_type': ['bug']}),
+            ('Team', {'priority': ['high']}),
+        ):
+            with (
+                self.subTest(type=bp_type, filter=bp_filter),
+                self.assertRaises(pydantic.ValidationError),
+            ):
+                models.Blueprint(
+                    name='test',
+                    type=bp_type,
+                    json_schema=self._schema(),
+                    filter=bp_filter,
+                )
+
     def test_filter_invalid_type_raises(self) -> None:
         """Test filter rejects invalid types."""
         with self.assertRaises(pydantic.ValidationError):

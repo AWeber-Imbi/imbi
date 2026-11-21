@@ -182,24 +182,19 @@ def _matches_filter(
       context value that appears in the filter's list.
     - All non-empty filter fields must match (AND).
 
-    The ``project_type`` context value may be a list of slugs
-    (for multi-type projects). A match occurs when any of
-    the project's types appear in the blueprint's filter list.
+    A context value may be a list (the types of a multi-type project,
+    the labels of a ticket). A match occurs when any of its values
+    appear in the blueprint's filter list.
 
     """
     bp_filter = blueprint.filter
     if bp_filter is None:
         return True
-    if context is None:
-        # No context — only unfiltered blueprints match.
-        if bp_filter.project_type or bp_filter.environment:
-            return False
-        return True
-    for field in ('project_type', 'environment'):
+    for field in type(bp_filter).model_fields:
         allowed: list[str] = getattr(bp_filter, field)
         if not allowed:
             continue
-        ctx_value = context.get(field)
+        ctx_value = (context or {}).get(field)
         if ctx_value is None:
             return False
         # Support list values (multi-type): match if any

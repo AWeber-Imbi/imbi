@@ -14,7 +14,7 @@ import slugify
 from jsonschema_models import models as schema_models
 from pydantic import alias_generators
 
-from imbi.common import versioning
+from imbi.common import labels, versioning
 from imbi.common.llm import drivers
 
 __all__ = [
@@ -171,6 +171,19 @@ class BlueprintFilter(pydantic.BaseModel):
 
     project_type: list[str] = []
     environment: list[str] = []
+    #: The ticket fields; only a ``Ticket`` blueprint has them.
+    ticket_type: list[str] = []
+    priority: list[str] = []
+    #: Matches when one or more labels of the ticket are in the list.
+    #: The labels are normalized as ticket labels are.
+    label: typing.Annotated[
+        list[str], pydantic.AfterValidator(labels.normalize_labels)
+    ] = []
+
+
+#: The filter fields of each kind of blueprint.
+_TICKET_FILTERS = ('ticket_type', 'priority', 'label')
+_OTHER_FILTERS = ('project_type', 'environment')
 
 
 class RelationshipEdge(pydantic.BaseModel):
@@ -196,6 +209,7 @@ class Blueprint(Node):
             'Project',
             'Organization',
             'Integration',
+            'Ticket',
         ]
         | None
     ) = None
@@ -235,6 +249,16 @@ class Blueprint(Node):
                 raise ValueError(
                     f'{", ".join(missing)} required for '
                     f'relationship blueprints'
+                )
+        if self.filter is not None:
+            wrong = (
+                _OTHER_FILTERS if self.type == 'Ticket' else _TICKET_FILTERS
+            )
+            invalid = [f for f in wrong if getattr(self.filter, f)]
+            if invalid:
+                raise ValueError(
+                    f'filter {", ".join(invalid)} is not valid for '
+                    f'{self.type or "relationship"} blueprints'
                 )
         return self
 
