@@ -33,6 +33,7 @@ import psycopg_pool
 from psycopg import rows, sql
 from psycopg.types import json as pg_json
 
+from imbi.api import blueprint_attributes
 from imbi.api.tickets import log
 from imbi.common import relational
 from imbi.common.labels import (
@@ -149,13 +150,11 @@ Channel = typing.Literal['web', 'slack', 'mcp', 'api', 'harness']
 Outcome = agent_step.Outcome
 AssigneeKind = typing.Literal['agent', 'person']
 TicketType = typing.Literal['bug', 'task', 'feature']
-#: A custom field filter of the ticket list: the field, the operator
-#: (``eq``, ``ne``, ``in``, ``not_in``, ``exists``, ``not_exists``), and
-#: the values (:func:`imbi.api.blueprint_attributes.parse_filters`).
-CustomFieldFilter = tuple[str, str, list[typing.Any]]
-
 #: The longest label or role name, after normalization.
 MAX_LABEL_LENGTH = 50
+
+#: The event name of a ticket column whose name is not the event name.
+_EVENT_NAMES = {'team_id': 'team'}
 
 #: The statuses that a person sets on a person ticket, and the statuses
 #: that each one can come from (ADR 0028). ``held`` changes only by its
@@ -769,7 +768,7 @@ def _search_filters(
     text_project_ids: list[str] | None,
     labels: list[str] | None = None,
     team_ids: list[str] | None = None,
-    custom_fields: list[CustomFieldFilter] | None = None,
+    custom_fields: list[blueprint_attributes.Predicate] | None = None,
 ) -> tuple[list[sql.Composable], list[typing.Any]]:
     """The ``WHERE`` conditions of :meth:`Store.search` and their
     parameters.
@@ -1200,7 +1199,7 @@ class TicketStore:
         text_project_ids: list[str] | None = None,
         labels: list[str] | None = None,
         team_ids: list[str] | None = None,
-        custom_fields: list[CustomFieldFilter] | None = None,
+        custom_fields: list[blueprint_attributes.Predicate] | None = None,
         group: Group | None = None,
         before: tuple[datetime.datetime, uuid.UUID] | None = None,
         offset: int = 0,
@@ -1273,7 +1272,7 @@ class TicketStore:
         text_project_ids: list[str] | None = None,
         labels: list[str] | None = None,
         team_ids: list[str] | None = None,
-        custom_fields: list[CustomFieldFilter] | None = None,
+        custom_fields: list[blueprint_attributes.Predicate] | None = None,
     ) -> tuple[str, int] | None:
         """Return the inbox group of the task ``short_id`` and its index
         in that group, in the order of :meth:`search` with the same
@@ -1330,7 +1329,7 @@ class TicketStore:
         text_project_ids: list[str] | None = None,
         labels: list[str] | None = None,
         team_ids: list[str] | None = None,
-        custom_fields: list[CustomFieldFilter] | None = None,
+        custom_fields: list[blueprint_attributes.Predicate] | None = None,
     ) -> dict[str, int]:
         """Return the number of tasks in each inbox group that
         :meth:`search` with the same filters finds. A group with no
@@ -1816,7 +1815,7 @@ class TicketStore:
                 if old == value:
                     continue
                 await write.event(
-                    f'{field.removesuffix("_id")}.changed',
+                    f'{_EVENT_NAMES.get(field, field)}.changed',
                     {'from': _event_value(old), 'to': _event_value(value)},
                     actor,
                 )

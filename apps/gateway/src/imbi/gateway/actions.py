@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import http
 import logging
 import re
@@ -693,10 +694,15 @@ def _deployment_state(
     return raw_state, status
 
 
-def _run_cel(expression: str, event: object) -> object:
+@functools.lru_cache(maxsize=256)
+def _cel_program(expression: str) -> celpy.Runner:
+    """Compile an expression one time; the rules repeat a few of them."""
     env = celpy.Environment()
-    program = env.program(env.compile(expression), functions=_CEL_FUNCTIONS)
-    return program.evaluate(celpy.json_to_cel(event))
+    return env.program(env.compile(expression), functions=_CEL_FUNCTIONS)
+
+
+def _run_cel(expression: str, event: object) -> object:
+    return _cel_program(expression).evaluate(celpy.json_to_cel(event))
 
 
 def _evaluate_cel(expression: str, event: object) -> str | None:

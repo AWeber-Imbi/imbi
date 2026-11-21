@@ -7,6 +7,7 @@ import type {
   DynamicFieldSchema,
   DynamicSchema,
   ProjectSchemaSection,
+  ProjectSchemaSectionProperty,
 } from '@/api/endpoints'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -239,18 +240,25 @@ export function requiredBlueprintFields(
         delete properties[key]
         continue
       }
-      properties[key] = {
-        description: prop.description ?? undefined,
-        enum: prop.enum ?? undefined,
-        format: prop.format ?? undefined,
-        maximum: prop.maximum ?? undefined,
-        minimum: prop.minimum ?? undefined,
-        title: prop.title ?? undefined,
-        type: prop.type ?? undefined,
-      }
+      properties[key] = toDynamicField(prop)
     }
   }
   return { properties, required: Object.keys(properties) }
+}
+
+/** A blueprint section property as a form field, without its nulls. */
+export function toDynamicField(
+  prop: Omit<ProjectSchemaSectionProperty, 'items' | 'x-display' | 'x-ui'>,
+): DynamicFieldSchema {
+  return {
+    description: prop.description ?? undefined,
+    enum: prop.enum ?? undefined,
+    format: prop.format ?? undefined,
+    maximum: prop.maximum ?? undefined,
+    minimum: prop.minimum ?? undefined,
+    title: prop.title ?? undefined,
+    type: prop.type ?? undefined,
+  }
 }
 
 export function validateDynamicFields(

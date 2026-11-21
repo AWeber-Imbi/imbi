@@ -52,7 +52,6 @@ from imbi.api.tickets.store import (
     AssigneeKind,
     Channel,
     Control,
-    CustomFieldFilter,
     Group,
     PersonOutcome,
     Priority,
@@ -332,6 +331,9 @@ class TicketSchemaResponse(pydantic.BaseModel):
     """The custom fields of a ticket, by blueprint."""
 
     sections: list[blueprint_sections.BlueprintSection]
+    #: The custom fields of every ``Ticket`` blueprint that the ticket
+    #: list can filter on (``filter``), whatever the ticket.
+    filterable: list[blueprint_attributes.FilterableAttribute]
 
 
 #: The custom field filters of the ticket list.
@@ -2061,7 +2063,7 @@ async def _team_filter(
 
 async def _custom_filters(
     db: graph.Graph, filters: list[str] | None
-) -> list[CustomFieldFilter] | None:
+) -> list[blueprint_attributes.Predicate] | None:
     """Parse the custom field filters of the ticket list, or raise
     400 (see :func:`blueprint_attributes.parse_filters`)."""
     if not filters:
@@ -2222,17 +2224,24 @@ async def get_ticket_schema(
     """Return the custom fields of a ticket with this type, priority,
     and labels: one section for each ``Ticket`` blueprint that matches,
     by blueprint priority. A later blueprint overrides an earlier one
-    for the same field.
+    for the same field. ``filterable`` has the custom fields of every
+    ``Ticket`` blueprint that the ticket list can filter on.
 
     Raises:
         403: The caller is not a member of the org.
         404: No such organization.
 
     """
-    matches = await custom_fields.matched(
-        db, type, priority, normalize_labels(label or [])
+    matches, filterable = await asyncio.gather(
+        custom_fields.matched(
+            db, type, priority, normalize_labels(label or [])
+        ),
+        custom_fields.filterable(db),
     )
-    return {'sections': custom_fields.sections(matches)}
+    return {
+        'sections': custom_fields.sections(matches),
+        'filterable': list(filterable.values()),
+    }
 
 
 @tickets_router.get('/labels', response_model=list[TicketLabelCount])

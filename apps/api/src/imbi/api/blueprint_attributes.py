@@ -24,9 +24,11 @@ from imbi.common import graph, models
 
 
 class FilterableAttribute(pydantic.BaseModel):
-    """A single project attribute that can be filtered on."""
+    """A blueprint attribute (of a project or a ticket) that can be
+    filtered on."""
 
     field: str
+    title: str | None = None
     type: str | None = None
     format: str | None = None
     enum: list[str] | None = None
@@ -67,6 +69,7 @@ def resolve(
         for name, prop in properties.items():
             out[name] = FilterableAttribute(
                 field=name,
+                title=getattr(prop, 'title', None),
                 type=getattr(prop, 'type', None),
                 format=getattr(prop, 'format', None),
                 enum=getattr(prop, 'enum', None),

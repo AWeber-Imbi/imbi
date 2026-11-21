@@ -27,8 +27,12 @@ import { CardTitle } from '@/components/ui/card'
 import { LabelChip } from '@/components/ui/label-chip'
 import { Sk } from '@/components/ui/skeleton'
 import { useClipboard } from '@/hooks/useClipboard'
-import { cn, parseFilterFromBlueprint } from '@/lib/utils'
-import type { BlueprintFilter, SchemaProperty } from '@/types'
+import {
+  BLUEPRINT_FILTER_KEYS,
+  cn,
+  parseFilterFromBlueprint,
+} from '@/lib/utils'
+import type { SchemaProperty } from '@/types'
 
 import { getTypeSwatch } from './typeSwatch'
 
@@ -39,39 +43,37 @@ interface BlueprintDetailProps {
   onEdit: () => void
 }
 
-/** The filter fields and how each one shows. */
-const FILTER_SECTIONS: {
-  border: string
-  key: keyof BlueprintFilter
-  title: string
-  variant: 'info' | 'neutral' | 'success' | 'warning'
-}[] = [
+/** How each filter field shows. */
+const FILTER_SECTIONS: Record<
+  (typeof BLUEPRINT_FILTER_KEYS)[number],
   {
-    border: 'border-info',
-    key: 'project_type',
-    title: 'Project Types',
-    variant: 'info',
-  },
-  {
+    border: string
+    title: string
+    variant: 'info' | 'neutral' | 'success' | 'warning'
+  }
+> = {
+  environment: {
     border: 'border-success',
-    key: 'environment',
     title: 'Environments',
     variant: 'success',
   },
-  {
-    border: 'border-info',
-    key: 'ticket_type',
-    title: 'Ticket Types',
-    variant: 'info',
-  },
-  {
+  label: { border: '', title: 'Labels', variant: 'neutral' },
+  priority: {
     border: 'border-warning',
-    key: 'priority',
     title: 'Priorities',
     variant: 'warning',
   },
-  { border: '', key: 'label', title: 'Labels', variant: 'neutral' },
-]
+  project_type: {
+    border: 'border-info',
+    title: 'Project Types',
+    variant: 'info',
+  },
+  ticket_type: {
+    border: 'border-info',
+    title: 'Ticket Types',
+    variant: 'info',
+  },
+}
 
 function BlueprintDetailSkeleton() {
   return (
@@ -326,8 +328,9 @@ export function BlueprintDetail({
             </div>
           </div>
           <div className="space-y-4 px-6 py-4">
-            {FILTER_SECTIONS.map(({ border, key, title, variant }) =>
-              (parsedFilter[key]?.length ?? 0) > 0 ? (
+            {BLUEPRINT_FILTER_KEYS.map((key) => {
+              const { border, title, variant } = FILTER_SECTIONS[key]
+              return (parsedFilter[key]?.length ?? 0) > 0 ? (
                 <div key={key}>
                   <div
                     className={
@@ -348,8 +351,8 @@ export function BlueprintDetail({
                     ))}
                   </div>
                 </div>
-              ) : null,
-            )}
+              ) : null
+            })}
           </div>
         </div>
       )}

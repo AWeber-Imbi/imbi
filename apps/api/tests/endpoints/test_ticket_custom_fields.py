@@ -158,6 +158,10 @@ class TicketCustomFieldTests(test_person_tickets.PersonTicketTestCase):
             [s['name'] for s in response.json()['sections']],
             [f'Notes {self.label}'],
         )
+        # The fields to filter on do not depend on the ticket.
+        filterable = {f['field']: f for f in response.json()['filterable']}
+        self.assertEqual(filterable['severity']['enum'], ['sev1', 'sev2'])
+        self.assertEqual(filterable['reviewer']['title'], 'Reviewer')
 
     async def test_list_filter(self) -> None:
         a = await self.make(

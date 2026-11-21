@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 
 import { useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 
-import type { Blueprint, TicketStatus } from '@/types'
+import type { TicketStatus } from '@/types'
 
 /** The assignee value of "my tasks": the API's `mine`. */
 export const ME = 'me'
@@ -33,12 +33,6 @@ export interface TaskFilters {
   teams: string[]
 }
 
-interface SchemaProperty {
-  enum?: unknown[]
-  title?: string
-  type?: string
-}
-
 export const NO_FILTERS: TaskFilters = {
   agents: [],
   assignees: [],
@@ -64,41 +58,6 @@ export function fieldFilters(filters: TaskFilters): string[] {
   return Object.entries(filters.fields)
     .filter(([, values]) => values.length > 0)
     .map(([name, values]) => `${name}:in:${values.join(',')}`)
-}
-
-/**
- * The custom fields of the enabled `Ticket` blueprints that have a fixed
- * set of values: an enum or a boolean. A later blueprint overrides an
- * earlier one for the same field.
- */
-export function filterFields(blueprints: Blueprint[]): FilterField[] {
-  const fields = new Map<string, FilterField>()
-  for (const bp of blueprints) {
-    if (bp.type !== 'Ticket' || !bp.enabled) continue
-    let properties: Record<string, SchemaProperty>
-    try {
-      // The API sends the schema as JSON text.
-      const schema: unknown =
-        typeof bp.json_schema === 'string'
-          ? JSON.parse(bp.json_schema)
-          : bp.json_schema
-      properties =
-        (schema as { properties?: typeof properties }).properties ?? {}
-    } catch {
-      continue
-    }
-    for (const [name, prop] of Object.entries(properties)) {
-      const values =
-        prop.enum ?? (prop.type === 'boolean' ? ['true', 'false'] : undefined)
-      if (values)
-        fields.set(name, {
-          label: prop.title || name,
-          name,
-          values: values.map(String),
-        })
-    }
-  }
-  return [...fields.values()]
 }
 
 export function readFilters(search: string): TaskFilters {

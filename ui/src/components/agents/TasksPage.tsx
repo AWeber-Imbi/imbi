@@ -49,7 +49,7 @@ import { toast } from 'sonner'
 import { ApiError } from '@/api/client'
 import {
   getTicketPosition,
-  listBlueprints,
+  getTicketSchema,
   listTicketLabels,
   rankTicket,
 } from '@/api/endpoints'
@@ -92,7 +92,7 @@ import {
 import {
   activeCount,
   fieldFilters,
-  filterFields,
+  type FilterField,
   ME,
   useTaskFilters,
 } from './taskFilters'
@@ -112,6 +112,9 @@ import { useVirtualRows } from './virtualRows'
  * It stays with the redirect in App.tsx.
  */
 const SHORT_ID = /^T-\d+$/
+
+/** The schema params of any ticket: only its `filterable` is read. */
+const ANY_TICKET = { label: [], priority: 'normal', type: 'task' }
 
 /**
  * Tickets: the inbox in a resizable pane and the ticket in the URL
@@ -378,6 +381,11 @@ function TaskInbox({
   const canCreate = useHasPermission('ticket:create', orgSlug)
   const canRank = useHasPermission('ticket:manage', orgSlug)
   const q = useDebouncedValue(text.trim(), 250) || undefined
+  const { data: schema } = useQuery({
+    queryFn: ({ signal }) => getTicketSchema(orgSlug, ANY_TICKET, signal),
+    queryKey: queryKeys.ticketSchema(orgSlug, ANY_TICKET),
+    staleTime: 60_000,
+  })
   const params = {
     agent_id: nonEmpty(filters.agents),
     filter: nonEmpty(fieldFilters(filters)),
@@ -498,15 +506,17 @@ function TaskInbox({
     staleTime: 60_000,
   })
   const { data: teams = [] } = useTeams(orgSlug)
-  // Needs `blueprint:read`; without it, the menu has no custom fields.
-  const { data: blueprints } = useQuery({
-    queryFn: ({ signal }) => listBlueprints(undefined, signal),
-    queryKey: ['blueprints'],
-    staleTime: 60_000,
-  })
+  // The menu offers only the fields with a fixed set of values.
   const customFields = useMemo(
-    () => filterFields(blueprints ?? []),
-    [blueprints],
+    () =>
+      (schema?.filterable ?? []).flatMap((f): FilterField[] => {
+        const values =
+          f.enum ?? (f.type === 'boolean' ? ['true', 'false'] : undefined)
+        return values
+          ? [{ label: f.title || f.field, name: f.field, values }]
+          : []
+      }),
+    [schema],
   )
   const [dragging, setDragging] = useState<string>()
   const rank = useMutation({

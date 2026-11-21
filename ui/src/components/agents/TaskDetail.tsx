@@ -9,7 +9,12 @@ import {
 
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import {
   Ban,
   Box,
@@ -1036,8 +1041,10 @@ function TicketCustomFields({
     type: task.type,
   }
   const { data } = useQuery({
+    placeholderData: keepPreviousData,
     queryFn: ({ signal }) => getTicketSchema(orgSlug, params, signal),
     queryKey: queryKeys.ticketSchema(orgSlug, params),
+    staleTime: 60_000,
   })
   const update = useTicketMutation(
     orgSlug,

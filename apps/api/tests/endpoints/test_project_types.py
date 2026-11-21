@@ -330,6 +330,7 @@ class ProjectTypeEndpointsTestCase(support.SharedAppTestCase):
             [
                 {
                     'field': 'framework',
+                    'title': None,
                     'type': 'string',
                     'format': None,
                     'enum': ['FastAPI', 'http-service-lib'],

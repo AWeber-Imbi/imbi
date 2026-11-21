@@ -202,6 +202,7 @@ import type {
   TicketCounts,
   TicketCreate,
   TicketEvent,
+  TicketFilterable,
   TicketHandOff,
   TicketLabel,
   TicketListItem,
@@ -4035,14 +4036,15 @@ export const suggestTicketSubject = (
 
 /**
  * The custom fields of a ticket with this type, priority, and labels:
- * one section for each `Ticket` blueprint that matches.
+ * one section for each `Ticket` blueprint that matches. `filterable` has
+ * the fields of every `Ticket` blueprint that the list can filter on.
  */
 export const getTicketSchema = (
   orgSlug: string,
   params: { label: string[]; priority: string; type: string },
   signal?: AbortSignal,
 ) =>
-  apiClient.get<ProjectSchemaResponse>(
+  apiClient.get<ProjectSchemaResponse & { filterable: TicketFilterable[] }>(
     `${ticketsApiPath(orgSlug)}/schema`,
     { ...params },
     signal,

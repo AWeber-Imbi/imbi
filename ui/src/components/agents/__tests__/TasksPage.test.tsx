@@ -30,7 +30,6 @@ vi.mock('@/api/endpoints', () => ({
   getTicketSchema: vi.fn(() => Promise.resolve({ sections: [] })),
   listAdminUsers: vi.fn(),
   listAgents: vi.fn(),
-  listBlueprints: vi.fn(() => Promise.resolve([])),
   listTeams: vi.fn(() => Promise.resolve([])),
   listTicketEvents: vi.fn(),
   listTickets: vi.fn(),
@@ -808,18 +807,13 @@ describe('Tasks', () => {
     vi.mocked(endpoints.listTeams).mockResolvedValue([
       { name: 'Platform', slug: 'platform' },
     ] as Awaited<ReturnType<typeof endpoints.listTeams>>)
-    vi.mocked(endpoints.listBlueprints).mockResolvedValue([
-      {
-        enabled: true,
-        json_schema: JSON.stringify({
-          properties: {
-            notes: { type: 'string' },
-            severity: { enum: ['sev1', 'sev2'], title: 'Severity' },
-          },
-        }),
-        type: 'Ticket',
-      },
-    ] as Awaited<ReturnType<typeof endpoints.listBlueprints>>)
+    vi.mocked(endpoints.getTicketSchema).mockResolvedValue({
+      filterable: [
+        { field: 'notes', type: 'string' },
+        { enum: ['sev1', 'sev2'], field: 'severity', title: 'Severity' },
+      ],
+      sections: [],
+    })
     renderAt('/tickets')
     await screen.findByText('Busy')
     fireEvent.click(screen.getByRole('button', { name: 'Filter' }))

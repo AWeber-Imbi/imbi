@@ -5385,7 +5385,8 @@ export interface paths {
          * @description Return the custom fields of a ticket with this type, priority,
          *     and labels: one section for each ``Ticket`` blueprint that matches,
          *     by blueprint priority. A later blueprint overrides an earlier one
-         *     for the same field.
+         *     for the same field. ``filterable`` has the custom fields of every
+         *     ``Ticket`` blueprint that the ticket list can filter on.
          *
          *     Raises:
          *         403: The caller is not a member of the org.
@@ -5658,7 +5659,8 @@ export interface paths {
          *         404: No such task.
          *         409: The task is not closed, its agent is disabled, or
          *             ``workflow_step_task``: a workflow step made it.
-         *         422: The agent or a project is no longer in the org.
+         *         422: The agent or a project is no longer in the org, or a
+         *             custom field is not valid now (``custom_fields_invalid``).
          */
         post: operations["retry_ticket_api_organizations__org_slug__tickets__short_id__retry_post"];
         delete?: never;
@@ -15410,6 +15412,23 @@ export interface components {
             /** Dashboard Url */
             dashboard_url?: string | null;
         };
+        /**
+         * FilterableAttribute
+         * @description A blueprint attribute (of a project or a ticket) that can be
+         *     filtered on.
+         */
+        FilterableAttribute: {
+            /** Field */
+            field: string;
+            /** Title */
+            title?: string | null;
+            /** Type */
+            type?: string | null;
+            /** Format */
+            format?: string | null;
+            /** Enum */
+            enum?: string[] | null;
+        };
         /** GlobalScoreEvent */
         GlobalScoreEvent: {
             /** Timestamp */
@@ -22356,6 +22375,8 @@ export interface components {
         TicketSchemaResponse: {
             /** Sections */
             sections: components["schemas"]["BlueprintSection"][];
+            /** Filterable */
+            filterable: components["schemas"]["FilterableAttribute"][];
         };
         /**
          * TicketStatusSet

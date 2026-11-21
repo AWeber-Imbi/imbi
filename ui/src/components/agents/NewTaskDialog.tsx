@@ -2,7 +2,12 @@ import { type ReactNode, useEffect, useMemo, useState } from 'react'
 
 import { useNavigate } from 'react-router-dom'
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import {
   ChevronRight,
   ChevronsUpDown,
@@ -24,6 +29,7 @@ import {
   getProjectsSlim,
   getTicketSchema,
   listTickets,
+  type ProjectSchemaSectionProperty,
   reassignTicket,
   setTicketParent,
   suggestTicketSubject,
@@ -53,6 +59,7 @@ import {
 import {
   DynamicFormFields,
   requiredBlueprintFields,
+  toDynamicField,
   validateDynamicFields,
 } from '@/components/ui/dynamic-fields'
 import { EntityIcon } from '@/components/ui/entity-icon'
@@ -234,8 +241,10 @@ export function NewTaskDialog({
   const schemaParams = { label: labels, priority, type }
   const schema = useQuery({
     enabled: isOpen && !!orgSlug,
+    placeholderData: keepPreviousData,
     queryFn: ({ signal }) => getTicketSchema(orgSlug, schemaParams, signal),
     queryKey: queryKeys.ticketSchema(orgSlug, schemaParams),
+    staleTime: 60_000,
   })
 
   const create = useMutation({
@@ -693,7 +702,7 @@ function customFieldIssues(error: Error | null): {
                 detail?: {
                   error?: string
                   invalid?: { field: string; message: string }[]
-                  missing?: (DynamicFieldSchema & { field: string })[]
+                  missing?: (ProjectSchemaSectionProperty & { field: string })[]
                 }
               }
         )?.detail
@@ -704,13 +713,7 @@ function customFieldIssues(error: Error | null): {
   const missing: Record<string, DynamicFieldSchema> = {}
   for (const { field, ...prop } of detail.missing ?? []) {
     errors[field] = 'Required'
-    missing[field] = {
-      description: prop.description ?? undefined,
-      enum: prop.enum ?? undefined,
-      format: prop.format ?? undefined,
-      title: prop.title ?? undefined,
-      type: prop.type ?? undefined,
-    }
+    missing[field] = toDynamicField(prop)
   }
   for (const { field, message } of detail.invalid ?? []) errors[field] = message
   return { errors, missing }

@@ -316,6 +316,9 @@ To get the fields of a ticket before you create it:
 GET /organizations/{org}/tickets/schema?type=bug&priority=high&label=api
 ```
 
+The response also has `filterable`: the fields of every `Ticket`
+blueprint that the list can filter on, whatever the ticket.
+
 Filter the list by a custom field with `filter=<field>:<op>[:<value>]`.
 The operators are `eq`, `ne`, `in`, `not_in` (comma-separated values),
 `exists`, and `not_exists`:

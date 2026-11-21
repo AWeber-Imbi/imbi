@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { type DetectedFormat, detectFormat } from '@/lib/import-format'
+import { BLUEPRINT_FILTER_KEYS } from '@/lib/utils'
 import type { BlueprintCreate, BlueprintFilter } from '@/types'
 
 import { ImportDialogFooter } from '../import-dialog-shared'
@@ -38,13 +39,13 @@ const VALID_TYPES = new Set([
 ])
 
 /** The filter fields and their names in the preview. */
-const FILTER_KEYS = {
+const FILTER_KEYS: Record<(typeof BLUEPRINT_FILTER_KEYS)[number], string> = {
   environment: 'environments',
   label: 'labels',
   priority: 'priorities',
   project_type: 'project types',
   ticket_type: 'ticket types',
-} as const
+}
 
 const REQUIRED_FIELDS = ['name', 'json_schema'] as const
 
@@ -486,9 +487,9 @@ function validateBlueprintShape(
     const f = obj.filter as Record<string, unknown>
     // Validate known keys
     for (const key of Object.keys(f)) {
-      if (!(key in FILTER_KEYS)) {
+      if (!(BLUEPRINT_FILTER_KEYS as readonly string[]).includes(key)) {
         return {
-          error: `Unknown filter key: "${key}". Allowed: ${Object.keys(FILTER_KEYS).join(', ')}.`,
+          error: `Unknown filter key: "${key}". Allowed: ${BLUEPRINT_FILTER_KEYS.join(', ')}.`,
           valid: false,
         }
       }
@@ -505,13 +506,9 @@ function validateBlueprintShape(
         }
       }
     }
-    parsedFilter = {
-      environment: (f.environment as string[]) || [],
-      label: (f.label as string[]) || [],
-      priority: (f.priority as string[]) || [],
-      project_type: (f.project_type as string[]) || [],
-      ticket_type: (f.ticket_type as string[]) || [],
-    }
+    parsedFilter = Object.fromEntries(
+      BLUEPRINT_FILTER_KEYS.map((key) => [key, (f[key] as string[]) || []]),
+    ) as BlueprintFilter
   }
 
   if (

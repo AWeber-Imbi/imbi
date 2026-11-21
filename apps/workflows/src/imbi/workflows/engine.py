@@ -438,6 +438,16 @@ class Engine:
                     )
                 )
         except executors.StepError as e:
+            if e.detail is not None:
+                # The step error is the code only; the log has the detail
+                # of the API error, such as the fields that are not valid.
+                LOGGER.warning(
+                    'Run %s: %s failed: %s: %s',
+                    run['id'],
+                    node.key,
+                    e.code,
+                    e.detail,
+                )
             return await self._error(run, node, step, slug, e.code, e.retry)
         except TimeoutError:
             return await self._error(run, node, step, slug, 'timeout', True)
