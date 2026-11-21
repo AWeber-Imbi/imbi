@@ -458,6 +458,8 @@ function TaskInbox({
   })
   const items = virtualizer.getVirtualItems()
   const [revealing, setRevealing] = useState<{
+    /** The ticket inside an expanded unit to bring into view. */
+    focus?: string
     group: InboxGroupId
     index: number
     smooth: boolean
@@ -485,14 +487,27 @@ function TaskInbox({
       return
     }
     setRevealing(undefined)
+    const behavior =
+      revealing.smooth &&
+      !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        ? 'smooth'
+        : 'auto'
+    const { focus } = revealing
     virtualizer.scrollToIndex(at, {
-      align: 'center',
-      behavior:
-        revealing.smooth &&
-        !window.matchMedia('(prefers-reduced-motion: reduce)').matches
-          ? 'smooth'
-          : 'auto',
+      align: focus ? 'start' : 'center',
+      behavior,
     })
+    if (!focus) return
+    // An expanded unit can be taller than the list, so once it is
+    // rendered and measured, bring the ticket's own row into view.
+    // Not cancelled on cleanup: clearing `revealing` reruns this effect.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() =>
+        listRef.current
+          ?.querySelector(`[data-ticket="${focus}"]`)
+          ?.scrollIntoView({ behavior, block: 'nearest' }),
+      ),
+    )
   }, [collapsed, counts.data, revealing, rows, virtualizer])
   const scrollTop = useScrollTop(listRef)
   const headers = useMemo(
@@ -631,12 +646,16 @@ function TaskInbox({
       ])
       if (request !== revealRequest.current) return
       const row = page[at.index % TASK_PAGE]
-      if (row && isUnit(row) && row.short_id !== selected.toUpperCase())
-        setExpanded((current) => new Set(current).add(row.unit.key))
+      const unit =
+        row && isUnit(row) && row.short_id !== selected.toUpperCase()
+          ? row.unit
+          : undefined
+      if (unit) setExpanded((current) => new Set(current).add(unit.key))
+      const focus = unit && selected.toUpperCase()
       setCollapsed((current) =>
         current.includes(group) ? current.filter((g) => g !== group) : current,
       )
-      setRevealing({ ...at, smooth: !onLoad })
+      setRevealing({ ...at, focus, smooth: !onLoad })
     } catch (err) {
       if (onLoad || request !== revealRequest.current) return
       toast.error(

@@ -232,6 +232,7 @@ function UnitTree({
             ? 'bg-secondary'
             : 'hover:bg-secondary',
         )}
+        data-ticket={item.short_id.toUpperCase()}
         to={{ pathname: ticketsPath(orgSlug, item.short_id), search }}
       >
         <span className="text-tertiary shrink-0 font-mono">

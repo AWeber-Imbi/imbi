@@ -1,6 +1,6 @@
 import { Route, Routes } from 'react-router-dom'
 
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '@/api/client'
 import * as endpoints from '@/api/endpoints'
@@ -1754,6 +1754,16 @@ describe('Tasks', () => {
       [unitItem({ short_id: 'T-30', title: 'Solo work' })],
     )
 
+    // jsdom has no scrollIntoView.
+    const scrollIntoView = vi.fn()
+    beforeEach(() => {
+      scrollIntoView.mockClear()
+      Element.prototype.scrollIntoView = scrollIntoView
+    })
+    afterEach(() => {
+      Reflect.deleteProperty(Element.prototype, 'scrollIntoView')
+    })
+
     beforeEach(() => {
       const countAll = vi.mocked(endpoints.countTickets).getMockImplementation()
       const listAll = vi.mocked(endpoints.listTickets).getMockImplementation()
@@ -1883,6 +1893,14 @@ describe('Tasks', () => {
         'acme',
         'T-24',
         expect.objectContaining({ group_by: 'run' }),
+      )
+      // Then the ticket's own row comes into view, not only the unit.
+      await waitFor(() =>
+        expect(
+          scrollIntoView.mock.contexts.map((el) =>
+            (el as HTMLElement).getAttribute('href'),
+          ),
+        ).toContain('/tickets/acme/T-24'),
       )
     })
 
