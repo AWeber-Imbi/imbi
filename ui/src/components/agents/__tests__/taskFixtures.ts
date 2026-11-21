@@ -1,4 +1,9 @@
-import type { TicketEvent, TicketListItem } from '@/types'
+import type {
+  TicketEvent,
+  TicketListItem,
+  TicketUnit,
+  TicketUnitItem,
+} from '@/types'
 
 /** An event of T-1; `seq` also picks the time (12:00:<seq>). */
 export function event(
@@ -55,5 +60,43 @@ export function task(overrides: Partial<TicketListItem> = {}): TicketListItem {
     type: 'task',
     updated_at: '2026-10-08T12:00:00Z',
     ...overrides,
+  }
+}
+
+/** A ticket of a unit of work, queued, created at 12:00. */
+export function unitItem(
+  overrides: Partial<TicketUnitItem> = {},
+): TicketUnitItem {
+  return {
+    agent_id: 'agt-1',
+    closed_at: null,
+    cost_total: '0.100000',
+    created_at: '2026-10-08T12:00:00Z',
+    nested: false,
+    short_id: 'T-1',
+    status: 'queued',
+    title: 'Fix the build',
+    ...overrides,
+  }
+}
+
+/** A row of the run view: `rep` with the unit of `items`. */
+export function unitRow(
+  rep: TicketListItem,
+  items: TicketUnitItem[],
+  overrides: Partial<TicketUnit> = {},
+): TicketListItem {
+  return {
+    ...rep,
+    unit: {
+      children: items.filter((i) => i.nested).length,
+      cost_total: '1.000000',
+      items,
+      key: `ticket:${rep.id}`,
+      last_activity_at: '2026-10-08T12:30:00Z',
+      tickets: items.length,
+      truncated: false,
+      ...overrides,
+    },
   }
 }
