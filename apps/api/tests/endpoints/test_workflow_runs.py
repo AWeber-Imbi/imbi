@@ -1508,6 +1508,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
                 'due_date': None,
                 'labels': [],
                 'roles': {},
+                'team': None,
             },
         )
 

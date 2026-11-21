@@ -561,6 +561,9 @@ class NewTask:
     labels: abc.Sequence[str] = ()
     #: ``{role: email}``, with normalized role names.
     roles: Row = dataclasses.field(default_factory=dict[str, typing.Any])
+    #: The team of the ticket, as ``{id, slug, name}``. ``None``: no
+    #: team.
+    team: Row | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -786,6 +789,7 @@ def _search_filters(
     text_agent_ids: list[str] | None,
     text_project_ids: list[str] | None,
     labels: list[str] | None = None,
+    teams: list[str] | None = None,
 ) -> tuple[list[sql.Composable], list[typing.Any]]:
     """The ``WHERE`` conditions of :meth:`Store.search` and their
     parameters.
@@ -812,6 +816,9 @@ def _search_filters(
     if labels:
         conditions.append(sql.SQL('labels @> %s'))
         params.append(normalize_labels(labels))
+    if teams:
+        conditions.append(sql.SQL("team->>'slug' = ANY(%s)"))
+        params.append(list(teams))
     if text:
         pattern = '%' + _escape_like(text) + '%'
         conditions.append(
@@ -1016,11 +1023,11 @@ class TicketStore:
                     ' idempotency_key, owner, budget, chain_id,'
                     ' output_schema, parent_id, priority,'
                     ' assignee_kind, assignee, status,'
-                    ' type, due_date, labels, roles,'
+                    ' type, due_date, labels, roles, team,'
                     ' platform_config_version)'
                     ' VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
                     ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
-                    ' %s, %s, %s, %s,'
+                    ' %s, %s, %s, %s, %s,'
                     ' (SELECT max(version) FROM harness.platform_configs'
                     ' WHERE organization_id = %s))',
                     (
@@ -1052,6 +1059,7 @@ class TicketStore:
                         task.due_date,
                         list(task.labels),
                         pg_json.Jsonb(task.roles),
+                        _jsonb(task.team),
                         task.organization_id,
                     ),
                 )
@@ -1183,6 +1191,7 @@ class TicketStore:
         text_agent_ids: list[str] | None = None,
         text_project_ids: list[str] | None = None,
         labels: list[str] | None = None,
+        teams: list[str] | None = None,
         group: Group | None = None,
         before: tuple[datetime.datetime, uuid.UUID] | None = None,
         offset: int = 0,
@@ -1211,6 +1220,7 @@ class TicketStore:
             text_agent_ids,
             text_project_ids,
             labels,
+            teams,
         )
         if group is not None:
             conditions.append(sql.SQL('{group} = %s').format(group=_GROUP))
@@ -1252,6 +1262,7 @@ class TicketStore:
         text_agent_ids: list[str] | None = None,
         text_project_ids: list[str] | None = None,
         labels: list[str] | None = None,
+        teams: list[str] | None = None,
     ) -> tuple[str, int] | None:
         """Return the inbox group of the task ``short_id`` and its index
         in that group, in the order of :meth:`search` with the same
@@ -1266,6 +1277,7 @@ class TicketStore:
             text_agent_ids,
             text_project_ids,
             labels,
+            teams,
         )
         statement = sql.SQL(
             'SELECT inbox_group, n FROM (SELECT t.short_id,'
@@ -1305,6 +1317,7 @@ class TicketStore:
         text_agent_ids: list[str] | None = None,
         text_project_ids: list[str] | None = None,
         labels: list[str] | None = None,
+        teams: list[str] | None = None,
     ) -> dict[str, int]:
         """Return the number of tasks in each inbox group that
         :meth:`search` with the same filters finds. A group with no
@@ -1319,6 +1332,7 @@ class TicketStore:
             text_agent_ids,
             text_project_ids,
             labels,
+            teams,
         )
         statement = sql.SQL(
             'SELECT {group} AS inbox_group, count(*)'
@@ -1756,9 +1770,10 @@ class TicketStore:
         *,
         roles_read: Row | None = None,
     ) -> Row:
-        """Change ``type``, ``due_date``, ``labels``, or ``roles`` of the
-        task. Each value that differs writes ``<field>.changed`` with
-        ``from`` and ``to``. Labels and role names must be normalized.
+        """Change ``type``, ``due_date``, ``labels``, ``roles``, or
+        ``team`` of the task. Each value that differs writes
+        ``<field>.changed`` with ``from`` and ``to``. Labels and role
+        names must be normalized.
 
         Raises:
             TaskNotFound: No such task.
@@ -1783,7 +1798,7 @@ class TicketStore:
                     actor,
                 )
                 changed[field] = (
-                    pg_json.Jsonb(value) if field == 'roles' else value
+                    _jsonb(value) if field in ('roles', 'team') else value
                 )
             if changed:
                 await write.update(changed)

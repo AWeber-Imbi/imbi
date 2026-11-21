@@ -36,8 +36,8 @@ async def attributes(
 ) -> dict[str, typing.Any]:
     """Return ``title``, ``url``, ``project``, ``agent`` (the agent
     slug), ``cost_usd``, ``type``, ``priority``, ``due_date``,
-    ``labels``, and ``roles`` of a task. Without ``db``, ``url`` and
-    ``agent`` are ``None``."""
+    ``labels``, ``roles``, and ``team`` (the team slug) of a task.
+    Without ``db``, ``url`` and ``agent`` are ``None``."""
     found = (
         await db.execute(
             _SLUGS_QUERY,
@@ -60,6 +60,7 @@ async def attributes(
         'due_date': due.isoformat() if (due := task.get('due_date')) else None,
         'labels': task.get('labels'),
         'roles': task.get('roles'),
+        'team': team['slug'] if (team := task.get('team')) else None,
     }
 
 

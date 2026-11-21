@@ -207,6 +207,9 @@ class AgentTaskCreate(pydantic.BaseModel):
         description='The people in named roles, as {role: email}. Each '
         'must be in the org.',
     )
+    team: _ShortText | None = pydantic.Field(
+        default=None, description='The slug of a team of the org.'
+    )
 
     @pydantic.model_validator(mode='before')
     @classmethod
@@ -281,6 +284,8 @@ class TicketUpdate(pydantic.BaseModel):
     due_date: datetime.date | None = None
     labels: Labels = []
     roles: Roles = {}
+    #: The slug of a team of the org. ``null`` clears the team.
+    team: _ShortText | None = None
 
 
 class TicketRank(pydantic.BaseModel):
@@ -346,6 +351,14 @@ class TaskProject(pydantic.BaseModel):
     project_slug: str
 
 
+class TicketTeam(pydantic.BaseModel):
+    """The team of a ticket, as it was when it was set."""
+
+    id: str
+    slug: str
+    name: str
+
+
 class AgentTaskResponse(pydantic.BaseModel):
     id: uuid.UUID
     short_id: str
@@ -376,6 +389,7 @@ class AgentTaskResponse(pydantic.BaseModel):
     due_date: datetime.date | None = None
     labels: list[str] = []
     roles: dict[str, str] = {}
+    team: TicketTeam | None = None
     #: The place in the backlog, lower first. ``None``: not ranked.
     backlog_rank: float | None = None
     phase: str | None = None
@@ -817,6 +831,12 @@ _MEMBER_QUERY: typing.LiteralString = """
 MATCH (u:User {{email: {email}}})
       -[:MEMBER_OF]->(:Organization {{slug: {org_slug}}})
 RETURN u.email AS email
+"""
+
+_TEAM_QUERY: typing.LiteralString = """
+MATCH (t:Team {{slug: {slug}}})
+      -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+RETURN t.id AS id, t.slug AS slug, t.name AS name
 """
 
 
@@ -1298,6 +1318,29 @@ async def project_slugs(
     return list(dict.fromkeys(found))
 
 
+async def team_ref(
+    db: graph.Graph, org_slug: str, slug: str | None
+) -> dict[str, str] | None:
+    """Return the ``{id, slug, name}`` of the team ``slug`` of the
+    org, ``None`` for no slug, or raise 422 ``team_not_found``."""
+    if slug is None:
+        return None
+    records = await db.execute(
+        _TEAM_QUERY,
+        {'slug': slug, 'org_slug': org_slug},
+        ['id', 'slug', 'name'],
+    )
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=422,
+            detail={
+                'error': 'team_not_found',
+                'message': f'Team {slug!r} is not in the org',
+            },
+        )
+    return {k: str(graph.parse_agtype(v)) for k, v in records[0].items()}
+
+
 @contextlib.contextmanager
 def relation_errors() -> abc.Generator[None]:
     """Map the errors of a relation change to HTTP errors."""
@@ -1421,8 +1464,9 @@ async def create_agent_task(
         422: The agent, the assignee, or the project is not in the org,
             the budget is more than the agent's task budget, a service
             does not name its origin, the webhook does not exist, a
-            prerequisite is not found, or the key has the shape of a
-            workflow step key (``<uuid>:<node_key>``).
+            prerequisite is not found, the key has the shape of a
+            workflow step key (``<uuid>:<node_key>``), or ``team`` is
+            not a team of the org (``team_not_found``).
 
     """
     origin = task_origin(
@@ -1574,6 +1618,7 @@ async def make_task(
     """
     projects = await project_slugs(db, org_slug, data.project_ids)
     await _role_members(db, org_slug, data.roles)
+    team = await team_ref(db, org_slug, data.team)
     if data.assignee_kind == 'person':
         assignee = await person_assignee(db, org_slug, data.assignee)
     else:
@@ -1611,6 +1656,7 @@ async def make_task(
                 due_date=data.due_date,
                 labels=data.labels,
                 roles=data.roles,
+                team=team,
             ),
             actor,
             {
@@ -1627,6 +1673,7 @@ async def make_task(
                 'due_date': data.due_date and data.due_date.isoformat(),
                 'labels': data.labels,
                 'roles': data.roles,
+                'team': team,
             },
         )
     except tickets.TaskNotFound as e:
@@ -1681,6 +1728,7 @@ async def list_agent_tasks(
     agent_id: typing.Annotated[list[str] | None, fastapi.Query()] = None,
     owner: typing.Annotated[list[str] | None, fastapi.Query()] = None,
     label: typing.Annotated[list[str] | None, fastapi.Query()] = None,
+    team: typing.Annotated[list[str] | None, fastapi.Query()] = None,
     mine: bool = False,
     q: str | None = None,
     limit: typing.Annotated[int, fastapi.Query(ge=1, le=100)] = 50,
@@ -1740,6 +1788,7 @@ async def list_agent_tasks(
         text_agent_ids=list(agents),
         text_project_ids=list(projects),
         labels=label,
+        teams=team,
         group=group,
         before=before,
         offset=offset,
@@ -1784,6 +1833,7 @@ async def count_agent_tasks(
     agent_id: typing.Annotated[list[str] | None, fastapi.Query()] = None,
     owner: typing.Annotated[list[str] | None, fastapi.Query()] = None,
     label: typing.Annotated[list[str] | None, fastapi.Query()] = None,
+    team: typing.Annotated[list[str] | None, fastapi.Query()] = None,
     mine: bool = False,
     q: str | None = None,
 ) -> dict[str, int]:
@@ -1808,6 +1858,7 @@ async def count_agent_tasks(
         text_agent_ids=list(agents),
         text_project_ids=list(projects),
         labels=label,
+        teams=team,
     )
 
 
@@ -1826,6 +1877,7 @@ async def get_agent_task_position(
     agent_id: typing.Annotated[list[str] | None, fastapi.Query()] = None,
     owner: typing.Annotated[list[str] | None, fastapi.Query()] = None,
     label: typing.Annotated[list[str] | None, fastapi.Query()] = None,
+    team: typing.Annotated[list[str] | None, fastapi.Query()] = None,
     mine: bool = False,
     q: str | None = None,
 ) -> dict[str, typing.Any]:
@@ -1851,6 +1903,7 @@ async def get_agent_task_position(
         text_agent_ids=list(agents),
         text_project_ids=list(projects),
         labels=label,
+        teams=team,
     )
     if found is None:
         raise fastapi.HTTPException(
@@ -2683,8 +2736,8 @@ async def update_ticket(
         fastapi.Depends(permissions.require_permission('ticket:manage')),
     ],
 ) -> dict[str, typing.Any]:
-    """Change the type, the due date, the labels, or the roles of a
-    ticket. Only the fields in the body change; each one that changes
+    """Change the type, the due date, the labels, the roles, or the
+    team of a ticket. Only the fields in the body change; each one that changes
     writes ``<field>.changed``. Labels and role names are normalized.
 
     Raises:
@@ -2692,10 +2745,13 @@ async def update_ticket(
         404: No such task.
         409: The task is closed, or its roles changed while this
             request checked them (``roles_changed``).
-        422: A person in ``roles`` is not in the org.
+        422: A person in ``roles`` is not in the org, or ``team`` is
+            not a team of the org (``team_not_found``).
 
     """
     changes = data.model_dump(include=data.model_fields_set)
+    if 'team' in changes:
+        changes['team'] = await team_ref(db, org_slug, data.team)
     known: dict[str, str] | None = None
     if data.roles:
         task = await _get_task(store, org_id, short_id)

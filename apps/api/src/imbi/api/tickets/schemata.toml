@@ -464,6 +464,9 @@ labels = "TEXT[] NOT NULL DEFAULT '{}'"
 # are normalized as labels are. Workflows read them and can hand the
 # ticket to the person in a role.
 roles = "JSONB NOT NULL DEFAULT '{}'"
+# The team of the ticket, as {id, slug, name}: a team node of the
+# organization when it was set. The API validates it. NULL: no team.
+team = "JSONB"
 # The place of the ticket in the backlog: lower ranks first. NULL: not
 # ranked; unranked tickets follow the ranked ones.
 backlog_rank = "DOUBLE PRECISION"

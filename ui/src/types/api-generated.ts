@@ -5241,8 +5241,9 @@ export interface paths {
          *         422: The agent, the assignee, or the project is not in the org,
          *             the budget is more than the agent's task budget, a service
          *             does not name its origin, the webhook does not exist, a
-         *             prerequisite is not found, or the key has the shape of a
-         *             workflow step key (``<uuid>:<node_key>``).
+         *             prerequisite is not found, the key has the shape of a
+         *             workflow step key (``<uuid>:<node_key>``), or ``team`` is
+         *             not a team of the org (``team_not_found``).
          */
         post: operations["create_ticket_api_organizations__org_slug__tickets__post"];
         delete?: never;
@@ -5426,8 +5427,8 @@ export interface paths {
         head?: never;
         /**
          * Update Ticket
-         * @description Change the type, the due date, the labels, or the roles of a
-         *     ticket. Only the fields in the body change; each one that changes
+         * @description Change the type, the due date, the labels, the roles, or the
+         *     team of a ticket. Only the fields in the body change; each one that changes
          *     writes ``<field>.changed``. Labels and role names are normalized.
          *
          *     Raises:
@@ -5435,7 +5436,8 @@ export interface paths {
          *         404: No such task.
          *         409: The task is closed, or its roles changed while this
          *             request checked them (``roles_changed``).
-         *         422: A person in ``roles`` is not in the org.
+         *         422: A person in ``roles`` is not in the org, or ``team`` is
+         *             not a team of the org (``team_not_found``).
          */
         patch: operations["update_ticket_api_organizations__org_slug__tickets__short_id__patch"];
         trace?: never;
@@ -11863,6 +11865,11 @@ export interface components {
             roles?: {
                 [key: string]: string;
             };
+            /**
+             * Team
+             * @description The slug of a team of the org.
+             */
+            team?: string | null;
         };
         /** AgentTaskEventResponse */
         AgentTaskEventResponse: {
@@ -11977,6 +11984,7 @@ export interface components {
             roles: {
                 [key: string]: string;
             };
+            team?: components["schemas"]["TicketTeam"] | null;
             /** Backlog Rank */
             backlog_rank?: number | null;
             /** Phase */
@@ -12224,6 +12232,7 @@ export interface components {
             roles: {
                 [key: string]: string;
             };
+            team?: components["schemas"]["TicketTeam"] | null;
             /** Backlog Rank */
             backlog_rank?: number | null;
             /** Phase */
@@ -21821,6 +21830,8 @@ export interface components {
             roles?: {
                 [key: string]: string;
             } | null;
+            /** Team */
+            team?: string | null;
             /** Task Id */
             task_id: string;
             /** Status */
@@ -22297,6 +22308,18 @@ export interface components {
             degraded: boolean;
         };
         /**
+         * TicketTeam
+         * @description The team of a ticket, as it was when it was set.
+         */
+        TicketTeam: {
+            /** Id */
+            id: string;
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+        };
+        /**
          * TicketTree
          * @description The tree of a ticket, computed on read (ADR 0028).
          */
@@ -22335,6 +22358,8 @@ export interface components {
             roles: {
                 [key: string]: string;
             };
+            /** Team */
+            team?: string | null;
         };
         /** TokenExchangerType */
         TokenExchangerType: {
@@ -32403,6 +32428,7 @@ export interface operations {
                 agent_id?: string[] | null;
                 owner?: string[] | null;
                 label?: string[] | null;
+                team?: string[] | null;
                 mine?: boolean;
                 q?: string | null;
                 limit?: number;
@@ -32496,6 +32522,7 @@ export interface operations {
                 agent_id?: string[] | null;
                 owner?: string[] | null;
                 label?: string[] | null;
+                team?: string[] | null;
                 mine?: boolean;
                 q?: string | null;
             };
@@ -32534,6 +32561,7 @@ export interface operations {
                 agent_id?: string[] | null;
                 owner?: string[] | null;
                 label?: string[] | null;
+                team?: string[] | null;
                 mine?: boolean;
                 q?: string | null;
             };

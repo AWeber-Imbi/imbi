@@ -2475,6 +2475,7 @@ class AgentStepTestCase(EngineTestCase):
                 'due_date': None,
                 'labels': [],
                 'roles': {},
+                'team': None,
             },
         )
         self.assertEqual(

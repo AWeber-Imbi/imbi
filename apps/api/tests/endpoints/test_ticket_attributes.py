@@ -194,6 +194,55 @@ class TicketAttributeTests(test_person_tickets.PersonTicketTestCase):
         )
         self.assertEqual(response.status_code, 403)
 
+    async def test_team_set_cleared_and_filtered(self) -> None:
+        team = {'id': self.team_id, 'slug': self.team_id, 'name': 'Ops'}
+        a = await self.make(team=self.team_id)
+        self.assertEqual(a['team'], team)
+        b = await self.make()
+        self.assertIsNone(b['team'])
+        response = await self.client.get(
+            self.url(), params={'team': self.team_id}
+        )
+        self.assertEqual(
+            [t['short_id'] for t in response.json()], [a['short_id']]
+        )
+        response = await self.client.patch(
+            self.url(b['short_id']), json={'team': self.team_id}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['team'], team)
+        response = await self.client.patch(
+            self.url(a['short_id']), json={'team': None}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIsNone(response.json()['team'])
+        events = await self.store.events(a['id'], 0, 100)
+        self.assertEqual(
+            [e['payload'] for e in events if e['type'] == 'team.changed'],
+            [{'from': team, 'to': None}],
+        )
+
+    async def test_team_must_be_in_the_org(self) -> None:
+        await self.graph.execute(
+            'MATCH (o:Organization {{slug: {org}}})'
+            ' CREATE (:Team {{id: {slug}, slug: {slug}, name: {slug}}})'
+            '-[:BELONGS_TO]->(o) RETURN o.id AS id',
+            {'org': self.other_org, 'slug': f'other-{self.team_id}'},
+            ['id'],
+        )
+        task = await self.make()
+        for slug in ('no-such-team', f'other-{self.team_id}'):
+            with self.subTest(slug=slug):
+                response = await self.create_person(team=slug)
+                self.assertEqual(response.status_code, 422, response.text)
+                self.assertEqual(
+                    response.json()['detail']['error'], 'team_not_found'
+                )
+                response = await self.client.patch(
+                    self.url(task['short_id']), json={'team': slug}
+                )
+                self.assertEqual(response.status_code, 422, response.text)
+
     async def test_label_filter_and_suggestions(self) -> None:
         a = await self.make(labels=['api', 'web'])
         await self.make(labels=['api'])

@@ -405,6 +405,8 @@ class TicketAttributes(pydantic.BaseModel):
     labels: list[str] | None = None
     #: The people in named roles, ``{role: email}``.
     roles: dict[str, str] | None = None
+    #: The slug of the team.
+    team: str | None = None
 
 
 #: The sample values of :class:`TicketAttributes`.
@@ -419,6 +421,7 @@ SAMPLE_ATTRIBUTES: dict[str, typing.Any] = {
     'due_date': '2026-01-31',
     'labels': ['sample-label'],
     'roles': {'reviewer': 'person@example.com'},
+    'team': 'sample-team',
 }
 
 
