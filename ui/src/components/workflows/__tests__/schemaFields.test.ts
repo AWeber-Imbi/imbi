@@ -18,6 +18,16 @@ describe('paramFields for the script step', () => {
     ])
   })
 
+  it('edits any free-form map as name and value rows', () => {
+    const [field] = paramFields({
+      properties: {
+        custom_fields: { additionalProperties: true, type: 'object' },
+      },
+      type: 'object',
+    })
+    expect(field?.kind).toBe('inputs')
+  })
+
   it('treats a param as code only when the step type names it raw', () => {
     const [field] = paramFields(SCRIPT.params_schema).filter(
       (f) => f.name === 'code',

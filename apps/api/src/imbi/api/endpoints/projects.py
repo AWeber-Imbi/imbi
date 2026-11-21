@@ -5,12 +5,9 @@ belong to multiple project types.  See ADR-0006 for rationale.
 """
 
 import asyncio
-import contextlib
 import datetime
 import json
 import logging
-import math
-import re
 import typing
 
 import fastapi
@@ -18,7 +15,7 @@ import nanoid
 import psycopg
 import pydantic
 
-from imbi.api import blueprint_attributes, secret_broker
+from imbi.api import blueprint_attributes, blueprint_sections, secret_broker
 from imbi.api.auth import organizations, permissions
 from imbi.api.domain import scoring as scoring_models
 from imbi.api.domain.models import ExistsInResponse
@@ -2122,68 +2119,6 @@ async def _resolve_release_display_names(
             env_map[slug] = info.model_copy(update={'performed_by': name})
 
 
-_FILTER_FIELD_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
-_FILTER_OPS = frozenset({'eq', 'ne', 'in', 'not_in', 'exists', 'not_exists'})
-
-
-def _coerce_filter_value(
-    attribute: blueprint_attributes.FilterableAttribute,
-    raw_value: str,
-    raw_filter: str,
-) -> typing.Any:
-    """Coerce a filter value to the attribute's declared JSON type.
-
-    Filter values arrive as strings from the query parameter, but
-    boolean and numeric attributes are stored as their native agtype;
-    binding the raw string would compare ``'true'`` to ``true`` and
-    never match. Attributes without a boolean/integer/number type are
-    bound as strings, unchanged.
-
-    Raises:
-        fastapi.HTTPException: 400 when the value cannot represent the
-            attribute's type.
-    """
-    if attribute.type == 'boolean':
-        if raw_value in ('true', 'false'):
-            return raw_value == 'true'
-        raise fastapi.HTTPException(
-            status_code=400,
-            detail=(
-                f'Filter {raw_filter!r} requires a true/false value '
-                f'for boolean attribute {attribute.field!r}'
-            ),
-        )
-    if attribute.type in ('integer', 'number'):
-        # int() first so large integers don't round-trip through
-        # float and lose precision.
-        with contextlib.suppress(ValueError):
-            return int(raw_value)
-        if attribute.type == 'integer':
-            raise fastapi.HTTPException(
-                status_code=400,
-                detail=(
-                    f'Filter {raw_filter!r} requires an integer '
-                    f'value for integer attribute {attribute.field!r}'
-                ),
-            )
-        try:
-            number = float(raw_value)
-        except ValueError:
-            number = math.inf
-        # agtype has no NaN/Infinity literal, so non-finite values
-        # cannot be bound; reject them like unparseable input.
-        if not math.isfinite(number):
-            raise fastapi.HTTPException(
-                status_code=400,
-                detail=(
-                    f'Filter {raw_filter!r} requires a finite numeric '
-                    f'value for number attribute {attribute.field!r}'
-                ),
-            )
-        return number
-    return raw_value
-
-
 def _build_attribute_filter(
     filters: list[str],
     whitelist: dict[str, blueprint_attributes.FilterableAttribute],
@@ -2194,74 +2129,23 @@ def _build_attribute_filter(
     ``WHERE`` clause (predicates joined by AND) referencing the ``p``
     project node, and ``params`` holds the bound values. ``ne`` and
     ``not_in`` use plain inequality, so projects without the attribute
-    set are excluded.
-
-    Field names are validated against ``whitelist`` (and an identifier
-    pattern) before being interpolated; values are coerced to the
-    attribute's declared type and always bound as query parameters.
-    Raises ``HTTPException`` (400) on malformed predicates, unknown
-    operators, non-filterable fields, or values that cannot represent
-    the attribute's type.
+    set are excluded. See :func:`blueprint_attributes.parse_filters`
+    for the checks and the 400 errors.
     """
     clauses: list[str] = []
     params: dict[str, typing.Any] = {}
-    for index, raw in enumerate(filters):
-        field, _, rest = raw.partition(':')
-        op, _, value = rest.partition(':')
-        if not field or not op:
-            raise fastapi.HTTPException(
-                status_code=400,
-                detail=f'Invalid filter {raw!r}; expected field:op[:value]',
-            )
-        if op not in _FILTER_OPS:
-            raise fastapi.HTTPException(
-                status_code=400,
-                detail=(
-                    f'Unknown filter operator {op!r}; valid operators are '
-                    f'{", ".join(sorted(_FILTER_OPS))}'
-                ),
-            )
-        if field not in whitelist or not _FILTER_FIELD_RE.match(field):
-            raise fastapi.HTTPException(
-                status_code=400,
-                detail=(
-                    f'Attribute {field!r} is not filterable for this '
-                    'project type'
-                ),
-            )
+    parsed = blueprint_attributes.parse_filters(filters, whitelist)
+    for index, (field, op, values) in enumerate(parsed):
         if op in ('exists', 'not_exists'):
-            if value:
-                raise fastapi.HTTPException(
-                    status_code=400,
-                    detail=(
-                        f'Filter {raw!r} does not accept a value for '
-                        f'operator {op!r}'
-                    ),
-                )
             null_op = 'IS NOT NULL' if op == 'exists' else 'IS NULL'
             clauses.append(f'p.{field} {null_op}')
             continue
-        if op in ('eq', 'ne') and value == '':
-            raise fastapi.HTTPException(
-                status_code=400,
-                detail=f'Filter {raw!r} requires a value',
-            )
-        values = (
-            [v for v in value.split(',') if v]
-            if op in ('in', 'not_in')
-            else [value]
-        )
-        if not values:
-            raise fastapi.HTTPException(
-                status_code=400,
-                detail=f'Filter {raw!r} requires a value',
-            )
         comparator = '=' if op in ('eq', 'in') else '<>'
         joiner = ' OR ' if op in ('eq', 'in') else ' AND '
         terms: list[str] = []
         for value_index, item in enumerate(values):
             key = f'f{index}_{value_index}'
-            params[key] = _coerce_filter_value(whitelist[field], item, raw)
+            params[key] = item
             terms.append(f'p.{field} {comparator} {{{key}}}')
         clauses.append(
             terms[0] if len(terms) == 1 else '(' + joiner.join(terms) + ')'
@@ -2531,56 +2415,10 @@ async def list_projects(
     return [ProjectResponse.model_validate(p) for p in project_data_list]
 
 
-class BlueprintSectionProperty(pydantic.BaseModel):
-    """A single property from a blueprint's JSON Schema."""
-
-    model_config = pydantic.ConfigDict(
-        populate_by_name=True, serialize_by_alias=True
-    )
-
-    type: str | None = None
-    format: str | None = None
-    title: str | None = None
-    description: str | None = None
-    enum: list[str] | None = None
-    default: typing.Any = None
-    minimum: float | None = None
-    maximum: float | None = None
-    x_ui: dict[str, typing.Any] = pydantic.Field(
-        default_factory=dict,
-        alias='x-ui',
-        serialization_alias='x-ui',
-    )
-    #: Optional value-display transforms (e.g. ``{'format': 'humanize'}``)
-    #: applied to the rendered value, independent of ``x-ui`` color/icon
-    #: resolution (which keys off the raw value).
-    x_display: dict[str, typing.Any] = pydantic.Field(
-        default_factory=dict,
-        alias='x-display',
-        serialization_alias='x-display',
-    )
-
-
-class BlueprintSection(pydantic.BaseModel):
-    """One blueprint's contribution to the project schema."""
-
-    name: str
-    slug: str
-    description: str | None = None
-    #: ``project`` for node blueprints (project-level attributes);
-    #: ``environment`` for relationship blueprints on the
-    #: ``Project -[:DEPLOYED_IN]-> Environment`` edge (per-environment
-    #: edge attributes rendered in the Environments card).
-    scope: typing.Literal['project', 'environment'] = 'project'
-    properties: dict[str, BlueprintSectionProperty]
-    #: Property names the blueprint marks as required.
-    required: list[str] = []
-
-
 class ProjectSchemaResponse(pydantic.BaseModel):
     """Fully resolved, blueprint-grouped schema for a project."""
 
-    sections: list[BlueprintSection]
+    sections: list[blueprint_sections.BlueprintSection]
 
 
 async def _schema_for(
@@ -2593,7 +2431,7 @@ async def _schema_for(
     def _build_section(
         bp: models.Blueprint,
         scope: typing.Literal['project', 'environment'],
-    ) -> BlueprintSection | None:
+    ) -> blueprint_sections.BlueprintSection | None:
         """Build a schema section from a blueprint, or ``None`` to skip.
 
         A blueprint is skipped when its filter doesn't intersect the
@@ -2608,35 +2446,7 @@ async def _schema_for(
                 return None
             if f.environment and not env_slugs.intersection(f.environment):
                 return None
-        schema = bp.json_schema
-        if not schema.properties:
-            return None
-        props: dict[str, BlueprintSectionProperty] = {}
-        for prop_name, prop_schema in schema.properties.items():
-            extra = prop_schema.model_extra or {}
-            x_ui = dict(extra.get('x-ui') or {})
-            if x_ui.get('editable') is None:
-                x_ui['editable'] = True
-            raw_x_display = extra.get('x-display')
-            props[prop_name] = BlueprintSectionProperty(
-                type=getattr(prop_schema, 'type', None),
-                format=getattr(prop_schema, 'format', None),
-                title=getattr(prop_schema, 'title', None),
-                description=getattr(prop_schema, 'description', None),
-                enum=getattr(prop_schema, 'enum', None),
-                default=getattr(prop_schema, 'default', None),
-                minimum=getattr(prop_schema, 'minimum', None),
-                maximum=getattr(prop_schema, 'maximum', None),
-                **{'x-ui': x_ui, 'x-display': dict(raw_x_display or {})},
-            )
-        return BlueprintSection(
-            name=bp.name,
-            slug=bp.slug or '',
-            description=bp.description,
-            scope=scope,
-            properties=props,
-            required=list(schema.required or []),
-        )
+        return blueprint_sections.build_section(bp, scope)
 
     # Node blueprints (project-level attributes) ...
     node_blueprints = await db.match(
@@ -2654,7 +2464,7 @@ async def _schema_for(
         order_by='priority',
     )
 
-    sections: list[BlueprintSection] = []
+    sections: list[blueprint_sections.BlueprintSection] = []
     for bp in node_blueprints:
         section = _build_section(bp, 'project')
         if section is not None:

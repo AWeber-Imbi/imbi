@@ -28,6 +28,7 @@
 import asyncio
 import base64
 import binascii
+import dataclasses
 import datetime
 import decimal
 import json
@@ -54,6 +55,7 @@ from imbi.api.harness import store as harness_store
 from imbi.api.middleware import rate_limit
 from imbi.api.secret_broker import broker, providers
 from imbi.api.secret_broker import store as secret_store
+from imbi.api.tickets import custom_fields
 from imbi.api.tickets import store as ticket_store
 from imbi.common import graph, models
 from imbi.common.prompts import rendering
@@ -349,6 +351,12 @@ class ChildTaskCreate(pydantic.BaseModel):
     )
     idempotency_key: str | None = pydantic.Field(
         default=None, min_length=1, max_length=200
+    )
+    custom_fields: dict[str, typing.Any] = pydantic.Field(
+        default_factory=dict[str, typing.Any],
+        description='The values of the custom fields of the child. The '
+        'child also gets the values of the parent for the fields that '
+        'its blueprints declare; a value here wins.',
     )
 
 
@@ -2033,7 +2041,10 @@ async def create_harness_child_task(
             agent needs (``runner_label_missing``), or the pod of the
             chain does not have an egress destination that the child
             agent has (``egress_destination_missing``).
-        422: No such agent, or a budget over its task budget.
+        422: No such agent, a budget over its task budget, or a
+            required custom field with no value or default, or a custom
+            field that is not valid (``custom_fields_invalid``). A repeat
+            with the idempotency key returns the child before this check.
 
     """
     parent = await _chain_task(caller, short_id, db, store)
@@ -2117,24 +2128,44 @@ async def create_harness_child_task(
         'short_id': parent['short_id'],
         'agent_id': parent['agent_id'],
     }
+    new_task = tickets.NewTask(
+        organization_id=parent['organization_id'],
+        agent_id=agent_id,
+        agent_version=agent_version,
+        prompt_version=prompt_version,
+        service_account_id=service_account_id,
+        title=data.title,
+        description=data.description,
+        origin_kind='ticket',
+        origin_id=origin_id,
+        origin=origin,
+        idempotency_key=data.idempotency_key,
+        owner=parent['owner'],
+        budget=budget,
+        chain_id=chain_id,
+    )
+    # The child gets the values of the parent that its blueprints
+    # declare, then the values that it sends, then the defaults.
+    inherited = await custom_fields.declared_values(
+        db,
+        new_task.type,
+        new_task.priority,
+        new_task.labels,
+        parent['custom_fields'] or {},
+    )
+    new_task = dataclasses.replace(
+        new_task,
+        custom_fields=await custom_fields.for_new(
+            db,
+            new_task.type,
+            new_task.priority,
+            new_task.labels,
+            {**inherited, **data.custom_fields},
+        ),
+    )
     try:
         task, created = await store.create(
-            tickets.NewTask(
-                organization_id=parent['organization_id'],
-                agent_id=agent_id,
-                agent_version=agent_version,
-                prompt_version=prompt_version,
-                service_account_id=service_account_id,
-                title=data.title,
-                description=data.description,
-                origin_kind='ticket',
-                origin_id=origin_id,
-                origin=origin,
-                idempotency_key=data.idempotency_key,
-                owner=parent['owner'],
-                budget=budget,
-                chain_id=chain_id,
-            ),
+            new_task,
             tickets.Actor('agent', parent['agent_id'], 'harness'),
             {
                 'title': data.title,

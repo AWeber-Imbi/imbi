@@ -3219,6 +3219,35 @@ class CreateTicketTests(helpers.TestCase):
             },
         )
 
+    async def test_custom_fields_are_cel_values(self) -> None:
+        self.config = self.config.model_copy(
+            update={
+                'custom_fields': {
+                    'severity': '"sev2"',
+                    'check': 'payload.check_run.name',
+                    'customer_facing': 'true',
+                    'count': '2',
+                    'components': '["api", "worker"]',
+                    'meta': '{"tags": [true, 1]}',
+                }
+            }
+        )
+        mock_create = await self._run(self._delivery())
+        values = mock_create.call_args.args[3]['custom_fields']
+        self.assertEqual(
+            values,
+            {
+                'severity': 'sev2',
+                'check': 'lint',
+                'customer_facing': True,
+                'count': 2,
+                'components': ['api', 'worker'],
+                'meta': {'tags': [True, 1]},
+            },
+        )
+        self.assertIs(values['customer_facing'], True)
+        self.assertIs(values['meta']['tags'][0], True)
+
     async def test_redelivery_sends_the_same_key(self) -> None:
         """The API returns the first task for a repeated key."""
         keys = [

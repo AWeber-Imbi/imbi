@@ -24,6 +24,7 @@ export interface TimelineEntry {
 const SHOWN = new Set([
   'check.reported',
   'control.changed',
+  'custom_fields.changed',
   'due_date.changed',
   'labels.changed',
   'outcome.set',
@@ -36,6 +37,7 @@ const SHOWN = new Set([
   'request.resolved',
   'roles.changed',
   'state.changed',
+  'team.changed',
   'todos.updated',
   'tool.called',
   'turn',

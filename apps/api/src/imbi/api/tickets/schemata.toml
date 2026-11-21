@@ -365,6 +365,16 @@ CREATE INDEX IF NOT EXISTS tickets_labels_idx ON tickets.tickets
   USING GIN (labels);
 """
 
+# The custom field filter of the ticket list (`custom_fields @> ...`).
+[[steps]]
+name = "tickets-custom-fields-index"
+after_tables = true
+when = "SELECT to_regclass('tickets.tickets_custom_fields_idx') IS NULL"
+sql = """
+CREATE INDEX IF NOT EXISTS tickets_custom_fields_idx ON tickets.tickets
+  USING GIN (custom_fields);
+"""
+
 # One row per ticket.
 #
 # `last_seq` is the sequence number of the newest event. An event write
@@ -464,6 +474,14 @@ labels = "TEXT[] NOT NULL DEFAULT '{}'"
 # are normalized as labels are. Workflows read them and can hand the
 # ticket to the person in a role.
 roles = "JSONB NOT NULL DEFAULT '{}'"
+# The id of the team of the ticket, a team node of the organization.
+# The API validates it, and reads the slug and the name from the graph.
+# NULL: no team.
+team_id = "TEXT"
+# The values of the custom fields that `Ticket` blueprints define, as
+# {field: value}. A value stays when its field stops matching the
+# ticket; the UI hides it.
+custom_fields = "JSONB NOT NULL DEFAULT '{}'"
 # The place of the ticket in the backlog: lower ranks first. NULL: not
 # ranked; unranked tickets follow the ranked ones.
 backlog_rank = "DOUBLE PRECISION"

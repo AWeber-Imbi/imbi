@@ -262,6 +262,8 @@ before its runs start.
 | `due_date` | The due date as `YYYY-MM-DD`, or `null` |
 | `labels` | The labels of the ticket |
 | `roles` | The people in named roles, as `{role: email}`. Use `{{ trigger.roles.reviewer }}` |
+| `team` | The slug of the team of the ticket, or `null` |
+| `custom_fields` | The values of the custom fields of the ticket, as `{field: value}`. Use `{{ trigger.custom_fields.severity }}`. See [Custom fields](tickets.md#custom-fields) |
 
 ### Wait
 
@@ -704,6 +706,7 @@ Gives an agent a task and waits for its outcome. See
 | `task_title` | The title of the agent task, up to 200 characters. Templates are allowed, for example `{{ trigger.ticket_key }}: implement` | `<workflow name>: <step title>` |
 | `project_id` | The project of the task: a literal id, or one plain reference such as `{{ trigger.project }}` or `{{ review.result.project }}`. A reference can render to a project id or slug | None |
 | `budget` | A limit in USD. It cannot be more than the task budget of the agent | The task budget of the agent |
+| `custom_fields` | The custom fields of the ticket, as field names and values. Templates are allowed. See [Custom fields](tickets.md#custom-fields) | None |
 
 The step takes `Succeeded` when the outcome is `done_acted`,
 `done_nothing_to_act_on`, or `no_reason_to_run`. Every other outcome takes
@@ -715,6 +718,11 @@ be able to make agent tasks when the step runs.
 When `project_id` is a reference, the step fails with `project_not_rendered`
 if it renders to nothing, and with `422` if no project of the organization
 has that id or slug.
+
+When a `Ticket` blueprint that matches the ticket has a required field with
+no default, and `custom_fields` does not give it, the step fails with
+`custom_fields_invalid`. The step does not retry. The imbi-workflows log
+names the fields.
 
 When you cancel the run, or the run passes its max run time, Imbi cancels
 the task. A step timeout does not cancel the task.
@@ -732,7 +740,7 @@ with "used in N workflow(s)".
 **Output:** `task_id`, `outcome`, `reason`, `summary` (the last message
 of the agent), `result` (the structured output), and the attributes of
 the task: `title`, `url`, `project`, `agent`, `cost_usd`, `type`,
-`priority`, `due_date`, `labels`, and `roles`. These
+`priority`, `due_date`, `labels`, `roles`, `team`, and `custom_fields`. These
 attributes are the same as in the output of a
 [Ticket state changed](#ticket-state-changed) trigger. Run detail shows `reason`,
 `summary`, and `result` only to people with `ticket:read`.

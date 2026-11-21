@@ -182,24 +182,19 @@ def _matches_filter(
       context value that appears in the filter's list.
     - All non-empty filter fields must match (AND).
 
-    The ``project_type`` context value may be a list of slugs
-    (for multi-type projects). A match occurs when any of
-    the project's types appear in the blueprint's filter list.
+    A context value may be a list (the types of a multi-type project,
+    the labels of a ticket). A match occurs when any of its values
+    appear in the blueprint's filter list.
 
     """
     bp_filter = blueprint.filter
     if bp_filter is None:
         return True
-    if context is None:
-        # No context — only unfiltered blueprints match.
-        if bp_filter.project_type or bp_filter.environment:
-            return False
-        return True
-    for field in ('project_type', 'environment'):
+    for field in type(bp_filter).model_fields:
         allowed: list[str] = getattr(bp_filter, field)
         if not allowed:
             continue
-        ctx_value = context.get(field)
+        ctx_value = (context or {}).get(field)
         if ctx_value is None:
             return False
         # Support list values (multi-type): match if any
@@ -210,6 +205,25 @@ def _matches_filter(
         elif ctx_value not in allowed:
             return False
     return True
+
+
+async def matching_blueprints(
+    database: graph.Graph,
+    type_name: str,
+    context: dict[str, str | list[str]] | None = None,
+) -> list[models.Blueprint]:
+    """Return the enabled node blueprints of ``type_name`` whose filter
+    matches ``context``, by priority (see :func:`get_model`)."""
+    found = await database.match(
+        models.Blueprint,
+        {'type': type_name, 'enabled': True},
+        order_by='priority',
+    )
+    return [
+        bp
+        for bp in found
+        if bp.kind == 'node' and _matches_filter(bp, context)
+    ]
 
 
 async def get_model[ModelType: pydantic.BaseModel](
@@ -231,20 +245,9 @@ async def get_model[ModelType: pydantic.BaseModel](
                  'environment': 'production'}
 
     """
-    all_blueprints = await database.match(
-        models.Blueprint,
-        {
-            'type': model.__name__,
-            'enabled': True,
-        },
-        order_by='priority',
+    return apply_blueprints(
+        model, await matching_blueprints(database, model.__name__, context)
     )
-    matched = [
-        bp
-        for bp in all_blueprints
-        if bp.kind == 'node' and _matches_filter(bp, context)
-    ]
-    return apply_blueprints(model, matched)
 
 
 async def get_edge_model(

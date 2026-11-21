@@ -27,7 +27,11 @@ import { CardTitle } from '@/components/ui/card'
 import { LabelChip } from '@/components/ui/label-chip'
 import { Sk } from '@/components/ui/skeleton'
 import { useClipboard } from '@/hooks/useClipboard'
-import { parseFilterFromBlueprint } from '@/lib/utils'
+import {
+  BLUEPRINT_FILTER_KEYS,
+  cn,
+  parseFilterFromBlueprint,
+} from '@/lib/utils'
 import type { SchemaProperty } from '@/types'
 
 import { getTypeSwatch } from './typeSwatch'
@@ -37,6 +41,38 @@ interface BlueprintDetailProps {
   blueprintTypes: string[]
   onBack: () => void
   onEdit: () => void
+}
+
+/** How each filter field shows. */
+const FILTER_SECTIONS: Record<
+  (typeof BLUEPRINT_FILTER_KEYS)[number],
+  {
+    border: string
+    title: string
+    variant: 'info' | 'neutral' | 'success' | 'warning'
+  }
+> = {
+  environment: {
+    border: 'border-success',
+    title: 'Environments',
+    variant: 'success',
+  },
+  label: { border: '', title: 'Labels', variant: 'neutral' },
+  priority: {
+    border: 'border-warning',
+    title: 'Priorities',
+    variant: 'warning',
+  },
+  project_type: {
+    border: 'border-info',
+    title: 'Project Types',
+    variant: 'info',
+  },
+  ticket_type: {
+    border: 'border-info',
+    title: 'Ticket Types',
+    variant: 'info',
+  },
 }
 
 function BlueprintDetailSkeleton() {
@@ -155,11 +191,7 @@ export function BlueprintDetail({
       ...(blueprint.description ? { description: blueprint.description } : {}),
       enabled: blueprint.enabled,
       priority: blueprint.priority,
-      ...(parsedFilter &&
-      (parsedFilter.project_type?.length > 0 ||
-        parsedFilter.environment?.length > 0)
-        ? { filter: parsedFilter }
-        : {}),
+      ...(parsedFilter ? { filter: parsedFilter } : {}),
       json_schema: schemaObj,
     }
 
@@ -296,50 +328,31 @@ export function BlueprintDetail({
             </div>
           </div>
           <div className="space-y-4 px-6 py-4">
-            {(parsedFilter.project_type?.length ?? 0) > 0 && (
-              <div>
-                <div
-                  className={
-                    'text-tertiary mb-2 text-xs font-medium tracking-wider uppercase'
-                  }
-                >
-                  Project Types
+            {BLUEPRINT_FILTER_KEYS.map((key) => {
+              const { border, title, variant } = FILTER_SECTIONS[key]
+              return (parsedFilter[key]?.length ?? 0) > 0 ? (
+                <div key={key}>
+                  <div
+                    className={
+                      'text-tertiary mb-2 text-xs font-medium tracking-wider uppercase'
+                    }
+                  >
+                    {title}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {parsedFilter[key].map((value) => (
+                      <Badge
+                        className={cn(border, 'rounded-md px-2.5 py-1 text-sm')}
+                        key={value}
+                        variant={variant}
+                      >
+                        {value}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {parsedFilter.project_type.map((pt) => (
-                    <Badge
-                      className="border-info rounded-md px-2.5 py-1 text-sm"
-                      key={pt}
-                      variant="info"
-                    >
-                      {pt}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-            {(parsedFilter.environment?.length ?? 0) > 0 && (
-              <div>
-                <div
-                  className={
-                    'text-tertiary mb-2 text-xs font-medium tracking-wider uppercase'
-                  }
-                >
-                  Environments
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {parsedFilter.environment.map((env) => (
-                    <Badge
-                      className="border-success rounded-md px-2.5 py-1 text-sm"
-                      key={env}
-                      variant="success"
-                    >
-                      {env}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            )}
+              ) : null
+            })}
           </div>
         </div>
       )}

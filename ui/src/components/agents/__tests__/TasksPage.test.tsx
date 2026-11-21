@@ -27,8 +27,10 @@ vi.mock('@/api/endpoints', () => ({
   getProjectsSlim: vi.fn(),
   getTicket: vi.fn(),
   getTicketPosition: vi.fn(),
+  getTicketSchema: vi.fn(() => Promise.resolve({ sections: [] })),
   listAdminUsers: vi.fn(),
   listAgents: vi.fn(),
+  listTeams: vi.fn(() => Promise.resolve([])),
   listTicketEvents: vi.fn(),
   listTickets: vi.fn(),
   reassignTicket: vi.fn(),
@@ -36,6 +38,7 @@ vi.mock('@/api/endpoints', () => ({
   resolvePrompt: vi.fn(),
   resolveTicketRequest: vi.fn(),
   retryTicket: vi.fn(),
+  updateTicket: vi.fn(),
 }))
 
 const ORGS = vi.hoisted(() => [{ slug: 'acme' }, { slug: 'beta' }])
@@ -800,6 +803,60 @@ describe('Tasks', () => {
     await waitFor(() => expect(window.location.search).toBe(''))
   })
 
+  it('filters by team and by a custom field on the server', async () => {
+    vi.mocked(endpoints.listTeams).mockResolvedValue([
+      { name: 'Platform', slug: 'platform' },
+    ] as Awaited<ReturnType<typeof endpoints.listTeams>>)
+    vi.mocked(endpoints.getTicketSchema).mockResolvedValue({
+      filterable: [
+        { field: 'notes', type: 'string' },
+        { enum: ['sev1', 'sev2'], field: 'severity', title: 'Severity' },
+      ],
+      sections: [],
+    })
+    renderAt('/tickets')
+    await screen.findByText('Busy')
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }))
+    // Only a field with a fixed set of values is a filter.
+    expect(screen.queryByRole('option', { name: 'notes' })).toBeNull()
+    fireEvent.click(await screen.findByRole('option', { name: 'Team' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Platform' }))
+    fireEvent.keyDown(screen.getByPlaceholderText('Team…'), {
+      key: 'Backspace',
+    })
+    fireEvent.click(await screen.findByRole('option', { name: 'Severity' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'sev1' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'sev2' }))
+    await waitFor(() =>
+      expect(endpoints.listTickets).toHaveBeenCalledWith(
+        'acme',
+        expect.objectContaining({
+          filter: ['severity:in:sev1,sev2'],
+          team: ['platform'],
+        }),
+        expect.anything(),
+      ),
+    )
+    expect(window.location.search).toBe(
+      '?team=platform&filter=severity%3Ain%3Asev1%2Csev2',
+    )
+  })
+
+  it('does not send a field that the list cannot filter on now', async () => {
+    vi.mocked(endpoints.getTicketSchema).mockResolvedValue({
+      filterable: [{ enum: ['sev1'], field: 'severity' }],
+      sections: [],
+    })
+    renderAt('/tickets?filter=gone%3Ain%3Ax&filter=severity%3Ain%3Asev1')
+    await waitFor(() =>
+      expect(endpoints.listTickets).toHaveBeenLastCalledWith(
+        'acme',
+        expect.objectContaining({ filter: ['severity:in:sev1'] }),
+        expect.anything(),
+      ),
+    )
+  })
+
   it('finds a value by typing on the field list', async () => {
     renderAt('/tickets')
     await screen.findByText('Busy')
@@ -1250,6 +1307,46 @@ describe('Tasks', () => {
     },
   )
 
+  it('shows and edits the team and the custom fields', async () => {
+    vi.mocked(endpoints.getTicket).mockResolvedValue({
+      ...BLOCKED,
+      custom_fields: { old: 'hidden', severity: 'sev2' },
+      team: { id: 't-1', name: 'Platform', slug: 'platform' },
+    } as typeof BLOCKED)
+    vi.mocked(endpoints.getTicketSchema).mockResolvedValue({
+      sections: [
+        {
+          name: 'Incident',
+          properties: { severity: { title: 'Severity', type: 'string' } },
+          slug: 'incident',
+        },
+      ],
+    })
+    vi.mocked(endpoints.updateTicket).mockResolvedValue(BLOCKED)
+    vi.mocked(endpoints.listTeams).mockResolvedValue([
+      { name: 'Platform', slug: 'platform' },
+    ] as Awaited<ReturnType<typeof endpoints.listTeams>>)
+    renderAt('/tickets/acme/T-3/overview')
+    expect(await screen.findByText('Severity')).toBeInTheDocument()
+    expect(screen.getByText('sev2')).toBeInTheDocument()
+    // A value that no blueprint declares now stays hidden.
+    expect(screen.queryByText('hidden')).toBeNull()
+    expect(endpoints.getTicketSchema).toHaveBeenCalledWith(
+      'acme',
+      { label: [], priority: 'normal', type: 'task' },
+      expect.anything(),
+    )
+    const team = await screen.findByRole('combobox', { name: 'Team' })
+    await waitFor(() => expect(team).toHaveTextContent('Platform'))
+    fireEvent.click(team)
+    fireEvent.click(await screen.findByRole('option', { name: 'No team' }))
+    await waitFor(() =>
+      expect(endpoints.updateTicket).toHaveBeenCalledWith('acme', 'T-3', {
+        team: null,
+      }),
+    )
+  })
+
   it('has no reply box on a closed task', async () => {
     vi.mocked(endpoints.getTicket).mockResolvedValue({
       ...BLOCKED,
@@ -1670,6 +1767,7 @@ describe('Tasks', () => {
       expect(endpoints.createTicket).toHaveBeenCalledWith('acme', {
         agent_slug: 'mender',
         assignee_kind: 'agent',
+        custom_fields: {},
         description: 'Check the build\nFind why it fails.',
         due_date: null,
         labels: [],
@@ -1677,6 +1775,7 @@ describe('Tasks', () => {
         project_ids: ['p-1'],
         requires: [],
         roles: {},
+        team: null,
         title: 'Check the build',
         type: 'task',
       }),

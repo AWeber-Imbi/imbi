@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { type DetectedFormat, detectFormat } from '@/lib/import-format'
+import { BLUEPRINT_FILTER_KEYS } from '@/lib/utils'
 import type { BlueprintCreate, BlueprintFilter } from '@/types'
 
 import { ImportDialogFooter } from '../import-dialog-shared'
@@ -29,7 +30,22 @@ interface ImportBlueprintDialogProps {
   onImport: (blueprint: BlueprintCreate) => void
 }
 
-const VALID_TYPES = new Set(['Environment', 'Project', 'ProjectType', 'Team'])
+const VALID_TYPES = new Set([
+  'Environment',
+  'Project',
+  'ProjectType',
+  'Team',
+  'Ticket',
+])
+
+/** The filter fields and their names in the preview. */
+const FILTER_KEYS: Record<(typeof BLUEPRINT_FILTER_KEYS)[number], string> = {
+  environment: 'environments',
+  label: 'labels',
+  priority: 'priorities',
+  project_type: 'project types',
+  ticket_type: 'ticket types',
+}
 
 const REQUIRED_FIELDS = ['name', 'json_schema'] as const
 
@@ -319,25 +335,14 @@ export function ImportBlueprintDialog({
                     }
                   </span>
                 </div>
-                {parsedPreview.filter &&
-                  (parsedPreview.filter.project_type?.length > 0 ||
-                    parsedPreview.filter.environment?.length > 0) && (
-                    <div className="col-span-2">
-                      <span className="text-tertiary">Filter: </span>
-                      <span className="text-primary">
-                        {[
-                          parsedPreview.filter.project_type?.length
-                            ? `${parsedPreview.filter.project_type.length} project types`
-                            : '',
-                          parsedPreview.filter.environment?.length
-                            ? `${parsedPreview.filter.environment.length} environments`
-                            : '',
-                        ]
-                          .filter(Boolean)
-                          .join(', ')}
-                      </span>
-                    </div>
-                  )}
+                {filterSummary(parsedPreview.filter) && (
+                  <div className="col-span-2">
+                    <span className="text-tertiary">Filter: </span>
+                    <span className="text-primary">
+                      {filterSummary(parsedPreview.filter)}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -352,6 +357,18 @@ export function ImportBlueprintDialog({
       </DialogContent>
     </Dialog>
   )
+}
+
+/** The counts of a filter, e.g. "2 ticket types, 1 labels", or "". */
+function filterSummary(filter: BlueprintFilter | null | undefined): string {
+  if (!filter) return ''
+  return Object.entries(FILTER_KEYS)
+    .map(([key, noun]) => {
+      const n = filter[key as keyof BlueprintFilter].length
+      return n ? `${n} ${noun}` : ''
+    })
+    .filter(Boolean)
+    .join(', ')
 }
 
 function validateBlueprintShape(
@@ -469,11 +486,10 @@ function validateBlueprintShape(
     }
     const f = obj.filter as Record<string, unknown>
     // Validate known keys
-    const allowedKeys = new Set(['environment', 'project_type'])
     for (const key of Object.keys(f)) {
-      if (!allowedKeys.has(key)) {
+      if (!(BLUEPRINT_FILTER_KEYS as readonly string[]).includes(key)) {
         return {
-          error: `Unknown filter key: "${key}". Allowed: project_type, environment.`,
+          error: `Unknown filter key: "${key}". Allowed: ${BLUEPRINT_FILTER_KEYS.join(', ')}.`,
           valid: false,
         }
       }
@@ -490,10 +506,9 @@ function validateBlueprintShape(
         }
       }
     }
-    parsedFilter = {
-      environment: (f.environment as string[]) || [],
-      project_type: (f.project_type as string[]) || [],
-    }
+    parsedFilter = Object.fromEntries(
+      BLUEPRINT_FILTER_KEYS.map((key) => [key, (f[key] as string[]) || []]),
+    ) as BlueprintFilter
   }
 
   if (

@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import http
 import logging
 import re
@@ -617,6 +618,9 @@ class CreateTicketConfig(pydantic.BaseModel):
     agent_slug: str
     title_expression: str
     description_expression: str
+    #: The custom fields of the ticket, as CEL expressions by field
+    #: name. A static value is a CEL literal, such as ``'sev2'``.
+    custom_fields: dict[str, str] = {}
     delivery_id_selector: json_pointer.JsonPointer = pydantic.Field(
         default_factory=lambda: jsonpointer.JsonPointer(
             '/metadata/headers/x-github-delivery'
@@ -690,13 +694,44 @@ def _deployment_state(
     return raw_state, status
 
 
-def _evaluate_cel(expression: str, event: object) -> str | None:
+@functools.lru_cache(maxsize=256)
+def _cel_program(expression: str) -> celpy.Runner:
+    """Compile an expression one time; the rules repeat a few of them."""
     env = celpy.Environment()
-    program = env.program(env.compile(expression), functions=_CEL_FUNCTIONS)
-    result = program.evaluate(celpy.json_to_cel(event))
+    return env.program(env.compile(expression), functions=_CEL_FUNCTIONS)
+
+
+def _run_cel(expression: str, event: object) -> object:
+    return _cel_program(expression).evaluate(celpy.json_to_cel(event))
+
+
+def _evaluate_cel(expression: str, event: object) -> str | None:
+    result = _run_cel(expression, event)
     if result is None:
         return None
     return str(result)
+
+
+def _evaluate_cel_value(expression: str, event: object) -> typing.Any:
+    """Return the result as JSON (see :func:`_cel_to_json`)."""
+    return _cel_to_json(_run_cel(expression, event))
+
+
+def _cel_to_json(value: object) -> typing.Any:
+    """Return a CEL value as JSON: a list is an array and a map is an
+    object, also when nested. Other values are text."""
+    # A CEL bool is an int; JSON must get true or false.
+    if isinstance(value, celpy.celtypes.BoolType):
+        return bool(value)
+    if value is None or isinstance(value, int | float | str):
+        return value
+    if isinstance(value, list):
+        items = typing.cast('list[object]', value)
+        return [_cel_to_json(item) for item in items]
+    if isinstance(value, dict):
+        pairs = typing.cast('dict[object, object]', value)
+        return {str(k): _cel_to_json(v) for k, v in pairs.items()}
+    return str(value)
 
 
 async def update_project(
@@ -1486,7 +1521,7 @@ async def create_ticket(
     webhook_id, delivery_id = delivery
     title = _evaluate_cel(action_config.title_expression, event) or ''
     text = _evaluate_cel(action_config.description_expression, event) or ''
-    body = {
+    body: dict[str, typing.Any] = {
         'agent_slug': action_config.agent_slug,
         'title': ' '.join(title.split())[:_TITLE_LIMIT],
         'description': _untrusted_description(
@@ -1497,6 +1532,11 @@ async def create_ticket(
             f'{delivery_id}:{action_config.agent_slug}:{ctx.project_id}'
         ),
     }
+    if action_config.custom_fields:
+        body['custom_fields'] = {
+            name: _evaluate_cel_value(expression, event)
+            for name, expression in action_config.custom_fields.items()
+        }
     async with ImbiClient() as client:
         await client.create_ticket(ctx.org_slug, webhook_id, delivery_id, body)
 

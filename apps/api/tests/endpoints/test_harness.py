@@ -1233,6 +1233,82 @@ class ChildTaskTests(RunnerTestCase):
             response.json()['detail']['error'], 'delegation_depth'
         )
 
+    async def required_field(self) -> None:
+        """Add a blueprint that a child ticket matches, with a required
+        field. A child ticket is a ``task`` with no labels, so this
+        global blueprint matches it. The cleanup removes it."""
+        bp = models.Blueprint(
+            name=f'Child fields {uuid.uuid4().hex}',
+            type='Ticket',
+            filter={'ticket_type': ['task']},
+            json_schema=models.Schema.model_validate(
+                {
+                    'type': 'object',
+                    'properties': {'severity': {'type': 'string'}},
+                    'required': ['severity'],
+                }
+            ),
+        )
+        await self.graph.create(bp)
+        self.addAsyncCleanup(
+            self.graph.execute,
+            'MATCH (b:Blueprint {{id: {id}}}) DETACH DELETE b RETURN 1 AS ok',
+            {'id': bp.id},
+            ['ok'],
+        )
+
+    async def helper(self) -> None:
+        helper_id = await self.make_agent('helper', name='Helper')
+        await self.make_version({'subagents': [{'agent_id': helper_id}]})
+
+    async def test_child_needs_required_custom_fields(self) -> None:
+        await self.helper()
+        await self.required_field()
+        response = await self.child('helper')
+        self.assertEqual(response.status_code, 422, response.text)
+        detail = response.json()['detail']
+        self.assertEqual(detail['error'], 'custom_fields_invalid')
+        self.assertEqual([m['field'] for m in detail['missing']], ['severity'])
+        response = await self.child(
+            'helper', custom_fields={'severity': 'sev2'}
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(
+            response.json()['custom_fields'], {'severity': 'sev2'}
+        )
+
+    async def test_child_gets_the_values_of_the_parent(self) -> None:
+        await self.helper()
+        await self.required_field()
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE tickets.tickets SET custom_fields = %s'
+                " WHERE organization_id = %s AND short_id = 'T-1'",
+                (json.dumps({'severity': 'sev1', 'hidden': 'x'}), self.org),
+            )
+        response = await self.child('helper')
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(
+            response.json()['custom_fields'], {'severity': 'sev1'}
+        )
+        # A value that the child sends wins.
+        response = await self.child(
+            'helper', title='Again', custom_fields={'severity': 'sev3'}
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(
+            response.json()['custom_fields'], {'severity': 'sev3'}
+        )
+
+    async def test_repeat_returns_the_child_before_the_check(self) -> None:
+        await self.helper()
+        first = await self.child('helper', idempotency_key='child-1')
+        self.assertEqual(first.status_code, 201, first.text)
+        await self.required_field()
+        again = await self.child('helper', idempotency_key='child-1')
+        self.assertEqual(again.status_code, 200, again.text)
+        self.assertEqual(again.json()['id'], first.json()['id'])
+
     async def test_owner_must_still_make_tasks(self) -> None:
         helper_id = await self.make_agent('helper', name='Helper')
         await self.make_version({'subagents': [{'agent_id': helper_id}]})

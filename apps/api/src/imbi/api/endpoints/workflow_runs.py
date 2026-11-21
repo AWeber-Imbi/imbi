@@ -1751,9 +1751,9 @@ async def step_agent_task(
         409: The step is not a running agent step, the agent is
             disabled, or ``task_key_conflict``.
         422: ``agent_not_found``, ``agent_params_not_literal``,
-            ``trigger_project_missing``, ``project_not_rendered``, or the
-            project or the budget is not valid (see
-            :func:`tickets.make_task`).
+            ``trigger_project_missing``, ``project_not_rendered``, the
+            project or the budget is not valid, or
+            ``custom_fields_invalid`` (see :func:`tickets.make_task`).
 
     """
     workflow = await _workflow(store, org_id, slug)
@@ -1790,6 +1790,7 @@ async def step_agent_task(
                 description=params.instruction,
                 project_ids=[project_id] if project_id else [],
                 budget=params.budget,
+                custom_fields=params.custom_fields,
             )
         except pydantic.ValidationError as e:
             raise fastapi.HTTPException(

@@ -1855,7 +1855,10 @@ export interface paths {
          *             agent needs (``runner_label_missing``), or the pod of the
          *             chain does not have an egress destination that the child
          *             agent has (``egress_destination_missing``).
-         *         422: No such agent, or a budget over its task budget.
+         *         422: No such agent, a budget over its task budget, or a
+         *             required custom field with no value or default, or a custom
+         *             field that is not valid (``custom_fields_invalid``). A repeat
+         *             with the idempotency key returns the child before this check.
          */
         post: operations["create_harness_child_ticket_api_harness_tickets__short_id__children_post"];
         delete?: never;
@@ -5241,8 +5244,12 @@ export interface paths {
          *         422: The agent, the assignee, or the project is not in the org,
          *             the budget is more than the agent's task budget, a service
          *             does not name its origin, the webhook does not exist, a
-         *             prerequisite is not found, or the key has the shape of a
-         *             workflow step key (``<uuid>:<node_key>``).
+         *             prerequisite is not found, the key has the shape of a
+         *             workflow step key (``<uuid>:<node_key>``), ``team`` is
+         *             not a team of the org (``team_not_found``), or a required
+         *             custom field has no value or a custom field is not valid
+         *             (``custom_fields_invalid``, with ``missing`` and
+         *             ``invalid``).
          */
         post: operations["create_ticket_api_organizations__org_slug__tickets__post"];
         delete?: never;
@@ -5367,6 +5374,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/tickets/schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Ticket Schema
+         * @description Return the custom fields of a ticket with this type, priority,
+         *     and labels: one section for each ``Ticket`` blueprint that matches,
+         *     by blueprint priority. A later blueprint overrides an earlier one
+         *     for the same field. ``filterable`` has the custom fields of every
+         *     ``Ticket`` blueprint that the ticket list can filter on.
+         *
+         *     Raises:
+         *         403: The caller is not a member of the org.
+         *         404: No such organization.
+         */
+        get: operations["get_ticket_schema_api_organizations__org_slug__tickets_schema_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/tickets/labels": {
         parameters: {
             query?: never;
@@ -5426,8 +5461,8 @@ export interface paths {
         head?: never;
         /**
          * Update Ticket
-         * @description Change the type, the due date, the labels, or the roles of a
-         *     ticket. Only the fields in the body change; each one that changes
+         * @description Change the type, the due date, the labels, the roles, or the
+         *     team of a ticket. Only the fields in the body change; each one that changes
          *     writes ``<field>.changed``. Labels and role names are normalized.
          *
          *     Raises:
@@ -5435,7 +5470,11 @@ export interface paths {
          *         404: No such task.
          *         409: The task is closed, or its roles changed while this
          *             request checked them (``roles_changed``).
-         *         422: A person in ``roles`` is not in the org.
+         *         422: A person in ``roles`` is not in the org, ``team`` is not
+         *             a team of the org (``team_not_found``), or a custom field
+         *             is not valid (``custom_fields_invalid``; only the sent
+         *             fields are checked, against the blueprints that match the
+         *             ticket after the change).
          */
         patch: operations["update_ticket_api_organizations__org_slug__tickets__short_id__patch"];
         trace?: never;
@@ -5621,7 +5660,8 @@ export interface paths {
          *         404: No such task.
          *         409: The task is not closed, its agent is disabled, or
          *             ``workflow_step_task``: a workflow step made it.
-         *         422: The agent or a project is no longer in the org.
+         *         422: The agent or a project is no longer in the org, or a
+         *             custom field is not valid now (``custom_fields_invalid``).
          */
         post: operations["retry_ticket_api_organizations__org_slug__tickets__short_id__retry_post"];
         delete?: never;
@@ -6951,9 +6991,9 @@ export interface paths {
          *         409: The step is not a running agent step, the agent is
          *             disabled, or ``task_key_conflict``.
          *         422: ``agent_not_found``, ``agent_params_not_literal``,
-         *             ``trigger_project_missing``, ``project_not_rendered``, or the
-         *             project or the budget is not valid (see
-         *             :func:`tickets.make_task`).
+         *             ``trigger_project_missing``, ``project_not_rendered``, the
+         *             project or the budget is not valid, or
+         *             ``custom_fields_invalid`` (see :func:`tickets.make_task`).
          */
         post: operations["step_agent_task_api_organizations__org_slug__workflows__slug__runs__run_id__steps__node_id__agent_task_post"];
         delete?: never;
@@ -11863,6 +11903,18 @@ export interface components {
             roles?: {
                 [key: string]: string;
             };
+            /**
+             * Team
+             * @description The slug of a team of the org.
+             */
+            team?: string | null;
+            /**
+             * Custom Fields
+             * @description The values of the custom fields that the Ticket blueprints of the ticket define (see the tickets schema). Each required field with no default must have a value.
+             */
+            custom_fields?: {
+                [key: string]: unknown;
+            };
         };
         /** AgentTaskEventResponse */
         AgentTaskEventResponse: {
@@ -11976,6 +12028,14 @@ export interface components {
              */
             roles: {
                 [key: string]: string;
+            };
+            team?: components["schemas"]["TicketTeam"] | null;
+            /**
+             * Custom Fields
+             * @default {}
+             */
+            custom_fields: {
+                [key: string]: unknown;
             };
             /** Backlog Rank */
             backlog_rank?: number | null;
@@ -12223,6 +12283,14 @@ export interface components {
              */
             roles: {
                 [key: string]: string;
+            };
+            team?: components["schemas"]["TicketTeam"] | null;
+            /**
+             * Custom Fields
+             * @default {}
+             */
+            custom_fields: {
+                [key: string]: unknown;
             };
             /** Backlog Rank */
             backlog_rank?: number | null;
@@ -12841,7 +12909,7 @@ export interface components {
              */
             kind: "node" | "relationship";
             /** Type */
-            type?: ("Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration") | null;
+            type?: ("Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "Ticket") | null;
             /** Source */
             source?: string | null;
             /** Target */
@@ -12895,7 +12963,7 @@ export interface components {
              */
             kind: "node" | "relationship";
             /** Type */
-            type?: ("Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration") | null;
+            type?: ("Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "Ticket") | null;
             /** Source */
             source?: string | null;
             /** Target */
@@ -12940,6 +13008,21 @@ export interface components {
              * @default []
              */
             environment: string[];
+            /**
+             * Ticket Type
+             * @default []
+             */
+            ticket_type: string[];
+            /**
+             * Priority
+             * @default []
+             */
+            priority: string[];
+            /**
+             * Label
+             * @default []
+             */
+            label: string[];
         };
         /**
          * BlueprintSection
@@ -12957,7 +13040,7 @@ export interface components {
              * @default project
              * @enum {string}
              */
-            scope: "project" | "environment";
+            scope: "project" | "environment" | "ticket";
             /** Properties */
             properties: {
                 [key: string]: components["schemas"]["BlueprintSectionProperty"];
@@ -13207,6 +13290,13 @@ export interface components {
             budget?: number | string | null;
             /** Idempotency Key */
             idempotency_key?: string | null;
+            /**
+             * Custom Fields
+             * @description The values of the custom fields of the child. The child also gets the values of the parent for the fields that its blueprints declare; a value here wins.
+             */
+            custom_fields?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * ChoiceQuestion
@@ -15329,6 +15419,23 @@ export interface components {
             canonical_url?: string | null;
             /** Dashboard Url */
             dashboard_url?: string | null;
+        };
+        /**
+         * FilterableAttribute
+         * @description A blueprint attribute (of a project or a ticket) that can be
+         *     filtered on.
+         */
+        FilterableAttribute: {
+            /** Field */
+            field: string;
+            /** Title */
+            title?: string | null;
+            /** Type */
+            type?: string | null;
+            /** Format */
+            format?: string | null;
+            /** Enum */
+            enum?: string[] | null;
         };
         /** GlobalScoreEvent */
         GlobalScoreEvent: {
@@ -21821,6 +21928,12 @@ export interface components {
             roles?: {
                 [key: string]: string;
             } | null;
+            /** Team */
+            team?: string | null;
+            /** Custom Fields */
+            custom_fields?: {
+                [key: string]: unknown;
+            } | null;
             /** Task Id */
             task_id: string;
             /** Status */
@@ -22264,6 +22377,16 @@ export interface components {
             gates: boolean;
         };
         /**
+         * TicketSchemaResponse
+         * @description The custom fields of a ticket, by blueprint.
+         */
+        TicketSchemaResponse: {
+            /** Sections */
+            sections: components["schemas"]["BlueprintSection"][];
+            /** Filterable */
+            filterable: components["schemas"]["FilterableAttribute"][];
+        };
+        /**
          * TicketStatusSet
          * @description A status change of a person ticket (ADR 0028).
          */
@@ -22295,6 +22418,18 @@ export interface components {
             subject: string;
             /** Degraded */
             degraded: boolean;
+        };
+        /**
+         * TicketTeam
+         * @description The team of a ticket, read from the graph.
+         */
+        TicketTeam: {
+            /** Id */
+            id: string;
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
         };
         /**
          * TicketTree
@@ -22334,6 +22469,15 @@ export interface components {
              */
             roles: {
                 [key: string]: string;
+            };
+            /** Team */
+            team?: string | null;
+            /**
+             * Custom Fields
+             * @default {}
+             */
+            custom_fields: {
+                [key: string]: unknown;
             };
         };
         /** TokenExchangerType */
@@ -25444,7 +25588,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "relationship";
+                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "Ticket" | "relationship";
             };
             cookie?: never;
         };
@@ -25475,7 +25619,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "relationship";
+                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "Ticket" | "relationship";
                 slug: string;
             };
             cookie?: never;
@@ -25507,7 +25651,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "relationship";
+                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "Ticket" | "relationship";
                 slug: string;
             };
             cookie?: never;
@@ -25537,7 +25681,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "relationship";
+                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "Ticket" | "relationship";
                 slug: string;
             };
             cookie?: never;
@@ -32403,6 +32547,9 @@ export interface operations {
                 agent_id?: string[] | null;
                 owner?: string[] | null;
                 label?: string[] | null;
+                team?: string[] | null;
+                /** @description Filter tickets by custom field, as ``field:op[:value]`` (repeatable; combined with AND). Operators: eq, ne, in, not_in (comma-separated values), exists, not_exists. ne/not_in exclude tickets where the field is unset. Example: severity:in:sev1,sev2 */
+                filter?: string[] | null;
                 mine?: boolean;
                 q?: string | null;
                 limit?: number;
@@ -32496,6 +32643,9 @@ export interface operations {
                 agent_id?: string[] | null;
                 owner?: string[] | null;
                 label?: string[] | null;
+                team?: string[] | null;
+                /** @description Filter tickets by custom field, as ``field:op[:value]`` (repeatable; combined with AND). Operators: eq, ne, in, not_in (comma-separated values), exists, not_exists. ne/not_in exclude tickets where the field is unset. Example: severity:in:sev1,sev2 */
+                filter?: string[] | null;
                 mine?: boolean;
                 q?: string | null;
             };
@@ -32534,6 +32684,9 @@ export interface operations {
                 agent_id?: string[] | null;
                 owner?: string[] | null;
                 label?: string[] | null;
+                team?: string[] | null;
+                /** @description Filter tickets by custom field, as ``field:op[:value]`` (repeatable; combined with AND). Operators: eq, ne, in, not_in (comma-separated values), exists, not_exists. ne/not_in exclude tickets where the field is unset. Example: severity:in:sev1,sev2 */
+                filter?: string[] | null;
                 mine?: boolean;
                 q?: string | null;
             };
@@ -32621,6 +32774,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TicketSubjectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ticket_schema_api_organizations__org_slug__tickets_schema_get: {
+        parameters: {
+            query?: {
+                type?: "bug" | "task" | "feature";
+                priority?: "low" | "normal" | "high" | "urgent";
+                label?: string[] | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketSchemaResponse"];
                 };
             };
             /** @description Validation Error */

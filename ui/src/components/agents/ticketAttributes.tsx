@@ -17,6 +17,7 @@ import {
 
 import { listOrganizationMembers, listTicketLabels } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
+import { Combobox } from '@/components/ui/combobox'
 import {
   Command,
   CommandEmpty,
@@ -37,6 +38,7 @@ import {
 } from '@/components/ui/segmented-control'
 import { UserIdentity } from '@/components/ui/user-identity'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
+import { useTeams } from '@/hooks/useOrgResources'
 import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
 import type { TicketType } from '@/types'
@@ -564,6 +566,40 @@ export function rolesOf(rows: RoleRow[]): Record<string, string> {
     rows
       .map((r) => [normalizeLabel(r.name), r.email] as const)
       .filter(([name, email]) => name && email),
+  )
+}
+
+/** Choose the team of a ticket by slug; `''` is no team. */
+export function TeamPicker({
+  disabled,
+  onChange,
+  orgSlug,
+  value,
+}: {
+  disabled?: boolean
+  onChange: (slug: string) => void
+  orgSlug: string
+  value: string
+}) {
+  const id = useId()
+  const { data: teams = [] } = useTeams(orgSlug)
+  return (
+    <>
+      <label className="sr-only" htmlFor={id}>
+        Team
+      </label>
+      <Combobox
+        disabled={disabled}
+        id={id}
+        onChange={onChange}
+        options={[
+          { label: 'No team', value: '' },
+          ...teams.map((t) => ({ label: t.name, value: t.slug })),
+        ]}
+        placeholder="No team"
+        value={value}
+      />
+    </>
   )
 }
 

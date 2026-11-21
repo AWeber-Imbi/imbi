@@ -2,6 +2,7 @@ import { memo, useCallback, useMemo } from 'react'
 
 import type {
   ProjectSchemaResponse,
+  ProjectSchemaSection,
   ProjectSchemaSectionProperty,
 } from '@/api/endpoints'
 import { AttributeValue } from '@/components/ui/attribute-value'
@@ -28,10 +29,20 @@ interface AttributeField {
   value: null | string
 }
 
+interface BlueprintFieldsProps {
+  patch: (path: string, value: unknown) => Promise<void>
+  pendingPath: null | string
+  /** Show the values with no inline edit. */
+  readOnly?: boolean
+  sections: ProjectSchemaSection[]
+  valueOf: (key: string, section: ProjectSchemaSection) => unknown
+}
+
 interface ProjectAttributeRowProps {
   field: AttributeField
   patch: (path: string, value: unknown) => Promise<void>
   pending: boolean
+  readOnly?: boolean
 }
 
 interface ProjectAttributesSectionProps {
@@ -49,6 +60,7 @@ const ProjectAttributeRow = memo(function ProjectAttributeRow({
   field,
   patch,
   pending,
+  readOnly = false,
 }: ProjectAttributeRowProps) {
   const {
     def,
@@ -64,7 +76,7 @@ const ProjectAttributeRow = memo(function ProjectAttributeRow({
     [patch, key],
   )
 
-  const editable = isFieldEditable(key, def)
+  const editable = !readOnly && isFieldEditable(key, def)
   const richDisplay =
     fieldValue !== null ? (
       <AttributeValue def={def} rawValue={rawValue} />
@@ -110,26 +122,25 @@ const ProjectAttributeRow = memo(function ProjectAttributeRow({
   )
 })
 
-export function ProjectAttributesSection({
+/**
+ * The fields of blueprint sections, by label, each editable in place.
+ * As in the API, a later section (higher blueprint priority) overrides
+ * an earlier one for the same field. `patch` gets the path
+ * `/<field>`.
+ */
+export function BlueprintFields({
   patch,
   pendingPath,
-  project,
-  projectSchema,
-}: ProjectAttributesSectionProps) {
-  // fallow-ignore-next-line complexity
+  readOnly,
+  sections,
+  valueOf,
+}: BlueprintFieldsProps) {
   const attributeFields = useMemo<AttributeField[]>(() => {
-    if (!projectSchema) return []
-    const seen = new Set<string>()
-    const fields: AttributeField[] = []
-    for (const section of projectSchema.sections) {
-      // Environment-scoped (relationship-blueprint) attributes are rendered
-      // per-environment in the Environments card, not as project attributes.
-      if (section.scope === 'environment') continue
+    const fields = new Map<string, AttributeField>()
+    for (const section of sections) {
       for (const [key, def] of Object.entries(section.properties)) {
-        if (seen.has(key) || key === 'url') continue
-        seen.add(key)
-        const raw = resolveFieldValue(key, section, project)
-        fields.push({
+        const raw = valueOf(key, section)
+        fields.set(key, {
           def,
           description: def.description ?? undefined,
           key,
@@ -139,8 +150,8 @@ export function ProjectAttributesSection({
         })
       }
     }
-    return fields.sort((a, b) => a.label.localeCompare(b.label))
-  }, [projectSchema, project])
+    return [...fields.values()].sort((a, b) => a.label.localeCompare(b.label))
+  }, [sections, valueOf])
 
   return (
     <>
@@ -150,8 +161,45 @@ export function ProjectAttributesSection({
           key={field.key}
           patch={patch}
           pending={pendingPath === `/${field.key}`}
+          readOnly={readOnly}
         />
       ))}
     </>
+  )
+}
+
+export function ProjectAttributesSection({
+  patch,
+  pendingPath,
+  project,
+  projectSchema,
+}: ProjectAttributesSectionProps) {
+  // Environment-scoped (relationship-blueprint) attributes are rendered
+  // per-environment in the Environments card, not as project attributes.
+  // The project URL shows elsewhere.
+  const sections = useMemo(
+    () =>
+      (projectSchema?.sections ?? [])
+        .filter((section) => section.scope !== 'environment')
+        .map((section) => ({
+          ...section,
+          properties: Object.fromEntries(
+            Object.entries(section.properties).filter(([key]) => key !== 'url'),
+          ),
+        })),
+    [projectSchema],
+  )
+  const valueOf = useCallback(
+    (key: string, section: ProjectSchemaSection) =>
+      resolveFieldValue(key, section, project),
+    [project],
+  )
+  return (
+    <BlueprintFields
+      patch={patch}
+      pendingPath={pendingPath}
+      sections={sections}
+      valueOf={valueOf}
+    />
   )
 }

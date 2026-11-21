@@ -23,9 +23,7 @@ import datetime
 import decimal
 import functools
 import logging
-import re
 import typing
-import unicodedata
 import uuid
 from collections import abc
 
@@ -35,8 +33,15 @@ import psycopg_pool
 from psycopg import rows, sql
 from psycopg.types import json as pg_json
 
+from imbi.api import blueprint_attributes
 from imbi.api.tickets import log
 from imbi.common import relational
+from imbi.common.labels import (
+    normalize_label as normalize_label,
+)
+from imbi.common.labels import (
+    normalize_labels as normalize_labels,
+)
 from imbi.common.workflows.registry import agent as agent_step
 
 type Pool = psycopg_pool.AsyncConnectionPool[
@@ -145,42 +150,11 @@ Channel = typing.Literal['web', 'slack', 'mcp', 'api', 'harness']
 Outcome = agent_step.Outcome
 AssigneeKind = typing.Literal['agent', 'person']
 TicketType = typing.Literal['bug', 'task', 'feature']
-
 #: The longest label or role name, after normalization.
 MAX_LABEL_LENGTH = 50
 
-_LABEL_SPACES = re.compile(r'[\s_]+')
-_LABEL_HYPHENS = re.compile(r'-{2,}')
-
-
-def _is_word(char: str) -> bool:
-    """Return true for a letter, a combining mark, or a digit, as the
-    UI's ``[\\p{L}\\p{M}\\p{N}]``."""
-    return unicodedata.category(char)[0] in 'LMN'
-
-
-def normalize_label(value: str) -> str:
-    """Return the stored form of a label or role name.
-
-    Lowercase; each run of spaces and underscores becomes one hyphen,
-    and so does each run of hyphens; leading and trailing punctuation
-    goes. ``"API"``, ``"api-"``, and ``" Api "`` are all ``"api"``. An
-    empty result means the value has no letter or digit.
-    """
-    value = _LABEL_HYPHENS.sub(
-        '-', _LABEL_SPACES.sub('-', value.strip().lower())
-    )
-    end = len(value)
-    start = next((i for i, c in enumerate(value) if _is_word(c)), end)
-    while end > start and not _is_word(value[end - 1]):
-        end -= 1
-    return value[start:end]
-
-
-def normalize_labels(values: abc.Iterable[str]) -> list[str]:
-    """Return the normalized labels without repeats, in order."""
-    return list(dict.fromkeys(normalize_label(v) for v in values))
-
+#: The event name of a ticket column whose name is not the event name.
+_EVENT_NAMES = {'team_id': 'team'}
 
 #: The statuses that a person sets on a person ticket, and the statuses
 #: that each one can come from (ADR 0028). ``held`` changes only by its
@@ -561,6 +535,13 @@ class NewTask:
     labels: abc.Sequence[str] = ()
     #: ``{role: email}``, with normalized role names.
     roles: Row = dataclasses.field(default_factory=dict[str, typing.Any])
+    #: The id of the team node of the ticket. ``None``: no team.
+    team_id: str | None = None
+    #: The values of the custom fields, checked against the ``Ticket``
+    #: blueprints (:mod:`imbi.api.tickets.custom_fields`).
+    custom_fields: Row = dataclasses.field(
+        default_factory=dict[str, typing.Any]
+    )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -786,6 +767,8 @@ def _search_filters(
     text_agent_ids: list[str] | None,
     text_project_ids: list[str] | None,
     labels: list[str] | None = None,
+    team_ids: list[str] | None = None,
+    custom_fields: list[blueprint_attributes.Predicate] | None = None,
 ) -> tuple[list[sql.Composable], list[typing.Any]]:
     """The ``WHERE`` conditions of :meth:`Store.search` and their
     parameters.
@@ -812,6 +795,36 @@ def _search_filters(
     if labels:
         conditions.append(sql.SQL('labels @> %s'))
         params.append(normalize_labels(labels))
+    if team_ids is not None:
+        # An empty list (no team matched) finds no ticket.
+        conditions.append(sql.SQL('team_id = ANY(%s)'))
+        params.append(list(team_ids))
+    for field, op, values in custom_fields or ():
+        if op in ('exists', 'not_exists'):
+            not_ = 'NOT ' if op == 'not_exists' else ''
+            conditions.append(sql.SQL(not_ + 'custom_fields ? %s'))
+            params.append(field)
+        elif op in ('eq', 'in'):
+            conditions.append(
+                sql.SQL('({})').format(
+                    sql.SQL(' OR ').join(
+                        [sql.SQL('custom_fields @> %s')] * len(values)
+                    )
+                )
+            )
+            params += [pg_json.Jsonb({field: v}) for v in values]
+        else:
+            # As the project filter: a ticket without the field does
+            # not match ``ne`` or ``not_in``.
+            conditions.append(
+                sql.SQL('({})').format(
+                    sql.SQL(' AND ').join(
+                        [sql.SQL('custom_fields->%s <> %s')] * len(values)
+                    )
+                )
+            )
+            for v in values:
+                params += [field, pg_json.Jsonb(v)]
     if text:
         pattern = '%' + _escape_like(text) + '%'
         conditions.append(
@@ -1016,11 +1029,11 @@ class TicketStore:
                     ' idempotency_key, owner, budget, chain_id,'
                     ' output_schema, parent_id, priority,'
                     ' assignee_kind, assignee, status,'
-                    ' type, due_date, labels, roles,'
+                    ' type, due_date, labels, roles, team_id, custom_fields,'
                     ' platform_config_version)'
                     ' VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
                     ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
-                    ' %s, %s, %s, %s,'
+                    ' %s, %s, %s, %s, %s, %s,'
                     ' (SELECT max(version) FROM harness.platform_configs'
                     ' WHERE organization_id = %s))',
                     (
@@ -1052,6 +1065,8 @@ class TicketStore:
                         task.due_date,
                         list(task.labels),
                         pg_json.Jsonb(task.roles),
+                        task.team_id,
+                        pg_json.Jsonb(task.custom_fields),
                         task.organization_id,
                     ),
                 )
@@ -1183,6 +1198,8 @@ class TicketStore:
         text_agent_ids: list[str] | None = None,
         text_project_ids: list[str] | None = None,
         labels: list[str] | None = None,
+        team_ids: list[str] | None = None,
+        custom_fields: list[blueprint_attributes.Predicate] | None = None,
         group: Group | None = None,
         before: tuple[datetime.datetime, uuid.UUID] | None = None,
         offset: int = 0,
@@ -1211,6 +1228,8 @@ class TicketStore:
             text_agent_ids,
             text_project_ids,
             labels,
+            team_ids,
+            custom_fields,
         )
         if group is not None:
             conditions.append(sql.SQL('{group} = %s').format(group=_GROUP))
@@ -1252,6 +1271,8 @@ class TicketStore:
         text_agent_ids: list[str] | None = None,
         text_project_ids: list[str] | None = None,
         labels: list[str] | None = None,
+        team_ids: list[str] | None = None,
+        custom_fields: list[blueprint_attributes.Predicate] | None = None,
     ) -> tuple[str, int] | None:
         """Return the inbox group of the task ``short_id`` and its index
         in that group, in the order of :meth:`search` with the same
@@ -1266,6 +1287,8 @@ class TicketStore:
             text_agent_ids,
             text_project_ids,
             labels,
+            team_ids,
+            custom_fields,
         )
         statement = sql.SQL(
             'SELECT inbox_group, n FROM (SELECT t.short_id,'
@@ -1305,6 +1328,8 @@ class TicketStore:
         text_agent_ids: list[str] | None = None,
         text_project_ids: list[str] | None = None,
         labels: list[str] | None = None,
+        team_ids: list[str] | None = None,
+        custom_fields: list[blueprint_attributes.Predicate] | None = None,
     ) -> dict[str, int]:
         """Return the number of tasks in each inbox group that
         :meth:`search` with the same filters finds. A group with no
@@ -1319,6 +1344,8 @@ class TicketStore:
             text_agent_ids,
             text_project_ids,
             labels,
+            team_ids,
+            custom_fields,
         )
         statement = sql.SQL(
             'SELECT {group} AS inbox_group, count(*)'
@@ -1756,9 +1783,13 @@ class TicketStore:
         *,
         roles_read: Row | None = None,
     ) -> Row:
-        """Change ``type``, ``due_date``, ``labels``, or ``roles`` of the
-        task. Each value that differs writes ``<field>.changed`` with
-        ``from`` and ``to``. Labels and role names must be normalized.
+        """Change ``type``, ``due_date``, ``labels``, ``roles``,
+        ``team_id``, or ``custom_fields`` of the task. Each value that
+        differs writes ``<field>.changed`` with ``from`` and ``to``
+        (``team.changed`` with team ids for ``team_id``).
+        Labels and role names must be normalized. ``custom_fields``
+        merges into the stored values: a key that is not sent stays,
+        and a ``None`` value removes its key.
 
         Raises:
             TaskNotFound: No such task.
@@ -1775,15 +1806,23 @@ class TicketStore:
             changed: Row = {}
             for field, value in changes.items():
                 old = write.task[field]
+                if field == 'custom_fields':
+                    value = {
+                        k: v
+                        for k, v in {**old, **value}.items()
+                        if v is not None
+                    }
                 if old == value:
                     continue
                 await write.event(
-                    f'{field}.changed',
+                    f'{_EVENT_NAMES.get(field, field)}.changed',
                     {'from': _event_value(old), 'to': _event_value(value)},
                     actor,
                 )
                 changed[field] = (
-                    pg_json.Jsonb(value) if field == 'roles' else value
+                    _jsonb(value)
+                    if field in ('roles', 'custom_fields')
+                    else value
                 )
             if changed:
                 await write.update(changed)

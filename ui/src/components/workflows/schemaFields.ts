@@ -83,9 +83,14 @@ export function paramFields(
     if (rawParams.includes(name) && prop.type === 'string') {
       return { ...base, kind: 'code' }
     }
-    // A script's inputs map names to values; a manual trigger's inputs
-    // are a list of declarations.
-    if (name === 'inputs' && prop.type === 'object') {
+    // A free-form map (a script's inputs, the custom fields of an agent
+    // step's ticket) maps names to values; a manual trigger's inputs are
+    // a list of declarations.
+    if (
+      prop.type === 'object' &&
+      prop.additionalProperties !== undefined &&
+      !prop.properties
+    ) {
       return { ...base, kind: 'inputs' }
     }
     if (name === 'inputs' && prop.items) {

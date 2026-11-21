@@ -40,6 +40,7 @@ ALLOWED_ROUTES: frozenset[str] = frozenset(
         'GET /organizations/{org_slug}/tickets/',
         'GET /organizations/{org_slug}/tickets/counts',
         'GET /organizations/{org_slug}/tickets/labels',
+        'GET /organizations/{org_slug}/tickets/schema',
         'GET /organizations/{org_slug}/tickets/waiting',
         'GET /organizations/{org_slug}/tickets/{short_id}',
         'GET /organizations/{org_slug}/tickets/{short_id}/events',

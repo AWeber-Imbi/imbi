@@ -133,7 +133,7 @@ export const SCRIPT: StepType = stepType({
     properties: {
       branches: { default: [], items: { type: 'string' }, type: 'array' },
       code: { type: 'string' },
-      inputs: { default: {}, type: 'object' },
+      inputs: { additionalProperties: true, default: {}, type: 'object' },
       output_fields: {
         items: { $ref: '#/$defs/OutputField' },
         type: 'array',

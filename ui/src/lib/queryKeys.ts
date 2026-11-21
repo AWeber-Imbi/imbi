@@ -107,6 +107,8 @@ export const queryKeys = {
   // Without params: the prefix of every task list of the org.
   tickets: (orgSlug: string, ...params: object[]) =>
     ['tickets', orgSlug, ...params] as const,
+  ticketSchema: (orgSlug: string, params: object) =>
+    ['ticketSchema', orgSlug, params] as const,
   ticketSubject: (orgSlug: string, description: string) =>
     ['ticketSubject', orgSlug, description] as const,
   ticketsWaiting: (orgSlug: string) => ['ticketsWaiting', orgSlug] as const,

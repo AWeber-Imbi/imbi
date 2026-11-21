@@ -33,6 +33,7 @@ from imbi.api.graph_sql import props_template
 from imbi.api.harness import auth as harness_auth
 from imbi.api.workflows import ticket_trigger
 from imbi.common import graph
+from imbi.common import models as imbi_models
 
 ALL_PERMISSIONS = frozenset(
     {
@@ -1554,6 +1555,68 @@ class RetryTests(AgentTaskTestCase):
         original = await self.store.get(self.org, 'T-1')
         assert original is not None
         self.assertEqual(original['status'], 'closed')
+
+    async def test_copy_keeps_team_and_custom_fields(self) -> None:
+        # A required field with no default: a copy without the value,
+        # the type, or the labels would get 422.
+        label = f'retry-{self.team_id}'
+        bp = imbi_models.Blueprint(
+            name=f'Retry {label}',
+            type='Ticket',
+            filter={'ticket_type': ['bug'], 'label': [label]},
+            json_schema=imbi_models.Schema.model_validate(
+                {
+                    'type': 'object',
+                    'properties': {'severity': {'type': 'string'}},
+                    'required': ['severity'],
+                }
+            ),
+        )
+        await self.graph.create(bp)
+        self.addAsyncCleanup(
+            self.graph.execute,
+            'MATCH (b:Blueprint {{id: {id}}}) DETACH DELETE b RETURN 1 AS ok',
+            {'id': bp.id},
+            ['ok'],
+        )
+        response = await self.create_task(
+            type='bug',
+            labels=[label],
+            team=self.team_id,
+            custom_fields={'severity': 'sev1'},
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        short_id = response.json()['short_id']
+        await self.store.set_outcome(
+            self.org,
+            short_id,
+            'failed_external',
+            'secret_refused',
+            tickets.Actor('agent', 'triage', 'harness'),
+        )
+        response = await self.client.post(
+            self.url(f'{short_id}/retry'), json={}
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        task = response.json()
+        self.assertEqual(task['type'], 'bug')
+        self.assertEqual(task['labels'], [label])
+        self.assertEqual(task['team']['slug'], self.team_id)
+        self.assertEqual(task['custom_fields'], {'severity': 'sev1'})
+
+    async def test_copy_drops_a_hidden_value(self) -> None:
+        # No blueprint declares ``gone`` now: a copy with it would get
+        # 422 that the person cannot fix.
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE tickets.tickets SET custom_fields = %s'
+                " WHERE organization_id = %s AND short_id = 'T-1'",
+                (json.dumps({'gone': 'x'}), self.org),
+            )
+        await self.fail()
+        response = await self.retry()
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(response.json()['custom_fields'], {})
 
     async def test_repeat_with_key_returns_first_copy(self) -> None:
         await self.fail(turn=None)
