@@ -95,6 +95,7 @@ import { activeCount, ME, useTaskFilters } from './taskFilters'
 import {
   errorMessage,
   TASK_PAGE,
+  ticketPageQuery,
   useTicketCounts,
   useTicketGroupPages,
 } from './taskQueries'
@@ -622,19 +623,16 @@ function TaskInbox({
       const at = await getTicketPosition(orgSlug, selected, params)
       const { group } = at
       const offset = Math.floor(at.index / TASK_PAGE) * TASK_PAGE
-      const pageKey = queryKeys.tickets(orgSlug, { ...params, group, offset })
-      await Promise.all([
+      // The page may not be loaded yet: fetch it, then open the unit
+      // at the position in the run view.
+      const [, page] = await Promise.all([
         counts.refetch(),
-        queryClient.refetchQueries({ exact: true, queryKey: pageKey }),
+        queryClient.fetchQuery(ticketPageQuery(orgSlug, params, group, offset)),
       ])
       if (request !== revealRequest.current) return
-      // In the run view, open the unit that holds the ticket.
-      const unit =
-        queryClient.getQueryData<TicketListItem[]>(pageKey)?.[
-          at.index % TASK_PAGE
-        ]?.unit
-      if (unit && unitHolds(unit, selected))
-        setExpanded((current) => new Set(current).add(unit.key))
+      const row = page[at.index % TASK_PAGE]
+      if (row && isUnit(row) && row.short_id !== selected.toUpperCase())
+        setExpanded((current) => new Set(current).add(row.unit.key))
       setCollapsed((current) =>
         current.includes(group) ? current.filter((g) => g !== group) : current,
       )

@@ -30,7 +30,7 @@ export function barClass(item: TicketUnitItem): string {
 export function treeOf(items: TicketUnitItem[]) {
   const children = new Map<string, TicketUnitItem[]>()
   for (const item of items)
-    if (item.nested && item.parent_short_id)
+    if (!isRoot(item, items) && item.parent_short_id)
       children.set(item.parent_short_id, [
         ...(children.get(item.parent_short_id) ?? []),
         item,
@@ -38,7 +38,7 @@ export function treeOf(items: TicketUnitItem[]) {
   const below = (id: string): TicketUnitItem[] =>
     (children.get(id) ?? []).flatMap((c) => [c, ...below(c.short_id)])
   return items
-    .filter((i) => !i.nested)
+    .filter((i) => isRoot(i, items))
     .map((top) => ({
       descendants: below(top.short_id).sort((a, b) =>
         a.created_at.localeCompare(b.created_at),
@@ -53,7 +53,7 @@ export function treeOf(items: TicketUnitItem[]) {
  * the title of its first ticket.
  */
 export function unitTitle(unit: TicketUnit, fallback: string): string {
-  const top = unit.items.filter((i) => !i.nested)
+  const top = unit.items.filter((i) => isRoot(i, unit.items))
   return (
     unit.subject ??
     (top.length > 1 ? sharedPrefix(top.map((i) => i.title)) : undefined) ??
@@ -61,6 +61,14 @@ export function unitTitle(unit: TicketUnit, fallback: string): string {
     top[0]?.title ??
     fallback
   )
+}
+
+/**
+ * Whether a ticket is a top-level row of its unit: its parent is not in
+ * the unit, or not in `items`, which a large unit truncates.
+ */
+function isRoot(item: TicketUnitItem, items: TicketUnitItem[]): boolean {
+  return !item.nested || !items.some((i) => i.short_id === item.parent_short_id)
 }
 
 /** The text before `: ` that every title has, if they all share one. */

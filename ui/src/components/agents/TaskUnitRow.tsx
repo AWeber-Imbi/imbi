@@ -211,7 +211,14 @@ function UnitTree({
   top: TicketUnitItem
 }) {
   const [all, setAll] = useState(false)
-  const shown = all ? descendants : descendants.slice(-CHILDREN_SHOWN)
+  // The last children, and the selected one wherever it is.
+  const shown = all
+    ? descendants
+    : descendants.filter(
+        (d, i) =>
+          i >= descendants.length - CHILDREN_SHOWN ||
+          d.short_id.toUpperCase() === selectedId,
+      )
   const row = (item: TicketUnitItem, depth: 0 | 1) => (
     <li key={item.short_id}>
       <Link

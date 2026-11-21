@@ -1886,6 +1886,102 @@ describe('Tasks', () => {
       )
     })
 
+    it('fetches the page of a collapsed group to open the revealed run', async () => {
+      vi.mocked(window.localStorage.getItem).mockImplementation((key) =>
+        key === 'imbi.tasks.collapsed'
+          ? '["running"]'
+          : key === 'imbi.tasks.byRun'
+            ? 'true'
+            : null,
+      )
+      vi.mocked(endpoints.getTicketPosition).mockResolvedValue({
+        group: 'running',
+        index: 0,
+      })
+      try {
+        renderAt('/tickets/acme/T-24')
+        expect(
+          await screen.findByRole('list', { name: 'Tickets of PSE-1' }),
+        ).toBeInTheDocument()
+      } finally {
+        vi.mocked(window.localStorage.getItem).mockReturnValue(null)
+      }
+    })
+
+    it('opens a truncated run whose items miss the revealed ticket', async () => {
+      const listRun = vi.mocked(endpoints.listTickets).getMockImplementation()
+      vi.mocked(endpoints.listTickets).mockImplementation(
+        async (org, params, signal) =>
+          params.group_by === 'run' && params.group === 'running'
+            ? [
+                {
+                  ...RUN,
+                  unit: { ...RUN.unit!, tickets: 101, truncated: true },
+                },
+              ]
+            : listRun!(org, params, signal),
+      )
+      vi.mocked(endpoints.getTicketPosition).mockResolvedValue({
+        group: 'running',
+        index: 0,
+      })
+      await groupByRun('/tickets/acme/T-99')
+      fireEvent.click(screen.getByRole('button', { name: 'Reveal in list' }))
+      const list = await screen.findByRole('list', {
+        name: 'Tickets of PSE-1',
+      })
+      expect(
+        within(list).getByText('Showing the first 7 of 101 tickets.'),
+      ).toBeInTheDocument()
+    })
+
+    it('shows the selected child that Show all would hide', async () => {
+      fireEvent.click(await groupByRun('/tickets/acme/T-25'))
+      const list = screen.getByRole('list', { name: 'Tickets of PSE-1' })
+      const link = within(list)
+        .getAllByRole('link')
+        .find((a) => a.getAttribute('href') === '/tickets/acme/T-25')
+      expect(link).toHaveAttribute('aria-current', 'page')
+    })
+
+    it('shows a child whose parent the truncated items leave out', async () => {
+      const ORPHAN = unitRow(
+        task({ id: 'orphan', short_id: 'T-91', title: 'Top ticket' }),
+        [
+          unitItem({ short_id: 'T-91', title: 'Top ticket' }),
+          unitItem({
+            created_at: '2026-10-08T12:01:00Z',
+            nested: true,
+            parent_short_id: 'T-90',
+            short_id: 'T-92',
+            title: 'Child of a cut parent',
+          }),
+        ],
+        { subject: 'PSE-9', tickets: 150, truncated: true },
+      )
+      const listRun = vi.mocked(endpoints.listTickets).getMockImplementation()
+      vi.mocked(endpoints.listTickets).mockImplementation(
+        async (org, params, signal) =>
+          params.group_by === 'run' && params.group === 'queued'
+            ? [ORPHAN]
+            : listRun!(org, params, signal),
+      )
+      await groupByRun()
+      const expand = await screen.findByRole('button', {
+        name: 'Expand PSE-9',
+      })
+      const bars = [
+        ...expand.parentElement!.querySelectorAll<HTMLElement>('[data-bar]'),
+      ]
+      expect(bars.map((b) => b.dataset.bar)).toEqual(['T-91', 'T-92'])
+      fireEvent.click(expand)
+      expect(
+        within(
+          screen.getByRole('list', { name: 'Tickets of PSE-9' }),
+        ).getByText('Child of a cut parent'),
+      ).toBeInTheDocument()
+    })
+
     it('shows a run of one ticket as a ticket row', async () => {
       await groupByRun()
       await waitFor(() => expect(inboxTitles()).toEqual(['PSE-1', 'Solo work']))
