@@ -365,30 +365,6 @@ CREATE INDEX IF NOT EXISTS tickets_labels_idx ON tickets.tickets
   USING GIN (labels);
 """
 
-# The tickets of a workflow run (`origin.workflow_run_id`), which the
-# run view of the ticket list groups into one row. The build is
-# CONCURRENTLY, so ticket writes do not wait for it. A failed
-# CONCURRENTLY build leaves an INVALID index, so `when` is true until a
-# valid index exists, and the step drops a leftover index first.
-[[steps]]
-name = "tickets-workflow-run-index"
-after_tables = true
-transaction = false
-when = """
-SELECT NOT EXISTS (
-  SELECT 1 FROM pg_index
-   WHERE indexrelid = to_regclass('tickets.tickets_workflow_run_idx')
-     AND indisvalid)
-"""
-sql = [
-  "DROP INDEX CONCURRENTLY IF EXISTS tickets.tickets_workflow_run_idx",
-  """
-CREATE INDEX CONCURRENTLY tickets_workflow_run_idx
-  ON tickets.tickets (organization_id, (origin->>'workflow_run_id'))
-  WHERE origin ? 'workflow_run_id'
-""",
-]
-
 # One row per ticket.
 #
 # `last_seq` is the sequence number of the newest event. An event write
