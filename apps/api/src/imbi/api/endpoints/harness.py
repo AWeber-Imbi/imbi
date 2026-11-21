@@ -54,6 +54,7 @@ from imbi.api.harness import store as harness_store
 from imbi.api.middleware import rate_limit
 from imbi.api.secret_broker import broker, providers
 from imbi.api.secret_broker import store as secret_store
+from imbi.api.tickets import custom_fields
 from imbi.api.tickets import store as ticket_store
 from imbi.common import graph, models
 from imbi.common.prompts import rendering
@@ -2033,7 +2034,9 @@ async def create_harness_child_task(
             agent needs (``runner_label_missing``), or the pod of the
             chain does not have an egress destination that the child
             agent has (``egress_destination_missing``).
-        422: No such agent, or a budget over its task budget.
+        422: No such agent, a budget over its task budget, or a
+            required custom field with no default
+            (``custom_fields_invalid``).
 
     """
     parent = await _chain_task(caller, short_id, db, store)
@@ -2117,6 +2120,13 @@ async def create_harness_child_task(
         'short_id': parent['short_id'],
         'agent_id': parent['agent_id'],
     }
+    # A child ticket is a ``task`` of ``normal`` priority with no
+    # labels; it gets the defaults of the blueprints that match that.
+    values = custom_fields.validate(
+        await custom_fields.matched(db, 'task', 'normal', []),
+        {},
+        partial=False,
+    )
     try:
         task, created = await store.create(
             tickets.NewTask(
@@ -2134,6 +2144,7 @@ async def create_harness_child_task(
                 owner=parent['owner'],
                 budget=budget,
                 chain_id=chain_id,
+                custom_fields=values,
             ),
             tickets.Actor('agent', parent['agent_id'], 'harness'),
             {

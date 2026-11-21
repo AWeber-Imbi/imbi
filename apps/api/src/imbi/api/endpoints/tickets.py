@@ -33,7 +33,7 @@ import orjson
 import pydantic
 from fastapi import utils as fastapi_utils
 
-from imbi.api import tickets
+from imbi.api import blueprint_attributes, blueprint_sections, tickets
 from imbi.api.auth import autonomous, organizations, permissions
 from imbi.api.endpoints import agents
 from imbi.api.endpoints._pagination import (
@@ -42,12 +42,14 @@ from imbi.api.endpoints._pagination import (
     encode_cursor,
 )
 from imbi.api.llm.dependencies import InjectAnthropicClient
+from imbi.api.tickets import custom_fields
 from imbi.api.tickets.store import (
     MAX_LABEL_LENGTH,
     ActorKind,
     AssigneeKind,
     Channel,
     Control,
+    CustomFieldFilter,
     Group,
     PersonOutcome,
     Priority,
@@ -210,6 +212,12 @@ class AgentTaskCreate(pydantic.BaseModel):
     team: _ShortText | None = pydantic.Field(
         default=None, description='The slug of a team of the org.'
     )
+    custom_fields: dict[str, typing.Any] = pydantic.Field(
+        default_factory=dict[str, typing.Any],
+        description='The values of the custom fields that the Ticket '
+        'blueprints of the ticket define (see the tickets schema). '
+        'Each required field with no default must have a value.',
+    )
 
     @pydantic.model_validator(mode='before')
     @classmethod
@@ -286,6 +294,9 @@ class TicketUpdate(pydantic.BaseModel):
     roles: Roles = {}
     #: The slug of a team of the org. ``null`` clears the team.
     team: _ShortText | None = None
+    #: The custom fields to change. A field that is not sent stays;
+    #: ``null`` clears one field.
+    custom_fields: dict[str, typing.Any] = {}
 
 
 class TicketRank(pydantic.BaseModel):
@@ -312,6 +323,26 @@ class TicketSubjectResponse(TicketSubject):
     #: The model was not called or failed; ``subject`` is the first
     #: line of the description.
     degraded: bool
+
+
+class TicketSchemaResponse(pydantic.BaseModel):
+    """The custom fields of a ticket, by blueprint."""
+
+    sections: list[blueprint_sections.BlueprintSection]
+
+
+#: The custom field filters of the ticket list.
+CustomFieldFilters = typing.Annotated[
+    list[str] | None,
+    fastapi.Query(
+        alias='filter',
+        description='Filter tickets by custom field, as '
+        '``field:op[:value]`` (repeatable; combined with AND). '
+        'Operators: eq, ne, in, not_in (comma-separated values), '
+        'exists, not_exists. ne/not_in exclude tickets where the field '
+        'is unset. Example: severity:in:sev1,sev2',
+    ),
+]
 
 
 class TicketLabelCount(pydantic.BaseModel):
@@ -390,6 +421,9 @@ class AgentTaskResponse(pydantic.BaseModel):
     labels: list[str] = []
     roles: dict[str, str] = {}
     team: TicketTeam | None = None
+    #: The values of the custom fields, also of the fields that the
+    #: blueprints of the ticket do not declare now (a client hides them).
+    custom_fields: dict[str, typing.Any] = {}
     #: The place in the backlog, lower first. ``None``: not ranked.
     backlog_rank: float | None = None
     phase: str | None = None
@@ -1465,8 +1499,11 @@ async def create_agent_task(
             the budget is more than the agent's task budget, a service
             does not name its origin, the webhook does not exist, a
             prerequisite is not found, the key has the shape of a
-            workflow step key (``<uuid>:<node_key>``), or ``team`` is
-            not a team of the org (``team_not_found``).
+            workflow step key (``<uuid>:<node_key>``), ``team`` is
+            not a team of the org (``team_not_found``), or a required
+            custom field has no value or a custom field is not valid
+            (``custom_fields_invalid``, with ``missing`` and
+            ``invalid``).
 
     """
     origin = task_origin(
@@ -1619,6 +1656,11 @@ async def make_task(
     projects = await project_slugs(db, org_slug, data.project_ids)
     await _role_members(db, org_slug, data.roles)
     team = await team_ref(db, org_slug, data.team)
+    values = custom_fields.validate(
+        await custom_fields.matched(db, data.type, data.priority, data.labels),
+        data.custom_fields,
+        partial=False,
+    )
     if data.assignee_kind == 'person':
         assignee = await person_assignee(db, org_slug, data.assignee)
     else:
@@ -1657,6 +1699,7 @@ async def make_task(
                 labels=data.labels,
                 roles=data.roles,
                 team=team,
+                custom_fields=values,
             ),
             actor,
             {
@@ -1674,6 +1717,7 @@ async def make_task(
                 'labels': data.labels,
                 'roles': data.roles,
                 'team': team,
+                'custom_fields': values,
             },
         )
     except tickets.TaskNotFound as e:
@@ -1729,6 +1773,7 @@ async def list_agent_tasks(
     owner: typing.Annotated[list[str] | None, fastapi.Query()] = None,
     label: typing.Annotated[list[str] | None, fastapi.Query()] = None,
     team: typing.Annotated[list[str] | None, fastapi.Query()] = None,
+    filters: CustomFieldFilters = None,
     mine: bool = False,
     q: str | None = None,
     limit: typing.Annotated[int, fastapi.Query(ge=1, le=100)] = 50,
@@ -1789,6 +1834,7 @@ async def list_agent_tasks(
         text_project_ids=list(projects),
         labels=label,
         teams=team,
+        custom_fields=await _custom_filters(db, filters),
         group=group,
         before=before,
         offset=offset,
@@ -1834,6 +1880,7 @@ async def count_agent_tasks(
     owner: typing.Annotated[list[str] | None, fastapi.Query()] = None,
     label: typing.Annotated[list[str] | None, fastapi.Query()] = None,
     team: typing.Annotated[list[str] | None, fastapi.Query()] = None,
+    filters: CustomFieldFilters = None,
     mine: bool = False,
     q: str | None = None,
 ) -> dict[str, int]:
@@ -1859,6 +1906,7 @@ async def count_agent_tasks(
         text_project_ids=list(projects),
         labels=label,
         teams=team,
+        custom_fields=await _custom_filters(db, filters),
     )
 
 
@@ -1878,6 +1926,7 @@ async def get_agent_task_position(
     owner: typing.Annotated[list[str] | None, fastapi.Query()] = None,
     label: typing.Annotated[list[str] | None, fastapi.Query()] = None,
     team: typing.Annotated[list[str] | None, fastapi.Query()] = None,
+    filters: CustomFieldFilters = None,
     mine: bool = False,
     q: str | None = None,
 ) -> dict[str, typing.Any]:
@@ -1904,12 +1953,25 @@ async def get_agent_task_position(
         text_project_ids=list(projects),
         labels=label,
         teams=team,
+        custom_fields=await _custom_filters(db, filters),
     )
     if found is None:
         raise fastapi.HTTPException(
             status_code=404, detail=f'{short_id} is not in the list'
         )
     return {'group': found[0], 'index': found[1]}
+
+
+async def _custom_filters(
+    db: graph.Graph, filters: list[str] | None
+) -> list[CustomFieldFilter] | None:
+    """Parse the custom field filters of the ticket list, or raise
+    400 (see :func:`blueprint_attributes.parse_filters`)."""
+    if not filters:
+        return None
+    return blueprint_attributes.parse_filters(
+        filters, await custom_fields.filterable(db)
+    )
 
 
 async def _text_matches(
@@ -2047,6 +2109,33 @@ async def suggest_ticket_subject(
         'subject': subject or fallback.subject,
         'degraded': result.degraded,
     }
+
+
+@tickets_router.get('/schema', response_model=TicketSchemaResponse)
+async def get_ticket_schema(
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('ticket:read')),
+    ],
+    type: TicketType = 'task',
+    priority: Priority = 'normal',
+    label: typing.Annotated[list[str] | None, fastapi.Query()] = None,
+) -> dict[str, typing.Any]:
+    """Return the custom fields of a ticket with this type, priority,
+    and labels: one section for each ``Ticket`` blueprint that matches,
+    by blueprint priority. A later blueprint overrides an earlier one
+    for the same field.
+
+    Raises:
+        403: The caller is not a member of the org.
+        404: No such organization.
+
+    """
+    matches = await custom_fields.matched(
+        db, type, priority, normalize_labels(label or [])
+    )
+    return {'sections': custom_fields.sections(matches)}
 
 
 @tickets_router.get('/labels', response_model=list[TicketLabelCount])
@@ -2745,16 +2834,33 @@ async def update_ticket(
         404: No such task.
         409: The task is closed, or its roles changed while this
             request checked them (``roles_changed``).
-        422: A person in ``roles`` is not in the org, or ``team`` is
-            not a team of the org (``team_not_found``).
+        422: A person in ``roles`` is not in the org, ``team`` is not
+            a team of the org (``team_not_found``), or a custom field
+            is not valid (``custom_fields_invalid``; only the sent
+            fields are checked, against the blueprints that match the
+            ticket after the change).
 
     """
     changes = data.model_dump(include=data.model_fields_set)
     if 'team' in changes:
         changes['team'] = await team_ref(db, org_slug, data.team)
     known: dict[str, str] | None = None
-    if data.roles:
-        task = await _get_task(store, org_id, short_id)
+    task = (
+        await _get_task(store, org_id, short_id)
+        if data.roles or data.custom_fields
+        else None
+    )
+    if task is not None and data.custom_fields:
+        matches = await custom_fields.matched(
+            db,
+            changes.get('type', task['type']),
+            task['priority'],
+            changes.get('labels', task['labels']),
+        )
+        changes['custom_fields'] = custom_fields.validate(
+            matches, data.custom_fields, partial=True
+        )
+    if task is not None and data.roles:
         known = task['roles'] or {}
         await _role_members(db, org_slug, data.roles, known)
     with write_errors(short_id):
