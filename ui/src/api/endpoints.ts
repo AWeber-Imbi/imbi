@@ -3851,6 +3851,8 @@ const ticketPath = (orgSlug: string, shortId: string) =>
 
 export interface TicketListParams {
   agent_id?: string[]
+  /** Custom field filters, as `field:op[:value]`, combined with AND. */
+  filter?: string[]
   /** One inbox group, in the order of the inbox; it pages with `offset`. */
   group?: keyof TicketCounts
   /** Tickets with every one of these labels. */
@@ -3861,6 +3863,8 @@ export interface TicketListParams {
   owner?: string[]
   q?: string
   status?: TicketStatus[]
+  /** Tickets of one of these teams, by slug. */
+  team?: string[]
 }
 
 export const listTickets = (
@@ -4026,6 +4030,21 @@ export const suggestTicketSubject = (
   apiClient.post<TicketSubject>(
     `${ticketsApiPath(orgSlug)}/subject`,
     { description },
+    signal,
+  )
+
+/**
+ * The custom fields of a ticket with this type, priority, and labels:
+ * one section for each `Ticket` blueprint that matches.
+ */
+export const getTicketSchema = (
+  orgSlug: string,
+  params: { label: string[]; priority: string; type: string },
+  signal?: AbortSignal,
+) =>
+  apiClient.get<ProjectSchemaResponse>(
+    `${ticketsApiPath(orgSlug)}/schema`,
+    { ...params },
     signal,
   )
 

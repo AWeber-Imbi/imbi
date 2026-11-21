@@ -49,6 +49,7 @@ import { toast } from 'sonner'
 import { ApiError } from '@/api/client'
 import {
   getTicketPosition,
+  listBlueprints,
   listTicketLabels,
   rankTicket,
 } from '@/api/endpoints'
@@ -64,6 +65,7 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAuth } from '@/hooks/useAuth'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useHasPermission } from '@/hooks/useHasPermission'
+import { useTeams } from '@/hooks/useOrgResources'
 import { queryKeys } from '@/lib/queryKeys'
 import { storage } from '@/lib/storage'
 import { cn } from '@/lib/utils'
@@ -87,7 +89,13 @@ import {
   PersonMark,
   TaskFilterBar,
 } from './TaskFilterBar'
-import { activeCount, ME, useTaskFilters } from './taskFilters'
+import {
+  activeCount,
+  fieldFilters,
+  filterFields,
+  ME,
+  useTaskFilters,
+} from './taskFilters'
 import {
   errorMessage,
   TASK_PAGE,
@@ -372,11 +380,13 @@ function TaskInbox({
   const q = useDebouncedValue(text.trim(), 250) || undefined
   const params = {
     agent_id: nonEmpty(filters.agents),
+    filter: nonEmpty(fieldFilters(filters)),
     label: nonEmpty(filters.labels),
     mine: filters.assignees.includes(ME),
     owner: nonEmpty(filters.assignees.filter((a) => a !== ME)),
     q,
     status: nonEmpty(filters.states),
+    team: nonEmpty(filters.teams),
   }
   const paramsKey = JSON.stringify(params)
   const shownParams = useRef(paramsKey)
@@ -487,6 +497,17 @@ function TaskInbox({
     queryKey: queryKeys.ticketLabels(orgSlug, labelQ),
     staleTime: 60_000,
   })
+  const { data: teams = [] } = useTeams(orgSlug)
+  // Needs `blueprint:read`; without it, the menu has no custom fields.
+  const { data: blueprints } = useQuery({
+    queryFn: ({ signal }) => listBlueprints(undefined, signal),
+    queryKey: ['blueprints'],
+    staleTime: 60_000,
+  })
+  const customFields = useMemo(
+    () => filterFields(blueprints ?? []),
+    [blueprints],
+  )
   const [dragging, setDragging] = useState<string>()
   const rank = useMutation({
     mutationFn: ({
@@ -635,6 +656,7 @@ function TaskInbox({
           </>
         }
         agents={agents}
+        customFields={customFields}
         filters={filters}
         labels={topLabels.map((l) => l.name)}
         me={user?.email}
@@ -653,6 +675,7 @@ function TaskInbox({
             />
           </div>
         }
+        teams={teams}
       />
       {error && (
         <Alert className="m-3" title="Could not load tickets" variant="danger">

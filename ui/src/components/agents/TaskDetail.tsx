@@ -1,8 +1,15 @@
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Ban,
   Box,
@@ -19,12 +26,14 @@ import { ApiError } from '@/api/client'
 import {
   controlTicket,
   deleteTicket,
+  getTicketSchema,
   rankTicket,
   reassignTicket,
   retryTicket,
   setTicketPriority,
   updateTicket,
 } from '@/api/endpoints'
+import { BlueprintFields } from '@/components/ProjectAttributesSection'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -88,6 +97,7 @@ import {
   roleRows,
   RolesEditor,
   rolesOf,
+  TeamPicker,
   TICKET_TYPES,
   TypePicker,
   usePeople,
@@ -444,6 +454,19 @@ function OverviewTab({
         '—'
       ),
     },
+    {
+      name: 'Team',
+      value: editable ? (
+        <TeamPicker
+          disabled={update.isPending}
+          onChange={(slug) => update.mutate({ team: slug || null })}
+          orgSlug={orgSlug}
+          value={task.team?.slug ?? ''}
+        />
+      ) : (
+        (task.team?.name ?? '—')
+      ),
+    },
     { name: 'Started', value: new Date(task.created_at).toLocaleString() },
   ]
   if (task.status === 'closed') {
@@ -505,6 +528,7 @@ function OverviewTab({
           </p>
         )}
       </Card>
+      <TicketCustomFields editable={editable} orgSlug={orgSlug} task={task} />
       <TicketPeopleAndLabels
         editable={editable}
         onUpdate={(body, onSuccess) => update.mutate(body, { onSuccess })}
@@ -989,6 +1013,63 @@ function TaskRetry({ orgSlug, task }: { orgSlug: string; task: Ticket }) {
         )}
       </PopoverContent>
     </Popover>
+  )
+}
+
+/**
+ * The custom fields that the `Ticket` blueprints of the ticket declare,
+ * editable with `ticket:manage`. A stored value that no blueprint
+ * declares now stays hidden.
+ */
+function TicketCustomFields({
+  editable,
+  orgSlug,
+  task,
+}: {
+  editable: boolean
+  orgSlug: string
+  task: Ticket
+}) {
+  const params = {
+    label: task.labels,
+    priority: task.priority,
+    type: task.type,
+  }
+  const { data } = useQuery({
+    queryFn: ({ signal }) => getTicketSchema(orgSlug, params, signal),
+    queryKey: queryKeys.ticketSchema(orgSlug, params),
+  })
+  const update = useTicketMutation(
+    orgSlug,
+    task.short_id,
+    (custom_fields: Record<string, unknown>) =>
+      updateTicket(orgSlug, task.short_id, { custom_fields }),
+  )
+  const values = task.custom_fields
+  const valueOf = useCallback((key: string) => values?.[key], [values])
+  const sections = data?.sections ?? []
+  if (!sections.some((s) => Object.keys(s.properties).length)) return null
+  const pending = update.isPending && Object.keys(update.variables ?? {})[0]
+  return (
+    <Card className="p-5">
+      <h3 className="text-overline text-tertiary mb-2 uppercase">
+        Custom fields
+      </h3>
+      <BlueprintFields
+        patch={(path, value) =>
+          update
+            .mutateAsync({ [path.slice(1)]: value })
+            .then(() => undefined)
+            .catch((err: Error) => {
+              throw new Error(errorMessage(err))
+            })
+        }
+        pendingPath={pending ? `/${pending}` : null}
+        readOnly={!editable}
+        sections={sections}
+        valueOf={valueOf}
+      />
+    </Card>
   )
 }
 

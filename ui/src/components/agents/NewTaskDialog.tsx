@@ -16,9 +16,13 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { ApiError } from '@/api/client'
 import {
   createTicket,
+  type DynamicFieldSchema,
+  type DynamicSchema,
   getProjectsSlim,
+  getTicketSchema,
   listTickets,
   reassignTicket,
   setTicketParent,
@@ -46,6 +50,11 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  DynamicFormFields,
+  requiredBlueprintFields,
+  validateDynamicFields,
+} from '@/components/ui/dynamic-fields'
 import { EntityIcon } from '@/components/ui/entity-icon'
 import { Input } from '@/components/ui/input'
 import {
@@ -63,6 +72,7 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAuth } from '@/hooks/useAuth'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useHasPermission } from '@/hooks/useHasPermission'
+import { useTeams } from '@/hooks/useOrgResources'
 import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
 import type { Agent, TicketListItem, TicketType } from '@/types'
@@ -80,6 +90,7 @@ import {
   type RoleRow,
   RolesEditor,
   rolesOf,
+  TeamPicker,
   TypePicker,
   usePeople,
 } from './ticketAttributes'
@@ -131,6 +142,9 @@ export function NewTaskDialog({
   const [projectIds, setProjectIds] = useState<string[]>([])
   const [labels, setLabels] = useState<string[]>([])
   const [owner, setOwner] = useState('')
+  const [team, setTeam] = useState('')
+  const [fieldValues, setFieldValues] = useState<Record<string, unknown>>({})
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [roles, setRoles] = useState<RoleRow[]>([])
   const [parent, setParent] = useState<null | TicketListItem>(null)
   const [requires, setRequires] = useState<Prerequisite[]>([])
@@ -156,6 +170,9 @@ export function NewTaskDialog({
     setProjectIds([])
     setLabels([])
     setOwner('')
+    setTeam('')
+    setFieldValues({})
+    setFieldErrors({})
     setRoles([])
     setParent(null)
     setRequires([])
@@ -213,6 +230,13 @@ export function NewTaskDialog({
     (person ? !!assignee : !!agentSlug)
   const ownerEmail = owner || me
   const roleMap = rolesOf(roles)
+  const { data: teams = [] } = useTeams(orgSlug, { enabled: isOpen })
+  const schemaParams = { label: labels, priority, type }
+  const schema = useQuery({
+    enabled: isOpen && !!orgSlug,
+    queryFn: ({ signal }) => getTicketSchema(orgSlug, schemaParams, signal),
+    queryKey: queryKeys.ticketSchema(orgSlug, schemaParams),
+  })
 
   const create = useMutation({
     mutationFn: async () => {
@@ -220,6 +244,7 @@ export function NewTaskDialog({
         ...(person
           ? { assignee, assignee_kind: 'person' }
           : { agent_slug: agentSlug, assignee_kind: 'agent' }),
+        custom_fields: customFields,
         description: description.trim(),
         due_date: due || null,
         labels,
@@ -227,6 +252,7 @@ export function NewTaskDialog({
         project_ids: projectIds,
         requires: requires.map(({ gates, short_id }) => ({ gates, short_id })),
         roles: roleMap,
+        team: team || null,
         title: title.trim(),
         type,
       })
@@ -267,6 +293,28 @@ export function NewTaskDialog({
   }, [isOpen, reset])
   const canSubmit =
     ready && roleErrors(roles).every((e) => !e) && !create.isPending
+  // The required fields with no default, and each field that the API
+  // said is missing (the schema here can be older than the API's).
+  const issues = customFieldIssues(create.error)
+  const required = requiredBlueprintFields(schema.data?.sections)
+  const fieldSchema: DynamicSchema = {
+    properties: { ...required.properties, ...issues.missing },
+    required: [...(required.required ?? []), ...Object.keys(issues.missing)],
+  }
+  // An unchecked required boolean means false, not "not set".
+  const customFields = Object.fromEntries(
+    Object.entries(fieldSchema.properties)
+      .map(([key, field]) => [
+        key,
+        fieldValues[key] ?? (field.type === 'boolean' ? false : undefined),
+      ])
+      .filter(([, value]) => value !== undefined),
+  )
+  const submit = () => {
+    const errors = validateDynamicFields(fieldSchema, customFields)
+    setFieldErrors(errors)
+    if (canSubmit && Object.keys(errors).length === 0) create.mutate()
+  }
 
   const relationsSummary =
     [
@@ -296,7 +344,7 @@ export function NewTaskDialog({
           id="new-ticket"
           onSubmit={(e) => {
             e.preventDefault()
-            if (canSubmit) create.mutate()
+            submit()
           }}
         >
           <Field
@@ -415,6 +463,15 @@ export function NewTaskDialog({
             </Field>
           </div>
 
+          <DynamicFormFields
+            data={fieldValues}
+            errors={{ ...issues.errors, ...fieldErrors }}
+            onChange={(key, value) =>
+              setFieldValues((prev) => ({ ...prev, [key]: value }))
+            }
+            schema={fieldSchema}
+          />
+
           <div className="border-tertiary rounded-md border">
             <Disclosure
               label="Owner"
@@ -436,6 +493,15 @@ export function NewTaskDialog({
                 Accountable for the outcome. Defaults to you; can differ from
                 the assignee.
                 {!canManage && ' Another owner needs ticket:manage.'}
+              </span>
+            </Disclosure>
+            <Disclosure
+              label="Team"
+              summary={teams.find((t) => t.slug === team)?.name ?? 'None'}
+            >
+              <TeamPicker onChange={setTeam} orgSlug={orgSlug} value={team} />
+              <span className="text-tertiary text-[12.5px]">
+                The team that owns the work.
               </span>
             </Disclosure>
             <Disclosure
@@ -602,6 +668,46 @@ function AgentRow({ agent }: { agent: Agent }) {
       )}
     </span>
   )
+}
+
+/**
+ * The field errors of a `custom_fields_invalid` 422, and the property of
+ * each missing field, so that the dialog can ask for it.
+ */
+function customFieldIssues(error: Error | null): {
+  errors: Record<string, string>
+  missing: Record<string, DynamicFieldSchema>
+} {
+  const detail =
+    error instanceof ApiError
+      ? (
+          error.data as
+            | undefined
+            | {
+                detail?: {
+                  error?: string
+                  invalid?: { field: string; message: string }[]
+                  missing?: (DynamicFieldSchema & { field: string })[]
+                }
+              }
+        )?.detail
+      : undefined
+  if (detail?.error !== 'custom_fields_invalid')
+    return { errors: {}, missing: {} }
+  const errors: Record<string, string> = {}
+  const missing: Record<string, DynamicFieldSchema> = {}
+  for (const { field, ...prop } of detail.missing ?? []) {
+    errors[field] = 'Required'
+    missing[field] = {
+      description: prop.description ?? undefined,
+      enum: prop.enum ?? undefined,
+      format: prop.format ?? undefined,
+      title: prop.title ?? undefined,
+      type: prop.type ?? undefined,
+    }
+  }
+  for (const { field, message } of detail.invalid ?? []) errors[field] = message
+  return { errors, missing }
 }
 
 /** A section that starts closed and says what it holds when closed. */

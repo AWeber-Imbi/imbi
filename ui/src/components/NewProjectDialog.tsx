@@ -2,13 +2,7 @@ import { useState } from 'react'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import {
-  createProject,
-  type DynamicFieldSchema,
-  type DynamicSchema,
-  getNewProjectSchema,
-  type ProjectSchemaResponse,
-} from '@/api/endpoints'
+import { createProject, getNewProjectSchema } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Combobox } from '@/components/ui/combobox'
@@ -21,6 +15,7 @@ import {
 } from '@/components/ui/dialog'
 import {
   DynamicFormFields,
+  requiredBlueprintFields,
   validateDynamicFields,
 } from '@/components/ui/dynamic-fields'
 import { Input } from '@/components/ui/input'
@@ -84,7 +79,7 @@ export function NewProjectDialog({
       getNewProjectSchema(orgSlug, [projectTypeSlug], selectedEnvSlugs, signal),
     queryKey: ['newProjectSchema', orgSlug, projectTypeSlug, selectedEnvSlugs],
   })
-  const requiredSchema = requiredBlueprintFields(projectSchema)
+  const requiredSchema = requiredBlueprintFields(projectSchema?.sections)
 
   const createMutation = useMutation({
     mutationFn: (data: ProjectCreate) => createProject(orgSlug, data),
@@ -357,33 +352,4 @@ function ChipsSkeleton() {
 
 function FieldSkeleton() {
   return <Sk h={38} r={6} w="100%" />
-}
-
-// The create endpoint fails when a matching Project blueprint has a
-// required field with no default, so collect only those fields here. A
-// later blueprint overrides an earlier one for the same field, as the API
-// does when it builds the model.
-function requiredBlueprintFields(
-  schema: ProjectSchemaResponse | undefined,
-): DynamicSchema {
-  const properties: Record<string, DynamicFieldSchema> = {}
-  for (const section of schema?.sections ?? []) {
-    if (section.scope === 'environment') continue
-    for (const [key, prop] of Object.entries(section.properties)) {
-      if (!section.required?.includes(key) || prop.default != null) {
-        delete properties[key]
-        continue
-      }
-      properties[key] = {
-        description: prop.description ?? undefined,
-        enum: prop.enum ?? undefined,
-        format: prop.format ?? undefined,
-        maximum: prop.maximum ?? undefined,
-        minimum: prop.minimum ?? undefined,
-        title: prop.title ?? undefined,
-        type: prop.type ?? undefined,
-      }
-    }
-  }
-  return { properties, required: Object.keys(properties) }
 }

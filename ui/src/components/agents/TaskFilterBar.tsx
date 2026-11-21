@@ -7,8 +7,10 @@ import {
   CircleDot,
   ListFilter,
   type LucideIcon,
+  SlidersHorizontal,
   Tag,
   UserRound,
+  Users,
   X,
 } from 'lucide-react'
 
@@ -35,6 +37,7 @@ import { cn } from '@/lib/utils'
 import { statusVariant } from './taskEvents'
 import {
   activeCount,
+  type FilterField,
   ME,
   NO_FILTERS,
   TASK_STATES,
@@ -62,7 +65,10 @@ interface Field {
   options: Option[]
 }
 
-type FieldKey = 'agent' | 'assignee' | 'label' | 'state'
+/** A list of the filters, or `field:<name>` for a custom field. */
+type FieldKey = `field:${string}` | ListKey
+
+type ListKey = 'agent' | 'assignee' | 'label' | 'state' | 'team'
 
 interface Option {
   badge?: ReturnType<typeof statusVariant>
@@ -127,6 +133,7 @@ export function PersonMark({
 export function TaskFilterBar({
   action,
   agents,
+  customFields = [],
   filters,
   labels = [],
   me,
@@ -134,9 +141,12 @@ export function TaskFilterBar({
   onLabelSearch,
   owners,
   search,
+  teams = [],
 }: {
   action?: ReactNode
   agents: FilterAgent[]
+  /** The custom fields of tickets that the list can filter on. */
+  customFields?: FilterField[]
   filters: TaskFilters
   /** The labels of the org to offer, most used first. */
   labels?: string[]
@@ -146,6 +156,8 @@ export function TaskFilterBar({
   onLabelSearch?: (text: string) => void
   owners: string[]
   search: ReactNode
+  /** The teams of the org. */
+  teams?: { name: string; slug: string }[]
 }) {
   const [open, setOpen] = useState(false)
   const [fieldKey, setFieldKey] = useState<FieldKey | null>(null)
@@ -197,6 +209,18 @@ export function TaskFilterBar({
         value: l,
       })),
     },
+    {
+      icon: Users,
+      key: 'team',
+      label: 'Team',
+      options: teams.map((t) => ({ label: t.name, value: t.slug })),
+    },
+    ...customFields.map((f) => ({
+      icon: SlidersHorizontal,
+      key: `field:${f.name}` as const,
+      label: f.label,
+      options: f.values.map((v) => ({ label: v, value: v })),
+    })),
   ]
   const field = fields.find((f) => f.key === fieldKey)
   const count = activeCount(filters)
@@ -435,10 +459,11 @@ const LISTS = {
   assignee: 'assignees',
   label: 'labels',
   state: 'states',
-} as const satisfies Record<FieldKey, keyof TaskFilters>
+  team: 'teams',
+} as const satisfies Record<ListKey, keyof TaskFilters>
 
 function cleared(filters: TaskFilters, key: FieldKey): TaskFilters {
-  return { ...filters, [LISTS[key]]: [] }
+  return withValues(filters, key, [])
 }
 
 function contains(value: string, search: string, keywords?: string[]) {
@@ -489,7 +514,8 @@ function OptionLabel({
 }
 
 function selected(filters: TaskFilters, key: FieldKey): string[] {
-  return filters[LISTS[key]]
+  if (key.startsWith('field:')) return filters.fields[key.slice(6)] ?? []
+  return filters[LISTS[key as ListKey]]
 }
 
 function toggled(
@@ -504,5 +530,15 @@ function toggled(
       ...filters,
       states: TASK_STATES.map((s) => s.value).filter((s) => values.has(s)),
     }
-  return { ...filters, [LISTS[key]]: [...values] }
+  return withValues(filters, key, [...values])
+}
+
+function withValues(
+  filters: TaskFilters,
+  key: FieldKey,
+  values: string[],
+): TaskFilters {
+  if (key.startsWith('field:'))
+    return { ...filters, fields: { ...filters.fields, [key.slice(6)]: values } }
+  return { ...filters, [LISTS[key as ListKey]]: values }
 }

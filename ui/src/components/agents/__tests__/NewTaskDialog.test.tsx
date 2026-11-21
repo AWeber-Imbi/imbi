@@ -1,6 +1,7 @@
 import { fireEvent, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ApiError } from '@/api/client'
 import * as endpoints from '@/api/endpoints'
 import { render, screen } from '@/test/utils'
 import type { Agent } from '@/types'
@@ -13,8 +14,10 @@ import { normalizeLabel, roleErrors } from '../ticketAttributes'
 vi.mock('@/api/endpoints', () => ({
   createTicket: vi.fn(),
   getProjectsSlim: vi.fn(),
+  getTicketSchema: vi.fn(),
   listAgents: vi.fn(),
   listOrganizationMembers: vi.fn(),
+  listTeams: vi.fn(() => Promise.resolve([])),
   listTicketLabels: vi.fn(() => Promise.resolve([])),
   listTickets: vi.fn(),
   reassignTicket: vi.fn(),
@@ -51,6 +54,7 @@ function agent(slug: string, enabled = true): Agent {
 }
 
 const BASE = {
+  custom_fields: {},
   description: 'Sync the schemas',
   due_date: null,
   labels: [],
@@ -58,6 +62,7 @@ const BASE = {
   project_ids: [],
   requires: [],
   roles: {},
+  team: null,
   title: 'Sync the schemas',
   type: 'task',
 }
@@ -111,6 +116,62 @@ describe('NewTaskDialog', () => {
     vi.mocked(endpoints.createTicket).mockResolvedValue({
       short_id: 'T-1',
     } as Awaited<ReturnType<typeof endpoints.createTicket>>)
+    vi.mocked(endpoints.getTicketSchema).mockResolvedValue({ sections: [] })
+  })
+
+  it('asks for a required custom field and sends it', async () => {
+    vi.mocked(endpoints.getTicketSchema).mockResolvedValue({
+      sections: [
+        {
+          name: 'Incident',
+          properties: {
+            region: { default: 'us-east-1', type: 'string' },
+            severity: { enum: ['sev1', 'sev2'], title: 'Severity' },
+          },
+          required: ['region', 'severity'],
+          slug: 'incident',
+        },
+      ],
+    })
+    const onClose = vi.fn()
+    render(<NewTaskDialog agent={agent('mender')} isOpen onClose={onClose} />)
+    describeWork('Sync the schemas')
+    await screen.findByText('Severity')
+    // A required field with a default is not asked for.
+    expect(screen.queryByText('Region')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Create ticket' }))
+    expect(await screen.findByText(/required/i)).toBeInTheDocument()
+    expect(endpoints.createTicket).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('combobox', { name: /Severity/ }))
+    fireEvent.click(await screen.findByRole('option', { name: 'sev2' }))
+    await create(onClose)
+    expect(endpoints.createTicket).toHaveBeenCalledWith('acme', {
+      ...BASE,
+      agent_slug: 'mender',
+      assignee_kind: 'agent',
+      custom_fields: { severity: 'sev2' },
+    })
+  })
+
+  it('shows the missing fields of a 422', async () => {
+    vi.mocked(endpoints.createTicket).mockRejectedValue(
+      new ApiError(422, 'Unprocessable Entity', {
+        detail: {
+          error: 'custom_fields_invalid',
+          invalid: [],
+          message: 'The ticket is missing required custom fields',
+          missing: [{ field: 'owner_group', title: 'Owner group' }],
+        },
+      }),
+    )
+    render(<NewTaskDialog agent={agent('mender')} isOpen onClose={vi.fn()} />)
+    describeWork('Sync the schemas')
+    fireEvent.click(screen.getByRole('button', { name: 'Create ticket' }))
+    expect(
+      await screen.findByText('The ticket is missing required custom fields'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Owner group')).toBeInTheDocument()
+    expect(screen.getByText('Required')).toBeInTheDocument()
   })
 
   it('says what is missing and lists enabled agents only', async () => {

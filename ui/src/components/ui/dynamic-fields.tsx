@@ -3,7 +3,11 @@ import Ajv from 'ajv'
 import addFormats from 'ajv-formats'
 import { AlertCircle } from 'lucide-react'
 
-import type { DynamicFieldSchema, DynamicSchema } from '@/api/endpoints'
+import type {
+  DynamicFieldSchema,
+  DynamicSchema,
+  ProjectSchemaSection,
+} from '@/api/endpoints'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -218,6 +222,35 @@ export function DynamicFormFields({
       })}
     </>
   )
+}
+
+// A create fails when a matching blueprint has a required field with no
+// default, so collect only those fields here. A later blueprint overrides
+// an earlier one for the same field, as the API does when it builds the
+// model.
+export function requiredBlueprintFields(
+  sections: ProjectSchemaSection[] | undefined,
+): DynamicSchema {
+  const properties: Record<string, DynamicFieldSchema> = {}
+  for (const section of sections ?? []) {
+    if (section.scope === 'environment') continue
+    for (const [key, prop] of Object.entries(section.properties)) {
+      if (!section.required?.includes(key) || prop.default != null) {
+        delete properties[key]
+        continue
+      }
+      properties[key] = {
+        description: prop.description ?? undefined,
+        enum: prop.enum ?? undefined,
+        format: prop.format ?? undefined,
+        maximum: prop.maximum ?? undefined,
+        minimum: prop.minimum ?? undefined,
+        title: prop.title ?? undefined,
+        type: prop.type ?? undefined,
+      }
+    }
+  }
+  return { properties, required: Object.keys(properties) }
 }
 
 export function validateDynamicFields(
