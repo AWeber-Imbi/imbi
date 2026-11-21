@@ -22388,7 +22388,7 @@ export interface components {
         };
         /**
          * TicketTeam
-         * @description The team of a ticket, as it was when it was set.
+         * @description The team of a ticket, read from the graph.
          */
         TicketTeam: {
             /** Id */

@@ -383,7 +383,7 @@ class TaskProject(pydantic.BaseModel):
 
 
 class TicketTeam(pydantic.BaseModel):
-    """The team of a ticket, as it was when it was set."""
+    """The team of a ticket, read from the graph."""
 
     id: str
     slug: str
@@ -867,9 +867,14 @@ MATCH (u:User {{email: {email}}})
 RETURN u.email AS email
 """
 
-_TEAM_QUERY: typing.LiteralString = """
-MATCH (t:Team {{slug: {slug}}})
-      -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+_TEAM_IDS_QUERY: typing.LiteralString = """
+MATCH (t:Team)-[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+WHERE t.slug IN {slugs}
+RETURN t.id AS id
+"""
+
+_TEAMS_QUERY: typing.LiteralString = """
+MATCH (t:Team) WHERE t.id IN {ids}
 RETURN t.id AS id, t.slug AS slug, t.name AS name
 """
 
@@ -1352,19 +1357,25 @@ async def project_slugs(
     return list(dict.fromkeys(found))
 
 
-async def team_ref(
+async def team_ids(
+    db: graph.Graph, org_slug: str, slugs: list[str]
+) -> list[str]:
+    """Return the ids of the teams of the org with these slugs."""
+    records = await db.execute(
+        _TEAM_IDS_QUERY, {'org_slug': org_slug, 'slugs': slugs}, ['id']
+    )
+    return [str(graph.parse_agtype(r['id'])) for r in records]
+
+
+async def team_id(
     db: graph.Graph, org_slug: str, slug: str | None
-) -> dict[str, str] | None:
-    """Return the ``{id, slug, name}`` of the team ``slug`` of the
-    org, ``None`` for no slug, or raise 422 ``team_not_found``."""
+) -> str | None:
+    """Return the id of the team ``slug`` of the org, ``None`` for no
+    slug, or raise 422 ``team_not_found``."""
     if slug is None:
         return None
-    records = await db.execute(
-        _TEAM_QUERY,
-        {'slug': slug, 'org_slug': org_slug},
-        ['id', 'slug', 'name'],
-    )
-    if not records:
+    found = await team_ids(db, org_slug, [slug])
+    if not found:
         raise fastapi.HTTPException(
             status_code=422,
             detail={
@@ -1372,7 +1383,31 @@ async def team_ref(
                 'message': f'Team {slug!r} is not in the org',
             },
         )
-    return {k: str(graph.parse_agtype(v)) for k, v in records[0].items()}
+    return found[0]
+
+
+async def with_teams(
+    db: graph.Graph, rows: list[dict[str, typing.Any]]
+) -> list[dict[str, typing.Any]]:
+    """Return the ticket rows with ``team`` (``{id, slug, name}``)
+    read from the graph by ``team_id``, in one query. A team that is
+    gone gives ``None``."""
+    ids = sorted({r['team_id'] for r in rows if r.get('team_id')})
+    teams: dict[str, dict[str, str]] = {}
+    if ids:
+        for record in await db.execute(
+            _TEAMS_QUERY, {'ids': ids}, ['id', 'slug', 'name']
+        ):
+            team = {k: str(graph.parse_agtype(v)) for k, v in record.items()}
+            teams[team['id']] = team
+    return [{**r, 'team': teams.get(r.get('team_id') or '')} for r in rows]
+
+
+async def with_team(
+    db: graph.Graph, row: dict[str, typing.Any]
+) -> dict[str, typing.Any]:
+    """Return the ticket row with ``team`` (see :func:`with_teams`)."""
+    return (await with_teams(db, [row]))[0]
 
 
 @contextlib.contextmanager
@@ -1558,14 +1593,14 @@ async def _create_task(
     """Make a task, or return the task that has ``key`` with status 200."""
     existing = await _keyed_task(store, org_id, origin, key, response)
     if existing is not None:
-        return existing
+        return await with_team(db, existing)
     owner = await _owner(db, org_slug, auth, origin)
     task, created = await make_task(
         db, store, org_slug, org_id, data, origin, key, owner, _actor(auth)
     )
     if not created:
         response.status_code = 200
-    return task
+    return await with_team(db, task)
 
 
 async def person_assignee(
@@ -1655,7 +1690,7 @@ async def make_task(
     """
     projects = await project_slugs(db, org_slug, data.project_ids)
     await _role_members(db, org_slug, data.roles)
-    team = await team_ref(db, org_slug, data.team)
+    team = await team_id(db, org_slug, data.team)
     values = custom_fields.validate(
         await custom_fields.matched(db, data.type, data.priority, data.labels),
         data.custom_fields,
@@ -1698,7 +1733,7 @@ async def make_task(
                 due_date=data.due_date,
                 labels=data.labels,
                 roles=data.roles,
-                team=team,
+                team_id=team,
                 custom_fields=values,
             ),
             actor,
@@ -1716,7 +1751,7 @@ async def make_task(
                 'due_date': data.due_date and data.due_date.isoformat(),
                 'labels': data.labels,
                 'roles': data.roles,
-                'team': team,
+                'team_id': team,
                 'custom_fields': values,
             },
         )
@@ -1833,7 +1868,7 @@ async def list_agent_tasks(
         text_agent_ids=list(agents),
         text_project_ids=list(projects),
         labels=label,
-        teams=team,
+        team_ids=await _team_filter(db, org_slug, team),
         custom_fields=await _custom_filters(db, filters),
         group=group,
         before=before,
@@ -1849,6 +1884,7 @@ async def list_agent_tasks(
             )
     response.headers['Link'] = build_link_header(request, next_cursor)
     icons = await _project_icons(db, org_slug, rows)
+    rows = await with_teams(db, rows)
     return [
         {
             **row,
@@ -1905,7 +1941,7 @@ async def count_agent_tasks(
         text_agent_ids=list(agents),
         text_project_ids=list(projects),
         labels=label,
-        teams=team,
+        team_ids=await _team_filter(db, org_slug, team),
         custom_fields=await _custom_filters(db, filters),
     )
 
@@ -1952,7 +1988,7 @@ async def get_agent_task_position(
         text_agent_ids=list(agents),
         text_project_ids=list(projects),
         labels=label,
-        teams=team,
+        team_ids=await _team_filter(db, org_slug, team),
         custom_fields=await _custom_filters(db, filters),
     )
     if found is None:
@@ -1960,6 +1996,14 @@ async def get_agent_task_position(
             status_code=404, detail=f'{short_id} is not in the list'
         )
     return {'group': found[0], 'index': found[1]}
+
+
+async def _team_filter(
+    db: graph.Graph, org_slug: str, slugs: list[str] | None
+) -> list[str] | None:
+    """Return the team ids of the ``team`` filter of the ticket list.
+    An unknown slug matches no team, so the list is empty."""
+    return None if not slugs else await team_ids(db, org_slug, slugs)
 
 
 async def _custom_filters(
@@ -2162,12 +2206,14 @@ async def list_ticket_labels(
 
 
 @tickets_router.get('/{short_id}', response_model=AgentTaskResponse)
-async def get_agent_task(task: ReadableTask) -> dict[str, typing.Any]:
+async def get_agent_task(
+    task: ReadableTask, db: graph.Pool
+) -> dict[str, typing.Any]:
     """Get a task by its short id (``T-<n>``).
 
     The service account of the task's agent can read its own task.
     """
-    return task
+    return await with_team(db, task)
 
 
 @tickets_router.get(
@@ -2194,6 +2240,7 @@ async def pause_agent_task(
     org_id: OrgId,
     short_id: str,
     store: tickets.Store,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('ticket:manage')),
@@ -2207,7 +2254,9 @@ async def pause_agent_task(
         409: The task is closed, or a cancel is not done yet.
 
     """
-    return await _set_control(store, org_id, short_id, 'pause', auth)
+    return await with_team(
+        db, await _set_control(store, org_id, short_id, 'pause', auth)
+    )
 
 
 @tickets_router.post('/{short_id}/resume', response_model=AgentTaskResponse)
@@ -2215,6 +2264,7 @@ async def resume_agent_task(
     org_id: OrgId,
     short_id: str,
     store: tickets.Store,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('ticket:manage')),
@@ -2228,7 +2278,9 @@ async def resume_agent_task(
         409: The task is closed, or a cancel is not done yet.
 
     """
-    return await _set_control(store, org_id, short_id, 'run', auth)
+    return await with_team(
+        db, await _set_control(store, org_id, short_id, 'run', auth)
+    )
 
 
 @tickets_router.post('/{short_id}/cancel', response_model=AgentTaskResponse)
@@ -2236,6 +2288,7 @@ async def cancel_agent_task(
     org_id: OrgId,
     short_id: str,
     store: tickets.Store,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('ticket:manage')),
@@ -2249,7 +2302,9 @@ async def cancel_agent_task(
         409: The task is closed.
 
     """
-    return await _set_control(store, org_id, short_id, 'cancel', auth)
+    return await with_team(
+        db, await _set_control(store, org_id, short_id, 'cancel', auth)
+    )
 
 
 @tickets_router.delete('/{short_id}', status_code=204)
@@ -2302,6 +2357,7 @@ async def acknowledge_agent_task(
     org_id: OrgId,
     short_id: str,
     store: tickets.Store,
+    db: graph.Pool,
     auth: ManagingPerson,
 ) -> dict[str, typing.Any]:
     """Mark a closed task as needing no more attention.
@@ -2316,7 +2372,9 @@ async def acknowledge_agent_task(
     """
     user = auth.require_user
     try:
-        return await store.acknowledge(org_id, short_id.upper(), user.email)
+        return await with_team(
+            db, await store.acknowledge(org_id, short_id.upper(), user.email)
+        )
     except tickets.TaskNotFound as e:
         raise fastapi.HTTPException(
             status_code=404, detail=f'Task {short_id!r} not found'
@@ -2465,7 +2523,7 @@ async def retry_agent_task(
         store, org_id, origin, data.idempotency_key, response
     )
     if existing is not None:
-        return existing
+        return await with_team(db, existing)
     records = await db.execute(
         _AGENT_SLUG_QUERY,
         {'id': task['agent_id'], 'org_slug': org_slug},
@@ -2523,8 +2581,11 @@ async def reassign_agent_task(
     ):
         raise _unprocessable(f'User {data.owner!r} is not in the org')
     try:
-        return await store.set_owner(
-            org_id, short_id.upper(), data.owner, _actor(auth)
+        return await with_team(
+            db,
+            await store.set_owner(
+                org_id, short_id.upper(), data.owner, _actor(auth)
+            ),
         )
     except tickets.TaskNotFound as e:
         raise fastapi.HTTPException(
@@ -2542,6 +2603,7 @@ async def set_ticket_status(
     short_id: str,
     data: TicketStatusSet,
     store: tickets.Store,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
     ],
@@ -2568,13 +2630,16 @@ async def set_ticket_status(
     if (task['assignee'] or '').lower() != user.email.lower():
         await _require_manage(auth)
     try:
-        return await store.set_person_status(
-            org_id,
-            task['short_id'],
-            data.status,
-            _actor(auth),
-            outcome=data.outcome,
-            reason=data.reason,
+        return await with_team(
+            db,
+            await store.set_person_status(
+                org_id,
+                task['short_id'],
+                data.status,
+                _actor(auth),
+                outcome=data.outcome,
+                reason=data.reason,
+            ),
         )
     except tickets.TaskClosed as e:
         raise fastapi.HTTPException(
@@ -2644,11 +2709,14 @@ async def hand_off_ticket(
         )
     try:
         with write_errors(short_id):
-            return await store.hand_off(
-                org_id,
-                task['short_id'],
-                dataclasses.replace(to, note=data.note),
-                _actor(auth),
+            return await with_team(
+                db,
+                await store.hand_off(
+                    org_id,
+                    task['short_id'],
+                    dataclasses.replace(to, note=data.note),
+                    _actor(auth),
+                ),
             )
     except tickets.WrongAssigneeKind as e:
         raise _agent_ticket(short_id) from e
@@ -2760,8 +2828,11 @@ async def reopen_ticket(
     else:
         to = tickets.HandOff('person', assignee=task['assignee'])
     try:
-        return await store.reopen(
-            org_id, task['short_id'], data.reason, _actor(auth), to
+        return await with_team(
+            db,
+            await store.reopen(
+                org_id, task['short_id'], data.reason, _actor(auth), to
+            ),
         )
     except tickets.TaskOpen as e:
         raise _conflict(
@@ -2785,6 +2856,7 @@ async def set_agent_task_priority(
     short_id: str,
     data: AgentTaskPriority,
     store: tickets.Store,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('ticket:manage')),
@@ -2799,8 +2871,11 @@ async def set_agent_task_priority(
 
     """
     try:
-        return await store.set_priority(
-            org_id, short_id.upper(), data.priority, _actor(auth)
+        return await with_team(
+            db,
+            await store.set_priority(
+                org_id, short_id.upper(), data.priority, _actor(auth)
+            ),
         )
     except tickets.TaskNotFound as e:
         raise fastapi.HTTPException(
@@ -2843,7 +2918,8 @@ async def update_ticket(
     """
     changes = data.model_dump(include=data.model_fields_set)
     if 'team' in changes:
-        changes['team'] = await team_ref(db, org_slug, data.team)
+        del changes['team']
+        changes['team_id'] = await team_id(db, org_slug, data.team)
     known: dict[str, str] | None = None
     task = (
         await _get_task(store, org_id, short_id)
@@ -2866,12 +2942,15 @@ async def update_ticket(
     with write_errors(short_id):
         try:
             # The roles that were not checked must still be there.
-            return await store.set_fields(
-                org_id,
-                short_id.upper(),
-                changes,
-                _actor(auth),
-                roles_read=known,
+            return await with_team(
+                db,
+                await store.set_fields(
+                    org_id,
+                    short_id.upper(),
+                    changes,
+                    _actor(auth),
+                    roles_read=known,
+                ),
             )
         except tickets.RolesChanged as e:
             raise _conflict(
@@ -2886,6 +2965,7 @@ async def rank_ticket(
     short_id: str,
     data: TicketRank,
     store: tickets.Store,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('ticket:manage')),
@@ -2907,8 +2987,11 @@ async def rank_ticket(
     after = data.after.upper() if data.after else None
     with write_errors(short_id):
         try:
-            return await store.rank(
-                org_id, short_id.upper(), after, _actor(auth)
+            return await with_team(
+                db,
+                await store.rank(
+                    org_id, short_id.upper(), after, _actor(auth)
+                ),
             )
         except tickets.TaskNotFound as e:
             if after is None or str(e) != after:
@@ -2937,6 +3020,7 @@ async def resolve_agent_task_request(
     data: AgentTaskRequestResolve,
     response: fastapi.Response,
     store: tickets.Store,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('ticket:resolve')),
@@ -3013,7 +3097,7 @@ async def resolve_agent_task_request(
         raise _unprocessable(str(e)) from e
     if not created:
         response.status_code = 200
-    return {'request': request, 'task': task}
+    return {'request': request, 'task': await with_team(db, task)}
 
 
 @tickets_router.post('/{short_id}/reply', response_model=AgentTaskResponse)
@@ -3022,6 +3106,7 @@ async def reply_agent_task(
     short_id: str,
     data: AgentTaskReply,
     store: tickets.Store,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('ticket:manage')),
@@ -3046,8 +3131,15 @@ async def reply_agent_task(
     _ = auth.require_user  # raises 403 for a caller that is not a person
     check_payload_size('The reply', data.model_dump(mode='json'))
     try:
-        return await store.reply(
-            org_id, short_id.upper(), data.body, _actor(auth), hold=data.hold
+        return await with_team(
+            db,
+            await store.reply(
+                org_id,
+                short_id.upper(),
+                data.body,
+                _actor(auth),
+                hold=data.hold,
+            ),
         )
     except tickets.TaskNotFound as e:
         raise fastapi.HTTPException(

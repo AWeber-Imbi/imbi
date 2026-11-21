@@ -536,9 +536,8 @@ class NewTask:
     labels: abc.Sequence[str] = ()
     #: ``{role: email}``, with normalized role names.
     roles: Row = dataclasses.field(default_factory=dict[str, typing.Any])
-    #: The team of the ticket, as ``{id, slug, name}``. ``None``: no
-    #: team.
-    team: Row | None = None
+    #: The id of the team node of the ticket. ``None``: no team.
+    team_id: str | None = None
     #: The values of the custom fields, checked against the ``Ticket``
     #: blueprints (:mod:`imbi.api.tickets.custom_fields`).
     custom_fields: Row = dataclasses.field(
@@ -769,7 +768,7 @@ def _search_filters(
     text_agent_ids: list[str] | None,
     text_project_ids: list[str] | None,
     labels: list[str] | None = None,
-    teams: list[str] | None = None,
+    team_ids: list[str] | None = None,
     custom_fields: list[CustomFieldFilter] | None = None,
 ) -> tuple[list[sql.Composable], list[typing.Any]]:
     """The ``WHERE`` conditions of :meth:`Store.search` and their
@@ -797,9 +796,10 @@ def _search_filters(
     if labels:
         conditions.append(sql.SQL('labels @> %s'))
         params.append(normalize_labels(labels))
-    if teams:
-        conditions.append(sql.SQL("team->>'slug' = ANY(%s)"))
-        params.append(list(teams))
+    if team_ids is not None:
+        # An empty list (no team matched) finds no ticket.
+        conditions.append(sql.SQL('team_id = ANY(%s)'))
+        params.append(list(team_ids))
     for field, op, values in custom_fields or ():
         if op in ('exists', 'not_exists'):
             not_ = 'NOT ' if op == 'not_exists' else ''
@@ -1030,7 +1030,7 @@ class TicketStore:
                     ' idempotency_key, owner, budget, chain_id,'
                     ' output_schema, parent_id, priority,'
                     ' assignee_kind, assignee, status,'
-                    ' type, due_date, labels, roles, team, custom_fields,'
+                    ' type, due_date, labels, roles, team_id, custom_fields,'
                     ' platform_config_version)'
                     ' VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
                     ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
@@ -1066,7 +1066,7 @@ class TicketStore:
                         task.due_date,
                         list(task.labels),
                         pg_json.Jsonb(task.roles),
-                        _jsonb(task.team),
+                        task.team_id,
                         pg_json.Jsonb(task.custom_fields),
                         task.organization_id,
                     ),
@@ -1199,7 +1199,7 @@ class TicketStore:
         text_agent_ids: list[str] | None = None,
         text_project_ids: list[str] | None = None,
         labels: list[str] | None = None,
-        teams: list[str] | None = None,
+        team_ids: list[str] | None = None,
         custom_fields: list[CustomFieldFilter] | None = None,
         group: Group | None = None,
         before: tuple[datetime.datetime, uuid.UUID] | None = None,
@@ -1229,7 +1229,7 @@ class TicketStore:
             text_agent_ids,
             text_project_ids,
             labels,
-            teams,
+            team_ids,
             custom_fields,
         )
         if group is not None:
@@ -1272,7 +1272,7 @@ class TicketStore:
         text_agent_ids: list[str] | None = None,
         text_project_ids: list[str] | None = None,
         labels: list[str] | None = None,
-        teams: list[str] | None = None,
+        team_ids: list[str] | None = None,
         custom_fields: list[CustomFieldFilter] | None = None,
     ) -> tuple[str, int] | None:
         """Return the inbox group of the task ``short_id`` and its index
@@ -1288,7 +1288,7 @@ class TicketStore:
             text_agent_ids,
             text_project_ids,
             labels,
-            teams,
+            team_ids,
             custom_fields,
         )
         statement = sql.SQL(
@@ -1329,7 +1329,7 @@ class TicketStore:
         text_agent_ids: list[str] | None = None,
         text_project_ids: list[str] | None = None,
         labels: list[str] | None = None,
-        teams: list[str] | None = None,
+        team_ids: list[str] | None = None,
         custom_fields: list[CustomFieldFilter] | None = None,
     ) -> dict[str, int]:
         """Return the number of tasks in each inbox group that
@@ -1345,7 +1345,7 @@ class TicketStore:
             text_agent_ids,
             text_project_ids,
             labels,
-            teams,
+            team_ids,
             custom_fields,
         )
         statement = sql.SQL(
@@ -1785,8 +1785,9 @@ class TicketStore:
         roles_read: Row | None = None,
     ) -> Row:
         """Change ``type``, ``due_date``, ``labels``, ``roles``,
-        ``team``, or ``custom_fields`` of the task. Each value that
-        differs writes ``<field>.changed`` with ``from`` and ``to``.
+        ``team_id``, or ``custom_fields`` of the task. Each value that
+        differs writes ``<field>.changed`` with ``from`` and ``to``
+        (``team.changed`` with team ids for ``team_id``).
         Labels and role names must be normalized. ``custom_fields``
         merges into the stored values: a key that is not sent stays,
         and a ``None`` value removes its key.
@@ -1815,13 +1816,13 @@ class TicketStore:
                 if old == value:
                     continue
                 await write.event(
-                    f'{field}.changed',
+                    f'{field.removesuffix("_id")}.changed',
                     {'from': _event_value(old), 'to': _event_value(value)},
                     actor,
                 )
                 changed[field] = (
                     _jsonb(value)
-                    if field in ('roles', 'team', 'custom_fields')
+                    if field in ('roles', 'custom_fields')
                     else value
                 )
             if changed:

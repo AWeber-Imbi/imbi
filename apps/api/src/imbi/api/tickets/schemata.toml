@@ -474,9 +474,10 @@ labels = "TEXT[] NOT NULL DEFAULT '{}'"
 # are normalized as labels are. Workflows read them and can hand the
 # ticket to the person in a role.
 roles = "JSONB NOT NULL DEFAULT '{}'"
-# The team of the ticket, as {id, slug, name}: a team node of the
-# organization when it was set. The API validates it. NULL: no team.
-team = "JSONB"
+# The id of the team of the ticket, a team node of the organization.
+# The API validates it, and reads the slug and the name from the graph.
+# NULL: no team.
+team_id = "TEXT"
 # The values of the custom fields that `Ticket` blueprints define, as
 # {field: value}. A value stays when its field stops matching the
 # ticket; the UI hides it.

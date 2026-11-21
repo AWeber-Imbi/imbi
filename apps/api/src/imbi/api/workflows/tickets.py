@@ -14,7 +14,8 @@ from imbi.common.workflows.registry import slack
 _SLUGS_QUERY: typing.LiteralString = """
 MATCH (o:Organization {{id: {org}}})
 OPTIONAL MATCH (a:Agent {{id: {agent}}})-[:BELONGS_TO]->(o)
-RETURN o.slug AS org_slug, a.slug AS agent_slug
+OPTIONAL MATCH (t:Team {{id: {team}}})-[:BELONGS_TO]->(o)
+RETURN o.slug AS org_slug, a.slug AS agent_slug, t.slug AS team_slug
 """
 
 
@@ -37,12 +38,16 @@ async def attributes(
     """Return ``title``, ``url``, ``project``, ``agent`` (the agent
     slug), ``cost_usd``, ``type``, ``priority``, ``due_date``,
     ``labels``, ``roles``, and ``team`` (the team slug) of a task.
-    Without ``db``, ``url`` and ``agent`` are ``None``."""
+    Without ``db``, ``url``, ``agent``, and ``team`` are ``None``."""
     found = (
         await db.execute(
             _SLUGS_QUERY,
-            {'org': task['organization_id'], 'agent': task['agent_id']},
-            ['org_slug', 'agent_slug'],
+            {
+                'org': task['organization_id'],
+                'agent': task['agent_id'],
+                'team': task.get('team_id') or '',
+            },
+            ['org_slug', 'agent_slug', 'team_slug'],
         )
         if db is not None
         else []
@@ -60,7 +65,7 @@ async def attributes(
         'due_date': due.isoformat() if (due := task.get('due_date')) else None,
         'labels': task.get('labels'),
         'roles': task.get('roles'),
-        'team': team['slug'] if (team := task.get('team')) else None,
+        'team': graph.parse_agtype(row.get('team_slug')),
     }
 
 

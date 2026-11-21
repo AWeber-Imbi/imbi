@@ -908,7 +908,9 @@ async def _claim(
         chain_id=chain['root_ticket_id'],
         attempt=chain['attempt'],
         organization_slug=org_slug,
-        task=tasks_api.AgentTaskResponse.model_validate(task),
+        task=tasks_api.AgentTaskResponse.model_validate(
+            await tasks_api.with_team(db, task)
+        ),
         bundle=await _identity(db, store, secrets, task, org_slug),
         agent_token=token,
         agent_token_expires_at=expires,
@@ -2064,7 +2066,7 @@ async def create_harness_child_task(
         )
         if existing is not None:
             response.status_code = 200
-            return existing
+            return await tasks_api.with_team(db, existing)
     records = await db.execute(
         _AGENT_QUERY,
         {'slug': data.agent_slug, 'org_id': parent['organization_id']},
@@ -2162,7 +2164,7 @@ async def create_harness_child_task(
         ) from e
     if not created:
         response.status_code = 200
-    return task
+    return await tasks_api.with_team(db, task)
 
 
 @harness_router.post(
