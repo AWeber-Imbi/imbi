@@ -74,6 +74,22 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
+## Unreleased
+
+1. Deploy the new image of imbi-api first, then imbi-gateway and the
+   harness runner image. There is no setup command. At start, imbi-api
+   adds the ticket columns `team_id` and `custom_fields`, and the GIN
+   index `tickets_custom_fields_idx`. The index build stops writes to
+   `tickets.tickets` while it runs. A row of the earlier release gets
+   no team and no custom fields.
+2. Add a `Ticket` blueprint with a required field that has no default
+   only after every pod and every runner runs this release. imbi-api
+   then refuses each ticket create that does not give the field, with
+   `422 custom_fields_invalid`. An earlier gateway or runner does not
+   send `custom_fields`, so its webhook tickets and child tickets fail.
+   An earlier imbi-api pod ignores `custom_fields` in a request; it
+   does not refuse it.
+
 ## 2.59.0
 
 1. **Before you deploy**, deploy 2.58.0 everywhere and let its rollout
