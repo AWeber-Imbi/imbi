@@ -42,6 +42,7 @@ import {
   NO_FILTERS,
   TASK_STATES,
   type TaskFilters,
+  toggleFieldValue,
 } from './taskFilters'
 import { normalizeLabel } from './ticketAttributes'
 
@@ -523,6 +524,12 @@ function toggled(
   key: FieldKey,
   value: string,
 ): TaskFilters {
+  if (key.startsWith('field:'))
+    return withValues(
+      filters,
+      key,
+      toggleFieldValue(selected(filters, key), value),
+    )
   const values = new Set<string>(selected(filters, key))
   if (!values.delete(value)) values.add(value)
   if (key === 'state')

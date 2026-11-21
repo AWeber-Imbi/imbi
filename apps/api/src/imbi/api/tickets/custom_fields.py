@@ -117,16 +117,21 @@ def validate(
     if not matches and not values:
         return {}
     model = blueprints.apply_blueprints(_Values, matches)
+    bounds = _bounds(matches)
+    fields: dict[str, typing.Any] = {}
+    for name, field in model.model_fields.items():
+        annotation = field.rebuild_annotation()
+        if name in bounds:
+            annotation = typing.Annotated[annotation, bounds[name]]
+        fields[name] = (annotation, None if partial else field.default)
+    model = pydantic.create_model(
+        'TicketCustomFields', __base__=_Values, **fields
+    )
     sent = values
     if partial:
+        # A None clears the key, also a hidden one that no matching
+        # blueprint declares now.
         sent = {k: v for k, v in values.items() if v is not None}
-        optional: dict[str, typing.Any] = {
-            name: (field.rebuild_annotation(), None)
-            for name, field in model.model_fields.items()
-        }
-        model = pydantic.create_model(
-            'TicketCustomFields', __base__=_Values, **optional
-        )
     try:
         clean = model.model_validate(sent)
     except pydantic.ValidationError as e:
@@ -134,6 +139,31 @@ def validate(
     result = clean.model_dump(mode='json', exclude_none=True)
     if partial:
         return {k: result.get(k) for k in values}
+    return result
+
+
+def _bounds(matches: list[models.Blueprint]) -> dict[str, typing.Any]:
+    """Return the numeric bounds of each property that has one, as a
+    :func:`pydantic.Field`."""
+    result: dict[str, typing.Any] = {}
+    for bp in matches:
+        for name, prop in (bp.json_schema.properties or {}).items():
+            result.pop(name, None)
+            if any(
+                v is not None
+                for v in (
+                    prop.minimum,
+                    prop.maximum,
+                    prop.exclusive_minimum,
+                    prop.exclusive_maximum,
+                )
+            ):
+                result[name] = pydantic.Field(
+                    ge=prop.minimum,
+                    le=prop.maximum,
+                    gt=prop.exclusive_minimum,
+                    lt=prop.exclusive_maximum,
+                )
     return result
 
 

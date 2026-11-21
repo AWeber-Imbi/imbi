@@ -2,13 +2,14 @@ import { useState } from 'react'
 
 import { describe, expect, it, vi } from 'vitest'
 
-import { fireEvent, render, screen } from '@/test/utils'
+import { cleanup, fireEvent, render, screen } from '@/test/utils'
 
-import { InputsField } from '../InputsField'
+import { InputsField, MAX_INPUTS } from '../InputsField'
 
 function renderField(
   initial: Record<string, unknown> = {},
   keywords?: 'jinja' | 'python',
+  limit?: number,
 ) {
   const onChange = vi.fn()
   function Harness() {
@@ -18,6 +19,7 @@ function renderField(
         id="inputs"
         keywords={keywords}
         label="Inputs"
+        limit={limit}
         onChange={(next) => {
           setValue(next)
           onChange(next)
@@ -32,6 +34,17 @@ function renderField(
 }
 
 describe('InputsField', () => {
+  it('stops adding at the limit, unless there is none', () => {
+    const full = Object.fromEntries(
+      Array.from({ length: MAX_INPUTS }, (_, i) => [`v${i}`, i]),
+    )
+    renderField(full)
+    expect(screen.queryByRole('button', { name: 'Add input' })).toBeNull()
+    cleanup()
+    renderField(full, undefined, Infinity)
+    expect(screen.getByRole('button', { name: 'Add input' })).toBeTruthy()
+  })
+
   it('adds an input once it has a name', () => {
     const onChange = renderField()
     fireEvent.click(screen.getByRole('button', { name: 'Add input' }))

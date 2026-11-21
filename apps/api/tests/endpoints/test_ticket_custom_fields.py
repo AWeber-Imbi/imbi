@@ -1,8 +1,12 @@
 """Tests for ticket custom fields (``Ticket`` blueprints)."""
 
 import typing
+import unittest
+
+import fastapi
 
 from apps.api.tests.endpoints import test_person_tickets
+from imbi.api.tickets import custom_fields
 from imbi.common import models
 
 
@@ -193,3 +197,37 @@ class TicketCustomFieldTests(test_person_tickets.PersonTicketTestCase):
             self.url(), params={'filter': 'nope:eq:1'}
         )
         self.assertEqual(response.status_code, 400, response.text)
+
+
+class ValidateTests(unittest.TestCase):
+    """The check of :func:`custom_fields.validate`, without a database."""
+
+    def setUp(self) -> None:
+        self.matches = [
+            models.Blueprint(
+                name='Estimate',
+                type='Ticket',
+                json_schema=models.Schema.model_validate(
+                    {
+                        'type': 'object',
+                        'properties': {
+                            'estimate': {'type': 'integer', 'minimum': 0}
+                        },
+                    }
+                ),
+            )
+        ]
+
+    def test_minimum(self) -> None:
+        for partial in (False, True):
+            self.assertEqual(
+                custom_fields.validate(
+                    self.matches, {'estimate': 0}, partial=partial
+                ),
+                {'estimate': 0},
+            )
+            with self.assertRaises(fastapi.HTTPException) as ctx:
+                custom_fields.validate(
+                    self.matches, {'estimate': -1}, partial=partial
+                )
+            self.assertEqual(ctx.exception.status_code, 422)

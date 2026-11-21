@@ -81,6 +81,7 @@ export function InputsField({
   id,
   keywords = 'python',
   label,
+  limit = MAX_INPUTS,
   onChange,
   references,
   value,
@@ -89,6 +90,8 @@ export function InputsField({
   /** The language that reads the names: a script or a Jinja2 prompt. */
   keywords?: keyof typeof KEYWORDS
   label: string
+  /** The most rows; a generic map has no limit. */
+  limit?: number
   onChange: (value: Record<string, unknown>) => void
   references: ReferenceGroup[]
   value: Record<string, unknown>
@@ -163,7 +166,7 @@ export function InputsField({
           </div>
         )
       })}
-      {rows.length < MAX_INPUTS && (
+      {rows.length < limit && (
         <button
           className="border-input text-secondary hover:border-amber-border hover:text-primary flex h-8.5 items-center justify-center gap-1.5 rounded-md border border-dashed text-sm"
           onClick={() =>

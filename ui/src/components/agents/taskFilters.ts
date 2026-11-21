@@ -55,8 +55,10 @@ export function activeCount(filters: TaskFilters): number {
 
 /**
  * The custom field filters as the API takes them: `field:in:a,b`. The API
- * splits `in` on commas, so one value with a comma goes as `eq`, and a
- * value with a comma among others is not sent.
+ * splits `in` on commas, so one value with a comma goes as `eq`. The filter
+ * control selects such a value alone ({@link toggleFieldValue}); a value
+ * with a comma among others, only possible from an edited address, is not
+ * sent.
  */
 export function fieldFilters(filters: TaskFilters): string[] {
   return Object.entries(filters.fields).flatMap(([name, values]) => {
@@ -85,6 +87,17 @@ export function readFilters(search: string): TaskFilters {
     states: TASK_STATES.map((s) => s.value).filter((s) => states.has(s)),
     teams: unique(params.getAll('team')),
   }
+}
+
+/**
+ * The values of a custom field filter after a toggle of one value. The API
+ * splits `in` on commas, so a value with a comma is selected alone (see
+ * {@link fieldFilters}).
+ */
+export function toggleFieldValue(values: string[], value: string): string[] {
+  if (values.includes(value)) return values.filter((v) => v !== value)
+  if (value.includes(',') || values.some((v) => v.includes(','))) return [value]
+  return [...values, value]
 }
 
 const KEYS = ['agent', 'assignee', 'filter', 'label', 'state', 'team']

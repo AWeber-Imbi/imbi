@@ -143,6 +143,54 @@ export function DynamicFormFields({
           )
         }
 
+        // An array or an object is JSON text. Text that does not parse
+        // stays a string, so the check shows an error for it.
+        if (field.type === 'array' || field.type === 'object') {
+          const raw = data[key]
+          return (
+            <div key={key}>
+              <Label
+                className="text-secondary mb-1.5 block text-sm"
+                htmlFor={`dynamic-${key}`}
+              >
+                {label}
+                {isRequired && <span className="text-red-500"> *</span>}
+              </Label>
+              <Input
+                className={`font-mono ${fieldError ? 'border-red-500' : ''}`}
+                disabled={isLoading}
+                id={`dynamic-${key}`}
+                onChange={(e) => {
+                  const text = e.target.value
+                  if (text === '') return onChange(key, undefined)
+                  try {
+                    onChange(key, JSON.parse(text))
+                  } catch {
+                    onChange(key, text)
+                  }
+                }}
+                placeholder={field.type === 'array' ? '["a", "b"]' : '{"a": 1}'}
+                value={
+                  raw === undefined || typeof raw === 'string'
+                    ? (raw ?? '')
+                    : JSON.stringify(raw)
+                }
+              />
+              {field.description && (
+                <p className="text-tertiary mt-1 text-xs">
+                  {field.description}
+                </p>
+              )}
+              {fieldError && (
+                <div className="text-danger mt-1 flex items-center gap-1 text-xs">
+                  <AlertCircle className="size-3" />
+                  {fieldError}
+                </div>
+              )}
+            </div>
+          )
+        }
+
         if (field.type === 'boolean') {
           return (
             <div className="flex items-center gap-2" key={key}>
@@ -248,12 +296,18 @@ export function requiredBlueprintFields(
 
 /** A blueprint section property as a form field, without its nulls. */
 export function toDynamicField(
-  prop: Omit<ProjectSchemaSectionProperty, 'items' | 'x-display' | 'x-ui'>,
+  prop: Omit<ProjectSchemaSectionProperty, 'x-display' | 'x-ui'>,
 ): DynamicFieldSchema {
   return {
     description: prop.description ?? undefined,
     enum: prop.enum ?? undefined,
     format: prop.format ?? undefined,
+    items: prop.items
+      ? {
+          enum: prop.items.enum ?? undefined,
+          type: prop.items.type ?? undefined,
+        }
+      : undefined,
     maximum: prop.maximum ?? undefined,
     minimum: prop.minimum ?? undefined,
     title: prop.title ?? undefined,

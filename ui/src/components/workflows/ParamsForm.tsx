@@ -23,7 +23,7 @@ import type { OrganizationMember } from '@/types'
 
 import type { Condition } from './conditions'
 import { ConditionsField } from './ConditionsField'
-import { InputsField } from './InputsField'
+import { InputsField, MAX_INPUTS } from './InputsField'
 import { ManualInputsField } from './ManualInputsField'
 import type { OutputField } from './outputFields'
 import { OutputFieldsField } from './OutputFieldsField'
@@ -242,6 +242,9 @@ function FieldControl({
           id={id}
           key={id}
           label={field.label}
+          // Only a script's inputs have a limit; a map such as the custom
+          // fields of an agent step has none.
+          limit={field.name === 'inputs' ? MAX_INPUTS : Infinity}
           onChange={onChange}
           references={references}
           value={isRecord(value) ? value : {}}

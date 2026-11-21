@@ -334,7 +334,7 @@ Each automatic caller must send the required fields:
 | Schedule | Add `custom_fields` to the body of the `api` target. A failed run keeps the `422` body |
 | Webhook | Add `custom_fields` to the handler config, as CEL expressions. See [Webhooks](#webhooks). The gateway logs the `422` |
 | Workflow | Set `custom_fields` on the agent step. See [Agent task](workflows.md#agent-task) |
-| Child ticket | An agent's child ticket is a `task` of `normal` priority with no labels, and has no custom fields. Give a matching required field a default |
+| Child ticket | An agent's child ticket is a `task` of `normal` priority with no labels. It gets the values of the parent for the fields that its matching blueprints declare. The values that the agent sends replace them, and the defaults fill the remaining fields. A required field gets its value from one of these three sources |
 
 The agent of a ticket gets the custom fields that have a value in its
 instruction. People and webhooks write the values, so the agent reads

@@ -1604,6 +1604,7 @@ export interface DynamicFieldSchema {
   description?: string
   enum?: string[]
   format?: string
+  items?: { enum?: string[]; type?: string }
   maximum?: number
   maxLength?: number
   minimum?: number

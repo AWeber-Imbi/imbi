@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useNavigate } from 'react-router-dom'
 
@@ -301,8 +301,16 @@ export function NewTaskDialog({
     if (isOpen) reset()
   }, [isOpen, reset])
   // Another type, priority, or labels can match other blueprints, so
-  // the fields that the last 422 said are missing can be wrong now.
-  useEffect(() => reset(), [labels, priority, reset, type])
+  // the fields that the last 422 said are missing can be wrong now. A
+  // pending create stays: a reset does not stop its request, and the
+  // Create button must stay disabled until it completes.
+  const pending = useRef(false)
+  useEffect(() => {
+    pending.current = create.isPending
+  })
+  useEffect(() => {
+    if (!pending.current) reset()
+  }, [labels, priority, reset, type])
   const canSubmit =
     ready && roleErrors(roles).every((e) => !e) && !create.isPending
   // The required fields with no default, and each field that the API

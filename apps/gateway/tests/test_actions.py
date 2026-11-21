@@ -3227,6 +3227,8 @@ class CreateTicketTests(helpers.TestCase):
                     'check': 'payload.check_run.name',
                     'customer_facing': 'true',
                     'count': '2',
+                    'components': '["api", "worker"]',
+                    'meta': '{"tags": [true, 1]}',
                 }
             }
         )
@@ -3239,9 +3241,12 @@ class CreateTicketTests(helpers.TestCase):
                 'check': 'lint',
                 'customer_facing': True,
                 'count': 2,
+                'components': ['api', 'worker'],
+                'meta': {'tags': [True, 1]},
             },
         )
         self.assertIs(values['customer_facing'], True)
+        self.assertIs(values['meta']['tags'][0], True)
 
     async def test_redelivery_sends_the_same_key(self) -> None:
         """The API returns the first task for a repeated key."""

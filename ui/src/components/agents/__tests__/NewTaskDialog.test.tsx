@@ -176,6 +176,17 @@ describe('NewTaskDialog', () => {
     expect(screen.getByText('Required')).toBeInTheDocument()
   })
 
+  it('keeps a pending create when the priority changes', async () => {
+    vi.mocked(endpoints.createTicket).mockReturnValue(new Promise(() => {}))
+    render(<NewTaskDialog agent={agent('mender')} isOpen onClose={vi.fn()} />)
+    describeWork('Sync the schemas')
+    const button = screen.getByRole('button', { name: 'Create ticket' })
+    fireEvent.click(button)
+    await waitFor(() => expect(button).toBeDisabled())
+    fireEvent.click(screen.getByRole('radio', { name: 'Urgent' }))
+    expect(button).toBeDisabled()
+  })
+
   it('says what is missing and lists enabled agents only', async () => {
     render(<NewTaskDialog isOpen onClose={vi.fn()} />)
     expect(

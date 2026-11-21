@@ -712,17 +712,26 @@ def _evaluate_cel(expression: str, event: object) -> str | None:
     return str(result)
 
 
-def _evaluate_cel_value(
-    expression: str, event: object
-) -> bool | int | float | str | None:
-    """Return the result as a JSON scalar. A list or a map is text."""
-    result = _run_cel(expression, event)
+def _evaluate_cel_value(expression: str, event: object) -> typing.Any:
+    """Return the result as JSON (see :func:`_cel_to_json`)."""
+    return _cel_to_json(_run_cel(expression, event))
+
+
+def _cel_to_json(value: object) -> typing.Any:
+    """Return a CEL value as JSON: a list is an array and a map is an
+    object, also when nested. Other values are text."""
     # A CEL bool is an int; JSON must get true or false.
-    if isinstance(result, celpy.celtypes.BoolType):
-        return bool(result)
-    if result is None or isinstance(result, int | float | str):
-        return result
-    return str(result)
+    if isinstance(value, celpy.celtypes.BoolType):
+        return bool(value)
+    if value is None or isinstance(value, int | float | str):
+        return value
+    if isinstance(value, list):
+        items = typing.cast('list[object]', value)
+        return [_cel_to_json(item) for item in items]
+    if isinstance(value, dict):
+        pairs = typing.cast('dict[object, object]', value)
+        return {str(k): _cel_to_json(v) for k, v in pairs.items()}
+    return str(value)
 
 
 async def update_project(
