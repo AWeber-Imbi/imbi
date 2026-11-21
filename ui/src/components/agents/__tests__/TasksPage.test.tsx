@@ -1926,6 +1926,57 @@ describe('Tasks', () => {
       }
     })
 
+    it('opens a truncated run whose items miss its own row ticket', async () => {
+      const listRun = vi.mocked(endpoints.listTickets).getMockImplementation()
+      vi.mocked(endpoints.listTickets).mockImplementation(
+        async (org, params, signal) =>
+          params.group_by === 'run' && params.group === 'running'
+            ? [
+                {
+                  ...RUN,
+                  unit: {
+                    ...RUN.unit!,
+                    items: RUN.unit!.items.filter((i) => i.short_id !== 'T-23'),
+                    tickets: 101,
+                    truncated: true,
+                  },
+                },
+              ]
+            : listRun!(org, params, signal),
+      )
+      vi.mocked(endpoints.getTicketPosition).mockResolvedValue({
+        group: 'running',
+        index: 0,
+      })
+      const spy = layout({
+        content: (el) =>
+          parseFloat(
+            el.querySelector<HTMLElement>(':scope > .relative')?.style.height ??
+              '0',
+          ),
+        isPane: (el) =>
+          el.classList.contains('overflow-y-auto') &&
+          el.querySelector(':scope > .relative') !== null,
+        pane: 600,
+        row: (el) => (el.querySelector('h3') ? 29 : 72),
+      })
+      try {
+        await groupByRun('/tickets/acme/T-23')
+        // The row is in view, but T-23 shows only in the open unit.
+        const reveal = screen.getByRole('button', { name: 'Reveal in list' })
+        await waitFor(() => expect(reveal).toBeEnabled())
+        fireEvent.click(reveal)
+        const list = await screen.findByRole('list', {
+          name: 'Tickets of PSE-1',
+        })
+        expect(
+          within(list).getByText('Showing the first 6 of 101 tickets.'),
+        ).toBeInTheDocument()
+      } finally {
+        spy.mockRestore()
+      }
+    })
+
     it('opens a truncated run whose items miss the revealed ticket', async () => {
       const listRun = vi.mocked(endpoints.listTickets).getMockImplementation()
       vi.mocked(endpoints.listTickets).mockImplementation(

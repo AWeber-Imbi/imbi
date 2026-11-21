@@ -615,9 +615,19 @@ function TaskInbox({
       row?.kind === 'task'
         ? loaded.get(pageOf(row))?.[row.index % TASK_PAGE]
         : undefined
+    // A unit row stands for its ticket only when the ticket shows: in
+    // a collapsed unit that leaves it out of its items, it does not.
+    const asRow =
+      !!shown &&
+      shown.short_id.toUpperCase() === selectedId &&
+      !(
+        isUnit(shown) &&
+        !expanded.has(shown.unit.key) &&
+        !unitHolds(shown.unit, selectedId)
+      )
     return (
       !!shown &&
-      (shown.short_id.toUpperCase() === selectedId ||
+      (asRow ||
         (!!shown.unit &&
           expanded.has(shown.unit.key) &&
           unitHolds(shown.unit, selectedId))) &&
@@ -646,12 +656,19 @@ function TaskInbox({
       ])
       if (request !== revealRequest.current) return
       const row = page[at.index % TASK_PAGE]
+      // Open the unit unless the ticket is its row and the unit lists it;
+      // a truncated unit can leave out even its own row's ticket, and
+      // opening it shows that it does.
       const unit =
-        row && isUnit(row) && row.short_id !== selected.toUpperCase()
+        row &&
+        isUnit(row) &&
+        (row.short_id !== selected.toUpperCase() ||
+          !unitHolds(row.unit, selected))
           ? row.unit
           : undefined
       if (unit) setExpanded((current) => new Set(current).add(unit.key))
-      const focus = unit && selected.toUpperCase()
+      const focus =
+        unit && unitHolds(unit, selected) ? selected.toUpperCase() : undefined
       setCollapsed((current) =>
         current.includes(group) ? current.filter((g) => g !== group) : current,
       )
