@@ -313,9 +313,11 @@ _GROUP_RANKS = sql.SQL(
 #: The unit of a ticket is the workflow run of the ticket or of its
 #: nearest ancestor that has one (``origin.workflow_run_id``), else its
 #: root ticket. ``up`` walks the parents of each ticket until it finds a
-#: run or the root. ``nested``: the parent of the ticket is in its unit
-#: too. A unit's row is its representative: the most recently updated
-#: ticket in the unit's group.
+#: run, the root, or a ticket it has seen (a parent cycle, which the API
+#: refuses to make). ``nested``: the parent of the ticket is in its unit
+#: too. A unit is in the most urgent group of its tickets, and only the
+#: tickets in that group give its sort keys and its representative row:
+#: the most recently updated of them.
 _UNITS = sql.SQL(
     'WITH RECURSIVE m AS ('
     ' SELECT t.id, t.parent_id, t.short_id, t.title, t.status, t.outcome,'
@@ -325,13 +327,13 @@ _UNITS = sql.SQL(
     " CASE WHEN t.status <> 'closed' THEN"
     ' (SELECT min(r.opened_at) {open}) END AS blocked_since'
     ' FROM tickets.tickets AS t WHERE {where}),'
-    ' up (ticket_id, node_id, parent_id, run_id, depth) AS ('
-    " SELECT m.id, m.id, m.parent_id, m.origin->>'workflow_run_id', 0"
-    ' FROM m UNION ALL'
+    ' up (ticket_id, node_id, parent_id, run_id, depth, path) AS ('
+    " SELECT m.id, m.id, m.parent_id, m.origin->>'workflow_run_id', 0,"
+    ' ARRAY[m.id] FROM m UNION ALL'
     ' SELECT up.ticket_id, p.id, p.parent_id,'
-    " p.origin->>'workflow_run_id', up.depth + 1"
+    " p.origin->>'workflow_run_id', up.depth + 1, up.path || p.id"
     ' FROM up JOIN tickets.tickets AS p ON p.id = up.parent_id'
-    ' WHERE up.run_id IS NULL AND up.depth < 100),'
+    ' WHERE up.run_id IS NULL AND p.id <> ALL(up.path)),'
     ' keyed AS (SELECT DISTINCT ON (ticket_id) ticket_id, run_id,'
     " CASE WHEN run_id IS NOT NULL THEN 'run:' || run_id"
     " ELSE 'ticket:' || node_id::text END AS unit_key"
@@ -344,18 +346,18 @@ _UNITS = sql.SQL(
     ' AND jp.unit_key = j.unit_key),'
     ' u AS (SELECT unit_key, max(run_id) AS run_id, min(rank) AS rank,'
     ' count(*) AS tickets, count(*) FILTER (WHERE nested) AS children,'
-    ' sum(cost_total) AS cost_total, max(updated_at) AS last_activity_at,'
-    ' min(blocked_since) AS blocked_since, max(closed_at) AS closed_at,'
-    ' max(created_at) AS created_at, min(backlog_rank)'
-    " FILTER (WHERE inbox_group = 'queued') AS backlog_rank"
+    ' sum(cost_total) AS cost_total, max(updated_at) AS last_activity_at'
     ' FROM k GROUP BY unit_key),'
-    ' reps AS (SELECT DISTINCT ON (k.unit_key) k.unit_key, k.id AS rep_id'
-    ' FROM k JOIN u ON u.unit_key = k.unit_key'
-    ' ORDER BY k.unit_key, k.rank = u.rank DESC, k.updated_at DESC,'
-    ' k.id DESC),'
-    ' units AS (SELECT u.*, reps.rep_id,'
+    ' sort AS (SELECT k.unit_key, min(k.blocked_since) AS blocked_since,'
+    ' max(k.closed_at) AS closed_at, max(k.created_at) AS created_at,'
+    ' min(k.backlog_rank) AS backlog_rank,'
+    ' (array_agg(k.id ORDER BY k.updated_at DESC, k.id DESC))[1]'
+    ' AS rep_id FROM k JOIN u ON u.unit_key = k.unit_key'
+    ' AND k.rank = u.rank GROUP BY k.unit_key),'
+    ' units AS (SELECT u.*, sort.blocked_since, sort.closed_at,'
+    ' sort.created_at, sort.backlog_rank, sort.rep_id,'
     ' ({ranks})[u.rank] AS inbox_group'
-    ' FROM u JOIN reps ON reps.unit_key = u.unit_key)'
+    ' FROM u JOIN sort ON sort.unit_key = u.unit_key)'
 )
 
 #: The order of the units in their inbox group, as :data:`_GROUP_ORDER`

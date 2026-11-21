@@ -368,3 +368,78 @@ class TicketUnitTests(test_agent_tasks.AgentTaskTestCase):
         self.assertEqual(unit['tickets'], 102)
         self.assertEqual(len(unit['items']), tickets.store.UNIT_ITEMS)
         self.assertTrue(unit['truncated'])
+
+    async def test_sorts_a_unit_by_the_tickets_of_its_group(self) -> None:
+        # T-5 is the only queued ticket of its unit once T-6 and T-7
+        # close, so the unit sorts by T-5's time: after a lone queued
+        # ticket made after T-5 and before T-7.
+        lone = await self.ticket('Lone ticket', 6)
+        await self.close({'id': await self.id_of('T-6')}, 'done_acted', 40)
+        await self.close({'id': await self.id_of('T-7')}, 'done_acted', 41)
+        rows = await self.units(group='queued')
+        self.assertEqual(self.ids(rows), [lone['short_id'], 'T-5'])
+        response = await self.client.get(
+            self.url('T-7/position'), params={'group_by': 'run'}
+        )
+        self.assertEqual(response.json(), {'group': 'queued', 'index': 1})
+
+    async def insert_chain(
+        self, length: int, origin: dict[str, typing.Any]
+    ) -> list[uuid.UUID]:
+        """Insert a root with ``origin`` and ``length`` descendants, each
+        the child of the one before; return their ids, root first."""
+        ids = [uuid.uuid4() for _ in range(length + 1)]
+        async with self.pool.connection() as conn, conn.cursor() as cursor:
+            await cursor.executemany(
+                'INSERT INTO tickets.tickets (id, organization_id, short_id,'
+                ' agent_id, agent_version, service_account_id, title,'
+                ' description, origin_kind, origin_id, origin, owner,'
+                ' parent_id) VALUES (%s, %s, %s, %s, 1, %s, %s, %s,'
+                " 'human', %s, %s, %s, %s)",
+                [
+                    (
+                        ticket_id,
+                        self.org,
+                        f'C-{n}',
+                        'agent-1',
+                        'sa-1',
+                        f'Link {n}',
+                        '',
+                        self.email,
+                        pg_json.Jsonb(origin if n == 0 else {'kind': 'human'}),
+                        self.email,
+                        ids[n - 1] if n else None,
+                    )
+                    for n, ticket_id in enumerate(ids)
+                ],
+            )
+        return ids
+
+    async def test_keeps_a_deep_chain_in_one_unit(self) -> None:
+        run = await self.make_run({'ticket_key': 'PSE-4'})
+        await self.insert_chain(120, {'kind': 'human', 'workflow_run_id': run})
+        rows = await self.units(group='queued')
+        units = [r['unit'] for r in rows if r['short_id'].startswith('C-')]
+        self.assertEqual(len(units), 1)
+        self.assertEqual(units[0]['run_id'], run)
+        self.assertEqual(units[0]['tickets'], 121)
+        response = await self.client.get(
+            self.url('C-120/position'), params={'group_by': 'run'}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+
+    async def test_ends_the_walk_at_a_parent_cycle(self) -> None:
+        first, second = await self.insert_chain(1, {'kind': 'human'})
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE tickets.tickets SET parent_id = %s WHERE id = %s',
+                (second, first),
+            )
+        rows = await self.units(group='queued')
+        found = {
+            item['short_id']
+            for row in rows
+            for item in row['unit']['items']
+            if item['short_id'].startswith('C-')
+        }
+        self.assertEqual(found, {'C-0', 'C-1'})
