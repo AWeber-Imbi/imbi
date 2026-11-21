@@ -413,6 +413,27 @@ four groups:
   grow.
 - The page and the open ticket update without a reload.
 
+### Group by workflow run
+
+**Group by workflow run** (the layers button next to **Reveal in list**)
+shows one row per unit of work instead of one row per ticket. A unit is
+the tickets that one workflow run made, with their child tickets, or a
+ticket that no run made, with its child tickets. The browser remembers the
+choice.
+
+- The filters pick the tickets, and the units are made from them.
+- A unit is in the most urgent group of its tickets. For example, a run with
+  one running ticket and three closed tickets is under **Running**.
+- A unit row shows the subject of the run (a Jira key, for example) and the
+  workflow, a bar for each ticket the run started (oldest first), and the
+  number of tickets and child tickets.
+- Click the arrow to list the tickets of the unit. Child tickets are
+  indented; the last two show, with a button for the rest. **Open run**
+  opens the run page.
+- The footer shows the number of rows and the number of tickets in them.
+- The API is `GET /organizations/{org}/tickets?group_by=run`; the counts and
+  position endpoints take `group_by=run` too.
+
 ## Waiting on me
 
 The **Tickets** item in the top bar shows the number of items that wait
