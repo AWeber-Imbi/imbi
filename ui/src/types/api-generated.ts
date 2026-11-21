@@ -5207,9 +5207,17 @@ export interface paths {
          *     ``closed``, else newest first; it pages with ``offset``, so a client
          *     can read any part of it.
          *
+         *     ``group_by=run`` lists units of work instead of tickets: the
+         *     tickets of one workflow run and their descendants, or a ticket
+         *     without a run and its descendants. The filters pick the tickets; a
+         *     unit is in the most urgent group of its tickets. Each row is the
+         *     unit's most recently updated ticket in that group, with ``unit``. It
+         *     pages with ``offset``, with or without ``group``.
+         *
          *     Raises:
-         *         400: The cursor is not valid or comes with ``group``, or
-         *             ``offset`` comes without ``group``.
+         *         400: The cursor is not valid or comes with ``group`` or
+         *             ``group_by``, or ``offset`` comes without ``group`` or
+         *             ``group_by``.
          *         403: The caller is not a member of the org.
          *         404: No such organization.
          */
@@ -5262,7 +5270,8 @@ export interface paths {
          * Count Agent Tasks
          * @description Count the tasks in each inbox group that the task list with the
          *     same filters finds, so a client can size the whole list before it
-         *     reads the tasks.
+         *     reads the tasks. With ``group_by=run``, count the units of work, and
+         *     ``tickets`` is the number of tickets in them.
          *
          *     Raises:
          *         403: The caller is not a member of the org.
@@ -5288,7 +5297,8 @@ export interface paths {
          * Get Agent Task Position
          * @description Find where a task is in the task list with the same filters: its
          *     inbox group and its index in that group, so a client can scroll to
-         *     it before it reads that part of the list.
+         *     it before it reads that part of the list. With ``group_by=run``,
+         *     where the unit of work of the task is.
          *
          *     Raises:
          *         403: The caller is not a member of the org.
@@ -11766,7 +11776,8 @@ export interface components {
         };
         /**
          * AgentTaskCounts
-         * @description The number of tasks in each inbox group.
+         * @description The number of tasks in each inbox group. With ``group_by=run``,
+         *     the number of units of work.
          */
         AgentTaskCounts: {
             /**
@@ -11794,6 +11805,8 @@ export interface components {
              * @default 0
              */
             closed: number;
+            /** Tickets */
+            tickets?: number | null;
         };
         /** AgentTaskCreate */
         AgentTaskCreate: {
@@ -12033,6 +12046,7 @@ export interface components {
             project_icons?: {
                 [key: string]: string;
             };
+            unit?: components["schemas"]["TicketUnit"] | null;
         };
         /**
          * AgentTaskOrigin
@@ -22311,6 +22325,82 @@ export interface components {
             open: number;
         };
         /**
+         * TicketUnit
+         * @description A unit of work: the tickets of one workflow run and their
+         *     descendants, or a ticket without a run and its descendants.
+         */
+        TicketUnit: {
+            /** Key */
+            key: string;
+            /** Run Id */
+            run_id?: string | null;
+            /** Workflow Slug */
+            workflow_slug?: string | null;
+            /** Workflow Name */
+            workflow_name?: string | null;
+            /** Subject */
+            subject?: string | null;
+            /** Tickets */
+            tickets: number;
+            /** Children */
+            children: number;
+            /** Cost Total */
+            cost_total: string;
+            /**
+             * Last Activity At
+             * Format: date-time
+             */
+            last_activity_at: string;
+            /** Items */
+            items: components["schemas"]["TicketUnitItem"][];
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+        };
+        /**
+         * TicketUnitItem
+         * @description A ticket of a unit of work, in the row of the unit.
+         */
+        TicketUnitItem: {
+            /** Short Id */
+            short_id: string;
+            /** Title */
+            title: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "held" | "queued" | "running" | "paused" | "open" | "in_progress" | "blocked" | "closed";
+            /** Outcome */
+            outcome?: string | null;
+            /** Outcome Reason */
+            outcome_reason?: string | null;
+            /** Agent Id */
+            agent_id?: string | null;
+            /** Assignee */
+            assignee?: string | null;
+            /** Node Key */
+            node_key?: string | null;
+            /** Parent Short Id */
+            parent_short_id?: string | null;
+            /**
+             * Nested
+             * @default false
+             */
+            nested: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Closed At */
+            closed_at?: string | null;
+            /** Cost Total */
+            cost_total: string;
+        };
+        /**
          * TicketUpdate
          * @description The fields to change; a field that is not sent stays.
          */
@@ -32409,6 +32499,7 @@ export interface operations {
                 cursor?: string | null;
                 group?: ("input" | "running" | "paused" | "queued" | "closed") | null;
                 offset?: number;
+                group_by?: "run" | null;
             };
             header?: never;
             path: {
@@ -32498,6 +32589,7 @@ export interface operations {
                 label?: string[] | null;
                 mine?: boolean;
                 q?: string | null;
+                group_by?: "run" | null;
             };
             header?: never;
             path: {
@@ -32536,6 +32628,7 @@ export interface operations {
                 label?: string[] | null;
                 mine?: boolean;
                 q?: string | null;
+                group_by?: "run" | null;
             };
             header?: never;
             path: {

@@ -1861,6 +1861,12 @@ export type TicketSubject = Schemas['TicketSubjectResponse']
 
 export type TicketType = Ticket['type']
 
+// A unit of work in the run view of the ticket list: a workflow run and
+// its tickets, or a ticket without a run and its descendants.
+export type TicketUnit = Schemas['TicketUnit']
+
+export type TicketUnitItem = Schemas['TicketUnitItem']
+
 /** Only the fields sent change. */
 export type TicketUpdate = Partial<Schemas['TicketUpdate']>
 
