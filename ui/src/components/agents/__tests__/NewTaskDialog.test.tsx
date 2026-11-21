@@ -144,6 +144,8 @@ describe('NewTaskDialog', () => {
     expect(endpoints.createTicket).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('combobox', { name: /Severity/ }))
     fireEvent.click(await screen.findByRole('option', { name: 'sev2' }))
+    // A chosen value clears the error of the last submit.
+    expect(screen.queryByText(/required property/i)).toBeNull()
     await create(onClose)
     expect(endpoints.createTicket).toHaveBeenCalledWith('acme', {
       ...BASE,

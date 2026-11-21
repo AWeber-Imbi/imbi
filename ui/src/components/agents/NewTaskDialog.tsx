@@ -466,9 +466,15 @@ export function NewTaskDialog({
           <DynamicFormFields
             data={fieldValues}
             errors={{ ...issues.errors, ...fieldErrors }}
-            onChange={(key, value) =>
+            onChange={(key, value) => {
               setFieldValues((prev) => ({ ...prev, [key]: value }))
-            }
+              // A changed field shows no error from the last submit.
+              setFieldErrors((prev) => {
+                const next = { ...prev }
+                delete next[key]
+                return next
+              })
+            }}
             schema={fieldSchema}
           />
 
