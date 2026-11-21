@@ -2943,6 +2943,19 @@ class LLMCallStepTestCase(EngineTestCase):
         self.assertEqual(self._keys()[:3], ['sum:1', 'sum:1', 'sum:1'])
         self.assertEqual(run['steps']['sum']['attempt'], 1)
 
+    async def test_step_error_log_has_no_request_input(self) -> None:
+        # A validation error echoes the request input; the log keeps
+        # only where and what, not the value.
+        detail = [
+            {'input': 'secret-ticket-text', 'loc': ['body', 'x'], 'msg': 'bad'}
+        ]
+        self.answers = [httpx.Response(422, json={'detail': detail})]
+        with self.assertLogs('imbi.workflows.engine', 'WARNING') as logs:
+            await self._drive_llm_call()
+        text = '\n'.join(logs.output)
+        self.assertIn("'msg': 'bad'", text)
+        self.assertNotIn('secret-ticket-text', text)
+
     async def test_token_failure_asks_again_with_the_same_key(
         self,
     ) -> None:
