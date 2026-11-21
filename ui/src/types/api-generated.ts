@@ -6988,9 +6988,9 @@ export interface paths {
          *         409: The step is not a running agent step, the agent is
          *             disabled, or ``task_key_conflict``.
          *         422: ``agent_not_found``, ``agent_params_not_literal``,
-         *             ``trigger_project_missing``, ``project_not_rendered``, or the
-         *             project or the budget is not valid (see
-         *             :func:`tickets.make_task`).
+         *             ``trigger_project_missing``, ``project_not_rendered``, the
+         *             project or the budget is not valid, or
+         *             ``custom_fields_invalid`` (see :func:`tickets.make_task`).
          */
         post: operations["step_agent_task_api_organizations__org_slug__workflows__slug__runs__run_id__steps__node_id__agent_task_post"];
         delete?: never;
@@ -21903,6 +21903,10 @@ export interface components {
             } | null;
             /** Team */
             team?: string | null;
+            /** Custom Fields */
+            custom_fields?: {
+                [key: string]: unknown;
+            } | null;
             /** Task Id */
             task_id: string;
             /** Status */

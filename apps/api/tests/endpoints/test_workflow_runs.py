@@ -1509,6 +1509,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
                 'labels': [],
                 'roles': {},
                 'team': None,
+                'custom_fields': {},
             },
         )
 

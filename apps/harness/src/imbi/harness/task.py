@@ -1742,9 +1742,25 @@ class TaskRun:
             return relay.untrusted(text, 'webhook')
         return text
 
+    def brief(self) -> str:
+        """The task description, then the custom fields that have a
+        value. People and webhooks write the values, so they are
+        untrusted (6.7)."""
+        values: Body = self.task.get('custom_fields') or {}
+        fields = {
+            k: v for k, v in values.items() if v not in (None, '', [], {})
+        }
+        if not fields:
+            return self.description()
+        text = json.dumps(fields, indent=2, sort_keys=True)
+        return (
+            f'{self.description()}\n\nThe custom fields of the ticket:\n'
+            + relay.untrusted(text, 'custom_fields')
+        )
+
     def instruction(self) -> str:
-        """The task description, then the ticket history."""
-        text = self.description()
+        """The brief, then the ticket history."""
+        text = self.brief()
         return f'{text}\n\n{self.history}' if self.history else text
 
     async def read_history(self) -> str:
@@ -1766,7 +1782,7 @@ class TaskRun:
         ) as err:
             LOGGER.warning('No history for %s: %s', self.api.short_id, err)
             return ''
-        used = len(self.description().encode()) + 2
+        used = len(self.brief().encode()) + 2
 
         def fits(drop: int) -> bool:
             history = _history(entries[drop:], cut + drop)

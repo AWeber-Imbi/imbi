@@ -369,6 +369,13 @@ class Params(pydantic.BaseModel):
         description="USD. Defaults to the agent's task budget. It cannot "
         'be more than that budget.',
     )
+    custom_fields: dict[str, typing.Any] = pydantic.Field(
+        default_factory=dict[str, typing.Any],
+        description='The values of the custom fields of the ticket, '
+        'by field name. Templates are allowed. Each required field with '
+        'no default must have a value, or the step fails with '
+        '``custom_fields_invalid``.',
+    )
     output_fields: list[OutputField] = pydantic.Field(
         default_factory=list[OutputField],
         max_length=MAX_FIELDS,
@@ -407,6 +414,8 @@ class TicketAttributes(pydantic.BaseModel):
     roles: dict[str, str] | None = None
     #: The slug of the team.
     team: str | None = None
+    #: The values of the custom fields, ``{field: value}``.
+    custom_fields: dict[str, typing.Any] | None = None
 
 
 #: The sample values of :class:`TicketAttributes`.
@@ -422,6 +431,7 @@ SAMPLE_ATTRIBUTES: dict[str, typing.Any] = {
     'labels': ['sample-label'],
     'roles': {'reviewer': 'person@example.com'},
     'team': 'sample-team',
+    'custom_fields': {'severity': 'sev2'},
 }
 
 

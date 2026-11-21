@@ -617,6 +617,9 @@ class CreateTicketConfig(pydantic.BaseModel):
     agent_slug: str
     title_expression: str
     description_expression: str
+    #: The custom fields of the ticket, as CEL expressions by field
+    #: name. A static value is a CEL literal, such as ``'sev2'``.
+    custom_fields: dict[str, str] = {}
     delivery_id_selector: json_pointer.JsonPointer = pydantic.Field(
         default_factory=lambda: jsonpointer.JsonPointer(
             '/metadata/headers/x-github-delivery'
@@ -690,12 +693,29 @@ def _deployment_state(
     return raw_state, status
 
 
-def _evaluate_cel(expression: str, event: object) -> str | None:
+def _run_cel(expression: str, event: object) -> object:
     env = celpy.Environment()
     program = env.program(env.compile(expression), functions=_CEL_FUNCTIONS)
-    result = program.evaluate(celpy.json_to_cel(event))
+    return program.evaluate(celpy.json_to_cel(event))
+
+
+def _evaluate_cel(expression: str, event: object) -> str | None:
+    result = _run_cel(expression, event)
     if result is None:
         return None
+    return str(result)
+
+
+def _evaluate_cel_value(
+    expression: str, event: object
+) -> bool | int | float | str | None:
+    """Return the result as a JSON scalar. A list or a map is text."""
+    result = _run_cel(expression, event)
+    # A CEL bool is an int; JSON must get true or false.
+    if isinstance(result, celpy.celtypes.BoolType):
+        return bool(result)
+    if result is None or isinstance(result, int | float | str):
+        return result
     return str(result)
 
 
@@ -1486,7 +1506,7 @@ async def create_ticket(
     webhook_id, delivery_id = delivery
     title = _evaluate_cel(action_config.title_expression, event) or ''
     text = _evaluate_cel(action_config.description_expression, event) or ''
-    body = {
+    body: dict[str, typing.Any] = {
         'agent_slug': action_config.agent_slug,
         'title': ' '.join(title.split())[:_TITLE_LIMIT],
         'description': _untrusted_description(
@@ -1497,6 +1517,11 @@ async def create_ticket(
             f'{delivery_id}:{action_config.agent_slug}:{ctx.project_id}'
         ),
     }
+    if action_config.custom_fields:
+        body['custom_fields'] = {
+            name: _evaluate_cel_value(expression, event)
+            for name, expression in action_config.custom_fields.items()
+        }
     async with ImbiClient() as client:
         await client.create_ticket(ctx.org_slug, webhook_id, delivery_id, body)
 

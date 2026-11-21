@@ -227,6 +227,7 @@ class TaskTriggerTestCase(unittest.IsolatedAsyncioTestCase):
                         'labels': None,
                         'roles': None,
                         'team': None,
+                        'custom_fields': None,
                     },
                 }
             ],

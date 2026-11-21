@@ -37,7 +37,8 @@ async def attributes(
 ) -> dict[str, typing.Any]:
     """Return ``title``, ``url``, ``project``, ``agent`` (the agent
     slug), ``cost_usd``, ``type``, ``priority``, ``due_date``,
-    ``labels``, ``roles``, and ``team`` (the team slug) of a task.
+    ``labels``, ``roles``, ``team`` (the team slug), and
+    ``custom_fields`` of a task.
     Without ``db``, ``url``, ``agent``, and ``team`` are ``None``."""
     found = (
         await db.execute(
@@ -66,6 +67,7 @@ async def attributes(
         'labels': task.get('labels'),
         'roles': task.get('roles'),
         'team': graph.parse_agtype(row.get('team_slug')),
+        'custom_fields': task.get('custom_fields'),
     }
 
 

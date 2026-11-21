@@ -548,15 +548,26 @@ class Executors:
 
     async def _agent(self, call: Call) -> Outcome:
         params = _params(agent.Params, call)
-        task = await self.api.request(
-            'POST',
-            await self._agent_task_path(
-                call.organization_id,
-                call.workflow_slug,
-                call.run_id,
-                call.node.id,
-            ),
-        )
+        try:
+            task = await self.api.request(
+                'POST',
+                await self._agent_task_path(
+                    call.organization_id,
+                    call.workflow_slug,
+                    call.run_id,
+                    call.node.id,
+                ),
+            )
+        except StepError as e:
+            # The step error is the code only; the log names the fields.
+            if e.code == 'custom_fields_invalid':
+                LOGGER.warning(
+                    'Run %s: agent step %s: custom fields not valid: %s',
+                    call.run_id,
+                    call.node.id,
+                    e.detail,
+                )
+            raise
         if task['outcome'] is None:
             return Outcome(
                 resume_at=_now()

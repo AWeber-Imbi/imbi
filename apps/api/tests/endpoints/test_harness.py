@@ -1233,6 +1233,36 @@ class ChildTaskTests(RunnerTestCase):
             response.json()['detail']['error'], 'delegation_depth'
         )
 
+    async def test_child_needs_required_custom_fields(self) -> None:
+        helper_id = await self.make_agent('helper', name='Helper')
+        await self.make_version({'subagents': [{'agent_id': helper_id}]})
+        # A child ticket is a ``task`` with no labels, so this global
+        # blueprint matches it. The cleanup removes it.
+        bp = models.Blueprint(
+            name=f'Child fields {uuid.uuid4().hex}',
+            type='Ticket',
+            filter={'ticket_type': ['task']},
+            json_schema=models.Schema.model_validate(
+                {
+                    'type': 'object',
+                    'properties': {'severity': {'type': 'string'}},
+                    'required': ['severity'],
+                }
+            ),
+        )
+        await self.graph.create(bp)
+        self.addAsyncCleanup(
+            self.graph.execute,
+            'MATCH (b:Blueprint {{id: {id}}}) DETACH DELETE b RETURN 1 AS ok',
+            {'id': bp.id},
+            ['ok'],
+        )
+        response = await self.child('helper')
+        self.assertEqual(response.status_code, 422, response.text)
+        detail = response.json()['detail']
+        self.assertEqual(detail['error'], 'custom_fields_invalid')
+        self.assertEqual([m['field'] for m in detail['missing']], ['severity'])
+
     async def test_owner_must_still_make_tasks(self) -> None:
         helper_id = await self.make_agent('helper', name='Helper')
         await self.make_version({'subagents': [{'agent_id': helper_id}]})
