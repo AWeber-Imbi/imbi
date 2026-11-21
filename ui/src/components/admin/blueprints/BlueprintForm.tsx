@@ -117,6 +117,13 @@ export function BlueprintForm({
   const [selectedEnvironments, setSelectedEnvironments] = useState<Set<string>>(
     new Set(),
   )
+  const [selectedTicketTypes, setSelectedTicketTypes] = useState<Set<string>>(
+    new Set(),
+  )
+  const [selectedPriorities, setSelectedPriorities] = useState<Set<string>>(
+    new Set(),
+  )
+  const [labels, setLabels] = useState<string[]>([])
 
   // Schema editor state
   const [editorMode, setEditorMode] = useState<SchemaEditorMode>('visual')
@@ -161,6 +168,9 @@ export function BlueprintForm({
         if (f.environment?.length > 0) {
           setSelectedEnvironments(new Set(f.environment))
         }
+        setSelectedTicketTypes(new Set(f.ticket_type ?? []))
+        setSelectedPriorities(new Set(f.priority ?? []))
+        setLabels(f.label ?? [])
       }
 
       try {
@@ -417,19 +427,18 @@ export function BlueprintForm({
         ? buildJsonSchema(schemaProperties)
         : JSON.parse(rawSchema)
 
+    // Send only the filter fields that are valid for the type.
     let filterObj: BlueprintFilter | null = null
     if (filterEnabled) {
-      const ptArr = Array.from(selectedProjectTypes)
-      const envArr = Array.from(selectedEnvironments)
-      if (ptArr.length > 0 || envArr.length > 0) {
-        filterObj = {
-          environment: envArr,
-          label: [],
-          priority: [],
-          project_type: ptArr,
-          ticket_type: [],
-        }
+      const ticket = kind === 'node' && type === 'Ticket'
+      const f: BlueprintFilter = {
+        environment: ticket ? [] : Array.from(selectedEnvironments),
+        label: ticket ? labels : [],
+        priority: ticket ? Array.from(selectedPriorities) : [],
+        project_type: ticket ? [] : Array.from(selectedProjectTypes),
+        ticket_type: ticket ? Array.from(selectedTicketTypes) : [],
       }
+      if (Object.values(f).some((v) => v.length > 0)) filterObj = f
     }
 
     const data: BlueprintCreate = {
@@ -857,13 +866,21 @@ export function BlueprintForm({
         envLoading={envLoading}
         filterEnabled={filterEnabled}
         isLoading={isLoading}
+        isTicket={kind === 'node' && type === 'Ticket'}
+        labels={labels}
+        orgSlug={orgSlug ?? ''}
         ptIsError={ptIsError}
         ptLoading={ptLoading}
         selectedEnvironments={selectedEnvironments}
+        selectedPriorities={selectedPriorities}
         selectedProjectTypes={selectedProjectTypes}
+        selectedTicketTypes={selectedTicketTypes}
         setFilterEnabled={setFilterEnabled}
+        setLabels={setLabels}
         setSelectedEnvironments={setSelectedEnvironments}
+        setSelectedPriorities={setSelectedPriorities}
         setSelectedProjectTypes={setSelectedProjectTypes}
+        setSelectedTicketTypes={setSelectedTicketTypes}
       />
 
       {/* JSON Schema Editor */}

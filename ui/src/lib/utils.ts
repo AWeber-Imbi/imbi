@@ -68,10 +68,14 @@ export function parseFilterFromBlueprint(
   try {
     const parsed: BlueprintFilter =
       typeof filter === 'string' ? JSON.parse(filter) : filter
-    if (
-      (parsed.project_type?.length ?? 0) > 0 ||
-      (parsed.environment?.length ?? 0) > 0
-    ) {
+    const keys = [
+      'project_type',
+      'environment',
+      'ticket_type',
+      'priority',
+      'label',
+    ] as const
+    if (keys.some((k) => (parsed[k]?.length ?? 0) > 0)) {
       return parsed
     }
   } catch {
