@@ -842,6 +842,21 @@ describe('Tasks', () => {
     )
   })
 
+  it('does not send a field that the list cannot filter on now', async () => {
+    vi.mocked(endpoints.getTicketSchema).mockResolvedValue({
+      filterable: [{ enum: ['sev1'], field: 'severity' }],
+      sections: [],
+    })
+    renderAt('/tickets?filter=gone%3Ain%3Ax&filter=severity%3Ain%3Asev1')
+    await waitFor(() =>
+      expect(endpoints.listTickets).toHaveBeenLastCalledWith(
+        'acme',
+        expect.objectContaining({ filter: ['severity:in:sev1'] }),
+        expect.anything(),
+      ),
+    )
+  })
+
   it('finds a value by typing on the field list', async () => {
     renderAt('/tickets')
     await screen.findByText('Busy')

@@ -386,9 +386,17 @@ function TaskInbox({
     queryKey: queryKeys.ticketSchema(orgSlug, ANY_TICKET),
     staleTime: 60_000,
   })
+  // A field in an old link that the list cannot filter on now would
+  // make every list request fail with 400, so it is not sent.
+  const filterable = schema?.filterable?.map((f) => f.field)
+  const fields = Object.fromEntries(
+    Object.entries(filters.fields).filter(
+      ([name]) => !filterable || filterable.includes(name),
+    ),
+  )
   const params = {
     agent_id: nonEmpty(filters.agents),
-    filter: nonEmpty(fieldFilters(filters)),
+    filter: nonEmpty(fieldFilters({ ...filters, fields })),
     label: nonEmpty(filters.labels),
     mine: filters.assignees.includes(ME),
     owner: nonEmpty(filters.assignees.filter((a) => a !== ME)),

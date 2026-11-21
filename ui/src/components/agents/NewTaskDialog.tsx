@@ -300,6 +300,9 @@ export function NewTaskDialog({
   useEffect(() => {
     if (isOpen) reset()
   }, [isOpen, reset])
+  // Another type, priority, or labels can match other blueprints, so
+  // the fields that the last 422 said are missing can be wrong now.
+  useEffect(() => reset(), [labels, priority, reset, type])
   const canSubmit =
     ready && roleErrors(roles).every((e) => !e) && !create.isPending
   // The required fields with no default, and each field that the API

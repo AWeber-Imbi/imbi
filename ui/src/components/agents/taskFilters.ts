@@ -53,11 +53,18 @@ export function activeCount(filters: TaskFilters): number {
   ].filter((values) => values.length > 0).length
 }
 
-/** The custom field filters as the API takes them: `field:in:a,b`. */
+/**
+ * The custom field filters as the API takes them: `field:in:a,b`. The API
+ * splits `in` on commas, so one value with a comma goes as `eq`, and a
+ * value with a comma among others is not sent.
+ */
 export function fieldFilters(filters: TaskFilters): string[] {
-  return Object.entries(filters.fields)
-    .filter(([, values]) => values.length > 0)
-    .map(([name, values]) => `${name}:in:${values.join(',')}`)
+  return Object.entries(filters.fields).flatMap(([name, values]) => {
+    if (values.length === 1 && values[0].includes(','))
+      return [`${name}:eq:${values[0]}`]
+    const plain = values.filter((v) => !v.includes(','))
+    return plain.length > 0 ? [`${name}:in:${plain.join(',')}`] : []
+  })
 }
 
 export function readFilters(search: string): TaskFilters {
@@ -66,8 +73,9 @@ export function readFilters(search: string): TaskFilters {
   const fields: Record<string, string[]> = {}
   for (const filter of params.getAll('filter')) {
     const [name, op, ...rest] = filter.split(':')
-    if (name && (op === 'in' || op === 'eq'))
-      fields[name] = unique(rest.join(':').split(','))
+    const value = rest.join(':')
+    if (name && op === 'eq') fields[name] = [value]
+    else if (name && op === 'in') fields[name] = unique(value.split(','))
   }
   return {
     agents: unique(params.getAll('agent')),

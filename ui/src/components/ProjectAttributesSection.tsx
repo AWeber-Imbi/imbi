@@ -124,7 +124,8 @@ const ProjectAttributeRow = memo(function ProjectAttributeRow({
 
 /**
  * The fields of blueprint sections, by label, each editable in place.
- * The first section that declares a field wins. `patch` gets the path
+ * As in the API, a later section (higher blueprint priority) overrides
+ * an earlier one for the same field. `patch` gets the path
  * `/<field>`.
  */
 export function BlueprintFields({
@@ -135,14 +136,11 @@ export function BlueprintFields({
   valueOf,
 }: BlueprintFieldsProps) {
   const attributeFields = useMemo<AttributeField[]>(() => {
-    const seen = new Set<string>()
-    const fields: AttributeField[] = []
+    const fields = new Map<string, AttributeField>()
     for (const section of sections) {
       for (const [key, def] of Object.entries(section.properties)) {
-        if (seen.has(key)) continue
-        seen.add(key)
         const raw = valueOf(key, section)
-        fields.push({
+        fields.set(key, {
           def,
           description: def.description ?? undefined,
           key,
@@ -152,7 +150,7 @@ export function BlueprintFields({
         })
       }
     }
-    return fields.sort((a, b) => a.label.localeCompare(b.label))
+    return [...fields.values()].sort((a, b) => a.label.localeCompare(b.label))
   }, [sections, valueOf])
 
   return (
