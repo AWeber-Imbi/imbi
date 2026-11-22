@@ -118,9 +118,15 @@ def validate(
         return {}
     model = blueprints.apply_blueprints(_Values, matches)
     bounds = _bounds(matches)
+    item_enums = _item_enums(matches)
     fields: dict[str, typing.Any] = {}
     for name, field in model.model_fields.items():
         annotation = field.rebuild_annotation()
+        if name in item_enums:
+            optional = type(None) in typing.get_args(annotation)
+            annotation = item_enums[name]
+            if optional:
+                annotation = annotation | None
         if name in bounds:
             annotation = typing.Annotated[annotation, bounds[name]]
         fields[name] = (annotation, None if partial else field.default)
@@ -164,6 +170,21 @@ def _bounds(matches: list[models.Blueprint]) -> dict[str, typing.Any]:
                     gt=prop.exclusive_minimum,
                     lt=prop.exclusive_maximum,
                 )
+    return result
+
+
+def _item_enums(matches: list[models.Blueprint]) -> dict[str, typing.Any]:
+    """Return a ``list[Literal[...]]`` for each array property whose
+    items have a string enum. The shared helper checks only the item
+    type."""
+    result: dict[str, typing.Any] = {}
+    for bp in matches:
+        for name, prop in (bp.json_schema.properties or {}).items():
+            result.pop(name, None)
+            items = prop.items if prop.type == 'array' else None
+            enum = getattr(items, 'enum', None)
+            if enum and all(isinstance(v, str) for v in enum):
+                result[name] = list[typing.Literal[tuple(enum)]]  # type: ignore[misc]
     return result
 
 

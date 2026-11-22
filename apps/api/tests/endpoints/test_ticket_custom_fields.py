@@ -211,7 +211,11 @@ class ValidateTests(unittest.TestCase):
                     {
                         'type': 'object',
                         'properties': {
-                            'estimate': {'type': 'integer', 'minimum': 0}
+                            'estimate': {'type': 'integer', 'minimum': 0},
+                            'tags': {
+                                'type': 'array',
+                                'items': {'type': 'string', 'enum': ['api']},
+                            },
                         },
                     }
                 ),
@@ -231,3 +235,22 @@ class ValidateTests(unittest.TestCase):
                     self.matches, {'estimate': -1}, partial=partial
                 )
             self.assertEqual(ctx.exception.status_code, 422)
+
+    def test_array_item_enum(self) -> None:
+        for partial in (False, True):
+            self.assertEqual(
+                custom_fields.validate(
+                    self.matches, {'tags': ['api']}, partial=partial
+                ),
+                {'tags': ['api']},
+            )
+            with self.assertRaises(fastapi.HTTPException) as ctx:
+                custom_fields.validate(
+                    self.matches, {'tags': ['other']}, partial=partial
+                )
+            self.assertEqual(ctx.exception.status_code, 422)
+        # A PATCH with None still clears the key.
+        self.assertEqual(
+            custom_fields.validate(self.matches, {'tags': None}, partial=True),
+            {'tags': None},
+        )
