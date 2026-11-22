@@ -1,6 +1,6 @@
 import { Route, Routes } from 'react-router-dom'
 
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '@/api/client'
 import * as endpoints from '@/api/endpoints'
@@ -13,7 +13,7 @@ import { groupOf, groupTasks } from '../taskEvents'
 import { EVENT_POLL_MS } from '../taskQueries'
 import { TasksPage } from '../TasksPage'
 import { agent, catalog, promptVersion } from './fixtures'
-import { event, task } from './taskFixtures'
+import { event, task, unitItem, unitRow } from './taskFixtures'
 import { layout, scrollPane } from './virtualLayout'
 
 // fallow-ignore-next-line unresolved-import
@@ -1783,5 +1783,379 @@ describe('Tasks', () => {
     await waitFor(() =>
       expect(window.location.pathname).toBe('/tickets/acme/T-9/overview'),
     )
+  })
+
+  describe('grouped by workflow run', () => {
+    const at = (minute: number) =>
+      `2026-10-08T12:${String(minute).padStart(2, '0')}:00Z`
+    const RUN = unitRow(
+      task({
+        id: 'run-rep',
+        short_id: 'T-23',
+        status: 'running',
+        title: 'Merge check PSE-1',
+      }),
+      [
+        unitItem({
+          closed_at: at(5),
+          created_at: at(1),
+          node_key: 'implement',
+          outcome: 'done_acted',
+          short_id: 'T-21',
+          status: 'closed',
+          title: 'Implement PSE-1',
+        }),
+        ...[25, 26, 27].map((n) =>
+          unitItem({
+            created_at: at(n - 23),
+            nested: true,
+            parent_short_id: 'T-21',
+            short_id: `T-${n}`,
+            status: 'closed',
+            title: `Run check ${n}`,
+          }),
+        ),
+        unitItem({
+          closed_at: at(8),
+          created_at: at(6),
+          node_key: 'review',
+          outcome: 'done_nothing_to_act_on',
+          short_id: 'T-22',
+          status: 'closed',
+          title: 'Review PSE-1',
+        }),
+        unitItem({
+          created_at: at(7),
+          nested: true,
+          parent_short_id: 'T-22',
+          short_id: 'T-24',
+          status: 'closed',
+          title: 'Run tests for T-22',
+        }),
+        unitItem({
+          created_at: at(9),
+          node_key: 'merge-check',
+          short_id: 'T-23',
+          status: 'running',
+          title: 'Merge check PSE-1',
+        }),
+      ],
+      {
+        key: 'run:run-1',
+        run_id: 'run-1',
+        subject: 'PSE-1',
+        workflow_name: 'Ticket implementation',
+        workflow_slug: 'impl',
+      },
+    )
+    const SOLO = unitRow(
+      task({ id: 'solo', short_id: 'T-30', title: 'Solo work' }),
+      [unitItem({ short_id: 'T-30', title: 'Solo work' })],
+    )
+
+    // jsdom has no scrollIntoView.
+    const scrollIntoView = vi.fn()
+    beforeEach(() => {
+      scrollIntoView.mockClear()
+      Element.prototype.scrollIntoView = scrollIntoView
+    })
+    afterEach(() => {
+      Reflect.deleteProperty(Element.prototype, 'scrollIntoView')
+    })
+
+    beforeEach(() => {
+      const countAll = vi.mocked(endpoints.countTickets).getMockImplementation()
+      const listAll = vi.mocked(endpoints.listTickets).getMockImplementation()
+      vi.mocked(endpoints.countTickets).mockImplementation(
+        async (org, params, signal) =>
+          params.group_by === 'run'
+            ? {
+                closed: 0,
+                input: 0,
+                paused: 0,
+                queued: 1,
+                running: 1,
+                tickets: 8,
+              }
+            : countAll!(org, params, signal),
+      )
+      vi.mocked(endpoints.listTickets).mockImplementation(
+        async (org, params, signal) => {
+          if (params.group_by !== 'run') return listAll!(org, params, signal)
+          if (params.group === 'running') return [RUN]
+          return params.group === 'queued' ? [SOLO] : []
+        },
+      )
+    })
+
+    const groupByRun = async (path = '/tickets') => {
+      renderAt(path)
+      await screen.findByText('Busy')
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Group by workflow run' }),
+      )
+      return screen.findByRole('button', { name: 'Expand PSE-1' })
+    }
+
+    it('switches the list to one row per run and back', async () => {
+      await groupByRun()
+      const toggle = screen.getByRole('button', {
+        name: 'Group by workflow run',
+      })
+      expect(toggle).toHaveAttribute('aria-pressed', 'true')
+      expect(endpoints.countTickets).toHaveBeenCalledWith(
+        'acme',
+        expect.objectContaining({ group_by: 'run' }),
+        expect.anything(),
+      )
+      expect(window.localStorage.setItem).toHaveBeenCalledWith(
+        'imbi.tasks.byRun',
+        'true',
+      )
+      expect(screen.getByText('2 rows for 8 tickets')).toBeInTheDocument()
+      expect(screen.queryByText('Busy')).not.toBeInTheDocument()
+      fireEvent.click(toggle)
+      expect(await screen.findByText('Busy')).toBeInTheDocument()
+      expect(toggle).toHaveAttribute('aria-pressed', 'false')
+      expect(screen.getByText('4 tickets')).toBeInTheDocument()
+    })
+
+    it('shows a run as one row with its counts and a bar per ticket', async () => {
+      const expand = await groupByRun()
+      const row = expand.parentElement!
+      expect(within(row).getByText('Ticket implementation')).toBeVisible()
+      expect(within(row).getByText('3 tasks · +4 child')).toBeVisible()
+      const bars = [...row.querySelectorAll<HTMLElement>('[data-bar]')]
+      expect(bars.map((b) => b.dataset.bar)).toEqual(['T-21', 'T-22', 'T-23'])
+      expect(bars[0]).toHaveClass('bg-(--ds-border-success)')
+      expect(bars[1]).toHaveClass('bg-(--ds-border-success)/40')
+      expect(bars[2]).toHaveClass('bg-(--ds-border-info)')
+      expect(within(row).getByRole('link')).toHaveAttribute(
+        'href',
+        '/tickets/acme/T-23',
+      )
+    })
+
+    it('expands a run to its tickets and their children', async () => {
+      const expand = await groupByRun()
+      expect(screen.queryByText('Implement PSE-1')).not.toBeInTheDocument()
+      fireEvent.click(expand)
+      expect(expand).toHaveAttribute('aria-expanded', 'true')
+      const list = screen.getByRole('list', { name: 'Tickets of PSE-1' })
+      const shown = () =>
+        within(list)
+          .getAllByRole('link')
+          .map((a) => a.getAttribute('href'))
+      // The last two children of T-21 show until Show all.
+      expect(shown()).toEqual([
+        '/tickets/acme/T-21',
+        '/tickets/acme/T-26',
+        '/tickets/acme/T-27',
+        '/tickets/acme/T-22',
+        '/tickets/acme/T-24',
+        '/tickets/acme/T-23',
+        '/agents/workflows/impl/runs/run-1',
+      ])
+      fireEvent.click(
+        within(list).getByRole('button', { name: 'Show all 3 child tasks' }),
+      )
+      expect(shown()).toContain('/tickets/acme/T-25')
+      expect(within(list).getByText('Open run')).toBeInTheDocument()
+      fireEvent.click(expand)
+      expect(
+        screen.queryByRole('list', { name: 'Tickets of PSE-1' }),
+      ).not.toBeInTheDocument()
+    })
+
+    it('marks the selected ticket inside an expanded run', async () => {
+      const expand = await groupByRun('/tickets/acme/T-24')
+      fireEvent.click(expand)
+      const list = screen.getByRole('list', { name: 'Tickets of PSE-1' })
+      expect(
+        within(list)
+          .getAllByRole('link')
+          .find((a) => a.getAttribute('aria-current') === 'page'),
+      ).toHaveAttribute('href', '/tickets/acme/T-24')
+    })
+
+    it('opens the run that holds the ticket it reveals', async () => {
+      vi.mocked(endpoints.getTicketPosition).mockResolvedValue({
+        group: 'running',
+        index: 0,
+      })
+      await groupByRun('/tickets/acme/T-24')
+      fireEvent.click(screen.getByRole('button', { name: 'Reveal in list' }))
+      expect(
+        await screen.findByRole('list', { name: 'Tickets of PSE-1' }),
+      ).toBeInTheDocument()
+      expect(endpoints.getTicketPosition).toHaveBeenLastCalledWith(
+        'acme',
+        'T-24',
+        expect.objectContaining({ group_by: 'run' }),
+      )
+      // Then the ticket's own row comes into view, not only the unit.
+      await waitFor(() =>
+        expect(
+          scrollIntoView.mock.contexts.map((el) =>
+            (el as HTMLElement).getAttribute('href'),
+          ),
+        ).toContain('/tickets/acme/T-24'),
+      )
+    })
+
+    it('fetches the page of a collapsed group to open the revealed run', async () => {
+      vi.mocked(window.localStorage.getItem).mockImplementation((key) =>
+        key === 'imbi.tasks.collapsed'
+          ? '["running"]'
+          : key === 'imbi.tasks.byRun'
+            ? 'true'
+            : null,
+      )
+      vi.mocked(endpoints.getTicketPosition).mockResolvedValue({
+        group: 'running',
+        index: 0,
+      })
+      try {
+        renderAt('/tickets/acme/T-24')
+        expect(
+          await screen.findByRole('list', { name: 'Tickets of PSE-1' }),
+        ).toBeInTheDocument()
+      } finally {
+        vi.mocked(window.localStorage.getItem).mockReturnValue(null)
+      }
+    })
+
+    it('opens a truncated run whose items miss its own row ticket', async () => {
+      const listRun = vi.mocked(endpoints.listTickets).getMockImplementation()
+      vi.mocked(endpoints.listTickets).mockImplementation(
+        async (org, params, signal) =>
+          params.group_by === 'run' && params.group === 'running'
+            ? [
+                {
+                  ...RUN,
+                  unit: {
+                    ...RUN.unit!,
+                    items: RUN.unit!.items.filter((i) => i.short_id !== 'T-23'),
+                    tickets: 101,
+                    truncated: true,
+                  },
+                },
+              ]
+            : listRun!(org, params, signal),
+      )
+      vi.mocked(endpoints.getTicketPosition).mockResolvedValue({
+        group: 'running',
+        index: 0,
+      })
+      const spy = layout({
+        content: (el) =>
+          parseFloat(
+            el.querySelector<HTMLElement>(':scope > .relative')?.style.height ??
+              '0',
+          ),
+        isPane: (el) =>
+          el.classList.contains('overflow-y-auto') &&
+          el.querySelector(':scope > .relative') !== null,
+        pane: 600,
+        row: (el) => (el.querySelector('h3') ? 29 : 72),
+      })
+      try {
+        await groupByRun('/tickets/acme/T-23')
+        // The row is in view, but T-23 shows only in the open unit.
+        const reveal = screen.getByRole('button', { name: 'Reveal in list' })
+        await waitFor(() => expect(reveal).toBeEnabled())
+        fireEvent.click(reveal)
+        const list = await screen.findByRole('list', {
+          name: 'Tickets of PSE-1',
+        })
+        expect(
+          within(list).getByText('Showing the first 6 of 101 tickets.'),
+        ).toBeInTheDocument()
+      } finally {
+        spy.mockRestore()
+      }
+    })
+
+    it('opens a truncated run whose items miss the revealed ticket', async () => {
+      const listRun = vi.mocked(endpoints.listTickets).getMockImplementation()
+      vi.mocked(endpoints.listTickets).mockImplementation(
+        async (org, params, signal) =>
+          params.group_by === 'run' && params.group === 'running'
+            ? [
+                {
+                  ...RUN,
+                  unit: { ...RUN.unit!, tickets: 101, truncated: true },
+                },
+              ]
+            : listRun!(org, params, signal),
+      )
+      vi.mocked(endpoints.getTicketPosition).mockResolvedValue({
+        group: 'running',
+        index: 0,
+      })
+      await groupByRun('/tickets/acme/T-99')
+      fireEvent.click(screen.getByRole('button', { name: 'Reveal in list' }))
+      const list = await screen.findByRole('list', {
+        name: 'Tickets of PSE-1',
+      })
+      expect(
+        within(list).getByText('Showing the first 7 of 101 tickets.'),
+      ).toBeInTheDocument()
+    })
+
+    it('shows the selected child that Show all would hide', async () => {
+      fireEvent.click(await groupByRun('/tickets/acme/T-25'))
+      const list = screen.getByRole('list', { name: 'Tickets of PSE-1' })
+      const link = within(list)
+        .getAllByRole('link')
+        .find((a) => a.getAttribute('href') === '/tickets/acme/T-25')
+      expect(link).toHaveAttribute('aria-current', 'page')
+    })
+
+    it('shows a child whose parent the truncated items leave out', async () => {
+      const ORPHAN = unitRow(
+        task({ id: 'orphan', short_id: 'T-91', title: 'Top ticket' }),
+        [
+          unitItem({ short_id: 'T-91', title: 'Top ticket' }),
+          unitItem({
+            created_at: '2026-10-08T12:01:00Z',
+            nested: true,
+            parent_short_id: 'T-90',
+            short_id: 'T-92',
+            title: 'Child of a cut parent',
+          }),
+        ],
+        { subject: 'PSE-9', tickets: 150, truncated: true },
+      )
+      const listRun = vi.mocked(endpoints.listTickets).getMockImplementation()
+      vi.mocked(endpoints.listTickets).mockImplementation(
+        async (org, params, signal) =>
+          params.group_by === 'run' && params.group === 'queued'
+            ? [ORPHAN]
+            : listRun!(org, params, signal),
+      )
+      await groupByRun()
+      const expand = await screen.findByRole('button', {
+        name: 'Expand PSE-9',
+      })
+      const bars = [
+        ...expand.parentElement!.querySelectorAll<HTMLElement>('[data-bar]'),
+      ]
+      expect(bars.map((b) => b.dataset.bar)).toEqual(['T-91', 'T-92'])
+      fireEvent.click(expand)
+      expect(
+        within(
+          screen.getByRole('list', { name: 'Tickets of PSE-9' }),
+        ).getByText('Child of a cut parent'),
+      ).toBeInTheDocument()
+    })
+
+    it('shows a run of one ticket as a ticket row', async () => {
+      await groupByRun()
+      await waitFor(() => expect(inboxTitles()).toEqual(['PSE-1', 'Solo work']))
+      expect(
+        screen.queryByRole('button', { name: /Expand Solo work/ }),
+      ).not.toBeInTheDocument()
+    })
   })
 })

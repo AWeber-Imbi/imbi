@@ -53,6 +53,7 @@ from imbi.api.tickets.store import (
     Channel,
     Control,
     Group,
+    GroupBy,
     PersonOutcome,
     Priority,
     ResolvedStatus,
@@ -472,6 +473,50 @@ class TaskHighlight(pydantic.BaseModel):
     parts: list[HighlightPart]
 
 
+class TicketUnitItem(pydantic.BaseModel):
+    """A ticket of a unit of work, in the row of the unit."""
+
+    short_id: str
+    title: str
+    status: Status
+    outcome: str | None = None
+    outcome_reason: str | None = None
+    agent_id: str | None = None
+    assignee: str | None = None
+    #: The workflow step that made the ticket.
+    node_key: str | None = None
+    parent_short_id: str | None = None
+    #: The parent of the ticket is in the unit too.
+    nested: bool = False
+    created_at: datetime.datetime
+    closed_at: datetime.datetime | None = None
+    cost_total: decimal.Decimal
+
+
+class TicketUnit(pydantic.BaseModel):
+    """A unit of work: the tickets of one workflow run and their
+    descendants, or a ticket without a run and its descendants."""
+
+    #: ``run:<run id>`` or ``ticket:<root ticket id>``.
+    key: str
+    run_id: str | None = None
+    workflow_slug: str | None = None
+    workflow_name: str | None = None
+    #: What the run is about, from its payload (a Jira key, say).
+    subject: str | None = None
+    #: The number of tickets in the unit, and of those whose parent is
+    #: in the unit too.
+    tickets: int
+    children: int
+    cost_total: decimal.Decimal
+    #: The newest ``updated_at`` of its tickets.
+    last_activity_at: datetime.datetime
+    #: The tickets, oldest first, at most 100.
+    items: list[TicketUnitItem]
+    #: The unit has more tickets than ``items``.
+    truncated: bool = False
+
+
 class AgentTaskListItem(AgentTaskResponse):
     #: When the oldest open request opened, for a task that waits on a
     #: person; ``null`` when the task is closed or has none open.
@@ -481,16 +526,21 @@ class AgentTaskListItem(AgentTaskResponse):
     #: The icon of each project of the task that has one, by project id:
     #: the project's own icon, else the icon of its project type.
     project_icons: dict[str, str] = pydantic.Field(default_factory=dict)
+    #: With ``group_by=run``: the unit of work that the row stands for.
+    unit: TicketUnit | None = None
 
 
 class AgentTaskCounts(pydantic.BaseModel):
-    """The number of tasks in each inbox group."""
+    """The number of tasks in each inbox group. With ``group_by=run``,
+    the number of units of work."""
 
     input: int = 0
     running: int = 0
     paused: int = 0
     queued: int = 0
     closed: int = 0
+    #: With ``group_by=run``: the number of tickets in the units.
+    tickets: int | None = None
 
 
 class AgentTaskPosition(pydantic.BaseModel):
@@ -1857,6 +1907,7 @@ async def list_agent_tasks(
     cursor: str | None = None,
     group: Group | None = None,
     offset: typing.Annotated[int, fastapi.Query(ge=0)] = 0,
+    group_by: GroupBy | None = None,
 ) -> list[dict[str, typing.Any]]:
     """List the tasks in an organization, newest first.
 
@@ -1872,9 +1923,17 @@ async def list_agent_tasks(
     ``closed``, else newest first; it pages with ``offset``, so a client
     can read any part of it.
 
+    ``group_by=run`` lists units of work instead of tickets: the
+    tickets of one workflow run and their descendants, or a ticket
+    without a run and its descendants. The filters pick the tickets; a
+    unit is in the most urgent group of its tickets. Each row is the
+    unit's most recently updated ticket in that group, with ``unit``. It
+    pages with ``offset``, with or without ``group``.
+
     Raises:
-        400: The cursor is not valid or comes with ``group``, or
-            ``offset`` comes without ``group``.
+        400: The cursor is not valid or comes with ``group`` or
+            ``group_by``, or ``offset`` comes without ``group`` or
+            ``group_by``.
         403: The caller is not a member of the org.
         404: No such organization.
 
@@ -1886,11 +1945,11 @@ async def list_agent_tasks(
         _custom_filters(db, filters),
     )
     before: tuple[datetime.datetime, uuid.UUID] | None = None
-    if cursor is not None and group is not None:
+    if cursor is not None and (group is not None or group_by is not None):
         raise fastapi.HTTPException(
             status_code=400, detail='A group pages with offset, not cursor'
         )
-    if offset and group is None:
+    if offset and group is None and group_by is None:
         raise fastapi.HTTPException(
             status_code=400, detail='Only a group pages with offset'
         )
@@ -1920,11 +1979,12 @@ async def list_agent_tasks(
         before=before,
         offset=offset,
         limit=limit + 1,
+        group_by=group_by,
     )
     next_cursor: str | None = None
     if len(rows) > limit:
         rows = rows[:limit]
-        if group is None:
+        if group is None and group_by is None:
             next_cursor = encode_cursor(
                 rows[-1]['created_at'], str(rows[-1]['id'])
             )
@@ -1946,7 +2006,11 @@ async def list_agent_tasks(
     ]
 
 
-@tickets_router.get('/counts', response_model=AgentTaskCounts)
+@tickets_router.get(
+    '/counts',
+    response_model=AgentTaskCounts,
+    response_model_exclude_none=True,
+)
 async def count_agent_tasks(
     org_slug: str,
     org_id: OrgId,
@@ -1964,10 +2028,12 @@ async def count_agent_tasks(
     filters: CustomFieldFilters = None,
     mine: bool = False,
     q: str | None = None,
+    group_by: GroupBy | None = None,
 ) -> dict[str, int]:
     """Count the tasks in each inbox group that the task list with the
     same filters finds, so a client can size the whole list before it
-    reads the tasks.
+    reads the tasks. With ``group_by=run``, count the units of work, and
+    ``tickets`` is the number of tickets in them.
 
     Raises:
         403: The caller is not a member of the org.
@@ -1992,6 +2058,7 @@ async def count_agent_tasks(
         labels=label,
         team_ids=team_ids,
         custom_fields=custom,
+        group_by=group_by,
     )
 
 
@@ -2014,10 +2081,12 @@ async def get_agent_task_position(
     filters: CustomFieldFilters = None,
     mine: bool = False,
     q: str | None = None,
+    group_by: GroupBy | None = None,
 ) -> dict[str, typing.Any]:
     """Find where a task is in the task list with the same filters: its
     inbox group and its index in that group, so a client can scroll to
-    it before it reads that part of the list.
+    it before it reads that part of the list. With ``group_by=run``,
+    where the unit of work of the task is.
 
     Raises:
         403: The caller is not a member of the org.
@@ -2043,6 +2112,7 @@ async def get_agent_task_position(
         labels=label,
         team_ids=team_ids,
         custom_fields=custom,
+        group_by=group_by,
     )
     if found is None:
         raise fastapi.HTTPException(

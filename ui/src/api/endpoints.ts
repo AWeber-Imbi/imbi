@@ -3848,6 +3848,8 @@ export const restoreAgentVersion = (orgSlug: string, slug: string, n: number) =>
 const ticketsApiPath = (orgSlug: string) =>
   `/organizations/${encodeURIComponent(orgSlug)}/tickets`
 
+type InboxGroup = Exclude<keyof TicketCounts, 'tickets'>
+
 const ticketPath = (orgSlug: string, shortId: string) =>
   `${ticketsApiPath(orgSlug)}/${encodeURIComponent(shortId)}`
 
@@ -3856,7 +3858,9 @@ export interface TicketListParams {
   /** Custom field filters, as `field:op[:value]`, combined with AND. */
   filter?: string[]
   /** One inbox group, in the order of the inbox; it pages with `offset`. */
-  group?: keyof TicketCounts
+  group?: InboxGroup
+  /** `run`: one row per unit of work (a workflow run and its tickets). */
+  group_by?: 'run'
   /** Tickets with every one of these labels. */
   label?: string[]
   limit?: number

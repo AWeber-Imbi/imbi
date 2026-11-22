@@ -60,6 +60,25 @@ export function errorMessage(error: Error): string {
   return error.message
 }
 
+/** The query of one page of an inbox group, `TASK_PAGE` tasks from
+ * `offset`, so a reveal can fetch the page the list reads. */
+export function ticketPageQuery(
+  orgSlug: string,
+  params: TicketListParams,
+  group: NonNullable<TicketListParams['group']>,
+  offset: number,
+) {
+  return {
+    queryFn: ({ signal }: { signal: AbortSignal }) =>
+      listTickets(
+        orgSlug,
+        { ...params, group, limit: TASK_PAGE, offset },
+        signal,
+      ),
+    queryKey: queryKeys.tickets(orgSlug, { ...params, group, offset }),
+  }
+}
+
 /**
  * Whether the caller may change who works the ticket (hand off, reopen):
  * its owner, its assignee, or a holder of `ticket:manage`.
@@ -194,15 +213,8 @@ export function useTicketGroupPages(
         NonNullable<TicketListParams['group']>,
         string,
       ]
-      const offset = Number(page) * TASK_PAGE
       return {
-        queryFn: ({ signal }: { signal: AbortSignal }) =>
-          listTickets(
-            orgSlug,
-            { ...params, group, limit: TASK_PAGE, offset },
-            signal,
-          ),
-        queryKey: queryKeys.tickets(orgSlug, { ...params, group, offset }),
+        ...ticketPageQuery(orgSlug, params, group, Number(page) * TASK_PAGE),
         refetchInterval: LIST_POLL_MS,
       }
     }),

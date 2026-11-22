@@ -26,10 +26,10 @@ import {
   ChevronRight,
   CircleCheck,
   Clock,
-  FolderKanban,
   Hand,
   Hourglass,
   Inbox,
+  Layers,
   Loader,
   LocateFixed,
   type LucideIcon,
@@ -56,7 +56,6 @@ import {
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { EntityIcon } from '@/components/ui/entity-icon'
 import { Input } from '@/components/ui/input'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import { Sk } from '@/components/ui/skeleton'
@@ -69,7 +68,12 @@ import { useTeams } from '@/hooks/useOrgResources'
 import { queryKeys } from '@/lib/queryKeys'
 import { storage } from '@/lib/storage'
 import { cn } from '@/lib/utils'
-import type { TaskHighlight, TicketCounts, TicketListItem } from '@/types'
+import type {
+  TaskHighlight,
+  TicketCounts,
+  TicketListItem,
+  TicketUnit,
+} from '@/types'
 
 import { useAgentList } from './agentQueries'
 import { ticketsPath } from './agentsNav'
@@ -99,10 +103,13 @@ import {
 import {
   errorMessage,
   TASK_PAGE,
+  ticketPageQuery,
   useTicketCounts,
   useTicketGroupPages,
 } from './taskQueries'
 import { SEARCH_MATCH, useMatchHighlight } from './taskSearch'
+import { ProjectMark, TaskUnitRow } from './TaskUnitRow'
+import { GROUP_SAYS } from './taskUnits'
 import { DueDate, normalizeLabel, TypeIcon } from './ticketAttributes'
 import { useStoredState } from './useStoredState'
 import { useVirtualRows } from './virtualRows'
@@ -222,6 +229,26 @@ export function TasksPage() {
   )
 }
 
+/** The footer: the tickets, or in the run view the rows and the
+ * tickets they hold. */
+function footerText(
+  rows: number,
+  tickets: null | number | undefined,
+  byRun: boolean,
+) {
+  if (!byRun) return plural(rows, 'ticket')
+  return tickets == null
+    ? plural(rows, 'row')
+    : `${plural(rows, 'row')} for ${plural(tickets, 'ticket')}`
+}
+
+/** A row of the run view that stands for more than one ticket. */
+function isUnit(
+  task: TicketListItem,
+): task is TicketListItem & { unit: TicketUnit } {
+  return !!task.unit && task.unit.tickets > 1
+}
+
 function Marked({
   parts,
   text,
@@ -248,6 +275,16 @@ function nonEmpty<T>(values: T[]) {
   return values.length ? values : undefined
 }
 
+function plural(n: number, word: string) {
+  return `${n} ${word}${n === 1 ? '' : 's'}`
+}
+
+/** Whether the unit lists the ticket `shortId`. */
+function unitHolds(unit: TicketUnit, shortId: string | undefined) {
+  const id = shortId?.toUpperCase()
+  return !!id && unit.items.some((i) => i.short_id.toUpperCase() === id)
+}
+
 const HEADER_HEIGHT = 29
 
 type GroupInfo = (typeof INBOX_GROUPS)[number]
@@ -256,6 +293,18 @@ const ROW_HEIGHT = 72
 type InboxRow =
   | { count: number; group: GroupInfo; kind: 'group' }
   | { group: InboxGroupId; index: number; kind: 'task' }
+
+/**
+ * Drag and drop of a backlog row (the Queued group) to set its rank.
+ * Without `ticket:manage` the rows do not move.
+ */
+interface RowDrag {
+  dragging: boolean
+  onDragEnd: () => void
+  onDragStart: () => void
+  /** `below`: the drop was on the bottom half of the row. */
+  onDrop: (below: boolean) => void
+}
 
 function GroupHeader({
   count,
@@ -375,6 +424,13 @@ function TaskInbox({
     [],
     parseGroupList,
   )
+  const [byRun, setByRun] = useStoredState<boolean>(
+    'imbi.tasks.byRun',
+    false,
+    (raw) => (typeof raw === 'boolean' ? raw : undefined),
+  )
+  // The units of work shown expanded in the run view, by unit key.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
   const listRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
   useMatchHighlight(listRef, 'task-list-search')
@@ -397,6 +453,7 @@ function TaskInbox({
   const params = {
     agent_id: nonEmpty(filters.agents),
     filter: nonEmpty(fieldFilters({ ...filters, fields })),
+    group_by: byRun ? ('run' as const) : undefined,
     label: nonEmpty(filters.labels),
     mine: filters.assignees.includes(ME),
     owner: nonEmpty(filters.assignees.filter((a) => a !== ME)),
@@ -427,6 +484,8 @@ function TaskInbox({
   })
   const items = virtualizer.getVirtualItems()
   const [revealing, setRevealing] = useState<{
+    /** The ticket inside an expanded unit to bring into view. */
+    focus?: string
     group: InboxGroupId
     index: number
     smooth: boolean
@@ -454,14 +513,27 @@ function TaskInbox({
       return
     }
     setRevealing(undefined)
+    const behavior =
+      revealing.smooth &&
+      !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        ? 'smooth'
+        : 'auto'
+    const { focus } = revealing
     virtualizer.scrollToIndex(at, {
-      align: 'center',
-      behavior:
-        revealing.smooth &&
-        !window.matchMedia('(prefers-reduced-motion: reduce)').matches
-          ? 'smooth'
-          : 'auto',
+      align: focus ? 'start' : 'center',
+      behavior,
     })
+    if (!focus) return
+    // An expanded unit can be taller than the list, so once it is
+    // rendered and measured, bring the ticket's own row into view.
+    // Not cancelled on cleanup: clearing `revealing` reruns this effect.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() =>
+        listRef.current
+          ?.querySelector(`[data-ticket="${focus}"]`)
+          ?.scrollIntoView({ behavior, block: 'nearest' }),
+      ),
+    )
   }, [collapsed, counts.data, revealing, rows, virtualizer])
   const scrollTop = useScrollTop(listRef)
   const headers = useMemo(
@@ -559,7 +631,7 @@ function TaskInbox({
   }
   const filtered = activeCount(filters) > 0
   const total = counts.data
-    ? Object.values(counts.data).reduce((sum, n) => sum + n, 0)
+    ? INBOX_GROUPS.reduce((sum, g) => sum + (counts.data[g.id] ?? 0), 0)
     : 0
   const failed = [counts, ...pages].filter((r) => r.error)
   const error = failed[0]?.error
@@ -578,15 +650,36 @@ function TaskInbox({
   const viewBottom = scrollTop + (virtualizer.scrollRect?.height ?? 0)
   const selectedInView = items.some((item) => {
     const row = rows[item.index]
+    const shown =
+      row?.kind === 'task'
+        ? loaded.get(pageOf(row))?.[row.index % TASK_PAGE]
+        : undefined
+    // A unit row stands for its ticket only when the ticket shows: in
+    // a collapsed unit that leaves it out of its items, it does not.
+    const asRow =
+      !!shown &&
+      shown.short_id.toUpperCase() === selectedId &&
+      !(
+        isUnit(shown) &&
+        !expanded.has(shown.unit.key) &&
+        !unitHolds(shown.unit, selectedId)
+      )
     return (
-      row?.kind === 'task' &&
-      loaded
-        .get(pageOf(row))
-        ?.[row.index % TASK_PAGE]?.short_id.toUpperCase() === selectedId &&
+      !!shown &&
+      (asRow ||
+        (!!shown.unit &&
+          expanded.has(shown.unit.key) &&
+          unitHolds(shown.unit, selectedId))) &&
       item.start >= viewTop &&
       item.end <= viewBottom
     )
   })
+  const toggleUnit = (key: string) =>
+    setExpanded((current) => {
+      const next = new Set(current)
+      if (!next.delete(key)) next.add(key)
+      return next
+    })
   const reveal = async (onLoad = false) => {
     if (!selected) return
     const request = ++revealRequest.current
@@ -594,18 +687,31 @@ function TaskInbox({
       const at = await getTicketPosition(orgSlug, selected, params)
       const { group } = at
       const offset = Math.floor(at.index / TASK_PAGE) * TASK_PAGE
-      await Promise.all([
+      // The page may not be loaded yet: fetch it, then open the unit
+      // at the position in the run view.
+      const [, page] = await Promise.all([
         counts.refetch(),
-        queryClient.refetchQueries({
-          exact: true,
-          queryKey: queryKeys.tickets(orgSlug, { ...params, group, offset }),
-        }),
+        queryClient.fetchQuery(ticketPageQuery(orgSlug, params, group, offset)),
       ])
       if (request !== revealRequest.current) return
+      const row = page[at.index % TASK_PAGE]
+      // Open the unit unless the ticket is its row and the unit lists it;
+      // a truncated unit can leave out even its own row's ticket, and
+      // opening it shows that it does.
+      const unit =
+        row &&
+        isUnit(row) &&
+        (row.short_id !== selected.toUpperCase() ||
+          !unitHolds(row.unit, selected))
+          ? row.unit
+          : undefined
+      if (unit) setExpanded((current) => new Set(current).add(unit.key))
+      const focus =
+        unit && unitHolds(unit, selected) ? selected.toUpperCase() : undefined
       setCollapsed((current) =>
         current.includes(group) ? current.filter((g) => g !== group) : current,
       )
-      setRevealing({ ...at, smooth: !onLoad })
+      setRevealing({ ...at, focus, smooth: !onLoad })
     } catch (err) {
       if (onLoad || request !== revealRequest.current) return
       toast.error(
@@ -644,6 +750,21 @@ function TaskInbox({
                 variant="outline"
               >
                 <LocateFixed />
+              </Button>
+            </IconTooltip>
+            <IconTooltip label="Group by workflow run">
+              <Button
+                aria-label="Group by workflow run"
+                aria-pressed={byRun}
+                className={cn(
+                  'size-8 shrink-0 border-input',
+                  byRun && 'bg-secondary text-primary',
+                )}
+                onClick={() => setByRun(!byRun)}
+                size="icon"
+                variant="outline"
+              >
+                <Layers />
               </Button>
             </IconTooltip>
             <IconTooltip label="Waiting on me">
@@ -773,12 +894,22 @@ function TaskInbox({
                     onToggle={() => toggle(row.group.id)}
                     open={!collapsed.includes(row.group.id)}
                   />
+                ) : task && isUnit(task) ? (
+                  <TaskUnitRow
+                    agents={agentsById}
+                    expanded={expanded.has(task.unit.key)}
+                    group={row.group}
+                    onToggle={() => toggleUnit(task.unit.key)}
+                    orgSlug={orgSlug}
+                    selectedId={selectedId}
+                    task={task}
+                  />
                 ) : task ? (
                   <TaskRow
                     active={task.short_id.toUpperCase() === selectedId}
                     agent={agentsById.get(task.agent_id ?? '')}
                     drag={
-                      canRank && row.group === 'queued'
+                      canRank && !byRun && row.group === 'queued'
                         ? {
                             dragging: dragging === task.short_id,
                             onDragEnd: () => setDragging(undefined),
@@ -801,7 +932,7 @@ function TaskInbox({
       </div>
       {counts.data && (
         <div className="border-tertiary text-tertiary shrink-0 border-t py-2 text-center text-xs">
-          {total} {total === 1 ? 'ticket' : 'tickets'}
+          {footerText(total, byRun ? counts.data.tickets : undefined, byRun)}
         </div>
       )}
       <NewTaskDialog isOpen={creating} onClose={() => setCreating(false)} />
@@ -844,35 +975,6 @@ const GROUP_ICONS: Record<InboxGroupId, LucideIcon> = {
 function GroupIcon({ id }: { id: InboxGroupId }) {
   const Icon = GROUP_ICONS[id]
   return <Icon aria-hidden className="size-3" />
-}
-
-function ProjectMark({ icon }: { icon?: string }) {
-  const className = 'mr-1 inline size-3 align-[-2px]'
-  return icon ? (
-    <EntityIcon className={className} icon={icon} />
-  ) : (
-    <FolderKanban aria-hidden className={className} />
-  )
-}
-
-/** The status words that the group header already says. */
-const GROUP_SAYS: Partial<Record<InboxGroupId, string>> = {
-  input: 'Needs input',
-  paused: 'Paused',
-  queued: 'Queued',
-  running: 'Running',
-}
-
-/**
- * Drag and drop of a backlog row (the Queued group) to set its rank.
- * Without `ticket:manage` the rows do not move.
- */
-interface RowDrag {
-  dragging: boolean
-  onDragEnd: () => void
-  onDragStart: () => void
-  /** `below`: the drop was on the bottom half of the row. */
-  onDrop: (below: boolean) => void
 }
 
 function TaskRow({

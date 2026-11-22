@@ -268,6 +268,139 @@ _GROUP_ORDER: dict[str, sql.SQL] = {
     'queued': sql.SQL('backlog_rank ASC NULLS LAST, created_at DESC, id DESC'),
 }
 
+#: How the task list groups tickets into rows. ``run``: one row per
+#: unit of work (see :data:`_UNITS`).
+GroupBy = typing.Literal['run']
+
+#: The most tickets that a unit row lists; its ``truncated`` says so.
+UNIT_ITEMS = 100
+
+#: The inbox groups, most urgent first. A unit is in the most urgent
+#: group of its tickets.
+_GROUP_RANKS = sql.SQL(
+    "ARRAY['input', 'running', 'paused', 'queued', 'closed']"
+)
+
+#: The tickets that ``{where}`` finds, each with its unit of work, and
+#: the units, as the CTEs ``k`` (a ticket) and ``units`` (a unit).
+#:
+#: The unit of a ticket is the workflow run of the ticket or of its
+#: nearest ancestor that has one (``origin.workflow_run_id``), else its
+#: root ticket. ``up`` walks the parents of each ticket until it finds a
+#: run, the root, or a ticket it has seen (a parent cycle, which the API
+#: refuses to make). ``nested``: the parent of the ticket is in its unit
+#: too. A unit is in the most urgent group of its tickets, and only the
+#: tickets in that group give its sort keys and its representative row:
+#: the most recently updated of them.
+_UNITS = sql.SQL(
+    'WITH RECURSIVE m AS ('
+    ' SELECT t.id, t.parent_id, t.short_id, t.title, t.status, t.outcome,'
+    ' t.outcome_reason, t.agent_id, t.assignee, t.origin, t.created_at,'
+    ' t.updated_at, t.closed_at, t.cost_total, t.backlog_rank,'
+    ' {group} AS inbox_group,'
+    " CASE WHEN t.status <> 'closed' THEN"
+    ' (SELECT min(r.opened_at) {open}) END AS blocked_since'
+    ' FROM tickets.tickets AS t WHERE {where}),'
+    ' up (ticket_id, node_id, parent_id, run_id, depth, path) AS ('
+    " SELECT m.id, m.id, m.parent_id, m.origin->>'workflow_run_id', 0,"
+    ' ARRAY[m.id] FROM m UNION ALL'
+    ' SELECT up.ticket_id, p.id, p.parent_id,'
+    " p.origin->>'workflow_run_id', up.depth + 1, up.path || p.id"
+    ' FROM up JOIN tickets.tickets AS p ON p.id = up.parent_id'
+    ' WHERE up.run_id IS NULL AND p.id <> ALL(up.path)),'
+    ' keyed AS (SELECT DISTINCT ON (ticket_id) ticket_id, run_id,'
+    " CASE WHEN run_id IS NOT NULL THEN 'run:' || run_id"
+    " ELSE 'ticket:' || node_id::text END AS unit_key"
+    ' FROM up ORDER BY ticket_id, depth DESC),'
+    ' j AS (SELECT m.*, keyed.unit_key, keyed.run_id,'
+    ' array_position({ranks}, m.inbox_group) AS rank'
+    ' FROM m JOIN keyed ON keyed.ticket_id = m.id),'
+    ' k AS (SELECT j.*, jp.id IS NOT NULL AS nested FROM j'
+    ' LEFT JOIN j AS jp ON jp.id = j.parent_id'
+    ' AND jp.unit_key = j.unit_key),'
+    ' u AS (SELECT unit_key, max(run_id) AS run_id, min(rank) AS rank,'
+    ' count(*) AS tickets, count(*) FILTER (WHERE nested) AS children,'
+    ' sum(cost_total) AS cost_total, max(updated_at) AS last_activity_at'
+    ' FROM k GROUP BY unit_key),'
+    ' sort AS (SELECT k.unit_key, min(k.blocked_since) AS blocked_since,'
+    ' max(k.closed_at) AS closed_at, max(k.created_at) AS created_at,'
+    ' min(k.backlog_rank) AS backlog_rank,'
+    ' (array_agg(k.id ORDER BY k.updated_at DESC, k.id DESC))[1]'
+    ' AS rep_id FROM k JOIN u ON u.unit_key = k.unit_key'
+    ' AND k.rank = u.rank GROUP BY k.unit_key),'
+    ' units AS (SELECT u.*, sort.blocked_since, sort.closed_at,'
+    ' sort.created_at, sort.backlog_rank, sort.rep_id,'
+    ' ({ranks})[u.rank] AS inbox_group'
+    ' FROM u JOIN sort ON sort.unit_key = u.unit_key)'
+)
+
+#: The order of the units in their inbox group, as :data:`_GROUP_ORDER`
+#: orders tickets, on the unit values of ``x`` (a row of ``units``).
+_UNIT_ORDER = sql.SQL(
+    "CASE WHEN x.inbox_group = 'input' THEN x.blocked_since END"
+    ' ASC NULLS LAST,'
+    " CASE WHEN x.inbox_group = 'closed' THEN x.closed_at END"
+    ' DESC NULLS LAST,'
+    " CASE WHEN x.inbox_group = 'queued' THEN x.backlog_rank END"
+    ' ASC NULLS LAST,'
+    " CASE WHEN x.inbox_group <> 'closed' THEN x.created_at END DESC,"
+    ' x.rep_id DESC'
+)
+
+#: A run id that casts to a UUID; an origin can hold anything.
+_UUID = sql.Literal(
+    '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+)
+
+#: The tickets of the unit of ``page``, oldest first, for its row.
+_UNIT_ITEMS = sql.SQL(
+    '(SELECT coalesce(jsonb_agg(i ORDER BY i.created_at, i.id),'
+    " '[]'::jsonb) FROM (SELECT k.id, k.short_id, k.title, k.status,"
+    ' k.outcome, k.outcome_reason, k.agent_id, k.assignee,'
+    " k.origin->>'node_key' AS node_key, pt.short_id AS parent_short_id,"
+    ' k.nested, k.created_at, k.closed_at, k.cost_total FROM k'
+    ' LEFT JOIN tickets.tickets AS pt ON pt.id = k.parent_id'
+    ' WHERE k.unit_key = page.unit_key ORDER BY k.created_at, k.id'
+    ' LIMIT {limit}) AS i)'
+).format(limit=sql.Literal(UNIT_ITEMS + 1))
+
+#: The keys of a run payload that name what the run is about, in order.
+_SUBJECT_KEYS = ('ticket_key', 'issue_key', 'subject', 'title', 'key')
+
+
+def _run_subject(payload: typing.Any) -> str | None:
+    """What a run is about: a known key of its payload, else its only
+    string value; ``None`` when neither is there."""
+    if not isinstance(payload, dict):
+        return None
+    values = typing.cast('dict[str, typing.Any]', payload)
+    for key in _SUBJECT_KEYS:
+        if isinstance(values.get(key), str) and values[key]:
+            return str(values[key])
+    strings = [v for v in values.values() if isinstance(v, str) and v]
+    return strings[0] if len(strings) == 1 else None
+
+
+def _unit_row(row: Row) -> Row:
+    """Move the ``unit_*`` columns of a unit row to ``row['unit']``."""
+    items = typing.cast('list[Row]', row.pop('unit_items') or [])
+    payload = row.pop('unit_run_payload')
+    row['unit'] = {
+        'key': row.pop('unit_key'),
+        'run_id': row.pop('unit_run_id'),
+        'workflow_slug': row.pop('unit_workflow_slug'),
+        'workflow_name': row.pop('unit_workflow_name'),
+        'subject': _run_subject(payload),
+        'tickets': row.pop('unit_tickets'),
+        'children': row.pop('unit_children'),
+        'cost_total': row.pop('unit_cost_total'),
+        'last_activity_at': row.pop('unit_last_activity_at'),
+        'items': items[:UNIT_ITEMS],
+        'truncated': len(items) > UNIT_ITEMS,
+    }
+    return row
+
+
 #: The tickets that have not started: the backlog, which a person
 #: orders by rank. Their inbox group is ``queued``.
 BACKLOG_STATUSES: tuple[Status, ...] = ('held', 'queued', 'open')
@@ -1204,6 +1337,7 @@ class TicketStore:
         before: tuple[datetime.datetime, uuid.UUID] | None = None,
         offset: int = 0,
         limit: int = 50,
+        group_by: GroupBy | None = None,
     ) -> list[Row]:
         """Return tasks in the organization, newest first.
 
@@ -1218,6 +1352,9 @@ class TicketStore:
         on a person (see :data:`_OPEN_REQUESTS`), the time its oldest
         open request opened, so the queue can sort oldest block first
         (O2); else ``None``.
+
+        With ``group_by='run'`` each row is a unit of work (see
+        :meth:`_search_units`) and ``before`` is not used.
         """
         conditions, params = _search_filters(
             organization_id,
@@ -1231,6 +1368,10 @@ class TicketStore:
             team_ids,
             custom_fields,
         )
+        if group_by == 'run':
+            return await self._search_units(
+                conditions, params, group, offset, limit
+            )
         if group is not None:
             conditions.append(sql.SQL('{group} = %s').format(group=_GROUP))
             params.append(group)
@@ -1273,10 +1414,12 @@ class TicketStore:
         labels: list[str] | None = None,
         team_ids: list[str] | None = None,
         custom_fields: list[blueprint_attributes.Predicate] | None = None,
+        group_by: GroupBy | None = None,
     ) -> tuple[str, int] | None:
         """Return the inbox group of the task ``short_id`` and its index
         in that group, in the order of :meth:`search` with the same
-        filters; ``None`` when the filters do not find the task.
+        filters; ``None`` when the filters do not find the task. With
+        ``group_by='run'``, the group and index of its unit of work.
         """
         conditions, params = _search_filters(
             organization_id,
@@ -1290,6 +1433,8 @@ class TicketStore:
             team_ids,
             custom_fields,
         )
+        if group_by == 'run':
+            return await self._unit_position(conditions, params, short_id)
         statement = sql.SQL(
             'SELECT inbox_group, n FROM (SELECT t.short_id,'
             ' {group} AS inbox_group, row_number() OVER (PARTITION BY {group}'
@@ -1330,10 +1475,13 @@ class TicketStore:
         labels: list[str] | None = None,
         team_ids: list[str] | None = None,
         custom_fields: list[blueprint_attributes.Predicate] | None = None,
+        group_by: GroupBy | None = None,
     ) -> dict[str, int]:
         """Return the number of tasks in each inbox group that
         :meth:`search` with the same filters finds. A group with no
-        tasks has no key.
+        tasks has no key. With ``group_by='run'``, the number of units
+        of work in each group, and ``tickets``: the number of tickets
+        in them.
         """
         conditions, params = _search_filters(
             organization_id,
@@ -1347,6 +1495,8 @@ class TicketStore:
             team_ids,
             custom_fields,
         )
+        if group_by == 'run':
+            return await self._count_units(conditions, params)
         statement = sql.SQL(
             'SELECT {group} AS inbox_group, count(*)'
             ' FROM tickets.tickets AS t WHERE {where} GROUP BY 1'
@@ -1355,6 +1505,109 @@ class TicketStore:
             cursor = await conn.execute(statement, params)
             found = await cursor.fetchall()
         return {str(group): int(count) for group, count in found}
+
+    @staticmethod
+    def _units(conditions: list[sql.Composable]) -> sql.Composed:
+        return _UNITS.format(
+            group=_GROUP,
+            open=_OPEN_REQUESTS,
+            where=sql.SQL(' AND ').join(conditions),
+            ranks=_GROUP_RANKS,
+        )
+
+    async def _search_units(
+        self,
+        conditions: list[sql.Composable],
+        params: list[typing.Any],
+        group: Group | None,
+        offset: int,
+        limit: int,
+    ) -> list[Row]:
+        """Return a page of the units of work of the tickets that
+        ``conditions`` find, in inbox order.
+
+        A unit is the tickets of one workflow run with their
+        descendants, or a ticket without a run and its descendants. Each
+        row is the unit's representative ticket, as :meth:`search`
+        returns it, with ``unit``: the run, its workflow, the totals of
+        the unit, and its tickets oldest first (at most
+        :data:`UNIT_ITEMS`; ``truncated`` says when there are more).
+        """
+        where = sql.SQL('')
+        if group is not None:
+            where = sql.SQL('WHERE x.inbox_group = %s')
+            params = [*params, group]
+        statement = sql.SQL(
+            '{units}, page AS (SELECT x.*, row_number() OVER'
+            ' (ORDER BY x.rank, {order}) AS n FROM units AS x {where}'
+            ' ORDER BY x.rank, {order} LIMIT %s OFFSET %s)'
+            ' SELECT t.*, {projects},'
+            " CASE WHEN t.status <> 'closed' THEN"
+            ' (SELECT min(r.opened_at) {open}) END AS blocked_since,'
+            ' page.unit_key, page.run_id AS unit_run_id,'
+            ' page.tickets AS unit_tickets, page.children AS unit_children,'
+            ' page.cost_total AS unit_cost_total,'
+            ' page.last_activity_at AS unit_last_activity_at,'
+            ' w.slug AS unit_workflow_slug, w.name AS unit_workflow_name,'
+            ' wr.payload AS unit_run_payload, {items} AS unit_items'
+            ' FROM page JOIN tickets.tickets AS t ON t.id = page.rep_id'
+            ' LEFT JOIN workflow_runtime.runs AS wr'
+            ' ON wr.organization_id = t.organization_id'
+            ' AND wr.id = CASE WHEN page.run_id ~* {uuid}'
+            ' THEN page.run_id::uuid END'
+            ' LEFT JOIN workflows.workflows AS w ON w.id = wr.workflow_id'
+            ' ORDER BY page.n'
+        ).format(
+            units=self._units(conditions),
+            order=_UNIT_ORDER,
+            where=where,
+            projects=sql.SQL(PROJECTS),
+            open=_OPEN_REQUESTS,
+            items=_UNIT_ITEMS,
+            uuid=_UUID,
+        )
+        async with (
+            self._pool.connection() as conn,
+            conn.cursor(row_factory=rows.dict_row) as cursor,
+        ):
+            await cursor.execute(statement, [*params, limit, offset])
+            return [_unit_row(row) for row in await cursor.fetchall()]
+
+    async def _count_units(
+        self, conditions: list[sql.Composable], params: list[typing.Any]
+    ) -> dict[str, int]:
+        """Return the number of units of work in each inbox group, and
+        ``tickets``: the number of tickets in all of them."""
+        statement = sql.SQL(
+            '{units} SELECT inbox_group, count(*), sum(tickets)'
+            ' FROM units GROUP BY 1'
+        ).format(units=self._units(conditions))
+        async with self._pool.connection() as conn:
+            cursor = await conn.execute(statement, params)
+            found = await cursor.fetchall()
+        counts = {str(group): int(count) for group, count, _ in found}
+        counts['tickets'] = sum(int(n) for _, _, n in found)
+        return counts
+
+    async def _unit_position(
+        self,
+        conditions: list[sql.Composable],
+        params: list[typing.Any],
+        short_id: str,
+    ) -> tuple[str, int] | None:
+        """Return the inbox group of the unit of work of ``short_id`` and
+        the index of the unit in that group."""
+        statement = sql.SQL(
+            '{units}, ranked AS (SELECT x.unit_key, x.inbox_group,'
+            ' row_number() OVER (PARTITION BY x.rank ORDER BY {order}) - 1'
+            ' AS n FROM units AS x)'
+            ' SELECT ranked.inbox_group, ranked.n FROM ranked'
+            ' JOIN k ON k.unit_key = ranked.unit_key WHERE k.short_id = %s'
+        ).format(units=self._units(conditions), order=_UNIT_ORDER)
+        async with self._pool.connection() as conn:
+            cursor = await conn.execute(statement, [*params, short_id.upper()])
+            found = await cursor.fetchone()
+        return (str(found[0]), int(found[1])) if found else None
 
     async def waiting(
         self, organization_id: str, email: str, *, lists: bool = True
