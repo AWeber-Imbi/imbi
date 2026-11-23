@@ -20,7 +20,7 @@ short-lived STS credentials for the user from IAM Identity Center.
 
 The plugin also supplies the `aws_secrets_manager` secret provider of the
 secrets broker. It is not part of an integration: configure it in
-**Admin, Secrets**. See [Secrets](../admin/secrets.md) and
+**Agents > Settings > Secrets**. See [Secrets](../admin/secrets.md) and
 [Secret Providers](../common/plugins/secret-providers.md).
 
 ## Configuration
