@@ -6595,8 +6595,9 @@ export interface paths {
          *         403: ``owner_team_forbidden``: the caller has no
          *             ``workflow:delete`` and is not a member of the owner team.
          *         404: No such workflow.
-         *         409: A run of the workflow is queued or running, or the
-         *             organization was renamed during the delete.
+         *         409: A run of the workflow is queued or running, the
+         *             organization was renamed during the delete, or the owner
+         *             team changed during the delete.
          */
         delete: operations["delete_workflow_api_organizations__org_slug__workflows__slug__delete"];
         options?: never;
@@ -7512,6 +7513,8 @@ export interface paths {
          *             ``DELETE /{grant_id}/agents/{agent_id}`` to remove only
          *             the caller's agent.
          *         404: No such grant.
+         *         409: For a caller without ``secret_binding:write``: the
+         *             grant's agents changed during the request.
          */
         delete: operations["delete_grant_api_organizations__org_slug__secret_grants__grant_id__delete"];
         options?: never;
@@ -7526,6 +7529,8 @@ export interface paths {
          *             the caller is not in, or after the change a binding that
          *             is not ``grantable``.
          *         404: No such grant.
+         *         409: For a caller without ``secret_binding:write``: the
+         *             grant's agents or bindings changed during the request.
          *         422: A binding is not in the organization or is a provider
          *             key binding, or a setup purpose has a delivery mode other
          *             than ``file_descriptor``.
