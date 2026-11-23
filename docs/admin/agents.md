@@ -30,7 +30,7 @@ The area has these pages:
 | `agent:delete` | Delete any agent. With `agent:write` only, you can delete an agent of a team that you are in | `admin` |
 | `agent_platform_config:write` | Change the base configuration and the marketplaces | `admin` |
 | `prompt:create`, `prompt:update` | Save a change to the system prompt or the model | `admin`, `developer` |
-| `secret_grant:read`, `secret_binding:read`, `secret_grant:write` | See, add, and remove grants on the **Access** tab. Without `secret_binding:write`, only for an agent of a team that you are in, and only for a **Grantable** binding | `admin`, `developer` |
+| `secret_grant:read`, `secret_binding:read`, `secret_grant:write` | See grants on the **Access** tab. Add and remove grants on the **Access** tab. Without `secret_binding:write`, add and remove only for an agent of a team that you are in, and only for a **Grantable** binding | `admin`, `developer` |
 | `secret_provider:read` | Choose a GitHub App on the **Access** tab | `admin`, `developer` |
 
 You must also be a member of the organization. The permissions come from
