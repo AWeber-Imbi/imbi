@@ -58,14 +58,14 @@ to see everything.
 
 ```bash
 moon ci                    # full pipeline (lint/format/typecheck, ui, docs,
-                           #   single-session coverage)
+                           #   parallel coverage)
 moon run <proj>:<task>     # one task, e.g. `moon run api:test`, `moon run ui:build`
 moon run :lint             # a task across every project
 
 moon run root:setup        # toolchains, deps, pre-commit
 moon run root:services     # boot backing services (compose.ci.yaml + .env.test)
 moon run root:teardown     # tear down backing services and volumes
-moon run root:coverage     # full suite, single session, aggregate coverage
+moon run root:coverage     # full suite on xdist workers, aggregate coverage
 moon run api:test          # one member's suite in isolation
 moon run :lint :typecheck :format   # lint + type-check + format-check everything
 uv run pre-commit run --all-files   # ruff + tombi (write mode) — reformat
@@ -93,8 +93,9 @@ file.
 Run the prod image locally with `docker compose up --build` (compose.yaml).
 
 Task granularity: per-member `test` tasks are for targeted local runs and are
-`runInCI: false` (the suite shares one database with no per-process isolation);
-CI runs the single-session `root:coverage` instead. Coverage is scoped
+`runInCI: false` (they share the one `imbi` database); CI runs `root:coverage`
+instead, which uses pytest-xdist and gives each worker its own Postgres
+database (see the root `conftest.py`). Coverage is scoped
 per-member: each member's `[tool.coverage]` (in its own `pyproject.toml`) sets
 its source + `fail_under`, and the shared test task reads it via
 `--cov-config=$projectSource/pyproject.toml` — so `moon run <member>:test`

@@ -17,7 +17,6 @@ from psycopg.types import json as pg_json
 from apps.api.tests import secret_support
 from apps.api.tests import test_agent_platform as unit
 from apps.api.tests.endpoints import test_harness
-from imbi.api import secret_broker
 from imbi.api.endpoints import harness as harness_api
 from imbi.api.harness import marketplaces
 
@@ -31,7 +30,6 @@ class PlatformTestCase(test_harness.RunnerTestCase):
 
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
-        await secret_broker.initialize()
         secret_support.use_plugin_providers(self)
         self.permissions |= {
             'agent:read',

@@ -30,7 +30,6 @@ class SecretRunnerTestCase(test_harness.RunnerTestCase):
 
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
-        await secret_broker.initialize()
         self.broker = broker.Broker(self.pool)
         self.secrets = store.SecretStore(self.pool)
         self.test_app.dependency_overrides[secret_broker.get_broker] = (

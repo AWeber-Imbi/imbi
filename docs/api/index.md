@@ -116,8 +116,12 @@ uv run --env-file .env.test pytest apps/api/tests/auth/test_permissions.py::Reso
 moon run api:lint api:typecheck api:format             # ruff + basedpyright + format check
 ```
 
-Run `moon run root:coverage` for the full single-session suite with aggregate
-coverage, and `moon run root:services` first if you invoke `pytest` directly.
+Run `moon run root:coverage` for the full suite with aggregate coverage. It
+starts the services (`root:services`) and runs on pytest-xdist workers,
+each with its own Postgres database. Before you run `pytest` directly, run
+`moon run root:services`. A direct `pytest` run uses one database per
+worker only when you give `-n`; without `-n` it uses the shared `imbi`
+database.
 
 ## Core Concepts
 

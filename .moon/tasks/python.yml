@@ -65,11 +65,10 @@ tasks:
   # Postgres/ClickHouse/etc.), so caching is keyed on the member's own sources
   # + tests only.
   #
-  # `runInCI: false` because the whole suite shares one database with no
-  # per-process isolation — running every member's suite concurrently under
-  # `moon ci` would clobber shared state. CI instead runs the single-session
-  # `root:coverage`. Flip this to `true` if/when the fixtures isolate per
-  # process.
+  # `runInCI: false` because these runs do not use pytest-xdist, so every
+  # member's suite uses the one `imbi` database, and concurrent suites would
+  # clobber shared state. CI instead runs `root:coverage`, which gives each
+  # xdist worker its own database (see /conftest.py).
   test:
     command: 'uv'
     args:
@@ -92,8 +91,8 @@ tasks:
       runFromWorkspaceRoot: true
       outputStyle: 'stream'
       runInCI: false
-      # The whole suite shares one database with no per-process isolation, so
-      # member suites must not run concurrently against it (see runInCI note).
+      # Member suites share the `imbi` database, so they must not run
+      # concurrently against it (see runInCI note).
       mutex: 'imbi-test-db'
     inputs:
       - 'src/**/*'

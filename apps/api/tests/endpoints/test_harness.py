@@ -36,6 +36,7 @@ class RunnerTestCase(test_agent_task_harness.HarnessTestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
         # The claim evaluates secret grants (MCP servers, plan P7).
+        await secret_broker.initialize()
         self.secret_store = secret_store.SecretStore(self.pool)
         self.test_app.dependency_overrides[secret_broker._inject_store] = (
             lambda: self.secret_store
@@ -53,14 +54,11 @@ class RunnerTestCase(test_agent_task_harness.HarnessTestCase):
         )
         # The owner of a parent task must be able to make agent tasks
         # (the check of child task creation), as with a seeded role.
-        await self.graph.execute(
-            'MERGE (p:Permission {{name: "ticket:create"}})'
-            ' CREATE (r:Role {{slug: {role}, name: {role}}})'
-            ' CREATE (r)-[:GRANTS]->(p)'
-            ' WITH r MATCH (:User {{email: {email}}})-[m:MEMBER_OF]->()'
-            ' SET m.role = {role} RETURN 1 AS ok',
-            {'role': f'runner-{self.org}', 'email': self.email},
-            ['ok'],
+        await self.grant_role(
+            f'runner-{self.org}',
+            'ticket:create',
+            '(:User {{email: {email}}})',
+            email=self.email,
         )
         self.addAsyncCleanup(self._cleanup_harness)
         self.pool_name = await self.make_pool(self.pool_labels, [self.org])

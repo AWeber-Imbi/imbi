@@ -10,7 +10,7 @@ from apps.api.tests.endpoints import (
     test_harness,
     test_person_tickets,
 )
-from imbi.api import secret_broker, tickets, workflows
+from imbi.api import tickets, workflows
 from imbi.api.endpoints import harness as harness_api
 from imbi.api.tickets import store as task_store
 from imbi.api.tickets import sweeper
@@ -24,14 +24,11 @@ class ReopenTestCase(test_person_tickets.PersonTicketTestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
         role = f'reopen-{self.org}'
-        await self.graph.execute(
-            'MERGE (p:Permission {{name: "ticket:create"}})'
-            ' CREATE (r:Role {{slug: {role}, name: {role}}})'
-            ' CREATE (r)-[:GRANTS]->(p)'
-            ' WITH r MATCH (:User {{email: {email}}})-[m:MEMBER_OF]->()'
-            ' SET m.role = {role} RETURN 1 AS ok',
-            {'role': role, 'email': self.email},
-            ['ok'],
+        await self.grant_role(
+            role,
+            'ticket:create',
+            '(:User {{email: {email}}})',
+            email=self.email,
         )
         self.addAsyncCleanup(
             self.graph.execute,
@@ -353,7 +350,6 @@ class ReopenedChildClaimTests(test_harness.RunnerTestCase):
     """A reopened child is a chain root, so a runner claims it."""
 
     async def test_reopened_child_is_claimed(self) -> None:
-        await secret_broker.initialize()
         helper_id = await self.make_agent('helper', name='Helper')
         await self.make_version({'subagents': [{'agent_id': helper_id}]})
         runner = await self.register()
