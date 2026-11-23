@@ -77,7 +77,7 @@ export function DatePicker({
   }
 
   const earliest = disablePast ? startOfToday() : undefined
-  const allowed = (date: Date) => !earliest || date >= earliest
+  const allowed = (date: Date) => !disablePast || date >= startOfToday()
   const typed = parseTypedDate(text)
   const empty = text.trim() === ''
   const invalid = empty ? required : !(typed && allowed(typed))
@@ -91,8 +91,13 @@ export function DatePicker({
 
   const commit = () => {
     if (empty && !required) choose('')
-    else if (!invalid && typed) choose(toDateOnlyIso(typed))
+    else if (typed && allowed(typed)) choose(toDateOnlyIso(typed))
     else setText(toDisplay(value))
+  }
+
+  const openCalendar = (next: boolean) => {
+    if (next) setLastSent(value)
+    setOpen(next)
   }
 
   return (
@@ -105,13 +110,14 @@ export function DatePicker({
         onBlur={commit}
         onChange={(e) => {
           setText(e.target.value)
+          setLastSent(value)
           const date = parseTypedDate(e.target.value)
           if (date) setMonth(date)
         }}
         onKeyDown={(e) => {
           if (e.key === 'ArrowDown') {
             e.preventDefault()
-            setOpen(true)
+            openCalendar(true)
           } else if (e.key === 'Enter') {
             e.preventDefault()
             commit()
@@ -121,7 +127,7 @@ export function DatePicker({
         value={text}
       />
       <InputGroupAddon align="inline-end">
-        <Popover modal={modal} onOpenChange={setOpen} open={open}>
+        <Popover modal={modal} onOpenChange={openCalendar} open={open}>
           <PopoverTrigger asChild>
             <InputGroupButton aria-label="Choose date" disabled={disabled}>
               <CalendarIcon />

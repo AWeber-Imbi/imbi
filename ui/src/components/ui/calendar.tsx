@@ -6,6 +6,7 @@ import {
   ChevronRightIcon,
 } from 'lucide-react'
 import {
+  type CustomComponents,
   type DayButton,
   DayPicker,
   getDefaultClassNames,
@@ -29,6 +30,15 @@ function Calendar({
   buttonVariant?: React.ComponentProps<typeof Button>['variant']
 }) {
   const defaultClassNames = getDefaultClassNames()
+  const LocaleDayButton = React.useMemo(
+    () =>
+      function LocaleDayButton(
+        dayProps: React.ComponentProps<typeof DayButton>,
+      ) {
+        return <CalendarDayButton locale={locale} {...dayProps} />
+      },
+    [locale],
+  )
 
   return (
     <DayPicker
@@ -130,42 +140,10 @@ function Calendar({
         ...classNames,
       }}
       components={{
-        Chevron: ({ className, orientation, ...props }) => {
-          if (orientation === 'left') {
-            return (
-              <ChevronLeftIcon className={cn('size-4', className)} {...props} />
-            )
-          }
-          if (orientation === 'right') {
-            return (
-              <ChevronRightIcon
-                className={cn('size-4', className)}
-                {...props}
-              />
-            )
-          }
-          return (
-            <ChevronDownIcon className={cn('size-4', className)} {...props} />
-          )
-        },
-        DayButton: ({ ...props }) => (
-          <CalendarDayButton locale={locale} {...props} />
-        ),
-        Root: ({ className, rootRef, ...props }) => (
-          <div
-            className={cn(className)}
-            data-slot="calendar"
-            ref={rootRef}
-            {...props}
-          />
-        ),
-        WeekNumber: ({ children, ...props }) => (
-          <td {...props}>
-            <div className="flex size-7 items-center justify-center text-center">
-              {children}
-            </div>
-          </td>
-        ),
+        Chevron: CalendarChevron,
+        DayButton: LocaleDayButton,
+        Root: CalendarRoot,
+        WeekNumber: CalendarWeekNumber,
         ...components,
       }}
       formatters={{
@@ -178,6 +156,22 @@ function Calendar({
       {...props}
     />
   )
+}
+
+function CalendarChevron({
+  className,
+  orientation,
+  ...props
+}: CustomComponents['Chevron'] extends React.ComponentType<infer P>
+  ? P
+  : never) {
+  const Icon =
+    orientation === 'left'
+      ? ChevronLeftIcon
+      : orientation === 'right'
+        ? ChevronRightIcon
+        : ChevronDownIcon
+  return <Icon className={cn('size-4', className)} {...props} />
 }
 
 function CalendarDayButton({
@@ -216,6 +210,36 @@ function CalendarDayButton({
       variant="ghost"
       {...props}
     />
+  )
+}
+
+function CalendarRoot({
+  className,
+  rootRef,
+  ...props
+}: CustomComponents['Root'] extends React.ComponentType<infer P> ? P : never) {
+  return (
+    <div
+      className={cn(className)}
+      data-slot="calendar"
+      ref={rootRef}
+      {...props}
+    />
+  )
+}
+
+function CalendarWeekNumber({
+  children,
+  ...props
+}: CustomComponents['WeekNumber'] extends React.ComponentType<infer P>
+  ? P
+  : never) {
+  return (
+    <td {...props}>
+      <div className="flex size-7 items-center justify-center text-center">
+        {children}
+      </div>
+    </td>
   )
 }
 

@@ -84,6 +84,42 @@ describe('DatePicker', () => {
     expect(onChange).toHaveBeenCalledExactlyOnceWith('2099-12-01')
   })
 
+  it('sends the same day again after the parent kept the old one', () => {
+    const onChange = vi.fn()
+    render(
+      <DatePicker aria-label="Due" onChange={onChange} value="2099-03-04" />,
+    )
+    typeAndLeave('Due', '2099-03-05')
+    typeAndLeave('Due', '2099-03-05')
+    expect(onChange).toHaveBeenCalledTimes(2)
+  })
+
+  it('rejects a day that became the past while typing', () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2099, 2, 15, 23, 59))
+    const onChange = vi.fn()
+    render(
+      <DatePicker aria-label="Due" disablePast onChange={onChange} value="" />,
+    )
+    const input = screen.getByLabelText('Due')
+    fireEvent.change(input, { target: { value: '2099-03-15' } })
+    vi.setSystemTime(new Date(2099, 2, 16, 0, 1))
+    fireEvent.blur(input)
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('keeps focus on the next-month button as the month changes', async () => {
+    render(
+      <DatePicker aria-label="Due" onChange={vi.fn()} value="2099-03-04" />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Choose date' }))
+    const next = await screen.findByRole('button', { name: /next month/i })
+    next.focus()
+    fireEvent.click(next)
+    expect(await screen.findByText('April 2099')).toBeVisible()
+    expect(next).toHaveFocus()
+  })
+
   it('does not send anything when left unchanged', () => {
     const onChange = vi.fn()
     render(
