@@ -1,5 +1,6 @@
 import { useId, useState } from 'react'
 
+import { subMonths } from 'date-fns'
 import type { DateRange } from 'react-day-picker'
 
 import { Button } from '@/components/ui/button'
@@ -33,14 +34,14 @@ export function LogsRangePicker({
   return (
     <div className="flex flex-col">
       <Calendar
-        className="w-full"
-        defaultMonth={days?.from}
+        defaultMonth={subMonths(utcDay(end), 1)}
         mode="range"
+        numberOfMonths={2}
         onSelect={setDays}
         selected={days}
       />
       <Separator />
-      <FieldGroup className="gap-3 p-3">
+      <FieldGroup className="grid grid-cols-2 gap-3 p-3">
         <TimeField
           id={`${id}-start`}
           label="Start (UTC)"
