@@ -156,6 +156,8 @@ services:
 
   postgres:
     image: ghcr.io/aweber-imbi/postgres:latest
+    # Each pytest-xdist worker opens its own pools (see conftest.py).
+    command: ["-c", "config_file=/etc/postgresql/postgresql.conf", "-c", "max_connections=500"]
     ports:
       - "5432"
     environment:

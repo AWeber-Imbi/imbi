@@ -2,9 +2,6 @@
 name = "age"
 
 [[extensions]]
-name = "pg_cron"
-
-[[extensions]]
 name = "vector"
 
 [vlabels]
