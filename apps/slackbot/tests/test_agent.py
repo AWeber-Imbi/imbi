@@ -2,6 +2,7 @@ from unittest import mock
 
 import anthropic
 import httpx
+import slackwright
 
 from apps.slackbot.tests import helpers
 from imbi.slackbot import agent
@@ -148,6 +149,40 @@ class RunTurnTests(helpers.TestCase):
         self.assertEqual('user', working[2]['role'])
         # run_turn must not mutate the caller-supplied messages list.
         self.assertEqual(1, len(messages))
+
+    async def test_slack_tools_run_in_toolkit(self) -> None:
+        slack = mock.AsyncMock()
+        slack.chat_postMessage.return_value = {'ts': '2.0'}
+        toolkit = slackwright.Toolkit(
+            slack, channel_id='C1', thread_ts='1.0', user_id='U1'
+        )
+        blocks = {
+            'fallback_text': 'Status',
+            'blocks': [{'type': 'header', 'text': 'Status'}],
+        }
+        client = FakeClient(
+            [
+                Response(
+                    [_tool('t1', 'slack_post_blocks', blocks)], 'tool_use'
+                ),
+                Response([], 'end_turn'),
+            ]
+        )
+        manager = FakeManager([])
+        answer = await self._run(
+            client, manager, tools=[{'name': 'list'}], toolkit=toolkit
+        )
+        self.assertEqual('', answer)
+        self.assertEqual([], manager.executed)
+        slack.chat_postMessage.assert_awaited_once()
+        self.assertEqual(
+            '1.0', slack.chat_postMessage.await_args.kwargs['thread_ts']
+        )
+        names = [tool['name'] for tool in client.messages.calls[0]['tools']]
+        self.assertIn('list', names)
+        self.assertIn('slack_post_blocks', names)
+        result = client.messages.calls[1]['messages'][-1]['content'][0]
+        self.assertNotIn('is_error', result)
 
     async def test_max_rounds(self) -> None:
         client = FakeClient(
