@@ -8,7 +8,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import { parseServerTs, toDateOnlyIso } from '@/lib/formatDate'
+import { formatDayField, parseServerTs, toDateOnlyIso } from '@/lib/formatDate'
 
 import { InlineDisplay } from './InlineDisplay'
 
@@ -51,7 +51,7 @@ export function InlineDate({
             placeholder={placeholder}
             readOnly={readOnly}
           >
-            {renderDisplay ?? (hasValid && current!.toLocaleDateString())}
+            {renderDisplay ?? (hasValid && formatDayField(current!))}
           </InlineDisplay>
         </span>
       </PopoverTrigger>

@@ -16,9 +16,9 @@ describe('LogsRangePicker', () => {
     )
     expect(screen.getByText('March 2099')).toBeVisible()
     expect(screen.getByLabelText('End (UTC)')).toHaveValue('17:27')
-    fireEvent.change(screen.getByLabelText('Start (UTC)'), {
-      target: { value: '08:00' },
-    })
+    const startTime = screen.getByLabelText('Start (UTC)')
+    fireEvent.change(startTime, { target: { value: '8:00' } })
+    fireEvent.blur(startTime)
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
     expect(onApply).toHaveBeenCalledExactlyOnceWith(
       new Date('2099-03-04T08:00:00Z'),
@@ -35,9 +35,9 @@ describe('LogsRangePicker', () => {
         start={new Date('2099-03-04T16:00:00Z')}
       />,
     )
-    fireEvent.change(screen.getByLabelText('End (UTC)'), {
-      target: { value: '15:00' },
-    })
+    const endTime = screen.getByLabelText('End (UTC)')
+    fireEvent.change(endTime, { target: { value: '15:00' } })
+    fireEvent.blur(endTime)
     expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled()
   })
 })

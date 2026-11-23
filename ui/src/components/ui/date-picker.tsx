@@ -15,21 +15,21 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import { parseServerTs, toDateOnlyIso } from '@/lib/formatDate'
+import { formatDayField, parseServerTs, toDateOnlyIso } from '@/lib/formatDate'
 import { cn } from '@/lib/utils'
 
-const DISPLAY_FORMAT = 'MMM d, yyyy'
-
 const ACCEPTED_FORMATS = [
+  'M/d/yyyy',
   'yyyy-MM-dd',
-  DISPLAY_FORMAT,
+  'MMM d, yyyy',
   'MMM d yyyy',
   'MMMM d, yyyy',
   'MMMM d yyyy',
-  'M/d/yyyy',
   'd MMM yyyy',
   'd MMMM yyyy',
 ]
+
+const TIME_FORMATS = ['H:mm', 'h:mm a', 'h:mma', 'h a', 'ha']
 
 export interface DatePickerProps {
   'aria-label'?: string
@@ -134,7 +134,7 @@ export function DatePicker({
             commit()
           }
         }}
-        placeholder="Pick a date"
+        placeholder="mm/dd/yyyy"
         required={required}
         value={text}
       />
@@ -205,19 +205,44 @@ export function TimeInput({
   onChange,
   value,
 }: TimeInputProps) {
+  const [text, setText] = useState(value)
+  const [prevValue, setPrevValue] = useState(value)
+  if (prevValue !== value) {
+    setPrevValue(value)
+    setText(value)
+  }
+
+  const typed = parseTypedTime(text)
+  const invalid = text.trim() !== '' && !typed
+
+  const commit = () => {
+    setText(typed ?? value)
+    if (typed && typed !== value) onChange(typed)
+  }
+
   return (
     <InputGroup className={className}>
       <InputGroupInput
+        aria-invalid={invalid || undefined}
         aria-label={ariaLabel}
-        className="appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
         disabled={disabled}
         id={id}
-        onChange={(e) => onChange(e.target.value)}
-        type="time"
-        value={value}
+        inputMode="numeric"
+        onBlur={commit}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            commit()
+          }
+        }}
+        placeholder="hh:mm"
+        value={text}
       />
-      <InputGroupAddon>
-        <Clock2Icon className="text-muted-foreground" />
+      <InputGroupAddon align="inline-end">
+        <span className="text-secondary flex size-6 items-center justify-center">
+          <Clock2Icon className="size-3.5" />
+        </span>
       </InputGroupAddon>
     </InputGroup>
   )
@@ -232,6 +257,15 @@ function parseTypedDate(text: string): Date | null {
   return null
 }
 
+function parseTypedTime(text: string): null | string {
+  const raw = text.trim().replace(/\s+/g, ' ').toUpperCase()
+  for (const pattern of TIME_FORMATS) {
+    const date = parse(raw, pattern, new Date())
+    if (isValid(date)) return format(date, 'HH:mm')
+  }
+  return null
+}
+
 function toDisplay(value: string): string {
-  return value ? format(parseServerTs(value), DISPLAY_FORMAT) : ''
+  return value ? formatDayField(parseServerTs(value)) : ''
 }

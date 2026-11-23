@@ -194,7 +194,7 @@ In the **New ticket** dialog:
 4. Optional: select a **Type** (**Bug**, **Task**, or **Feature**), a
    **Priority**, and a **Due** date. The defaults are **Task** and
    **Normal**.
-   Type the due date, for example `Dec 1, 2026` or `12/1/2026`, or pick it from the calendar. It can't be a day in the past.
+   Type the due date as `mm/dd/yyyy`, for example `12/01/2026`, or pick it from the calendar. It can't be a day in the past.
 5. Optional: add **Projects** and **Labels**. Archived projects are not in
    the list. See [Labels](#labels).
 6. Complete the custom fields that the dialog asks for. It asks for each

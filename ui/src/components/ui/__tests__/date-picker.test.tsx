@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { DatePicker, DateTimePicker } from '../date-picker'
+import { DatePicker, DateTimePicker, TimeInput } from '../date-picker'
 
 function typeAndLeave(label: string, text: string) {
   const input = screen.getByLabelText(label)
@@ -17,6 +17,7 @@ describe('DatePicker', () => {
 
   it.each([
     ['2099-12-01', '2099-12-01'],
+    ['12/01/2099', '2099-12-01'],
     ['12/1/2099', '2099-12-01'],
     ['Dec 1, 2099', '2099-12-01'],
     ['december 1 2099', '2099-12-01'],
@@ -24,7 +25,7 @@ describe('DatePicker', () => {
   ])('reads a typed %s as the calendar day', (typed, day) => {
     const onChange = vi.fn()
     render(<DatePicker aria-label="Due" onChange={onChange} value="" />)
-    expect(typeAndLeave('Due', typed)).toHaveValue('Dec 1, 2099')
+    expect(typeAndLeave('Due', typed)).toHaveValue('12/01/2099')
     expect(onChange).toHaveBeenCalledExactlyOnceWith(day)
   })
 
@@ -47,7 +48,7 @@ describe('DatePicker', () => {
     fireEvent.change(input, { target: { value: typed } })
     expect(input).toHaveAttribute('aria-invalid', 'true')
     fireEvent.blur(input)
-    expect(input).toHaveValue('Mar 4, 2099')
+    expect(input).toHaveValue('03/04/2099')
     expect(onChange).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Choose date' }))
     expect(await screen.findByText('March 2099')).toBeVisible()
@@ -81,7 +82,7 @@ describe('DatePicker', () => {
         value="2099-03-04"
       />,
     )
-    expect(typeAndLeave('Since', '')).toHaveValue('Mar 4, 2099')
+    expect(typeAndLeave('Since', '')).toHaveValue('03/04/2099')
     expect(onChange).not.toHaveBeenCalled()
   })
 
@@ -161,7 +162,7 @@ describe('DatePicker', () => {
     rerender(
       <DatePicker aria-label="Due" onChange={vi.fn()} value="2099-04-05" />,
     )
-    expect(screen.getByLabelText('Due')).toHaveValue('Apr 5, 2099')
+    expect(screen.getByLabelText('Due')).toHaveValue('04/05/2099')
   })
 
   it('picks a day from the calendar', async () => {
@@ -208,9 +209,7 @@ describe('DateTimePicker', () => {
     )
     typeAndLeave('Run once at date', '2099-03-05')
     expect(onChange).toHaveBeenLastCalledWith('2099-03-05T09:30')
-    fireEvent.change(screen.getByLabelText('Run once at time'), {
-      target: { value: '17:05' },
-    })
+    typeAndLeave('Run once at time', '17:05')
     expect(onChange).toHaveBeenLastCalledWith('2099-03-04T17:05')
   })
 
@@ -221,4 +220,29 @@ describe('DateTimePicker', () => {
     typeAndLeave('Start date', '2099-03-05')
     expect(onChange).toHaveBeenCalledExactlyOnceWith('2099-03-05T00:00')
   })
+})
+
+describe('TimeInput', () => {
+  it.each([
+    ['8:30', '08:30'],
+    ['20:30', '20:30'],
+    ['8:30 pm', '20:30'],
+    ['12:05am', '00:05'],
+    ['9 PM', '21:00'],
+  ])('reads a typed %s as %s', (typed, time) => {
+    const onChange = vi.fn()
+    render(<TimeInput aria-label="At" onChange={onChange} value="09:00" />)
+    expect(typeAndLeave('At', typed)).toHaveValue(time)
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(time)
+  })
+
+  it.each(['25:00', '9:75', 'noon', ''])(
+    'puts back the previous time for %j',
+    (typed) => {
+      const onChange = vi.fn()
+      render(<TimeInput aria-label="At" onChange={onChange} value="09:00" />)
+      expect(typeAndLeave('At', typed)).toHaveValue('09:00')
+      expect(onChange).not.toHaveBeenCalled()
+    },
+  )
 })
