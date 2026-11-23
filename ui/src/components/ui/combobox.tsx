@@ -1,5 +1,6 @@
 import { useState } from 'react'
 
+import { defaultFilter } from 'cmdk'
 import { Check, ChevronsUpDown, Plus } from 'lucide-react'
 
 import {
@@ -32,6 +33,12 @@ interface ComboboxProps {
   placeholder?: string
   value: string
 }
+
+const trimmedFilter = (
+  value: string,
+  search: string,
+  keywords?: string[],
+): number => defaultFilter(value, search.trim(), keywords)
 
 export function Combobox({
   creatable = false,
@@ -83,7 +90,7 @@ export function Combobox({
         className="p-0"
         style={{ width: 'var(--radix-popover-trigger-width)' }}
       >
-        <Command>
+        <Command filter={trimmedFilter}>
           <CommandInput
             onValueChange={setQuery}
             placeholder="Search..."

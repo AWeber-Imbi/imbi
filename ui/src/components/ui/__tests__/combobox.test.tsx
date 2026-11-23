@@ -52,6 +52,16 @@ describe('Combobox', () => {
     expect(screen.queryByText(/Use “data”/)).not.toBeInTheDocument()
   })
 
+  it('keeps a padded match for an option selectable', async () => {
+    const onChange = vi.fn()
+    render(<Combobox creatable onChange={onChange} options={TEAMS} value="" />)
+    await userEvent.click(screen.getByRole('combobox'))
+    await userEvent.type(screen.getByPlaceholderText('Search...'), ' data ')
+    expect(screen.queryByText(/Use “data”/)).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('option', { name: 'Data Services' }))
+    expect(onChange).toHaveBeenCalledWith('data')
+  })
+
   it('shows a value that is not an option when creatable', () => {
     render(
       <Combobox creatable onChange={vi.fn()} options={TEAMS} value="ops" />,
