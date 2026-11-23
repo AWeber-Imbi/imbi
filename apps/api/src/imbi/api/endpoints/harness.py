@@ -322,10 +322,17 @@ class HistoryEntry(pydantic.BaseModel):
     """One part of the history of a ticket."""
 
     kind: typing.Literal[
-        'comment', 'request', 'handoff', 'reopen', 'child', 'prerequisite'
+        'comment',
+        'request',
+        'handoff',
+        'reopen',
+        'child',
+        'prerequisite',
+        'result',
     ]
     at: datetime.datetime
-    #: Who wrote a comment, resolved a request, or handed off.
+    #: Who wrote a comment, resolved a request, or handed off. For a
+    #: ``result`` (the last message of an earlier session), the agent.
     actor: str | None = None
     text: str
     #: The text came from a webhook payload: it is untrusted.
@@ -1793,25 +1800,33 @@ def _side(side: dict[str, typing.Any]) -> str:
 
 
 def _event_entry(event: dict[str, typing.Any], webhook: bool) -> HistoryEntry:
-    """A human comment, a handoff with its note, or a reopen with the
-    outcome before it and its reason.
+    """A human comment, the result of an earlier session (its last agent
+    message), a handoff with its note, or a reopen with the outcome
+    before it and its reason.
 
     An agent can quote the text of a webhook ticket in the note of its
-    handoff, so the handoff of a webhook ticket is untrusted.
+    handoff or in its result, so those of a webhook ticket are untrusted.
     """
     payload: dict[str, typing.Any] = event['payload']
     if event['type'] == 'turn':
+        agent = event['actor_kind'] == 'agent'
         return HistoryEntry(
-            kind='comment',
+            kind='result' if agent else 'comment',
             at=event['at'],
             actor=event['actor_id'],
             text=payload.get('body') or '',
+            webhook=agent and webhook,
         )
     reopen = event['type'] == 'reopened'
     sides: dict[str, typing.Any] = (
         payload.get('assignee') or {} if reopen else payload
     )
-    lines = [f'was {payload["outcome"]}'] if reopen else []
+    lines: list[str] = []
+    if reopen:
+        why = payload.get('outcome_reason')
+        lines.append(
+            f'was {payload["outcome"]}' + (f' ({why})' if why else '')
+        )
     if sides:
         lines.append(
             f'from {_side(sides.get("from") or {})}'
@@ -1878,8 +1893,9 @@ async def read_harness_ticket_history(
     A new session reads events only after ``last_seq``, so it reads
     what happened before here. It sends ``last_seq`` as ``max_seq``, so
     a comment written after the session opened is not here as well as
-    in the events. The history has comments (human turns), handoffs,
-    resolved and withdrawn requests, and the status and outcome of
+    in the events. The history has comments (human turns), the result
+    (last agent message) of each earlier session, handoffs, resolved
+    and withdrawn requests, and the status and outcome of
     prerequisite tickets and of the tickets that it delegated (also
     after a move to another parent), oldest first. When the text is
     larger than :data:`MAX_HISTORY_BYTES`, the oldest entries are left

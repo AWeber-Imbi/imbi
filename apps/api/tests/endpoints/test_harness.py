@@ -1615,6 +1615,44 @@ class HistoryTests(RunnerTestCase):
         )
         self.assertFalse(any(e['webhook'] for e in entries[:3]))
 
+    async def test_last_agent_message_of_a_session_is_its_result(
+        self,
+    ) -> None:
+        response = await self.as_agent(
+            self.token, 'POST', 'T-1/sessions', {'session_key': 's'}
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        session_id = response.json()['session']['id']
+
+        def turn(kind: str, body: str, actor: str = 'agent') -> dict:
+            return {
+                'event_id': new_id(),
+                'type': 'turn',
+                'actor_kind': actor,
+                'payload': {'kind': kind, 'body': body},
+            }
+
+        response = await self.as_agent(
+            self.token,
+            'POST',
+            'T-1/events',
+            {
+                'session_id': session_id,
+                'events': [
+                    turn('text', 'Working on it.'),
+                    turn('text', 'Found F01 and F02.'),
+                    turn('thinking', 'Done, I think.'),
+                    turn('text', 'Subagent notes.', 'subagent'),
+                ],
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        entries = (await self.history())['entries']
+        [result] = [e for e in entries if e['kind'] == 'result']
+        self.assertEqual(result['text'], 'Found F01 and F02.')
+        self.assertEqual(result['actor'], self.agent_id)
+        self.assertFalse(result['webhook'])
+
     async def test_max_seq_leaves_out_later_comments(self) -> None:
         # A comment written after the session opened is an event after
         # last_seq; the history must not repeat it.
