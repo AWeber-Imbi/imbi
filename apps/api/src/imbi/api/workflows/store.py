@@ -200,8 +200,13 @@ class WorkflowStore:
         organization_id: str,
         slug: str,
         on_deleted: OnWrite | None = None,
-    ) -> typing.Literal['deleted', 'missing', 'open_runs']:
+        owner_team_id: str | None = None,
+    ) -> typing.Literal['deleted', 'missing', 'open_runs', 'owner_changed']:
         """Delete a workflow that has no open runs.
+
+        With ``owner_team_id`` (the owner team that the caller checked),
+        the delete changes nothing and returns ``owner_changed`` when
+        the owner team of the workflow is no longer that team.
 
         The ``FOR UPDATE`` lock waits for a run that is being written
         (it holds ``FOR SHARE``), and the open-run check runs after it,
@@ -217,13 +222,15 @@ class WorkflowStore:
         async with self._pool.connection() as conn, conn.transaction():
             await relational.lock_organization_shared(conn, organization_id)
             cur = await conn.execute(
-                'SELECT id FROM workflows.workflows'
+                'SELECT id, owner_team_id FROM workflows.workflows'
                 ' WHERE organization_id = %s AND slug = %s FOR UPDATE',
                 (organization_id, slug),
             )
             row = await cur.fetchone()
             if row is None:
                 return 'missing'
+            if owner_team_id is not None and row[1] != owner_team_id:
+                return 'owner_changed'
             cur = await conn.execute(
                 'SELECT 1 FROM workflow_runtime.runs'
                 ' WHERE workflow_id = %s AND NOT (status = ANY(%s)) LIMIT 1',

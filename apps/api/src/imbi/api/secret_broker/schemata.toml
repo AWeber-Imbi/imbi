@@ -57,6 +57,9 @@ allowed_delivery_targets = "TEXT[] NOT NULL DEFAULT '{}'"
 max_ttl_seconds = "INTEGER NOT NULL"
 enabled = "BOOLEAN NOT NULL DEFAULT TRUE"
 description = "TEXT NOT NULL DEFAULT ''"
+# A caller without `secret_binding:write` can grant only a binding with
+# this flag, and only to agents of a team that the caller is in.
+grantable = "BOOLEAN NOT NULL DEFAULT FALSE"
 # Set only on a provider key, for example a GitHub App private key:
 # {"host": ..., "app_id": ..., "consumers": [<binding id>, ...]}. Only
 # imbi-api reads such a binding, for the listed consumer bindings; no

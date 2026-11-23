@@ -10,6 +10,7 @@ import {
   createSecretGrant,
   listSecretBindings,
   listSecretGrants,
+  removeSecretGrantAgent,
   updateSecretGrant,
 } from '@/api/endpoints'
 import { GitHubAppBindingSelect } from '@/components/admin/secrets/GitHubAppBindingSelect'
@@ -29,13 +30,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useHasPermission } from '@/hooks/useHasPermission'
+import { useHasPermission, useInTeam } from '@/hooks/useHasPermission'
 import { extractApiErrorDetail } from '@/lib/apiError'
 
 import {
   type AccessRow,
   accessRows,
   agentGrants,
+  coveringGrant,
   covers,
   GITHUB_PURPOSES,
   grantFor,
@@ -52,7 +54,7 @@ const MODEL_PURPOSE = 'model_inference'
 const ORG_KEY = '__organization__'
 
 interface AccessTabProps {
-  agent: null | { id: string; name: string }
+  agent: null | { id: string; name: string; team?: string }
   errors: Record<string, string>
   onChange: (settings: SettingsDraft) => void
   orgSlug: string
@@ -75,7 +77,14 @@ export function AccessTab({
   const canReadGrants = useHasPermission('secret_grant:read', orgSlug)
   const canReadBindings = useHasPermission('secret_binding:read', orgSlug)
   const canRead = canReadGrants && canReadBindings
-  const canWrite = useHasPermission('secret_grant:write', orgSlug)
+  // Without secret_binding:write, the API allows grants only to agents
+  // of the user's teams, and only of grantable bindings (#871).
+  const canWriteBindings = useHasPermission('secret_binding:write', orgSlug)
+  const inTeam = useInTeam(orgSlug, agent?.team)
+  const canWrite =
+    useHasPermission('secret_grant:write', orgSlug) &&
+    (canWriteBindings || inTeam)
+  const mayGrant = (b: SecretBinding) => canWriteBindings || b.grantable
   const queryClient = useQueryClient()
   const grants = useQuery({
     enabled: canRead,
@@ -105,6 +114,17 @@ export function AccessTab({
     onError: (err) => toast.error(extractApiErrorDetail(err)),
     onSuccess: async () => {
       toast.success('Access granted')
+      await queryClient.invalidateQueries({
+        queryKey: ['secret-grants', orgSlug],
+      })
+    },
+  })
+  const revoke = useMutation({
+    mutationFn: (grant: SecretGrant) =>
+      removeSecretGrantAgent(orgSlug, grant.id, agent!.id),
+    onError: (err) => toast.error(extractApiErrorDetail(err)),
+    onSuccess: async () => {
+      toast.success('Access removed')
       await queryClient.invalidateQueries({
         queryKey: ['secret-grants', orgSlug],
       })
@@ -167,7 +187,8 @@ export function AccessTab({
         {github && agent && canRead && (
           <ul className="divide-tertiary border-tertiary divide-y rounded-lg border">
             {GITHUB_PURPOSES.map(({ label, mode, purpose }) => {
-              const ok = covers(mine, github.id, purpose, mode)
+              const by = coveringGrant(mine, github.id, purpose, mode)
+              const ok = by !== undefined
               return (
                 <li className="flex items-center gap-3 px-3 py-2" key={purpose}>
                   {ok ? (
@@ -179,7 +200,7 @@ export function AccessTab({
                   <span className="text-tertiary font-mono text-xs">
                     {purpose}
                   </span>
-                  {!ok && canWrite && (
+                  {!ok && canWrite && mayGrant(github) && (
                     <Button
                       disabled={save.isPending}
                       onClick={() => grant(github, purpose, mode)}
@@ -187,6 +208,18 @@ export function AccessTab({
                       variant="outline"
                     >
                       Grant
+                    </Button>
+                  )}
+                  {by && canWrite && (
+                    <Button
+                      aria-label={`Remove ${purpose}`}
+                      disabled={revoke.isPending}
+                      onClick={() => revoke.mutate(by)}
+                      size="sm"
+                      title="Remove the agent from the grant that allows this, for all of its purposes"
+                      variant="ghost"
+                    >
+                      <X className="size-4" />
                     </Button>
                   )}
                 </li>
@@ -198,7 +231,7 @@ export function AccessTab({
 
       <ModelKey
         bindings={bindings.data ?? []}
-        canGrant={Boolean(agent) && canRead && canWrite}
+        canGrant={(b) => Boolean(agent) && canRead && canWrite && mayGrant(b)}
         covered={(bindingId) =>
           covers(mine, bindingId, MODEL_PURPOSE, 'file_descriptor')
         }
@@ -214,14 +247,15 @@ export function AccessTab({
         <AgentSecrets
           agent={agent}
           bindings={(bindings.data ?? []).filter(
-            (b) => b.enabled && b.id !== github?.id,
+            (b) => b.enabled && b.id !== github?.id && mayGrant(b),
           )}
           canWrite={canWrite}
           error={save.error}
-          isPending={save.isPending}
+          isPending={save.isPending || revoke.isPending}
           onGrant={(binding, purpose, done) =>
             grant(binding, purpose, 'environment', done)
           }
+          onRemove={canWrite ? (g) => revoke.mutate(g) : undefined}
           purposes={purposeSuggestions(grants.data ?? [])}
           rows={rows}
         />
@@ -237,6 +271,7 @@ function AgentSecrets({
   error,
   isPending,
   onGrant,
+  onRemove,
   purposes,
   rows,
 }: {
@@ -246,6 +281,8 @@ function AgentSecrets({
   error: unknown
   isPending: boolean
   onGrant: (binding: SecretBinding, purpose: string, done: () => void) => void
+  /** Unset when the user cannot remove access. */
+  onRemove?: (grant: SecretGrant) => void
   purposes: string[]
   rows: AccessRow[]
 }) {
@@ -273,7 +310,7 @@ function AgentSecrets({
       </div>
       <p className="text-tertiary text-xs">
         The agent can request these with run_with_secret: each one goes into the
-        environment of one command. Change or remove a grant in{' '}
+        environment of one command. Change a grant in{' '}
         <Link className="text-action hover:underline" to="/admin/secrets">
           Admin › Secrets
         </Link>
@@ -284,7 +321,11 @@ function AgentSecrets({
           No grant lets the agent request a secret.
         </p>
       ) : (
-        <GrantTable rows={agentRows} />
+        <GrantTable
+          isPending={isPending}
+          onRemove={onRemove}
+          rows={agentRows}
+        />
       )}
       {runnerRows.length > 0 && (
         <>
@@ -292,7 +333,11 @@ function AgentSecrets({
             Used by the runner for the agent, never given to it: the model key
             and the repository tokens.
           </p>
-          <GrantTable rows={runnerRows} />
+          <GrantTable
+            isPending={isPending}
+            onRemove={onRemove}
+            rows={runnerRows}
+          />
         </>
       )}
       {adding && (
@@ -365,7 +410,15 @@ function canSupplyModelKey(b: SecretBinding): boolean {
   )
 }
 
-function GrantTable({ rows }: { rows: AccessRow[] }) {
+function GrantTable({
+  isPending,
+  onRemove,
+  rows,
+}: {
+  isPending: boolean
+  onRemove?: (grant: SecretGrant) => void
+  rows: AccessRow[]
+}) {
   return (
     <table className="w-full text-sm">
       <thead className="text-tertiary text-left text-xs">
@@ -374,6 +427,7 @@ function GrantTable({ rows }: { rows: AccessRow[] }) {
           <th className="py-1 font-normal">Purposes</th>
           <th className="py-1 font-normal">Delivery</th>
           <th className="py-1 font-normal">TTL</th>
+          {onRemove && <th />}
         </tr>
       </thead>
       <tbody className="divide-tertiary divide-y">
@@ -395,6 +449,24 @@ function GrantTable({ rows }: { rows: AccessRow[] }) {
               {grant.delivery_modes.join(', ')}
             </td>
             <td className="py-2 font-mono text-xs">{grant.max_ttl_seconds}s</td>
+            {onRemove && (
+              <td className="py-2 text-right">
+                <Button
+                  aria-label={`Remove ${binding.reference}`}
+                  disabled={isPending}
+                  onClick={() => onRemove(grant)}
+                  size="sm"
+                  title={
+                    grant.binding_ids.length > 1
+                      ? 'Remove the agent from this grant, for all of its secrets'
+                      : 'Remove the agent from this grant'
+                  }
+                  variant="ghost"
+                >
+                  <X className="size-4" />
+                </Button>
+              </td>
+            )}
           </tr>
         ))}
       </tbody>
@@ -419,7 +491,7 @@ function ModelKey({
   value,
 }: {
   bindings: SecretBinding[]
-  canGrant: boolean
+  canGrant: (binding: SecretBinding) => boolean
   covered: (bindingId: string) => boolean
   isPending: boolean
   loaded: boolean
@@ -500,7 +572,7 @@ function ModelKey({
           <span className="text-tertiary font-mono text-xs">
             {MODEL_PURPOSE}
           </span>
-          {!ok && canGrant && (
+          {!ok && canGrant(binding) && (
             <Button
               disabled={isPending}
               onClick={() => onGrant(binding)}

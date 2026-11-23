@@ -29,7 +29,7 @@ import pydantic
 import slugify
 
 from imbi.api import teams, workflows
-from imbi.api.auth import organizations, permissions
+from imbi.api.auth import autonomous, organizations, permissions
 from imbi.api.endpoints import prompts
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.common import graph, lifespan
@@ -219,25 +219,6 @@ WHERE r.id IN {ids}
 RETURN r.id AS id
 """,
 }
-
-_TEAM_MEMBER_QUERY: typing.LiteralString = """
-MATCH (u:User {{email: {email}}})-[:MEMBER_OF]->(t:Team {{id: {team}}})
-RETURN t.id AS id
-"""
-
-
-async def _is_team_member(
-    db: graph.Graph, auth: permissions.AuthContext, team_id: str
-) -> bool:
-    """Whether the caller is a user and a member of the team."""
-    return auth.user is not None and bool(
-        await db.execute(
-            _TEAM_MEMBER_QUERY,
-            {'email': auth.user.email, 'team': team_id},
-            ['id'],
-        )
-    )
-
 
 #: A resource id param may be one plain reference to a run-time value:
 #: ``trigger`` or a node key, then one or more attribute names. No
@@ -699,10 +680,6 @@ WriteAuth = typing.Annotated[
     permissions.AuthContext,
     fastapi.Depends(permissions.require_permission('workflow:write')),
 ]
-DeleteAuth = typing.Annotated[
-    permissions.AuthContext,
-    fastapi.Depends(permissions.require_permission('workflow:delete')),
-]
 
 
 @step_types_router.get('/', response_model=list[StepType])
@@ -784,7 +761,7 @@ async def create_workflow(
             detail='The name gives an empty slug; supply a slug',
         )
     definition = await _definition(db, org_id, data, auth)
-    if not auth.is_admin and not await _is_team_member(
+    if not auth.is_admin and not await teams.is_member(
         db, auth, definition.owner_team_id
     ):
         raise fastapi.HTTPException(
@@ -862,7 +839,7 @@ async def save_workflow(
     if (
         definition.owner_team_id != current['owner_team_id']
         and not auth.is_admin
-        and not await _is_team_member(db, auth, current['owner_team_id'])
+        and not await teams.is_member(db, auth, current['owner_team_id'])
     ):
         raise fastapi.HTTPException(
             status_code=403,
@@ -906,18 +883,46 @@ async def delete_workflow(
     slug: str,
     db: graph.Pool,
     store: workflows.Store,
-    _: DeleteAuth,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_any_permission(
+                'workflow:write', 'workflow:delete'
+            )
+        ),
+    ],
 ) -> None:
     """Delete a workflow that has no open runs.
 
     The CMS prompts of its LLM Call nodes are archived.
+    ``workflow:delete`` deletes any workflow. With only
+    ``workflow:write``, the caller must be a member of the owner team.
 
     Raises:
+        403: ``owner_team_forbidden``: the caller has no
+            ``workflow:delete`` and is not a member of the owner team.
         404: No such workflow.
-        409: A run of the workflow is queued or running, or the
-            organization was renamed during the delete.
+        409: A run of the workflow is queued or running, the
+            organization was renamed during the delete, or the owner
+            team changed during the delete.
 
     """
+    current = await store.get(org_id, slug)
+    # A missing workflow falls through to the 404 of ``store.delete``.
+    # A caller checked by owner team deletes only while the workflow
+    # keeps that owner team.
+    owner_team_id: str | None = None
+    if (
+        current is not None
+        and not auth.is_admin
+        and 'workflow:delete' not in auth.permissions
+    ):
+        owner_team_id = team_id = current['owner_team_id']
+        if not await teams.is_member(db, auth, team_id):
+            raise autonomous.forbidden(
+                'owner_team_forbidden',
+                'Only a member of the owner team can delete this workflow',
+            )
 
     # The archive runs before the delete commits: a create of the same
     # slug waits, so the archive cannot reach the prompts of the new
@@ -926,7 +931,18 @@ async def delete_workflow(
         await _require_org_slug(db, conn, org_id, org_slug)
         await _archive_prompts(db, conn, org_slug, slug, ())
 
-    result = await store.delete(org_id, slug, on_deleted=on_deleted)
+    result = await store.delete(
+        org_id, slug, on_deleted=on_deleted, owner_team_id=owner_team_id
+    )
+    if result == 'owner_changed':
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail={
+                'error': 'conflict',
+                'message': f'Workflow {slug!r} changed during the delete;'
+                ' read it again and retry',
+            },
+        )
     if result == 'open_runs':
         raise fastapi.HTTPException(
             status_code=409, detail=f'Workflow {slug!r} has open runs'

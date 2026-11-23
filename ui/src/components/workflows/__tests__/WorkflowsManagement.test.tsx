@@ -18,6 +18,7 @@ vi.mock('@/api/endpoints', () => ({
   createPrompt: vi.fn(),
   createPromptVersion: vi.fn(),
   createWorkflow: vi.fn(),
+  deleteWorkflow: vi.fn(),
   findSideEffectDeployments: vi.fn(),
   getWorkflow: vi.fn(),
   getWorkflowRun: vi.fn(),
@@ -50,6 +51,11 @@ const auth = vi.hoisted(() => ({
     is_admin: true,
     organizations: [{ organization_slug: 'acme', permissions: [] }],
     permissions: [] as string[],
+  } as {
+    is_admin: boolean
+    organizations: { organization_slug: string; permissions: string[] }[]
+    permissions: string[]
+    teams?: { organization_slug: string; team_slug: string }[]
   },
 }))
 
@@ -66,6 +72,17 @@ function renderAt(path: string) {
       />
     </Routes>,
   )
+}
+
+/** A user with workflow:write and no workflow:delete, in `team`. */
+function writer(team: string) {
+  const permissions = ['workflow:read', 'workflow:write']
+  auth.user = {
+    is_admin: false,
+    organizations: [{ organization_slug: 'acme', permissions }],
+    permissions,
+    teams: [{ organization_slug: 'acme', team_slug: team }],
+  }
 }
 
 describe('WorkflowsManagement', () => {
@@ -793,6 +810,34 @@ describe('WorkflowsManagement', () => {
     renderAt('/agents/workflows')
     await screen.findByText('Deploy guard')
     expect(screen.queryByText('New workflow')).not.toBeInTheDocument()
+  })
+
+  it('lets a member of the owner team delete without workflow:delete', async () => {
+    writer('platform')
+    vi.mocked(endpoints.deleteWorkflow).mockResolvedValue(undefined)
+    renderAt('/agents/workflows/deploy-guard')
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Delete workflow' }),
+    )
+    const dialog = await screen.findByRole('alertdialog')
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Delete workflow' }),
+    )
+    await waitFor(() =>
+      expect(endpoints.deleteWorkflow).toHaveBeenCalledWith(
+        'acme',
+        'deploy-guard',
+      ),
+    )
+  })
+
+  it('hides Delete from another team without workflow:delete', async () => {
+    writer('web')
+    renderAt('/agents/workflows/deploy-guard')
+    await screen.findByRole('button', { name: 'Save' })
+    expect(
+      screen.queryByRole('button', { name: 'Delete workflow' }),
+    ).not.toBeInTheDocument()
   })
 
   it('adds a step from the palette and saves a new version', async () => {

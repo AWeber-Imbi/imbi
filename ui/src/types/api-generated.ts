@@ -5087,7 +5087,12 @@ export interface paths {
          * @description Delete an agent, every version of it, and its service account,
          *     and remove it from the secret grants.
          *
+         *     ``agent:delete`` deletes any agent. With only ``agent:write``, the
+         *     caller must be a member of the owner team of the agent.
+         *
          *     Raises:
+         *         403: The caller has no ``agent:delete`` and is not a member of
+         *             the owner team.
          *         404: No such agent.
          *         409: Other agents delegate to this agent, or workflows use it.
          */
@@ -6584,11 +6589,16 @@ export interface paths {
          * @description Delete a workflow that has no open runs.
          *
          *     The CMS prompts of its LLM Call nodes are archived.
+         *     ``workflow:delete`` deletes any workflow. With only
+         *     ``workflow:write``, the caller must be a member of the owner team.
          *
          *     Raises:
+         *         403: ``owner_team_forbidden``: the caller has no
+         *             ``workflow:delete`` and is not a member of the owner team.
          *         404: No such workflow.
-         *         409: A run of the workflow is queued or running, or the
-         *             organization was renamed during the delete.
+         *         409: A run of the workflow is queued or running, the
+         *             organization was renamed during the delete, or the owner
+         *             team changed during the delete.
          */
         delete: operations["delete_workflow_api_organizations__org_slug__workflows__slug__delete"];
         options?: never;
@@ -7447,6 +7457,10 @@ export interface paths {
          * @description Create an allow rule with exact ids.
          *
          *     Raises:
+         *         403: The caller has no ``secret_binding:write`` and names an
+         *             agent of a team that the caller is not in
+         *             (``grant_agent_forbidden``) or a binding that is not
+         *             ``grantable`` (``grant_binding_forbidden``).
          *         422: A binding is not in the organization or is a provider
          *             key binding, or a setup purpose has a delivery mode other
          *             than ``file_descriptor``.
@@ -7493,6 +7507,15 @@ export interface paths {
         /**
          * Delete Grant
          * @description Delete a grant. Unused handles that it allowed stop working.
+         *
+         *     Raises:
+         *         403: The caller has no ``secret_binding:write`` and the grant
+         *             names an agent of a team that the caller is not in. Use
+         *             ``DELETE /{grant_id}/agents/{agent_id}`` to remove only
+         *             the caller's agent.
+         *         404: No such grant.
+         *         409: For a caller without ``secret_binding:write``: the
+         *             grant's agents changed during the request.
          */
         delete: operations["delete_grant_api_organizations__org_slug__secret_grants__grant_id__delete"];
         options?: never;
@@ -7502,12 +7525,44 @@ export interface paths {
          * @description Change a grant. Disabling it stops every unused handle.
          *
          *     Raises:
+         *         403: The caller has no ``secret_binding:write``, and the grant
+         *             names, before or after the change, an agent of a team that
+         *             the caller is not in, or after the change a binding that
+         *             is not ``grantable``.
          *         404: No such grant.
+         *         409: For a caller without ``secret_binding:write``: the
+         *             grant's agents or bindings changed during the request.
          *         422: A binding is not in the organization or is a provider
          *             key binding, or a setup purpose has a delivery mode other
          *             than ``file_descriptor``.
          */
         patch: operations["update_grant_api_organizations__org_slug__secret_grants__grant_id__patch"];
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/secret-grants/{grant_id}/agents/{agent_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Grant Agent
+         * @description Remove one agent from a grant. A grant left with no agent is
+         *     deleted. The other agents of a shared grant keep it.
+         *
+         *     Raises:
+         *         403: The caller has no ``secret_binding:write`` and the agent
+         *             is of a team that the caller is not in.
+         *         404: The grant does not name the agent.
+         */
+        delete: operations["remove_grant_agent_api_organizations__org_slug__secret_grants__grant_id__agents__agent_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/organizations/{org_slug}/secret-resolutions/": {
@@ -21103,6 +21158,11 @@ export interface components {
             enabled: boolean;
             /** Description */
             description: string;
+            /**
+             * Grantable
+             * @default false
+             */
+            grantable: boolean;
             /** Provider Key Usage */
             provider_key_usage?: {
                 [key: string]: unknown;
@@ -21169,6 +21229,12 @@ export interface components {
              * @default
              */
             description: string;
+            /**
+             * Grantable
+             * @description A caller without secret_binding:write can grant it to agents of a team that the caller is in.
+             * @default false
+             */
+            grantable: boolean;
             provider_key_usage?: components["schemas"]["ProviderKeyUsage"] | null;
         };
         /** SecretBindingPatch */
@@ -21191,6 +21257,8 @@ export interface components {
             enabled?: boolean | null;
             /** Description */
             description?: string | null;
+            /** Grantable */
+            grantable?: boolean | null;
             provider_key_usage?: components["schemas"]["ProviderKeyUsage"] | null;
         };
         /** SecretBindingValidation */
@@ -35953,6 +36021,37 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SecretGrant"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_grant_agent_api_organizations__org_slug__secret_grants__grant_id__agents__agent_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                grant_id: string;
+                agent_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
