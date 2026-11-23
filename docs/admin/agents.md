@@ -31,6 +31,7 @@ The area has these pages:
 | `agent_platform_config:write` | Change the base configuration and the marketplaces | `admin` |
 | `prompt:create`, `prompt:update` | Save a change to the system prompt or the model | `admin`, `developer` |
 | `secret_grant:read`, `secret_binding:read`, `secret_grant:write` | See and add grants on the **Access** tab | `admin`, `developer` |
+| `secret_provider:read` | Choose a GitHub App on the **Access** tab | `admin`, `developer` |
 
 You must also be a member of the organization. The permissions come from
 your role in that organization only. For the task permissions,

@@ -244,7 +244,12 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
         """The agent Access tab needs these grants to show and add grants."""
         roles = {r[0]: set(r[4]) for r in seed.DEFAULT_ROLES}
         self.assertLessEqual(
-            {'secret_binding:read', 'secret_grant:read', 'secret_grant:write'},
+            {
+                'secret_binding:read',
+                'secret_grant:read',
+                'secret_grant:write',
+                'secret_provider:read',
+            },
             roles['developer'],
         )
 

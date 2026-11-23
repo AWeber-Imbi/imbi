@@ -267,7 +267,7 @@ it.
 | `workflow:recover` | Resolve workflow side effects with an unknown outcome, and retry their steps | yes |  |  |  |  |  |  |  |  |
 | `harness_pool:read` | View the runner pools and runners that serve the organization | yes |  |  |  |  |  |  |  |  |
 | `agent_platform_config:write` | Change the base agent configuration and the plugin marketplaces | yes |  |  |  |  |  |  |  |  |
-| `secret_provider:read` | View secret providers | yes |  |  |  |  |  |  |  |  |
+| `secret_provider:read` | View secret providers | yes | yes |  |  |  |  |  |  |  |
 | `secret_provider:write` | Create, change, delete, and test secret providers | yes |  |  |  |  |  |  |  |  |
 | `secret_binding:read` | View secret bindings | yes | yes |  |  |  |  |  |  |  |
 | `secret_binding:write` | Create, change, delete, and validate secret bindings | yes |  |  |  |  |  |  |  |  |
