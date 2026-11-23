@@ -175,6 +175,9 @@ two steps.
 | Max output tokens | Maximum tokens the model returns in one response. |
 | Input cost / 1M tokens | USD per one million input tokens. |
 | Output cost / 1M tokens | USD per one million output tokens. |
+| Cache read cost / 1M tokens | USD per one million tokens read from the prompt cache. |
+| Cache write (5m) cost / 1M tokens | USD per one million tokens written to the prompt cache with the 5-minute TTL. |
+| Cache write (1h) cost / 1M tokens | USD per one million tokens written to the prompt cache with the 1-hour TTL. Agent usage prices 1-hour writes at this rate. |
 | Default temperature | Between 0 and 2. Generative models only. |
 | Default top_p | Between 0 and 1. Generative models only. |
 | Structured output | The model can return JSON that matches a schema. See [Structured output](#structured-output). |
@@ -275,7 +278,8 @@ rejected the call.
 The Anthropic and OpenAI model lists contain no prices. Imbi can copy list
 prices from the public
 [LiteLLM price file](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json).
-The sync sets the input, output, cache read, and cache write prices.
+The sync sets the input, output, cache read, cache write (5m), and cache
+write (1h) prices.
 
 1. Click **Sync prices** above the provider list.
 2. Wait for the comparison. Imbi downloads the price file and shows only

@@ -1912,6 +1912,7 @@ async def _run_generative(
                 'tokens_out': tokens_out,
                 'cache_read_tokens': answer.usage.get('cache_read_tokens'),
                 'cache_write_tokens': None,
+                'cache_write_1h_tokens': None,
             },
             {
                 'input_cost_per_million': _price(record.get('input_cost')),
@@ -1920,6 +1921,7 @@ async def _run_generative(
                     record.get('cache_read_cost')
                 ),
                 'cache_write_cost_per_million': None,
+                'cache_write_1h_cost_per_million': None,
             },
         )
     )

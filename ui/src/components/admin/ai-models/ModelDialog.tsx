@@ -41,6 +41,7 @@ export interface ModelFormValues {
   access_scope: AIModelAccessScope
   allowed_team_ids: string[]
   cache_read_cost_per_million: null | number
+  cache_write_1h_cost_per_million: null | number
   cache_write_cost_per_million: null | number
   context_window: null | number
   default_temperature: null | number
@@ -77,6 +78,7 @@ interface ModelDialogProps {
 /** The fields typed as free text but submitted as numbers. */
 type NumericKey =
   | 'cache_read_cost_per_million'
+  | 'cache_write_1h_cost_per_million'
   | 'cache_write_cost_per_million'
   | 'context_window'
   | 'default_temperature'
@@ -92,6 +94,7 @@ const CAP_HELP =
 
 const NUMERIC_KEYS: NumericKey[] = [
   'cache_read_cost_per_million',
+  'cache_write_1h_cost_per_million',
   'cache_write_cost_per_million',
   'context_window',
   'default_temperature',
@@ -359,11 +362,20 @@ export function ModelDialog({
                 <NumberField
                   error={numericError('cache_write_cost_per_million')}
                   id="ai-model-cost-cache-write"
-                  label="Cache write cost / 1M tokens"
+                  label="Cache write (5m) cost / 1M tokens"
                   onChange={(raw) =>
                     setNumeric('cache_write_cost_per_million', raw)
                   }
                   value={text.cache_write_cost_per_million}
+                />
+                <NumberField
+                  error={numericError('cache_write_1h_cost_per_million')}
+                  id="ai-model-cost-cache-write-1h"
+                  label="Cache write (1h) cost / 1M tokens"
+                  onChange={(raw) =>
+                    setNumeric('cache_write_1h_cost_per_million', raw)
+                  }
+                  value={text.cache_write_1h_cost_per_million}
                 />
               </div>
               {!isDecision && (
@@ -557,6 +569,9 @@ function initialText(
   const asText = (value: null | number) => (value === null ? '' : String(value))
   return {
     cache_read_cost_per_million: asText(seed.cache_read_cost_per_million),
+    cache_write_1h_cost_per_million: asText(
+      seed.cache_write_1h_cost_per_million,
+    ),
     cache_write_cost_per_million: asText(seed.cache_write_cost_per_million),
     context_window: asText(seed.context_window),
     default_temperature: asText(seed.default_temperature),
@@ -577,6 +592,7 @@ function initialValues(
       access_scope: 'organization',
       allowed_team_ids: [],
       cache_read_cost_per_million: null,
+      cache_write_1h_cost_per_million: null,
       cache_write_cost_per_million: null,
       context_window: null,
       default_temperature: null,
@@ -600,6 +616,9 @@ function initialValues(
     allowed_team_ids: model.allowed_teams.map((team) => team.id),
     cache_read_cost_per_million: decimalToNumber(
       model.cache_read_cost_per_million,
+    ),
+    cache_write_1h_cost_per_million: decimalToNumber(
+      model.cache_write_1h_cost_per_million,
     ),
     cache_write_cost_per_million: decimalToNumber(
       model.cache_write_cost_per_million,

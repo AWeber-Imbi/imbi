@@ -718,7 +718,8 @@ class Usage:
 
     ``None`` for a token count means the harness did not measure it.
     ``message_id`` is the model's id for the reply; the task events of
-    that reply have it too.
+    that reply have it too. ``cache_write_1h_tokens`` is the part of
+    ``cache_write_tokens`` written with the 1-hour cache TTL.
     """
 
     idempotency_key: str
@@ -729,6 +730,7 @@ class Usage:
     cache_write_tokens: int | None
     session_id: uuid.UUID | None
     message_id: str | None = None
+    cache_write_1h_tokens: int | None = None
 
 
 #: Each token count of a usage report, and the price column for it.
@@ -737,6 +739,7 @@ _TOKEN_PRICES: tuple[tuple[str, str], ...] = (
     ('tokens_out', 'output_cost_per_million'),
     ('cache_read_tokens', 'cache_read_cost_per_million'),
     ('cache_write_tokens', 'cache_write_cost_per_million'),
+    ('cache_write_1h_tokens', 'cache_write_1h_cost_per_million'),
 )
 
 #: The scale of the NUMERIC(14, 6) cost columns.
@@ -751,10 +754,23 @@ def usage_cost(
 
     The cost is unknown when no count was measured, when the model is not
     in the catalog (``prices`` is ``None``), or when a count above zero
-    has no price. Unknown is never recorded as zero (N2).
+    has no price. Unknown is never recorded as zero (N2). The
+    ``cache_write_1h_tokens`` part of ``cache_write_tokens`` uses the
+    1-hour write price; the remainder uses the 5-minute write price.
+    When the model has no 1-hour price, all writes use the 5-minute
+    price, so the cost still counts against the budget.
     """
     if prices is None or all(count is None for count in counts.values()):
         return None
+    long_writes = counts['cache_write_1h_tokens'] or 0
+    if prices['cache_write_1h_cost_per_million'] is None:
+        long_writes = 0
+    counts = {
+        **counts,
+        'cache_write_tokens': (counts['cache_write_tokens'] or 0)
+        - long_writes,
+        'cache_write_1h_tokens': long_writes,
+    }
     total = decimal.Decimal(0)
     for count_column, price_column in _TOKEN_PRICES:
         count = counts[count_column]
@@ -3174,11 +3190,12 @@ class TicketStore:
                     'INSERT INTO tickets.budget_ledger (id, ticket_id,'
                     ' session_id, idempotency_key, model_id, tokens_in,'
                     ' tokens_out, cache_read_tokens, cache_write_tokens,'
-                    ' input_cost_per_million, output_cost_per_million,'
-                    ' cache_read_cost_per_million,'
-                    ' cache_write_cost_per_million, cost) VALUES (%s, %s,'
-                    ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
-                    ' RETURNING *',
+                    ' cache_write_1h_tokens, input_cost_per_million,'
+                    ' output_cost_per_million, cache_read_cost_per_million,'
+                    ' cache_write_cost_per_million,'
+                    ' cache_write_1h_cost_per_million, cost) VALUES (%s,'
+                    ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
+                    ' %s, %s) RETURNING *',
                     (
                         uuid.uuid4(),
                         task['id'],

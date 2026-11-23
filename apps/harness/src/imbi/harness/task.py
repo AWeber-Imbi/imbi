@@ -1141,6 +1141,10 @@ class TaskRun:
             'cache_write_tokens': count('cache_creation_input_tokens'),
             'session_id': self.session_id,
         }
+        # Anthropic splits cache writes by TTL; 1h writes cost more.
+        split: Body = usage.get('cache_creation') or {}
+        if long_writes := split.get('ephemeral_1h_input_tokens'):
+            body['cache_write_1h_tokens'] = int(long_writes)
         if message_id and len(message_id) <= MESSAGE_ID_MAX:
             body['message_id'] = message_id
         for attempt in range(3):
