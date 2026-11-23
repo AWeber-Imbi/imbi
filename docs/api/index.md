@@ -117,7 +117,11 @@ moon run api:lint api:typecheck api:format             # ruff + basedpyright + f
 ```
 
 Run `moon run root:coverage` for the full suite with aggregate coverage. It
-runs on pytest-xdist workers, each with its own Postgres database, and `moon run root:services` first if you invoke `pytest` directly.
+starts the services (`root:services`) and runs on pytest-xdist workers,
+each with its own Postgres database. Before you run `pytest` directly, run
+`moon run root:services`. A direct `pytest` run uses one database per
+worker only when you give `-n`; without `-n` it uses the shared `imbi`
+database.
 
 ## Core Concepts
 

@@ -292,6 +292,11 @@ uv run --env-file .env.test pytest -n 4 apps/api/tests/endpoints
 uv run --env-file .env.test pytest libraries/common/tests/test_settings.py
 ```
 
+A run without `-n` uses the shared `imbi` database. Do not run it at the
+same time as a different run against the same services. The worker
+databases (`imbi_gw*`) stay after a run; the next xdist run drops and
+creates them again.
+
 The coverage configuration is in `libraries/common/pyproject.toml`,
 under `[tool.coverage.run]` and `[tool.coverage.report]`. It measures
 `imbi.common` (`source_pkgs`), with branch coverage, and fails under

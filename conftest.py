@@ -2,15 +2,16 @@
 
 Tests share global graph nodes (for example ``Permission``) and global
 rows, so workers that share one database collide. Each worker uses
-``<database>_<worker>`` instead (``imbi_gw0``, ``imbi_gw1``, ...). The
-application code creates the schema in an empty database, as it does
-in production, except for pg_cron (see ``_skip_pg_cron``).
+``<database>_<worker>`` instead (``imbi_gw0``, ``imbi_gw1``, ...). Each
+run drops and creates that database again, so no state stays from an
+earlier run. The application code creates the schema in the empty
+database, as it does in production, except for pg_cron (see
+``_skip_pg_cron``).
 
 ClickHouse stays shared: its DDL names the ``imbi`` database, and the
 tests scope their rows with unique ids.
 """
 
-import contextlib
 import os
 import typing
 import urllib.parse
@@ -27,13 +28,12 @@ def pytest_configure() -> None:
         return
     parts = urllib.parse.urlsplit(url)
     name = f'{parts.path.lstrip("/")}_{worker}'
-    with (
-        psycopg.connect(url, autocommit=True) as conn,
-        contextlib.suppress(psycopg.errors.DuplicateDatabase),
-    ):
+    ident = sql.Identifier(name)
+    with psycopg.connect(url, autocommit=True) as conn:
         conn.execute(
-            sql.SQL('CREATE DATABASE {}').format(sql.Identifier(name))
+            sql.SQL('DROP DATABASE IF EXISTS {} WITH (FORCE)').format(ident)
         )
+        conn.execute(sql.SQL('CREATE DATABASE {}').format(ident))
     os.environ['POSTGRES_URL'] = parts._replace(path=f'/{name}').geturl()
     _skip_pg_cron()
 
