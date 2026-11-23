@@ -458,6 +458,7 @@ export function NewTaskDialog({
                 className="h-8.5"
                 disablePast
                 id="nt-due"
+                keepInvalid
                 modal
                 onChange={setDue}
                 value={due}

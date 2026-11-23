@@ -1,4 +1,4 @@
-import { fireEvent, waitFor } from '@testing-library/react'
+import { act, fireEvent, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '@/api/client'
@@ -236,6 +236,28 @@ describe('NewTaskDialog', () => {
     expect(billing).toHaveAttribute('aria-checked', 'true')
     fireEvent.click(billing)
     expect(billing).toHaveAttribute('aria-checked', 'false')
+  })
+
+  it('will not create a ticket while the due date is impossible', async () => {
+    const onClose = vi.fn()
+    render(<NewTaskDialog agent={agent('mender')} isOpen onClose={onClose} />)
+    describeWork('Sync the schemas')
+    const due = screen.getByLabelText('Due')
+    fireEvent.change(due, { target: { value: '02/30/2099' } })
+    fireEvent.blur(due)
+    expect(due).toHaveValue('02/30/2099')
+    expect(due).toBeInvalid()
+    fireEvent.click(screen.getByRole('button', { name: 'Create ticket' }))
+    await act(async () => {})
+    expect(endpoints.createTicket).not.toHaveBeenCalled()
+    fireEvent.change(due, { target: { value: '02/28/2099' } })
+    fireEvent.blur(due)
+    expect(due).toBeValid()
+    await create(onClose)
+    expect(endpoints.createTicket).toHaveBeenCalledExactlyOnceWith(
+      'acme',
+      expect.objectContaining({ due_date: '2099-02-28' }),
+    )
   })
 
   it('creates an agent ticket with its attributes', async () => {

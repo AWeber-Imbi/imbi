@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { isValid, parse, startOfToday } from 'date-fns'
 import { CalendarIcon, Clock2Icon } from 'lucide-react'
@@ -35,6 +35,7 @@ export interface DatePickerProps {
   disabled?: boolean
   disablePast?: boolean
   id?: string
+  keepInvalid?: boolean
   modal?: boolean
   onChange: (value: string) => void
   required?: boolean
@@ -64,11 +65,13 @@ export function DatePicker({
   disabled,
   disablePast = false,
   id,
+  keepInvalid = false,
   modal,
   onChange,
   required = false,
   value,
 }: DatePickerProps) {
+  const input = useRef<HTMLInputElement>(null)
   const selected = value ? parseServerTs(value) : undefined
   const [open, setOpen] = useState(false)
   const [text, setText] = useState(() => toDisplay(value))
@@ -87,6 +90,14 @@ export function DatePicker({
   const typed = parseTypedDate(text)
   const empty = text.trim() === ''
   const invalid = !empty && !(typed && allowed(typed))
+  const problem = !invalid
+    ? ''
+    : typed
+      ? 'Pick today or a later date'
+      : 'Enter a date as mm/dd/yyyy'
+  useEffect(() => {
+    input.current?.setCustomValidity(problem)
+  }, [problem])
 
   const choose = (next: string) => {
     setText(toDisplay(next))
@@ -98,7 +109,7 @@ export function DatePicker({
   const commit = () => {
     if (empty && !required) choose('')
     else if (typed && allowed(typed)) choose(toDateOnlyIso(typed))
-    else {
+    else if (!keepInvalid) {
       setText(toDisplay(value))
       setMonth(selected)
     }
@@ -133,6 +144,7 @@ export function DatePicker({
           }
         }}
         placeholder="mm/dd/yyyy"
+        ref={input}
         required={required}
         value={text}
       />
