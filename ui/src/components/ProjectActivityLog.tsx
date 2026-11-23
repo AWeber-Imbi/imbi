@@ -454,7 +454,11 @@ function EventEntry({
   // identity so a webhook row is never a nameless "?" bubble.
   const actor = resolveEventActor(entry)
   const hasActor = Boolean(actor)
-  const agent = agentMap.get(actor)
+  // Only recorded attribution can name an agent; a webhook sender login is
+  // an external identity that can collide with an agent slug.
+  const agent = entry.attributed_to
+    ? agentMap.get(entry.attributed_to)
+    : undefined
   const { body, href } = renderEventBody(
     entry,
     projectId,

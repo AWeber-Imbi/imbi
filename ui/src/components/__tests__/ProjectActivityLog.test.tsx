@@ -93,4 +93,33 @@ describe('ProjectActivityLog', () => {
     expect(await screen.findByText('Dependency Bot')).toBeInTheDocument()
     expect(screen.queryByText('dependency-bot')).not.toBeInTheDocument()
   })
+
+  it('does not show an agent for a webhook sender with a matching login', async () => {
+    vi.mocked(endpoints.listOperationsLog).mockResolvedValue({
+      entries: [],
+    } as never)
+    vi.mocked(endpoints.listProjectEvents).mockResolvedValue({
+      entries: [
+        {
+          id: 'ev-2',
+          integration: 'github',
+          metadata: {},
+          payload: { sender: { login: 'dependency-bot' } },
+          recorded_at: new Date().toISOString(),
+          type: 'push',
+        },
+      ],
+    } as never)
+
+    render(
+      <ProjectActivityLog
+        orgSlug="aweber"
+        projectId="p1"
+        projectSlug="webform"
+      />,
+    )
+
+    expect(await screen.findByText('dependency-bot')).toBeInTheDocument()
+    expect(screen.queryByText('Dependency Bot')).not.toBeInTheDocument()
+  })
 })
