@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { format, isValid, parse, startOfToday } from 'date-fns'
+import { isValid, parse, startOfToday } from 'date-fns'
 import { CalendarIcon, Clock2Icon } from 'lucide-react'
 
 import { Calendar } from '@/components/ui/calendar'
@@ -28,8 +28,6 @@ const ACCEPTED_FORMATS = [
   'd MMM yyyy',
   'd MMMM yyyy',
 ]
-
-const TIME_FORMATS = ['H:mm', 'h:mm a', 'h:mma', 'h a', 'ha']
 
 export interface DatePickerProps {
   'aria-label'?: string
@@ -259,11 +257,23 @@ function parseTypedDate(text: string): Date | null {
 
 function parseTypedTime(text: string): null | string {
   const raw = text.trim().replace(/\s+/g, ' ').toUpperCase()
-  for (const pattern of TIME_FORMATS) {
-    const date = parse(raw, pattern, new Date())
-    if (isValid(date)) return format(date, 'HH:mm')
-  }
-  return null
+  const clock = /^(\d{1,2}):(\d{2})$/.exec(raw)
+  const meridiem = /^(\d{1,2})(?::(\d{2}))? ?([AP])M$/.exec(raw)
+  let hours: number
+  let minutes: number
+  if (clock) {
+    hours = Number(clock[1])
+    minutes = Number(clock[2])
+    if (hours > 23) return null
+  } else if (meridiem) {
+    const hour = Number(meridiem[1])
+    if (hour < 1 || hour > 12) return null
+    hours = (hour % 12) + (meridiem[3] === 'P' ? 12 : 0)
+    minutes = Number(meridiem[2] ?? 0)
+  } else return null
+  if (minutes > 59) return null
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(hours)}:${pad(minutes)}`
 }
 
 function toDisplay(value: string): string {

@@ -236,7 +236,23 @@ describe('TimeInput', () => {
     expect(onChange).toHaveBeenCalledExactlyOnceWith(time)
   })
 
-  it.each(['25:00', '9:75', 'noon', ''])(
+  it('keeps a time that the clocks skip today', () => {
+    const tz = process.env.TZ
+    process.env.TZ = 'America/New_York'
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-03-08T12:00:00Z'))
+    try {
+      const onChange = vi.fn()
+      render(<TimeInput aria-label="At" onChange={onChange} value="09:00" />)
+      expect(typeAndLeave('At', '02:30')).toHaveValue('02:30')
+      expect(onChange).toHaveBeenCalledExactlyOnceWith('02:30')
+    } finally {
+      vi.useRealTimers()
+      process.env.TZ = tz
+    }
+  })
+
+  it.each(['25:00', '9:75', 'noon', '13 PM', '0 AM', ''])(
     'puts back the previous time for %j',
     (typed) => {
       const onChange = vi.fn()
