@@ -92,6 +92,13 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 3. Run `imbi-api setup-permissions`. It gives the `developer` role
    `secret_grant:read` and `secret_grant:write`, so a developer can see
    and add the secret grants of an agent on the **Access** tab.
+4. Before you deploy imbi-slackbot, turn on **Interactivity** in the
+   Slack app settings (Socket Mode needs no request URL), or set
+   `settings.interactivity.is_enabled: true` in the app manifest. The
+   agent can now post forms, and Slack sends their buttons and modal
+   submissions only to an app with interactivity on. Make sure the
+   imbi-slackbot pod gets `VALKEY_URL`: the bot keeps posted forms in
+   Valkey for seven days.
 
 ## 2.59.0
 

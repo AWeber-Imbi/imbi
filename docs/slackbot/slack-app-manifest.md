@@ -61,6 +61,8 @@ settings:
     bot_events:
       - app_mention
       - message.im
+  interactivity:
+    is_enabled: true
   socket_mode_enabled: true
   org_deploy_enabled: false
   token_rotation_enabled: false
