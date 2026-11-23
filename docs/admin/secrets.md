@@ -308,6 +308,9 @@ the requested variable gets the whole JSON object. These rules apply:
   `SENTRY_AUTH_TOKEN`, the command gets the token in
   `SENTRY_AUTH_TOKEN` and the organization in `SENTRY_ORG`, and no
   variable holds the JSON object.
+- A member whose value contains a NUL character does not get a variable.
+  When that member has the name of the requested variable, the command
+  does not run and the tool result gives the error `nul_in_environment`.
 
 The tool result gives the names of the variables that it set, never the
 values. Imbi removes each string member value from the command output
