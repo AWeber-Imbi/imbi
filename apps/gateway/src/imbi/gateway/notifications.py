@@ -567,7 +567,12 @@ def _standard_webhooks_expectation(  # noqa: PLR0913
             extra=extra,
         )
         return None
-    if abs(time.time() - sent_at) > _STANDARD_WEBHOOKS_TOLERANCE:
+    now = int(time.time())
+    if not (
+        now - _STANDARD_WEBHOOKS_TOLERANCE
+        <= sent_at
+        <= now + _STANDARD_WEBHOOKS_TOLERANCE
+    ):
         LOGGER.warning(
             'Standard Webhooks timestamp %r is outside the %ss tolerance;'
             ' dropping delivery (webhook_id=%r integration=%r)',

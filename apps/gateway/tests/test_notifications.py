@@ -317,6 +317,7 @@ def _uninstall_stub_plugins() -> None:
     for slug in (
         'stub-nocreds',
         'stub-signed',
+        'stub-standard',
         'stub-creds',
         'stub-identity-only',
     ):
@@ -1239,10 +1240,14 @@ class ProcessNotificationTests(helpers.TestCase):
 
     async def test_standard_stale_timestamp_dropped(self) -> None:
         raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
-        for offset in (-3600, 3600):
-            with self.subTest(offset=offset):
+        now = int(time.time())
+        for name, stamp in (
+            ('past', str(now - 3600)),
+            ('future', str(now + 3600)),
+            ('oversized', '9' * 400),
+        ):
+            with self.subTest(case=name):
                 ACTION_CALLS.clear()
-                stamp = str(int(time.time()) + offset)
                 with self.assertLogs(
                     'imbi.gateway.notifications', level='WARNING'
                 ) as cm:
