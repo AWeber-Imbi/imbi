@@ -486,6 +486,8 @@ class ArchivedReopenTests(
                 'Reason: Not fixed',
             ),
         )
+        # The outcome reason can come from the model, so it is untrusted.
+        self.assertTrue(entry.webhook)
 
         # It closes and archives again; the log stays one log.
         await self.client.post(self.url(f'{short_id}/cancel'))
