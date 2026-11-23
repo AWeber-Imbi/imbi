@@ -218,12 +218,13 @@ describe('NewTaskDialog', () => {
 
   it('searches projects and leaves out archived ones', async () => {
     render(<NewTaskDialog isOpen onClose={vi.fn()} />)
-    const search = screen.getByLabelText('Projects')
-    fireEvent.focus(search)
-    fireEvent.change(search, { target: { value: 'bill' } })
-    expect(await screen.findByText('billing')).toBeInTheDocument()
-    expect(screen.queryByText('old-billing')).toBeNull()
-    expect(screen.queryByText('search')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Projects' }))
+    fireEvent.change(await screen.findByPlaceholderText('Search projects'), {
+      target: { value: 'bill' },
+    })
+    expect(screen.getByRole('option', { name: 'billing' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: /old-billing/ })).toBeNull()
+    expect(screen.queryByRole('option', { name: /search/ })).toBeNull()
   })
 
   it('creates an agent ticket with its attributes', async () => {
@@ -235,9 +236,11 @@ describe('NewTaskDialog', () => {
     expect(screen.getByText('Auto')).toBeInTheDocument()
     await pickAgent('Forager')
     expect(screen.getByText('Runs now with Forager')).toBeInTheDocument()
-    const projects = screen.getByLabelText('Projects')
-    fireEvent.focus(projects)
-    fireEvent.mouseDown(await screen.findByText('search'))
+    fireEvent.click(screen.getByRole('button', { name: 'Projects' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'search' }))
+    fireEvent.keyDown(screen.getByPlaceholderText('Search projects'), {
+      key: 'Escape',
+    })
     fireEvent.click(screen.getByRole('radio', { name: 'Bug' }))
     fireEvent.click(screen.getByRole('radio', { name: 'Urgent' }))
     fireEvent.change(screen.getByLabelText('Due'), {
@@ -351,6 +354,7 @@ describe('NewTaskDialog', () => {
     ['agent', [/Assign to/], /Forager/],
     ['person', ['Person', 'Assignee'], /Ops Person/],
     ['prerequisite', [/Relations/, 'Add prerequisite'], /T-3/],
+    ['project', ['Projects'], /billing/],
   ] as const)(
     'lets the wheel scroll the %s picker',
     async (_, clicks, option) => {
