@@ -1077,7 +1077,11 @@ class UsageTests(HarnessTestCase):
     async def test_1h_cache_writes_without_a_1h_price(self) -> None:
         response = await self.report('u-1', cache_write_1h_tokens=1500)
         self.assertEqual(response.status_code, 201, response.text)
-        self.assertIsNone(response.json()['cost'])
+        # Every write falls back to the 5m price, so the budget still
+        # sees the cost: 1000 * 3 + 500 * 15 + 10000 * 0.3 + 2000 * 3.75.
+        self.assertEqual(
+            decimal.Decimal(response.json()['cost']), decimal.Decimal('0.021')
+        )
 
     async def test_1h_cache_writes_above_cache_writes(self) -> None:
         response = await self.report('u-1', cache_write_1h_tokens=2001)

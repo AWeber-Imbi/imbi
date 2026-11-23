@@ -757,16 +757,20 @@ def usage_cost(
     has no price. Unknown is never recorded as zero (N2). The
     ``cache_write_1h_tokens`` part of ``cache_write_tokens`` uses the
     1-hour write price; the remainder uses the 5-minute write price.
+    When the model has no 1-hour price, all writes use the 5-minute
+    price, so the cost still counts against the budget.
     """
     if prices is None or all(count is None for count in counts.values()):
         return None
-    long_writes = counts['cache_write_1h_tokens']
-    if long_writes:
-        counts = {
-            **counts,
-            'cache_write_tokens': (counts['cache_write_tokens'] or 0)
-            - long_writes,
-        }
+    long_writes = counts['cache_write_1h_tokens'] or 0
+    if prices['cache_write_1h_cost_per_million'] is None:
+        long_writes = 0
+    counts = {
+        **counts,
+        'cache_write_tokens': (counts['cache_write_tokens'] or 0)
+        - long_writes,
+        'cache_write_1h_tokens': long_writes,
+    }
     total = decimal.Decimal(0)
     for count_column, price_column in _TOKEN_PRICES:
         count = counts[count_column]
