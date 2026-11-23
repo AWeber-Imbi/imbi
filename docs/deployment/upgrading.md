@@ -89,6 +89,9 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    send `custom_fields`, so its webhook tickets and child tickets fail.
    An earlier imbi-api pod ignores `custom_fields` in a request; it
    does not refuse it.
+3. Run `imbi-api setup-permissions`. It gives the `developer` role
+   `secret_grant:read` and `secret_grant:write`, so a developer can see
+   and add the secret grants of an agent on the **Access** tab.
 
 ## 2.59.0
 

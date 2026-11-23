@@ -925,6 +925,8 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'tag:delete',
             'service_account:read',
             'secret_binding:read',
+            'secret_grant:read',
+            'secret_grant:write',
             'operations_log:create',
             'operations_log:update',
             'operations_log:delete',

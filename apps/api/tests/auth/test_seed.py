@@ -240,6 +240,14 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
                     & roles[slug]
                 )
 
+    def test_developer_can_grant_agent_secrets(self) -> None:
+        """The agent Access tab needs these grants to show and add grants."""
+        roles = {r[0]: set(r[4]) for r in seed.DEFAULT_ROLES}
+        self.assertLessEqual(
+            {'secret_binding:read', 'secret_grant:read', 'secret_grant:write'},
+            roles['developer'],
+        )
+
     def test_project_delivery_permission_grants(self) -> None:
         """Developers deploy and sync; every reader sees delivery state.
 
