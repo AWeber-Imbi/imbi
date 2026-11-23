@@ -1023,6 +1023,27 @@ class UsageTestCase(TaskTestCase):
         self.assertEqual(body['session_id'], 's')
         self.assertEqual(self.run_task.remaining, decimal.Decimal('1.5'))
         self.assertTrue(self.run_task.allowed())
+        self.assertNotIn('cache_write_1h_tokens', body)
+
+    async def test_report_with_1h_cache_writes(self) -> None:
+        self.client.post.return_value = mock.Mock(
+            json=mock.Mock(return_value=self.reply())
+        )
+        await self.run_task.report(
+            'claude-x',
+            {
+                'input_tokens': 10,
+                'output_tokens': 5,
+                'cache_creation_input_tokens': 300,
+                'cache_creation': {
+                    'ephemeral_5m_input_tokens': 100,
+                    'ephemeral_1h_input_tokens': 200,
+                },
+            },
+        )
+        (body,) = self.posted('/usage')
+        self.assertEqual(body['cache_write_tokens'], 300)
+        self.assertEqual(body['cache_write_1h_tokens'], 200)
 
     async def test_unmeasured_report(self) -> None:
         self.client.post.return_value = mock.Mock(

@@ -323,9 +323,19 @@ the requested variable gets the whole JSON object. These rules apply:
 - When the binding has **Allowed delivery targets**, only members with
   those names get a variable.
 - A member does not replace a variable that is set already.
+- When a string member has the name of the requested variable, that
+  variable holds the member instead of the whole JSON object. For
+  `{"SENTRY_AUTH_TOKEN": "...", "SENTRY_ORG": "..."}` requested into
+  `SENTRY_AUTH_TOKEN`, the command gets the token in
+  `SENTRY_AUTH_TOKEN` and the organization in `SENTRY_ORG`, and no
+  variable holds the JSON object.
+- A member whose value contains a NUL character does not get a variable.
+  When that member has the name of the requested variable, the command
+  does not run and the tool result gives the error `nul_in_environment`.
 
 The tool result gives the names of the variables that it set, never the
-values. Imbi removes each member value from the command output too.
+values. Imbi removes each string member value from the command output
+too. Numbers and booleans in the object are not removed.
 
 ## Workload identity
 

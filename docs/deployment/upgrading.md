@@ -91,7 +91,9 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    does not refuse it.
 3. Run `imbi-api setup-permissions`. It gives the `developer` role
    `secret_grant:read` and `secret_grant:write`, so a developer can see
-   and add the secret grants of an agent on the **Access** tab.
+   and add the secret grants of an agent on the **Access** tab. It also
+   gives the `developer` role `secret_provider:read`, so a developer can
+   choose a GitHub App on that tab.
    A developer can grant only to agents of their own teams, and only
    bindings marked **Grantable**. At start, imbi-api adds the column
    `secrets.bindings.grantable` with the value `false`, so no binding is

@@ -8,6 +8,7 @@ import {
   Activity,
   BarChart3,
   BookOpen,
+  Bot,
   GitCommitHorizontal,
   GitPullRequest,
   Network,
@@ -17,6 +18,7 @@ import {
 } from 'lucide-react'
 
 import { Navigation } from '@/components/Navigation'
+import { AgentUsageReport } from '@/components/reports/AgentUsageReport'
 import { DocumentReadershipReport } from '@/components/reports/DocumentReadershipReport'
 import { MonthlyImprovementReport } from '@/components/reports/MonthlyImprovementReport'
 import { OpenPullRequestsReport } from '@/components/reports/OpenPullRequestsReport'
@@ -115,6 +117,14 @@ const REPORTS: Report[] = [
     id: 'team-kpi',
     label: 'Team KPI',
     subtitle: 'Quality score rollup by team',
+  },
+  {
+    component: AgentUsageReport,
+    description: 'Agent tokens and spend',
+    icon: Bot,
+    id: 'agent-usage',
+    label: 'Agent Usage',
+    subtitle: 'Token use and cost of the agents, by day and by agent',
   },
 ]
 

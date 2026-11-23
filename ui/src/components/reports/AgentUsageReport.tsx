@@ -1,5 +1,19 @@
 import { useState } from 'react'
 
+import { formatMoney } from '@/components/agents/agentDraft'
+import { useAgentList, useAgentUsage } from '@/components/agents/agentQueries'
+import {
+  agentNamer,
+  cacheHit,
+  capStatus,
+  dailyValues,
+  daysBetween,
+  formatCount,
+  formatShare,
+  inputTokens,
+  sumTotals,
+} from '@/components/agents/agentUsage'
+import { UsageBars } from '@/components/agents/UsageBars'
 import { Alert } from '@/components/ui/alert'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import {
@@ -17,20 +31,6 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { LABEL_SWATCHES } from '@/lib/chip-colors'
 import type { Agent, AgentUsage, AgentUsageTotals } from '@/types'
-
-import { formatMoney } from './agentDraft'
-import { useAgentList, useAgentUsage } from './agentQueries'
-import {
-  cacheHit,
-  capStatus,
-  dailyValues,
-  daysBetween,
-  formatCount,
-  formatShare,
-  inputTokens,
-  sumTotals,
-} from './agentUsage'
-import { UsageBars } from './UsageBars'
 
 const ALL = 'all'
 const RANGES = ['7', '30', '90']
@@ -61,7 +61,7 @@ interface FocusProps {
 }
 
 /** Token use and cost of the agents of the org, by day and by agent. */
-export function UsagePage() {
+export function AgentUsageReport() {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
   const canRead = useHasPermission('ticket:read', orgSlug)
@@ -69,20 +69,15 @@ export function UsagePage() {
   const [agentId, setAgentId] = useState(ALL)
   const [metric, setMetric] = useState<Metric>('cost')
   const [focus, setFocus] = useState<null | string>(null)
-  const { data: agents = [] } = useAgentList(orgSlug)
+  const { data: agents = [], isSuccess: agentsLoaded } = useAgentList(orgSlug)
   const usage = useAgentUsage(orgSlug, {
     agent_id: agentId === ALL ? undefined : agentId,
     start: daysAgo(Number(range) - 1),
   })
-  const names = new Map(agents.map((a) => [a.id, a.name]))
-  const nameOf = (id: string) => names.get(id) ?? id
+  const nameOf = agentNamer(agents, agentsLoaded)
 
   if (!canRead) {
-    return (
-      <div className="p-8">
-        <Alert>You need the ticket:read permission to see usage.</Alert>
-      </div>
-    )
+    return <Alert>You need the ticket:read permission to see usage.</Alert>
   }
 
   const reset = () => {
@@ -92,7 +87,7 @@ export function UsagePage() {
   }
 
   return (
-    <div className="flex flex-col gap-4 p-8">
+    <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
         <Select onValueChange={setRange} value={range}>
           <SelectTrigger aria-label="Range" className="h-8 w-auto text-xs">

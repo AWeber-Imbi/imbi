@@ -16,7 +16,6 @@ The area has these pages:
 |---|---|---|
 | Dashboard | **Agents > Dashboard** | Agent activity at a glance |
 | Tickets | **Tickets** (top bar) | The ticket list. It is a top-level page, not in the Agents area. See [Tickets](tickets.md) |
-| Usage | **Agents > Usage** | Tokens and spend |
 | Agents | **Agents > Settings > Agents** | The agent list, the agent detail, and the editor |
 | Workflows | **Agents > Settings > Workflows** | See [Workflows](workflows.md) |
 | Platform | **Agents > Settings > Platform** | The base configuration and the plugin marketplaces |
@@ -32,6 +31,7 @@ The area has these pages:
 | `agent_platform_config:write` | Change the base configuration and the marketplaces | `admin` |
 | `prompt:create`, `prompt:update` | Save a change to the system prompt or the model | `admin`, `developer` |
 | `secret_grant:read`, `secret_binding:read`, `secret_grant:write` | See, add, and remove grants on the **Access** tab. Without `secret_binding:write`, only for an agent of a team that you are in, and only for a **Grantable** binding | `admin`, `developer` |
+| `secret_provider:read` | Choose a GitHub App on the **Access** tab | `admin`, `developer` |
 
 You must also be a member of the organization. The permissions come from
 your role in that organization only. For the task permissions,
@@ -426,13 +426,14 @@ repository on another host, the task fails with `marketplace_fetch_failed`.
 
 ## Usage
 
-Open **Agents > Usage**. Select a range (the last 7, 30, or 90 days) and
+Open **Reports > Agent Usage**. Select a range (the last 7, 30, or 90 days) and
 an agent. The page shows:
 
 - Tiles with the totals: tokens in, tokens out, and spend.
 - A daily chart by agent. Use **Cost** or **Token usage**.
 - **Usage by agent**: tasks, tokens in, tokens out, cache hit, and cost,
-  with a total row.
+  with a total row. Usage of a deleted agent shows as **Deleted** and the
+  agent ID.
 
 Imbi calculates the cost from the token counts and the prices in
 [AI Models](ai-models.md). A usage report for a model with no price counts

@@ -6997,9 +6997,9 @@ export interface paths {
          * @description Make the task of a running agent step, or return it. Engine only.
          *
          *     A repeat, after a crash or for a retry of the step, returns the
-         *     first task: the key is the same. The person who activated the
-         *     workflow owns the task, and must still be able to make agent tasks
-         *     in the org. The engine polls this route until the task is closed.
+         *     first task: the key is the same. The owner of the task (see
+         *     :func:`_step_owner`) must still be able to make agent tasks in the
+         *     org. The engine polls this route until the task is closed.
          *
          *     The agent comes from the pinned version, and the project from the
          *     pinned version or the step input (see :func:`_pinned_agent_ids`).
@@ -7007,7 +7007,7 @@ export interface paths {
          *     another agent, is refused.
          *
          *     Raises:
-         *         403: ``owner_forbidden``: the activator cannot make agent tasks.
+         *         403: ``owner_forbidden``: the owner cannot make agent tasks.
          *         404: No such workflow, run, or step.
          *         409: The step is not a running agent step, the agent is
          *             disabled, or ``task_key_conflict``.
@@ -10946,6 +10946,8 @@ export interface components {
             cache_read_cost_per_million?: number | string | null;
             /** Cache Write Cost Per Million */
             cache_write_cost_per_million?: number | string | null;
+            /** Cache Write 1H Cost Per Million */
+            cache_write_1h_cost_per_million?: number | string | null;
             /** Default Temperature */
             default_temperature?: number | null;
             /** Default Top P */
@@ -11021,6 +11023,8 @@ export interface components {
             cache_read_cost_per_million?: string | null;
             /** Cache Write Cost Per Million */
             cache_write_cost_per_million?: string | null;
+            /** Cache Write 1H Cost Per Million */
+            cache_write_1h_cost_per_million?: string | null;
             /** Default Temperature */
             default_temperature?: number | null;
             /** Default Top P */
@@ -20612,6 +20616,11 @@ export interface components {
              * @description The project that the gateway matched to the webhook delivery. Only a webhook run uses it.
              */
             project_id?: string | null;
+            /**
+             * Actor
+             * @description The email of the Imbi user who caused the webhook delivery, as the gateway resolved it. Only a webhook run uses it.
+             */
+            actor?: string | null;
         };
         /** RunDetail */
         RunDetail: {
@@ -22855,6 +22864,11 @@ export interface components {
              * @description Input tokens written to the cache.
              */
             cache_write_tokens?: number | null;
+            /**
+             * Cache Write 1H Tokens
+             * @description The part of cache_write_tokens written with the 1-hour cache TTL. The remainder uses the 5-minute write price.
+             */
+            cache_write_1h_tokens?: number | null;
             /** Session Id */
             session_id?: string | null;
             /**
@@ -22888,6 +22902,8 @@ export interface components {
             cache_read_tokens?: number | null;
             /** Cache Write Tokens */
             cache_write_tokens?: number | null;
+            /** Cache Write 1H Tokens */
+            cache_write_1h_tokens?: number | null;
             /** Input Cost Per Million */
             input_cost_per_million?: string | null;
             /** Output Cost Per Million */
@@ -22896,6 +22912,8 @@ export interface components {
             cache_read_cost_per_million?: string | null;
             /** Cache Write Cost Per Million */
             cache_write_cost_per_million?: string | null;
+            /** Cache Write 1H Cost Per Million */
+            cache_write_1h_cost_per_million?: string | null;
             /** Cost */
             cost?: string | null;
             /**

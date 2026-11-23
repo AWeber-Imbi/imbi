@@ -101,6 +101,11 @@ class RunCreate(pydantic.BaseModel):
         description='The project that the gateway matched to the webhook '
         'delivery. Only a webhook run uses it.',
     )
+    actor: str | None = pydantic.Field(
+        default=None,
+        description='The email of the Imbi user who caused the webhook '
+        'delivery, as the gateway resolved it. Only a webhook run uses it.',
+    )
 
 
 class StepRun(pydantic.BaseModel):
@@ -712,6 +717,30 @@ async def _agent_step(
     return run, step, origin, f'{run_id}:{step["node_key"]}'
 
 
+async def _step_owner(
+    db: graph.Graph, org_slug: str, run: workflows.Row
+) -> str | None:
+    """Return the owner of the task of an agent step, or ``None``.
+
+    The person who activated the workflow is the authority for its
+    runs: ``None`` when they can no longer make agent tasks in the org,
+    so that removing their permission stops the workflow. The person of
+    the run's origin (``origin['user']``) owns the tasks when they can
+    also make agent tasks: the person who started a manual run, or the
+    person who caused a webhook delivery, as the gateway resolved them.
+    Otherwise the activator owns them.
+    """
+    activator: str = run['activated_by']
+    if not await tickets.may_create(db, org_slug, activator):
+        return None
+    origin: dict[str, typing.Any] = run['origin'] or {}
+    person: str | None = origin.get('user')
+    if person and person != activator:
+        if await tickets.may_create(db, org_slug, person):
+            return person
+    return activator
+
+
 async def _pinned_agent_ids(
     store: workflows.WorkflowStore,
     org_id: str,
@@ -992,6 +1021,12 @@ async def start_run(
             )
             idempotency_key = f'{idempotency_key}:{data.project_id}'
             project_id = data.project_id
+        if origin.kind == 'webhook' and data.actor:
+            # The person who caused the delivery owns the tickets of the
+            # run, as the person who starts a manual run does.
+            origin = origin._replace(
+                record={**origin.record, 'user': data.actor}
+            )
         if not idempotency_key:
             # The scheduler sends its run id, the same on every retry of
             # a firing; without it a retry would start a second run.
@@ -1736,9 +1771,9 @@ async def step_agent_task(
     """Make the task of a running agent step, or return it. Engine only.
 
     A repeat, after a crash or for a retry of the step, returns the
-    first task: the key is the same. The person who activated the
-    workflow owns the task, and must still be able to make agent tasks
-    in the org. The engine polls this route until the task is closed.
+    first task: the key is the same. The owner of the task (see
+    :func:`_step_owner`) must still be able to make agent tasks in the
+    org. The engine polls this route until the task is closed.
 
     The agent comes from the pinned version, and the project from the
     pinned version or the step input (see :func:`_pinned_agent_ids`).
@@ -1746,7 +1781,7 @@ async def step_agent_task(
     another agent, is refused.
 
     Raises:
-        403: ``owner_forbidden``: the activator cannot make agent tasks.
+        403: ``owner_forbidden``: the owner cannot make agent tasks.
         404: No such workflow, run, or step.
         409: The step is not a running agent step, the agent is
             disabled, or ``task_key_conflict``.
@@ -1770,7 +1805,8 @@ async def step_agent_task(
                 status_code=409,
                 detail=f'Step {node_id!r} is not a running agent step',
             )
-        if not await tickets.may_create(db, org_slug, run['activated_by']):
+        owner = await _step_owner(db, org_slug, run)
+        if owner is None:
             raise fastapi.HTTPException(
                 status_code=403, detail={'error': 'owner_forbidden'}
             )
@@ -1804,7 +1840,7 @@ async def step_agent_task(
             data,
             origin,
             key,
-            run['activated_by'],
+            owner,
             ticket_store.Actor('system', auth.principal_name, 'api'),
             agent_step.output_schema(params.output_fields),
         )

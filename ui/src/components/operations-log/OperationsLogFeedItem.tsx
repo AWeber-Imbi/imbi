@@ -1,4 +1,4 @@
-import type { Environment, Project } from '@/types'
+import type { Agent, Environment, Project } from '@/types'
 
 import { OperationsLogReleaseCard } from './OperationsLogReleaseCard'
 import { OperationsLogStreamRow } from './OperationsLogStreamRow'
@@ -10,6 +10,7 @@ export type VItem =
   | { id: string; isOpen: boolean; key: string; kind: 'rel' }
 
 interface Props {
+  agentMap: Map<string, Agent>
   environmentsBySlug: Map<string, Environment>
   groupsById: Map<string, FeedItem>
   performerDisplayNames: Map<string, string>
@@ -19,6 +20,7 @@ interface Props {
 }
 
 export function OperationsLogFeedItem({
+  agentMap,
   environmentsBySlug,
   groupsById,
   performerDisplayNames,
@@ -50,6 +52,7 @@ export function OperationsLogFeedItem({
   if (vi.kind === 'rel' && feed.kind === 'release') {
     return (
       <OperationsLogReleaseCard
+        agentMap={agentMap}
         environmentsBySlug={environmentsBySlug}
         group={feed.group}
         id={vi.id}
@@ -63,6 +66,7 @@ export function OperationsLogFeedItem({
   if (vi.kind === 'evt' && feed.kind === 'single') {
     return (
       <OperationsLogStreamRow
+        agentMap={agentMap}
         entry={feed.entry}
         environment={environmentsBySlug.get(feed.entry.environment_slug)}
         id={vi.id}

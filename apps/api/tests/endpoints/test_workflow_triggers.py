@@ -294,6 +294,7 @@ class WebhookRunTestCase(TriggerTestCase):
         webhook: str | None = None,
         binding: str | None = None,
         project: str | None = None,
+        actor: str | None = None,
     ) -> typing.Awaitable[httpx.Response]:
         return self.client.post(
             f'{self.url}/runs',
@@ -302,6 +303,7 @@ class WebhookRunTestCase(TriggerTestCase):
                 'binding': binding or self.binding,
                 'payload': {'payload': {'a': 1}},
                 'project_id': project,
+                'actor': actor,
             },
             headers={
                 'X-Imbi-Webhook': webhook or self.webhook,
@@ -334,6 +336,12 @@ class WebhookRunTestCase(TriggerTestCase):
         response = await self._post(delivery='d-2')
         self.assertNotEqual(response.json()['id'], run['id'])
         self.assertEqual(await self._run_count(), 2)
+
+    async def test_actor_goes_in_the_origin(self) -> None:
+        self._as('imbi-gateway')
+        response = await self._post(actor='dev@example.com')
+        self.assertEqual(response.status_code, 202, response.text)
+        self.assertEqual(response.json()['origin']['user'], 'dev@example.com')
 
     async def test_each_matched_project_gets_one_run(self) -> None:
         self._as('imbi-gateway')

@@ -20,7 +20,6 @@ import {
 } from './agentsNav'
 import { DashboardPage } from './DashboardPage'
 import { PlatformPage } from './PlatformPage'
-import { UsagePage } from './UsagePage'
 import { useResizableWidth } from './useResizableWidth'
 
 /**
@@ -38,10 +37,13 @@ export function AgentsArea() {
     : 'dashboard'
 
   useEffect(() => {
-    if (!visible) {
+    if (section === 'usage') {
+      // The Usage page moved to the reports. Old links open it there.
+      navigate('/reports/agent-usage', { replace: true })
+    } else if (!visible) {
       navigate(agentsPath('dashboard'), { replace: true })
     }
-  }, [visible, navigate])
+  }, [section, visible, navigate])
 
   return (
     <div className="flex min-h-[calc(100vh-4rem)]">
@@ -51,8 +53,6 @@ export function AgentsArea() {
           <DashboardPage />
         ) : current === 'manage' ? (
           <AgentsManagement />
-        ) : current === 'usage' ? (
-          <UsagePage />
         ) : current === 'platform' ? (
           <PlatformPage />
         ) : current === 'runners' ? (

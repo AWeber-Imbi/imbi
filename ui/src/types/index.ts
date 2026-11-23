@@ -37,6 +37,7 @@ export interface AIModel {
   access_scope: AIModelAccessScope
   allowed_teams: AITeamRef[]
   cache_read_cost_per_million?: null | number | string
+  cache_write_1h_cost_per_million?: null | number | string
   cache_write_cost_per_million?: null | number | string
   context_window: null | number
   created_at?: string
@@ -70,6 +71,7 @@ export interface AIModelCreate {
   access_scope?: AIModelAccessScope
   allowed_team_ids?: string[]
   cache_read_cost_per_million?: null | number
+  cache_write_1h_cost_per_million?: null | number
   cache_write_cost_per_million?: null | number
   context_window?: null | number
   default_temperature?: null | number
