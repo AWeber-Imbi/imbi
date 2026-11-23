@@ -2838,6 +2838,20 @@ class HistoryTestCase(TaskTestCase):
         self.assertIn('<untrusted source="webhook">\n- t1', history)
         self.assertIn('&lt;/untrusted>', history)
 
+    async def test_result_is_untrusted_but_comments_are_not(self) -> None:
+        self.history(
+            {'kind': 'comment', 'at': 't1', 'text': 'Try again'},
+            {'kind': 'result', 'at': 't2', 'text': 'Done', 'webhook': True},
+        )
+        history = await self.run_task.read_history()
+        self.assertIn('\n- t1 comment: Try again\n', history)
+        self.assertIn(
+            '- t2 result: <untrusted source="agent_result">\nDone\n'
+            '</untrusted>',
+            history,
+        )
+        self.assertNotIn('source="webhook"', history)
+
     async def test_no_entries_gives_no_history(self) -> None:
         self.history()
         self.assertEqual(await self.run_task.read_history(), '')

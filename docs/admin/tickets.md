@@ -623,7 +623,10 @@ The API is `POST /organizations/{org}/tickets/{short_id}/reopen` with
 - The outcome and the close time clear. The `reopened` event records the
   old outcome and the reason.
 - A person ticket returns to `open`. An agent ticket returns to `queued`,
-  and a runner starts a new session. The session history has the reason.
+  and a runner starts a new session. The session history has the reason
+  and the result of each earlier session: the last message that the
+  agent wrote in it. The agent's reasoning and tool calls are not in the
+  history.
 - A reopen to an agent is checked as a handoff to an agent: you also
   need `ticket:create`, the owner must be able to make tickets, and the
   agent must be enabled. The ticket gets the agent version that the
