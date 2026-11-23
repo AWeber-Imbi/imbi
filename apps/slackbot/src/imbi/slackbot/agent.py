@@ -19,6 +19,8 @@ from imbi.slackbot import client, mcp
 if typing.TYPE_CHECKING:
     import collections.abc
 
+    import slackwright
+
 LOGGER = logging.getLogger(__name__)
 
 # A status callback receives a short human-readable progress string.
@@ -119,6 +121,20 @@ def _tool_result_block(
     return block
 
 
+async def _execute(
+    manager: mcp.MCPManager,
+    toolkit: slackwright.Toolkit | None,
+    name: str,
+    tool_input: dict[str, typing.Any],
+    auth_token: str,
+) -> tuple[str, bool]:
+    """Run a tool in ``toolkit`` when it is set, else in the MCP manager."""
+    if toolkit is not None:
+        result = await toolkit.call(name, tool_input)
+        return result.text, result.is_error
+    return await manager.execute_tool(name, tool_input, auth_token)
+
+
 async def run_turn(
     *,
     messages: list[dict[str, typing.Any]],
@@ -133,6 +149,7 @@ async def run_turn(
     temperature: float | None = None,
     idempotency_prefix: str | None = None,
     tracking: dict[str, typing.Any] | None = None,
+    toolkit: slackwright.Toolkit | None = None,
 ) -> str:
     """Run one user turn through Claude and the tool loop.
 
@@ -157,6 +174,9 @@ async def run_turn(
             replaced, so a redelivered event makes no second task.
         tracking: PostHog AI observability keyword arguments from
             :func:`client.tracking`, added to every model call.
+        toolkit: Optional slackwright toolkit for the current thread. Its
+            tools are added to ``tools``, and calls to them run in the
+            toolkit instead of the MCP manager.
 
     Returns:
         The assistant's final text (concatenated across rounds).
@@ -169,6 +189,9 @@ async def run_turn(
     # mutate the caller-supplied list.
     messages = list(messages)
     creates: collections.Counter[str] = collections.Counter()
+    slack_tools = toolkit.anthropic() if toolkit else []
+    slack_tool_names = {str(tool['name']) for tool in slack_tools}
+    tools = [*(tools or []), *slack_tools]
 
     for _round in range(max_rounds):
         kwargs: dict[str, typing.Any] = {
@@ -219,7 +242,9 @@ async def run_turn(
                         f'{creates[agent_slug]}'
                     ),
                 }
-            result_text, is_error = await manager.execute_tool(
+            result_text, is_error = await _execute(
+                manager,
+                toolkit if tool_use['name'] in slack_tool_names else None,
                 tool_use['name'],
                 tool_input,
                 auth_token,

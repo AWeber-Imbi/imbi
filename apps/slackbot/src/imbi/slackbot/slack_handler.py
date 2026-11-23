@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import typing
 
+import slackwright
 from slack_bolt.adapter.socket_mode.async_handler import (
     AsyncSocketModeHandler,
 )
@@ -229,8 +230,18 @@ async def _process(
         token = identity.mint_token(user)
         manager = mcp.get_manager()
         tools = manager.get_tools() or None
+        toolkit = slackwright.Toolkit(
+            slack_client,
+            channel_id=channel,
+            thread_ts=thread_ts,
+            user_id=slack_user_id,
+        )
         prompt = await system_prompt.build_system_prompt(
-            user, manager.get_tool_names()
+            user,
+            [
+                *manager.get_tool_names(),
+                *(tool['name'] for tool in toolkit.anthropic()),
+            ],
         )
         answer = await agent.run_turn(
             messages=convo,
@@ -247,6 +258,7 @@ async def _process(
             tracking=client.tracking(
                 user.email, f'slack:{channel}:{thread_ts}'
             ),
+            toolkit=toolkit,
         )
     except Exception:
         LOGGER.exception('Failed to handle event in %s/%s', channel, ts)
@@ -254,13 +266,17 @@ async def _process(
     finally:
         await reporter.finish()
 
+    # An empty answer is correct when the agent posted its reply with a
+    # slackwright tool, such as slack_post_blocks.
+    if not answer:
+        return
     # The answer can quote tool output, so a broadcast mention in it must
     # not notify the whole channel.
     await render.post_markdown(
         slack_client,
         channel,
         thread_ts,
-        render.neutralize_broadcasts(answer or _EMPTY_MESSAGE),
+        render.neutralize_broadcasts(answer),
     )
 
 
