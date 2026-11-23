@@ -51,8 +51,9 @@ class CatalogServer(pydantic.BaseModel):
     """One MCP server of a plugin.
 
     ``headers`` maps each header name to the ``${VAR}`` names that its
-    value uses. A plugin author can commit a literal token in a header,
-    so no header value is stored.
+    value uses. A plugin author can commit a literal token in a header
+    or a URL, so no header value is stored, and ``url`` has no user
+    information, query, or fragment.
     """
 
     name: str
@@ -153,6 +154,19 @@ def _header_variables(headers: object) -> dict[str, list[str]]:
     }
 
 
+def _public_url(value: object) -> str | None:
+    """Return a URL without the parts that can carry a credential: the
+    user information, the query, and the fragment."""
+    if not isinstance(value, str):
+        return None
+    try:
+        parts = urllib.parse.urlsplit(value)
+    except ValueError:
+        return None
+    host = parts.netloc.rpartition('@')[2]
+    return urllib.parse.urlunsplit((parts.scheme, host, parts.path, '', ''))
+
+
 def _server(name: str, config: dict[str, typing.Any]) -> CatalogServer:
     kind = _text(config.get('type')) or 'stdio'
     if kind == 'stdio':
@@ -160,7 +174,7 @@ def _server(name: str, config: dict[str, typing.Any]) -> CatalogServer:
     return CatalogServer(
         name=name,
         type=kind,
-        url=_text(config.get('url')),
+        url=_public_url(config.get('url')),
         headers=_header_variables(config.get('headers')),
     )
 
@@ -186,7 +200,7 @@ def servers(sources: collections.abc.Iterable[object]) -> list[CatalogServer]:
 def _document(text: str | None) -> dict[str, typing.Any]:
     try:
         document: typing.Any = json.loads(text) if text else {}
-    except ValueError:
+    except ValueError, RecursionError:
         return {}
     return (
         typing.cast('dict[str, typing.Any]', document)

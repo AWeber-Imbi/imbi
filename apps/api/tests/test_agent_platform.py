@@ -622,12 +622,14 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
                             'missing.json',
                             'invalid.json',
                             'list.json',
+                            'deep.json',
                             7,
                         ]
                     }
                 ),
                 'p/invalid.json': '{not json',
                 'p/list.json': '[]',
+                'p/deep.json': '[' * 1_000_000,
                 'p/.mcp.json': json.dumps({'mcpServers': {'ok': HTTP}}),
             }
         )
@@ -657,6 +659,33 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Marketplace m, plugin p', logs.output[0])
         self.assertIn("'../outside.json'", logs.output[0])
         self.assertIn("'/etc/servers.json'", logs.output[1])
+
+    def test_urls_keep_no_credentials(self) -> None:
+        servers = marketplaces.servers(
+            [
+                {
+                    'userinfo': {
+                        'type': 'http',
+                        'url': 'https://user:token@mcp.example.com:8443/mcp',
+                    },
+                    'query': {
+                        'type': 'sse',
+                        'url': 'https://mcp.example.com/sse?key=token#part',
+                    },
+                    'invalid': {'type': 'http', 'url': 'https://[mcp/x'},
+                    'missing': {'type': 'http'},
+                }
+            ]
+        )
+        self.assertEqual(
+            {server.name: server.url for server in servers},
+            {
+                'invalid': None,
+                'missing': None,
+                'query': 'https://mcp.example.com/sse',
+                'userinfo': 'https://mcp.example.com:8443/mcp',
+            },
+        )
 
     def test_header_variables(self) -> None:
         servers = marketplaces.servers(

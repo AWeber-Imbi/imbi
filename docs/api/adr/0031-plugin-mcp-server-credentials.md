@@ -93,7 +93,8 @@ keeps the previous catalog.
 
 For each server, the sync stores the name, the type, the URL, and the
 header names, with the variables that each header uses. It stores no
-header value, because a plugin author can commit a literal token there.
+header value, and no user information, query, or fragment of the URL,
+because a plugin author can commit a literal token there.
 
 ### Agent configuration
 

@@ -13357,8 +13357,9 @@ export interface components {
          * @description One MCP server of a plugin.
          *
          *     ``headers`` maps each header name to the ``${VAR}`` names that its
-         *     value uses. A plugin author can commit a literal token in a header,
-         *     so no header value is stored.
+         *     value uses. A plugin author can commit a literal token in a header
+         *     or a URL, so no header value is stored, and ``url`` has no user
+         *     information, query, or fragment.
          */
         CatalogServer: {
             /** Name */
