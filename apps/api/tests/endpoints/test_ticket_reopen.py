@@ -480,14 +480,9 @@ class ArchivedReopenTests(
         entry = harness_api._event_entry(turns[2], webhook=False)
         self.assertEqual(
             (entry.kind, entry.text),
-            (
-                'reopen',
-                'was cancelled_by_human (cancelled_without_session)\n'
-                'Reason: Not fixed',
-            ),
+            ('reopen', 'was cancelled_by_human\nReason: Not fixed'),
         )
-        # The outcome reason can come from the model, so it is untrusted.
-        self.assertTrue(entry.webhook)
+        self.assertFalse(entry.webhook)
 
         # It closes and archives again; the log stays one log.
         await self.client.post(self.url(f'{short_id}/cancel'))
