@@ -148,7 +148,7 @@ export function DatePicker({
               month={month}
               onMonthChange={setMonth}
               onSelect={(date) => {
-                if (date) choose(toDateOnlyIso(date))
+                if (date && allowed(date)) choose(toDateOnlyIso(date))
                 setOpen(false)
               }}
               selected={selected}

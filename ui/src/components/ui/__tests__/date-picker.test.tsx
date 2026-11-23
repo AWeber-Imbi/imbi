@@ -110,6 +110,20 @@ describe('DatePicker', () => {
     expect(onChange).not.toHaveBeenCalled()
   })
 
+  it('ignores a calendar day that became the past while open', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2099, 2, 15, 23, 59))
+    const onChange = vi.fn()
+    render(
+      <DatePicker aria-label="Due" disablePast onChange={onChange} value="" />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Choose date' }))
+    const day = await screen.findByRole('button', { name: /March 15th/ })
+    vi.setSystemTime(new Date(2099, 2, 16, 0, 1))
+    fireEvent.click(day)
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
   it('keeps focus on the next-month button as the month changes', async () => {
     render(
       <DatePicker aria-label="Due" onChange={vi.fn()} value="2099-03-04" />,
