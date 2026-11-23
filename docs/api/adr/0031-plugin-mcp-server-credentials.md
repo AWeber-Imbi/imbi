@@ -4,7 +4,7 @@ Date: 2026-11-17
 
 ## Status
 
-Proposed
+Accepted
 
 Related: [ADR 0022](0022-agent-harness-and-secrets-broker.md) (harness,
 plugins, and secrets broker). This ADR adds one secret purpose and one
@@ -72,17 +72,13 @@ This decision covers only `${VAR}` and `${VAR:-default}` in the
 `headersHelper`, the `env` of a `stdio` server, `${VAR}` in a URL, or
 OAuth. OAuth needs a person, and these agents run without one.
 
-It covers agent tasks that the harness runs with `run_sdk`. It does not
-cover:
-
-- The `claude` actions of automations (ADR 0029). They run the engine's
-  own model session, so neither the relay nor the `PreToolUse` hook
-  applies. The work on automations must decide how they get relayed
-  servers.
-- Child tasks. Today only the root task of a chain clones and loads
-  plugins, so a child task has no plugin servers at all. That gap is
-  separate from this ADR
-  ([#772](https://github.com/AWeber-Imbi/imbi/issues/772)).
+It covers agent tasks that the harness runs with `run_sdk`, child
+tasks included. Each task of a chain loads its own pinned plugins, so
+the relay lives in the task and a child task gets it too. It does not
+cover the `claude` actions of automations (ADR 0029). They run the
+engine's own model session, so neither the relay nor the `PreToolUse`
+hook applies. The work on automations must decide how they get relayed
+servers.
 
 ### The marketplace sync reads the servers the harness loads
 
@@ -152,11 +148,17 @@ Every call goes through the `PreToolUse` hook. The model's `Bash`
 cannot reach the relay, because the CLI talks to the relay over the SDK
 control channel and not over a socket.
 
-The relay forwards tools, resources, and prompts, with the safeguards
-of the Imbi relay, the relay for Imbi's own MCP server. Each call has a
-timeout, a limit on result size, and ends when the task stops. The
-relay removes each secret value from a result, in case the server
-echoes a request header.
+The relay forwards tools only, with the safeguards of the Imbi relay,
+the relay for Imbi's own MCP server. Each call has a timeout, a limit
+on result size, and ends when the task stops. The relay removes each
+secret value from a result, in case the server echoes a request header.
+
+The relay does not forward resources or prompts. The model cannot read
+MCP resources today: `ListMcpResourcesTool` and `ReadMcpResourceTool`
+are not built-in tools that an agent can turn on, and the tool policy
+denies a built-in tool that is not on the list. An MCP prompt runs only
+when a person types it, and no person types in an agent task. The relay
+can forward resources later, together with those two tools.
 
 Each result goes to the model in `<untrusted>` tags. The harness puts
 text from outside Imbi in these tags, and the task prompt tells the
