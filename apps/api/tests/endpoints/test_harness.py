@@ -1651,7 +1651,7 @@ class HistoryTests(RunnerTestCase):
         [result] = [e for e in entries if e['kind'] == 'result']
         self.assertEqual(result['text'], 'Found F01 and F02.')
         self.assertEqual(result['actor'], self.agent_id)
-        self.assertFalse(result['webhook'])
+        self.assertTrue(result['webhook'])
 
     async def test_max_seq_leaves_out_later_comments(self) -> None:
         # A comment written after the session opened is an event after

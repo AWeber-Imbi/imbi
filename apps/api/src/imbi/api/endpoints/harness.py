@@ -1805,7 +1805,9 @@ def _event_entry(event: dict[str, typing.Any], webhook: bool) -> HistoryEntry:
     before it and its reason.
 
     An agent can quote the text of a webhook ticket in the note of its
-    handoff or in its result, so those of a webhook ticket are untrusted.
+    handoff, so that note of a webhook ticket is untrusted. A result can
+    also quote content that a tool fetched (a web page, a log, a PR
+    comment), so a result is always untrusted.
     """
     payload: dict[str, typing.Any] = event['payload']
     if event['type'] == 'turn':
@@ -1815,7 +1817,7 @@ def _event_entry(event: dict[str, typing.Any], webhook: bool) -> HistoryEntry:
             at=event['at'],
             actor=event['actor_id'],
             text=payload.get('body') or '',
-            webhook=agent and webhook,
+            webhook=agent,
         )
     reopen = event['type'] == 'reopened'
     sides: dict[str, typing.Any] = (
