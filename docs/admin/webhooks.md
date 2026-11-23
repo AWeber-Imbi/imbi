@@ -141,6 +141,7 @@ How the gateway uses a secret:
 |---|---|---|
 | The webhook secret, for a GitHub integration | `X-Hub-Signature-256` | With a secret, the gateway drops a delivery whose signature is missing or wrong. Without a secret, it processes the delivery as unverified and logs a warning one time |
 | A per-project secret that a plugin stores when it creates the remote webhook (PagerDuty) | `X-PagerDuty-Signature` | The gateway drops a delivery whose signature does not match |
+| The webhook secret, for a PostHog integration ([Standard Webhooks](https://www.standardwebhooks.com/)) | `Webhook-Signature` | The gateway drops a delivery whose signature is missing or wrong |
 
 The `create_agent_task` and `start_workflow` actions run only for a
 verified delivery. Set a secret on each webhook that uses them.

@@ -30,6 +30,7 @@ members = [
     "imbi-plugin-oidc",
     "imbi-plugin-openai",
     "imbi-plugin-pagerduty",
+    "imbi-plugin-posthog",
     "imbi-plugin-sentry",
     "imbi-plugin-sonarqube",
     "imbi-scheduler",
@@ -1294,6 +1295,7 @@ dependencies = [
     { name = "imbi-plugin-oidc" },
     { name = "imbi-plugin-openai" },
     { name = "imbi-plugin-pagerduty" },
+    { name = "imbi-plugin-posthog" },
     { name = "imbi-plugin-sentry" },
     { name = "imbi-plugin-sonarqube" },
     { name = "imbi-scheduler" },
@@ -1350,6 +1352,7 @@ requires-dist = [
     { name = "imbi-plugin-oidc", editable = "plugins/oidc" },
     { name = "imbi-plugin-openai", editable = "plugins/openai" },
     { name = "imbi-plugin-pagerduty", editable = "plugins/pagerduty" },
+    { name = "imbi-plugin-posthog", editable = "plugins/posthog" },
     { name = "imbi-plugin-sentry", editable = "plugins/sentry" },
     { name = "imbi-plugin-sonarqube", editable = "plugins/sonarqube" },
     { name = "imbi-scheduler", editable = "apps/scheduler" },
@@ -1824,6 +1827,21 @@ dependencies = [
 requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "imbi-common", extras = ["databases"], editable = "libraries/common" },
+    { name = "pydantic", specifier = ">=2" },
+]
+
+[[package]]
+name = "imbi-plugin-posthog"
+version = "2.59.0"
+source = { editable = "plugins/posthog" }
+dependencies = [
+    { name = "imbi-common" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "imbi-common", editable = "libraries/common" },
     { name = "pydantic", specifier = ">=2" },
 ]
 

@@ -70,8 +70,8 @@ that fix them.
 ### Platform
 
 - **[Integrations and plugins](admin/integrations-and-plugins.md)**:
-  connect GitHub, PagerDuty, SonarQube, AWS, Logz.io, Google, and OIDC
-  providers
+  connect GitHub, PagerDuty, PostHog, SonarQube, AWS, Logz.io, Google, and
+  OIDC providers
 - **[Webhook gateway](gateway/index.md)**: receive events and run actions
   from [webhook rules](admin/webhooks.md)
 - **[Event pipeline](architecture/events.md)**: analytics rows go through

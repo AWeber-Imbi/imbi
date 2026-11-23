@@ -1,7 +1,7 @@
 # Gateway
 
 `imbi-gateway` receives webhooks from external systems, for example GitHub,
-PagerDuty, and SonarQube. For each delivery, it finds the Imbi projects that
+PagerDuty, PostHog, and SonarQube. For each delivery, it finds the Imbi projects that
 the delivery is about, records the delivery, and runs the rules of the
 webhook. A rule calls an **action**, for example "create a release" or
 "start an agent task".
@@ -110,14 +110,25 @@ rule makes belongs to that person.
 |---|---|---|---|
 | GitHub | `X-Hub-Signature-256` | The **Secret** of the webhook | `sha256=` |
 | PagerDuty | `X-PagerDuty-Signature` | The secret on the identifier of the project | `v1=` |
+| PostHog | `Webhook-Signature` | The **Secret** of the webhook | `v1,` (Standard Webhooks) |
 
 Each plugin declares its signature with `WebhookSignature` (the
 `signature()` class method of its `webhook-actions` capability). The table
 shows the first-party plugins. A plugin that declares no signature gets no
 verification.
 
-The signature is an HMAC-SHA256 of the raw body. The header can hold more
-than one signature, separated by commas. One match is sufficient.
+The signature is an HMAC-SHA256 of the raw body, as a hex digest. The
+header can hold more than one signature, separated by commas. One match
+is sufficient.
+
+A plugin with the `standard-webhooks` scheme (PostHog) follows the
+[Standard Webhooks](https://www.standardwebhooks.com/) specification
+instead. The `Webhook-Signature` header holds space-separated `v1,<base64>`
+tokens. Each is the HMAC-SHA256 of `<webhook-id>.<webhook-timestamp>.<body>`,
+where the id and timestamp are the `Webhook-Id` and `Webhook-Timestamp`
+headers. The secret is the base64 key that the sender shows, with or
+without its `whsec_` prefix. The gateway drops a delivery whose timestamp
+is more than five minutes from its own clock.
 
 - When a secret is set, a delivery with a missing or wrong signature gets
   `204`, and the gateway records nothing.
