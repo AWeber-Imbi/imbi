@@ -1745,8 +1745,9 @@ export interface paths {
          *     A new session reads events only after ``last_seq``, so it reads
          *     what happened before here. It sends ``last_seq`` as ``max_seq``, so
          *     a comment written after the session opened is not here as well as
-         *     in the events. The history has comments (human turns), handoffs,
-         *     resolved and withdrawn requests, and the status and outcome of
+         *     in the events. The history has comments (human turns), the result
+         *     (last agent message) of each earlier session, handoffs, resolved
+         *     and withdrawn requests, and the status and outcome of
          *     prerequisite tickets and of the tickets that it delegated (also
          *     after a move to another parent), oldest first. When the text is
          *     larger than :data:`MAX_HISTORY_BYTES`, the oldest entries are left
@@ -15659,7 +15660,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "comment" | "request" | "handoff" | "reopen" | "child" | "prerequisite";
+            kind: "comment" | "request" | "handoff" | "reopen" | "child" | "prerequisite" | "result";
             /**
              * At
              * Format: date-time
