@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { Check, ChevronsUpDown } from 'lucide-react'
+import { Check, ChevronsUpDown, Plus } from 'lucide-react'
 
 import {
   Command,
@@ -23,16 +23,18 @@ export interface ComboboxOption {
 }
 
 interface ComboboxProps {
+  creatable?: boolean
   disabled?: boolean
   /** Set on the trigger so a `<Label htmlFor>` names the combobox. */
   id?: string
   onChange: (value: string) => void
-  options: ComboboxOption[]
+  options: readonly ComboboxOption[]
   placeholder?: string
   value: string
 }
 
 export function Combobox({
+  creatable = false,
   disabled = false,
   id,
   onChange,
@@ -41,11 +43,25 @@ export function Combobox({
   value,
 }: ComboboxProps) {
   const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
 
-  const selectedLabel = options.find((o) => o.value === value)?.label
+  const selectedLabel =
+    options.find((o) => o.value === value)?.label ??
+    (creatable && value ? value : undefined)
+  const typed = query.trim()
+  const canCreate =
+    creatable && typed !== '' && !options.some((o) => o.value === typed)
+  const changeOpen = (next: boolean) => {
+    setOpen(next)
+    setQuery('')
+  }
+  const choose = (next: string) => {
+    onChange(next)
+    changeOpen(false)
+  }
 
   return (
-    <Popover modal onOpenChange={setOpen} open={open}>
+    <Popover modal onOpenChange={changeOpen} open={open}>
       <PopoverTrigger asChild>
         <button
           aria-expanded={open}
@@ -68,17 +84,18 @@ export function Combobox({
         style={{ width: 'var(--radix-popover-trigger-width)' }}
       >
         <Command>
-          <CommandInput placeholder={`Search...`} />
+          <CommandInput
+            onValueChange={setQuery}
+            placeholder="Search..."
+            value={query}
+          />
           <CommandList>
-            <CommandEmpty>No results found.</CommandEmpty>
+            {!canCreate && <CommandEmpty>No results found.</CommandEmpty>}
             <CommandGroup>
               {options.map((option) => (
                 <CommandItem
                   key={option.value}
-                  onSelect={() => {
-                    onChange(option.value)
-                    setOpen(false)
-                  }}
+                  onSelect={() => choose(option.value)}
                   value={option.label}
                 >
                   <Check
@@ -91,6 +108,18 @@ export function Combobox({
                 </CommandItem>
               ))}
             </CommandGroup>
+            {canCreate && (
+              <CommandGroup forceMount>
+                <CommandItem
+                  forceMount
+                  onSelect={() => choose(typed)}
+                  value={`create:${typed}`}
+                >
+                  <Plus className="size-4" />
+                  Use “{typed}”
+                </CommandItem>
+              </CommandGroup>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>
