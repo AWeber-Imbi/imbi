@@ -403,7 +403,11 @@ Otherwise they come from the `mcpServers` of the plugin's entry in
 `marketplace.json`. For a `url` or `github` source, that entry is the one
 in the `marketplace.json` of the plugin's own repository. The servers of
 the plugin's `.mcp.json` are added in both cases. A missing or invalid
-file adds no servers. An error reading a file fails the sync, and the
+file adds no servers. A file counts as missing when no reader can read
+it and at least one reader finds no such file, even if another reader
+fails, so such a sync can replace the catalog without an error badge.
+GitHub answers a private repository that a reader cannot access with the
+same "not found". When every reader fails, the sync fails and the
 previous catalog stays. A server file path that is absolute or contains
 `..` adds no servers, and the API logs a warning, because the runner
 fails each task of a plugin with such a path. For each server, Imbi
