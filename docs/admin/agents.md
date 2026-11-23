@@ -112,9 +112,10 @@ This tab sets what the agent can call. It has two parts.
 
 **Plugins** lists the plugins of the marketplaces that the organization
 allows (see [Plugin marketplaces](#plugin-marketplaces)). Select a plugin
-to give it to the agent. Each row names the MCP servers that the plugin
-brings. While a plugin is on, the agent can use every tool of its MCP
-servers.
+to give it to the agent. Under each plugin, the row lists the MCP servers
+that the plugin brings, with the URL of each server, or `stdio` for a
+server that runs as a local command. While a plugin is on, the agent can
+use every tool of its MCP servers.
 
 - When you save, Imbi pins each new plugin to the commit that it synced
   last.
@@ -390,9 +391,19 @@ To add a marketplace:
 
 A sync reads the marketplace file at the head of the default branch. It
 reads through the organization's GitHub integration. When no integration can
-read a `github.com` repository, the sync reads it anonymously. GitHub
-limits anonymous reads to 60 requests an hour for each API pod IP address.
-A repository on another host is never read anonymously. A failed sync shows an
+read a `github.com` repository, the sync reads it anonymously. It reads
+files from `raw.githubusercontent.com`, and commits from the GitHub API.
+GitHub limits anonymous API requests to 60 an hour for each API pod IP
+address. A repository on another host is never read anonymously.
+
+The sync also reads the MCP servers of each plugin, with the rule that
+runners use to load the plugin. When the plugin directory has a
+`.claude-plugin/plugin.json`, the servers come from its `mcpServers`.
+Otherwise they come from the `mcpServers` of the plugin's entry in
+`marketplace.json`. The servers of the plugin's `.mcp.json` are added in
+both cases. A file that the sync cannot read adds no servers. For each
+server, Imbi stores its name, type, URL, and the names of its headers
+with the variables that each header uses. It stores no header value. A failed sync shows an
 error badge on the row. Click the sync button of a row to sync it again.
 Imbi does not sync on a schedule.
 

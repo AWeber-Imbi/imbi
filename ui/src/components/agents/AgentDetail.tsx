@@ -354,11 +354,11 @@ function pluginServers(
   marketplaces: AgentMarketplace[],
   plugin: AgentPlugin,
 ): string[] {
-  return (
+  const servers =
     marketplaces
       .find((m) => m.slug === plugin.marketplace)
       ?.plugins?.find((p) => p.name === plugin.plugin)?.mcp_servers ?? []
-  )
+  return servers.map((server) => server.name)
 }
 
 function SubagentItem({ subagent }: { subagent: AgentSubagentRef }) {

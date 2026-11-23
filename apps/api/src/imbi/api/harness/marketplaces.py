@@ -5,13 +5,16 @@ An organization registers a marketplace by git URL. :func:`fetch` reads
 through the organization's GitHub integration: the ``deployment``
 capability of the github plugin, with the marketplace URL as the
 repository link. :func:`parse` turns the file into the plugin catalog.
+:func:`sync` then reads the MCP servers of each plugin.
 
 The format is the marketplace reference of Claude Code
 (https://code.claude.com/docs/en/plugins/marketplace-reference).
 """
 
+import asyncio
 import collections.abc
 import datetime
+import functools
 import json
 import logging
 import posixpath
@@ -31,15 +34,32 @@ from imbi.common.plugins import registry as plugin_registry
 LOGGER = logging.getLogger(__name__)
 
 MARKETPLACE_FILE = '.claude-plugin/marketplace.json'
+PLUGIN_MANIFEST = '.claude-plugin/plugin.json'
 
 _CAPABILITY = 'deployment'
+_CONCURRENCY = 8
 _NAME: pydantic.TypeAdapter[str] = pydantic.TypeAdapter(models.PluginName)
 _GITHUB_REPO = re.compile(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+')
 _SHA = re.compile(r'[0-9a-f]{40}')
+_VARIABLE = re.compile(r'\$\{([^}]+)\}')
 
 
 class SyncError(Exception):
     """The marketplace could not be read or parsed."""
+
+
+class CatalogServer(pydantic.BaseModel):
+    """One MCP server of a plugin.
+
+    ``headers`` maps each header name to the ``${VAR}`` names that its
+    value uses. A plugin author can commit a literal token in a header,
+    so no header value is stored.
+    """
+
+    name: str
+    type: str = 'stdio'
+    url: str | None = None
+    headers: dict[str, list[str]] = {}
 
 
 class CatalogPlugin(pydantic.BaseModel):
@@ -60,15 +80,27 @@ class CatalogPlugin(pydantic.BaseModel):
     #: The commit of ``repository_url`` that the last sync resolved.
     #: ``None`` when the sync could not resolve it.
     repository_sha: str | None = None
-    #: The names of the MCP servers that the entry declares inline. A
-    #: plugin that declares its servers in its own files lists none.
-    mcp_servers: list[str] = []
+    #: The MCP servers that the harness loads for the plugin.
+    mcp_servers: list[CatalogServer] = []
+
+    @pydantic.field_validator('mcp_servers', mode='before')
+    @classmethod
+    def _legacy_names(cls, value: object) -> object:
+        """Read a row that the sync wrote before it stored servers."""
+        if not isinstance(value, list):
+            return value
+        return [
+            {'name': item} if isinstance(item, str) else item
+            for item in typing.cast('list[object]', value)
+        ]
 
 
 class Catalog(pydantic.BaseModel):
     name: str
     description: str | None = None
     plugins: list[CatalogPlugin]
+    #: The ``mcpServers`` of each plugin's entry, by plugin name.
+    entry_servers: dict[str, object] = {}
 
 
 def _text(value: object) -> str | None:
@@ -105,10 +137,123 @@ def _repository_url(source: dict[str, typing.Any]) -> str | None:
     return None
 
 
-def _mcp_servers(value: object) -> list[str]:
-    if not isinstance(value, dict):
+def _variables(value: object) -> list[str]:
+    """The names of the ``${VAR}`` and ``${VAR:-default}`` in a value."""
+    if not isinstance(value, str):
         return []
-    return sorted(str(key) for key in typing.cast('dict[str, object]', value))
+    names = (match.split(':-', 1)[0] for match in _VARIABLE.findall(value))
+    return list(dict.fromkeys(names))
+
+
+def _header_variables(headers: object) -> dict[str, list[str]]:
+    if not isinstance(headers, dict):
+        return {}
+    return {
+        str(header): _variables(value)
+        for header, value in typing.cast('dict[str, object]', headers).items()
+    }
+
+
+def _server(name: str, config: dict[str, typing.Any]) -> CatalogServer:
+    kind = _text(config.get('type')) or 'stdio'
+    if kind == 'stdio':
+        return CatalogServer(name=name)
+    return CatalogServer(
+        name=name,
+        type=kind,
+        url=_text(config.get('url')),
+        headers=_header_variables(config.get('headers')),
+    )
+
+
+def servers(sources: collections.abc.Iterable[object]) -> list[CatalogServer]:
+    """Return the servers of ``mcpServers`` objects, sorted by name.
+
+    Of two servers with one name, the first is kept. A source that is
+    not an object, and a server that is not an object, add nothing.
+    """
+    found: dict[str, CatalogServer] = {}
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+        for name, config in typing.cast('dict[str, object]', source).items():
+            if isinstance(config, dict) and str(name) not in found:
+                found[str(name)] = _server(
+                    str(name), typing.cast('dict[str, typing.Any]', config)
+                )
+    return sorted(found.values(), key=lambda server: server.name)
+
+
+def _document(text: str | None) -> dict[str, typing.Any]:
+    try:
+        document: typing.Any = json.loads(text) if text else {}
+    except ValueError:
+        return {}
+    return (
+        typing.cast('dict[str, typing.Any]', document)
+        if isinstance(document, dict)
+        else {}
+    )
+
+
+def _plugin_file(directory: str, path: str) -> str | None:
+    """Resolve a path of a plugin file, refusing one that leaves it."""
+    if path.startswith('/') or '..' in path.split('/'):
+        return None
+    return posixpath.normpath(posixpath.join(directory, path))
+
+
+type FileReader = collections.abc.Callable[
+    [str], collections.abc.Awaitable[str | None]
+]
+
+
+async def _source(read: FileReader, directory: str, source: object) -> object:
+    """Return an ``mcpServers`` object, read from its file when it is a
+    path."""
+    if not isinstance(source, str):
+        return source
+    path = _plugin_file(directory, source)
+    document = _document(None if path is None else await read(path))
+    return document.get('mcpServers', document)
+
+
+async def plugin_servers(
+    read: FileReader, directory: str, entry_servers: object
+) -> list[CatalogServer]:
+    """Return the MCP servers that the harness loads for a plugin.
+
+    With a ``.claude-plugin/plugin.json``, the servers come from its
+    ``mcpServers``, else from ``entry_servers``, the ``mcpServers`` of
+    the marketplace entry. Either is an object, the path of a JSON file
+    in the plugin directory, or a list of both. The plugin's
+    ``.mcp.json`` adds its servers.
+
+    Args:
+        read: Returns the text of a repository file, or ``None``.
+        directory: The plugin directory in the repository.
+        entry_servers: The ``mcpServers`` of the marketplace entry.
+
+    """
+    manifest = await read(
+        posixpath.normpath(posixpath.join(directory, PLUGIN_MANIFEST))
+    )
+    declared: object = (
+        entry_servers
+        if manifest is None
+        else _document(manifest).get('mcpServers')
+    )
+    sources: list[object] = (
+        list(typing.cast('list[object]', declared))
+        if isinstance(declared, list)
+        else [declared]
+    )
+    return servers(
+        [
+            await _source(read, directory, source)
+            for source in [*sources, '.mcp.json']
+        ]
+    )
 
 
 def _host(url: str) -> str | None:
@@ -154,7 +299,7 @@ def parse(text: str) -> Catalog:
     if plugin_root is not None:
         plugin_root = _relative_path(plugin_root, None)
     plugins: list[CatalogPlugin] = []
-    seen: set[str] = set()
+    entry_servers: dict[str, object] = {}
     for raw in typing.cast('list[object]', entries):
         if not isinstance(raw, dict):
             continue
@@ -164,36 +309,33 @@ def parse(text: str) -> Catalog:
             plugin_name = _NAME.validate_python(entry.get('name'))
         except pydantic.ValidationError:
             continue
-        if plugin_name in seen or not isinstance(source, (str, dict)):
+        if plugin_name in entry_servers or not isinstance(source, (str, dict)):
             continue
-        seen.add(plugin_name)
-        plugins.append(
-            CatalogPlugin(
-                name=plugin_name,
-                description=_text(entry.get('description')),
-                version=_text(entry.get('version')),
-                category=_text(entry.get('category')),
-                mcp_servers=_mcp_servers(entry.get('mcpServers')),
-                source=typing.cast('str | dict[str, typing.Any]', source),
-                path=(
-                    _relative_path(source, plugin_root)
-                    if isinstance(source, str)
-                    else None
-                ),
-                repository_url=(
-                    _repository_url(
-                        typing.cast('dict[str, typing.Any]', source)
-                    )
-                    if isinstance(source, dict)
-                    else None
-                ),
-            )
+        plugin = CatalogPlugin(
+            name=plugin_name,
+            description=_text(entry.get('description')),
+            version=_text(entry.get('version')),
+            category=_text(entry.get('category')),
+            source=typing.cast('str | dict[str, typing.Any]', source),
+            path=(
+                _relative_path(source, plugin_root)
+                if isinstance(source, str)
+                else None
+            ),
+            repository_url=(
+                _repository_url(typing.cast('dict[str, typing.Any]', source))
+                if isinstance(source, dict)
+                else None
+            ),
         )
+        plugins.append(plugin)
+        entry_servers[plugin_name] = entry.get('mcpServers')
     return Catalog(
         name=name,
         description=_text(data.get('description'))
         or _text(metadata.get('description')),
         plugins=plugins,
+        entry_servers=entry_servers,
     )
 
 
@@ -416,6 +558,95 @@ async def _handler(
     return typing.cast('base.DeploymentCapability', capability.handler())
 
 
+async def read_file(
+    db: graph.Graph, org_slug: str, url: str, ref: str, path: str
+) -> str | None:
+    """Return a repository file at ``ref``, or ``None`` when no reader
+    of the organization can read it."""
+
+    async def read(
+        handler: base.RepositoryReader,
+        ctx: base.PluginContext,
+        credentials: dict[str, str],
+    ) -> str | None:
+        return await handler.get_file(ctx, credentials, path, ref)
+
+    try:
+        return await _read(db, org_slug, url, read, f'{path} not found')
+    except SyncError:
+        return None
+
+
+async def _resolve(
+    db: graph.Graph,
+    org_slug: str,
+    marketplace: dict[str, typing.Any],
+    plugin: CatalogPlugin,
+) -> None:
+    """Resolve the commit of an external plugin."""
+    if plugin.repository_url is None:
+        return
+    # The runner sends its marketplace_fetch token to the plugin host,
+    # and the token is for the marketplace host. So a plugin can only
+    # live on the marketplace host.
+    host = _host(str(marketplace['url']))
+    if host is None or _host(plugin.repository_url) != host:
+        LOGGER.info(
+            'Marketplace %s: plugin %s is on another host',
+            marketplace['slug'],
+            plugin.name,
+        )
+        plugin.repository_url = None
+        return
+    try:
+        plugin.repository_sha = await resolve_commit(db, org_slug, plugin)
+    except SyncError as err:
+        LOGGER.info(
+            'Marketplace %s: cannot resolve plugin %s: %s',
+            marketplace['slug'],
+            plugin.name,
+            err,
+        )
+
+
+def _location(
+    plugin: CatalogPlugin, url: str, head_sha: str
+) -> tuple[str, str, str] | None:
+    """Return the repository URL, commit, and directory of a plugin, or
+    ``None`` when no runner can load it."""
+    if plugin.path is not None:
+        return url, head_sha, plugin.path
+    if plugin.repository_url and plugin.repository_sha:
+        return plugin.repository_url, plugin.repository_sha, '.'
+    return None
+
+
+async def _sync_plugin(
+    db: graph.Graph,
+    org_slug: str,
+    marketplace: dict[str, typing.Any],
+    head_sha: str,
+    plugin: CatalogPlugin,
+    entry_servers: object,
+) -> None:
+    """Resolve the commit of a plugin and read its MCP servers.
+
+    The runner reads the entry of an external plugin from the plugin's
+    own repository, so only a plugin in the marketplace repository
+    falls back to ``entry_servers``.
+    """
+    await _resolve(db, org_slug, marketplace, plugin)
+    location = _location(plugin, str(marketplace['url']), head_sha)
+    if location is None:
+        return
+    url, ref, directory = location
+    plugin.mcp_servers = await plugin_servers(
+        functools.partial(read_file, db, org_slug, url, ref),
+        directory,
+        entry_servers if plugin.path is not None else None,
+    )
+
+
 async def sync(
     db: graph.Graph,
     store: harness_store.HarnessStore,
@@ -432,32 +663,20 @@ async def sync(
     except SyncError as err:
         changes: dict[str, typing.Any] = {'sync_error': str(err)[:2000]}
     else:
-        # The runner sends its marketplace_fetch token to the plugin
-        # host, and the token is for the marketplace host. So a plugin
-        # can only live on the marketplace host.
-        host = _host(str(marketplace['url']))
-        for plugin in catalog.plugins:
-            if plugin.repository_url is None:
-                continue
-            if host is None or _host(plugin.repository_url) != host:
-                LOGGER.info(
-                    'Marketplace %s: plugin %s is on another host',
-                    marketplace['slug'],
-                    plugin.name,
+        limit = asyncio.Semaphore(_CONCURRENCY)
+
+        async def sync_plugin(plugin: CatalogPlugin) -> None:
+            async with limit:
+                await _sync_plugin(
+                    db,
+                    org_slug,
+                    marketplace,
+                    head.sha,
+                    plugin,
+                    catalog.entry_servers.get(plugin.name),
                 )
-                plugin.repository_url = None
-                continue
-            try:
-                plugin.repository_sha = await resolve_commit(
-                    db, org_slug, plugin
-                )
-            except SyncError as err:
-                LOGGER.info(
-                    'Marketplace %s: cannot resolve plugin %s: %s',
-                    marketplace['slug'],
-                    plugin.name,
-                    err,
-                )
+
+        await asyncio.gather(*map(sync_plugin, catalog.plugins))
         changes = {
             'name': catalog.name,
             'description': catalog.description,

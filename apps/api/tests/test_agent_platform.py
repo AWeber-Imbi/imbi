@@ -120,9 +120,14 @@ class ParseTests(unittest.TestCase):
             },
         )
         self.assertEqual(
-            {p.name: p.mcp_servers for p in catalog.plugins if p.mcp_servers},
-            {'root': ['alerts', 'grafana']},
+            {
+                name: servers
+                for name, servers in catalog.entry_servers.items()
+                if servers
+            },
+            {'root': {'grafana': {}, 'alerts': {}}},
         )
+        self.assertTrue(all(not p.mcp_servers for p in catalog.plugins))
 
     def test_invalid_documents(self) -> None:
         for text in (
@@ -317,6 +322,7 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
             mock.patch.object(
                 marketplaces, 'resolve_commit', side_effect=resolve
             ),
+            mock.patch.object(marketplaces, 'read_file', return_value=None),
         ):
             await marketplaces.sync(
                 mock.Mock(),
@@ -451,6 +457,306 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
         ):
             with self.assertRaises(marketplaces.SyncError):
                 await marketplaces.fetch(mock.Mock(), 'acme', 'https://x/y')
+
+
+def _reader(
+    files: dict[str, str],
+) -> tuple[marketplaces.FileReader, list[str]]:
+    reads: list[str] = []
+
+    async def read(path: str) -> str | None:
+        reads.append(path)
+        return files.get(path)
+
+    return read, reads
+
+
+HTTP = {
+    'type': 'http',
+    'url': 'https://mcp.example.com/mcp',
+    'headers': {
+        'Authorization': 'Bearer ${TOKEN}',
+        'X-Org': '${ORG:-acme}/${TOKEN}',
+        'X-Static': 'literal-secret',
+    },
+}
+
+
+class PluginServerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_manifest_object(self) -> None:
+        read, reads = _reader(
+            {
+                'p/.claude-plugin/plugin.json': json.dumps(
+                    {
+                        'mcpServers': {
+                            'remote': HTTP,
+                            'local': {'command': 'npx', 'args': ['x']},
+                            'events': {
+                                'type': 'sse',
+                                'url': 'https://e.example.com/sse',
+                            },
+                            'junk': 'not an object',
+                        }
+                    }
+                )
+            }
+        )
+        servers = await marketplaces.plugin_servers(read, 'p', None)
+        self.assertEqual(
+            [server.model_dump() for server in servers],
+            [
+                {
+                    'name': 'events',
+                    'type': 'sse',
+                    'url': 'https://e.example.com/sse',
+                    'headers': {},
+                },
+                {'name': 'local', 'type': 'stdio', 'url': None, 'headers': {}},
+                {
+                    'name': 'remote',
+                    'type': 'http',
+                    'url': 'https://mcp.example.com/mcp',
+                    'headers': {
+                        'Authorization': ['TOKEN'],
+                        'X-Org': ['ORG', 'TOKEN'],
+                        'X-Static': [],
+                    },
+                },
+            ],
+        )
+        stored = json.dumps([server.model_dump() for server in servers])
+        self.assertNotIn('Bearer', stored)
+        self.assertNotIn('literal-secret', stored)
+        self.assertEqual(
+            reads, ['p/.claude-plugin/plugin.json', 'p/.mcp.json']
+        )
+
+    async def test_manifest_paths_and_list(self) -> None:
+        read, reads = _reader(
+            {
+                '.claude-plugin/plugin.json': json.dumps(
+                    {
+                        'mcpServers': [
+                            './config/servers.json',
+                            {'inline': {'command': 'x'}},
+                            'bare.json',
+                        ]
+                    }
+                ),
+                'config/servers.json': json.dumps(
+                    {'mcpServers': {'remote': HTTP}}
+                ),
+                'bare.json': json.dumps({'bare': {'command': 'y'}}),
+                '.mcp.json': json.dumps(
+                    {
+                        'mcpServers': {
+                            'remote': {'type': 'sse', 'url': 'https://x'},
+                            'extra': {'type': 'http', 'url': 'https://y'},
+                        }
+                    }
+                ),
+            }
+        )
+        servers = await marketplaces.plugin_servers(read, '.', None)
+        self.assertEqual(
+            {server.name: server.type for server in servers},
+            {
+                'bare': 'stdio',
+                'extra': 'http',
+                'inline': 'stdio',
+                'remote': 'http',
+            },
+        )
+        self.assertEqual(
+            reads,
+            [
+                '.claude-plugin/plugin.json',
+                'config/servers.json',
+                'bare.json',
+                '.mcp.json',
+            ],
+        )
+
+    async def test_entry_servers_without_a_manifest(self) -> None:
+        files = {
+            'p/servers.json': json.dumps({'mcpServers': {'file': HTTP}}),
+            'p/.mcp.json': json.dumps({'mcpServers': {'mcp': HTTP}}),
+        }
+        read, _ = _reader(files)
+        entry = [{'inline': HTTP}, './servers.json']
+        servers = await marketplaces.plugin_servers(read, 'p', entry)
+        self.assertEqual(
+            [server.name for server in servers], ['file', 'inline', 'mcp']
+        )
+        # A manifest wins over the entry, even one with no servers.
+        files['p/.claude-plugin/plugin.json'] = '{"name": "p"}'
+        servers = await marketplaces.plugin_servers(read, 'p', entry)
+        self.assertEqual([server.name for server in servers], ['mcp'])
+
+    async def test_unreadable_or_invalid_files_add_nothing(self) -> None:
+        read, reads = _reader(
+            {
+                'p/.claude-plugin/plugin.json': json.dumps(
+                    {
+                        'mcpServers': [
+                            '../outside.json',
+                            '/etc/servers.json',
+                            'missing.json',
+                            'invalid.json',
+                            'list.json',
+                            7,
+                        ]
+                    }
+                ),
+                'p/invalid.json': '{not json',
+                'p/list.json': '[]',
+                'p/.mcp.json': json.dumps({'mcpServers': {'ok': HTTP}}),
+            }
+        )
+        servers = await marketplaces.plugin_servers(read, 'p', None)
+        self.assertEqual([server.name for server in servers], ['ok'])
+        self.assertNotIn('outside.json', '\n'.join(reads))
+        self.assertNotIn('/etc/servers.json', reads)
+        read, _ = _reader({'p/.claude-plugin/plugin.json': 'not json'})
+        self.assertEqual(
+            await marketplaces.plugin_servers(read, 'p', {'x': HTTP}), []
+        )
+
+    def test_legacy_rows_parse(self) -> None:
+        plugin = marketplaces.CatalogPlugin.model_validate(
+            {
+                'name': 'grafana',
+                'source': './grafana',
+                'mcp_servers': ['grafana', {'name': 'tempo', 'type': 'http'}],
+            }
+        )
+        self.assertEqual(
+            plugin.mcp_servers,
+            [
+                marketplaces.CatalogServer(name='grafana'),
+                marketplaces.CatalogServer(name='tempo', type='http'),
+            ],
+        )
+
+    async def test_read_file_tries_each_reader(self) -> None:
+        handler = mock.AsyncMock(spec=base.DeploymentCapability)
+        handler.get_file.side_effect = [None, '{}']
+        integrations = {
+            f'i{n}': {'slug': f'gh{n}', 'plugin': 'github'} for n in (1, 2)
+        }
+        with (
+            mock.patch.object(
+                assignments, 'org_integrations', return_value=integrations
+            ),
+            mock.patch.object(marketplaces, '_handler', return_value=handler),
+            mock.patch.object(
+                marketplaces, '_public_readers', return_value=[]
+            ),
+        ):
+            self.assertEqual(
+                await marketplaces.read_file(
+                    mock.Mock(), 'acme', 'https://h/a', SHA, 'p/.mcp.json'
+                ),
+                '{}',
+            )
+            self.assertEqual(
+                handler.get_file.call_args.args[2:], ('p/.mcp.json', SHA)
+            )
+            handler.get_file.side_effect = RuntimeError('no access')
+            self.assertIsNone(
+                await marketplaces.read_file(
+                    mock.Mock(), 'acme', 'https://h/a', SHA, 'p/.mcp.json'
+                )
+            )
+
+    async def test_sync_reads_the_servers_of_each_plugin(self) -> None:
+        external_url = 'https://h/external'
+        document = json.dumps(
+            {
+                'name': 'acme',
+                'plugins': [
+                    {
+                        'name': 'local',
+                        'source': './local',
+                        'mcpServers': {'entry': HTTP},
+                    },
+                    {
+                        'name': 'external',
+                        'source': {'source': 'url', 'url': external_url},
+                        'mcpServers': {'ignored': HTTP},
+                    },
+                    {
+                        'name': 'unresolved',
+                        'source': {'source': 'url', 'url': 'https://h/gone'},
+                    },
+                    {
+                        'name': 'npm',
+                        'source': {'source': 'npm', 'package': 'x'},
+                    },
+                ],
+            }
+        )
+        files = {
+            ('https://h/market', SHA, 'local/.mcp.json'): json.dumps(
+                {'mcpServers': {'local': HTTP}}
+            ),
+            (external_url, 'b' * 40, '.mcp.json'): json.dumps(
+                {'mcpServers': {'external': HTTP}}
+            ),
+        }
+        reads: list[tuple[str, str, str]] = []
+
+        async def read_file(
+            _db: object, _org: str, url: str, ref: str, path: str
+        ) -> str | None:
+            reads.append((url, ref, path))
+            return files.get((url, ref, path))
+
+        async def resolve(
+            _db: object, _org: str, plugin: marketplaces.CatalogPlugin
+        ) -> str:
+            if plugin.name == 'unresolved':
+                raise marketplaces.SyncError('not found')
+            return 'b' * 40
+
+        store = mock.AsyncMock()
+        with (
+            mock.patch.object(
+                marketplaces,
+                'fetch',
+                return_value=marketplaces.Head('main', SHA, document),
+            ),
+            mock.patch.object(
+                marketplaces, 'resolve_commit', side_effect=resolve
+            ),
+            mock.patch.object(
+                marketplaces, 'read_file', side_effect=read_file
+            ),
+        ):
+            await marketplaces.sync(
+                mock.Mock(),
+                store,
+                'acme',
+                {'id': 'm1', 'slug': 'm', 'url': 'https://h/market'},
+            )
+        changes = store.set_marketplace_sync.call_args.args[1]
+        self.assertEqual(
+            {
+                plugin['name']: [
+                    server['name'] for server in plugin['mcp_servers']
+                ]
+                for plugin in changes['plugins']
+            },
+            {
+                'local': ['entry', 'local'],
+                'external': ['external'],
+                'unresolved': [],
+                'npm': [],
+            },
+        )
+        self.assertEqual(
+            {url for url, _, _ in reads}, {'https://h/market', external_url}
+        )
 
 
 class NarrowingTests(unittest.TestCase):

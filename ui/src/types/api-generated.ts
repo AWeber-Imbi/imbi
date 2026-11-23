@@ -13350,7 +13350,33 @@ export interface components {
              * Mcp Servers
              * @default []
              */
-            mcp_servers: string[];
+            mcp_servers: components["schemas"]["CatalogServer"][];
+        };
+        /**
+         * CatalogServer
+         * @description One MCP server of a plugin.
+         *
+         *     ``headers`` maps each header name to the ``${VAR}`` names that its
+         *     value uses. A plugin author can commit a literal token in a header,
+         *     so no header value is stored.
+         */
+        CatalogServer: {
+            /** Name */
+            name: string;
+            /**
+             * Type
+             * @default stdio
+             */
+            type: string;
+            /** Url */
+            url?: string | null;
+            /**
+             * Headers
+             * @default {}
+             */
+            headers: {
+                [key: string]: string[];
+            };
         };
         /** ChildTaskCreate */
         ChildTaskCreate: {
