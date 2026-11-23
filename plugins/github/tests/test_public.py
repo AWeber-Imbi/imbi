@@ -9,6 +9,7 @@ from imbi.plugins.github import deployment, public
 
 SHA = 'a' * 40
 API = 'https://api.github.com/repos/anthropics/plugins'
+RAW = 'https://raw.githubusercontent.com/anthropics/plugins'
 
 
 class PublicRepositoryTests(unittest.IsolatedAsyncioTestCase):
@@ -30,13 +31,10 @@ class PublicRepositoryTests(unittest.IsolatedAsyncioTestCase):
     async def test_reads_without_credentials(self) -> None:
         respx.get(API).respond(json={'default_branch': 'main'})
         commit = respx.get(f'{API}/commits/main').respond(json={'sha': SHA})
-        respx.get(
-            f'{API}/contents/.claude-plugin/marketplace.json',
-            params={'ref': SHA},
+        file = respx.get(
+            f'{RAW}/{SHA}/.claude-plugin/marketplace.json'
         ).respond(text='{}')
-        respx.get(f'{API}/contents/missing.json', params={'ref': SHA}).respond(
-            404
-        )
+        respx.get(f'{RAW}/{SHA}/missing.json').respond(404)
         reader = public.PublicRepository('anthropics', 'plugins')
 
         refs = await reader.list_refs(None, {}, kind='default')
@@ -52,12 +50,13 @@ class PublicRepositoryTests(unittest.IsolatedAsyncioTestCase):
             '{}',
         )
         self.assertIsNone(await reader.get_file(None, {}, 'missing.json', SHA))
+        self.assertNotIn('authorization', file.calls.last.request.headers)
 
     @respx.mock
     async def test_get_file_encodes_the_ref(self) -> None:
-        route = respx.get(
-            f'{API}/contents/a.json', params={'ref': 'release&candidate'}
-        ).respond(text='{}')
+        route = respx.get(f'{RAW}/release%26candidate/a.json').respond(
+            text='{}'
+        )
         reader = public.PublicRepository('anthropics', 'plugins')
         self.assertEqual(
             await reader.get_file(None, {}, 'a.json', 'release&candidate'),
