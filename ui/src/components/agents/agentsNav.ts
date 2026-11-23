@@ -1,6 +1,5 @@
 import {
   Bot,
-  ChartColumn,
   LayoutDashboard,
   type LucideIcon,
   Server,
@@ -34,7 +33,6 @@ export type AgentsSection =
   | 'manage'
   | 'platform'
   | 'runners'
-  | 'usage'
   | 'workflows'
 
 export const AGENTS_BASE_PATH = '/agents'
@@ -46,13 +44,6 @@ const AGENTS_NAV: AgentsNavItem[] = [
     id: 'dashboard',
     label: 'Dashboard',
     note: 'Agent activity at a glance',
-  },
-  {
-    group: 'Agentic platform',
-    icon: ChartColumn,
-    id: 'usage',
-    label: 'Usage',
-    note: 'Tokens and spend',
   },
   {
     group: 'Settings',

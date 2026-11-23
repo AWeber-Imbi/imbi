@@ -168,6 +168,7 @@ Improvement**.
 | Score History | `score-history` | The average score of each team over **30d**, **90d**, **1y** (default), or **All**, and the **Change events** list of recent score changes |
 | Document Readership | `document-readership` | Documents in the order that you select: **Most read**, **Stale**, **Least read**, or **Never read** |
 | Team KPI | `team-kpi` | The average score of each team, with its best project and when it was last scored |
+| Agent Usage | `agent-usage` | The tokens and spend of the agents, by day and by agent. See [Agents](../admin/agents.md#usage) |
 
 Notes on some reports:
 

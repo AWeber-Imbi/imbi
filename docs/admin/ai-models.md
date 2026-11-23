@@ -193,7 +193,7 @@ unknown or set by contract. Enter `0` for a self-hosted model.
     **Monthly spend cap is advisory.** Imbi does not block calls at the cap.
     The field records the number for a human to act on. Agent usage uses the
     model prices to calculate cost. See
-    [Agents > Usage](agents.md#usage).
+    [Reports > Agent Usage](agents.md#usage).
 
 Two rules apply within the catalog. A model's display name must produce a slug
 that is unique in the catalog. A model identifier must be unique within
