@@ -33,7 +33,7 @@ describe('DatePicker', () => {
     ['2/30/2099', false],
     ['1/2/2', false],
     ['1/1/2020', true],
-  ])('puts back the previous day for %s', (typed, disablePast) => {
+  ])('puts back the previous day for %s', async (typed, disablePast) => {
     const onChange = vi.fn()
     render(
       <DatePicker
@@ -49,6 +49,8 @@ describe('DatePicker', () => {
     fireEvent.blur(input)
     expect(input).toHaveValue('Mar 4, 2099')
     expect(onChange).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Choose date' }))
+    expect(await screen.findByText('March 2099')).toBeVisible()
   })
 
   it('clears the day when the text is emptied', () => {

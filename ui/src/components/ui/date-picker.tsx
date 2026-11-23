@@ -92,7 +92,10 @@ export function DatePicker({
   const commit = () => {
     if (empty && !required) choose('')
     else if (typed && allowed(typed)) choose(toDateOnlyIso(typed))
-    else setText(toDisplay(value))
+    else {
+      setText(toDisplay(value))
+      setMonth(selected)
+    }
   }
 
   const openCalendar = (next: boolean) => {
