@@ -353,7 +353,7 @@ export function NewTaskDialog({
       open={isOpen}
     >
       <DialogContent className="max-h-[calc(100vh-48px)] max-w-160 gap-0 overflow-hidden p-0">
-        <div className="shrink-0 border-b border-tertiary px-5 py-3.5 pr-12">
+        <div className="border-tertiary shrink-0 border-b px-5 py-3.5 pr-12">
           <DialogTitle className="text-lg font-medium">New ticket</DialogTitle>
           <DialogDescription className="sr-only">
             Hand a piece of work to an agent or a person.
@@ -392,14 +392,14 @@ export function NewTaskDialog({
             />
             {source && (
               <a
-                className="flex min-w-0 items-center gap-1.5 text-[12.5px] text-tertiary"
+                className="text-tertiary flex min-w-0 items-center gap-1.5 text-[12.5px]"
                 href={source.url}
                 rel="noreferrer"
                 target="_blank"
               >
                 <LinkIcon aria-hidden className="size-3.25 shrink-0" />
                 Source
-                <span className="truncate text-info">{source.label}</span>
+                <span className="text-info truncate">{source.label}</span>
               </a>
             )}
           </Field>
@@ -438,7 +438,7 @@ export function NewTaskDialog({
               )}
             </div>
             {person && (
-              <span className="text-[12.5px] text-tertiary">
+              <span className="text-tertiary text-[12.5px]">
                 Starts open. Person tickets have no agent, budget, or run
                 controls.
               </span>
@@ -498,7 +498,7 @@ export function NewTaskDialog({
             schema={fieldSchema}
           />
 
-          <div className="rounded-md border border-tertiary">
+          <div className="border-tertiary rounded-md border">
             <Disclosure
               label="Owner"
               summary={
@@ -515,7 +515,7 @@ export function NewTaskDialog({
                 people={people}
                 value={ownerEmail}
               />
-              <span className="text-[12.5px] text-tertiary">
+              <span className="text-tertiary text-[12.5px]">
                 Accountable for the outcome. Defaults to you; can differ from
                 the assignee.
                 {!canManage && ' Another owner needs ticket:manage.'}
@@ -526,7 +526,7 @@ export function NewTaskDialog({
               summary={teams.find((t) => t.slug === team)?.name ?? 'None'}
             >
               <TeamPicker onChange={setTeam} orgSlug={orgSlug} value={team} />
-              <span className="text-[12.5px] text-tertiary">
+              <span className="text-tertiary text-[12.5px]">
                 The team that owns the work.
               </span>
             </Disclosure>
@@ -544,7 +544,7 @@ export function NewTaskDialog({
                 people={people}
                 rows={roles}
               />
-              <span className="text-[12.5px] text-tertiary">
+              <span className="text-tertiary text-[12.5px]">
                 Workflows read roles and can hand the ticket to the person in a
                 role.
               </span>
@@ -567,12 +567,12 @@ export function NewTaskDialog({
           </div>
 
           {create.error && (
-            <p className="text-sm text-danger" role="alert">
+            <p className="text-danger text-sm" role="alert">
               {errorMessage(create.error)}
             </p>
           )}
         </form>
-        <div className="flex shrink-0 items-center gap-2.5 border-t border-tertiary bg-secondary px-5 py-3">
+        <div className="border-tertiary bg-secondary flex shrink-0 items-center gap-2.5 border-t px-5 py-3">
           <FooterHint
             assigneeName={assigneeName}
             heldOn={heldOn.map((r) => r.short_id)}
@@ -635,22 +635,22 @@ function AgentPicker({
           aria-expanded={open}
           aria-haspopup="listbox"
           aria-labelledby="nt-assign"
-          className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md border border-input bg-primary px-2.5 text-left"
+          className="border-input bg-primary flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md border px-2.5 text-left"
           type="button"
         >
           {picked ? (
             <AgentRow agent={picked} />
           ) : (
             <>
-              <Search aria-hidden className="size-3.5 text-tertiary" />
-              <span className="flex-1 text-sm text-tertiary">
+              <Search aria-hidden className="text-tertiary size-3.5" />
+              <span className="text-tertiary flex-1 text-sm">
                 {agents.length ? 'Choose an agent' : 'No enabled agents'}
               </span>
             </>
           )}
           <ChevronsUpDown
             aria-hidden
-            className="size-3.5 shrink-0 text-tertiary"
+            className="text-tertiary size-3.5 shrink-0"
           />
         </button>
       </PopoverTrigger>
@@ -676,7 +676,7 @@ function AgentPicker({
 function AgentRow({ agent }: { agent: Agent }) {
   return (
     <span className="flex min-w-0 flex-1 items-center gap-2">
-      <span className="flex size-5.5 shrink-0 items-center justify-center rounded-sm bg-secondary text-[10px] font-semibold text-secondary">
+      <span className="bg-secondary text-secondary flex size-5.5 shrink-0 items-center justify-center rounded-sm text-[10px] font-semibold">
         {agent.icon ? (
           <EntityIcon className="size-3.5" icon={agent.icon} />
         ) : (
@@ -686,9 +686,9 @@ function AgentRow({ agent }: { agent: Agent }) {
       <span className="text-sm font-medium whitespace-nowrap">
         {agent.name}
       </span>
-      <span className="font-mono text-xs text-tertiary">v{agent.version}</span>
+      <span className="text-tertiary font-mono text-xs">v{agent.version}</span>
       {agent.description && (
-        <span className="min-w-0 flex-1 truncate text-[13px] text-tertiary">
+        <span className="text-tertiary min-w-0 flex-1 truncate text-[13px]">
           {agent.description}
         </span>
       )}
@@ -741,14 +741,14 @@ function Disclosure({
   summary: string
 }) {
   return (
-    <Collapsible className="group border-b border-tertiary last:border-b-0">
+    <Collapsible className="group border-tertiary border-b last:border-b-0">
       <CollapsibleTrigger className="flex h-9 w-full items-center gap-2 px-3 text-left">
         <ChevronRight
           aria-hidden
-          className="size-3.5 text-tertiary transition-transform group-data-[state=open]:rotate-90"
+          className="text-tertiary size-3.5 transition-transform group-data-[state=open]:rotate-90"
         />
-        <span className="text-[13px] font-medium text-secondary">{label}</span>
-        <span className="ml-auto min-w-0 truncate text-[13px] text-tertiary">
+        <span className="text-secondary text-[13px] font-medium">{label}</span>
+        <span className="text-tertiary ml-auto min-w-0 truncate text-[13px]">
           {summary}
         </span>
       </CollapsibleTrigger>
@@ -801,12 +801,12 @@ function Field({
           </span>
         )}
         {tag && (
-          <span className="inline-flex h-4.5 items-center rounded-sm bg-secondary px-1.5 text-[11.5px] font-medium text-secondary">
+          <span className="bg-secondary text-secondary inline-flex h-4.5 items-center rounded-sm px-1.5 text-[11.5px] font-medium">
             {tag}
           </span>
         )}
         {hint && (
-          <span className="ml-auto text-[12.5px] text-tertiary max-sm:hidden">
+          <span className="text-tertiary ml-auto text-[12.5px] max-sm:hidden">
             {hint}
           </span>
         )}
@@ -830,13 +830,13 @@ function FooterHint({
 }) {
   if (!ready)
     return (
-      <span className="text-[13px] text-tertiary">
+      <span className="text-tertiary text-[13px]">
         Needs a description and an assignee.
       </span>
     )
   if (heldOn.length)
     return (
-      <span className="flex min-w-0 items-center gap-1.5 text-[13px] text-warning">
+      <span className="text-warning flex min-w-0 items-center gap-1.5 text-[13px]">
         <Clock aria-hidden className="size-3.25 shrink-0" />
         <span className="truncate">
           {person
@@ -847,7 +847,7 @@ function FooterHint({
     )
   const Icon = person ? UserRound : Play
   return (
-    <span className="flex min-w-0 items-center gap-1.5 text-[13px] text-secondary">
+    <span className="text-secondary flex min-w-0 items-center gap-1.5 text-[13px]">
       <Icon
         aria-hidden
         className={cn('size-3.25 shrink-0', !person && 'text-success')}
@@ -873,15 +873,15 @@ function ParentField({
   return (
     <Field hint="Optional. Closed parents are allowed." label="Parent">
       {parent ? (
-        <span className="flex h-9 items-center rounded-md border border-tertiary px-1.5">
-          <span className="flex h-6 min-w-0 items-center gap-1.5 rounded-sm bg-secondary pr-1 pl-2 text-[13px]">
-            <span className="font-mono text-[12.5px] text-secondary">
+        <span className="border-tertiary flex h-9 items-center rounded-md border px-1.5">
+          <span className="bg-secondary flex h-6 min-w-0 items-center gap-1.5 rounded-sm pr-1 pl-2 text-[13px]">
+            <span className="text-secondary font-mono text-[12.5px]">
               {parent.short_id}
             </span>
             <span className="truncate">{parent.title}</span>
             <button
               aria-label="Remove parent"
-              className="flex size-4.5 shrink-0 items-center justify-center rounded text-tertiary hover:text-primary"
+              className="text-tertiary hover:text-primary flex size-4.5 shrink-0 items-center justify-center rounded"
               onClick={() => onChange(null)}
               type="button"
             >
@@ -917,13 +917,13 @@ function PrerequisitesField({
 }) {
   return (
     <Field hint="Gating: waits until it closes as done" label="Prerequisites">
-      <div className="rounded-md border border-tertiary">
+      <div className="border-tertiary rounded-md border">
         {value.map((r) => (
           <div
-            className="flex h-9 items-center gap-2 border-b border-tertiary pr-1.5 pl-2.5"
+            className="border-tertiary flex h-9 items-center gap-2 border-b pr-1.5 pl-2.5"
             key={r.short_id}
           >
-            <span className="font-mono text-[12.5px] text-secondary">
+            <span className="text-secondary font-mono text-[12.5px]">
               {r.short_id}
             </span>
             <span className="min-w-0 flex-1 truncate text-[13.5px]">
@@ -932,7 +932,7 @@ function PrerequisitesField({
             <Badge className="shrink-0 py-0" variant={statusVariant(r)}>
               {statusLabel(r)}
             </Badge>
-            <label className="flex items-center gap-1.5 px-1 text-[13px] text-secondary">
+            <label className="text-secondary flex items-center gap-1.5 px-1 text-[13px]">
               <Checkbox
                 aria-label={`Gating for ${r.short_id}`}
                 checked={r.gates}
@@ -950,7 +950,7 @@ function PrerequisitesField({
             </label>
             <button
               aria-label={`Remove ${r.short_id}`}
-              className="flex size-6 items-center justify-center rounded text-tertiary hover:text-primary"
+              className="text-tertiary hover:text-primary flex size-6 items-center justify-center rounded"
               onClick={() =>
                 onChange(value.filter((x) => x.short_id !== r.short_id))
               }
@@ -971,7 +971,7 @@ function PrerequisitesField({
       </div>
       {heldOn.length > 0 && (
         <div
-          className="flex items-center gap-2 rounded-md bg-warning px-2.5 py-2 text-[13px] text-warning"
+          className="bg-warning text-warning flex items-center gap-2 rounded-md px-2.5 py-2 text-[13px]"
           role="status"
         >
           <Clock aria-hidden className="size-3.5" />
@@ -1018,16 +1018,16 @@ function ProjectPicker({
       value.includes(pid) ? value.filter((x) => x !== pid) : [...value, pid],
     )
   return (
-    <div className="flex min-h-9 flex-wrap items-center gap-1 rounded-md border border-input bg-primary px-1.5 py-1">
+    <div className="border-input bg-primary flex min-h-9 flex-wrap items-center gap-1 rounded-md border px-1.5 py-1">
       {selected.map((p) => (
         <span
-          className="inline-flex h-6 items-center gap-1 rounded-sm bg-secondary pr-1 pl-2 font-mono text-[12.5px]"
+          className="bg-secondary inline-flex h-6 items-center gap-1 rounded-sm pr-1 pl-2 font-mono text-[12.5px]"
           key={p.id}
         >
           {p.slug}
           <button
             aria-label={`Remove project ${p.slug}`}
-            className="flex size-4.5 items-center justify-center rounded text-tertiary hover:text-primary"
+            className="text-tertiary hover:text-primary flex size-4.5 items-center justify-center rounded"
             onClick={() => toggle(p.id)}
             type="button"
           >
@@ -1047,7 +1047,7 @@ function ProjectPicker({
           <button
             aria-expanded={open}
             aria-haspopup="listbox"
-            className="flex h-6.5 min-w-20 flex-1 items-center gap-1.5 px-1 text-left text-sm text-tertiary"
+            className="text-tertiary flex h-6.5 min-w-20 flex-1 items-center gap-1.5 px-1 text-left text-sm"
             id={id}
             type="button"
           >
@@ -1070,6 +1070,7 @@ function ProjectPicker({
               <CommandGroup>
                 {matches.map((p) => (
                   <CommandItem
+                    aria-checked={value.includes(p.id)}
                     key={p.id}
                     onSelect={() => toggle(p.id)}
                     value={p.id}
@@ -1082,7 +1083,7 @@ function ProjectPicker({
                       )}
                     />
                     <span className="font-mono text-[12.5px]">{p.slug}</span>
-                    <span className="ml-auto text-[11.5px] text-tertiary">
+                    <span className="text-tertiary ml-auto text-[11.5px]">
                       {p.project_types[0]?.name}
                     </span>
                   </CommandItem>
@@ -1161,7 +1162,7 @@ function TicketSearch({
                   }}
                   value={t.short_id}
                 >
-                  <span className="font-mono text-xs text-secondary">
+                  <span className="text-secondary font-mono text-xs">
                     {t.short_id}
                   </span>
                   <span className="min-w-0 flex-1 truncate">{t.title}</span>

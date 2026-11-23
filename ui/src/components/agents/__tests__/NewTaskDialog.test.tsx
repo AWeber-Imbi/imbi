@@ -227,6 +227,17 @@ describe('NewTaskDialog', () => {
     expect(screen.queryByRole('option', { name: /search/ })).toBeNull()
   })
 
+  it('marks the projects that are picked', async () => {
+    render(<NewTaskDialog isOpen onClose={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Projects' }))
+    const billing = await screen.findByRole('option', { name: 'billing' })
+    expect(billing).toHaveAttribute('aria-checked', 'false')
+    fireEvent.click(billing)
+    expect(billing).toHaveAttribute('aria-checked', 'true')
+    fireEvent.click(billing)
+    expect(billing).toHaveAttribute('aria-checked', 'false')
+  })
+
   it('creates an agent ticket with its attributes', async () => {
     const onClose = vi.fn()
     render(<NewTaskDialog isOpen onClose={onClose} />)
