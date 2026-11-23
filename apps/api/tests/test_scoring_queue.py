@@ -118,9 +118,10 @@ class ConsumerTests(unittest.IsolatedAsyncioTestCase):
         lock.reacquire = mock.AsyncMock(
             side_effect=[True, valkey_exceptions.LockNotOwnedError('gone')]
         )
+        sleep = mock.AsyncMock()
         with mock.patch.object(
-            score_queue.asyncio, 'sleep', mock.AsyncMock()
-        ) as sleep:
+            score_queue, 'asyncio', wraps=asyncio, sleep=sleep
+        ):
             await score_queue._renew_lock(lock)
         self.assertEqual(lock.reacquire.await_count, 2)
         sleep.assert_awaited_with(score_queue.LOCK_SECONDS / 3)

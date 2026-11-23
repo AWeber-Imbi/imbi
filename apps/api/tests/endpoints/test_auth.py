@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import typing
 import unittest
@@ -1488,15 +1489,15 @@ class TokenRefreshTestCase(support.SharedAppTestCase):
             [{'revoked_count': 3}],
         ]
 
+        mock_sleep = mock.AsyncMock()
         with (
             mock.patch(
                 'imbi.api.settings.get_auth_settings',
                 return_value=auth_settings,
             ),
-            mock.patch(
-                'imbi.api.endpoints.auth.asyncio.sleep',
-                new_callable=mock.AsyncMock,
-            ) as mock_sleep,
+            mock.patch.object(
+                auth_endpoints, 'asyncio', wraps=asyncio, sleep=mock_sleep
+            ),
         ):
             response = self.client.post(
                 '/auth/token/refresh',

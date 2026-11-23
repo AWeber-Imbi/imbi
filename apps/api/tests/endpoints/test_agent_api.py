@@ -31,14 +31,11 @@ class AgentApiTestCase(test_harness.RunnerTestCase):
         self.api_token = str(claim['api_token'])
         # The agent's service account reads projects (H28: its roles).
         self.role = f'agent-reader-{self.org}'
-        await self.graph.execute(
-            'MERGE (p:Permission {{name: "project:read"}})'
-            ' CREATE (r:Role {{slug: {role}, name: {role}}})'
-            ' CREATE (r)-[:GRANTS]->(p)'
-            ' WITH r MATCH (:ServiceAccount {{slug: {slug}}})'
-            '-[m:MEMBER_OF]->() SET m.role = {role} RETURN 1 AS ok',
-            {'role': self.role, 'slug': self.account.slug},
-            ['ok'],
+        await self.grant_role(
+            self.role,
+            'project:read',
+            '(:ServiceAccount {{slug: {slug}}})',
+            slug=self.account.slug,
         )
         self.addAsyncCleanup(self._drop_role)
         # The real authentication, not the test override.

@@ -1,5 +1,6 @@
 """Tests for email.client module."""
 
+import asyncio
 import datetime
 import smtplib
 import unittest
@@ -393,7 +394,9 @@ class EmailClientTestCase(unittest.IsolatedAsyncioTestCase):
         async def mock_sleep(delay: float) -> None:
             sleep_times.append(delay)
 
-        with mock.patch('asyncio.sleep', side_effect=mock_sleep):
+        with mock.patch.object(
+            client, 'asyncio', wraps=asyncio, sleep=mock_sleep
+        ):
             # Fail first 2 attempts, succeed third
             self.mock_smtp.send_message.side_effect = [
                 smtplib.SMTPException('Error 1'),

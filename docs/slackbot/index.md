@@ -70,6 +70,22 @@ The bot can call tools for up to `IMBI_SLACKBOT_MAX_TOOL_ROUNDS` rounds for
 one message. A tool result longer than `IMBI_SLACKBOT_MAX_TOOL_RESULT_CHARS`
 is replaced with an error.
 
+The bot also has Slack tools from
+[slackwright](https://github.com/gmr/slackwright). They work only in the
+thread of the message:
+
+- `slack_post_markdown` and `slack_post_blocks` post a message, for example
+  a table or a layout with a header. The bot can post 5 messages for each
+  message that you send.
+- `slack_create_form` posts a form with buttons or a modal. The bot asks
+  for structured answers with it, one form for each message that you send.
+  When the user who asked for the form submits it, the bot reads the
+  answers as a new message in the thread and continues. When another user
+  submits it, the bot does not continue: it says so in the thread. A turn
+  never mixes the text of one user with the permissions of another. A form expires after seven days. Forms need
+  Slack interactivity (see the [app manifest](slack-app-manifest.md)) and
+  `VALKEY_URL`.
+
 ## The system prompt
 
 The bot reads its prompt from the [prompt CMS](../admin/prompts.md), at
@@ -113,9 +129,10 @@ The full list is in [Configuration](../api/configuration.md).
 | `IMBI_UI_URL` | none | The public URL of the UI, for links in answers |
 | `IMBI_INTERNAL_UI_URL` | none | Where the bot reads `llms.txt`. The default is `IMBI_UI_URL` |
 
-The bot also needs `POSTGRES_URL` (the graph, to find users) and
-`IMBI_AUTH_JWT_SECRET`. Use the same JWT secret as imbi-api. With a
-different secret, imbi-api refuses every tool call.
+The bot also needs `POSTGRES_URL` (the graph, to find users), `VALKEY_URL`
+(the forms that it posts), and `IMBI_AUTH_JWT_SECRET`. Use the same JWT
+secret as imbi-api. With a different secret, imbi-api refuses every tool
+call.
 
 When the bot is off, or a Slack token is missing, the service starts but
 does not connect to Slack.
