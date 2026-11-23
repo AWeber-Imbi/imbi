@@ -32,5 +32,7 @@ export default defineConfig({
       'tools/**/*.{test,spec}.{ts,js}',
     ],
     setupFiles: './test/setup.ts',
+    // Room for more than one 5 s waitFor (see test/setup.ts).
+    testTimeout: 15_000,
   },
 })
