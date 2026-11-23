@@ -899,7 +899,7 @@ class KeyRefreshTestCase(TaskTestCase):
             await real_sleep(0)
 
         with (
-            mock.patch.object(task.asyncio, 'sleep', sleep),
+            mock.patch.object(task, 'asyncio', wraps=asyncio, sleep=sleep),
             self.assertLogs('imbi.harness.task', 'WARNING'),
             self.assertRaises(asyncio.CancelledError),
         ):
@@ -927,7 +927,7 @@ class KeyRefreshTestCase(TaskTestCase):
                 raise asyncio.CancelledError
 
         with (
-            mock.patch.object(task.asyncio, 'sleep', sleep),
+            mock.patch.object(task, 'asyncio', wraps=asyncio, sleep=sleep),
             self.assertLogs('imbi.harness.task', 'WARNING'),
             self.assertRaises(asyncio.CancelledError),
         ):
@@ -951,7 +951,7 @@ class KeyRefreshTestCase(TaskTestCase):
                 raise asyncio.CancelledError
 
         with (
-            mock.patch.object(task.asyncio, 'sleep', sleep),
+            mock.patch.object(task, 'asyncio', wraps=asyncio, sleep=sleep),
             self.assertRaises(asyncio.CancelledError),
         ):
             await self.run_task._refresh_key()  # pyright: ignore[reportPrivateUsage]

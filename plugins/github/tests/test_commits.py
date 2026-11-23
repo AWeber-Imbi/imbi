@@ -2553,9 +2553,8 @@ class RequestTestCase(unittest.IsolatedAsyncioTestCase):
             httpx.Response(403, headers={'retry-after': '7'}),
             httpx.Response(200, json={'ok': True}),
         )
-        with mock.patch.object(
-            commits.asyncio, 'sleep', new=mock.AsyncMock()
-        ) as slept:
+        slept = mock.AsyncMock()
+        with mock.patch.object(commits, 'asyncio', wraps=asyncio, sleep=slept):
             resp = await commits._request(client, 'GET', '/x', max_wait=60.0)
         self.assertEqual(200, resp.status_code)
         slept.assert_awaited_once_with(7.0)
@@ -2573,9 +2572,8 @@ class RequestTestCase(unittest.IsolatedAsyncioTestCase):
                 json={'ok': True},
             ),
         )
-        with mock.patch.object(
-            commits.asyncio, 'sleep', new=mock.AsyncMock()
-        ) as slept:
+        slept = mock.AsyncMock()
+        with mock.patch.object(commits, 'asyncio', wraps=asyncio, sleep=slept):
             resp = await commits._request(client, 'GET', '/x', max_wait=60.0)
         self.assertEqual(200, resp.status_code)
         slept.assert_awaited_once()
@@ -2593,9 +2591,8 @@ class RequestTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             ),
         )
-        with mock.patch.object(
-            commits.asyncio, 'sleep', new=mock.AsyncMock()
-        ) as slept:
+        slept = mock.AsyncMock()
+        with mock.patch.object(commits, 'asyncio', wraps=asyncio, sleep=slept):
             with self.assertRaises(PluginRateLimited) as caught:
                 await commits._request(client, 'GET', '/x', max_wait=60.0)
         # Bails to the host without sleeping, carrying the resume time.
@@ -2607,9 +2604,8 @@ class RequestTestCase(unittest.IsolatedAsyncioTestCase):
         client = self._client(
             httpx.Response(429, headers={'retry-after': '1'})
         )
-        with mock.patch.object(
-            commits.asyncio, 'sleep', new=mock.AsyncMock()
-        ) as slept:
+        slept = mock.AsyncMock()
+        with mock.patch.object(commits, 'asyncio', wraps=asyncio, sleep=slept):
             with self.assertRaises(PluginRateLimited):
                 await commits._request(client, 'GET', '/x', max_wait=60.0)
         self.assertEqual(commits._MAX_THROTTLE_RETRIES, slept.await_count)
@@ -2631,9 +2627,8 @@ class SyncCommitsThrottleTestCase(unittest.IsolatedAsyncioTestCase):
                 httpx.Response(200, json={'commits': [_commit('1' * 40)]}),
             ]
         )
-        with mock.patch.object(
-            commits.asyncio, 'sleep', new=mock.AsyncMock()
-        ) as slept:
+        slept = mock.AsyncMock()
+        with mock.patch.object(commits, 'asyncio', wraps=asyncio, sleep=slept):
             with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
                 await commits.sync_commits(
                     ctx=_ctx(),
