@@ -134,10 +134,14 @@ describe('PluginsSection', () => {
       name: 'MCP servers of grafana-mcp',
     })
     const items = within(servers).getAllByRole('listitem')
-    expect(items.map((item) => item.textContent)).toEqual([
-      'MCPgrafanahttps://grafana.example.com/mcp',
-      'MCPlocalstdio',
-    ])
+    expect(items).toHaveLength(2)
+    const [grafana, local] = items
+    expect(within(grafana).getByText('grafana')).toBeInTheDocument()
+    expect(
+      within(grafana).getByText('https://grafana.example.com/mcp'),
+    ).toBeInTheDocument()
+    expect(within(local).getByText('local')).toBeInTheDocument()
+    expect(within(local).getByText('stdio')).toBeInTheDocument()
     expect(
       screen.queryByRole('list', { name: 'MCP servers of code-review' }),
     ).not.toBeInTheDocument()
