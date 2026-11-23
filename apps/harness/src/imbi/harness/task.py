@@ -168,7 +168,7 @@ _RULES = """\
   Do not set a git identity or a credential helper.
 - The `purpose` of a secret is one of the purposes listed for its
   reference below, not a description. For `git push` and `gh` with the
-  GitHub token, use `github_write`.
+  GitHub token, use `github_write` when it is listed.
 - When a secret is a JSON object, each string member also goes into
   the environment with its own name, for example `SENTRY_AUTH_TOKEN`.
   The tool result names each variable that it set. A secret with
@@ -177,8 +177,10 @@ _RULES = """\
 - Use `attach_project` to add a project of the organization to this
   task, by id or slug, when the work needs its repository. The next
   secret you request covers it. Use `detach_project` to remove one;
-  the next secret no longer covers it. A task keeps at least one
-  project, so attach the next project before you detach the last one.
+  the next secret no longer covers it. Each result lists the secret
+  references that you may request from then on, in place of the list
+  above. A task keeps at least one project, so attach the next project
+  before you detach the last one.
 - Use `request_input` to ask a person a question. Use
   `create_child_task` to give work to another agent: {subagents}.
 - Use `hand_off` to give the task to a person when a person must do
@@ -447,6 +449,23 @@ def _secret_line(item: Body) -> str:
     if description := ' '.join(str(item.get('description') or '').split()):
         line += f': {description}'
     return line
+
+
+def _project_result(text: str, change: Body) -> Body:
+    """The result of ``attach_project`` or ``detach_project``: the
+    change and the secret references that the agent may request now."""
+    lines = ''.join(
+        f'\n- {_secret_line(item)}' for item in api.items(change, 'secrets')
+    )
+    return {
+        'content': [
+            {
+                'type': 'text',
+                'text': f'{text} The secret references that you may '
+                f'request now:{lines or " none"}',
+            }
+        ]
+    }
 
 
 def _secret_refusal(secret: Body, upstream: Body) -> str | None:
@@ -2422,15 +2441,11 @@ class TaskRun:
             return _tool_error(f'The project was refused: {err.code}')
         except httpx.HTTPError:
             return _tool_error('Imbi is not available')
-        return {
-            'content': [
-                {
-                    'type': 'text',
-                    'text': f'Project {attached["project_slug"]} '
-                    f'({attached["project_id"]}) is on the task.',
-                }
-            ]
-        }
+        return _project_result(
+            f'Project {attached["project_slug"]} '
+            f'({attached["project_id"]}) is on the task.',
+            attached,
+        )
 
     # --- detach_project -----------------------------------------------
 
@@ -2462,15 +2477,11 @@ class TaskRun:
             return _tool_error(f'The project was refused: {err.code}')
         except httpx.HTTPError:
             return _tool_error('Imbi is not available')
-        return {
-            'content': [
-                {
-                    'type': 'text',
-                    'text': f'Project {detached["project_slug"]} '
-                    f'({detached["project_id"]}) is not on the task.',
-                }
-            ]
-        }
+        return _project_result(
+            f'Project {detached["project_slug"]} '
+            f'({detached["project_id"]}) is not on the task.',
+            detached,
+        )
 
     # --- report_outcome -----------------------------------------------
 

@@ -2664,14 +2664,24 @@ class AttachProjectTestCase(TaskTestCase):
         response.json.return_value = {
             'project_id': 'p1',
             'project_slug': 'web-applications-coderabbit',
+            'secrets': [
+                {
+                    'reference': 'secret://github/token',
+                    'purposes': ['github_read', 'github_write'],
+                }
+            ],
         }
         self.client.request.return_value = response
         result = await self.run_task.attach_project_tool().handler(
             {'project': ' web-applications-coderabbit '}
         )
         self.assertNotIn('is_error', result)
+        text = result['content'][0]['text']
+        self.assertIn('web-applications-coderabbit (p1)', text)
         self.assertIn(
-            'web-applications-coderabbit (p1)', result['content'][0]['text']
+            'request now:\n- `secret://github/token` '
+            '(purposes: github_read, github_write)',
+            text,
         )
         method, path, _token = self.client.request.await_args.args
         self.assertEqual(method, 'PUT')
@@ -2711,7 +2721,8 @@ class DetachProjectTestCase(TaskTestCase):
         )
         self.assertNotIn('is_error', result)
         self.assertIn(
-            'control-panel (p1) is not on the task',
+            'control-panel (p1) is not on the task. The secret references '
+            'that you may request now: none',
             result['content'][0]['text'],
         )
         method, path, _token = self.client.request.await_args.args

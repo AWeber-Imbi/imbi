@@ -1782,7 +1782,7 @@ export interface paths {
          *     ``project.associated`` event, with the agent as the actor. A secret
          *     resolution reads the task's projects when it is made, so the next
          *     one covers the project. When the project is associated, nothing
-         *     changes.
+         *     changes. ``secrets`` is what the agent may request after it.
          *
          *     Raises:
          *         401: Not a current agent token.
@@ -1801,7 +1801,8 @@ export interface paths {
          *     ``project.dissociated`` event, with the agent as the actor. A secret
          *     resolution reads the task's projects when it is made, so the next
          *     one no longer covers the project. When the project is not
-         *     associated, nothing changes.
+         *     associated, nothing changes. ``secrets`` is what the agent may
+         *     request after it.
          *
          *     The task keeps at least one project: a grant that lists projects
          *     never matches a task with none, so its next ``model_inference`` key
@@ -12686,6 +12687,11 @@ export interface components {
             project_id: string;
             /** Project Slug */
             project_slug: string;
+            /**
+             * Secrets
+             * @default []
+             */
+            secrets: components["schemas"]["SecretReference"][];
         };
         /**
          * AttachmentRef
