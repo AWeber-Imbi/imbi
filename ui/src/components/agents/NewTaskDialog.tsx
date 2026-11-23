@@ -629,7 +629,7 @@ function AgentPicker({
     </CommandItem>
   )
   return (
-    <Popover onOpenChange={setOpen} open={open}>
+    <Popover modal onOpenChange={setOpen} open={open}>
       <PopoverTrigger asChild>
         <button
           aria-expanded={open}
@@ -1115,7 +1115,7 @@ function TicketSearch({
   const found = data.filter((t) => !exclude.includes(t.short_id))
   const Icon = bare ? Plus : Search
   return (
-    <Popover onOpenChange={setOpen} open={open}>
+    <Popover modal onOpenChange={setOpen} open={open}>
       <PopoverTrigger asChild>
         <button
           aria-label={ariaLabel}

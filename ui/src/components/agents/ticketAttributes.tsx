@@ -367,7 +367,7 @@ export function PersonPicker({
   const [open, setOpen] = useState(false)
   const picked = people.find((p) => p.email === value)
   return (
-    <Popover onOpenChange={setOpen} open={open}>
+    <Popover modal onOpenChange={setOpen} open={open}>
       <PopoverTrigger asChild>
         <button
           aria-expanded={open}
