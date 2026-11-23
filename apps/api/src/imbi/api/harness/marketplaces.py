@@ -168,9 +168,9 @@ def _public_url(value: object) -> str | None:
         parts = urllib.parse.urlsplit(value)
     except ValueError:
         return None
-    host = parts.netloc.rpartition('@')[2]
-    if not host:
+    if not parts.hostname:
         return None
+    host = parts.netloc.rpartition('@')[2]
     return urllib.parse.urlunsplit((parts.scheme, host, parts.path, '', ''))
 
 

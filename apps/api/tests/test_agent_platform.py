@@ -682,6 +682,7 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
                         ),
                     },
                     'hostless': {'type': 'http', 'url': 'https://user@/mcp'},
+                    'port_only': {'type': 'http', 'url': 'https://:443/mcp'},
                 }
             ]
         )
@@ -691,6 +692,7 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
                 'hostless': None,
                 'invalid': None,
                 'missing': None,
+                'port_only': None,
                 'template': None,
                 'query': 'https://mcp.example.com/sse',
                 'userinfo': 'https://mcp.example.com:8443/mcp',
