@@ -1,6 +1,6 @@
 import { type ComponentType, useEffect, useState } from 'react'
 
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import {
   Blocks,
@@ -286,6 +286,7 @@ const MOVED_SECTIONS: Record<string, AgentsSection> = {
 // fallow-ignore-next-line complexity
 export function Admin() {
   const navigate = useNavigate()
+  const { search } = useLocation()
   const { action, section, slug } = useParams<{
     action?: string
     section?: string
@@ -302,11 +303,14 @@ export function Admin() {
     const moved = section ? MOVED_SECTIONS[section] : undefined
     if (moved) {
       const rest = [slug, action].filter((p): p is string => !!p)
-      navigate(agentsPath(moved, ...rest), { replace: true })
+      navigate(
+        { pathname: agentsPath(moved, ...rest), search },
+        { replace: true },
+      )
     } else if (section === undefined) {
       navigate(`/admin/${DEFAULT_SECTION.id}`, { replace: true })
     }
-  }, [action, section, slug, navigate])
+  }, [action, section, slug, search, navigate])
 
   const orgName = selectedOrganization?.name || 'Organization'
   const Content = currentSectionData.component

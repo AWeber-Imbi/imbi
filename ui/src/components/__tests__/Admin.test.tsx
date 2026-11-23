@@ -34,6 +34,14 @@ describe('Admin', () => {
     )
   })
 
+  it('keeps the query string when it sends a moved section', async () => {
+    renderAt('/admin/ai-models/new-model?provider=p1')
+    await waitFor(() =>
+      expect(window.location.pathname).toBe('/agents/ai-models/new-model'),
+    )
+    expect(window.location.search).toBe('?provider=p1')
+  })
+
   it('shows the sections under their groups', () => {
     renderAt('/admin/overview')
     const nav = screen.getByRole('navigation')
