@@ -1,7 +1,7 @@
 # Gateway
 
 `imbi-gateway` receives webhooks from external systems, for example GitHub,
-PagerDuty, PostHog, and SonarQube. For each delivery, it finds the Imbi projects that
+PagerDuty, PostHog, Grafana, and SonarQube. For each delivery, it finds the Imbi projects that
 the delivery is about, records the delivery, and runs the rules of the
 webhook. A rule calls an **action**, for example "create a release" or
 "start an agent task".
@@ -109,6 +109,7 @@ rule makes belongs to that person.
 | Source | Header | Secret | Prefix |
 |---|---|---|---|
 | GitHub | `X-Hub-Signature-256` | The **Secret** of the webhook | `sha256=` |
+| Grafana | `X-Grafana-Alerting-Signature` | The **Secret** of the webhook | none |
 | PagerDuty | `X-PagerDuty-Signature` | The secret on the identifier of the project | `v1=` |
 | PostHog | `Webhook-Signature` | The **Secret** of the webhook | `v1,` (Standard Webhooks) |
 

@@ -83,6 +83,7 @@ nav:
       - AWS: plugins/aws.md
       - GitHub: plugins/github.md
       - Google: plugins/google.md
+      - Grafana: plugins/grafana.md
       - Logz.io: plugins/logzio.md
       - OIDC: plugins/oidc.md
       - PagerDuty: plugins/pagerduty.md
@@ -229,6 +230,7 @@ plugins:
             - plugins/aws/src
             - plugins/github/src
             - plugins/google/src
+            - plugins/grafana/src
             - plugins/logzio/src
             - plugins/oidc/src
             - plugins/pagerduty/src

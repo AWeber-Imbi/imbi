@@ -20,7 +20,7 @@ Every service and every first-party plugin depends on `imbi-common`:
 | `imbi-scheduler` | The scheduled task service |
 | `imbi-slackbot` | The Slack bot |
 | `imbi-workflows` | The workflow engine |
-| `imbi-plugin-*` | The first-party plugins (aws, github, google, logzio, oidc, pagerduty, posthog, sentry, sonarqube) |
+| `imbi-plugin-*` | The first-party plugins (aws, github, google, grafana, logzio, oidc, pagerduty, posthog, sentry, sonarqube) |
 
 For what each service does, see [Services](../architecture/services.md).
 

@@ -315,6 +315,9 @@ constant-time compare. It fails closed:
   as not verified.
 - **PagerDuty.** When the project's integration edge has a signing
   secret, the `X-PagerDuty-Signature` header must match.
+- **Grafana.** When the webhook has a secret, the
+  `X-Grafana-Alerting-Signature` header must match: the hex HMAC-SHA256
+  of the raw body, with no prefix.
 - **PostHog.** When the webhook has a secret, the `Webhook-Signature`
   header must match per Standard Webhooks: the HMAC also covers the
   `Webhook-Id` and `Webhook-Timestamp` headers, and the timestamp must
