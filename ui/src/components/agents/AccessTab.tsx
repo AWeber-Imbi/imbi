@@ -40,6 +40,7 @@ import {
   GITHUB_PURPOSES,
   grantFor,
   ownGrant,
+  purposeSuggestions,
 } from './access'
 import type { SettingsDraft } from './agentDraft'
 import { Field } from './OverviewTab'
@@ -221,6 +222,7 @@ export function AccessTab({
           onGrant={(binding, purpose, done) =>
             grant(binding, purpose, 'environment', done)
           }
+          purposes={purposeSuggestions(grants.data ?? [])}
           rows={rows}
         />
       )}
@@ -235,6 +237,7 @@ function AgentSecrets({
   error,
   isPending,
   onGrant,
+  purposes,
   rows,
 }: {
   agent: { id: string; name: string }
@@ -243,6 +246,7 @@ function AgentSecrets({
   error: unknown
   isPending: boolean
   onGrant: (binding: SecretBinding, purpose: string, done: () => void) => void
+  purposes: string[]
   rows: AccessRow[]
 }) {
   const [adding, setAdding] = useState(false)
@@ -307,10 +311,12 @@ function AgentSecrets({
               required: true,
             },
             {
-              description: 'What the agent uses it for, e.g. npm or sentry',
-              kind: 'text',
+              description:
+                'What the agent uses it for, e.g. npm or sentry. Pick one or type a new one.',
+              kind: 'combobox',
               label: 'Purpose',
               name: 'purpose',
+              options: purposes.map((p) => ({ label: p, value: p })),
               required: true,
             },
           ]}
