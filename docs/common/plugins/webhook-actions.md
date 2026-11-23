@@ -114,9 +114,13 @@ class method. It returns a `WebhookSignature`:
 - `secret` — `webhook` for the `Webhook.secret`, or `edge` for the
   `webhook_secret_enc` that the plugin writes to each project's
   `EXISTS_IN` edge
+- `scheme` — `hmac-hex` (the default): each token is the hex HMAC-SHA256
+  of the raw body. `standard-webhooks`: the remote follows the
+  [Standard Webhooks](https://www.standardwebhooks.com/) specification
+  (`webhook-signature` header, `v1,` prefix, base64 tokens over the
+  `webhook-id`, `webhook-timestamp`, and body)
 
-The gateway verifies the HMAC-SHA256 of the raw body before it dispatches
-an action. The default `None` means that the remote does not sign. See
+The gateway verifies the signature before it dispatches an action. The default `None` means that the remote does not sign. See
 [Signature verification](../../gateway/index.md#signature-verification).
 
 ```python

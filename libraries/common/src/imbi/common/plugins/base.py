@@ -2029,18 +2029,33 @@ class WebhookActionsCapability(CapabilityHandler):
 class WebhookSignature(pydantic.BaseModel):
     """How a remote signs a webhook delivery.
 
-    The signature header holds one or more comma-separated
-    ``<prefix><hex>`` tokens. Each is the HMAC-SHA256 of the raw request
-    body, keyed by the signing secret. The gateway accepts the delivery
-    when one token matches.
+    With the default ``hmac-hex`` scheme, the signature header holds one
+    or more comma-separated ``<prefix><hex>`` tokens. Each is the
+    HMAC-SHA256 of the raw request body, keyed by the signing secret.
+
+    With the ``standard-webhooks`` scheme, the remote follows the
+    `Standard Webhooks <https://www.standardwebhooks.com/>`_
+    specification: the header holds space-separated ``<prefix><base64>``
+    tokens, each the HMAC-SHA256 of ``<webhook-id>.<webhook-timestamp>.``
+    followed by the raw body, where the id and timestamp come from the
+    ``webhook-id`` and ``webhook-timestamp`` request headers. The secret
+    is the base64 key, with or without its ``whsec_`` prefix, and the
+    gateway drops a delivery whose timestamp is too far from now.
+
+    The gateway accepts the delivery when one token matches.
     """
 
     model_config = pydantic.ConfigDict(frozen=True)
 
-    #: The request header, lower case (``x-hub-signature-256``).
+    #: The request header, lower case (``x-hub-signature-256``, or
+    #: ``webhook-signature`` for Standard Webhooks).
     header: str = pydantic.Field(pattern=r'^[a-z0-9-]+$')
-    #: The prefix of each token (``sha256=``, ``v1=``).
+    #: The prefix of each token (``sha256=``, ``v1=``, or ``v1,`` for
+    #: Standard Webhooks).
     prefix: str
+    #: How the token is computed: ``hmac-hex`` (the default) or
+    #: ``standard-webhooks``.
+    scheme: typing.Literal['hmac-hex', 'standard-webhooks'] = 'hmac-hex'
     #: Where the signing secret is. ``webhook``: the ``Webhook.secret``,
     #: one for the webhook. ``edge``: the ``webhook_secret_enc`` of each
     #: project's ``EXISTS_IN`` edge, which the plugin writes with a
