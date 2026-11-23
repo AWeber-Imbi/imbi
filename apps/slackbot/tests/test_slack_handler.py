@@ -2,7 +2,7 @@ import json
 import types
 from unittest import mock
 
-from slackwright import inflight
+from slackwright import forms, inflight
 
 from apps.slackbot.tests import helpers
 from imbi.common.prompts import system as prompt_system
@@ -167,6 +167,9 @@ class FakeApp:
 
         return deco
 
+    action = event
+    view = event
+
 
 class FakeHandler:
     def __init__(self, app, token: str) -> None:
@@ -229,8 +232,11 @@ class InitializeTests(helpers.TestCase):
             mock.patch.object(
                 slack_handler, 'AsyncSocketModeHandler', FakeHandler
             ),
+            mock.patch.object(slack_handler.valkey, 'get_client'),
         ):
             await slack_handler.initialize()
+            self.assertIn(forms.CALLBACK_ID, slack_handler._app.handlers)
+            self.assertIsNotNone(slack_handler._forms)
             self.assertEqual('BOT', slack_handler._bot_user_id)
             self.assertEqual('B_IMBI', slack_handler._bot_id)
             self.assertTrue(slack_handler._handler.connected)
@@ -264,6 +270,7 @@ class InitializeTests(helpers.TestCase):
             await slack_handler.aclose()
             self.assertTrue(handler.closed)
             self.assertIsNone(slack_handler._handler)
+            self.assertIsNone(slack_handler._forms)
 
 
 class HandleEventTests(helpers.TestCase):
@@ -323,6 +330,46 @@ class HandleEventTests(helpers.TestCase):
             [('add', mock.ANY), ('remove', mock.ANY)], client.reactions
         )
         self.assertEqual(1, len(client.deletes))
+
+    async def test_form_answers_run_a_turn_in_the_thread(self) -> None:
+        user = identity.ImbiUser('ada@example.com', 'Ada')
+        client = FakeSlackClient(
+            replies=[{'user': 'U1', 'ts': '1', 'text': '<@BOT> plan it'}]
+        )
+        submission = forms.Submission(
+            form_id='F1',
+            spec=forms.FormSpec.model_validate(
+                {
+                    'title': 'Deploy window',
+                    'fields': [{'type': 'text', 'id': 'day', 'label': 'Day'}],
+                }
+            ),
+            values={'day': 'Monday'},
+            user_id='U2',
+            channel_id='C',
+            thread_ts='1',
+        )
+        run_turn = mock.AsyncMock(return_value='Booked Monday.')
+        with (
+            mock.patch.object(
+                slack_handler, '_app', types.SimpleNamespace(client=client)
+            ),
+            mock.patch.object(slack_handler, '_bot_user_id', 'BOT'),
+            mock.patch.object(
+                slack_handler.identity,
+                'resolve',
+                new=mock.AsyncMock(return_value=user),
+            ),
+            mock.patch.object(slack_handler.agent, 'run_turn', new=run_turn),
+        ):
+            await slack_handler._on_submit(submission)
+        kwargs = run_turn.await_args.kwargs
+        last = json.dumps(kwargs['messages'][-1])
+        self.assertIn('Deploy window', last)
+        self.assertIn('Monday', last)
+        self.assertEqual('slack:C:F1', kwargs['idempotency_prefix'])
+        self.assertEqual('Booked Monday.', client.posts[-1]['markdown_text'])
+        self.assertEqual('1', client.posts[-1]['thread_ts'])
 
     async def test_answer_cannot_broadcast(self) -> None:
         user = identity.ImbiUser('ada@example.com', 'Ada')
@@ -439,8 +486,11 @@ class HandleEventTests(helpers.TestCase):
     async def test_empty_messages(self) -> None:
         user = identity.ImbiUser('ada@example.com', 'Ada')
         event = {'channel': 'C', 'ts': '1', 'user': 'U1', 'text': '<@BOT>'}
-        # Thread holds only a prior bot message -> drops to empty history.
-        client = FakeSlackClient(replies=[{'user': 'BOT', 'text': 'hello'}])
+        # Thread holds only a bot message -> drops to empty history. It
+        # has the event's ts, so the event is not added again.
+        client = FakeSlackClient(
+            replies=[{'user': 'BOT', 'text': 'hello', 'ts': '1'}]
+        )
         with mock.patch.object(
             slack_handler.identity,
             'resolve',
