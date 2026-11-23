@@ -91,7 +91,9 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    does not refuse it.
 3. Run `imbi-api setup-permissions`. It gives the `developer` role
    `secret_grant:read` and `secret_grant:write`, so a developer can see
-   and add the secret grants of an agent on the **Access** tab.
+   and add the secret grants of an agent on the **Access** tab. It also
+   gives the `developer` role `secret_provider:read`, so a developer can
+   choose a GitHub App on that tab.
 4. Before you deploy imbi-slackbot, turn on **Interactivity** in the
    Slack app settings (Socket Mode needs no request URL), or set
    `settings.interactivity.is_enabled: true` in the app manifest. The

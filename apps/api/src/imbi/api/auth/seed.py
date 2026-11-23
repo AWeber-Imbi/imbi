@@ -924,6 +924,8 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'upload:delete',
             'tag:delete',
             'service_account:read',
+            # The agent editor's GitHub App picker lists providers.
+            'secret_provider:read',
             'secret_binding:read',
             'secret_grant:read',
             'secret_grant:write',
