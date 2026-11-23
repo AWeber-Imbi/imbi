@@ -206,53 +206,11 @@ describe('AgentsArea', () => {
     expect(herald).toHaveTextContent('—')
   })
 
-  it('shows totals, the agent table, and cap warnings on Usage', async () => {
+  it('sends the old Usage page to the Agent Usage report', async () => {
     renderAt('/agents/usage')
-    expect(await screen.findByText('Usage by agent')).toBeInTheDocument()
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      'Mender spent $340.00 of $400.00 this month (85%).',
+    await waitFor(() =>
+      expect(window.location.pathname).toBe('/reports/agent-usage'),
     )
-    // Tokens in counts cache reads: 1,000 + 3,000.
-    const total = screen.getByText('Total').closest('tr')!
-    expect(total).toHaveTextContent('4,000')
-    expect(total).toHaveTextContent('75%')
-    expect(total).toHaveTextContent('$12.50')
-    expect(
-      screen.getByRole('img', { name: 'Cost per day by agent' }),
-    ).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('radio', { name: 'Token usage' }))
-    expect(
-      screen.getByRole('img', { name: 'Tokens per day by agent' }),
-    ).toBeInTheDocument()
-  })
-
-  it('says on Usage only how many reports had no price', async () => {
-    vi.mocked(endpoints.getAgentUsage).mockResolvedValue(
-      usage({ unpriced_reports: 2 }),
-    )
-    renderAt('/agents/usage')
-    expect(
-      await screen.findByText('2 usage reports had no price and count as $0.'),
-    ).toBeInTheDocument()
-  })
-
-  it('hides the unpriced line when every report had a price', async () => {
-    renderAt('/agents/usage')
-    await screen.findByText('Usage by agent')
-    expect(screen.queryByText(/had no price/)).not.toBeInTheDocument()
-  })
-
-  it('says so when the user may not read tickets', () => {
-    auth.user = {
-      is_admin: false,
-      organizations: [
-        { organization_slug: 'acme', permissions: ['agent:read'] },
-      ],
-      permissions: ['agent:read'],
-    }
-    renderAt('/agents/usage')
-    expect(screen.getByText(/ticket:read/)).toBeInTheDocument()
-    expect(endpoints.getAgentUsage).not.toHaveBeenCalled()
   })
 
   it('saves a prompt change: version, then label, then agent', async () => {

@@ -1,3 +1,4 @@
+import asyncio
 import importlib.resources
 import tomllib
 import unittest
@@ -594,10 +595,10 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
             'Connection refused'
         )
 
-        with mock.patch(
-            'imbi.common.clickhouse.client.asyncio.sleep',
-            new=mock.AsyncMock(),
-        ) as mock_sleep:
+        mock_sleep = mock.AsyncMock()
+        with mock.patch.object(
+            client, 'asyncio', wraps=asyncio, sleep=mock_sleep
+        ):
             result = await ch._connect(delay=0.01)
 
         self.assertIsNone(result)

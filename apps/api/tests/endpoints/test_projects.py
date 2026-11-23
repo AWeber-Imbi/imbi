@@ -1,5 +1,6 @@
 """Tests for project CRUD endpoints."""
 
+import asyncio
 import datetime
 import typing
 import unittest
@@ -1505,10 +1506,13 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
             psycopg.errors.InternalError('Entity failed to be updated: 3'),
         ]
 
+        mock_sleep = mock.AsyncMock()
         with (
             mock.patch(
-                'imbi.api.endpoints.projects.asyncio.sleep'
-            ) as mock_sleep,
+                'imbi.api.endpoints.projects.asyncio',
+                wraps=asyncio,
+                sleep=mock_sleep,
+            ),
             mock.patch('imbi.common.blueprints.get_model') as mock_get_model,
             mock.patch(
                 'imbi.common.graph.parse_agtype', side_effect=lambda x: x

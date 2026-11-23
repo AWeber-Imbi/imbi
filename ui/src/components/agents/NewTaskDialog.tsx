@@ -9,6 +9,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import {
+  Check,
   ChevronRight,
   ChevronsUpDown,
   Clock,
@@ -103,7 +104,6 @@ import {
 } from './ticketAttributes'
 import { useStoredState } from './useStoredState'
 
-const PROJECTS_SHOWN = 6
 const RECENT_AGENTS = 3
 /** The pause in typing before a model writes the subject. */
 const SUBJECT_DELAY_MS = 800
@@ -465,7 +465,7 @@ export function NewTaskDialog({
 
           <div className="grid grid-cols-2 items-start gap-3 max-sm:grid-cols-1">
             <Field htmlFor="nt-projects" label="Projects">
-              <ProjectInput
+              <ProjectPicker
                 id="nt-projects"
                 isOpen={isOpen}
                 onChange={setProjectIds}
@@ -986,7 +986,7 @@ function PrerequisitesField({
 }
 
 /** Projects as chips and a search that adds one. */
-function ProjectInput({
+function ProjectPicker({
   id,
   isOpen,
   onChange,
@@ -999,8 +999,8 @@ function ProjectInput({
   orgSlug: string
   value: string[]
 }) {
+  const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const [focused, setFocused] = useState(false)
   const { data: projectList = [] } = useQuery({
     enabled: !!orgSlug && isOpen,
     queryFn: ({ signal }) => getProjectsSlim(orgSlug, signal),
@@ -1011,78 +1011,88 @@ function ProjectInput({
     .filter((p) => !!p)
   const q = query.trim().toLowerCase()
   const matches = projectList
-    .filter(
-      (p) => !p.archived && !value.includes(p.id) && (!q || p.slug.includes(q)),
-    )
+    .filter((p) => !p.archived && (!q || p.slug.includes(q)))
     .sort((a, b) => a.slug.localeCompare(b.slug))
-    .slice(0, PROJECTS_SHOWN)
-  const showMenu = focused && matches.length > 0
+  const toggle = (pid: string) =>
+    onChange(
+      value.includes(pid) ? value.filter((x) => x !== pid) : [...value, pid],
+    )
   return (
-    <div className="relative">
-      <div className="border-input bg-primary flex min-h-9 flex-wrap items-center gap-1 rounded-md border px-1.5 py-1">
-        {selected.map((p) => (
-          <span
-            className="bg-secondary inline-flex h-6 items-center gap-1 rounded-sm pr-1 pl-2 font-mono text-[12.5px]"
-            key={p.id}
-          >
-            {p.slug}
-            <button
-              aria-label={`Remove project ${p.slug}`}
-              className="text-tertiary hover:text-primary flex size-4.5 items-center justify-center rounded"
-              onClick={() => onChange(value.filter((x) => x !== p.id))}
-              type="button"
-            >
-              <X className="size-3" />
-            </button>
-          </span>
-        ))}
-        <input
-          aria-autocomplete="list"
-          aria-expanded={showMenu}
-          className="h-6.5 min-w-20 flex-1 bg-transparent px-1 text-sm outline-none"
-          id={id}
-          onBlur={() => setFocused(false)}
-          onChange={(e) => setQuery(e.target.value)}
-          onFocus={() => setFocused(true)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && matches[0]) {
-              e.preventDefault()
-              onChange([...value, matches[0].id])
-              setQuery('')
-            }
-          }}
-          placeholder={selected.length ? 'Add project' : 'Search projects'}
-          role="combobox"
-          value={query}
-        />
-      </div>
-      {showMenu && (
-        <div
-          aria-label="Projects"
-          className="border-secondary bg-primary absolute inset-x-0 top-full z-50 mt-1 overflow-hidden rounded-md border shadow-md"
-          role="listbox"
+    <div className="border-input bg-primary flex min-h-9 flex-wrap items-center gap-1 rounded-md border px-1.5 py-1">
+      {selected.map((p) => (
+        <span
+          className="bg-secondary inline-flex h-6 items-center gap-1 rounded-sm pr-1 pl-2 font-mono text-[12.5px]"
+          key={p.id}
         >
-          {matches.map((p, i) => (
-            <div
-              aria-selected={i === 0}
-              className="hover:bg-secondary flex h-8.5 cursor-pointer items-center gap-2 px-3"
-              key={p.id}
-              // Keep focus in the input.
-              onMouseDown={(e) => {
-                e.preventDefault()
-                onChange([...value, p.id])
-                setQuery('')
-              }}
-              role="option"
-            >
-              <span className="font-mono text-[12.5px]">{p.slug}</span>
-              <span className="text-tertiary ml-auto text-[11.5px]">
-                {p.project_types[0]?.name}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
+          {p.slug}
+          <button
+            aria-label={`Remove project ${p.slug}`}
+            className="text-tertiary hover:text-primary flex size-4.5 items-center justify-center rounded"
+            onClick={() => toggle(p.id)}
+            type="button"
+          >
+            <X className="size-3" />
+          </button>
+        </span>
+      ))}
+      <Popover
+        modal
+        onOpenChange={(next) => {
+          setOpen(next)
+          if (!next) setQuery('')
+        }}
+        open={open}
+      >
+        <PopoverTrigger asChild>
+          <button
+            aria-expanded={open}
+            aria-haspopup="listbox"
+            className="text-tertiary flex h-6.5 min-w-20 flex-1 items-center gap-1.5 px-1 text-left text-sm"
+            id={id}
+            type="button"
+          >
+            <Search aria-hidden className="size-3.5 shrink-0" />
+            {selected.length ? 'Add project' : 'Search projects'}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="start"
+          className="w-(--radix-popover-trigger-width) min-w-72 p-0"
+        >
+          <Command shouldFilter={false}>
+            <CommandInput
+              onValueChange={setQuery}
+              placeholder="Search projects"
+              value={query}
+            />
+            <CommandList className="max-h-75">
+              <CommandEmpty>No projects match.</CommandEmpty>
+              <CommandGroup>
+                {matches.map((p) => (
+                  <CommandItem
+                    aria-checked={value.includes(p.id)}
+                    key={p.id}
+                    onSelect={() => toggle(p.id)}
+                    value={p.id}
+                  >
+                    <Check
+                      aria-hidden
+                      className={cn(
+                        'size-3.5 shrink-0',
+                        !value.includes(p.id) && 'invisible',
+                      )}
+                    />
+                    <span className="font-mono text-[12.5px]">{p.slug}</span>
+                    <span className="text-tertiary ml-auto text-[11.5px]">
+                      {p.project_types[0]?.name}
+                    </span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
     </div>
   )
 }

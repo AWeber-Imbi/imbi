@@ -1,3 +1,5 @@
+import { useMemo } from 'react'
+
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { ApiError } from '@/api/client'
@@ -21,6 +23,25 @@ export function useAgentList(orgSlug: string | undefined) {
     queryFn: ({ signal }) => listAgents(orgSlug!, signal),
     queryKey: queryKeys.agents(orgSlug ?? ''),
   })
+}
+
+/**
+ * The agents of an org keyed by id and by slug: ticket rows record an
+ * agent by id, and changes an agent makes record it by slug.
+ */
+export function useAgentLookup(orgSlug: string | undefined) {
+  const { data: agents, isLoading } = useAgentList(orgSlug)
+  const agentMap = useMemo(
+    () =>
+      new Map(
+        (agents ?? []).flatMap((a) => [
+          [a.id, a],
+          [a.slug, a],
+        ]),
+      ),
+    [agents],
+  )
+  return { agentMap, isLoading }
 }
 
 /**

@@ -197,7 +197,7 @@ deletes them from Postgres.
 
 Each usage report returns the task state. When the cost is over the
 budget, imbi-api closes the task with `exceeded_ceiling`, and the runner
-stops the SDK. The **Agents > Usage** page reads `agent_usage`.
+stops the SDK. The **Reports > Agent Usage** report reads `agent_usage`.
 
 ## 7. Outcome
 

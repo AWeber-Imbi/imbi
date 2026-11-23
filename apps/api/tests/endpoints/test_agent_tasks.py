@@ -250,6 +250,30 @@ class AgentTaskTestCase(support.SharedAppAsyncTestCase):
             service_account
         )
 
+    async def grant_role(
+        self, role: str, permission: str, member: str, **params: str
+    ) -> None:
+        """Make ``role`` grant ``permission`` and give it to ``member``.
+
+        ``member`` is a Cypher node pattern such as
+        ``(:User {{email: {email}}})``, with its values in ``params``.
+        """
+        # Two queries: AGE refuses a plan that rescans a CREATE, and a
+        # MATCH joined after the CREATE can get such a plan.
+        await self.graph.execute(
+            'MERGE (p:Permission {{name: {permission}}})'
+            ' CREATE (r:Role {{slug: {role}, name: {role}}})'
+            ' CREATE (r)-[:GRANTS]->(p) RETURN 1 AS ok',
+            {'role': role, 'permission': permission},
+            ['ok'],
+        )
+        await self.graph.execute(
+            f'MATCH {member}-[m:MEMBER_OF]->()'
+            ' SET m.role = {role} RETURN 1 AS ok',
+            {'role': role, **params},
+            ['ok'],
+        )
+
     async def make_agent(
         self,
         slug: str = 'triage',

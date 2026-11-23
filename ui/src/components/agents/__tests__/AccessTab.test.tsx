@@ -1,4 +1,6 @@
 import { fireEvent, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { toast } from 'sonner'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as endpoints from '@/api/endpoints'
@@ -18,6 +20,11 @@ vi.mock('@/api/endpoints', () => ({
   listSecretGrants: vi.fn(),
   listSecretProviders: vi.fn(),
   updateSecretGrant: vi.fn(),
+}))
+
+// fallow-ignore-next-line unresolved-import
+vi.mock('sonner', () => ({
+  toast: { error: vi.fn(), info: vi.fn(), success: vi.fn() },
 }))
 
 const auth = vi.hoisted(() => ({
@@ -227,6 +234,77 @@ describe('AccessTab', () => {
     expect(await screen.findByText('secret://ci/npm_token')).toBeInTheDocument()
     expect(screen.getByText(/shared with 1 other agent/)).toBeInTheDocument()
     expect(screen.getByText('npm')).toBeInTheDocument()
+  })
+
+  async function openAddAccess() {
+    renderTab()
+    fireEvent.click(await screen.findByRole('button', { name: /Add access/ }))
+    fireEvent.click(screen.getByRole('combobox', { name: 'Secret' }))
+    fireEvent.click(
+      await screen.findByRole('option', { name: 'secret://ci/npm_token' }),
+    )
+    fireEvent.click(screen.getByRole('combobox', { name: /^Purpose/ }))
+  }
+
+  it('suggests the purposes that an agent can request', async () => {
+    await openAddAccess()
+    const options = (await screen.findAllByRole('option')).map(
+      (option) => option.textContent,
+    )
+    expect(options).toEqual(['github_read', 'github_write', 'npm'])
+  })
+
+  it('grants a suggested purpose', async () => {
+    await openAddAccess()
+    fireEvent.click(await screen.findByRole('option', { name: 'github_read' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() =>
+      expect(endpoints.createSecretGrant).toHaveBeenCalledWith(
+        'acme',
+        expect.objectContaining({
+          binding_ids: ['b-npm'],
+          purposes: ['github_read'],
+        }),
+      ),
+    )
+  })
+
+  it('grants a purpose that the user types', async () => {
+    await openAddAccess()
+    await userEvent.type(
+      await screen.findByPlaceholderText('Search...'),
+      'sentry',
+    )
+    fireEvent.click(screen.getByRole('option', { name: /Use “sentry”/ }))
+    expect(
+      screen.getByRole('combobox', { name: /^Purpose/ }),
+    ).toHaveTextContent('sentry')
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() =>
+      expect(endpoints.createSecretGrant).toHaveBeenCalledWith(
+        'acme',
+        expect.objectContaining({
+          binding_ids: ['b-npm'],
+          purposes: ['sentry'],
+        }),
+      ),
+    )
+  })
+
+  it('refuses a setup purpose that the user types', async () => {
+    await openAddAccess()
+    await userEvent.type(
+      await screen.findByPlaceholderText('Search...'),
+      'model_inference',
+    )
+    fireEvent.click(
+      screen.getByRole('option', { name: /Use “model_inference”/ }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(toast.error).toHaveBeenCalledWith(
+      'model_inference is for the runner only',
+    )
+    expect(endpoints.createSecretGrant).not.toHaveBeenCalled()
   })
 
   it('asks for a save before a new agent gets access', () => {

@@ -17,6 +17,7 @@ TABLE: dict[str, typing.Any] = {
     'sample_spec': {'litellm_provider': 'one of https://docs.litellm.ai'},
     'claude-sonnet-5-5': {
         'cache_creation_input_token_cost': 0.0000025,
+        'cache_creation_input_token_cost_above_1hr': 0.000004,
         'cache_read_input_token_cost': 1e-07,
         'input_cost_per_token': 0.000002,
         'litellm_provider': 'anthropic',
@@ -48,6 +49,7 @@ class LookupTestCase(unittest.TestCase):
                     'output_cost_per_million': D('10'),
                     'cache_read_cost_per_million': D('0.1'),
                     'cache_write_cost_per_million': D('2.5'),
+                    'cache_write_1h_cost_per_million': D('4'),
                 },
             ),
         )

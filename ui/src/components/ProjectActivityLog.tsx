@@ -13,6 +13,7 @@ import {
   listProjectEvents,
 } from '@/api/endpoints'
 import type { EventRecord } from '@/api/endpoints'
+import { useAgentLookup } from '@/components/agents/agentQueries'
 import { renderEntryLabel } from '@/components/operations-log/renderEntryLabel'
 import { EntityIcon } from '@/components/ui/entity-icon'
 import { EnvironmentBadge } from '@/components/ui/environment-badge'
@@ -29,7 +30,12 @@ import type { PluginOpsLogTemplateMap } from '@/hooks/usePluginOpsLogTemplates'
 import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import { parseServerTs, toDateOnlyIso } from '@/lib/formatDate'
 import { formatFieldKey } from '@/lib/project-field-formatting'
-import type { Environment, Integration, OperationsLogRecord } from '@/types'
+import type {
+  Agent,
+  Environment,
+  Integration,
+  OperationsLogRecord,
+} from '@/types'
 
 const MAX_ROWS = 20
 
@@ -98,6 +104,9 @@ export function ProjectActivityLog({ orgSlug, projectId, projectSlug }: Props) {
 
   const { displayNames } = useUserDisplayNames()
 
+  // isLoading, not isPending: the query is disabled without agent:read.
+  const { agentMap, isLoading: agentsLoading } = useAgentLookup(orgSlug)
+
   const { data: environments = [] } = useQuery({
     enabled: Boolean(orgSlug),
     queryFn: ({ signal }) => listEnvironments(orgSlug, signal),
@@ -126,9 +135,10 @@ export function ProjectActivityLog({ orgSlug, projectId, projectSlug }: Props) {
 
   // Include integrations: the feed is one region with one footprint-matched
   // skeleton, and rows resolve their identity (name/avatar) from the
-  // integration map. Gating on it too keeps unattributed rows from flashing a
-  // raw slug or unknown avatar before their identity resolves.
-  const isPending = eventsPending || opsPending || integrationsPending
+  // integration and agent maps. Gating on them too keeps rows from flashing a
+  // raw slug or id before their identity resolves.
+  const isPending =
+    eventsPending || opsPending || integrationsPending || agentsLoading
 
   const merged: ActivityItem[] = useMemo(() => {
     const events: ActivityItem[] = (eventsPage?.entries ?? []).map((e) => ({
@@ -179,6 +189,7 @@ export function ProjectActivityLog({ orgSlug, projectId, projectSlug }: Props) {
                 {group.items.map((item, i) =>
                   item.kind === 'event' ? (
                     <EventEntry
+                      agentMap={agentMap}
                       displayNames={displayNames}
                       integrationMap={integrationMap}
                       item={item}
@@ -187,6 +198,7 @@ export function ProjectActivityLog({ orgSlug, projectId, projectSlug }: Props) {
                     />
                   ) : (
                     <OpsEntry
+                      agentMap={agentMap}
                       displayNames={displayNames}
                       envMap={envMap}
                       item={item}
@@ -228,6 +240,11 @@ function ActivityLogSkeleton() {
       </div>
     </div>
   )
+}
+
+/** An agent's icon, or a bot glyph when it has none. */
+function agentIcon(agent?: Agent): string | undefined {
+  return agent && (agent.icon || 'lucide-bot')
 }
 
 function asStr(value: unknown): string {
@@ -414,11 +431,13 @@ function EnvChip({ env }: { env?: Environment }) {
 
 // fallow-ignore-next-line complexity
 function EventEntry({
+  agentMap,
   displayNames,
   integrationMap,
   item,
   projectId,
 }: {
+  agentMap: Map<string, Agent>
   displayNames: Map<string, string>
   integrationMap: Map<string, Integration>
   item: ActivityItem & { kind: 'event' }
@@ -435,6 +454,11 @@ function EventEntry({
   // identity so a webhook row is never a nameless "?" bubble.
   const actor = resolveEventActor(entry)
   const hasActor = Boolean(actor)
+  // Only recorded attribution can name an agent; a webhook sender login is
+  // an external identity that can collide with an agent slug.
+  const agent = entry.attributed_to
+    ? agentMap.get(entry.attributed_to)
+    : undefined
   const { body, href } = renderEventBody(
     entry,
     projectId,
@@ -447,13 +471,17 @@ function EventEntry({
       actor={actor}
       avatarColor="info"
       avatarIcon={
-        hasActor
+        agentIcon(agent) ??
+        (hasActor
           ? undefined
-          : integrationAvatarIcon(integration) || 'lucide-webhook'
+          : integrationAvatarIcon(integration) || 'lucide-webhook')
       }
       body={body}
       href={href}
-      name={hasActor ? getDisplayName(actor, displayNames) : integrationLabel}
+      name={
+        agent?.name ??
+        (hasActor ? getDisplayName(actor, displayNames) : integrationLabel)
+      }
       ts={item.ts}
     />
   )
@@ -551,11 +579,13 @@ function KeyChangeItem({ change }: { change: KeyChange }) {
 
 // fallow-ignore-next-line complexity
 function OpsEntry({
+  agentMap,
   displayNames,
   envMap,
   item,
   templates,
 }: {
+  agentMap: Map<string, Agent>
   displayNames: Map<string, string>
   envMap: Map<string, Environment>
   item: ActivityItem & { kind: 'ops' }
@@ -563,7 +593,8 @@ function OpsEntry({
 }) {
   const op = item.data
   const actor = op.performed_by ?? op.recorded_by
-  const name = getDisplayName(actor, displayNames)
+  const agent = agentMap.get(actor)
+  const name = agent?.name ?? getDisplayName(actor, displayNames)
   const color: AvatarColor =
     op.entry_type === 'Deployed' ? 'warning' : 'neutral'
   const env = envMap.get(op.environment_slug)
@@ -589,6 +620,7 @@ function OpsEntry({
     <EntryRow
       actor={actor}
       avatarColor={color}
+      avatarIcon={agentIcon(agent)}
       body={body}
       name={name}
       ts={item.ts}

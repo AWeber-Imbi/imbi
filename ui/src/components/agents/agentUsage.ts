@@ -9,6 +9,18 @@ export interface CapStatus {
 
 type Counts = Omit<AgentUsageTotals, 'agent_id' | 'cost'> & { cost: number }
 
+/**
+ * Maps an agent id to its name. Usage and tasks outlive their agent, so
+ * an id not in the loaded list names a deleted agent.
+ */
+export function agentNamer(
+  agents: Agent[],
+  loaded: boolean,
+): (id: string) => string {
+  const names = new Map(agents.map((a) => [a.id, a.name]))
+  return (id) => names.get(id) ?? (loaded ? `Deleted ${id}` : id)
+}
+
 /** Cache reads as a share of input tokens, or null with no input. */
 export function cacheHit(t: AgentUsageTotals | Counts): null | number {
   const input = inputTokens(t)

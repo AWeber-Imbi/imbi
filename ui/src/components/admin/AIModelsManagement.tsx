@@ -86,6 +86,7 @@ const MODEL_PATCH_FIELDS = [
   'access_scope',
   'allowed_team_ids',
   'cache_read_cost_per_million',
+  'cache_write_1h_cost_per_million',
   'cache_write_cost_per_million',
   'context_window',
   'default_temperature',
@@ -223,6 +224,7 @@ export function AIModelsManagement() {
         access_scope: values.access_scope,
         allowed_team_ids: values.allowed_team_ids,
         cache_read_cost_per_million: values.cache_read_cost_per_million,
+        cache_write_1h_cost_per_million: values.cache_write_1h_cost_per_million,
         cache_write_cost_per_million: values.cache_write_cost_per_million,
         context_window: values.context_window,
         default_temperature: values.default_temperature,
@@ -621,6 +623,9 @@ function currentModelState(
     allowed_team_ids: model.allowed_teams.map((team) => team.id),
     cache_read_cost_per_million: decimalToNumber(
       model.cache_read_cost_per_million,
+    ),
+    cache_write_1h_cost_per_million: decimalToNumber(
+      model.cache_write_1h_cost_per_million,
     ),
     cache_write_cost_per_million: decimalToNumber(
       model.cache_write_cost_per_million,

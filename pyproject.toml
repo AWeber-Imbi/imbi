@@ -58,6 +58,7 @@ dev = [
   "pytest~=9.0",
   "pytest-asyncio",
   "pytest-cov>=7.0.0",
+  "pytest-xdist>=3.8",
   "python-dotenv>=1.1.0",
   "respx",
   "ruff~=0.14.6",

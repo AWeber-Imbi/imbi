@@ -420,6 +420,7 @@ tokens_in = "BIGINT NOT NULL DEFAULT 0"
 tokens_out = "BIGINT NOT NULL DEFAULT 0"
 cache_read_tokens = "BIGINT NOT NULL DEFAULT 0"
 cache_write_tokens = "BIGINT NOT NULL DEFAULT 0"
+cache_write_1h_tokens = "BIGINT NOT NULL DEFAULT 0"
 last_seq = "BIGINT NOT NULL DEFAULT 0"
 created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 updated_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
@@ -633,6 +634,10 @@ output_cost_per_million = "NUMERIC(14, 6)"
 cache_read_cost_per_million = "NUMERIC(14, 6)"
 cache_write_cost_per_million = "NUMERIC(14, 6)"
 cost = "NUMERIC(14, 6)"
+# The part of cache_write_tokens written with the 1-hour cache TTL, and
+# its rate. cache_write_cost_per_million is the 5-minute rate.
+cache_write_1h_tokens = "BIGINT"
+cache_write_1h_cost_per_million = "NUMERIC(14, 6)"
 recorded_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 
 [tables.primary_key]
