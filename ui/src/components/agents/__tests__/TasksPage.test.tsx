@@ -1758,8 +1758,11 @@ describe('Tasks', () => {
     fireEvent.change(within(dialog).getByLabelText(/Describe the work/), {
       target: { value: 'Check the build\nFind why it fails.' },
     })
-    fireEvent.focus(within(dialog).getByLabelText('Projects'))
-    fireEvent.mouseDown(await within(dialog).findByText('billing'))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Projects' }))
+    fireEvent.click(await screen.findByRole('option', { name: /billing/ }))
+    fireEvent.keyDown(screen.getByPlaceholderText('Search projects'), {
+      key: 'Escape',
+    })
     fireEvent.click(
       within(dialog).getByRole('button', { name: 'Create ticket' }),
     )
