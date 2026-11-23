@@ -172,14 +172,12 @@ _RULES = """\
 - When a secret is a JSON object, each string member also goes into
   the environment with its own name, unless you request one member
   with `#<field>`. Without `#<field>`, the variable named in `env`
-  holds the whole JSON object, even when `env` is the name of a member,
-  and that member then gets no variable of its own.
+  holds the string member with that name, or the whole JSON object
+  when no member has it.
 - For one value of a secret listed with fields, request that member,
   for example `secret://sentry/api#SENTRY_AUTH_TOKEN` with `env`
   `SENTRY_AUTH_TOKEN`. A secret listed without fields refuses
-  `#<field>`: give `env` a name that no member has, such as
-  `SENTRY_JSON`, and use the member variables. The tool result names
-  each variable that it set.
+  `#<field>`. The tool result names each variable that it set.
 - The secret references that you may request:{secrets}
 - Use `attach_project` to add a project of the organization to this
   task, by id or slug, when the work needs its repository. The next

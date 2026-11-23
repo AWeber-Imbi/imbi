@@ -302,9 +302,12 @@ the requested variable gets the whole JSON object. These rules apply:
 - When the binding has **Allowed delivery targets**, only members with
   those names get a variable.
 - A member does not replace a variable that is set already.
-- A member with the name of the requested variable gets no variable of
-  its own. That variable holds the whole JSON object, so a request for
-  one value must name the member with `#field`.
+- When a string member has the name of the requested variable, that
+  variable holds the member instead of the whole JSON object. For
+  `{"SENTRY_AUTH_TOKEN": "...", "SENTRY_ORG": "..."}` requested into
+  `SENTRY_AUTH_TOKEN`, the command gets the token in
+  `SENTRY_AUTH_TOKEN` and the organization in `SENTRY_ORG`, and no
+  variable holds the JSON object.
 
 The tool result gives the names of the variables that it set, never the
 values. Imbi removes each string member value from the command output
