@@ -2,6 +2,7 @@
 
 import typing
 import unittest
+from unittest import mock
 
 import fastapi
 
@@ -306,3 +307,46 @@ class ValidateTests(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 422)
         # A PATCH does not fill defaults, so it does not check them.
         self.assertEqual(custom_fields.validate(matches, {}, partial=True), {})
+
+    def test_nested_ref(self) -> None:
+        def blueprint(ref: str) -> models.Blueprint:
+            return models.Blueprint(
+                name='Ref',
+                type='Ticket',
+                json_schema=models.Schema.model_validate(
+                    {
+                        'type': 'object',
+                        '$defs': {'Change': {'type': 'integer'}},
+                        'properties': {
+                            'payload': {
+                                'type': 'object',
+                                'properties': {'change': {'$ref': ref}},
+                            }
+                        },
+                    }
+                ),
+            )
+
+        local = [blueprint('#/$defs/Change')]
+        self.assertEqual(
+            custom_fields.validate(
+                local, {'payload': {'change': 1}}, partial=False
+            ),
+            {'payload': {'change': 1}},
+        )
+        with self.assertRaises(fastapi.HTTPException):
+            custom_fields.validate(
+                local, {'payload': {'change': 'x'}}, partial=False
+            )
+        # A remote $ref is an invalid field, never a request.
+        remote = [blueprint('https://example.invalid/change.json')]
+        with (
+            mock.patch('urllib.request.urlopen') as urlopen,
+            self.assertRaises(fastapi.HTTPException) as ctx,
+        ):
+            custom_fields.validate(
+                remote, {'payload': {'change': 1}}, partial=False
+            )
+        urlopen.assert_not_called()
+        detail = typing.cast(dict[str, typing.Any], ctx.exception.detail)
+        self.assertEqual(detail['invalid'][0]['field'], 'payload')

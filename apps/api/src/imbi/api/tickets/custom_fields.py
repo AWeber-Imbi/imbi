@@ -13,6 +13,8 @@ from collections import abc
 import fastapi
 import jsonschema
 import pydantic
+import referencing
+import referencing.exceptions
 
 from imbi.api import blueprint_attributes, blueprint_sections
 from imbi.common import blueprints, graph, models
@@ -201,25 +203,39 @@ def _nested_errors(
     matches: list[models.Blueprint], values: dict[str, typing.Any]
 ) -> list[dict[str, str]]:
     """Check each object value against the nested schema of its field.
-    The shared helper checks only that the value is a dict."""
-    properties: dict[str, models.Schema] = {}
+    The shared helper checks only that the value is a dict.
+
+    The check uses the whole schema of the blueprint that declares the
+    field, so a ``$ref`` to its ``$defs`` resolves. The registry is
+    empty, so a remote ``$ref`` is never fetched: it is an error.
+    """
+    owners: dict[str, tuple[models.Blueprint, models.Schema]] = {}
     for bp in matches:
-        properties.update(bp.json_schema.properties or {})
+        for name, prop in (bp.json_schema.properties or {}).items():
+            owners[name] = (bp, prop)
     errors: list[dict[str, str]] = []
     for name, value in values.items():
-        prop = properties.get(name)
-        if prop is None or prop.type != 'object':
+        if name not in owners or owners[name][1].type != 'object':
             continue
+        bp = owners[name][0]
         schema = typing.cast(
             dict[str, typing.Any],
-            prop.model_dump(  # pyright: ignore[reportUnknownMemberType]
+            bp.json_schema.model_dump(  # pyright: ignore[reportUnknownMemberType]
                 mode='json', by_alias=True, exclude_none=True
             ),
         )
+        schema['properties'] = {name: schema['properties'][name]}
+        schema.pop('required', None)
         try:
-            jsonschema.validate(value, schema)
+            jsonschema.validate(
+                {name: value},
+                schema,
+                registry=referencing.Registry[typing.Any](),
+            )
         except jsonschema.ValidationError as err:
             errors.append({'field': name, 'message': err.message})
+        except referencing.exceptions.Unresolvable as err:
+            errors.append({'field': name, 'message': f'Unresolvable: {err}'})
     return errors
 
 
