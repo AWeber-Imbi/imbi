@@ -55,9 +55,7 @@ then had two sources of MCP servers, and the admin servers were never
 meant for agents. Commit `8e3ad1de` then retired `mcp_server`, the
 broker purpose of that relay. The admin servers stay assistant-only.
 This ADR relays the servers that plugins declare, which is the one
-source that #608 kept. The removed relay code (`start_external`, the
-credential fetch, the warnings) is a starting point for the
-implementation.
+source that #608 kept.
 
 ## Decision
 
@@ -88,229 +86,103 @@ cover:
 
 ### The marketplace sync reads the servers the harness loads
 
-The sync finds a plugin's MCP servers with the same rule that the
-harness uses when it publishes the plugin (`_manifest` and
-`_plugin_servers`):
-
-- If the plugin directory has `.claude-plugin/plugin.json`, the servers
-  are its `mcpServers` and those of `.mcp.json`. `mcpServers` is an
-  object, the path of a JSON file, or a list of both. The sync ignores
-  the marketplace entry's `mcpServers`, because they do not reach the
-  CLI in this case.
-- If it has no `plugin.json`, the marketplace entry is the manifest.
-  The servers are the entry's `mcpServers` and those of `.mcp.json`.
-- Tool names use the manifest's `name` as the plugin name.
-
-The sync reads these files with the `RepositoryReader` that reads
-`marketplace.json`. For a plugin stored in the marketplace repository,
-it reads them at the marketplace head SHA. For an external plugin, it
-reads them at the plugin's `repository_sha`. If a file cannot be read,
-the sync lists no servers from it and does not fail. The scheduler
-runs the sync every 6 hours, so the extra reads are small next to the
-GitHub rate limit.
+The sync finds a plugin's MCP servers with the rule the harness uses
+when it publishes the plugin. If the plugin has a
+`.claude-plugin/plugin.json`, the servers come from it and from
+`.mcp.json`. Otherwise they come from the marketplace entry and from
+`.mcp.json`. A file the sync cannot read adds no servers and does not
+fail the sync.
 
 For each server, the sync stores the name, the type, the URL, and the
 header names, with the variables that each header uses. It stores no
 header value, because a plugin author can commit a literal token there.
 
-`CatalogPlugin.mcp_servers` changes from a list of names to a list of
-these objects. A validator reads both shapes, so a stored catalog stays
-valid until its next sync.
-
 ### Agent configuration
 
-`AgentPlugin` gets a new field, `mcp_servers`. It holds one entry for
-each server that the agent changes from the default:
+`AgentPlugin` gets a new field, `mcp_servers`, with one entry for each
+server that the agent changes from the default. An entry can turn the
+server off, or map its header variables to secret references. An entry
+with secrets also records the origin of the server URL that the person
+saw when they picked the secrets, and the origin must be `https`. A
+server with no entry is on and has no secrets, so the CLI connects to
+it as it does today, and existing agents need no migration. The
+entries are part of the agent version, like the plugin pin.
 
-| Field     | Content                                                          |
-| --------- | ---------------------------------------------------------------- |
-| `name`    | The server name in the plugin                                    |
-| `enabled` | `false` turns the server off. Default `true`                     |
-| `secrets` | A map of header variable to secret reference                     |
-| `origin`  | The scheme, host, and port of the server URL. Set with `secrets` |
+The Tools and plugins section lists each server under its plugin, with
+its own checkbox, its URL, and a secret picker for each header
+variable. This works for default plugins too, whose plugin checkbox
+stays locked. The code does not detect duplicate servers. To remove a
+duplicate, a person unchecks one of the two. When a server's origin
+changes, the UI shows the new URL and asks for the secrets again.
 
-A server with no entry is on and has no secrets, so the CLI connects to
-it as it does today. Existing agents need no migration. The entries are
-part of the agent version, like the plugin pin.
+### Secret purpose
 
-The API:
-
-- Keeps the request's `mcp_servers` when it pins plugins. Today
-  `pin_plugins` keeps the stored entry whenever the `sha` matches, and
-  `_pin` copies five fields. Both must carry `mcp_servers`.
-- Checks each secret reference with `check_reference`, and each server
-  and variable name against the plugin's servers.
-- Requires an `https` origin for a server with secrets.
-- Refuses `mcp_servers` on the organization's `default_plugins`.
-
-The Tools and plugins section lists each server under its plugin,
-indented, with its own checkbox. Under a checked server, it shows the
-server URL and lists each header variable next to a picker for a secret
-reference. Unchecking a plugin turns off all of its servers. The UI
-keeps `mcp_servers` when it re-pins or toggles a plugin.
-
-The code does not detect duplicate servers. To remove a duplicate, a
-person unchecks one of the two.
-
-A default plugin keeps its locked checkbox, but its server checkboxes
-and secret pickers work. The merge of the agent configuration applies
-the agent's `mcp_servers` entries to the default plugin with the same
-marketplace and name.
-
-When a person picks a secret for a server whose URL origin later
-changes, the UI shows the new URL and asks for the secret again.
-
-The catalog holds the servers of the newest commit, but an agent
-version runs the commit it pinned. So the UI marks each of an agent's
-server entries that the newest commit does not have, as it already
-marks a stale plugin pin.
-
-### Secret purpose and grants
-
-A new runner-only purpose, `mcp_header`, joins:
-
-- `SETUP_PURPOSES` in the broker
-- `SETUP_PURPOSES` in the harness task, which `_secret_refusal` uses
-- `SETUP_PURPOSES` and `FETCH_PURPOSES` in the executor. The executor's
-  `fetch` checks `FETCH_PURPOSES`.
-- the purpose list of the UI and the purpose table of the docs
-
-`mcp_server` stays retired. Like the other setup purposes, a grant for
-`mcp_header` can use only the `file_descriptor` delivery mode, so a
-model command can never receive it. A `run_with_secret` grant uses the
-`environment` delivery mode, so the two purposes are always in separate
-grants. A binding can have both grants, and then the model can also use
-the token in a command.
+A new runner-only purpose, `mcp_header`, delivers a header secret. Like
+the other setup purposes, a grant for `mcp_header` can use only the
+`file_descriptor` delivery mode, so a model command can never receive
+it. A `run_with_secret` grant uses the `environment` delivery mode, so
+the two purposes are always in separate grants. A binding can have
+both grants, and then the model can also use the token in a command.
 
 When a person picks a secret for a header variable, the Tools and
-plugins section:
-
-1. Checks that the binding allows the delivery mode `file_descriptor`
-   and the target `3`. If not, it shows that the binding cannot be
-   used here.
-2. Does nothing more if a grant already covers the agent, the binding,
-   `mcp_header`, and `file_descriptor`. A second matching grant would
-   make the broker refuse with `ambiguous_grants`.
-3. Otherwise adds `mcp_header` to the agent's own `file_descriptor`
-   grant for that binding, or creates that grant, as the Access tab
-   does today.
-
-These steps need `secret_binding:read` and `secret_grant:write`.
-Without them, the section shows that a grant is missing. A grant
-applies at once and is not part of the agent version.
+plugins section adds `mcp_header` to the agent's `file_descriptor`
+grant for that binding, or creates that grant. A grant applies at once
+and is not part of the agent version. `mcp_server` stays retired.
 
 ### Runner relay
 
-When the runner builds the workspace, it:
+The runner removes each relayed server and each turned-off server from
+its copy of the plugin. Root owns that copy, so the model cannot add a
+server back. For each relayed server, the runner resolves the secrets
+with the purpose `mcp_header` and opens an MCP client session through
+its egress proxy. It fills the headers on each request, so a refreshed
+credential applies to the open session.
 
-1. Computes `plugin_servers`, the permission rules for plugin servers,
-   from the published plugin copies before it changes them. The rules
-   keep each relayed server and leave out each turned-off server. So
-   the allowed tools and the tool policy treat relayed tools as plugin
-   tools.
-2. Removes each turned-off server and each relayed server from the
-   plugin copy under `/run/plugins`. Root owns the copy, so the model
-   cannot add a server back.
-3. Checks the agent's entries against the pinned copy. An entry for a
-   server or a variable that the copy does not have gets a warning.
+The relay sends a credential only to the origin in the agent's entry,
+and only over `https`. If the server URL no longer has that origin, the
+runner does not relay the server and adds a task warning. The relay
+follows a redirect only to the same origin.
 
-For each relayed server, the runner:
+The runner gives the CLI each relayed server as an in-process SDK
+server named `plugin:<plugin>:<server>`. The CLI names its tools
+`mcp__plugin_<plugin>_<server>__<tool>`, the names that the tools of
+the plugin's own server would have. So allow rules, the tool policy,
+and the server statuses treat relayed tools as the plugin's tools.
+Every call goes through the `PreToolUse` hook. The model's `Bash`
+cannot reach the relay, because the CLI talks to the relay over the SDK
+control channel and not over a socket.
 
-1. Checks that the server URL is `https` and that its origin equals the
-   `origin` of the entry. If not, it does not relay the server and adds
-   a warning.
-2. Resolves each secret once, with the purpose `mcp_header`. The
-   executor passes the value to the runner, as it does for the model
-   key. A credential with an expiry is refreshed before it expires, as
-   the model key is. The runner refuses a value that is not a string,
-   such as a whole JSON secret without `#field`, and adds a warning.
-3. Fills the headers. It leaves out a header whose variable has no
-   secret and no default.
-4. Opens an MCP client session to the server URL. The client uses the
-   runner's egress proxy settings (`HTTPS_PROXY` with the chain token,
-   and `NO_PROXY`), or connects directly when there is no proxy. The
-   client follows a redirect only to the same origin.
-5. Gives the CLI an in-process server, an `mcp.server.Server` passed to
-   the SDK as `instance`. Its name is `plugin:<plugin>:<server>`, the
-   name the CLI gives the plugin's own server. The CLI names its tools
-   `mcp__plugin_<plugin>_<server>__<tool>`, with each character outside
-   `[A-Za-z0-9_-]` replaced by `_`. So the relayed tools have the same
-   names as the tools of the plugin's own server, and the relayed
-   server has the same name in the server statuses.
+The relay forwards tools, resources, and prompts, with the safeguards
+of the Imbi relay, the relay for Imbi's own MCP server. Each call has a
+timeout, a limit on result size, and ends when the task stops. The
+relay removes each secret value from a result, in case the server
+echoes a request header.
 
-The relay forwards tools, resources, and prompts. Each call gets the
-same safeguards as in the Imbi relay, the relay for Imbi's own MCP
-server. A call has a timeout, ends when the task stops, and has a limit
-on result size. Its result goes to the model in `<untrusted>` tags. The
-relay also removes each secret value from the result, in case the
-server echoes a request header.
+Each result goes to the model in `<untrusted>` tags. The harness puts
+text from outside Imbi in these tags, and the task prompt tells the
+model that their content is data and not instructions. A relayed
+result comes from a third-party server, and the relay has it in hand,
+so the relay wraps it, as the Imbi relay wraps its results. The CLI
+passes the results of a server that it connects to itself straight to
+the model, and the harness does not change them.
 
-The relay's server never ends on an upstream error, because the SDK
-does not restart an in-process server that ends. The relay returns the
-error as the result of the call instead.
+The relay keeps one session per server for the life of the task. If
+the server drops the session, the relay opens a new one but does not
+repeat the failed call, because the state the server kept in the old
+session is gone. The call returns an error instead.
 
-The relay keeps one session per server for the life of the task. It
-fills the headers on each HTTP request with an `httpx.Auth`, which both
-MCP client transports accept. So a refreshed credential applies to the
-next request, and the session stays open. A static secret is not
-resolved again, so a revoked grant takes effect at the next task.
-
-The relay opens a session again only after a connection error, for
-example when the server closes an idle session. By then the server has
-dropped the old session and any state it kept there, such as a selected
-workspace. The relay cannot restore that state, so it does not run the
-failed call again in the new session. It returns an error that says the
-server session was reset and whether the call ran:
-
-- If the server refused the request because it no longer knows the
-  session (HTTP 404, as the MCP spec requires), the call did not run.
-- If the connection broke after the relay sent the request, the outcome
-  is unknown. The error says so, and tells the model to check the
-  server's state before it repeats the call.
-
-The error tells the model to repeat its setup calls before it
-retries. The relay does not check that it did. If the model skips the
-setup, its later calls run against the new session's default state.
-
-If a refresh is denied, the relay closes the server's session before
-the old credential expires. Each later call to that server returns an
-error.
-
-The SDK bridge to an in-process server has these limits:
-
-- It drops server notifications, such as progress, logging, and
-  `tools/list_changed`. The CLI's tool list is fixed after its first
-  `tools/list`.
-- It refuses a request that a server sends to its client, such as
-  sampling, elicitation, or roots.
-- With mcp 1.x, it does not pass a cancellation to a hand-built server.
-  Until mcp 2.x, the relay's call timeout limits how long such a call
-  runs.
-
-The model's `Bash` cannot reach the relay, because the CLI talks to the
-relay over the SDK control channel and not over a socket. Every call to
-the relay goes through the `PreToolUse` hook.
+The SDK bridge to an in-process server drops server notifications,
+such as `tools/list_changed`, and refuses requests that a server sends
+to its client, such as sampling and elicitation.
 
 ### Server problems show as task warnings
 
-The runner adds a task warning with `recorder.notice` in each case
-below, and the Conversation tab shows it. No warning fails the task.
-
-- A plugin server's status is `failed` or `needs-auth`. A remote
-  server is often still `pending` in the SDK `init` message, so the
-  runner reads the statuses again with the SDK's `get_mcp_status` until
-  no server is `pending` or a short wait ends. A server still `pending`
-  then gets a warning too.
-- The upstream server refuses the relay's session.
-- An enabled server has a header variable with no secret and no
-  default. The warning names the variable. The server starts anyway,
-  and its status or its failed calls show the result.
-- An entry names a server or variable that the pinned copy does not
-  have.
-- A relayed server's URL is not `https`, or its origin changed.
-- A secret value is not a string.
-- The relay opened a server's session again, or a credential refresh
-  was denied.
+A plugin server's problem shows as a task warning in the Conversation
+tab. The task gets one when a server's status is `failed`,
+`needs-auth`, or still `pending` after a short wait, when the relay
+cannot open or keep a session, when a header variable has no secret
+and no default, and when the agent's entries do not match the pinned
+plugin. No warning fails the task.
 
 ### Verified CLI behavior
 
@@ -334,6 +206,12 @@ checked with Claude Agent SDK 0.2.164 and Claude Code 2.1.292:
 - A credential goes only to the origin that a person saw when they
   picked the secret. A plugin update that moves the server to another
   origin stops the relay until a person confirms the new URL.
+- The relay depends on the CLI naming the tools of an in-process
+  server `plugin:<plugin>:<server>` as
+  `mcp__plugin_<plugin>_<server>__<tool>`. Allow rules and the tool
+  policy depend on it too. If a CLI upgrade changed the names, they
+  would stop matching relayed tools, so an isolation test must guard
+  this naming.
 - An agent can turn off any server of a plugin, including a default
   plugin, and keep the plugin's skills, hooks, and commands.
 - A person can see every server of a plugin before enabling it.
@@ -341,23 +219,14 @@ checked with Claude Agent SDK 0.2.164 and Claude Code 2.1.292:
   Results of a plugin server that the CLI connects to itself do not.
 - A revoked grant does not stop a running task that uses a static
   secret. A credential with an expiry works until its next refresh,
-  which is denied, and the relay then closes the session.
-- A server that keeps state in a session loses it when the session
-  drops. The call that finds the dropped session fails instead of
-  running against the new session's default state. Later calls run
-  against the state the model sets up again, or against the default
-  state if it does not, for example in the default workspace.
-- A call that broke off mid-request may or may not have run on the
-  server, and its error says the outcome is unknown. The relay cannot
-  tell which tools change state, so it does not stop the model from
-  repeating such a call. A timed-out MCP call has the same unknown
-  outcome today.
+  which is denied.
+- A server that keeps state in a session, such as a selected
+  workspace, loses it when the session drops. The model must set that
+  state up again.
 - The CLI does not know a relayed server's URL, so two relayed servers
   with the same URL both load. Only the checkboxes prevent this.
 - A server that needs `headersHelper`, OAuth, or a URL variable still
   does not work in an agent. Its status now shows in the task.
-- Each relayed server holds a session in the runner for the life of the
-  task.
 
 ## Alternatives Considered
 
