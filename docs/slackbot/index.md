@@ -80,7 +80,8 @@ thread of the message:
 - `slack_create_form` posts a form with buttons or a modal. The bot asks
   for structured answers with it, one form for each message that you send.
   When you submit the form, the bot reads your answers as a new message in
-  the thread and continues. A form expires after seven days. Forms need
+  the thread and continues with the permissions of the user who asked for
+  the form, not yours. A form expires after seven days. Forms need
   Slack interactivity (see the [app manifest](slack-app-manifest.md)) and
   `VALKEY_URL`.
 

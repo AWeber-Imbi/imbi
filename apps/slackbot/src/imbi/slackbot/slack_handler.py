@@ -56,6 +56,7 @@ _handler: AsyncSocketModeHandler | None = None
 _bot_user_id: str | None = None
 _bot_id: str = ''
 _forms: forms.Runtime | None = None
+_form_store: stores.ValkeyFormStore | None = None
 
 
 class _StatusReporter:
@@ -299,7 +300,13 @@ async def _on_submit(submission: forms.Submission) -> None:
     """Run a turn in the form's thread with the submitted answers."""
     thread_ts = submission.thread_ts
     # The toolkit posts forms only in the current thread.
-    if _app is None or thread_ts is None:
+    if _app is None or _form_store is None or thread_ts is None:
+        return
+    # Run the turn as the user who asked for the form. The answers are
+    # data: they must not lend the permissions of the user who answered
+    # to instructions that another user put in the thread.
+    record = await _form_store.get(submission.form_id)
+    if record is None:
         return
     answers = json.dumps(submission.values, indent=2)
     message = {
@@ -319,7 +326,7 @@ async def _on_submit(submission: forms.Submission) -> None:
         channel=submission.channel_id,
         ts=thread_ts,
         thread_ts=thread_ts,
-        slack_user_id=submission.user_id,
+        slack_user_id=record.requester,
         turn_id=submission.form_id,
     )
 
@@ -363,7 +370,7 @@ def _build_app(bot_token: str) -> AsyncApp:
 
 async def initialize() -> None:
     """Build the Slack app and open the Socket Mode connection."""
-    global _app, _handler, _bot_user_id, _bot_id, _forms
+    global _app, _handler, _bot_user_id, _bot_id, _forms, _form_store
 
     slackbot_settings = settings.get_slackbot_settings()
     if not slackbot_settings.enabled:
@@ -379,9 +386,8 @@ async def initialize() -> None:
         return
 
     _app = _build_app(slackbot_settings.slack_bot_token)
-    _forms = forms.Runtime(
-        stores.ValkeyFormStore(valkey.get_client()), _on_submit
-    )
+    _form_store = stores.ValkeyFormStore(valkey.get_client())
+    _forms = forms.Runtime(_form_store, _on_submit)
     _forms.register(_app)
     auth = await _app.client.auth_test()  # pyright: ignore[reportUnknownMemberType]
     _bot_user_id = str(auth['user_id'])  # pyright: ignore[reportUnknownArgumentType]
@@ -395,13 +401,14 @@ async def initialize() -> None:
 
 async def aclose() -> None:
     """Drain in-flight work and close the Socket Mode connection."""
-    global _app, _handler, _bot_user_id, _bot_id, _forms
+    global _app, _handler, _bot_user_id, _bot_id, _forms, _form_store
     await inflight.wait_for_drain()
     if _handler is not None:
         await _handler.close_async()  # type: ignore[no-untyped-call]
         _handler = None
     _app = None
     _forms = None
+    _form_store = None
     _bot_user_id = None
     _bot_id = ''
     identity.clear_cache()

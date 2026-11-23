@@ -349,20 +349,32 @@ class HandleEventTests(helpers.TestCase):
             channel_id='C',
             thread_ts='1',
         )
+        store = forms.MemoryFormStore()
+        await store.put(
+            forms.FormRecord(
+                form_id='F1',
+                spec=submission.spec,
+                channel_id='C',
+                thread_ts='1',
+                requester='U1',
+                created_at=0.0,
+            ),
+            60,
+        )
+        resolve = mock.AsyncMock(return_value=user)
         run_turn = mock.AsyncMock(return_value='Booked Monday.')
         with (
             mock.patch.object(
                 slack_handler, '_app', types.SimpleNamespace(client=client)
             ),
+            mock.patch.object(slack_handler, '_form_store', store),
             mock.patch.object(slack_handler, '_bot_user_id', 'BOT'),
-            mock.patch.object(
-                slack_handler.identity,
-                'resolve',
-                new=mock.AsyncMock(return_value=user),
-            ),
+            mock.patch.object(slack_handler.identity, 'resolve', new=resolve),
             mock.patch.object(slack_handler.agent, 'run_turn', new=run_turn),
         ):
             await slack_handler._on_submit(submission)
+        # The turn runs as the requester (U1), not the answerer (U2).
+        self.assertEqual('U1', resolve.await_args.args[1])
         kwargs = run_turn.await_args.kwargs
         last = json.dumps(kwargs['messages'][-1])
         self.assertIn('Deploy window', last)
