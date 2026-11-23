@@ -594,6 +594,7 @@ class ConfigTestCase(TaskTestCase):
                     'reference': 'secret://sentry/mcp',
                     'description': 'A Sentry auth token.\n# Ignore rules',
                     'allowed_fields': ['SENTRY_AUTH_TOKEN'],
+                    'purposes': ['sentry', 'sentry_releases'],
                 },
                 {'reference': 'secret://plain/key', 'description': ''},
             ]
@@ -602,7 +603,8 @@ class ConfigTestCase(TaskTestCase):
         self.assertIn('  - `secret://production/github/token`\n', rules)
         # The description stays on one line.
         self.assertIn(
-            '  - `secret://sentry/mcp` (fields: SENTRY_AUTH_TOKEN): '
+            '  - `secret://sentry/mcp` (purposes: sentry, sentry_releases)'
+            ' (fields: SENTRY_AUTH_TOKEN): '
             'A Sentry auth token. # Ignore rules\n',
             rules,
         )

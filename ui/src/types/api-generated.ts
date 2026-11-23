@@ -21525,7 +21525,8 @@ export interface components {
         /**
          * SecretReference
          * @description A secret reference that the agent may request, with the hints of
-         *     its binding for the model. Names only, never a value.
+         *     its binding and the purposes of its grants for the model. Names
+         *     only, never a value.
          */
         SecretReference: {
             /** Reference */
@@ -21540,6 +21541,11 @@ export interface components {
              * @default []
              */
             allowed_fields: string[];
+            /**
+             * Purposes
+             * @default []
+             */
+            purposes: string[];
         };
         /** SecretResolution */
         SecretResolution: {

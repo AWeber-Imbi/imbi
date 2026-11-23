@@ -166,9 +166,9 @@ _RULES = """\
 - git has your commit identity. To push a project repository, run
   `git push` with `run_with_secret` and the GitHub token in `GH_TOKEN`.
   Do not set a git identity or a credential helper.
-- The `purpose` of a secret is a slug that a secret grant allows, not a
-  description. For `git push` and `gh` with the GitHub token, use
-  `github_write`.
+- The `purpose` of a secret is one of the purposes listed for its
+  reference below, not a description. For `git push` and `gh` with the
+  GitHub token, use `github_write`.
 - When a secret is a JSON object, each string member also goes into
   the environment with its own name, for example `SENTRY_AUTH_TOKEN`.
   The tool result names each variable that it set. A secret with
@@ -270,8 +270,8 @@ _RUN_WITH_SECRET_SCHEMA: dict[str, typing.Any] = {
                     },
                     'purpose': {
                         'type': 'string',
-                        'description': 'The purpose slug that a secret '
-                        'grant allows, for example github_write.',
+                        'description': 'One of the purposes listed for '
+                        'the reference, for example github_write.',
                     },
                     'env': {
                         'type': 'string',
@@ -435,9 +435,12 @@ def _tool_error(text: str) -> Body:
 
 
 def _secret_line(item: Body) -> str:
-    """One secret reference of the prompt, with the hints of its
-    binding: ``reference`` (fields: ...): description."""
+    """One secret reference of the prompt, with the purposes of its
+    grants and the hints of its binding: ``reference`` (purposes: ...)
+    (fields: ...): description."""
     line = f'`{item["reference"]}`'
+    if purposes := item.get('purposes'):
+        line += f' (purposes: {", ".join(purposes)})'
     if fields := item.get('allowed_fields'):
         line += f' (fields: {", ".join(fields)})'
     # One line: a description cannot start a new prompt section.
@@ -452,8 +455,8 @@ def _secret_refusal(secret: Body, upstream: Body) -> str | None:
     the model what to change."""
     if not _PURPOSE.fullmatch(str(secret['purpose'])):
         return (
-            'The purpose is not valid: use the purpose slug of the '
-            'secret grant, for example github_write'
+            'The purpose is not valid: use a purpose listed for the '
+            'reference, for example github_write'
         )
     # The runner's own secrets never go to a command that the model
     # chose. The executor checks the purpose again.
