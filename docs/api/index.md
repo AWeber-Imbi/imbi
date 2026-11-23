@@ -116,8 +116,8 @@ uv run --env-file .env.test pytest apps/api/tests/auth/test_permissions.py::Reso
 moon run api:lint api:typecheck api:format             # ruff + basedpyright + format check
 ```
 
-Run `moon run root:coverage` for the full single-session suite with aggregate
-coverage, and `moon run root:services` first if you invoke `pytest` directly.
+Run `moon run root:coverage` for the full suite with aggregate coverage. It
+runs on pytest-xdist workers, each with its own Postgres database, and `moon run root:services` first if you invoke `pytest` directly.
 
 ## Core Concepts
 

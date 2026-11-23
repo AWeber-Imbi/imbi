@@ -280,8 +280,13 @@ the reference for how CI starts the services and runs the tests.
 Track test coverage with `coverage` (via `moon run root:coverage`):
 
 ```bash
-# Run the full suite with aggregate coverage (requires Docker)
+# Run the full suite with aggregate coverage (requires Docker).
+# It runs on one pytest-xdist worker per CPU; each worker uses its
+# own Postgres database (imbi_gw0, imbi_gw1, ...).
 moon run root:coverage
+
+# Run some files on several workers
+uv run --env-file .env.test pytest -n 4 apps/api/tests/endpoints
 
 # Run a specific file
 uv run --env-file .env.test pytest libraries/common/tests/test_settings.py
