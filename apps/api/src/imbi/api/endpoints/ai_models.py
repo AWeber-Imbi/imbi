@@ -60,6 +60,7 @@ _PATCHABLE_FIELDS: tuple[str, ...] = (
     'output_cost_per_million',
     'cache_read_cost_per_million',
     'cache_write_cost_per_million',
+    'cache_write_1h_cost_per_million',
     'default_temperature',
     'default_top_p',
     'monthly_spend_cap',
@@ -124,6 +125,9 @@ class AIModelCreate(pydantic.BaseModel):
     cache_write_cost_per_million: decimal.Decimal | None = pydantic.Field(
         default=None, ge=0
     )
+    cache_write_1h_cost_per_million: decimal.Decimal | None = pydantic.Field(
+        default=None, ge=0
+    )
     default_temperature: float | None = pydantic.Field(
         default=None, ge=0, le=2
     )
@@ -159,6 +163,7 @@ class AIModelResponse(pydantic.BaseModel):
     output_cost_per_million: decimal.Decimal | None = None
     cache_read_cost_per_million: decimal.Decimal | None = None
     cache_write_cost_per_million: decimal.Decimal | None = None
+    cache_write_1h_cost_per_million: decimal.Decimal | None = None
     default_temperature: float | None = None
     default_top_p: float | None = None
     monthly_spend_cap: decimal.Decimal | None = None
@@ -278,6 +283,7 @@ def _to_response(
         output_cost_per_million=node.output_cost_per_million,
         cache_read_cost_per_million=node.cache_read_cost_per_million,
         cache_write_cost_per_million=node.cache_write_cost_per_million,
+        cache_write_1h_cost_per_million=(node.cache_write_1h_cost_per_million),
         default_temperature=node.default_temperature,
         default_top_p=node.default_top_p,
         monthly_spend_cap=node.monthly_spend_cap,

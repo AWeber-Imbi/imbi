@@ -233,6 +233,7 @@ class SweepTests(ClickHouseTestCase):
             'output_cost_per_million': decimal.Decimal(15),
             'cache_read_cost_per_million': None,
             'cache_write_cost_per_million': None,
+            'cache_write_1h_cost_per_million': None,
         }
         failing = mock.AsyncMock(side_effect=RuntimeError('Iggy is down'))
         with mock.patch.object(iggy, 'publish_rows', failing):

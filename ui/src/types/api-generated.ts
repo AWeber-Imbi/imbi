@@ -10890,6 +10890,8 @@ export interface components {
             cache_read_cost_per_million?: number | string | null;
             /** Cache Write Cost Per Million */
             cache_write_cost_per_million?: number | string | null;
+            /** Cache Write 1H Cost Per Million */
+            cache_write_1h_cost_per_million?: number | string | null;
             /** Default Temperature */
             default_temperature?: number | null;
             /** Default Top P */
@@ -10965,6 +10967,8 @@ export interface components {
             cache_read_cost_per_million?: string | null;
             /** Cache Write Cost Per Million */
             cache_write_cost_per_million?: string | null;
+            /** Cache Write 1H Cost Per Million */
+            cache_write_1h_cost_per_million?: string | null;
             /** Default Temperature */
             default_temperature?: number | null;
             /** Default Top P */
@@ -22775,6 +22779,11 @@ export interface components {
              * @description Input tokens written to the cache.
              */
             cache_write_tokens?: number | null;
+            /**
+             * Cache Write 1H Tokens
+             * @description The part of cache_write_tokens written with the 1-hour cache TTL. The remainder uses the 5-minute write price.
+             */
+            cache_write_1h_tokens?: number | null;
             /** Session Id */
             session_id?: string | null;
             /**
@@ -22808,6 +22817,8 @@ export interface components {
             cache_read_tokens?: number | null;
             /** Cache Write Tokens */
             cache_write_tokens?: number | null;
+            /** Cache Write 1H Tokens */
+            cache_write_1h_tokens?: number | null;
             /** Input Cost Per Million */
             input_cost_per_million?: string | null;
             /** Output Cost Per Million */
@@ -22816,6 +22827,8 @@ export interface components {
             cache_read_cost_per_million?: string | null;
             /** Cache Write Cost Per Million */
             cache_write_cost_per_million?: string | null;
+            /** Cache Write 1H Cost Per Million */
+            cache_write_1h_cost_per_million?: string | null;
             /** Cost */
             cost?: string | null;
             /**

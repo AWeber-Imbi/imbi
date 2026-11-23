@@ -33,6 +33,9 @@ FIELDS: dict[str, str] = {
     'output_cost_per_million': 'output_cost_per_token',
     'cache_read_cost_per_million': 'cache_read_input_token_cost',
     'cache_write_cost_per_million': 'cache_creation_input_token_cost',
+    'cache_write_1h_cost_per_million': (
+        'cache_creation_input_token_cost_above_1hr'
+    ),
 }
 
 #: Drivers whose models LiteLLM also files under ``<driver>/<model_id>``.

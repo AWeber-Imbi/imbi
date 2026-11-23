@@ -870,10 +870,15 @@ class AIModel(Node):
     )
     #: USD per 1M prompt-cache read and write tokens. ``None`` is
     #: unknown: an agent usage report with such tokens has no cost.
+    #: ``cache_write_cost_per_million`` is the 5-minute TTL write price;
+    #: ``cache_write_1h_cost_per_million`` is the 1-hour TTL price.
     cache_read_cost_per_million: decimal.Decimal | None = pydantic.Field(
         default=None, ge=0
     )
     cache_write_cost_per_million: decimal.Decimal | None = pydantic.Field(
+        default=None, ge=0
+    )
+    cache_write_1h_cost_per_million: decimal.Decimal | None = pydantic.Field(
         default=None, ge=0
     )
     default_temperature: float | None = pydantic.Field(

@@ -19,7 +19,8 @@ import type { AIPriceSyncApplyResult, AIPriceSyncModel } from '@/types'
 
 const FIELD_LABELS: Record<string, string> = {
   cache_read_cost_per_million: 'Cache read',
-  cache_write_cost_per_million: 'Cache write',
+  cache_write_1h_cost_per_million: 'Cache write (1h)',
+  cache_write_cost_per_million: 'Cache write (5m)',
   input_cost_per_million: 'Input',
   output_cost_per_million: 'Output',
 }

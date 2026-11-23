@@ -1054,6 +1054,35 @@ class UsageTests(HarnessTestCase):
     async def ledger(self) -> list[dict[str, typing.Any]]:
         return await self.store.ledger((await self.task_row())['id'])
 
+    async def test_1h_cache_writes_use_the_1h_price(self) -> None:
+        await self.make_model(
+            'm-1h', 'm-1h-id', cache_write_1h_cost_per_million='6'
+        )
+        response = await self.report(
+            'u-1', model_id='m-1h', cache_write_1h_tokens=1500
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        body = response.json()
+        # 1000 * 3 + 500 * 15 + 10000 * 0.3 + 500 * 3.75 + 1500 * 6.
+        self.assertEqual(
+            decimal.Decimal(body['cost']), decimal.Decimal('0.024375')
+        )
+        self.assertEqual(body['cache_write_1h_tokens'], 1500)
+        self.assertEqual(
+            decimal.Decimal(body['cache_write_1h_cost_per_million']),
+            decimal.Decimal(6),
+        )
+        self.assertEqual((await self.task_row())['cache_write_tokens'], 2000)
+
+    async def test_1h_cache_writes_without_a_1h_price(self) -> None:
+        response = await self.report('u-1', cache_write_1h_tokens=1500)
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertIsNone(response.json()['cost'])
+
+    async def test_1h_cache_writes_above_cache_writes(self) -> None:
+        response = await self.report('u-1', cache_write_1h_tokens=2001)
+        self.assertEqual(response.status_code, 422, response.text)
+
     async def test_usage_is_priced_from_the_catalog(self) -> None:
         session = (await self.open_session())['session']
         response = await self.report('u-1', session_id=session['id'])
@@ -1127,6 +1156,7 @@ class UsageTests(HarnessTestCase):
                 'tokens_out',
                 'cache_read_tokens',
                 'cache_write_tokens',
+                'cache_write_1h_tokens',
                 'cost',
                 'budget_remaining',
             },
