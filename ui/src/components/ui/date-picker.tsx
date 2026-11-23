@@ -19,11 +19,11 @@ import {
 import { parseServerTs, toDateOnlyIso } from '@/lib/formatDate'
 import { cn } from '@/lib/utils'
 
-const SHOWN = 'MMM d, yyyy'
+const DISPLAY_FORMAT = 'MMM d, yyyy'
 
-const TYPED = [
+const ACCEPTED_FORMATS = [
   'yyyy-MM-dd',
-  SHOWN,
+  DISPLAY_FORMAT,
   'MMM d yyyy',
   'MMMM d, yyyy',
   'MMMM d yyyy',
@@ -40,17 +40,15 @@ export interface DatePickerProps {
   id?: string
   modal?: boolean
   onChange: (value: string) => void
-  placeholder?: string
-  /** A calendar day as `YYYY-MM-DD`, or `''` for none. */
+  required?: boolean
   value: string
 }
 
 export interface DateTimePickerProps {
   'aria-label': string
   className?: string
-  modal?: boolean
   onChange: (value: string) => void
-  /** `YYYY-MM-DDTHH:MM`, or `''` for none. */
+  required?: boolean
   value: string
 }
 
@@ -62,34 +60,39 @@ export function DatePicker({
   id,
   modal,
   onChange,
-  placeholder = 'Pick a date',
+  required = false,
   value,
 }: DatePickerProps) {
+  const selected = value ? parseServerTs(value) : undefined
   const [open, setOpen] = useState(false)
-  const [text, setText] = useState(() => shown(value))
-  const [month, setMonth] = useState<Date | undefined>(() =>
-    value ? parseServerTs(value) : undefined,
-  )
-  const [synced, setSynced] = useState(value)
-  if (synced !== value) {
-    setSynced(value)
-    setText(shown(value))
-    if (value) setMonth(parseServerTs(value))
+  const [text, setText] = useState(() => toDisplay(value))
+  const [month, setMonth] = useState(selected)
+  const [prevValue, setPrevValue] = useState(value)
+  const [lastSent, setLastSent] = useState(value)
+  if (prevValue !== value) {
+    setPrevValue(value)
+    setLastSent(value)
+    setText(toDisplay(value))
+    if (selected) setMonth(selected)
   }
 
-  const allowed = (date: Date) => !disablePast || date >= startOfToday()
+  const earliest = disablePast ? startOfToday() : undefined
+  const allowed = (date: Date) => !earliest || date >= earliest
   const typed = parseTypedDate(text)
-  const invalid = text.trim() !== '' && !(typed && allowed(typed))
+  const empty = text.trim() === ''
+  const invalid = empty ? required : !(typed && allowed(typed))
 
   const choose = (next: string) => {
-    setText(shown(next))
-    if (next !== value) onChange(next)
+    setText(toDisplay(next))
+    if (next === lastSent) return
+    setLastSent(next)
+    onChange(next)
   }
 
   const commit = () => {
-    if (text.trim() === '') choose('')
-    else if (typed && allowed(typed)) choose(toDateOnlyIso(typed))
-    else setText(shown(value))
+    if (empty && !required) choose('')
+    else if (!invalid && typed) choose(toDateOnlyIso(typed))
+    else setText(toDisplay(value))
   }
 
   return (
@@ -114,7 +117,7 @@ export function DatePicker({
             commit()
           }
         }}
-        placeholder={placeholder}
+        placeholder="Pick a date"
         value={text}
       />
       <InputGroupAddon align="inline-end">
@@ -131,7 +134,7 @@ export function DatePicker({
             sideOffset={10}
           >
             <Calendar
-              disabled={disablePast ? { before: startOfToday() } : undefined}
+              disabled={earliest && { before: earliest }}
               mode="single"
               month={month}
               onMonthChange={setMonth}
@@ -139,7 +142,7 @@ export function DatePicker({
                 if (date) choose(toDateOnlyIso(date))
                 setOpen(false)
               }}
-              selected={value ? parseServerTs(value) : undefined}
+              selected={selected}
             />
           </PopoverContent>
         </Popover>
@@ -151,8 +154,8 @@ export function DatePicker({
 export function DateTimePicker({
   'aria-label': label,
   className,
-  modal,
   onChange,
+  required,
   value,
 }: DateTimePickerProps) {
   const [date = '', time = ''] = value.split('T')
@@ -161,8 +164,8 @@ export function DateTimePicker({
       <DatePicker
         aria-label={`${label} date`}
         className="flex-1"
-        modal={modal}
         onChange={(d) => onChange(d ? `${d}T${time || '00:00'}` : '')}
+        required={required}
         value={date}
       />
       <Input
@@ -179,13 +182,13 @@ export function DateTimePicker({
 
 function parseTypedDate(text: string): Date | null {
   const raw = text.trim().replace(/\s+/g, ' ')
-  for (const pattern of TYPED) {
+  for (const pattern of ACCEPTED_FORMATS) {
     const date = parse(raw, pattern, new Date())
     if (isValid(date) && date.getFullYear() >= 1000) return date
   }
   return null
 }
 
-function shown(value: string): string {
-  return value ? format(parseServerTs(value), SHOWN) : ''
+function toDisplay(value: string): string {
+  return value ? format(parseServerTs(value), DISPLAY_FORMAT) : ''
 }

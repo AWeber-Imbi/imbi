@@ -121,7 +121,7 @@ function Choice<T extends string>({
 }) {
   return (
     <select
-      className="border-input bg-background h-9 rounded-md border px-2 text-sm"
+      className="h-9 rounded-md border border-input bg-background px-2 text-sm"
       onChange={(e) => onChange(e.target.value as T)}
       value={value}
     >
@@ -176,7 +176,7 @@ function Field({
         <span className="mb-1.5 block">{label}</span>
         {children}
       </Label>
-      {hint && <span className="text-tertiary text-xs">{hint}</span>}
+      {hint && <span className="text-xs text-tertiary">{hint}</span>}
     </div>
   )
 }
@@ -435,7 +435,7 @@ function JobForm({ task }: { task: null | ScheduledTask }) {
                 value={bodyText}
               />
             </Field>
-            <p className="text-tertiary text-xs">
+            <p className="text-xs text-tertiary">
               {target.kind === 'api'
                 ? 'Runs as the scheduler service account. You are recorded as accountable for every request.'
                 : 'Gateway deliveries carry no identity; attribution comes from the payload.'}
@@ -497,7 +497,7 @@ function JobForm({ task }: { task: null | ScheduledTask }) {
 function Section({ children, title }: { children: ReactNode; title: string }) {
   return (
     <div>
-      <p className="text-tertiary mb-2 text-xs font-medium tracking-wider uppercase">
+      <p className="mb-2 text-xs font-medium tracking-wider text-tertiary uppercase">
         {title}
       </p>
       <Card>
@@ -586,8 +586,9 @@ function TriggerFields({
           <DateTimePicker
             aria-label="Run once at"
             onChange={(value) =>
-              value && onChange({ kind: 'date', run_at: `${value}:00Z` })
+              onChange({ kind: 'date', run_at: `${value}:00Z` })
             }
+            required
             value={trigger.run_at.slice(0, 16)}
           />
         </Field>

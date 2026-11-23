@@ -69,47 +69,39 @@ const inputGroupButtonVariants = cva(
   },
 )
 
-const InputGroupButton = React.forwardRef<
-  HTMLButtonElement,
-  Omit<React.ComponentProps<typeof Button>, 'size'> &
-    VariantProps<typeof inputGroupButtonVariants>
->(
-  (
-    {
-      className,
-      size = 'icon-xs',
-      type = 'button',
-      variant = 'ghost',
-      ...props
-    },
-    ref,
-  ) => (
+function InputGroupButton({
+  className,
+  size = 'icon-xs',
+  type = 'button',
+  variant = 'ghost',
+  ...props
+}: Omit<React.ComponentProps<typeof Button>, 'size'> &
+  VariantProps<typeof inputGroupButtonVariants>) {
+  return (
     <Button
       className={cn(inputGroupButtonVariants({ size }), className)}
       data-size={size}
-      ref={ref}
       type={type}
       variant={variant}
       {...props}
     />
-  ),
-)
-InputGroupButton.displayName = 'InputGroupButton'
+  )
+}
 
-const InputGroupInput = React.forwardRef<
-  HTMLInputElement,
-  React.ComponentProps<'input'>
->(({ className, ...props }, ref) => (
-  <Input
-    className={cn(
-      'h-full flex-1 rounded-none border-0 bg-transparent px-2.5 py-0 shadow-none ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 disabled:bg-transparent aria-invalid:ring-0',
-      className,
-    )}
-    data-slot="input-group-control"
-    ref={ref}
-    {...props}
-  />
-))
-InputGroupInput.displayName = 'InputGroupInput'
+function InputGroupInput({
+  className,
+  ...props
+}: React.ComponentProps<'input'>) {
+  return (
+    <Input
+      className={cn(
+        'h-full flex-1 rounded-none border-0 bg-transparent px-2.5 py-0 shadow-none ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 disabled:bg-transparent aria-invalid:ring-0',
+        className,
+      )}
+      data-slot="input-group-control"
+      {...props}
+    />
+  )
+}
 
 export { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput }
