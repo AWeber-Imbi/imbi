@@ -6987,9 +6987,9 @@ export interface paths {
          * @description Make the task of a running agent step, or return it. Engine only.
          *
          *     A repeat, after a crash or for a retry of the step, returns the
-         *     first task: the key is the same. The person who activated the
-         *     workflow owns the task, and must still be able to make agent tasks
-         *     in the org. The engine polls this route until the task is closed.
+         *     first task: the key is the same. The owner of the task (see
+         *     :func:`_step_owner`) must still be able to make agent tasks in the
+         *     org. The engine polls this route until the task is closed.
          *
          *     The agent comes from the pinned version, and the project from the
          *     pinned version or the step input (see :func:`_pinned_agent_ids`).
@@ -6997,7 +6997,7 @@ export interface paths {
          *     another agent, is refused.
          *
          *     Raises:
-         *         403: ``owner_forbidden``: the activator cannot make agent tasks.
+         *         403: ``owner_forbidden``: the owner cannot make agent tasks.
          *         404: No such workflow, run, or step.
          *         409: The step is not a running agent step, the agent is
          *             disabled, or ``task_key_conflict``.
@@ -20561,6 +20561,11 @@ export interface components {
              * @description The project that the gateway matched to the webhook delivery. Only a webhook run uses it.
              */
             project_id?: string | null;
+            /**
+             * Actor
+             * @description The email of the Imbi user who caused the webhook delivery, as the gateway resolved it. Only a webhook run uses it.
+             */
+            actor?: string | null;
         };
         /** RunDetail */
         RunDetail: {

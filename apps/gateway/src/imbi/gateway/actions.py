@@ -1560,7 +1560,9 @@ async def start_workflow(
     A delivery without a verified signature or a valid id is skipped.
     The run's trigger payload is the webhook body. The call names the
     binding of the rule; imbi-api refuses a rule that is not the one
-    imbi-workflows wrote.
+    imbi-workflows wrote. The call also names the Imbi user who caused
+    the delivery, when the webhook resolves one: that person owns the
+    tickets of the run.
     """
     del credentials, external_identifier
     delivery = _signed_delivery(
@@ -1581,5 +1583,6 @@ async def start_workflow(
                 'binding': action_config.binding,
                 'payload': {'payload': body},
                 'project_id': ctx.project_id,
+                'actor': ctx.actor_user_id,
             },
         )
