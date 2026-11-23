@@ -7,7 +7,12 @@ import { afterEach, vi } from 'vitest'
 vi.stubEnv('VITE_API_URL', 'http://localhost:8000')
 
 // Text kept only for the browser's find is not rendered content.
-configure({ defaultIgnore: 'script, style, [hidden="until-found"]' })
+// In CI, ui:test runs at the same time as root:coverage. A render can
+// then take more than the 1 s default of waitFor and findBy (#869).
+configure({
+  asyncUtilTimeout: 5000,
+  defaultIgnore: 'script, style, [hidden="until-found"]',
+})
 
 afterEach(() => {
   cleanup()

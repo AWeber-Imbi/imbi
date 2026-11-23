@@ -1,7 +1,7 @@
 # Blueprints
 
 Blueprints let you define custom metadata fields for different types of
-projects in your service catalog. For example, you might create a
+projects in your service catalog, and custom fields for tickets. For example, you might create a
 "Microservice" blueprint that requires every microservice to specify its
 programming language and SLA tier, while a "Library" blueprint asks for
 documentation URL and supported platforms.
@@ -58,6 +58,32 @@ no default. Imbi sets the default for a required field that has one. You
 must complete the fields in the dialog before you can save the project.
 When you edit a project, you can set all the fields that the matching
 blueprints add.
+
+## Ticket blueprints
+
+A blueprint of type `Ticket` adds custom fields to tickets. Its filter
+has three lists in place of project types and environments:
+
+| Filter | Matches when |
+|---|---|
+| `ticket_type` | The ticket type (`bug`, `task`, or `feature`) is in the list |
+| `priority` | The ticket priority (`low`, `normal`, `high`, or `urgent`) is in the list |
+| `label` | One or more labels of the ticket are in the list. Imbi normalizes the labels of the filter as it normalizes ticket labels |
+
+An empty list matches every ticket. The lists combine with AND. A
+`Ticket` blueprint cannot have a project type or an environment filter.
+
+Imbi checks the custom fields on every ticket create: from a person, an
+agent, the scheduler, a webhook, or a workflow. A required field with a
+default gets the default. A required field with no default and no value
+makes the create fail with `422`. See
+[Custom fields](tickets.md#custom-fields).
+
+!!! warning
+    `Ticket` blueprints are global. A new required field with no default
+    breaks every automatic ticket create (schedules, webhooks, workflows,
+    and child tickets of agents) that does not send it, until you change
+    that caller. Give a required field a default when you can.
 
 ## Updating Blueprints
 

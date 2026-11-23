@@ -7,7 +7,12 @@ import type { Ticket } from '@/types'
 
 export type Priority = Ticket['priority']
 
-const PRIORITIES: readonly Priority[] = ['low', 'normal', 'high', 'urgent']
+export const PRIORITIES: readonly Priority[] = [
+  'low',
+  'normal',
+  'high',
+  'urgent',
+]
 
 export const priorityLabel = (p: Priority) => p[0].toUpperCase() + p.slice(1)
 

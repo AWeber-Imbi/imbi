@@ -676,6 +676,34 @@ class MatchesFilterTests(unittest.TestCase):
             ),
         )
 
+    def test_ticket_filter(self) -> None:
+        bp = _blueprint(
+            properties={},
+            bp_type='Ticket',
+            bp_filter={
+                'ticket_type': ['bug'],
+                'priority': ['high', 'urgent'],
+                'label': ['api', 'web'],
+            },
+        )
+        ticket: dict[str, str | list[str]] = {
+            'ticket_type': 'bug',
+            'priority': 'high',
+            'label': ['docs', 'web'],
+        }
+        self.assertTrue(blueprints._matches_filter(bp, ticket))
+        for change in (
+            {'ticket_type': 'task'},
+            {'priority': 'low'},
+            {'label': ['docs']},
+            {'label': []},
+        ):
+            with self.subTest(change=change):
+                self.assertFalse(
+                    blueprints._matches_filter(bp, {**ticket, **change})
+                )
+        self.assertFalse(blueprints._matches_filter(bp, None))
+
 
 # -- RelationshipEdge unit tests ------------------------------------------
 

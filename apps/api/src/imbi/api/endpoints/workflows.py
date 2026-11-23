@@ -28,7 +28,7 @@ import psycopg
 import pydantic
 import slugify
 
-from imbi.api import workflows
+from imbi.api import teams, workflows
 from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import prompts
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
@@ -170,43 +170,23 @@ class StepType(pydantic.BaseModel):
 
 # --- Helpers -----------------------------------------------------------
 
-_TEAM_ID_QUERY: typing.LiteralString = """
-MATCH (t:Team {{slug: {team}}})-[:BELONGS_TO]->(:Organization {{id: {org}}})
-RETURN t.id AS id
-"""
-
-_TEAM_SLUGS_QUERY: typing.LiteralString = """
-MATCH (t:Team)-[:BELONGS_TO]->(:Organization {{id: {org}}})
-WHERE t.id IN {ids}
-RETURN t.id AS id, t.slug AS slug
-"""
-
 
 async def _team_id(db: graph.Graph, org_id: str, team_slug: str) -> str:
-    records = await db.execute(
-        _TEAM_ID_QUERY, {'team': team_slug, 'org': org_id}, ['id']
-    )
-    if not records:
+    found = await teams.ids_by_slug(db, org_id, [team_slug])
+    if team_slug not in found:
         raise fastapi.HTTPException(
             status_code=422,
             detail=f'Team {team_slug!r} is not in the organization',
         )
-    return str(graph.parse_agtype(records[0]['id']))
+    return found[team_slug]
 
 
 async def _team_slugs(
     db: graph.Graph, org_id: str, rows: list[workflows.Row]
 ) -> dict[str, str]:
     ids = sorted({str(r['owner_team_id']) for r in rows})
-    if not ids:
-        return {}
-    records = await db.execute(
-        _TEAM_SLUGS_QUERY, {'org': org_id, 'ids': ids}, ['id', 'slug']
-    )
-    return {
-        str(graph.parse_agtype(r['id'])): str(graph.parse_agtype(r['slug']))
-        for r in records
-    }
+    found = await teams.by_id(db, org_id, ids)
+    return {team_id: team['slug'] for team_id, team in found.items()}
 
 
 #: For each kind of resource that a step names by id: the ids in

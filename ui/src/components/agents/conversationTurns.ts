@@ -56,6 +56,7 @@ export type TurnStatus = 'done' | 'failed' | 'running'
 const NOTE_TYPES = new Set([
   'check.reported',
   'control.changed',
+  'custom_fields.changed',
   'due_date.changed',
   'labels.changed',
   'outcome.set',
@@ -66,6 +67,7 @@ const NOTE_TYPES = new Set([
   'reopened',
   'roles.changed',
   'state.changed',
+  'team.changed',
   'type.changed',
 ])
 

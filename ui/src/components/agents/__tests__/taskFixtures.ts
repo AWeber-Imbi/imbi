@@ -40,6 +40,7 @@ export function task(overrides: Partial<TicketListItem> = {}): TicketListItem {
     control: 'run',
     cost_total: '0.120000',
     created_at: '2026-10-08T12:00:00Z',
+    custom_fields: {},
     description: 'Find why the build fails.',
     id: '00000000-0000-0000-0000-000000000001',
     labels: [],

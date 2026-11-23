@@ -6,6 +6,7 @@ import type { components } from '@/types/api-generated'
 export interface JsonSchema {
   $defs?: Record<string, JsonSchema>
   $ref?: string
+  additionalProperties?: boolean | JsonSchema
   anyOf?: JsonSchema[]
   default?: unknown
   description?: string

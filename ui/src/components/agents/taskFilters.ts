@@ -15,19 +15,31 @@ export const TASK_STATES: { label: string; value: TicketStatus }[] = [
   { label: 'Closed', value: 'closed' },
 ]
 
+/** A custom field that the list can filter on, and its values. */
+export interface FilterField {
+  label: string
+  name: string
+  values: string[]
+}
+
 export interface TaskFilters {
   agents: string[]
   assignees: string[]
+  /** Custom fields: tickets with one of the values of each field. */
+  fields: Record<string, string[]>
   /** Tickets with every one of these labels. */
   labels: string[]
   states: TicketStatus[]
+  teams: string[]
 }
 
 export const NO_FILTERS: TaskFilters = {
   agents: [],
   assignees: [],
+  fields: {},
   labels: [],
   states: [],
+  teams: [],
 }
 
 export function activeCount(filters: TaskFilters): number {
@@ -36,21 +48,59 @@ export function activeCount(filters: TaskFilters): number {
     filters.assignees,
     filters.labels,
     filters.states,
+    filters.teams,
+    ...Object.values(filters.fields),
   ].filter((values) => values.length > 0).length
+}
+
+/**
+ * The custom field filters as the API takes them: `field:in:a,b`. The API
+ * splits `in` on commas, so one value with a comma goes as `eq`. The filter
+ * control selects such a value alone ({@link toggleFieldValue}); a value
+ * with a comma among others, only possible from an edited address, is not
+ * sent.
+ */
+export function fieldFilters(filters: TaskFilters): string[] {
+  return Object.entries(filters.fields).flatMap(([name, values]) => {
+    if (values.length === 1 && values[0].includes(','))
+      return [`${name}:eq:${values[0]}`]
+    const plain = values.filter((v) => !v.includes(','))
+    return plain.length > 0 ? [`${name}:in:${plain.join(',')}`] : []
+  })
 }
 
 export function readFilters(search: string): TaskFilters {
   const params = new URLSearchParams(search)
   const states = new Set(params.getAll('state'))
+  const fields: Record<string, string[]> = {}
+  for (const filter of params.getAll('filter')) {
+    const [name, op, ...rest] = filter.split(':')
+    const value = rest.join(':')
+    if (name && op === 'eq') fields[name] = [value]
+    else if (name && op === 'in') fields[name] = unique(value.split(','))
+  }
   return {
     agents: unique(params.getAll('agent')),
     assignees: unique(params.getAll('assignee')),
+    fields,
     labels: unique(params.getAll('label')),
     states: TASK_STATES.map((s) => s.value).filter((s) => states.has(s)),
+    teams: unique(params.getAll('team')),
   }
 }
 
-const KEYS = ['agent', 'assignee', 'label', 'state']
+/**
+ * The values of a custom field filter after a toggle of one value. The API
+ * splits `in` on commas, so a value with a comma is selected alone (see
+ * {@link fieldFilters}).
+ */
+export function toggleFieldValue(values: string[], value: string): string[] {
+  if (values.includes(value)) return values.filter((v) => v !== value)
+  if (value.includes(',') || values.some((v) => v.includes(','))) return [value]
+  return [...values, value]
+}
+
+const KEYS = ['agent', 'assignee', 'filter', 'label', 'state', 'team']
 
 /**
  * The inbox filters, which live in the address, so a link, Back, and
@@ -99,6 +149,8 @@ export function writeFilters(search: string, filters: TaskFilters): string {
   for (const agent of filters.agents) params.append('agent', agent)
   for (const assignee of filters.assignees) params.append('assignee', assignee)
   for (const label of filters.labels) params.append('label', label)
+  for (const team of filters.teams) params.append('team', team)
+  for (const filter of fieldFilters(filters)) params.append('filter', filter)
   const text = params.toString()
   return text ? `?${text}` : ''
 }

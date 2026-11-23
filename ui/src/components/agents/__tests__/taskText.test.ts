@@ -24,6 +24,23 @@ describe('systemText', () => {
     ).toBe('Reopened: Still broken')
   })
 
+  it('words team and custom field changes', () => {
+    expect(systemText(event(1, 'team.changed', { from: null, to: 't1' }))).toBe(
+      'Team changed',
+    )
+    expect(systemText(event(2, 'team.changed', { from: 't1', to: null }))).toBe(
+      'Team removed',
+    )
+    expect(
+      systemText(
+        event(3, 'custom_fields.changed', {
+          from: { region: 'eu', severity: 'sev1' },
+          to: { count: 2, region: 'eu', severity: 'sev2' },
+        }),
+      ),
+    ).toBe('Custom fields changed: count, severity')
+  })
+
   it('says why a task stopped running unless the reason is routine', () => {
     expect(
       systemText(

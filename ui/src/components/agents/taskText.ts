@@ -23,6 +23,8 @@ export function systemText(e: TicketEvent): string {
       return `Check ${p.name}: ${p.verdict ?? 'reported'}${p.value != null ? ` (${typeof p.value === 'string' ? p.value : JSON.stringify(p.value)})` : ''}`
     case 'control.changed':
       return `Control ${p.from} → ${p.to} by ${e.actor_id ?? 'system'}`
+    case 'custom_fields.changed':
+      return `Custom fields changed: ${listText(changedKeys(p.from, p.to))}`
     case 'dependency.added':
       return `Dependency added: ${p.dependent_short_id} waits on ${p.prerequisite_short_id}`
     case 'dependency.removed':
@@ -74,6 +76,8 @@ export function systemText(e: TicketEvent): string {
     case 'task.created':
     case 'ticket.created':
       return 'Ticket created'
+    case 'team.changed':
+      return p.to ? 'Team changed' : 'Team removed'
     case 'todos.updated':
       return 'Plan updated'
     case 'type.changed':
@@ -99,6 +103,15 @@ const ROUTINE = new Set([
   'session_closed',
   'session_opened',
 ])
+
+/** The keys of two value maps whose values are not the same. */
+function changedKeys(from: unknown, to: unknown): string[] {
+  const a = (from ?? {}) as Record<string, unknown>
+  const b = (to ?? {}) as Record<string, unknown>
+  return [...new Set([...Object.keys(a), ...Object.keys(b)])]
+    .filter((k) => JSON.stringify(a[k]) !== JSON.stringify(b[k]))
+    .sort()
+}
 
 function listText(values: string[] | undefined): string {
   return values?.length ? values.join(', ') : 'none'

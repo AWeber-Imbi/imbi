@@ -88,6 +88,7 @@ export function BlueprintManagement() {
     'Project',
     'ProjectType',
     'Team',
+    'Ticket',
   ]
 
   const {

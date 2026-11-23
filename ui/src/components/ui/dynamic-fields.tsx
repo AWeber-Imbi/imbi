@@ -3,7 +3,12 @@ import Ajv from 'ajv'
 import addFormats from 'ajv-formats'
 import { AlertCircle } from 'lucide-react'
 
-import type { DynamicFieldSchema, DynamicSchema } from '@/api/endpoints'
+import type {
+  DynamicFieldSchema,
+  DynamicSchema,
+  ProjectSchemaSection,
+  ProjectSchemaSectionProperty,
+} from '@/api/endpoints'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -138,6 +143,54 @@ export function DynamicFormFields({
           )
         }
 
+        // An array or an object is JSON text. Text that does not parse
+        // stays a string, so the check shows an error for it.
+        if (field.type === 'array' || field.type === 'object') {
+          const raw = data[key]
+          return (
+            <div key={key}>
+              <Label
+                className="text-secondary mb-1.5 block text-sm"
+                htmlFor={`dynamic-${key}`}
+              >
+                {label}
+                {isRequired && <span className="text-red-500"> *</span>}
+              </Label>
+              <Input
+                className={`font-mono ${fieldError ? 'border-red-500' : ''}`}
+                disabled={isLoading}
+                id={`dynamic-${key}`}
+                onChange={(e) => {
+                  const text = e.target.value
+                  if (text === '') return onChange(key, undefined)
+                  try {
+                    onChange(key, JSON.parse(text))
+                  } catch {
+                    onChange(key, text)
+                  }
+                }}
+                placeholder={field.type === 'array' ? '["a", "b"]' : '{"a": 1}'}
+                value={
+                  raw === undefined || typeof raw === 'string'
+                    ? (raw ?? '')
+                    : JSON.stringify(raw)
+                }
+              />
+              {field.description && (
+                <p className="text-tertiary mt-1 text-xs">
+                  {field.description}
+                </p>
+              )}
+              {fieldError && (
+                <div className="text-danger mt-1 flex items-center gap-1 text-xs">
+                  <AlertCircle className="size-3" />
+                  {fieldError}
+                </div>
+              )}
+            </div>
+          )
+        }
+
         if (field.type === 'boolean') {
           return (
             <div className="flex items-center gap-2" key={key}>
@@ -218,6 +271,48 @@ export function DynamicFormFields({
       })}
     </>
   )
+}
+
+// A create fails when a matching blueprint has a required field with no
+// default, so collect only those fields here. A later blueprint overrides
+// an earlier one for the same field, as the API does when it builds the
+// model.
+export function requiredBlueprintFields(
+  sections: ProjectSchemaSection[] | undefined,
+): DynamicSchema {
+  const properties: Record<string, DynamicFieldSchema> = {}
+  for (const section of sections ?? []) {
+    if (section.scope === 'environment') continue
+    for (const [key, prop] of Object.entries(section.properties)) {
+      if (!section.required?.includes(key) || prop.default != null) {
+        delete properties[key]
+        continue
+      }
+      properties[key] = toDynamicField(prop)
+    }
+  }
+  return { properties, required: Object.keys(properties) }
+}
+
+/** A blueprint section property as a form field, without its nulls. */
+export function toDynamicField(
+  prop: Omit<ProjectSchemaSectionProperty, 'x-display' | 'x-ui'>,
+): DynamicFieldSchema {
+  return {
+    description: prop.description ?? undefined,
+    enum: prop.enum ?? undefined,
+    format: prop.format ?? undefined,
+    items: prop.items
+      ? {
+          enum: prop.items.enum ?? undefined,
+          type: prop.items.type ?? undefined,
+        }
+      : undefined,
+    maximum: prop.maximum ?? undefined,
+    minimum: prop.minimum ?? undefined,
+    title: prop.title ?? undefined,
+    type: prop.type ?? undefined,
+  }
 }
 
 export function validateDynamicFields(

@@ -196,11 +196,16 @@ In the **New ticket** dialog:
    **Normal**.
 5. Optional: add **Projects** and **Labels**. Archived projects are not in
    the list. See [Labels](#labels).
-6. Optional: expand **Owner** to make another person the owner (needs
-   `ticket:manage`), **Roles** to put people in named roles, or
+6. Complete the custom fields that the dialog asks for. It asks for each
+   required field with no default of the `Ticket` blueprints that match
+   the type, the priority, and the labels. See
+   [Custom fields](#custom-fields).
+7. Optional: expand **Owner** to make another person the owner (needs
+   `ticket:manage`), **Team** to set the team that owns the work,
+   **Roles** to put people in named roles, or
    **Relations** to set a parent and prerequisites. A prerequisite is
    gating by default: clear **Gating** to make it information only.
-7. Click **Create ticket**.
+8. Click **Create ticket**.
 
 An agent ticket starts as **Queued**, a person ticket as **Open**. With
 an open gating prerequisite, the ticket starts as **Held**. You are its
@@ -225,7 +230,9 @@ POST /organizations/{org}/tickets/
 ```
 
 `project_ids`, `budget`, `idempotency_key`, `type` (`bug`, `task`, or
-`feature`), `due_date` (`YYYY-MM-DD`), `labels`, and `roles` are optional. A repeat with
+`feature`), `due_date` (`YYYY-MM-DD`), `labels`, `roles`, `team` (a team
+slug), and `custom_fields` are optional. A `team` that is not a team of
+the organization returns `422` with `team_not_found`. A repeat with
 the same `idempotency_key` returns the first ticket with `200`. A disabled
 agent returns `409`.
 
@@ -239,9 +246,10 @@ add prerequisites, for example
 organization. A workflow can read the roles and hand the ticket to the
 person in a role: see [Assign ticket to role](workflows.md).
 
-To change the type, the due date, the labels, or the roles later, send
-only those fields. You need `ticket:manage`. Each change writes a
-`<field>.changed` event; `"due_date": null` clears the due date.
+To change the type, the due date, the labels, the roles, the team, or
+the custom fields later, send only those fields. You need `ticket:manage`.
+Each change writes a `<field>.changed` event; `"due_date": null` clears
+the due date and `"team": null` clears the team.
 
 ```http
 PATCH /organizations/{org}/tickets/{short_id}
@@ -263,6 +271,74 @@ POST /organizations/{org}/tickets/subject
 
 The response has `subject`, and `degraded: true` when no model answered.
 You need `ticket:create`.
+
+## Custom fields
+
+A [blueprint](blueprints.md#ticket-blueprints) of type `Ticket` adds
+custom fields to the tickets that its filter matches: by type, priority,
+and labels.
+
+- The **New ticket** dialog asks for each required field with no
+  default.
+- The **Overview** tab shows the fields in the **Custom fields** card.
+  With `ticket:manage`, click a value to change it.
+- When the type or the labels change, other blueprints can match. Imbi
+  keeps the values of fields that no longer match, and does not show
+  them. Imbi never deletes a value.
+
+Imbi checks every create, for every trigger. A required field with a
+default gets the default. When a required field has no value, or a value
+is not valid, the create returns `422`:
+
+```json
+{
+  "detail": {
+    "error": "custom_fields_invalid",
+    "message": "The ticket is missing required custom fields",
+    "missing": [
+      {"field": "severity", "title": "Severity", "type": "string",
+       "enum": ["sev1", "sev2", "sev3"]}
+    ],
+    "invalid": [
+      {"field": "due_by", "message": "Input should be a valid date"}
+    ]
+  }
+}
+```
+
+`missing` gives the property of each field, so that the caller can build
+the value. A field that no matching blueprint declares is in `invalid`.
+A `PATCH` checks only the fields that it sends; `null` clears one field.
+
+To get the fields of a ticket before you create it:
+
+```http
+GET /organizations/{org}/tickets/schema?type=bug&priority=high&label=api
+```
+
+The response also has `filterable`: the fields of every `Ticket`
+blueprint that the list can filter on, whatever the ticket.
+
+Filter the list by a custom field with `filter=<field>:<op>[:<value>]`.
+The operators are `eq`, `ne`, `in`, `not_in` (comma-separated values),
+`exists`, and `not_exists`:
+
+```http
+GET /organizations/{org}/tickets/?filter=severity:in:sev1,sev2
+```
+
+Each automatic caller must send the required fields:
+
+| Caller | How to send them |
+|---|---|
+| Schedule | Add `custom_fields` to the body of the `api` target. A failed run keeps the `422` body |
+| Webhook | Add `custom_fields` to the handler config, as CEL expressions. See [Webhooks](#webhooks). The gateway logs the `422` |
+| Workflow | Set `custom_fields` on the agent step. See [Agent task](workflows.md#agent-task) |
+| Child ticket | An agent's child ticket is a `task` of `normal` priority with no labels. It gets the values of the parent for the fields that its matching blueprints declare. The values that the agent sends replace them, and the defaults fill the remaining fields. A required field gets its value from one of these three sources |
+
+The agent of a ticket gets the custom fields that have a value in its
+instruction. People and webhooks write the values, so the agent reads
+them as data, not instructions.
 
 ## Labels
 
@@ -357,8 +433,10 @@ Webhooks**:
     ```
 
     `title_expression` and `description_expression` are CEL expressions.
-    For a fixed text, use a quoted CEL string. `delivery_id_selector` is
-    optional. It is a JSON pointer to the delivery id. The default is
+    For a fixed text, use a quoted CEL string. `custom_fields` is
+    optional. It maps a custom field name to a CEL expression, for example
+    `{"severity": "'sev2'", "repository": "payload.repository.name"}`.
+    `delivery_id_selector` is optional. It is a JSON pointer to the delivery id. The default is
     `/metadata/headers/x-github-delivery`.
 
 5. Save the webhook.
@@ -404,7 +482,9 @@ four groups:
 | Recently closed | Closed tickets, newest first |
 
 - The filter field matches the title, the id, the agent, and the project.
-- **State**, **Assignee**, **Agent**, and **Label** filter the list. **My
+- **State**, **Assignee**, **Agent**, **Label**, and **Team** filter the
+  list. Each custom field with a fixed set of values (an enum or a
+  boolean) is also a filter. **My
   tickets** shows only your tickets.
 - A ticket with a priority other than **Normal** shows its priority. A bug
   or a feature shows an icon for its type. A due date shows in amber when
@@ -466,7 +546,7 @@ of the ticket.
 
 | Tab | What it shows |
 |---|---|
-| Overview | The description, the latest todo list, the owner, the priority, the budget, the cost, the tokens, the prompt version, and the outcome |
+| Overview | The description, the latest todo list, the owner, the priority, the team, the custom fields, the budget, the cost, the tokens, the prompt version, and the outcome |
 | Input required | The requests of the agent. See [Answer a request](#answer-a-request) |
 | Activity | The events of the ticket, as a conversation, as a trajectory of every event, or as statistics for each turn. See [Read the activity](#read-the-activity) |
 | Signals and checks | The latest report of each check, with its value, baseline, and verdict. The tab count shows the failing checks |

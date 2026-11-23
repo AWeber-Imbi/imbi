@@ -202,6 +202,7 @@ import type {
   TicketCounts,
   TicketCreate,
   TicketEvent,
+  TicketFilterable,
   TicketHandOff,
   TicketLabel,
   TicketListItem,
@@ -1603,6 +1604,7 @@ export interface DynamicFieldSchema {
   description?: string
   enum?: string[]
   format?: string
+  items?: { enum?: string[]; type?: string }
   maximum?: number
   maxLength?: number
   minimum?: number
@@ -3853,6 +3855,8 @@ const ticketPath = (orgSlug: string, shortId: string) =>
 
 export interface TicketListParams {
   agent_id?: string[]
+  /** Custom field filters, as `field:op[:value]`, combined with AND. */
+  filter?: string[]
   /** One inbox group, in the order of the inbox; it pages with `offset`. */
   group?: InboxGroup
   /** `run`: one row per unit of work (a workflow run and its tickets). */
@@ -3865,6 +3869,8 @@ export interface TicketListParams {
   owner?: string[]
   q?: string
   status?: TicketStatus[]
+  /** Tickets of one of these teams, by slug. */
+  team?: string[]
 }
 
 export const listTickets = (
@@ -4030,6 +4036,22 @@ export const suggestTicketSubject = (
   apiClient.post<TicketSubject>(
     `${ticketsApiPath(orgSlug)}/subject`,
     { description },
+    signal,
+  )
+
+/**
+ * The custom fields of a ticket with this type, priority, and labels:
+ * one section for each `Ticket` blueprint that matches. `filterable` has
+ * the fields of every `Ticket` blueprint that the list can filter on.
+ */
+export const getTicketSchema = (
+  orgSlug: string,
+  params: { label: string[]; priority: string; type: string },
+  signal?: AbortSignal,
+) =>
+  apiClient.get<ProjectSchemaResponse & { filterable: TicketFilterable[] }>(
+    `${ticketsApiPath(orgSlug)}/schema`,
+    { ...params },
     signal,
   )
 

@@ -49,6 +49,7 @@ import { toast } from 'sonner'
 import { ApiError } from '@/api/client'
 import {
   getTicketPosition,
+  getTicketSchema,
   listTicketLabels,
   rankTicket,
 } from '@/api/endpoints'
@@ -63,6 +64,7 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAuth } from '@/hooks/useAuth'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useHasPermission } from '@/hooks/useHasPermission'
+import { useTeams } from '@/hooks/useOrgResources'
 import { queryKeys } from '@/lib/queryKeys'
 import { storage } from '@/lib/storage'
 import { cn } from '@/lib/utils'
@@ -91,7 +93,13 @@ import {
   PersonMark,
   TaskFilterBar,
 } from './TaskFilterBar'
-import { activeCount, ME, useTaskFilters } from './taskFilters'
+import {
+  activeCount,
+  fieldFilters,
+  type FilterField,
+  ME,
+  useTaskFilters,
+} from './taskFilters'
 import {
   errorMessage,
   TASK_PAGE,
@@ -111,6 +119,9 @@ import { useVirtualRows } from './virtualRows'
  * It stays with the redirect in App.tsx.
  */
 const SHORT_ID = /^T-\d+$/
+
+/** The schema params of any ticket: only its `filterable` is read. */
+const ANY_TICKET = { label: [], priority: 'normal', type: 'task' }
 
 /**
  * Tickets: the inbox in a resizable pane and the ticket in the URL
@@ -426,14 +437,29 @@ function TaskInbox({
   const canCreate = useHasPermission('ticket:create', orgSlug)
   const canRank = useHasPermission('ticket:manage', orgSlug)
   const q = useDebouncedValue(text.trim(), 250) || undefined
+  const { data: schema } = useQuery({
+    queryFn: ({ signal }) => getTicketSchema(orgSlug, ANY_TICKET, signal),
+    queryKey: queryKeys.ticketSchema(orgSlug, ANY_TICKET),
+    staleTime: 60_000,
+  })
+  // A field in an old link that the list cannot filter on now would
+  // make every list request fail with 400, so it is not sent.
+  const filterable = schema?.filterable?.map((f) => f.field)
+  const fields = Object.fromEntries(
+    Object.entries(filters.fields).filter(
+      ([name]) => !filterable || filterable.includes(name),
+    ),
+  )
   const params = {
     agent_id: nonEmpty(filters.agents),
+    filter: nonEmpty(fieldFilters({ ...filters, fields })),
     group_by: byRun ? ('run' as const) : undefined,
     label: nonEmpty(filters.labels),
     mine: filters.assignees.includes(ME),
     owner: nonEmpty(filters.assignees.filter((a) => a !== ME)),
     q,
     status: nonEmpty(filters.states),
+    team: nonEmpty(filters.teams),
   }
   const paramsKey = JSON.stringify(params)
   const shownParams = useRef(paramsKey)
@@ -559,6 +585,19 @@ function TaskInbox({
     queryKey: queryKeys.ticketLabels(orgSlug, labelQ),
     staleTime: 60_000,
   })
+  const { data: teams = [] } = useTeams(orgSlug)
+  // The menu offers only the fields with a fixed set of values.
+  const customFields = useMemo(
+    () =>
+      (schema?.filterable ?? []).flatMap((f): FilterField[] => {
+        const values =
+          f.enum ?? (f.type === 'boolean' ? ['true', 'false'] : undefined)
+        return values
+          ? [{ label: f.title || f.field, name: f.field, values }]
+          : []
+      }),
+    [schema],
+  )
   const [dragging, setDragging] = useState<string>()
   const rank = useMutation({
     mutationFn: ({
@@ -756,6 +795,7 @@ function TaskInbox({
           </>
         }
         agents={agents}
+        customFields={customFields}
         filters={filters}
         labels={topLabels.map((l) => l.name)}
         me={user?.email}
@@ -774,6 +814,7 @@ function TaskInbox({
             />
           </div>
         }
+        teams={teams}
       />
       {error && (
         <Alert className="m-3" title="Could not load tickets" variant="danger">

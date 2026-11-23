@@ -14,7 +14,8 @@ from imbi.common.workflows.registry import slack
 _SLUGS_QUERY: typing.LiteralString = """
 MATCH (o:Organization {{id: {org}}})
 OPTIONAL MATCH (a:Agent {{id: {agent}}})-[:BELONGS_TO]->(o)
-RETURN o.slug AS org_slug, a.slug AS agent_slug
+OPTIONAL MATCH (t:Team {{id: {team}}})-[:BELONGS_TO]->(o)
+RETURN o.slug AS org_slug, a.slug AS agent_slug, t.slug AS team_slug
 """
 
 
@@ -36,13 +37,18 @@ async def attributes(
 ) -> dict[str, typing.Any]:
     """Return ``title``, ``url``, ``project``, ``agent`` (the agent
     slug), ``cost_usd``, ``type``, ``priority``, ``due_date``,
-    ``labels``, and ``roles`` of a task. Without ``db``, ``url`` and
-    ``agent`` are ``None``."""
+    ``labels``, ``roles``, ``team`` (the team slug), and
+    ``custom_fields`` of a task.
+    Without ``db``, ``url``, ``agent``, and ``team`` are ``None``."""
     found = (
         await db.execute(
             _SLUGS_QUERY,
-            {'org': task['organization_id'], 'agent': task['agent_id']},
-            ['org_slug', 'agent_slug'],
+            {
+                'org': task['organization_id'],
+                'agent': task['agent_id'],
+                'team': task.get('team_id') or '',
+            },
+            ['org_slug', 'agent_slug', 'team_slug'],
         )
         if db is not None
         else []
@@ -60,6 +66,8 @@ async def attributes(
         'due_date': due.isoformat() if (due := task.get('due_date')) else None,
         'labels': task.get('labels'),
         'roles': task.get('roles'),
+        'team': graph.parse_agtype(row.get('team_slug')),
+        'custom_fields': task.get('custom_fields'),
     }
 
 

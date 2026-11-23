@@ -57,6 +57,15 @@ export function migrateStorageKey(from: string, to: string): void {
   }
 }
 
+/** The fields of a blueprint filter, in the order that they show. */
+export const BLUEPRINT_FILTER_KEYS = [
+  'project_type',
+  'environment',
+  'ticket_type',
+  'priority',
+  'label',
+] as const satisfies readonly (keyof BlueprintFilter)[]
+
 /**
  * Parse a blueprint's filter field (string or object) into a typed
  * BlueprintFilter, returning null on missing/invalid input.
@@ -68,10 +77,7 @@ export function parseFilterFromBlueprint(
   try {
     const parsed: BlueprintFilter =
       typeof filter === 'string' ? JSON.parse(filter) : filter
-    if (
-      (parsed.project_type?.length ?? 0) > 0 ||
-      (parsed.environment?.length ?? 0) > 0
-    ) {
+    if (BLUEPRINT_FILTER_KEYS.some((k) => (parsed[k]?.length ?? 0) > 0)) {
       return parsed
     }
   } catch {

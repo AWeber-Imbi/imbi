@@ -438,6 +438,16 @@ class Engine:
                     )
                 )
         except executors.StepError as e:
+            if e.detail is not None:
+                # The step error is the code only; the log has the detail
+                # of the API error, such as the fields that are not valid.
+                LOGGER.warning(
+                    'Run %s: %s failed: %s: %s',
+                    run['id'],
+                    node.key,
+                    e.code,
+                    _safe_detail(e.detail),
+                )
             return await self._error(run, node, step, slug, e.code, e.retry)
         except TimeoutError:
             return await self._error(run, node, step, slug, 'timeout', True)
@@ -632,6 +642,41 @@ class Engine:
 
 
 # --- References ----------------------------------------------------------
+
+
+def _safe_detail(detail: object) -> object:
+    """Return the parts of an API error detail that are safe to log. A
+    detail can hold request input, such as ticket text or custom field
+    values in the ``input`` of a validation error, so only the error,
+    the message, and the field names stay."""
+    if isinstance(detail, dict):
+        found = typing.cast('dict[str, typing.Any]', detail)
+        safe: dict[str, typing.Any] = {
+            k: found[k] for k in ('error', 'message') if k in found
+        }
+        if isinstance(found.get('missing'), list):
+            safe['missing'] = [_item(m, 'field') for m in found['missing']]
+        if isinstance(found.get('invalid'), list):
+            safe['invalid'] = [
+                {'field': _item(i, 'field'), 'message': _item(i, 'message')}
+                for i in found['invalid']
+            ]
+        return safe
+    if isinstance(detail, list):
+        return [
+            {'loc': _item(item, 'loc'), 'msg': _item(item, 'msg')}
+            for item in typing.cast('list[object]', detail)
+        ]
+    if isinstance(detail, str):
+        return detail[:200]
+    return type(detail).__name__
+
+
+def _item(item: object, key: str) -> typing.Any:
+    """Return ``item[key]`` of a dict item, else ``None``."""
+    if isinstance(item, dict):
+        return typing.cast('dict[str, typing.Any]', item).get(key)
+    return None
 
 
 def _blank_output(
