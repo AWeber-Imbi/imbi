@@ -762,7 +762,11 @@ export function LogsTab({
                 : fmtRangeLabel(datetimes.start, datetimes.end)}
             </Button>
           </PopoverTrigger>
-          <PopoverContent align="start" className="w-auto p-0">
+          <PopoverContent
+            align="start"
+            className="min-w-64 p-0"
+            style={{ width: 'var(--radix-popover-trigger-width)' }}
+          >
             <LogsRangePicker
               end={new Date(datetimes.end)}
               onApply={(from, to) => {

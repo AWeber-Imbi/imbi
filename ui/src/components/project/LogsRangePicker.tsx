@@ -41,6 +41,7 @@ export function LogsRangePicker({
   return (
     <div className="flex flex-col">
       <Calendar
+        className="w-full"
         defaultMonth={days?.from}
         mode="range"
         onSelect={setDays}
