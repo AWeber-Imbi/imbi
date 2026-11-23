@@ -83,6 +83,14 @@ async function pickAgent(name: string) {
   fireEvent.click(await screen.findByRole('option', { name: new RegExp(name) }))
 }
 
+function wheelGoesThrough(option: HTMLElement) {
+  const list = option.closest('[cmdk-list]') as HTMLElement
+  list.style.overflowY = 'auto'
+  Object.defineProperty(list, 'scrollHeight', { value: 400 })
+  Object.defineProperty(list, 'clientHeight', { value: 100 })
+  return fireEvent.wheel(option, { deltaY: 40 })
+}
+
 describe('NewTaskDialog', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -338,6 +346,23 @@ describe('NewTaskDialog', () => {
       title: 'Rotate the deploy key',
     })
   })
+
+  it.each([
+    ['agent', [/Assign to/], /Forager/],
+    ['person', ['Person', 'Assignee'], /Ops Person/],
+    ['prerequisite', [/Relations/, 'Add prerequisite'], /T-3/],
+  ] as const)(
+    'lets the wheel scroll the %s picker',
+    async (_, clicks, option) => {
+      render(<NewTaskDialog isOpen onClose={vi.fn()} />)
+      for (const name of clicks) {
+        const role = name === 'Person' ? 'radio' : 'button'
+        fireEvent.click(screen.getByRole(role, { name }))
+      }
+      const item = await screen.findByRole('option', { name: option })
+      expect(wheelGoesThrough(item)).toBe(true)
+    },
+  )
 })
 
 describe('roleErrors', () => {
