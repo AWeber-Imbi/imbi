@@ -320,6 +320,10 @@ agent from its secret grants. The prompt stays in the prompt CMS.
 You need `agent:delete`, or `agent:write` and membership of the agent's
 owner team. Without either, the API returns `403`.
 
+The owner team can delete the agent and grant it secrets, so changing
+the **Team** of an agent also needs `agent:delete` or membership of the
+current owner team (`403 owner_team_forbidden`).
+
 The delete returns `409` when:
 
 - Another agent delegates to this agent. The tab lists those agents.

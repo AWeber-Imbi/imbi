@@ -701,6 +701,29 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(statements[4].params['tag_slugs'], ['blue'])
         self.assertIn('SET', statements[5].cypher)
 
+    def test_team_change_needs_the_owner_team(self) -> None:
+        # The owner team may delete the agent and grant it secrets, so
+        # agent:write alone does not move it to another team.
+        self.auth_context.permissions = {'agent:read', 'agent:write'}
+        # fetch, owned agents (none)
+        self.mock_db.execute.side_effect = [[self._row()], []]
+        response = self.client.put(BASE + '/triage', json={'team': 'dev'})
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'owner_team_forbidden'
+        )
+        self.assertEqual(self._version_writes(), [])
+
+        # A member of the current owner team can move it.
+        self.mock_db.execute.side_effect = [
+            [self._row()],
+            [{'id': 'agent-1'}],
+            [{'slug': 'dev', 'id': 'team-2'}],
+            [self._row(team='dev', latest=2)],
+        ]
+        response = self.client.put(BASE + '/triage', json={'team': 'dev'})
+        self.assertEqual(response.status_code, 200, response.text)
+
     def test_put_deleted_agent_is_not_found(self) -> None:
         # fetch, batch (matches nothing), fetch (agent is gone)
         self.mock_db.execute.side_effect = [[self._row()], []]

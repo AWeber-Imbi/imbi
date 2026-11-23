@@ -1116,6 +1116,17 @@ async def _scoped_grant_writer(
     return True
 
 
+def _grant_gone(scoped: bool) -> fastapi.HTTPException:
+    """A grant write that matched no row: 404, or for a scoped caller
+    409, because the grant may have changed its agents meanwhile."""
+    if scoped:
+        return fastapi.HTTPException(
+            status_code=409,
+            detail='The grant was changed or deleted. Reload it and retry.',
+        )
+    return fastapi.HTTPException(status_code=404, detail='Grant not found')
+
+
 def _not_grantable(err: store.NotGrantable) -> fastapi.HTTPException:
     return autonomous.forbidden('grant_binding_forbidden', str(err))
 
@@ -1226,6 +1237,8 @@ async def update_grant(
             the caller is not in, or after the change a binding that
             is not ``grantable``.
         404: No such grant.
+        409: For a caller without ``secret_binding:write``: the
+            grant's agents changed during the request.
         422: A binding is not in the organization or is a provider
             key binding, or a setup purpose has a delivery mode other
             than ``file_descriptor``.
@@ -1245,20 +1258,22 @@ async def update_grant(
     if 'purposes' in changes or 'delivery_modes' in changes:
         _check_setup_delivery(merged['purposes'], merged['delivery_modes'])
     try:
-        row = await fetch_or_404(
-            secrets.update,
+        row = await secrets.update(
             'grants',
             org_id,
             grant_id,
             changes,
             event=_event('secret_grant_updated', auth, 'grant_id'),
-            detail='Grant not found',
             require_grantable=scoped,
+            # The agents were checked above: write only if they stay.
+            expect_agent_ids=current['agent_ids'] if scoped else None,
         )
     except (store.UnknownBindings, store.ProviderKeyBinding) as err:
         raise _invalid(str(err)) from None
     except store.NotGrantable as err:
         raise _not_grantable(err) from None
+    if row is None:
+        raise _grant_gone(scoped)
     return row
 
 
@@ -1278,17 +1293,20 @@ async def delete_grant(
             ``DELETE /{grant_id}/agents/{agent_id}`` to remove only
             the caller's agent.
         404: No such grant.
+        409: For a caller without ``secret_binding:write``: the
+            grant's agents changed during the request.
 
     """
     current = await get_grant(org_id, grant_id, secrets, auth)
-    await _scoped_grant_writer(db, auth, org_id, current['agent_ids'])
+    scoped = await _scoped_grant_writer(db, auth, org_id, current['agent_ids'])
     if not await secrets.delete(
         'grants',
         org_id,
         grant_id,
         event=_event('secret_grant_deleted', auth, 'grant_id'),
+        expect_agent_ids=current['agent_ids'] if scoped else None,
     ):
-        raise fastapi.HTTPException(status_code=404, detail='Grant not found')
+        raise _grant_gone(scoped)
 
 
 @grants_router.delete('/{grant_id}/agents/{agent_id}', status_code=204)

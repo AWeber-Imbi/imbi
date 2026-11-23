@@ -974,6 +974,33 @@ class SecretEndpointTestCase(
         response = await self.client.get(f'{grants}/{shared}')
         self.assertEqual(response.json()['agent_ids'], [theirs])
 
+        # A scoped write lands only while the grant names the agents
+        # that the caller checked.
+        grant_id = uuid.UUID(shared)
+        self.assertIsNone(
+            await self.store.update(
+                'grants',
+                self.org,
+                grant_id,
+                {'enabled': False},
+                expect_agent_ids=[mine],
+            )
+        )
+        self.assertFalse(
+            await self.store.delete(
+                'grants', self.org, grant_id, expect_agent_ids=[mine]
+            )
+        )
+        self.assertIsNotNone(
+            await self.store.update(
+                'grants',
+                self.org,
+                grant_id,
+                {'enabled': False},
+                expect_agent_ids=[theirs],
+            )
+        )
+
         # The last agent goes, so the grant goes.
         response = await self.client.delete(f'{grants}/{own}/agents/{mine}')
         self.assertEqual(response.status_code, 204, response.text)

@@ -280,11 +280,14 @@ class SecretStore:
         *,
         event: AuditEvent | None = None,
         require_grantable: bool = False,
+        expect_agent_ids: list[str] | None = None,
     ) -> Row | None:
         """Change a row; return it, or ``None`` when it is not there.
 
         The audit ``event`` commits with the change. With
         ``require_grantable``, a grant change must give ``binding_ids``.
+        With ``expect_agent_ids``, a grant changes only while it names
+        exactly those agents; otherwise this returns ``None``.
 
         Raises:
             psycopg.errors.UniqueViolation: A name is in use.
@@ -298,8 +301,9 @@ class SecretStore:
         """
         query = sql.SQL(
             'UPDATE {table} SET {sets}updated_at = NOW()'
-            ' WHERE organization_id = %s AND id = %s RETURNING *'
+            ' WHERE organization_id = %s AND id = %s{guard} RETURNING *'
         ).format(
+            guard=_agents_guard(expect_agent_ids),
             table=sql.Identifier(SCHEMA, table),
             sets=sql.SQL('').join(
                 sql.SQL('{} = %s, ').format(sql.Identifier(name))
@@ -334,6 +338,7 @@ class SecretStore:
                     *(_value(v) for v in changes.values()),
                     organization_id,
                     row_id,
+                    *_agents_param(expect_agent_ids),
                 ],
             )
             row = await cur.fetchone()
@@ -371,10 +376,13 @@ class SecretStore:
         row_id: uuid.UUID,
         *,
         event: AuditEvent | None = None,
+        expect_agent_ids: list[str] | None = None,
     ) -> bool:
         """Delete a row; return ``False`` when it is not there.
 
-        The audit ``event`` commits with the delete.
+        The audit ``event`` commits with the delete. With
+        ``expect_agent_ids``, a grant goes only while it names exactly
+        those agents; otherwise this returns ``False``.
 
         Raises:
             InUse: A binding uses the provider, or a grant or an active
@@ -389,9 +397,16 @@ class SecretStore:
                     await cur.execute(
                         sql.SQL(
                             'DELETE FROM {table} WHERE organization_id = %s'
-                            ' AND id = %s RETURNING *'
-                        ).format(table=sql.Identifier(SCHEMA, table)),
-                        (organization_id, row_id),
+                            ' AND id = %s{guard} RETURNING *'
+                        ).format(
+                            table=sql.Identifier(SCHEMA, table),
+                            guard=_agents_guard(expect_agent_ids),
+                        ),
+                        (
+                            organization_id,
+                            row_id,
+                            *_agents_param(expect_agent_ids),
+                        ),
                     )
                     row = await cur.fetchone()
             except (
@@ -723,6 +738,16 @@ async def _check_role(
     if await cur.fetchone() is not None:
         # Generic: the message must not say that another tenant has it.
         raise RoleInUse('This role cannot be used')
+
+
+def _agents_guard(expect: list[str] | None) -> sql.Composable:
+    """The ``WHERE`` term of ``expect_agent_ids``: the grant still names
+    exactly the agents that the caller checked (#871)."""
+    return sql.SQL('' if expect is None else ' AND agent_ids = %s::text[]')
+
+
+def _agents_param(expect: list[str] | None) -> list[list[str]]:
+    return [] if expect is None else [expect]
 
 
 async def _lock_bindings(

@@ -1108,6 +1108,29 @@ async def _write_version(
         await db.execute(stmt.cypher, stmt.params, ['n'])
 
 
+async def _check_team_move(
+    db: graph.Pool,
+    auth: permissions.AuthContext,
+    org_id: str,
+    agent_id: str,
+) -> None:
+    """Raise 403 unless the caller may move the agent to another team.
+
+    The owner team may delete the agent and grant it secrets, so only
+    an admin, a caller with ``agent:delete``, or a member of the
+    current owner team moves it.
+    """
+    if not (
+        auth.is_admin
+        or 'agent:delete' in auth.permissions
+        or await teams.owns_agents(db, auth, org_id, [agent_id])
+    ):
+        raise autonomous.forbidden(
+            'owner_team_forbidden',
+            'Only a member of the owner team can change the team',
+        )
+
+
 async def _apply(
     db: graph.Pool,
     org_id: str,
@@ -1116,7 +1139,7 @@ async def _apply(
     target: AgentSnapshot,
     enabled: bool,
     summary: str | None,
-    principal: str,
+    auth: permissions.AuthContext,
     label_move: graph_cypher.Statement | None = None,
 ) -> dict[str, typing.Any]:
     """Write ``target`` and ``enabled`` over the stored agent.
@@ -1149,6 +1172,7 @@ async def _apply(
             _check_prompt_scope(org_slug, target.prompt_ref)
         team_id: str | None = None
         if target.team != current.team:
+            await _check_team_move(db, auth, org_id, agent_id)
             team_id = await _team_id(db, org_id, target.team)
         if (target.team, target.prompt_ref, target.prompt_version) != (
             current.team,
@@ -1166,7 +1190,9 @@ async def _apply(
         # The version is written first. Its unique index stops a
         # concurrent save before that save changes the agent.
         statements.append(
-            _version_statement(agent_id, n, target, summary, principal)
+            _version_statement(
+                agent_id, n, target, summary, auth.principal_name
+            )
         )
         if team_id is not None:
             statements += [
@@ -1513,7 +1539,7 @@ async def update_agent(
         target,
         merged.enabled,
         merged.version_summary,
-        auth.principal_name,
+        auth,
     )
 
 
@@ -1558,7 +1584,7 @@ async def patch_agent(
         target,
         merged.enabled,
         merged.version_summary,
-        auth.principal_name,
+        auth,
     )
 
 
@@ -1796,7 +1822,7 @@ async def restore_agent_version(
         snapshot,
         bool(existing.get('enabled', True)),
         summary,
-        auth.principal_name,
+        auth,
         label_move,
     )
 
