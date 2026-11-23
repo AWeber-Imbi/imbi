@@ -17,8 +17,10 @@ The area has these pages:
 | Dashboard | **Agents > Dashboard** | Agent activity at a glance |
 | Tickets | **Tickets** (top bar) | The ticket list. It is a top-level page, not in the Agents area. See [Tickets](tickets.md) |
 | Agents | **Agents > Settings > Agents** | The agent list, the agent detail, and the editor |
-| Workflows | **Agents > Settings > Workflows** | See [Workflows](workflows.md) |
+| AI Models | **Agents > Settings > AI Models** | See [AI Models](ai-models.md). Platform administrators only |
 | Platform | **Agents > Settings > Platform** | The base configuration and the plugin marketplaces |
+| Secrets | **Agents > Settings > Secrets** | See [Secrets](secrets.md). Platform administrators only |
+| Workflows | **Agents > Settings > Workflows** | See [Workflows](workflows.md) |
 
 ## Permissions
 
@@ -230,8 +232,8 @@ these values.
 To remove a secret, click **X** on its row. This removes the agent from
 the grant. A grant that names other agents stays for them. A grant that
 names no other agent is deleted. A grant can cover more than one secret;
-the agent then loses all of them. To change a grant, use **Admin >
-\<organization\> Admin > Secrets**.
+the agent then loses all of them. To change a grant, use **Agents >
+Settings > Secrets**.
 
 Without `secret_binding:write`, you can add and remove access only for
 an agent of a team that you are in. **Add access** and the **Grant**

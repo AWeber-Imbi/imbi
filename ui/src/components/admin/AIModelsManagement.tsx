@@ -23,6 +23,7 @@ import {
   updateAIModel,
   updateAIProvider,
 } from '@/api/endpoints'
+import { agentsPath } from '@/components/agents/agentsNav'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
@@ -59,7 +60,7 @@ import { type ProviderRow, ProviderTable } from './ai-models/ProviderTable'
 
 type ProviderFilter = 'all' | 'builtin' | 'custom' | 'missing-credentials'
 
-const LIST_PATH = '/admin/ai-models'
+const LIST_PATH = agentsPath('ai-models')
 
 // Stable empty-array references so an in-flight query does not hand the
 // row memo a fresh array on every render.

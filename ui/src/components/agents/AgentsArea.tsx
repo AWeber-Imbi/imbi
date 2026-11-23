@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 
 import { AgentRunners } from '@/components/admin/AgentRunners'
+import { AIModelsManagement } from '@/components/admin/AIModelsManagement'
 import { EgressDestinationManagement } from '@/components/admin/EgressDestinationManagement'
+import { SecretsManagement } from '@/components/admin/secrets/SecretsManagement'
 import { WorkflowsManagement } from '@/components/workflows/WorkflowsManagement'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { cn } from '@/lib/utils'
@@ -21,6 +23,35 @@ import {
 import { DashboardPage } from './DashboardPage'
 import { PlatformPage } from './PlatformPage'
 import { useResizableWidth } from './useResizableWidth'
+
+// The page of each section. The Record type makes a missing section a
+// compile error.
+const PAGES: Record<AgentsSection, ReactNode> = {
+  'ai-models': (
+    <div className="p-8">
+      <AIModelsManagement />
+    </div>
+  ),
+  dashboard: <DashboardPage />,
+  egress: (
+    <div className="p-8">
+      <EgressDestinationManagement />
+    </div>
+  ),
+  manage: <AgentsManagement />,
+  platform: <PlatformPage />,
+  runners: (
+    <div className="p-8">
+      <AgentRunners />
+    </div>
+  ),
+  secrets: (
+    <div className="p-8">
+      <SecretsManagement />
+    </div>
+  ),
+  workflows: <WorkflowsManagement />,
+}
 
 /**
  * The Agents area: its own sidebar (Agentic platform, Settings) and the
@@ -48,25 +79,7 @@ export function AgentsArea() {
   return (
     <div className="flex min-h-[calc(100vh-4rem)]">
       <AgentsSidebar current={current} items={items} />
-      <div className="min-w-0 flex-1">
-        {current === 'dashboard' ? (
-          <DashboardPage />
-        ) : current === 'manage' ? (
-          <AgentsManagement />
-        ) : current === 'platform' ? (
-          <PlatformPage />
-        ) : current === 'runners' ? (
-          <div className="p-8">
-            <AgentRunners />
-          </div>
-        ) : current === 'egress' ? (
-          <div className="p-8">
-            <EgressDestinationManagement />
-          </div>
-        ) : (
-          <WorkflowsManagement />
-        )}
-      </div>
+      <div className="min-w-0 flex-1">{PAGES[current]}</div>
     </div>
   )
 }

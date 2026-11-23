@@ -5,6 +5,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 
 import { listSecretAuditEvents } from '@/api/endpoints'
+import { agentsPath } from '@/components/agents/agentsNav'
 import { AdminTable } from '@/components/ui/admin-table'
 import { Badge } from '@/components/ui/badge'
 import { ErrorBanner } from '@/components/ui/error-banner'
@@ -125,7 +126,7 @@ export function AuditTab({ orgSlug }: { orgSlug: string }) {
                   <Link
                     className="text-info font-mono text-xs hover:underline"
                     title="Open the resolution"
-                    to={`/admin/secrets/resolutions?resolution=${row.resolution_id}`}
+                    to={`${agentsPath('secrets', 'resolutions')}?resolution=${row.resolution_id}`}
                   >
                     {row.resolution_id.slice(0, 8)}
                   </Link>

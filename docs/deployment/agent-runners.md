@@ -670,7 +670,7 @@ Find the error code first:
 
 - A failed task shows the outcome `failed_external` and a reason. The
   reason is the code.
-- A refused secret request shows the reason in **Admin > <organization> Admin > Secrets**, on the **Audit**
+- A refused secret request shows the reason in **Agents > Settings > Secrets**, on the **Audit**
   tab.
   The runner log also shows `Refused <purpose> secret: <code>`.
 - A refused API request shows the code in the response body and in the
@@ -680,7 +680,7 @@ Find the error code first:
 
 | Reason | Cause | Fix |
 |---|---|---|
-| `model_not_allowed` | No enabled catalog model with the model id of the agent's prompt version allows the owner team of the agent: the model is restricted to other teams, disabled, or gone. Imbi closes the task when a runner claims it; the task does not run | Allow the owner team on the model in **Admin > AI Models**, or point the agent at a prompt version with another model. The closed task keeps its prompt version, so then retry the task (**Retry**, `POST .../tasks/{short_id}/retry`) or submit a new one. The retry uses the current versions of the agent |
+| `model_not_allowed` | No enabled catalog model with the model id of the agent's prompt version allows the owner team of the agent: the model is restricted to other teams, disabled, or gone. Imbi closes the task when a runner claims it; the task does not run | Allow the owner team on the model in **Agents > Settings > AI Models**, or point the agent at a prompt version with another model. The closed task keeps its prompt version, so then retry the task (**Retry**, `POST .../tasks/{short_id}/retry`) or submit a new one. The retry uses the current versions of the agent |
 | `prompt_render_failed` | The agent's pinned prompt version did not render, usually because the template uses a variable that its variable schema does not declare. The runner log shows `Prompt of <task> did not render` with the error | Declare the variable in a new prompt version and point the agent at it |
 | `model_key_missing` | The platform configuration has no `model_upstream.key_ref` | Do [step 5](#5-configure-the-model-key) |
 | `model_upstream_insecure` | The model upstream URL uses `http://` and `model_upstream.allow_insecure_http` is off. The runner does not send the key without TLS | Change the **Base URL** to `https://`. For a protected in-cluster upstream only, turn on **Allow http://**. See [step 5](#5-configure-the-model-key) |
