@@ -64,11 +64,14 @@ destination sends three headers:
 
 Each token is the base64 HMAC-SHA256 of
 `<webhook-id>.<webhook-timestamp>.<body>`, keyed by the signing secret.
-Put the secret that PostHog shows for the destination (`whsec_...`) in
-the **Secret** field of the Imbi webhook; the `whsec_` prefix is
-optional. The gateway drops a delivery whose signature is missing or does
-not match, and a delivery whose timestamp is more than five minutes from
-the gateway clock.
+PostHog signs only when the destination's **Signing secret** is set, so
+generate a Standard Webhooks key (a base64 string, optionally prefixed
+with `whsec_`), enter it as the **Signing secret** of the PostHog
+destination with **Signature format** set to **Standard Webhooks**, and
+put the same key in the **Secret** field of the Imbi webhook. The
+gateway drops a delivery whose signature is missing or does not match,
+and a delivery whose timestamp is more than five minutes from the
+gateway clock.
 
 ## Webhook
 
@@ -81,7 +84,7 @@ To set up the webhook:
 
     | Field | Value |
     |---|---|
-    | Secret | The secret that the PostHog destination signs with |
+    | Secret | The key you entered as the PostHog destination's Signing secret |
     | Identifier Selector | The JSON Pointer to the event property that names the project, for example `/event/properties/service` |
     | User Subject Selector | Optional. For example `/person/properties/email` |
     | Event Type Selector | `/event/event` |
