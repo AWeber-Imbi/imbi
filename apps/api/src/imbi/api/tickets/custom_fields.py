@@ -11,6 +11,7 @@ import typing
 from collections import abc
 
 import fastapi
+import jsonschema
 import pydantic
 
 from imbi.api import blueprint_attributes, blueprint_sections
@@ -129,7 +130,13 @@ def validate(
                 annotation = annotation | None
         if name in bounds:
             annotation = typing.Annotated[annotation, bounds[name]]
-        fields[name] = (annotation, None if partial else field.default)
+        # A create also checks the blueprint defaults.
+        fields[name] = (
+            annotation,
+            None
+            if partial
+            else pydantic.Field(default=field.default, validate_default=True),
+        )
     model = pydantic.create_model(
         'TicketCustomFields', __base__=_Values, **fields
     )
@@ -143,6 +150,8 @@ def validate(
     except pydantic.ValidationError as e:
         raise _invalid(matches, e) from e
     result = clean.model_dump(mode='json', exclude_none=True)
+    if nested := _nested_errors(matches, result):
+        raise _detail([], nested)
     if partial:
         return {k: result.get(k) for k in values}
     return result
@@ -188,6 +197,32 @@ def _item_enums(matches: list[models.Blueprint]) -> dict[str, typing.Any]:
     return result
 
 
+def _nested_errors(
+    matches: list[models.Blueprint], values: dict[str, typing.Any]
+) -> list[dict[str, str]]:
+    """Check each object value against the nested schema of its field.
+    The shared helper checks only that the value is a dict."""
+    properties: dict[str, models.Schema] = {}
+    for bp in matches:
+        properties.update(bp.json_schema.properties or {})
+    errors: list[dict[str, str]] = []
+    for name, value in values.items():
+        prop = properties.get(name)
+        if prop is None or prop.type != 'object':
+            continue
+        schema = typing.cast(
+            dict[str, typing.Any],
+            prop.model_dump(  # pyright: ignore[reportUnknownMemberType]
+                mode='json', by_alias=True, exclude_none=True
+            ),
+        )
+        try:
+            jsonschema.validate(value, schema)
+        except jsonschema.ValidationError as err:
+            errors.append({'field': name, 'message': err.message})
+    return errors
+
+
 def _invalid(
     matches: list[models.Blueprint], error: pydantic.ValidationError
 ) -> fastapi.HTTPException:
@@ -204,6 +239,13 @@ def _invalid(
             missing.append({'field': field, **prop.model_dump(mode='json')})
         else:
             invalid.append({'field': field, 'message': item['msg']})
+    return _detail(missing, invalid)
+
+
+def _detail(
+    missing: list[dict[str, typing.Any]], invalid: list[dict[str, str]]
+) -> fastapi.HTTPException:
+    """Return the 422 of the D2 shape."""
     return fastapi.HTTPException(
         status_code=422,
         detail={

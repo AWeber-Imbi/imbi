@@ -216,6 +216,13 @@ class ValidateTests(unittest.TestCase):
                                 'type': 'array',
                                 'items': {'type': 'string', 'enum': ['api']},
                             },
+                            'payload': {
+                                'type': 'object',
+                                'properties': {
+                                    'change_id': {'type': 'integer'}
+                                },
+                                'required': ['change_id'],
+                            },
                         },
                     }
                 ),
@@ -254,3 +261,48 @@ class ValidateTests(unittest.TestCase):
             custom_fields.validate(self.matches, {'tags': None}, partial=True),
             {'tags': None},
         )
+
+    def test_nested_object(self) -> None:
+        for partial in (False, True):
+            self.assertEqual(
+                custom_fields.validate(
+                    self.matches,
+                    {'payload': {'change_id': 1}},
+                    partial=partial,
+                ),
+                {'payload': {'change_id': 1}},
+            )
+            for bad in ({}, {'change_id': 'invalid'}):
+                with self.assertRaises(fastapi.HTTPException) as ctx:
+                    custom_fields.validate(
+                        self.matches, {'payload': bad}, partial=partial
+                    )
+                detail = typing.cast(
+                    dict[str, typing.Any], ctx.exception.detail
+                )
+                self.assertEqual(detail['invalid'][0]['field'], 'payload')
+
+    def test_create_checks_defaults(self) -> None:
+        matches = [
+            models.Blueprint(
+                name='Bad default',
+                type='Ticket',
+                json_schema=models.Schema.model_validate(
+                    {
+                        'type': 'object',
+                        'properties': {
+                            'estimate': {
+                                'type': 'integer',
+                                'minimum': 0,
+                                'default': -1,
+                            }
+                        },
+                    }
+                ),
+            )
+        ]
+        with self.assertRaises(fastapi.HTTPException) as ctx:
+            custom_fields.validate(matches, {}, partial=False)
+        self.assertEqual(ctx.exception.status_code, 422)
+        # A PATCH does not fill defaults, so it does not check them.
+        self.assertEqual(custom_fields.validate(matches, {}, partial=True), {})
