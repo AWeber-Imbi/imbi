@@ -80,7 +80,7 @@ export function DatePicker({
   const allowed = (date: Date) => !disablePast || date >= startOfToday()
   const typed = parseTypedDate(text)
   const empty = text.trim() === ''
-  const invalid = empty ? required : !(typed && allowed(typed))
+  const invalid = !empty && !(typed && allowed(typed))
 
   const choose = (next: string) => {
     setText(toDisplay(next))
@@ -127,6 +127,7 @@ export function DatePicker({
           }
         }}
         placeholder="Pick a date"
+        required={required}
         value={text}
       />
       <InputGroupAddon align="inline-end">
@@ -172,14 +173,14 @@ export function DateTimePicker({
     <div className={cn('flex gap-2', className)}>
       <DatePicker
         aria-label={`${label} date`}
-        className="flex-1"
+        className="h-10 flex-1"
         onChange={(d) => onChange(d ? `${d}T${time || '00:00'}` : '')}
         required={required}
         value={date}
       />
       <Input
         aria-label={`${label} time`}
-        className="h-8 w-28 appearance-none py-0 [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+        className="w-32 appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
         disabled={!date}
         onChange={(e) => onChange(`${date}T${e.target.value || '00:00'}`)}
         type="time"

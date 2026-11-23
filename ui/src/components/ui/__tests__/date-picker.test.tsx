@@ -62,6 +62,15 @@ describe('DatePicker', () => {
     expect(onChange).toHaveBeenCalledExactlyOnceWith('')
   })
 
+  it('leaves an empty required field unflagged until it is submitted', () => {
+    render(
+      <DatePicker aria-label="Since" onChange={vi.fn()} required value="" />,
+    )
+    const input = screen.getByLabelText('Since')
+    expect(input).not.toHaveAttribute('aria-invalid')
+    expect(input).toBeRequired()
+  })
+
   it('puts back the day when a required field is emptied', () => {
     const onChange = vi.fn()
     render(
