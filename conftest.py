@@ -4,14 +4,14 @@ Tests share global graph nodes (for example ``Permission``) and global
 rows, so workers that share one database collide. Each worker uses
 ``<database>_<worker>`` instead (``imbi_gw0``, ``imbi_gw1``, ...). Each
 run drops and creates that database again, so no state stays from an
-earlier run. The application code creates the schema in the empty
-database, as it does in production, except for pg_cron (see
-``_skip_pg_cron``).
+earlier run. The graph initializer then runs, as it does when a
+service starts, except that it skips pg_cron (see ``_skip_pg_cron``).
 
 ClickHouse stays shared: its DDL names the ``imbi`` database, and the
 tests scope their rows with unique ids.
 """
 
+import asyncio
 import os
 import typing
 import urllib.parse
@@ -36,6 +36,11 @@ def pytest_configure() -> None:
         conn.execute(sql.SQL('CREATE DATABASE {}').format(ident))
     os.environ['POSTGRES_URL'] = parts._replace(path=f'/{name}').geturl()
     _skip_pg_cron()
+    # Some tests (for example the scheduler's) use the graph without
+    # creating it, so create it before any test runs.
+    from imbi.common.graph import initializer
+
+    asyncio.run(initializer.initialize())
 
 
 def _skip_pg_cron() -> None:
