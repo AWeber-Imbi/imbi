@@ -1009,6 +1009,12 @@ class MaterializeTestCase(secret_support.SecretCase):
             self.binding['id'],
             {'allowed_fields': ['SENTRY_AUTH_TOKEN'], 'description': 'Sentry'},
         )
+        await self.add_grant([self.binding['id']], purposes=['sentry'])
+        await self.add_grant(
+            [self.binding['id']],
+            purposes=['other_agent'],
+            agent_ids=['someone-else'],
+        )
         self.assertEqual(
             await self.store.agent_references(
                 self.org, self.agent, [self.project]
@@ -1018,6 +1024,7 @@ class MaterializeTestCase(secret_support.SecretCase):
                     'reference': 'secret://production/github/token',
                     'description': 'Sentry',
                     'allowed_fields': ['SENTRY_AUTH_TOKEN'],
+                    'purposes': ['github_write', 'sentry'],
                 }
             ],
         )

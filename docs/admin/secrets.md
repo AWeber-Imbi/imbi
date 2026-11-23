@@ -264,9 +264,12 @@ as `grafana` or `npm`: lower case letters, digits, and `_`.
 When a task starts, Imbi tells the agent which references it may use. The
 list comes from the enabled grants for the agent and the task's project that
 allow `environment` delivery. For each reference, the agent also sees the
-binding description and its allowed fields. Write a description that tells
-the agent what the secret is for. A refusal with `secret_field_not_allowed`
-tells the agent the fields that it can use. Each refusal also gives the
+purposes of those grants, and the binding description and its allowed
+fields. When the agent attaches or detaches a project, the tool result
+gives it the new list for the task's projects. Write a description that
+tells the agent what the secret is for. A refusal with
+`secret_field_not_allowed` tells the agent the fields that it can use.
+Each refusal also gives the
 agent the broker reason after the error code, for example
 `secret_materialization_failed (permission_or_repository_not_granted)`.
 

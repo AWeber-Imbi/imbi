@@ -309,6 +309,9 @@ class RunnerFinished(pydantic.BaseModel):
 class AttachedProject(pydantic.BaseModel):
     project_id: str
     project_slug: str
+    #: What the agent may request for the task's projects after the
+    #: change.
+    secrets: list[platform.SecretReference] = []
 
 
 #: The largest history, in UTF-8 bytes of entry text.
@@ -716,6 +719,21 @@ async def _repositories(
     return list(found.values())
 
 
+async def _secret_references(
+    secrets: secret_store.SecretStore,
+    task: dict[str, typing.Any],
+    project_ids: list[str],
+) -> list[platform.SecretReference]:
+    """The references that the agent of a task may request when the
+    task has ``project_ids``."""
+    return [
+        platform.SecretReference.model_validate(row)
+        for row in await secrets.agent_references(
+            task['organization_id'], task['agent_id'], project_ids
+        )
+    ]
+
+
 async def _identity(
     db: graph.Graph,
     store: harness.HarnessStore,
@@ -759,14 +777,11 @@ async def _identity(
                 update={
                     # What the agent may request comes from its grants,
                     # not from a list in the agent (#445).
-                    'secrets': [
-                        platform.SecretReference.model_validate(row)
-                        for row in await secrets.agent_references(
-                            task['organization_id'],
-                            task['agent_id'],
-                            [p['project_id'] for p in task['projects']],
-                        )
-                    ]
+                    'secrets': await _secret_references(
+                        secrets,
+                        task,
+                        [p['project_id'] for p in task['projects']],
+                    )
                 }
             ),
             'repositories': await _repositories(db, store, task, settings),
@@ -1904,14 +1919,15 @@ async def attach_harness_task_project(
     caller: harness_auth.AgentCaller,
     db: graph.Pool,
     store: tickets.Store,
-) -> dict[str, str]:
+    secrets: secret_broker.Store,
+) -> AttachedProject:
     """Associate a project of the org with a task of the chain.
 
     ``project`` is a project id or slug. The task gets a
     ``project.associated`` event, with the agent as the actor. A secret
     resolution reads the task's projects when it is made, so the next
     one covers the project. When the project is associated, nothing
-    changes.
+    changes. ``secrets`` is what the agent may request after it.
 
     Raises:
         401: Not a current agent token.
@@ -1937,7 +1953,14 @@ async def attach_harness_task_project(
             slug,
             tickets.Actor('agent', task['agent_id'], 'harness'),
         )
-    return {'project_id': project_id, 'project_slug': slug}
+    project_ids = [p['project_id'] for p in task['projects']]
+    return AttachedProject(
+        project_id=project_id,
+        project_slug=slug,
+        secrets=await _secret_references(
+            secrets, task, list(dict.fromkeys([*project_ids, project_id]))
+        ),
+    )
 
 
 @harness_router.delete(
@@ -1951,14 +1974,16 @@ async def detach_harness_task_project(
     caller: harness_auth.AgentCaller,
     db: graph.Pool,
     store: tickets.Store,
-) -> dict[str, str]:
+    secrets: secret_broker.Store,
+) -> AttachedProject:
     """Remove a project of the org from a task of the chain.
 
     ``project`` is a project id or slug. The task gets a
     ``project.dissociated`` event, with the agent as the actor. A secret
     resolution reads the task's projects when it is made, so the next
     one no longer covers the project. When the project is not
-    associated, nothing changes.
+    associated, nothing changes. ``secrets`` is what the agent may
+    request after it.
 
     The task keeps at least one project: a grant that lists projects
     never matches a task with none, so its next ``model_inference`` key
@@ -1994,7 +2019,19 @@ async def detach_harness_task_project(
             project_id,
             tickets.Actor('agent', task['agent_id'], 'harness'),
         )
-    return {'project_id': project_id, 'project_slug': slug}
+    return AttachedProject(
+        project_id=project_id,
+        project_slug=slug,
+        secrets=await _secret_references(
+            secrets,
+            task,
+            [
+                p['project_id']
+                for p in task['projects']
+                if p['project_id'] != project_id
+            ],
+        ),
+    )
 
 
 @harness_router.post(

@@ -1422,6 +1422,7 @@ class AttachProjectTests(RunnerTestCase):
             {
                 'project_id': self.extra['id'],
                 'project_slug': self.extra['slug'],
+                'secrets': [],
             },
         )
         # A repeat by id changes nothing.
@@ -1453,6 +1454,41 @@ class AttachProjectTests(RunnerTestCase):
         response = await self.attach(self.extra['dup_a'])
         self.assertEqual(response.status_code, 200, response.text)
 
+    async def test_attach_lists_the_secrets_for_the_new_projects(
+        self,
+    ) -> None:
+        response = await self.attach(self.extra['dup_a'])
+        self.assertEqual(response.status_code, 200, response.text)
+        task = await self.store.get(self.org, 'T-1')
+        assert task is not None
+        before = [p['project_id'] for p in task['projects']]
+        row = {
+            'reference': 'secret://github/token',
+            'description': '',
+            'allowed_fields': [],
+            'purposes': ['github_write'],
+        }
+        with mock.patch.object(
+            self.secret_store,
+            'agent_references',
+            mock.AsyncMock(return_value=[row]),
+        ) as references:
+            response = await self.attach(self.extra['id'])
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()['secrets'], [row])
+            references.assert_awaited_once_with(
+                task['organization_id'],
+                task['agent_id'],
+                [*before, self.extra['id']],
+            )
+            references.reset_mock()
+            response = await self.detach(self.extra['id'])
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()['secrets'], [row])
+            references.assert_awaited_once_with(
+                task['organization_id'], task['agent_id'], before
+            )
+
     async def detach(self, project: str) -> httpx.Response:
         return await self.client.delete(
             f'/harness/tickets/T-1/projects/{project}',
@@ -1470,6 +1506,7 @@ class AttachProjectTests(RunnerTestCase):
             {
                 'project_id': self.extra['id'],
                 'project_slug': self.extra['slug'],
+                'secrets': [],
             },
         )
         # A repeat by id changes nothing.
