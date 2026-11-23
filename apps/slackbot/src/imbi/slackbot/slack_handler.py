@@ -302,11 +302,23 @@ async def _on_submit(submission: forms.Submission) -> None:
     # The toolkit posts forms only in the current thread.
     if _app is None or _form_store is None or thread_ts is None:
         return
-    # Run the turn as the user who asked for the form. The answers are
-    # data: they must not lend the permissions of the user who answered
-    # to instructions that another user put in the thread.
     record = await _form_store.get(submission.form_id)
     if record is None:
+        return
+    # Only the requester's answers start a turn. With two users, one of
+    # them lends their permissions to text that the other wrote: the
+    # answers, or the instructions in the thread.
+    slack_client: SlackClient = _app.client
+    if submission.user_id != record.requester:
+        await slack_client.chat_postMessage(
+            channel=submission.channel_id,
+            thread_ts=thread_ts,
+            text=(
+                f'<@{submission.user_id}> answered the form. Only '
+                f'<@{record.requester}> can continue from it, with a new '
+                'message to me in this thread.'
+            ),
+        )
         return
     answers = json.dumps(submission.values, indent=2)
     message = {
@@ -321,12 +333,12 @@ async def _on_submit(submission: forms.Submission) -> None:
     }
     await _process(
         message,
-        _app.client,
+        slack_client,
         bot_user_id=_bot_user_id or '',
         channel=submission.channel_id,
         ts=thread_ts,
         thread_ts=thread_ts,
-        slack_user_id=record.requester,
+        slack_user_id=submission.user_id,
         turn_id=submission.form_id,
     )
 

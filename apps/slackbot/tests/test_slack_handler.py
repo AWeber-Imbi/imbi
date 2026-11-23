@@ -331,35 +331,37 @@ class HandleEventTests(helpers.TestCase):
         )
         self.assertEqual(1, len(client.deletes))
 
-    async def test_form_answers_run_a_turn_in_the_thread(self) -> None:
+    async def _submit_form(self, answerer: str):
+        """Submit form F1, which U1 asked for, as ``answerer``."""
         user = identity.ImbiUser('ada@example.com', 'Ada')
         client = FakeSlackClient(
             replies=[{'user': 'U1', 'ts': '1', 'text': '<@BOT> plan it'}]
         )
-        submission = forms.Submission(
-            form_id='F1',
-            spec=forms.FormSpec.model_validate(
-                {
-                    'title': 'Deploy window',
-                    'fields': [{'type': 'text', 'id': 'day', 'label': 'Day'}],
-                }
-            ),
-            values={'day': 'Monday'},
-            user_id='U2',
-            channel_id='C',
-            thread_ts='1',
+        spec = forms.FormSpec.model_validate(
+            {
+                'title': 'Deploy window',
+                'fields': [{'type': 'text', 'id': 'day', 'label': 'Day'}],
+            }
         )
         store = forms.MemoryFormStore()
         await store.put(
             forms.FormRecord(
                 form_id='F1',
-                spec=submission.spec,
+                spec=spec,
                 channel_id='C',
                 thread_ts='1',
                 requester='U1',
                 created_at=0.0,
             ),
             60,
+        )
+        submission = forms.Submission(
+            form_id='F1',
+            spec=spec,
+            values={'day': 'Monday'},
+            user_id=answerer,
+            channel_id='C',
+            thread_ts='1',
         )
         resolve = mock.AsyncMock(return_value=user)
         run_turn = mock.AsyncMock(return_value='Booked Monday.')
@@ -373,7 +375,10 @@ class HandleEventTests(helpers.TestCase):
             mock.patch.object(slack_handler.agent, 'run_turn', new=run_turn),
         ):
             await slack_handler._on_submit(submission)
-        # The turn runs as the requester (U1), not the answerer (U2).
+        return client, resolve, run_turn
+
+    async def test_requester_answers_run_a_turn_in_the_thread(self) -> None:
+        client, resolve, run_turn = await self._submit_form('U1')
         self.assertEqual('U1', resolve.await_args.args[1])
         kwargs = run_turn.await_args.kwargs
         last = json.dumps(kwargs['messages'][-1])
@@ -381,6 +386,13 @@ class HandleEventTests(helpers.TestCase):
         self.assertIn('Monday', last)
         self.assertEqual('slack:C:F1', kwargs['idempotency_prefix'])
         self.assertEqual('Booked Monday.', client.posts[-1]['markdown_text'])
+        self.assertEqual('1', client.posts[-1]['thread_ts'])
+
+    async def test_other_users_answers_start_no_turn(self) -> None:
+        client, resolve, run_turn = await self._submit_form('U2')
+        resolve.assert_not_awaited()
+        run_turn.assert_not_awaited()
+        self.assertIn('Only <@U1>', client.posts[-1]['text'])
         self.assertEqual('1', client.posts[-1]['thread_ts'])
 
     async def test_answer_cannot_broadcast(self) -> None:
