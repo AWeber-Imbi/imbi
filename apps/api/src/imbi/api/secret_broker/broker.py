@@ -193,26 +193,48 @@ def env_members(
 
     Only for ``environment`` delivery without a ``#field``: each string
     member with a safe name (as :func:`check_delivery`). A binding with
-    a target list allows only those names. The requested target keeps
-    the whole material, so a member with its name is left out.
+    a target list allows only those names. The requested target is
+    set already (:func:`select_target_member`), so a member with its
+    name is left out.
     """
     if row['field'] is not None or row['delivery_mode'] != 'environment':
         return {}
-    try:
-        document = orjson.loads(material.value)
-    except orjson.JSONDecodeError:
-        return {}
-    if not isinstance(document, dict):
+    document = _json_object(material)
+    if document is None:
         return {}
     targets: list[str] = binding['allowed_delivery_targets']
     return {
         name: value
-        for name, value in typing.cast(dict[str, typing.Any], document).items()
+        for name, value in document.items()
         if isinstance(value, str)
         and name != row['delivery_target']
         and _safe_env_name(name)
         and (not targets or name in targets)
     }
+
+
+def select_target_member(material: providers.Material, row: Row) -> None:
+    """For ``environment`` delivery without a ``#field``, give the
+    requested target the string member with its name in place of the
+    whole JSON object. A model that sets ``env`` to a member's name
+    and leaves off the ``#field`` wants that member."""
+    if row['field'] is not None or row['delivery_mode'] != 'environment':
+        return
+    document = _json_object(material)
+    value = None if document is None else document.get(row['delivery_target'])
+    if isinstance(value, str):
+        material.value = value.encode()
+
+
+def _json_object(material: providers.Material) -> dict[str, typing.Any] | None:
+    """The material as a JSON object, if it is one."""
+    try:
+        document = orjson.loads(material.value)
+    except orjson.JSONDecodeError:
+        return None
+    if not isinstance(document, dict):
+        return None
+    return typing.cast(dict[str, typing.Any], document)
 
 
 def _safe_env_name(name: str) -> bool:
@@ -1129,6 +1151,7 @@ class Broker:
                 await self._revoke_unsaved(row, plugin, config, material)
                 raise
             members = env_members(material, decision.binding, row)
+            select_target_member(material, row)
             now = datetime.datetime.now(datetime.UTC)
             expired = (
                 material.credential_expires_at is not None

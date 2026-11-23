@@ -186,6 +186,14 @@ class UsageReport(pydantic.BaseModel):
     cache_write_tokens: int | None = pydantic.Field(
         default=None, ge=0, description='Input tokens written to the cache.'
     )
+    cache_write_1h_tokens: int | None = pydantic.Field(
+        default=None,
+        ge=0,
+        description=(
+            'The part of cache_write_tokens written with the 1-hour cache'
+            ' TTL. The remainder uses the 5-minute write price.'
+        ),
+    )
     session_id: uuid.UUID | None = None
     message_id: str | None = pydantic.Field(
         default=None,
@@ -196,6 +204,14 @@ class UsageReport(pydantic.BaseModel):
             ' that reply have it too.'
         ),
     )
+
+    @pydantic.model_validator(mode='after')
+    def _long_writes_in_writes(self) -> typing.Self:
+        if (self.cache_write_1h_tokens or 0) > (self.cache_write_tokens or 0):
+            raise ValueError(
+                'cache_write_1h_tokens must not exceed cache_write_tokens'
+            )
+        return self
 
 
 class AppendEventsResponse(pydantic.BaseModel):
@@ -321,10 +337,12 @@ class UsageResponse(pydantic.BaseModel):
     tokens_out: int | None = None
     cache_read_tokens: int | None = None
     cache_write_tokens: int | None = None
+    cache_write_1h_tokens: int | None = None
     input_cost_per_million: decimal.Decimal | None = None
     output_cost_per_million: decimal.Decimal | None = None
     cache_read_cost_per_million: decimal.Decimal | None = None
     cache_write_cost_per_million: decimal.Decimal | None = None
+    cache_write_1h_cost_per_million: decimal.Decimal | None = None
     cost: decimal.Decimal | None = None
     recorded_at: datetime.datetime
     task: TaskState
@@ -351,7 +369,8 @@ RETURN m.slug AS slug,
        m.input_cost_per_million AS input_cost_per_million,
        m.output_cost_per_million AS output_cost_per_million,
        m.cache_read_cost_per_million AS cache_read_cost_per_million,
-       m.cache_write_cost_per_million AS cache_write_cost_per_million
+       m.cache_write_cost_per_million AS cache_write_cost_per_million,
+       m.cache_write_1h_cost_per_million AS cache_write_1h_cost_per_million
 """
 
 _PRICE_COLUMNS = (
@@ -359,6 +378,7 @@ _PRICE_COLUMNS = (
     'output_cost_per_million',
     'cache_read_cost_per_million',
     'cache_write_cost_per_million',
+    'cache_write_1h_cost_per_million',
 )
 
 
@@ -880,6 +900,7 @@ async def report_agent_task_usage(
                 tokens_out=data.tokens_out,
                 cache_read_tokens=data.cache_read_tokens,
                 cache_write_tokens=data.cache_write_tokens,
+                cache_write_1h_tokens=data.cache_write_1h_tokens,
                 session_id=data.session_id,
                 message_id=data.message_id,
             ),

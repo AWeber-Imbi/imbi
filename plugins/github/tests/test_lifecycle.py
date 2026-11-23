@@ -267,8 +267,9 @@ class ArchiveTestCase(unittest.IsolatedAsyncioTestCase):
 
         plugin = GitHubLifecycle()
         with unittest.mock.patch(
-            'imbi.plugins.github.lifecycle.asyncio.sleep'
-        ) as sleep:
+            'imbi.plugins.github.lifecycle.asyncio',
+            sleep=unittest.mock.AsyncMock(),
+        ) as asyncio_mod:
             result = await plugin.on_project_archived(
                 _ctx(options={'archive_target_org': 'octo-archive'}),
                 _CREDS,
@@ -277,7 +278,7 @@ class ArchiveTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.status, 'ok')
         self.assertEqual(archive_route.calls.call_count, 3)
         # Two failed attempts → two backoff sleeps before success.
-        self.assertEqual(sleep.await_count, 2)
+        self.assertEqual(asyncio_mod.sleep.await_count, 2)
 
     @respx.mock
     async def test_archive_transfer_exhausts_retries_on_persistent_404(
@@ -307,8 +308,9 @@ class ArchiveTestCase(unittest.IsolatedAsyncioTestCase):
 
         plugin = GitHubLifecycle()
         with unittest.mock.patch(
-            'imbi.plugins.github.lifecycle.asyncio.sleep'
-        ) as sleep:
+            'imbi.plugins.github.lifecycle.asyncio',
+            sleep=unittest.mock.AsyncMock(),
+        ) as asyncio_mod:
             with self.assertRaises(httpx.HTTPStatusError):
                 await plugin.on_project_archived(
                     _ctx(options={'archive_target_org': 'octo-archive'}),
@@ -317,7 +319,7 @@ class ArchiveTestCase(unittest.IsolatedAsyncioTestCase):
 
         # Three backoffs configured → four total attempts.
         self.assertEqual(archive_route.calls.call_count, 4)
-        self.assertEqual(sleep.await_count, 3)
+        self.assertEqual(asyncio_mod.sleep.await_count, 3)
 
     @respx.mock
     async def test_archive_transfer_does_not_retry_non_404(self) -> None:
@@ -344,8 +346,9 @@ class ArchiveTestCase(unittest.IsolatedAsyncioTestCase):
 
         plugin = GitHubLifecycle()
         with unittest.mock.patch(
-            'imbi.plugins.github.lifecycle.asyncio.sleep'
-        ) as sleep:
+            'imbi.plugins.github.lifecycle.asyncio',
+            sleep=unittest.mock.AsyncMock(),
+        ) as asyncio_mod:
             with self.assertRaises(httpx.HTTPStatusError):
                 await plugin.on_project_archived(
                     _ctx(options={'archive_target_org': 'octo-archive'}),
@@ -353,7 +356,7 @@ class ArchiveTestCase(unittest.IsolatedAsyncioTestCase):
                 )
 
         self.assertEqual(archive_route.calls.call_count, 1)
-        self.assertEqual(sleep.await_count, 0)
+        self.assertEqual(asyncio_mod.sleep.await_count, 0)
 
     @respx.mock
     async def test_archive_transfer_when_already_archived(self) -> None:

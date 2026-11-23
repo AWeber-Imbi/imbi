@@ -21,14 +21,11 @@ class HandOffTestCase(test_agent_task_harness.HarnessTestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
         self.role = f'handoff-{self.org}'
-        await self.graph.execute(
-            'MERGE (p:Permission {{name: "ticket:create"}})'
-            ' CREATE (r:Role {{slug: {role}, name: {role}}})'
-            ' CREATE (r)-[:GRANTS]->(p)'
-            ' WITH r MATCH (:User {{email: {email}}})-[m:MEMBER_OF]->()'
-            ' SET m.role = {role} RETURN 1 AS ok',
-            {'role': self.role, 'email': self.email},
-            ['ok'],
+        await self.grant_role(
+            self.role,
+            'ticket:create',
+            '(:User {{email: {email}}})',
+            email=self.email,
         )
         self.addAsyncCleanup(
             self.graph.execute,

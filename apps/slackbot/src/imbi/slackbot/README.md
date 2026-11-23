@@ -46,6 +46,7 @@ Mode connection runs as a background task alongside it.
 | `IMBI_UI_URL` | Public base URL of the Imbi UI, used to build deep links |
 | `IMBI_INTERNAL_UI_URL` | In-cluster UI address for fetching `llms.txt` (e.g. the Caddy frontend); falls back to `IMBI_UI_URL` |
 | `POSTGRES_URL` | Imbi graph (Apache AGE) connection URL |
+| `VALKEY_URL` | Valkey URL; keeps the forms that the agent posts until they are answered |
 | `IMBI_SLACKBOT_MODEL` | Claude model (default `claude-sonnet-4-6`) |
 
 See `src/imbi.slackbot/settings.py` for the full set.

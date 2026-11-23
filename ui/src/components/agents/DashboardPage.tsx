@@ -29,6 +29,7 @@ import { formatMoney } from './agentDraft'
 import { useAgentList, useAgentUsage } from './agentQueries'
 import { agentsPath, ticketsPath } from './agentsNav'
 import {
+  agentNamer,
   capStatus,
   dailyValues,
   daysBetween,
@@ -185,7 +186,7 @@ function Dashboard({ orgSlug }: { orgSlug: string }) {
   // The org-wide count; the Waiting on me count is the caller's own.
   const { data: counts } = useTicketCounts(orgSlug, {})
   const usage = useAgentUsage(orgSlug)
-  const { data: agents = [] } = useAgentList(orgSlug)
+  const { data: agents = [], isSuccess: agentsLoaded } = useAgentList(orgSlug)
 
   const error = open.error ?? recent.error ?? usage.error
   if (error) {
@@ -206,8 +207,8 @@ function Dashboard({ orgSlug }: { orgSlug: string }) {
   const group = (id: string) => groups.find((g) => g.id === id)?.tasks ?? []
   // Oldest block first (O2).
   const waiting = group('input')
-  const names = new Map(agents.map((a) => [a.id, a.name]))
-  const nameOf = (id: null | string) => (id ? (names.get(id) ?? id) : '')
+  const agentName = agentNamer(agents, agentsLoaded)
+  const nameOf = (id: null | string) => (id ? agentName(id) : '')
   const runs = sumTotals(usage.data.agents).tasks
   const mtd = usage.data.month_to_date
   const monthToDate = Object.values(mtd).reduce((n, v) => n + Number(v), 0)
@@ -309,7 +310,7 @@ function Dashboard({ orgSlug }: { orgSlug: string }) {
             dailyValues(usage.data, (r) => r.tasks),
             (n) => `${formatCount(n)} runs`,
           )}
-          to={agentsPath('usage')}
+          to="/reports/agent-usage"
           value={formatCount(runs)}
         />
         <Tile
@@ -320,7 +321,7 @@ function Dashboard({ orgSlug }: { orgSlug: string }) {
             dailyValues(usage.data, (r) => Number(r.cost)),
             (n) => formatMoney(n),
           )}
-          to={agentsPath('usage')}
+          to="/reports/agent-usage"
           value={formatMoney(monthToDate)}
         />
       </div>

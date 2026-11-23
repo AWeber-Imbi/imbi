@@ -381,14 +381,18 @@ describe('AIModelsManagement', () => {
     fireEvent.change(screen.getByLabelText(/cache read cost/i), {
       target: { value: '0.3' },
     })
-    fireEvent.change(screen.getByLabelText(/cache write cost/i), {
+    fireEvent.change(screen.getByLabelText(/cache write \(5m\) cost/i), {
       target: { value: '3.75' },
+    })
+    fireEvent.change(screen.getByLabelText(/cache write \(1h\) cost/i), {
+      target: { value: '6' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
     await waitFor(() =>
       expect(endpoints.updateAIModel).toHaveBeenCalledWith('model-1', [
         { op: 'replace', path: '/cache_read_cost_per_million', value: 0.3 },
+        { op: 'replace', path: '/cache_write_1h_cost_per_million', value: 6 },
         { op: 'replace', path: '/cache_write_cost_per_million', value: 3.75 },
       ]),
     )

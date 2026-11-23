@@ -3373,7 +3373,9 @@ class StartWorkflowTests(helpers.TestCase):
             signature_verified=True,
         )
 
-    async def _run(self, event: dict[str, typing.Any]) -> typing.Any:
+    async def _run(
+        self, event: dict[str, typing.Any], user_id: str | None = None
+    ) -> typing.Any:
         with (
             self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
@@ -3384,7 +3386,7 @@ class StartWorkflowTests(helpers.TestCase):
             ) as mock_start,
         ):
             await actions.start_workflow(
-                ctx=_ctx(org_slug='myorg'),
+                ctx=_ctx(org_slug='myorg', user_id=user_id),
                 credentials={},
                 external_identifier='',
                 action_config=self.config,
@@ -3404,7 +3406,14 @@ class StartWorkflowTests(helpers.TestCase):
                 'binding': 'b-1',
                 'payload': {'payload': {'action': 'opened'}},
                 'project_id': 'proj',
+                'actor': None,
             },
+        )
+
+    async def test_delivery_names_the_actor(self) -> None:
+        mock_start = await self._run(self._delivery(), 'dev@example.com')
+        self.assertEqual(
+            mock_start.call_args.args[4]['actor'], 'dev@example.com'
         )
 
     async def test_redelivery_sends_the_same_delivery_id(self) -> None:

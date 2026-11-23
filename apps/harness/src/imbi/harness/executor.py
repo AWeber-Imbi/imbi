@@ -399,6 +399,8 @@ class Executor:
             for secret, target in zip(wanted, targets, strict=True):
                 body = await self._materialized(secret, context)
                 env[target] = _material(body)
+                if '\0' in env[target]:
+                    raise Invalid('nul_in_environment')
                 names.append(target)
                 member_values.extend(_string_members(env[target]))
                 # imbi-api gives only the members that the binding

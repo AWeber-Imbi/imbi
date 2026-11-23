@@ -1,5 +1,6 @@
 """Tests for operations log endpoints."""
 
+import asyncio
 import datetime
 import json
 import typing
@@ -581,9 +582,10 @@ class CompleteOpslogEntryTestCase(unittest.IsolatedAsyncioTestCase):
                 iggy, 'publish_rows', new_callable=mock.AsyncMock
             )
         )
-        self.sleep = self.enterContext(
+        self.sleep = mock.AsyncMock()
+        self.enterContext(
             mock.patch.object(
-                operations_log.asyncio, 'sleep', new_callable=mock.AsyncMock
+                operations_log, 'asyncio', wraps=asyncio, sleep=self.sleep
             )
         )
 
