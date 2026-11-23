@@ -53,7 +53,8 @@ class CatalogServer(pydantic.BaseModel):
     ``headers`` maps each header name to the ``${VAR}`` names that its
     value uses. A plugin author can commit a literal token in a header
     or a URL, so no header value is stored, and ``url`` has no user
-    information, query, or fragment.
+    information, query, or fragment. ``url`` keeps the path, so a token
+    in the path is stored.
     """
 
     name: str

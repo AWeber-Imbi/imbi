@@ -98,7 +98,9 @@ header names, with the variables that each header uses. It stores no
 header value, and no user information, query, or fragment of the URL,
 because a plugin author can commit a literal token there. It stores no
 URL that has no host, such as one that starts with a `${VAR:-default}`
-reference, because a token in such a URL cannot be found.
+reference, because a token in such a URL cannot be found. It keeps the
+path, because a path segment cannot be told apart from a token, so a
+token in the path is stored.
 
 ### Agent configuration
 

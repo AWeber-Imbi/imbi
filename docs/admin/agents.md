@@ -414,7 +414,8 @@ fails each task of a plugin with such a path. For each server, Imbi
 stores its name, type, URL, and the names of its headers with the
 variables that each header uses. It stores no header value, no user
 information, query, or fragment of a URL, and no URL that has no host,
-such as one that starts with a `${VAR:-default}` reference. A failed
+such as one that starts with a `${VAR:-default}` reference. It keeps the
+path of a URL, so a token in the path is stored. A failed
 sync shows an error badge on the row. Click the sync button of a row to
 sync it again.
 Imbi does not sync on a schedule.
