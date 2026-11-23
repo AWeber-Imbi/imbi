@@ -1,6 +1,8 @@
+import base64
 import hashlib
 import hmac
 import json
+import time
 import typing
 import unittest.mock
 from collections import abc
@@ -130,6 +132,23 @@ class StubSignedWebhookActions(plugin_base.WebhookActionsCapability):
         )
 
 
+class StubStandardWebhookActions(plugin_base.WebhookActionsCapability):
+    """A remote that signs per Standard Webhooks, as PostHog does."""
+
+    @classmethod
+    def actions(cls) -> list[plugin_base.ActionDescriptor]:
+        return []
+
+    @classmethod
+    def signature(cls) -> plugin_base.WebhookSignature:
+        return plugin_base.WebhookSignature(
+            header='webhook-signature',
+            prefix='v1,',
+            secret='webhook',
+            scheme='standard-webhooks',
+        )
+
+
 class StubCredsWebhookActions(plugin_base.WebhookActionsCapability):
     """webhook-actions catalog for the credential-requiring stub plugin."""
 
@@ -174,6 +193,24 @@ class StubSignedPlugin(plugin_base.Plugin):
                 label='Webhook actions',
                 project_scoped=False,
                 handler=StubSignedWebhookActions,
+            )
+        ],
+    )
+
+
+class StubStandardPlugin(plugin_base.Plugin):
+    """Stub registered for tests of the Standard Webhooks signature."""
+
+    manifest = plugin_base.PluginManifest(
+        slug='stub-standard',
+        name='Stub (Standard Webhooks)',
+        auth_type='none',
+        capabilities=[
+            plugin_base.Capability(
+                kind='webhook-actions',
+                label='Webhook actions',
+                project_scoped=False,
+                handler=StubStandardWebhookActions,
             )
         ],
     )
@@ -261,6 +298,7 @@ def _install_stub_plugins() -> None:
     for cls in (
         StubNoCredsPlugin,
         StubSignedPlugin,
+        StubStandardPlugin,
         StubWithCredsPlugin,
         StubIdentityOnlyPlugin,
     ):
@@ -279,6 +317,7 @@ def _uninstall_stub_plugins() -> None:
     for slug in (
         'stub-nocreds',
         'stub-signed',
+        'stub-standard',
         'stub-creds',
         'stub-identity-only',
     ):
@@ -1090,6 +1129,173 @@ class ProcessNotificationTests(helpers.TestCase):
             )
         self.assertEqual(204, resp.status_code)
         self.assertEqual([], ACTION_CALLS)
+
+    # -- Standard Webhooks (PostHog) -------------------------------------
+
+    _WHSEC_KEY = b'0123456789abcdef0123456789abcdef'
+    _WHSEC = 'whsec_' + base64.b64encode(_WHSEC_KEY).decode()
+
+    @classmethod
+    def _sign_standard(
+        cls,
+        raw: bytes,
+        *,
+        key: bytes | None = None,
+        message_id: str = 'msg_1',
+        timestamp: str | None = None,
+    ) -> dict[str, str]:
+        """Return the three Standard Webhooks headers for ``raw``."""
+        timestamp = timestamp or str(int(time.time()))
+        signed = b'.'.join((message_id.encode(), timestamp.encode(), raw))
+        digest = hmac.new(
+            key or cls._WHSEC_KEY, signed, hashlib.sha256
+        ).digest()
+        return {
+            'webhook-id': message_id,
+            'webhook-timestamp': timestamp,
+            'webhook-signature': 'v1,' + base64.b64encode(digest).decode(),
+        }
+
+    async def _post_standard(
+        self,
+        secret: str | None,
+        raw: bytes,
+        headers: abc.Mapping[str, str | bytes],
+    ) -> httpx.Response:
+        return await self._post_github(
+            secret, raw, headers, plugin='stub-standard'
+        )
+
+    async def test_standard_valid_signature_accepted(self) -> None:
+        raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+        resp = await self._post_standard(
+            self._WHSEC, raw, self._sign_standard(raw)
+        )
+        self.assertEqual(202, resp.status_code)
+        self.assertEqual(1, len(ACTION_CALLS))
+        self.assertIs(True, self._github_verified())
+
+    async def test_standard_secret_without_prefix_accepted(self) -> None:
+        raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+        resp = await self._post_standard(
+            self._WHSEC.removeprefix('whsec_'),
+            raw,
+            self._sign_standard(raw),
+        )
+        self.assertEqual(202, resp.status_code)
+        self.assertEqual(1, len(ACTION_CALLS))
+
+    async def test_standard_multi_token_accepted(self) -> None:
+        # Space-separated tokens (secret rotation) verify if any matches.
+        raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+        headers = self._sign_standard(raw)
+        headers['webhook-signature'] = (
+            'v1,AAAA v2a,BBBB ' + headers['webhook-signature']
+        )
+        resp = await self._post_standard(self._WHSEC, raw, headers)
+        self.assertEqual(202, resp.status_code)
+        self.assertEqual(1, len(ACTION_CALLS))
+
+    async def test_standard_wrong_key_dropped(self) -> None:
+        raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+        with self.assertLogs(
+            'imbi.gateway.notifications', level='WARNING'
+        ) as cm:
+            resp = await self._post_standard(
+                self._WHSEC, raw, self._sign_standard(raw, key=b'other')
+            )
+        self.assertEqual(204, resp.status_code)
+        self.assertEqual([], ACTION_CALLS)
+        self.assertTrue(
+            any('verification failed' in line for line in cm.output)
+        )
+
+    async def test_standard_tampered_body_dropped(self) -> None:
+        signed = json.dumps({'repo': {'id': self.ext_id}}).encode()
+        tampered = json.dumps(
+            {'repo': {'id': self.ext_id}, 'extra': True}
+        ).encode()
+        resp = await self._post_standard(
+            self._WHSEC, tampered, self._sign_standard(signed)
+        )
+        self.assertEqual(204, resp.status_code)
+        self.assertEqual([], ACTION_CALLS)
+
+    async def test_standard_replayed_id_or_timestamp_dropped(self) -> None:
+        # The id and timestamp are part of the signed content, so a
+        # delivery whose headers changed after signing does not verify.
+        raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+        for changed in ('webhook-id', 'webhook-timestamp'):
+            with self.subTest(changed=changed):
+                ACTION_CALLS.clear()
+                headers = self._sign_standard(raw)
+                headers[changed] = (
+                    'msg_2'
+                    if changed == 'webhook-id'
+                    else str(int(headers[changed]) + 1)
+                )
+                resp = await self._post_standard(self._WHSEC, raw, headers)
+                self.assertEqual(204, resp.status_code)
+                self.assertEqual([], ACTION_CALLS)
+
+    async def test_standard_stale_timestamp_dropped(self) -> None:
+        raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+        now = int(time.time())
+        for name, stamp in (
+            ('past', str(now - 3600)),
+            ('future', str(now + 3600)),
+            ('oversized', '9' * 400),
+        ):
+            with self.subTest(case=name):
+                ACTION_CALLS.clear()
+                with self.assertLogs(
+                    'imbi.gateway.notifications', level='WARNING'
+                ) as cm:
+                    resp = await self._post_standard(
+                        self._WHSEC,
+                        raw,
+                        self._sign_standard(raw, timestamp=stamp),
+                    )
+                self.assertEqual(204, resp.status_code)
+                self.assertEqual([], ACTION_CALLS)
+                self.assertTrue(any('tolerance' in line for line in cm.output))
+
+    async def test_standard_malformed_headers_dropped(self) -> None:
+        raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+        good = self._sign_standard(raw)
+        cases: dict[str, dict[str, str]] = {
+            'no id': {k: v for k, v in good.items() if k != 'webhook-id'},
+            'no timestamp': {
+                k: v for k, v in good.items() if k != 'webhook-timestamp'
+            },
+            'no signature': {
+                k: v for k, v in good.items() if k != 'webhook-signature'
+            },
+            'non-integer timestamp': {**good, 'webhook-timestamp': 'now'},
+            'hex token': {
+                **good,
+                'webhook-signature': 'v1,'
+                + hmac.new(self._WHSEC_KEY, raw, hashlib.sha256).hexdigest(),
+            },
+        }
+        for name, headers in cases.items():
+            with self.subTest(case=name):
+                ACTION_CALLS.clear()
+                resp = await self._post_standard(self._WHSEC, raw, headers)
+                self.assertEqual(204, resp.status_code)
+                self.assertEqual([], ACTION_CALLS)
+
+    async def test_standard_non_base64_secret_dropped(self) -> None:
+        raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+        with self.assertLogs(
+            'imbi.gateway.notifications', level='WARNING'
+        ) as cm:
+            resp = await self._post_standard(
+                'whsec_not*base64', raw, self._sign_standard(raw)
+            )
+        self.assertEqual(204, resp.status_code)
+        self.assertEqual([], ACTION_CALLS)
+        self.assertTrue(any('not base64' in line for line in cm.output))
 
     async def _post_github_ticket(
         self, secret: str | None, action: str = 'create_ticket'

@@ -1,3 +1,5 @@
+import base64
+import binascii
 import hashlib
 import hmac
 import http
@@ -53,6 +55,7 @@ _SENSITIVE_HEADERS = frozenset(
         'x-pagerduty-signature',
         'x-sonar-webhook-hmac-sha256',
         'sentry-hook-signature',
+        'webhook-signature',
     }
 )
 
@@ -64,6 +67,11 @@ _HANDLER_PATTERN = re.compile(r'^[a-z][a-z0-9-]*#[a-z][a-z0-9_]*$')
 #: Ids of GitHub webhooks with no secret that this process has already
 #: logged as unverified, so each is logged once and not per delivery.
 _UNSIGNED_WEBHOOKS: set[str] = set()
+
+#: How far, in seconds, the ``webhook-timestamp`` of a Standard Webhooks
+#: delivery may be from now in either direction. The reference
+#: implementation uses five minutes.
+_STANDARD_WEBHOOKS_TOLERANCE = 300
 
 
 def _safe_headers(
@@ -515,28 +523,111 @@ def _identity_candidate_slugs(
     return [integration_slug]
 
 
+def _standard_webhooks_expectation(  # noqa: PLR0913
+    *,
+    secret: str,
+    raw_body: bytes,
+    headers: 'abc.Mapping[str, str]',
+    prefix: str,
+    webhook_id: str | None,
+    integration_slug: str,
+) -> str | None:
+    """Return the Standard Webhooks token the delivery must carry, or
+    ``None`` -- meaning drop the delivery -- when it cannot be computed.
+
+    The token is ``prefix`` + base64 of the HMAC-SHA256 of
+    ``<webhook-id>.<webhook-timestamp>.<body>``, keyed by the base64
+    secret (``whsec_`` prefix optional). A missing id, a missing or
+    non-integer timestamp, a timestamp outside
+    :data:`_STANDARD_WEBHOOKS_TOLERANCE`, or a secret that is not base64
+    all give ``None``.
+    """
+    extra = {'webhook_id': webhook_id, 'integration_slug': integration_slug}
+    message_id = headers.get('webhook-id')
+    timestamp = headers.get('webhook-timestamp')
+    if not message_id or not timestamp:
+        LOGGER.warning(
+            'Standard Webhooks delivery is missing webhook-id or'
+            ' webhook-timestamp; dropping delivery (webhook_id=%r'
+            ' integration=%r)',
+            webhook_id,
+            integration_slug,
+            extra=extra,
+        )
+        return None
+    try:
+        sent_at = int(timestamp)
+    except ValueError:
+        LOGGER.warning(
+            'Standard Webhooks timestamp %r is not an integer; dropping'
+            ' delivery (webhook_id=%r integration=%r)',
+            timestamp,
+            webhook_id,
+            integration_slug,
+            extra=extra,
+        )
+        return None
+    now = int(time.time())
+    if not (
+        now - _STANDARD_WEBHOOKS_TOLERANCE
+        <= sent_at
+        <= now + _STANDARD_WEBHOOKS_TOLERANCE
+    ):
+        LOGGER.warning(
+            'Standard Webhooks timestamp %r is outside the %ss tolerance;'
+            ' dropping delivery (webhook_id=%r integration=%r)',
+            timestamp,
+            _STANDARD_WEBHOOKS_TOLERANCE,
+            webhook_id,
+            integration_slug,
+            extra=extra,
+        )
+        return None
+    try:
+        key = base64.b64decode(secret.removeprefix('whsec_'), validate=True)
+    except (binascii.Error, ValueError):
+        LOGGER.warning(
+            'Standard Webhooks secret is not base64; dropping delivery'
+            ' (webhook_id=%r integration=%r)',
+            webhook_id,
+            integration_slug,
+            extra=extra,
+        )
+        return None
+    signed = b'.'.join((message_id.encode(), timestamp.encode(), raw_body))
+    digest = hmac.new(key, signed, hashlib.sha256).digest()
+    return prefix + base64.b64encode(digest).decode()
+
+
 def _verify_webhook_signature(  # noqa: PLR0913
     *,
     secret_enc: str,
     raw_body: bytes,
-    signature_header: str | None,
+    headers: 'abc.Mapping[str, str]',
+    signature: plugin_base.WebhookSignature | None,
     webhook_id: str | None,
     integration_slug: str,
-    prefix: str = 'v1=',
 ) -> bool:
     """Verify an HMAC-signed inbound delivery; fail closed.
 
     ``secret_enc`` is an encrypted signing secret: the
     ``webhook_secret_enc`` of the matched ``EXISTS_IN`` edge, or the
-    ``Webhook.secret`` (see :class:`plugin_base.WebhookSignature`). The
-    signature header is one or more comma-separated ``<prefix><hex>``
-    tokens, each an HMAC-SHA256 of the raw
-    request body keyed by the decrypted secret; the delivery is
-    accepted if any token matches (constant-time, so a secret rotation
-    that briefly emits two signatures still verifies). Returns
-    ``False`` -- meaning drop the delivery -- on a missing header,
-    decrypt failure, or no match.
+    ``Webhook.secret`` (see :class:`plugin_base.WebhookSignature`).
+    ``signature`` says which header carries the tokens and how they are
+    computed; ``None`` (the plugin declares none) cannot verify. With the
+    ``hmac-hex`` scheme the header is one or more comma-separated
+    ``<prefix><hex>`` tokens, each an HMAC-SHA256 of the raw request body
+    keyed by the decrypted secret; with ``standard-webhooks`` it is
+    space-separated ``<prefix><base64>`` tokens over the id, timestamp,
+    and body (see :func:`_standard_webhooks_expectation`). The delivery
+    is accepted if any token matches (constant-time, so a secret rotation
+    that briefly emits two signatures still verifies). Returns ``False``
+    -- meaning drop the delivery -- on a missing header, decrypt failure,
+    or no match.
     """
+    signature_header = (
+        None if signature is None else headers.get(signature.header)
+    )
     if not signature_header:
         LOGGER.warning(
             'Signature required but header missing; dropping delivery '
@@ -565,12 +656,27 @@ def _verify_webhook_signature(  # noqa: PLR0913
         return False
     if not secret:
         return False
-    expected = (
-        prefix
-        + hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
-    )
+    if signature is not None and signature.scheme == 'standard-webhooks':
+        expected = _standard_webhooks_expectation(
+            secret=secret,
+            raw_body=raw_body,
+            headers=headers,
+            prefix=signature.prefix,
+            webhook_id=webhook_id,
+            integration_slug=integration_slug,
+        )
+        if expected is None:
+            return False
+        tokens = signature_header.split()
+    else:
+        prefix = '' if signature is None else signature.prefix
+        expected = (
+            prefix
+            + hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
+        )
+        tokens = signature_header.split(',')
     # Compare bytes: compare_digest raises TypeError on non-ASCII str.
-    for token in signature_header.split(','):
+    for token in tokens:
         if hmac.compare_digest(token.strip().encode(), expected.encode()):
             return True
     LOGGER.warning(
@@ -684,10 +790,10 @@ async def _verify_webhook_delivery(
         if _verify_webhook_signature(
             secret_enc=str(secret_enc),
             raw_body=await request.body(),
-            signature_header=request.headers.get(signature.header),
+            headers=request.headers,
+            signature=signature,
             webhook_id=webhook_id,
             integration_slug=integration_slug,
-            prefix=signature.prefix,
         ):
             return True
         return None
@@ -774,18 +880,15 @@ async def _resolve_project_and_verify(  # noqa: PLR0913
         )
         return None
     raw_body = await request.body()
-    signature_header = (
-        None if signature is None else request.headers.get(signature.header)
-    )
     for record in project_records:
         secret_enc = graph.parse_agtype(record.get('webhook_secret_enc'))
         if secret_enc and not _verify_webhook_signature(
             secret_enc=str(secret_enc),
             raw_body=raw_body,
-            signature_header=signature_header,
+            headers=request.headers,
+            signature=signature,
             webhook_id=webhook_id,
             integration_slug=integration_slug,
-            prefix='' if signature is None else signature.prefix,
         ):
             return None
     return project_records

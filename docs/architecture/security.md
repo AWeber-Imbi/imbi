@@ -315,6 +315,10 @@ constant-time compare. It fails closed:
   as not verified.
 - **PagerDuty.** When the project's integration edge has a signing
   secret, the `X-PagerDuty-Signature` header must match.
+- **PostHog.** When the webhook has a secret, the `Webhook-Signature`
+  header must match per Standard Webhooks: the HMAC also covers the
+  `Webhook-Id` and `Webhook-Timestamp` headers, and the timestamp must
+  be within five minutes of the gateway clock.
 
 The gateway actions `create_agent_task` and `start_workflow` skip a
 delivery that is not verified. A dropped delivery returns `204`, the same
