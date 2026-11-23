@@ -71,6 +71,21 @@ export function agentGrants(
   return grants.filter((g) => g.enabled && g.agent_ids.includes(agentId))
 }
 
+/** The first grant that allows the binding for the purpose and mode. */
+export function coveringGrant(
+  grants: SecretGrant[],
+  bindingId: string,
+  purpose: string,
+  mode: string,
+): SecretGrant | undefined {
+  return grants.find(
+    (g) =>
+      g.binding_ids.includes(bindingId) &&
+      g.purposes.includes(purpose) &&
+      g.delivery_modes.includes(mode),
+  )
+}
+
 /** Whether a grant allows the binding for the purpose and mode. */
 export function covers(
   grants: SecretGrant[],
@@ -78,12 +93,7 @@ export function covers(
   purpose: string,
   mode: string,
 ): boolean {
-  return grants.some(
-    (g) =>
-      g.binding_ids.includes(bindingId) &&
-      g.purposes.includes(purpose) &&
-      g.delivery_modes.includes(mode),
-  )
+  return coveringGrant(grants, bindingId, purpose, mode) !== undefined
 }
 
 /** A grant for one agent, one binding, one purpose, and one mode. */

@@ -33,6 +33,7 @@ const key = {
   credential_class: 'static',
   description: '',
   enabled: true,
+  grantable: false,
   id: 'key-1',
   locator: { secret_id: 'imbi/key' },
   max_ttl_seconds: 900,

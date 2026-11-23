@@ -2588,8 +2588,11 @@ class TicketStore:
         self, task: Row, max_seq: int | None = None
     ) -> tuple[list[Row], list[Row]]:
         """Return the human ``turn``, ``handed_off``, and ``reopened``
-        events and the resolved requests of ``task``, oldest first, for
-        the history of a new session. A withdrawn request is resolved.
+        events, the last agent ``text`` turn of each session, and the
+        resolved requests of ``task``, oldest first, for the history of
+        a new session. A withdrawn request is resolved. The last agent
+        turn of a session is its result, so a reopened ticket sees what
+        the earlier sessions found.
 
         When ``max_seq`` is set, only events with ``seq <= max_seq`` are
         returned. The session reads the later events as events.
@@ -2608,13 +2611,24 @@ class TicketStore:
             self._pool.connection() as conn,
             conn.cursor(row_factory=rows.dict_row) as cursor,
         ):
+            # ponytail: the agent-turn branch reads every event of the
+            # ticket (only the (ticket_id, seq) key exists). It runs once
+            # per session start; add a partial index on agent text turns
+            # if that gets slow on tickets with many events.
             await cursor.execute(
-                'SELECT type, at, actor_id, payload'
-                ' FROM tickets.events WHERE ticket_id = %s'
+                'SELECT seq, type, at, actor_id, actor_kind, payload'
+                ' FROM tickets.events WHERE ticket_id = %(id)s'
                 " AND ((type = 'turn' AND actor_kind = 'human')"
                 " OR type IN ('handed_off', 'reopened'))"
-                ' AND (%s::bigint IS NULL OR seq <= %s) ORDER BY seq',
-                (task['id'], max_seq, max_seq),
+                ' AND (%(max)s::bigint IS NULL OR seq <= %(max)s)'
+                ' UNION ALL (SELECT DISTINCT ON (session_id)'
+                ' seq, type, at, actor_id, actor_kind, payload'
+                ' FROM tickets.events WHERE ticket_id = %(id)s'
+                " AND type = 'turn' AND actor_kind = 'agent'"
+                " AND payload->>'kind' = 'text'"
+                ' AND (%(max)s::bigint IS NULL OR seq <= %(max)s)'
+                ' ORDER BY session_id, seq DESC) ORDER BY seq',
+                {'id': task['id'], 'max': max_seq},
             )
             turns = archived + await cursor.fetchall()
             await cursor.execute(

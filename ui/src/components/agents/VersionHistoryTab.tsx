@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Sk } from '@/components/ui/skeleton'
-import { useHasPermission } from '@/hooks/useHasPermission'
+import { useHasPermission, useInTeam } from '@/hooks/useHasPermission'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { queryKeys } from '@/lib/queryKeys'
@@ -33,8 +33,11 @@ interface VersionHistoryTabProps {
 export function VersionHistoryTab({ agent, orgSlug }: VersionHistoryTabProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const canDelete = useHasPermission('agent:delete', orgSlug)
   const canWrite = useHasPermission('agent:write', orgSlug)
+  // A member of the owner team deletes the agent with agent:write only.
+  const inTeam = useInTeam(orgSlug, agent.team?.slug)
+  const canDelete =
+    useHasPermission('agent:delete', orgSlug) || (canWrite && inTeam)
   const [restoreTarget, setRestoreTarget] = useState<AgentVersion | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
 

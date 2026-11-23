@@ -94,6 +94,12 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    and add the secret grants of an agent on the **Access** tab. It also
    gives the `developer` role `secret_provider:read`, so a developer can
    choose a GitHub App on that tab.
+   A developer can grant only to agents of their own teams, and only
+   bindings marked **Grantable**. At start, imbi-api adds the column
+   `secrets.bindings.grantable` with the value `false`, so no binding is
+   grantable until an administrator marks it. A developer can now also
+   delete an agent or a workflow of their own team without
+   `agent:delete` or `workflow:delete`.
 4. Before you deploy imbi-slackbot, turn on **Interactivity** in the
    Slack app settings (Socket Mode needs no request URL), or set
    `settings.interactivity.is_enabled: true` in the app manifest. The

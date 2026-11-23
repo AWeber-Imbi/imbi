@@ -487,6 +487,17 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
         self.assertEqual(len(issues), 1)
         self.assertIn(self.foreign['user'], issues[0])
 
+    async def _join(self, team: str) -> None:
+        await self.graph.execute(
+            """
+            MATCH (u:User {{id: {email}}}), (t:Team {{id: {team}}})
+            CREATE (u)-[:MEMBER_OF]->(t)
+            RETURN t.id AS id
+            """,
+            {'email': self.email, 'team': team},
+            ['id'],
+        )
+
     async def _leave_team(self) -> None:
         await self.graph.execute(
             """
@@ -497,6 +508,50 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
             {'email': self.email, 'team': self.team},
             ['ok'],
         )
+
+    async def test_delete_without_delete_permission(self) -> None:
+        await self._create()
+        self.permissions.discard('workflow:delete')
+        url = f'{self.base}/deploy-guard'
+        await self._leave_team()
+        response = await self.client.delete(url)
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'owner_team_forbidden'
+        )
+        await self._join(self.team)
+        response = await self.client.delete(url)
+        self.assertEqual(response.status_code, 204, response.text)
+        response = await self.client.delete(url)
+        self.assertEqual(response.status_code, 404, response.text)
+
+    async def test_delete_with_only_delete_permission(self) -> None:
+        await self._create()
+        self.permissions.discard('workflow:write')
+        await self._leave_team()
+        response = await self.client.delete(f'{self.base}/deploy-guard')
+        self.assertEqual(response.status_code, 204, response.text)
+
+    async def test_delete_conflicts_when_owner_team_changed(self) -> None:
+        await self._create()
+        self.permissions.discard('workflow:delete')
+        await self._join(self.team2)
+        await self._leave_team()
+        real_get = self.store.get
+
+        async def stale_get(org_id: str, slug: str) -> dict[str, typing.Any]:
+            # The owner team as it was before someone else changed it.
+            row = await real_get(org_id, slug)
+            assert row is not None
+            return row | {'owner_team_id': self.team2}
+
+        url = f'{self.base}/deploy-guard'
+        with mock.patch.object(self.store, 'get', side_effect=stale_get):
+            response = await self.client.delete(url)
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(response.json()['detail']['error'], 'conflict')
+        response = await self.client.get(url)
+        self.assertEqual(response.status_code, 200, response.text)
 
     async def test_create_needs_owner_team_member_or_admin(self) -> None:
         response = await self._create(owner_team_slug=self.team2)
@@ -1072,17 +1127,6 @@ class LLMCallStepTestCase(WorkflowTestCase):
             RETURN m.id AS id
             """,
             {'model': model, 'teams': list(teams)},
-            ['id'],
-        )
-
-    async def _join(self, team: str) -> None:
-        await self.graph.execute(
-            """
-            MATCH (u:User {{id: {email}}}), (t:Team {{id: {team}}})
-            CREATE (u)-[:MEMBER_OF]->(t)
-            RETURN t.id AS id
-            """,
-            {'email': self.email, 'team': team},
             ['id'],
         )
 

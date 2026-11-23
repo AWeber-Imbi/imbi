@@ -937,6 +937,13 @@ graph is too large.
 | An **Any input arrives** step can get two inputs | `any_join_overlap` (warning) |
 | A condition row references an output whose type does not suit its operator | `condition_type_mismatch` (warning) |
 
+## Delete a workflow
+
+Open the workflow and click the trash button in the header, then confirm.
+You need `workflow:delete`, or `workflow:write` and membership of the
+owner team. A workflow with a queued or running run cannot be deleted
+(`409`). The CMS prompts of its LLM Call steps are archived.
+
 ## Activate a workflow
 
 1. Save the workflow. The switch is off while there are unsaved changes.
@@ -1186,7 +1193,7 @@ deployment that the search found, send `resolution: mark_done` with its
 | `workflow:read` | View workflows, their versions, and their runs |
 | `workflow:create` | Create workflows |
 | `workflow:write` | Edit, activate, and pause workflows |
-| `workflow:delete` | Delete workflows |
+| `workflow:delete` | Delete any workflow. With `workflow:write` only, you can delete a workflow whose owner team you are in |
 | `workflow:run` | Start manual and test runs, and cancel runs |
 | `workflow:recover` | Resolve calls with an unknown outcome, and retry their steps |
 

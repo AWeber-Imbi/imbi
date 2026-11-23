@@ -14,20 +14,33 @@ vi.mock('@/api/endpoints', () => ({
   restoreAgentVersion: vi.fn(),
 }))
 
+const ADMIN = {
+  is_admin: true,
+  organizations: [{ organization_slug: 'acme', permissions: [] as string[] }],
+  permissions: [] as string[],
+  teams: [] as { organization_slug: string; team_slug: string }[],
+}
+const auth = vi.hoisted(() => ({ user: {} as typeof ADMIN }))
+
 // fallow-ignore-next-line unresolved-import
-vi.mock('@/hooks/useAuth', () => ({
-  useAuth: () => ({
-    user: {
-      is_admin: true,
-      organizations: [{ organization_slug: 'acme', permissions: [] }],
-      permissions: [],
-    },
-  }),
-}))
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }))
+
+/** A user with agent:write and no agent:delete, in `team`. */
+function writer(team: string) {
+  auth.user = {
+    is_admin: false,
+    organizations: [
+      { organization_slug: 'acme', permissions: ['agent:read', 'agent:write'] },
+    ],
+    permissions: [],
+    teams: [{ organization_slug: 'acme', team_slug: team }],
+  }
+}
 
 describe('VersionHistoryTab', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    auth.user = ADMIN
     vi.mocked(endpoints.listAgentVersions).mockResolvedValue([])
   })
 
@@ -48,5 +61,23 @@ describe('VersionHistoryTab', () => {
         screen.getByRole('button', { name: 'Delete agent' }),
       ).toBeEnabled(),
     )
+  })
+
+  it('lets a member of the owner team delete without agent:delete', async () => {
+    vi.mocked(endpoints.listAgents).mockResolvedValue([agent()])
+    writer('platform')
+    render(<VersionHistoryTab agent={agent()} orgSlug="acme" />)
+    expect(
+      await screen.findByRole('button', { name: 'Delete agent' }),
+    ).toBeInTheDocument()
+  })
+
+  it('hides delete from another team without agent:delete', () => {
+    vi.mocked(endpoints.listAgents).mockResolvedValue([agent()])
+    writer('web')
+    render(<VersionHistoryTab agent={agent()} orgSlug="acme" />)
+    expect(
+      screen.queryByRole('button', { name: 'Delete agent' }),
+    ).not.toBeInTheDocument()
   })
 })

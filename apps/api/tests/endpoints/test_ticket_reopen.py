@@ -408,12 +408,25 @@ class ArchivedReopenTests(
         self.fail(f'{short_id} was not archived')
 
     async def test_reopened_archived_ticket_reads_one_log(self) -> None:
-        await self.make_agent()
+        agent_id = await self.make_agent()
         short_id = (await self.create_task()).json()['short_id']
         response = await self.client.post(
             self.url(f'{short_id}/reply'), json={'body': 'Look at the logs'}
         )
         self.assertEqual(response.status_code, 200, response.text)
+        await self.store.append_events(
+            self.org,
+            short_id,
+            [
+                task_store.NewEvent(
+                    uuid.uuid4(),
+                    'turn',
+                    {'kind': 'text', 'body': 'The logs are clean'},
+                    task_store.Actor('agent', agent_id, 'harness'),
+                )
+            ],
+            None,
+        )
         await self.client.post(self.url(f'{short_id}/cancel'))
         await self.clear_outbox(short_id)
         await self.archive(short_id)
@@ -444,7 +457,8 @@ class ArchivedReopenTests(
         self.assertEqual(
             [e['seq'] for e in response.json()], [last_seq, last_seq + 1]
         )
-        # The history of a new session has the reopen and the comment.
+        # The history of a new session has the comment, the result of
+        # the archived session, the reopen, and the new comment.
         turns, _requests = await self.store.history(row)
         self.assertEqual(
             [
@@ -453,6 +467,7 @@ class ArchivedReopenTests(
             ],
             [
                 ('turn', 'Look at the logs'),
+                ('turn', 'The logs are clean'),
                 ('reopened', 'Not fixed'),
                 ('turn', 'Try again'),
             ],
@@ -460,9 +475,14 @@ class ArchivedReopenTests(
 
         entry = harness_api._event_entry(turns[1], webhook=False)
         self.assertEqual(
+            (entry.kind, entry.text), ('result', 'The logs are clean')
+        )
+        entry = harness_api._event_entry(turns[2], webhook=False)
+        self.assertEqual(
             (entry.kind, entry.text),
             ('reopen', 'was cancelled_by_human\nReason: Not fixed'),
         )
+        self.assertFalse(entry.webhook)
 
         # It closes and archives again; the log stays one log.
         await self.client.post(self.url(f'{short_id}/cancel'))

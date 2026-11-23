@@ -110,6 +110,7 @@ export function BindingDialog({
     ),
     credential_class: original?.credential_class ?? 'static',
     description: original?.description ?? '',
+    grantable: original?.grantable ?? false,
     host: usage?.host ?? '',
     locator: original ? JSON.stringify(original.locator, null, 2) : '{}',
     max_ttl_seconds: String(original?.max_ttl_seconds ?? 900),
@@ -191,6 +192,7 @@ export function BindingDialog({
       allowed_fields: form.allowed_fields,
       credential_class: form.credential_class,
       description: form.description.trim(),
+      grantable: form.grantable,
       locator: JSON.parse(form.locator) as unknown,
       max_ttl_seconds: ttl,
     }
@@ -213,6 +215,7 @@ export function BindingDialog({
         )
           delete body[key]
       }
+      if (!form.grantable) delete body.grantable
       return onSubmit({ ...body, provider_id: form.provider_id, reference })
     }
     const changed = changedFields(body, original)
@@ -392,6 +395,18 @@ export function BindingDialog({
               value={form.description}
             />
           </Field>
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox
+              checked={form.grantable}
+              id="binding-grantable"
+              onCheckedChange={(on) => set('grantable', on === true)}
+            />
+            Grantable by agent owners
+            <span className="text-tertiary">
+              users without secret_binding:write can grant it to agents of their
+              teams
+            </span>
+          </label>
           {keyClass && (
             <fieldset className="border-tertiary space-y-3 rounded-lg border p-3.5">
               <legend className="px-1 text-sm font-medium">

@@ -29,10 +29,10 @@ The area has these pages:
 | `agent:read` | See agents, their versions, and the tool catalog | `admin`, `developer`, `default`, `readonly` |
 | `agent:create` | Create and duplicate agents | `admin`, `developer` |
 | `agent:write` | Edit, enable, disable, and restore agents. Refresh the tool catalog | `admin`, `developer` |
-| `agent:delete` | Delete agents | `admin` |
+| `agent:delete` | Delete any agent. With `agent:write` only, you can delete an agent of a team that you are in | `admin` |
 | `agent_platform_config:write` | Change the base configuration and the marketplaces | `admin` |
 | `prompt:create`, `prompt:update` | Save a change to the system prompt or the model | `admin`, `developer` |
-| `secret_grant:read`, `secret_binding:read`, `secret_grant:write` | See and add grants on the **Access** tab | `admin`, `developer` |
+| `secret_grant:read`, `secret_binding:read`, `secret_grant:write` | See grants on the **Access** tab. Add and remove grants on the **Access** tab. Without `secret_binding:write`, add and remove only for an agent of a team that you are in, and only for a **Grantable** binding | `admin`, `developer` |
 | `secret_provider:read` | Choose a GitHub App on the **Access** tab | `admin`, `developer` |
 
 You must also be a member of the organization. The permissions come from
@@ -227,8 +227,18 @@ one:
 
 The tab also lists the secrets that the runner uses for the agent, for
 example the model key and the repository tokens. The agent never gets
-these values. To change or remove a grant, use **Agents > Settings >
-Secrets**.
+these values.
+
+To remove a secret, click **X** on its row. This removes the agent from
+the grant. A grant that names other agents stays for them. A grant that
+names no other agent is deleted. A grant can cover more than one secret;
+the agent then loses all of them. To change a grant, use **Agents >
+Settings > Secrets**.
+
+Without `secret_binding:write`, you can add and remove access only for
+an agent of a team that you are in. **Add access** and the **Grant**
+buttons offer only the bindings that an administrator marked
+**Grantable** (see [Add a binding](secrets.md#add-a-binding)).
 
 ### Subagents
 
@@ -306,8 +316,15 @@ needs `agent:write`. That is also enough to move the prompt label.
 ## Delete an agent
 
 Open the **Version history** tab and click **Delete agent**. The delete
-removes the agent, its versions, and its service account. The prompt stays
-in the prompt CMS.
+removes the agent, its versions, and its service account, and removes the
+agent from its secret grants. The prompt stays in the prompt CMS.
+
+You need `agent:delete`, or `agent:write` and membership of the agent's
+owner team. Without either, the API returns `403`.
+
+The owner team can delete the agent and grant it secrets, so changing
+the **Team** of an agent also needs `agent:delete` or membership of the
+current owner team (`403 owner_team_forbidden`).
 
 The delete returns `409` when:
 

@@ -161,7 +161,10 @@ A binding gives one AWS secret a reference in Imbi.
 8. Optional: in **Allowed delivery targets**, list the environment variable
    names that may receive the value, for example `GRAFANA_TOKEN`. The list
    also limits the JSON members that go into their own variables.
-9. Click **Create binding**.
+9. Optional: select **Grantable by agent owners**. A user without
+   `secret_binding:write` can then grant this binding to an agent of a
+   team that the user is in. Leave it clear for production credentials.
+10. Click **Create binding**.
 
 Click **Validate** on the binding row to check that the role can see the
 AWS secret.
@@ -191,6 +194,24 @@ The grant form has these fields:
 | Delivery modes | How the value may be delivered. See [Delivery modes](#delivery-modes) |
 | Maximum TTL (seconds) | How long one read stays valid. Default 900, maximum 3600 |
 | Projects | On the **Projects** tab: all projects, or only the selected projects |
+
+### Grants by agent owners
+
+A user with `secret_grant:write` and no `secret_binding:write`, for
+example the `developer` role, can:
+
+- Create a grant only when they are a member of the owner team of each
+  agent in it, and each binding in it is **Grantable**. Otherwise the API
+  returns `403` with `grant_agent_forbidden` or
+  `grant_binding_forbidden`.
+- Change or delete a grant only when they are a member of the owner team
+  of each agent in it, before and after the change.
+- Remove one of their agents from any grant, with
+  `DELETE /organizations/{org}/secret-grants/{grant_id}/agents/{agent_id}`.
+  A grant left with no agent is deleted.
+
+A user with `secret_binding:write` can set **Grantable**, so these limits
+do not apply to that user.
 
 A grant with a runner purpose (`model_inference`, `workspace_checkout`,
 `marketplace_fetch`) must have the delivery mode `file_descriptor` and no

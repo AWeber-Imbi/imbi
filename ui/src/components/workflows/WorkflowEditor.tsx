@@ -3,7 +3,13 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, ArrowLeft, FlaskConical, Play } from 'lucide-react'
+import {
+  AlertTriangle,
+  ArrowLeft,
+  FlaskConical,
+  Play,
+  Trash2,
+} from 'lucide-react'
 import {
   Group,
   Panel,
@@ -15,6 +21,7 @@ import { toast } from 'sonner'
 import { ApiError } from '@/api/client'
 import {
   activateWorkflow,
+  deleteWorkflow,
   pauseWorkflow,
   startWorkflowRun,
   testRunWorkflow,
@@ -22,8 +29,9 @@ import {
 } from '@/api/endpoints'
 import { agentsPath } from '@/components/agents/agentsNav'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Switch } from '@/components/ui/switch'
-import { useHasPermission } from '@/hooks/useHasPermission'
+import { useHasPermission, useInTeam } from '@/hooks/useHasPermission'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { queryKeys } from '@/lib/queryKeys'
 import { storage } from '@/lib/storage'
@@ -109,11 +117,17 @@ export function WorkflowEditor({
     orgSlug,
   )
   const readOnly = !canWrite
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const types: StepTypes = useMemo(
     () => Object.fromEntries(stepTypes.map((t) => [t.type, t])),
     [stepTypes],
   )
   const [current, setCurrent] = useState(workflow)
+  // A member of the owner team deletes it with workflow:write only.
+  const inTeam = useInTeam(orgSlug, current?.owner_team_slug)
+  const hasWrite = useHasPermission('workflow:write', orgSlug)
+  const canDelete =
+    useHasPermission('workflow:delete', orgSlug) || (hasWrite && inTeam)
   const [draft, setDraft] = useState<WorkflowWrite>(() => ({
     description: workflow?.description ?? '',
     graph: workflow?.version.graph ?? { edges: [], nodes: [] },
@@ -295,6 +309,21 @@ export function WorkflowEditor({
       toast.error(activationError(error, active !== false))
     },
     onSuccess: stored,
+  })
+
+  const remove = useMutation({
+    mutationFn: () => deleteWorkflow(orgSlug, slug!),
+    onError: (error) =>
+      toast.error(
+        `Failed to delete the workflow: ${extractApiErrorDetail(error)}`,
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.workflows(orgSlug),
+      })
+      toast.success(`Deleted ${current?.name}`)
+      navigate(agentsPath('workflows'))
+    },
   })
 
   const test = useMutation({
@@ -538,6 +567,18 @@ export function WorkflowEditor({
             {status === 'active' ? 'Active' : 'Inactive'}
           </label>
         )}
+        {current && canDelete && (
+          <Button
+            aria-label="Delete workflow"
+            disabled={remove.isPending}
+            onClick={() => setConfirmDelete(true)}
+            size="sm"
+            title="Delete the workflow"
+            variant="outline"
+          >
+            <Trash2 />
+          </Button>
+        )}
         {canWrite && (
           <Button
             disabled={save.isPending || (!!current && !dirty)}
@@ -692,6 +733,17 @@ export function WorkflowEditor({
           pending={start.isPending}
         />
       )}
+      <ConfirmDialog
+        confirmLabel="Delete workflow"
+        description={`This deletes ${current?.name} and all of its versions. You cannot undo this. A workflow with a queued or running run cannot be deleted.`}
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={() => {
+          setConfirmDelete(false)
+          remove.mutate()
+        }}
+        open={confirmDelete}
+        title={`Delete ${current?.name}?`}
+      />
     </div>
   )
 }

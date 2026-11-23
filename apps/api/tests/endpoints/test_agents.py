@@ -701,6 +701,29 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(statements[4].params['tag_slugs'], ['blue'])
         self.assertIn('SET', statements[5].cypher)
 
+    def test_team_change_needs_the_owner_team(self) -> None:
+        # The owner team may delete the agent and grant it secrets, so
+        # agent:write alone does not move it to another team.
+        self.auth_context.permissions = {'agent:read', 'agent:write'}
+        # fetch, owned agents (none)
+        self.mock_db.execute.side_effect = [[self._row()], []]
+        response = self.client.put(BASE + '/triage', json={'team': 'dev'})
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'owner_team_forbidden'
+        )
+        self.assertEqual(self._version_writes(), [])
+
+        # A member of the current owner team can move it.
+        self.mock_db.execute.side_effect = [
+            [self._row()],
+            [{'id': 'agent-1'}],
+            [{'slug': 'dev', 'id': 'team-2'}],
+            [self._row(team='dev', latest=2)],
+        ]
+        response = self.client.put(BASE + '/triage', json={'team': 'dev'})
+        self.assertEqual(response.status_code, 200, response.text)
+
     def test_put_deleted_agent_is_not_found(self) -> None:
         # fetch, batch (matches nothing), fetch (agent is gone)
         self.mock_db.execute.side_effect = [[self._row()], []]
@@ -934,6 +957,45 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
     def test_delete_not_found(self) -> None:
         self.mock_db.execute.return_value = []
         self.assertEqual(self.client.delete(BASE + '/nope').status_code, 404)
+
+    def test_delete_by_owner_team_member(self) -> None:
+        self.auth_context.permissions = {'agent:read', 'agent:write'}
+        # id, owned agents, other agents
+        self.mock_db.execute.side_effect = [
+            [{'id': 'agent-1'}],
+            [{'id': 'agent-1'}],
+            [],
+        ]
+        response = self.client.delete(BASE + '/triage')
+        self.assertEqual(response.status_code, 204)
+        owned = self.mock_db.execute.await_args_list[1]
+        self.assertIn('OWNED_BY', owned.args[0])
+        self.assertEqual(
+            owned.args[1],
+            {
+                'email': 'dev@example.com',
+                'org_id': 'engineering',
+                'ids': ['agent-1'],
+            },
+        )
+        self.mock_db._execute_batch.assert_awaited_once()
+
+    def test_delete_with_only_delete_permission(self) -> None:
+        self.auth_context.permissions = {'agent:read', 'agent:delete'}
+        # id, other agents
+        self.mock_db.execute.side_effect = [[{'id': 'agent-1'}], []]
+        response = self.client.delete(BASE + '/triage')
+        self.assertEqual(response.status_code, 204)
+        self.mock_db._execute_batch.assert_awaited_once()
+
+    def test_delete_by_other_team_is_forbidden(self) -> None:
+        self.auth_context.permissions = {'agent:read', 'agent:write'}
+        # id, owned agents
+        self.mock_db.execute.side_effect = [[{'id': 'agent-1'}], []]
+        response = self.client.delete(BASE + '/triage')
+        self.assertEqual(response.status_code, 403)
+        self.mock_db._execute_batch.assert_not_awaited()
+        self.secret_store.remove_agent.assert_not_awaited()
 
     # -- Versions ------------------------------------------------------
 
