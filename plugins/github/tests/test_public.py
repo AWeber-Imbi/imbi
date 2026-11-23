@@ -64,6 +64,20 @@ class PublicRepositoryTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(route.called)
 
+    @respx.mock
+    async def test_get_file_encodes_the_path(self) -> None:
+        route = respx.get(f'{RAW}/{SHA}/my%20plugin/.mcp.json').respond(
+            text='{}'
+        )
+        reader = public.PublicRepository('anthropics', 'plugins')
+        self.assertEqual(
+            await reader.get_file(None, {}, 'my plugin/.mcp.json', SHA), '{}'
+        )
+        self.assertEqual(
+            route.calls.last.request.url.raw_path,
+            f'/anthropics/plugins/{SHA}/my%20plugin/.mcp.json'.encode(),
+        )
+
 
 class WebhookSignatureTests(unittest.TestCase):
     def test_signature_is_the_webhook_secret(self) -> None:
