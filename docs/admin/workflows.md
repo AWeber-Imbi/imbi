@@ -717,9 +717,11 @@ Imbi user who caused the delivery owns the task, for example the author of a
 GitHub pull request. The gateway finds that user with the webhook's user
 subject selector and an identity connection. When there is no such person, or
 that person cannot make agent tasks, the person who activated the workflow owns
-the task. The activator always owns the task of a scheduled run. If the
-activator also cannot make agent tasks when the step runs, the step fails with
-`owner_forbidden`.
+the task. The activator always owns the task of a scheduled run.
+
+The activator stays the authority for every run. If the activator cannot make
+agent tasks when the step runs, the step fails with `owner_forbidden`, whoever
+started the run.
 
 When `project_id` is a reference, the step fails with `project_not_rendered`
 if it renders to nothing, and with `422` if no project of the organization

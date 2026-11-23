@@ -1258,6 +1258,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
         self.admin = f'admin-{uuid.uuid4().hex[:8]}@example.com'
         self.agent = f'agent-{uuid.uuid4().hex[:8]}'
         self.plain = f'plain-{uuid.uuid4().hex[:8]}@example.com'
+        self.starter = f'starter-{uuid.uuid4().hex[:8]}@example.com'
         await self.graph.execute(
             """
             MATCH (o:Organization {{id: {org}}})
@@ -1265,6 +1266,10 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
                              display_name: 'Admin', is_active: true,
                              is_admin: true}})
             CREATE (u)-[:MEMBER_OF {{role: 'admin'}}]->(o)
+            CREATE (s:User {{id: {starter}, email: {starter},
+                             display_name: 'Starter', is_active: true,
+                             is_admin: true}})
+            CREATE (s)-[:MEMBER_OF {{role: 'admin'}}]->(o)
             CREATE (p:User {{id: {plain}, email: {plain},
                              display_name: 'Plain', is_active: true}})
             CREATE (p)-[:MEMBER_OF {{role: 'no-such-role'}}]->(o)
@@ -1278,6 +1283,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
                 'org': self.org,
                 'admin': self.admin,
                 'plain': self.plain,
+                'starter': self.starter,
                 'agent': self.agent,
             },
             ['id'],
@@ -1395,7 +1401,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
             DETACH DELETE s, n
             RETURN 1 AS ok
             """,
-            {'ids': [self.admin, self.plain, self.agent]},
+            {'ids': [self.admin, self.plain, self.starter, self.agent]},
             ['ok'],
         )
         async with self.task_pool.connection() as conn:
@@ -1609,31 +1615,54 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
     async def test_owner_of_the_task(self) -> None:
         params = {'agent_id': self.agent, 'instruction': 'Go.'}
         hook = {'origin_kind': 'webhook', 'origin_id': 'hook'}
-        cases: dict[str, dict[str, typing.Any]] = {
-            # The person who started a manual run, not the activator.
-            'starter': {'activated_by': self.plain},
-            'starter with no ticket:create': {'origin': {'user': self.plain}},
-            'scheduled run': {
-                'origin_kind': 'schedule',
-                'origin_id': 'nightly',
-                'origin': {'user': None},
-            },
-            # The person who caused a webhook delivery.
-            'webhook actor': {
-                **hook,
-                'activated_by': self.plain,
-                'origin': {'user': self.admin},
-            },
-            'actor with no ticket:create': {
-                **hook,
-                'origin': {'user': self.plain},
-            },
+        # The activator is admin; each case names the expected owner.
+        cases: dict[str, tuple[dict[str, typing.Any], str]] = {
+            'starter': ({'origin': {'user': self.starter}}, self.starter),
+            'starter with no ticket:create': (
+                {'origin': {'user': self.plain}},
+                self.admin,
+            ),
+            'scheduled run': (
+                {
+                    'origin_kind': 'schedule',
+                    'origin_id': 'nightly',
+                    'origin': {'user': None},
+                },
+                self.admin,
+            ),
+            'webhook actor': (
+                {**hook, 'origin': {'user': self.starter}},
+                self.starter,
+            ),
+            'actor with no ticket:create': (
+                {**hook, 'origin': {'user': self.plain}},
+                self.admin,
+            ),
         }
-        for name, step in cases.items():
+        for name, (step, owner) in cases.items():
             with self.subTest(name):
                 await self._agent_run(params)
                 task = await self._step_task(params, **step)
-                self.assertEqual(task['owner'], self.admin)
+                self.assertEqual(task['owner'], owner)
+
+    async def test_activator_without_ticket_create_stops_the_step(
+        self,
+    ) -> None:
+        # The person of the origin can make tasks; the activator cannot.
+        for kind in ('human', 'webhook'):
+            with self.subTest(kind):
+                await self._agent_run(
+                    {'agent_id': self.agent, 'instruction': 'Go.'}
+                )
+                await self._agent_step(
+                    {'agent_id': self.agent, 'instruction': 'Go.'},
+                    activated_by=self.plain,
+                    origin_kind=kind,
+                    origin={'user': self.starter},
+                )
+                response = await self.client.post(self.step_url)
+                self.assertEqual(response.status_code, 403)
+        self.assertEqual(await self._count(), 0)
 
     async def test_only_the_engine(self) -> None:
         overrides = self.test_app.dependency_overrides

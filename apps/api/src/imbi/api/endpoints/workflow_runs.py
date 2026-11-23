@@ -722,19 +722,23 @@ async def _step_owner(
 ) -> str | None:
     """Return the owner of the task of an agent step, or ``None``.
 
-    The person of the run's origin (``origin['user']``) owns its tasks:
-    the person who started a manual run, or the person who caused a
-    webhook delivery, as the gateway resolved them. Otherwise, or when
-    that person cannot make agent tasks, the person who activated the
-    workflow owns them. ``None`` means that no one of them can make
-    agent tasks in the org.
+    The person who activated the workflow is the authority for its
+    runs: ``None`` when they can no longer make agent tasks in the org,
+    so that removing their permission stops the workflow. The person of
+    the run's origin (``origin['user']``) owns the tasks when they can
+    also make agent tasks: the person who started a manual run, or the
+    person who caused a webhook delivery, as the gateway resolved them.
+    Otherwise the activator owns them.
     """
+    activator: str = run['activated_by']
+    if not await tickets.may_create(db, org_slug, activator):
+        return None
     origin: dict[str, typing.Any] = run['origin'] or {}
-    people: list[str | None] = [origin.get('user'), run['activated_by']]
-    for candidate in dict.fromkeys(filter(None, people)):
-        if await tickets.may_create(db, org_slug, candidate):
-            return candidate
-    return None
+    person: str | None = origin.get('user')
+    if person and person != activator:
+        if await tickets.may_create(db, org_slug, person):
+            return person
+    return activator
 
 
 async def _pinned_agent_ids(
