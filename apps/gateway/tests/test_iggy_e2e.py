@@ -21,7 +21,6 @@ import unittest
 import nanoid
 
 from imbi.common import clickhouse, iggy, models
-from imbi.common.clickhouse import client
 from imbi.gateway import notifications
 
 #: How long the sink is given to pick the message up. The poll interval
@@ -35,17 +34,12 @@ INTERVAL = 0.25
     os.environ.get('IGGY_URL'),
     'IGGY_URL is unset; run `moon run root:services` first',
 )
-class E2ETestCase(unittest.IsolatedAsyncioTestCase):
+class IggyToClickHouseTestCase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
-        # The client binds to the loop that opened it, and an earlier
-        # test on this worker can leave one bound to its closed loop.
-        client.Clickhouse._instance = None
         await clickhouse.setup_schema()
         self.addAsyncCleanup(clickhouse.aclose)
         self.addAsyncCleanup(iggy.aclose)
 
-
-class IggyToClickHouseTestCase(E2ETestCase):
     async def _await_row(self, event_id: str) -> dict[str, typing.Any]:
         """Poll for the row until the sink has written it."""
         deadline = asyncio.get_running_loop().time() + TIMEOUT
@@ -97,7 +91,11 @@ class IggyToClickHouseTestCase(E2ETestCase):
         self.assertEqual(row['payload']['action'], 'opened')
 
 
-class DeliveryRecorderTestCase(E2ETestCase):
+@unittest.skipUnless(
+    os.environ.get('IGGY_URL'),
+    'IGGY_URL is unset; run `moon run root:services` first',
+)
+class DeliveryRecorderTestCase(unittest.IsolatedAsyncioTestCase):
     """Drive the gateway's real recorder over the whole write path.
 
     Both phases go through :class:`DeliveryRecorder` with nothing
@@ -107,7 +105,9 @@ class DeliveryRecorderTestCase(E2ETestCase):
     """
 
     async def asyncSetUp(self) -> None:
-        await super().asyncSetUp()
+        await clickhouse.setup_schema()
+        self.addAsyncCleanup(clickhouse.aclose)
+        self.addAsyncCleanup(iggy.aclose)
         self.project_id = f'e2e-recorder-{nanoid.generate()[:12]}'
         self.webhook_id = f'e2e-webhook-{nanoid.generate()[:12]}'
 
