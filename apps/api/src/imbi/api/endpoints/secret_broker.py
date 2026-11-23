@@ -22,8 +22,8 @@ from collections import abc
 import fastapi
 import pydantic
 
-from imbi.api import secret_broker
-from imbi.api.auth import organizations, permissions
+from imbi.api import secret_broker, teams
+from imbi.api.auth import autonomous, organizations, permissions
 from imbi.api.endpoints._helpers import (
     conflict_on_unique_violation,
     fetch_or_404,
@@ -35,6 +35,7 @@ from imbi.api.secret_broker import (
     providers,
     store,
 )
+from imbi.common import graph
 from imbi.common.plugins import identity as plugin_identity
 from imbi.common.plugins import secrets as plugin_secrets
 
@@ -255,6 +256,11 @@ class SecretBindingCreate(pydantic.BaseModel):
     max_ttl_seconds: Ttl = 900
     enabled: bool = True
     description: str = ''
+    grantable: bool = pydantic.Field(
+        default=False,
+        description='A caller without secret_binding:write can grant '
+        'it to agents of a team that the caller is in.',
+    )
     provider_key_usage: ProviderKeyUsage | None = None
 
 
@@ -269,6 +275,7 @@ class SecretBindingPatch(pydantic.BaseModel):
     max_ttl_seconds: Ttl | None = None
     enabled: bool | None = None
     description: str | None = None
+    grantable: bool | None = None
     provider_key_usage: ProviderKeyUsage | None = None
 
 
@@ -284,6 +291,7 @@ class SecretBinding(pydantic.BaseModel):
     max_ttl_seconds: int
     enabled: bool
     description: str
+    grantable: bool = False
     provider_key_usage: dict[str, typing.Any] | None = None
     created_by: str
     created_at: datetime.datetime
@@ -1085,6 +1093,33 @@ def _check_setup_delivery(
         )
 
 
+async def _scoped_grant_writer(
+    db: graph.Graph,
+    auth: permissions.AuthContext,
+    org_id: str,
+    agent_ids: abc.Iterable[str],
+) -> bool:
+    """Whether the caller may grant only ``grantable`` bindings (#871).
+
+    A caller with ``secret_binding:write`` can set the flag, so no limit
+    applies to such a caller. Any other caller must be a member of the
+    owner team of each agent, or this raises 403
+    ``grant_agent_forbidden``.
+    """
+    if auth.is_admin or 'secret_binding:write' in auth.permissions:
+        return False
+    if not await teams.owns_agents(db, auth, org_id, agent_ids):
+        raise autonomous.forbidden(
+            'grant_agent_forbidden',
+            'You can grant only to agents of a team that you are in',
+        )
+    return True
+
+
+def _not_grantable(err: store.NotGrantable) -> fastapi.HTTPException:
+    return autonomous.forbidden('grant_binding_forbidden', str(err))
+
+
 @grants_router.get('/', response_model=list[SecretGrant])
 async def list_grants(
     org_id: OrgId, secrets: secret_broker.Store, _: GrantRead
@@ -1096,27 +1131,36 @@ async def list_grants(
 async def create_grant(
     org_id: OrgId,
     data: SecretGrantCreate,
+    db: graph.Pool,
     secrets: secret_broker.Store,
     auth: GrantWrite,
 ) -> store.Row:
     """Create an allow rule with exact ids.
 
     Raises:
+        403: The caller has no ``secret_binding:write`` and names an
+            agent of a team that the caller is not in
+            (``grant_agent_forbidden``) or a binding that is not
+            ``grantable`` (``grant_binding_forbidden``).
         422: A binding is not in the organization or is a provider
             key binding, or a setup purpose has a delivery mode other
             than ``file_descriptor``.
 
     """
     _check_setup_delivery(data.purposes, data.delivery_modes)
+    scoped = await _scoped_grant_writer(db, auth, org_id, data.agent_ids)
     try:
         row = await secrets.create(
             'grants',
             org_id,
             data.model_dump() | {'created_by': auth.principal_name},
             event=_event('secret_grant_created', auth, 'grant_id'),
+            require_grantable=scoped,
         )
     except (store.UnknownBindings, store.ProviderKeyBinding) as err:
         raise _invalid(str(err)) from None
+    except store.NotGrantable as err:
+        raise _not_grantable(err) from None
     return row
 
 
@@ -1170,12 +1214,17 @@ async def update_grant(
     org_id: OrgId,
     grant_id: uuid.UUID,
     data: SecretGrantPatch,
+    db: graph.Pool,
     secrets: secret_broker.Store,
     auth: GrantWrite,
 ) -> store.Row:
     """Change a grant. Disabling it stops every unused handle.
 
     Raises:
+        403: The caller has no ``secret_binding:write``, and the grant
+            names, before or after the change, an agent of a team that
+            the caller is not in, or after the change a binding that
+            is not ``grantable``.
         404: No such grant.
         422: A binding is not in the organization or is a provider
             key binding, or a setup purpose has a delivery mode other
@@ -1183,16 +1232,18 @@ async def update_grant(
 
     """
     changes = data.model_dump(exclude_unset=True, exclude_none=True)
+    current = await get_grant(org_id, grant_id, secrets, auth)
     if not changes:
-        return await get_grant(org_id, grant_id, secrets, auth)
+        return current
+    merged: store.Row = current | changes
+    scoped = await _scoped_grant_writer(
+        db, auth, org_id, {*current['agent_ids'], *merged['agent_ids']}
+    )
+    if scoped:
+        # The store checks the bindings it locks: give it all of them.
+        changes['binding_ids'] = merged['binding_ids']
     if 'purposes' in changes or 'delivery_modes' in changes:
-        current = changes
-        if not {'purposes', 'delivery_modes'} <= changes.keys():
-            current = await get_grant(org_id, grant_id, secrets, auth)
-        _check_setup_delivery(
-            changes.get('purposes', current['purposes']),
-            changes.get('delivery_modes', current['delivery_modes']),
-        )
+        _check_setup_delivery(merged['purposes'], merged['delivery_modes'])
     try:
         row = await fetch_or_404(
             secrets.update,
@@ -1202,9 +1253,12 @@ async def update_grant(
             changes,
             event=_event('secret_grant_updated', auth, 'grant_id'),
             detail='Grant not found',
+            require_grantable=scoped,
         )
     except (store.UnknownBindings, store.ProviderKeyBinding) as err:
         raise _invalid(str(err)) from None
+    except store.NotGrantable as err:
+        raise _not_grantable(err) from None
     return row
 
 
@@ -1212,10 +1266,22 @@ async def update_grant(
 async def delete_grant(
     org_id: OrgId,
     grant_id: uuid.UUID,
+    db: graph.Pool,
     secrets: secret_broker.Store,
     auth: GrantWrite,
 ) -> None:
-    """Delete a grant. Unused handles that it allowed stop working."""
+    """Delete a grant. Unused handles that it allowed stop working.
+
+    Raises:
+        403: The caller has no ``secret_binding:write`` and the grant
+            names an agent of a team that the caller is not in. Use
+            ``DELETE /{grant_id}/agents/{agent_id}`` to remove only
+            the caller's agent.
+        404: No such grant.
+
+    """
+    current = await get_grant(org_id, grant_id, secrets, auth)
+    await _scoped_grant_writer(db, auth, org_id, current['agent_ids'])
     if not await secrets.delete(
         'grants',
         org_id,
@@ -1223,6 +1289,33 @@ async def delete_grant(
         event=_event('secret_grant_deleted', auth, 'grant_id'),
     ):
         raise fastapi.HTTPException(status_code=404, detail='Grant not found')
+
+
+@grants_router.delete('/{grant_id}/agents/{agent_id}', status_code=204)
+async def remove_grant_agent(
+    org_id: OrgId,
+    grant_id: uuid.UUID,
+    agent_id: Id,
+    db: graph.Pool,
+    secrets: secret_broker.Store,
+    auth: GrantWrite,
+) -> None:
+    """Remove one agent from a grant. A grant left with no agent is
+    deleted. The other agents of a shared grant keep it.
+
+    Raises:
+        403: The caller has no ``secret_binding:write`` and the agent
+            is of a team that the caller is not in.
+        404: The grant does not name the agent.
+
+    """
+    await _scoped_grant_writer(db, auth, org_id, [agent_id])
+    if not await secrets.remove_agent_from_grant(
+        org_id, grant_id, agent_id, auth.principal_name
+    ):
+        raise fastapi.HTTPException(
+            status_code=404, detail='The grant does not name the agent'
+        )
 
 
 # --- Resolutions ---------------------------------------------------------

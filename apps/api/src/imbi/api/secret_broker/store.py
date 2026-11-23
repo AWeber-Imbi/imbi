@@ -46,6 +46,11 @@ class UnknownBindings(ValueError):
     """A grant names a binding that is not in the organization."""
 
 
+class NotGrantable(ValueError):
+    """A grant names a binding without ``grantable``, for a caller that
+    may grant only such bindings (#871)."""
+
+
 class ProviderKeyBinding(ValueError):
     """A grant names a provider key binding. The broker never gives
     such a binding to a task."""
@@ -218,6 +223,7 @@ class SecretStore:
         values: Row,
         *,
         event: AuditEvent | None = None,
+        require_grantable: bool = False,
     ) -> Row:
         """Insert a row and return it, with its audit ``event``.
 
@@ -225,6 +231,8 @@ class SecretStore:
             psycopg.errors.UniqueViolation: A name or reference is in use.
             UnknownBindings: A grant names a binding not in the org.
             ProviderKeyBinding: A grant names a provider key binding.
+            NotGrantable: ``require_grantable`` is set and a grant names
+                a binding without ``grantable``.
 
         """
         values = {
@@ -247,7 +255,10 @@ class SecretStore:
             await relational.lock_organization_shared(conn, organization_id)
             if table == 'grants':
                 await _lock_bindings(
-                    cur, organization_id, values['binding_ids']
+                    cur,
+                    organization_id,
+                    values['binding_ids'],
+                    require_grantable,
                 )
             if table == 'providers':
                 await _check_role(cur, organization_id, values.get('config'))
@@ -268,15 +279,19 @@ class SecretStore:
         changes: Row,
         *,
         event: AuditEvent | None = None,
+        require_grantable: bool = False,
     ) -> Row | None:
         """Change a row; return it, or ``None`` when it is not there.
 
-        The audit ``event`` commits with the change.
+        The audit ``event`` commits with the change. With
+        ``require_grantable``, a grant change must give ``binding_ids``.
 
         Raises:
             psycopg.errors.UniqueViolation: A name is in use.
             UnknownBindings: A grant names a binding not in the org.
             ProviderKeyBinding: A grant names a provider key binding.
+            NotGrantable: ``require_grantable`` is set and the grant
+                names a binding without ``grantable``.
             InUse: The change sets or clears the provider key mark of a
                 binding that a grant names.
 
@@ -298,7 +313,10 @@ class SecretStore:
         ):
             if table == 'grants' and 'binding_ids' in changes:
                 await _lock_bindings(
-                    cur, organization_id, changes['binding_ids']
+                    cur,
+                    organization_id,
+                    changes['binding_ids'],
+                    require_grantable,
                 )
             if table == 'providers':
                 await _check_role(cur, organization_id, changes.get('config'))
@@ -395,6 +413,20 @@ class SecretStore:
             organization_id, 'agent', agent_id, actor
         )
 
+    async def remove_agent_from_grant(
+        self,
+        organization_id: str,
+        grant_id: uuid.UUID,
+        agent_id: str,
+        actor: str,
+    ) -> bool:
+        """Remove an agent from one grant; delete the grant when it
+        names no other agent. Return ``False`` when the grant does not
+        name the agent."""
+        return await self._remove_from_grants(
+            organization_id, 'agent', agent_id, actor, grant_id
+        )
+
     async def remove_project(
         self, organization_id: str, project_id: str, actor: str
     ) -> None:
@@ -414,10 +446,12 @@ class SecretStore:
         kind: typing.Literal['agent', 'project'],
         value: str,
         actor: str,
-    ) -> None:
+        grant_id: uuid.UUID | None = None,
+    ) -> bool:
         """Remove ``value`` from ``<kind>_ids`` of every grant of the
-        organization, and delete each grant that it leaves empty. The
-        audit events commit with the change."""
+        organization (or of ``grant_id`` only), and delete each grant
+        that it leaves empty. The audit events commit with the change.
+        Return whether a grant changed."""
         async with (
             self._pool.connection() as conn,
             conn.transaction(),
@@ -430,9 +464,10 @@ class SecretStore:
                     ' updated_at = NOW()'
                     ' WHERE organization_id = %(org)s'
                     ' AND %(value)s = ANY({col})'
+                    ' AND (%(grant)s::uuid IS NULL OR id = %(grant)s)'
                     ' RETURNING id, {col} AS remaining'
                 ).format(col=sql.Identifier(f'{kind}_ids')),
-                {'value': value, 'org': organization_id},
+                {'value': value, 'org': organization_id, 'grant': grant_id},
             )
             changed = await cur.fetchall()
             empty = [r['id'] for r in changed if not r['remaining']]
@@ -457,6 +492,7 @@ class SecretStore:
                     for r in changed
                 ],
             )
+            return bool(changed)
 
     async def agent_references(
         self,
@@ -693,11 +729,13 @@ async def _lock_bindings(
     cur: psycopg.AsyncCursor[Row],
     organization_id: str,
     binding_ids: list[uuid.UUID],
+    require_grantable: bool = False,
 ) -> None:
-    """Lock the bindings of a grant; each must be in the organization
-    and must not be a provider key binding."""
+    """Lock the bindings of a grant; each must be in the organization,
+    must not be a provider key binding, and with ``require_grantable``
+    must be ``grantable``."""
     await cur.execute(
-        'SELECT provider_key_usage FROM secrets.bindings'
+        'SELECT provider_key_usage, grantable FROM secrets.bindings'
         ' WHERE organization_id = %s AND id = ANY(%s) FOR SHARE',
         (organization_id, binding_ids),
     )
@@ -708,6 +746,8 @@ async def _lock_bindings(
         raise ProviderKeyBinding(
             'A provider key binding cannot be granted to a task'
         )
+    if require_grantable and not all(row['grantable'] for row in found):
+        raise NotGrantable('A binding is not grantable by you')
 
 
 async def _check_mark_change(

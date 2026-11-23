@@ -17,21 +17,22 @@ vi.mock('@/api/endpoints', () => ({
   listSecretBindings: vi.fn(),
   listSecretGrants: vi.fn(),
   listSecretProviders: vi.fn(),
+  removeSecretGrantAgent: vi.fn(),
   updateSecretGrant: vi.fn(),
 }))
 
-const auth = vi.hoisted(() => ({
-  user: {
-    is_admin: true,
-    organizations: [{ organization_slug: 'acme', permissions: [] }],
-    permissions: [] as string[],
-  },
-}))
+const ADMIN = {
+  is_admin: true,
+  organizations: [{ organization_slug: 'acme', permissions: [] as string[] }],
+  permissions: [] as string[],
+  teams: [] as { organization_slug: string; team_slug: string }[],
+}
+const auth = vi.hoisted(() => ({ user: {} as typeof ADMIN }))
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }))
 
-const AGENT = { id: 'agt-1', name: 'Mender' }
+const AGENT = { id: 'agt-1', name: 'Mender', team: 'ops' }
 
 function binding(
   id: string,
@@ -51,6 +52,25 @@ function binding(
   } as SecretBinding
 }
 
+/** A developer: grant access, no binding write. */
+function developer(teams: string[]) {
+  auth.user = {
+    is_admin: false,
+    organizations: [
+      {
+        organization_slug: 'acme',
+        permissions: [
+          'secret_binding:read',
+          'secret_grant:read',
+          'secret_grant:write',
+        ],
+      },
+    ],
+    permissions: [],
+    teams: teams.map((t) => ({ organization_slug: 'acme', team_slug: t })),
+  }
+}
+
 function grant(changes: Partial<SecretGrant>): SecretGrant {
   return {
     agent_ids: [AGENT.id],
@@ -68,6 +88,7 @@ function grant(changes: Partial<SecretGrant>): SecretGrant {
 describe('AccessTab', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    auth.user = ADMIN
     vi.mocked(endpoints.listSecretProviders).mockResolvedValue([])
     vi.mocked(endpoints.listSecretBindings).mockResolvedValue([
       binding('b-gh', 'secret://dev/github_app'),
@@ -227,6 +248,53 @@ describe('AccessTab', () => {
     expect(await screen.findByText('secret://ci/npm_token')).toBeInTheDocument()
     expect(screen.getByText(/shared with 1 other agent/)).toBeInTheDocument()
     expect(screen.getByText('npm')).toBeInTheDocument()
+  })
+
+  it('removes the agent from a grant', async () => {
+    vi.mocked(endpoints.removeSecretGrantAgent).mockResolvedValue(undefined)
+    renderTab()
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Remove secret://ci/npm_token',
+      }),
+    )
+    const shared = (await endpoints.listSecretGrants('acme'))[1]
+    await waitFor(() =>
+      expect(endpoints.removeSecretGrantAgent).toHaveBeenCalledWith(
+        'acme',
+        shared.id,
+        AGENT.id,
+      ),
+    )
+  })
+
+  it('lets a developer of the owner team grant only grantable secrets', async () => {
+    developer(['ops'])
+    vi.mocked(endpoints.listSecretBindings).mockResolvedValue([
+      binding('b-gh', 'secret://dev/github_app'),
+      binding('b-npm', 'secret://ci/npm_token', [], { grantable: true }),
+    ])
+    renderTab()
+    const write = (
+      await screen.findByText('Push, and open pull requests and issues')
+    ).closest('li')!
+    // The GitHub App binding is not grantable.
+    expect(within(write).queryByRole('button')).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Remove secret://ci/npm_token' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /Add access/ }),
+    ).toBeInTheDocument()
+  })
+
+  it('gives a developer of another team no grant actions', async () => {
+    developer(['web'])
+    renderTab()
+    expect(await screen.findByText('secret://ci/npm_token')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /Remove|Add access|Grant/ }),
+    ).not.toBeInTheDocument()
   })
 
   it('asks for a save before a new agent gets access', () => {

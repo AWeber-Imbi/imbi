@@ -4218,6 +4218,9 @@ export const activateWorkflow = (
     version === undefined ? {} : { version },
   )
 
+export const deleteWorkflow = (orgSlug: string, slug: string) =>
+  apiClient.delete<void>(workflowPath(orgSlug, slug))
+
 export const pauseWorkflow = (orgSlug: string, slug: string) =>
   apiClient.post<Workflow>(`${workflowPath(orgSlug, slug)}/pause`, {})
 
@@ -4498,6 +4501,16 @@ export const updateSecretGrant = (
 
 export const deleteSecretGrant = (orgSlug: string, id: string) =>
   apiClient.delete<void>(`${secretsPath(orgSlug, 'secret-grants')}/${id}`)
+
+/** Remove one agent from a grant; the API deletes a grant left empty. */
+export const removeSecretGrantAgent = (
+  orgSlug: string,
+  id: string,
+  agentId: string,
+) =>
+  apiClient.delete<void>(
+    `${secretsPath(orgSlug, 'secret-grants')}/${id}/agents/${encodeURIComponent(agentId)}`,
+  )
 
 export const listSecretResolutions = (
   orgSlug: string,

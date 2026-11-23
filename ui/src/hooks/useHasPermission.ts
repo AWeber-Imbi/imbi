@@ -37,3 +37,11 @@ export function useHasPermission(
   const { user } = useAuth()
   return hasPermission(user, permission, orgSlug)
 }
+
+/** Whether the current user is a member of the team of `orgSlug`. */
+export function useInTeam(orgSlug: string, teamSlug?: null | string): boolean {
+  const { user } = useAuth()
+  return (user?.teams ?? []).some(
+    (t) => t.organization_slug === orgSlug && t.team_slug === teamSlug,
+  )
+}

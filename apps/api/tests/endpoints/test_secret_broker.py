@@ -54,6 +54,8 @@ class SecretEndpointTestCase(
             {'org': self.org, 'email': self.email},
             ['id'],
         )
+        #: The graph nodes that teardown deletes.
+        self.node_ids = [self.org, self.email]
         self.permissions = set(ALL_PERMISSIONS)
         user = models.User(
             id=self.email,
@@ -96,7 +98,7 @@ class SecretEndpointTestCase(
         await self.client.aclose()
         await self.graph.execute(
             'MATCH (n) WHERE n.id IN {ids} DETACH DELETE n RETURN 1 AS ok',
-            {'ids': [self.org, self.email]},
+            {'ids': self.node_ids},
             ['ok'],
         )
         await self.graph.close()
@@ -891,6 +893,94 @@ class SecretEndpointTestCase(
             '/secret-grants/evaluate', request | {'reference': 'bad'}
         )
         self.assertEqual(response.json()['error'], 'invalid_secret_reference')
+
+    async def test_grants_without_binding_write_are_scoped(self) -> None:
+        # #871: without secret_binding:write, a caller grants only
+        # grantable bindings, to agents of a team that the caller is in.
+        mine, theirs = f'mine-{self.org}', f'theirs-{self.org}'
+        team, other = f'team-{self.org}', f'other-{self.org}'
+        await self.graph.execute(
+            """
+            MATCH (u:User {{id: {email}}})
+            CREATE (t:Team {{id: {team}}}), (x:Team {{id: {other}}})
+            CREATE (u)-[:MEMBER_OF]->(t)
+            CREATE (:Agent {{id: {mine}, org_id: {org}}})-[:OWNED_BY]->(t)
+            CREATE (:Agent {{id: {theirs}, org_id: {org}}})-[:OWNED_BY]->(x)
+            RETURN 1 AS ok
+            """,
+            {
+                'email': self.email,
+                'org': self.org,
+                'team': team,
+                'other': other,
+                'mine': mine,
+                'theirs': theirs,
+            },
+            ['ok'],
+        )
+        self.node_ids += [mine, theirs, team, other]
+        grants = self.base + '/secret-grants'
+        body = {
+            'agent_ids': [mine],
+            'binding_ids': [str(self.binding['id'])],
+            'purposes': ['checkout'],
+            'delivery_modes': ['stdin'],
+        }
+        response = await self._post(
+            '/secret-grants/', body | {'agent_ids': [mine, theirs]}
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        shared = response.json()['id']
+
+        self.permissions.discard('secret_binding:write')
+        response = await self._post('/secret-grants/', body)
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'grant_binding_forbidden'
+        )
+        self.permissions.add('secret_binding:write')
+        response = await self.client.patch(
+            f'{self.base}/secret-bindings/{self.binding["id"]}',
+            json={'grantable': True},
+        )
+        self.assertTrue(response.json()['grantable'], response.text)
+        self.permissions.discard('secret_binding:write')
+
+        for agent_ids in ([theirs], [mine, theirs]):
+            response = await self._post(
+                '/secret-grants/', body | {'agent_ids': agent_ids}
+            )
+            self.assertEqual(response.status_code, 403, response.text)
+            self.assertEqual(
+                response.json()['detail']['error'], 'grant_agent_forbidden'
+            )
+        response = await self._post('/secret-grants/', body)
+        self.assertEqual(response.status_code, 201, response.text)
+        own = response.json()['id']
+
+        # The shared grant names an agent of another team.
+        response = await self.client.patch(
+            f'{grants}/{shared}', json={'enabled': False}
+        )
+        self.assertEqual(response.status_code, 403, response.text)
+        response = await self.client.delete(f'{grants}/{shared}')
+        self.assertEqual(response.status_code, 403, response.text)
+        response = await self.client.delete(
+            f'{grants}/{shared}/agents/{theirs}'
+        )
+        self.assertEqual(response.status_code, 403, response.text)
+        response = await self.client.delete(f'{grants}/{shared}/agents/{mine}')
+        self.assertEqual(response.status_code, 204, response.text)
+        response = await self.client.get(f'{grants}/{shared}')
+        self.assertEqual(response.json()['agent_ids'], [theirs])
+
+        # The last agent goes, so the grant goes.
+        response = await self.client.delete(f'{grants}/{own}/agents/{mine}')
+        self.assertEqual(response.status_code, 204, response.text)
+        response = await self.client.get(f'{grants}/{own}')
+        self.assertEqual(response.status_code, 404, response.text)
+        response = await self.client.delete(f'{grants}/{own}/agents/{mine}')
+        self.assertEqual(response.status_code, 404, response.text)
 
     async def test_retired_purpose_grant_is_refused(self) -> None:
         response = await self._post(

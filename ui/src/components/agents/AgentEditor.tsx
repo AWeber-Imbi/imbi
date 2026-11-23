@@ -273,7 +273,11 @@ function AgentEditorForm({
       )}
       {tab === 'access' && (
         <AccessTab
-          agent={agent ? { id: agent.id, name: agent.name } : null}
+          agent={
+            agent
+              ? { id: agent.id, name: agent.name, team: agent.team?.slug }
+              : null
+          }
           errors={errors}
           onChange={(settings) => update({ settings })}
           orgSlug={orgSlug}

@@ -36,7 +36,7 @@ import pydantic
 import slugify
 
 from imbi.api import agent_tools, harness, secret_broker, teams, workflows
-from imbi.api.auth import organizations, permissions
+from imbi.api.auth import autonomous, organizations, permissions
 from imbi.api.endpoints import prompts
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.graph_sql import props_template, set_clause
@@ -1572,13 +1572,18 @@ async def delete_agent(
     secrets: secret_broker.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('agent:delete')),
+        fastapi.Depends(permissions.require_permission('agent:write')),
     ],
 ) -> None:
     """Delete an agent, every version of it, and its service account,
     and remove it from the secret grants.
 
+    ``agent:delete`` deletes any agent. With only ``agent:write``, the
+    caller must be a member of the owner team of the agent.
+
     Raises:
+        403: The caller has no ``agent:delete`` and is not a member of
+            the owner team.
         404: No such agent.
         409: Other agents delegate to this agent, or workflows use it.
 
@@ -1589,6 +1594,15 @@ async def delete_agent(
     if not records:
         raise _not_found(slug)
     params = {'id': str(graph.parse_agtype(records[0]['id']))}
+    if not (
+        auth.is_admin
+        or 'agent:delete' in auth.permissions
+        or await teams.owns_agents(db, auth, org_id, [params['id']])
+    ):
+        raise autonomous.forbidden(
+            'owner_team_forbidden',
+            'Only a member of the owner team can delete this agent',
+        )
     await _assert_not_delegated_to(db, org_slug, slug, params['id'])
     # ponytail: a save between this check and the delete can still add
     # a reference; the step then fails with agent_not_found.
