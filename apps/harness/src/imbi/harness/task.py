@@ -522,22 +522,30 @@ _MARKETPLACE_ONLY = frozenset({'source', 'category', 'tags', 'strict'})
 
 
 def _entry(entry: Body) -> str:
-    """One line of the ticket history."""
+    """One line of the ticket history. The result of an earlier session
+    can quote content that a tool fetched, so its text is in its own
+    untrusted block."""
+    text = str(entry.get('text'))
+    if entry.get('kind') == 'result':
+        text = relay.untrusted(text, 'agent_result')
     return (
         f'- {entry.get("at")} {entry.get("kind")}'
         + (f' by {entry["actor"]}' if entry.get('actor') else '')
-        + f': {entry.get("text")}'
+        + f': {text}'
     )
 
 
 def _history(entries: list[Body], cut: int) -> str:
-    """The ticket history text, in an untrusted block when an entry came
-    from a webhook."""
+    """The ticket history text, in an untrusted block when an entry other
+    than a result came from a webhook."""
     lines = [_entry(entry) for entry in entries]
     if cut:
         lines.insert(0, f'[{cut} older entries were cut to fit the limit.]')
     text = '\n'.join(lines)
-    if any(entry.get('webhook') for entry in entries):
+    if any(
+        entry.get('webhook') and entry.get('kind') != 'result'
+        for entry in entries
+    ):
         text = relay.untrusted(text, 'webhook')
     return f'The ticket history before this session, oldest first:\n{text}'
 
