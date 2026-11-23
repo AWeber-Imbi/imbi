@@ -980,6 +980,14 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         )
         self.mock_db._execute_batch.assert_awaited_once()
 
+    def test_delete_with_only_delete_permission(self) -> None:
+        self.auth_context.permissions = {'agent:read', 'agent:delete'}
+        # id, other agents
+        self.mock_db.execute.side_effect = [[{'id': 'agent-1'}], []]
+        response = self.client.delete(BASE + '/triage')
+        self.assertEqual(response.status_code, 204)
+        self.mock_db._execute_batch.assert_awaited_once()
+
     def test_delete_by_other_team_is_forbidden(self) -> None:
         self.auth_context.permissions = {'agent:read', 'agent:write'}
         # id, owned agents

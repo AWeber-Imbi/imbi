@@ -285,9 +285,12 @@ class SecretStore:
         """Change a row; return it, or ``None`` when it is not there.
 
         The audit ``event`` commits with the change. With
-        ``require_grantable``, a grant change must give ``binding_ids``.
-        With ``expect_agent_ids``, a grant changes only while it names
-        exactly those agents; otherwise this returns ``None``.
+        ``require_grantable``, the bindings of the grant after the
+        change must be ``grantable``. When the change does not give
+        ``binding_ids``, the stored bindings are checked, and the grant
+        changes only while it keeps them; otherwise this returns
+        ``None``. With ``expect_agent_ids``, a grant changes only while
+        it names exactly those agents; otherwise this returns ``None``.
 
         Raises:
             psycopg.errors.UniqueViolation: A name is in use.
@@ -299,22 +302,14 @@ class SecretStore:
                 binding that a grant names.
 
         """
-        query = sql.SQL(
-            'UPDATE {table} SET {sets}updated_at = NOW()'
-            ' WHERE organization_id = %s AND id = %s{guard} RETURNING *'
-        ).format(
-            guard=_agents_guard(expect_agent_ids),
-            table=sql.Identifier(SCHEMA, table),
-            sets=sql.SQL('').join(
-                sql.SQL('{} = %s, ').format(sql.Identifier(name))
-                for name in changes
-            ),
-        )
         async with (
             self._pool.connection() as conn,
             conn.transaction(),
             conn.cursor(row_factory=rows.dict_row) as cur,
         ):
+            # The stored bindings that the change keeps and is checked
+            # against: the update applies only while the grant has them.
+            kept: list[uuid.UUID] | None = None
             if table == 'grants' and 'binding_ids' in changes:
                 await _lock_bindings(
                     cur,
@@ -322,6 +317,17 @@ class SecretStore:
                     changes['binding_ids'],
                     require_grantable,
                 )
+            elif table == 'grants' and require_grantable:
+                await cur.execute(
+                    'SELECT binding_ids FROM secrets.grants'
+                    ' WHERE organization_id = %s AND id = %s',
+                    (organization_id, row_id),
+                )
+                found = await cur.fetchone()
+                if found is None:
+                    return None
+                kept = typing.cast(list[uuid.UUID], found['binding_ids'])
+                await _lock_bindings(cur, organization_id, kept, True)
             if table == 'providers':
                 await _check_role(cur, organization_id, changes.get('config'))
             if table == 'bindings' and 'provider_id' in changes:
@@ -332,6 +338,21 @@ class SecretStore:
                 await _check_mark_change(
                     cur, organization_id, row_id, changes['provider_key_usage']
                 )
+            query = sql.SQL(
+                'UPDATE {table} SET {sets}updated_at = NOW()'
+                ' WHERE organization_id = %s AND id = %s{guard}{kept}'
+                ' RETURNING *'
+            ).format(
+                guard=_agents_guard(expect_agent_ids),
+                kept=sql.SQL(
+                    '' if kept is None else ' AND binding_ids = %s::uuid[]'
+                ),
+                table=sql.Identifier(SCHEMA, table),
+                sets=sql.SQL('').join(
+                    sql.SQL('{} = %s, ').format(sql.Identifier(name))
+                    for name in changes
+                ),
+            )
             await cur.execute(
                 query,
                 [
@@ -339,6 +360,7 @@ class SecretStore:
                     organization_id,
                     row_id,
                     *_agents_param(expect_agent_ids),
+                    *([] if kept is None else [kept]),
                 ],
             )
             row = await cur.fetchone()

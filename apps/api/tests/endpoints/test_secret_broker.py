@@ -958,6 +958,34 @@ class SecretEndpointTestCase(
         self.assertEqual(response.status_code, 201, response.text)
         own = response.json()['id']
 
+        # A scoped change without binding_ids checks the stored
+        # bindings and does not write them.
+        response = await self.client.patch(
+            f'{grants}/{own}', json={'description': 'Mine'}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            response.json()['binding_ids'], [str(self.binding['id'])]
+        )
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE secrets.bindings SET grantable = FALSE WHERE id = %s',
+                (self.binding['id'],),
+            )
+        with self.assertRaises(store.NotGrantable):
+            await self.store.update(
+                'grants',
+                self.org,
+                uuid.UUID(own),
+                {'description': 'Mine again'},
+                require_grantable=True,
+            )
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE secrets.bindings SET grantable = TRUE WHERE id = %s',
+                (self.binding['id'],),
+            )
+
         # The shared grant names an agent of another team.
         response = await self.client.patch(
             f'{grants}/{shared}', json={'enabled': False}

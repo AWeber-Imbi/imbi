@@ -883,7 +883,14 @@ async def delete_workflow(
     slug: str,
     db: graph.Pool,
     store: workflows.Store,
-    auth: WriteAuth,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_any_permission(
+                'workflow:write', 'workflow:delete'
+            )
+        ),
+    ],
 ) -> None:
     """Delete a workflow that has no open runs.
 
@@ -895,24 +902,27 @@ async def delete_workflow(
         403: ``owner_team_forbidden``: the caller has no
             ``workflow:delete`` and is not a member of the owner team.
         404: No such workflow.
-        409: A run of the workflow is queued or running, or the
-            organization was renamed during the delete.
+        409: A run of the workflow is queued or running, the
+            organization was renamed during the delete, or the owner
+            team changed during the delete.
 
     """
     current = await store.get(org_id, slug)
     # A missing workflow falls through to the 404 of ``store.delete``.
-    # ponytail: the owner team can change before the delete commits;
-    # the window is one request.
+    # A caller checked by owner team deletes only while the workflow
+    # keeps that owner team.
+    owner_team_id: str | None = None
     if (
         current is not None
         and not auth.is_admin
         and 'workflow:delete' not in auth.permissions
-        and not await teams.is_member(db, auth, current['owner_team_id'])
     ):
-        raise autonomous.forbidden(
-            'owner_team_forbidden',
-            'Only a member of the owner team can delete this workflow',
-        )
+        owner_team_id = team_id = current['owner_team_id']
+        if not await teams.is_member(db, auth, team_id):
+            raise autonomous.forbidden(
+                'owner_team_forbidden',
+                'Only a member of the owner team can delete this workflow',
+            )
 
     # The archive runs before the delete commits: a create of the same
     # slug waits, so the archive cannot reach the prompts of the new
@@ -921,7 +931,18 @@ async def delete_workflow(
         await _require_org_slug(db, conn, org_id, org_slug)
         await _archive_prompts(db, conn, org_slug, slug, ())
 
-    result = await store.delete(org_id, slug, on_deleted=on_deleted)
+    result = await store.delete(
+        org_id, slug, on_deleted=on_deleted, owner_team_id=owner_team_id
+    )
+    if result == 'owner_changed':
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail={
+                'error': 'conflict',
+                'message': f'Workflow {slug!r} changed during the delete;'
+                ' read it again and retry',
+            },
+        )
     if result == 'open_runs':
         raise fastapi.HTTPException(
             status_code=409, detail=f'Workflow {slug!r} has open runs'

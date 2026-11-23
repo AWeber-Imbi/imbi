@@ -1238,7 +1238,7 @@ async def update_grant(
             is not ``grantable``.
         404: No such grant.
         409: For a caller without ``secret_binding:write``: the
-            grant's agents changed during the request.
+            grant's agents or bindings changed during the request.
         422: A binding is not in the organization or is a provider
             key binding, or a setup purpose has a delivery mode other
             than ``file_descriptor``.
@@ -1252,9 +1252,6 @@ async def update_grant(
     scoped = await _scoped_grant_writer(
         db, auth, org_id, {*current['agent_ids'], *merged['agent_ids']}
     )
-    if scoped:
-        # The store checks the bindings it locks: give it all of them.
-        changes['binding_ids'] = merged['binding_ids']
     if 'purposes' in changes or 'delivery_modes' in changes:
         _check_setup_delivery(merged['purposes'], merged['delivery_modes'])
     try:

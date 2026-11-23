@@ -1598,7 +1598,9 @@ async def delete_agent(
     secrets: secret_broker.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('agent:write')),
+        fastapi.Depends(
+            permissions.require_any_permission('agent:write', 'agent:delete')
+        ),
     ],
 ) -> None:
     """Delete an agent, every version of it, and its service account,

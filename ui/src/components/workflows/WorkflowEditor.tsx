@@ -125,8 +125,9 @@ export function WorkflowEditor({
   const [current, setCurrent] = useState(workflow)
   // A member of the owner team deletes it with workflow:write only.
   const inTeam = useInTeam(orgSlug, current?.owner_team_slug)
+  const hasWrite = useHasPermission('workflow:write', orgSlug)
   const canDelete =
-    useHasPermission('workflow:delete', orgSlug) || (canWrite && inTeam)
+    useHasPermission('workflow:delete', orgSlug) || (hasWrite && inTeam)
   const [draft, setDraft] = useState<WorkflowWrite>(() => ({
     description: workflow?.description ?? '',
     graph: workflow?.version.graph ?? { edges: [], nodes: [] },

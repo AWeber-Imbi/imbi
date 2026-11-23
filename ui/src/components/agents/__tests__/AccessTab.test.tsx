@@ -145,7 +145,9 @@ describe('AccessTab', () => {
     const checkout = screen
       .getByText('Clone the project repositories')
       .closest('li')!
-    expect(within(checkout).queryByRole('button')).not.toBeInTheDocument()
+    expect(
+      within(checkout).queryByRole('button', { name: 'Grant' }),
+    ).not.toBeInTheDocument()
     fireEvent.click(within(write).getByRole('button', { name: 'Grant' }))
     await waitFor(() =>
       expect(endpoints.createSecretGrant).toHaveBeenCalledWith('acme', {
@@ -263,6 +265,22 @@ describe('AccessTab', () => {
       expect(endpoints.removeSecretGrantAgent).toHaveBeenCalledWith(
         'acme',
         shared.id,
+        AGENT.id,
+      ),
+    )
+  })
+
+  it('removes the agent from a GitHub App grant', async () => {
+    vi.mocked(endpoints.removeSecretGrantAgent).mockResolvedValue(undefined)
+    renderTab()
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Remove workspace_checkout' }),
+    )
+    const checkout = (await endpoints.listSecretGrants('acme'))[0]
+    await waitFor(() =>
+      expect(endpoints.removeSecretGrantAgent).toHaveBeenCalledWith(
+        'acme',
+        checkout.id,
         AGENT.id,
       ),
     )

@@ -37,6 +37,7 @@ import {
   type AccessRow,
   accessRows,
   agentGrants,
+  coveringGrant,
   covers,
   GITHUB_PURPOSES,
   grantFor,
@@ -185,7 +186,8 @@ export function AccessTab({
         {github && agent && canRead && (
           <ul className="divide-tertiary border-tertiary divide-y rounded-lg border">
             {GITHUB_PURPOSES.map(({ label, mode, purpose }) => {
-              const ok = covers(mine, github.id, purpose, mode)
+              const by = coveringGrant(mine, github.id, purpose, mode)
+              const ok = by !== undefined
               return (
                 <li className="flex items-center gap-3 px-3 py-2" key={purpose}>
                   {ok ? (
@@ -205,6 +207,18 @@ export function AccessTab({
                       variant="outline"
                     >
                       Grant
+                    </Button>
+                  )}
+                  {by && canWrite && (
+                    <Button
+                      aria-label={`Remove ${purpose}`}
+                      disabled={revoke.isPending}
+                      onClick={() => revoke.mutate(by)}
+                      size="sm"
+                      title="Remove the agent from the grant that allows this, for all of its purposes"
+                      variant="ghost"
+                    >
+                      <X className="size-4" />
                     </Button>
                   )}
                 </li>

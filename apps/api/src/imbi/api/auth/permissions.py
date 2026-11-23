@@ -26,6 +26,7 @@ __all__ = [
     'check_resource_permission',
     'get_current_user',
     'get_current_user_cookie_fallback',
+    'require_any_permission',
     'require_permission',
     'require_resource_access',
     'validate_scopes',
@@ -48,6 +49,36 @@ validate_scopes = _shared.validate_scopes
 # through a lambda rather than the function object, so a test patching
 # ``imbi.api.settings.get_auth_settings`` still governs authentication.
 _shared.set_auth_settings_provider(lambda: settings.get_auth_settings())
+
+
+def require_any_permission(
+    *names: str,
+) -> typing.Callable[[AuthContext], collections.abc.Awaitable[AuthContext]]:
+    """A dependency like :func:`require_permission` that admits a
+    holder of any one of ``names``.
+
+    ``openapi.py`` stamps the first name as ``x-imbi-permission``.
+    """
+
+    async def check_permission(
+        auth: typing.Annotated[AuthContext, fastapi.Depends(get_current_user)],
+    ) -> AuthContext:
+        if auth.is_admin or any(
+            _shared.holds(name, auth.permissions) for name in names
+        ):
+            return auth
+        LOGGER.warning(
+            'Permission denied: principal=%s permissions=%s',
+            auth.principal_name,
+            names,
+        )
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail=f'Permission denied: one of {", ".join(names)} required',
+        )
+
+    check_permission.imbi_permission = names[0]  # type: ignore[attr-defined]
+    return check_permission
 
 
 # Explicit map from a permission ``resource_type`` (the snake-case
