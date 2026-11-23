@@ -571,11 +571,13 @@ export function rolesOf(rows: RoleRow[]): Record<string, string> {
 
 /** Choose the team of a ticket by slug; `''` is no team. */
 export function TeamPicker({
+  className,
   disabled,
   onChange,
   orgSlug,
   value,
 }: {
+  className?: string
   disabled?: boolean
   onChange: (slug: string) => void
   orgSlug: string
@@ -589,6 +591,7 @@ export function TeamPicker({
         Team
       </label>
       <Combobox
+        className={className}
         disabled={disabled}
         id={id}
         onChange={onChange}
@@ -622,10 +625,12 @@ export function TypeIcon({ type }: { type: TicketType }) {
 
 /** Choose the type of a ticket. */
 export function TypePicker({
+  className,
   disabled,
   onChange,
   value,
 }: {
+  className?: string
   disabled?: boolean
   onChange: (type: TicketType) => void
   value: TicketType
@@ -633,7 +638,7 @@ export function TypePicker({
   return (
     <SegmentedControl
       ariaLabel="Type"
-      className="font-sans"
+      className={cn('font-sans', className)}
       onValueChange={(v) => onChange(v as TicketType)}
       value={value}
     >

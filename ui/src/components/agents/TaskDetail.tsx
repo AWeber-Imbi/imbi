@@ -410,6 +410,7 @@ function OverviewTab({
         canManage && task.status !== 'closed' ? (
           <>
             <PriorityPicker
+              className="h-8 *:h-full *:py-0"
               disabled={priority.isPending}
               onChange={(to) => priority.mutate(to)}
               value={task.priority}
@@ -428,6 +429,7 @@ function OverviewTab({
       name: 'Type',
       value: editable ? (
         <TypePicker
+          className="h-8 *:h-full *:py-0"
           disabled={update.isPending}
           onChange={(type) => update.mutate({ type })}
           value={task.type}
@@ -441,7 +443,7 @@ function OverviewTab({
       value: editable ? (
         <DatePicker
           aria-label="Due date"
-          className="w-40"
+          className="w-full max-w-60 font-sans"
           disabled={update.isPending}
           disablePast
           onChange={(due) => update.mutate({ due_date: due || null })}
@@ -457,6 +459,7 @@ function OverviewTab({
       name: 'Team',
       value: editable ? (
         <TeamPicker
+          className="h-8 w-full max-w-60 font-sans"
           disabled={update.isPending}
           onChange={(slug) => update.mutate({ team: slug || null })}
           orgSlug={orgSlug}
@@ -509,7 +512,7 @@ function OverviewTab({
     <div className="flex flex-col gap-4 px-6 py-5">
       <Card className="p-5">
         <h3 className="text-overline text-tertiary mb-4 uppercase">Details</h3>
-        <dl className="grid grid-cols-2 gap-x-8 gap-y-5 md:grid-cols-3 xl:grid-cols-5">
+        <dl className="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-x-8 gap-y-5">
           {rows.map((row) => (
             <div className="flex min-w-0 flex-col gap-1" key={row.name}>
               <dt className="text-overline text-tertiary uppercase">
