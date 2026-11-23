@@ -1341,8 +1341,8 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
                 version=1,
                 trigger_node_id='start',
                 origin_kind='human',
-                origin_id=self.email,
-                origin={'kind': 'human', 'user': self.email, **(origin or {})},
+                origin_id=self.admin,
+                origin={'kind': 'human', 'user': self.admin, **(origin or {})},
                 idempotency_key=None,
                 payload={},
                 concurrency_key=None,
@@ -1355,7 +1355,12 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
         await self._agent_step(params or pinned)
 
     async def _agent_step(
-        self, params: dict[str, typing.Any], activated_by: str | None = None
+        self,
+        params: dict[str, typing.Any],
+        activated_by: str | None = None,
+        origin_kind: str = 'human',
+        origin_id: str | None = None,
+        origin: dict[str, typing.Any] | None = None,
     ) -> None:
         async with self.pool.connection() as conn:
             await conn.execute(
@@ -1370,9 +1375,16 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
                 (self.run_id, workflows.runs.pg_json.Jsonb(params)),
             )
             await conn.execute(
-                'UPDATE workflow_runtime.runs SET activated_by = %s'
-                ' WHERE id = %s',
-                (activated_by or self.admin, self.run_id),
+                'UPDATE workflow_runtime.runs SET activated_by = %s,'
+                ' origin_kind = %s, origin_id = %s,'
+                ' origin = origin || %s WHERE id = %s',
+                (
+                    activated_by or self.admin,
+                    origin_kind,
+                    origin_id or self.admin,
+                    workflows.runs.pg_json.Jsonb(origin or {}),
+                    self.run_id,
+                ),
             )
 
     async def _cleanup_tasks(self) -> None:
@@ -1441,7 +1453,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
             task['origin'],
             {
                 'kind': 'human',
-                'user': self.email,
+                'user': self.admin,
                 'workflow_run_id': self.run_id,
                 'node_key': 'ask',
             },
@@ -1513,14 +1525,20 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
             },
         )
 
-    async def _task_title(self, params: dict[str, typing.Any]) -> str:
-        await self._agent_step(
-            {'agent_id': self.agent, 'instruction': 'Go.', **params}
-        )
+    async def _step_task(
+        self, params: dict[str, typing.Any], **step: typing.Any
+    ) -> dict[str, typing.Any]:
+        await self._agent_step(params, **step)
         response = await self.client.post(self.step_url)
         self.assertEqual(response.status_code, 200, response.text)
         task = await self.tasks.get(self.org, response.json()['task_id'])
         assert task is not None
+        return task
+
+    async def _task_title(self, params: dict[str, typing.Any]) -> str:
+        task = await self._step_task(
+            {'agent_id': self.agent, 'instruction': 'Go.', **params}
+        )
         return str(task['title'])
 
     async def test_task_title_defaults_to_the_step(self) -> None:
@@ -1563,18 +1581,59 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
         self.assertEqual(
             response.json()['detail'], {'error': 'agent_not_found'}
         )
-        # The activator is a member with no ticket:create.
+        # The person who started the run and the activator are members
+        # with no ticket:create.
         await self._agent_run({'agent_id': self.agent, 'instruction': 'Go.'})
         await self._agent_step(
             {'agent_id': self.agent, 'instruction': 'Go.'},
             activated_by=self.plain,
+            origin={'user': self.plain},
         )
         response = await self.client.post(self.step_url)
         self.assertEqual(response.status_code, 403)
         self.assertEqual(
             response.json()['detail'], {'error': 'owner_forbidden'}
         )
+        # A scheduled run: the activator is a member with no
+        # ticket:create.
+        await self._agent_step(
+            {'agent_id': self.agent, 'instruction': 'Go.'},
+            activated_by=self.plain,
+            origin_kind='schedule',
+            origin_id='nightly',
+        )
+        response = await self.client.post(self.step_url)
+        self.assertEqual(response.status_code, 403)
         self.assertEqual(await self._count(), 0)
+
+    async def test_owner_of_the_task(self) -> None:
+        params = {'agent_id': self.agent, 'instruction': 'Go.'}
+        hook = {'origin_kind': 'webhook', 'origin_id': 'hook'}
+        cases: dict[str, dict[str, typing.Any]] = {
+            # The person who started a manual run, not the activator.
+            'starter': {'activated_by': self.plain},
+            'starter with no ticket:create': {'origin': {'user': self.plain}},
+            'scheduled run': {
+                'origin_kind': 'schedule',
+                'origin_id': 'nightly',
+                'origin': {'user': None},
+            },
+            # The person who caused a webhook delivery.
+            'webhook actor': {
+                **hook,
+                'activated_by': self.plain,
+                'origin': {'user': self.admin},
+            },
+            'actor with no ticket:create': {
+                **hook,
+                'origin': {'user': self.plain},
+            },
+        }
+        for name, step in cases.items():
+            with self.subTest(name):
+                await self._agent_run(params)
+                task = await self._step_task(params, **step)
+                self.assertEqual(task['owner'], self.admin)
 
     async def test_only_the_engine(self) -> None:
         overrides = self.test_app.dependency_overrides
@@ -1697,7 +1756,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
                 title='Planted',
                 description='Planted',
                 origin_kind='human',
-                origin_id=self.email,
+                origin_id=self.admin,
                 origin=origin,
                 idempotency_key=f'{self.run_id}:ask',
                 owner=self.email,
@@ -1710,7 +1769,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
 
     async def test_task_with_the_key_not_made_by_the_step(self) -> None:
         short_id = await self._plant(
-            {'kind': 'human', 'user': self.email}, self.agent
+            {'kind': 'human', 'user': self.admin}, self.agent
         )
         response = await self.client.post(self.step_url)
         self.assertEqual(response.status_code, 409)
@@ -1727,7 +1786,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
         await self._plant(
             {
                 'kind': 'human',
-                'user': self.email,
+                'user': self.admin,
                 'workflow_run_id': self.run_id,
                 'node_key': 'ask',
             },
