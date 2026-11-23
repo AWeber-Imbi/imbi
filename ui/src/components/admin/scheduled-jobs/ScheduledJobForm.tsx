@@ -10,7 +10,7 @@ import {
 } from '@/api/scheduler'
 import { FormHeader } from '@/components/admin/form-header'
 import { Card, CardContent } from '@/components/ui/card'
-import { DateTimePicker } from '@/components/ui/date-picker'
+import { DateTimePicker, TimeInput } from '@/components/ui/date-picker'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -121,7 +121,7 @@ function Choice<T extends string>({
 }) {
   return (
     <select
-      className="border-input bg-background h-9 rounded-md border px-2 text-sm"
+      className="border-input bg-background h-10 rounded-md border px-2 text-sm"
       onChange={(e) => onChange(e.target.value as T)}
       value={value}
     >
@@ -542,11 +542,9 @@ function TriggerFields({
             hint="Keeps the wall-clock time across daylight saving changes."
             label="At time"
           >
-            <Input
-              onChange={(e) =>
-                onChange({ ...trigger, at_time: e.target.value })
-              }
-              type="time"
+            <TimeInput
+              className="h-10"
+              onChange={(at_time) => onChange({ ...trigger, at_time })}
               value={trigger.at_time.slice(0, 5)}
             />
           </Field>

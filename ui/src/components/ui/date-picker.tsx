@@ -1,10 +1,9 @@
 import { useState } from 'react'
 
 import { format, isValid, parse, startOfToday } from 'date-fns'
-import { CalendarIcon } from 'lucide-react'
+import { CalendarIcon, Clock2Icon } from 'lucide-react'
 
 import { Calendar } from '@/components/ui/calendar'
-import { Input } from '@/components/ui/input'
 import {
   InputGroup,
   InputGroupAddon,
@@ -49,6 +48,15 @@ export interface DateTimePickerProps {
   className?: string
   onChange: (value: string) => void
   required?: boolean
+  value: string
+}
+
+export interface TimeInputProps {
+  'aria-label'?: string
+  className?: string
+  disabled?: boolean
+  id?: string
+  onChange: (value: string) => void
   value: string
 }
 
@@ -178,15 +186,40 @@ export function DateTimePicker({
         required={required}
         value={date}
       />
-      <Input
+      <TimeInput
         aria-label={`${label} time`}
-        className="w-32 appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+        className="h-10 w-36"
         disabled={!date}
-        onChange={(e) => onChange(`${date}T${e.target.value || '00:00'}`)}
-        type="time"
+        onChange={(t) => onChange(`${date}T${t || '00:00'}`)}
         value={time.slice(0, 5)}
       />
     </div>
+  )
+}
+
+export function TimeInput({
+  'aria-label': ariaLabel,
+  className,
+  disabled,
+  id,
+  onChange,
+  value,
+}: TimeInputProps) {
+  return (
+    <InputGroup className={className}>
+      <InputGroupInput
+        aria-label={ariaLabel}
+        className="appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+        disabled={disabled}
+        id={id}
+        onChange={(e) => onChange(e.target.value)}
+        type="time"
+        value={value}
+      />
+      <InputGroupAddon>
+        <Clock2Icon className="text-muted-foreground" />
+      </InputGroupAddon>
+    </InputGroup>
   )
 }
 

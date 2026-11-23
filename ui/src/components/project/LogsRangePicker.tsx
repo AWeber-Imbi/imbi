@@ -1,20 +1,12 @@
 import { useId, useState } from 'react'
 
-import { Clock2 } from 'lucide-react'
 import type { DateRange } from 'react-day-picker'
 
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
+import { TimeInput } from '@/components/ui/date-picker'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from '@/components/ui/input-group'
 import { Separator } from '@/components/ui/separator'
-
-const TIME_INPUT =
-  'appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none'
 
 export function LogsRangePicker({
   end,
@@ -101,18 +93,7 @@ function TimeField({
   return (
     <Field>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <InputGroup>
-        <InputGroupInput
-          className={TIME_INPUT}
-          id={id}
-          onChange={(e) => onChange(e.target.value)}
-          type="time"
-          value={value}
-        />
-        <InputGroupAddon>
-          <Clock2 className="text-muted-foreground" />
-        </InputGroupAddon>
-      </InputGroup>
+      <TimeInput id={id} onChange={onChange} value={value} />
     </Field>
   )
 }
