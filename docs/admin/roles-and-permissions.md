@@ -271,8 +271,8 @@ it.
 | `secret_provider:write` | Create, change, delete, and test secret providers | yes |  |  |  |  |  |  |  |  |
 | `secret_binding:read` | View secret bindings | yes | yes |  |  |  |  |  |  |  |
 | `secret_binding:write` | Create, change, delete, and validate secret bindings | yes |  |  |  |  |  |  |  |  |
-| `secret_grant:read` | View secret grants and evaluate them | yes |  |  |  |  |  |  |  |  |
-| `secret_grant:write` | Create, change, and delete secret grants | yes |  |  |  |  |  |  |  |  |
+| `secret_grant:read` | View secret grants and evaluate them | yes | yes |  |  |  |  |  |  |  |
+| `secret_grant:write` | Create, change, and delete secret grants | yes | yes |  |  |  |  |  |  |  |
 | `secret_resolution:read` | View secret resolutions | yes |  |  |  |  |  |  |  |  |
 | `secret_resolution:manage` | Release secret resolutions and revoke provider leases | yes |  |  |  |  |  |  |  |  |
 | `secret_audit:read` | View secret audit events | yes |  |  |  |  |  |  |  |  |
