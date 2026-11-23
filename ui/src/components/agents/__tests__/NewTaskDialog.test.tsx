@@ -254,9 +254,9 @@ describe('NewTaskDialog', () => {
     })
     fireEvent.click(screen.getByRole('radio', { name: 'Bug' }))
     fireEvent.click(screen.getByRole('radio', { name: 'Urgent' }))
-    fireEvent.change(screen.getByLabelText('Due'), {
-      target: { value: '2026-12-01' },
-    })
+    const due = screen.getByLabelText('Due')
+    fireEvent.change(due, { target: { value: '2099-12-01' } })
+    fireEvent.blur(due)
     const labels = screen.getByLabelText('Labels')
     fireEvent.change(labels, { target: { value: 'API ' } })
     fireEvent.keyDown(labels, { key: 'Enter' })
@@ -270,7 +270,7 @@ describe('NewTaskDialog', () => {
       assignee_kind: 'agent',
       description:
         'Fix the crash https://sentry.io/issues/1\nIt fails on save.',
-      due_date: '2026-12-01',
+      due_date: '2099-12-01',
       labels: ['api'],
       priority: 'urgent',
       project_ids: ['p-3'],

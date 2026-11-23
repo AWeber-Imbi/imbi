@@ -30,6 +30,7 @@ import {
   searchProjectLogs,
 } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
+import { DateTimePicker } from '@/components/ui/date-picker'
 import {
   Popover,
   PopoverContent,
@@ -766,17 +767,15 @@ export function LogsTab({
             <div className="text-tertiary mb-2 text-[10px] font-semibold tracking-wide uppercase">
               Custom range
             </div>
-            <div className="mb-3 flex gap-2">
-              <input
-                className="bg-tertiary text-primary focus:border-action flex-1 rounded border px-2 py-1 font-mono text-xs outline-none"
-                onChange={(e) => setStartInput(e.target.value)}
-                type="datetime-local"
+            <div className="mb-3 flex flex-col gap-2">
+              <DateTimePicker
+                aria-label="Start"
+                onChange={setStartInput}
                 value={startInput}
               />
-              <input
-                className="bg-tertiary text-primary focus:border-action flex-1 rounded border px-2 py-1 font-mono text-xs outline-none"
-                onChange={(e) => setEndInput(e.target.value)}
-                type="datetime-local"
+              <DateTimePicker
+                aria-label="End"
+                onChange={setEndInput}
                 value={endInput}
               />
             </div>

@@ -51,6 +51,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
+import { DatePicker } from '@/components/ui/date-picker'
 import {
   Dialog,
   DialogContent,
@@ -453,11 +454,12 @@ export function NewTaskDialog({
               <PriorityPicker onChange={setPriority} value={priority} />
             </Field>
             <Field htmlFor="nt-due" label="Due">
-              <Input
-                className={cn('h-8.5 text-[13.5px]', !due && 'text-tertiary')}
+              <DatePicker
+                className="h-8.5"
+                disablePast
                 id="nt-due"
-                onChange={(e) => setDue(e.target.value)}
-                type="date"
+                modal
+                onChange={setDue}
                 value={due}
               />
             </Field>

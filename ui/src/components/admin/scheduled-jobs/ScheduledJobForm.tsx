@@ -10,6 +10,7 @@ import {
 } from '@/api/scheduler'
 import { FormHeader } from '@/components/admin/form-header'
 import { Card, CardContent } from '@/components/ui/card'
+import { DateTimePicker } from '@/components/ui/date-picker'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -582,11 +583,11 @@ function TriggerFields({
     case 'date':
       return (
         <Field label="Run once at (UTC)">
-          <Input
-            onChange={(e) =>
-              onChange({ kind: 'date', run_at: `${e.target.value}:00Z` })
+          <DateTimePicker
+            aria-label="Run once at"
+            onChange={(value) =>
+              value && onChange({ kind: 'date', run_at: `${value}:00Z` })
             }
-            type="datetime-local"
             value={trigger.run_at.slice(0, 16)}
           />
         </Field>

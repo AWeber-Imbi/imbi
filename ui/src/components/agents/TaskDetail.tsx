@@ -43,6 +43,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { DatePicker } from '@/components/ui/date-picker'
 import { Input } from '@/components/ui/input'
 import {
   Popover,
@@ -438,20 +439,13 @@ function OverviewTab({
     {
       name: 'Due',
       value: editable ? (
-        <Input
+        <DatePicker
           aria-label="Due date"
-          className="h-8 w-40 text-sm"
-          defaultValue={task.due_date ?? ''}
+          className="w-40"
           disabled={update.isPending}
-          key={task.due_date}
-          // On blur, not on change: a date input changes on each typed
-          // digit of the year.
-          onBlur={(e) => {
-            const due = e.target.value || null
-            if (due !== (task.due_date ?? null))
-              update.mutate({ due_date: due })
-          }}
-          type="date"
+          disablePast
+          onChange={(due) => update.mutate({ due_date: due || null })}
+          value={task.due_date ?? ''}
         />
       ) : task.due_date ? (
         <DueDate due={task.due_date} />

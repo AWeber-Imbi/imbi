@@ -1,9 +1,8 @@
 import { useState } from 'react'
 
-import { DayPicker } from 'react-day-picker'
-import 'react-day-picker/dist/style.css'
 import { toast } from 'sonner'
 
+import { Calendar } from '@/components/ui/calendar'
 import {
   Popover,
   PopoverContent,
@@ -35,7 +34,7 @@ export function InlineDate({
   value,
 }: InlineDateProps) {
   const [open, setOpen] = useState(false)
-  // parseServerTs keeps a date-only value on the day it names: DayPicker
+  // parseServerTs keeps a date-only value on the day it names: Calendar
   // works in local time, so parsing "2026-07-29" as UTC midnight would
   // select (and display) the 28th for any viewer west of Greenwich.
   const current = value ? parseServerTs(value) : undefined
@@ -56,8 +55,8 @@ export function InlineDate({
           </InlineDisplay>
         </span>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-auto p-2">
-        <DayPicker
+      <PopoverContent align="start" className="w-auto overflow-hidden p-0">
+        <Calendar
           defaultMonth={hasValid ? current : undefined}
           mode="single"
           onSelect={async (d) => {
@@ -77,7 +76,7 @@ export function InlineDate({
 }
 
 function toIso(d: Date, mode: 'date' | 'date-time'): string {
-  // DayPicker hands back local midnight, so `toISOString()` would roll a
+  // Calendar hands back local midnight, so `toISOString()` would roll a
   // date-only pick to the previous day east of Greenwich.
   if (mode === 'date') return toDateOnlyIso(d)
   return d.toISOString()
