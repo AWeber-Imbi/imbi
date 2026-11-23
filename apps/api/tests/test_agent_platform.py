@@ -674,14 +674,24 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
                     },
                     'invalid': {'type': 'http', 'url': 'https://[mcp/x'},
                     'missing': {'type': 'http'},
+                    'template': {
+                        'type': 'http',
+                        'url': (
+                            '${MCP_URL:-https://user:token'
+                            '@mcp.example.com}/mcp'
+                        ),
+                    },
+                    'hostless': {'type': 'http', 'url': 'https://user@/mcp'},
                 }
             ]
         )
         self.assertEqual(
             {server.name: server.url for server in servers},
             {
+                'hostless': None,
                 'invalid': None,
                 'missing': None,
+                'template': None,
                 'query': 'https://mcp.example.com/sse',
                 'userinfo': 'https://mcp.example.com:8443/mcp',
             },

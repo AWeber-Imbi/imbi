@@ -412,9 +412,11 @@ previous catalog stays. A server file path that is absolute or contains
 `..` adds no servers, and the API logs a warning, because the runner
 fails each task of a plugin with such a path. For each server, Imbi
 stores its name, type, URL, and the names of its headers with the
-variables that each header uses. It stores no header value, and no
-user information, query, or fragment of a URL. A failed
-sync shows an error badge on the row. Click the sync button of a row to sync it again.
+variables that each header uses. It stores no header value, no user
+information, query, or fragment of a URL, and no URL that has no host,
+such as one that starts with a `${VAR:-default}` reference. A failed
+sync shows an error badge on the row. Click the sync button of a row to
+sync it again.
 Imbi does not sync on a schedule.
 
 You cannot delete a marketplace that the newest base configuration allows.

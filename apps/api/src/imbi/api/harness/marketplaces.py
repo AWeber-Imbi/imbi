@@ -156,7 +156,12 @@ def _header_variables(headers: object) -> dict[str, list[str]]:
 
 def _public_url(value: object) -> str | None:
     """Return a URL without the parts that can carry a credential: the
-    user information, the query, and the fragment."""
+    user information, the query, and the fragment.
+
+    A value with no host, such as one that starts with a
+    ``${VAR:-default}`` reference, returns ``None``: its parts cannot be
+    told apart, so a credential in it cannot be removed.
+    """
     if not isinstance(value, str):
         return None
     try:
@@ -164,6 +169,8 @@ def _public_url(value: object) -> str | None:
     except ValueError:
         return None
     host = parts.netloc.rpartition('@')[2]
+    if not host:
+        return None
     return urllib.parse.urlunsplit((parts.scheme, host, parts.path, '', ''))
 
 

@@ -88,13 +88,17 @@ when it publishes the plugin. If the plugin has a
 `.mcp.json`. Otherwise they come from the marketplace entry and from
 `.mcp.json`. For a plugin in another repository, that entry is the one
 in the plugin repository's own `marketplace.json`. A missing or invalid
-file adds no servers. An error reading a file fails the sync, which
-keeps the previous catalog.
+file adds no servers. A file counts as missing when no reader can read
+it and at least one reader finds no such file, even if another reader
+fails. The sync fails only when every reader fails, and then it keeps
+the previous catalog.
 
 For each server, the sync stores the name, the type, the URL, and the
 header names, with the variables that each header uses. It stores no
 header value, and no user information, query, or fragment of the URL,
-because a plugin author can commit a literal token there.
+because a plugin author can commit a literal token there. It stores no
+URL that has no host, such as one that starts with a `${VAR:-default}`
+reference, because a token in such a URL cannot be found.
 
 ### Agent configuration
 
