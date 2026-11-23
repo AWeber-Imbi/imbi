@@ -11,6 +11,7 @@ import {
   releaseSecretResolution,
   revokeSecretProviderLease,
 } from '@/api/endpoints'
+import { agentsPath } from '@/components/agents/agentsNav'
 import { AdminTable } from '@/components/ui/admin-table'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -105,7 +106,9 @@ export function ResolutionsTab({ orgSlug }: { orgSlug: string }) {
           actions={(row) => (
             <div className="flex gap-2">
               <Button asChild size="sm" variant="outline">
-                <Link to={`/admin/secrets/audit?resolution=${row.id}`}>
+                <Link
+                  to={`${agentsPath('secrets', 'audit')}?resolution=${row.id}`}
+                >
                   History
                 </Link>
               </Button>

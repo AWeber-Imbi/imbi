@@ -43,7 +43,7 @@ const renderAt = (path: string) => {
   window.history.pushState({}, '', path)
   return render(
     <Routes>
-      <Route element={<SecretsManagement />} path="/admin/secrets/:slug?" />
+      <Route element={<SecretsManagement />} path="/agents/secrets/:slug?" />
     </Routes>,
   )
 }
@@ -75,7 +75,7 @@ describe('SecretsManagement', () => {
   })
 
   it('creates a grant with the modes its bindings allow', async () => {
-    renderAt('/admin/secrets/grants')
+    renderAt('/agents/secrets/grants')
     fireEvent.click(await screen.findByRole('button', { name: 'New grant' }))
     fireEvent.click(await screen.findByLabelText('Release bot'))
     expect(screen.getByLabelText('File')).toBeEnabled()
@@ -142,7 +142,7 @@ describe('SecretsManagement', () => {
         state: 'released',
       } as never,
     ])
-    renderAt('/admin/secrets/resolutions')
+    renderAt('/agents/secrets/resolutions')
     expect(
       await screen.findByRole('button', { name: 'Revoke lease' }),
     ).toBeInTheDocument()
@@ -178,7 +178,7 @@ describe('SecretsManagement', () => {
       reference: 'secret://production/github/token',
       state: 'active',
     } as never)
-    renderAt('/admin/secrets/audit')
+    renderAt('/agents/secrets/audit')
     fireEvent.click(await screen.findByRole('combobox', { name: 'Category' }))
     fireEvent.click(await screen.findByRole('option', { name: 'Resolutions' }))
     fireEvent.click(screen.getByRole('combobox', { name: 'Result' }))
@@ -210,12 +210,12 @@ describe('SecretsManagement', () => {
     )
     expect(
       await screen.findByRole('link', { name: 'History' }),
-    ).toHaveAttribute('href', '/admin/secrets/audit?resolution=res-12345678')
+    ).toHaveAttribute('href', '/agents/secrets/audit?resolution=res-12345678')
   })
 
   it('lists active resolutions by default', async () => {
     vi.mocked(listSecretResolutions).mockResolvedValue([])
-    renderAt('/admin/secrets/resolutions')
+    renderAt('/agents/secrets/resolutions')
     expect(
       await screen.findByText('No active secret resolutions.'),
     ).toBeInTheDocument()

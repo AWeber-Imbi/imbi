@@ -8,7 +8,7 @@ The catalog is global. Every organization in the deployment shares the same
 providers, credentials, and models. Use [Team access](#team-access) to limit a
 model to some teams.
 
-Open the section at **Admin > Global Admin > AI Models**.
+Open the section at **Agents > Settings > AI Models**.
 
 !!! note
     The assistant and the Slack bot use a catalog model when their prompt

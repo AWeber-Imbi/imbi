@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '@/api/client'
 import * as endpoints from '@/api/endpoints'
-import { fireEvent, render, screen, waitFor } from '@/test/utils'
+import { fireEvent, render, screen, waitFor, within } from '@/test/utils'
 
 import { AgentsArea } from '../AgentsArea'
 import { agent, catalog, promptVersion, usage } from './fixtures'
@@ -138,6 +138,28 @@ describe('AgentsArea', () => {
     const nav = screen.getByRole('navigation', { name: 'Agents' })
     expect(nav).toHaveTextContent('Runners')
     expect(nav).not.toHaveTextContent('Egress Destinations')
+    expect(nav).not.toHaveTextContent('AI Models')
+    expect(nav).not.toHaveTextContent('Secrets')
+  })
+
+  it('lists the Settings pages in alphabetical order', async () => {
+    vi.mocked(endpoints.listWorkflows).mockResolvedValue([])
+    vi.mocked(endpoints.listWorkflowStepTypes).mockResolvedValue([])
+    renderAt('/agents/workflows')
+    const nav = await screen.findByRole('navigation', { name: 'Agents' })
+    const labels = within(nav)
+      .getAllByRole('link')
+      .map((link) => link.getAttribute('title'))
+    expect(labels).toEqual([
+      'Dashboard',
+      'Agents',
+      'AI Models',
+      'Egress Destinations',
+      'Platform',
+      'Runners',
+      'Secrets',
+      'Workflows',
+    ])
   })
 
   it('toggles enabled from the list without opening the agent', async () => {

@@ -1,9 +1,11 @@
 import {
   Bot,
   LayoutDashboard,
+  LockKeyhole,
   type LucideIcon,
   Server,
   SlidersHorizontal,
+  Sparkles,
   Waypoints,
   Workflow,
 } from 'lucide-react'
@@ -28,11 +30,13 @@ export interface AgentsNavItem {
 }
 
 export type AgentsSection =
+  | 'ai-models'
   | 'dashboard'
   | 'egress'
   | 'manage'
   | 'platform'
   | 'runners'
+  | 'secrets'
   | 'workflows'
 
 export const AGENTS_BASE_PATH = '/agents'
@@ -45,6 +49,7 @@ const AGENTS_NAV: AgentsNavItem[] = [
     label: 'Dashboard',
     note: 'Agent activity at a glance',
   },
+  // The Settings pages are in alphabetical order.
   {
     group: 'Settings',
     icon: Bot,
@@ -53,11 +58,20 @@ const AGENTS_NAV: AgentsNavItem[] = [
     note: 'Define and configure agents',
   },
   {
+    adminOnly: true,
     group: 'Settings',
-    icon: Workflow,
-    id: 'workflows',
-    label: 'Workflows',
-    note: 'Multi-step runs built from agents',
+    icon: Sparkles,
+    id: 'ai-models',
+    label: 'AI Models',
+    note: 'LLM providers and the model catalog, shared by every organization',
+  },
+  {
+    adminOnly: true,
+    group: 'Settings',
+    icon: Waypoints,
+    id: 'egress',
+    label: 'Egress Destinations',
+    note: 'Internal networks that runner pods may reach',
   },
   {
     group: 'Settings',
@@ -77,10 +91,17 @@ const AGENTS_NAV: AgentsNavItem[] = [
   {
     adminOnly: true,
     group: 'Settings',
-    icon: Waypoints,
-    id: 'egress',
-    label: 'Egress Destinations',
-    note: 'Internal networks that runner pods may reach',
+    icon: LockKeyhole,
+    id: 'secrets',
+    label: 'Secrets',
+    note: 'Secret providers, bindings, grants, and their audit',
+  },
+  {
+    group: 'Settings',
+    icon: Workflow,
+    id: 'workflows',
+    label: 'Workflows',
+    note: 'Multi-step runs built from agents',
   },
 ]
 

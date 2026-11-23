@@ -1,5 +1,6 @@
 import { useNavigate, useParams } from 'react-router-dom'
 
+import { agentsPath } from '@/components/agents/agentsNav'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useOrganization } from '@/contexts/OrganizationContext'
 
@@ -21,7 +22,7 @@ const TABS = [
 
 /**
  * The secrets broker of the organization (ADR 0022). The tab is in the
- * URL: /admin/secrets is Providers, /admin/secrets/<tab> the others.
+ * URL: /agents/secrets is Providers, /agents/secrets/<tab> the others.
  */
 export function SecretsManagement() {
   const navigate = useNavigate()
@@ -36,7 +37,9 @@ export function SecretsManagement() {
     <Tabs
       onValueChange={(value) =>
         navigate(
-          value === 'providers' ? '/admin/secrets' : `/admin/secrets/${value}`,
+          value === 'providers'
+            ? agentsPath('secrets')
+            : agentsPath('secrets', value),
         )
       }
       value={tab}

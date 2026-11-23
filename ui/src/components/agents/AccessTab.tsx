@@ -43,6 +43,7 @@ import {
   purposeSuggestions,
 } from './access'
 import type { SettingsDraft } from './agentDraft'
+import { agentsPath } from './agentsNav'
 import { Field } from './OverviewTab'
 
 // The purpose of the runner's model key resolution.
@@ -274,8 +275,11 @@ function AgentSecrets({
       <p className="text-tertiary text-xs">
         The agent can request these with run_with_secret: each one goes into the
         environment of one command. Change or remove a grant in{' '}
-        <Link className="text-action hover:underline" to="/admin/secrets">
-          Admin › Secrets
+        <Link
+          className="text-action hover:underline"
+          to={agentsPath('secrets')}
+        >
+          Agents › Settings › Secrets
         </Link>
         .
       </p>

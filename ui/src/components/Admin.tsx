@@ -17,13 +17,11 @@ import {
   Layers,
   LayoutDashboard,
   Link2,
-  LockKeyhole,
   MessagesSquare,
   Network,
   Puzzle,
   Shield,
   SlidersHorizontal,
-  Sparkles,
   StickyNote,
   Target,
   Users,
@@ -37,7 +35,6 @@ import { Button } from '@/components/ui/button'
 import { useOrganization } from '@/contexts/OrganizationContext'
 
 import { AdminOverview } from './admin/AdminOverview'
-import { AIModelsManagement } from './admin/AIModelsManagement'
 import { AssistantManagement } from './admin/AssistantManagement'
 import { AuthProvidersManagement } from './admin/AuthProvidersManagement'
 import { BlueprintManagement } from './admin/BlueprintManagement'
@@ -54,7 +51,6 @@ import { ProjectTypeManagement } from './admin/ProjectTypeManagement'
 import { RoleManagement } from './admin/RoleManagement'
 import { ScheduledJobsManagement } from './admin/ScheduledJobsManagement'
 import { ScoringPolicyManagement } from './admin/ScoringPolicyManagement'
-import { SecretsManagement } from './admin/secrets/SecretsManagement'
 import { ServiceAccountManagement } from './admin/ServiceAccountManagement'
 import { TeamManagement } from './admin/TeamManagement'
 import { UserManagement } from './admin/UserManagement'
@@ -176,15 +172,6 @@ const SECTIONS: SectionDef[] = [
     scope: 'org',
   },
   {
-    component: SecretsManagement,
-    description: 'Secret providers, bindings, grants, and their audit',
-    group: 'Connections',
-    icon: LockKeyhole,
-    id: 'secrets',
-    label: 'Secrets',
-    scope: 'org',
-  },
-  {
     component: UserManagement,
     description: 'Manage user accounts and administrators',
     group: 'Access',
@@ -227,16 +214,6 @@ const SECTIONS: SectionDef[] = [
     icon: KeyRound,
     id: 'oauth',
     label: 'Auth Providers',
-    scope: 'system',
-  },
-  {
-    component: AIModelsManagement,
-    description:
-      'LLM providers and the model catalog, shared by every organization',
-    group: 'AI',
-    icon: Sparkles,
-    id: 'ai-models',
-    label: 'AI Models',
     scope: 'system',
   },
   {
@@ -301,7 +278,9 @@ const DEFAULT_SECTION = SECTIONS[0]
 // Sections that moved to the Agents area. Old links open the new page.
 const MOVED_SECTIONS: Record<string, AgentsSection> = {
   'agent-runners': 'runners',
+  'ai-models': 'ai-models',
   'egress-destinations': 'egress',
+  secrets: 'secrets',
 }
 
 // fallow-ignore-next-line complexity

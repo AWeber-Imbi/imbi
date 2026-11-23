@@ -132,7 +132,7 @@ const mountAt = async (path: string) => {
     <Routes>
       <Route
         element={<AIModelsManagement />}
-        path="/admin/:section?/:slug?/:action?"
+        path="/agents/:section?/:slug?/:action?"
       />
     </Routes>,
   )
@@ -186,7 +186,7 @@ describe('AIModelsManagement', () => {
   })
 
   it('renders configured providers and unconfigured drivers as ghost rows', async () => {
-    await mountAt('/admin/ai-models')
+    await mountAt('/agents/ai-models')
 
     await waitFor(() =>
       expect(screen.getByText('Anthropic')).toBeInTheDocument(),
@@ -205,7 +205,7 @@ describe('AIModelsManagement', () => {
   })
 
   it('lists a provider’s models when the row is expanded', async () => {
-    await mountAt('/admin/ai-models')
+    await mountAt('/agents/ai-models')
 
     await waitFor(() =>
       expect(screen.getByText('Anthropic')).toBeInTheDocument(),
@@ -225,7 +225,7 @@ describe('AIModelsManagement', () => {
 
   it('patches enabled when a model switch is toggled', async () => {
     const endpoints = await import('@/api/endpoints')
-    await mountAt('/admin/ai-models')
+    await mountAt('/agents/ai-models')
 
     await waitFor(() =>
       expect(screen.getByText('Anthropic')).toBeInTheDocument(),
@@ -250,7 +250,7 @@ describe('AIModelsManagement', () => {
 
   it('creates a model with access scope and teams from the two-step dialog', async () => {
     const endpoints = await import('@/api/endpoints')
-    await mountAt('/admin/ai-models/new-model?provider=prov-1')
+    await mountAt('/agents/ai-models/new-model?provider=prov-1')
 
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
     fireEvent.change(screen.getByLabelText(/model name or url/i), {
@@ -279,7 +279,7 @@ describe('AIModelsManagement', () => {
   it('creates a decision model on a TypeSafe provider', async () => {
     const endpoints = await import('@/api/endpoints')
     vi.mocked(endpoints.listAIProviders).mockResolvedValue([provider, typesafe])
-    await mountAt('/admin/ai-models/new-model?provider=prov-ts')
+    await mountAt('/agents/ai-models/new-model?provider=prov-ts')
 
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
     await waitFor(() =>
@@ -322,7 +322,7 @@ describe('AIModelsManagement', () => {
   it('switches the model type when the provider changes driver', async () => {
     const endpoints = await import('@/api/endpoints')
     vi.mocked(endpoints.listAIProviders).mockResolvedValue([provider, typesafe])
-    await mountAt('/admin/ai-models/new-model?provider=prov-1')
+    await mountAt('/agents/ai-models/new-model?provider=prov-1')
 
     await waitFor(() =>
       expect(screen.getByRole('radio', { name: 'Generative' })).toHaveAttribute(
@@ -336,7 +336,7 @@ describe('AIModelsManagement', () => {
 
   it('patches only the changed fields when a model is edited', async () => {
     const endpoints = await import('@/api/endpoints')
-    await mountAt('/admin/ai-models/model-1/edit')
+    await mountAt('/agents/ai-models/model-1/edit')
 
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
     fireEvent.change(screen.getByLabelText(/display name/i), {
@@ -371,7 +371,7 @@ describe('AIModelsManagement', () => {
 
   it('patches the cache prices of a model', async () => {
     const endpoints = await import('@/api/endpoints')
-    await mountAt('/admin/ai-models/model-1/edit')
+    await mountAt('/agents/ai-models/model-1/edit')
 
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
@@ -400,7 +400,7 @@ describe('AIModelsManagement', () => {
 
   it('patches the structured output flag of a model', async () => {
     const endpoints = await import('@/api/endpoints')
-    await mountAt('/admin/ai-models/model-1/edit')
+    await mountAt('/agents/ai-models/model-1/edit')
 
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
@@ -419,7 +419,7 @@ describe('AIModelsManagement', () => {
 
   it('patches the forced tool choice flag of a model', async () => {
     const endpoints = await import('@/api/endpoints')
-    await mountAt('/admin/ai-models/model-1/edit')
+    await mountAt('/agents/ai-models/model-1/edit')
 
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
@@ -441,7 +441,7 @@ describe('AIModelsManagement', () => {
 
   it('rejects a non-numeric entry instead of clearing it', async () => {
     const endpoints = await import('@/api/endpoints')
-    await mountAt('/admin/ai-models/model-1/edit')
+    await mountAt('/agents/ai-models/model-1/edit')
 
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
@@ -463,7 +463,7 @@ describe('AIModelsManagement', () => {
 
   it('deletes a model only after the confirmation is accepted', async () => {
     const endpoints = await import('@/api/endpoints')
-    await mountAt('/admin/ai-models/model-1/edit')
+    await mountAt('/agents/ai-models/model-1/edit')
 
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
@@ -491,7 +491,7 @@ describe('AIModelsManagement', () => {
 
   it('patches a provider from the edit-provider route', async () => {
     const endpoints = await import('@/api/endpoints')
-    await mountAt('/admin/ai-models/prov-1/edit-provider')
+    await mountAt('/agents/ai-models/prov-1/edit-provider')
 
     await waitFor(() =>
       expect(screen.getByText('Edit Anthropic')).toBeInTheDocument(),
@@ -516,7 +516,7 @@ describe('AIModelsManagement', () => {
     vi.mocked(endpoints.listAIProviders).mockResolvedValue([
       { ...provider, base_url: null },
     ])
-    await mountAt('/admin/ai-models/prov-1/edit-provider')
+    await mountAt('/agents/ai-models/prov-1/edit-provider')
 
     await waitFor(() =>
       expect(screen.getByText('Edit Anthropic')).toBeInTheDocument(),
@@ -530,7 +530,7 @@ describe('AIModelsManagement', () => {
   })
 
   it('blocks provider deletion while it still serves models', async () => {
-    await mountAt('/admin/ai-models/prov-1/edit-provider')
+    await mountAt('/agents/ai-models/prov-1/edit-provider')
 
     await waitFor(() =>
       expect(screen.getByText('Edit Anthropic')).toBeInTheDocument(),
@@ -543,7 +543,7 @@ describe('AIModelsManagement', () => {
 
   it('sets provider credentials from the credentials route', async () => {
     const endpoints = await import('@/api/endpoints')
-    await mountAt('/admin/ai-models/prov-1/credentials')
+    await mountAt('/agents/ai-models/prov-1/credentials')
 
     await waitFor(() =>
       expect(screen.getByText('Anthropic credentials')).toBeInTheDocument(),
@@ -563,7 +563,7 @@ describe('AIModelsManagement', () => {
 
   it('lists discovered models and imports the ones selected', async () => {
     const endpoints = await import('@/api/endpoints')
-    await mountAt('/admin/ai-models/prov-1/discover')
+    await mountAt('/agents/ai-models/prov-1/discover')
 
     await waitFor(() =>
       expect(screen.getByText('Claude Opus 5')).toBeInTheDocument(),
@@ -592,7 +592,7 @@ describe('AIModelsManagement', () => {
 
   it('removes provider credentials from the credentials dialog', async () => {
     const endpoints = await import('@/api/endpoints')
-    await mountAt('/admin/ai-models/prov-1/credentials')
+    await mountAt('/agents/ai-models/prov-1/credentials')
 
     await waitFor(() =>
       expect(
