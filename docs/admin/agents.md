@@ -400,11 +400,16 @@ The sync also reads the MCP servers of each plugin, with the rule that
 runners use to load the plugin. When the plugin directory has a
 `.claude-plugin/plugin.json`, the servers come from its `mcpServers`.
 Otherwise they come from the `mcpServers` of the plugin's entry in
-`marketplace.json`. The servers of the plugin's `.mcp.json` are added in
-both cases. A file that the sync cannot read adds no servers. For each
-server, Imbi stores its name, type, URL, and the names of its headers
-with the variables that each header uses. It stores no header value. A failed sync shows an
-error badge on the row. Click the sync button of a row to sync it again.
+`marketplace.json`. For a `url` or `github` source, that entry is the one
+in the `marketplace.json` of the plugin's own repository. The servers of
+the plugin's `.mcp.json` are added in both cases. A missing or invalid
+file adds no servers. An error reading a file fails the sync, and the
+previous catalog stays. A server file path that is absolute or contains
+`..` adds no servers, and the API logs a warning, because the runner
+fails each task of a plugin with such a path. For each server, Imbi
+stores its name, type, URL, and the names of its headers with the
+variables that each header uses. It stores no header value. A failed
+sync shows an error badge on the row. Click the sync button of a row to sync it again.
 Imbi does not sync on a schedule.
 
 You cannot delete a marketplace that the newest base configuration allows.

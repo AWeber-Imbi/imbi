@@ -86,8 +86,10 @@ The sync finds a plugin's MCP servers with the rule the harness uses
 when it publishes the plugin. If the plugin has a
 `.claude-plugin/plugin.json`, the servers come from it and from
 `.mcp.json`. Otherwise they come from the marketplace entry and from
-`.mcp.json`. A file the sync cannot read adds no servers and does not
-fail the sync.
+`.mcp.json`. For a plugin in another repository, that entry is the one
+in the plugin repository's own `marketplace.json`. A missing or invalid
+file adds no servers. An error reading a file fails the sync, which
+keeps the previous catalog.
 
 For each server, the sync stores the name, the type, the URL, and the
 header names, with the variables that each header uses. It stores no

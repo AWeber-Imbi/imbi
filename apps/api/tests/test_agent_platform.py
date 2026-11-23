@@ -142,6 +142,26 @@ class ParseTests(unittest.TestCase):
                     marketplaces.parse(text)
 
 
+async def _readers(
+    handler: object, *integrations: dict[str, typing.Any]
+) -> marketplaces.Readers:
+    """The readers of an organization whose integrations use
+    ``handler``."""
+    with (
+        mock.patch.object(
+            assignments,
+            'org_integrations',
+            return_value={
+                f'i{number}': integration
+                for number, integration in enumerate(integrations)
+            },
+        ),
+        mock.patch.object(marketplaces, '_handler', return_value=handler),
+        mock.patch.object(marketplaces, '_public_handlers', return_value=[]),
+    ):
+        return await marketplaces.organization_readers(mock.Mock(), 'acme')
+
+
 class FetchTests(unittest.IsolatedAsyncioTestCase):
     async def test_reads_the_file_at_the_default_head(self) -> None:
         handler = mock.AsyncMock(spec=base.DeploymentCapability)
@@ -155,17 +175,10 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
             'options': {'flavor': 'github'},
             'encrypted_credentials': {},
         }
-        with (
-            mock.patch.object(
-                assignments,
-                'org_integrations',
-                return_value={'i1': integration},
-            ),
-            mock.patch.object(marketplaces, '_handler', return_value=handler),
-        ):
-            head = await marketplaces.fetch(
-                mock.Mock(), 'acme', 'https://github.com/acme/tools'
-            )
+        head = await marketplaces.fetch(
+            await _readers(handler, integration),
+            'https://github.com/acme/tools',
+        )
         self.assertEqual(head, marketplaces.Head('main', SHA, '{}'))
         ctx = handler.get_file.call_args.args[0]
         self.assertEqual(
@@ -177,36 +190,27 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
             (marketplaces.MARKETPLACE_FILE, SHA),
         )
 
-    async def test_a_missing_file_tries_the_next_integration(self) -> None:
+    async def test_amissing_file_tries_the_next_integration(self) -> None:
         handler = mock.AsyncMock(spec=base.DeploymentCapability)
         handler.list_refs.return_value = [
             base.Ref(name='main', kind='default', sha=SHA, is_default=True)
         ]
         # The first integration cannot see the file; the second can.
         handler.get_file.side_effect = [None, '{}']
-        integrations = {
-            f'i{n}': {'slug': f'gh{n}', 'plugin': 'github'} for n in (1, 2)
-        }
-        with (
-            mock.patch.object(
-                assignments, 'org_integrations', return_value=integrations
-            ),
-            mock.patch.object(marketplaces, '_handler', return_value=handler),
-            mock.patch.object(
-                marketplaces, '_public_readers', return_value=[]
-            ),
+        readers = await _readers(
+            handler,
+            {'slug': 'gh1', 'plugin': 'github'},
+            {'slug': 'gh2', 'plugin': 'github'},
+        )
+        head = await marketplaces.fetch(
+            readers, 'https://github.com/acme/tools'
+        )
+        self.assertEqual(head.text, '{}')
+        handler.get_file.side_effect = [None, None]
+        with self.assertRaisesRegex(
+            marketplaces.NotFoundError, 'gh1: .*not found; gh2: '
         ):
-            head = await marketplaces.fetch(
-                mock.Mock(), 'acme', 'https://github.com/acme/tools'
-            )
-            self.assertEqual(head.text, '{}')
-            handler.get_file.side_effect = [None, None]
-            with self.assertRaisesRegex(
-                marketplaces.SyncError, 'gh1: .*not found; gh2: '
-            ):
-                await marketplaces.fetch(
-                    mock.Mock(), 'acme', 'https://github.com/acme/tools'
-                )
+            await marketplaces.fetch(readers, 'https://github.com/acme/tools')
 
     async def test_resolves_an_external_plugin_commit(self) -> None:
         handler = mock.AsyncMock(spec=base.DeploymentCapability)
@@ -222,58 +226,41 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
                 repository_url='https://ghe.example.com/a/x.git',
             )
 
-        with (
-            mock.patch.object(
-                assignments,
-                'org_integrations',
-                return_value={'i1': {'slug': 'gh', 'plugin': 'github'}},
+        readers = await _readers(handler, {'slug': 'gh', 'plugin': 'github'})
+        # A sha in the source is checked in the repository.
+        handler.resolve_committish.return_value = mock.Mock(sha='c' * 40)
+        self.assertEqual(
+            await marketplaces.resolve_commit(
+                readers, plugin(sha='c' * 40, ref='v1')
             ),
-            mock.patch.object(marketplaces, '_handler', return_value=handler),
-        ):
-            # A sha in the source is checked in the repository.
-            handler.resolve_committish.return_value = mock.Mock(sha='c' * 40)
-            self.assertEqual(
-                await marketplaces.resolve_commit(
-                    mock.Mock(), 'acme', plugin(sha='c' * 40, ref='v1')
-                ),
-                'c' * 40,
-            )
-            self.assertEqual(
-                handler.resolve_committish.call_args.args[2], 'c' * 40
-            )
-            handler.list_refs.assert_not_called()
-            handler.resolve_committish.return_value = mock.Mock(sha='d' * 40)
+            'c' * 40,
+        )
+        self.assertEqual(
+            handler.resolve_committish.call_args.args[2], 'c' * 40
+        )
+        handler.list_refs.assert_not_called()
+        handler.resolve_committish.return_value = mock.Mock(sha='d' * 40)
+        with self.assertRaises(marketplaces.SyncError):
+            await marketplaces.resolve_commit(readers, plugin(sha='c' * 40))
+        handler.resolve_committish.return_value = mock.Mock(sha='b' * 40)
+        # An invalid sha or ref is refused, never replaced.
+        for source in ({'sha': 'main', 'ref': 'v1'}, {'ref': ''}):
             with self.assertRaises(marketplaces.SyncError):
-                await marketplaces.resolve_commit(
-                    mock.Mock(), 'acme', plugin(sha='c' * 40)
-                )
-            handler.resolve_committish.return_value = mock.Mock(sha='b' * 40)
-            # An invalid sha or ref is refused, never replaced.
-            for source in ({'sha': 'main', 'ref': 'v1'}, {'ref': ''}):
-                with self.assertRaises(marketplaces.SyncError):
-                    await marketplaces.resolve_commit(
-                        mock.Mock(), 'acme', plugin(**source)
-                    )
-            self.assertEqual(
-                await marketplaces.resolve_commit(
-                    mock.Mock(), 'acme', plugin(ref='v1')
-                ),
-                'b' * 40,
-            )
-            self.assertEqual(
-                handler.resolve_committish.call_args.args[2], 'v1'
-            )
-            self.assertEqual(
-                await marketplaces.resolve_commit(
-                    mock.Mock(), 'acme', plugin()
-                ),
-                SHA,
-            )
-            ctx = handler.list_refs.call_args.args[0]
-            self.assertEqual(
-                ctx.project_links,
-                {'github-repository': 'https://ghe.example.com/a/x.git'},
-            )
+                await marketplaces.resolve_commit(readers, plugin(**source))
+        self.assertEqual(
+            await marketplaces.resolve_commit(readers, plugin(ref='v1')),
+            'b' * 40,
+        )
+        self.assertEqual(handler.resolve_committish.call_args.args[2], 'v1')
+        self.assertEqual(
+            await marketplaces.resolve_commit(readers, plugin()),
+            SHA,
+        )
+        ctx = handler.list_refs.call_args.args[0]
+        self.assertEqual(
+            ctx.project_links,
+            {'github-repository': 'https://ghe.example.com/a/x.git'},
+        )
 
     async def test_sync_resolves_external_plugins(self) -> None:
         document = json.dumps(
@@ -306,7 +293,7 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
         )
 
         async def resolve(
-            _db: object, _org: str, plugin: marketplaces.CatalogPlugin
+            _readers: object, plugin: marketplaces.CatalogPlugin
         ) -> str:
             if plugin.name == 'gone':
                 raise marketplaces.SyncError('not found')
@@ -315,6 +302,9 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
         store = mock.AsyncMock()
         with (
             mock.patch.object(
+                marketplaces, 'organization_readers', return_value=READERS
+            ),
+            mock.patch.object(
                 marketplaces,
                 'fetch',
                 return_value=marketplaces.Head('main', SHA, document),
@@ -322,7 +312,9 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
             mock.patch.object(
                 marketplaces, 'resolve_commit', side_effect=resolve
             ),
-            mock.patch.object(marketplaces, 'read_file', return_value=None),
+            mock.patch.object(
+                marketplaces, 'file_reader', return_value=missing
+            ),
         ):
             await marketplaces.sync(
                 mock.Mock(),
@@ -358,22 +350,15 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
         ]
         reader.get_file.return_value = '{}'
         public = 'https://github.com/anthropics/plugins'
-        with (
-            mock.patch.object(
-                assignments,
-                'org_integrations',
-                return_value={'i1': {'slug': 'gh', 'plugin': 'github'}},
-            ),
-            mock.patch.object(marketplaces, '_handler', return_value=handler),
-            mock.patch.object(
-                marketplaces,
-                '_public_readers',
-                side_effect=lambda _db, url: (
-                    [reader] if url == public else []
-                ),
+        readers = await _readers(handler, {'slug': 'gh', 'plugin': 'github'})
+        with mock.patch.object(
+            marketplaces,
+            '_public_readers',
+            side_effect=lambda _handlers, url: (
+                [reader] if url == public else []
             ),
         ):
-            head = await marketplaces.fetch(mock.Mock(), 'acme', public)
+            head = await marketplaces.fetch(readers, public)
             self.assertEqual(head, marketplaces.Head('main', SHA, '{}'))
             reader.get_file.assert_awaited_once_with(
                 None, {}, marketplaces.MARKETPLACE_FILE, SHA
@@ -383,7 +368,7 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
                 marketplaces.SyncError, '^gh: no installation$'
             ):
                 await marketplaces.fetch(
-                    mock.Mock(), 'acme', 'https://ghe.example.com/a/b'
+                    readers, 'https://ghe.example.com/a/b'
                 )
 
     async def test_public_readers_come_from_enabled_plugins(self) -> None:
@@ -430,45 +415,53 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
                 side_effect=lambda _db, slug: slug != 'disabled',
             ),
         ):
-            db = mock.Mock()
+            handlers = await marketplaces._public_handlers(mock.Mock())
+        self.assertEqual([slug for slug, _ in handlers], ['broken', 'enabled'])
+        self.assertEqual(
+            marketplaces._public_readers(handlers, 'https://h/a/b'),
+            [reader],
+        )
+        with self.assertLogs(marketplaces.LOGGER, 'INFO') as logs:
             self.assertEqual(
-                await marketplaces._public_readers(db, 'https://h/a/b'),
-                [reader],
+                marketplaces._public_readers(
+                    handlers, 'https://u:secret@x/y?token=t#f'
+                ),
+                [],
             )
-            with self.assertLogs(marketplaces.LOGGER, 'INFO') as logs:
-                self.assertEqual(
-                    await marketplaces._public_readers(
-                        db, 'https://u:secret@x/y?token=t#f'
-                    ),
-                    [],
-                )
             self.assertIn('https://x/y:', logs.output[0])
             self.assertNotIn('secret', '\n'.join(logs.output))
             self.assertNotIn('token', '\n'.join(logs.output))
 
     async def test_no_integration(self) -> None:
-        with (
-            mock.patch.object(
-                assignments, 'org_integrations', return_value={}
-            ),
-            mock.patch.object(
-                marketplaces, '_public_readers', return_value=[]
-            ),
+        with self.assertRaisesRegex(
+            marketplaces.SyncError, 'has no integration'
         ):
-            with self.assertRaises(marketplaces.SyncError):
-                await marketplaces.fetch(mock.Mock(), 'acme', 'https://x/y')
+            await marketplaces.fetch(await _readers(None), 'https://x/y')
 
 
-def _reader(
-    files: dict[str, str],
-) -> tuple[marketplaces.FileReader, list[str]]:
-    reads: list[str] = []
+READERS = marketplaces.Readers([], [])
 
+
+def _reader(files: dict[str, str]) -> marketplaces.FileReader:
     async def read(path: str) -> str | None:
-        reads.append(path)
         return files.get(path)
 
-    return read, reads
+    return read
+
+
+async def missing(_path: str) -> str | None:
+    return None
+
+
+def _entry(servers: object) -> marketplaces.EntryServers:
+    async def entry() -> object:
+        return servers
+
+    return entry
+
+
+def _names(servers: list[marketplaces.CatalogServer]) -> list[str]:
+    return [server.name for server in servers]
 
 
 HTTP = {
@@ -484,7 +477,7 @@ HTTP = {
 
 class PluginServerTests(unittest.IsolatedAsyncioTestCase):
     async def test_manifest_object(self) -> None:
-        read, reads = _reader(
+        read = _reader(
             {
                 'p/.claude-plugin/plugin.json': json.dumps(
                     {
@@ -501,7 +494,9 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
                 )
             }
         )
-        servers = await marketplaces.plugin_servers(read, 'p', None)
+        servers = await marketplaces.plugin_servers(
+            read, 'p', _entry(None), 'p'
+        )
         self.assertEqual(
             [server.model_dump() for server in servers],
             [
@@ -524,15 +519,9 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
                 },
             ],
         )
-        stored = json.dumps([server.model_dump() for server in servers])
-        self.assertNotIn('Bearer', stored)
-        self.assertNotIn('literal-secret', stored)
-        self.assertEqual(
-            reads, ['p/.claude-plugin/plugin.json', 'p/.mcp.json']
-        )
 
     async def test_manifest_paths_and_list(self) -> None:
-        read, reads = _reader(
+        read = _reader(
             {
                 '.claude-plugin/plugin.json': json.dumps(
                     {
@@ -557,7 +546,9 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
                 ),
             }
         )
-        servers = await marketplaces.plugin_servers(read, '.', None)
+        servers = await marketplaces.plugin_servers(
+            read, '.', _entry(None), 'p'
+        )
         self.assertEqual(
             {server.name: server.type for server in servers},
             {
@@ -567,40 +558,67 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
                 'remote': 'http',
             },
         )
-        self.assertEqual(
-            reads,
-            [
-                '.claude-plugin/plugin.json',
-                'config/servers.json',
-                'bare.json',
-                '.mcp.json',
-            ],
-        )
 
-    async def test_entry_servers_without_a_manifest(self) -> None:
-        files = {
-            'p/servers.json': json.dumps({'mcpServers': {'file': HTTP}}),
-            'p/.mcp.json': json.dumps({'mcpServers': {'mcp': HTTP}}),
-        }
-        read, _ = _reader(files)
-        entry = [{'inline': HTTP}, './servers.json']
-        servers = await marketplaces.plugin_servers(read, 'p', entry)
-        self.assertEqual(
-            [server.name for server in servers], ['file', 'inline', 'mcp']
+    async def test_a_single_path_in_the_manifest(self) -> None:
+        read = _reader(
+            {
+                'p/.claude-plugin/plugin.json': json.dumps(
+                    {'mcpServers': './servers.json'}
+                ),
+                'p/servers.json': json.dumps({'mcpServers': {'file': HTTP}}),
+            }
         )
-        # A manifest wins over the entry, even one with no servers.
-        files['p/.claude-plugin/plugin.json'] = '{"name": "p"}'
-        servers = await marketplaces.plugin_servers(read, 'p', entry)
-        self.assertEqual([server.name for server in servers], ['mcp'])
+        servers = await marketplaces.plugin_servers(
+            read, 'p', _entry(None), 'p'
+        )
+        self.assertEqual(_names(servers), ['file'])
 
-    async def test_unreadable_or_invalid_files_add_nothing(self) -> None:
-        read, reads = _reader(
+    async def test_entry_servers_apply_without_a_manifest(self) -> None:
+        read = _reader(
+            {
+                'p/servers.json': json.dumps({'mcpServers': {'file': HTTP}}),
+                'p/.mcp.json': json.dumps({'mcpServers': {'mcp': HTTP}}),
+            }
+        )
+        servers = await marketplaces.plugin_servers(
+            read, 'p', _entry([{'inline': HTTP}, './servers.json']), 'p'
+        )
+        self.assertEqual(_names(servers), ['file', 'inline', 'mcp'])
+
+    async def test_a_single_path_in_the_entry(self) -> None:
+        read = _reader(
+            {'p/servers.json': json.dumps({'mcpServers': {'file': HTTP}})}
+        )
+        servers = await marketplaces.plugin_servers(
+            read, 'p', _entry('./servers.json'), 'p'
+        )
+        self.assertEqual(_names(servers), ['file'])
+
+    async def test_a_manifest_overrides_entry_servers(self) -> None:
+        read = _reader(
+            {
+                'p/.claude-plugin/plugin.json': '{"name": "p"}',
+                'p/.mcp.json': json.dumps({'mcpServers': {'mcp': HTTP}}),
+            }
+        )
+        entry = mock.AsyncMock(return_value={'inline': HTTP})
+        servers = await marketplaces.plugin_servers(read, 'p', entry, 'p')
+        self.assertEqual(_names(servers), ['mcp'])
+        entry.assert_not_awaited()
+
+    async def test_an_invalid_manifest_overrides_entry_servers(self) -> None:
+        read = _reader({'p/.claude-plugin/plugin.json': 'not json'})
+        servers = await marketplaces.plugin_servers(
+            read, 'p', _entry({'inline': HTTP}), 'p'
+        )
+        self.assertEqual(servers, [])
+
+    async def testmissing_or_invalid_files_add_nothing(self) -> None:
+        read = _reader(
             {
                 'p/.claude-plugin/plugin.json': json.dumps(
                     {
                         'mcpServers': [
-                            '../outside.json',
-                            '/etc/servers.json',
                             'missing.json',
                             'invalid.json',
                             'list.json',
@@ -613,13 +631,48 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
                 'p/.mcp.json': json.dumps({'mcpServers': {'ok': HTTP}}),
             }
         )
-        servers = await marketplaces.plugin_servers(read, 'p', None)
-        self.assertEqual([server.name for server in servers], ['ok'])
-        self.assertNotIn('outside.json', '\n'.join(reads))
-        self.assertNotIn('/etc/servers.json', reads)
-        read, _ = _reader({'p/.claude-plugin/plugin.json': 'not json'})
+        servers = await marketplaces.plugin_servers(
+            read, 'p', _entry(None), 'p'
+        )
+        self.assertEqual(_names(servers), ['ok'])
+
+    async def test_paths_outside_the_plugin_are_refused(self) -> None:
+        outside = json.dumps({'mcpServers': {'outside': HTTP}})
+        read = _reader(
+            {
+                'p/.claude-plugin/plugin.json': json.dumps(
+                    {'mcpServers': ['../outside.json', '/etc/servers.json']}
+                ),
+                'outside.json': outside,
+                '/etc/servers.json': outside,
+                'p/.mcp.json': json.dumps({'mcpServers': {'ok': HTTP}}),
+            }
+        )
+        with self.assertLogs(marketplaces.LOGGER, 'WARNING') as logs:
+            servers = await marketplaces.plugin_servers(
+                read, 'p', _entry(None), 'Marketplace m, plugin p'
+            )
+        self.assertEqual(_names(servers), ['ok'])
+        self.assertEqual(len(logs.output), 2)
+        self.assertIn('Marketplace m, plugin p', logs.output[0])
+        self.assertIn("'../outside.json'", logs.output[0])
+        self.assertIn("'/etc/servers.json'", logs.output[1])
+
+    def test_header_variables(self) -> None:
+        servers = marketplaces.servers(
+            [
+                {
+                    'repeated': {
+                        'type': 'http',
+                        'headers': {'A': '${A}-${A}', 'B': 7},
+                    },
+                    'listed': {'type': 'http', 'headers': ['A']},
+                }
+            ]
+        )
         self.assertEqual(
-            await marketplaces.plugin_servers(read, 'p', {'x': HTTP}), []
+            {server.name: server.headers for server in servers},
+            {'listed': {}, 'repeated': {'A': ['A'], 'B': []}},
         )
 
     def test_legacy_rows_parse(self) -> None:
@@ -638,82 +691,76 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
-    async def test_read_file_tries_each_reader(self) -> None:
-        handler = mock.AsyncMock(spec=base.DeploymentCapability)
-        handler.get_file.side_effect = [None, '{}']
-        integrations = {
-            f'i{n}': {'slug': f'gh{n}', 'plugin': 'github'} for n in (1, 2)
-        }
-        with (
-            mock.patch.object(
-                assignments, 'org_integrations', return_value=integrations
-            ),
-            mock.patch.object(marketplaces, '_handler', return_value=handler),
-            mock.patch.object(
-                marketplaces, '_public_readers', return_value=[]
-            ),
-        ):
-            self.assertEqual(
-                await marketplaces.read_file(
-                    mock.Mock(), 'acme', 'https://h/a', SHA, 'p/.mcp.json'
-                ),
-                '{}',
-            )
-            self.assertEqual(
-                handler.get_file.call_args.args[2:], ('p/.mcp.json', SHA)
-            )
-            handler.get_file.side_effect = RuntimeError('no access')
-            self.assertIsNone(
-                await marketplaces.read_file(
-                    mock.Mock(), 'acme', 'https://h/a', SHA, 'p/.mcp.json'
-                )
-            )
 
-    async def test_sync_reads_the_servers_of_each_plugin(self) -> None:
-        external_url = 'https://h/external'
-        document = json.dumps(
-            {
-                'name': 'acme',
-                'plugins': [
-                    {
-                        'name': 'local',
-                        'source': './local',
-                        'mcpServers': {'entry': HTTP},
-                    },
-                    {
-                        'name': 'external',
-                        'source': {'source': 'url', 'url': external_url},
-                        'mcpServers': {'ignored': HTTP},
-                    },
-                    {
-                        'name': 'unresolved',
-                        'source': {'source': 'url', 'url': 'https://h/gone'},
-                    },
-                    {
-                        'name': 'npm',
-                        'source': {'source': 'npm', 'package': 'x'},
-                    },
-                ],
-            }
+class FileReaderTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        self.handler = mock.AsyncMock(spec=base.DeploymentCapability)
+        readers = await _readers(
+            self.handler,
+            {'slug': 'gh1', 'plugin': 'github'},
+            {'slug': 'gh2', 'plugin': 'github'},
         )
-        files = {
-            ('https://h/market', SHA, 'local/.mcp.json'): json.dumps(
-                {'mcpServers': {'local': HTTP}}
-            ),
-            (external_url, 'b' * 40, '.mcp.json'): json.dumps(
-                {'mcpServers': {'external': HTTP}}
-            ),
-        }
-        reads: list[tuple[str, str, str]] = []
+        self.read = marketplaces.file_reader(readers, 'https://h/a', SHA)
 
-        async def read_file(
-            _db: object, _org: str, url: str, ref: str, path: str
-        ) -> str | None:
-            reads.append((url, ref, path))
-            return files.get((url, ref, path))
+    async def test_falls_through_to_the_next_reader(self) -> None:
+        self.handler.get_file.side_effect = [None, '{}']
+        self.assertEqual(await self.read('p/.mcp.json'), '{}')
+        self.assertEqual(
+            self.handler.get_file.call_args.args[2:], ('p/.mcp.json', SHA)
+        )
+
+    async def test_not_found_by_every_reader(self) -> None:
+        self.handler.get_file.side_effect = [None, None]
+        self.assertIsNone(await self.read('p/.mcp.json'))
+
+    async def test_an_error_from_every_reader(self) -> None:
+        self.handler.get_file.side_effect = RuntimeError('no access')
+        with self.assertRaisesRegex(
+            marketplaces.SyncError,
+            '^cannot read p/.mcp.json: gh1: no access; gh2: no access$',
+        ):
+            await self.read('p/.mcp.json')
+
+    async def test_not_found_by_one_reader_and_an_error(self) -> None:
+        self.handler.get_file.side_effect = [None, RuntimeError('timeout')]
+        self.assertIsNone(await self.read('p/.mcp.json'))
+
+
+class SyncServerTests(unittest.IsolatedAsyncioTestCase):
+    def test_an_external_entry_is_the_first_with_a_source(self) -> None:
+        document = {
+            'plugins': [
+                'not an object',
+                {'name': 'x', 'mcpServers': {'no-source': HTTP}},
+                {'name': 'y', 'source': '.', 'mcpServers': {'other': HTTP}},
+                {'name': 'x', 'source': '.', 'mcpServers': {'first': HTTP}},
+                {'name': 'x', 'source': '.', 'mcpServers': {'second': HTTP}},
+            ]
+        }
+        self.assertEqual(
+            marketplaces._entry_servers(document, 'x'), {'first': HTTP}
+        )
+        self.assertIsNone(marketplaces._entry_servers({'plugins': {}}, 'x'))
+
+    async def sync(
+        self,
+        document: dict[str, typing.Any],
+        files: dict[tuple[str, str, str], str],
+    ) -> tuple[dict[str, typing.Any], set[str]]:
+        """Sync ``document`` and return the changes and the URLs read."""
+        urls: set[str] = set()
+
+        def file_reader(
+            _readers: object, url: str, ref: str
+        ) -> marketplaces.FileReader:
+            async def read(path: str) -> str | None:
+                urls.add(url)
+                return files.get((url, ref, path))
+
+            return read
 
         async def resolve(
-            _db: object, _org: str, plugin: marketplaces.CatalogPlugin
+            _readers: object, plugin: marketplaces.CatalogPlugin
         ) -> str:
             if plugin.name == 'unresolved':
                 raise marketplaces.SyncError('not found')
@@ -722,15 +769,20 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
         store = mock.AsyncMock()
         with (
             mock.patch.object(
+                marketplaces, 'organization_readers', return_value=READERS
+            ),
+            mock.patch.object(
                 marketplaces,
                 'fetch',
-                return_value=marketplaces.Head('main', SHA, document),
+                return_value=marketplaces.Head(
+                    'main', SHA, json.dumps(document)
+                ),
             ),
             mock.patch.object(
                 marketplaces, 'resolve_commit', side_effect=resolve
             ),
             mock.patch.object(
-                marketplaces, 'read_file', side_effect=read_file
+                marketplaces, 'file_reader', side_effect=file_reader
             ),
         ):
             await marketplaces.sync(
@@ -739,7 +791,55 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
                 'acme',
                 {'id': 'm1', 'slug': 'm', 'url': 'https://h/market'},
             )
-        changes = store.set_marketplace_sync.call_args.args[1]
+        return store.set_marketplace_sync.call_args.args[1], urls
+
+    async def test_sync_reads_the_servers_of_each_plugin(self) -> None:
+        external_url = 'https://h/external'
+        document = {
+            'name': 'acme',
+            'plugins': [
+                {
+                    'name': 'local',
+                    'source': './local',
+                    'mcpServers': {'entry': HTTP},
+                },
+                {
+                    'name': 'external',
+                    'source': {'source': 'url', 'url': external_url},
+                    'mcpServers': {'ignored': HTTP},
+                },
+                {
+                    'name': 'unresolved',
+                    'source': {'source': 'url', 'url': 'https://h/gone'},
+                },
+                {
+                    'name': 'elsewhere',
+                    'source': {'source': 'url', 'url': 'https://x/other'},
+                },
+                {'name': 'npm', 'source': {'source': 'npm', 'package': 'x'}},
+            ],
+        }
+        external = (external_url, 'b' * 40)
+        files = {
+            ('https://h/market', SHA, 'local/.mcp.json'): json.dumps(
+                {'mcpServers': {'local': HTTP}}
+            ),
+            (*external, '.mcp.json'): json.dumps(
+                {'mcpServers': {'external': HTTP}}
+            ),
+            (*external, marketplaces.MARKETPLACE_FILE): json.dumps(
+                {
+                    'plugins': [
+                        {
+                            'name': 'external',
+                            'source': '.',
+                            'mcpServers': {'own': HTTP},
+                        }
+                    ]
+                }
+            ),
+        }
+        changes, urls = await self.sync(document, files)
         self.assertEqual(
             {
                 plugin['name']: [
@@ -749,13 +849,77 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
             },
             {
                 'local': ['entry', 'local'],
-                'external': ['external'],
+                'external': ['external', 'own'],
                 'unresolved': [],
+                'elsewhere': [],
                 'npm': [],
             },
         )
+        self.assertEqual(urls, {'https://h/market', external_url})
+        stored = json.dumps(changes, default=str)
+        self.assertNotIn('Bearer', stored)
+        self.assertNotIn('literal-secret', stored)
+
+    async def test_an_external_manifest_overrides_its_entry(self) -> None:
+        external = ('https://h/external', 'b' * 40)
+        document = {
+            'name': 'acme',
+            'plugins': [
+                {
+                    'name': 'external',
+                    'source': {'source': 'url', 'url': external[0]},
+                }
+            ],
+        }
+        files = {
+            (*external, marketplaces.PLUGIN_MANIFEST): '{"name": "external"}',
+            (*external, marketplaces.MARKETPLACE_FILE): json.dumps(
+                {
+                    'plugins': [
+                        {
+                            'name': 'external',
+                            'source': '.',
+                            'mcpServers': {'own': HTTP},
+                        }
+                    ]
+                }
+            ),
+        }
+        changes, _ = await self.sync(document, files)
+        self.assertEqual(changes['plugins'][0]['mcp_servers'], [])
+
+    async def test_a_read_error_fails_the_sync(self) -> None:
+        document = {
+            'name': 'acme',
+            'plugins': [{'name': 'local', 'source': './local'}],
+        }
+
+        async def read(_path: str) -> str | None:
+            raise marketplaces.SyncError('cannot read local/x: gh: boom')
+
+        store = mock.AsyncMock()
+        with (
+            mock.patch.object(
+                marketplaces, 'organization_readers', return_value=READERS
+            ),
+            mock.patch.object(
+                marketplaces,
+                'fetch',
+                return_value=marketplaces.Head(
+                    'main', SHA, json.dumps(document)
+                ),
+            ),
+            mock.patch.object(marketplaces, 'file_reader', return_value=read),
+        ):
+            await marketplaces.sync(
+                mock.Mock(),
+                store,
+                'acme',
+                {'id': 'm1', 'slug': 'm', 'url': 'https://h/market'},
+            )
         self.assertEqual(
-            {url for url, _, _ in reads}, {'https://h/market', external_url}
+            store.set_marketplace_sync.call_args.args[1],
+            {'sync_error': 'cannot read local/x: gh: boom'},
         )
 
 

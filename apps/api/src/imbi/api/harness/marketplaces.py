@@ -14,7 +14,6 @@ The format is the marketplace reference of Claude Code
 import asyncio
 import collections.abc
 import datetime
-import functools
 import json
 import logging
 import posixpath
@@ -206,40 +205,62 @@ def _plugin_file(directory: str, path: str) -> str | None:
 type FileReader = collections.abc.Callable[
     [str], collections.abc.Awaitable[str | None]
 ]
+type EntryServers = collections.abc.Callable[
+    [], collections.abc.Awaitable[object]
+]
 
 
-async def _source(read: FileReader, directory: str, source: object) -> object:
+async def _source(
+    read: FileReader, directory: str, source: object, label: str
+) -> object:
     """Return an ``mcpServers`` object, read from its file when it is a
     path."""
     if not isinstance(source, str):
         return source
     path = _plugin_file(directory, source)
-    document = _document(None if path is None else await read(path))
+    if path is None:
+        LOGGER.warning(
+            '%s: the MCP server file %r is outside the plugin, so the '
+            'runner fails its tasks',
+            label,
+            source,
+        )
+        return None
+    document = _document(await read(path))
     return document.get('mcpServers', document)
 
 
 async def plugin_servers(
-    read: FileReader, directory: str, entry_servers: object
+    read: FileReader,
+    directory: str,
+    entry_servers: EntryServers,
+    label: str,
 ) -> list[CatalogServer]:
     """Return the MCP servers that the harness loads for a plugin.
 
     With a ``.claude-plugin/plugin.json``, the servers come from its
-    ``mcpServers``, else from ``entry_servers``, the ``mcpServers`` of
-    the marketplace entry. Either is an object, the path of a JSON file
-    in the plugin directory, or a list of both. The plugin's
-    ``.mcp.json`` adds its servers.
+    ``mcpServers``, else from the ``mcpServers`` of the plugin's
+    marketplace entry. Either is an object, the path of a JSON file in
+    the plugin directory, or a list of both. The plugin's ``.mcp.json``
+    adds its servers. A missing or invalid file adds no servers.
 
     Args:
-        read: Returns the text of a repository file, or ``None``.
+        read: Returns the text of a repository file, or ``None`` when
+            the repository has no such file.
         directory: The plugin directory in the repository.
-        entry_servers: The ``mcpServers`` of the marketplace entry.
+        entry_servers: Returns the ``mcpServers`` of the marketplace
+            entry. Awaited only when the plugin has no ``plugin.json``.
+        label: Names the plugin in log messages.
+
+    Raises:
+        SyncError: ``read`` could not read a file.
 
     """
     manifest = await read(
         posixpath.normpath(posixpath.join(directory, PLUGIN_MANIFEST))
     )
     declared: object = (
-        entry_servers
+        await entry_servers()
         if manifest is None
         else _document(manifest).get('mcpServers')
     )
@@ -250,10 +271,28 @@ async def plugin_servers(
     )
     return servers(
         [
-            await _source(read, directory, source)
+            await _source(read, directory, source, label)
             for source in [*sources, '.mcp.json']
         ]
     )
+
+
+def _entry_servers(document: dict[str, typing.Any], name: str) -> object:
+    """Return the ``mcpServers`` of the entry for ``name`` in a
+    marketplace document, as the runner picks it: the first entry of
+    that name with a ``source``."""
+    entries: object = document.get('plugins')
+    if not isinstance(entries, list):
+        return None
+    for entry in typing.cast('list[object]', entries):
+        if not isinstance(entry, dict):
+            continue
+        found = typing.cast('dict[str, typing.Any]', entry)
+        if found.get('name') == name and isinstance(
+            found.get('source'), (str, dict)
+        ):
+            return found.get('mcpServers')
+    return None
 
 
 def _host(url: str) -> str | None:
@@ -277,16 +316,16 @@ def parse(text: str) -> Catalog:
     """
     try:
         document: typing.Any = json.loads(text)
-    except ValueError as err:
-        raise SyncError(f'{MARKETPLACE_FILE} is not valid JSON') from err
+    except ValueError as error:
+        raise SyncError(f'{MARKETPLACE_FILE} is not valid JSON') from error
     if not isinstance(document, dict):
         raise SyncError(f'{MARKETPLACE_FILE} is not a JSON object')
     data = typing.cast('dict[str, typing.Any]', document)
     entries: typing.Any = data.get('plugins')
     try:
         name = _NAME.validate_python(data.get('name'))
-    except pydantic.ValidationError as err:
-        raise SyncError(f'{MARKETPLACE_FILE} has no valid name') from err
+    except pydantic.ValidationError as error:
+        raise SyncError(f'{MARKETPLACE_FILE} has no valid name') from error
     if not isinstance(entries, list):
         raise SyncError(f'{MARKETPLACE_FILE} has no plugins list')
     metadata: typing.Any = data.get('metadata')
@@ -347,11 +386,62 @@ class Head(typing.NamedTuple):
     text: str
 
 
-async def fetch(db: graph.Graph, org_slug: str, url: str) -> Head:
+class _Integration(typing.NamedTuple):
+    slug: str
+    handler: base.DeploymentCapability
+    context: base.PluginContext
+    credentials: dict[str, str]
+
+
+class Readers(typing.NamedTuple):
+    """The repository readers of an organization, looked up once."""
+
+    integrations: list[_Integration]
+    #: The deployment handlers of the enabled plugins, by plugin slug,
+    #: that can offer a credential-free reader for a URL.
+    public: list[tuple[str, type[base.DeploymentCapability]]]
+
+
+async def organization_readers(db: graph.Graph, org_slug: str) -> Readers:
+    """Look up what can read a repository for the organization: each
+    integration whose plugin has a ``deployment`` capability, and each
+    enabled plugin that can read a public repository."""
+    integrations: list[_Integration] = []
+    for integration in (
+        await assignments.org_integrations(db, org_slug)
+    ).values():
+        handler = await _handler(db, integration)
+        if handler is None:
+            continue
+        slug = str(integration.get('slug') or '')
+        integrations.append(
+            _Integration(
+                slug=slug,
+                handler=handler,
+                context=base.PluginContext(
+                    project_id='',
+                    project_slug='',
+                    org_slug=org_slug,
+                    integration_slug=slug,
+                    integration_options=integration.get('options') or {},
+                    capability_options=assignments.capability_state(
+                        integration, _CAPABILITY
+                    ).get('options')
+                    or {},
+                ),
+                credentials=decrypt_integration_credentials(
+                    integration.get('encrypted_credentials') or {}
+                ),
+            )
+        )
+    return Readers(integrations, await _public_handlers(db))
+
+
+async def fetch(readers: Readers, url: str) -> Head:
     """Read the marketplace file at the head of the default branch.
 
     Raises:
-        SyncError: No integration could read the file.
+        SyncError: No reader could read the file.
 
     """
 
@@ -368,21 +458,17 @@ async def fetch(db: graph.Graph, org_slug: str, url: str) -> Head:
         )
         return None if text is None else Head(refs[0].name, refs[0].sha, text)
 
-    return await _read(
-        db, org_slug, url, read, f'{MARKETPLACE_FILE} not found'
-    )
+    return await _read(readers, url, read, f'{MARKETPLACE_FILE} not found')
 
 
-async def resolve_commit(
-    db: graph.Graph, org_slug: str, plugin: CatalogPlugin
-) -> str:
+async def resolve_commit(readers: Readers, plugin: CatalogPlugin) -> str:
     """Return the commit of an external plugin's repository.
 
     The ``sha`` of the source wins, then its ``ref``, then the head of
     the default branch.
 
     Raises:
-        SyncError: No integration could resolve the commit.
+        SyncError: No reader could resolve the commit.
 
     """
     source = plugin.source if isinstance(plugin.source, dict) else {}
@@ -409,16 +495,43 @@ async def resolve_commit(
         return refs[0].sha if refs else None
 
     found = await _read(
-        db, org_slug, str(plugin.repository_url), read, 'commit not found'
+        readers, str(plugin.repository_url), read, 'commit not found'
     )
     if sha is not None and found != sha:
         raise SyncError(f'sha {sha} is not in the repository')
     return found
 
 
+class NotFoundError(SyncError):
+    """No reader could read it, and at least one found that the
+    repository does not have it."""
+
+
+type _Attempt = tuple[
+    str, base.RepositoryReader, base.PluginContext, dict[str, str]
+]
+
+
+def _attempts(
+    readers: Readers, url: str
+) -> collections.abc.Iterator[_Attempt]:
+    for integration in readers.integrations:
+        yield (
+            integration.slug,
+            integration.handler,
+            integration.context.model_copy(
+                update={'project_links': {'github-repository': url}}
+            ),
+            integration.credentials,
+        )
+    # As the runner does: a public repository needs no credentials, so
+    # read it anonymously.
+    for reader in _public_readers(readers.public, url):
+        yield 'anonymous', reader, typing.cast('base.PluginContext', None), {}
+
+
 async def _read[T](
-    db: graph.Graph,
-    org_slug: str,
+    readers: Readers,
     url: str,
     read: collections.abc.Callable[
         [base.RepositoryReader, base.PluginContext, dict[str, str]],
@@ -426,98 +539,78 @@ async def _read[T](
     ],
     missing: str,
 ) -> T:
-    """Read from a repository through the organization's integrations.
+    """Read from a repository through the organization's readers.
 
-    Each integration whose plugin has a ``deployment`` capability is
-    tried in turn. An integration for another host cannot resolve the
-    URL and is skipped. ``read`` returns ``None`` when the integration
-    cannot find what it reads; then the next integration is tried.
+    Each integration is tried in turn, then each credential-free reader
+    that a plugin offers for ``url``. An integration for another host
+    cannot resolve the URL and is skipped. ``read`` returns ``None``
+    when the reader cannot find what it reads; then the next reader is
+    tried.
 
     Raises:
-        SyncError: No integration could read it.
+        NotFoundError: No reader could read it, and one found nothing.
+        SyncError: Every reader failed.
 
     """
     errors: list[str] = []
-    for integration in (
-        await assignments.org_integrations(db, org_slug)
-    ).values():
-        handler = await _handler(db, integration)
-        if handler is None:
-            continue
-        ctx = base.PluginContext(
-            project_id='',
-            project_slug='',
-            org_slug=org_slug,
-            integration_slug=str(integration.get('slug') or ''),
-            integration_options=integration.get('options') or {},
-            capability_options=assignments.capability_state(
-                integration, _CAPABILITY
-            ).get('options')
-            or {},
-            project_links={'github-repository': url},
-        )
-        credentials = decrypt_integration_credentials(
-            integration.get('encrypted_credentials') or {}
-        )
+    not_found = False
+    for label, handler, ctx, credentials in _attempts(readers, url):
         try:
             result = await read(handler, ctx, credentials)
         except NotImplementedError:
             continue
-        except Exception as err:  # noqa: BLE001 - try the next one
-            LOGGER.info(
-                'Integration %s cannot read %s: %s',
-                integration.get('slug'),
-                url,
-                err,
-            )
-            errors.append(f'{integration.get("slug")}: {err}')
+        except Exception as error:  # noqa: BLE001 - try the next one
+            LOGGER.info('%s cannot read %s: %s', label, url, error)
+            errors.append(f'{label}: {error}')
             continue
         if result is None:
-            # Another integration can have access to the repository.
-            errors.append(f'{integration.get("slug")}: {missing}')
+            # Another reader can have access to the repository.
+            not_found = True
+            errors.append(f'{label}: {missing}')
             continue
         return result
-    for public in await _public_readers(db, url):
-        # As the runner does: a public repository needs no credentials,
-        # so read it anonymously.
-        try:
-            result = await read(
-                public, typing.cast('base.PluginContext', None), {}
-            )
-        except Exception as err:  # noqa: BLE001 - report with the rest
-            errors.append(f'anonymous: {err}')
-        else:
-            if result is not None:
-                return result
-            errors.append(f'anonymous: {missing}')
     if not errors:
         raise SyncError(
             'The organization has no integration that can read '
             'repositories (the github plugin)'
         )
-    raise SyncError('; '.join(errors))
+    raise (NotFoundError if not_found else SyncError)('; '.join(errors))
 
 
-async def _public_readers(
-    db: graph.Graph, url: str
-) -> list[base.RepositoryReader]:
-    """Return the credential-free readers that enabled plugins offer for
-    ``url``."""
+async def _public_handlers(
+    db: graph.Graph,
+) -> list[tuple[str, type[base.DeploymentCapability]]]:
+    """Return the deployment handlers of the enabled plugins, by slug."""
     from imbi.api.plugins import lifecycle
 
-    readers: list[base.RepositoryReader] = []
+    handlers: list[tuple[str, type[base.DeploymentCapability]]] = []
     for entry in plugin_registry.list_plugins():
         capability = entry.manifest.get_capability(_CAPABILITY)
         if capability is None or not await lifecycle.is_plugin_enabled(
             db, entry.manifest.slug
         ):
             continue
-        handler = typing.cast(
-            'type[base.DeploymentCapability]', capability.handler
+        handlers.append(
+            (
+                entry.manifest.slug,
+                typing.cast(
+                    'type[base.DeploymentCapability]', capability.handler
+                ),
+            )
         )
+    return handlers
+
+
+def _public_readers(
+    handlers: list[tuple[str, type[base.DeploymentCapability]]], url: str
+) -> list[base.RepositoryReader]:
+    """Return the credential-free readers that the handlers offer for
+    ``url``."""
+    readers: list[base.RepositoryReader] = []
+    for slug, handler in handlers:
         try:
             reader = handler.public_reader(url)
-        except Exception as err:  # noqa: BLE001 - skip this plugin
+        except Exception as error:  # noqa: BLE001 - skip this plugin
             # Do not log credentials in the userinfo or query.
             parts = urllib.parse.urlsplit(url)
             safe_url = urllib.parse.urlunsplit(
@@ -529,9 +622,9 @@ async def _public_readers(
             )
             LOGGER.info(
                 'Plugin %s cannot offer a public reader for %s: %s',
-                entry.manifest.slug,
+                slug,
                 safe_url,
-                err,
+                error,
             )
             continue
         if reader is not None:
@@ -558,30 +651,33 @@ async def _handler(
     return typing.cast('base.DeploymentCapability', capability.handler())
 
 
-async def read_file(
-    db: graph.Graph, org_slug: str, url: str, ref: str, path: str
-) -> str | None:
-    """Return a repository file at ``ref``, or ``None`` when no reader
-    of the organization can read it."""
+def file_reader(readers: Readers, url: str, ref: str) -> FileReader:
+    """Return a reader of the repository files at ``ref``.
 
-    async def read(
-        handler: base.RepositoryReader,
-        ctx: base.PluginContext,
-        credentials: dict[str, str],
-    ) -> str | None:
-        return await handler.get_file(ctx, credentials, path, ref)
+    The reader returns ``None`` when a reader of the organization finds
+    no such file, and raises :class:`SyncError` when every reader fails.
+    """
 
-    try:
-        return await _read(db, org_slug, url, read, f'{path} not found')
-    except SyncError:
-        return None
+    async def read(path: str) -> str | None:
+        async def get_file(
+            handler: base.RepositoryReader,
+            ctx: base.PluginContext,
+            credentials: dict[str, str],
+        ) -> str | None:
+            return await handler.get_file(ctx, credentials, path, ref)
+
+        try:
+            return await _read(readers, url, get_file, f'{path} not found')
+        except NotFoundError:
+            return None
+        except SyncError as error:
+            raise SyncError(f'cannot read {path}: {error}') from error
+
+    return read
 
 
 async def _resolve(
-    db: graph.Graph,
-    org_slug: str,
-    marketplace: dict[str, typing.Any],
-    plugin: CatalogPlugin,
+    readers: Readers, marketplace: dict[str, typing.Any], plugin: CatalogPlugin
 ) -> None:
     """Resolve the commit of an external plugin."""
     if plugin.repository_url is None:
@@ -599,13 +695,13 @@ async def _resolve(
         plugin.repository_url = None
         return
     try:
-        plugin.repository_sha = await resolve_commit(db, org_slug, plugin)
-    except SyncError as err:
+        plugin.repository_sha = await resolve_commit(readers, plugin)
+    except SyncError as error:
         LOGGER.info(
             'Marketplace %s: cannot resolve plugin %s: %s',
             marketplace['slug'],
             plugin.name,
-            err,
+            error,
         )
 
 
@@ -622,8 +718,7 @@ def _location(
 
 
 async def _sync_plugin(
-    db: graph.Graph,
-    org_slug: str,
+    readers: Readers,
     marketplace: dict[str, typing.Any],
     head_sha: str,
     plugin: CatalogPlugin,
@@ -631,20 +726,60 @@ async def _sync_plugin(
 ) -> None:
     """Resolve the commit of a plugin and read its MCP servers.
 
-    The runner reads the entry of an external plugin from the plugin's
-    own repository, so only a plugin in the marketplace repository
-    falls back to ``entry_servers``.
+    As the runner does, an external plugin takes the entry for it from
+    the marketplace file of its own repository, never ``entry_servers``.
     """
-    await _resolve(db, org_slug, marketplace, plugin)
+    await _resolve(readers, marketplace, plugin)
     location = _location(plugin, str(marketplace['url']), head_sha)
     if location is None:
         return
     url, ref, directory = location
+    read = file_reader(readers, url, ref)
+
+    async def entry() -> object:
+        if plugin.path is not None:
+            return entry_servers
+        document = _document(await read(MARKETPLACE_FILE))
+        return _entry_servers(document, plugin.name)
+
     plugin.mcp_servers = await plugin_servers(
-        functools.partial(read_file, db, org_slug, url, ref),
+        read,
         directory,
-        entry_servers if plugin.path is not None else None,
+        entry,
+        f'Marketplace {marketplace["slug"]}, plugin {plugin.name}',
     )
+
+
+async def _sync_plugins(
+    readers: Readers,
+    marketplace: dict[str, typing.Any],
+    head_sha: str,
+    catalog: Catalog,
+) -> None:
+    """Resolve and read each plugin of a catalog, a few at a time.
+
+    Raises:
+        SyncError: A file of a plugin could not be read.
+
+    """
+    limit = asyncio.Semaphore(_CONCURRENCY)
+
+    async def sync_plugin(plugin: CatalogPlugin) -> None:
+        async with limit:
+            await _sync_plugin(
+                readers,
+                marketplace,
+                head_sha,
+                plugin,
+                catalog.entry_servers.get(plugin.name),
+            )
+
+    try:
+        async with asyncio.TaskGroup() as group:
+            for plugin in catalog.plugins:
+                group.create_task(sync_plugin(plugin))
+    except* SyncError as errors:
+        raise errors.exceptions[0] from None
 
 
 async def sync(
@@ -658,25 +793,13 @@ async def sync(
     A failure keeps the last catalog and sets ``sync_error``.
     """
     try:
-        head = await fetch(db, org_slug, str(marketplace['url']))
+        readers = await organization_readers(db, org_slug)
+        head = await fetch(readers, str(marketplace['url']))
         catalog = parse(head.text)
-    except SyncError as err:
-        changes: dict[str, typing.Any] = {'sync_error': str(err)[:2000]}
+        await _sync_plugins(readers, marketplace, head.sha, catalog)
+    except SyncError as error:
+        changes: dict[str, typing.Any] = {'sync_error': str(error)[:2000]}
     else:
-        limit = asyncio.Semaphore(_CONCURRENCY)
-
-        async def sync_plugin(plugin: CatalogPlugin) -> None:
-            async with limit:
-                await _sync_plugin(
-                    db,
-                    org_slug,
-                    marketplace,
-                    head.sha,
-                    plugin,
-                    catalog.entry_servers.get(plugin.name),
-                )
-
-        await asyncio.gather(*map(sync_plugin, catalog.plugins))
         changes = {
             'name': catalog.name,
             'description': catalog.description,
