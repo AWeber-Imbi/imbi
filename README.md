@@ -41,8 +41,8 @@ that fix them.
 
 ### Platform
 
-- **Integrations**: Plugins for GitHub, PagerDuty, SonarQube, Sentry, AWS,
-  Logz.io, Google, OIDC providers, Anthropic, and OpenAI
+- **Integrations**: Plugins for GitHub, PagerDuty, PostHog, SonarQube, Sentry,
+  AWS, Logz.io, Google, OIDC providers, Anthropic, and OpenAI
 - **Webhook Gateway**: Receives events and runs actions from webhook rules
 - **Authentication**: OAuth2/OIDC (Google, GitHub, Keycloak) + local auth
 
@@ -319,7 +319,7 @@ imbi/
 │   └── workflows/     # imbi-workflows — workflow engine (imbi.workflows)
 ├── plugins/           # imbi-plugin-* — first-party plugins (imbi.plugins.*)
 │   ├── anthropic/  aws/  github/  google/  logzio/  oidc/  openai/
-│   ├── pagerduty/  sentry/  sonarqube/
+│   ├── pagerduty/  posthog/  sentry/  sonarqube/
 ├── ui/                # React frontend (npm, not a uv member)
 ├── docs/              # unified Zensical site
 ├── pyproject.toml     # workspace root + the `imbi` meta-package

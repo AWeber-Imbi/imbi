@@ -42,6 +42,7 @@ import {
   GITHUB_PURPOSES,
   grantFor,
   ownGrant,
+  purposeSuggestions,
 } from './access'
 import type { SettingsDraft } from './agentDraft'
 import { Field } from './OverviewTab'
@@ -255,6 +256,7 @@ export function AccessTab({
             grant(binding, purpose, 'environment', done)
           }
           onRemove={canWrite ? (g) => revoke.mutate(g) : undefined}
+          purposes={purposeSuggestions(grants.data ?? [])}
           rows={rows}
         />
       )}
@@ -270,6 +272,7 @@ function AgentSecrets({
   isPending,
   onGrant,
   onRemove,
+  purposes,
   rows,
 }: {
   agent: { id: string; name: string }
@@ -280,6 +283,7 @@ function AgentSecrets({
   onGrant: (binding: SecretBinding, purpose: string, done: () => void) => void
   /** Unset when the user cannot remove access. */
   onRemove?: (grant: SecretGrant) => void
+  purposes: string[]
   rows: AccessRow[]
 }) {
   const [adding, setAdding] = useState(false)
@@ -352,10 +356,12 @@ function AgentSecrets({
               required: true,
             },
             {
-              description: 'What the agent uses it for, e.g. npm or sentry',
-              kind: 'text',
+              description:
+                'What the agent uses it for, e.g. npm or sentry. Pick one or type a new one.',
+              kind: 'combobox',
               label: 'Purpose',
               name: 'purpose',
+              options: purposes.map((p) => ({ label: p, value: p })),
               required: true,
             },
           ]}

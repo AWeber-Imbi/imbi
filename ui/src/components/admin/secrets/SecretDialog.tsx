@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Combobox } from '@/components/ui/combobox'
 import {
   Dialog,
   DialogContent,
@@ -27,7 +28,8 @@ import { canonical } from './types'
 
 /**
  * One form field. `list` is comma separated text sent as a string
- * array; `json` is a JSON object; `multi` is a set of checkboxes.
+ * array; `json` is a JSON object; `multi` is a set of checkboxes;
+ * `combobox` suggests its options and also takes a typed value.
  * A field with a `group` is sent in `body[group]`; a group with only
  * empty fields is sent as null, and its `required` fields are required
  * only when a field of the group has a value. A `createOnly` field is
@@ -38,7 +40,7 @@ interface FieldSpec {
   description?: string
   group?: string
   initial?: string | string[]
-  kind: 'json' | 'list' | 'multi' | 'number' | 'select' | 'text'
+  kind: 'combobox' | 'json' | 'list' | 'multi' | 'number' | 'select' | 'text'
   label: string
   name: string
   options?: readonly { label: string; value: string }[]
@@ -114,6 +116,18 @@ export function SecretDialog({
             ))}
           </SelectContent>
         </Select>
+      )
+    }
+    if (field.kind === 'combobox') {
+      return (
+        <Combobox
+          creatable
+          id={id}
+          onChange={(next) => set(field.name, next)}
+          options={field.options ?? []}
+          placeholder={`Select or type ${field.label.toLowerCase()}`}
+          value={value as string}
+        />
       )
     }
     if (field.kind === 'multi') {

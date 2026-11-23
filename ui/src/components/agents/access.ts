@@ -1,7 +1,8 @@
-import type {
-  SecretBinding,
-  SecretGrant,
-  SecretGrantCreate,
+import {
+  type SecretBinding,
+  type SecretGrant,
+  type SecretGrantCreate,
+  SETUP_PURPOSES,
 } from '@/components/admin/secrets/types'
 
 // The rules of the Access tab, without React: which grants apply to an
@@ -36,6 +37,9 @@ export const GITHUB_PURPOSES: {
     purpose: 'marketplace_fetch',
   },
 ]
+
+// RETIRED_PURPOSES in the broker, which refuses them.
+const RETIRED_PURPOSES = ['mcp_server']
 
 export interface AccessRow {
   binding: SecretBinding
@@ -129,4 +133,18 @@ export function ownGrant(
       g.delivery_modes[0] === mode &&
       g.project_ids.length === 0,
   )
+}
+
+/**
+ * The purposes to suggest for an agent grant: the GitHub App purposes
+ * and every purpose of the organization's grants, less the runner's
+ * setup purposes and the retired ones.
+ */
+export function purposeSuggestions(grants: SecretGrant[]): string[] {
+  const excluded = new Set<string>([...SETUP_PURPOSES, ...RETIRED_PURPOSES])
+  const purposes = [
+    ...GITHUB_PURPOSES.map((p) => p.purpose),
+    ...grants.flatMap((g) => g.purposes),
+  ]
+  return [...new Set(purposes)].filter((p) => !excluded.has(p)).sort()
 }

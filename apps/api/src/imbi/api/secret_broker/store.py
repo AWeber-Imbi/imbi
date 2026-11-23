@@ -542,19 +542,23 @@ class SecretStore:
         the projects, with ``environment`` delivery, on an enabled binding
         that allows it. The same rules as :func:`broker.evaluate`.
 
-        Each row has the ``reference``, and the ``description`` and
-        ``allowed_fields`` of its binding, as hints for the model.
+        Each row has the ``reference``, the ``description`` and
+        ``allowed_fields`` of its binding, and the ``purposes`` of those
+        grants, as hints for the model.
         """
         return await self._all(
-            'SELECT DISTINCT b.reference, b.description, b.allowed_fields'  # noqa: S608
+            'SELECT b.reference, b.description, b.allowed_fields,'  # noqa: S608
+            ' array_agg(DISTINCT p.purpose ORDER BY p.purpose) AS purposes'
             ' FROM secrets.grants g'
             ' JOIN secrets.bindings b ON b.id = ANY(g.binding_ids)'
+            ' CROSS JOIN LATERAL unnest(g.purposes) AS p(purpose)'
             ' WHERE g.organization_id = %(org)s AND g.enabled AND b.enabled'
             ' AND b.organization_id = g.organization_id'
             ' AND %(agent)s = ANY(g.agent_ids)'
             " AND 'environment' = ANY(g.delivery_modes)"
             " AND 'environment' = ANY(b.allowed_delivery_modes)"
-            ' AND ' + broker.PROJECTS_ALLOWED + ' ORDER BY b.reference',
+            ' AND ' + broker.PROJECTS_ALLOWED + ' GROUP BY b.reference,'
+            ' b.description, b.allowed_fields ORDER BY b.reference',
             {
                 'org': organization_id,
                 'agent': agent_id,

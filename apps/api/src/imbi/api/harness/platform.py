@@ -124,11 +124,13 @@ class AgentPlatformConfig(pydantic.BaseModel):
 
 class SecretReference(pydantic.BaseModel):
     """A secret reference that the agent may request, with the hints of
-    its binding for the model. Names only, never a value."""
+    its binding and the purposes of its grants for the model. Names
+    only, never a value."""
 
     reference: str
     description: str = ''
     allowed_fields: list[str] = []
+    purposes: list[str] = []
 
 
 class MergedConfig(pydantic.BaseModel):
