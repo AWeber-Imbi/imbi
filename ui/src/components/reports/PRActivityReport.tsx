@@ -63,7 +63,7 @@ export function PRActivityReport() {
       />
 
       {/* Table card */}
-      <div className="overflow-hidden rounded-lg border border-tertiary bg-primary">
+      <div className="border-tertiary bg-primary overflow-hidden rounded-lg border">
         <ActivityTableCard
           appliedSince={appliedSince}
           error={error}
@@ -81,7 +81,7 @@ function ActivityRowsSkeleton() {
     <table aria-busy className="w-full text-sm">
       <tbody>
         {Array.from({ length: 8 }, (_, i) => (
-          <tr className="border-b border-tertiary last:border-0" key={i}>
+          <tr className="border-tertiary border-b last:border-0" key={i}>
             <td className="px-[18px] py-2.5">
               <div className="flex items-center gap-2">
                 <Sk h={20} r={999} w={20} />
@@ -112,13 +112,13 @@ function ActivityTable({ rows }: { rows: PRActivityRow[] }) {
   return (
     <table className="w-full text-sm">
       <thead>
-        <tr className="border-b border-tertiary">
-          <th className="px-[18px] py-2.5 text-left text-overline font-normal tracking-wide text-tertiary uppercase">
+        <tr className="border-tertiary border-b">
+          <th className="text-overline text-tertiary px-[18px] py-2.5 text-left font-normal tracking-wide uppercase">
             Member
           </th>
           {COUNT_COLUMNS.map((col, c) => (
             <th
-              className={`w-32 text-overline text-tertiary ${countCellX(c)} py-2.5 text-right font-normal tracking-wide uppercase`}
+              className={`text-overline text-tertiary w-32 ${countCellX(c)} py-2.5 text-right font-normal tracking-wide uppercase`}
               key={col.key}
             >
               {col.label}
@@ -129,7 +129,7 @@ function ActivityTable({ rows }: { rows: PRActivityRow[] }) {
       <tbody>
         {rows.map((row, i) => (
           <tr
-            className={`border-tertiary transition-colors hover:bg-secondary ${
+            className={`border-tertiary hover:bg-secondary transition-colors ${
               i === rows.length - 1 ? 'border-0' : 'border-b'
             }`}
             key={row.login}
@@ -155,8 +155,8 @@ function ActivityTable({ rows }: { rows: PRActivityRow[] }) {
         ))}
       </tbody>
       <tfoot>
-        <tr className="border-t border-tertiary">
-          <td className="px-[18px] py-3 text-xs font-medium tracking-wide text-secondary uppercase">
+        <tr className="border-tertiary border-t">
+          <td className="text-secondary px-[18px] py-3 text-xs font-medium tracking-wide uppercase">
             Total ({rows.length})
           </td>
           {COUNT_COLUMNS.map((col, c) => (
@@ -189,7 +189,7 @@ function ActivityTableCard({
   if (loading) return <ActivityRowsSkeleton />
   if (error) {
     return (
-      <div className="py-10 text-center text-sm text-danger">
+      <div className="text-danger py-10 text-center text-sm">
         Failed to load PR activity.{' '}
         <button className="underline" onClick={() => void refetch()}>
           Retry
@@ -199,7 +199,7 @@ function ActivityTableCard({
   }
   if (rows.length === 0) {
     return (
-      <div className="py-10 text-center text-sm text-tertiary">
+      <div className="text-tertiary py-10 text-center text-sm">
         No pull request activity since {appliedSince}.
       </div>
     )
@@ -341,10 +341,10 @@ function Toolbar({
   since: string
 }) {
   return (
-    <div className="flex flex-wrap items-end gap-4 rounded-lg border border-tertiary bg-primary p-[18px]">
+    <div className="border-tertiary bg-primary flex flex-wrap items-end gap-4 rounded-lg border p-[18px]">
       <div className="flex flex-col gap-1">
         <label
-          className="text-overline tracking-wide text-tertiary uppercase"
+          className="text-overline text-tertiary tracking-wide uppercase"
           htmlFor="pr-activity-since"
         >
           Since (inclusive)
@@ -358,7 +358,7 @@ function Toolbar({
         />
       </div>
       <button
-        className="inline-flex h-8 items-center gap-1.5 rounded bg-warning px-3 text-xs font-medium text-warning transition-opacity hover:opacity-90 disabled:opacity-50"
+        className="bg-warning text-warning inline-flex h-8 items-center gap-1.5 rounded px-3 text-xs font-medium transition-opacity hover:opacity-90 disabled:opacity-50"
         disabled={!orgSlug || isFetching}
         onClick={() =>
           applySince(since, appliedSince, setAppliedSince, refetch)
@@ -368,14 +368,14 @@ function Toolbar({
         Fetch activity
       </button>
       <button
-        className="inline-flex h-8 items-center gap-1.5 rounded border border-tertiary px-3 text-xs text-primary transition-colors hover:bg-secondary disabled:opacity-50"
+        className="border-tertiary text-primary hover:bg-secondary inline-flex h-8 items-center gap-1.5 rounded border px-3 text-xs transition-colors disabled:opacity-50"
         disabled={rows.length === 0}
         onClick={() => exportCsv(rows, appliedSince)}
       >
         <Download size={11} />
         Download CSV
       </button>
-      <span className="ml-auto self-center text-xs text-tertiary">
+      <span className="text-tertiary ml-auto self-center text-xs">
         <StatusText data={data} error={error} isFetching={isFetching} />
       </span>
     </div>
