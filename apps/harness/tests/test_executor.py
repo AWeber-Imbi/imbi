@@ -236,6 +236,17 @@ class ExecutorTestCase(BaseTestCase):
         self.spawn.assert_not_called()
         self.api.release.assert_awaited_once()
 
+    async def test_nul_in_target_is_refused(self) -> None:
+        await self.hello()
+        self.api.materialize.return_value = {
+            'material': 'tok\0en',
+            'encoding': 'utf8',
+        }
+        reply = await self.executor.dispatch(request())
+        self.assertEqual(reply, {'error': 'nul_in_environment'})
+        self.spawn.assert_not_called()
+        self.api.release.assert_awaited_once()
+
     async def test_refused_handle_does_not_run(self) -> None:
         await self.hello()
         self.api.materialize.side_effect = api.Refused(

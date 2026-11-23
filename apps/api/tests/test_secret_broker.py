@@ -279,6 +279,32 @@ class EnvMembersTestCase(unittest.TestCase):
         )
 
 
+class SelectTargetMemberTestCase(unittest.TestCase):
+    def _selected(self, value: typing.Any, **row: typing.Any) -> bytes:
+        material = providers.Material(orjson.dumps(value))
+        broker.select_target_member(material, _row(**row))
+        return material.value
+
+    def test_target_named_after_a_string_member(self) -> None:
+        self.assertEqual(
+            self._selected({'GH_TOKEN': 'token', 'ORG': 'acme'}), b'token'
+        )
+
+    def test_keeps_the_whole_object(self) -> None:
+        document = {'GH_TOKEN': 'token', 'ORG': 'acme', 'PORT': 5432}
+        for value, row in (
+            (document, {'delivery_target': 'OTHER'}),
+            (document, {'delivery_target': 'PORT'}),
+            (document, {'field': 'GH_TOKEN'}),
+            (document, {'delivery_mode': 'stdin', 'delivery_target': None}),
+            (['GH_TOKEN'], {}),
+        ):
+            with self.subTest(row=row):
+                self.assertEqual(
+                    self._selected(value, **row), orjson.dumps(value)
+                )
+
+
 class CreateResolutionTestCase(secret_support.SecretCase):
     async def _denied(
         self,
@@ -988,6 +1014,19 @@ class MaterializeTestCase(secret_support.SecretCase):
             result.body()['members'], {'SENTRY_AUTH_TOKEN': MATERIAL}
         )
         self.assertNotIn(MATERIAL, repr(result))
+
+    async def test_target_named_after_a_member_gets_the_member(self) -> None:
+        self.fake.values['plain'] = orjson.dumps(
+            {'SENTRY_AUTH_TOKEN': MATERIAL, 'SENTRY_ORG': 'acme'}
+        )
+        created = await self._create(delivery_target='SENTRY_AUTH_TOKEN')
+        body = (
+            await self.broker.materialize(
+                self.executor(), self.materialize_request(created.handle)
+            )
+        ).body()
+        self.assertEqual(body['material'], MATERIAL)
+        self.assertEqual(body['members'], {'SENTRY_ORG': 'acme'})
 
     async def test_fields_need_a_json_object(self) -> None:
         await self.store.update(
