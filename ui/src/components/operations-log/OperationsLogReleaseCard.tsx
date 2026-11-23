@@ -16,7 +16,7 @@ import { useTheme } from '@/contexts/ThemeContext'
 import { usePluginOpsLogTemplates } from '@/hooks/usePluginOpsLogTemplates'
 import { deriveChipColors } from '@/lib/chip-colors'
 import { cn } from '@/lib/utils'
-import type { Environment, Project } from '@/types'
+import type { Agent, Environment, Project } from '@/types'
 
 import { OperationsLogEntryDetails } from './OperationsLogEntryDetails'
 import { absTime, cleanName, type ReleaseGroup, relTime } from './opsLogHelpers'
@@ -25,6 +25,7 @@ import { OPS_ROW_GRID, OPS_ROW_PAD } from './opsRowLayout'
 import { renderEntryLabel } from './renderEntryLabel'
 
 interface Props {
+  agentMap: Map<string, Agent>
   environmentsBySlug: Map<string, Environment>
   group: ReleaseGroup
   id: string
@@ -35,6 +36,7 @@ interface Props {
 }
 
 export const OperationsLogReleaseCard = memo(function OperationsLogReleaseCard({
+  agentMap,
   environmentsBySlug,
   group,
   id,
@@ -166,7 +168,11 @@ export const OperationsLogReleaseCard = memo(function OperationsLogReleaseCard({
         >
           <ReleaseTrain size="compact" stops={trainStops} />
         </span>
-        <OpsLogPerformer displayName={displayName} performer={performer} />
+        <OpsLogPerformer
+          agent={agentMap.get(performer)}
+          displayName={displayName}
+          performer={performer}
+        />
         <TooltipProvider delayDuration={250}>
           <Tooltip>
             <TooltipTrigger asChild>

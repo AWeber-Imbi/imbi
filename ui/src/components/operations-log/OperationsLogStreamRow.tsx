@@ -13,7 +13,7 @@ import { usePluginOpsLogTemplates } from '@/hooks/usePluginOpsLogTemplates'
 import { deriveChipColors } from '@/lib/chip-colors'
 import { ENTRY_TYPE_ICONS } from '@/lib/ops-log-icons'
 import { cn } from '@/lib/utils'
-import type { Environment, OperationsLogRecord, Project } from '@/types'
+import type { Agent, Environment, OperationsLogRecord, Project } from '@/types'
 
 import { OperationsLogEntryDetails } from './OperationsLogEntryDetails'
 import { absTime, cleanDescription, relTime } from './opsLogHelpers'
@@ -23,6 +23,7 @@ import { parseDescription } from './parseDescription'
 import { renderOpsLogLabel } from './renderOpsLogTemplate'
 
 interface Props {
+  agentMap: Map<string, Agent>
   entry: OperationsLogRecord
   environment?: Environment
   id: string
@@ -33,6 +34,7 @@ interface Props {
 }
 
 export const OperationsLogStreamRow = memo(function OperationsLogStreamRow({
+  agentMap,
   entry,
   environment,
   id,
@@ -169,7 +171,11 @@ export const OperationsLogStreamRow = memo(function OperationsLogStreamRow({
             {envDisplay}
           </span>
         </span>
-        <OpsLogPerformer displayName={displayName} performer={performer} />
+        <OpsLogPerformer
+          agent={agentMap.get(performer)}
+          displayName={displayName}
+          performer={performer}
+        />
         <TooltipProvider delayDuration={250}>
           <Tooltip>
             <TooltipTrigger asChild>
