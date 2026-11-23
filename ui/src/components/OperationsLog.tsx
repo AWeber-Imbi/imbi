@@ -5,6 +5,7 @@ import { useWindowVirtualizer } from '@tanstack/react-virtual'
 import { Activity, LoaderCircle, SearchX, X } from 'lucide-react'
 
 import { getProjects } from '@/api/endpoints'
+import { useAgentLookup } from '@/components/agents/agentQueries'
 import { Button } from '@/components/ui/button'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useInfiniteOperationsLog } from '@/hooks/useInfiniteOperationsLog'
@@ -188,10 +189,17 @@ export function OperationsLog({
     refetch: refetchEnvironments,
   } = useEnvironments(orgSlug)
   const {
-    displayNames: performerDisplayNames,
+    displayNames: userDisplayNames,
     isError: usersError,
     refetch: refetchUsers,
   } = useUserDisplayNames()
+  // Agent ticket rows record the agent's id as the performer.
+  const { agentMap } = useAgentLookup(orgSlug)
+  const performerDisplayNames = useMemo(() => {
+    const m = new Map(userDisplayNames)
+    for (const [key, agent] of agentMap) m.set(key, agent.name)
+    return m
+  }, [userDisplayNames, agentMap])
   // Metadata queries back the filter dropdowns and the slug→name
   // lookups. When any of them fail we surface a non-blocking banner so
   // the user can retry rather than silently falling back to raw slugs.
@@ -662,6 +670,7 @@ export function OperationsLog({
                           style={{ transform: `translateY(${v.start}px)` }}
                         >
                           <OperationsLogFeedItem
+                            agentMap={agentMap}
                             environmentsBySlug={environmentsBySlug}
                             groupsById={groupsById}
                             performerDisplayNames={performerDisplayNames}
