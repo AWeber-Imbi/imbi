@@ -169,17 +169,13 @@ _RULES = """\
 - The `purpose` of a secret is one of the purposes listed for its
   reference below, not a description. For `git push` and `gh` with the
   GitHub token, use `github_write` when it is listed.
-- When a secret is a JSON object, each string member with an
-  upper-case name, such as `SENTRY_ORG`, also goes into the environment
-  with its own name, unless you request one member with `#<field>`.
-  Without `#<field>`, the variable named in `env` holds the string
-  member with that name, or the whole JSON object when no member has
-  it. To read a member with any other name, such as `api-key`, parse
-  that whole JSON object.
-- For one value of a secret listed with fields, request that member,
-  for example `secret://sentry/api#SENTRY_AUTH_TOKEN` with `env`
-  `SENTRY_AUTH_TOKEN`. A secret listed without fields refuses
-  `#<field>`. The tool result names each variable that it set.
+- When a secret is a JSON object, set `env` to the name of the member
+  you need, such as `SENTRY_AUTH_TOKEN`: that variable holds the
+  member, and each other string member with an upper-case name gets
+  its own variable. When the secret lists fields, add `#<field>` to the
+  reference to get that member alone. When `env` names no member, the
+  variable holds the whole JSON object. The tool result names each
+  variable that it set.
 - The secret references that you may request:{secrets}
 - Use `attach_project` to add a project of the organization to this
   task, by id or slug, when the work needs its repository. The next
