@@ -92,7 +92,7 @@ function TimeField({
   value: string
 }) {
   return (
-    <Field>
+    <Field className="*:w-fit">
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
       <TimeInput id={id} onChange={onChange} value={value} />
     </Field>

@@ -125,7 +125,7 @@ export function DatePicker({
       <InputGroupInput
         aria-invalid={invalid || undefined}
         aria-label={ariaLabel}
-        className="w-26 flex-none"
+        className="w-[calc(6.3em+1rem)] flex-none"
         disabled={disabled}
         id={id}
         onBlur={commit}
@@ -236,7 +236,7 @@ export function TimeInput({
       <InputGroupInput
         aria-invalid={invalid || undefined}
         aria-label={ariaLabel}
-        className="w-16 flex-none"
+        className="w-[calc(3.5em+1rem)] flex-none"
         disabled={disabled}
         id={id}
         inputMode="numeric"
