@@ -145,7 +145,7 @@ def check(  # noqa: PLR0913 - keyword-only inputs
         return Check(deny='environment_not_allowed')
     rules = _rule_names(name, key, plugin)
     if batch:
-        rules.add(CHILD_TASKS)
+        rules |= {CHILD_TASKS, 'imbi.create_child_tasks'}
     return Check(
         approval=bool(config.get('approval'))
         or (automation and bool(rules & set(approval_tools))),
