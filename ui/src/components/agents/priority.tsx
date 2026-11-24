@@ -3,6 +3,7 @@ import {
   SegmentedControl,
   SegmentedControlItem,
 } from '@/components/ui/segmented-control'
+import { cn } from '@/lib/utils'
 import type { Ticket } from '@/types'
 
 export type Priority = Ticket['priority']
@@ -35,10 +36,12 @@ export function PriorityBadge({ priority }: { priority: Priority }) {
 
 /** Choose one priority. */
 export function PriorityPicker({
+  className,
   disabled,
   onChange,
   value,
 }: {
+  className?: string
   disabled?: boolean
   onChange: (p: Priority) => void
   value: Priority
@@ -46,7 +49,7 @@ export function PriorityPicker({
   return (
     <SegmentedControl
       ariaLabel="Priority"
-      className="font-sans"
+      className={cn('font-sans', className)}
       onValueChange={(v) => onChange(v as Priority)}
       value={value}
     >

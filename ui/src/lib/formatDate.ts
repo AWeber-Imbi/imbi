@@ -90,6 +90,11 @@ export function formatDateTime(
   }
 }
 
+export function formatDayField(date: Date): string {
+  const two = (n: number) => String(n).padStart(2, '0')
+  return `${two(date.getMonth() + 1)}/${two(date.getDate())}/${date.getFullYear()}`
+}
+
 /**
  * Format an ISO date string as a relative time (e.g. "2h ago", "3mo ago").
  * Returns '—' for null/undefined values.

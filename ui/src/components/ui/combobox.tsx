@@ -24,6 +24,7 @@ export interface ComboboxOption {
 }
 
 interface ComboboxProps {
+  className?: string
   creatable?: boolean
   disabled?: boolean
   /** Set on the trigger so a `<Label htmlFor>` names the combobox. */
@@ -41,6 +42,7 @@ const trimmedFilter = (
 ): number => defaultFilter(value, search.trim(), keywords)
 
 export function Combobox({
+  className,
   creatable = false,
   disabled = false,
   id,
@@ -76,6 +78,7 @@ export function Combobox({
             'flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-none',
             !selectedLabel && 'text-muted-foreground',
             disabled && 'cursor-not-allowed opacity-50',
+            className,
           )}
           disabled={disabled}
           id={id}

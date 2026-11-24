@@ -24,8 +24,7 @@ describe('InlineDate', () => {
   // other on commit, so both ends are pinned here.
   it('displays a date-only value on the day it names', () => {
     render(<InlineDate mode="date" onCommit={vi.fn()} value="2026-05-10" />)
-    const expected = new Date(2026, 4, 10).toLocaleDateString()
-    expect(screen.getByText(expected)).toBeInTheDocument()
+    expect(screen.getByText('05/10/2026')).toBeInTheDocument()
   })
 
   it('commits the selected day without shifting it', async () => {

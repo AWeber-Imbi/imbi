@@ -5,6 +5,7 @@ import { Download, RefreshCw } from 'lucide-react'
 
 import { getPRActivity } from '@/api/endpoints'
 import type { PRActivityResponse, PRActivityRow } from '@/api/endpoints'
+import { DatePicker } from '@/components/ui/date-picker'
 import { Sk } from '@/components/ui/skeleton'
 import { UserIdentity } from '@/components/ui/user-identity'
 import { useOrganization } from '@/contexts/OrganizationContext'
@@ -341,17 +342,20 @@ function Toolbar({
 }) {
   return (
     <div className="border-tertiary bg-primary flex flex-wrap items-end gap-4 rounded-lg border p-[18px]">
-      <label className="flex flex-col gap-1">
-        <span className="text-overline text-tertiary tracking-wide uppercase">
+      <div className="flex flex-col gap-1">
+        <label
+          className="text-overline text-tertiary tracking-wide uppercase"
+          htmlFor="pr-activity-since"
+        >
           Since (inclusive)
-        </span>
-        <input
-          className="border-tertiary bg-tertiary text-primary h-8 rounded border px-2 font-mono text-xs"
-          onChange={(e) => onSinceChange(e.target.value)}
-          type="date"
+        </label>
+        <DatePicker
+          id="pr-activity-since"
+          onChange={onSinceChange}
+          required
           value={since}
         />
-      </label>
+      </div>
       <button
         className="bg-warning text-warning inline-flex h-8 items-center gap-1.5 rounded px-3 text-xs font-medium transition-opacity hover:opacity-90 disabled:opacity-50"
         disabled={!orgSlug || isFetching}

@@ -43,6 +43,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { DatePicker } from '@/components/ui/date-picker'
 import { Input } from '@/components/ui/input'
 import {
   Popover,
@@ -409,6 +410,7 @@ function OverviewTab({
         canManage && task.status !== 'closed' ? (
           <>
             <PriorityPicker
+              className="h-8 *:h-full *:py-0"
               disabled={priority.isPending}
               onChange={(to) => priority.mutate(to)}
               value={task.priority}
@@ -427,6 +429,7 @@ function OverviewTab({
       name: 'Type',
       value: editable ? (
         <TypePicker
+          className="h-8 *:h-full *:py-0"
           disabled={update.isPending}
           onChange={(type) => update.mutate({ type })}
           value={task.type}
@@ -438,20 +441,13 @@ function OverviewTab({
     {
       name: 'Due',
       value: editable ? (
-        <Input
+        <DatePicker
           aria-label="Due date"
-          className="h-8 w-40 text-sm"
-          defaultValue={task.due_date ?? ''}
+          className="font-sans"
           disabled={update.isPending}
-          key={task.due_date}
-          // On blur, not on change: a date input changes on each typed
-          // digit of the year.
-          onBlur={(e) => {
-            const due = e.target.value || null
-            if (due !== (task.due_date ?? null))
-              update.mutate({ due_date: due })
-          }}
-          type="date"
+          disablePast
+          onChange={(due) => update.mutate({ due_date: due || null })}
+          value={task.due_date ?? ''}
         />
       ) : task.due_date ? (
         <DueDate due={task.due_date} />
@@ -463,6 +459,7 @@ function OverviewTab({
       name: 'Team',
       value: editable ? (
         <TeamPicker
+          className="h-8 w-full max-w-60 font-sans"
           disabled={update.isPending}
           onChange={(slug) => update.mutate({ team: slug || null })}
           orgSlug={orgSlug}
@@ -515,7 +512,7 @@ function OverviewTab({
     <div className="flex flex-col gap-4 px-6 py-5">
       <Card className="p-5">
         <h3 className="text-overline text-tertiary mb-4 uppercase">Details</h3>
-        <dl className="grid grid-cols-2 gap-x-8 gap-y-5 md:grid-cols-3 xl:grid-cols-5">
+        <dl className="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-x-8 gap-y-5">
           {rows.map((row) => (
             <div className="flex min-w-0 flex-col gap-1" key={row.name}>
               <dt className="text-overline text-tertiary uppercase">

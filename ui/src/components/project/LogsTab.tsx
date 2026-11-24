@@ -50,9 +50,12 @@ import {
 } from '@/components/ui/tooltip'
 import { useTheme } from '@/contexts/ThemeContext'
 import { deriveChipColors } from '@/lib/chip-colors'
+import { formatDayField } from '@/lib/formatDate'
 import { storage } from '@/lib/storage'
 import { sortEnvironments } from '@/lib/utils'
 import type { Environment, LogEntryResponse } from '@/types'
+
+import { LogsRangePicker } from './LogsRangePicker'
 
 // ── Types & Interfaces (alphabetical) ─────────────────────────────────────
 type DetailTab = 'json' | 'stack' | 'table'
@@ -280,8 +283,6 @@ export function LogsTab({
   const [selectedBucket, setSelectedBucket] = useState<null | number>(null)
   const [cursor, setCursor] = useState<null | string>(null)
   const [accEntries, setAccEntries] = useState<LogEntryResponse[]>([])
-  const [startInput, setStartInput] = useState('')
-  const [endInput, setEndInput] = useState('')
   const [source, setSource] = useState<string | undefined>()
 
   // Virtual scroll
@@ -700,7 +701,7 @@ export function LogsTab({
       {/* Query bar */}
       <div className="bg-tertiary flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2.5">
         {/* Search box */}
-        <div className="bg-primary focus-within:border-action focus-within:ring-action/20 flex min-w-64 flex-1 items-center gap-2 rounded border px-2.5 py-1.5 focus-within:ring-1">
+        <div className="bg-primary focus-within:border-action focus-within:ring-action/20 flex min-w-48 flex-1 items-center gap-2 rounded border px-2.5 py-1.5 focus-within:ring-1">
           <Search className="text-tertiary" size={13} />
           <input
             className="text-primary placeholder:text-tertiary flex-1 bg-transparent font-mono text-xs outline-none"
@@ -762,45 +763,17 @@ export function LogsTab({
                 : fmtRangeLabel(datetimes.start, datetimes.end)}
             </Button>
           </PopoverTrigger>
-          <PopoverContent align="start" className="min-w-72 p-3">
-            <div className="text-tertiary mb-2 text-[10px] font-semibold tracking-wide uppercase">
-              Custom range
-            </div>
-            <div className="mb-3 flex gap-2">
-              <input
-                className="bg-tertiary text-primary focus:border-action flex-1 rounded border px-2 py-1 font-mono text-xs outline-none"
-                onChange={(e) => setStartInput(e.target.value)}
-                type="datetime-local"
-                value={startInput}
-              />
-              <input
-                className="bg-tertiary text-primary focus:border-action flex-1 rounded border px-2 py-1 font-mono text-xs outline-none"
-                onChange={(e) => setEndInput(e.target.value)}
-                type="datetime-local"
-                value={endInput}
-              />
-            </div>
-            <div className="flex justify-end gap-2 border-t pt-2">
-              <Button
-                className="h-auto px-0 text-xs"
-                onClick={() => setDatePickerOpen(false)}
-                variant="link"
-              >
-                Cancel
-              </Button>
-              <Button
-                className="h-auto px-2.5 py-1 text-xs"
-                onClick={() => {
-                  if (startInput && endInput) {
-                    setCustomStart(new Date(startInput))
-                    setCustomEnd(new Date(endInput))
-                  }
-                  setDatePickerOpen(false)
-                }}
-              >
-                Apply
-              </Button>
-            </div>
+          <PopoverContent align="start" className="w-auto p-0">
+            <LogsRangePicker
+              end={new Date(datetimes.end)}
+              onApply={(from, to) => {
+                setCustomStart(from)
+                setCustomEnd(to)
+                setDatePickerOpen(false)
+              }}
+              onCancel={() => setDatePickerOpen(false)}
+              start={new Date(datetimes.start)}
+            />
           </PopoverContent>
         </Popover>
 
@@ -1116,11 +1089,16 @@ function fmtBucketInterval(seconds: number): string {
 }
 
 function fmtRangeLabel(start: string, end: string): string {
+  const day = (d: Date) =>
+    formatDayField(
+      new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()),
+    )
+  const time = (d: Date) =>
+    `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`
   const s = new Date(start)
   const e = new Date(end)
-  const fmt = (d: Date) =>
-    `${d.toUTCString().slice(5, 11)} ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`
-  return `${fmt(s)} → ${fmt(e)} UTC`
+  const to = day(s) === day(e) ? time(e) : `${day(e)} ${time(e)}`
+  return `${day(s)} ${time(s)} - ${to} UTC`
 }
 
 function fmtTimestamp(ts: string) {
