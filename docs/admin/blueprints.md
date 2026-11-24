@@ -136,9 +136,14 @@ deployment in the release endpoints):
 ```
 
 A `PATCH` fails with `422` when no matching blueprint declares a
-property, or when a value does not agree with its schema. Imbi does not
-enforce required properties on deployments, because deployments are
-also created with no person or agent present.
+property, or when a value does not agree with its schema. One
+exception: Imbi does not check the items of an array of objects
+against the item schema, so an agent must not rely on that check.
+Imbi does not enforce required properties on deployments, because
+deployments are also created with no person or agent present.
+
+Concurrent `PATCH` requests on one deployment occur one at a time, so
+no change is lost.
 
 ## Updating Blueprints
 

@@ -1114,27 +1114,34 @@ async def get_fields(
     )
 
 
-async def set_fields(
-    db: graph.Graph, deployment_id: str, changes: dict[str, typing.Any]
+async def update_fields(
+    db: graph.Graph,
+    deployment_id: str,
+    update: abc.Callable[[dict[str, typing.Any]], dict[str, typing.Any]],
 ) -> dict[str, typing.Any]:
-    """Apply ``changes`` to the blueprint properties of a ``Deployment``
-    node and return the result. A ``None`` value removes the property.
+    """Replace the blueprint properties of a ``Deployment`` node with
+    ``update(stored)`` and return the result.
+
+    The read and the write occur in one transaction under a lock on the
+    deployment, so concurrent updates occur one at a time and each one
+    gets the result of the update before it. An exception from
+    ``update`` rolls back and writes nothing.
     """
-    rows = await db.execute(
-        'MATCH (d:Deployment {{id: {deployment_id}}}) '
-        'RETURN d.fields AS fields',
-        {'deployment_id': deployment_id},
-        ['fields'],
-    )
-    fields = _decode(rows[0]['fields']) if rows else {}
-    for name, value in changes.items():
-        if value is None:
-            fields.pop(name, None)
-        else:
-            fields[name] = value
-    await db.execute(
-        _SET_FIELDS_QUERY,
-        {'deployment_id': deployment_id, 'fields': json.dumps(fields)},
-        ['id'],
-    )
-    return fields
+
+    async def work(execute: graph.CypherExecute) -> dict[str, typing.Any]:
+        params = {'deployment_id': deployment_id}
+        rows = await execute(
+            'MATCH (d:Deployment {{id: {deployment_id}}}) '
+            'RETURN d.fields AS fields',
+            params,
+            ['fields'],
+        )
+        fields = update(_decode(rows[0]['fields']) if rows else {})
+        await execute(
+            _SET_FIELDS_QUERY,
+            {**params, 'fields': json.dumps(fields)},
+            ['id'],
+        )
+        return fields
+
+    return await db.locked(f'deployment-fields:{deployment_id}', work)

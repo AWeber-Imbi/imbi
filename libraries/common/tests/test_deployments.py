@@ -7,6 +7,7 @@ connection would not exercise.
 
 """
 
+import asyncio
 import datetime
 import typing
 import unittest
@@ -1116,16 +1117,23 @@ class FieldsTests(DeploymentNodeTestCase):
         args.update(kwargs)
         return await deployments.get_fields(self.graph, **args)
 
+    async def set_fields(
+        self, deployment_id: str, changes: dict[str, typing.Any]
+    ) -> dict[str, typing.Any]:
+        def update(stored: dict[str, typing.Any]) -> dict[str, typing.Any]:
+            merged = {**stored, **changes}
+            return {k: v for k, v in merged.items() if v is not None}
+
+        return await deployments.update_fields(
+            self.graph, deployment_id, update
+        )
+
     async def test_set_and_read_back(self) -> None:
         result = await self.upsert()
         assert result is not None
         snapshots = {'2026-11-24T10:00:00Z': {'error_count': 3}}
-        await deployments.set_fields(
-            self.graph, result.id, {'monitoring': snapshots}
-        )
-        stored = await deployments.set_fields(
-            self.graph, result.id, {'verdict': 'healthy'}
-        )
+        await self.set_fields(result.id, {'monitoring': snapshots})
+        stored = await self.set_fields(result.id, {'verdict': 'healthy'})
         expected = {'monitoring': snapshots, 'verdict': 'healthy'}
         self.assertEqual(stored, expected)
         node = await self.fields(result.id)
@@ -1140,11 +1148,35 @@ class FieldsTests(DeploymentNodeTestCase):
     async def test_none_removes_the_property(self) -> None:
         result = await self.upsert()
         assert result is not None
-        await deployments.set_fields(self.graph, result.id, {'verdict': 'x'})
-        await deployments.set_fields(self.graph, result.id, {'verdict': None})
+        await self.set_fields(result.id, {'verdict': 'x'})
+        await self.set_fields(result.id, {'verdict': None})
         node = await self.fields(result.id)
         assert node is not None
         self.assertEqual(node.fields, {})
+
+    async def test_concurrent_updates_keep_every_change(self) -> None:
+        result = await self.upsert()
+        assert result is not None
+        await asyncio.gather(
+            *(self.set_fields(result.id, {f'k{i}': i}) for i in range(5))
+        )
+        node = await self.fields(result.id)
+        assert node is not None
+        self.assertEqual(node.fields, {f'k{i}': i for i in range(5)})
+
+    async def test_an_update_that_raises_writes_nothing(self) -> None:
+        result = await self.upsert()
+        assert result is not None
+        await self.set_fields(result.id, {'verdict': 'x'})
+
+        def fail(stored: dict[str, typing.Any]) -> dict[str, typing.Any]:
+            raise ValueError(stored)
+
+        with self.assertRaises(ValueError):
+            await deployments.update_fields(self.graph, result.id, fail)
+        node = await self.fields(result.id)
+        assert node is not None
+        self.assertEqual(node.fields, {'verdict': 'x'})
 
     async def test_other_org_or_environment_is_none(self) -> None:
         result = await self.upsert()

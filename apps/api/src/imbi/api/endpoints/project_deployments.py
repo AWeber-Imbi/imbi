@@ -3283,21 +3283,28 @@ async def patch_deployment_fields(
             schema.
 
     """
-    # ponytail: read-modify-write, so two concurrent patches of the
-    # same deployment can lose one change. Add a compare-and-set on
-    # the stored value if agents write one deployment in parallel.
     response, matches = await _deployment_fields(
         db, org_slug, project_id, env_slug, deployment_id
     )
-    merged = _merge_patch(response.fields, body)
-    clean = custom_fields.validate(
-        matches,
-        {name: merged.get(name) for name in body},
-        partial=True,
-        noun='deployment',
-    )
-    # A value that no matching blueprint declares now stays stored.
-    stored = await deployment_nodes.set_fields(db, deployment_id, clean)
+
+    def update(stored: dict[str, typing.Any]) -> dict[str, typing.Any]:
+        # Merge into the stored values, not the defaults, so that a
+        # default is never written as a recorded fact.
+        merged = _merge_patch(stored, body)
+        clean = custom_fields.validate(
+            matches,
+            {name: merged.get(name) for name in body},
+            partial=True,
+            noun='deployment',
+        )
+        # A value that no matching blueprint declares now stays stored.
+        return {
+            name: value
+            for name, value in {**stored, **clean}.items()
+            if value is not None
+        }
+
+    stored = await deployment_nodes.update_fields(db, deployment_id, update)
     response.fields = _with_defaults(matches, stored)
     return response
 

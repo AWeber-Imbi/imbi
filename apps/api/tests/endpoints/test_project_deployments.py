@@ -4780,8 +4780,15 @@ class DeploymentFieldsRouteTestCase(ProjectDeploymentsTestCase):
             'monitoring': {'t1': {'error_count': 1}},
         }
         self.matches = [self.blueprint]
-        self.set_fields = mock.AsyncMock(return_value={})
+        self.written: list[dict[str, typing.Any]] = []
         self.context: list[typing.Any] = []
+
+        async def update_fields(
+            db: typing.Any, deployment_id: str, update: typing.Any
+        ) -> dict[str, typing.Any]:
+            fields = update(dict(self.stored))
+            self.written.append(fields)
+            return fields
 
         async def get_fields(
             db: typing.Any, **kwargs: typing.Any
@@ -4800,7 +4807,7 @@ class DeploymentFieldsRouteTestCase(ProjectDeploymentsTestCase):
 
         for target, new in (
             ('imbi.common.deployments.get_fields', get_fields),
-            ('imbi.common.deployments.set_fields', self.set_fields),
+            ('imbi.common.deployments.update_fields', update_fields),
             ('imbi.common.blueprints.matching_blueprints', matching),
         ):
             patcher = mock.patch(target, new)
@@ -4839,15 +4846,29 @@ class DeploymentFieldsRouteTestCase(ProjectDeploymentsTestCase):
                 self._URL, json={'monitoring': {'t2': {'error_count': 7}}}
             )
         self.assertEqual(response.status_code, 200, response.text)
-        self.set_fields.assert_awaited_once_with(
-            self.mock_db,
-            'dep-1',
-            {
-                'monitoring': {
-                    't1': {'error_count': 1},
-                    't2': {'error_count': 7},
+        self.assertEqual(
+            [
+                {
+                    'monitoring': {
+                        't1': {'error_count': 1},
+                        't2': {'error_count': 7},
+                    }
                 }
-            },
+            ],
+            self.written,
+        )
+
+    def test_patch_never_stores_a_default(self) -> None:
+        props = self.blueprint.json_schema.properties or {}
+        props['monitoring'].default = {'t0': {'error_count': 0}}
+        self.stored = {}
+        with testclient.TestClient(self.test_app) as client:
+            response = client.patch(
+                self._URL, json={'monitoring': {'t2': {'error_count': 7}}}
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            [{'monitoring': {'t2': {'error_count': 7}}}], self.written
         )
 
     def test_patch_null_removes_a_key(self) -> None:
@@ -4856,12 +4877,10 @@ class DeploymentFieldsRouteTestCase(ProjectDeploymentsTestCase):
                 self._URL, json={'monitoring': {'t1': None}, 'verdict': None}
             )
         self.assertEqual(response.status_code, 200, response.text)
-        self.set_fields.assert_awaited_once_with(
-            self.mock_db, 'dep-1', {'monitoring': {}, 'verdict': None}
-        )
-        # set_fields returns {}, so each property shows its default.
+        self.assertEqual([{'monitoring': {}}], self.written)
+        # verdict is removed, so it shows its default.
         self.assertEqual(
-            {'monitoring': None, 'verdict': 'healthy'},
+            {'monitoring': {}, 'verdict': 'healthy'},
             response.json()['fields'],
         )
 
@@ -4874,20 +4893,20 @@ class DeploymentFieldsRouteTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(
             'custom_fields_invalid', response.json()['detail']['error']
         )
-        self.set_fields.assert_not_awaited()
+        self.assertEqual([], self.written)
 
     def test_patch_undeclared_property_is_422(self) -> None:
         with testclient.TestClient(self.test_app) as client:
             response = client.patch(self._URL, json={'surprise': 1})
         self.assertEqual(response.status_code, 422, response.text)
-        self.set_fields.assert_not_awaited()
+        self.assertEqual([], self.written)
 
     def test_patch_without_a_blueprint_is_422(self) -> None:
         self.matches = []
         with testclient.TestClient(self.test_app) as client:
             response = client.patch(self._URL, json={'verdict': 'healthy'})
         self.assertEqual(response.status_code, 422, response.text)
-        self.set_fields.assert_not_awaited()
+        self.assertEqual([], self.written)
 
 
 class PromoteReclaimGuardTestCase(unittest.IsolatedAsyncioTestCase):
