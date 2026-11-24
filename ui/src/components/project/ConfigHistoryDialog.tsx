@@ -56,6 +56,9 @@ export function ConfigHistoryDialog({
     queryFn: () =>
       fetchConfigurationHistory(orgSlug, projectId, paramKey, params),
     queryKey,
+    // Refetch on every open: any save, type change, or edit outside
+    // Imbi adds a version, and no write path has to invalidate this.
+    staleTime: 0,
   })
 
   const restore = useMutation({
