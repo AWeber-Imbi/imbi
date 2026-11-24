@@ -167,6 +167,8 @@ The bot also needs `POSTGRES_URL` (the graph, to find users), `VALKEY_URL`
 (the forms that it posts), and `IMBI_AUTH_JWT_SECRET`. Use the same JWT
 secret as imbi-api. With a different secret, imbi-api refuses every tool
 call.
+It decrypts the credentials of MCP servers with
+`IMBI_CONFIG_ENCRYPTION_KEY`. Use the same key as imbi-api.
 
 When the bot is off, or a Slack token is missing, the service starts but
 does not connect to Slack.
