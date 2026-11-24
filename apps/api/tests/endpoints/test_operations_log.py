@@ -11,6 +11,7 @@ from fastapi import testclient
 
 from apps.api.tests import support
 from imbi.api import models as api_models
+from imbi.api.auth import organizations as org_auth
 from imbi.api.auth import permissions as api_permissions
 from imbi.api.endpoints import operations_log
 from imbi.common import clickhouse as imbi_clickhouse
@@ -80,6 +81,9 @@ class _OpsLogTestBase(support.SharedAppTestCase):
         async def _current_user() -> api_permissions.AuthContext:
             return self.auth_context
 
+        self.test_app.dependency_overrides[org_auth.member_project_org_id] = (
+            lambda: 'org-1'
+        )
         self.test_app.dependency_overrides[
             api_permissions.get_current_user
         ] = _current_user

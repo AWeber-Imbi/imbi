@@ -12,6 +12,7 @@ import fastapi.testclient
 
 from apps.api.tests import support
 from imbi.api import models
+from imbi.api.auth import organizations as org_auth
 from imbi.api.endpoints import projects, releases
 from imbi.common import deployments as deployment_nodes
 from imbi.common import graph
@@ -90,6 +91,9 @@ class _ReleasesTestBase(support.SharedAppTestCase):
         async def _current_user() -> permissions.AuthContext:
             return self.auth_context
 
+        self.test_app.dependency_overrides[org_auth.member_project_org_id] = (
+            lambda: 'org-1'
+        )
         self.test_app.dependency_overrides[permissions.get_current_user] = (
             _current_user
         )

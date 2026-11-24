@@ -7,6 +7,7 @@ from unittest import mock
 
 import fastapi
 import httpx
+from fastapi.dependencies import utils as dependencies_utils
 
 from apps.api.tests import support
 from imbi.api import scoring
@@ -350,3 +351,41 @@ class ProjectDeliveryRoutesTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             await self.post_all(self.org_b, self.project_a), [404] * 3
         )
+
+
+#: Routes under ``/projects/{project_id}/`` that do not have the check
+#: yet. Issue #910 removes them; do not add to this list.
+_KNOWN_GAPS = {
+    '/schema',
+    '/environments/{env_slug}',
+    '/relationships',
+    '/relationships/{target_id}',
+    '/lifecycle/preview',
+    '/archive',
+    '/unarchive',
+    '/integrations/',
+    '/plugins/',
+    '/score/history',
+    '/score/trend',
+}
+
+
+class ProjectRoutesUseProjectMemberTestCase(unittest.TestCase):
+    """Each route under ``/projects/{project_id}/`` binds the project to
+    the path organization (issue #901)."""
+
+    def test_every_project_route_has_the_dependency(self) -> None:
+        def calls(route: fastapi.routing.APIRoute) -> set[object]:
+            flat = dependencies_utils.get_flat_dependant(route.dependant)
+            return {d.call for d in flat.dependencies}
+
+        prefix = '/organizations/{org_slug}/projects/{project_id}'
+        missing = [
+            f'{sorted(route.methods)} {route.path}'
+            for route in support.shared_app().routes
+            if isinstance(route, fastapi.routing.APIRoute)
+            and route.path.startswith(prefix + '/')
+            and route.path.removeprefix(prefix) not in _KNOWN_GAPS
+            and organizations.member_project_org_id not in calls(route)
+        ]
+        self.assertEqual(missing, [])

@@ -8,6 +8,7 @@ from fastapi import testclient
 
 from apps.api.tests import support
 from imbi.api import models
+from imbi.api.auth import organizations as org_auth
 from imbi.api.auth import password, permissions
 from imbi.api.plugins.resolution import ResolvedCapability
 from imbi.common import graph
@@ -121,6 +122,9 @@ class ProjectIncidentsEndpointTestCase(support.SharedAppTestCase):
         async def mock_get_current_user() -> permissions.AuthContext:
             return self.auth_context
 
+        self.test_app.dependency_overrides[org_auth.member_project_org_id] = (
+            lambda: 'org-1'
+        )
         self.test_app.dependency_overrides[permissions.get_current_user] = (
             mock_get_current_user
         )

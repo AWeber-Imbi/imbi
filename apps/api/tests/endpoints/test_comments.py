@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from apps.api.tests import support
 from imbi.api import models
+from imbi.api.auth import organizations as org_auth
 from imbi.common import graph, iggy
 from imbi.common import models as common_models
 
@@ -45,6 +46,9 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
         async def mock_get_current_user():
             return self.auth_context
 
+        self.test_app.dependency_overrides[org_auth.member_project_org_id] = (
+            lambda: 'org-1'
+        )
         self.test_app.dependency_overrides[permissions.get_current_user] = (
             mock_get_current_user
         )
@@ -69,6 +73,9 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
         async def mock_get_current_user():
             return self.auth_context
 
+        self.test_app.dependency_overrides[org_auth.member_project_org_id] = (
+            lambda: 'org-1'
+        )
         self.test_app.dependency_overrides[permissions.get_current_user] = (
             mock_get_current_user
         )
