@@ -25,7 +25,7 @@ import httpx
 import nanoid
 import pydantic
 
-from imbi.api import component_facts
+from imbi.api import blueprint_values, component_facts
 from imbi.api.auth import autonomous, permissions, principals
 from imbi.api.commit_sync import queue as commit_sync_queue
 from imbi.api.commit_sync import service as commit_sync_service
@@ -63,7 +63,6 @@ from imbi.api.release_promote import queue as release_promote_queue
 from imbi.api.release_promote import service as release_promote_service
 from imbi.api.scoring import OptionalValkeyClient
 from imbi.api.scoring import queue as score_queue
-from imbi.api.tickets import custom_fields
 from imbi.api.workflows import run_store
 from imbi.common import blueprints, clickhouse, graph, iggy, versioning
 from imbi.common import deployments as deployment_nodes
@@ -3291,7 +3290,7 @@ async def patch_deployment_fields(
         # Merge into the stored values, not the defaults, so that a
         # default is never written as a recorded fact.
         merged = _merge_patch(stored, body)
-        clean = custom_fields.validate(
+        clean = blueprint_values.validate(
             matches,
             {name: merged.get(name) for name in body},
             partial=True,
