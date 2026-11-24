@@ -23625,6 +23625,8 @@ export interface components {
             active_version: number | null;
             /** Trigger Types */
             trigger_types: string[];
+            /** Active Trigger Types */
+            active_trigger_types: string[];
             /**
              * Agent Ids
              * @default []
@@ -23719,6 +23721,8 @@ export interface components {
             active_version: number | null;
             /** Trigger Types */
             trigger_types: string[];
+            /** Active Trigger Types */
+            active_trigger_types: string[];
             /**
              * Agent Ids
              * @default []

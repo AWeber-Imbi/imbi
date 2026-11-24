@@ -81,7 +81,10 @@ class WorkflowSummary(pydantic.BaseModel):
     status: Status
     latest_version: int
     active_version: int | None
+    #: The trigger types of the latest version.
     trigger_types: list[str]
+    #: The trigger types of the active version. A run starts this one.
+    active_trigger_types: list[str]
     #: The agents that the agent steps of the latest version use.
     agent_ids: list[str] = []
     created_at: datetime.datetime
@@ -597,6 +600,7 @@ def _workflow(
         **row,
         'owner_team_slug': team_slugs.get(row['owner_team_id']),
         'trigger_types': _trigger_types(row['graph']),
+        'active_trigger_types': _trigger_types(row['active_graph'] or {}),
         'agent_ids': workflows.agent_ids(row['graph']),
         'version': _version(
             {

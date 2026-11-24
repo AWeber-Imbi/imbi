@@ -120,7 +120,7 @@ export function WorkflowList({
     canRun &&
     w.status === 'active' &&
     w.active_version !== null &&
-    w.trigger_types.includes('manual')
+    w.active_trigger_types.includes('manual')
   const [search, setSearch] = useState('')
   const labels = useMemo(
     () => Object.fromEntries(stepTypes.map((t) => [t.type, t.label])),
@@ -176,7 +176,11 @@ export function WorkflowList({
                 labels={labels}
                 onRun={runnable(w) ? () => void onRun(w) : undefined}
                 pending={fetching || start.isPending}
-                types={w.trigger_types}
+                types={
+                  w.active_version === null
+                    ? w.trigger_types
+                    : w.active_trigger_types
+                }
               />
             ),
           },

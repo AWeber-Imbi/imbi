@@ -217,6 +217,7 @@ export function workflow(overrides: Partial<Workflow> = {}): Workflow {
   return {
     activated_at: null,
     activated_by: null,
+    active_trigger_types: ['manual'],
     active_version: null,
     agent_ids: [],
     bindings: [],

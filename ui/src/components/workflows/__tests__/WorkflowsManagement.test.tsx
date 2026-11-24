@@ -168,6 +168,32 @@ describe('WorkflowsManagement', () => {
     await waitFor(() => expect(window.location.search).toBe(`?run=${RUN.id}`))
   })
 
+  it('gates the trigger cell run on the active version', async () => {
+    const { version: _version, ...summary } = workflow({
+      active_version: 1,
+      status: 'active',
+    })
+    vi.mocked(endpoints.listWorkflows).mockResolvedValue([
+      { ...summary, active_trigger_types: [] },
+      {
+        ...summary,
+        name: 'Old manual',
+        slug: 'old-manual',
+        trigger_types: [],
+      },
+    ])
+    renderAt('/agents/workflows')
+
+    const latest = (await screen.findByText('Deploy guard')).closest('tr')!
+    await waitFor(() => expect(latest).toHaveTextContent('No trigger'))
+    expect(within(latest).queryByRole('button')).not.toBeInTheDocument()
+
+    const old = screen.getByText('Old manual').closest('tr')!
+    expect(
+      within(old).getByRole('button', { name: /Manual run/ }),
+    ).toBeInTheDocument()
+  })
+
   it('starts one run when the trigger cell is clicked twice', async () => {
     const active = workflow({ active_version: 2, status: 'active' })
     const { version: _version, ...summary } = active
