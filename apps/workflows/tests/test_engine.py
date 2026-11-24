@@ -1350,6 +1350,42 @@ class CrashTestCase(EngineTestCase):
             run,
         )
 
+    async def test_retry_waits_for_its_backoff_when_claimed_early(
+        self,
+    ) -> None:
+        # The worker stopped after the retry was recorded but before it
+        # released the run, so the run's due_at is in the past. The next
+        # claim must not send the retry before the backoff ends.
+        self.api.refused = 1
+        run_id = await self._start(await self._slack_workflow())
+        await self._drive(
+            run_id,
+            until=lambda r: (
+                r['steps'].get('tell', {}).get('error') == 'ConnectError'
+            ),
+        )
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE workflow_runtime.runs'
+                " SET due_at = NOW() - INTERVAL '1 second'"
+                ' WHERE id = %s',
+                (run_id,),
+            )
+        self.assertTrue(await self.engine.tick())
+        self.assertEqual(len(self.api.slacks), 0)
+        async with self.pool.connection() as conn:
+            cur = await conn.execute(
+                'SELECT due_at - NOW() FROM workflow_runtime.runs'
+                ' WHERE id = %s',
+                (run_id,),
+            )
+            row = await cur.fetchone()
+        assert row is not None
+        self.assertGreater(
+            row[0],
+            datetime.timedelta(seconds=engine.UNREACHABLE_BACKOFF - 5),
+        )
+
     async def test_slack_rendered_channel_is_checked(self) -> None:
         workflow_id = await self._workflow(
             [

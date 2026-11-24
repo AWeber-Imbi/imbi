@@ -404,6 +404,12 @@ class Engine:
         node = next(n for n in wf_graph.nodes if n.id == node_id)
         step = steps[node_id]
         step_type = registry.STEP_TYPES[node.type]
+        started_at: datetime.datetime = step['started_at']
+        if started_at > _now():
+            # A retry whose backoff has not ended. The run can be claimed
+            # early when the worker stopped before it released the run
+            # with the retry time as its ``due_at``.
+            return started_at
         if step['call_started_at'] is not None and (
             step_type.side_effect and not step_type.idempotent
         ):
