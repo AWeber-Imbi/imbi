@@ -72,7 +72,7 @@ jobs:
               echo false
             fi
           }
-          shared=(.github/workflows/test.yml .dockerignore uv.lock pyproject.toml README.md LICENSE':(glob)**/pyproject.toml')
+          shared=(.github/workflows/test.yml .dockerignore uv.lock pyproject.toml README.md LICENSE ':(glob)**/pyproject.toml')
           echo "image=$(changed "${shared[@]}" container ui/package.json ui/package-lock.json)" >> "$GITHUB_OUTPUT"
           echo "harness=$(changed "${shared[@]}" apps/harness helm/imbi-harness proxy)" >> "$GITHUB_OUTPUT"
           # A base that git cannot read (a new branch) counts as changed.
