@@ -194,9 +194,19 @@ describe('useCurrentConversationSync', () => {
   })
 
   it('shares local switches with other browsers', async () => {
+    let written: () => void = () => {}
+    vi.mocked(assistant.setCurrentConversation).mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        written = resolve
+      }),
+    )
     vi.mocked(assistant.getConversation).mockResolvedValue(stored('c-2', 't1'))
     await openAssistantConversation('c-2')
     newAssistantConversation()
+    // The second write waits until the first one settles.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(assistant.setCurrentConversation).toHaveBeenCalledOnce()
+    written()
     await waitFor(() =>
       expect(assistant.setCurrentConversation).toHaveBeenCalledTimes(2),
     )
@@ -204,5 +214,73 @@ describe('useCurrentConversationSync', () => {
       ['c-2'],
       [null],
     ])
+  })
+
+  it('shares a reselect of the open conversation without a reload', async () => {
+    useAssistantStore.getState().setCurrentConversation('c-1')
+    await openAssistantConversation('c-1')
+    await waitFor(() =>
+      expect(assistant.setCurrentConversation).toHaveBeenCalledWith('c-1'),
+    )
+    expect(assistant.getConversation).not.toHaveBeenCalled()
+  })
+
+  it('drops a restore in flight when another browser clears', async () => {
+    let loaded: (v: ReturnType<typeof stored>) => void = () => {}
+    vi.mocked(assistant.getCurrentConversation).mockResolvedValue(
+      stored('c-1', 't1'),
+    )
+    vi.mocked(assistant.getConversation).mockReturnValue(
+      new Promise((resolve) => {
+        loaded = resolve
+      }),
+    )
+    renderHook(() => useCurrentConversationSync(false), {
+      wrapper: syncWrapper,
+    })
+    await waitFor(() => expect(assistant.getConversation).toHaveBeenCalled())
+
+    vi.mocked(assistant.getCurrentConversation).mockResolvedValue(null)
+    await queryClient.refetchQueries()
+    loaded(stored('c-1', 't1'))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(useAssistantStore.getState().currentConversationId).toBeNull()
+  })
+
+  it('keeps a send that starts while a sync load is in flight', async () => {
+    useAssistantStore.getState().setCurrentConversation('c-1')
+    let loaded: (v: ReturnType<typeof stored>) => void = () => {}
+    vi.mocked(assistant.getCurrentConversation).mockResolvedValue(
+      stored('c-1', 'sent'),
+    )
+    vi.mocked(assistant.getConversation).mockReturnValue(
+      new Promise((resolve) => {
+        loaded = resolve
+      }),
+    )
+    let streamed: () => void = () => {}
+    vi.mocked(assistant.sendMessageSSE).mockReturnValue(
+      new Promise<void>((resolve) => {
+        streamed = resolve
+      }),
+    )
+    renderHook(() => useCurrentConversationSync(false), {
+      wrapper: syncWrapper,
+    })
+    await waitFor(() => expect(assistant.getConversation).toHaveBeenCalled())
+    const { result } = renderHook(() => useAssistantChat(), {
+      wrapper: MemoryRouter,
+    })
+
+    const sending = result.current.send('question')
+    loaded(stored('c-1', 'sent'))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    const { isStreaming, messages } = useAssistantStore.getState()
+    expect(isStreaming).toBe(true)
+    expect(messages.map((m) => m.content)).toEqual(['question'])
+    streamed()
+    await sending
   })
 })

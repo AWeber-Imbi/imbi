@@ -36,6 +36,9 @@ export function useAssistantChat() {
       // await, so the composer cannot start a second conversation while
       // this one is being created.
       store.startStreaming()
+      // A load issued before this send must not replace the new turn or
+      // abort this stream.
+      openRequest += 1
       // Stop, New conversation and opening another conversation abort
       // this controller, including during the create below.
       const abort = new AbortController()
@@ -218,8 +221,10 @@ export async function openAssistantConversation(id: string) {
   // Count even a reselect of the current conversation, so a load still
   // in flight cannot replace it.
   const request = ++openRequest
-  if (store.currentConversationId === id) return
+  // Share even a reselect, so a link to the open conversation still
+  // makes it the current one in every browser.
   shareCurrentConversation(id)
+  if (store.currentConversationId === id) return
   await loadConversation(id, request)
 }
 
@@ -272,7 +277,9 @@ function followCurrentConversation(conv: Conversation | null) {
   // This browser's own stream is newer than any saved state.
   if (store.isStreaming) return
   if (!conv) {
+    // Drop a restore still in flight, even when nothing is open yet.
     if (store.currentConversationId) resetConversation()
+    else openRequest += 1
     return
   }
   if (
