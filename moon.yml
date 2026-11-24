@@ -145,25 +145,19 @@ tasks:
       cache: false
       outputStyle: 'stream'
 
-  # Full-suite run producing the aggregate coverage.xml. This is the CI test
-  # entrypoint: one pytest session over every member, spread over one
-  # pytest-xdist worker per CPU. Each worker uses its own Postgres database
+  # The CI test entrypoint (scripts/ci-test.sh): one pytest session,
+  # spread over one pytest-xdist worker per CPU. Each worker uses its own Postgres database
   # (see /conftest.py). pytest-cov, not `coverage run`, because only
   # pytest-cov measures the worker processes. Not hermetic, not cached;
   # `always` so it runs regardless of which project is affected.
   coverage:
-    script: |
-      set -e
-      mkdir -p build
-      uv run --frozen --env-file .env.test pytest -n auto --cov --cov-report=term-missing --cov-report=xml:build/coverage.xml
+    script: 'scripts/ci-test.sh'
     deps:
       - '~:setup-env'
       - '~:services'
     options:
       cache: false
       runInCI: 'always'
-    outputs:
-      - 'build/coverage.xml'
 
   # Fail when ui/src/types/api-generated.ts no longer matches the API
   # code, so a hand edit or a missed regeneration cannot merge. Fix with

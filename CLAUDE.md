@@ -100,8 +100,11 @@ per-member: each member's `[tool.coverage]` (in its own `pyproject.toml`) sets
 its source + `fail_under`, and the shared test task reads it via
 `--cov-config=$projectSource/pyproject.toml` — so `moon run <member>:test`
 reports/gates on that member alone, while `root:coverage` uses the root
-config's repo-wide `source_pkgs = ["imbi"]`. Cross-member edges are explicit
-`dependsOn: [common]` in each member's `moon.yml`. Test env vars are written to
+config's repo-wide `source_pkgs = ["imbi"]`. On a pull request,
+`scripts/ci-test.sh` narrows `root:coverage` to the affected members and their
+dependents (moon project graph) and gates each on its own floor; `main` runs the
+full suite. Cross-member edges are explicit `dependsOn` in each member's
+`moon.yml`; a test-only import is a `scope: 'development'` edge, or a miss on PRs. Test env vars are written to
 `.env.test` by `root:services`.
 
 Running specific tests: `moon run <member>:test` always runs that member's
