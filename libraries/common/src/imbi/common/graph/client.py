@@ -310,6 +310,7 @@ class Graph:
             conninfo=str(self.settings.url),
             min_size=self.settings.min_pool_size,
             max_size=self.settings.max_pool_size,
+            check=psycopg_pool.AsyncConnectionPool.check_connection,
             configure=self._configure_connection,
             open=False,
         )
