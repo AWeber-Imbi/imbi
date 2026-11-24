@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest'
 import {
   entryKey,
   hashSeqOf,
+  minuteMarks,
   revealSeqOf,
   type Turn,
   turnForSeq,
+  turnMessages,
   turns,
 } from '../conversationTurns'
 import { timeline } from '../taskTimeline'
@@ -655,5 +657,34 @@ describe('revealSeqOf', () => {
     expect(revealSeqOf({ revealSeq: '4' })).toBeNull()
     expect(revealSeqOf(null)).toBeNull()
     expect(revealSeqOf('x')).toBeNull()
+  })
+})
+
+describe('minuteMarks', () => {
+  it('marks a message only when its minute differs from the last mark', () => {
+    const at = (time: string) => ({ at: `2026-10-08T${time}Z` })
+    const person = { actor_id: 'dev', actor_kind: 'human' as const }
+    const list = turns(
+      timeline([
+        event(1, 'turn', { body: 'Fix it.' }, { ...person, ...at('12:00:10') }),
+        event(2, 'turn', { body: 'Fixed.' }, at('12:00:50')),
+        event(
+          3,
+          'turn',
+          { body: 'Test it.' },
+          { ...person, ...at('12:01:05') },
+        ),
+        event(4, 'turn', { body: 'Tested.' }, at('12:01:40')),
+      ]),
+      { live: false },
+    )
+    const messages = list.flatMap(turnMessages)
+    expect(messages.map((m) => m.at.slice(11, 19))).toEqual([
+      '12:00:10',
+      '12:00:50',
+      '12:01:05',
+      '12:01:40',
+    ])
+    expect([...minuteMarks(messages)]).toEqual([messages[0].id, messages[2].id])
   })
 })

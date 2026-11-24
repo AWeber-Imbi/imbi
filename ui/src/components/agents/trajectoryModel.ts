@@ -1,3 +1,4 @@
+import { clockTime } from '@/lib/formatDate'
 import type { TicketEvent } from '@/types'
 
 import { isCreated } from './taskEvents'
@@ -409,6 +410,23 @@ export function rowsOf(
       })
   }
   return rows
+}
+
+/**
+ * The start time of each record row whose second differs from the timed
+ * row above it.
+ */
+export function rowTimes(rows: TrajectoryRow[]): Map<string, number> {
+  const times = new Map<string, number>()
+  let last = ''
+  for (const row of rows) {
+    if (row.kind !== 'record' || row.record.startedAt === null) continue
+    const second = clockTime(row.record.startedAt, true)
+    if (!second) continue
+    if (second !== last) times.set(row.record.id, row.record.startedAt)
+    last = second
+  }
+  return times
 }
 
 /**

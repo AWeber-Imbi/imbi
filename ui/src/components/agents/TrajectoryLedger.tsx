@@ -4,18 +4,21 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react'
 
 import { Info, Settings, Sparkle, User, Wrench } from 'lucide-react'
 
+import { clockTime, fullTime } from '@/lib/formatDate'
 import { cn } from '@/lib/utils'
 
 import { FindStub } from './FindStub'
 import {
   type Fold,
   KIND_LABEL,
+  rowTimes,
   type TrajectoryKind,
   type TrajectoryRecord,
   type TrajectoryRequest,
@@ -121,6 +124,7 @@ export function TrajectoryLedger({
   const pane = useRef<HTMLDivElement>(null)
   const following = useRef(true)
   const requestAt = new Map(requests.map((r) => [r.assistant, r]))
+  const times = useMemo(() => rowTimes(rows), [rows])
   const shown = useRef<null | TrajectoryWindow>(null)
   const [focusKey, setFocusKey] = useState<null | string>(null)
   const moving = useRef<null | number>(null)
@@ -285,7 +289,7 @@ export function TrajectoryLedger({
         role="grid"
       >
         <colgroup>
-          <col className="w-34 @max-[620px]/tj:w-13" />
+          <col className="w-52 @max-[620px]/tj:w-13" />
           <col />
         </colgroup>
         <tbody
@@ -342,6 +346,7 @@ export function TrajectoryLedger({
                     selection?.type === 'record' &&
                     selection.id === row.record.id
                   }
+                  startedAt={times.get(row.record.id)}
                   turnStart={turnStarts.get(row.record.id)}
                 />
               ),
@@ -449,6 +454,7 @@ function RecordRow({
   request,
   requestSelected,
   selected,
+  startedAt,
   turnStart,
 }: {
   active: boolean
@@ -461,6 +467,8 @@ function RecordRow({
   request?: TrajectoryRequest
   requestSelected: boolean
   selected: boolean
+  /** When the record started, given only where the time changes. */
+  startedAt?: number
   turnStart?: number
 }) {
   const select = () => onSelect({ id: record.id, type: 'record' })
@@ -549,8 +557,17 @@ function RecordRow({
             selected={requestSelected}
           />
         )}
-        <span className="flex justify-end">
-          <span className="flex w-22 justify-end @max-[620px]/tj:w-auto">
+        <span className="flex items-center justify-end gap-2">
+          {startedAt !== undefined && (
+            <time
+              className="font-tj-code text-[11px] text-(--tj-label-3) tabular-nums @max-[620px]/tj:hidden"
+              dateTime={new Date(startedAt).toISOString()}
+              title={fullTime(startedAt)}
+            >
+              {clockTime(startedAt, true)}
+            </time>
+          )}
+          <span className="flex w-19 justify-end @max-[620px]/tj:w-auto">
             <KindTag kind={record.kind} />
           </span>
         </span>

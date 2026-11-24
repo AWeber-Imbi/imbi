@@ -44,6 +44,7 @@ import {
   TraceLine,
   TraceTitle,
 } from '@/components/ui/trace'
+import { clockTime, fullTime } from '@/lib/formatDate'
 import { markdownText } from '@/lib/markdown-text'
 import { cn } from '@/lib/utils'
 import type { Ticket, TicketEvent } from '@/types'
@@ -71,10 +72,12 @@ import {
 import {
   entryKey,
   hashSeqOf,
+  minuteMarks,
   type ProcessGroup,
   revealSeqOf,
   type Turn,
   turnForSeq,
+  turnMessages,
   turns,
 } from './conversationTurns'
 import { FindStub } from './FindStub'
@@ -111,6 +114,8 @@ import {
 import { readableText } from './toolText'
 import { scrollToFound, useVirtualRows } from './virtualRows'
 
+const ASK_ID = 'ask'
+
 interface Ctx {
   isOpen: (id: string, byDefault: boolean) => boolean
   isWhole: (id: string) => boolean
@@ -120,6 +125,7 @@ interface Ctx {
   requests: TaskRequestView[]
   setOpen: (id: string, open: boolean) => void
   showWhole: (id: string) => void
+  stamped: ReadonlySet<string>
   task: Ticket
 }
 
@@ -224,6 +230,14 @@ export function ConversationTab({
   const askMatches =
     searching && matches((task.description || task.title || '').trim(), query)
   const showAsk = !searching || askMatches || shown.length > 0
+  const stamped = useMemo(
+    () =>
+      minuteMarks([
+        ...(showAsk ? [{ at: task.created_at, id: ASK_ID }] : []),
+        ...shown.flatMap(turnMessages),
+      ]),
+    [showAsk, shown, task.created_at],
+  )
   const follow = useRef(true)
   const [whole, setWhole] = useState<ReadonlySet<string>>(() => new Set())
   const ctx: Ctx = useMemo(
@@ -244,6 +258,7 @@ export function ConversationTab({
         follow.current = false
         setWhole((prev) => new Set(prev).add(id))
       },
+      stamped,
       task,
     }),
     [
@@ -254,6 +269,7 @@ export function ConversationTab({
       requests,
       searching,
       setOpen,
+      stamped,
       task,
       whole,
     ],
@@ -440,7 +456,7 @@ export function ConversationTab({
             >
               <div
                 className={cn(
-                  'flex min-h-full w-full flex-col px-10 pb-(--dock-h)',
+                  'flex min-h-full w-full flex-col pr-15 pb-(--dock-h) pl-10',
                   width === 'narrow' && 'mx-auto max-w-3xl',
                 )}
               >
@@ -711,6 +727,7 @@ function PersonMessage({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
           )}
         </div>
       </MessageContent>
+      <Stamp at={e.at} marked={ctx.stamped.has(entry.id)} />
     </Message>
   )
 }
@@ -780,6 +797,38 @@ function searchText(entry: TimelineEntry): string {
 }
 
 /** What started the task, as the first message, unless a person already said it. */
+/**
+ * When the message was sent, in the margin beside it: its minute when
+ * `marked`, and the exact second while the message is hovered.
+ */
+function Stamp({
+  at,
+  className,
+  marked,
+}: {
+  at: string
+  className?: string
+  marked: boolean
+}) {
+  return (
+    <time
+      className={cn(
+        'absolute top-0 left-full ml-1.5 text-[11px] leading-5 whitespace-nowrap text-muted-foreground tabular-nums',
+        className,
+      )}
+      dateTime={at}
+      title={fullTime(at)}
+    >
+      <span className={marked ? 'group-hover/message:hidden' : 'hidden'}>
+        {clockTime(at)}
+      </span>
+      <span className="hidden group-hover/message:inline">
+        {clockTime(at, true)}
+      </span>
+    </time>
+  )
+}
+
 function TaskAsk({
   all,
   ctx,
@@ -816,6 +865,7 @@ function TaskAsk({
           )}
         </div>
       </MessageContent>
+      <Stamp at={task.created_at} marked={ctx.stamped.has(ASK_ID)} />
     </Message>
   )
 }
@@ -1031,6 +1081,13 @@ function TurnView({
                       {String(item.entry.event?.payload.body ?? '')}
                     </Prose>
                   </MessageContent>
+                  {item.entry.event && (
+                    <Stamp
+                      at={item.entry.event.at}
+                      className={cn(item.id !== firstReply && 'top-2')}
+                      marked={ctx.stamped.has(item.entry.id)}
+                    />
+                  )}
                 </Message>
               )
           }

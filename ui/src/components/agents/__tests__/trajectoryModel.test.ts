@@ -8,7 +8,10 @@ import {
   preview,
   recordForSeq,
   rowsOf,
+  rowTimes,
   spansOf,
+  type TrajectoryRecord,
+  type TrajectoryRow,
 } from '../trajectoryModel'
 import { event } from './taskFixtures'
 
@@ -486,5 +489,26 @@ describe('subagent calls and previews', () => {
     expect(preview('# Title\n> quoted `code` and **bold**')).toBe(
       'Title quoted code and bold',
     )
+  })
+})
+
+describe('rowTimes', () => {
+  it('keeps a start time only where its second differs from the row above', () => {
+    const row = (id: string, startedAt: null | number): TrajectoryRow => ({
+      kind: 'record',
+      record: { id, startedAt } as TrajectoryRecord,
+    })
+    const t0 = Date.parse('2026-10-08T12:00:00.100Z')
+    const times = rowTimes([
+      row('a', t0),
+      row('b', t0 + 800),
+      row('c', null),
+      row('d', t0 + 1000),
+      row('e', t0 + 1100),
+    ])
+    expect([...times]).toEqual([
+      ['a', t0],
+      ['d', t0 + 1000],
+    ])
   })
 })

@@ -31,6 +31,18 @@ export function absTime(iso: number | string): string {
   }
 }
 
+/** Wall-clock time in the viewer's zone, 24-hour: "14:05" or "14:05:09". */
+export function clockTime(at: number | string, seconds = false): string {
+  const d = parseServerTs(at)
+  if (!Number.isFinite(d.getTime())) return ''
+  return d.toLocaleTimeString(undefined, {
+    hour: '2-digit',
+    hourCycle: 'h23',
+    minute: '2-digit',
+    second: seconds ? '2-digit' : undefined,
+  })
+}
+
 /**
  * Format a value by its schema format: `date` renders as a calendar date
  * with no time, `date-time` as a localized date + time. Keeps date-only
@@ -122,6 +134,22 @@ export function formatRelativeDate(dateString?: null | string): string {
  * an instant, so they parse to local midnight. Reading "2026-07-29" as
  * UTC midnight would render it as the 28th anywhere west of Greenwich.
  */
+/** Date, 24-hour time, and zone: "Nov 24, 2026, 14:05:09 EST". */
+export function fullTime(at: number | string): string {
+  const d = parseServerTs(at)
+  if (!Number.isFinite(d.getTime())) return ''
+  return d.toLocaleString(undefined, {
+    day: 'numeric',
+    hour: '2-digit',
+    hourCycle: 'h23',
+    minute: '2-digit',
+    month: 'short',
+    second: '2-digit',
+    timeZoneName: 'short',
+    year: 'numeric',
+  })
+}
+
 export function parseServerTs(value: number | string): Date {
   if (typeof value === 'number') return new Date(value)
   const raw = value.trim()
