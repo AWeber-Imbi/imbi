@@ -1,7 +1,6 @@
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { clockTime } from '@/lib/formatDate'
 import { act, cleanup, render, screen, waitFor, within } from '@/test/utils'
 import type { Ticket } from '@/types'
 
@@ -61,21 +60,6 @@ describe('ConversationTab', () => {
         store.set(key, value)
       },
     )
-  })
-
-  it('shows the time below each message and each opened step', async () => {
-    const user = userEvent.setup()
-    renderTab('closed')
-    const timeOf = (at: string) => screen.queryByText(clockTime(at, true))
-    expect(timeOf(LOG[0].at)?.tagName).toBe('TIME')
-    expect(timeOf(LOG[3].at)?.tagName).toBe('TIME')
-    expect(timeOf(LOG[2].at)).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /Worked for 3s/ }))
-    await user.click(
-      await screen.findByRole('button', { name: /Ran a command/ }),
-    )
-    expect(timeOf(LOG[1].at)?.tagName).toBe('TIME')
-    expect(timeOf(LOG[2].at)?.tagName).toBe('TIME')
   })
 
   it('folds a finished turn and keeps the messages in view', () => {

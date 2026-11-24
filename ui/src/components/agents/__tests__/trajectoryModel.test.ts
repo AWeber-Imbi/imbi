@@ -5,6 +5,7 @@ import {
   foldKeys,
   type Folds,
   formatDuration,
+  pausesOf,
   preview,
   recordForSeq,
   rowsOf,
@@ -486,5 +487,29 @@ describe('subagent calls and previews', () => {
     expect(preview('# Title\n> quoted `code` and **bold**')).toBe(
       'Title quoted code and bold',
     )
+  })
+})
+
+describe('pausesOf', () => {
+  it('measures the wait since the row above, but not across a fold', () => {
+    const events = log().map((e) =>
+      e.seq >= 9
+        ? { ...e, at: new Date(Date.parse(e.at) + 30_000).toISOString() }
+        : e,
+    )
+    const t = buildTrajectory(events, false)
+    const rows = rowsOf(t, none(), '')
+    const records = rows.flatMap((r) => (r.kind === 'record' ? [r.record] : []))
+    const pauses = pausesOf(rows)
+    expect(pauses.has(records[0].id)).toBe(false)
+    const long = [...pauses.values()].filter((ms) => ms >= 30_000)
+    expect(long).toHaveLength(1)
+    const folds = none()
+    folds.turns.add(1)
+    const folded = rowsOf(t, folds, '')
+    const after = folded[folded.findIndex((r) => r.kind === 'summary') + 1]
+    expect(after.kind).toBe('record')
+    if (after.kind === 'record')
+      expect(pausesOf(folded).has(after.record.id)).toBe(false)
   })
 })

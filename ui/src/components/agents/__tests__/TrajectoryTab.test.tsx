@@ -111,8 +111,21 @@ describe('TrajectoryTab ledger', () => {
     renderTab()
     for (const row of rows())
       expect(row.querySelector('time')?.textContent).toMatch(
-        /^\d\d\D\d\d\D\d\d$/,
+        /^\p{Nd}{2}\P{Nd}\p{Nd}{2}\P{Nd}\p{Nd}{2}$/u,
       )
+    expect(screen.queryByText(/^\+\d/)).not.toBeInTheDocument()
+  })
+
+  it('marks the wait before a row that follows a pause', () => {
+    renderTab(
+      'closed',
+      LOG.map((e) =>
+        e.seq >= 4
+          ? { ...e, at: new Date(Date.parse(e.at) + 40_000).toISOString() }
+          : e,
+      ),
+    )
+    expect(screen.getAllByText(/^\+\d+s$/)).toHaveLength(1)
   })
 
   it('shows a tool as name, args, an arrow and the result', () => {
