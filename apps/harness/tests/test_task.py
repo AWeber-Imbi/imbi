@@ -2562,6 +2562,42 @@ class PolicyHookTestCase(RoutedTestCase):
         )
         self.assertEqual(self.run_task.recorder.input_seq, 6)
 
+    async def test_comment_during_a_turn_goes_after_the_next_tool(
+        self,
+    ) -> None:
+        self.pages = [
+            [
+                {
+                    'seq': 7,
+                    'type': 'turn',
+                    'actor_kind': 'human',
+                    'actor_id': 'a@b.c',
+                    'at': 't1',
+                    'payload': {'body': 'Use main.'},
+                }
+            ]
+        ]
+        context = {'signal': None}
+        hook_input = self.hook_input('Bash')
+        output = await self.run_task.post_tool_use(hook_input, 'tu1', context)
+        self.assertEqual(
+            output,
+            {
+                'hookSpecificOutput': {
+                    'hookEventName': 'PostToolUse',
+                    'additionalContext': (
+                        'New comments on the ticket, oldest first:\n'
+                        '- t1 comment by a@b.c: Use main.'
+                    ),
+                }
+            },
+        )
+        self.assertEqual(self.run_task.recorder.input_seq, 7)
+        # The agent gets each comment one time only.
+        self.assertEqual(
+            await self.run_task.post_tool_use(hook_input, 'tu2', context), {}
+        )
+
     async def test_wait_keeps_the_outcomes_of_other_waits(self) -> None:
         self.pages = [
             [
