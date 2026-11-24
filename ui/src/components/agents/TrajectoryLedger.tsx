@@ -286,7 +286,7 @@ export function TrajectoryLedger({
         role="grid"
       >
         <colgroup>
-          <col className="w-52 @max-[620px]/tj:w-13" />
+          <col className="w-52 @max-[620px]/tj:w-28" />
           <col />
         </colgroup>
         <tbody
@@ -553,7 +553,7 @@ function RecordRow({
         <span className="flex items-center justify-end gap-2">
           {record.startedAt !== null && Number.isFinite(record.startedAt) && (
             <time
-              className="font-tj-code text-[11px] text-(--tj-label-3) tabular-nums @max-[620px]/tj:hidden"
+              className="font-tj-code text-[11px] text-(--tj-label-3) tabular-nums"
               dateTime={new Date(record.startedAt).toISOString()}
               title={fullTime(record.startedAt)}
             >
