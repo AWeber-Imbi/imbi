@@ -25,12 +25,14 @@ base="${IMBI_TEST_BASE:-}"
 if [ -z "$base" ]; then
     full "no IMBI_TEST_BASE"
 fi
-if ! changed=$(git diff --name-only "$base"...HEAD); then
+# --no-renames lists both paths of a renamed file, so a moved shared
+# file still matches the guard below.
+if ! changed=$(git diff --name-only --no-renames "$base"...HEAD); then
     full "cannot diff against $base"
 fi
 
 # Files that every member's tests read.
-if grep -qE '^(pyproject\.toml|uv\.lock|conftest\.py|compose\.ci\.yaml|\.prototools|\.moon/|\.github/workflows/test\.yml|scripts/ci-test\.sh|scripts/iggy_config_server\.py)' <<<"$changed"; then
+if grep -qE '^(pyproject\.toml|uv\.lock|conftest\.py|moon\.yml|compose\.ci\.yaml|\.prototools|\.moon/|\.github/workflows/test\.yml|scripts/ci-test\.sh|scripts/iggy_config_server\.py)' <<<"$changed"; then
     full "shared test input changed"
 fi
 
@@ -46,10 +48,16 @@ if grep -qx 'apps/api' <<<"$sources"; then
 fi
 members=()
 tests=()
+cov=()
 while read -r src; do
     if [ -n "$src" ] && [ -f "$src/pyproject.toml" ] && [ -d "$src/tests" ]; then
         members+=("$src")
         tests+=("$src/tests")
+        # Measure the member's own package (its source_pkgs). The root
+        # "imbi" is a namespace package, so coverage does not find the
+        # files that no test imports through it.
+        pkg=$(sed -n 's/^source_pkgs = \["\([^"]*\)"\]$/\1/p' "$src/pyproject.toml")
+        cov+=("--cov=${pkg:?no source_pkgs in $src/pyproject.toml}")
     fi
 done < <(sort -u <<<"$sources")
 
@@ -61,7 +69,7 @@ fi
 echo "ci-test: affected members: ${members[*]}"
 # The whole-tree floor does not apply to a partial run; the member
 # floors below replace it.
-uv run --frozen --env-file .env.test pytest -n auto --cov \
+uv run --frozen --env-file .env.test pytest -n auto "${cov[@]}" \
     --cov-fail-under=0 --cov-report=xml:build/coverage.xml "${tests[@]}"
 
 status=0
