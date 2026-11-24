@@ -33,6 +33,13 @@ LOGGER = logging.getLogger(__name__)
 #: Seconds of the first retry backoff; it doubles per attempt.
 RETRY_BACKOFF = 5
 
+#: Seconds of the first retry backoff after a step got no response from
+#: imbi-api at all (connection refused or reset, as while imbi-api
+#: restarts in a deploy); it doubles per attempt. With two retries the
+#: step keeps trying for about 90 seconds, where ``RETRY_BACKOFF`` spends
+#: every retry inside the same restart.
+UNREACHABLE_BACKOFF = 30
+
 #: The activator, only when an active member of the run's organization.
 _ACTIVATOR_QUERY: typing.LiteralString = """
 MATCH (u:User {{email: {email}}})-[m:MEMBER_OF]->(:Organization {{id: {org}}})
@@ -180,8 +187,11 @@ class Engine:
                 return None
             await self._start(run, wf_graph)
             return _now()
-        deadline = run['created_at'] + datetime.timedelta(
-            seconds=wf_settings.max_run_time_seconds
+        # The limit counts from the start, not from the trigger: a run
+        # that waited in the concurrency queue behind other runs of its
+        # key still gets its whole run time.
+        deadline = (run['started_at'] or run['created_at']) + (
+            datetime.timedelta(seconds=wf_settings.max_run_time_seconds)
         )
         if _now() > deadline:
             await self._cancel_agent_tasks(run, steps, version['slug'])
@@ -394,6 +404,12 @@ class Engine:
         node = next(n for n in wf_graph.nodes if n.id == node_id)
         step = steps[node_id]
         step_type = registry.STEP_TYPES[node.type]
+        started_at: datetime.datetime = step['started_at']
+        if started_at > _now():
+            # A retry whose backoff has not ended. The run can be claimed
+            # early when the worker stopped before it released the run
+            # with the retry time as its ``due_at``.
+            return started_at
         if step['call_started_at'] is not None and (
             step_type.side_effect and not step_type.idempotent
         ):
@@ -448,7 +464,15 @@ class Engine:
                     e.code,
                     _safe_detail(e.detail),
                 )
-            return await self._error(run, node, step, slug, e.code, e.retry)
+            return await self._error(
+                run,
+                node,
+                step,
+                slug,
+                e.code,
+                e.retry,
+                unreachable=e.unreachable,
+            )
         except TimeoutError:
             return await self._error(run, node, step, slug, 'timeout', True)
         except Exception as e:
@@ -492,11 +516,15 @@ class Engine:
         slug: str,
         code: str,
         retry: bool,
+        *,
+        unreachable: bool = False,
     ) -> datetime.datetime:
         """Retry the step after a backoff, or fail it.
 
         A retry keeps the agent task of the step; a failure cancels it
         first (best effort), so the task does not outlive the step.
+        ``unreachable`` (no response from imbi-api) waits
+        ``UNREACHABLE_BACKOFF`` instead of ``RETRY_BACKOFF``.
         """
         step_type = registry.STEP_TYPES[node.type]
         retries = step_type.retries if node.retries is None else node.retries
@@ -519,6 +547,13 @@ class Engine:
                 state['key_attempt'] = step['state'].get(
                     'key_attempt', step['attempt']
                 )
+            backoff = UNREACHABLE_BACKOFF if unreachable else RETRY_BACKOFF
+            resume_at = _now() + datetime.timedelta(
+                seconds=backoff * 2 ** (attempt - 2)
+            )
+            # The next attempt starts when its backoff ends, so the step
+            # timeout does not count the backoff: a timeout shorter than
+            # UNREACHABLE_BACKOFF still leaves time for the request.
             await store.update(
                 conn,
                 'step_runs',
@@ -527,14 +562,12 @@ class Engine:
                 error=code,
                 state=state,
                 call_started_at=None,
-                started_at=_now(),
+                started_at=resume_at,
             )
             await runtime.append_step_event(
                 conn, run['id'], step['node_id'], 'step.started', retry_of=code
             )
-        return _now() + datetime.timedelta(
-            seconds=RETRY_BACKOFF * 2 ** (attempt - 2)
-        )
+        return resume_at
 
     async def _fail(
         self, conn: store.Conn, run: store.Row, step: store.Row, code: str

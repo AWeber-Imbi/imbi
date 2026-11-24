@@ -112,7 +112,7 @@ Click empty canvas to see the workflow settings.
 | **Concurrency key** | A key template, for **One run per key** only | None |
 | **Dedupe key** | A key template. A run that repeats the key of an earlier run is skipped. See [Dedupe](#dedupe) | None |
 | **Dedupe window (days)** | How long a key skips a repeat. Shows when a dedupe key is set | Empty (no limit) |
-| **Max run time (minutes)** | A run that runs longer stops as `timed_out` | 120 |
+| **Max run time (minutes)** | A run that runs longer stops as `timed_out`. The time counts from when the run starts, so time spent queued behind other runs of its concurrency key does not count | 120 |
 | **When a run fails** | **Notify the owner team**, **Do nothing** | **Notify the owner team** |
 
 Only an admin or a member of the owner team can make a workflow for that
@@ -158,6 +158,12 @@ count:
 | `assign_ticket` | 1 minute | 0 |
 | `deploy`, `release`, `rollback` | 1 hour | 2 |
 | `agent` | None. The max run time limits it | 2 |
+
+A retry waits 5 seconds, then 10, doubling each time. When the step got no
+response from imbi-api at all, such as a refused connection while imbi-api
+restarts, the retry waits 30 seconds, then 60, so a step with 2 retries
+keeps trying for about 90 seconds. The timeout of each attempt counts
+from the end of its wait, so the wait does not use up the timeout.
 
 The API also accepts `timeout_seconds` and `retries` (0 to 10) on a node to
 replace the defaults. The editor has no field for them.
