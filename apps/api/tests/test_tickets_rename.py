@@ -1047,11 +1047,11 @@ class ReopenReleaseTestCase(DatabaseTestCase):
         await _install()
         return conn
 
-    async def test_previous_release_restart_changes_nothing(self) -> None:
+    async def test_upgrade_drops_close_id(self) -> None:
         conn = await self._reopen_release()
         before = await self._catalog(conn)
+        self.assertNotIn('close_id', {c[2] for c in before['columns']})
         with self.assertNoLogs('imbi.common.relational', 'INFO'):
-            await _release_2_58_install()
             await _install()
         self.assertEqual(before, await self._catalog(conn))
 
@@ -1078,28 +1078,6 @@ class ReopenReleaseTestCase(DatabaseTestCase):
         await _install()
         cursor = await (await self._connect()).execute(query)
         self.assertEqual(await cursor.fetchall(), migrated)
-
-    async def test_previous_release_writes_a_close_row(self) -> None:
-        conn = await self._reopen_release()
-        # The SQL of the previous release, which names the close cycle.
-        # A reopened ticket that closes again gets a second row.
-        for close_id in (uuid.UUID(int=0), NEW):
-            await conn.execute(
-                'INSERT INTO tickets.trigger_outbox (ticket_id, close_id)'
-                ' VALUES (%s, %s)',
-                (ROOT, close_id),
-            )
-        cursor = await conn.execute(
-            'SELECT count(DISTINCT id) AS ids, min(to_state) AS to_state,'
-            ' min(from_state) AS from_state FROM tickets.trigger_outbox'
-        )
-        self.assertEqual(
-            await cursor.fetchone(),
-            {'ids': 2, 'to_state': 'closed', 'from_state': None},
-        )
-        await conn.execute(
-            'DELETE FROM tickets.trigger_outbox WHERE ticket_id = %s', (ROOT,)
-        )
 
     async def test_old_children_get_the_chain_of_their_origin(self) -> None:
         conn = await self._reopen_release()
