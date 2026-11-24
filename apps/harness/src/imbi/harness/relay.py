@@ -211,7 +211,15 @@ class Relay:
 
     def sdk_tools(self) -> list[sdk.SdkMcpTool[typing.Any]]:
         def make(tool: _Tool) -> sdk.SdkMcpTool[typing.Any]:
-            @sdk.tool(tool.name, tool.description, tool.schema)
+            # The CLI runs tools with readOnlyHint in parallel (#899).
+            hints = types.ToolAnnotations(readOnlyHint=True)
+
+            @sdk.tool(
+                tool.name,
+                tool.description,
+                tool.schema,
+                annotations=hints if tool.read_only else None,
+            )
             async def relayed(args: Body) -> Body:
                 return await self.call(tool.name, args)
 
