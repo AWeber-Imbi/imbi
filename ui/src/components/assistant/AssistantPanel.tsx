@@ -18,6 +18,7 @@ import {
   openAssistantConversation,
   rememberAssistantReturnPath,
   useAssistantConversations,
+  useCurrentConversationSync,
 } from '@/hooks/useAssistantChat'
 import { useAssistantStore } from '@/stores/assistantStore'
 
@@ -41,7 +42,11 @@ export function AssistantPanel() {
   const setOpen = useAssistantStore((s) => s.setExpanded)
   const conversationId = useAssistantStore((s) => s.currentConversationId)
   // The full-page assistant shows the same conversation.
-  const visible = isOpen && !pathname.startsWith('/assistant')
+  const onAssistantPage = pathname.startsWith('/assistant')
+  const visible = isOpen && !onAssistantPage
+  // Every page mounts the panel, so this one call keeps every browser
+  // on the same conversation, including after a reload.
+  useCurrentConversationSync(isOpen || onAssistantPage)
   // Navigation mounts on every page; fetch only while the panel shows.
   const { data: conversations = [] } = useAssistantConversations(visible)
   const title = conversations.find((c) => c.id === conversationId)?.title

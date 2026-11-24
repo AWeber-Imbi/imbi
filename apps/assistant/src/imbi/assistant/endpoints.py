@@ -206,6 +206,42 @@ async def update_conversation(
     return models.conversation_to_response(conv)
 
 
+# --- Current conversation (shared by every browser) ---
+
+
+@assistant_router.get(
+    '/current-conversation',
+    response_model=models.ConversationResponse | None,
+)
+async def get_current_conversation(
+    db: graph.Pool,
+    auth_ctx: AuthDep,
+) -> models.ConversationResponse | None:
+    """Get the user's current conversation, or null for a new one."""
+    conv = await age_ops.get_current_conversation(
+        db, auth_ctx.require_user.email
+    )
+    return models.conversation_to_response(conv) if conv else None
+
+
+@assistant_router.put('/current-conversation', status_code=204)
+async def set_current_conversation(
+    body: models.SetCurrentConversationRequest,
+    db: graph.Pool,
+    auth_ctx: AuthDep,
+) -> None:
+    """Set the user's current conversation; null starts a new one."""
+    email = auth_ctx.require_user.email
+    if body.conversation_id is not None and not (
+        await age_ops.get_conversation(db, body.conversation_id, email)
+    ):
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail='Conversation not found',
+        )
+    await age_ops.set_current_conversation(db, email, body.conversation_id)
+
+
 # --- SSE Streaming ---
 
 

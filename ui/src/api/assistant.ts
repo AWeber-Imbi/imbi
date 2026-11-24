@@ -89,6 +89,16 @@ export const updateConversation = (
     method: 'PATCH',
   })
 
+// The conversation every browser shows; null means a new one.
+export const getCurrentConversation = (signal?: AbortSignal) =>
+  assistantFetch<Conversation | null>('/current-conversation', {}, signal)
+
+export const setCurrentConversation = (conversationId: null | string) =>
+  assistantFetch<void>('/current-conversation', {
+    body: JSON.stringify({ conversation_id: conversationId }),
+    method: 'PUT',
+  })
+
 // SSE streaming via native fetch (Axios doesn't support streaming)
 export type SSEEventHandler = {
   onClientAction?: (action: string, params: Record<string, string>) => void

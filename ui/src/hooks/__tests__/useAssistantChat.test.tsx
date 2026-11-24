@@ -1,23 +1,31 @@
+import React from 'react'
+
 import { MemoryRouter } from 'react-router-dom'
 
+import { QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as assistant from '@/api/assistant'
+import { queryClient } from '@/lib/queryClient'
 import { useAssistantStore } from '@/stores/assistantStore'
 
 import {
   newAssistantConversation,
+  openAssistantConversation,
   stopAssistant,
   useAssistantChat,
+  useCurrentConversationSync,
 } from '../useAssistantChat'
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/api/assistant', () => ({
   createConversation: vi.fn(),
   getConversation: vi.fn(),
+  getCurrentConversation: vi.fn(),
   listConversations: vi.fn(),
   sendMessageSSE: vi.fn(),
+  setCurrentConversation: vi.fn(),
 }))
 
 // fallow-ignore-next-line unresolved-import
@@ -56,6 +64,10 @@ describe('useAssistantChat', () => {
     const { currentConversationId, messages } = useAssistantStore.getState()
     expect(currentConversationId).toBe('c-1')
     expect(messages.map((m) => m.content)).toEqual(['from search'])
+    // Other browsers follow the new conversation.
+    await waitFor(() =>
+      expect(assistant.setCurrentConversation).toHaveBeenCalledWith('c-1'),
+    )
   })
   it.each([
     ['Stop', stopAssistant],
@@ -95,5 +107,102 @@ describe('useAssistantChat', () => {
     const { isStreaming, messages } = useAssistantStore.getState()
     expect(isStreaming).toBe(false)
     expect(messages.map((m) => m.content)).toEqual(['question', 'partial'])
+  })
+})
+
+function stored(id: string, updatedAt: string, content = 'hello') {
+  return {
+    created_at: updatedAt,
+    id,
+    is_archived: false,
+    messages: [
+      {
+        content,
+        conversation_id: id,
+        created_at: updatedAt,
+        id: `${id}-m`,
+        role: 'user' as const,
+        sequence: 0,
+      },
+    ],
+    model: 'm',
+    title: null,
+    updated_at: updatedAt,
+    user_email: 'me@example.com',
+  }
+}
+
+function syncWrapper({ children }: { children: React.ReactNode }) {
+  return (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  )
+}
+
+describe('useCurrentConversationSync', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    queryClient.clear()
+    useAssistantStore.getState().clearConversation()
+    vi.mocked(assistant.setCurrentConversation).mockResolvedValue()
+  })
+
+  it('restores the current conversation on load', async () => {
+    vi.mocked(assistant.getCurrentConversation).mockResolvedValue(
+      stored('c-1', 't1'),
+    )
+    vi.mocked(assistant.getConversation).mockResolvedValue(stored('c-1', 't1'))
+    renderHook(() => useCurrentConversationSync(false), {
+      wrapper: syncWrapper,
+    })
+
+    await waitFor(() =>
+      expect(useAssistantStore.getState().messages).toHaveLength(1),
+    )
+    expect(useAssistantStore.getState().currentConversationId).toBe('c-1')
+  })
+
+  it('follows new turns and a new conversation from another browser', async () => {
+    vi.mocked(assistant.getCurrentConversation).mockResolvedValue(
+      stored('c-1', 't1'),
+    )
+    vi.mocked(assistant.getConversation).mockResolvedValue(stored('c-1', 't1'))
+    renderHook(() => useCurrentConversationSync(false), {
+      wrapper: syncWrapper,
+    })
+    await waitFor(() =>
+      expect(useAssistantStore.getState().currentConversationId).toBe('c-1'),
+    )
+
+    // Another browser adds a turn: updated_at moves on.
+    vi.mocked(assistant.getCurrentConversation).mockResolvedValue(
+      stored('c-1', 't2'),
+    )
+    vi.mocked(assistant.getConversation).mockResolvedValue(
+      stored('c-1', 't2', 'newer'),
+    )
+    await queryClient.refetchQueries()
+    await waitFor(() =>
+      expect(useAssistantStore.getState().messages[0].content).toBe('newer'),
+    )
+
+    // Another browser starts a new conversation.
+    vi.mocked(assistant.getCurrentConversation).mockResolvedValue(null)
+    await queryClient.refetchQueries()
+    await waitFor(() =>
+      expect(useAssistantStore.getState().currentConversationId).toBeNull(),
+    )
+  })
+
+  it('shares local switches with other browsers', async () => {
+    vi.mocked(assistant.getConversation).mockResolvedValue(stored('c-2', 't1'))
+    await openAssistantConversation('c-2')
+    newAssistantConversation()
+    await waitFor(() =>
+      expect(assistant.setCurrentConversation).toHaveBeenCalledTimes(2),
+    )
+    expect(vi.mocked(assistant.setCurrentConversation).mock.calls).toEqual([
+      ['c-2'],
+      [null],
+    ])
   })
 })

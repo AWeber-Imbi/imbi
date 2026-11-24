@@ -670,6 +670,50 @@ class GetConversationEndpointTestCase(
         self.assertEqual(ctx.exception.status_code, 404)
 
 
+@mock.patch('imbi.assistant.age_ops.set_current_conversation')
+@mock.patch('imbi.assistant.age_ops.get_conversation')
+class CurrentConversationEndpointTestCase(
+    unittest.IsolatedAsyncioTestCase,
+):
+    async def test_get_returns_none_without_a_current(
+        self, _get: mock.AsyncMock, _set: mock.AsyncMock
+    ) -> None:
+        with mock.patch(
+            'imbi.assistant.age_ops.get_current_conversation',
+            mock.AsyncMock(return_value=None),
+        ):
+            result = await endpoints.get_current_conversation(
+                db=mock.AsyncMock(), auth_ctx=_make_auth_context()
+            )
+        self.assertIsNone(result)
+
+    async def test_set_unknown_conversation_is_404(
+        self, mock_get: mock.AsyncMock, mock_set: mock.AsyncMock
+    ) -> None:
+        mock_get.return_value = None
+        with self.assertRaises(fastapi.HTTPException) as ctx:
+            await endpoints.set_current_conversation(
+                body=models.SetCurrentConversationRequest(
+                    conversation_id='other-users'
+                ),
+                db=mock.AsyncMock(),
+                auth_ctx=_make_auth_context(),
+            )
+        self.assertEqual(ctx.exception.status_code, 404)
+        mock_set.assert_not_awaited()
+
+    async def test_set_none_clears_without_lookup(
+        self, mock_get: mock.AsyncMock, mock_set: mock.AsyncMock
+    ) -> None:
+        await endpoints.set_current_conversation(
+            body=models.SetCurrentConversationRequest(),
+            db=mock.AsyncMock(),
+            auth_ctx=_make_auth_context(),
+        )
+        mock_get.assert_not_awaited()
+        mock_set.assert_awaited_once_with(mock.ANY, 'test@example.com', None)
+
+
 class DeleteConversationEndpointTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):

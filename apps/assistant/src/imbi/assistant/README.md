@@ -62,6 +62,8 @@ All routes are served under the path component of `IMBI_ASSISTANT_URL`
 | `PATCH`  | `/conversations/{id}`          | Rename or archive a conversation         |
 | `DELETE` | `/conversations/{id}`          | Delete a conversation and its messages   |
 | `POST`   | `/conversations/{id}/messages` | Send a message; streams the reply as SSE |
+| `GET`    | `/current-conversation`        | The conversation every browser shows     |
+| `PUT`    | `/current-conversation`        | Set it; `null` starts a new conversation |
 | `GET`    | `/status`                      | Operational status (unprefixed)          |
 
 ## Requirements

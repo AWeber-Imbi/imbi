@@ -125,6 +125,14 @@ to filter the list by title. Click **New conversation** to start one.
 Click **Open in side panel** to go back to the page that you were on, with
 the panel open.
 
+All your browsers show the same conversation. When you open a
+conversation or start a new one, your other browsers change to it. When
+you reload a page, the conversation that you had open comes back. A
+message that you send in one browser shows in the others after the
+assistant saves it, not while the answer streams. A link to
+`/assistant/<conversation id>` makes that conversation the open one in all
+your browsers.
+
 The UI cannot rename, archive, or delete a conversation. The assistant API
 can: `PATCH /conversations/{id}` renames or archives, and
 `DELETE /conversations/{id}` deletes.
