@@ -827,6 +827,11 @@ class NewRequest:
     expires_at: datetime.datetime | None
     session_id: uuid.UUID | None
     request_key: str | None = None
+    #: The agent's response SLA. ``None``: the request never goes to a
+    #: team Slack channel.
+    escalate_after: datetime.timedelta | None = None
+    #: What the sweeper needs to post the request to the channel.
+    escalation: Row | None = None
 
 
 #: The status of a resolved request, by kind: feedback is answered,
@@ -2922,6 +2927,29 @@ class TicketStore:
             )
             return await cursor.fetchall()
 
+    async def take_overdue_requests(self) -> list[Row]:
+        """Clear ``escalate_at`` of each open request past it, and return
+        those requests.
+
+        Each row has the request columns, and the ``short_id``,
+        ``ticket_title``, ``owner``, ``assignee_kind``, and ``assignee``
+        of its ticket. A request that is taken is not taken again.
+        """
+        async with (
+            self._pool.connection() as conn,
+            conn.cursor(row_factory=rows.dict_row) as cursor,
+        ):
+            await cursor.execute(
+                'UPDATE tickets.requests AS r SET escalate_at = NULL'
+                ' FROM tickets.tickets AS t'
+                ' WHERE t.id = r.ticket_id'
+                " AND r.status = 'open' AND r.escalate_at <= NOW()"
+                ' AND (r.expires_at IS NULL OR r.expires_at > NOW())'
+                ' RETURNING r.*, t.short_id, t.title AS ticket_title,'
+                ' t.owner, t.assignee_kind, t.assignee'
+            )
+            return await cursor.fetchall()
+
     async def append_events(
         self,
         organization_id: str,
@@ -3034,8 +3062,10 @@ class TicketStore:
                 write.conn,
                 'INSERT INTO tickets.requests (id, ticket_id,'
                 ' session_id, kind, title, why, options, artifacts,'
-                ' artifact_digests, expires_at, request_key)'
-                ' VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
+                ' artifact_digests, expires_at, request_key,'
+                ' escalate_at, escalation)'
+                ' VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
+                ' NOW() + %s::interval, %s)'
                 ' RETURNING *',
                 (
                     uuid.uuid4(),
@@ -3049,6 +3079,9 @@ class TicketStore:
                     request.artifact_digests,
                     request.expires_at,
                     request.request_key,
+                    # NOW() + NULL is NULL: no escalation.
+                    request.escalate_after,
+                    _jsonb(request.escalation),
                 ),
             )
             if row is None:  # pragma: no cover - RETURNING yields a row

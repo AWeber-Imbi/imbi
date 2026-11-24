@@ -439,6 +439,9 @@ BelongsToOrganization = typing.Annotated[
 
 class Team(Node):
     organization: BelongsToOrganization
+    #: The Slack channel that gets the ticket requests of the team after
+    #: the agent's response SLA. ``None`` uses the team slug.
+    slack_channel: str | None = None
 
 
 class Environment(Node):

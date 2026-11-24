@@ -52,6 +52,7 @@ export function TeamForm({
   const [slug, setSlug] = useState(team?.slug || '')
   const [description, setDescription] = useState(team?.description || '')
   const [icon, setIcon] = useState(team?.icon || '')
+  const [slackChannel, setSlackChannel] = useState(team?.slack_channel || '')
   const handleIconChange = useIconWithCleanup(icon, setIcon)
   const [orgSlug, setOrgSlug] = useState(
     team?.organization.slug || selectedOrganization?.slug || '',
@@ -94,6 +95,7 @@ export function TeamForm({
       description: description.trim() || null,
       icon: icon.trim() || null,
       name: name.trim(),
+      slack_channel: slackChannel.trim().replace(/^#/, '') || null,
       slug: slug.trim(),
       ...dynamicFormData,
     })
@@ -260,6 +262,26 @@ export function TeamForm({
                 rows={3}
                 value={description}
               />
+            </div>
+
+            <div>
+              <Label
+                className="text-secondary mb-1.5 block text-sm"
+                htmlFor="team-slack-channel"
+              >
+                Slack channel
+              </Label>
+              <Input
+                disabled={isLoading}
+                id="team-slack-channel"
+                onChange={(e) => setSlackChannel(e.target.value)}
+                placeholder={slug ? `#${slug}` : '#team-channel'}
+                value={slackChannel}
+              />
+              <p className="text-tertiary mt-1 text-xs">
+                Gets ticket requests that wait past the agent&apos;s response
+                SLA. Empty uses the team slug.
+              </p>
             </div>
 
             <div>

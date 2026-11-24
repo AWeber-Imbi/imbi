@@ -269,7 +269,7 @@ An empty field means no limit.
 | Task timeout | For example `30m` or `2h`. A number with no unit is minutes. A task that runs longer closes with `exceeded_ceiling` |
 | Required runner labels | Used only to select a harness runner. Labels, separated by commas. Only a runner with every label runs the tasks of this agent. See [Labels and exclusive pools](../deployment/agent-runners.md#labels-and-exclusive-pools) |
 | Egress destinations | The internal hosts that the pod of the agent's chains may reach, in addition to the global ones. See [Egress allowlists](../deployment/agent-runners.md#egress-allowlists). A host name destination works only for HTTPS clients that use the egress proxy, and the DNS owner of each name controls where it goes: see [Host name destinations](../deployment/agent-runners.md#host-name-destinations) |
-| Human response SLA | A duration such as `4h`, `1d`, `2w` or `1h30m` (units `s`, `m`, `h`, `d`, `w`). Empty is no SLA. Imbi stores it. In this release, nothing uses it |
+| Human response SLA | A duration such as `4h`, `1d`, `2w` or `1h30m` (units `s`, `m`, `h`, `d`, `w`). Empty is no SLA. When a request of the agent is still open after it, the slackbot posts the request to a team Slack channel. See [Slack](../slackbot/index.md#answer-a-ticket-that-needs-input) |
 
 ### Narrowing fields
 

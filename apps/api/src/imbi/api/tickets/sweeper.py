@@ -29,7 +29,7 @@ import dataclasses
 import itertools
 import logging
 
-from imbi.api.tickets import log
+from imbi.api.tickets import announce, log
 from imbi.api.tickets import store as task_store
 from imbi.common import valkey
 
@@ -48,6 +48,7 @@ class SweepResult:
     """What one round did."""
 
     closed_sessions: int = 0
+    escalated_requests: int = 0
     republished_events: int = 0
     republished_reports: int = 0
     archived: int = 0
@@ -108,12 +109,34 @@ async def _sweep_task(
         result.archived += 1
 
 
+async def _escalate_requests(
+    store: task_store.TicketStore, result: SweepResult
+) -> None:
+    """Send each open request past the agent's response SLA to the
+    slackbot, which posts it to the team Slack channel."""
+    client = valkey.get_client()
+    for row in await store.take_overdue_requests():
+        ticket = {**row, 'title': row['ticket_title']}
+        # ponytail: the request is taken before the post, so a Valkey
+        # failure here loses the escalation; the request stays in the UI.
+        await announce.publish(
+            client,
+            announce.entry(ticket, row, row['escalation'] or {})
+            | {'escalation': True},
+        )
+        result.escalated_requests += 1
+
+
 async def sweep_once(store: task_store.TicketStore) -> SweepResult:
-    """Close stale sessions, republish what ClickHouse does not have,
-    and archive complete tasks."""
+    """Close stale sessions, escalate overdue requests, republish what
+    ClickHouse does not have, and archive complete tasks."""
     result = SweepResult()
     if not await _try_sweep_lock():
         return result
+    try:
+        await _escalate_requests(store, result)
+    except Exception:  # noqa: BLE001
+        LOGGER.warning('Request escalation failed', exc_info=True)
     for session in await store.stale_sessions(STALE_SESSION_SECONDS):
         try:
             await store.close_session(

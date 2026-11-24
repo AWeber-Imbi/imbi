@@ -40,15 +40,15 @@ import fastapi
 import jsonschema
 import orjson
 import pydantic
-from valkey import asyncio as valkey_asyncio
 
 from imbi.api import harness, scoring, tickets
 from imbi.api.auth import autonomous
 from imbi.api.endpoints import tickets as tasks_api
 from imbi.api.harness import auth as harness_auth
 from imbi.api.harness import store as harness_store
+from imbi.api.tickets import announce
 from imbi.api.tickets import store as task_store
-from imbi.common import graph, models, valkey
+from imbi.common import graph, models
 from imbi.common.workflows.registry import agent as agent_step
 
 #: The largest inline event payload, in bytes of JSON.
@@ -359,10 +359,18 @@ class RequestOpenResponse(pydantic.BaseModel):
 
 LOGGER = logging.getLogger(__name__)
 
-#: The agent of a ticket, for the Slack post of its requests.
+#: The agent of a ticket and its team, for the Slack post of a request.
 _AGENT_SLACK_QUERY: typing.LiteralString = """
 MATCH (a:Agent {{id: {id}}})
-RETURN a.name AS name, a.slack_channel AS slack_channel
+OPTIONAL MATCH (a)-[:OWNED_BY]->(t:Team)
+RETURN a.name AS name, a.slack_channel AS slack_channel,
+       t.slug AS team_slug, t.slack_channel AS team_channel
+"""
+
+#: The team of a project, for the Slack post of a request.
+_PROJECT_TEAM_QUERY: typing.LiteralString = """
+MATCH (:Project {{id: {id}}})-[:OWNED_BY]->(t:Team)
+RETURN t.slug AS team_slug, t.slack_channel AS team_channel
 """
 
 _AGENT_SETTINGS_QUERY: typing.LiteralString = """
@@ -967,6 +975,7 @@ async def open_agent_task_request(
 
     """
     tasks_api.check_payload_size('The request', data.model_dump(mode='json'))
+    sla, escalation = await _request_routing(db, org_slug, task)
     try:
         row, request, created = await store.open_request(
             org_id,
@@ -981,13 +990,17 @@ async def open_agent_task_request(
                 expires_at=data.expires_at,
                 session_id=data.session_id,
                 request_key=data.request_key,
+                escalate_after=sla,
+                escalation=escalation if sla else None,
             ),
             _agent_actor(task),
         )
     except _STORE_ERRORS as err:
         raise _translate(err, task['short_id']) from err
     if created:
-        await _announce_request(valkey_client, db, org_slug, row, request)
+        await announce.publish(
+            valkey_client, announce.entry(row, request, escalation)
+        )
     else:
         response.status_code = 200
     return RequestOpenResponse(
@@ -996,65 +1009,63 @@ async def open_agent_task_request(
     )
 
 
-#: The request fields that the slackbot shows in its form.
-_ANNOUNCED_FIELDS = (
-    'kind',
-    'title',
-    'why',
-    'options',
-    'artifacts',
-    'artifact_digests',
-)
+def _team_channel(team: dict[str, typing.Any]) -> str | None:
+    """The Slack channel of a team: its own, else its slug."""
+    return team.get('team_channel') or team.get('team_slug')
 
 
-async def _announce_request(
-    client: valkey_asyncio.Valkey | None,
-    db: graph.Graph,
-    org_slug: str,
-    task: dict[str, typing.Any],
-    request: dict[str, typing.Any],
-) -> None:
-    """Add a new request to the stream that the slackbot posts from.
+async def _request_routing(
+    db: graph.Graph, org_slug: str, task: dict[str, typing.Any]
+) -> tuple[datetime.timedelta | None, dict[str, typing.Any]]:
+    """Return the agent's response SLA and where a request of ``task``
+    goes after it.
 
-    The slackbot posts it to the Slack channel of the agent, or to the
-    owner of the ticket. This is best effort: when it fails, the request
-    is still in the UI.
+    The channel is the team channel of the first project of the ticket,
+    else the agent's Slack channel, else the agent team's channel. This
+    is best effort: when the graph fails, there is no SLA and no
+    channel, and the request goes to the person only.
     """
-    if client is None:
-        return
+    escalation: dict[str, typing.Any] = {
+        'org_slug': org_slug,
+        'agent_name': None,
+        'slack_channel': None,
+    }
     try:
+        settings = await _agent_settings(db, task['agent_id'])
         records = await db.execute(
             _AGENT_SLACK_QUERY,
             {'id': task['agent_id']},
-            ['name', 'slack_channel'],
+            ['name', 'slack_channel', 'team_slug', 'team_channel'],
         )
         agent = (
             {k: graph.parse_agtype(v) for k, v in records[0].items()}
             if records
             else {}
         )
-        entry = {
-            'org_slug': org_slug,
-            'short_id': task['short_id'],
-            'ticket_title': task['title'],
-            'owner': task['owner'],
-            'agent_name': agent.get('name'),
-            'slack_channel': agent.get('slack_channel'),
-            'request_id': request['id'],
-            **{k: request[k] for k in _ANNOUNCED_FIELDS},
-        }
-        await client.xadd(
-            valkey.TICKET_REQUESTS_STREAM,
-            {'request': orjson.dumps(entry)},
-            maxlen=valkey.TICKET_REQUESTS_MAXLEN,
-            approximate=True,
+        project_team: dict[str, typing.Any] = {}
+        if task.get('projects'):
+            records = await db.execute(
+                _PROJECT_TEAM_QUERY,
+                {'id': task['projects'][0]['project_id']},
+                ['team_slug', 'team_channel'],
+            )
+            if records:
+                project_team = {
+                    k: graph.parse_agtype(v) for k, v in records[0].items()
+                }
+        escalation['agent_name'] = agent.get('name')
+        escalation['slack_channel'] = (
+            _team_channel(project_team)
+            or agent.get('slack_channel')
+            or _team_channel(agent)
         )
     except Exception:
         LOGGER.exception(
-            'Could not announce request %s of %s',
-            request['id'],
-            task['short_id'],
+            'Could not route the requests of %s', task['short_id']
         )
+        return None, escalation
+    sla = settings.response_sla
+    return (models.parse_duration(sla) if sla else None), escalation
 
 
 def _check_structured_output(

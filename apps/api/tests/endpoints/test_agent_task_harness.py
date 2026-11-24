@@ -8,6 +8,7 @@ service account of the agent, unless a test says otherwise.
 import datetime
 import decimal
 import typing
+import unittest
 import uuid
 from unittest import mock
 
@@ -20,6 +21,7 @@ from imbi.api import models, scoring
 from imbi.api.auth import permissions
 from imbi.api.endpoints import ticket_harness
 from imbi.api.graph_sql import props_template
+from imbi.api.tickets import sweeper
 from imbi.common import valkey
 
 
@@ -813,6 +815,14 @@ class RequestTests(HarnessTestCase):
         self.assertEqual(entry['slack_channel'], '#ops')
         self.assertEqual(entry['agent_name'], 'Triage Bot')
         self.assertEqual(entry['options'], ['main', 'dev'])
+        self.assertEqual(entry['recipient'], (await self.task_row())['owner'])
+        self.assertNotIn('escalation', entry)
+        # The agent has no response SLA, so the request never escalates.
+        async with self.pool.connection() as conn:
+            cursor = await conn.execute(
+                'SELECT escalate_at, escalation FROM tickets.requests'
+            )
+            self.assertEqual(await cursor.fetchall(), [(None, None)])
 
     async def test_resume_keeps_a_task_with_an_open_request_blocked(
         self,
@@ -862,6 +872,102 @@ class RequestTests(HarnessTestCase):
         )
         self.assertEqual(response.status_code, 413, response.text)
         self.assertEqual((await self.task_row())['status'], 'queued')
+
+
+class EscalationTests(HarnessTestCase):
+    agent_settings: typing.ClassVar[dict[str, typing.Any]] = {
+        'task_budget': '1',
+        'response_sla': '2h',
+    }
+
+    async def test_overdue_request_goes_to_the_channel_once(self) -> None:
+        await self.graph.execute(
+            'MATCH (a:Agent {{id: {id}}}) SET a.slack_channel = {channel}'
+            ' RETURN a.id AS id',
+            {'id': self.agent_id, 'channel': '#ops'},
+            ['id'],
+        )
+        response = await self.post(
+            'requests', {'kind': 'feedback', 'title': 'Which branch?'}
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        async with self.pool.connection() as conn:
+            cursor = await conn.execute(
+                'SELECT escalate_at - opened_at, escalation'
+                ' FROM tickets.requests'
+            )
+            ((delay, escalation),) = await cursor.fetchall()
+        self.assertEqual(delay, datetime.timedelta(hours=2))
+        self.assertEqual(escalation['slack_channel'], '#ops')
+        client = mock.AsyncMock()
+        with mock.patch.object(
+            sweeper.valkey, 'get_client', return_value=client
+        ):
+            result = sweeper.SweepResult()
+            await sweeper._escalate_requests(self.store, result)
+            # Not due yet.
+            client.xadd.assert_not_awaited()
+            async with self.pool.connection() as conn:
+                await conn.execute(
+                    'UPDATE tickets.requests SET escalate_at = NOW()'
+                    " - interval '1 second'"
+                )
+            await sweeper._escalate_requests(self.store, result)
+            await sweeper._escalate_requests(self.store, result)
+        client.xadd.assert_awaited_once()
+        entry = orjson.loads(client.xadd.await_args.args[1]['request'])
+        self.assertTrue(entry['escalation'])
+        self.assertEqual(entry['slack_channel'], '#ops')
+        self.assertEqual(entry['short_id'], 'T-1')
+        self.assertEqual(entry['title'], 'Which branch?')
+        self.assertEqual(entry['request_id'], response.json()['request']['id'])
+        self.assertEqual(result.escalated_requests, 1)
+
+
+class RequestRoutingTests(unittest.IsolatedAsyncioTestCase):
+    """The escalation channel: project team, agent, then agent team."""
+
+    async def route(
+        self,
+        agent: dict[str, typing.Any],
+        project_team: dict[str, typing.Any] | None,
+        projects: list[dict[str, str]],
+    ) -> str | None:
+        async def execute(query: str, *_args: typing.Any) -> list[typing.Any]:
+            if query == ticket_harness._AGENT_SETTINGS_QUERY:
+                return [{'settings': '{}'}]
+            if query == ticket_harness._AGENT_SLACK_QUERY:
+                return [agent]
+            return [project_team] if project_team else []
+
+        db = mock.AsyncMock()
+        db.execute.side_effect = execute
+        task = {'agent_id': 'a', 'short_id': 'T-1', 'projects': projects}
+        sla, escalation = await ticket_harness._request_routing(
+            db, 'acme', task
+        )
+        self.assertIsNone(sla)
+        return escalation['slack_channel']
+
+    async def test_order(self) -> None:
+        agent = {
+            'name': 'Bot',
+            'slack_channel': 'agent-chan',
+            'team_slug': 'agents',
+            'team_channel': None,
+        }
+        project = [{'project_id': 'p1', 'project_slug': 'web'}]
+        team = {'team_slug': 'web-team', 'team_channel': 'web-chan'}
+        self.assertEqual(await self.route(agent, team, project), 'web-chan')
+        self.assertEqual(
+            await self.route(agent, {**team, 'team_channel': None}, project),
+            'web-team',
+        )
+        self.assertEqual(await self.route(agent, None, []), 'agent-chan')
+        self.assertEqual(
+            await self.route({**agent, 'slack_channel': None}, None, []),
+            'agents',
+        )
 
 
 class OutcomeTests(HarnessTestCase):

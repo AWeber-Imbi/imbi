@@ -1811,6 +1811,7 @@ export interface TeamCreate {
   description?: null | string
   icon?: null | string
   name: string
+  slack_channel?: null | string
   slug: string
 }
 

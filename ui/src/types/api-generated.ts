@@ -24593,6 +24593,11 @@ export interface components {
             icon: string | null;
             organization: components["schemas"]["Organization"];
             /**
+             * Slack Channel
+             * @default null
+             */
+            slack_channel: string | null;
+            /**
              * Relationships
              * @default null
              */

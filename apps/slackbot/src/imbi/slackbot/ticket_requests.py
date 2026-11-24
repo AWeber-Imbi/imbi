@@ -3,9 +3,11 @@
 imbi-api adds each new request of a ticket (ADR 0020) to
 :data:`imbi.common.valkey.TICKET_REQUESTS_STREAM`. This module reads
 the stream and posts a slackwright form with the same choices as the
-"Waiting on you" box of the ticket in the UI. It posts to the Slack
-channel of the agent. When the agent has no channel, or the bot cannot
-find it, it sends a direct message to the owner of the ticket.
+"Waiting on you" box of the ticket in the UI. It sends the form as a
+direct message to ``recipient``, the person on the ticket. When that
+fails, it posts the form to ``slack_channel``. When the request is still
+open after the agent's response SLA, the imbi-api sweeper adds the
+entry again with ``escalation`` set, and the form goes to the channel.
 
 A submission resolves the request through imbi-api as the Slack user
 who answered. The API checks ``ticket:resolve`` and records the
@@ -122,31 +124,35 @@ async def _create_group(client: typing.Any) -> None:
 async def post(
     slack: SlackClient, runtime: forms.Runtime, entry: Entry
 ) -> None:
-    """Post the form of ``entry`` to the agent channel or the owner."""
-    name = entry.get('slack_channel')
-    channel = name and await _channel_id(slack, name)
-    if channel:
-        try:
+    """Send the form of ``entry`` to the person on the ticket, or post
+    it to the team channel for an escalation or a failed message."""
+    if not entry.get('escalation'):
+        channel = await _direct_channel(slack, entry['recipient'])
+        if channel:
             await _post_form(slack, runtime, entry, channel)
-        except errors.SlackApiError as err:
-            # Only a definite "no such channel" goes to the owner. After
-            # another error, Slack can have the post already.
-            response: typing.Any = err.response
-            if response.get('error') not in _NO_CHANNEL:
-                raise
-        else:
             return
-    if name:
-        LOGGER.warning(
-            'No Slack channel %r for %s; sending to the owner',
-            name,
+        LOGGER.info(
+            'No Slack user for %s; posting %s to the channel',
+            entry['recipient'],
             entry['short_id'],
         )
-    channel = await _direct_channel(slack, entry['owner'])
+    name = entry.get('slack_channel')
+    channel = name and await _channel_id(slack, name)
     if not channel:
-        LOGGER.info('No Slack user for %s', entry['owner'])
+        LOGGER.warning('No Slack channel %r for %s', name, entry['short_id'])
         return
-    await _post_form(slack, runtime, entry, channel)
+    try:
+        await _post_form(slack, runtime, entry, channel)
+    except errors.SlackApiError as err:
+        response: typing.Any = err.response
+        if response.get('error') not in _NO_CHANNEL:
+            raise
+        LOGGER.warning(
+            'Cannot post to Slack channel %r for %s: %s',
+            name,
+            entry['short_id'],
+            response.get('error'),
+        )
 
 
 async def answer(slack: SlackClient, submission: forms.Submission) -> bool:

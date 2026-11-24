@@ -164,6 +164,12 @@ export function TeamDetail({ onBack, onEdit, team }: TeamDetailProps) {
               <div className="text-secondary text-sm">Organization</div>
               <div className="text-primary mt-1">{team.organization.name}</div>
             </div>
+            <div>
+              <div className="text-secondary text-sm">Slack channel</div>
+              <div className="text-primary mt-1">
+                #{team.slack_channel || team.slug}
+              </div>
+            </div>
             {schemaLoading && <DynamicFieldsSkeleton />}
             {teamSchema && (
               <DynamicDetailFields

@@ -65,7 +65,7 @@ def entry(**overrides: typing.Any) -> dict[str, typing.Any]:
         'org_slug': 'aweber',
         'short_id': 'T-7',
         'ticket_title': 'Fix the build',
-        'owner': 'ada@example.com',
+        'recipient': 'ada@example.com',
         'agent_name': 'Triage Bot',
         'slack_channel': None,
         'request_id': 'r-1',
@@ -196,43 +196,51 @@ class FlowTestCase(helpers.TestCase):
 
 
 class PostTests(FlowTestCase):
-    async def test_agent_channel_by_name(self) -> None:
+    async def test_recipient_first_even_with_a_channel(self) -> None:
         await ticket_requests.post(
             self.slack, self.runtime, entry(slack_channel='#ops')
         )
-        self.assertEqual('C2', self.slack.posts[0]['channel'])
+        self.assertEqual(['D-U1'], [p['channel'] for p in self.slack.posts])
         record = await self.stored()
         self.assertEqual(
             'r-1', record.metadata['ticket_request']['request_id']
         )
 
-    async def test_agent_channel_by_id(self) -> None:
+    async def test_escalation_goes_to_the_channel_by_name(self) -> None:
         await ticket_requests.post(
-            self.slack, self.runtime, entry(slack_channel='C9')
+            self.slack,
+            self.runtime,
+            entry(slack_channel='#ops', escalation=True),
         )
-        self.assertEqual('C9', self.slack.posts[0]['channel'])
+        self.assertEqual(['C2'], [p['channel'] for p in self.slack.posts])
 
-    async def test_owner_when_no_channel(self) -> None:
-        await ticket_requests.post(self.slack, self.runtime, entry())
-        self.assertEqual('D-U1', self.slack.posts[0]['channel'])
-
-    async def test_owner_when_the_channel_is_unknown(self) -> None:
+    async def test_escalation_goes_to_the_channel_by_id(self) -> None:
         await ticket_requests.post(
-            self.slack, self.runtime, entry(slack_channel='#nope')
+            self.slack,
+            self.runtime,
+            entry(slack_channel='C9', escalation=True),
         )
-        self.assertEqual('D-U1', self.slack.posts[0]['channel'])
+        self.assertEqual(['C9'], [p['channel'] for p in self.slack.posts])
 
-    async def test_owner_when_the_channel_id_is_stale(self) -> None:
+    async def test_channel_when_the_recipient_is_not_in_slack(self) -> None:
         await ticket_requests.post(
-            self.slack, self.runtime, entry(slack_channel='C404')
+            self.slack,
+            self.runtime,
+            entry(recipient='bob@example.com', slack_channel='ops'),
         )
-        self.assertEqual('D-U1', self.slack.posts[0]['channel'])
+        self.assertEqual(['C2'], [p['channel'] for p in self.slack.posts])
 
-    async def test_owner_not_in_slack(self) -> None:
-        await ticket_requests.post(
-            self.slack, self.runtime, entry(owner='bob@example.com')
-        )
-        self.assertEqual([], self.slack.posts)
+    async def test_nowhere_to_post(self) -> None:
+        for overrides in (
+            {'recipient': 'bob@example.com'},
+            {'recipient': 'bob@example.com', 'slack_channel': '#nope'},
+            {'escalation': True, 'slack_channel': 'C404'},
+        ):
+            with self.subTest(**overrides):
+                await ticket_requests.post(
+                    self.slack, self.runtime, entry(**overrides)
+                )
+                self.assertEqual([], self.slack.posts)
 
     async def test_refused_form_is_a_message(self) -> None:
         await ticket_requests.post(
