@@ -112,11 +112,16 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    person on the ticket, not to the agent's Slack channel. A request goes
    to a team Slack channel when the bot cannot send the direct message,
    or when the request is still open after the agent's **Human response
-   SLA**. Set an SLA on each agent that needs one. Set **Slack channel**
-   on each team whose channel name is not the team slug. Invite the bot
-   to every channel that can get these posts, including the channels
-   that have the team slug as their name. The `channels:read` and `groups:read` scopes of 2.61.0
-   are still necessary for the channel posts.
+   SLA**. Set an SLA on each agent that needs one. The slackbot selects
+   the channel in this order: the team that owns the first project of
+   the ticket, then the agent's **Slack channel**, then the team that
+   owns the agent. Thus, when the project has no owner team and the
+   agent has a Slack channel, the post goes to the agent's channel, not
+   to the channel of the agent's team. Set **Slack channel** on each
+   team whose channel name is not the team slug. Invite the bot to every
+   channel that can get these posts, including the channels that have
+   the team slug as their name. The `channels:read` and `groups:read`
+   scopes of 2.61.0 are still necessary for the channel posts.
 
 ## 2.61.0
 
