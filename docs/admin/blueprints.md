@@ -138,7 +138,9 @@ deployment in the release endpoints):
 A `PATCH` fails with `422` when no matching blueprint declares a
 property, or when a value does not agree with its schema. One
 exception: for a top-level array property, Imbi checks the type of
-each item and, for string items, the item `enum`. It does not check
+each item and, for string items, the item `enum`. It converts an item
+to the item type when it can (`"3"` in an integer array is stored as
+`3`) instead of returning `422`. It does not check
 other item rules, such as a `minimum` or the schema of an object item,
 so an agent must not rely on those checks. An array inside an object
 property is checked against its full schema.
