@@ -286,7 +286,7 @@ organizations_router.include_router(
     secret_audit_router,
     prefix='/{org_slug}/secret-audit-events',
 )
-# The deploy, commit-sync and PR-sync routes act with the caller's role
+# The deploy, logs, commit-sync and PR-sync routes act with the caller's role
 # in the path organization only, on a project of that organization.
 _PROJECT_MEMBER = [fastapi.Depends(org_auth.member_project_org_id)]
 organizations_router.include_router(
@@ -296,6 +296,7 @@ organizations_router.include_router(
 organizations_router.include_router(
     project_logs_router,
     prefix='/{org_slug}/projects/{project_id}/logs',
+    dependencies=_PROJECT_MEMBER,
 )
 organizations_router.include_router(
     project_incidents_router,

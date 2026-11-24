@@ -417,6 +417,7 @@ class RegistryTestCase(unittest.TestCase):
                 'deploy',
                 'release',
                 'rollback',
+                'search_logs',
                 'agent',
                 'llm_call',
                 'condition',
@@ -434,6 +435,10 @@ class RegistryTestCase(unittest.TestCase):
                 registry.STEP_TYPES[name].required_permissions({}),
                 {'project:deployment:write'},
             )
+        self.assertEqual(
+            registry.STEP_TYPES['search_logs'].required_permissions({}),
+            {'project:logs:read'},
+        )
         self.assertEqual(
             registry.STEP_TYPES['wait'].required_permissions({}), set()
         )

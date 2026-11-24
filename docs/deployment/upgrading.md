@@ -86,6 +86,9 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    type and URL. Until it runs, or until the scheduler runs it within
    6 hours, the **Tools and plugins** section shows each server of an
    earlier sync by name only, as `stdio`.
+3. Run `imbi-api setup-permissions`. It gives the `imbi-workflows` role
+   `project:logs:read`, which the new **Search logs** workflow step needs.
+   Without it, the step fails with `forbidden`.
 
 ## 2.60.0
 

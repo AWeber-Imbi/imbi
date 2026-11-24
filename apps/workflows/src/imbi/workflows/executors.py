@@ -45,6 +45,7 @@ import pydantic
 from imbi.common import graph, versioning
 from imbi.common.auth import encryption
 from imbi.common.llm import drivers, typesafe
+from imbi.common.plugins import base
 from imbi.common.workflows import graph as wf
 from imbi.common.workflows import script_runner
 from imbi.common.workflows.registry import (
@@ -58,6 +59,7 @@ from imbi.common.workflows.registry import (
     release,
     rollback,
     script,
+    search_logs,
     slack,
     wait,
 )
@@ -361,6 +363,8 @@ class Executors:
                 return await self._assign_ticket(call)
             case 'llm_call':
                 return await self._llm_call(call)
+            case 'search_logs':
+                return await self._search_logs(call)
             case other:
                 raise StepError(f'unknown_type:{other}', retry=False)
 
@@ -680,6 +684,40 @@ class Executors:
                 {**answer, 'prompt_version': answer['n']}
             ).model_dump(mode='json')
         )
+
+    async def _search_logs(self, call: Call) -> Outcome:
+        # A template that renders to nothing takes the default of its
+        # parameter, so imbi-api applies its own default.
+        params = _params(
+            search_logs.Params,
+            dataclasses.replace(
+                call, params={k: v for k, v in call.params.items() if v != ''}
+            ),
+        )
+        _check('project_id', params.project_id, _ID)
+        query = {
+            'source': params.source,
+            'environment': params.environments,
+            'start_time': params.start_time,
+            'end_time': params.end_time,
+            'cursor': params.cursor,
+            'limit': params.limit,
+            'filter': params.filters,
+            'level': params.levels,
+        }
+        org = await self.org_slug(call.organization_id)
+        found = await self.api.request(
+            'GET',
+            _path('organizations', org, 'projects', params.project_id, 'logs')
+            + '/?'
+            # An empty list sends nothing.
+            + urllib.parse.urlencode(
+                {k: v for k, v in query.items() if v is not None},
+                doseq=True,
+            ),
+        )
+        base.LogResult.model_validate(found)
+        return Outcome(output=found)
 
     async def cancel_agent_task(
         self,

@@ -29,6 +29,7 @@ from imbi.common import graph, iggy, sentry
 from imbi.common.auth import encryption
 from imbi.common.workflows import graph as wf
 from imbi.common.workflows import history, script_runner
+from imbi.common.workflows.registry import search_logs
 from imbi.workflows import app, engine, executors, settings, store
 
 CLOSED = {'succeeded', 'failed', 'cancelled', 'timed_out'}
@@ -193,7 +194,7 @@ class FakeApi:
             return httpx.Response(
                 200, json={'access_token': 'token', 'expires_in': 900}
             )
-        released = self._release(request)
+        released = self._release(request) or _logs(request)
         if released is not None:
             return released
         if '/commits/' in path:
@@ -227,6 +228,15 @@ class FakeApi:
                 200, json={'run_id': run_id, 'status': 'success'}
             )
         return httpx.Response(404, json={'detail': 'not found'})
+
+
+def _logs(request: httpx.Request) -> httpx.Response | None:
+    """imbi-api's project logs search: one entry."""
+    if not request.url.path.endswith('/logs/'):
+        return None
+    return httpx.Response(
+        200, json=search_logs.STEP.sample_output | {'next_cursor': 'c2'}
+    )
 
 
 def _node(
@@ -2415,6 +2425,86 @@ class TimeoutTestCase(EngineTestCase):
             )
         run = await self._drive(run_id)
         self.assertEqual(run['status'], 'succeeded', run['error'])
+
+
+class SearchLogsStepTestCase(EngineTestCase):
+    async def test_output_feeds_the_next_step(self) -> None:
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'manual'),
+                _node(
+                    'logs',
+                    'search_logs',
+                    {
+                        'project_id': 'proj-1',
+                        'environments': ['production', 'staging'],
+                        'start_time': '2026-01-01T00:00:00Z',
+                        'limit': 50,
+                        'filters': ['service:eq:api'],
+                        'levels': ['ERROR', 'WARN'],
+                        'source': '',
+                    },
+                ),
+                _node(
+                    'check',
+                    'condition',
+                    {
+                        'conditions': [
+                            {
+                                'a': '{{ logs.total }}',
+                                'operator': 'greater_than',
+                                'b': '0',
+                            }
+                        ]
+                    },
+                ),
+            ],
+            [_edge('start', 'logs'), _edge('logs', 'check')],
+        )
+        run = await self._drive(await self._start(workflow_id))
+        self.assertEqual(run['status'], 'succeeded', run)
+        self.assertIn(
+            (
+                'GET',
+                f'/organizations/{self.org}/projects/proj-1/logs/'
+                '?environment=production&environment=staging'
+                '&start_time=2026-01-01T00%3A00%3A00Z&limit=50'
+                '&filter=service%3Aeq%3Aapi&level=ERROR&level=WARN',
+            ),
+            self.api.requests,
+        )
+        output = run['steps']['logs']['output']
+        self.assertEqual(output['entries'][0]['message'], 'sample')
+        self.assertEqual(output['next_cursor'], 'c2')
+        self.assertEqual(run['steps']['check']['port'], 0)
+
+    async def test_empty_values_take_the_default(self) -> None:
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'manual'),
+                _node(
+                    'logs',
+                    'search_logs',
+                    {
+                        'project_id': 'proj-1',
+                        'environments': '{{ trigger.envs }}',
+                        'limit': '{{ trigger.limit }}',
+                    },
+                ),
+            ],
+            [_edge('start', 'logs')],
+        )
+        run = await self._drive(
+            await self._start(workflow_id, {'envs': '', 'limit': ''})
+        )
+        self.assertEqual(run['status'], 'succeeded', run)
+        self.assertIn(
+            (
+                'GET',
+                f'/organizations/{self.org}/projects/proj-1/logs/?limit=100',
+            ),
+            self.api.requests,
+        )
 
 
 class AgentStepTestCase(EngineTestCase):

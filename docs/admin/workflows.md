@@ -141,6 +141,7 @@ with one output port has no port name.
 | `deploy` | Deploy | Actions | `Succeeded`, `Failed` |
 | `release` | Release | Actions | `Succeeded`, `Failed` |
 | `rollback` | Rollback | Actions | One |
+| `search_logs` | Search logs | Actions | One |
 | `agent` | Agent task | Actions | `Succeeded`, `Failed` |
 
 Each step that is not a trigger has a default timeout and a default retry
@@ -157,6 +158,7 @@ count:
 | `slack` | 2 minutes | 3, for a Slack rate limit only |
 | `assign_ticket` | 1 minute | 0 |
 | `deploy`, `release`, `rollback` | 1 hour | 2 |
+| `search_logs` | 5 minutes | 2 |
 | `agent` | None. The max run time limits it | 2 |
 
 A retry waits 5 seconds, then 10, doubling each time. When the step got no
@@ -700,6 +702,31 @@ rollback fails the run.
 
 **Output:** `deployment_id` and `status`.
 
+### Search logs
+
+Gets the log entries of a project from its logs plugin, as the **Logs** tab
+of the project does. The step sends the same search to imbi-api as the
+`imbi-workflows` account.
+
+| Parameter | What to enter | Default |
+|---|---|---|
+| `project_id` | A project id, or one reference | Required |
+| `source` | The slug of the logs integration | The default logs integration of the project |
+| `environments` | Environment slugs. With two or more, Imbi searches each one and merges the entries | None. The plugin searches with no environment |
+| `start_time` | An ISO 8601 time | 30 minutes before now, also when you set `end_time` |
+| `end_time` | An ISO 8601 time | Now |
+| `cursor` | The `next_cursor` of an earlier search. One environment only | None |
+| `limit` | The maximum number of entries, 1 to 1000 | 100 |
+| `filters` | Filters as `field:op:value`. `op` is `eq`, `ne`, `contains`, `starts_with`, or `regex` | None |
+| `levels` | Severity levels, for example `ERROR` | All |
+
+An empty value, also a template that renders to nothing, takes the
+default. If the cursor has expired, the step fails with `cursor_expired`.
+
+**Output:** `entries` (each with `timestamp`, `message`, `level`, and
+`raw`), `next_cursor`, `total`, and `warnings`. Use
+`{{ <key>.entries }}` or `{{ <key>.total }}` in later steps.
+
 ### Agent task
 
 Gives an agent a task and waits for its outcome. See
@@ -980,6 +1007,7 @@ only. The permissions that steps need:
 | Schedule | `scheduled_task:create` |
 | Webhook | `webhook:update` |
 | Deploy, Release, Rollback | `project:deployment:write` |
+| Search logs | `project:logs:read` |
 | Ticket state changed | `ticket:read` |
 | Agent task | `ticket:create` |
 | LLM Call | `prompt:run` |

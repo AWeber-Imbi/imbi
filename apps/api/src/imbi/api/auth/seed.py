@@ -1113,6 +1113,8 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'scheduled_task:delete',
             # The LLM Call step runs its saved prompt.
             'prompt:run',
+            # The Search logs step reads the logs of a project.
+            'project:logs:read',
             # Not `integration:act-as-service`: an operator grants it,
             # as ADR 0017 requires for every autonomous principal.
         ],
