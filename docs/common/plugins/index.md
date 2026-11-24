@@ -300,6 +300,7 @@ cache a capability's reads). The remaining keys are per-kind:
 
 | `kind` | Additional allowed hints |
 | --- | --- |
+| `configuration` | `supports_history` |
 | `logs` | `supports_histogram` |
 | `deployment` | `supports_deployment_sync` |
 | `lifecycle` | `supports_lifecycle_sync`, `lifecycle_events` |

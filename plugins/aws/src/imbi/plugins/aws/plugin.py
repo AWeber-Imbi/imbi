@@ -228,7 +228,7 @@ class AWSPlugin(plugins.Plugin):
                     'Read and write project configuration as SSM parameters.'
                 ),
                 requires_identity=True,
-                hints={'cacheable': False},
+                hints={'cacheable': False, 'supports_history': True},
                 options=[
                     plugins.PluginOption(
                         name='path_prefix',

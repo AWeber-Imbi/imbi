@@ -5,8 +5,9 @@ presents a typed key/value store scoped to a project (feature flags,
 secrets, service settings). Bind it with a `Capability(kind='configuration',
 handler=...)` in the plugin's manifest. The four required methods
 receive a `PluginContext` (project identity + resolved options) and the
-Integration's decrypted `credentials` dict. One optional method,
-`describe_prefix`, receives only the `PluginContext`.
+Integration's decrypted `credentials` dict. Two methods are optional:
+`get_history`, and `describe_prefix`, which receives only the
+`PluginContext`.
 
 Surfaces: **ui, api**.
 
@@ -77,6 +78,13 @@ class VaultConfiguration(ConfigurationCapability):
   that only the plugin can expand. The host returns this value to the UI
   so it can show the full key path. This method is synchronous. Return
   `None` when the capability has no prefix.
+- **`get_history`** *(optional)* — return the versions of one key as
+  `ConfigVersion` objects, newest first, and an empty list for a key
+  that does not exist. Set `value` only when `with_values` is true.
+  Raise `PermissionError` when the upstream system refuses the read for
+  lack of access. Set the `supports_history` hint when you implement it.
+  The default raises `NotImplementedError`. The host restores a version
+  by writing its value again with `set_value`.
 
 ## Data types and secrets
 
@@ -90,6 +98,8 @@ read access and to redact values.
 ## Hints
 
 - **`cacheable`** — the host may cache reads from this capability.
+- **`supports_history`** — the capability implements `get_history`. The
+  UI shows the version history and restore actions.
 
 ## API reference
 
@@ -98,5 +108,7 @@ read access and to redact values.
 ::: imbi.common.plugins.ConfigKey
 
 ::: imbi.common.plugins.ConfigKeyWithValue
+
+::: imbi.common.plugins.ConfigVersion
 
 ::: imbi.common.plugins.ConfigValue

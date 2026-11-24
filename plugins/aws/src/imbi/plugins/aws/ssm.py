@@ -11,6 +11,7 @@ from imbi.common.plugins.base import (
     ConfigKeyWithValue,
     ConfigurationCapability,
     ConfigValue,
+    ConfigVersion,
     PluginContext,
 )
 from imbi.common.plugins.errors import (
@@ -224,11 +225,7 @@ class SSMConfiguration(ConfigurationCapability):
         value: ConfigValue,
     ) -> ConfigKey:
         prefix = self._prefix(ctx)
-        if '..' in key or key.startswith('/'):
-            raise ValueError(
-                f'Invalid SSM key {key!r}: keys must be relative '
-                'to the configured path_prefix'
-            )
+        _validate_key(key)
         creds = resolve_credentials(
             credentials, region=integration_region(ctx), ctx=ctx
         )
@@ -309,6 +306,75 @@ class SSMConfiguration(ConfigurationCapability):
         except _ParameterMissing:
             return
 
+    async def get_history(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        key: str,
+        *,
+        with_values: bool,
+    ) -> list[ConfigVersion]:
+        prefix = self._prefix(ctx)
+        _validate_key(key)
+        creds = resolve_credentials(
+            credentials, region=integration_region(ctx), ctx=ctx
+        )
+        timeout = capability_timeout(ctx, default=15.0)
+        # A role without ssm:GetParameterHistory is a missing IAM
+        # permission, not missing credentials: do not ask to reconnect.
+        error_map = {
+            **_SSM_ERROR_MAP,
+            'AccessDeniedException': PermissionError,
+            'ParameterNotFound': _ParameterMissing,
+        }
+        versions: list[ConfigVersion] = []
+        next_token: str | None = None
+        while True:
+            body: dict[str, typing.Any] = {
+                'Name': _full_name(prefix, key),
+                'WithDecryption': with_values,
+                'MaxResults': 50,
+            }
+            if next_token:
+                body['NextToken'] = next_token
+            try:
+                response = await call_aws_json(
+                    service='ssm',
+                    action='GetParameterHistory',
+                    body=body,
+                    credentials=creds,
+                    error_map=error_map,
+                    timeout=timeout,
+                )
+            except _ParameterMissing:
+                return []
+            for param in response.get('Parameters', []):
+                ssm_type = str(param.get('Type', ''))
+                user = param.get('LastModifiedUser')
+                versions.append(
+                    ConfigVersion(
+                        version=str(param['Version']),
+                        data_type=_SSM_TO_DATA_TYPE.get(ssm_type, 'string'),
+                        secret=ssm_type == 'SecureString',
+                        last_modified=_to_datetime(
+                            param.get('LastModifiedDate')
+                        ),
+                        # The session name of an assumed-role ARN.
+                        modified_by=str(user).rsplit('/', 1)[-1]
+                        if user
+                        else None,
+                        value=str(param.get('Value', ''))
+                        if with_values
+                        else None,
+                    )
+                )
+            next_token = response.get('NextToken')
+            if not next_token:
+                break
+        # SSM returns the oldest version first.
+        versions.reverse()
+        return versions
+
     def describe_prefix(self, ctx: PluginContext) -> str | None:
         return self._prefix(ctx)
 
@@ -327,6 +393,14 @@ class SSMConfiguration(ConfigurationCapability):
                 ' and not be the root.'
             )
         return expanded
+
+
+def _validate_key(key: str) -> None:
+    if '..' in key or key.startswith('/'):
+        raise ValueError(
+            f'Invalid SSM key {key!r}: keys must be relative '
+            'to the configured path_prefix'
+        )
 
 
 def _full_name(prefix: str, key: str) -> str:
