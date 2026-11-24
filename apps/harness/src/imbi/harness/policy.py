@@ -51,6 +51,9 @@ class Check:
     approval: bool = False
     #: The tool key that imbi-api counts against its rate limit.
     rate_key: str | None = None
+    #: How many times imbi-api counts the call: one for each child task
+    #: of ``create_child_tasks``.
+    rate_units: int = 1
 
 
 #: CLI server names whose tool map key uses another server name: the
@@ -73,6 +76,11 @@ def tool_key(name: str) -> str | None:
 #: ``OPT_IN_BUILTIN_TOOLS`` of imbi-common, which the harness does not
 #: depend on.
 _BUILTIN_ALIASES: dict[str, frozenset[str]] = {'Agent': frozenset({'Task'})}
+
+#: The batch tool is ``create_child_task`` for each item: the tool map
+#: entry and the ``approval_tools`` rules of that tool apply to it.
+CHILD_TASKS = 'mcp__imbi__create_child_tasks'
+_CHILD_TASK = 'mcp__imbi__create_child_task'
 
 
 def builtin_key(name: str) -> str:
@@ -106,6 +114,9 @@ def check(  # noqa: PLR0913 - keyword-only inputs
 ) -> Check:
     if name in (REPORT_OUTCOME, STRUCTURED_OUTPUT):
         return Check()
+    batch = name == CHILD_TASKS
+    if batch:
+        name = _CHILD_TASK
     key = tool_key(name)
     # A plugin that is on allows its MCP servers' tools (#445); a tool
     # map entry, if one matches, still applies.
@@ -132,11 +143,16 @@ def check(  # noqa: PLR0913 - keyword-only inputs
         and arguments['environment'] not in environments
     ):
         return Check(deny='environment_not_allowed')
+    rules = _rule_names(name, key, plugin)
+    if batch:
+        rules.add(CHILD_TASKS)
     return Check(
         approval=bool(config.get('approval'))
-        or (
-            automation
-            and bool(_rule_names(name, key, plugin) & set(approval_tools))
-        ),
+        or (automation and bool(rules & set(approval_tools))),
         rate_key=key if config.get('rate_limit') else None,
+        rate_units=(
+            len(typing.cast('list[object]', arguments.get('tasks') or []))
+            if batch
+            else 1
+        ),
     )

@@ -106,6 +106,31 @@ class PolicyTestCase(unittest.TestCase):
             ).approval
         )
 
+    def test_child_tasks_follow_the_child_task_rules(self) -> None:
+        tool_map = {
+            'imbi.create_child_task': {
+                'approval': True,
+                'rate_limit': {'count': 3, 'per': 'hour'},
+            }
+        }
+        tasks = {'tasks': [{}, {}, {}]}
+        checked = check(policy.CHILD_TASKS, tasks, tool_map=tool_map)
+        self.assertTrue(checked.approval)
+        self.assertEqual(checked.rate_key, 'imbi.create_child_task')
+        self.assertEqual(checked.rate_units, 3)
+        for rule in ('mcp__imbi__create_child_task', policy.CHILD_TASKS):
+            self.assertTrue(
+                check(
+                    policy.CHILD_TASKS,
+                    tasks,
+                    approval_tools=[rule],
+                    automation=True,
+                ).approval
+            )
+        unlimited = check(policy.CHILD_TASKS, tasks)
+        self.assertFalse(unlimited.approval)
+        self.assertIsNone(unlimited.rate_key)
+
     def test_environment_limit(self) -> None:
         self.assertEqual(
             check('mcp__deploy__run', {'environment': 'production'}).deny,

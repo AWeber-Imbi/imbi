@@ -187,7 +187,7 @@ _RULES = """\
 - Use `request_input` to ask a person a question. Use
   `create_child_task` to give work to another agent: {subagents}.
   To give work to more than one agent at the same time, use
-  `create_child_tasks` once with all the tasks: they run in parallel.
+  `create_child_tasks` once with up to 5 tasks: they run in parallel.
 - Use `hand_off` to give the task to a person when a person must do
   the rest of the work, or must decide something that can take days.
   It ends this session: stop after it, with no `report_outcome`.
@@ -225,10 +225,18 @@ _CHILD_TASK_SCHEMA: dict[str, typing.Any] = {
     },
     'required': ['agent_slug', 'title', 'instruction'],
 }
+#: Each child is another CLI in the pod. ponytail: fixed cap per call;
+#: make it a runner setting if pods get more memory.
+MAX_CHILD_TASKS = 5
 _CHILD_TASKS_SCHEMA: dict[str, typing.Any] = {
     'type': 'object',
     'properties': {
-        'tasks': {'type': 'array', 'items': _CHILD_TASK_SCHEMA, 'minItems': 1}
+        'tasks': {
+            'type': 'array',
+            'items': _CHILD_TASK_SCHEMA,
+            'minItems': 1,
+            'maxItems': MAX_CHILD_TASKS,
+        }
     },
     'required': ['tasks'],
 }
@@ -2244,7 +2252,10 @@ class TaskRun:
                 name, arguments, tool_use_id or str(uuid.uuid4())
             )
         if reason is None and checked.rate_key is not None:
-            reason = await self.count(checked.rate_key)
+            for _ in range(checked.rate_units):
+                reason = await self.count(checked.rate_key)
+                if reason:
+                    break
         decision['decision'] = 'deny' if reason else 'allow'
         decision['reason'] = reason
         if tool_use_id:
@@ -2443,14 +2454,23 @@ class TaskRun:
         if not isinstance(tasks, list) or not tasks:
             return _tool_error('The tasks must be a list that is not empty')
         items = typing.cast('list[object]', tasks)
-        results = await asyncio.gather(
+        if len(items) > MAX_CHILD_TASKS:
+            return _tool_error(f'Give at most {MAX_CHILD_TASKS} tasks')
+        outcomes = await asyncio.gather(
             *(
                 self.create_child_task(
                     typing.cast('Body', item) if isinstance(item, dict) else {}
                 )
                 for item in items
-            )
+            ),
+            return_exceptions=True,
         )
+        results = [
+            _tool_error(f'The child task failed: {o!r}')
+            if isinstance(o, BaseException)
+            else o
+            for o in outcomes
+        ]
         return {
             'content': [part for r in results for part in r['content']],
             'is_error': all(r.get('is_error') for r in results),
