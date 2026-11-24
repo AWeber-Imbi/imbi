@@ -241,6 +241,16 @@ class PostTests(FlowTestCase):
         text = self.slack.posts[0]['markdown_text']
         self.assertIn('Answer it in Imbi.', text)
         self.assertNotIn('API key', text)
+
+    async def test_refused_form_title_cannot_broadcast(self) -> None:
+        await ticket_requests.post(
+            self.slack,
+            self.runtime,
+            entry(title='Which API key?', ticket_title='Fix @here <!channel>'),
+        )
+        text = self.slack.posts[0]['markdown_text']
+        self.assertNotIn('@here', text)
+        self.assertNotIn('<!channel>', text)
         self.assertEqual({}, self.store._records)
 
 

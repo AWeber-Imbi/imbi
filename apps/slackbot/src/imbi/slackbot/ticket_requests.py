@@ -356,7 +356,10 @@ def _heading(entry: Entry) -> str:
     ticket = entry['short_id']
     if ui_url:
         ticket = f'[{ticket}]({ui_url}/tickets/{entry["org_slug"]}/{ticket})'
-    return f'**{ticket}** · {entry["ticket_title"]}'
+    # The title is text of a person or an agent, so it must not notify
+    # the channel.
+    title = render.neutralize_broadcasts(entry['ticket_title'])
+    return f'**{ticket}** · {title}'
 
 
 def _intro(entry: Entry, options: list[str]) -> str:
