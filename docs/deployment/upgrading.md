@@ -76,7 +76,11 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 
 ## Unreleased
 
-1. To show the version history of SSM configuration parameters, allow
+1. **Before you deploy**, make sure that every imbi-api pod runs 2.59.0
+   or later. This release drops the columns `tickets.tickets.close_id`
+   and `tickets.trigger_outbox.close_id`. Only 2.58.0 writes them. A
+   2.58.0 pod that starts after the drop adds the columns again.
+2. To show the version history of SSM configuration parameters, allow
    `ssm:GetParameterHistory` in the IAM Identity Center permission sets
    (roles) that the AWS configuration capability uses. Without it, the
    **History** dialog shows an access error; reading and writing values

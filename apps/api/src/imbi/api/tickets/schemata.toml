@@ -335,6 +335,25 @@ ALTER TABLE tickets.trigger_outbox
   ADD CONSTRAINT trigger_outbox_pkey PRIMARY KEY (ticket_id, id);
 '''
 
+# 2.58.0 wrote `close_id` to both tables. No release since 2.59.0 reads
+# or writes it, so the columns go. This step must run after
+# `trigger-outbox-row-per-change`: a drop of a key column drops the key.
+# A 2.58.0 pod adds the columns again when it starts, so this release
+# needs 2.59.0 or later on every pod first.
+[[steps]]
+name = "drop-close-id"
+after_tables = true
+when = """
+SELECT EXISTS (SELECT 1 FROM pg_attribute
+                WHERE attrelid IN ('tickets.tickets'::regclass,
+                                   'tickets.trigger_outbox'::regclass)
+                  AND attname = 'close_id' AND NOT attisdropped)
+"""
+sql = '''
+ALTER TABLE tickets.tickets DROP COLUMN IF EXISTS close_id;
+ALTER TABLE tickets.trigger_outbox DROP COLUMN IF EXISTS close_id;
+'''
+
 # Waiting on me (ADR 0028) finds the open tickets of a person by owner
 # or assignee, without case, on each poll of the navigation badge.
 # Expression indexes, so a step makes them, after the columns. A pod of
