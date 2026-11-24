@@ -138,6 +138,24 @@ class ProjectLogsEndpointTestCase(support.SharedAppTestCase):
         self.assertEqual(len(data['entries']), 1)
         self.assertEqual(data['entries'][0]['message'], 'hello')
 
+    def test_search_logs_project_of_another_org_returns_404(self) -> None:
+        # The caller is a member of the path organization; the project
+        # is not in it.
+        self.mock_db.execute.side_effect = [
+            [{'id': 'org-1', 'member': 'true'}],
+            [],
+        ]
+        with mock.patch(
+            'imbi.api.endpoints.project_logs.resolve_capability',
+            return_value=self._resolved(),
+        ) as resolve:
+            with testclient.TestClient(self.test_app) as client:
+                response = client.get(
+                    '/organizations/myorg/projects/proj1/logs/'
+                )
+        self.assertEqual(response.status_code, 404)
+        resolve.assert_not_called()
+
     def test_search_logs_invalid_datetime_returns_400(self) -> None:
         with mock.patch(
             'imbi.api.endpoints.project_logs.resolve_capability',
