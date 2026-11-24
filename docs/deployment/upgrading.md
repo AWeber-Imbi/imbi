@@ -98,6 +98,12 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    scopes, the slackbot logs an error and posts no form; the request is
    still in the UI. See
    [Slack App Setup](../slackbot/slack-app-manifest.md).
+5. To show the version history of SSM configuration parameters, allow
+   `ssm:GetParameterHistory` in the IAM Identity Center permission sets
+   (roles) that the AWS configuration capability uses. Without it, the
+   **History** dialog shows an access error; reading and writing values
+   still work. A role that is missing any SSM action now gets `403`
+   (`identity_access_denied`) instead of `503`.
 
 ## 2.60.0
 
