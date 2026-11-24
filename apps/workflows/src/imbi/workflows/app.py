@@ -45,6 +45,7 @@ async def engine_lifespan() -> abc.AsyncGenerator[engine.Engine]:
         conninfo=str(postgres.url),
         min_size=postgres.min_pool_size,
         max_size=postgres.max_pool_size,
+        check=psycopg_pool.AsyncConnectionPool.check_connection,
         open=False,
     )
     await pool.open()
