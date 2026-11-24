@@ -1925,6 +1925,11 @@ class TaskRun:
                         hooks=[self.post_tool_use], timeout=HOOK_TIMEOUT
                     )
                 ],
+                'PostToolUseFailure': [
+                    sdk.HookMatcher(
+                        hooks=[self.post_tool_use], timeout=HOOK_TIMEOUT
+                    )
+                ],
             },
             mcp_servers={
                 'imbi': server,
@@ -2299,6 +2304,13 @@ class TaskRun:
         await self.read_events()
         if self.stopping is not None or not self.comments:
             return {}
+        if data['hook_event_name'] == 'PostToolUseFailure':
+            return {
+                'hookSpecificOutput': {
+                    'hookEventName': 'PostToolUseFailure',
+                    'additionalContext': self.take_comments(),
+                }
+            }
         return {
             'hookSpecificOutput': {
                 'hookEventName': 'PostToolUse',
