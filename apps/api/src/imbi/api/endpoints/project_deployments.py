@@ -34,6 +34,7 @@ from imbi.api.deployment_sync import service as deployment_sync_service
 from imbi.api.endpoints import _local_time
 from imbi.api.endpoints._helpers import (
     deployed_operation_log,
+    fetch_or_404,
     lookup_project_links,
     lookup_project_slugs,
     lookup_project_type_slugs,
@@ -62,8 +63,9 @@ from imbi.api.release_promote import queue as release_promote_queue
 from imbi.api.release_promote import service as release_promote_service
 from imbi.api.scoring import OptionalValkeyClient
 from imbi.api.scoring import queue as score_queue
+from imbi.api.tickets import custom_fields
 from imbi.api.workflows import run_store
-from imbi.common import clickhouse, graph, iggy, versioning
+from imbi.common import blueprints, clickhouse, graph, iggy, versioning
 from imbi.common import deployments as deployment_nodes
 from imbi.common import environments as environment_chains
 from imbi.common import models as common_models
@@ -3137,6 +3139,167 @@ async def record_unattached_deployment(
     return UnattachedDeploymentResponse(
         deployment_id=result.id, release_id=release_id
     )
+
+
+class DeploymentFieldsResponse(pydantic.BaseModel):
+    """The blueprint properties of one deployment.
+
+    ``fields`` has a value for each property that a matching
+    ``Deployment`` blueprint declares: the stored value, else the
+    default of the property, else ``None``. ``schemas`` holds the JSON
+    Schema of each matching blueprint, by priority, so an agent can
+    find the structure of the properties.
+    """
+
+    id: str
+    environment: str
+    status: str | None = None
+    fields: dict[str, typing.Any]
+    schemas: list[dict[str, typing.Any]]
+
+
+def _merge_patch(target: typing.Any, patch: typing.Any) -> typing.Any:
+    """Apply a JSON merge patch (RFC 7396) to ``target``."""
+    if not isinstance(patch, dict):
+        return patch
+    result: dict[str, typing.Any] = (
+        dict(typing.cast(dict[str, typing.Any], target))
+        if isinstance(target, dict)
+        else {}
+    )
+    for key, value in typing.cast(dict[str, typing.Any], patch).items():
+        if value is None:
+            result.pop(key, None)
+        else:
+            result[key] = _merge_patch(result.get(key), value)
+    return result
+
+
+def _with_defaults(
+    matches: list[common_models.Blueprint], stored: dict[str, typing.Any]
+) -> dict[str, typing.Any]:
+    """Return the value of each declared property: the stored value,
+    else the default."""
+    return {
+        name: stored.get(name, prop.default)
+        for bp in matches
+        for name, prop in (bp.json_schema.properties or {}).items()
+    }
+
+
+async def _deployment_fields(
+    db: graph.Graph,
+    org_slug: str,
+    project_id: str,
+    env_slug: str,
+    deployment_id: str,
+) -> tuple[DeploymentFieldsResponse, list[common_models.Blueprint]]:
+    """Return the blueprint properties of a deployment and its matching
+    blueprints, or raise 404."""
+    node = await fetch_or_404(
+        deployment_nodes.get_fields,
+        db,
+        org_slug=org_slug,
+        project_id=project_id,
+        env_slug=env_slug,
+        deployment_id=deployment_id,
+        detail=f'Deployment {deployment_id!r} not found',
+    )
+    matches = await blueprints.matching_blueprints(
+        db,
+        'Deployment',
+        {'project_type': node.project_types, 'environment': env_slug},
+    )
+    response = DeploymentFieldsResponse(
+        id=deployment_id,
+        environment=env_slug,
+        status=node.status,
+        fields=_with_defaults(matches, node.fields),
+        schemas=[
+            bp.json_schema.model_dump(  # pyright: ignore[reportUnknownMemberType]
+                mode='json', by_alias=True, exclude_none=True
+            )
+            for bp in matches
+        ],
+    )
+    return response, matches
+
+
+@project_deployments_router.get(
+    '/environments/{env_slug}/deployments/{deployment_id}',
+    response_model=DeploymentFieldsResponse,
+)
+async def get_deployment_fields(
+    org_slug: str,
+    project_id: str,
+    env_slug: str,
+    deployment_id: str,
+    db: graph.Pool,
+    _auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:deployment:read'),
+        ),
+    ],
+) -> DeploymentFieldsResponse:
+    """Return the blueprint properties of a deployment."""
+    response, _matches = await _deployment_fields(
+        db, org_slug, project_id, env_slug, deployment_id
+    )
+    return response
+
+
+@project_deployments_router.patch(
+    '/environments/{env_slug}/deployments/{deployment_id}',
+    response_model=DeploymentFieldsResponse,
+)
+async def patch_deployment_fields(
+    org_slug: str,
+    project_id: str,
+    env_slug: str,
+    deployment_id: str,
+    body: dict[str, typing.Any],
+    db: graph.Pool,
+    _auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:deployment:write'),
+        ),
+    ],
+) -> DeploymentFieldsResponse:
+    """Update the blueprint properties of a deployment.
+
+    The body is a JSON merge patch (RFC 7396) of the properties: an
+    object value merges into the stored object, and ``null`` removes a
+    key. So an agent that records a fact under a new key of an object
+    sends only that key. Each property that the body changes must
+    agree with the ``Deployment`` blueprints that match the project
+    types and the environment.
+
+    Raises:
+        404: The deployment is not in the project and environment.
+        422: ``custom_fields_invalid`` -- no matching blueprint
+            declares a property, or a value does not agree with its
+            schema.
+
+    """
+    # ponytail: read-modify-write, so two concurrent patches of the
+    # same deployment can lose one change. Add a compare-and-set on
+    # the stored value if agents write one deployment in parallel.
+    response, matches = await _deployment_fields(
+        db, org_slug, project_id, env_slug, deployment_id
+    )
+    merged = _merge_patch(response.fields, body)
+    clean = custom_fields.validate(
+        matches,
+        {name: merged.get(name) for name in body},
+        partial=True,
+        noun='deployment',
+    )
+    # A value that no matching blueprint declares now stays stored.
+    stored = await deployment_nodes.set_fields(db, deployment_id, clean)
+    response.fields = _with_defaults(matches, stored)
+    return response
 
 
 @project_deployments_router.post('/resync', status_code=202)

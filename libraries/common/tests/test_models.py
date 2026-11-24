@@ -107,6 +107,20 @@ class BlueprintModelTestCase(unittest.TestCase):
             )
         self.assertIn('Slug cannot be empty', str(ctx.exception))
 
+    def test_deployment_blueprint(self) -> None:
+        blueprint = models.Blueprint(
+            name='Monitoring',
+            type='Deployment',
+            filter={'environment': ['production']},
+            json_schema=models.Schema.model_validate(
+                {
+                    'type': 'object',
+                    'properties': {'monitoring': {'type': 'object'}},
+                }
+            ),
+        )
+        self.assertEqual(blueprint.type, 'Deployment')
+
 
 class BlueprintFilterValidatorTestCase(unittest.TestCase):
     """Test Blueprint filter and json_schema validators/serializers."""

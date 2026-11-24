@@ -1076,6 +1076,83 @@ class OriginTests(DeploymentNodeTestCase):
         self.assertEqual('promote', stuck[0].origin)
 
 
+class FieldsTests(DeploymentNodeTestCase):
+    """The blueprint properties of a ``Deployment`` node."""
+
+    TEAM = 'test-deployments-team'
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        await self.graph.execute(
+            """
+            MATCH (p:Project {{id: {project_id}}})
+            MATCH (o:Organization {{slug: {org}}})
+            MERGE (t:Team {{slug: {team}}})
+            MERGE (t)-[:BELONGS_TO]->(o)
+            MERGE (p)-[:OWNED_BY]->(t)
+            RETURN t.slug AS slug
+            """,
+            {'project_id': PROJECT_ID, 'org': ORG, 'team': self.TEAM},
+            ['slug'],
+        )
+
+    async def asyncTearDown(self) -> None:
+        await self.graph.execute(
+            'MATCH (t:Team {{slug: {team}}}) DETACH DELETE t RETURN 1 AS ok',
+            {'team': self.TEAM},
+            ['ok'],
+        )
+        await super().asyncTearDown()
+
+    async def fields(
+        self, deployment_id: str, **kwargs: typing.Any
+    ) -> typing.Any:
+        args = {
+            'org_slug': ORG,
+            'project_id': PROJECT_ID,
+            'env_slug': ENV,
+            'deployment_id': deployment_id,
+        }
+        args.update(kwargs)
+        return await deployments.get_fields(self.graph, **args)
+
+    async def test_set_and_read_back(self) -> None:
+        result = await self.upsert()
+        assert result is not None
+        snapshots = {'2026-11-24T10:00:00Z': {'error_count': 3}}
+        await deployments.set_fields(
+            self.graph, result.id, {'monitoring': snapshots}
+        )
+        stored = await deployments.set_fields(
+            self.graph, result.id, {'verdict': 'healthy'}
+        )
+        expected = {'monitoring': snapshots, 'verdict': 'healthy'}
+        self.assertEqual(stored, expected)
+        node = await self.fields(result.id)
+        assert node is not None
+        self.assertEqual(node.fields, expected)
+        self.assertEqual(node.status, 'in_progress')
+        self.assertEqual(node.project_types, [])
+        # The blueprint values never touch the properties of the writers.
+        [props] = await self.nodes()
+        self.assertEqual(props['status'], 'in_progress')
+
+    async def test_none_removes_the_property(self) -> None:
+        result = await self.upsert()
+        assert result is not None
+        await deployments.set_fields(self.graph, result.id, {'verdict': 'x'})
+        await deployments.set_fields(self.graph, result.id, {'verdict': None})
+        node = await self.fields(result.id)
+        assert node is not None
+        self.assertEqual(node.fields, {})
+
+    async def test_other_org_or_environment_is_none(self) -> None:
+        result = await self.upsert()
+        assert result is not None
+        self.assertIsNone(await self.fields(result.id, org_slug='other'))
+        self.assertIsNone(await self.fields(result.id, env_slug=OTHER_ENV))
+
+
 class MergeEventsTests(unittest.TestCase):
     def test_naive_legacy_timestamps_sort_alongside_node_ones(self) -> None:
         """A legacy entry written without an offset must not raise.

@@ -31,6 +31,7 @@ interface ImportBlueprintDialogProps {
 }
 
 const VALID_TYPES = new Set([
+  'Deployment',
   'Environment',
   'Project',
   'ProjectType',
