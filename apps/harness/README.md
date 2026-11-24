@@ -39,7 +39,8 @@ checked, a tool that needs approval opens an ADR 0020 approval and waits for a
 person, and a rate-limited tool is counted by imbi-api. The model can ask a
 person with `request_input`, and give work to another agent with
 `create_child_task`: the runner claims the child task of its chain and runs it
-as a second SDK instance in the same workspace. Text from a webhook goes into
+as a second SDK instance in the same workspace. `create_child_tasks` does the
+same for a list of tasks, which run in parallel. Text from a webhook goes into
 `<untrusted>` tags.
 
 The CLI starts through `agent-cli`, which changes to the task directory as
