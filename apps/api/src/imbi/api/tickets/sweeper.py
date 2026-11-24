@@ -121,8 +121,9 @@ async def _escalate_requests(
         # failure here loses the escalation; the request stays in the UI.
         await announce.publish(
             client,
-            announce.entry(ticket, row, row['escalation'] or {})
-            | {'escalation': True},
+            announce.entry(
+                ticket, row, row['escalation'] or {}, escalation=True
+            ),
         )
         result.escalated_requests += 1
 

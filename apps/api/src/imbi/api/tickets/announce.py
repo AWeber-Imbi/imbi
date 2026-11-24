@@ -31,15 +31,18 @@ def recipient(ticket: Row) -> str:
     return str(ticket['owner'])
 
 
-def entry(ticket: Row, request: Row, escalation: Row) -> Row:
+def entry(
+    ticket: Row, request: Row, routing: Row, *, escalation: bool = False
+) -> Row:
     """Return the stream entry of ``request``.
 
     ``ticket`` has ``short_id``, ``title``, ``owner``, ``assignee_kind``
-    and ``assignee``. ``escalation`` has ``org_slug``, ``agent_name`` and
-    ``slack_channel``.
+    and ``assignee``. ``routing`` has ``org_slug``, ``agent_name`` and
+    ``slack_channel``. ``escalation`` sends the entry to the channel.
     """
     return {
-        **escalation,
+        **routing,
+        **({'escalation': True} if escalation else {}),
         'short_id': ticket['short_id'],
         'ticket_title': ticket['title'],
         'recipient': recipient(ticket),

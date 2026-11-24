@@ -359,19 +359,25 @@ class RequestOpenResponse(pydantic.BaseModel):
 
 LOGGER = logging.getLogger(__name__)
 
-#: The agent of a ticket and its team, for the Slack post of a request.
-_AGENT_SLACK_QUERY: typing.LiteralString = """
+#: The agent of a ticket, its team, and the team of the ticket's first
+#: project, for the Slack post of a request. A team with no channel
+#: uses its slug.
+_REQUEST_ROUTING_QUERY: typing.LiteralString = """
 MATCH (a:Agent {{id: {id}}})
 OPTIONAL MATCH (a)-[:OWNED_BY]->(t:Team)
-RETURN a.name AS name, a.slack_channel AS slack_channel,
-       t.slug AS team_slug, t.slack_channel AS team_channel
+OPTIONAL MATCH (:Project {{id: {project_id}}})-[:OWNED_BY]->(p:Team)
+RETURN a.name AS name, a.settings AS settings,
+       a.slack_channel AS slack_channel,
+       coalesce(t.slack_channel, t.slug) AS agent_team_channel,
+       coalesce(p.slack_channel, p.slug) AS project_team_channel
 """
-
-#: The team of a project, for the Slack post of a request.
-_PROJECT_TEAM_QUERY: typing.LiteralString = """
-MATCH (:Project {{id: {id}}})-[:OWNED_BY]->(t:Team)
-RETURN t.slug AS team_slug, t.slack_channel AS team_channel
-"""
+_REQUEST_ROUTING_COLUMNS = [
+    'name',
+    'settings',
+    'slack_channel',
+    'agent_team_channel',
+    'project_team_channel',
+]
 
 _AGENT_SETTINGS_QUERY: typing.LiteralString = """
 MATCH (a:Agent {{id: {id}}})
@@ -470,9 +476,14 @@ async def _agent_settings(
     records = await db.execute(
         _AGENT_SETTINGS_QUERY, {'id': agent_id}, ['settings']
     )
-    raw: typing.Any = (
+    return _parse_settings(
         graph.parse_agtype(records[0]['settings']) if records else None
     )
+
+
+def _parse_settings(raw: typing.Any) -> models.AgentSettings:
+    """Return agent settings from a parsed graph value; defaults when
+    there is none."""
     if isinstance(raw, str):
         return models.AgentSettings.model_validate_json(raw)
     return models.AgentSettings.model_validate(raw or {})
@@ -1009,11 +1020,6 @@ async def open_agent_task_request(
     )
 
 
-def _team_channel(team: dict[str, typing.Any]) -> str | None:
-    """The Slack channel of a team: its own, else its slug."""
-    return team.get('team_channel') or team.get('team_slug')
-
-
 async def _request_routing(
     db: graph.Graph, org_slug: str, task: dict[str, typing.Any]
 ) -> tuple[datetime.timedelta | None, dict[str, typing.Any]]:
@@ -1025,46 +1031,36 @@ async def _request_routing(
     is best effort: when the graph fails, there is no SLA and no
     channel, and the request goes to the person only.
     """
-    escalation: dict[str, typing.Any] = {
-        'org_slug': org_slug,
-        'agent_name': None,
-        'slack_channel': None,
-    }
+    projects: list[dict[str, typing.Any]] = task.get('projects') or []
     try:
-        settings = await _agent_settings(db, task['agent_id'])
         records = await db.execute(
-            _AGENT_SLACK_QUERY,
-            {'id': task['agent_id']},
-            ['name', 'slack_channel', 'team_slug', 'team_channel'],
+            _REQUEST_ROUTING_QUERY,
+            {
+                'id': task['agent_id'],
+                'project_id': projects[0]['project_id'] if projects else None,
+            },
+            _REQUEST_ROUTING_COLUMNS,
         )
-        agent = (
+        row = (
             {k: graph.parse_agtype(v) for k, v in records[0].items()}
             if records
             else {}
         )
-        project_team: dict[str, typing.Any] = {}
-        if task.get('projects'):
-            records = await db.execute(
-                _PROJECT_TEAM_QUERY,
-                {'id': task['projects'][0]['project_id']},
-                ['team_slug', 'team_channel'],
-            )
-            if records:
-                project_team = {
-                    k: graph.parse_agtype(v) for k, v in records[0].items()
-                }
-        escalation['agent_name'] = agent.get('name')
-        escalation['slack_channel'] = (
-            _team_channel(project_team)
-            or agent.get('slack_channel')
-            or _team_channel(agent)
-        )
+        sla = _parse_settings(row.get('settings')).response_sla
     except Exception:
         LOGGER.exception(
             'Could not route the requests of %s', task['short_id']
         )
-        return None, escalation
-    sla = settings.response_sla
+        row, sla = {}, None
+    escalation = {
+        'org_slug': org_slug,
+        'agent_name': row.get('name'),
+        'slack_channel': (
+            row.get('project_team_channel')
+            or row.get('slack_channel')
+            or row.get('agent_team_channel')
+        ),
+    }
     return (models.parse_duration(sla) if sla else None), escalation
 
 

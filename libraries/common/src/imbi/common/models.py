@@ -1384,7 +1384,8 @@ class AgentSettings(pydantic.BaseModel):
         return value
 
 
-_DURATION = re.compile(r'(\d+)([smhdw])')
+_DURATION_PART = r'(\d+)([smhdw])'
+_DURATION = re.compile(rf'(?:{_DURATION_PART})+')
 _DURATION_SECONDS = {'s': 1, 'm': 60, 'h': 3600, 'd': 86400, 'w': 604800}
 
 
@@ -1398,10 +1399,11 @@ def parse_duration(value: str) -> datetime.timedelta:
         ValueError: ``value`` is not a duration, or it is zero.
 
     """
-    if not re.fullmatch(r'(?:\d+[smhdw])+', value):
+    if not _DURATION.fullmatch(value):
         raise ValueError(f'{value!r} is not a duration such as 4h or 1d')
     seconds = sum(
-        int(n) * _DURATION_SECONDS[u] for n, u in _DURATION.findall(value)
+        int(n) * _DURATION_SECONDS[u]
+        for n, u in re.findall(_DURATION_PART, value)
     )
     if not seconds:
         raise ValueError('The duration must be more than zero')

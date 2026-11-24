@@ -923,51 +923,60 @@ class EscalationTests(HarnessTestCase):
         self.assertEqual(entry['request_id'], response.json()['request']['id'])
         self.assertEqual(result.escalated_requests, 1)
 
+    async def test_agent_team_slug_is_the_default_channel(self) -> None:
+        slug = f'ops-{uuid.uuid4().hex[:8]}'
+        await self.graph.execute(
+            'MATCH (a:Agent {{id: {id}}})'
+            ' CREATE (a)-[:OWNED_BY]->(:Team {{slug: {slug}}})'
+            ' RETURN a.id AS id',
+            {'id': self.agent_id, 'slug': slug},
+            ['id'],
+        )
+        response = await self.post(
+            'requests', {'kind': 'feedback', 'title': 'Which branch?'}
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        async with self.pool.connection() as conn:
+            cursor = await conn.execute(
+                'SELECT escalation FROM tickets.requests'
+            )
+            ((escalation,),) = await cursor.fetchall()
+        self.assertEqual(escalation['slack_channel'], slug)
+        self.assertEqual(escalation['agent_name'], 'Triage Bot')
+
 
 class RequestRoutingTests(unittest.IsolatedAsyncioTestCase):
     """The escalation channel: project team, agent, then agent team."""
 
-    async def route(
-        self,
-        agent: dict[str, typing.Any],
-        project_team: dict[str, typing.Any] | None,
-        projects: list[dict[str, str]],
-    ) -> str | None:
-        async def execute(query: str, *_args: typing.Any) -> list[typing.Any]:
-            if query == ticket_harness._AGENT_SETTINGS_QUERY:
-                return [{'settings': '{}'}]
-            if query == ticket_harness._AGENT_SLACK_QUERY:
-                return [agent]
-            return [project_team] if project_team else []
-
+    async def route(self, **row: typing.Any) -> str | None:
         db = mock.AsyncMock()
-        db.execute.side_effect = execute
-        task = {'agent_id': 'a', 'short_id': 'T-1', 'projects': projects}
-        sla, escalation = await ticket_harness._request_routing(
-            db, 'acme', task
-        )
+        db.execute.return_value = [{'settings': '{}', **row}]
+        task = {'agent_id': 'a', 'short_id': 'T-1', 'projects': []}
+        sla, routing = await ticket_harness._request_routing(db, 'acme', task)
         self.assertIsNone(sla)
-        return escalation['slack_channel']
+        self.assertEqual(routing['org_slug'], 'acme')
+        return routing['slack_channel']
 
     async def test_order(self) -> None:
-        agent = {
+        row = {
             'name': 'Bot',
             'slack_channel': 'agent-chan',
-            'team_slug': 'agents',
-            'team_channel': None,
+            'agent_team_channel': 'agents',
+            'project_team_channel': 'web-chan',
         }
-        project = [{'project_id': 'p1', 'project_slug': 'web'}]
-        team = {'team_slug': 'web-team', 'team_channel': 'web-chan'}
-        self.assertEqual(await self.route(agent, team, project), 'web-chan')
-        self.assertEqual(
-            await self.route(agent, {**team, 'team_channel': None}, project),
-            'web-team',
-        )
-        self.assertEqual(await self.route(agent, None, []), 'agent-chan')
-        self.assertEqual(
-            await self.route({**agent, 'slack_channel': None}, None, []),
-            'agents',
-        )
+        self.assertEqual(await self.route(**row), 'web-chan')
+        row['project_team_channel'] = None
+        self.assertEqual(await self.route(**row), 'agent-chan')
+        row['slack_channel'] = None
+        self.assertEqual(await self.route(**row), 'agents')
+
+    async def test_graph_failure_routes_to_the_person_only(self) -> None:
+        db = mock.AsyncMock()
+        db.execute.side_effect = RuntimeError('graph down')
+        task = {'agent_id': 'a', 'short_id': 'T-1', 'projects': []}
+        sla, routing = await ticket_harness._request_routing(db, 'acme', task)
+        self.assertIsNone(sla)
+        self.assertIsNone(routing['slack_channel'])
 
 
 class OutcomeTests(HarnessTestCase):
