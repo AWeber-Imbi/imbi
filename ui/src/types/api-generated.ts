@@ -11776,7 +11776,7 @@ export interface components {
             /** Task Timeout Seconds */
             task_timeout_seconds?: number | null;
             /** Response Sla */
-            response_sla?: ("4h" | "8h" | "24h" | "3d" | "none") | null;
+            response_sla?: string | null;
             /**
              * Required Labels
              * @default []
@@ -11830,7 +11830,7 @@ export interface components {
             /** Task Timeout Seconds */
             task_timeout_seconds?: number | null;
             /** Response Sla */
-            response_sla?: ("4h" | "8h" | "24h" | "3d" | "none") | null;
+            response_sla?: string | null;
             /**
              * Required Labels
              * @default []

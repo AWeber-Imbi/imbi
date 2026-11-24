@@ -92,6 +92,7 @@ __all__ = [
     'Team',
     'User',
     'effective_component_status',
+    'parse_duration',
     'parse_scopes',
 ]
 
@@ -1317,7 +1318,11 @@ class AgentSettings(pydantic.BaseModel):
     )
     max_concurrent_tasks: int | None = pydantic.Field(default=None, gt=0)
     task_timeout_seconds: int | None = pydantic.Field(default=None, gt=0)
-    response_sla: typing.Literal['4h', '8h', '24h', '3d', 'none'] | None = None
+    #: How long a request of the agent waits on the person on the ticket
+    #: before it goes to a team Slack channel. A duration such as
+    #: ``4h``, ``1d`` or ``1h30m`` (:func:`parse_duration`). ``None``:
+    #: the request stays with the person.
+    response_sla: str | None = None
     #: The labels that a runner needs to run the tasks of the agent
     #: (ADR 0022). Empty means any runner.
     required_labels: list[RunnerLabel] = []
@@ -1365,6 +1370,39 @@ class AgentSettings(pydantic.BaseModel):
     def _sort_labels(cls, value: list[str]) -> list[str]:
         """Sort and remove duplicates, so equal settings compare equal."""
         return sorted(set(value))
+
+    @pydantic.field_validator('response_sla')
+    @classmethod
+    def _check_response_sla(cls, value: str | None) -> str | None:
+        # ``none`` is a value of the earlier fixed list.
+        if value is None or value == 'none':
+            return None
+        parse_duration(value)
+        return value
+
+
+_DURATION = re.compile(r'(\d+)([smhdw])')
+_DURATION_SECONDS = {'s': 1, 'm': 60, 'h': 3600, 'd': 86400, 'w': 604800}
+
+
+def parse_duration(value: str) -> datetime.timedelta:
+    """Return the length of a duration such as ``4h``, ``1d`` or ``1h30m``.
+
+    The form is that of Go's ``time.ParseDuration``, with ``d`` (24
+    hours) and ``w`` (7 days) added, and whole numbers only.
+
+    Raises:
+        ValueError: ``value`` is not a duration, or it is zero.
+
+    """
+    if not re.fullmatch(r'(?:\d+[smhdw])+', value):
+        raise ValueError(f'{value!r} is not a duration such as 4h or 1d')
+    seconds = sum(
+        int(n) * _DURATION_SECONDS[u] for n, u in _DURATION.findall(value)
+    )
+    if not seconds:
+        raise ValueError('The duration must be more than zero')
+    return datetime.timedelta(seconds=seconds)
 
 
 class AgentRateLimit(pydantic.BaseModel):

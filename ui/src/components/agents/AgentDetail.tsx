@@ -21,7 +21,7 @@ import type {
   AgentUsage,
 } from '@/types'
 
-import { formatDuration, formatMoney, slaLabel, wordCount } from './agentDraft'
+import { formatDuration, formatMoney, wordCount } from './agentDraft'
 import { AgentLabels } from './AgentLabelChip'
 import {
   useAgentToolCatalog,
@@ -107,7 +107,7 @@ export function AgentDetail({ agent }: { agent: Agent }) {
     },
     {
       name: 'Human response SLA',
-      value: slaLabel(settings.response_sla) ?? 'Not set',
+      value: settings.response_sla ?? 'Not set',
     },
     {
       mono: true,

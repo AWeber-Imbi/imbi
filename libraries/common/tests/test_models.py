@@ -674,11 +674,31 @@ class AgentModelTestCase(unittest.TestCase):
             ('monthly_cost_cap', -1),
             ('max_concurrent_tasks', 0),
             ('task_timeout_seconds', 0),
-            ('response_sla', '1w'),
+            ('response_sla', '1y'),
+            ('response_sla', '0h'),
+            ('response_sla', '4 h'),
+            ('response_sla', ''),
         ):
-            with self.subTest(field=field):
+            with self.subTest(field=field, value=value):
                 with self.assertRaises(pydantic.ValidationError):
                     models.AgentSettings.model_validate({field: value})
+
+    def test_response_sla_is_a_duration(self) -> None:
+        for value in ('30m', '4h', '1d', '2w', '1h30m'):
+            with self.subTest(value=value):
+                settings = models.AgentSettings(response_sla=value)
+                self.assertEqual(settings.response_sla, value)
+        self.assertIsNone(
+            models.AgentSettings(response_sla='none').response_sla
+        )
+
+    def test_parse_duration(self) -> None:
+        self.assertEqual(
+            models.parse_duration('1h30m'), datetime.timedelta(minutes=90)
+        )
+        self.assertEqual(
+            models.parse_duration('1w2d'), datetime.timedelta(days=9)
+        )
 
     def test_tools_parse_json_string(self) -> None:
         agent = self._agent(
