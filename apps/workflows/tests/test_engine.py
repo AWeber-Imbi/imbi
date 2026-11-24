@@ -62,6 +62,9 @@ class FakeApi:
         self.slack_error: str | None = None
         #: Answer the Slack endpoint with ``502 slack_unreachable``.
         self.slack_unreachable = False
+        #: Refuse this many calls of any kind with ``httpx.ConnectError``,
+        #: as imbi-api does while it restarts.
+        self.refused = 0
         #: Answer this many Slack calls with ``429 slack_ratelimited``.
         self.slack_ratelimited = 0
         #: The raw path of every request.
@@ -142,6 +145,15 @@ class FakeApi:
             self.drafts.append(json.loads(request.content))
             return httpx.Response(200, json=self.draft)
         return None
+
+    def handle(
+        self, request: httpx.Request
+    ) -> httpx.Response | abc.Awaitable[httpx.Response]:
+        """The transport handler: ``refused`` calls fail to connect."""
+        if self.refused:
+            self.refused -= 1
+            raise httpx.ConnectError('connection refused', request=request)
+        return self(request)
 
     def __call__(
         self, request: httpx.Request
@@ -314,7 +326,9 @@ class EngineTestCase(unittest.IsolatedAsyncioTestCase):
             ['id'],
         )
         self.api = FakeApi(self.email)
-        self.http = httpx.AsyncClient(transport=httpx.MockTransport(self.api))
+        self.http = httpx.AsyncClient(
+            transport=httpx.MockTransport(self.api.handle)
+        )
         self.config = settings.Workflows(
             sa_client_id='client',
             sa_client_secret='secret',
@@ -1265,6 +1279,50 @@ class CrashTestCase(EngineTestCase):
         self.assertEqual(run['status'], 'failed')
         self.assertEqual(run['steps']['tell']['error'], 'slack_ratelimited')
         self.assertEqual(len(self.api.slacks), 4)
+
+    async def test_unreachable_api_retries_on_the_longer_backoff(
+        self,
+    ) -> None:
+        # A refused connection waits UNREACHABLE_BACKOFF, not
+        # RETRY_BACKOFF: with RETRY_BACKOFF at an hour the retry would
+        # not come within the drive.
+        self.api.refused = 1
+        with (
+            mock.patch.object(engine, 'RETRY_BACKOFF', 3600),
+            mock.patch.object(engine, 'UNREACHABLE_BACKOFF', 0),
+        ):
+            run = await self._drive(
+                await self._start(await self._slack_workflow())
+            )
+        self.assertEqual(run['status'], 'succeeded', run)
+        self.assertEqual(run['steps']['tell']['attempt'], 2)
+        self.assertEqual(len(self.api.slacks), 1)
+
+    async def test_unreachable_api_backoff_is_longer(self) -> None:
+        # The first retry after a refused connection is due at least
+        # UNREACHABLE_BACKOFF seconds out, where an answered error is
+        # due after RETRY_BACKOFF.
+        self.api.refused = 1
+        run_id = await self._start(await self._slack_workflow())
+        run = await self._drive(
+            run_id,
+            until=lambda r: (
+                r['steps'].get('tell', {}).get('error') == 'ConnectError'
+            ),
+        )
+        async with self.pool.connection() as conn:
+            cur = await conn.execute(
+                'SELECT due_at - NOW() FROM workflow_runtime.runs'
+                ' WHERE id = %s',
+                (run_id,),
+            )
+            row = await cur.fetchone()
+        assert row is not None
+        self.assertGreater(
+            row[0],
+            datetime.timedelta(seconds=engine.UNREACHABLE_BACKOFF - 5),
+            run,
+        )
 
     async def test_slack_rendered_channel_is_checked(self) -> None:
         workflow_id = await self._workflow(

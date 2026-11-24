@@ -159,6 +159,11 @@ count:
 | `deploy`, `release`, `rollback` | 1 hour | 2 |
 | `agent` | None. The max run time limits it | 2 |
 
+A retry waits 5 seconds, then 10, doubling each time. When the step got no
+response from imbi-api at all, such as a refused connection while imbi-api
+restarts, the retry waits 30 seconds, then 60, so a step with 2 retries
+keeps trying for about 90 seconds.
+
 The API also accepts `timeout_seconds` and `retries` (0 to 10) on a node to
 replace the defaults. The editor has no field for them.
 

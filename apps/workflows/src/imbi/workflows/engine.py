@@ -33,6 +33,13 @@ LOGGER = logging.getLogger(__name__)
 #: Seconds of the first retry backoff; it doubles per attempt.
 RETRY_BACKOFF = 5
 
+#: Seconds of the first retry backoff after a step got no response from
+#: imbi-api at all (connection refused or reset, as while imbi-api
+#: restarts in a deploy); it doubles per attempt. With two retries the
+#: step keeps trying for about 90 seconds, where ``RETRY_BACKOFF`` spends
+#: every retry inside the same restart.
+UNREACHABLE_BACKOFF = 30
+
 #: The activator, only when an active member of the run's organization.
 _ACTIVATOR_QUERY: typing.LiteralString = """
 MATCH (u:User {{email: {email}}})-[m:MEMBER_OF]->(:Organization {{id: {org}}})
@@ -451,7 +458,15 @@ class Engine:
                     e.code,
                     _safe_detail(e.detail),
                 )
-            return await self._error(run, node, step, slug, e.code, e.retry)
+            return await self._error(
+                run,
+                node,
+                step,
+                slug,
+                e.code,
+                e.retry,
+                unreachable=e.unreachable,
+            )
         except TimeoutError:
             return await self._error(run, node, step, slug, 'timeout', True)
         except Exception as e:
@@ -495,11 +510,15 @@ class Engine:
         slug: str,
         code: str,
         retry: bool,
+        *,
+        unreachable: bool = False,
     ) -> datetime.datetime:
         """Retry the step after a backoff, or fail it.
 
         A retry keeps the agent task of the step; a failure cancels it
         first (best effort), so the task does not outlive the step.
+        ``unreachable`` (no response from imbi-api) waits
+        ``UNREACHABLE_BACKOFF`` instead of ``RETRY_BACKOFF``.
         """
         step_type = registry.STEP_TYPES[node.type]
         retries = step_type.retries if node.retries is None else node.retries
@@ -535,8 +554,9 @@ class Engine:
             await runtime.append_step_event(
                 conn, run['id'], step['node_id'], 'step.started', retry_of=code
             )
+        backoff = UNREACHABLE_BACKOFF if unreachable else RETRY_BACKOFF
         return _now() + datetime.timedelta(
-            seconds=RETRY_BACKOFF * 2 ** (attempt - 2)
+            seconds=backoff * 2 ** (attempt - 2)
         )
 
     async def _fail(

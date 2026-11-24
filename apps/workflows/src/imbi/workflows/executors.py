@@ -96,15 +96,26 @@ LLM_CALL_POLL_SECONDS = 15
 
 
 class StepError(Exception):
-    """A step call failed. ``code`` is stored as the step's error."""
+    """A step call failed. ``code`` is stored as the step's error.
+
+    ``unreachable`` marks a call that did not get an HTTP response from
+    imbi-api at all, such as a connection refused while imbi-api
+    restarts. The engine waits longer before it retries such a call.
+    """
 
     def __init__(
-        self, code: str, *, retry: bool, detail: typing.Any = None
+        self,
+        code: str,
+        *,
+        retry: bool,
+        detail: typing.Any = None,
+        unreachable: bool = False,
     ) -> None:
         super().__init__(code)
         self.code = code
         self.retry = retry
         self.detail = detail
+        self.unreachable = unreachable
 
 
 @dataclasses.dataclass
@@ -216,6 +227,10 @@ class Api:
                 if wait_seconds is None
                 else wait_seconds,
             )
+        except httpx.TransportError as e:
+            raise StepError(
+                type(e).__name__, retry=True, unreachable=True
+            ) from e
         except httpx.HTTPError as e:
             raise StepError(type(e).__name__, retry=True) from e
         if response.status_code >= HTTP_CLIENT_ERROR:
