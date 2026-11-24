@@ -89,6 +89,7 @@ import {
   useTicket,
   useTicketEvents,
   useTicketMutation,
+  useTicketRelations,
 } from './taskQueries'
 import { AssociatedProjectsTab, RelatedTasksTab } from './TaskRelations'
 import { TaskSearchProvider } from './taskSearch'
@@ -148,6 +149,7 @@ export function TaskDetail({
   const task = useTicket(orgSlug, shortId)
   const live = !!task.data && task.data.status !== 'closed'
   const events = useTicketEvents(orgSlug, shortId, live)
+  const relations = useTicketRelations(orgSlug, shortId)
   const now = useNow(live)
   const [lastTab, setLastTab] = useStoredState<RouteKey>(
     'imbi.task.tab',
@@ -215,6 +217,13 @@ export function TaskDetail({
   const failing = checksFrom(log).filter(
     (e) => e.payload.verdict === 'fail',
   ).length
+  const r = relations.data
+  const related = r
+    ? r.requires.length +
+      r.required_by.length +
+      r.children.length +
+      (r.parent ? 1 : 0)
+    : 0
   const tabs: { count?: number | string; key: TabKey; label: string }[] = [
     { key: 'overview', label: 'Overview' },
     { count: open, key: 'input', label: 'Input required' },
@@ -224,7 +233,11 @@ export function TaskDetail({
       key: 'checks',
       label: 'Signals and checks',
     },
-    { key: 'related', label: 'Related tickets' },
+    {
+      count: related || undefined,
+      key: 'related',
+      label: 'Related tickets',
+    },
     { key: 'projects', label: 'Associated projects' },
   ]
   const wanted = legacyRoute(tab)
