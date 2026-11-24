@@ -277,14 +277,16 @@ REFUSED_ROUTES: frozenset[str] = frozenset(
         'PUT /organizations/{org_slug}/tickets/{short_id}/parent',
         'PUT /organizations/{org_slug}/tickets/{short_id}/projects/{project_id}',
         'PUT /organizations/{org_slug}/tickets/{short_id}/requires/{prerequisite}',
-        # Credentials and data outside Imbi: integrations, project integration assignments, webhooks, project configuration stores (values:fetch returns secret values)
+        # Credentials and data outside Imbi: integrations, project integration assignments, webhooks, project configuration stores (values:fetch and history:fetch return secret values)
         'DELETE /organizations/{org_slug}/integrations/{slug}',
         'DELETE /organizations/{org_slug}/projects/{project_id}/configuration/{key:path}',
         'DELETE /organizations/{org_slug}/webhooks/{webhook}',
         'PATCH /organizations/{org_slug}/integrations/{slug}',
         'PATCH /organizations/{org_slug}/webhooks/{webhook}',
         'POST /organizations/{org_slug}/integrations/',
+        'POST /organizations/{org_slug}/projects/{project_id}/configuration/history:fetch',
         'POST /organizations/{org_slug}/projects/{project_id}/configuration/values:fetch',
+        'POST /organizations/{org_slug}/projects/{project_id}/configuration/versions:restore',
         'POST /organizations/{org_slug}/webhooks/',
         'PUT /organizations/{org_slug}/integrations/{slug}/capabilities/{kind}/assignments',
         'PUT /organizations/{org_slug}/integrations/{slug}/credentials',

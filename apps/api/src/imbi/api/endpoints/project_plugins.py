@@ -54,6 +54,7 @@ class PluginAssignmentResponse(pydantic.BaseModel):
     #: provides identity (mirrors ``effective_identity_integration_id``).
     identity_plugin_id: str | None = None
     supports_histogram: bool = False
+    supports_history: bool = False
     supports_deployment_sync: bool = False
     supports_lifecycle_sync: bool = False
     service_name: str | None = None
@@ -81,6 +82,7 @@ def _to_response(
         source=source,
         identity_plugin_id=identity_plugin_id,
         supports_histogram=bool(hints.get('supports_histogram')),
+        supports_history=bool(hints.get('supports_history')),
         supports_deployment_sync=bool(hints.get('supports_deployment_sync')),
         supports_lifecycle_sync=bool(hints.get('supports_lifecycle_sync')),
         service_name=name or None,

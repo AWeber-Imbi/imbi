@@ -11,10 +11,12 @@ from imbi.common.plugins.base import (
     ConfigKeyWithValue,
     ConfigurationCapability,
     ConfigValue,
+    ConfigVersion,
     PluginContext,
 )
 from imbi.common.plugins.errors import (
     PluginCredentialsMissing,
+    PluginIdentityAccessDenied,
     PluginRateLimited,
     PluginTimeoutError,
     PluginUnavailableError,
@@ -50,7 +52,9 @@ _SSM_ERROR_MAP: dict[str, type[Exception]] = {
     'ExpiredTokenException': PluginCredentialsMissing,
     'UnrecognizedClientException': PluginCredentialsMissing,
     'InvalidSignatureException': PluginCredentialsMissing,
-    'AccessDeniedException': PluginCredentialsMissing,
+    # A valid identity whose role lacks the SSM action: reconnecting does
+    # not help, so answer a terminal 403 that says to ask for access.
+    'AccessDeniedException': PluginIdentityAccessDenied,
     'UnauthorizedOperation': PluginCredentialsMissing,
     'ThrottlingException': PluginRateLimited,
     'RequestLimitExceeded': PluginRateLimited,
@@ -122,13 +126,7 @@ class SSMConfiguration(ConfigurationCapability):
                 keys.append(
                     ConfigKey(
                         key=_strip_prefix(str(param['Name']), prefix),
-                        data_type=_SSM_TO_DATA_TYPE.get(
-                            str(param.get('Type', '')), 'string'
-                        ),
-                        last_modified=_to_datetime(
-                            param.get('LastModifiedDate')
-                        ),
-                        secret=str(param.get('Type')) == 'SecureString',
+                        **_param_fields(param),
                     )
                 )
             next_token = response.get('NextToken')
@@ -224,11 +222,7 @@ class SSMConfiguration(ConfigurationCapability):
         value: ConfigValue,
     ) -> ConfigKey:
         prefix = self._prefix(ctx)
-        if '..' in key or key.startswith('/'):
-            raise ValueError(
-                f'Invalid SSM key {key!r}: keys must be relative '
-                'to the configured path_prefix'
-            )
+        _validate_key(key)
         creds = resolve_credentials(
             credentials, region=integration_region(ctx), ctx=ctx
         )
@@ -309,6 +303,62 @@ class SSMConfiguration(ConfigurationCapability):
         except _ParameterMissing:
             return
 
+    async def get_history(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        key: str,
+        *,
+        with_values: bool,
+    ) -> list[ConfigVersion]:
+        prefix = self._prefix(ctx)
+        _validate_key(key)
+        creds = resolve_credentials(
+            credentials, region=integration_region(ctx), ctx=ctx
+        )
+        timeout = capability_timeout(ctx, default=15.0)
+        error_map = {**_SSM_ERROR_MAP, 'ParameterNotFound': _ParameterMissing}
+        versions: list[ConfigVersion] = []
+        next_token: str | None = None
+        while True:
+            body: dict[str, typing.Any] = {
+                'Name': _full_name(prefix, key),
+                'WithDecryption': with_values,
+                'MaxResults': 50,
+            }
+            if next_token:
+                body['NextToken'] = next_token
+            try:
+                response = await call_aws_json(
+                    service='ssm',
+                    action='GetParameterHistory',
+                    body=body,
+                    credentials=creds,
+                    error_map=error_map,
+                    timeout=timeout,
+                )
+            except _ParameterMissing:
+                return []
+            for param in response.get('Parameters', []):
+                user = param.get('LastModifiedUser')
+                # The session name of an assumed-role ARN.
+                modified_by = str(user).rsplit('/', 1)[-1] if user else None
+                value = str(param.get('Value', '')) if with_values else None
+                versions.append(
+                    ConfigVersion(
+                        version=str(param['Version']),
+                        modified_by=modified_by,
+                        value=value,
+                        **_param_fields(param),
+                    )
+                )
+            next_token = response.get('NextToken')
+            if not next_token:
+                break
+        # SSM returns the oldest version first.
+        versions.reverse()
+        return versions
+
     def describe_prefix(self, ctx: PluginContext) -> str | None:
         return self._prefix(ctx)
 
@@ -329,20 +379,36 @@ class SSMConfiguration(ConfigurationCapability):
         return expanded
 
 
+def _validate_key(key: str) -> None:
+    if '..' in key or key.startswith('/'):
+        raise ValueError(
+            f'Invalid SSM key {key!r}: keys must be relative '
+            'to the configured path_prefix'
+        )
+
+
 def _full_name(prefix: str, key: str) -> str:
     return f'{prefix.rstrip("/")}/{key.lstrip("/")}'
+
+
+def _param_fields(param: dict[str, typing.Any]) -> dict[str, typing.Any]:
+    """The ``data_type``, ``secret`` and ``last_modified`` of an SSM
+    parameter, shared by every model built from one."""
+    ssm_type = str(param.get('Type', ''))
+    return {
+        'data_type': _SSM_TO_DATA_TYPE.get(ssm_type, 'string'),
+        'secret': ssm_type == 'SecureString',
+        'last_modified': _to_datetime(param.get('LastModifiedDate')),
+    }
 
 
 def _param_to_kv(
     param: dict[str, typing.Any], prefix: str
 ) -> ConfigKeyWithValue:
-    ssm_type = str(param.get('Type', ''))
     return ConfigKeyWithValue(
         key=_strip_prefix(str(param['Name']), prefix),
-        data_type=_SSM_TO_DATA_TYPE.get(ssm_type, 'string'),
-        last_modified=_to_datetime(param.get('LastModifiedDate')),
-        secret=ssm_type == 'SecureString',
         value=str(param.get('Value', '')),
+        **_param_fields(param),
     )
 
 

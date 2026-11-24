@@ -190,7 +190,7 @@ _COMMON_HINTS: frozenset[str] = frozenset({'cacheable'})
 #: hints that were manifest booleans in v1 move here; an unknown key
 #: fails at manifest construction so typos surface at load.
 HINT_ALLOWLIST: dict[str, frozenset[str]] = {
-    'configuration': _COMMON_HINTS,
+    'configuration': _COMMON_HINTS | frozenset({'supports_history'}),
     'logs': _COMMON_HINTS | frozenset({'supports_histogram'}),
     'identity': _COMMON_HINTS
     | frozenset({'login_capable', 'default_scopes', 'widget_text'}),
@@ -235,6 +235,7 @@ class Capability(pydantic.BaseModel):
     #: Capability wants ``ctx.identity`` populated when available.
     requires_identity: bool = False
     #: Kind-specific hints (validated against :data:`HINT_ALLOWLIST`):
+    #: ``supports_history`` (configuration),
     #: ``supports_histogram`` (logs), ``supports_deployment_sync``
     #: (deployment), ``supports_lifecycle_sync`` + ``lifecycle_events``
     #: (lifecycle), ``login_capable`` + ``default_scopes`` +
@@ -748,6 +749,19 @@ class ConfigKey(pydantic.BaseModel):
 
 class ConfigKeyWithValue(ConfigKey):
     value: str
+
+
+class ConfigVersion(pydantic.BaseModel):
+    """One earlier (or the current) version of a configuration key."""
+
+    # A string, so a backend with non-integer version ids also fits.
+    version: str
+    data_type: str
+    secret: bool = False
+    last_modified: datetime.datetime | None = None
+    modified_by: str | None = None
+    # None when the caller did not ask for values.
+    value: str | None = None
 
 
 class LogFilter(pydantic.BaseModel):
@@ -1313,6 +1327,22 @@ class ConfigurationCapability(CapabilityHandler):
         credentials: dict[str, str],
         key: str,
     ) -> None: ...
+
+    async def get_history(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        key: str,
+        *,
+        with_values: bool,
+    ) -> list[ConfigVersion]:
+        """The versions of ``key``, newest first.
+
+        Returns an empty list for a key that does not exist. Capabilities
+        that support history override this and set the
+        ``supports_history`` hint.
+        """
+        raise NotImplementedError
 
     def describe_prefix(self, ctx: PluginContext) -> str | None:
         """The resolved key prefix the capability reads and writes under.

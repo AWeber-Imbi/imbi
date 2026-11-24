@@ -861,6 +861,19 @@ class ConfigKeyValueResponse(ConfigKeyResponse):
     value: str
 
 
+class ConfigHistoryRequest(pydantic.BaseModel):
+    """Request body for the version history of one configuration key."""
+
+    key: str
+
+
+class ConfigRestoreRequest(pydantic.BaseModel):
+    """Request body to restore an earlier version of a configuration key."""
+
+    key: str
+    version: str
+
+
 class LogEntryResponse(pydantic.BaseModel):
     """Response model for a single log entry."""
 
