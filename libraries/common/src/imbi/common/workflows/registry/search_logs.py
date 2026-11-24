@@ -32,7 +32,10 @@ class Params(pydantic.BaseModel):
     )
     cursor: str | None = pydantic.Field(
         default=None,
-        description='next_cursor of an earlier search, for the next page.',
+        description=(
+            'next_cursor of an earlier search, for the next page. Needs '
+            'the start_time and end_time of that search.'
+        ),
     )
     limit: int = pydantic.Field(default=100, ge=1, le=1000)
     filters: list[str] = pydantic.Field(
@@ -45,6 +48,29 @@ class Params(pydantic.BaseModel):
     levels: list[str] = pydantic.Field(
         default_factory=list, description='Severity levels, such as ERROR.'
     )
+
+    @pydantic.model_validator(mode='before')
+    @classmethod
+    def _drop_empty(cls, data: typing.Any) -> typing.Any:
+        # An empty value, also a template that renders to nothing, takes
+        # the default. An empty project_id stays, so that it fails.
+        if isinstance(data, dict):
+            return {
+                k: v for k, v in data.items() if v != '' or k == 'project_id'
+            }
+        return data
+
+    @pydantic.model_validator(mode='after')
+    def _cursor_needs_window(self) -> typing.Self:
+        # imbi-api computes the default window again on each call, so a
+        # cursor without the window of its search fails or reads a
+        # different window.
+        if self.cursor and not (self.start_time and self.end_time):
+            raise ValueError(
+                'cursor needs the start_time and end_time of the search '
+                'that gave it'
+            )
+        return self
 
 
 def required_permissions(_params: dict[str, typing.Any]) -> set[str]:
