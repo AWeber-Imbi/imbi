@@ -353,39 +353,27 @@ class ProjectDeliveryRoutesTestCase(unittest.IsolatedAsyncioTestCase):
         )
 
 
-#: Routes under ``/projects/{project_id}/`` that do not have the check
-#: yet. Issue #910 removes them; do not add to this list.
-_KNOWN_GAPS = {
-    '/schema',
-    '/environments/{env_slug}',
-    '/relationships',
-    '/relationships/{target_id}',
-    '/lifecycle/preview',
-    '/archive',
-    '/unarchive',
-    '/integrations/',
-    '/plugins/',
-    '/score/history',
-    '/score/trend',
-}
-
-
 class ProjectRoutesUseProjectMemberTestCase(unittest.TestCase):
-    """Each route under ``/projects/{project_id}/`` binds the project to
-    the path organization (issue #901)."""
+    """Each route under ``/projects`` checks membership of the path
+    organization, and each route on one project also binds the project
+    to it (issues #901, #910)."""
 
     def test_every_project_route_has_the_dependency(self) -> None:
         def calls(route: fastapi.routing.APIRoute) -> set[object]:
             flat = dependencies_utils.get_flat_dependant(route.dependant)
             return {d.call for d in flat.dependencies}
 
-        prefix = '/organizations/{org_slug}/projects/{project_id}'
-        missing = [
-            f'{sorted(route.methods)} {route.path}'
-            for route in support.shared_app().routes
-            if isinstance(route, fastapi.routing.APIRoute)
-            and route.path.startswith(prefix + '/')
-            and route.path.removeprefix(prefix) not in _KNOWN_GAPS
-            and organizations.member_project_org_id not in calls(route)
-        ]
+        missing = []
+        for route in support.shared_app().routes:
+            if not isinstance(route, fastapi.routing.APIRoute):
+                continue
+            if not route.path.startswith('/organizations/{org_slug}/projects'):
+                continue
+            needs = (
+                organizations.member_project_org_id
+                if '{project_id}' in route.path
+                else organizations.member_org_id
+            )
+            if needs not in calls(route):
+                missing.append(f'{sorted(route.methods)} {route.path}')
         self.assertEqual(missing, [])

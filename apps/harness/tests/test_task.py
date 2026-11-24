@@ -2562,6 +2562,92 @@ class PolicyHookTestCase(RoutedTestCase):
         )
         self.assertEqual(self.run_task.recorder.input_seq, 6)
 
+    async def test_comment_during_a_turn_goes_after_the_next_tool(
+        self,
+    ) -> None:
+        self.pages = [
+            [
+                {
+                    'seq': 7,
+                    'type': 'turn',
+                    'actor_kind': 'human',
+                    'actor_id': 'a@b.c',
+                    'at': 't1',
+                    'payload': {'body': 'Use main.'},
+                }
+            ]
+        ]
+        context = {'signal': None}
+        hook_input = self.hook_input('Bash')
+        output = await self.run_task.post_tool_use(hook_input, 'tu1', context)
+        self.assertEqual(
+            output,
+            {
+                'hookSpecificOutput': {
+                    'hookEventName': 'PostToolUse',
+                    'additionalContext': (
+                        'New comments on the ticket, oldest first:\n'
+                        '- t1 comment by a@b.c: Use main.'
+                    ),
+                }
+            },
+        )
+        self.assertEqual(self.run_task.recorder.input_seq, 7)
+        # The agent gets each comment one time only.
+        self.assertEqual(
+            await self.run_task.post_tool_use(hook_input, 'tu2', context), {}
+        )
+
+    async def test_comment_goes_after_a_failed_tool(self) -> None:
+        self.run_task.comments.append(
+            {
+                'seq': 7,
+                'at': 't1',
+                'kind': 'comment',
+                'actor': 'a@b.c',
+                'text': 'Use main.',
+            }
+        )
+        context = {'signal': None}
+        hook_input = {
+            **self.hook_input('Bash'),
+            'hook_event_name': 'PostToolUseFailure',
+        }
+        output = await self.run_task.post_tool_use(hook_input, 'tu1', context)
+        self.assertEqual(
+            output,
+            {
+                'hookSpecificOutput': {
+                    'hookEventName': 'PostToolUseFailure',
+                    'additionalContext': (
+                        'New comments on the ticket, oldest first:\n'
+                        '- t1 comment by a@b.c: Use main.'
+                    ),
+                }
+            },
+        )
+        self.assertEqual(self.run_task.recorder.input_seq, 7)
+        self.assertFalse(self.run_task.comments)
+
+    async def test_subagent_tool_leaves_comments_for_the_parent(
+        self,
+    ) -> None:
+        self.run_task.comments.append(
+            {
+                'seq': 7,
+                'at': 't1',
+                'kind': 'comment',
+                'actor': 'a@b.c',
+                'text': 'Use main.',
+            }
+        )
+        context = {'signal': None}
+        hook_input = {**self.hook_input('Bash'), 'agent_id': 'sub1'}
+        self.assertEqual(
+            await self.run_task.post_tool_use(hook_input, 'tu1', context), {}
+        )
+        self.assertTrue(self.run_task.comments)
+
     async def test_wait_keeps_the_outcomes_of_other_waits(self) -> None:
         self.pages = [
             [

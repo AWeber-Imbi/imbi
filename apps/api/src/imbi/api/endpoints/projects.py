@@ -2507,7 +2507,9 @@ async def get_new_project_schema(
     )
 
 
-@projects_router.get('/{project_id}/schema')
+@projects_router.get(
+    '/{project_id}/schema', dependencies=organizations.PROJECT_MEMBER
+)
 async def get_project_schema(
     org_slug: str,
     project_id: str,
@@ -2572,7 +2574,10 @@ class EnvironmentEdgeUpdate(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra='allow')
 
 
-@projects_router.patch('/{project_id}/environments/{env_slug}')
+@projects_router.patch(
+    '/{project_id}/environments/{env_slug}',
+    dependencies=organizations.PROJECT_MEMBER,
+)
 async def patch_project_environment(
     org_slug: str,
     project_id: str,
@@ -2656,7 +2661,11 @@ async def patch_project_environment(
     }
 
 
-@projects_router.get('/{project_id}', name='get_project')
+@projects_router.get(
+    '/{project_id}',
+    name='get_project',
+    dependencies=organizations.PROJECT_MEMBER,
+)
 async def get_project(
     org_slug: str,
     project_id: str,
@@ -2831,16 +2840,10 @@ async def _fetch_relationships(
     return relationships
 
 
-_PROJECT_EXISTS_QUERY: typing.LiteralString = """
-    MATCH (p:Project {{id: {project_id}}})
-          -[:OWNED_BY]->(:Team)
-          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
-    RETURN p.id AS id
-"""
-
-
 @projects_router.get(
-    '/{project_id}/relationships', name='get_project_relationships'
+    '/{project_id}/relationships',
+    name='get_project_relationships',
+    dependencies=organizations.PROJECT_MEMBER,
 )
 async def list_project_relationships(
     org_slug: str,
@@ -2859,16 +2862,6 @@ async def list_project_relationships(
     ``direction`` field. Rows are sorted inbound first, then by
     the related project's name.
     """
-    exists = await db.execute(
-        _PROJECT_EXISTS_QUERY,
-        {'project_id': project_id, 'org_slug': org_slug},
-        ['id'],
-    )
-    if not exists:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=f'Project {project_id!r} not found',
-        )
     return ProjectRelationshipsResponse(
         relationships=await _fetch_relationships(db, project_id, org_slug),
     )
@@ -2900,6 +2893,7 @@ async def _dispatch_dependencies_changed(
 @projects_router.post(
     '/{project_id}/relationships/{target_id}',
     status_code=204,
+    dependencies=organizations.PROJECT_MEMBER,
 )
 async def create_project_relationship(
     org_slug: str,
@@ -2967,6 +2961,7 @@ async def create_project_relationship(
 @projects_router.delete(
     '/{project_id}/relationships/{target_id}',
     status_code=204,
+    dependencies=organizations.PROJECT_MEMBER,
 )
 async def delete_project_relationship(
     org_slug: str,
@@ -3440,7 +3435,9 @@ async def _execute_project_update(
     return ProjectResponse.model_validate(updated_data)
 
 
-@projects_router.patch('/{project_id}')
+@projects_router.patch(
+    '/{project_id}', dependencies=organizations.PROJECT_MEMBER
+)
 async def patch_project(
     org_slug: str,
     project_id: str,
@@ -3684,7 +3681,10 @@ async def patch_project(
     )
 
 
-@projects_router.get('/{project_id}/lifecycle/preview')
+@projects_router.get(
+    '/{project_id}/lifecycle/preview',
+    dependencies=organizations.PROJECT_MEMBER,
+)
 async def preview_lifecycle(
     org_slug: str,
     project_id: str,
@@ -3889,7 +3889,9 @@ async def _set_archived_state(
     return ProjectResponse.model_validate(project_data)
 
 
-@projects_router.post('/{project_id}/archive')
+@projects_router.post(
+    '/{project_id}/archive', dependencies=organizations.PROJECT_MEMBER
+)
 async def archive_project(
     org_slug: str,
     project_id: str,
@@ -3924,7 +3926,9 @@ async def archive_project(
     )
 
 
-@projects_router.post('/{project_id}/unarchive')
+@projects_router.post(
+    '/{project_id}/unarchive', dependencies=organizations.PROJECT_MEMBER
+)
 async def unarchive_project(
     org_slug: str,
     project_id: str,
@@ -3959,7 +3963,9 @@ async def unarchive_project(
     )
 
 
-@projects_router.delete('/{project_id}')
+@projects_router.delete(
+    '/{project_id}', dependencies=organizations.PROJECT_MEMBER
+)
 async def delete_project(
     org_slug: str,
     project_id: str,

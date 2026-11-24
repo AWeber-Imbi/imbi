@@ -20,7 +20,7 @@ import typing
 import fastapi
 import pydantic
 
-from imbi.api.auth import permissions
+from imbi.api.auth import organizations, permissions
 from imbi.api.plugins.assignments import (
     CapabilityBinding,
     capability_enabled,
@@ -35,6 +35,7 @@ from imbi.common.plugins.registry import get_plugin, list_plugins
 project_plugins_router = fastapi.APIRouter(
     prefix='/organizations/{org_slug}/projects/{project_id}/plugins',
     tags=['Project Plugins'],
+    dependencies=organizations.PROJECT_MEMBER,
 )
 
 
