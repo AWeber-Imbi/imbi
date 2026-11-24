@@ -14,11 +14,11 @@ from imbi.assistant import (
     client,
     client_tools,
     endpoints,
-    external_mcp,
     mcp,
     models,
     settings,
 )
+from imbi.common import external_mcp
 from imbi.common.prompts import resolve
 from imbi.common.prompts import system as prompt_system
 

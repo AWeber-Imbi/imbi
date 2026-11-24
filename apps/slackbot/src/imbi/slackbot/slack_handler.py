@@ -27,7 +27,7 @@ from slack_sdk import errors
 from slack_sdk.http_retry import builtin_async_handlers
 from slackwright import forms, inflight, ingest, render, stores
 
-from imbi.common import valkey
+from imbi.common import external_mcp, valkey
 from imbi.slackbot import (
     agent,
     client,
@@ -260,6 +260,7 @@ async def _process(
             user,
             [
                 *manager.get_tool_names(),
+                *external_mcp.get_manager().get_tool_names(),
                 *(tool['name'] for tool in toolkit.anthropic()),
             ],
         )

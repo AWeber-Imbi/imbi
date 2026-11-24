@@ -28,6 +28,10 @@ the bot or DMs it, the bot:
    `imbi.common.mcp` exclusion policy (auth/MFA/status/thumbnail and any
    `x-imbi-ai-tool: false` operations are filtered out). The user's minted token
    is forwarded on every tool call, so the API enforces their permissions.
+   The bot also gets the tools of every enabled external MCP server from
+   **Admin › Assistant › MCP servers** (`imbi.common.external_mcp`), the same
+   set the assistant uses. Those calls use the server's own credentials, not
+   the user's token.
 4. **Replies in-thread** with Claude's answer.
 
 A tiny FastAPI app exposes `/status` (port 8004) for health checks; the Socket

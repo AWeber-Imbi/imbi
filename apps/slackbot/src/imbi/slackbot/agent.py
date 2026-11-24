@@ -14,6 +14,7 @@ import typing
 
 import anthropic
 
+from imbi.common import external_mcp
 from imbi.slackbot import client, mcp
 
 if typing.TYPE_CHECKING:
@@ -124,14 +125,20 @@ def _tool_result_block(
 async def _execute(
     manager: mcp.MCPManager,
     toolkit: slackwright.Toolkit | None,
+    external: external_mcp.ExternalMCPManager,
     name: str,
     tool_input: dict[str, typing.Any],
     auth_token: str,
 ) -> tuple[str, bool]:
-    """Run a tool in ``toolkit`` when it is set, else in the MCP manager."""
+    """Run a tool in ``toolkit`` when it is set, in ``external`` when it
+    owns the tool, else in the Imbi MCP manager.
+
+    """
     if toolkit is not None:
         result = await toolkit.call(name, tool_input)
         return result.text, result.is_error
+    if external.has_tool(name):
+        return await external.execute_tool(name, tool_input)
     return await manager.execute_tool(name, tool_input, auth_token)
 
 
@@ -184,6 +191,7 @@ async def run_turn(
     """
     api_client = client.get_client()
     manager = mcp.get_manager()
+    external = external_mcp.get_manager()
     accumulated: list[str] = []
     # Work on a copy so appending assistant/tool-result turns does not
     # mutate the caller-supplied list.
@@ -191,7 +199,7 @@ async def run_turn(
     creates: collections.Counter[str] = collections.Counter()
     slack_tools = toolkit.anthropic() if toolkit else []
     slack_tool_names = {str(tool['name']) for tool in slack_tools}
-    tools = [*(tools or []), *slack_tools]
+    tools = [*(tools or []), *external.get_tools(), *slack_tools]
 
     for _round in range(max_rounds):
         kwargs: dict[str, typing.Any] = {
@@ -245,6 +253,7 @@ async def run_turn(
             result_text, is_error = await _execute(
                 manager,
                 toolkit if tool_use['name'] in slack_tool_names else None,
+                external,
                 tool_use['name'],
                 tool_input,
                 auth_token,

@@ -94,6 +94,13 @@ The bot can call tools for up to `IMBI_SLACKBOT_MAX_TOOL_ROUNDS` rounds for
 one message. A tool result longer than `IMBI_SLACKBOT_MAX_TOOL_RESULT_CHARS`
 is replaced with an error.
 
+The bot also has the tools of each enabled MCP server at
+**Admin > Global Admin > Assistant > MCP Servers**, the same as the
+assistant. See
+[Assistant and MCP Servers](../admin/assistant-and-mcp-servers.md). These
+calls use the credentials of the server, not your token. The bot reads the
+servers at startup. After you change a server, restart imbi-slackbot.
+
 The bot also has Slack tools from
 [slackwright](https://github.com/gmr/slackwright). They work only in the
 thread of the message:

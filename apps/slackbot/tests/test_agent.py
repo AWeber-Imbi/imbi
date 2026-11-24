@@ -5,6 +5,7 @@ import httpx
 import slackwright
 
 from apps.slackbot.tests import helpers
+from imbi.common import external_mcp
 from imbi.slackbot import agent
 
 
@@ -73,10 +74,19 @@ class CollectTests(helpers.TestCase):
 
 
 class RunTurnTests(helpers.TestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.external = external_mcp.ExternalMCPManager()
+
     def _patch(self, client: FakeClient, manager: FakeManager):
         return (
             mock.patch.object(agent.client, 'get_client', return_value=client),
             mock.patch.object(agent.mcp, 'get_manager', return_value=manager),
+            mock.patch.object(
+                agent.external_mcp,
+                'get_manager',
+                return_value=self.external,
+            ),
         )
 
     async def _run(self, client, manager, **overrides):
@@ -183,6 +193,30 @@ class RunTurnTests(helpers.TestCase):
         self.assertIn('slack_post_blocks', names)
         result = client.messages.calls[1]['messages'][-1]['content'][0]
         self.assertNotIn('is_error', result)
+
+    async def test_external_mcp_tools_run_in_external_manager(self) -> None:
+        external = mock.Mock()
+        external.get_tools.return_value = [{'name': 'mcp_zoekt_search'}]
+        external.has_tool.side_effect = lambda name: name == 'mcp_zoekt_search'
+        external.execute_tool = mock.AsyncMock(return_value=('hits', False))
+        client = FakeClient(
+            [
+                Response(
+                    [_tool('t1', 'mcp_zoekt_search', {'q': 'x'})], 'tool_use'
+                ),
+                Response([_text('done')], 'end_turn'),
+            ]
+        )
+        manager = FakeManager([])
+        self.external = external
+        answer = await self._run(client, manager, tools=[{'name': 'list'}])
+        self.assertEqual('done', answer)
+        self.assertEqual([], manager.executed)
+        external.execute_tool.assert_awaited_once_with(
+            'mcp_zoekt_search', {'q': 'x'}
+        )
+        names = [tool['name'] for tool in client.messages.calls[0]['tools']]
+        self.assertEqual(['list', 'mcp_zoekt_search'], names)
 
     async def test_max_rounds(self) -> None:
         client = FakeClient(

@@ -6,7 +6,15 @@ import fastapi
 import typer
 
 import imbi.slackbot
-from imbi.common import graph, lifespan, posthog, sentry, server, valkey
+from imbi.common import (
+    external_mcp,
+    graph,
+    lifespan,
+    posthog,
+    sentry,
+    server,
+    valkey,
+)
 from imbi.common.prompts import pool as prompt_pool
 from imbi.slackbot import (
     app_status,
@@ -73,6 +81,7 @@ def create_app() -> fastapi.FastAPI:
             _anthropic_lifespan,
             _mcp_lifespan,
             _links_lifespan,
+            external_mcp.lifespan,
             _slack_lifespan,
         ),
     )

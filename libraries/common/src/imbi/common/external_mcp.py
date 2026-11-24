@@ -3,9 +3,9 @@
 Reads :class:`~imbi.common.models.MCPServer` nodes from the graph,
 opens a streamable-HTTP MCP session per enabled server, discovers
 their tools, and exposes them in Anthropic tool format for the
-assistant's Claude integration.
+Claude integrations of the assistant and the Slack bot.
 
-This is additive to :mod:`imbi.assistant.mcp` (which builds tools
+This is additive to each service's ``mcp`` module (which builds tools
 from the Imbi OpenAPI spec); the two managers run side by side.
 
 """
@@ -13,6 +13,7 @@ from the Imbi OpenAPI spec); the two managers run side by side.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import re
@@ -21,18 +22,17 @@ import typing
 
 import httpx
 import mcp
+import pydantic
 from mcp import types as mcp_types
 from mcp.client import streamable_http
 from mcp.shared._httpx_utils import create_mcp_http_client
 
-from imbi.assistant import age_ops
+from imbi.common import graph
+from imbi.common import models as common_models
 from imbi.common.auth.encryption import decrypt_config_value
 
 if typing.TYPE_CHECKING:
     import collections.abc
-
-    from imbi.common import graph
-    from imbi.common import models as common_models
 
 LOGGER = logging.getLogger(__name__)
 
@@ -47,6 +47,25 @@ _OAUTH_TOKEN_TIMEOUT = 10.0
 # ponytail: fixed delay between reconnect attempts to a server that is
 # down; make it exponential if a fixed delay is too slow or too noisy.
 _RECONNECT_DELAY = 60.0
+
+
+async def get_enabled_mcp_servers(
+    db: graph.Graph,
+) -> list[common_models.MCPServer]:
+    """Return all enabled external MCP server nodes."""
+    query = """
+    MATCH (s:MCPServer {{enabled: true}})
+    RETURN s
+    """
+    records = await db.execute(query, {}, ['s'])
+    servers: list[common_models.MCPServer] = []
+    for record in records:
+        data = graph.parse_agtype(record['s'])
+        try:
+            servers.append(common_models.MCPServer(**data))
+        except pydantic.ValidationError as err:
+            LOGGER.warning('Skipping invalid MCPServer row: %s', err)
+    return servers
 
 
 class OAuthClientCredentialsAuth(httpx.Auth):
@@ -172,7 +191,7 @@ def _mcp_tool_to_anthropic(
 
 class ExternalMCPManager:
     """Manages streamable-HTTP connections to external MCP servers
-    and exposes their tools to the assistant.
+    and exposes their tools to a Claude integration.
 
     """
 
@@ -200,9 +219,10 @@ class ExternalMCPManager:
             db: Open graph connection used to read MCPServer nodes.
 
         """
-        servers = await age_ops.get_enabled_mcp_servers(db)
-        for server in servers:
-            await self._connect_server(server)
+        servers = await get_enabled_mcp_servers(db)
+        # Connect in parallel, so startup waits for the slowest server,
+        # not for the sum of all the timeouts.
+        await asyncio.gather(*(self._connect_server(s) for s in servers))
         self._initialized = True
         LOGGER.info(
             'External MCP initialization complete: %d servers, %d tools',
@@ -221,11 +241,10 @@ class ExternalMCPManager:
             server.url,
         )
         try:
-            session = await asyncio.wait_for(
-                self._open_session(server),
+            session, result = await asyncio.wait_for(
+                self._open_and_list(server),
                 timeout=float(server.timeout),
             )
-            result = await session.list_tools()
         except asyncio.CancelledError:
             raise
         except Exception as err:  # noqa: BLE001
@@ -245,6 +264,14 @@ class ExternalMCPManager:
         prefix = _tool_prefix(server)
         for tool in result.tools:
             self._register_tool(server, tool, prefix)
+
+    async def _open_and_list(
+        self,
+        server: common_models.MCPServer,
+    ) -> tuple[mcp.ClientSession, mcp_types.ListToolsResult]:
+        """Open a session and discover its tools."""
+        session = await self._open_session(server)
+        return session, await session.list_tools()
 
     async def _open_session(
         self,
@@ -534,15 +561,31 @@ async def initialize(db: graph.Graph) -> None:
         _manager = ExternalMCPManager()
 
 
-async def ensure_manager() -> None:
-    """Install an empty manager if none exists.
+@contextlib.asynccontextmanager
+async def lifespan() -> collections.abc.AsyncGenerator[None]:
+    """Connect to the configured servers for the life of the app.
 
-    Used when graph initialization fails at startup so request
-    handling can still resolve a manager.
+    Must run after :func:`imbi.common.graph.graph_lifespan`. A failure
+    to read the servers is logged and leaves an empty manager, so it
+    does not stop the service.
+
     """
     global _manager
-    if _manager is None:
-        _manager = ExternalMCPManager()
+    db = graph.Graph()
+    try:
+        await db.open()
+        try:
+            await initialize(db)
+        finally:
+            await db.close()
+    except Exception:
+        LOGGER.exception('Failed to initialize external MCP servers')
+        # An empty manager, so that request handling can still get one.
+        _manager = _manager or ExternalMCPManager()
+    try:
+        yield
+    finally:
+        await aclose()
 
 
 async def reinitialize(db: graph.Graph) -> tuple[bool, int]:

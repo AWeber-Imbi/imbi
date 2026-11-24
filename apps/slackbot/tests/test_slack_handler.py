@@ -5,6 +5,7 @@ from unittest import mock
 from slackwright import forms, inflight
 
 from apps.slackbot.tests import helpers
+from imbi.common import external_mcp
 from imbi.common.prompts import system as prompt_system
 from imbi.slackbot import identity, settings, slack_handler
 
@@ -293,7 +294,17 @@ class HandleEventTests(helpers.TestCase):
         mint_patch = mock.patch.object(
             slack_handler.identity, 'mint_token', return_value='tok'
         )
-        self._patches = [system_prompt_patch, manager_patch, mint_patch]
+        external_patch = mock.patch.object(
+            slack_handler.external_mcp,
+            'get_manager',
+            return_value=external_mcp.ExternalMCPManager(),
+        )
+        self._patches = [
+            system_prompt_patch,
+            manager_patch,
+            mint_patch,
+            external_patch,
+        ]
         for patch in self._patches:
             patch.start()
 

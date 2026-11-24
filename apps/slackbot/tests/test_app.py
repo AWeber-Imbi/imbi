@@ -17,6 +17,11 @@ class AppTests(helpers.TestCase):
         app_instance = imbi.slackbot.app.create_app()
         self.assertIsInstance(app_instance, fastapi.FastAPI)
 
+    @mock.patch(
+        'imbi.common.external_mcp.graph.Graph',
+        mock.Mock(return_value=mock.AsyncMock()),
+    )
+    @mock.patch('imbi.common.external_mcp.initialize', mock.AsyncMock())
     @mock.patch('imbi.slackbot.links.initialize')
     @mock.patch('imbi.slackbot.slack_handler.aclose')
     @mock.patch('imbi.slackbot.slack_handler.initialize')

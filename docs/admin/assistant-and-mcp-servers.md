@@ -6,7 +6,7 @@ only for platform administrators. The page has two tabs:
 
 | Tab | What it configures |
 |---|---|
-| **MCP Servers** | The external MCP servers. The assistant uses their tools |
+| **MCP Servers** | The external MCP servers. The assistant and the Slack bot use their tools |
 | **Prompt** | The system prompt, the model, and the model parameters of the assistant |
 
 These settings are global. They apply to every organization.
@@ -48,8 +48,10 @@ versions, labels, the environment override, and the model settings, see
 
 ## MCP servers
 
-An MCP server gives tools to the assistant. imbi-assistant uses every
-enabled server. Imbi connects to the server over streamable HTTP. The
+An MCP server gives tools to the assistant and the
+[Slack bot](../slackbot/index.md). imbi-assistant and imbi-slackbot use
+every enabled server. imbi-slackbot reads the servers at startup, so
+restart it after you change a server. Imbi connects to the server over streamable HTTP. The
 tool names in the assistant are `mcp_<tool prefix>_<tool>`. If the
 connection to a server fails, the next call to one of its tools opens
 the connection again. If that attempt also fails, the assistant waits
@@ -111,7 +113,8 @@ The **With issues** filter shows the servers that are `degraded` or
 
 ## MCP servers and agents
 
-These servers are for the assistant only. Agents do not use them. An
+These servers are for the assistant and the Slack bot only. Agents do
+not use them. An
 agent gets MCP servers from the plugins of its marketplaces. See
 [Agents](agents.md).
 

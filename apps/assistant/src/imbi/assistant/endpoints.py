@@ -15,13 +15,12 @@ from imbi.assistant import (
     auth,
     client,
     client_tools,
-    external_mcp,
     mcp,
     models,
     settings,
     system_prompt,
 )
-from imbi.common import graph
+from imbi.common import external_mcp, graph
 from imbi.common.prompts import resolve
 from imbi.common.prompts import system as prompt_system
 
