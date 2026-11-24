@@ -112,9 +112,10 @@ This tab sets what the agent can call. It has two parts.
 
 **Plugins** lists the plugins of the marketplaces that the organization
 allows (see [Plugin marketplaces](#plugin-marketplaces)). Select a plugin
-to give it to the agent. Each row names the MCP servers that the plugin
-brings. While a plugin is on, the agent can use every tool of its MCP
-servers.
+to give it to the agent. Under each plugin, the row lists the MCP servers
+that the plugin brings, with the URL of each server, or `stdio` for a
+server that runs as a local command. While a plugin is on, the agent can
+use every tool of its MCP servers.
 
 - When you save, Imbi pins each new plugin to the commit that it synced
   last.
@@ -390,10 +391,33 @@ To add a marketplace:
 
 A sync reads the marketplace file at the head of the default branch. It
 reads through the organization's GitHub integration. When no integration can
-read a `github.com` repository, the sync reads it anonymously. GitHub
-limits anonymous reads to 60 requests an hour for each API pod IP address.
-A repository on another host is never read anonymously. A failed sync shows an
-error badge on the row. Click the sync button of a row to sync it again.
+read a `github.com` repository, the sync reads it anonymously. It reads
+files from `raw.githubusercontent.com`, and commits from the GitHub API.
+GitHub limits anonymous API requests to 60 an hour for each API pod IP
+address. A repository on another host is never read anonymously.
+
+The sync also reads the MCP servers of each plugin, with the rule that
+runners use to load the plugin. When the plugin directory has a
+`.claude-plugin/plugin.json`, the servers come from its `mcpServers`.
+Otherwise they come from the `mcpServers` of the plugin's entry in
+`marketplace.json`. For a `url` or `github` source, that entry is the one
+in the `marketplace.json` of the plugin's own repository. The servers of
+the plugin's `.mcp.json` are added in both cases. A missing or invalid
+file adds no servers. A file counts as missing when no reader can read
+it and at least one reader finds no such file, even if another reader
+fails, so such a sync can replace the catalog without an error badge.
+GitHub answers a private repository that a reader cannot access with the
+same "not found". When every reader fails, the sync fails and the
+previous catalog stays. A server file path that is absolute or contains
+`..` adds no servers, and the API logs a warning, because the runner
+fails each task of a plugin with such a path. For each server, Imbi
+stores its name, type, URL, and the names of its headers with the
+variables that each header uses. It stores no header value, no user
+information, query, or fragment of a URL, and no URL that has no host,
+such as one that starts with a `${VAR:-default}` reference. It keeps the
+path of a URL, so a token in the path is stored. A failed
+sync shows an error badge on the row. Click the sync button of a row to
+sync it again.
 Imbi does not sync on a schedule.
 
 You cannot delete a marketplace that the newest base configuration allows.

@@ -232,13 +232,25 @@ function MarketplacePlugins({
                     </p>
                   )}
                   {plugin.mcp_servers.length > 0 && (
-                    <p className="text-tertiary mt-0.5 text-xs">
-                      MCP {plugin.mcp_servers.length > 1 ? 'servers' : 'server'}
-                      :{' '}
-                      <span className="font-mono">
-                        {plugin.mcp_servers.join(', ')}
-                      </span>
-                    </p>
+                    <ul
+                      aria-label={`MCP servers of ${plugin.name}`}
+                      className="mt-1 flex flex-col gap-0.5"
+                    >
+                      {plugin.mcp_servers.map((server) => (
+                        <li
+                          className="flex min-w-0 items-baseline gap-2 text-xs"
+                          key={server.name}
+                        >
+                          <span className="text-tertiary">MCP</span>
+                          <span className="text-secondary font-mono">
+                            {server.name}
+                          </span>
+                          <span className="text-tertiary truncate font-mono">
+                            {server.url ?? server.type}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
                   )}
                 </div>
               </li>

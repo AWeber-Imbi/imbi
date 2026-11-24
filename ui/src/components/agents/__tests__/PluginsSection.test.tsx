@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as endpoints from '@/api/endpoints'
-import { fireEvent, render, screen } from '@/test/utils'
+import { fireEvent, render, screen, within } from '@/test/utils'
 import type { AgentMarketplace, AgentPlatformConfigResponse } from '@/types'
 
 import { emptyDraft, type SettingsDraft } from '../agentDraft'
@@ -52,7 +52,7 @@ function marketplace(): AgentMarketplace {
   const plugin = (name: string, path: null | string = `plugins/${name}`) => ({
     category: null,
     description: `${name} plugin`,
-    mcp_servers: [] as string[],
+    mcp_servers: [] as AgentMarketplace['plugins'][number]['mcp_servers'],
     name,
     path,
     source: path ? `./${path}` : { repo: 'a/b', source: 'github' },
@@ -70,7 +70,18 @@ function marketplace(): AgentMarketplace {
       plugin('code-review'),
       plugin('commit-commands'),
       plugin('feature-dev'),
-      { ...plugin('grafana-mcp', '.'), mcp_servers: ['grafana'] },
+      {
+        ...plugin('grafana-mcp', '.'),
+        mcp_servers: [
+          {
+            headers: { Authorization: ['GRAFANA_TOKEN'] },
+            name: 'grafana',
+            type: 'http',
+            url: 'https://grafana.example.com/mcp',
+          },
+          { headers: {}, name: 'local', type: 'stdio' },
+        ],
+      },
       plugin('remote', null),
       {
         ...plugin('linked', null),
@@ -117,10 +128,23 @@ describe('PluginsSection', () => {
     expect(await screen.findByLabelText('remote')).toBeChecked()
   })
 
-  it('names the MCP servers that a plugin brings', async () => {
+  it('lists the MCP servers that a plugin brings', async () => {
     render(<Harness initial={emptyDraft().settings} />)
-    expect(await screen.findByText('grafana')).toBeInTheDocument()
-    expect(screen.getByText(/MCP server:/)).toBeInTheDocument()
+    const servers = await screen.findByRole('list', {
+      name: 'MCP servers of grafana-mcp',
+    })
+    const items = within(servers).getAllByRole('listitem')
+    expect(items).toHaveLength(2)
+    const [grafana, local] = items
+    expect(within(grafana).getByText('grafana')).toBeInTheDocument()
+    expect(
+      within(grafana).getByText('https://grafana.example.com/mcp'),
+    ).toBeInTheDocument()
+    expect(within(local).getByText('local')).toBeInTheDocument()
+    expect(within(local).getByText('stdio')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('list', { name: 'MCP servers of code-review' }),
+    ).not.toBeInTheDocument()
   })
 
   it('adds a plugin without a sha, so the API pins it', async () => {

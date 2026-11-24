@@ -418,7 +418,12 @@ describe('AgentsArea', () => {
     ])
     vi.mocked(endpoints.listAgentMarketplaces).mockResolvedValue([
       {
-        plugins: [{ mcp_servers: ['posthog'], name: 'posthog-mcp' }],
+        plugins: [
+          {
+            mcp_servers: [{ headers: {}, name: 'posthog', type: 'http' }],
+            name: 'posthog-mcp',
+          },
+        ],
         slug: 'aweber',
       },
     ] as never)

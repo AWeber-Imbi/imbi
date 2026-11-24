@@ -22,10 +22,12 @@ class PublicRepository:
     """The :class:`~imbi.common.plugins.base.RepositoryReader` of a public
     ``github.com`` repository. It ignores ``ctx`` and ``credentials``."""
 
-    # ponytail: 60 unauthenticated requests an hour per API pod IP; use
-    # an org token if many public marketplaces sync often.
+    # ponytail: 60 unauthenticated API requests an hour per API pod IP
+    # for the refs; use an org token if many public marketplaces sync
+    # often.
     def __init__(self, owner: str, repo: str) -> None:
         self.base = f'https://api.github.com/repos/{owner}/{repo}'
+        self.raw = f'https://raw.githubusercontent.com/{owner}/{repo}'
 
     @classmethod
     def for_url(cls, url: str) -> PublicRepository | None:
@@ -37,21 +39,21 @@ class PublicRepository:
             return None
         return cls(*path.split('/'))
 
-    async def _get(
-        self, path: str, accept: str = 'application/vnd.github+json'
-    ) -> httpx.Response:
+    async def _get(self, url: str) -> httpx.Response:
         # A renamed or moved repository answers 301 to /repositories/{id}.
         async with httpx.AsyncClient(
             timeout=30, follow_redirects=True
         ) as client:
             return await client.get(
-                f'{self.base}{path}', headers={'Accept': accept}
+                url, headers={'Accept': 'application/vnd.github+json'}
             )
 
     async def resolve_committish(
         self, _ctx: object, _credentials: object, ref: str, /
     ) -> base.Ref:
-        response = await self._get(f'/commits/{urllib.parse.quote(ref)}')
+        response = await self._get(
+            f'{self.base}/commits/{urllib.parse.quote(ref)}'
+        )
         response.raise_for_status()
         return base.Ref(name=ref, kind='branch', sha=response.json()['sha'])
 
@@ -64,7 +66,7 @@ class PublicRepository:
     ) -> list[base.Ref]:
         """Return the default branch only, whatever ``kind`` is."""
         del kind
-        response = await self._get('')
+        response = await self._get(self.base)
         response.raise_for_status()
         branch = str(response.json()['default_branch'])
         ref = await self.resolve_committish(None, None, branch)
@@ -74,9 +76,7 @@ class PublicRepository:
         self, _ctx: object, _credentials: object, path: str, ref: str, /
     ) -> str | None:
         response = await self._get(
-            f'/contents/{urllib.parse.quote(path)}?'
-            f'{urllib.parse.urlencode({"ref": ref})}',
-            'application/vnd.github.raw+json',
+            f'{self.raw}/{urllib.parse.quote(ref)}/{urllib.parse.quote(path)}'
         )
         if response.status_code == 404:
             return None

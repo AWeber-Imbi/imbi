@@ -559,7 +559,7 @@ Adds the `llm_call` workflow step: it sends a saved prompt to a generative model
 
 #### [ADR 0031: Plugin MCP Server Credentials](adr/0031-plugin-mcp-server-credentials.md)
 
-*Date: 2026-11-17 | Status: Proposed*
+*Date: 2026-11-17 | Status: Accepted*
 
 Lets a plugin's MCP server authenticate with a header credential from the secrets broker. The runner holds the credential and relays the server's tools to the CLI, so the credential never reaches the CLI's environment. The model can use it only if a person also grants the binding for `run_with_secret`.
 
