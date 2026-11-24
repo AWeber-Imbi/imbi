@@ -74,9 +74,19 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
-## 2.61.0
+## Unreleased
 
-1. Run `imbi-api setup-permissions`. It gives the `imbi-workflows` role
+1. **Before you deploy**, if the egress of the imbi-api pods is
+   restricted, allow `raw.githubusercontent.com`. imbi-api now reads
+   the files of public `github.com` repositories from that host. It
+   still reads refs and commits from `api.github.com`.
+2. After you deploy, run **Sync Agent Marketplaces**
+   (`marketplace-sync`) from **Admin > Global Admin > Maintenance**. It
+   reads the MCP servers of every plugin and stores them with their
+   type and URL. Until it runs, or until the scheduler runs it within
+   6 hours, the **Tools and plugins** section shows each server of an
+   earlier sync by name only, as `stdio`.
+3. Run `imbi-api setup-permissions`. It gives the `imbi-workflows` role
    `project:logs:read`, which the new **Search logs** workflow step needs.
    Without it, the step fails with `forbidden`.
 

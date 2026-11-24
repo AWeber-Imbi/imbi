@@ -6,6 +6,8 @@ marketplace sync reads a saved real ``marketplace.json``; GitHub is not
 called.
 """
 
+import collections.abc
+import contextlib
 import json
 import typing
 import uuid
@@ -108,17 +110,25 @@ class PlatformTestCase(test_harness.RunnerTestCase):
         self.assertEqual(response.status_code, 201, response.text)
         return response.json()
 
-    def head(self, sha: str) -> typing.Any:
-        """Make the sync read the saved marketplace at ``sha``."""
-        return mock.patch.object(
-            marketplaces,
-            'fetch',
-            mock.AsyncMock(
-                return_value=marketplaces.Head(
-                    'main', sha, unit.FIXTURE.read_text()
-                )
+    @contextlib.contextmanager
+    def head(self, sha: str) -> collections.abc.Generator[None]:
+        """Make the sync read the saved marketplace at ``sha``, with no
+        plugin files."""
+        with (
+            mock.patch.object(
+                marketplaces,
+                'fetch',
+                mock.AsyncMock(
+                    return_value=marketplaces.Head(
+                        'main', sha, unit.FIXTURE.read_text()
+                    )
+                ),
             ),
-        )
+            mock.patch.object(
+                marketplaces, 'file_reader', return_value=unit.missing
+            ),
+        ):
+            yield
 
     async def create_agent(self, **settings: typing.Any) -> httpx.Response:
         return await self.client.post(

@@ -22,7 +22,7 @@ from unittest import mock
 import claude_agent_sdk as sdk
 import httpx
 
-from imbi.harness import api, ipc, privilege, proxy, redact, task
+from imbi.harness import api, ipc, policy, privilege, proxy, redact, task
 
 HANDLE = 'handle-that-must-not-reach-the-model-0123456789'
 KEY = 'sk-ant-model-key-0123456789abcdef'
@@ -2491,6 +2491,20 @@ class PolicyHookTestCase(RoutedTestCase):
             output['hookSpecificOutput']['permissionDecisionReason'],
         )
 
+    async def test_rate_limit_counts_each_child_task(self) -> None:
+        subject = self.with_tools(
+            {'imbi.create_child_task': {'rate_limit': {'count': 5}}}
+        )
+        self.routes['/tool-calls/check'] = {'allowed': True}
+        tasks = [{}, {}, {}]
+        self.assertEqual(
+            await self.hook(subject, policy.CHILD_TASKS, tasks=tasks), {}
+        )
+        self.assertEqual(
+            self.posted('/tool-calls/check'),
+            [{'tool_key': 'imbi.create_child_task'}] * 3,
+        )
+
     async def test_pause_holds_the_call(self) -> None:
         self.run_task.control = 'pause'
         call = asyncio.create_task(self.hook(self.run_task, 'Bash'))
@@ -2677,6 +2691,68 @@ class ChildTaskTestCase(RoutedTestCase):
             {'agent_slug': 'a', 'title': 't', 'instruction': 'i'}
         )
         self.assertIn('runner_label_missing', result['content'][0]['text'])
+
+    async def test_children_run_in_parallel(self) -> None:
+        started: set[str] = set()
+        both = asyncio.Event()
+
+        async def create(body: dict[str, typing.Any]) -> dict[str, str]:
+            return {'short_id': body['title']}
+
+        async def child(short_id: str) -> dict[str, typing.Any]:
+            started.add(short_id)
+            if len(started) == 2:
+                both.set()
+            # Times out unless the other child starts while this waits.
+            await asyncio.wait_for(both.wait(), 1)
+            return {'short_id': short_id}
+
+        self.run_task.children = child
+        task_args = {'agent_slug': 'reviewer', 'instruction': 'Fix.'}
+        with mock.patch.object(self.run_task.api, 'create_child', create):
+            result = await self.run_task.child_tasks_tool().handler(
+                {
+                    'tasks': [
+                        task_args | {'title': 'T-2'},
+                        task_args | {'title': 'T-3'},
+                        task_args | {'agent_slug': 'admin', 'title': 't'},
+                    ]
+                }
+            )
+        texts = [part['text'] for part in result['content']]
+        self.assertEqual(json.loads(texts[0]), {'short_id': 'T-2'})
+        self.assertEqual(json.loads(texts[1]), {'short_id': 'T-3'})
+        self.assertIn("'admin' is not a subagent", texts[2])
+        self.assertFalse(result['is_error'])
+
+    async def test_child_tasks_errors(self) -> None:
+        self.run_task.children = None
+        result = await self.run_task.create_child_tasks({'tasks': []})
+        self.assertTrue(result['is_error'])
+        result = await self.run_task.create_child_tasks({'tasks': [{}]})
+        self.assertTrue(result['is_error'])
+        too_many = [{}] * (task.MAX_CHILD_TASKS + 1)
+        result = await self.run_task.create_child_tasks({'tasks': too_many})
+        self.assertIn('at most', result['content'][0]['text'])
+
+    async def test_a_failed_child_keeps_the_other_results(self) -> None:
+        async def create(body: dict[str, typing.Any]) -> dict[str, str]:
+            return {'short_id': body['title']}
+
+        async def child(short_id: str) -> dict[str, typing.Any]:
+            if short_id == 'T-3':
+                raise RuntimeError('gone')
+            return {'short_id': short_id}
+
+        self.run_task.children = child
+        args = {'agent_slug': 'reviewer', 'instruction': 'Fix.'}
+        with mock.patch.object(self.run_task.api, 'create_child', create):
+            result = await self.run_task.create_child_tasks(
+                {'tasks': [args | {'title': 'T-2'}, args | {'title': 'T-3'}]}
+            )
+        texts = [part['text'] for part in result['content']]
+        self.assertEqual(json.loads(texts[0]), {'short_id': 'T-2'})
+        self.assertIn('gone', texts[1])
 
 
 class AttachProjectTestCase(TaskTestCase):
