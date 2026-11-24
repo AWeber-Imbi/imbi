@@ -34,8 +34,8 @@ service:
   # imbi-gateway use to reach imbi-api. The default works for "all" and "api"
   # modes; override when running "mcp", "assistant", "scheduler", or "gateway"
   # as separate pods (e.g.
-  # http://imbi-api.<namespace>.svc.cluster.local:8080). In "scheduler" and
-  # "gateway" modes the chart fails to render if this is left at the loopback
+  # http://imbi-api.<namespace>.svc.cluster.local:8080). In those modes (and
+  # "workflows") the chart fails to render if this is left at the loopback
   # default: there it resolves to that pod itself, and the pod reports healthy
   # while every api-target firing (or gateway action) fails.
   internalApiUrl: "http://localhost:8000"

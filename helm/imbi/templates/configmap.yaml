@@ -15,12 +15,17 @@ data:
   # and imbi-scheduler for service-to-service calls to imbi-api. Distinct
   # from the API's public URL. Defaults to the in-pod loopback for "all"
   # mode; set service.internalApiUrl when running any of them as a
-  # separate pod. A standalone gateway is guarded below: its default is
+  # separate pod. Standalone gateway, mcp and assistant pods are guarded below: its default is
   # the loopback, so the pod would call itself and report healthy.
   IMBI_INTERNAL_API_URL: {{ .Values.service.internalApiUrl | quote }}
   {{- if eq .Values.service.mode "gateway" }}
   {{- if eq .Values.service.internalApiUrl "http://localhost:8000" }}
   {{- fail "service.internalApiUrl must point at imbi-api when service.mode is 'gateway' (e.g. http://imbi-api.<namespace>.svc.cluster.local:8000) -- the default is an in-pod loopback, which in a standalone gateway pod resolves to the gateway itself, so every action it takes fails to connect while the pod reports healthy" }}
+  {{- end }}
+  {{- end }}
+  {{- if has .Values.service.mode (list "mcp" "assistant") }}
+  {{- if eq .Values.service.internalApiUrl "http://localhost:8000" }}
+  {{- fail (printf "service.internalApiUrl must point at imbi-api when service.mode is '%s' (e.g. http://imbi-api.<namespace>.svc.cluster.local:8000) -- the default is an in-pod loopback, which in a standalone %s pod resolves to the pod itself, so every call to imbi-api fails while the pod reports healthy" .Values.service.mode .Values.service.mode) }}
   {{- end }}
   {{- end }}
   {{- if eq .Values.service.mode "scheduler" }}
