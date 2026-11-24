@@ -136,14 +136,10 @@ deployment in the release endpoints):
 ```
 
 A `PATCH` fails with `422` when no matching blueprint declares a
-property, or when a value does not agree with its schema. One
-exception: for a top-level array property, Imbi checks the type of
-each item and, for string items, the item `enum`. It converts an item
-to the item type when it can (`"3"` in an integer array is stored as
-`3`) instead of returning `422`. It does not check
-other item rules, such as a `minimum` or the schema of an object item,
-so an agent must not rely on those checks. An array inside an object
-property is checked against its full schema.
+property, or when a value does not agree with its schema. An object
+or array property is checked against its full schema, including item
+rules such as a `minimum` and the schema of an object item. Items are
+not converted: `"3"` in an integer array returns `422`.
 
 Imbi does not enforce required top-level properties on deployments,
 because deployments are also created with no person or agent present.

@@ -27,6 +27,18 @@ class ValidateTests(unittest.TestCase):
                                 'type': 'array',
                                 'items': {'type': 'string', 'enum': ['api']},
                             },
+                            'counts': {
+                                'type': 'array',
+                                'items': {'type': 'integer', 'minimum': 0},
+                            },
+                            'checks': {
+                                'type': 'array',
+                                'items': {
+                                    'type': 'object',
+                                    'properties': {'name': {'type': 'string'}},
+                                    'required': ['name'],
+                                },
+                            },
                             'payload': {
                                 'type': 'object',
                                 'properties': {
@@ -74,6 +86,32 @@ class ValidateTests(unittest.TestCase):
             ),
             {'tags': None},
         )
+
+    def test_array_items(self) -> None:
+        for partial in (False, True):
+            self.assertEqual(
+                blueprint_values.validate(
+                    self.matches,
+                    {'counts': [0, 3], 'checks': [{'name': 'a'}]},
+                    partial=partial,
+                ),
+                {'counts': [0, 3], 'checks': [{'name': 'a'}]},
+            )
+            # A string is not converted to an integer item, an item
+            # minimum is checked, and so is the schema of an object item.
+            for field, bad in (
+                ('counts', ['3']),
+                ('counts', [-1]),
+                ('checks', [{}]),
+            ):
+                with self.assertRaises(fastapi.HTTPException) as ctx:
+                    blueprint_values.validate(
+                        self.matches, {field: bad}, partial=partial
+                    )
+                detail = typing.cast(
+                    dict[str, typing.Any], ctx.exception.detail
+                )
+                self.assertEqual(detail['invalid'][0]['field'], field)
 
     def test_nested_object(self) -> None:
         for partial in (False, True):
