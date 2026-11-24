@@ -923,26 +923,55 @@ class EscalationTests(HarnessTestCase):
         self.assertEqual(entry['request_id'], response.json()['request']['id'])
         self.assertEqual(result.escalated_requests, 1)
 
-    async def test_agent_team_slug_is_the_default_channel(self) -> None:
-        slug = f'ops-{uuid.uuid4().hex[:8]}'
-        await self.graph.execute(
-            'MATCH (a:Agent {{id: {id}}})'
-            ' CREATE (a)-[:OWNED_BY]->(:Team {{slug: {slug}}})'
-            ' RETURN a.id AS id',
-            {'id': self.agent_id, 'slug': slug},
-            ['id'],
-        )
+    async def test_closed_ticket_does_not_escalate(self) -> None:
         response = await self.post(
             'requests', {'kind': 'feedback', 'title': 'Which branch?'}
         )
         self.assertEqual(response.status_code, 201, response.text)
         async with self.pool.connection() as conn:
-            cursor = await conn.execute(
-                'SELECT escalation FROM tickets.requests'
+            await conn.execute(
+                'UPDATE tickets.requests SET escalate_at = NOW()'
+                " - interval '1 second'"
             )
-            ((escalation,),) = await cursor.fetchall()
-        self.assertEqual(escalation['slack_channel'], slug)
-        self.assertEqual(escalation['agent_name'], 'Triage Bot')
+            await conn.execute("UPDATE tickets.tickets SET status = 'closed'")
+        client = mock.AsyncMock()
+        with mock.patch.object(
+            sweeper.valkey, 'get_client', return_value=client
+        ):
+            await sweeper._escalate_requests(self.store, sweeper.SweepResult())
+        client.xadd.assert_not_awaited()
+
+    async def test_agent_team_slug_is_the_default_channel(self) -> None:
+        # An empty channel is the same as no channel.
+        for channel in (None, ''):
+            with self.subTest(channel=channel):
+                slug = f'ops-{uuid.uuid4().hex[:8]}'
+                await self.graph.execute(
+                    'MATCH (a:Agent {{id: {id}}})-[r:OWNED_BY]->(:Team)'
+                    ' DELETE r RETURN a.id AS id',
+                    {'id': self.agent_id},
+                    ['id'],
+                )
+                await self.graph.execute(
+                    'MATCH (a:Agent {{id: {id}}})'
+                    ' CREATE (a)-[:OWNED_BY]->'
+                    '(:Team {{slug: {slug}, slack_channel: {channel}}})'
+                    ' RETURN a.id AS id',
+                    {'id': self.agent_id, 'slug': slug, 'channel': channel},
+                    ['id'],
+                )
+                response = await self.post(
+                    'requests', {'kind': 'feedback', 'title': 'Which branch?'}
+                )
+                self.assertEqual(response.status_code, 201, response.text)
+                async with self.pool.connection() as conn:
+                    cursor = await conn.execute(
+                        'SELECT escalation FROM tickets.requests'
+                        ' ORDER BY opened_at DESC LIMIT 1'
+                    )
+                    ((escalation,),) = await cursor.fetchall()
+                self.assertEqual(escalation['slack_channel'], slug)
+                self.assertEqual(escalation['agent_name'], 'Triage Bot')
 
 
 class RequestRoutingTests(unittest.IsolatedAsyncioTestCase):

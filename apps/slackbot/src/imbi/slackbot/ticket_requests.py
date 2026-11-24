@@ -127,13 +127,16 @@ async def post(
     """Send the form of ``entry`` to the person on the ticket, or post
     it to the team channel for an escalation or a failed message."""
     if not entry.get('escalation'):
-        channel = await _direct_channel(slack, entry['recipient'])
+        # An entry from an earlier imbi-api has ``owner``, not
+        # ``recipient``.
+        recipient = entry.get('recipient') or entry['owner']
+        channel = await _direct_channel(slack, recipient)
         if channel:
             await _post_form(slack, runtime, entry, channel)
             return
         LOGGER.info(
             'No Slack user for %s; posting %s to the channel',
-            entry['recipient'],
+            recipient,
             entry['short_id'],
         )
     name = entry.get('slack_channel')

@@ -206,6 +206,12 @@ class PostTests(FlowTestCase):
             'r-1', record.metadata['ticket_request']['request_id']
         )
 
+    async def test_earlier_entry_goes_to_the_owner(self) -> None:
+        legacy = entry(owner='ada@example.com')
+        del legacy['recipient']
+        await ticket_requests.post(self.slack, self.runtime, legacy)
+        self.assertEqual(['D-U1'], [p['channel'] for p in self.slack.posts])
+
     async def test_escalation_goes_to_the_channel_by_name(self) -> None:
         await ticket_requests.post(
             self.slack,

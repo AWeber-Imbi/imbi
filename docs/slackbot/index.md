@@ -62,8 +62,8 @@ is the first one that applies:
 
 A team with no Slack channel uses its slug as the channel name. The bot
 also posts to that channel at once when it cannot send the direct message
-(for example, the person has no Slack user). With no SLA, the request goes
-to the person only. Invite the bot to the channel first. The bot looks up a
+(for example, the person has no Slack user). With no SLA, there is no
+later post to the channel, but this post still occurs. Invite the bot to the channel first. The bot looks up a
 channel name that it did not find again after 15 minutes.
 
 Any person who can see the form can send it. The bot resolves the request

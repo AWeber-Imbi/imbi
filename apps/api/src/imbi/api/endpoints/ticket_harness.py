@@ -360,16 +360,18 @@ class RequestOpenResponse(pydantic.BaseModel):
 LOGGER = logging.getLogger(__name__)
 
 #: The agent of a ticket, its team, and the team of the ticket's first
-#: project, for the Slack post of a request. A team with no channel
-#: uses its slug.
+#: project, for the Slack post of a request. A team with no channel, or
+#: an empty channel, uses its slug.
 _REQUEST_ROUTING_QUERY: typing.LiteralString = """
 MATCH (a:Agent {{id: {id}}})
 OPTIONAL MATCH (a)-[:OWNED_BY]->(t:Team)
 OPTIONAL MATCH (:Project {{id: {project_id}}})-[:OWNED_BY]->(p:Team)
 RETURN a.name AS name, a.settings AS settings,
        a.slack_channel AS slack_channel,
-       coalesce(t.slack_channel, t.slug) AS agent_team_channel,
-       coalesce(p.slack_channel, p.slug) AS project_team_channel
+       CASE WHEN coalesce(t.slack_channel, '') = '' THEN t.slug
+            ELSE t.slack_channel END AS agent_team_channel,
+       CASE WHEN coalesce(p.slack_channel, '') = '' THEN p.slug
+            ELSE p.slack_channel END AS project_team_channel
 """
 _REQUEST_ROUTING_COLUMNS = [
     'name',

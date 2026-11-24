@@ -110,10 +110,12 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    restart. Until you do this, Slack does not show the command.
 4. The slackbot now sends a ticket request as a direct message to the
    person on the ticket, not to the agent's Slack channel. A request goes
-   to a team Slack channel only after the agent's **Human response SLA**.
-   Set an SLA on each agent that needs one. Set **Slack channel** on each
-   team whose channel name is not the team slug, and invite the bot to
-   those channels. The `channels:read` and `groups:read` scopes of 2.61.0
+   to a team Slack channel when the bot cannot send the direct message,
+   or when the request is still open after the agent's **Human response
+   SLA**. Set an SLA on each agent that needs one. Set **Slack channel**
+   on each team whose channel name is not the team slug. Invite the bot
+   to every channel that can get these posts, including the channels
+   that have the team slug as their name. The `channels:read` and `groups:read` scopes of 2.61.0
    are still necessary for the channel posts.
 
 ## 2.61.0

@@ -1387,6 +1387,9 @@ class AgentSettings(pydantic.BaseModel):
 _DURATION_PART = r'(\d+)([smhdw])'
 _DURATION = re.compile(rf'(?:{_DURATION_PART})+')
 _DURATION_SECONDS = {'s': 1, 'm': 60, 'h': 3600, 'd': 86400, 'w': 604800}
+#: A longer duration is an error, and the limit keeps ``timedelta``
+#: and PostgreSQL timestamp arithmetic in range.
+_DURATION_MAX_SECONDS = 366 * 86400
 
 
 def parse_duration(value: str) -> datetime.timedelta:
@@ -1396,7 +1399,8 @@ def parse_duration(value: str) -> datetime.timedelta:
     hours) and ``w`` (7 days) added, and whole numbers only.
 
     Raises:
-        ValueError: ``value`` is not a duration, or it is zero.
+        ValueError: ``value`` is not a duration, it is zero, or it is
+            more than 366 days.
 
     """
     if not _DURATION.fullmatch(value):
@@ -1407,6 +1411,8 @@ def parse_duration(value: str) -> datetime.timedelta:
     )
     if not seconds:
         raise ValueError('The duration must be more than zero')
+    if seconds > _DURATION_MAX_SECONDS:
+        raise ValueError('The duration must be 366 days or less')
     return datetime.timedelta(seconds=seconds)
 
 

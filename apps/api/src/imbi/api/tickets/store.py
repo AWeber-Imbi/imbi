@@ -2942,7 +2942,7 @@ class TicketStore:
             await cursor.execute(
                 'UPDATE tickets.requests AS r SET escalate_at = NULL'
                 ' FROM tickets.tickets AS t'
-                ' WHERE t.id = r.ticket_id'
+                " WHERE t.id = r.ticket_id AND t.status <> 'closed'"
                 " AND r.status = 'open' AND r.escalate_at <= NOW()"
                 ' AND (r.expires_at IS NULL OR r.expires_at > NOW())'
                 ' RETURNING r.*, t.short_id, t.title AS ticket_title,'

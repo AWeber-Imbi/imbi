@@ -699,6 +699,13 @@ class AgentModelTestCase(unittest.TestCase):
         self.assertEqual(
             models.parse_duration('1w2d'), datetime.timedelta(days=9)
         )
+        self.assertEqual(
+            models.parse_duration('366d'), datetime.timedelta(days=366)
+        )
+        for value in ('367d', '1000000000d'):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    models.parse_duration(value)
 
     def test_tools_parse_json_string(self) -> None:
         agent = self._agent(
