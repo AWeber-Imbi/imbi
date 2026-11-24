@@ -2334,6 +2334,34 @@ class SearchLogsStepTestCase(EngineTestCase):
         self.assertEqual(output['next_cursor'], 'c2')
         self.assertEqual(run['steps']['check']['port'], 0)
 
+    async def test_empty_values_take_the_default(self) -> None:
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'manual'),
+                _node(
+                    'logs',
+                    'search_logs',
+                    {
+                        'project_id': 'proj-1',
+                        'environments': '{{ trigger.envs }}',
+                        'limit': '{{ trigger.limit }}',
+                    },
+                ),
+            ],
+            [_edge('start', 'logs')],
+        )
+        run = await self._drive(
+            await self._start(workflow_id, {'envs': '', 'limit': ''})
+        )
+        self.assertEqual(run['status'], 'succeeded', run)
+        self.assertIn(
+            (
+                'GET',
+                f'/organizations/{self.org}/projects/proj-1/logs/?limit=100',
+            ),
+            self.api.requests,
+        )
+
 
 class AgentStepTestCase(EngineTestCase):
     """The agent step, with the real agent task routes and store.

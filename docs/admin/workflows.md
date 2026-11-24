@@ -707,15 +707,15 @@ of the project does. The step sends the same search to imbi-api as the
 | `project_id` | A project id, or one reference | Required |
 | `source` | The slug of the logs integration | The default logs integration of the project |
 | `environments` | Environment slugs. With two or more, Imbi searches each one and merges the entries | None. The plugin searches with no environment |
-| `start_time` | An ISO 8601 time | 30 minutes before `end_time` |
+| `start_time` | An ISO 8601 time | 30 minutes before now, also when you set `end_time` |
 | `end_time` | An ISO 8601 time | Now |
 | `cursor` | The `next_cursor` of an earlier search. One environment only | None |
 | `limit` | The maximum number of entries, 1 to 1000 | 100 |
 | `filters` | Filters as `field:op:value`. `op` is `eq`, `ne`, `contains`, `starts_with`, or `regex` | None |
 | `levels` | Severity levels, for example `ERROR` | All |
 
-An empty value leaves the parameter out of the search. If the cursor has
-expired, the step fails with `cursor_expired`.
+An empty value, also a template that renders to nothing, takes the
+default. If the cursor has expired, the step fails with `cursor_expired`.
 
 **Output:** `entries` (each with `timestamp`, `message`, `level`, and
 `raw`), `next_cursor`, `total`, and `warnings`. Use

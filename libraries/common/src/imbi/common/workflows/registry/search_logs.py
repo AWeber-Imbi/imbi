@@ -25,7 +25,7 @@ class Params(pydantic.BaseModel):
     )
     start_time: str | None = pydantic.Field(
         default=None,
-        description='ISO 8601. Empty: 30 minutes before end_time.',
+        description='ISO 8601. Empty: 30 minutes before now.',
     )
     end_time: str | None = pydantic.Field(
         default=None, description='ISO 8601. Empty: now.'
