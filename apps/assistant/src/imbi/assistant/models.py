@@ -61,6 +61,12 @@ class UpdateConversationRequest(pydantic.BaseModel):
     is_archived: bool | None = None
 
 
+class SetCurrentConversationRequest(pydantic.BaseModel):
+    """Request body for setting the current conversation."""
+
+    conversation_id: str | None = None
+
+
 # --- Response models ---
 
 

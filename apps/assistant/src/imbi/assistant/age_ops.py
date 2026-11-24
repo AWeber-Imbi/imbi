@@ -360,3 +360,44 @@ async def delete_conversation(
         user_email,
     )
     return True
+
+
+async def get_current_conversation(
+    db: graph.Graph,
+    user_email: str,
+) -> models.Conversation | None:
+    """Get the conversation the user has open in every browser."""
+    query = """
+    MATCH (c:Conversation {{user_email: {user_email},
+                            is_current: true}})
+    RETURN c
+    """
+    records = await db.execute(query, {'user_email': user_email}, ['c'])
+    if not records:
+        return None
+    return models.Conversation(**graph.parse_agtype(records[0]['c']))
+
+
+async def set_current_conversation(
+    db: graph.Graph,
+    user_email: str,
+    conversation_id: str | None,
+) -> None:
+    """Make ``conversation_id`` the user's only current conversation.
+
+    ``None`` clears the flag, so every browser shows a new, empty
+    conversation. Calls for one user run one at a time under an
+    advisory lock, so concurrent calls cannot leave two conversations
+    flagged.
+    """
+    query = """
+    MATCH (c:Conversation {{user_email: {user_email}}})
+    WHERE c.is_current = true OR c.id = {id}
+    SET c.is_current = (c.id = {id})
+    RETURN c.id AS id
+    """
+    params = {'user_email': user_email, 'id': conversation_id or ''}
+    await db.locked(
+        f'current-conversation:{user_email}',
+        lambda execute: execute(query, params, ['id']),
+    )

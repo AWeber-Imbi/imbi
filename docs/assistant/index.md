@@ -38,6 +38,12 @@ assistant reads the URL patterns from `llms.txt` of the UI at startup.
 The assistant stores each conversation and its messages in the graph. A
 conversation belongs to one user. Other users cannot read it.
 
+Each user has one current conversation. Every browser that has the UI open
+shows it, and a reload opens it again. When you open a conversation, start
+a new one, or send the first message of a new one, all your browsers
+change to it. Other browsers show a new message after the assistant saves
+it. They do not show the answer while it streams.
+
 A conversation has a model. A new conversation uses the first of these that
 is set:
 
@@ -121,6 +127,8 @@ The paths are relative to the path of `IMBI_ASSISTANT_URL`, for example
 | `PATCH` | `/conversations/{id}` | Changes the title, or archives the conversation |
 | `DELETE` | `/conversations/{id}` | Deletes a conversation |
 | `POST` | `/conversations/{id}/messages` | Sends a message. The answer is a `text/event-stream` |
+| `GET` | `/current-conversation` | Gets your current conversation, or `null` |
+| `PUT` | `/current-conversation` | Sets your current conversation. `null` starts a new one |
 | `GET` | `/status` | The health check. It has no prefix |
 
 To show the assistant in the **System health** card of the Admin overview,

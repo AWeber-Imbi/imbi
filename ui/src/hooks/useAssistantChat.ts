@@ -7,15 +7,17 @@ import { useQuery } from '@tanstack/react-query'
 import {
   createConversation,
   getConversation,
+  getCurrentConversation,
   listConversations,
   sendMessageSSE,
+  setCurrentConversation,
 } from '@/api/assistant'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAuth } from '@/hooks/useAuth'
 import { queryClient } from '@/lib/queryClient'
 import { getQueryKeysForResource } from '@/lib/queryKeys'
 import { useAssistantStore } from '@/stores/assistantStore'
-import type { Message } from '@/types/assistant'
+import type { Conversation, Message } from '@/types/assistant'
 
 // Shared sending, retry, stop and load logic for the assistant side panel
 // and the full-page assistant. Both views read one store, so a
@@ -34,6 +36,9 @@ export function useAssistantChat() {
       // await, so the composer cannot start a second conversation while
       // this one is being created.
       store.startStreaming()
+      // A load issued before this send must not replace the new turn or
+      // abort this stream.
+      openRequest += 1
       // Stop, New conversation and opening another conversation abort
       // this controller, including during the create below.
       const abort = new AbortController()
@@ -53,6 +58,7 @@ export function useAssistantChat() {
           conversationId = conv.id
           // setState, not setCurrentConversation, which clears messages.
           useAssistantStore.setState({ currentConversationId: conv.id })
+          shareCurrentConversation(conv.id)
         } catch (err) {
           if (abort.signal.aborted) return
           console.error('[Assistant] Failed to create conversation:', err)
@@ -201,10 +207,10 @@ export function rememberAssistantReturnPath(path: string) {
 let abortController: AbortController | null = null
 
 export function newAssistantConversation() {
-  openRequest += 1
+  resetConversation()
   abortController?.abort()
   abortController = null
-  useAssistantStore.getState().clearConversation()
+  shareCurrentConversation(null)
 }
 
 /** Load a stored conversation into the store, unless it is already open. */
@@ -215,14 +221,11 @@ export async function openAssistantConversation(id: string) {
   // Count even a reselect of the current conversation, so a load still
   // in flight cannot replace it.
   const request = ++openRequest
+  // Share even a reselect, so a link to the open conversation still
+  // makes it the current one in every browser.
+  shareCurrentConversation(id)
   if (store.currentConversationId === id) return
-  const conv = await getConversation(id)
-  // A later open or a new conversation supersedes this one.
-  if (request !== openRequest) return
-  abortController?.abort()
-  abortController = null
-  store.setCurrentConversation(conv.id)
-  store.setMessages(toStoreMessages(conv.messages))
+  await loadConversation(id, request)
 }
 
 export function stopAssistant() {
@@ -230,6 +233,94 @@ export function stopAssistant() {
   abortController = null
   // Settle the stream: keep whatever was generated so far as a message.
   useAssistantStore.getState().finishStreaming(Date.now().toString())
+}
+
+/**
+ * Keep this browser on the user's current conversation: restore it on
+ * load and follow switches and new turns made in other browsers. Polls
+ * while `poll` is true; otherwise it checks on mount and window focus.
+ */
+export function useCurrentConversationSync(poll: boolean) {
+  useQuery({
+    // Follow here, not in an effect: the panel remounts on every page,
+    // and only a real fetch (never cached data) may switch the store.
+    queryFn: async ({ signal }) => {
+      // Read only after this browser's own switch has been written.
+      await pendingShare
+      const conv = await getCurrentConversation(signal)
+      // A local switch cancels this poll; its answer is out of date.
+      if (!signal.aborted) followCurrentConversation(conv)
+      return conv
+    },
+    queryKey: CURRENT_KEY,
+    refetchInterval: poll ? 5_000 : false,
+    // The app defaults turn both off; returning to a browser must catch
+    // up at once.
+    refetchOnWindowFocus: true,
+    retry: false,
+    // One check per poll interval, not one per page navigation.
+    staleTime: 5_000,
+  })
+}
+
+const CURRENT_KEY = ['assistant-current-conversation']
+
+// updated_at of the stored conversation the store last loaded; a newer
+// value means another browser added a turn or renamed it.
+let syncedUpdatedAt: null | string = null
+
+// Switch writes run in order, so the last one the reader made wins.
+let pendingShare: Promise<unknown> = Promise.resolve()
+
+function followCurrentConversation(conv: Conversation | null) {
+  const store = useAssistantStore.getState()
+  // This browser's own stream is newer than any saved state.
+  if (store.isStreaming) return
+  if (!conv) {
+    // Drop a restore still in flight, even when nothing is open yet.
+    if (store.currentConversationId) resetConversation()
+    else openRequest += 1
+    return
+  }
+  if (
+    conv.id === store.currentConversationId &&
+    conv.updated_at === syncedUpdatedAt
+  ) {
+    // The open conversation is current again; drop a load of another
+    // one that an earlier poll started.
+    openRequest += 1
+    return
+  }
+  loadConversation(conv.id, ++openRequest).catch((err) =>
+    console.error('[Assistant] Failed to sync conversation:', err),
+  )
+}
+
+async function loadConversation(id: string, request: number) {
+  const conv = await getConversation(id)
+  // A later open or a new conversation supersedes this one.
+  if (request !== openRequest) return
+  abortController?.abort()
+  abortController = null
+  const store = useAssistantStore.getState()
+  if (store.currentConversationId !== id) store.setCurrentConversation(id)
+  store.setMessages(toStoreMessages(conv.messages))
+  syncedUpdatedAt = conv.updated_at
+}
+
+function resetConversation() {
+  openRequest += 1
+  useAssistantStore.getState().clearConversation()
+}
+
+function shareCurrentConversation(id: null | string) {
+  // Drop a poll already in flight; it can hold the previous conversation.
+  void queryClient.cancelQueries({ queryKey: CURRENT_KEY })
+  pendingShare = pendingShare
+    .then(() => setCurrentConversation(id))
+    .catch((err) =>
+      console.error('[Assistant] Failed to share conversation:', err),
+    )
 }
 
 // Stored user turns carry the context blocks the client prepended; the
