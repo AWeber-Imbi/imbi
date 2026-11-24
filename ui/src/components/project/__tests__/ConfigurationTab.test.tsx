@@ -5,6 +5,7 @@ import { ApiError } from '@/api/client'
 import {
   fetchConfigurationValues,
   listConfigurationKeys,
+  listProjectPlugins,
   setConfigurationValue,
 } from '@/api/endpoints'
 import { ConfigurationTab } from '@/components/project/ConfigurationTab'
@@ -14,6 +15,7 @@ import type { ConfigKeyValueResponse, Environment } from '@/types'
 
 vi.mock('@/api/endpoints', () => ({
   deleteConfigurationKey: vi.fn(),
+  fetchConfigurationHistory: vi.fn(async () => []),
   fetchConfigurationValues: vi.fn(),
   getConfigurationPrefix: vi.fn(async () => ({ prefix: 'imbi/acme/' })),
   listConfigurationKeys: vi.fn(),
@@ -272,5 +274,44 @@ describe('ConfigurationTab session replay', () => {
     const input = await screen.findByDisplayValue('pw-staging')
     expect(input.closest('[data-ph-no-capture]')).toBeNull()
     expect(document.querySelector('[data-ph-no-capture]')).toBeNull()
+  })
+})
+
+describe('ConfigurationTab history', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(listConfigurationKeys).mockImplementation(
+      async () => keyList() as never,
+    )
+    stubValues({
+      production: async () => [value(PASSWORD_KEY, 'pw-prod')],
+      staging: async () => [value(PASSWORD_KEY, 'pw-staging')],
+    })
+  })
+
+  it('hides the history button when the source has no history', async () => {
+    renderTab()
+    await duplicateButton()
+    expect(
+      screen.queryByRole('button', { name: /show history/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('opens the history dialog for one environment', async () => {
+    vi.mocked(listProjectPlugins).mockResolvedValueOnce([
+      {
+        label: 'AWS SSM',
+        plugin_id: 'aws',
+        plugin_type: 'configuration',
+        supports_history: true,
+      },
+    ] as never)
+    renderTab()
+    await userEvent.click(
+      await screen.findByRole('button', {
+        name: 'Show history for Production',
+      }),
+    )
+    expect(await screen.findByText('No history.')).toBeInTheDocument()
   })
 })

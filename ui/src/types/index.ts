@@ -870,6 +870,16 @@ export interface ConfigPrefixResponse {
   prefix: null | string
 }
 
+// `value` is null when the caller cannot read secret values.
+export interface ConfigVersionResponse {
+  data_type: string
+  last_modified: null | string
+  modified_by: null | string
+  secret: boolean
+  value: null | string
+  version: string
+}
+
 export interface CurrentReleaseEnvironment {
   ci_status: DeploymentCommitCiStatus | null
   current_status: DeploymentStatus | null
@@ -1468,6 +1478,7 @@ export interface PluginAssignmentResponse {
   source: 'merged' | 'project' | 'project_type'
   supports_deployment_sync?: boolean
   supports_histogram?: boolean
+  supports_history?: boolean
   supports_lifecycle_sync?: boolean
 }
 
