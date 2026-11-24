@@ -74,7 +74,7 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
-## Unreleased
+## 2.61.0
 
 1. **Before you deploy**, if the egress of the imbi-api pods is
    restricted, allow `raw.githubusercontent.com`. imbi-api now reads
@@ -98,6 +98,13 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    scopes, the slackbot logs an error and posts no form; the request is
    still in the UI. See
    [Slack App Setup](../slackbot/slack-app-manifest.md).
+5. Every route under `/organizations/{org}/projects` now requires
+   membership of the organization. A platform administrator who is not a
+   member of an organization gets 403 on its project list and project
+   pages. Before you deploy, add each administrator who needs those
+   pages to the organization. The `imbi-gateway` service account must
+   be a member of each organization that gets webhooks, as the
+   deployment routes already required.
 
 ## 2.60.0
 
