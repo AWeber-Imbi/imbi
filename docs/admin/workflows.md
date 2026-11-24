@@ -112,7 +112,7 @@ Click empty canvas to see the workflow settings.
 | **Concurrency key** | A key template, for **One run per key** only | None |
 | **Dedupe key** | A key template. A run that repeats the key of an earlier run is skipped. See [Dedupe](#dedupe) | None |
 | **Dedupe window (days)** | How long a key skips a repeat. Shows when a dedupe key is set | Empty (no limit) |
-| **Max run time (minutes)** | A run that runs longer stops as `timed_out` | 120 |
+| **Max run time (minutes)** | A run that runs longer stops as `timed_out`. The time counts from when the run starts, so time spent queued behind other runs of its concurrency key does not count | 120 |
 | **When a run fails** | **Notify the owner team**, **Do nothing** | **Notify the owner team** |
 
 Only an admin or a member of the owner team can make a workflow for that

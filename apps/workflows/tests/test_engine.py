@@ -2272,6 +2272,30 @@ class TimeoutTestCase(EngineTestCase):
         self.assertEqual(run['status'], 'timed_out')
         self.assertEqual(run['steps']['hold']['status'], 'cancelled')
 
+    async def test_max_run_time_counts_from_the_start(self) -> None:
+        # A run that waited in the concurrency queue for longer than its
+        # limit still runs: the limit counts from the start, not from
+        # the trigger (follow-up runs that queued behind other runs of
+        # their repository timed out the moment they started).
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'manual'),
+                _node('hold', 'wait', {'duration': '1s'}),
+            ],
+            [_edge('start', 'hold')],
+            {'max_run_time_seconds': 60},
+        )
+        run_id = await self._start(workflow_id)
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE workflow_runtime.runs'
+                " SET created_at = NOW() - INTERVAL '2 hours'"
+                ' WHERE id = %s',
+                (run_id,),
+            )
+        run = await self._drive(run_id)
+        self.assertEqual(run['status'], 'succeeded', run['error'])
+
 
 class AgentStepTestCase(EngineTestCase):
     """The agent step, with the real agent task routes and store.

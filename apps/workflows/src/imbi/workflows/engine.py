@@ -180,8 +180,11 @@ class Engine:
                 return None
             await self._start(run, wf_graph)
             return _now()
-        deadline = run['created_at'] + datetime.timedelta(
-            seconds=wf_settings.max_run_time_seconds
+        # The limit counts from the start, not from the trigger: a run
+        # that waited in the concurrency queue behind other runs of its
+        # key still gets its whole run time.
+        deadline = (run['started_at'] or run['created_at']) + (
+            datetime.timedelta(seconds=wf_settings.max_run_time_seconds)
         )
         if _now() > deadline:
             await self._cancel_agent_tasks(run, steps, version['slug'])
