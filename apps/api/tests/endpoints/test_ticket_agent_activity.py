@@ -1,5 +1,7 @@
 """Tests for the ``agent_activity`` of a ticket."""
 
+import typing
+
 from apps.api.tests.endpoints import test_agent_tasks
 from imbi.api import tickets
 
@@ -22,7 +24,9 @@ class AgentActivityTests(test_agent_tasks.AgentTaskTestCase):
         async with self.pool.connection() as conn:
             await conn.execute(statement, {'org': self.org})
 
-    async def request(self, kind: str) -> None:
+    async def request(
+        self, kind: typing.Literal['feedback', 'approval']
+    ) -> None:
         await self.store.open_request(
             self.org,
             'T-1',
