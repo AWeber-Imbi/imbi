@@ -797,6 +797,9 @@ export function ConfigurationTab({
       {historyFor && (
         <ConfigHistoryDialog
           environment={historyFor.env}
+          // Remount on a new scope, so a pending restore or a reveal
+          // never carries over to another source, environment, or key.
+          key={`${activeSource}:${historyFor.env.slug}:${historyFor.key}`}
           onClose={() => setHistoryFor(null)}
           orgSlug={orgSlug}
           paramKey={historyFor.key}

@@ -1,10 +1,11 @@
-// True when the value (or any comma-separated segment of it) embeds a
-// URL credential pair like `scheme://user:password@host`. Used to mask
-// non-secret keys whose values still carry sensitive material.
+// True when the value embeds a URL credential pair like
+// `scheme://user:password@host` anywhere. The username may be empty
+// (`redis://:password@host`). Test the whole value, not comma-separated
+// parts: a password can contain a comma. Used to mask non-secret keys
+// whose values still carry sensitive material.
 export function containsCredentials(value: string): boolean {
   if (!value) return false
-  const re = /[a-z][a-z0-9+\-.]*:\/\/[^:@/\s]+:[^@/\s]+@/i
-  return value.split(',').some((part) => re.test(part.trim()))
+  return /[a-z][a-z0-9+\-.]*:\/\/[^:@/?#\s]*:[^@/?#\s]+@/i.test(value)
 }
 
 // If the value looks like a connection URL with embedded credentials
@@ -32,9 +33,10 @@ export function maskSecret(value: string): string {
 
 function maskSecretSingle(value: string): string {
   if (!value) return ''
-  const url = /^([a-z][a-z0-9+\-.]*:\/\/)([^:@/\s]+):([^@/\s]+)(@.*)$/i.exec(
-    value,
-  )
+  // Userinfo never spans `?` or `#`, so a query string is not mistaken
+  // for a username and password.
+  const url =
+    /^([a-z][a-z0-9+\-.]*:\/\/)([^:@/?#\s]*):([^@/?#\s]+)(@.*)$/i.exec(value)
   if (url) {
     return `${url[1]}${url[2]}:${'•'.repeat(8)}${url[4]}`
   }

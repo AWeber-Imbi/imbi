@@ -160,7 +160,7 @@ function VersionRow({
         v{version.version}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="text-primary truncate font-mono">
+        <div className="text-primary font-mono break-all whitespace-pre-wrap">
           {!hasValue ? (
             <span className="text-tertiary">Value hidden</span>
           ) : masked ? (
