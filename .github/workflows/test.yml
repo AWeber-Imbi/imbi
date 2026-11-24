@@ -33,10 +33,54 @@ jobs:
       - uses: "moonrepo/setup-toolchain@v0"
       - run: "moon ci"
         env:
+          # On a pull request, root:coverage runs only the tests of the
+          # affected members (scripts/ci-test.sh). Empty on a push to
+          # main, which runs the full suite.
+          IMBI_TEST_BASE: ${{ github.event.pull_request.base.sha }}
           # apache-iggy ships as an sdist only, and it makes some lints
           # errors. Cap lints at warnings, as container/Dockerfile does,
           # so a deprecation in a newer stable Rust does not stop uv sync.
           RUSTFLAGS: "--cap-lints=warn"
+  changes:
+    # Path gates for the jobs below. On a push to main, Image and
+    # Harness isolation always run: the Image job writes the build
+    # cache that release.yml reads. Proxy diffs a push against the
+    # commit before it.
+    name: "Changes"
+    runs-on: "ubuntu-latest"
+    outputs:
+      image: ${{ steps.diff.outputs.image }}
+      harness: ${{ steps.diff.outputs.harness }}
+      proxy: ${{ steps.diff.outputs.proxy }}
+    steps:
+      - uses: "actions/checkout@v4"
+        with:
+          fetch-depth: 0
+          filter: "blob:none"
+          persist-credentials: false
+      - id: "diff"
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          # True when a file under one of the given paths changed, or
+          # when this is not a pull request.
+          changed() {
+            if [ -z "$BASE" ] || ! git diff --quiet "$BASE"...HEAD -- "$@"; then
+              echo true
+            else
+              echo false
+            fi
+          }
+          shared=(.github/workflows/test.yml uv.lock pyproject.toml README.md LICENSE ':(glob)**/pyproject.toml')
+          echo "image=$(changed "${shared[@]}" container ui/package.json ui/package-lock.json)" >> "$GITHUB_OUTPUT"
+          echo "harness=$(changed "${shared[@]}" apps/harness helm/imbi-harness proxy)" >> "$GITHUB_OUTPUT"
+          # A base that git cannot read (a new branch) counts as changed.
+          if git diff --quiet "${BASE:-$BEFORE}" HEAD -- proxy .moon .github/workflows/test.yml; then
+            echo "proxy=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "proxy=true" >> "$GITHUB_OUTPUT"
+          fi
   versions:
     # Lockstep drift is silently committable and ships broken: uv lock
     # accepts a member whose version disagrees with the meta-package's
@@ -59,6 +103,9 @@ jobs:
     # release.yml (single arch, no push) so drift in the build context,
     # Dockerfile path, or build args fails here instead of on a release tag.
     name: "Image"
+    needs: "changes"
+    # Source changes cannot break the build steps; moon ci builds the UI.
+    if: needs.changes.outputs.image == 'true'
     runs-on: "ubuntu-latest"
     steps:
       - uses: "actions/checkout@v4"
@@ -82,6 +129,8 @@ jobs:
     # imbi-api needs Postgres with AGE, ClickHouse, Iggy, and Valkey, and
     # its fake secret provider keeps values in process memory only.
     name: "Harness isolation"
+    needs: "changes"
+    if: needs.changes.outputs.harness == 'true'
     runs-on: "ubuntu-latest"
     steps:
       - uses: "actions/checkout@v4"
@@ -110,41 +159,26 @@ jobs:
     # tasks (runInCI: false), so the Python job needs no Rust. Like
     # `moon ci`, it runs only for a change that can affect it.
     name: "Proxy"
+    needs: "changes"
+    if: needs.changes.outputs.proxy == 'true'
     runs-on: "ubuntu-latest"
-    outputs:
-      changed: ${{ steps.changes.outputs.changed }}
     steps:
       - uses: "actions/checkout@v4"
         with:
-          fetch-depth: 0
           persist-credentials: false
-      - id: "changes"
-        env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          # A base that git cannot read (a new branch) counts as changed.
-          if git diff --quiet "$BASE" HEAD -- proxy .moon .github/workflows/test.yml; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
       # rust-toolchain.toml pins the version.
-      - if: steps.changes.outputs.changed == 'true'
-        working-directory: "proxy"
+      - working-directory: "proxy"
         run: "rustup toolchain install"
-      - if: steps.changes.outputs.changed == 'true'
-        uses: "Swatinem/rust-cache@v2"
+      - uses: "Swatinem/rust-cache@v2"
         with:
           workspaces: "proxy"
       # install-action installs prebuilt binaries, not a cargo build.
-      - if: steps.changes.outputs.changed == 'true'
-        uses: "taiki-e/install-action@v2"
+      - uses: "taiki-e/install-action@v2"
         with:
           tool: "cargo-deny"
       # The same commands as the proxy moon tasks. In CI, `moon run`
       # finds no task with runInCI: false, so call cargo directly.
-      - if: steps.changes.outputs.changed == 'true'
-        working-directory: "proxy"
+      - working-directory: "proxy"
         run: |
           cargo fmt --check
           cargo clippy --all-targets --locked -- -D warnings
@@ -155,7 +189,6 @@ jobs:
     # the nightly toolchain.
     name: "Proxy fuzz"
     needs: "proxy"
-    if: needs.proxy.outputs.changed == 'true'
     runs-on: "ubuntu-latest"
     steps:
       - uses: "actions/checkout@v4"

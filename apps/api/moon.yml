@@ -11,6 +11,15 @@ project:
 
 dependsOn:
   - 'common'
+  # The tests import these plugins.
+  - id: 'github'
+    scope: 'development'
+  - id: 'aws'
+    scope: 'development'
+  - id: 'sentry'
+    scope: 'development'
+  - id: 'sonarqube'
+    scope: 'development'
 
 # Inherits lint / format / typecheck / test from .moon/tasks/python.yml. The
 # shared test task points --cov-config at this member's pyproject, where
