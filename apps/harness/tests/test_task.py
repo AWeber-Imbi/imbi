@@ -2615,9 +2615,18 @@ class PolicyHookTestCase(RoutedTestCase):
         }
         output = await self.run_task.post_tool_use(hook_input, 'tu1', context)
         self.assertEqual(
-            output['hookSpecificOutput']['hookEventName'],
-            'PostToolUseFailure',
+            output,
+            {
+                'hookSpecificOutput': {
+                    'hookEventName': 'PostToolUseFailure',
+                    'additionalContext': (
+                        'New comments on the ticket, oldest first:\n'
+                        '- t1 comment by a@b.c: Use main.'
+                    ),
+                }
+            },
         )
+        self.assertEqual(self.run_task.recorder.input_seq, 7)
         self.assertFalse(self.run_task.comments)
 
     async def test_subagent_tool_leaves_comments_for_the_parent(
