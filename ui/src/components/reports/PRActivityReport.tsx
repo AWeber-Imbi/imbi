@@ -350,7 +350,6 @@ function Toolbar({
           Since (inclusive)
         </label>
         <DatePicker
-          className="w-40"
           id="pr-activity-since"
           onChange={onSinceChange}
           required

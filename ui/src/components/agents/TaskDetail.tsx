@@ -443,7 +443,7 @@ function OverviewTab({
       value: editable ? (
         <DatePicker
           aria-label="Due date"
-          className="w-full max-w-60 font-sans"
+          className="font-sans"
           disabled={update.isPending}
           disablePast
           onChange={(due) => update.mutate({ due_date: due || null })}

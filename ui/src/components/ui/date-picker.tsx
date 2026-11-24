@@ -121,10 +121,11 @@ export function DatePicker({
   }
 
   return (
-    <InputGroup className={className}>
+    <InputGroup className={cn('w-fit', className)}>
       <InputGroupInput
         aria-invalid={invalid || undefined}
         aria-label={ariaLabel}
+        className="w-26 flex-none"
         disabled={disabled}
         id={id}
         onBlur={commit}
@@ -191,14 +192,14 @@ export function DateTimePicker({
     <div className={cn('flex gap-2', className)}>
       <DatePicker
         aria-label={`${label} date`}
-        className="h-10 flex-1"
+        className="h-10"
         onChange={(d) => onChange(d ? `${d}T${time || '00:00'}` : '')}
         required={required}
         value={date}
       />
       <TimeInput
         aria-label={`${label} time`}
-        className="h-10 w-36"
+        className="h-10"
         disabled={!date}
         onChange={(t) => onChange(`${date}T${t || '00:00'}`)}
         value={time.slice(0, 5)}
@@ -231,10 +232,11 @@ export function TimeInput({
   }
 
   return (
-    <InputGroup className={className}>
+    <InputGroup className={cn('w-fit', className)}>
       <InputGroupInput
         aria-invalid={invalid || undefined}
         aria-label={ariaLabel}
+        className="w-16 flex-none"
         disabled={disabled}
         id={id}
         inputMode="numeric"
