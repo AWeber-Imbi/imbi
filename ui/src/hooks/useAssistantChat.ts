@@ -285,8 +285,12 @@ function followCurrentConversation(conv: Conversation | null) {
   if (
     conv.id === store.currentConversationId &&
     conv.updated_at === syncedUpdatedAt
-  )
+  ) {
+    // The open conversation is current again; drop a load of another
+    // one that an earlier poll started.
+    openRequest += 1
     return
+  }
   loadConversation(conv.id, ++openRequest).catch((err) =>
     console.error('[Assistant] Failed to sync conversation:', err),
   )

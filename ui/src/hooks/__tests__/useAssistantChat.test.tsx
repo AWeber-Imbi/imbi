@@ -248,6 +248,40 @@ describe('useCurrentConversationSync', () => {
     expect(useAssistantStore.getState().currentConversationId).toBeNull()
   })
 
+  it('drops a load in flight when a poll confirms the open conversation', async () => {
+    vi.mocked(assistant.getCurrentConversation).mockResolvedValue(
+      stored('c-1', 't1'),
+    )
+    vi.mocked(assistant.getConversation).mockResolvedValue(stored('c-1', 't1'))
+    renderHook(() => useCurrentConversationSync(false), {
+      wrapper: syncWrapper,
+    })
+    await waitFor(() =>
+      expect(useAssistantStore.getState().currentConversationId).toBe('c-1'),
+    )
+
+    // A poll switches to c-2, but its load is still pending ...
+    let loaded: (v: ReturnType<typeof stored>) => void = () => {}
+    vi.mocked(assistant.getCurrentConversation).mockResolvedValue(
+      stored('c-2', 't1'),
+    )
+    vi.mocked(assistant.getConversation).mockReturnValue(
+      new Promise((resolve) => {
+        loaded = resolve
+      }),
+    )
+    await queryClient.refetchQueries()
+    // ... when the next poll says c-1 is current again.
+    vi.mocked(assistant.getCurrentConversation).mockResolvedValue(
+      stored('c-1', 't1'),
+    )
+    await queryClient.refetchQueries()
+    loaded(stored('c-2', 't1'))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(useAssistantStore.getState().currentConversationId).toBe('c-1')
+  })
+
   it('keeps a send that starts while a sync load is in flight', async () => {
     useAssistantStore.getState().setCurrentConversation('c-1')
     let loaded: (v: ReturnType<typeof stored>) => void = () => {}
