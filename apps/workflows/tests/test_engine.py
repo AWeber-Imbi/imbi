@@ -1298,6 +1298,32 @@ class CrashTestCase(EngineTestCase):
         self.assertEqual(run['steps']['tell']['attempt'], 2)
         self.assertEqual(len(self.api.slacks), 1)
 
+    async def test_unreachable_backoff_is_not_in_the_step_timeout(
+        self,
+    ) -> None:
+        # The backoff is longer than the step timeout. The timeout of the
+        # retry counts from the end of the backoff, so the retry still
+        # sends its request instead of timing out before it.
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'manual'),
+                _node(
+                    'tell',
+                    'slack',
+                    {'channel': 'C0123456789', 'text': '*Hello*'},
+                )
+                | {'timeout_seconds': 1, 'retries': 1},
+            ],
+            [_edge('start', 'tell')],
+            {'on_failure': 'none'},
+        )
+        self.api.refused = 1
+        with mock.patch.object(engine, 'UNREACHABLE_BACKOFF', 2):
+            run = await self._drive(await self._start(workflow_id))
+        self.assertEqual(run['status'], 'succeeded', run)
+        self.assertEqual(run['steps']['tell']['attempt'], 2)
+        self.assertEqual(len(self.api.slacks), 1)
+
     async def test_unreachable_api_backoff_is_longer(self) -> None:
         # The first retry after a refused connection is due at least
         # UNREACHABLE_BACKOFF seconds out, where an answered error is

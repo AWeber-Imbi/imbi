@@ -541,6 +541,13 @@ class Engine:
                 state['key_attempt'] = step['state'].get(
                     'key_attempt', step['attempt']
                 )
+            backoff = UNREACHABLE_BACKOFF if unreachable else RETRY_BACKOFF
+            resume_at = _now() + datetime.timedelta(
+                seconds=backoff * 2 ** (attempt - 2)
+            )
+            # The next attempt starts when its backoff ends, so the step
+            # timeout does not count the backoff: a timeout shorter than
+            # UNREACHABLE_BACKOFF still leaves time for the request.
             await store.update(
                 conn,
                 'step_runs',
@@ -549,15 +556,12 @@ class Engine:
                 error=code,
                 state=state,
                 call_started_at=None,
-                started_at=_now(),
+                started_at=resume_at,
             )
             await runtime.append_step_event(
                 conn, run['id'], step['node_id'], 'step.started', retry_of=code
             )
-        backoff = UNREACHABLE_BACKOFF if unreachable else RETRY_BACKOFF
-        return _now() + datetime.timedelta(
-            seconds=backoff * 2 ** (attempt - 2)
-        )
+        return resume_at
 
     async def _fail(
         self, conn: store.Conn, run: store.Row, step: store.Row, code: str
