@@ -211,6 +211,9 @@ class ExternalMCPManager:
         self._reconnect_locks: dict[str, asyncio.Lock] = {}
         # slugs of connected servers that an admin disabled since startup
         self._disabled: set[str] = set()
+        # number of the newest sync_enabled read, so a slow, older read
+        # cannot replace the result of a newer one
+        self._sync_seq = 0
         self._initialized = False
 
     async def initialize(self, db: graph.Graph) -> None:
@@ -429,20 +432,28 @@ class ExternalMCPManager:
         self._tools = []
         self._initialized = False
 
-    async def sync_enabled(self, db: graph.Graph) -> None:
+    async def sync_enabled(self, db: graph.Graph | None) -> None:
         """Read the enabled flags again, so that a server that an admin
         disabled stops at once, without a restart.
 
-        Call this once for each turn. If the read fails, all servers are
-        disabled for the turn (fail closed).
+        Call this once for each turn. If there is no graph or the read
+        fails, all servers are disabled (fail closed).
 
         """
-        try:
-            enabled = {s.slug for s in await get_enabled_mcp_servers(db)}
-        except Exception:
-            LOGGER.exception('Failed to read the enabled MCP servers')
-            enabled = set()
-        self._disabled = set(self._servers) - enabled
+        self._sync_seq += 1
+        seq = self._sync_seq
+        enabled: set[str] = set()
+        if db is None:
+            LOGGER.error('No graph to read the enabled MCP servers')
+        else:
+            try:
+                servers = await get_enabled_mcp_servers(db)
+            except Exception:
+                LOGGER.exception('Failed to read the enabled MCP servers')
+            else:
+                enabled = {s.slug for s in servers}
+        if seq == self._sync_seq:
+            self._disabled = set(self._servers) - enabled
 
     def _is_enabled(self, name: str) -> bool:
         route = self._tool_routes.get(name)

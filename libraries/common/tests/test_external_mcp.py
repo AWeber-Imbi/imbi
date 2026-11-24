@@ -771,3 +771,30 @@ class SyncEnabledTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             await manager.sync_enabled(mock.AsyncMock())
         self.assertEqual(['mcp_on_t', 'mcp_off_t'], manager.get_tool_names())
+
+    async def test_no_graph_disables_all(self) -> None:
+        manager = self._manager()
+        await manager.sync_enabled(None)
+        self.assertEqual([], manager.get_tools())
+
+    async def test_older_read_does_not_replace_newer(self) -> None:
+        manager = self._manager()
+        slow_started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def fake_read(db: object) -> list[common_models.MCPServer]:
+            if db == 'slow':
+                slow_started.set()
+                await release.wait()
+                return [_make_server(slug='on'), _make_server(slug='off')]
+            return [_make_server(slug='on')]
+
+        with mock.patch.object(
+            external_mcp, 'get_enabled_mcp_servers', side_effect=fake_read
+        ):
+            slow = asyncio.create_task(manager.sync_enabled('slow'))  # type: ignore[arg-type]
+            await slow_started.wait()
+            await manager.sync_enabled(mock.AsyncMock())
+            release.set()
+            await slow
+        self.assertEqual(['mcp_on_t'], manager.get_tool_names())

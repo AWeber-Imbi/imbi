@@ -250,9 +250,7 @@ async def _process(
         manager = mcp.get_manager()
         tools = manager.get_tools() or None
         external = external_mcp.get_manager()
-        db = identity.get_graph()
-        if db is not None:
-            await external.sync_enabled(db)
+        await external.sync_enabled(identity.get_graph())
         toolkit = slackwright.Toolkit(
             slack_client,
             channel_id=channel,
