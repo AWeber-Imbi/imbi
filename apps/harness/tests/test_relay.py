@@ -148,6 +148,10 @@ class RelayTestCase(_ServerTestCase):
         self.assertIn('mcp__imbi_api__update_project', self.relay.writes())
         self.assertNotIn('mcp__imbi_api__list_projects', self.relay.writes())
         self.assertEqual(len(self.relay.sdk_tools()), 4)
+        hints = {t.name: t.annotations for t in self.relay.sdk_tools()}
+        read_hint = hints['list_projects']
+        self.assertTrue(read_hint and read_hint.readOnlyHint)
+        self.assertIsNone(hints['update_project'])
         self.assertTrue(all(h == f'Bearer {self.token}' for h in SEEN))
 
     async def test_call_is_untrusted_and_audited(self) -> None:
