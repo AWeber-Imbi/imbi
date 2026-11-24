@@ -309,6 +309,10 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
         )
         self.assertEqual(response.json()['active_version'], 1)
         self.assertEqual(response.json()['latest_version'], 2)
+        # The list reads the trigger types of both versions.
+        (row,) = (await self.client.get(self.base + '/')).json()
+        self.assertEqual(row['trigger_types'], [])
+        self.assertEqual(row['active_trigger_types'], ['manual'])
 
         # Version 2 has no trigger, so it cannot be activated.
         response = await self.client.post(

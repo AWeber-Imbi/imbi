@@ -30,14 +30,18 @@ type OnWrite = abc.Callable[
 
 SCHEMA = 'workflows'
 
-#: A workflow with its latest version.
+#: A workflow with its latest version and the graph of its active
+#: version.
 _SELECT = (
     'SELECT w.*, v.graph, v.settings, v.validation,'
     ' v.created_by AS version_created_by,'
-    ' v.created_at AS version_created_at'
+    ' v.created_at AS version_created_at,'
+    ' a.graph AS active_graph'
     ' FROM workflows.workflows AS w'
     ' JOIN workflows.workflow_versions AS v'
     ' ON v.workflow_id = w.id AND v.version = w.latest_version'
+    ' LEFT JOIN workflows.workflow_versions AS a'
+    ' ON a.workflow_id = w.id AND a.version = w.active_version'
     ' WHERE w.organization_id = %s'
 )
 
