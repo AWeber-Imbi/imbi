@@ -517,7 +517,7 @@ function RecordRow({
           <span
             aria-hidden
             className={cn(
-              'absolute inset-y-0 left-0 w-0.5',
+              'absolute inset-y-0 left-0 w-1',
               record.error ? 'bg-(--tj-turn-error)' : 'bg-(--tj-turn-accent)',
             )}
           />
@@ -525,7 +525,7 @@ function RecordRow({
         {selected && record.error && (
           <span
             aria-hidden
-            className="absolute inset-y-0 left-0 w-0.75 bg-(--tj-error)"
+            className="absolute inset-y-0 left-0 w-1.5 bg-(--tj-error)"
           />
         )}
         {turnStart !== undefined && (
