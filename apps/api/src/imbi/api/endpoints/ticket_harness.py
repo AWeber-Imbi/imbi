@@ -32,6 +32,7 @@ object storage.
 import dataclasses
 import datetime
 import decimal
+import logging
 import typing
 import uuid
 
@@ -39,14 +40,15 @@ import fastapi
 import jsonschema
 import orjson
 import pydantic
+from valkey import asyncio as valkey_asyncio
 
-from imbi.api import harness, tickets
+from imbi.api import harness, scoring, tickets
 from imbi.api.auth import autonomous
 from imbi.api.endpoints import tickets as tasks_api
 from imbi.api.harness import auth as harness_auth
 from imbi.api.harness import store as harness_store
 from imbi.api.tickets import store as task_store
-from imbi.common import graph, models
+from imbi.common import graph, models, valkey
 from imbi.common.workflows.registry import agent as agent_step
 
 #: The largest inline event payload, in bytes of JSON.
@@ -354,6 +356,14 @@ class RequestOpenResponse(pydantic.BaseModel):
 
 
 # --- Helpers -----------------------------------------------------------
+
+LOGGER = logging.getLogger(__name__)
+
+#: The agent of a ticket, for the Slack post of its requests.
+_AGENT_SLACK_QUERY: typing.LiteralString = """
+MATCH (a:Agent {{id: {id}}})
+RETURN a.name AS name, a.slack_channel AS slack_channel
+"""
 
 _AGENT_SETTINGS_QUERY: typing.LiteralString = """
 MATCH (a:Agent {{id: {id}}})
@@ -930,10 +940,13 @@ async def report_agent_task_usage(
 )
 async def open_agent_task_request(
     org_id: harness_auth.HarnessOrgId,
+    org_slug: str,
     task: HarnessTask,
     data: RequestCreate,
     response: fastapi.Response,
     store: tickets.Store,
+    db: graph.Pool,
+    valkey_client: scoring.OptionalValkeyClient,
 ) -> RequestOpenResponse:
     """Ask a person for feedback or an approval; block the task.
 
@@ -973,12 +986,75 @@ async def open_agent_task_request(
         )
     except _STORE_ERRORS as err:
         raise _translate(err, task['short_id']) from err
-    if not created:
+    if created:
+        await _announce_request(valkey_client, db, org_slug, row, request)
+    else:
         response.status_code = 200
     return RequestOpenResponse(
         request=tasks_api.RequestResponse.model_validate(request),
         task=task_state(row),
     )
+
+
+#: The request fields that the slackbot shows in its form.
+_ANNOUNCED_FIELDS = (
+    'kind',
+    'title',
+    'why',
+    'options',
+    'artifacts',
+    'artifact_digests',
+)
+
+
+async def _announce_request(
+    client: valkey_asyncio.Valkey | None,
+    db: graph.Graph,
+    org_slug: str,
+    task: dict[str, typing.Any],
+    request: dict[str, typing.Any],
+) -> None:
+    """Add a new request to the stream that the slackbot posts from.
+
+    The slackbot posts it to the Slack channel of the agent, or to the
+    owner of the ticket. This is best effort: when it fails, the request
+    is still in the UI.
+    """
+    if client is None:
+        return
+    try:
+        records = await db.execute(
+            _AGENT_SLACK_QUERY,
+            {'id': task['agent_id']},
+            ['name', 'slack_channel'],
+        )
+        agent = (
+            {k: graph.parse_agtype(v) for k, v in records[0].items()}
+            if records
+            else {}
+        )
+        entry = {
+            'org_slug': org_slug,
+            'short_id': task['short_id'],
+            'ticket_title': task['title'],
+            'owner': task['owner'],
+            'agent_name': agent.get('name'),
+            'slack_channel': agent.get('slack_channel'),
+            'request_id': request['id'],
+            **{k: request[k] for k in _ANNOUNCED_FIELDS},
+        }
+        await client.xadd(
+            valkey.TICKET_REQUESTS_STREAM,
+            {'request': orjson.dumps(entry)},
+            maxlen=valkey.TICKET_REQUESTS_MAXLEN,
+            approximate=True,
+        )
+    except Exception:
+        LOGGER.exception(
+            'Could not announce request %s of %s',
+            request['id'],
+            task['short_id'],
+        )
 
 
 def _check_structured_output(

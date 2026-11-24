@@ -9,6 +9,13 @@ from valkey import asyncio as valkey
 
 from imbi.common import lifespan, settings
 
+#: The ticket requests that wait on a person (ADR 0020). imbi-api adds
+#: an entry when a request opens, and the slackbot posts it to Slack.
+TICKET_REQUESTS_STREAM = 'imbi:ticket-requests'
+#: The approximate length limit of the stream, so that it stays small
+#: when no slackbot reads it.
+TICKET_REQUESTS_MAXLEN = 1000
+
 _client: valkey.Valkey | None = None
 
 
