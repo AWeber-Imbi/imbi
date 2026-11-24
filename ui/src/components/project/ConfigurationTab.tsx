@@ -501,6 +501,17 @@ export function ConfigurationTab({
             vars.environment,
           ],
         }),
+        // A save adds a version, and a blur save can land while the
+        // history dialog is open.
+        queryClient.invalidateQueries({
+          queryKey: [
+            'config-history',
+            orgSlug,
+            projectId,
+            activeSource,
+            vars.environment,
+          ],
+        }),
       ])
     },
   })

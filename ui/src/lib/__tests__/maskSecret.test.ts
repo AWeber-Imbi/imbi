@@ -21,6 +21,18 @@ describe('maskSecret', () => {
     expect(maskSecret('redis://:pw@cache')).toBe('redis://:••••••••@cache')
   })
 
+  it('masks a password that contains @', () => {
+    expect(maskSecret('postgres://user:pa@ss@db')).toBe(
+      'postgres://user:••••••••@db',
+    )
+  })
+
+  it('keeps an @ in the path visible', () => {
+    expect(maskSecret('https://u:p@host/a@b')).toBe(
+      'https://u:••••••••@host/a@b',
+    )
+  })
+
   it('masks a whole value when the userinfo would span a query', () => {
     expect(
       maskSecret('https://api.example?token=t&contact=ops:team@example.org'),

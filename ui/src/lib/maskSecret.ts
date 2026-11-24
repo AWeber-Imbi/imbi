@@ -33,10 +33,13 @@ export function maskSecret(value: string): string {
 
 function maskSecretSingle(value: string): string {
   if (!value) return ''
-  // Userinfo never spans `?` or `#`, so a query string is not mistaken
-  // for a username and password.
+  // Userinfo never spans `/`, `?` or `#`, so a query string is not
+  // mistaken for a username and password. The password runs to the last
+  // `@` of the authority, so a password that holds `@` stays masked.
   const url =
-    /^([a-z][a-z0-9+\-.]*:\/\/)([^:@/?#\s]*):([^@/?#\s]+)(@.*)$/i.exec(value)
+    /^([a-z][a-z0-9+\-.]*:\/\/)([^:@/?#\s]*):([^/?#\s]+)(@[^@/?#\s]*(?:[/?#].*)?)$/i.exec(
+      value,
+    )
   if (url) {
     return `${url[1]}${url[2]}:${'•'.repeat(8)}${url[4]}`
   }
