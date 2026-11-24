@@ -626,17 +626,19 @@ async def lifespan() -> collections.abc.AsyncGenerator[None]:
     """
     global _manager
     db = graph.Graph()
+    # The outer finally also closes the manager when startup is
+    # cancelled, for example during db.close().
     try:
-        await db.open()
         try:
-            await initialize(db)
-        finally:
-            await db.close()
-    except Exception:
-        LOGGER.exception('Failed to initialize external MCP servers')
-        # An empty manager, so that request handling can still get one.
-        _manager = _manager or ExternalMCPManager()
-    try:
+            await db.open()
+            try:
+                await initialize(db)
+            finally:
+                await db.close()
+        except Exception:
+            LOGGER.exception('Failed to initialize external MCP servers')
+            # An empty manager, so that request handling can still get one.
+            _manager = _manager or ExternalMCPManager()
         yield
     finally:
         await aclose()

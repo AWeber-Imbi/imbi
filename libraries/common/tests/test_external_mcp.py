@@ -723,6 +723,24 @@ class ExternalMCPLifespanTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNotNone(external_mcp._manager)
         ext_close.assert_awaited_once()
 
+    @mock.patch('imbi.common.external_mcp.aclose')
+    @mock.patch('imbi.common.external_mcp.initialize')
+    @mock.patch('imbi.common.external_mcp.graph.Graph')
+    async def test_lifespan_cancelled_during_startup_closes_manager(
+        self,
+        graph_cls: mock.MagicMock,
+        ext_init: mock.AsyncMock,
+        ext_close: mock.AsyncMock,
+    ) -> None:
+        db = mock.AsyncMock()
+        db.close.side_effect = asyncio.CancelledError
+        graph_cls.return_value = db
+        with self.assertRaises(asyncio.CancelledError):
+            async with external_mcp.lifespan():
+                self.fail('lifespan must not yield after cancellation')
+        ext_init.assert_awaited_once_with(db)
+        ext_close.assert_awaited_once()
+
 
 class SyncEnabledTestCase(unittest.IsolatedAsyncioTestCase):
     """A server that an admin disables stops at the next turn."""
