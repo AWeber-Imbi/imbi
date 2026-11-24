@@ -4,7 +4,8 @@ of a ticket and the fields of a deployment."""
 import typing
 
 import fastapi
-import jsonschema
+import jsonschema.exceptions
+import jsonschema.validators
 import pydantic
 import referencing
 import referencing.exceptions
@@ -110,37 +111,43 @@ def _schema_errors(
     field. The shared helper checks only that the value is a dict, or
     the type of each array item.
 
-    The check uses the whole schema of the blueprint that declares the
-    field, so a ``$ref`` to its ``$defs`` resolves. The registry is
-    empty, so a remote ``$ref`` is never fetched: it is an error.
+    The value is checked against the schema of its field only, so the
+    constraints of the root object (``required``, ``minProperties``)
+    do not apply. A local ``$ref`` resolves against the whole schema of
+    the blueprint that declares the field. The registry is empty, so a
+    remote ``$ref`` is never fetched: it is an error.
     """
     # The last blueprint that declares a field owns it.
     owners: dict[str, models.Blueprint] = {}
     for bp in matches:
         for name, prop in (bp.json_schema.properties or {}).items():
             owners.pop(name, None)
-            if prop.type in ('object', 'array'):
+            types: list[typing.Any] = [prop.type]
+            if isinstance(prop.type, list):
+                types = prop.type
+            if {'object', 'array'} & set(types):
                 owners[name] = bp
     errors: list[dict[str, str]] = []
     for name, value in values.items():
         if name not in owners:
             continue
-        bp = owners[name]
         schema = typing.cast(
             dict[str, typing.Any],
-            bp.json_schema.model_dump(  # pyright: ignore[reportUnknownMemberType]
+            owners[name].json_schema.model_dump(  # pyright: ignore[reportUnknownMemberType]
                 mode='json', by_alias=True, exclude_none=True
             ),
         )
-        schema['properties'] = {name: schema['properties'][name]}
-        schema.pop('required', None)
+        cls = jsonschema.validators.validator_for(schema)
+        cls.check_schema(schema)
+        # evolve() keeps the resolver of the root schema.
+        validator = cls(
+            schema, registry=referencing.Registry[typing.Any]()
+        ).evolve(  # pyright: ignore[reportUnknownMemberType]
+            schema=schema['properties'][name]
+        )
         try:
-            jsonschema.validate(
-                {name: value},
-                schema,
-                registry=referencing.Registry[typing.Any](),
-            )
-        except jsonschema.ValidationError as err:
+            validator.validate(value)
+        except jsonschema.exceptions.ValidationError as err:
             errors.append({'field': name, 'message': err.message})
         except referencing.exceptions.Unresolvable as err:
             errors.append({'field': name, 'message': f'Unresolvable: {err}'})

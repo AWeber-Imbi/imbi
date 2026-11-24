@@ -202,3 +202,46 @@ class ValidateTests(unittest.TestCase):
         urlopen.assert_not_called()
         detail = typing.cast(dict[str, typing.Any], ctx.exception.detail)
         self.assertEqual(detail['invalid'][0]['field'], 'payload')
+
+    def test_field_schema_only(self) -> None:
+        matches = [
+            models.Blueprint(
+                name='Field',
+                type='Ticket',
+                json_schema=models.Schema.model_validate(
+                    {
+                        'type': 'object',
+                        'minProperties': 2,
+                        'properties': {
+                            'sample': {'type': 'integer', 'minimum': 0},
+                            'a': {
+                                'type': ['array', 'null'],
+                                'items': {'type': 'integer', 'minimum': 0},
+                            },
+                            'b': {
+                                'type': 'array',
+                                'items': {'$ref': '#/properties/sample'},
+                            },
+                        },
+                    }
+                ),
+            )
+        ]
+        # The root minProperties does not apply to one field, and a
+        # $ref to another property resolves.
+        self.assertEqual(
+            blueprint_values.validate(
+                matches, {'a': [1], 'b': [2]}, partial=False
+            ),
+            {'a': [1], 'b': [2]},
+        )
+        # A nullable array also gets the schema check.
+        for field, bad in (('a', ['3']), ('a', [-1]), ('b', [-1])):
+            with self.assertRaises(fastapi.HTTPException) as ctx:
+                blueprint_values.validate(matches, {field: bad}, partial=True)
+            detail = typing.cast(dict[str, typing.Any], ctx.exception.detail)
+            self.assertEqual(detail['invalid'][0]['field'], field)
+        self.assertEqual(
+            blueprint_values.validate(matches, {'a': None}, partial=True),
+            {'a': None},
+        )
