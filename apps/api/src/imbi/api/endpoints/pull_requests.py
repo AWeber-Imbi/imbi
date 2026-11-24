@@ -172,27 +172,17 @@ def _row_to_response(row: dict[str, typing.Any]) -> dict[str, typing.Any]:
 async def _fetch_org_project_ids(
     db: graph.Pool,
     org_slug: str,
-    *,
-    include_archived: bool = False,
 ) -> list[str]:
-    """Return the project IDs belonging to the org.
+    """Return the IDs of the projects of the org that are not archived.
 
-    Archived projects are excluded unless ``include_archived`` is set;
-    org-wide PR views should not count PRs nobody will act on.
+    Org-wide PR views should not count PRs nobody will act on.
     """
-    archived_filter: typing.LiteralString = (
-        '' if include_archived else 'WHERE coalesce(p.archived, false) = false'
-    )
-    query: typing.LiteralString = (
-        """
+    query: typing.LiteralString = """
     MATCH (p:Project)-[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-    """
-        + archived_filter
-        + """
+    WHERE coalesce(p.archived, false) = false
     RETURN p.id AS id
     """
-    )
     records = await db.execute(query, {'org_slug': org_slug}, ['id'])
     return [
         graph.parse_agtype(r['id'])
@@ -419,9 +409,7 @@ def _merge_reviewers(
     response_model=PullRequestListResponse,
 )
 async def list_project_pull_requests(
-    org_slug: str,
     project_id: str,
-    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -439,19 +427,9 @@ async def list_project_pull_requests(
     Optional ``author`` filter accepts a GitHub login.
     Results are ordered newest first.  Drafts are included and archived
     projects are allowed: the project page filters drafts itself and
-    stays readable after the project is archived.
+    stays readable after the project is archived. The router
+    dependency checks that the project is in the organization.
     """
-    org_project_ids = await _fetch_org_project_ids(
-        db, org_slug, include_archived=True
-    )
-    if project_id not in org_project_ids:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=(
-                f'Project {project_id!r} not found in organization'
-                f' {org_slug!r}'
-            ),
-        )
     return await _list_prs(
         project_ids=[project_id],
         state=state,

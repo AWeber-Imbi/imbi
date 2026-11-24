@@ -8807,7 +8807,8 @@ export interface paths {
          *     Optional ``author`` filter accepts a GitHub login.
          *     Results are ordered newest first.  Drafts are included and archived
          *     projects are allowed: the project page filters drafts itself and
-         *     stays readable after the project is archived.
+         *     stays readable after the project is archived. The router
+         *     dependency checks that the project is in the organization.
          */
         get: operations["list_project_pull_requests_api_organizations__org_slug__projects__project_id__pull_requests__get"];
         put?: never;
@@ -31854,7 +31855,7 @@ export interface operations {
             path: {
                 org_slug: string;
                 document_id: string;
-                project_id: string | null;
+                project_id: string;
             };
             cookie?: never;
         };
@@ -31887,7 +31888,7 @@ export interface operations {
             path: {
                 org_slug: string;
                 document_id: string;
-                project_id: string | null;
+                project_id: string;
             };
             cookie?: never;
         };
@@ -31925,7 +31926,7 @@ export interface operations {
                 org_slug: string;
                 document_id: string;
                 thread_id: string;
-                project_id: string | null;
+                project_id: string;
             };
             cookie?: never;
         };
@@ -31963,7 +31964,7 @@ export interface operations {
                 org_slug: string;
                 document_id: string;
                 thread_id: string;
-                project_id: string | null;
+                project_id: string;
             };
             cookie?: never;
         };
@@ -32002,7 +32003,7 @@ export interface operations {
                 document_id: string;
                 thread_id: string;
                 comment_id: string;
-                project_id: string | null;
+                project_id: string;
             };
             cookie?: never;
         };
@@ -32035,7 +32036,7 @@ export interface operations {
                 document_id: string;
                 thread_id: string;
                 comment_id: string;
-                project_id: string | null;
+                project_id: string;
             };
             cookie?: never;
         };
@@ -32074,7 +32075,7 @@ export interface operations {
                 document_id: string;
                 thread_id: string;
                 comment_id: string;
-                project_id: string | null;
+                project_id: string;
             };
             cookie?: never;
         };
@@ -38166,8 +38167,8 @@ export interface operations {
             };
             header?: never;
             path: {
-                org_slug: string;
                 project_id: string;
+                org_slug: string;
             };
             cookie?: never;
         };

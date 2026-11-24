@@ -9,6 +9,7 @@ import fastapi.testclient
 
 from apps.api.tests import support
 from imbi.api import models
+from imbi.api.auth import organizations as org_auth
 from imbi.api.endpoints import pull_requests
 from imbi.common import graph
 
@@ -74,6 +75,9 @@ class _PullRequestsTestBase(support.SharedAppTestCase):
         async def _current_user() -> permissions.AuthContext:
             return self.auth_context
 
+        self.test_app.dependency_overrides[org_auth.member_project_org_id] = (
+            lambda: 'org-1'
+        )
         self.test_app.dependency_overrides[permissions.get_current_user] = (
             _current_user
         )
@@ -244,17 +248,10 @@ class ListProjectPullRequestsTestCase(_PullRequestsTestBase):
         ):
             response = self.client.get(self._url())
         self.assertEqual(response.status_code, 200)
-        cypher = self.mock_db.execute.call_args.args[0]
-        self.assertNotIn('archived', cypher)
+        # The router dependency checks the project; no project query.
+        self.mock_db.execute.assert_not_called()
         for call in query.call_args_list:
             self.assertNotIn('draft', call.args[0])
-
-    def test_list_404_when_project_not_in_org(self) -> None:
-        # Org scope check returns no rows → project_id not in org.
-        self.mock_db.execute.return_value = []
-        response = self.client.get(self._url())
-        self.assertEqual(response.status_code, 404)
-        self.assertIn('not found in organization', response.json()['detail'])
 
     def test_list_400_on_invalid_limit(self) -> None:
         self.mock_db.execute.return_value = [{'id': PROJECT_ID}]
