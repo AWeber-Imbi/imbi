@@ -198,6 +198,8 @@ class ExternalMCPManager:
     def __init__(self) -> None:
         self._tasks: list[asyncio.Task[None]] = []
         self._sessions: dict[str, mcp.ClientSession] = {}
+        # server slug -> task that holds the latest session open
+        self._session_tasks: dict[str, asyncio.Task[None]] = {}
         self._tools: list[dict[str, typing.Any]] = []
         # registered tool name -> (server slug, original tool name)
         self._tool_routes: dict[str, tuple[str, str]] = {}
@@ -269,9 +271,21 @@ class ExternalMCPManager:
         self,
         server: common_models.MCPServer,
     ) -> tuple[mcp.ClientSession, mcp_types.ListToolsResult]:
-        """Open a session and discover its tools."""
+        """Open a session and discover its tools.
+
+        If discovery fails or is cancelled (for example by the connect
+        timeout), stop the session task so that its HTTP client closes.
+
+        """
         session = await self._open_session(server)
-        return session, await session.list_tools()
+        try:
+            return session, await session.list_tools()
+        except BaseException:
+            task = self._session_tasks.pop(server.slug, None)
+            if task is not None:
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+            raise
 
     async def _open_session(
         self,
@@ -303,6 +317,7 @@ class ExternalMCPManager:
             name=f'external-mcp-{server.slug}',
         )
         self._tasks.append(task)
+        self._session_tasks[server.slug] = task
         try:
             return await ready
         except BaseException:
@@ -403,6 +418,7 @@ class ExternalMCPManager:
         # must not escape into the caller's (lifespan) unwind.
         await asyncio.gather(*self._tasks, return_exceptions=True)
         self._tasks = []
+        self._session_tasks.clear()
         self._sessions.clear()
         self._tool_routes.clear()
         self._reconnect_after.clear()

@@ -234,6 +234,22 @@ class ConnectAndRegisterTestCase(
         await manager._connect_server(server)
         self.assertEqual(manager.get_tool_names(), [])
 
+    async def test_discovery_timeout_stops_session_task(self) -> None:
+        manager = external_mcp.ExternalMCPManager()
+        server = _make_server(slug='svc', timeout=1)
+        session = mock.AsyncMock()
+        session.list_tools.side_effect = asyncio.Event().wait
+        holder = asyncio.create_task(asyncio.Event().wait())
+
+        async def fake_open(_server: object) -> mock.AsyncMock:
+            manager._session_tasks['svc'] = holder
+            return session
+
+        manager._open_session = fake_open  # type: ignore
+        await manager._connect_server(server)
+        self.assertTrue(holder.cancelled())
+        self.assertEqual(manager.get_tool_names(), [])
+
     async def test_connect_propagates_cancellation(self) -> None:
         manager = external_mcp.ExternalMCPManager()
         server = _make_server(slug='svc')
