@@ -137,10 +137,15 @@ deployment in the release endpoints):
 
 A `PATCH` fails with `422` when no matching blueprint declares a
 property, or when a value does not agree with its schema. One
-exception: Imbi does not check the items of an array of objects
-against the item schema, so an agent must not rely on that check.
-Imbi does not enforce required properties on deployments, because
-deployments are also created with no person or agent present.
+exception: for an array, Imbi checks only the type of each item. It
+does not check other item rules, such as a `minimum` or the schema of
+an object item, so an agent must not rely on those checks.
+
+Imbi does not enforce required top-level properties on deployments,
+because deployments are also created with no person or agent present.
+A nested object is different: when a property sends an object, that
+object must have the properties that its schema requires, or the
+`PATCH` fails with `422`.
 
 Concurrent `PATCH` requests on one deployment occur one at a time, so
 no change is lost.
