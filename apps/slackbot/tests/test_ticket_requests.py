@@ -33,6 +33,10 @@ class FakeSlack:
         self.updates: list[dict[str, typing.Any]] = []
 
     async def chat_postMessage(self, channel, text=None, **kw):
+        if channel == 'C404':
+            raise errors.SlackApiError(
+                'channel_not_found', {'error': 'channel_not_found'}
+            )
         self.posts.append({'channel': channel, 'text': text, **kw})
         return Resp(ts=f'ts{len(self.posts)}')
 
@@ -100,6 +104,10 @@ class FormSpecTests(helpers.TestCase):
         spec = ticket_requests.form_spec(entry(options=['x' * 80, 'y']))
         self.assertEqual(['answer'], list(fields(spec)))
         self.assertIn('- ' + 'x' * 80, spec.intro)
+
+    def test_empty_option_is_a_text_box(self) -> None:
+        spec = ticket_requests.form_spec(entry(options=['', 'main']))
+        self.assertEqual(['answer'], list(fields(spec)))
 
     def test_no_options_is_a_text_box(self) -> None:
         spec = ticket_requests.form_spec(entry(options=None))
@@ -175,6 +183,7 @@ class FlowTestCase(helpers.TestCase):
     def setUp(self) -> None:
         super().setUp()
         ticket_requests._channels.clear()
+        ticket_requests._misses.clear()
         self.slack = FakeSlack()
         self.store = forms.MemoryFormStore()
         self.runtime = forms.Runtime(self.store, mock.AsyncMock())
@@ -213,6 +222,12 @@ class PostTests(FlowTestCase):
         )
         self.assertEqual('D-U1', self.slack.posts[0]['channel'])
 
+    async def test_owner_when_the_channel_id_is_stale(self) -> None:
+        await ticket_requests.post(
+            self.slack, self.runtime, entry(slack_channel='C404')
+        )
+        self.assertEqual('D-U1', self.slack.posts[0]['channel'])
+
     async def test_owner_not_in_slack(self) -> None:
         await ticket_requests.post(
             self.slack, self.runtime, entry(owner='bob@example.com')
@@ -223,9 +238,9 @@ class PostTests(FlowTestCase):
         await ticket_requests.post(
             self.slack, self.runtime, entry(title='Which API key?')
         )
-        self.assertIn(
-            'Answer it in Imbi.', self.slack.posts[0]['markdown_text']
-        )
+        text = self.slack.posts[0]['markdown_text']
+        self.assertIn('Answer it in Imbi.', text)
+        self.assertNotIn('API key', text)
         self.assertEqual({}, self.store._records)
 
 
@@ -329,6 +344,28 @@ class AnswerTests(helpers.TestCase):
         self.assertEqual('bob@x.io answered it first.', error.message)
         self.assertFalse(error.retry)
 
+    async def test_identity_failure_opens_the_form_again(self) -> None:
+        resolve = mock.AsyncMock(side_effect=RuntimeError('graph down'))
+        with (
+            mock.patch.object(ticket_requests.identity, 'resolve', resolve),
+            self.assertLogs(ticket_requests.LOGGER, 'ERROR'),
+            self.assertRaises(forms.Rejected) as raised,
+        ):
+            await ticket_requests.answer(
+                FakeSlack(),
+                forms.Submission(
+                    form_id='F1',
+                    spec=ticket_requests.form_spec(entry()),
+                    values={'choice': 'main', 'other': None},
+                    user_id='U2',
+                    channel_id='D-U1',
+                    thread_ts=None,
+                    metadata={'ticket_request': entry()},
+                ),
+            )
+        self.assertTrue(raised.exception.retry)
+        self.assertEqual([], self.calls)
+
     async def test_other_forms_are_not_handled(self) -> None:
         self.assertFalse(
             await self.answer(httpx.Response(201), {'choice': 'main'}, {})
@@ -340,6 +377,9 @@ class ConsumeTests(FlowTestCase):
     async def test_posts_and_acks_each_entry(self) -> None:
         client = mock.AsyncMock()
         message = (b'1-0', {b'request': orjson.dumps(entry())})
+        # A claimed entry of a stopped consumer, with decoded keys.
+        claimed = ('0-9', {'request': orjson.dumps(entry())})
+        client.xautoclaim.return_value = ['0-0', [claimed], []]
         client.xreadgroup.side_effect = [
             [[b'imbi:ticket-requests', [message]]],
             asyncio.CancelledError(),
@@ -351,8 +391,9 @@ class ConsumeTests(FlowTestCase):
             self.assertRaises(asyncio.CancelledError),
         ):
             await ticket_requests.consume(self.slack, self.runtime)
-        client.xgroup_create.assert_awaited_once()
-        client.xack.assert_awaited_once_with(
-            'imbi:ticket-requests', 'imbi-slackbot', b'1-0'
+        self.assertEqual('0', client.xgroup_create.await_args.kwargs['id'])
+        self.assertEqual(
+            ['0-9', b'1-0'],
+            [c.args[2] for c in client.xack.await_args_list],
         )
-        self.assertEqual('D-U1', self.slack.posts[0]['channel'])
+        self.assertEqual(2, len(self.slack.posts))

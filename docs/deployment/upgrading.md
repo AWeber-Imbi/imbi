@@ -92,8 +92,11 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 4. To get the Slack forms of tickets that need input, add the bot
    scopes `channels:read`, `groups:read`, and `im:write` to the Slack
    app, and install the app again. Invite the bot to the Slack channel
-   of each agent that has one. Without the scopes, the slackbot logs an
-   error and posts no form; the request is still in the UI. See
+   of each agent that has one. imbi-api and the slackbot must use the
+   same Valkey server and database (`VALKEY_URL`), because imbi-api adds
+   the requests to a Valkey stream that the slackbot reads. Without the
+   scopes, the slackbot logs an error and posts no form; the request is
+   still in the UI. See
    [Slack App Setup](../slackbot/slack-app-manifest.md).
 
 ## 2.60.0

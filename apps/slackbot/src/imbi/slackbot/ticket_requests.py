@@ -19,6 +19,7 @@ import asyncio
 import logging
 import re
 import socket
+import time
 import typing
 
 import httpx
@@ -46,10 +47,24 @@ _MAX_RADIO = 10
 _MAX_OPTION_LENGTH = 75
 _MAX_INTRO = 2000
 _CHANNEL_ID = re.compile(r'^[CG][A-Z0-9]+$')
+#: Slack errors that mean the bot cannot post to the channel.
+_NO_CHANNEL = frozenset({'channel_not_found', 'is_archived', 'not_in_channel'})
 
-#: Channel ids by name. ponytail: never expires; a renamed channel needs
-#: a restart.
+#: Less than the socket timeout of the Valkey client (5 seconds), so an
+#: empty poll returns before the socket times out.
+_BLOCK_MS = 2000
+#: An entry that a consumer read but did not ack for this long is posted
+#: again, for example after the pod stopped during the post.
+_CLAIM_IDLE_MS = 60_000
+_PAGE_SIZE = 200
+#: Seconds before a channel name that was not found is looked up again.
+_MISS_TTL = 900
+
+#: Channel ids by name. ponytail: a found channel never expires; a
+#: renamed channel needs a restart.
 _channels: dict[str, str] = {}
+#: Names that were not found, with the time to look them up again.
+_misses: dict[str, float] = {}
 
 
 async def consume(slack: SlackClient, runtime: forms.Runtime) -> None:
@@ -63,22 +78,28 @@ async def consume(slack: SlackClient, runtime: forms.Runtime) -> None:
             if not ready:
                 await _create_group(client)
                 ready = True
+            # Entries that another consumer read and never acked, for
+            # example when its pod stopped during the post. A claimed
+            # entry can post a second form for the request.
+            _, claimed, *_ = await client.xautoclaim(
+                stream, GROUP, consumer, _CLAIM_IDLE_MS, count=10
+            )
             response: list[typing.Any] = (
                 await client.xreadgroup(
-                    GROUP, consumer, {stream: '>'}, count=10, block=5000
+                    GROUP, consumer, {stream: '>'}, count=10, block=_BLOCK_MS
                 )
                 or []
             )
-            for _name, messages in response:
-                for message_id, fields in messages:
-                    try:
-                        entry = orjson.loads(fields[b'request'])
-                        await post(slack, runtime, entry)
-                    except Exception:
-                        LOGGER.exception('Could not post %s', message_id)
-                    # ponytail: no redelivery. The request stays open in
-                    # the UI; add XAUTOCLAIM if Slack outages lose posts.
-                    await client.xack(stream, GROUP, message_id)
+            messages = [*claimed, *(m for _, ms in response for m in ms)]
+            for message_id, fields in messages:
+                try:
+                    raw = fields.get(b'request') or fields.get('request')
+                    await post(slack, runtime, orjson.loads(raw))
+                except Exception:
+                    LOGGER.exception('Could not post %s', message_id)
+                # ponytail: a failed post is not tried again. The request
+                # stays open in the UI.
+                await client.xack(stream, GROUP, message_id)
         except Exception:
             LOGGER.exception('Could not read %s', stream)
             ready = False
@@ -86,9 +107,12 @@ async def consume(slack: SlackClient, runtime: forms.Runtime) -> None:
 
 
 async def _create_group(client: typing.Any) -> None:
+    """Create the consumer group at the start of the stream, so that the
+    requests that imbi-api added before the first slackbot start are
+    posted too."""
     try:
         await client.xgroup_create(
-            valkey.TICKET_REQUESTS_STREAM, GROUP, id='$', mkstream=True
+            valkey.TICKET_REQUESTS_STREAM, GROUP, id='0', mkstream=True
         )
     except Exception as err:
         if 'BUSYGROUP' not in str(err):
@@ -101,14 +125,24 @@ async def post(
     """Post the form of ``entry`` to the agent channel or the owner."""
     name = entry.get('slack_channel')
     channel = name and await _channel_id(slack, name)
-    if not channel:
-        if name:
-            LOGGER.warning(
-                'No Slack channel %r for %s; sending to the owner',
-                name,
-                entry['short_id'],
-            )
-        channel = await _direct_channel(slack, entry['owner'])
+    if channel:
+        try:
+            await _post_form(slack, runtime, entry, channel)
+        except errors.SlackApiError as err:
+            # Only a definite "no such channel" goes to the owner. After
+            # another error, Slack can have the post already.
+            response: typing.Any = err.response
+            if response.get('error') not in _NO_CHANNEL:
+                raise
+        else:
+            return
+    if name:
+        LOGGER.warning(
+            'No Slack channel %r for %s; sending to the owner',
+            name,
+            entry['short_id'],
+        )
+    channel = await _direct_channel(slack, entry['owner'])
     if not channel:
         LOGGER.info('No Slack user for %s', entry['owner'])
         return
@@ -208,7 +242,11 @@ async def _resolve(
     body = resolution(entry, submission.values)
     if body is None:
         raise forms.Rejected('Pick an answer or write one.')
-    user = await identity.resolve(slack, submission.user_id)
+    try:
+        user = await identity.resolve(slack, submission.user_id)
+    except Exception:
+        LOGGER.exception('Could not resolve Slack user %s', submission.user_id)
+        raise forms.Rejected('Imbi is not available. Try again.') from None
     if user is None:
         raise forms.Rejected('There is no Imbi user with your Slack email.')
     path = (
@@ -261,7 +299,11 @@ async def _post_form(
         spec = form_spec(entry)
     except pydantic.ValidationError as err:
         LOGGER.info('No form for %s: %s', entry['request_id'], err)
-        text = f'{_intro(entry, [])}\n\nAnswer it in Imbi.'
+        # Do not repeat the question: slackwright refused it, for
+        # example because it asks for a secret.
+        text = (
+            f'{_heading(entry)}\n\nThis ticket needs input. Answer it in Imbi.'
+        )
         await render.post_markdown(slack, channel, None, text)
         return
     await runtime.post(
@@ -279,20 +321,23 @@ async def _channel_id(slack: SlackClient, name: str) -> str | None:
     name = name.strip().lstrip('#')
     if _CHANNEL_ID.match(name):
         return name
-    if name not in _channels:
-        pages = await slack.conversations_list(
-            types='public_channel,private_channel',
-            exclude_archived=True,
-            limit=1000,
-        )
-        async for page in pages:
-            _channels.update({c['name']: c['id'] for c in page['channels']})
-            if name in _channels:
-                break
-        # Keep a miss too, so an unknown name does not list all channels
-        # again for each request.
-        _channels.setdefault(name, '')
-    return _channels[name] or None
+    if name in _channels:
+        return _channels[name]
+    # Keep a miss for a time, so that an unknown name does not list all
+    # channels again for each request.
+    if _misses.get(name, 0.0) > time.monotonic():
+        return None
+    pages = await slack.conversations_list(
+        types='public_channel,private_channel',
+        exclude_archived=True,
+        limit=_PAGE_SIZE,
+    )
+    async for page in pages:
+        _channels.update({c['name']: c['id'] for c in page['channels']})
+        if name in _channels:
+            return _channels[name]
+    _misses[name] = time.monotonic() + _MISS_TTL
+    return None
 
 
 async def _direct_channel(slack: SlackClient, email: str) -> str | None:
@@ -338,7 +383,7 @@ def _choosable(options: list[str]) -> bool:
     return (
         len(options) <= _MAX_OPTIONS
         and len(set(options)) == len(options)
-        and all(len(o) <= _MAX_OPTION_LENGTH for o in options)
+        and all(0 < len(o) <= _MAX_OPTION_LENGTH for o in options)
     )
 
 

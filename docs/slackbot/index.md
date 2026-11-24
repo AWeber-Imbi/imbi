@@ -52,7 +52,8 @@ posts a form with the same choices as the "Waiting on you" box of the ticket:
 The bot posts the form to the **Slack channel** of the agent (`#name` or a
 channel id). When the agent has no channel, or the bot cannot find it, the
 bot sends the form as a direct message to the owner of the ticket. Invite
-the bot to the channel first.
+the bot to the channel first. The bot looks up a channel name that it did
+not find again after 15 minutes.
 
 Any person who can see the form can send it. The bot resolves the request
 as that person, so the person needs `ticket:resolve`, and the ticket records
