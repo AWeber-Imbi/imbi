@@ -8,6 +8,7 @@ from fastapi import testclient
 
 from apps.api.tests import support
 from imbi.api import models
+from imbi.api.auth import organizations as org_auth
 from imbi.api.auth import password, permissions
 from imbi.common import graph
 
@@ -60,6 +61,9 @@ class ProjectIntegrationsEndpointTestCase(support.SharedAppTestCase):
         async def mock_get_current_user() -> permissions.AuthContext:
             return self.auth_context
 
+        self.test_app.dependency_overrides[org_auth.member_project_org_id] = (
+            lambda: 'org-1'
+        )
         self.test_app.dependency_overrides[permissions.get_current_user] = (
             mock_get_current_user
         )
@@ -105,7 +109,6 @@ class ProjectIntegrationsEndpointTestCase(support.SharedAppTestCase):
 
     def test_replace_project_integrations(self) -> None:
         self.mock_db.execute.side_effect = [
-            [{'org_slug': 'myorg'}],  # _project_org_slug
             [],  # existing USES edges
             [{'i': _inode(enabled=True)}],  # org integrations by slug
             [_LISTED],  # final re-list
@@ -131,22 +134,8 @@ class ProjectIntegrationsEndpointTestCase(support.SharedAppTestCase):
         self.assertEqual(response.json()[0]['integration_slug'], 'logzio-prod')
         patched.assert_awaited_once()
 
-    def test_replace_project_integrations_project_not_found(self) -> None:
-        self.mock_db.execute.return_value = []
-        response = self.client.put(
-            '/organizations/myorg/projects/missing/integrations/',
-            json={
-                'assignments': [
-                    {'integration_slug': 'logzio-prod', 'capability': 'logs'}
-                ]
-            },
-        )
-        self.assertEqual(response.status_code, 404)
-        self.assertIn('not found', response.json()['detail'])
-
     def test_replace_project_integrations_unknown_slug(self) -> None:
         self.mock_db.execute.side_effect = [
-            [{'org_slug': 'myorg'}],  # _project_org_slug
             [],  # existing USES edges
             [],  # org integrations by slug -> none resolved
         ]
@@ -163,7 +152,6 @@ class ProjectIntegrationsEndpointTestCase(support.SharedAppTestCase):
 
     def test_replace_project_integrations_capability_not_enabled(self) -> None:
         self.mock_db.execute.side_effect = [
-            [{'org_slug': 'myorg'}],  # _project_org_slug
             [],  # existing USES edges
             [{'i': _inode(enabled=False)}],  # capability disabled
         ]

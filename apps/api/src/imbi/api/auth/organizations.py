@@ -160,23 +160,22 @@ async def member_project_org_id(
     org_slug: str,
     project_id: str,
     db: graph.Pool,
-    auth: typing.Annotated[
-        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
-    ],
+    org_id: MemberOrgId,
 ) -> str:
     """:func:`member_org_id` for routes under
     ``/organizations/{org_slug}/projects/{project_id}``.
 
     The project must also belong to the organization. Otherwise a
     member of one organization could use their role there on the
-    project of another organization.
+    project of another organization. It depends on
+    :func:`member_org_id`, so a route that has both runs the
+    membership check once.
 
     Raises:
         403: The caller is not a member of the organization.
         404: No such organization, or the project is not in it.
 
     """
-    org_id = await check_member(org_slug, db, auth)
     if not await db.execute(
         _PROJECT_IN_ORG_QUERY,
         {'project_id': project_id, 'org_slug': org_slug},
@@ -187,3 +186,7 @@ async def member_project_org_id(
             detail=f'Project {project_id!r} not found in {org_slug!r}',
         )
     return org_id
+
+
+#: Router or route ``dependencies`` for a route on one project.
+PROJECT_MEMBER = [fastapi.Depends(member_project_org_id)]

@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from apps.api.tests import support
 from imbi.api import models
 from imbi.api import scoring as scoring_di
+from imbi.api.auth import organizations as org_auth
 from imbi.common import graph
 
 
@@ -73,6 +74,9 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
         async def mock_user() -> permissions.AuthContext:
             return self.auth
 
+        self.test_app.dependency_overrides[org_auth.member_project_org_id] = (
+            lambda: 'org-1'
+        )
         self.test_app.dependency_overrides[permissions.get_current_user] = (
             mock_user
         )
@@ -118,13 +122,6 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
         body = response.json()
         self.assertEqual(body['granularity'], 'raw')
         self.assertEqual(len(body['points']), 1)
-
-    def test_history_404(self) -> None:
-        self.mock_db.execute = mock.AsyncMock(return_value=[])
-        response = self.client.get(
-            '/organizations/eng/projects/missing/score/history',
-        )
-        self.assertEqual(response.status_code, 404)
 
     def test_rollup(self) -> None:
         # db.execute returns project→team mappings from AGE

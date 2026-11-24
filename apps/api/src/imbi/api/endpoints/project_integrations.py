@@ -5,7 +5,7 @@ import typing
 
 import fastapi
 
-from imbi.api.auth import permissions
+from imbi.api.auth import organizations, permissions
 from imbi.api.domain import models
 from imbi.api.plugins import parse_options
 from imbi.api.plugins.assignment_writer import (
@@ -21,6 +21,7 @@ from imbi.common import graph
 project_integrations_router = fastapi.APIRouter(
     prefix='/organizations/{org_slug}/projects/{project_id}/integrations',
     tags=['Project Integrations'],
+    dependencies=organizations.PROJECT_MEMBER,
 )
 
 
@@ -91,33 +92,6 @@ async def list_project_integrations(
             )
         )
     return assignments
-
-
-async def _project_org_slug(
-    db: graph.Graph, project_id: str, org_slug: str
-) -> str:
-    """Confirm ``project_id`` exists in ``org_slug`` and return it.
-
-    Raises:
-        fastapi.HTTPException: 404 if the project is not in this org.
-
-    """
-    query: typing.LiteralString = """
-    MATCH (proj:Project {{id: {project_id}}})
-          -[:OWNED_BY]->(:Team)-[:BELONGS_TO]->
-          (o:Organization {{slug: {org_slug}}})
-    RETURN o.slug AS org_slug
-    """
-    records = await db.execute(
-        query, {'project_id': project_id, 'org_slug': org_slug}, ['org_slug']
-    )
-    if not records:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=f'Project {project_id!r} not found in organization'
-            f' {org_slug!r}',
-        )
-    return str(graph.parse_agtype(records[0]['org_slug']))
 
 
 async def _org_integrations_by_slug(
@@ -203,8 +177,6 @@ async def replace_project_integrations(
 
     """
     _ = auth
-    await _project_org_slug(db, project_id, org_slug)
-
     existing_records = await db.execute(
         _LIST_QUERY,
         {'project_id': project_id, 'org_slug': org_slug},
