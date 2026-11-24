@@ -188,6 +188,10 @@ _RULES = """\
   `create_child_task` to give work to another agent: {subagents}.
   To give work to more than one agent at the same time, use
   `create_child_tasks` once with up to 5 tasks: they run in parallel.
+  The children share this workspace. Before you start parallel tasks
+  that change code, give each child its own repository or git
+  worktree. Never let two children change the same checkout at the
+  same time.
 - Use `hand_off` to give the task to a person when a person must do
   the rest of the work, or must decide something that can take days.
   It ends this session: stop after it, with no `report_outcome`.
