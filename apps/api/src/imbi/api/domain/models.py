@@ -874,20 +874,6 @@ class ConfigRestoreRequest(pydantic.BaseModel):
     version: str
 
 
-class ConfigVersionResponse(pydantic.BaseModel):
-    """One version of a configuration key.
-
-    ``value`` is ``None`` when the caller cannot read secret values.
-    """
-
-    version: str
-    data_type: str
-    secret: bool = False
-    last_modified: datetime.datetime | None = None
-    modified_by: str | None = None
-    value: str | None = None
-
-
 class LogEntryResponse(pydantic.BaseModel):
     """Response model for a single log entry."""
 

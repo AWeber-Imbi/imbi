@@ -26,6 +26,7 @@ __all__ = [
     'check_resource_permission',
     'get_current_user',
     'get_current_user_cookie_fallback',
+    'holds',
     'require_any_permission',
     'require_permission',
     'require_resource_access',
@@ -41,6 +42,7 @@ ACCESS_COOKIE_NAME = _shared.ACCESS_COOKIE_NAME
 AuthContext = _shared.AuthContext
 get_current_user = _shared.get_current_user
 get_current_user_cookie_fallback = _shared.get_current_user_cookie_fallback
+holds = _shared.holds
 require_permission = _shared.require_permission
 validate_scopes = _shared.validate_scopes
 

@@ -2995,7 +2995,7 @@ export const fetchConfigurationValues = (
   params?: { environment?: string; source?: string },
 ) =>
   apiClient.post<ConfigKeyValueResponse[]>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/configuration/values:fetch${params ? `?${new URLSearchParams(Object.entries(params).filter(([, v]) => v != null) as [string, string][]).toString()}` : ''}`,
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/configuration/values:fetch${params ? `?${configParams(params)}` : ''}`,
     { keys },
   )
 
@@ -3007,7 +3007,7 @@ export const setConfigurationValue = (
   params?: { environment?: string; source?: string },
 ) =>
   apiClient.put<ConfigKeyResponse>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/configuration/${encodeURIComponent(key)}${params ? `?${new URLSearchParams(Object.entries(params).filter(([, v]) => v != null) as [string, string][]).toString()}` : ''}`,
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/configuration/${encodeURIComponent(key)}${params ? `?${configParams(params)}` : ''}`,
     data,
   )
 
@@ -3018,7 +3018,7 @@ export const deleteConfigurationKey = (
   params?: { environment?: string; source?: string },
 ) =>
   apiClient.delete<void>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/configuration/${encodeURIComponent(key)}${params ? `?${new URLSearchParams(Object.entries(params).filter(([, v]) => v != null) as [string, string][]).toString()}` : ''}`,
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/configuration/${encodeURIComponent(key)}${params ? `?${configParams(params)}` : ''}`,
   )
 
 export const fetchConfigurationHistory = (
@@ -3044,7 +3044,7 @@ export const restoreConfigurationVersion = (
     { key, version },
   )
 
-const configParams = (params: { environment: string; source?: string }) =>
+const configParams = (params: { environment?: string; source?: string }) =>
   new URLSearchParams(
     Object.entries(params).filter(([, v]) => v != null) as [string, string][],
   ).toString()

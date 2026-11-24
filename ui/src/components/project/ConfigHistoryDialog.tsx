@@ -19,7 +19,7 @@ import {
 import { Sk } from '@/components/ui/skeleton'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { parseServerTs } from '@/lib/formatDate'
-import { maskSecret } from '@/lib/maskSecret'
+import { containsCredentials, maskSecret } from '@/lib/maskSecret'
 import type { ConfigVersionResponse } from '@/types'
 
 interface ConfigHistoryDialogProps {
@@ -85,7 +85,8 @@ export function ConfigHistoryDialog({
 
   return (
     <Dialog onOpenChange={(open) => !open && onClose()} open>
-      <DialogContent className="max-w-2xl">
+      {/* Session replay never records configuration values. */}
+      <DialogContent className="max-w-2xl" data-ph-no-capture>
         <DialogHeader>
           <DialogTitle>History</DialogTitle>
           <DialogDescription>
@@ -150,17 +151,16 @@ function VersionRow({
   version: ConfigVersionResponse
 }) {
   const hasValue = version.value !== null
-  const masked = version.secret && !revealed
+  // The tab's rule: secrets and URLs with embedded credentials.
+  const sensitive = version.secret || containsCredentials(version.value ?? '')
+  const masked = sensitive && !revealed
   return (
     <div className="flex items-center gap-3 px-3 py-2 text-xs">
       <span className="text-secondary w-10 shrink-0 font-mono">
         v{version.version}
       </span>
       <div className="min-w-0 flex-1">
-        <div
-          className="text-primary truncate font-mono"
-          data-ph-no-capture={version.secret || undefined}
-        >
+        <div className="text-primary truncate font-mono">
           {!hasValue ? (
             <span className="text-tertiary">Value hidden</span>
           ) : masked ? (
@@ -175,7 +175,7 @@ function VersionRow({
           {version.modified_by && ` · ${version.modified_by}`}
         </div>
       </div>
-      {hasValue && version.secret && (
+      {hasValue && sensitive && (
         <Button
           aria-label={revealed ? 'Hide value' : 'Reveal value'}
           className="h-7 px-1.5"

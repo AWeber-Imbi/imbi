@@ -16,6 +16,7 @@ from imbi.common.plugins.base import (
 )
 from imbi.common.plugins.errors import (
     PluginCredentialsMissing,
+    PluginIdentityAccessDenied,
     PluginRateLimited,
     PluginTimeoutError,
     PluginUnavailableError,
@@ -51,7 +52,9 @@ _SSM_ERROR_MAP: dict[str, type[Exception]] = {
     'ExpiredTokenException': PluginCredentialsMissing,
     'UnrecognizedClientException': PluginCredentialsMissing,
     'InvalidSignatureException': PluginCredentialsMissing,
-    'AccessDeniedException': PluginCredentialsMissing,
+    # A valid identity whose role lacks the SSM action: reconnecting does
+    # not help, so answer a terminal 403 that says to ask for access.
+    'AccessDeniedException': PluginIdentityAccessDenied,
     'UnauthorizedOperation': PluginCredentialsMissing,
     'ThrottlingException': PluginRateLimited,
     'RequestLimitExceeded': PluginRateLimited,
@@ -123,13 +126,7 @@ class SSMConfiguration(ConfigurationCapability):
                 keys.append(
                     ConfigKey(
                         key=_strip_prefix(str(param['Name']), prefix),
-                        data_type=_SSM_TO_DATA_TYPE.get(
-                            str(param.get('Type', '')), 'string'
-                        ),
-                        last_modified=_to_datetime(
-                            param.get('LastModifiedDate')
-                        ),
-                        secret=str(param.get('Type')) == 'SecureString',
+                        **_param_fields(param),
                     )
                 )
             next_token = response.get('NextToken')
@@ -320,13 +317,7 @@ class SSMConfiguration(ConfigurationCapability):
             credentials, region=integration_region(ctx), ctx=ctx
         )
         timeout = capability_timeout(ctx, default=15.0)
-        # A role without ssm:GetParameterHistory is a missing IAM
-        # permission, not missing credentials: do not ask to reconnect.
-        error_map = {
-            **_SSM_ERROR_MAP,
-            'AccessDeniedException': PermissionError,
-            'ParameterNotFound': _ParameterMissing,
-        }
+        error_map = {**_SSM_ERROR_MAP, 'ParameterNotFound': _ParameterMissing}
         versions: list[ConfigVersion] = []
         next_token: str | None = None
         while True:
@@ -349,23 +340,16 @@ class SSMConfiguration(ConfigurationCapability):
             except _ParameterMissing:
                 return []
             for param in response.get('Parameters', []):
-                ssm_type = str(param.get('Type', ''))
                 user = param.get('LastModifiedUser')
+                # The session name of an assumed-role ARN.
+                modified_by = str(user).rsplit('/', 1)[-1] if user else None
+                value = str(param.get('Value', '')) if with_values else None
                 versions.append(
                     ConfigVersion(
                         version=str(param['Version']),
-                        data_type=_SSM_TO_DATA_TYPE.get(ssm_type, 'string'),
-                        secret=ssm_type == 'SecureString',
-                        last_modified=_to_datetime(
-                            param.get('LastModifiedDate')
-                        ),
-                        # The session name of an assumed-role ARN.
-                        modified_by=str(user).rsplit('/', 1)[-1]
-                        if user
-                        else None,
-                        value=str(param.get('Value', ''))
-                        if with_values
-                        else None,
+                        modified_by=modified_by,
+                        value=value,
+                        **_param_fields(param),
                     )
                 )
             next_token = response.get('NextToken')
@@ -407,16 +391,24 @@ def _full_name(prefix: str, key: str) -> str:
     return f'{prefix.rstrip("/")}/{key.lstrip("/")}'
 
 
+def _param_fields(param: dict[str, typing.Any]) -> dict[str, typing.Any]:
+    """The ``data_type``, ``secret`` and ``last_modified`` of an SSM
+    parameter, shared by every model built from one."""
+    ssm_type = str(param.get('Type', ''))
+    return {
+        'data_type': _SSM_TO_DATA_TYPE.get(ssm_type, 'string'),
+        'secret': ssm_type == 'SecureString',
+        'last_modified': _to_datetime(param.get('LastModifiedDate')),
+    }
+
+
 def _param_to_kv(
     param: dict[str, typing.Any], prefix: str
 ) -> ConfigKeyWithValue:
-    ssm_type = str(param.get('Type', ''))
     return ConfigKeyWithValue(
         key=_strip_prefix(str(param['Name']), prefix),
-        data_type=_SSM_TO_DATA_TYPE.get(ssm_type, 'string'),
-        last_modified=_to_datetime(param.get('LastModifiedDate')),
-        secret=ssm_type == 'SecureString',
         value=str(param.get('Value', '')),
+        **_param_fields(param),
     )
 
 

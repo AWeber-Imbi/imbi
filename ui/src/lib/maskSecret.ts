@@ -1,3 +1,12 @@
+// True when the value (or any comma-separated segment of it) embeds a
+// URL credential pair like `scheme://user:password@host`. Used to mask
+// non-secret keys whose values still carry sensitive material.
+export function containsCredentials(value: string): boolean {
+  if (!value) return false
+  const re = /[a-z][a-z0-9+\-.]*:\/\/[^:@/\s]+:[^@/\s]+@/i
+  return value.split(',').some((part) => re.test(part.trim()))
+}
+
 // If the value looks like a connection URL with embedded credentials
 // (scheme://user:password@host…), mask only the password segment.
 // Otherwise mask the whole value with bullets capped at a sensible length.

@@ -81,8 +81,7 @@ class VaultConfiguration(ConfigurationCapability):
 - **`get_history`** *(optional)* — return the versions of one key as
   `ConfigVersion` objects, newest first, and an empty list for a key
   that does not exist. Set `value` only when `with_values` is true.
-  Raise `PermissionError` when the upstream system refuses the read for
-  lack of access. Set the `supports_history` hint when you implement it.
+  Set the `supports_history` hint when you implement it.
   The default raises `NotImplementedError`. The host restores a version
   by writing its value again with `set_value`.
 

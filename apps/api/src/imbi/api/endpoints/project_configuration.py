@@ -311,8 +311,6 @@ async def _get_history(
             status_code=501,
             detail='This configuration source does not keep history',
         ) from exc
-    except PermissionError as exc:
-        raise fastapi.HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise fastapi.HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -331,7 +329,7 @@ async def fetch_history(
     ],
     source: str | None = fastapi.Query(default=None),
     environment: str | None = fastapi.Query(default=None),
-) -> list[models.ConfigVersionResponse]:
+) -> list[ConfigVersion]:
     """List the versions of one configuration key, newest first.
 
     Values are included only for a caller who can read secrets, the
@@ -340,11 +338,10 @@ async def fetch_history(
     resolved, ctx, credentials = await _resolve_and_prepare(
         db, org_slug, project_id, source, environment
     )
-    with_values = (
-        auth.is_admin
-        or 'project:configuration:read_secrets' in auth.permissions
+    with_values = auth.is_admin or permissions.holds(
+        'project:configuration:read_secrets', auth.permissions
     )
-    versions = await _get_history(
+    return await _get_history(
         db,
         ctx,
         resolved,
@@ -353,7 +350,6 @@ async def fetch_history(
         body.key,
         with_values=with_values,
     )
-    return [models.ConfigVersionResponse(**v.model_dump()) for v in versions]
 
 
 @project_configuration_router.post('/versions:restore')
@@ -390,42 +386,19 @@ async def restore_version(
             detail=f'Version {body.version} of {body.key!r} not found',
         )
 
-    handler = typing.cast(ConfigurationCapability, resolved.capability_cls())
     value = ConfigValue(
         data_type=match.data_type, value=match.value, secret=match.secret
     )
-
-    async def _set_value(c: PluginContext) -> typing.Any:
-        return await call_with_timeout(
-            handler.set_value(c, credentials, body.key, value)
-        )
-
-    try:
-        result_key = await call_with_identity_retry(
-            db, ctx, resolved, auth, fn=_set_value
-        )
-    except ValueError as exc:
-        raise fastapi.HTTPException(status_code=400, detail=str(exc)) from exc
-
-    await _invalidate_cache(resolved.integration_id, project_id)
-    project_slug = await _lookup_project_slug(db, project_id)
-    await _write_audit(
-        project_id=project_id,
-        project_slug=project_slug,
-        environment_slug=environment or '',
-        recorded_by=auth.principal_name,
+    return await _write_value(
+        db,
+        ctx,
+        resolved,
+        auth,
+        credentials,
+        body.key,
+        value,
         action='restore_version',
-        plugin_slug=resolved.plugin_slug,
-        key=body.key,
-        data_type=match.data_type,
-        secret=match.secret,
         restored_from=body.version,
-    )
-    return models.ConfigKeyResponse(
-        key=result_key.key,
-        data_type=result_key.data_type,
-        last_modified=result_key.last_modified,
-        secret=result_key.secret,
     )
 
 
@@ -449,12 +422,30 @@ async def set_configuration_value(
     resolved, ctx, credentials = await _resolve_and_prepare(
         db, org_slug, project_id, source, environment
     )
+    return await _write_value(
+        db, ctx, resolved, auth, credentials, key, body, action='set_value'
+    )
 
+
+async def _write_value(
+    db: graph.Graph,
+    ctx: PluginContext,
+    resolved: ResolvedCapability,
+    auth: permissions.AuthContext,
+    credentials: dict[str, str],
+    key: str,
+    value: ConfigValue,
+    *,
+    action: str,
+    restored_from: str | None = None,
+) -> models.ConfigKeyResponse:
+    """Write ``value`` through the plugin, drop the list cache, and
+    record the change in the operations log."""
     handler = typing.cast(ConfigurationCapability, resolved.capability_cls())
 
     async def _set_value(c: PluginContext) -> typing.Any:
         return await call_with_timeout(
-            handler.set_value(c, credentials, key, body)
+            handler.set_value(c, credentials, key, value)
         )
 
     try:
@@ -466,18 +457,19 @@ async def set_configuration_value(
         # empty value), so the request is bad.
         raise fastapi.HTTPException(status_code=400, detail=str(exc)) from exc
 
-    await _invalidate_cache(resolved.integration_id, project_id)
-    project_slug = await _lookup_project_slug(db, project_id)
+    await _invalidate_cache(resolved.integration_id, ctx.project_id)
+    project_slug = await _lookup_project_slug(db, ctx.project_id)
     await _write_audit(
-        project_id=project_id,
+        project_id=ctx.project_id,
         project_slug=project_slug,
-        environment_slug=environment or '',
+        environment_slug=ctx.environment or '',
         recorded_by=auth.principal_name,
-        action='set_value',
+        action=action,
         plugin_slug=resolved.plugin_slug,
         key=key,
-        data_type=body.data_type,
-        secret=body.secret,
+        data_type=value.data_type,
+        secret=value.secret,
+        restored_from=restored_from,
     )
     return models.ConfigKeyResponse(
         key=result_key.key,

@@ -15,6 +15,7 @@ from imbi.common.plugins.base import (
 )
 from imbi.common.plugins.errors import (
     PluginCredentialsMissing,
+    PluginIdentityAccessDenied,
     PluginRateLimited,
 )
 from imbi.plugins.aws.ssm import SSMConfiguration
@@ -473,14 +474,14 @@ class GetHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(versions, [])
 
     @respx.mock
-    async def test_access_denied_raises_permission_error(self) -> None:
+    async def test_access_denied_raises_identity_access_denied(self) -> None:
         respx.post(_SSM_URL).mock(
             return_value=httpx.Response(
                 400,
                 json={'__type': 'AccessDeniedException', 'message': 'no'},
             )
         )
-        with self.assertRaises(PermissionError):
+        with self.assertRaises(PluginIdentityAccessDenied):
             await SSMConfiguration().get_history(
                 _ctx(), _creds(), 'k', with_values=True
             )

@@ -1340,8 +1340,7 @@ class ConfigurationCapability(CapabilityHandler):
 
         Returns an empty list for a key that does not exist. Capabilities
         that support history override this and set the
-        ``supports_history`` hint. A capability that cannot read history
-        for lack of access raises :class:`PermissionError`.
+        ``supports_history`` hint.
         """
         raise NotImplementedError
 

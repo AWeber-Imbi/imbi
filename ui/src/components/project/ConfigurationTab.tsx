@@ -47,7 +47,7 @@ import { useTheme } from '@/contexts/ThemeContext'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { deriveChipColors } from '@/lib/chip-colors'
 import { parseServerTs } from '@/lib/formatDate'
-import { maskSecret } from '@/lib/maskSecret'
+import { containsCredentials, maskSecret } from '@/lib/maskSecret'
 import { storage } from '@/lib/storage'
 import { cn, sortEnvironments } from '@/lib/utils'
 import type { ConfigKeyResponse, Environment } from '@/types'
@@ -98,7 +98,7 @@ interface DetailPaneProps {
   onDelete?: () => void
   onDraftChange?: (next: CreateDraft) => void
   onDuplicate?: () => void
-  onShowHistory?: (envSlug: string) => void
+  onShowHistory?: (env: Environment) => void
   onToggleReveal?: (envSlug: string, key: string) => void
   prefix: string
   revealed?: Record<string, boolean>
@@ -167,7 +167,7 @@ export function ConfigurationTab({
   const [revealed, setRevealed] = useState<Record<string, boolean>>({})
   const [confirmDelete, setConfirmDelete] = useState<null | string>(null)
   const [historyFor, setHistoryFor] = useState<null | {
-    envSlug: string
+    env: Environment
     key: string
   }>(null)
   const [savedFlash, setSavedFlash] = useState(false)
@@ -766,7 +766,7 @@ export function ConfigurationTab({
               onDuplicate={startDuplicate}
               onShowHistory={
                 supportsHistory
-                  ? (envSlug) => setHistoryFor({ envSlug, key: selected.key })
+                  ? (env) => setHistoryFor({ env, key: selected.key })
                   : undefined
               }
               onToggleReveal={toggleReveal}
@@ -796,12 +796,7 @@ export function ConfigurationTab({
 
       {historyFor && (
         <ConfigHistoryDialog
-          environment={
-            sortedEnvironments.find((e) => e.slug === historyFor.envSlug) ?? {
-              name: historyFor.envSlug,
-              slug: historyFor.envSlug,
-            }
-          }
+          environment={historyFor.env}
           onClose={() => setHistoryFor(null)}
           orgSlug={orgSlug}
           paramKey={historyFor.key}
@@ -931,15 +926,6 @@ function ConfigLoadError({ error }: { error: unknown }) {
       </div>
     </div>
   )
-}
-
-// True when the value (or any comma-separated segment of it) embeds a
-// URL credential pair like `scheme://user:password@host`. Used to mask
-// non-secret keys whose values still carry sensitive material.
-function containsCredentials(value: string): boolean {
-  if (!value) return false
-  const re = /[a-z][a-z0-9+\-.]*:\/\/[^:@/\s]+:[^@/\s]+@/i
-  return value.split(',').some((part) => re.test(part.trim()))
 }
 
 function DetailPane({
@@ -1107,9 +1093,7 @@ function DetailPane({
                   }
                 }}
                 onShowHistory={
-                  isSet && onShowHistory
-                    ? () => onShowHistory(env.slug)
-                    : undefined
+                  isSet && onShowHistory ? () => onShowHistory(env) : undefined
                 }
                 onToggleReveal={() => onToggleReveal?.(env.slug, currentKey)}
                 revealed={
