@@ -13,6 +13,7 @@ import {
   FileJson,
   FolderTree,
   Globe,
+  Hash,
   KeyRound,
   Layers,
   LayoutDashboard,
@@ -52,6 +53,7 @@ import { RoleManagement } from './admin/RoleManagement'
 import { ScheduledJobsManagement } from './admin/ScheduledJobsManagement'
 import { ScoringPolicyManagement } from './admin/ScoringPolicyManagement'
 import { ServiceAccountManagement } from './admin/ServiceAccountManagement'
+import { ServicePromptTab } from './admin/ServicePromptTab'
 import { TeamManagement } from './admin/TeamManagement'
 import { UserManagement } from './admin/UserManagement'
 import { Webhooks } from './admin/Webhooks'
@@ -232,6 +234,15 @@ const SECTIONS: SectionDef[] = [
     icon: MessagesSquare,
     id: 'assistant',
     label: 'Assistant',
+    scope: 'system',
+  },
+  {
+    component: SlackbotManagement,
+    description: 'Configure the Slack bot prompt and model',
+    group: 'AI',
+    icon: Hash,
+    id: 'slackbot',
+    label: 'Slackbot',
     scope: 'system',
   },
   {
@@ -457,4 +468,8 @@ export function Admin() {
       </div>
     </div>
   )
+}
+
+function SlackbotManagement() {
+  return <ServicePromptTab label="Slackbot" service="imbi-slackbot" />
 }

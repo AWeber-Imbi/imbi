@@ -23,12 +23,12 @@ import { useAdminNav } from '@/hooks/useAdminNav'
 import type { MCPServer, MCPServerUpdate } from '@/types'
 
 import { AdminSection } from './AdminSection'
-import { AssistantPromptTab } from './AssistantPromptTab'
 import {
   McpServerForm,
   type McpServerSaveData,
 } from './mcp-servers/McpServerForm'
 import { McpServerStatusPill } from './mcp-servers/McpServerStatusPill'
+import { ServicePromptTab } from './ServicePromptTab'
 
 type AssistantTab = 'mcp' | 'prompt'
 
@@ -140,7 +140,7 @@ export function AssistantManagement() {
       </Tabs>
 
       {tab === 'prompt' ? (
-        <AssistantPromptTab />
+        <ServicePromptTab label="Assistant" service="imbi-assistant" />
       ) : servers.length === 0 && !isLoading && !error ? (
         <McpEmptyState onCreate={goToCreate} />
       ) : (

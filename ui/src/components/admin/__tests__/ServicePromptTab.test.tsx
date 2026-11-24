@@ -21,11 +21,11 @@ vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ user: { is_admin: true, permissions: [] } }),
 }))
 
-describe('AssistantPromptTab', () => {
+describe('ServicePromptTab', () => {
   // Load the component once, outside the 5 s test timeout. On CI the
   // cold import of the CodeMirror prompt editor takes longer than that.
   beforeAll(async () => {
-    await import('../AssistantPromptTab')
+    await import('../ServicePromptTab')
   }, 60_000)
 
   beforeEach(async () => {
@@ -38,8 +38,8 @@ describe('AssistantPromptTab', () => {
 
   it('offers to create the assistant prompt when it is missing', async () => {
     const endpoints = await import('@/api/endpoints')
-    const { AssistantPromptTab } = await import('../AssistantPromptTab')
-    render(<AssistantPromptTab />)
+    const { ServicePromptTab } = await import('../ServicePromptTab')
+    render(<ServicePromptTab label="Assistant" service="imbi-assistant" />)
 
     await waitFor(() =>
       expect(
@@ -61,8 +61,8 @@ describe('AssistantPromptTab', () => {
     vi.mocked(endpoints.createPrompt).mockResolvedValue(
       {} as Awaited<ReturnType<typeof endpoints.createPrompt>>,
     )
-    const { AssistantPromptTab } = await import('../AssistantPromptTab')
-    render(<AssistantPromptTab />)
+    const { ServicePromptTab } = await import('../ServicePromptTab')
+    render(<ServicePromptTab label="Assistant" service="imbi-assistant" />)
 
     fireEvent.click(
       await screen.findByRole('button', { name: 'Create assistant prompt' }),
@@ -87,6 +87,21 @@ describe('AssistantPromptTab', () => {
           type: 'core_system',
         }),
       ),
+    )
+  })
+
+  it('targets the slackbot prompt', async () => {
+    const endpoints = await import('@/api/endpoints')
+    const { ServicePromptTab } = await import('../ServicePromptTab')
+    render(<ServicePromptTab label="Slackbot" service="imbi-slackbot" />)
+
+    expect(
+      await screen.findByText('The slackbot prompt is not in the CMS yet'),
+    ).toBeInTheDocument()
+    expect(endpoints.getPrompt).toHaveBeenCalledWith(
+      'imbi-slackbot',
+      'system',
+      expect.anything(),
     )
   })
 })

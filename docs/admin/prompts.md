@@ -16,7 +16,8 @@ then, a consumer such as the assistant keeps using its packaged prompt.
 
 Open the full library at **Admin > Global Admin > Prompts**. The
 assistant's prompt is also on the **Prompt** tab of **Admin > Global
-Admin > Assistant**.
+Admin > Assistant**. The Slack bot's prompt is also on **Admin > Global
+Admin > Slackbot**.
 
 ## Prompts Imbi uses
 
