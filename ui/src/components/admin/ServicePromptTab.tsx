@@ -13,11 +13,18 @@ import { extractApiErrorDetail } from '@/lib/apiError'
 import { queryKeys } from '@/lib/queryKeys'
 import type { PromptCreate } from '@/types'
 
-const NAMESPACE = 'imbi-assistant'
 const SLUG = 'system'
 
-/** The assistant's system prompt, edited in place through the CMS. */
-export function AssistantPromptTab() {
+interface ServicePromptTabProps {
+  /** Display name, for example "Assistant" or "Slackbot". */
+  label: string
+  /** The service, which is also the prompt namespace. */
+  service: 'imbi-assistant' | 'imbi-slackbot'
+}
+
+/** A service's system prompt, edited in place through the CMS. */
+export function ServicePromptTab({ label, service }: ServicePromptTabProps) {
+  const noun = label.toLowerCase()
   const queryClient = useQueryClient()
   const canCreate = useHasPermission('prompt:create')
   const [creating, setCreating] = useState(false)
@@ -40,10 +47,10 @@ export function AssistantPromptTab() {
         style={{ borderWidth: '0.5px' }}
       >
         <Info className="size-3.5 flex-none" />
-        Without a system-prompt override, imbi-assistant uses the version that
-        its configured prompt reference points at (default
-        imbi-assistant/system@stable). If that label does not exist, it uses the
-        version that the default label of this prompt points at. If neither
+        Without a system-prompt override, {service} uses the version that its
+        configured prompt reference points at (default{' '}
+        {`${service}/${SLUG}@stable`}). If that label does not exist, it uses
+        the version that the default label of this prompt points at. If neither
         label exists, it uses its built-in prompt. Run imbi-api setup-prompts to
         create a missing prompt.
       </div>
@@ -55,10 +62,10 @@ export function AssistantPromptTab() {
                 <FileCode2 className="size-5" />
               </div>
               <div className="text-primary text-[15px] font-medium">
-                The assistant prompt is not in the CMS yet
+                The {noun} prompt is not in the CMS yet
               </div>
               <p className="text-secondary mt-1 text-sm">
-                Create {NAMESPACE}/{SLUG} to version the assistant&apos;s system
+                Create {service}/{SLUG} to version the {noun}&apos;s system
                 prompt, model, and parameters.
               </p>
               {canCreate && (
@@ -67,25 +74,25 @@ export function AssistantPromptTab() {
                   onClick={() => setCreating(true)}
                   size="sm"
                 >
-                  Create assistant prompt
+                  Create {noun} prompt
                 </Button>
               )}
             </div>
           </div>
         }
-        namespace={NAMESPACE}
+        namespace={service}
         slug={SLUG}
       />
       {creating && (
         <NewPromptDialog
           defaults={{
-            name: 'Assistant system prompt',
-            namespace: NAMESPACE,
+            name: `${label} system prompt`,
+            namespace: service,
             slug: SLUG,
             type: 'core_system',
           }}
           locked
-          namespaces={[NAMESPACE]}
+          namespaces={[service]}
           onClose={() => setCreating(false)}
           onSubmit={(body) => create.mutate(body)}
           open

@@ -90,6 +90,9 @@ thread of the message:
 
 The bot reads its prompt from the [prompt CMS](../admin/prompts.md), at
 `IMBI_SLACKBOT_PROMPT_REF` (default `imbi-slackbot/system@stable`).
+To change the prompt or the model, open **Admin > Global Admin >
+Slackbot**. Select the model on the version, then point the `stable`
+label at that version.
 
 - When the CMS has no usable version, the bot uses the prompt in the
   `imbi-common` package.
