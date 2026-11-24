@@ -10,6 +10,7 @@ import { RelativeTime } from '@/components/ui/RelativeTime'
 import { cn } from '@/lib/utils'
 import type { TicketListItem, TicketUnit, TicketUnitItem } from '@/types'
 
+import { AgentActivityIcon } from './AgentActivityIcon'
 import { agentsPath, ticketsPath } from './agentsNav'
 import {
   type InboxGroupId,
@@ -132,6 +133,7 @@ export function TaskUnitRow({
               {top} {top === 1 ? 'task' : 'tasks'}
               {unit.children > 0 && ` · +${unit.children} child`}
             </span>
+            <AgentActivityIcon activity={task.agent_activity} />
             {label !== GROUP_SAYS[group] && (
               <Badge className="shrink-0 py-0" variant={statusVariant(task)}>
                 {label}

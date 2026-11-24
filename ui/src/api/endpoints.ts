@@ -201,6 +201,7 @@ import type {
   Ticket,
   TicketCounts,
   TicketCreate,
+  TicketDetail,
   TicketEvent,
   TicketFilterable,
   TicketHandOff,
@@ -3933,7 +3934,8 @@ export const getTicket = (
   orgSlug: string,
   shortId: string,
   signal?: AbortSignal,
-) => apiClient.get<Ticket>(ticketPath(orgSlug, shortId), undefined, signal)
+) =>
+  apiClient.get<TicketDetail>(ticketPath(orgSlug, shortId), undefined, signal)
 
 /** The events of a task with a `seq` after `afterSeq`, in seq order. */
 export const listTicketEvents = (

@@ -75,6 +75,7 @@ import type {
   TicketUnit,
 } from '@/types'
 
+import { AgentActivityIcon } from './AgentActivityIcon'
 import { useAgentList } from './agentQueries'
 import { ticketsPath } from './agentsNav'
 import { NewTaskDialog } from './NewTaskDialog'
@@ -1096,6 +1097,7 @@ function TaskRow({
           <span className="shrink-0 font-mono">
             <Marked parts={marked('short_id')} text={task.short_id} />
           </span>
+          <AgentActivityIcon activity={task.agent_activity} />
           {label !== GROUP_SAYS[group] && (
             <Badge className="shrink-0 py-0" variant={statusVariant(task)}>
               {label}

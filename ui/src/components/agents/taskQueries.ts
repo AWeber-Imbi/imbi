@@ -110,6 +110,14 @@ export function useTicket(orgSlug: string, shortId: string) {
   return useQuery({
     queryFn: ({ signal }) => getTicket(orgSlug, shortId, signal),
     queryKey: queryKeys.ticket(orgSlug, shortId),
+    // A child ticket or a lost heartbeat changes the agent activity
+    // without an event on this ticket; a request writes one.
+    refetchInterval: (query) =>
+      ['stalled', 'subagent', 'working'].includes(
+        query.state.data?.agent_activity ?? '',
+      )
+        ? LIST_POLL_MS
+        : false,
   })
 }
 

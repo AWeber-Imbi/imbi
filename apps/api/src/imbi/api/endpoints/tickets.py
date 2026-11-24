@@ -49,6 +49,7 @@ from imbi.api.tickets import custom_fields
 from imbi.api.tickets.store import (
     MAX_LABEL_LENGTH,
     ActorKind,
+    AgentActivity,
     AssigneeKind,
     Channel,
     Control,
@@ -517,7 +518,13 @@ class TicketUnit(pydantic.BaseModel):
     truncated: bool = False
 
 
-class AgentTaskListItem(AgentTaskResponse):
+class AgentTaskDetail(AgentTaskResponse):
+    #: What the agent does now; ``null`` for a person ticket or a
+    #: ticket that is not active.
+    agent_activity: AgentActivity | None = None
+
+
+class AgentTaskListItem(AgentTaskDetail):
     #: When the oldest open request opened, for a task that waits on a
     #: person; ``null`` when the task is closed or has none open.
     blocked_since: datetime.datetime | None = None
@@ -2337,13 +2344,15 @@ async def list_ticket_labels(
     return await store.label_counts(org_id, normalize_label(q), limit)
 
 
-@tickets_router.get('/{short_id}', response_model=AgentTaskResponse)
-async def get_agent_task(task: ReadableTask) -> dict[str, typing.Any]:
+@tickets_router.get('/{short_id}', response_model=AgentTaskDetail)
+async def get_agent_task(
+    task: ReadableTask, store: tickets.Store
+) -> dict[str, typing.Any]:
     """Get a task by its short id (``T-<n>``).
 
     The service account of the task's agent can read its own task.
     """
-    return task
+    return {**task, 'agent_activity': await store.agent_activity(task['id'])}
 
 
 @tickets_router.get(

@@ -11990,6 +11990,141 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** AgentTaskDetail */
+        AgentTaskDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Short Id */
+            short_id: string;
+            /**
+             * Assignee Kind
+             * @default agent
+             * @enum {string}
+             */
+            assignee_kind: "agent" | "person";
+            /** Assignee */
+            assignee?: string | null;
+            /** Agent Id */
+            agent_id?: string | null;
+            /** Agent Version */
+            agent_version?: number | null;
+            /** Prompt Version */
+            prompt_version?: number | null;
+            /** Platform Config Version */
+            platform_config_version?: number | null;
+            /** Service Account Id */
+            service_account_id?: string | null;
+            /** Projects */
+            projects: components["schemas"]["TaskProject"][];
+            /** Title */
+            title: string;
+            /** Description */
+            description: string;
+            origin: components["schemas"]["AgentTaskOrigin"];
+            /** Idempotency Key */
+            idempotency_key?: string | null;
+            /** Owner */
+            owner: string;
+            /** Budget */
+            budget?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "held" | "queued" | "running" | "paused" | "open" | "in_progress" | "blocked" | "closed";
+            /**
+             * Control
+             * @enum {string}
+             */
+            control: "run" | "pause" | "cancel";
+            /**
+             * Priority
+             * @default normal
+             * @enum {string}
+             */
+            priority: "low" | "normal" | "high" | "urgent";
+            /**
+             * Type
+             * @default task
+             * @enum {string}
+             */
+            type: "bug" | "task" | "feature";
+            /** Due Date */
+            due_date?: string | null;
+            /**
+             * Labels
+             * @default []
+             */
+            labels: string[];
+            /**
+             * Roles
+             * @default {}
+             */
+            roles: {
+                [key: string]: string;
+            };
+            team?: components["schemas"]["TicketTeam"] | null;
+            /**
+             * Custom Fields
+             * @default {}
+             */
+            custom_fields: {
+                [key: string]: unknown;
+            };
+            /** Backlog Rank */
+            backlog_rank?: number | null;
+            /** Phase */
+            phase?: string | null;
+            /** Outcome */
+            outcome?: string | null;
+            /** Outcome Reason */
+            outcome_reason?: string | null;
+            /** Cost Total */
+            cost_total: string;
+            /** Tokens In */
+            tokens_in: number;
+            /** Tokens Out */
+            tokens_out: number;
+            /** Cache Read Tokens */
+            cache_read_tokens: number;
+            /** Cache Write Tokens */
+            cache_write_tokens: number;
+            /** Last Seq */
+            last_seq: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Closed At */
+            closed_at?: string | null;
+            /** Log Archived At */
+            log_archived_at?: string | null;
+            /** Chain Id */
+            chain_id?: string | null;
+            /** Acknowledged At */
+            acknowledged_at?: string | null;
+            /** Acknowledged By */
+            acknowledged_by?: string | null;
+            /** Output Schema */
+            output_schema?: {
+                [key: string]: unknown;
+            } | null;
+            /** Structured Output */
+            structured_output?: {
+                [key: string]: unknown;
+            } | null;
+            /** Agent Activity */
+            agent_activity?: ("working" | "subagent" | "approval" | "person" | "stalled") | null;
+        };
         /** AgentTaskEventResponse */
         AgentTaskEventResponse: {
             /**
@@ -12159,6 +12294,8 @@ export interface components {
             structured_output?: {
                 [key: string]: unknown;
             } | null;
+            /** Agent Activity */
+            agent_activity?: ("working" | "subagent" | "approval" | "person" | "stalled") | null;
             /** Blocked Since */
             blocked_since?: string | null;
             /** Highlights */
@@ -33094,7 +33231,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AgentTaskResponse"];
+                    "application/json": components["schemas"]["AgentTaskDetail"];
                 };
             };
             /** @description Validation Error */
