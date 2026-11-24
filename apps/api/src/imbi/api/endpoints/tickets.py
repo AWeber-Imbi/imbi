@@ -36,7 +36,13 @@ import orjson
 import pydantic
 from fastapi import utils as fastapi_utils
 
-from imbi.api import blueprint_attributes, blueprint_sections, teams, tickets
+from imbi.api import (
+    blueprint_attributes,
+    blueprint_sections,
+    blueprint_values,
+    teams,
+    tickets,
+)
 from imbi.api.auth import autonomous, organizations, permissions
 from imbi.api.endpoints import agents
 from imbi.api.endpoints._pagination import (
@@ -3057,7 +3063,7 @@ async def update_ticket(
             task['priority'],
             changes.get('labels', task['labels']),
         )
-        changes['custom_fields'] = custom_fields.validate(
+        changes['custom_fields'] = blueprint_values.validate(
             matches, data.custom_fields, partial=True
         )
     if task is not None and data.roles:
