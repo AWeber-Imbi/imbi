@@ -4,6 +4,7 @@ import asyncio
 import collections.abc
 import contextlib
 import json
+import typing
 import unittest
 from unittest import mock
 
@@ -816,3 +817,37 @@ class SyncEnabledTestCase(unittest.IsolatedAsyncioTestCase):
             release.set()
             await slow
         self.assertEqual(['mcp_on_t'], manager.get_tool_names())
+
+    async def test_failed_read_hides_tools_for_its_turn(self) -> None:
+        manager = self._manager()
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def fake_read(db: object) -> list[common_models.MCPServer]:
+            if db == 'fail':
+                started.set()
+                await release.wait()
+                raise RuntimeError('graph down')
+            return [_make_server(slug='on'), _make_server(slug='off')]
+
+        async def failing_turn() -> tuple[
+            list[dict[str, typing.Any]], tuple[str, bool]
+        ]:
+            await manager.sync_enabled('fail')  # type: ignore[arg-type]
+            return (
+                manager.get_tools(),
+                await manager.execute_tool('mcp_on_t', {}),
+            )
+
+        with mock.patch.object(
+            external_mcp, 'get_enabled_mcp_servers', side_effect=fake_read
+        ):
+            turn = asyncio.create_task(failing_turn())
+            await started.wait()
+            await manager.sync_enabled(mock.AsyncMock())
+            release.set()
+            tools, (_content, is_error) = await turn
+        self.assertEqual([], tools)
+        self.assertTrue(is_error)
+        manager._sessions['on'].call_tool.assert_not_awaited()
+        self.assertEqual(['mcp_on_t', 'mcp_off_t'], manager.get_tool_names())

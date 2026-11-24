@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import contextvars
 import json
 import logging
 import re
@@ -214,6 +215,13 @@ class ExternalMCPManager:
         # number of the newest sync_enabled read, so a slow, older read
         # cannot replace the result of a newer one
         self._sync_seq = 0
+        # True in the context of a turn whose own enabled-server read
+        # failed; other turns cannot clear it (fail closed per turn)
+        self._read_failed: contextvars.ContextVar[bool] = (
+            contextvars.ContextVar(
+                f'external_mcp_read_failed_{id(self)}', default=False
+            )
+        )
         self._initialized = False
 
     async def initialize(self, db: graph.Graph) -> None:
@@ -437,12 +445,15 @@ class ExternalMCPManager:
         disabled stops at once, without a restart.
 
         Call this once for each turn. If there is no graph or the read
-        fails, all servers are disabled (fail closed).
+        fails, all servers are disabled (fail closed). The failure also
+        stays in the context of the calling turn, so a newer read that
+        another turn starts cannot expose tools to this turn.
 
         """
         self._sync_seq += 1
         seq = self._sync_seq
         enabled: set[str] = set()
+        failed = True
         if db is None:
             LOGGER.error('No graph to read the enabled MCP servers')
         else:
@@ -452,10 +463,14 @@ class ExternalMCPManager:
                 LOGGER.exception('Failed to read the enabled MCP servers')
             else:
                 enabled = {s.slug for s in servers}
+                failed = False
+        self._read_failed.set(failed)
         if seq == self._sync_seq:
             self._disabled = set(self._servers) - enabled
 
     def _is_enabled(self, name: str) -> bool:
+        if self._read_failed.get():
+            return False
         route = self._tool_routes.get(name)
         return route is not None and route[0] not in self._disabled
 
@@ -495,7 +510,7 @@ class ExternalMCPManager:
                 json.dumps({'error': f'Unknown MCP tool: {tool_name}'}),
                 True,
             )
-        if route[0] in self._disabled:
+        if self._read_failed.get() or route[0] in self._disabled:
             return (
                 json.dumps({'error': f'MCP server {route[0]} is disabled'}),
                 True,
