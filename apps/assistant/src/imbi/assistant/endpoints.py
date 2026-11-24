@@ -15,13 +15,12 @@ from imbi.assistant import (
     auth,
     client,
     client_tools,
-    external_mcp,
     mcp,
     models,
     settings,
     system_prompt,
 )
-from imbi.common import graph
+from imbi.common import external_mcp, graph
 from imbi.common.prompts import resolve
 from imbi.common.prompts import system as prompt_system
 
@@ -406,6 +405,7 @@ async def _build_tools_and_system(
     the current MCP, server, and client tool sets.
     """
     ext_manager = external_mcp.get_manager()
+    await ext_manager.sync_enabled(db)
     all_tools = (
         mcp_manager.get_tools()
         + mcp.get_server_tools()

@@ -94,6 +94,14 @@ The bot can call tools for up to `IMBI_SLACKBOT_MAX_TOOL_ROUNDS` rounds for
 one message. A tool result longer than `IMBI_SLACKBOT_MAX_TOOL_RESULT_CHARS`
 is replaced with an error.
 
+The bot also has the tools of each enabled MCP server at
+**Admin > Global Admin > Assistant > MCP Servers**, the same as the
+assistant. See
+[Assistant and MCP Servers](../admin/assistant-and-mcp-servers.md). These
+calls use the credentials of the server, not your token. The bot reads the
+servers at startup. A server that you disable stops at the next message.
+After you add a server or change its settings, restart imbi-slackbot.
+
 The bot also has Slack tools from
 [slackwright](https://github.com/gmr/slackwright). They work only in the
 thread of the message:
@@ -160,6 +168,8 @@ The bot also needs `POSTGRES_URL` (the graph, to find users), `VALKEY_URL`
 (the forms that it posts), and `IMBI_AUTH_JWT_SECRET`. Use the same JWT
 secret as imbi-api. With a different secret, imbi-api refuses every tool
 call.
+It decrypts the credentials of MCP servers with
+`IMBI_CONFIG_ENCRYPTION_KEY`. Use the same key as imbi-api.
 
 When the bot is off, or a Slack token is missing, the service starts but
 does not connect to Slack.

@@ -6,9 +6,9 @@ streamable-HTTP MCP session, measures round-trip latency, and discovers
 the server's tools, then tears the session down.
 
 It deliberately mirrors the connect/auth logic in
-``imbi.assistant.external_mcp`` (which maintains long-lived connections for
-the running assistant) rather than importing it: the assistant is a
-separate service and is not a dependency of the API.
+``imbi.common.external_mcp`` (which maintains long-lived connections for
+the running assistant and Slack bot). The two copies have drifted; see
+issue #925 to merge them.
 """
 
 import asyncio

@@ -1,6 +1,5 @@
 import contextlib
 import datetime
-import logging
 from typing import TYPE_CHECKING
 
 import fastapi
@@ -11,12 +10,18 @@ from imbi.assistant import (
     app_status,
     client,
     endpoints,
-    external_mcp,
     links,
     mcp,
     settings,
 )
-from imbi.common import graph, lifespan, posthog, sentry, server
+from imbi.common import (
+    external_mcp,
+    graph,
+    lifespan,
+    posthog,
+    sentry,
+    server,
+)
 from imbi.common.prompts import pool as prompt_pool
 
 if TYPE_CHECKING:
@@ -47,31 +52,6 @@ async def _links_lifespan() -> abc.AsyncIterator[None]:
     yield
 
 
-@contextlib.asynccontextmanager
-async def _external_mcp_lifespan() -> abc.AsyncIterator[None]:
-    # Runs after graph.graph_lifespan, so the graph has been
-    # initialized; open a short-lived connection to read the
-    # configured MCPServer nodes. A DB failure here must not
-    # prevent the service from starting.
-    db = graph.Graph()
-    try:
-        await db.open()
-        try:
-            await external_mcp.initialize(db)
-        finally:
-            await db.close()
-    except Exception:
-        logging.getLogger(__name__).exception(
-            'Failed to initialize external MCP servers'
-        )
-        # Ensure a manager exists so request handling does not 500.
-        await external_mcp.ensure_manager()
-    try:
-        yield
-    finally:
-        await external_mcp.aclose()
-
-
 def create_app() -> fastapi.FastAPI:
     app = fastapi.FastAPI(
         title='Imbi Assistant',
@@ -84,7 +64,7 @@ def create_app() -> fastapi.FastAPI:
             _anthropic_lifespan,
             _mcp_lifespan,
             _links_lifespan,
-            _external_mcp_lifespan,
+            external_mcp.lifespan,
         ),
     )
     prefix = settings.get_assistant_settings().api_prefix

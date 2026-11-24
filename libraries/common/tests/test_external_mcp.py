@@ -4,13 +4,14 @@ import asyncio
 import collections.abc
 import contextlib
 import json
+import typing
 import unittest
 from unittest import mock
 
 import anyio
 import httpx
 
-from imbi.assistant import external_mcp
+from imbi.common import external_mcp
 from imbi.common import models as common_models
 
 
@@ -47,7 +48,7 @@ class BuildAuthTestCase(unittest.TestCase):
         self.assertIsNone(headers)
         self.assertIsNone(http_auth)
 
-    @mock.patch('imbi.assistant.external_mcp.decrypt_config_value')
+    @mock.patch('imbi.common.external_mcp.decrypt_config_value')
     def test_static_auth(self, mock_decrypt: mock.MagicMock) -> None:
         mock_decrypt.return_value = 'secret-token'
         server = _make_server(
@@ -60,7 +61,7 @@ class BuildAuthTestCase(unittest.TestCase):
         self.assertIsNone(http_auth)
         mock_decrypt.assert_called_once_with('ciphertext')
 
-    @mock.patch('imbi.assistant.external_mcp.decrypt_config_value')
+    @mock.patch('imbi.common.external_mcp.decrypt_config_value')
     def test_static_auth_missing_value(
         self, mock_decrypt: mock.MagicMock
     ) -> None:
@@ -74,7 +75,7 @@ class BuildAuthTestCase(unittest.TestCase):
         self.assertIsNone(headers)
         self.assertIsNone(http_auth)
 
-    @mock.patch('imbi.assistant.external_mcp.decrypt_config_value')
+    @mock.patch('imbi.common.external_mcp.decrypt_config_value')
     def test_oauth_auth(self, mock_decrypt: mock.MagicMock) -> None:
         mock_decrypt.return_value = 'client-secret'
         server = _make_server(
@@ -92,7 +93,7 @@ class BuildAuthTestCase(unittest.TestCase):
         self.assertEqual(http_auth._token_url, str(server.oauth_token_url))
         mock_decrypt.assert_called_once_with('ciphertext')
 
-    @mock.patch('imbi.assistant.external_mcp.decrypt_config_value')
+    @mock.patch('imbi.common.external_mcp.decrypt_config_value')
     def test_oauth_auth_missing_secret(
         self, mock_decrypt: mock.MagicMock
     ) -> None:
@@ -133,7 +134,7 @@ class OAuthClientCredentialsAuthTestCase(
         mock_client.__aenter__.return_value = mock_client
 
         with mock.patch(
-            'imbi.assistant.external_mcp.httpx.AsyncClient',
+            'imbi.common.external_mcp.httpx.AsyncClient',
             return_value=mock_client,
         ):
             request = httpx.Request('GET', 'https://mcp.example.com')
@@ -234,6 +235,22 @@ class ConnectAndRegisterTestCase(
         await manager._connect_server(server)
         self.assertEqual(manager.get_tool_names(), [])
 
+    async def test_discovery_timeout_stops_session_task(self) -> None:
+        manager = external_mcp.ExternalMCPManager()
+        server = _make_server(slug='svc', timeout=1)
+        session = mock.AsyncMock()
+        session.list_tools.side_effect = asyncio.Event().wait
+        holder = asyncio.create_task(asyncio.Event().wait())
+
+        async def fake_open(_server: object) -> mock.AsyncMock:
+            manager._session_tasks['svc'] = holder
+            return session
+
+        manager._open_session = fake_open  # type: ignore
+        await manager._connect_server(server)
+        self.assertTrue(holder.cancelled())
+        self.assertEqual(manager.get_tool_names(), [])
+
     async def test_connect_propagates_cancellation(self) -> None:
         manager = external_mcp.ExternalMCPManager()
         server = _make_server(slug='svc')
@@ -251,7 +268,7 @@ class ConnectAndRegisterTestCase(
         self._patch_session(manager, [_make_tool('thing')])
         db = mock.AsyncMock()
         with mock.patch(
-            'imbi.assistant.external_mcp.age_ops.get_enabled_mcp_servers',
+            'imbi.common.external_mcp.get_enabled_mcp_servers',
             return_value=[server],
         ):
             await manager.initialize(db)
@@ -413,7 +430,7 @@ class _FakeClientSession:
         result.tools = [_make_tool('search')]
         self.list_tools = mock.AsyncMock(return_value=result)
 
-    async def __aenter__(self) -> '_FakeClientSession':
+    async def __aenter__(self) -> _FakeClientSession:
         return self
 
     async def __aexit__(self, *_exc: object) -> None:
@@ -433,12 +450,12 @@ class OpenSessionTestCase(unittest.IsolatedAsyncioTestCase):
         )
         with (
             mock.patch(
-                'imbi.assistant.external_mcp.streamable_http.'
+                'imbi.common.external_mcp.streamable_http.'
                 'streamable_http_client',
                 return_value=transport,
             ) as mock_client_ctx,
             mock.patch(
-                'imbi.assistant.external_mcp.mcp.ClientSession',
+                'imbi.common.external_mcp.mcp.ClientSession',
                 _FakeClientSession,
             ),
         ):
@@ -454,13 +471,13 @@ class OpenSessionTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(passed_url, str(server.url))
 
     @mock.patch(
-        'imbi.assistant.external_mcp.create_mcp_http_client',
+        'imbi.common.external_mcp.create_mcp_http_client',
     )
     async def test_verify_ssl(self, mock_factory: mock.MagicMock) -> None:
         await self._run(_make_server(verify_ssl=True))
         mock_factory.assert_called_once()
 
-    @mock.patch('imbi.assistant.external_mcp.httpx.AsyncClient')
+    @mock.patch('imbi.common.external_mcp.httpx.AsyncClient')
     async def test_no_verify_ssl(self, mock_client: mock.MagicMock) -> None:
         await self._run(_make_server(verify_ssl=False))
         mock_client.assert_called_once()
@@ -470,8 +487,7 @@ class OpenSessionTestCase(unittest.IsolatedAsyncioTestCase):
         transport = mock.MagicMock()
         transport.__aenter__.side_effect = httpx.ConnectError('refused')
         with mock.patch(
-            'imbi.assistant.external_mcp.streamable_http.'
-            'streamable_http_client',
+            'imbi.common.external_mcp.streamable_http.streamable_http_client',
             return_value=transport,
         ):
             with self.assertRaises(httpx.ConnectError):
@@ -511,19 +527,19 @@ class SessionIsolationTestCase(unittest.IsolatedAsyncioTestCase):
 
         with (
             mock.patch(
-                'imbi.assistant.external_mcp.age_ops.get_enabled_mcp_servers',
+                'imbi.common.external_mcp.get_enabled_mcp_servers',
                 mock.AsyncMock(return_value=[_make_server()]),
             ),
             mock.patch(
-                'imbi.assistant.external_mcp.streamable_http.'
+                'imbi.common.external_mcp.streamable_http.'
                 'streamable_http_client',
                 fake_transport,
             ),
             mock.patch(
-                'imbi.assistant.external_mcp.mcp.ClientSession',
+                'imbi.common.external_mcp.mcp.ClientSession',
                 _FakeClientSession,
             ),
-            self.assertLogs('imbi.assistant.external_mcp', 'ERROR'),
+            self.assertLogs('imbi.common.external_mcp', 'ERROR'),
         ):
             # This test task stands in for the ASGI lifespan task. Before
             # the fix, the failing child cancelled it here.
@@ -587,7 +603,7 @@ class ModuleLevelTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_initialize_and_get_manager(self) -> None:
         db = mock.AsyncMock()
         with mock.patch(
-            'imbi.assistant.external_mcp.age_ops.get_enabled_mcp_servers',
+            'imbi.common.external_mcp.get_enabled_mcp_servers',
             return_value=[],
         ):
             await external_mcp.initialize(db)
@@ -612,7 +628,7 @@ class ModuleLevelTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_reinitialize(self) -> None:
         db = mock.AsyncMock()
         with mock.patch(
-            'imbi.assistant.external_mcp.age_ops.get_enabled_mcp_servers',
+            'imbi.common.external_mcp.get_enabled_mcp_servers',
             return_value=[],
         ):
             await external_mcp.initialize(db)
@@ -620,3 +636,218 @@ class ModuleLevelTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(success)
         self.assertEqual(count, 0)
         await external_mcp.aclose()
+
+
+class GetEnabledMCPServersTestCase(
+    unittest.IsolatedAsyncioTestCase,
+):
+    async def test_returns_empty(self) -> None:
+        db = mock.AsyncMock()
+        db.execute.return_value = []
+        servers = await external_mcp.get_enabled_mcp_servers(db)
+        self.assertEqual(servers, [])
+
+    async def test_parses_servers(self) -> None:
+        db = mock.AsyncMock()
+        db.execute.return_value = [{'s': {'raw': 'data'}}]
+        with mock.patch('imbi.common.graph.parse_agtype') as mc:
+            mc.return_value = {
+                'name': 'Example',
+                'slug': 'example',
+                'url': 'https://mcp.example.com/mcp',
+                'enabled': True,
+            }
+            servers = await external_mcp.get_enabled_mcp_servers(db)
+        self.assertEqual(len(servers), 1)
+        self.assertEqual(servers[0].slug, 'example')
+        self.assertEqual(str(servers[0].url), 'https://mcp.example.com/mcp')
+
+    async def test_skips_invalid_rows(self) -> None:
+        db = mock.AsyncMock()
+        db.execute.return_value = [
+            {'s': {'raw': 'bad'}},
+            {'s': {'raw': 'good'}},
+        ]
+        valid = {
+            'name': 'Example',
+            'slug': 'example',
+            'url': 'https://mcp.example.com/mcp',
+            'enabled': True,
+        }
+        with mock.patch('imbi.common.graph.parse_agtype') as mc:
+            # First row is missing required fields and fails validation;
+            # the loader must skip it and still return the valid one.
+            mc.side_effect = [{'enabled': True}, valid]
+            servers = await external_mcp.get_enabled_mcp_servers(db)
+        self.assertEqual(len(servers), 1)
+        self.assertEqual(servers[0].slug, 'example')
+
+
+class ExternalMCPLifespanTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        self._original = external_mcp._manager
+        external_mcp._manager = None
+
+    def tearDown(self) -> None:
+        external_mcp._manager = self._original
+
+    @mock.patch('imbi.common.external_mcp.aclose')
+    @mock.patch('imbi.common.external_mcp.initialize')
+    @mock.patch('imbi.common.external_mcp.graph.Graph')
+    async def test_lifespan_success(
+        self,
+        graph_cls: mock.MagicMock,
+        ext_init: mock.AsyncMock,
+        ext_close: mock.AsyncMock,
+    ) -> None:
+        db = mock.AsyncMock()
+        graph_cls.return_value = db
+        async with external_mcp.lifespan():
+            pass
+        db.open.assert_awaited_once()
+        db.close.assert_awaited_once()
+        ext_init.assert_awaited_once_with(db)
+        ext_close.assert_awaited_once()
+
+    @mock.patch('imbi.common.external_mcp.aclose')
+    @mock.patch('imbi.common.external_mcp.graph.Graph')
+    async def test_lifespan_db_failure_installs_manager(
+        self,
+        graph_cls: mock.MagicMock,
+        ext_close: mock.AsyncMock,
+    ) -> None:
+        db = mock.AsyncMock()
+        db.open.side_effect = RuntimeError('no db')
+        graph_cls.return_value = db
+        async with external_mcp.lifespan():
+            # A manager is installed despite the DB failure.
+            self.assertIsNotNone(external_mcp._manager)
+        ext_close.assert_awaited_once()
+
+    @mock.patch('imbi.common.external_mcp.aclose')
+    @mock.patch('imbi.common.external_mcp.initialize')
+    @mock.patch('imbi.common.external_mcp.graph.Graph')
+    async def test_lifespan_cancelled_during_startup_closes_manager(
+        self,
+        graph_cls: mock.MagicMock,
+        ext_init: mock.AsyncMock,
+        ext_close: mock.AsyncMock,
+    ) -> None:
+        db = mock.AsyncMock()
+        db.close.side_effect = asyncio.CancelledError
+        graph_cls.return_value = db
+        with self.assertRaises(asyncio.CancelledError):
+            async with external_mcp.lifespan():
+                self.fail('lifespan must not yield after cancellation')
+        ext_init.assert_awaited_once_with(db)
+        ext_close.assert_awaited_once()
+
+
+class SyncEnabledTestCase(unittest.IsolatedAsyncioTestCase):
+    """A server that an admin disables stops at the next turn."""
+
+    def _manager(self) -> external_mcp.ExternalMCPManager:
+        manager = external_mcp.ExternalMCPManager()
+        for slug in ('on', 'off'):
+            manager._servers[slug] = _make_server(slug=slug)
+            name = f'mcp_{slug}_t'
+            manager._tool_routes[name] = (slug, 't')
+            manager._tools.append({'name': name})
+            manager._sessions[slug] = mock.AsyncMock()
+        return manager
+
+    async def test_disabled_server_is_hidden_and_refused(self) -> None:
+        manager = self._manager()
+        with mock.patch.object(
+            external_mcp,
+            'get_enabled_mcp_servers',
+            return_value=[_make_server(slug='on')],
+        ):
+            await manager.sync_enabled(mock.AsyncMock())
+        self.assertEqual(['mcp_on_t'], manager.get_tool_names())
+        content, is_error = await manager.execute_tool('mcp_off_t', {})
+        self.assertTrue(is_error)
+        self.assertIn('disabled', content)
+        manager._sessions['off'].call_tool.assert_not_awaited()
+
+    async def test_read_failure_disables_all(self) -> None:
+        manager = self._manager()
+        with mock.patch.object(
+            external_mcp,
+            'get_enabled_mcp_servers',
+            side_effect=RuntimeError('graph down'),
+        ):
+            await manager.sync_enabled(mock.AsyncMock())
+        self.assertEqual([], manager.get_tools())
+
+    async def test_enabled_again_comes_back(self) -> None:
+        manager = self._manager()
+        manager._disabled = {'off'}
+        with mock.patch.object(
+            external_mcp,
+            'get_enabled_mcp_servers',
+            return_value=[_make_server(slug='on'), _make_server(slug='off')],
+        ):
+            await manager.sync_enabled(mock.AsyncMock())
+        self.assertEqual(['mcp_on_t', 'mcp_off_t'], manager.get_tool_names())
+
+    async def test_no_graph_disables_all(self) -> None:
+        manager = self._manager()
+        await manager.sync_enabled(None)
+        self.assertEqual([], manager.get_tools())
+
+    async def test_older_read_does_not_replace_newer(self) -> None:
+        manager = self._manager()
+        slow_started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def fake_read(db: object) -> list[common_models.MCPServer]:
+            if db == 'slow':
+                slow_started.set()
+                await release.wait()
+                return [_make_server(slug='on'), _make_server(slug='off')]
+            return [_make_server(slug='on')]
+
+        with mock.patch.object(
+            external_mcp, 'get_enabled_mcp_servers', side_effect=fake_read
+        ):
+            slow = asyncio.create_task(manager.sync_enabled('slow'))  # type: ignore[arg-type]
+            await slow_started.wait()
+            await manager.sync_enabled(mock.AsyncMock())
+            release.set()
+            await slow
+        self.assertEqual(['mcp_on_t'], manager.get_tool_names())
+
+    async def test_failed_read_hides_tools_for_its_turn(self) -> None:
+        manager = self._manager()
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def fake_read(db: object) -> list[common_models.MCPServer]:
+            if db == 'fail':
+                started.set()
+                await release.wait()
+                raise RuntimeError('graph down')
+            return [_make_server(slug='on'), _make_server(slug='off')]
+
+        async def failing_turn() -> tuple[
+            list[dict[str, typing.Any]], tuple[str, bool]
+        ]:
+            await manager.sync_enabled('fail')  # type: ignore[arg-type]
+            return (
+                manager.get_tools(),
+                await manager.execute_tool('mcp_on_t', {}),
+            )
+
+        with mock.patch.object(
+            external_mcp, 'get_enabled_mcp_servers', side_effect=fake_read
+        ):
+            turn = asyncio.create_task(failing_turn())
+            await started.wait()
+            await manager.sync_enabled(mock.AsyncMock())
+            release.set()
+            tools, (_content, is_error) = await turn
+        self.assertEqual([], tools)
+        self.assertTrue(is_error)
+        manager._sessions['on'].call_tool.assert_not_awaited()
+        self.assertEqual(['mcp_on_t', 'mcp_off_t'], manager.get_tool_names())
