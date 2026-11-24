@@ -715,7 +715,7 @@ of the project does. The step sends the same search to imbi-api as the
 | `environments` | Environment slugs. With two or more, Imbi searches each one and merges the entries | None. The plugin searches with no environment |
 | `start_time` | An ISO 8601 time | 30 minutes before now, also when you set `end_time` |
 | `end_time` | An ISO 8601 time | Now |
-| `cursor` | The `next_cursor` of an earlier search. One environment only | None |
+| `cursor` | The `next_cursor` of an earlier search. One environment only. Set `start_time` and `end_time` to the values of that search, or the step fails with `invalid_params` | None |
 | `limit` | The maximum number of entries, 1 to 1000 | 100 |
 | `filters` | Filters as `field:op:value`. `op` is `eq`, `ne`, `contains`, `starts_with`, or `regex` | None |
 | `levels` | Severity levels, for example `ERROR` | All |

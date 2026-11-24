@@ -686,14 +686,7 @@ class Executors:
         )
 
     async def _search_logs(self, call: Call) -> Outcome:
-        # A template that renders to nothing takes the default of its
-        # parameter, so imbi-api applies its own default.
-        params = _params(
-            search_logs.Params,
-            dataclasses.replace(
-                call, params={k: v for k, v in call.params.items() if v != ''}
-            ),
-        )
+        params = _params(search_logs.Params, call)
         _check('project_id', params.project_id, _ID)
         query = {
             'source': params.source,

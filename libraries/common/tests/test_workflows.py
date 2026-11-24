@@ -4,6 +4,8 @@ import time
 import typing
 import unittest
 
+import pydantic
+
 from imbi.common.workflows import graph, registry, validation
 
 
@@ -441,6 +443,30 @@ class RegistryTestCase(unittest.TestCase):
         )
         self.assertEqual(
             registry.STEP_TYPES['wait'].required_permissions({}), set()
+        )
+
+    def test_search_logs_empty_values_take_the_default(self) -> None:
+        params = registry.STEP_TYPES['search_logs'].params.model_validate(
+            {'project_id': 'p1', 'limit': '', 'environments': ''}
+        )
+        self.assertEqual(params.model_dump()['limit'], 100)
+        self.assertEqual(params.model_dump()['environments'], [])
+        with self.assertRaises(pydantic.ValidationError):
+            registry.STEP_TYPES['search_logs'].params.model_validate(
+                {'project_id': ''}
+            )
+
+    def test_search_logs_cursor_needs_the_window(self) -> None:
+        model = registry.STEP_TYPES['search_logs'].params
+        with self.assertRaises(pydantic.ValidationError):
+            model.model_validate({'project_id': 'p1', 'cursor': 'c1'})
+        model.model_validate(
+            {
+                'project_id': 'p1',
+                'cursor': 'c1',
+                'start_time': '2026-01-01T00:00:00Z',
+                'end_time': '2026-01-01T00:30:00Z',
+            }
         )
         self.assertEqual(
             registry.STEP_TYPES['agent'].required_permissions({}),
