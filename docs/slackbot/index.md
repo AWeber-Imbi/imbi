@@ -39,6 +39,30 @@ Ask the bot to make an agent task, for example: "@imbi create a task to fix
 the issue in this thread and give it to mender". You own the task. See
 [Tickets](../admin/tickets.md#slack).
 
+### Answer a ticket that needs input
+
+When an agent asks for input (`request_input`) or for an approval, the bot
+posts a form with the same choices as the "Waiting on you" box of the ticket:
+
+- A question with options: pick an option, or write an answer. A written
+  answer replaces the option.
+- A question with no options: write an answer.
+- An approval: Approve or Reject. The form lists the artifacts.
+
+The bot posts the form to the **Slack channel** of the agent (`#name` or a
+channel id). When the agent has no channel, or the bot cannot find it, the
+bot sends the form as a direct message to the owner of the ticket. Invite
+the bot to the channel first. The bot looks up a channel name that it did
+not find again after 15 minutes.
+
+Any person who can see the form can send it. The bot resolves the request
+as that person, so the person needs `ticket:resolve`, and the ticket records
+`slack` as the channel. When imbi-api refuses the answer, the bot tells
+you why. When someone can still answer (for example, you do not have
+`ticket:resolve`), the form opens again. When no one can (someone answered
+in the UI first, or the ticket closed), the form closes and shows the
+reason. A form stays open for 7 days.
+
 ## How the bot knows who you are
 
 1. The bot reads the email of your Slack profile (`users.info`).

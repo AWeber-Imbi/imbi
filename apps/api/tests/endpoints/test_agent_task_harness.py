@@ -9,15 +9,18 @@ import datetime
 import decimal
 import typing
 import uuid
+from unittest import mock
 
 import httpx
+import orjson
 from psycopg.types import json as pg_json
 
 from apps.api.tests.endpoints import test_agent_tasks
-from imbi.api import models
+from imbi.api import models, scoring
 from imbi.api.auth import permissions
 from imbi.api.endpoints import ticket_harness
 from imbi.api.graph_sql import props_template
+from imbi.common import valkey
 
 
 def new_id() -> str:
@@ -779,6 +782,37 @@ class RequestTests(HarnessTestCase):
         # A new session does not unblock a task with an open request.
         response = await self.post('sessions', {'session_key': 's-2'})
         self.assertEqual(response.json()['task']['status'], 'blocked')
+
+    async def test_new_request_goes_to_the_slack_stream(self) -> None:
+        await self.graph.execute(
+            'MATCH (a:Agent {{id: {id}}}) SET a.slack_channel = {channel}'
+            ' RETURN a.id AS id',
+            {'id': self.agent_id, 'channel': '#ops'},
+            ['id'],
+        )
+        client = mock.AsyncMock()
+        overrides = self.test_app.dependency_overrides
+        overrides[scoring._inject_optional_client] = lambda: client
+        self.addCleanup(overrides.pop, scoring._inject_optional_client)
+        body = {
+            'kind': 'feedback',
+            'title': 'Which branch?',
+            'options': ['main', 'dev'],
+            'request_key': 'k',
+        }
+        response = await self.post('requests', body)
+        self.assertEqual(response.status_code, 201, response.text)
+        # A repeat with the same key is not posted again.
+        self.assertEqual((await self.post('requests', body)).status_code, 200)
+        client.xadd.assert_awaited_once()
+        stream, fields = client.xadd.await_args.args
+        self.assertEqual(stream, valkey.TICKET_REQUESTS_STREAM)
+        entry = orjson.loads(fields['request'])
+        self.assertEqual(entry['request_id'], response.json()['request']['id'])
+        self.assertEqual(entry['short_id'], 'T-1')
+        self.assertEqual(entry['slack_channel'], '#ops')
+        self.assertEqual(entry['agent_name'], 'Triage Bot')
+        self.assertEqual(entry['options'], ['main', 'dev'])
 
     async def test_resume_keeps_a_task_with_an_open_request_blocked(
         self,

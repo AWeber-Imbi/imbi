@@ -31,6 +31,9 @@ The bot also needs `ANTHROPIC_API_KEY`, the shared `IMBI_AUTH_JWT_SECRET`, and
   can be passed to the model.
 - `files:write` — upload a single code block or table that is too long
   for one message as a file.
+- `channels:read`, `groups:read` — find the Slack channel of an agent by
+  name, to post the forms of tickets that need input.
+- `im:write` — send those forms as a direct message to the ticket owner.
 
 ## Manifest
 
@@ -56,6 +59,9 @@ oauth_config:
       - reactions:write
       - files:read
       - files:write
+      - channels:read
+      - groups:read
+      - im:write
 settings:
   event_subscriptions:
     bot_events:

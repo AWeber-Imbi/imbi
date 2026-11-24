@@ -11,6 +11,8 @@ ingest, Markdown posting, and the in-flight drain come from
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
 import logging
 import time
@@ -33,6 +35,7 @@ from imbi.slackbot import (
     mcp,
     settings,
     system_prompt,
+    ticket_requests,
 )
 
 # slack_sdk's AsyncWebClient is only loosely typed; treat it as Any
@@ -57,6 +60,7 @@ _bot_user_id: str | None = None
 _bot_id: str = ''
 _forms: forms.Runtime | None = None
 _form_store: stores.ValkeyFormStore | None = None
+_requests_task: asyncio.Task[None] | None = None
 
 
 class _StatusReporter:
@@ -297,7 +301,12 @@ async def _process(
 
 
 async def _on_submit(submission: forms.Submission) -> None:
-    """Run a turn in the form's thread with the submitted answers."""
+    """Resolve a ticket request, or run a turn in the form's thread with
+    the submitted answers."""
+    if _app is not None and await ticket_requests.answer(
+        _app.client, submission
+    ):
+        return
     thread_ts = submission.thread_ts
     # The toolkit posts forms only in the current thread.
     if _app is None or _form_store is None or thread_ts is None:
@@ -383,6 +392,7 @@ def _build_app(bot_token: str) -> AsyncApp:
 async def initialize() -> None:
     """Build the Slack app and open the Socket Mode connection."""
     global _app, _handler, _bot_user_id, _bot_id, _forms, _form_store
+    global _requests_task
 
     slackbot_settings = settings.get_slackbot_settings()
     if not slackbot_settings.enabled:
@@ -409,11 +419,20 @@ async def initialize() -> None:
     _handler = AsyncSocketModeHandler(_app, slackbot_settings.slack_app_token)
     await _handler.connect_async()  # type: ignore[no-untyped-call]
     LOGGER.info('Slack Socket Mode connection established')
+    _requests_task = asyncio.create_task(
+        ticket_requests.consume(_app.client, _forms)
+    )
 
 
 async def aclose() -> None:
     """Drain in-flight work and close the Socket Mode connection."""
     global _app, _handler, _bot_user_id, _bot_id, _forms, _form_store
+    global _requests_task
+    if _requests_task is not None:
+        _requests_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await _requests_task
+        _requests_task = None
     await inflight.wait_for_drain()
     if _handler is not None:
         await _handler.close_async()  # type: ignore[no-untyped-call]
