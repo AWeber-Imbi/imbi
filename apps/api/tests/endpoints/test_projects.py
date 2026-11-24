@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from apps.api.tests import support
 from imbi.api import models, secret_broker
+from imbi.api.auth import organizations as org_auth
 from imbi.common import graph, iggy
 
 PROJECT_ID = 'abc123nanoid'
@@ -49,6 +50,12 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         async def mock_get_current_user():
             return self.auth_context
 
+        self.test_app.dependency_overrides[org_auth.member_org_id] = (
+            lambda: 'org-1'
+        )
+        self.test_app.dependency_overrides[org_auth.member_project_org_id] = (
+            lambda: 'org-1'
+        )
         self.test_app.dependency_overrides[permissions.get_current_user] = (
             mock_get_current_user
         )
@@ -2715,6 +2722,12 @@ class _RelationshipsTestBase(support.SharedAppTestCase):
         async def mock_get_current_user():
             return self.auth_context
 
+        self.test_app.dependency_overrides[org_auth.member_org_id] = (
+            lambda: 'org-1'
+        )
+        self.test_app.dependency_overrides[org_auth.member_project_org_id] = (
+            lambda: 'org-1'
+        )
         self.test_app.dependency_overrides[permissions.get_current_user] = (
             mock_get_current_user
         )
@@ -2755,7 +2768,6 @@ class ProjectRelationshipsEndpointTestCase(_RelationshipsTestBase):
     def test_empty(self) -> None:
         """Returns an empty list when the project has no edges."""
         self.mock_db.execute.side_effect = [
-            [{'id': PROJECT_ID}],
             [{'direction': None, 'other': None}],
         ]
 
@@ -2774,7 +2786,6 @@ class ProjectRelationshipsEndpointTestCase(_RelationshipsTestBase):
     def test_mixed_directions(self) -> None:
         """Returns inbound and outbound rows, inbound sorted first."""
         self.mock_db.execute.side_effect = [
-            [{'id': PROJECT_ID}],
             [
                 {
                     'direction': 'inbound',
@@ -2819,28 +2830,12 @@ class ProjectRelationshipsEndpointTestCase(_RelationshipsTestBase):
             'aws-lambda',
         )
 
-    def test_not_found(self) -> None:
-        """Returns 404 when the project does not exist."""
-        self.mock_db.execute.return_value = []
-
-        with mock.patch(
-            'imbi.common.graph.parse_agtype',
-            side_effect=lambda x: x,
-        ):
-            response = self.client.get(
-                '/organizations/engineering/projects/missing/relationships'
-            )
-
-        self.assertEqual(response.status_code, 404)
-        self.assertIn('not found', response.json()['detail'])
-
     def test_order_by_has_stable_tiebreaker(self) -> None:
         """ORDER BY must include a unique tie-breaker after other.name so
         sibling projects that share a name across namespaces sort
         deterministically across repeated requests.
         """
         self.mock_db.execute.side_effect = [
-            [{'id': PROJECT_ID}],
             [{'direction': None, 'other': None}],
         ]
 
@@ -2855,7 +2850,7 @@ class ProjectRelationshipsEndpointTestCase(_RelationshipsTestBase):
 
         self.assertEqual(response.status_code, 200)
         # Fetch query is the second call (first is exists check)
-        query = self.mock_db.execute.call_args_list[1].args[0]
+        query = self.mock_db.execute.call_args_list[0].args[0]
         normalized = ' '.join(query.split())
         self.assertIn(
             'ORDER BY CASE direction',

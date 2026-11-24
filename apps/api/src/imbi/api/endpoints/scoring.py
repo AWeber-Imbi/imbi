@@ -9,7 +9,7 @@ import typing
 
 import fastapi
 
-from imbi.api.auth import permissions
+from imbi.api.auth import organizations, permissions
 from imbi.api.domain import scoring as scoring_models
 from imbi.api.endpoints.scoring_policies import load_policy
 from imbi.api.scoring import OptionalValkeyClient
@@ -42,7 +42,8 @@ def _ts(value: typing.Any) -> str:
 
 
 @scoring_router.get(
-    '/organizations/{org_slug}/projects/{project_id}/score/history'
+    '/organizations/{org_slug}/projects/{project_id}/score/history',
+    dependencies=organizations.PROJECT_MEMBER,
 )
 async def get_score_history(
     org_slug: str,
@@ -58,19 +59,6 @@ async def get_score_history(
     ] = None,
     to: datetime.datetime | None = None,
 ) -> scoring_models.ScoreHistoryResponse:
-    exists = await db.execute(
-        'MATCH (p:Project {{id: {id}}})'
-        '-[:OWNED_BY]->(:Team)'
-        '-[:BELONGS_TO]->(:Organization {{slug: {org}}})'
-        ' RETURN p.id AS id',
-        {'id': project_id, 'org': org_slug},
-        ['id'],
-    )
-    if not exists:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=f'Project {project_id!r} not found',
-        )
     bucket = _GRANULARITY_EXPR[granularity]
     where: list[str] = ['project_id = {project_id:String}']
     params: dict[str, typing.Any] = {'project_id': project_id}
@@ -124,7 +112,8 @@ async def get_score_history(
 
 
 @scoring_router.get(
-    '/organizations/{org_slug}/projects/{project_id}/score/trend'
+    '/organizations/{org_slug}/projects/{project_id}/score/trend',
+    dependencies=organizations.PROJECT_MEMBER,
 )
 async def get_score_trend(
     org_slug: str,

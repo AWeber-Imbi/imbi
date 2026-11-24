@@ -106,11 +106,6 @@ organizations_router = fastapi.APIRouter(
     prefix='/organizations', tags=['Organizations']
 )
 
-# Each route under /projects/{project_id} acts with the caller's role in
-# the path organization only, on a project of that organization. A
-# platform admin who is not a member gets 403, as on the other
-# organization routes.
-_PROJECT_MEMBER = [fastapi.Depends(org_auth.member_project_org_id)]
 
 organizations_router.include_router(
     teams_router,
@@ -137,6 +132,7 @@ organizations_router.include_router(
 organizations_router.include_router(
     projects_router,
     prefix='/{org_slug}/projects',
+    dependencies=[fastapi.Depends(org_auth.member_org_id)],
 )
 organizations_router.include_router(
     integrations_router,
@@ -149,22 +145,22 @@ organizations_router.include_router(
 organizations_router.include_router(
     events_project_router,
     prefix='/{org_slug}/projects/{project_id}/events',
-    dependencies=_PROJECT_MEMBER,
+    dependencies=org_auth.PROJECT_MEMBER,
 )
 organizations_router.include_router(
     operations_log_project_router,
     prefix='/{org_slug}/projects/{project_id}/operations-log',
-    dependencies=_PROJECT_MEMBER,
+    dependencies=org_auth.PROJECT_MEMBER,
 )
 organizations_router.include_router(
     releases_router,
     prefix='/{org_slug}/projects/{project_id}/releases',
-    dependencies=_PROJECT_MEMBER,
+    dependencies=org_auth.PROJECT_MEMBER,
 )
 organizations_router.include_router(
     project_services_router,
     prefix='/{org_slug}/projects/{project_id}/services',
-    dependencies=_PROJECT_MEMBER,
+    dependencies=org_auth.PROJECT_MEMBER,
 )
 organizations_router.include_router(
     tags_router,
@@ -200,7 +196,7 @@ organizations_router.include_router(
 organizations_router.include_router(
     documents_project_router,
     prefix='/{org_slug}/projects/{project_id}/documents',
-    dependencies=_PROJECT_MEMBER,
+    dependencies=org_auth.PROJECT_MEMBER,
 )
 organizations_router.include_router(
     documents_project_type_router,
@@ -215,7 +211,7 @@ organizations_router.include_router(
     prefix=(
         '/{org_slug}/projects/{project_id}/documents/{document_id}/comments'
     ),
-    dependencies=_PROJECT_MEMBER,
+    dependencies=org_auth.PROJECT_MEMBER,
 )
 # Attachment-agnostic comment routes — the same handlers resolve the
 # document through whichever vertex it is attached to.
@@ -301,47 +297,47 @@ organizations_router.include_router(
 organizations_router.include_router(
     project_configuration_router,
     prefix='/{org_slug}/projects/{project_id}/configuration',
-    dependencies=_PROJECT_MEMBER,
+    dependencies=org_auth.PROJECT_MEMBER,
 )
 organizations_router.include_router(
     project_logs_router,
     prefix='/{org_slug}/projects/{project_id}/logs',
-    dependencies=_PROJECT_MEMBER,
+    dependencies=org_auth.PROJECT_MEMBER,
 )
 organizations_router.include_router(
     project_incidents_router,
     prefix='/{org_slug}/projects/{project_id}/incidents',
-    dependencies=_PROJECT_MEMBER,
+    dependencies=org_auth.PROJECT_MEMBER,
 )
 organizations_router.include_router(
     project_lifecycle_router,
     prefix='/{org_slug}/projects/{project_id}/lifecycle',
-    dependencies=_PROJECT_MEMBER,
+    dependencies=org_auth.PROJECT_MEMBER,
 )
 organizations_router.include_router(
     project_deployments_router,
     prefix='/{org_slug}/projects/{project_id}/deployments',
-    dependencies=_PROJECT_MEMBER,
+    dependencies=org_auth.PROJECT_MEMBER,
 )
 organizations_router.include_router(
     project_analysis_router,
     prefix='/{org_slug}/projects/{project_id}/analysis',
-    dependencies=_PROJECT_MEMBER,
+    dependencies=org_auth.PROJECT_MEMBER,
 )
 organizations_router.include_router(
     project_commit_sync_router,
     prefix='/{org_slug}/projects/{project_id}/commits',
-    dependencies=_PROJECT_MEMBER,
+    dependencies=org_auth.PROJECT_MEMBER,
 )
 organizations_router.include_router(
     project_pr_sync_router,
     prefix='/{org_slug}/projects/{project_id}/pull-requests',
-    dependencies=_PROJECT_MEMBER,
+    dependencies=org_auth.PROJECT_MEMBER,
 )
 organizations_router.include_router(
     pull_requests_project_router,
     prefix='/{org_slug}/projects/{project_id}/pull-requests',
-    dependencies=_PROJECT_MEMBER,
+    dependencies=org_auth.PROJECT_MEMBER,
 )
 organizations_router.include_router(
     pull_requests_router,
