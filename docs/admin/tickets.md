@@ -515,6 +515,23 @@ choice.
 - The API is `GET /organizations/{org}/tickets?group_by=run`; the counts and
   position endpoints take `group_by=run` too.
 
+## Agent activity
+
+A ticket row and the ticket header show an icon for what the agent does
+now. Hover the icon to see the text. Person tickets and tickets that are not
+active (queued, held, paused, or closed) show no icon.
+
+| Icon | Activity | When |
+|---|---|---|
+| Activity (blue, pulses) | Working | The ticket is running and nothing below applies |
+| Fork (blue) | Waiting on a subagent | The ticket is running and a child ticket is not closed |
+| Shield with a question mark (amber) | Waiting on an approval | The ticket has an open approval request |
+| Speech bubble with a question mark (amber) | Waiting on a person | The ticket has an open feedback request |
+| Warning triangle (red) | Stalled | The ticket is running and its session sent no heartbeat in 60 seconds |
+
+The API sends it as `agent_activity` on `GET /organizations/{org}/tickets`
+and `GET /organizations/{org}/tickets/{id}`.
+
 ## Waiting on me
 
 The **Tickets** item in the top bar shows the number of items that wait

@@ -1832,6 +1832,8 @@ export type TicketCounts = Schemas['AgentTaskCounts']
 
 export type TicketCreate = Schemas['AgentTaskCreate']
 
+export type TicketDetail = Schemas['AgentTaskDetail']
+
 export type TicketEvent = Schemas['AgentTaskEventResponse']
 
 export type TicketFilterable = Schemas['FilterableAttribute']

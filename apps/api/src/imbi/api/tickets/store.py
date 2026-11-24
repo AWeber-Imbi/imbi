@@ -149,6 +149,13 @@ ActorKind = typing.Literal['human', 'agent', 'subagent', 'system']
 Channel = typing.Literal['web', 'slack', 'mcp', 'api', 'harness']
 Outcome = agent_step.Outcome
 AssigneeKind = typing.Literal['agent', 'person']
+#: What the agent of an active ticket does now: ``working``,
+#: ``subagent`` (waits on an open child ticket), ``approval`` or
+#: ``person`` (waits on an open request), or ``stalled`` (running with
+#: no recent heartbeat).
+AgentActivity = typing.Literal[
+    'working', 'subagent', 'approval', 'person', 'stalled'
+]
 TicketType = typing.Literal['bug', 'task', 'feature']
 #: The longest label or role name, after normalization.
 MAX_LABEL_LENGTH = 50
@@ -419,6 +426,30 @@ PROJECTS: typing.LiteralString = (
     ' WHERE p.organization_id = t.organization_id AND p.ticket_id = t.id)'
     ' AS projects'
 )
+
+#: The seconds with no heartbeat after which a running agent shows as
+#: stalled. The harness sends a heartbeat each 10 seconds; the sweeper
+#: closes the session after ``sweeper.STALE_SESSION_SECONDS``.
+STALLED_SECONDS = 60
+
+#: What the agent of ticket ``t`` does now, for its activity icon (see
+#: :data:`AgentActivity`). ``NULL`` for a person ticket and for a ticket
+#: that is not active.
+_AGENT_ACTIVITY = sql.SQL(
+    "CASE WHEN t.assignee_kind <> 'agent' OR t.status = 'closed' THEN NULL"
+    " WHEN EXISTS (SELECT 1 {open} AND r.kind = 'approval')"
+    " THEN 'approval'"
+    " WHEN EXISTS (SELECT 1 {open}) THEN 'person'"
+    " WHEN t.status <> 'running' THEN NULL"
+    ' WHEN EXISTS (SELECT 1 FROM tickets.tickets AS c'
+    ' WHERE c.organization_id = t.organization_id'
+    " AND c.parent_id = t.id AND c.status <> 'closed') THEN 'subagent'"
+    ' WHEN NOT EXISTS (SELECT 1 FROM tickets.sessions AS s'
+    ' WHERE s.ticket_id = t.id AND s.closed_at IS NULL'
+    ' AND COALESCE(s.heartbeat_at, s.opened_at)'
+    ' > NOW() - make_interval(secs => {stalled}))'
+    " THEN 'stalled' ELSE 'working' END AS agent_activity"
+).format(open=_OPEN_REQUESTS, stalled=sql.Literal(STALLED_SECONDS))
 
 #: A task row with its projects. Continue it with a WHERE clause.
 _SELECT_TASKS: typing.LiteralString = (
@@ -1326,6 +1357,20 @@ class TicketStore:
                 (organization_id, short_id),
             )
 
+    async def agent_activity(self, task_id: uuid.UUID) -> str | None:
+        """Return what the agent of the task does now (see
+        :data:`AgentActivity`); ``None`` when it is not active."""
+        async with self._pool.connection() as conn:
+            cursor = await conn.execute(
+                sql.SQL(
+                    'SELECT {activity} FROM tickets.tickets AS t'
+                    ' WHERE t.id = %s'
+                ).format(activity=_AGENT_ACTIVITY),
+                (task_id,),
+            )
+            found = await cursor.fetchone()
+        return found[0] if found else None
+
     async def chain_root(self, task: Row) -> Row | None:
         """Return the root task of the chain of ``task`` (ADR 0022)."""
         chain_id = task['chain_id'] or task['id']
@@ -1398,12 +1443,13 @@ class TicketStore:
             group or '', sql.SQL('created_at DESC, id DESC')
         )
         statement = sql.SQL(
-            'SELECT t.*, ' + PROJECTS + ','  # noqa: S608
+            'SELECT t.*, ' + PROJECTS + ', {activity},'  # noqa: S608
             " CASE WHEN t.status <> 'closed' THEN"
             ' (SELECT min(r.opened_at) {open}) END AS blocked_since'
             ' FROM tickets.tickets AS t WHERE {where}'
             ' ORDER BY {order} LIMIT %s OFFSET %s'
         ).format(
+            activity=_AGENT_ACTIVITY,
             open=_OPEN_REQUESTS,
             where=sql.SQL(' AND ').join(conditions),
             order=order,
@@ -1557,7 +1603,7 @@ class TicketStore:
             '{units}, page AS (SELECT x.*, row_number() OVER'
             ' (ORDER BY x.rank, {order}) AS n FROM units AS x {where}'
             ' ORDER BY x.rank, {order} LIMIT %s OFFSET %s)'
-            ' SELECT t.*, {projects},'
+            ' SELECT t.*, {projects}, {activity},'
             " CASE WHEN t.status <> 'closed' THEN"
             ' (SELECT min(r.opened_at) {open}) END AS blocked_since,'
             ' page.unit_key, page.run_id AS unit_run_id,'
@@ -1578,6 +1624,7 @@ class TicketStore:
             order=_UNIT_ORDER,
             where=where,
             projects=sql.SQL(PROJECTS),
+            activity=_AGENT_ACTIVITY,
             open=_OPEN_REQUESTS,
             items=_UNIT_ITEMS,
             uuid=_UUID,

@@ -57,13 +57,14 @@ import { useHasPermission } from '@/hooks/useHasPermission'
 import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
-import type { Ticket, TicketEvent, TicketUpdate } from '@/types'
+import type { Ticket, TicketDetail, TicketEvent, TicketUpdate } from '@/types'
 
 import {
   type ActivityView,
   ActivityViewSwitch,
   isActivityView,
 } from './activityView'
+import { AgentActivityIcon } from './AgentActivityIcon'
 import { formatMoney } from './agentDraft'
 import { useAgentList } from './agentQueries'
 import { agentsPath, ticketsPath } from './agentsNav'
@@ -797,7 +798,7 @@ function TaskHeader({
   end: number
   events: TicketEvent[]
   orgSlug: string
-  task: Ticket
+  task: TicketDetail
 }) {
   const { data: agents } = useAgentList(orgSlug)
   const agent = agents?.find((a) => a.id === task.agent_id)
@@ -814,6 +815,10 @@ function TaskHeader({
           {task.title}
         </h2>
         <PriorityBadge priority={task.priority} />
+        <AgentActivityIcon
+          activity={task.agent_activity}
+          className="mt-1 size-4"
+        />
         <Badge variant={statusVariant(task)}>{statusLabel(task)}</Badge>
         {task.assignee ? (
           <PersonStatusControls orgSlug={orgSlug} task={task} />
