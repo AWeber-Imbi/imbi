@@ -2282,7 +2282,7 @@ class TaskRun:
 
     async def post_tool_use(
         self,
-        _data: sdk.HookInput,
+        data: sdk.HookInput,
         _tool_use_id: str | None,
         _context: sdk.HookContext,
     ) -> sdk.HookJSONOutput:
@@ -2291,7 +2291,11 @@ class TaskRun:
 
         A long turn, or a ``create_child_task`` call that waits for
         the child, does not end before the agent sees a comment.
+        A subagent's tool call (``agent_id`` is set) leaves the
+        comments queued for the parent agent.
         """
+        if data.get('agent_id'):
+            return {}
         await self.read_events()
         if self.stopping is not None or not self.comments:
             return {}

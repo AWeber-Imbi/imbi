@@ -2598,6 +2598,25 @@ class PolicyHookTestCase(RoutedTestCase):
             await self.run_task.post_tool_use(hook_input, 'tu2', context), {}
         )
 
+    async def test_subagent_tool_leaves_comments_for_the_parent(
+        self,
+    ) -> None:
+        self.run_task.comments.append(
+            {
+                'seq': 7,
+                'at': 't1',
+                'kind': 'comment',
+                'actor': 'a@b.c',
+                'text': 'Use main.',
+            }
+        )
+        context = {'signal': None}
+        hook_input = {**self.hook_input('Bash'), 'agent_id': 'sub1'}
+        self.assertEqual(
+            await self.run_task.post_tool_use(hook_input, 'tu1', context), {}
+        )
+        self.assertTrue(self.run_task.comments)
+
     async def test_wait_keeps_the_outcomes_of_other_waits(self) -> None:
         self.pages = [
             [
