@@ -1,4 +1,3 @@
-import { whereTimeChanges } from '@/lib/formatDate'
 import type { TicketEvent } from '@/types'
 
 import { isCreated } from './taskEvents'
@@ -410,19 +409,6 @@ export function rowsOf(
       })
   }
   return rows
-}
-
-/** The start time of each record row whose second differs from the timed row above it. */
-export function rowTimes(rows: TrajectoryRow[]): Map<string, number> {
-  const timed = rows.flatMap((row) =>
-    row.kind === 'record' && row.record.startedAt !== null
-      ? [{ at: row.record.startedAt, id: row.record.id }]
-      : [],
-  )
-  const shown = whereTimeChanges(timed, 1000)
-  return new Map(
-    timed.flatMap(({ at, id }) => (shown.has(id) ? [[id, at]] : [])),
-  )
 }
 
 /**
