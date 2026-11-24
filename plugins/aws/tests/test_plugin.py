@@ -93,7 +93,7 @@ class ManifestTestCase(unittest.TestCase):
         )
         self.assertEqual(
             set(self.manifest.ops_log_templates),
-            {'set_value', 'delete_key'},
+            {'set_value', 'delete_key', 'restore_version'},
         )
 
 

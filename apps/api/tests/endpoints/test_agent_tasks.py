@@ -67,6 +67,8 @@ class AgentTaskTestCase(support.SharedAppAsyncTestCase):
         await graph.initialize()
         await tickets.initialize()
         await harness.initialize()
+        # The task delete reads secrets.resolutions.
+        await secret_broker.initialize()
         self.graph = graph.Graph()
         await self.graph.open()
         self.pool = tickets.create_pool()

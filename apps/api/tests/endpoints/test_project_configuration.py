@@ -35,6 +35,8 @@ from imbi.common.plugins.base import (
     ConfigKey,
     ConfigKeyWithValue,
     ConfigurationCapability,
+    ConfigValue,
+    ConfigVersion,
     Plugin,
     PluginContext,
     PluginManifest,
@@ -76,6 +78,34 @@ class _FakeConfigurationHandler(ConfigurationCapability):
 
     async def delete_key(self, ctx, credentials, key):  # type: ignore[override]
         return None
+
+
+class _HistoryHandler(_FakeConfigurationHandler):
+    """Keeps two versions of every key and records writes."""
+
+    written: typing.ClassVar[list[tuple[str, ConfigValue]]] = []
+    with_values_seen: typing.ClassVar[list[bool]] = []
+
+    async def get_history(self, ctx, credentials, key, *, with_values):  # type: ignore[override]
+        self.with_values_seen.append(with_values)
+        return [
+            ConfigVersion(
+                version='2',
+                data_type='string',
+                value='new' if with_values else None,
+            ),
+            ConfigVersion(
+                version='1',
+                data_type='secret',
+                secret=True,
+                modified_by='jane',
+                value='old' if with_values else None,
+            ),
+        ]
+
+    async def set_value(self, ctx, credentials, key, value):  # type: ignore[override]
+        self.written.append((key, value))
+        return await super().set_value(ctx, credentials, key, value)
 
 
 class _FakePlugin(Plugin):
@@ -919,3 +949,85 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
                     '/configuration/'
                 )
         self.assertEqual(response.status_code, 200)
+
+    # ----- history / restore ------------------------------------------
+
+    def _post(
+        self,
+        path: str,
+        body: dict[str, str],
+        handler: type[ConfigurationCapability] = _HistoryHandler,
+    ) -> typing.Any:
+        _HistoryHandler.written.clear()
+        _HistoryHandler.with_values_seen.clear()
+        before = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
+            seconds=5
+        )
+        with testclient.TestClient(self.test_app) as client:
+            with (
+                support.sink_to_clickhouse(),
+                mock.patch(
+                    'imbi.api.endpoints.project_configuration.resolve_capability',
+                    return_value=_resolved(self.plugin_id, handler),
+                ),
+                mock.patch(
+                    'imbi.api.endpoints.project_configuration'
+                    '.decrypt_integration_credentials',
+                    return_value={'token': 'x'},
+                ),
+            ):
+                response = client.post(
+                    f'/organizations/myorg/projects/{self.project_id}'
+                    f'/configuration/{path}?environment=production',
+                    json=body,
+                )
+            self.audit_rows = asyncio.run(
+                self._query_audit(self.project_id, before)
+            )
+        return response
+
+    def test_fetch_history_with_values(self) -> None:
+        response = self._post('history:fetch', {'key': 'foo'})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual([v['version'] for v in data], ['2', '1'])
+        self.assertEqual(data[1]['value'], 'old')
+        self.assertEqual(data[1]['modified_by'], 'jane')
+        self.assertEqual(_HistoryHandler.with_values_seen, [True])
+
+    def test_fetch_history_without_read_secrets_hides_values(self) -> None:
+        self.test_user.is_admin = False
+        self.auth_context.permissions = {'project:configuration:read'}
+        response = self._post('history:fetch', {'key': 'foo'})
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()[0]['value'])
+        self.assertEqual(_HistoryHandler.with_values_seen, [False])
+
+    def test_fetch_history_unsupported_is_501(self) -> None:
+        response = self._post(
+            'history:fetch', {'key': 'foo'}, _FakeConfigurationHandler
+        )
+        self.assertEqual(response.status_code, 501)
+
+    def test_restore_version_writes_old_value(self) -> None:
+        response = self._post(
+            'versions:restore', {'key': 'foo', 'version': '1'}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(_HistoryHandler.written), 1)
+        key, value = _HistoryHandler.written[0]
+        self.assertEqual(key, 'foo')
+        self.assertEqual(value.value, 'old')
+        self.assertEqual(value.data_type, 'secret')
+        self.assertTrue(value.secret)
+        self.assertEqual(len(self.audit_rows), 1)
+        description = json.loads(self.audit_rows[0]['description'])
+        self.assertEqual(description['action'], 'restore_version')
+        self.assertEqual(description['restored_from'], '1')
+
+    def test_restore_unknown_version_is_404(self) -> None:
+        response = self._post(
+            'versions:restore', {'key': 'foo', 'version': '9'}
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(_HistoryHandler.written, [])

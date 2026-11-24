@@ -15,6 +15,7 @@ from imbi.common.plugins.base import (
 )
 from imbi.common.plugins.errors import (
     PluginCredentialsMissing,
+    PluginIdentityAccessDenied,
     PluginRateLimited,
 )
 from imbi.plugins.aws.ssm import SSMConfiguration
@@ -386,3 +387,107 @@ class DeleteKeyTestCase(unittest.IsolatedAsyncioTestCase):
         plugin = SSMConfiguration()
         with self.assertRaises(PluginRateLimited):
             await plugin.delete_key(_ctx(), _creds(), 'k')
+
+
+class GetHistoryTestCase(unittest.IsolatedAsyncioTestCase):
+    @respx.mock
+    async def test_pages_and_returns_newest_first(self) -> None:
+        page1 = {
+            'Parameters': [
+                {
+                    'Name': '/imbi/prod/widget/db/url',
+                    'Type': 'String',
+                    'Version': 1,
+                    'Value': 'old',
+                    'LastModifiedDate': 1700000000.5,
+                    'LastModifiedUser': (
+                        'arn:aws:sts::123:assumed-role/Dev/jane@example.com'
+                    ),
+                }
+            ],
+            'NextToken': 'next',
+        }
+        page2 = {
+            'Parameters': [
+                {
+                    'Name': '/imbi/prod/widget/db/url',
+                    'Type': 'SecureString',
+                    'Version': 2,
+                    'Value': 'new',
+                    'LastModifiedDate': 1700000100.5,
+                }
+            ]
+        }
+        responses = iter([page1, page2])
+        captured: list[dict[str, typing.Any]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured.append(json.loads(request.content))
+            return httpx.Response(200, json=next(responses))
+
+        respx.post(_SSM_URL).mock(side_effect=handler)
+        versions = await SSMConfiguration().get_history(
+            _ctx(), _creds(), 'db/url', with_values=True
+        )
+        self.assertEqual([v.version for v in versions], ['2', '1'])
+        self.assertEqual(versions[0].data_type, 'secret')
+        self.assertTrue(versions[0].secret)
+        self.assertEqual(versions[0].value, 'new')
+        self.assertIsNone(versions[0].modified_by)
+        self.assertEqual(versions[1].modified_by, 'jane@example.com')
+        self.assertEqual(captured[0]['Name'], '/imbi/prod/widget/db/url')
+        self.assertTrue(captured[0]['WithDecryption'])
+        self.assertEqual(captured[1]['NextToken'], 'next')
+
+    @respx.mock
+    async def test_without_values_drops_value(self) -> None:
+        captured: list[dict[str, typing.Any]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured.append(json.loads(request.content))
+            return httpx.Response(
+                200,
+                json={
+                    'Parameters': [
+                        {'Type': 'String', 'Version': 1, 'Value': 'v'}
+                    ]
+                },
+            )
+
+        respx.post(_SSM_URL).mock(side_effect=handler)
+        versions = await SSMConfiguration().get_history(
+            _ctx(), _creds(), 'k', with_values=False
+        )
+        self.assertIsNone(versions[0].value)
+        self.assertFalse(captured[0]['WithDecryption'])
+
+    @respx.mock
+    async def test_missing_parameter_returns_empty(self) -> None:
+        respx.post(_SSM_URL).mock(
+            return_value=httpx.Response(
+                400, json={'__type': 'ParameterNotFound', 'message': 'gone'}
+            )
+        )
+        versions = await SSMConfiguration().get_history(
+            _ctx(), _creds(), 'k', with_values=True
+        )
+        self.assertEqual(versions, [])
+
+    @respx.mock
+    async def test_access_denied_raises_identity_access_denied(self) -> None:
+        respx.post(_SSM_URL).mock(
+            return_value=httpx.Response(
+                400,
+                json={'__type': 'AccessDeniedException', 'message': 'no'},
+            )
+        )
+        with self.assertRaises(PluginIdentityAccessDenied):
+            await SSMConfiguration().get_history(
+                _ctx(), _creds(), 'k', with_values=True
+            )
+
+    async def test_rejects_escaping_key(self) -> None:
+        with self.assertRaises(ValueError):
+            await SSMConfiguration().get_history(
+                _ctx(), _creds(), '../other', with_values=True
+            )

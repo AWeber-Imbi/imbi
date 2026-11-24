@@ -21,7 +21,10 @@ import pytest
 from psycopg import sql
 
 
-def pytest_configure() -> None:
+@pytest.hookimpl(trylast=True)
+def pytest_sessionstart() -> None:
+    # After pytest-cov starts in the worker (also at session start),
+    # so that it measures the modules that this imports.
     worker = os.environ.get('PYTEST_XDIST_WORKER')
     url = os.environ.get('POSTGRES_URL')
     if not worker or not url:

@@ -13,6 +13,7 @@ import {
   CopyPlus,
   Eye,
   EyeOff,
+  History,
   Lock,
   Plus,
   Search,
@@ -36,6 +37,7 @@ import {
   listProjectPlugins,
   setConfigurationValue,
 } from '@/api/endpoints'
+import { ConfigHistoryDialog } from '@/components/project/ConfigHistoryDialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardTitle } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -45,6 +47,7 @@ import { useTheme } from '@/contexts/ThemeContext'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { deriveChipColors } from '@/lib/chip-colors'
 import { parseServerTs } from '@/lib/formatDate'
+import { containsCredentials, maskSecret } from '@/lib/maskSecret'
 import { storage } from '@/lib/storage'
 import { cn, sortEnvironments } from '@/lib/utils'
 import type { ConfigKeyResponse, Environment } from '@/types'
@@ -95,6 +98,7 @@ interface DetailPaneProps {
   onDelete?: () => void
   onDraftChange?: (next: CreateDraft) => void
   onDuplicate?: () => void
+  onShowHistory?: (env: Environment) => void
   onToggleReveal?: (envSlug: string, key: string) => void
   prefix: string
   revealed?: Record<string, boolean>
@@ -121,6 +125,7 @@ interface EnvRowProps {
   isSecret: boolean
   isSet: boolean
   onCommit: (value: string) => void
+  onShowHistory?: () => void
   onToggleReveal: () => void
   revealed: boolean
   value: string | undefined
@@ -161,6 +166,10 @@ export function ConfigurationTab({
   const [mode, setMode] = useState<'create' | 'view'>('view')
   const [revealed, setRevealed] = useState<Record<string, boolean>>({})
   const [confirmDelete, setConfirmDelete] = useState<null | string>(null)
+  const [historyFor, setHistoryFor] = useState<null | {
+    env: Environment
+    key: string
+  }>(null)
   const [savedFlash, setSavedFlash] = useState(false)
   const [typeOverride, setTypeOverride] = useState<null | {
     key: string
@@ -234,6 +243,10 @@ export function ConfigurationTab({
   const activeSource = sources.some((s) => s.id === source)
     ? source
     : sources[0]?.id
+  const supportsHistory = Boolean(
+    configAssignments.find((a) => a.plugin_id === activeSource)
+      ?.supports_history,
+  )
   // The plugin's `path_prefix` can only be expanded server-side: keys come
   // back with the prefix stripped, and `${project_type_slug}` is remapped
   // by an integration-level option the client doesn't have. Asking without
@@ -482,6 +495,17 @@ export function ConfigurationTab({
         queryClient.invalidateQueries({
           queryKey: [
             'config-values',
+            orgSlug,
+            projectId,
+            activeSource,
+            vars.environment,
+          ],
+        }),
+        // A save adds a version, and a blur save can land while the
+        // history dialog is open.
+        queryClient.invalidateQueries({
+          queryKey: [
+            'config-history',
             orgSlug,
             projectId,
             activeSource,
@@ -751,6 +775,11 @@ export function ConfigurationTab({
               onCommitValue={handleCommitValue}
               onDelete={() => setConfirmDelete(selected.key)}
               onDuplicate={startDuplicate}
+              onShowHistory={
+                supportsHistory
+                  ? (env) => setHistoryFor({ env, key: selected.key })
+                  : undefined
+              }
               onToggleReveal={toggleReveal}
               prefix={prefix}
               revealed={revealed}
@@ -767,7 +796,7 @@ export function ConfigurationTab({
       </Group>
 
       <ConfirmDialog
-        description={`Delete key "${confirmDelete ?? ''}" from every environment? This cannot be undone.`}
+        description={`Delete key "${confirmDelete ?? ''}" from every environment? This cannot be undone.${supportsHistory ? ' The version history of the key is also deleted.' : ''}`}
         onCancel={() => setConfirmDelete(null)}
         onConfirm={() => {
           if (confirmDelete) deleteMutation.mutate(confirmDelete)
@@ -775,6 +804,20 @@ export function ConfigurationTab({
         open={confirmDelete !== null}
         title="Delete Configuration Key"
       />
+
+      {historyFor && (
+        <ConfigHistoryDialog
+          environment={historyFor.env}
+          // Remount on a new scope, so a pending restore or a reveal
+          // never carries over to another source, environment, or key.
+          key={`${activeSource}:${historyFor.env.slug}:${historyFor.key}`}
+          onClose={() => setHistoryFor(null)}
+          orgSlug={orgSlug}
+          paramKey={historyFor.key}
+          projectId={projectId}
+          source={activeSource}
+        />
+      )}
     </div>
   )
 }
@@ -899,15 +942,6 @@ function ConfigLoadError({ error }: { error: unknown }) {
   )
 }
 
-// True when the value (or any comma-separated segment of it) embeds a
-// URL credential pair like `scheme://user:password@host`. Used to mask
-// non-secret keys whose values still carry sensitive material.
-function containsCredentials(value: string): boolean {
-  if (!value) return false
-  const re = /[a-z][a-z0-9+\-.]*:\/\/[^:@/\s]+:[^@/\s]+@/i
-  return value.split(',').some((part) => re.test(part.trim()))
-}
-
 function DetailPane({
   draft,
   duplicateBlockedReason,
@@ -921,6 +955,7 @@ function DetailPane({
   onDelete,
   onDraftChange,
   onDuplicate,
+  onShowHistory,
   onToggleReveal,
   prefix,
   revealed,
@@ -1071,6 +1106,9 @@ function DetailPane({
                     onCommitValue?.(env.slug, v)
                   }
                 }}
+                onShowHistory={
+                  isSet && onShowHistory ? () => onShowHistory(env) : undefined
+                }
                 onToggleReveal={() => onToggleReveal?.(env.slug, currentKey)}
                 revealed={
                   !isCreate && Boolean(revealed?.[`${env.slug}::${currentKey}`])
@@ -1180,6 +1218,7 @@ function EnvRow({
   isSecret,
   isSet,
   onCommit,
+  onShowHistory,
   onToggleReveal,
   revealed,
   value,
@@ -1311,6 +1350,19 @@ function EnvRow({
             )}
           </Button>
         )}
+        {onShowHistory && (
+          <Button
+            aria-label={`Show history for ${env.name}`}
+            className="mt-0.5 h-7 px-1.5"
+            onClick={onShowHistory}
+            size="sm"
+            title="History"
+            type="button"
+            variant="ghost"
+          >
+            <History className="size-3" />
+          </Button>
+        )}
       </div>
     </>
   )
@@ -1329,40 +1381,6 @@ function Highlight({ q, text }: { q: string; text: string }) {
       {text.slice(idx + q.length)}
     </>
   )
-}
-
-// If the value looks like a connection URL with embedded credentials
-// (scheme://user:password@host…), mask only the password segment.
-// Otherwise mask the whole value with bullets capped at a sensible length.
-// For string_list values (comma-separated), each entry is masked
-// independently so a list of URLs only hides each URL's password.
-function maskSecret(value: string): string {
-  if (!value) return ''
-  if (value.includes(',')) {
-    return value
-      .split(',')
-      .map((part) => {
-        // Preserve surrounding whitespace so the rendered list doesn't
-        // shift when toggling reveal.
-        const leading = part.match(/^\s*/)?.[0] ?? ''
-        const trailing = part.match(/\s*$/)?.[0] ?? ''
-        const inner = part.slice(leading.length, part.length - trailing.length)
-        return leading + maskSecretSingle(inner) + trailing
-      })
-      .join(',')
-  }
-  return maskSecretSingle(value)
-}
-
-function maskSecretSingle(value: string): string {
-  if (!value) return ''
-  const url = /^([a-z][a-z0-9+\-.]*:\/\/)([^:@/\s]+):([^@/\s]+)(@.*)$/i.exec(
-    value,
-  )
-  if (url) {
-    return `${url[1]}${url[2]}:${'•'.repeat(8)}${url[4]}`
-  }
-  return '•'.repeat(Math.min(40, value.length || 8))
 }
 
 function ParamList({

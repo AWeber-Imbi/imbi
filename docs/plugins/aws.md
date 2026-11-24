@@ -149,6 +149,24 @@ A key must be relative to the prefix. A key that starts with `/` or holds
 `..` fails. A write overwrites the parameter if it exists. Imbi records
 each change in the operations log.
 
+### Version history
+
+SSM keeps the last 100 versions of each parameter. The **History** button
+on each environment row shows them, newest first. A user with
+`project:configuration:read_secrets` sees the values; other users see the
+version, time, and the IAM session that made the change.
+
+**Restore** writes the value of an earlier version as a new version. It
+needs `project:configuration:write`. Imbi reads and writes the value on
+the server, so a user who cannot read secrets can still restore one.
+Imbi records the restore in the operations log.
+
+Deleting a parameter in SSM also deletes its history.
+
+The role that the user assumes needs `ssm:GetParameterHistory`. If an SSM
+action is not allowed, the API answers `403` with `detail.error` set to
+`identity_access_denied`.
+
 ## Doctor checks
 
 None.

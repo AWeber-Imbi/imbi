@@ -7815,6 +7815,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/projects/{project_id}/configuration/history:fetch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fetch History
+         * @description List the versions of one configuration key, newest first.
+         *
+         *     Values are included only for a caller who can read secrets, the
+         *     same rule as ``values:fetch``.
+         */
+        post: operations["fetch_history_api_organizations__org_slug__projects__project_id__configuration_history_fetch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/projects/{project_id}/configuration/versions:restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Version
+         * @description Write an earlier version's value back as the newest version.
+         *
+         *     The value is read and written on the server, so it never reaches
+         *     the browser and a writer without ``read_secrets`` can restore a
+         *     secret.
+         */
+        post: operations["restore_version_api_organizations__org_slug__projects__project_id__configuration_versions_restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/projects/{project_id}/configuration/{key}": {
         parameters: {
             query?: never;
@@ -14255,6 +14302,14 @@ export interface components {
             false_score: number;
         };
         /**
+         * ConfigHistoryRequest
+         * @description Request body for the version history of one configuration key.
+         */
+        ConfigHistoryRequest: {
+            /** Key */
+            key: string;
+        };
+        /**
          * ConfigKeyResponse
          * @description Response model for a configuration key (no value).
          */
@@ -14298,6 +14353,16 @@ export interface components {
             /** Prefix */
             prefix?: string | null;
         };
+        /**
+         * ConfigRestoreRequest
+         * @description Request body to restore an earlier version of a configuration key.
+         */
+        ConfigRestoreRequest: {
+            /** Key */
+            key: string;
+            /** Version */
+            version: string;
+        };
         /** ConfigValue */
         ConfigValue: {
             /** Data Type */
@@ -14309,6 +14374,27 @@ export interface components {
              * @default false
              */
             secret: boolean;
+        };
+        /**
+         * ConfigVersion
+         * @description One earlier (or the current) version of a configuration key.
+         */
+        ConfigVersion: {
+            /** Version */
+            version: string;
+            /** Data Type */
+            data_type: string;
+            /**
+             * Secret
+             * @default false
+             */
+            secret: boolean;
+            /** Last Modified */
+            last_modified?: string | null;
+            /** Modified By */
+            modified_by?: string | null;
+            /** Value */
+            value?: string | null;
         };
         /** ContributionBucket */
         ContributionBucket: {
@@ -18132,6 +18218,11 @@ export interface components {
              * @default false
              */
             supports_histogram: boolean;
+            /**
+             * Supports History
+             * @default false
+             */
+            supports_history: boolean;
             /**
              * Supports Deployment Sync
              * @default false
@@ -36720,6 +36811,84 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConfigKeyValueResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fetch_history_api_organizations__org_slug__projects__project_id__configuration_history_fetch_post: {
+        parameters: {
+            query?: {
+                source?: string | null;
+                environment?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfigHistoryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigVersion"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_version_api_organizations__org_slug__projects__project_id__configuration_versions_restore_post: {
+        parameters: {
+            query?: {
+                source?: string | null;
+                environment?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfigRestoreRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigKeyResponse"];
                 };
             };
             /** @description Validation Error */

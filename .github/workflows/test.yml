@@ -10,6 +10,14 @@ on:
 # write scopes.
 permissions:
   contents: read
+env:
+  # On a pull request, the base that the change is diffed against:
+  # root:coverage runs only the tests of the affected members
+  # (scripts/ci-test.sh), and the Changes job gates the jobs below.
+  # Empty on a push to main, which runs everything. HEAD is the merge
+  # into the current base, so HEAD^1 is that base. base.sha can be
+  # older: a diff from it also lists what main merged since.
+  IMBI_TEST_BASE: ${{ github.event_name == 'pull_request' && 'HEAD^1' || '' }}
 jobs:
   ci:
     name: "CI"
@@ -33,10 +41,6 @@ jobs:
       - uses: "moonrepo/setup-toolchain@v0"
       - run: "moon ci"
         env:
-          # On a pull request, root:coverage runs only the tests of the
-          # affected members (scripts/ci-test.sh). Empty on a push to
-          # main, which runs the full suite.
-          IMBI_TEST_BASE: ${{ github.event.pull_request.base.sha }}
           # apache-iggy ships as an sdist only, and it makes some lints
           # errors. Cap lints at warnings, as container/Dockerfile does,
           # so a deprecation in a newer stable Rust does not stop uv sync.
@@ -60,7 +64,7 @@ jobs:
           persist-credentials: false
       - id: "diff"
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
+          BASE: ${{ env.IMBI_TEST_BASE }}
           BEFORE: ${{ github.event.before }}
         run: |
           # True when a file under one of the given paths changed, or
