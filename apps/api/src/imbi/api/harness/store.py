@@ -104,13 +104,17 @@ _CLAIMABLE: typing.LiteralString = ''.join(
     )
 )
 
-#: The oldest task that a runner may claim.
+#: The task that a runner may claim: the highest priority first, then
+#: the oldest.
 _CLAIM_QUERY: typing.LiteralString = ''.join(
     (
         'SELECT t.*, ',
         task_store.PROJECTS,
         _CLAIMABLE,
-        ' ORDER BY t.created_at, t.id LIMIT 1 FOR UPDATE OF t SKIP LOCKED',
+        # ``low`` is not in the array, so it sorts last (NULL).
+        " ORDER BY array_position(ARRAY['urgent', 'high', 'normal'],"
+        ' t.priority) NULLS LAST, t.created_at, t.id'
+        ' LIMIT 1 FOR UPDATE OF t SKIP LOCKED',
     )
 )
 
@@ -128,6 +132,9 @@ _QUEUED_QUERY: typing.LiteralString = ''.join(
     )
 )
 
+#: The next child task of a pinned chain. Oldest first, not by priority:
+#: the chain holds its runner until it ends, so this order delays no
+#: other ticket, and it keeps the order in which the parent made them.
 _CHAIN_CLAIM_QUERY: typing.LiteralString = (
     'SELECT t.*, '  # noqa: S608
     + task_store.PROJECTS
@@ -447,7 +454,7 @@ class HarnessStore:
         agents: dict[str, list[str]],
         limits: dict[str, int],
     ) -> tuple[Row, Row] | None:
-        """Pin the chain of the oldest task that ``runner`` may run.
+        """Pin the chain of the next task that ``runner`` may run.
 
         ``agents`` maps each enabled agent to its required labels.
         ``limits`` maps an agent id to its ``max_concurrent_tasks``.

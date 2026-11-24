@@ -499,7 +499,8 @@ columns = ["organization_id", "parent_id"]
 name = "tickets_chain_idx"
 columns = ["chain_id"]
 
-# The claim query's access path: the oldest queued task.
+# The queued tasks, oldest first. The root claim query sorts by
+# priority first, so it reads every queued row before it sorts.
 [[tables.indexes]]
 name = "tickets_status_created_idx"
 columns = ["status", "created_at", "id"]

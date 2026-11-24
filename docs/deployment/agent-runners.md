@@ -28,8 +28,8 @@ tasks. The runner works like this:
 
 1. It gets an access token with the pool credential, then registers with
    `POST /harness/runners`.
-2. It long-polls imbi-api for work. Imbi gives it the oldest queued task
-   that its pool can run.
+2. It long-polls imbi-api for work. Imbi gives it the queued task with the
+   highest priority (then the oldest) that its pool can run.
 3. It runs the chain to the end.
 4. It removes the workspace, then stops. The pool starts a clean pod for the
    next chain.
