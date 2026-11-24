@@ -275,6 +275,18 @@ uv run --frozen --env-file .env.test pytest -v libraries/common/tests
 CI runs `moon ci` in `.github/workflows/test.yml`. Use that workflow as
 the reference for how CI starts the services and runs the tests.
 
+On a pull request, `root:coverage` runs only the tests of the members
+that the change affects, plus the members that depend on them
+(`scripts/ci-test.sh`). Each of those members must meet the coverage
+floor in its own `pyproject.toml`. A change to a shared test input (the
+root `pyproject.toml`, `uv.lock`, `conftest.py`, `compose.ci.yaml`,
+`.moon/`, or the workflow) runs the full suite. A push to `main` always
+runs the full suite with the repo-wide coverage floor.
+
+When a member's tests import another member, add that member to
+`dependsOn` in the member's `moon.yml` with `scope: 'development'`.
+Otherwise a change to the imported member does not run those tests.
+
 ## Test Coverage
 
 Track test coverage with `coverage` (via `moon run root:coverage`):
