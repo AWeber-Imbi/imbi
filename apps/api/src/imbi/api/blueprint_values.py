@@ -139,18 +139,24 @@ def _schema_errors(
         )
         cls = jsonschema.validators.validator_for(schema)
         cls.check_schema(schema)
-        # evolve() keeps the resolver of the root schema.
-        validator = cls(
-            schema, registry=referencing.Registry[typing.Any]()
-        ).evolve(  # pyright: ignore[reportUnknownMemberType]
-            schema=schema['properties'][name]
-        )
+        # descend() keeps the resolver of the root schema and enters
+        # the $id scope of the field, if the field has one.
+        validator = cls(schema, registry=referencing.Registry[typing.Any]())
         try:
-            validator.validate(value)
-        except jsonschema.exceptions.ValidationError as err:
-            errors.append({'field': name, 'message': err.message})
+            # descend() is public but not in the Validator protocol.
+            best = typing.cast(
+                jsonschema.exceptions.ValidationError | None,
+                jsonschema.exceptions.best_match(  # pyright: ignore[reportUnknownMemberType]
+                    validator.descend(  # type: ignore[attr-defined]  # pyright: ignore[reportAttributeAccessIssue,reportUnknownMemberType,reportUnknownArgumentType]
+                        value, schema['properties'][name]
+                    )
+                ),
+            )
         except referencing.exceptions.Unresolvable as err:
             errors.append({'field': name, 'message': f'Unresolvable: {err}'})
+            continue
+        if best is not None:
+            errors.append({'field': name, 'message': best.message})
     return errors
 
 

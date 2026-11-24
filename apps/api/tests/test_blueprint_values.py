@@ -203,6 +203,38 @@ class ValidateTests(unittest.TestCase):
         detail = typing.cast(dict[str, typing.Any], ctx.exception.detail)
         self.assertEqual(detail['invalid'][0]['field'], 'payload')
 
+    def test_field_id_scope(self) -> None:
+        # A $ref in a field with an $id resolves inside that field.
+        matches = [
+            models.Blueprint(
+                name='Scoped',
+                type='Ticket',
+                json_schema=models.Schema.model_validate(
+                    {
+                        'type': 'object',
+                        'properties': {
+                            'payload': {
+                                '$id': 'urn:payload',
+                                'type': 'object',
+                                '$defs': {'N': {'type': 'integer'}},
+                                'properties': {'n': {'$ref': '#/$defs/N'}},
+                            }
+                        },
+                    }
+                ),
+            )
+        ]
+        self.assertEqual(
+            blueprint_values.validate(
+                matches, {'payload': {'n': 1}}, partial=False
+            ),
+            {'payload': {'n': 1}},
+        )
+        with self.assertRaises(fastapi.HTTPException):
+            blueprint_values.validate(
+                matches, {'payload': {'n': 'x'}}, partial=False
+            )
+
     def test_field_schema_only(self) -> None:
         matches = [
             models.Blueprint(
