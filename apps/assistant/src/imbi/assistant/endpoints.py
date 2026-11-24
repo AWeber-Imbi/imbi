@@ -405,6 +405,7 @@ async def _build_tools_and_system(
     the current MCP, server, and client tool sets.
     """
     ext_manager = external_mcp.get_manager()
+    await ext_manager.sync_enabled(db)
     all_tools = (
         mcp_manager.get_tools()
         + mcp.get_server_tools()

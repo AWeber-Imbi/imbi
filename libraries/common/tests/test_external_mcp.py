@@ -722,3 +722,52 @@ class ExternalMCPLifespanTests(unittest.IsolatedAsyncioTestCase):
             # A manager is installed despite the DB failure.
             self.assertIsNotNone(external_mcp._manager)
         ext_close.assert_awaited_once()
+
+
+class SyncEnabledTestCase(unittest.IsolatedAsyncioTestCase):
+    """A server that an admin disables stops at the next turn."""
+
+    def _manager(self) -> external_mcp.ExternalMCPManager:
+        manager = external_mcp.ExternalMCPManager()
+        for slug in ('on', 'off'):
+            manager._servers[slug] = _make_server(slug=slug)
+            name = f'mcp_{slug}_t'
+            manager._tool_routes[name] = (slug, 't')
+            manager._tools.append({'name': name})
+            manager._sessions[slug] = mock.AsyncMock()
+        return manager
+
+    async def test_disabled_server_is_hidden_and_refused(self) -> None:
+        manager = self._manager()
+        with mock.patch.object(
+            external_mcp,
+            'get_enabled_mcp_servers',
+            return_value=[_make_server(slug='on')],
+        ):
+            await manager.sync_enabled(mock.AsyncMock())
+        self.assertEqual(['mcp_on_t'], manager.get_tool_names())
+        content, is_error = await manager.execute_tool('mcp_off_t', {})
+        self.assertTrue(is_error)
+        self.assertIn('disabled', content)
+        manager._sessions['off'].call_tool.assert_not_awaited()
+
+    async def test_read_failure_disables_all(self) -> None:
+        manager = self._manager()
+        with mock.patch.object(
+            external_mcp,
+            'get_enabled_mcp_servers',
+            side_effect=RuntimeError('graph down'),
+        ):
+            await manager.sync_enabled(mock.AsyncMock())
+        self.assertEqual([], manager.get_tools())
+
+    async def test_enabled_again_comes_back(self) -> None:
+        manager = self._manager()
+        manager._disabled = {'off'}
+        with mock.patch.object(
+            external_mcp,
+            'get_enabled_mcp_servers',
+            return_value=[_make_server(slug='on'), _make_server(slug='off')],
+        ):
+            await manager.sync_enabled(mock.AsyncMock())
+        self.assertEqual(['mcp_on_t', 'mcp_off_t'], manager.get_tool_names())

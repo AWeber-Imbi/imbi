@@ -209,6 +209,8 @@ class ExternalMCPManager:
         self._reconnect_after: dict[str, float] = {}
         # server slug -> lock that serializes reconnects to that server
         self._reconnect_locks: dict[str, asyncio.Lock] = {}
+        # slugs of connected servers that an admin disabled since startup
+        self._disabled: set[str] = set()
         self._initialized = False
 
     async def initialize(self, db: graph.Graph) -> None:
@@ -423,16 +425,36 @@ class ExternalMCPManager:
         self._tool_routes.clear()
         self._reconnect_after.clear()
         self._reconnect_locks.clear()
+        self._disabled = set()
         self._tools = []
         self._initialized = False
 
+    async def sync_enabled(self, db: graph.Graph) -> None:
+        """Read the enabled flags again, so that a server that an admin
+        disabled stops at once, without a restart.
+
+        Call this once for each turn. If the read fails, all servers are
+        disabled for the turn (fail closed).
+
+        """
+        try:
+            enabled = {s.slug for s in await get_enabled_mcp_servers(db)}
+        except Exception:
+            LOGGER.exception('Failed to read the enabled MCP servers')
+            enabled = set()
+        self._disabled = set(self._servers) - enabled
+
+    def _is_enabled(self, name: str) -> bool:
+        route = self._tool_routes.get(name)
+        return route is not None and route[0] not in self._disabled
+
     def get_tools(self) -> list[dict[str, typing.Any]]:
         """Return Anthropic-compatible tool definitions."""
-        return list(self._tools)
+        return [t for t in self._tools if self._is_enabled(t['name'])]
 
     def get_tool_names(self) -> list[str]:
         """Return the names of all registered tools."""
-        return [t['name'] for t in self._tools]
+        return [t['name'] for t in self.get_tools()]
 
     def has_tool(self, name: str) -> bool:
         """Return whether this manager owns the named tool."""
@@ -460,6 +482,11 @@ class ExternalMCPManager:
         if route is None:
             return (
                 json.dumps({'error': f'Unknown MCP tool: {tool_name}'}),
+                True,
+            )
+        if route[0] in self._disabled:
+            return (
+                json.dumps({'error': f'MCP server {route[0]} is disabled'}),
                 True,
             )
         server_slug, original_name = route

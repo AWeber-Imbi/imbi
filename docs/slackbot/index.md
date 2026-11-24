@@ -99,7 +99,8 @@ The bot also has the tools of each enabled MCP server at
 assistant. See
 [Assistant and MCP Servers](../admin/assistant-and-mcp-servers.md). These
 calls use the credentials of the server, not your token. The bot reads the
-servers at startup. After you change a server, restart imbi-slackbot.
+servers at startup. A server that you disable stops at the next message.
+After you add a server or change its settings, restart imbi-slackbot.
 
 The bot also has Slack tools from
 [slackwright](https://github.com/gmr/slackwright). They work only in the

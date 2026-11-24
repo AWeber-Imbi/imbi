@@ -249,6 +249,10 @@ async def _process(
         token = identity.mint_token(user)
         manager = mcp.get_manager()
         tools = manager.get_tools() or None
+        external = external_mcp.get_manager()
+        db = identity.get_graph()
+        if db is not None:
+            await external.sync_enabled(db)
         toolkit = slackwright.Toolkit(
             slack_client,
             channel_id=channel,
@@ -260,7 +264,7 @@ async def _process(
             user,
             [
                 *manager.get_tool_names(),
-                *external_mcp.get_manager().get_tool_names(),
+                *external.get_tool_names(),
                 *(tool['name'] for tool in toolkit.anthropic()),
             ],
         )

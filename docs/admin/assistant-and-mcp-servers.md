@@ -50,8 +50,10 @@ versions, labels, the environment override, and the model settings, see
 
 An MCP server gives tools to the assistant and the
 [Slack bot](../slackbot/index.md). imbi-assistant and imbi-slackbot use
-every enabled server. imbi-slackbot reads the servers at startup, so
-restart it after you change a server. Imbi connects to the server over streamable HTTP. The
+every enabled server. When you disable a server, both services stop
+using it at the next message. imbi-slackbot connects to the servers at
+startup, so restart it after you add a server or change its settings.
+Imbi connects to the server over streamable HTTP. The
 tool names in the assistant are `mcp_<tool prefix>_<tool>`. If the
 connection to a server fails, the next call to one of its tools opens
 the connection again. If that attempt also fails, the assistant waits
