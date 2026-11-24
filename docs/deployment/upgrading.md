@@ -80,6 +80,14 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    or later. This release drops the columns `tickets.tickets.close_id`
    and `tickets.trigger_outbox.close_id`. Only 2.58.0 writes them. A
    2.58.0 pod that starts after the drop adds the columns again.
+   The first new pod drops the columns when it starts. After the drop,
+   ticket requests on a 2.59.0 pod can fail with `cached plan must not
+   change result type`, because its pooled connections keep prepared
+   statements that read `tickets.tickets` with `t.*`. A rollback does
+   not clear these statements; they stop only when the pod stops. To
+   prevent these errors, scale imbi-api to zero before you deploy, or
+   restart all remaining 2.59.0 pods as soon as the first new pod is
+   ready.
 2. To show the version history of SSM configuration parameters, allow
    `ssm:GetParameterHistory` in the IAM Identity Center permission sets
    (roles) that the AWS configuration capability uses. Without it, the
