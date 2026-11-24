@@ -1,5 +1,3 @@
-import type { Timed } from '@/lib/formatDate'
-
 import { isError, type TimelineEntry } from './taskTimeline'
 
 /** A human message or a request, after the work of its turn began. */
@@ -131,21 +129,6 @@ export function turnForSeq(
     if (seqs.length && Math.min(...seqs) <= seq) before = turn
   }
   return before ? { calls: [], group: null, turn: before } : null
-}
-
-/** The person and agent messages of a turn, in the order they show. */
-export function turnMessages(turn: Turn): Timed[] {
-  return [
-    ...turn.opening,
-    ...turn.items.flatMap((item) =>
-      item.kind === 'reply' ||
-      (item.kind === 'input' && item.entry.event?.type !== 'request.opened')
-        ? [item.entry]
-        : [],
-    ),
-  ].flatMap((entry) =>
-    entry.event ? [{ at: entry.event.at, id: entry.id }] : [],
-  )
 }
 
 /**

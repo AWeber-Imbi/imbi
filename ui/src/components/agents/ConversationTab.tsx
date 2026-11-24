@@ -44,7 +44,7 @@ import {
   TraceLine,
   TraceTitle,
 } from '@/components/ui/trace'
-import { clockTime, fullTime, whereTimeChanges } from '@/lib/formatDate'
+import { clockTime, fullTime } from '@/lib/formatDate'
 import { markdownText } from '@/lib/markdown-text'
 import { cn } from '@/lib/utils'
 import type { Ticket, TicketEvent } from '@/types'
@@ -76,7 +76,6 @@ import {
   revealSeqOf,
   type Turn,
   turnForSeq,
-  turnMessages,
   turns,
 } from './conversationTurns'
 import { FindStub } from './FindStub'
@@ -113,8 +112,6 @@ import {
 import { readableText } from './toolText'
 import { scrollToFound, useVirtualRows } from './virtualRows'
 
-const ASK_ID = 'ask'
-
 interface Ctx {
   isOpen: (id: string, byDefault: boolean) => boolean
   isWhole: (id: string) => boolean
@@ -124,7 +121,6 @@ interface Ctx {
   requests: TaskRequestView[]
   setOpen: (id: string, open: boolean) => void
   showWhole: (id: string) => void
-  stamped: ReadonlySet<string>
   task: Ticket
 }
 
@@ -229,18 +225,6 @@ export function ConversationTab({
   const askMatches =
     searching && matches((task.description || task.title || '').trim(), query)
   const showAsk = !searching || askMatches || shown.length > 0
-  const ask = showAsk && !!taskAsk(task, list[0])
-  const stamped = useMemo(
-    () =>
-      whereTimeChanges(
-        [
-          ...(ask ? [{ at: task.created_at, id: ASK_ID }] : []),
-          ...shown.flatMap(turnMessages),
-        ],
-        60_000,
-      ),
-    [ask, shown, task.created_at],
-  )
   const follow = useRef(true)
   const [whole, setWhole] = useState<ReadonlySet<string>>(() => new Set())
   const ctx: Ctx = useMemo(
@@ -261,7 +245,6 @@ export function ConversationTab({
         follow.current = false
         setWhole((prev) => new Set(prev).add(id))
       },
-      stamped,
       task,
     }),
     [
@@ -272,7 +255,6 @@ export function ConversationTab({
       requests,
       searching,
       setOpen,
-      stamped,
       task,
       whole,
     ],
@@ -294,6 +276,7 @@ export function ConversationTab({
   }
 
   const [askAll, setAskAll] = useState(false)
+  const ask = showAsk && !!taskAsk(task, list[0])
   const rows = useMemo(
     () => [...(ask ? ['ask'] : []), ...shown.map((turn) => turn.id)],
     [ask, shown],
@@ -458,7 +441,7 @@ export function ConversationTab({
             >
               <div
                 className={cn(
-                  'flex min-h-full w-full flex-col pr-15 pb-(--dock-h) pl-10',
+                  'flex min-h-full w-full flex-col px-10 pb-(--dock-h)',
                   width === 'narrow' && 'mx-auto max-w-3xl',
                 )}
               >
@@ -600,6 +583,7 @@ function CallRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
           )}
         </TraceLine>
       </TraceCollapsibleTrigger>
+      {e && <Stamp at={e.at} className="pl-6" />}
       <TraceCollapsibleContent className="flex flex-col gap-2">
         {e && (
           <ToolReadable
@@ -728,8 +712,8 @@ function PersonMessage({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
             </ul>
           )}
         </div>
+        <Stamp at={e.at} className="-mt-1.5 self-end" />
       </MessageContent>
-      <Stamp at={e.at} marked={ctx.stamped.has(entry.id)} />
     </Message>
   )
 }
@@ -746,13 +730,18 @@ function RequestItem({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
   const request = ctx.requests.find((r) => r.id === e?.payload.request_id)
   if (request?.status === 'open')
     return (
-      <RequestCard orgSlug={ctx.orgSlug} request={request} task={ctx.task} />
+      <div className="flex flex-col gap-1">
+        <RequestCard orgSlug={ctx.orgSlug} request={request} task={ctx.task} />
+        {e && <Stamp at={e.at} />}
+      </div>
     )
   return (
     <Trace>
-      <TraceLine>
-        <TraceTitle>{e ? systemText(e) : ''}</TraceTitle>
-      </TraceLine>
+      <Step at={e?.at}>
+        <TraceLine>
+          <TraceTitle>{e ? systemText(e) : ''}</TraceTitle>
+        </TraceLine>
+      </Step>
     </Trace>
   )
 }
@@ -798,32 +787,37 @@ function searchText(entry: TimelineEntry): string {
   ].join(' ')
 }
 
-/** When the message was sent, in the margin beside it: its minute when `marked`, and the exact second while the message is hovered. */
-function Stamp({
-  at,
-  className,
-  marked,
-}: {
-  at: string
-  className?: string
-  marked: boolean
-}) {
+/** When a step happened, on a line of its own below it. */
+function Stamp({ at, className }: { at: string; className?: string }) {
   return (
     <time
       className={cn(
-        'absolute top-0 left-full ml-1.5 text-[11px] leading-5 whitespace-nowrap text-muted-foreground tabular-nums',
+        'block text-[11px] leading-4 text-muted-foreground tabular-nums',
         className,
       )}
       dateTime={at}
       title={fullTime(at)}
     >
-      {marked && (
-        <span className="group-hover/message:hidden">{clockTime(at)}</span>
-      )}
-      <span className="hidden group-hover/message:inline">
-        {clockTime(at, true)}
-      </span>
+      {clockTime(at, true)}
     </time>
+  )
+}
+
+/** A trace line with its time below it. */
+function Step({
+  at,
+  children,
+  indent = false,
+}: {
+  at?: string
+  children: React.ReactNode
+  indent?: boolean
+}) {
+  return (
+    <div className="flex flex-col">
+      {children}
+      {at && <Stamp at={at} className={cn(indent && 'pl-6')} />}
+    </div>
   )
 }
 
@@ -863,8 +857,8 @@ function TaskAsk({
             </Button>
           )}
         </div>
+        <Stamp at={task.created_at} className="-mt-1.5 self-end" />
       </MessageContent>
-      <Stamp at={task.created_at} marked={ctx.stamped.has(ASK_ID)} />
     </Message>
   )
 }
@@ -1060,11 +1054,13 @@ function TurnView({
             case 'note':
               return quiet(item.entry.event) ? null : (
                 <Trace key={item.id}>
-                  <TraceLine>
-                    <TraceTitle>
-                      {item.entry.event ? systemText(item.entry.event) : ''}
-                    </TraceTitle>
-                  </TraceLine>
+                  <Step at={item.entry.event?.at}>
+                    <TraceLine>
+                      <TraceTitle>
+                        {item.entry.event ? systemText(item.entry.event) : ''}
+                      </TraceTitle>
+                    </TraceLine>
+                  </Step>
                 </Trace>
               )
             case 'reply':
@@ -1079,14 +1075,10 @@ function TurnView({
                     <Prose>
                       {String(item.entry.event?.payload.body ?? '')}
                     </Prose>
+                    {item.entry.event && (
+                      <Stamp at={item.entry.event.at} className="-mt-1.5" />
+                    )}
                   </MessageContent>
-                  {item.entry.event && (
-                    <Stamp
-                      at={item.entry.event.at}
-                      className={cn(item.id !== firstReply && 'top-2')}
-                      marked={ctx.stamped.has(item.entry.id)}
-                    />
-                  )}
                 </Message>
               )
           }
@@ -1119,14 +1111,16 @@ function WorkRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
   const thought = e.payload.kind === 'thinking'
   if (e.type === 'turn' && e.payload.kind === 'warning')
     return (
-      <TraceLine className="items-start" status="error">
-        <TraceIcon className="mt-0.5">
-          <TriangleAlert />
-        </TraceIcon>
-        <TraceTitle className="wrap-break-word text-clip whitespace-pre-wrap">
-          {body}
-        </TraceTitle>
-      </TraceLine>
+      <Step at={e.at} indent>
+        <TraceLine className="items-start" status="error">
+          <TraceIcon className="mt-0.5">
+            <TriangleAlert />
+          </TraceIcon>
+          <TraceTitle className="wrap-break-word text-clip whitespace-pre-wrap">
+            {body}
+          </TraceTitle>
+        </TraceLine>
+      </Step>
     )
   if (e.type === 'turn' || e.type === 'todos.updated')
     return (
@@ -1154,15 +1148,18 @@ function WorkRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
             </TraceTitle>
           </TraceLine>
         </TraceCollapsibleTrigger>
+        <Stamp at={e.at} className="pl-6" />
         <TraceCollapsibleContent>
           {e.type === 'turn' ? <Prose>{body}</Prose> : <Todos event={e} />}
         </TraceCollapsibleContent>
       </TraceCollapsible>
     )
   return (
-    <TraceLine>
-      <TraceTitle>{systemText(e)}</TraceTitle>
-    </TraceLine>
+    <Step at={e.at}>
+      <TraceLine>
+        <TraceTitle>{systemText(e)}</TraceTitle>
+      </TraceLine>
+    </Step>
   )
 }
 

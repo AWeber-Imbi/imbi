@@ -63,11 +63,19 @@ describe('ConversationTab', () => {
     )
   })
 
-  it('shows the minute once for messages sent in the same minute', () => {
+  it('shows the time below each message and each opened step', async () => {
+    const user = userEvent.setup()
     renderTab('closed')
-    const minutes = screen.getAllByText(clockTime(LOG[0].at))
-    expect(minutes).toHaveLength(1)
-    expect(minutes[0].closest('time')).toBeInTheDocument()
+    const timeOf = (at: string) => screen.queryByText(clockTime(at, true))
+    expect(timeOf(LOG[0].at)?.tagName).toBe('TIME')
+    expect(timeOf(LOG[3].at)?.tagName).toBe('TIME')
+    expect(timeOf(LOG[2].at)).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Worked for 3s/ }))
+    await user.click(
+      await screen.findByRole('button', { name: /Ran a command/ }),
+    )
+    expect(timeOf(LOG[1].at)?.tagName).toBe('TIME')
+    expect(timeOf(LOG[2].at)?.tagName).toBe('TIME')
   })
 
   it('folds a finished turn and keeps the messages in view', () => {

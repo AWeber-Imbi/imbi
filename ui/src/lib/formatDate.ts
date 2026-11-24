@@ -1,9 +1,3 @@
-/** Something that happened at a time. */
-export interface Timed {
-  at: number | string
-  id: string
-}
-
 interface DateFormatOptions {
   /** String returned when the input is null/undefined or unparseable. */
   fallback?: string
@@ -198,18 +192,4 @@ export function relTime(
 export function toDateOnlyIso(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
-}
-
-/** The ids of the items whose time falls in a different `unit` (in ms) than the item before, skipping unparseable times. */
-export function whereTimeChanges(items: Timed[], unit: number): Set<string> {
-  const ids = new Set<string>()
-  let last = NaN
-  for (const { at, id } of items) {
-    const ms = parseServerTs(at).getTime()
-    if (!Number.isFinite(ms)) continue
-    const bucket = Math.floor(ms / unit)
-    if (bucket !== last) ids.add(id)
-    last = bucket
-  }
-  return ids
 }

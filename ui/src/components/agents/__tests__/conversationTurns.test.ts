@@ -6,7 +6,6 @@ import {
   revealSeqOf,
   type Turn,
   turnForSeq,
-  turnMessages,
   turns,
 } from '../conversationTurns'
 import { timeline } from '../taskTimeline'
@@ -656,23 +655,5 @@ describe('revealSeqOf', () => {
     expect(revealSeqOf({ revealSeq: '4' })).toBeNull()
     expect(revealSeqOf(null)).toBeNull()
     expect(revealSeqOf('x')).toBeNull()
-  })
-})
-
-describe('turnMessages', () => {
-  it('lists the person and agent messages but not requests', () => {
-    const list = turns(
-      timeline([
-        human(1, 'Fix it.'),
-        bash(2),
-        event(3, 'request.opened', { request_id: 'r1' }),
-        reply(4, 'Fixed.'),
-      ]),
-      { live: false },
-    )
-    expect(list.flatMap(turnMessages).map((m) => m.at)).toEqual([
-      event(1, 'turn').at,
-      event(4, 'turn').at,
-    ])
   })
 })
