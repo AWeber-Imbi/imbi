@@ -315,6 +315,20 @@ class ClaimTests(RunnerTestCase):
         response = await self.runner_post(runners[0], 'claim')
         self.assertEqual(response.status_code, 409, response.text)
 
+    async def test_claims_higher_priority_first(self) -> None:
+        # T-1 (normal) is the oldest; T-2 is low, T-3 is urgent.
+        self.act_as_user()
+        for priority in ('low', 'urgent'):
+            response = await self.create_task(priority=priority)
+            self.assertEqual(response.status_code, 201, response.text)
+        self.act_as(self.account)
+        order = []
+        for _ in range(3):
+            claim = await self.claim(await self.register())
+            assert claim is not None
+            order.append(claim['task']['short_id'])
+        self.assertEqual(order, ['T-3', 'T-1', 'T-2'])
+
     async def test_person_ticket_is_never_claimed(self) -> None:
         self.act_as_user()
         response = await self.client.post(

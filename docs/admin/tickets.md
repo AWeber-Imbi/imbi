@@ -385,7 +385,8 @@ POST /organizations/{org}/tickets/{short_id}/rank
 
 `"after": null` puts the ticket first. The change writes a
 `rank.changed` event. Agent runners do not use the rank: they take the
-oldest queued ticket.
+queued ticket with the highest priority (urgent, high, normal, then low),
+then the oldest.
 
 ## Triggers
 

@@ -80,9 +80,10 @@ Runners pull work. imbi-api does not push it.
 1. A runner registers with the pool credential. It gets a runner
    credential and an executor credential.
 2. It long-polls `POST /harness/runners/{id}/claim`. imbi-api gives it the
-   oldest queued task that it can run: the agent is enabled and under
-   its `max_concurrent_tasks`, the pool serves the organization, and the
-   runner has every label that the agent requires.
+   queued task with the highest priority (then the oldest) that it can
+   run: the agent is enabled and under its `max_concurrent_tasks`, the
+   pool serves the organization, and the runner has every label that the
+   agent requires.
 3. The claim pins the **chain** (the root task and its child tasks) to
    the runner, in one attempt. The response holds the task, the identity
    bundle, an agent token, and an agent API token.
