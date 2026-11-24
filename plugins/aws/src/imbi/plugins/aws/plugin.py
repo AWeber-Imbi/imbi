@@ -289,6 +289,7 @@ class AWSPlugin(plugins.Plugin):
             ),
         ],
         # The API writes ``{action, plugin_slug, key, data_type, secret}``
+        # (plus ``restored_from`` for ``restore_version``)
         # to operations_log.description for every set/delete in
         # ``project_configuration._write_audit``.
         ops_log_templates={
@@ -299,6 +300,12 @@ class AWSPlugin(plugins.Plugin):
             'delete_key': plugins.OpsLogTemplate(
                 label='Deleted parameter "{{key}}"',
                 summary='deleted parameter',
+            ),
+            'restore_version': plugins.OpsLogTemplate(
+                label=(
+                    'Restored parameter "{{key}}" to version {{restored_from}}'
+                ),
+                summary='restored parameter',
             ),
         },
         secret_providers=[AwsSecretsManager],

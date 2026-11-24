@@ -25,6 +25,7 @@ from imbi.common.plugins import decrypt_integration_credentials
 from imbi.common.plugins.base import (
     ConfigurationCapability,
     ConfigValue,
+    ConfigVersion,
     PluginContext,
 )
 
@@ -283,6 +284,151 @@ async def fetch_values(
     ]
 
 
+async def _get_history(
+    db: graph.Graph,
+    ctx: PluginContext,
+    resolved: ResolvedCapability,
+    auth: permissions.AuthContext,
+    credentials: dict[str, str],
+    key: str,
+    *,
+    with_values: bool,
+) -> list[ConfigVersion]:
+    """Call the capability's ``get_history`` and map its errors to HTTP."""
+    handler = typing.cast(ConfigurationCapability, resolved.capability_cls())
+
+    async def _call(c: PluginContext) -> typing.Any:
+        return await call_with_timeout(
+            handler.get_history(c, credentials, key, with_values=with_values)
+        )
+
+    try:
+        return await call_with_identity_retry(
+            db, ctx, resolved, auth, fn=_call
+        )
+    except NotImplementedError as exc:
+        raise fastapi.HTTPException(
+            status_code=501,
+            detail='This configuration source does not keep history',
+        ) from exc
+    except PermissionError as exc:
+        raise fastapi.HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise fastapi.HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@project_configuration_router.post('/history:fetch')
+async def fetch_history(
+    org_slug: str,
+    project_id: str,
+    body: models.ConfigHistoryRequest,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:configuration:read'),
+        ),
+    ],
+    source: str | None = fastapi.Query(default=None),
+    environment: str | None = fastapi.Query(default=None),
+) -> list[models.ConfigVersionResponse]:
+    """List the versions of one configuration key, newest first.
+
+    Values are included only for a caller who can read secrets, the
+    same rule as ``values:fetch``.
+    """
+    resolved, ctx, credentials = await _resolve_and_prepare(
+        db, org_slug, project_id, source, environment
+    )
+    with_values = (
+        auth.is_admin
+        or 'project:configuration:read_secrets' in auth.permissions
+    )
+    versions = await _get_history(
+        db,
+        ctx,
+        resolved,
+        auth,
+        credentials,
+        body.key,
+        with_values=with_values,
+    )
+    return [models.ConfigVersionResponse(**v.model_dump()) for v in versions]
+
+
+@project_configuration_router.post('/versions:restore')
+async def restore_version(
+    org_slug: str,
+    project_id: str,
+    body: models.ConfigRestoreRequest,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:configuration:write'),
+        ),
+    ],
+    source: str | None = fastapi.Query(default=None),
+    environment: str | None = fastapi.Query(default=None),
+) -> models.ConfigKeyResponse:
+    """Write an earlier version's value back as the newest version.
+
+    The value is read and written on the server, so it never reaches
+    the browser and a writer without ``read_secrets`` can restore a
+    secret.
+    """
+    resolved, ctx, credentials = await _resolve_and_prepare(
+        db, org_slug, project_id, source, environment
+    )
+    versions = await _get_history(
+        db, ctx, resolved, auth, credentials, body.key, with_values=True
+    )
+    match = next((v for v in versions if v.version == body.version), None)
+    if match is None or match.value is None:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Version {body.version} of {body.key!r} not found',
+        )
+
+    handler = typing.cast(ConfigurationCapability, resolved.capability_cls())
+    value = ConfigValue(
+        data_type=match.data_type, value=match.value, secret=match.secret
+    )
+
+    async def _set_value(c: PluginContext) -> typing.Any:
+        return await call_with_timeout(
+            handler.set_value(c, credentials, body.key, value)
+        )
+
+    try:
+        result_key = await call_with_identity_retry(
+            db, ctx, resolved, auth, fn=_set_value
+        )
+    except ValueError as exc:
+        raise fastapi.HTTPException(status_code=400, detail=str(exc)) from exc
+
+    await _invalidate_cache(resolved.integration_id, project_id)
+    project_slug = await _lookup_project_slug(db, project_id)
+    await _write_audit(
+        project_id=project_id,
+        project_slug=project_slug,
+        environment_slug=environment or '',
+        recorded_by=auth.principal_name,
+        action='restore_version',
+        plugin_slug=resolved.plugin_slug,
+        key=body.key,
+        data_type=match.data_type,
+        secret=match.secret,
+        restored_from=body.version,
+    )
+    return models.ConfigKeyResponse(
+        key=result_key.key,
+        data_type=result_key.data_type,
+        last_modified=result_key.last_modified,
+        secret=result_key.secret,
+    )
+
+
 @project_configuration_router.put('/{key:path}')
 async def set_configuration_value(
     org_slug: str,
@@ -394,6 +540,7 @@ async def _write_audit(
     key: str,
     data_type: str,
     secret: bool,
+    restored_from: str | None = None,
 ) -> None:
     """Write a configuration-change audit row to ``operations_log``.
 
@@ -409,16 +556,16 @@ async def _write_audit(
     the operations log silently inconsistent. Letting the exception
     propagate surfaces the bad state to the caller (and to monitoring).
     """
-    description = json.dumps(
-        {
-            'action': action,
-            'plugin_slug': plugin_slug,
-            'key': key,
-            'data_type': data_type,
-            'secret': secret,
-        },
-        sort_keys=True,
-    )
+    payload: dict[str, typing.Any] = {
+        'action': action,
+        'plugin_slug': plugin_slug,
+        'key': key,
+        'data_type': data_type,
+        'secret': secret,
+    }
+    if restored_from is not None:
+        payload['restored_from'] = restored_from
+    description = json.dumps(payload, sort_keys=True)
     entry = common_models.OperationLog(
         id=nanoid.generate(),
         recorded_at=datetime.datetime.now(datetime.UTC),
