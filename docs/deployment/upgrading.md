@@ -87,13 +87,15 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    with `t.*`. A rollback does not clear these statements; they stop
    only when the pod stops. To prevent these errors, scale imbi-api to
    zero before you deploy, for example with
-   `kubectl scale deployment/<name> --replicas=0`. After you deploy,
-   scale it back to its usual count: `service.api.replicas` of the Helm
-   chart, or `replicaCount` when `service.mode` is `all`. A
-   `helm upgrade` that changes only the image leaves the Deployment at
-   zero. If you cannot stop the service, restart all remaining pods of
-   the earlier release as soon as the first new pod is ready. This does
-   not prevent the errors, but it makes the error period shorter.
+   `kubectl scale deployment/<name> --replicas=0`, and wait until no
+   imbi-api pod of the earlier release runs. After you deploy, make sure
+   that the Deployment has its usual count again: `service.api.replicas`
+   of the Helm chart, or `replicaCount` when `service.mode` is `all`.
+   `helm upgrade` usually sets this count again; if it is still zero,
+   scale it up. If you cannot stop the service, restart all remaining
+   pods of the earlier release as soon as the first new pod is ready.
+   This does not prevent the errors, but it makes the error period
+   shorter.
 2. To show the version history of SSM configuration parameters, allow
    `ssm:GetParameterHistory` in the IAM Identity Center permission sets
    (roles) that the AWS configuration capability uses. Without it, the
