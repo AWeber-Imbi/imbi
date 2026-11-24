@@ -30,6 +30,7 @@ BlueprintType = typing.Literal[
     'Organization',
     'Integration',
     'Ticket',
+    'Deployment',
     'relationship',
 ]
 

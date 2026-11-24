@@ -83,6 +83,7 @@ export function BlueprintManagement() {
 
   // Known node types for blueprint targets
   const blueprintTypes = [
+    'Deployment',
     'Environment',
     'Organization',
     'Project',

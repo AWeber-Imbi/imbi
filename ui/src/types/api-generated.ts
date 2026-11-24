@@ -8172,6 +8172,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/projects/{project_id}/deployments/environments/{env_slug}/deployments/{deployment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Deployment Fields
+         * @description Return the blueprint properties of a deployment.
+         */
+        get: operations["get_deployment_fields_api_organizations__org_slug__projects__project_id__deployments_environments__env_slug__deployments__deployment_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Deployment Fields
+         * @description Update the blueprint properties of a deployment.
+         *
+         *     The body is a JSON merge patch (RFC 7396) of the properties: an
+         *     object value merges into the stored object, and ``null`` removes a
+         *     key. So an agent that records a fact under a new key of an object
+         *     sends only that key. Each property that the body changes must
+         *     agree with the ``Deployment`` blueprints that match the project
+         *     types and the environment.
+         *
+         *     Raises:
+         *         404: The deployment is not in the project and environment.
+         *         422: ``custom_fields_invalid`` -- no matching blueprint
+         *             declares a property, or a value does not agree with its
+         *             schema.
+         */
+        patch: operations["patch_deployment_fields_api_organizations__org_slug__projects__project_id__deployments_environments__env_slug__deployments__deployment_id__patch"];
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/projects/{project_id}/deployments/resync": {
         parameters: {
             query?: never;
@@ -13127,7 +13164,7 @@ export interface components {
              */
             kind: "node" | "relationship";
             /** Type */
-            type?: ("Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "Ticket") | null;
+            type?: ("Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "Ticket" | "Deployment") | null;
             /** Source */
             source?: string | null;
             /** Target */
@@ -13181,7 +13218,7 @@ export interface components {
              */
             kind: "node" | "relationship";
             /** Type */
-            type?: ("Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "Ticket") | null;
+            type?: ("Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "Ticket" | "Deployment") | null;
             /** Source */
             source?: string | null;
             /** Target */
@@ -14573,6 +14610,8 @@ export interface components {
              * @enum {string}
              */
             status: "pending" | "in_progress" | "success" | "failed" | "rolled_back";
+            /** Id */
+            id?: string | null;
             /** Note */
             note?: string | null;
             /** External Run Id */
@@ -14600,6 +14639,32 @@ export interface components {
             external_run_id?: string | null;
             /** External Run Url */
             external_run_url?: string | null;
+        };
+        /**
+         * DeploymentFieldsResponse
+         * @description The blueprint properties of one deployment.
+         *
+         *     ``fields`` has a value for each property that a matching
+         *     ``Deployment`` blueprint declares: the stored value, else the
+         *     default of the property, else ``None``. ``schemas`` holds the JSON
+         *     Schema of each matching blueprint, by priority, so an agent can
+         *     find the structure of the properties.
+         */
+        DeploymentFieldsResponse: {
+            /** Id */
+            id: string;
+            /** Environment */
+            environment: string;
+            /** Status */
+            status?: string | null;
+            /** Fields */
+            fields: {
+                [key: string]: unknown;
+            };
+            /** Schemas */
+            schemas: {
+                [key: string]: unknown;
+            }[];
         };
         /**
          * DeploymentResyncEnqueueResponse
@@ -25943,7 +26008,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "Ticket" | "relationship";
+                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "Ticket" | "Deployment" | "relationship";
             };
             cookie?: never;
         };
@@ -25974,7 +26039,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "Ticket" | "relationship";
+                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "Ticket" | "Deployment" | "relationship";
                 slug: string;
             };
             cookie?: never;
@@ -26006,7 +26071,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "Ticket" | "relationship";
+                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "Ticket" | "Deployment" | "relationship";
                 slug: string;
             };
             cookie?: never;
@@ -26036,7 +26101,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "Ticket" | "relationship";
+                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "Ticket" | "Deployment" | "relationship";
                 slug: string;
             };
             cookie?: never;
@@ -37208,6 +37273,80 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UnattachedDeploymentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_deployment_fields_api_organizations__org_slug__projects__project_id__deployments_environments__env_slug__deployments__deployment_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+                env_slug: string;
+                deployment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentFieldsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_deployment_fields_api_organizations__org_slug__projects__project_id__deployments_environments__env_slug__deployments__deployment_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+                env_slug: string;
+                deployment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentFieldsResponse"];
                 };
             };
             /** @description Validation Error */

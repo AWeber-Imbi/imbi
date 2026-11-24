@@ -1,7 +1,8 @@
 # Blueprints
 
 Blueprints let you define custom metadata fields for different types of
-projects in your service catalog, and custom fields for tickets. For example, you might create a
+projects in your service catalog, custom fields for tickets, and facts
+about deployments. For example, you might create a
 "Microservice" blueprint that requires every microservice to specify its
 programming language and SLA tier, while a "Library" blueprint asks for
 documentation URL and supported platforms.
@@ -84,6 +85,74 @@ makes the create fail with `422`. See
     breaks every automatic ticket create (schedules, webhooks, workflows,
     and child tickets of agents) that does not send it, until you change
     that caller. Give a required field a default when you can.
+
+## Deployment blueprints
+
+A blueprint of type `Deployment` adds properties to deployments. Agents
+use them to record facts about a deployment after it starts, for
+example error counts or CPU metrics for post-deployment monitoring.
+The schema of the blueprint sets the structure of the facts. Imbi does
+not add a structure of its own.
+
+The filter matches on the project types of the project and on the
+environment of the deployment. Imbi keeps the values apart from the
+core properties of a deployment, such as `status`, so a blueprint
+property can have any name.
+
+This schema keeps a snapshot for each timestamp:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "monitoring": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "error_count": {"type": "integer"},
+          "errors": {"type": "array", "items": {"type": "string"}},
+          "cpu_percent": {"type": "number"}
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}
+```
+
+To read and change the properties, use the deployment ID (the `id` of a
+deployment in the release endpoints):
+
+- `GET /organizations/{org}/projects/{project}/deployments/environments/{env}/deployments/{id}`
+  returns the values, with the default of each property that has no
+  value, and the schemas of the matching blueprints.
+- `PATCH` on the same path changes the values. The body is a JSON merge
+  patch (RFC 7396): an object merges into the stored object, and `null`
+  removes a key. To add one snapshot, send only its key:
+
+```json
+{"monitoring": {"2026-11-24T10:05:00Z": {"error_count": 3, "cpu_percent": 71.5}}}
+```
+
+A `PATCH` fails with `422` when no matching blueprint declares a
+property, or when a value does not agree with its schema. One
+exception: for a top-level array property, Imbi checks the type of
+each item and, for string items, the item `enum`. It converts an item
+to the item type when it can (`"3"` in an integer array is stored as
+`3`) instead of returning `422`. It does not check
+other item rules, such as a `minimum` or the schema of an object item,
+so an agent must not rely on those checks. An array inside an object
+property is checked against its full schema.
+
+Imbi does not enforce required top-level properties on deployments,
+because deployments are also created with no person or agent present.
+A nested object is different: after the patch merges into the stored
+object, the result must have the properties that its schema requires,
+or the `PATCH` fails with `422`.
+
+Concurrent `PATCH` requests on one deployment occur one at a time, so
+no change is lost.
 
 ## Updating Blueprints
 

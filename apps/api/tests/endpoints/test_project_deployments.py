@@ -4738,6 +4738,177 @@ class UnattachedDeploymentRouteTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(response.status_code, 403, response.text)
 
 
+class DeploymentFieldsRouteTestCase(ProjectDeploymentsTestCase):
+    """An agent records facts on a deployment through its blueprints."""
+
+    _URL = (
+        '/organizations/myorg/projects/proj1/deployments'
+        '/environments/production/deployments/dep-1'
+    )
+
+    def setUp(self) -> None:
+        super().setUp()
+        from imbi.common import models as common_models
+
+        self.blueprint = common_models.Blueprint.model_validate(
+            {
+                'name': 'Monitoring',
+                'type': 'Deployment',
+                'json_schema': {
+                    'type': 'object',
+                    'properties': {
+                        'monitoring': {
+                            'type': 'object',
+                            'additionalProperties': {
+                                'type': 'object',
+                                'properties': {
+                                    'error_count': {'type': 'integer'},
+                                },
+                                'additionalProperties': False,
+                            },
+                        },
+                        'verdict': {
+                            'type': 'string',
+                            'enum': ['healthy', 'rollback'],
+                            'default': 'healthy',
+                        },
+                    },
+                },
+            }
+        )
+        self.stored: dict[str, typing.Any] = {
+            'monitoring': {'t1': {'error_count': 1}},
+        }
+        self.matches = [self.blueprint]
+        self.written: list[dict[str, typing.Any]] = []
+        self.context: list[typing.Any] = []
+
+        async def update_fields(
+            db: typing.Any, deployment_id: str, update: typing.Any
+        ) -> dict[str, typing.Any]:
+            fields = update(dict(self.stored))
+            self.written.append(fields)
+            return fields
+
+        async def get_fields(
+            db: typing.Any, **kwargs: typing.Any
+        ) -> typing.Any:
+            if kwargs['deployment_id'] != 'dep-1':
+                return None
+            return common_deployments.DeploymentFields(
+                'success', dict(self.stored), ['apis']
+            )
+
+        async def matching(
+            db: typing.Any, type_name: str, context: typing.Any
+        ) -> typing.Any:
+            self.context.append((type_name, context))
+            return self.matches
+
+        for target, new in (
+            ('imbi.common.deployments.get_fields', get_fields),
+            ('imbi.common.deployments.update_fields', update_fields),
+            ('imbi.common.blueprints.matching_blueprints', matching),
+        ):
+            patcher = mock.patch(target, new)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_get_applies_defaults(self) -> None:
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(self._URL)
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        self.assertEqual(
+            {'monitoring': {'t1': {'error_count': 1}}, 'verdict': 'healthy'},
+            data['fields'],
+        )
+        self.assertEqual('success', data['status'])
+        self.assertIn('monitoring', data['schemas'][0]['properties'])
+        self.assertEqual(
+            [
+                (
+                    'Deployment',
+                    {'project_type': ['apis'], 'environment': 'production'},
+                )
+            ],
+            self.context,
+        )
+
+    def test_get_unknown_deployment_is_404(self) -> None:
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(self._URL.replace('dep-1', 'dep-2'))
+        self.assertEqual(response.status_code, 404, response.text)
+
+    def test_patch_merges_a_new_snapshot(self) -> None:
+        with testclient.TestClient(self.test_app) as client:
+            response = client.patch(
+                self._URL, json={'monitoring': {'t2': {'error_count': 7}}}
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            [
+                {
+                    'monitoring': {
+                        't1': {'error_count': 1},
+                        't2': {'error_count': 7},
+                    }
+                }
+            ],
+            self.written,
+        )
+
+    def test_patch_never_stores_a_default(self) -> None:
+        props = self.blueprint.json_schema.properties or {}
+        props['monitoring'].default = {'t0': {'error_count': 0}}
+        self.stored = {}
+        with testclient.TestClient(self.test_app) as client:
+            response = client.patch(
+                self._URL, json={'monitoring': {'t2': {'error_count': 7}}}
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            [{'monitoring': {'t2': {'error_count': 7}}}], self.written
+        )
+
+    def test_patch_null_removes_a_key(self) -> None:
+        with testclient.TestClient(self.test_app) as client:
+            response = client.patch(
+                self._URL, json={'monitoring': {'t1': None}, 'verdict': None}
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual([{'monitoring': {}}], self.written)
+        # verdict is removed, so it shows its default.
+        self.assertEqual(
+            {'monitoring': {}, 'verdict': 'healthy'},
+            response.json()['fields'],
+        )
+
+    def test_patch_bad_nested_value_is_422(self) -> None:
+        with testclient.TestClient(self.test_app) as client:
+            response = client.patch(
+                self._URL, json={'monitoring': {'t2': {'cpu': 'high'}}}
+            )
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual(
+            'custom_fields_invalid', response.json()['detail']['error']
+        )
+        self.assertEqual([], self.written)
+
+    def test_patch_undeclared_property_is_422(self) -> None:
+        with testclient.TestClient(self.test_app) as client:
+            response = client.patch(self._URL, json={'surprise': 1})
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual([], self.written)
+
+    def test_patch_without_a_blueprint_is_422(self) -> None:
+        self.matches = []
+        with testclient.TestClient(self.test_app) as client:
+            response = client.patch(self._URL, json={'verdict': 'healthy'})
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual([], self.written)
+
+
 class PromoteReclaimGuardTestCase(unittest.IsolatedAsyncioTestCase):
     """A reclaimed promote job must not dispatch a second deployment.
 

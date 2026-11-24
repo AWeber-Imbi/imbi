@@ -28,6 +28,7 @@ the array any more.
 import asyncio
 import collections.abc as abc
 import datetime
+import json
 import logging
 import typing
 
@@ -314,6 +315,7 @@ def node_to_event(
                 'timestamp': props.get('updated_at')
                 or props.get('created_at'),
                 'status': status,
+                'id': props.get('id'),
                 'note': props.get('note'),
                 'external_run_id': props.get('external_run_id'),
                 'external_run_url': props.get('external_run_url'),
@@ -1047,3 +1049,99 @@ async def attach_release(
         ['id'],
     )
     return bool(rows)
+
+
+class DeploymentFields(typing.NamedTuple):
+    """The blueprint properties of a ``Deployment`` node and the filter
+    context of its blueprints."""
+
+    status: str | None
+    fields: dict[str, typing.Any]
+    project_types: list[str]
+
+
+# The blueprint properties are one JSON text property, ``fields``, so
+# that they cannot overwrite a property that the writers own.
+_FIELDS_QUERY: typing.Final[typing.LiteralString] = """
+MATCH (p:Project {{id: {project_id}}})
+      -[:OWNED_BY]->(:Team)
+      -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+MATCH (p)<-[:BELONGS_TO]-(d:Deployment {{id: {deployment_id}}})
+      -[:TARGETS]->(:Environment {{slug: {env_slug}}})
+OPTIONAL MATCH (p)-[:TYPE]->(pt:ProjectType)
+RETURN d.status AS status, d.fields AS fields, collect(pt.slug) AS types
+"""
+
+_SET_FIELDS_QUERY: typing.Final[typing.LiteralString] = """
+MATCH (d:Deployment {{id: {deployment_id}}})
+SET d.fields = {fields}
+RETURN d.id AS id
+"""
+
+
+def _decode(raw: typing.Any) -> dict[str, typing.Any]:
+    value = graph.parse_agtype(raw)
+    return json.loads(value) if isinstance(value, str) else {}
+
+
+async def get_fields(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    env_slug: str,
+    deployment_id: str,
+) -> DeploymentFields | None:
+    """Return the blueprint properties of a ``Deployment`` node, or
+    ``None`` when the organization, project, or environment does not
+    contain it."""
+    rows = await db.execute(
+        _FIELDS_QUERY,
+        {
+            'org_slug': org_slug,
+            'project_id': project_id,
+            'env_slug': env_slug,
+            'deployment_id': deployment_id,
+        },
+        ['status', 'fields', 'types'],
+    )
+    if not rows:
+        return None
+    return DeploymentFields(
+        graph.parse_agtype(rows[0]['status']),
+        _decode(rows[0]['fields']),
+        [str(t) for t in graph.parse_agtype(rows[0]['types']) or []],
+    )
+
+
+async def update_fields(
+    db: graph.Graph,
+    deployment_id: str,
+    update: abc.Callable[[dict[str, typing.Any]], dict[str, typing.Any]],
+) -> dict[str, typing.Any]:
+    """Replace the blueprint properties of a ``Deployment`` node with
+    ``update(stored)`` and return the result.
+
+    The read and the write occur in one transaction under a lock on the
+    deployment, so concurrent updates occur one at a time and each one
+    gets the result of the update before it. An exception from
+    ``update`` rolls back and writes nothing.
+    """
+
+    async def work(execute: graph.CypherExecute) -> dict[str, typing.Any]:
+        params = {'deployment_id': deployment_id}
+        rows = await execute(
+            'MATCH (d:Deployment {{id: {deployment_id}}}) '
+            'RETURN d.fields AS fields',
+            params,
+            ['fields'],
+        )
+        fields = update(_decode(rows[0]['fields']) if rows else {})
+        await execute(
+            _SET_FIELDS_QUERY,
+            {**params, 'fields': json.dumps(fields)},
+            ['id'],
+        )
+        return fields
+
+    return await db.locked(f'deployment-fields:{deployment_id}', work)

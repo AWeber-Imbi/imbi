@@ -210,6 +210,7 @@ class Blueprint(Node):
             'Organization',
             'Integration',
             'Ticket',
+            'Deployment',
         ]
         | None
     ) = None
@@ -1785,6 +1786,9 @@ class DeploymentEvent(pydantic.BaseModel):
         'failed',
         'rolled_back',
     ]
+    #: The id of the ``Deployment`` node. ``None`` for a legacy entry
+    #: of a ``DEPLOYED_TO`` array, which has no node.
+    id: str | None = None
     note: str | None = None
     external_run_id: str | None = None
     external_run_url: str | None = None

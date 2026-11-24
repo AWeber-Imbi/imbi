@@ -103,12 +103,14 @@ def validate(
     values: dict[str, typing.Any],
     *,
     partial: bool,
+    noun: str = 'ticket',
 ) -> dict[str, typing.Any]:
     """Return the clean values, as JSON, or raise 422.
 
     A full check (a create) gives each missing field its default. With
     ``partial`` (a ``PATCH``), only the keys in ``values`` are checked,
-    and a ``None`` value stays ``None`` (it clears the key).
+    and a ``None`` value stays ``None`` (it clears the key). ``noun``
+    names the object in the error message.
 
     Raises:
         422: ``custom_fields_invalid``, with ``missing`` (the property
@@ -150,10 +152,10 @@ def validate(
     try:
         clean = model.model_validate(sent)
     except pydantic.ValidationError as e:
-        raise _invalid(matches, e) from e
+        raise _invalid(matches, e, noun) from e
     result = clean.model_dump(mode='json', exclude_none=True)
     if nested := _nested_errors(matches, result):
-        raise _detail([], nested)
+        raise _detail([], nested, noun)
     if partial:
         return {k: result.get(k) for k in values}
     return result
@@ -240,7 +242,9 @@ def _nested_errors(
 
 
 def _invalid(
-    matches: list[models.Blueprint], error: pydantic.ValidationError
+    matches: list[models.Blueprint],
+    error: pydantic.ValidationError,
+    noun: str,
 ) -> fastapi.HTTPException:
     """Return the 422 of the D2 shape for a failed check."""
     properties: dict[str, models.Schema] = {}
@@ -255,20 +259,22 @@ def _invalid(
             missing.append({'field': field, **prop.model_dump(mode='json')})
         else:
             invalid.append({'field': field, 'message': item['msg']})
-    return _detail(missing, invalid)
+    return _detail(missing, invalid, noun)
 
 
 def _detail(
-    missing: list[dict[str, typing.Any]], invalid: list[dict[str, str]]
+    missing: list[dict[str, typing.Any]],
+    invalid: list[dict[str, str]],
+    noun: str,
 ) -> fastapi.HTTPException:
     """Return the 422 of the D2 shape."""
     return fastapi.HTTPException(
         status_code=422,
         detail={
             'error': 'custom_fields_invalid',
-            'message': 'The ticket is missing required custom fields'
+            'message': f'The {noun} is missing required custom fields'
             if missing
-            else 'The custom fields of the ticket are not valid',
+            else f'The custom fields of the {noun} are not valid',
             'missing': missing,
             'invalid': invalid,
         },
