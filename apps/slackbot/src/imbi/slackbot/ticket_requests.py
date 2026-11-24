@@ -327,15 +327,23 @@ async def _channel_id(slack: SlackClient, name: str) -> str | None:
     # channels again for each request.
     if _misses.get(name, 0.0) > time.monotonic():
         return None
-    pages = await slack.conversations_list(
-        types='public_channel,private_channel',
-        exclude_archived=True,
-        limit=_PAGE_SIZE,
-    )
-    async for page in pages:
-        _channels.update({c['name']: c['id'] for c in page['channels']})
-        if name in _channels:
-            return _channels[name]
+    try:
+        pages = await slack.conversations_list(
+            types='public_channel,private_channel',
+            exclude_archived=True,
+            limit=_PAGE_SIZE,
+        )
+        async for page in pages:
+            _channels.update({c['name']: c['id'] for c in page['channels']})
+            if name in _channels:
+                return _channels[name]
+    except errors.SlackApiError as err:
+        # For example missing_scope: the owner gets the request.
+        response: typing.Any = err.response
+        LOGGER.warning(
+            'Could not list Slack channels: %s', response.get('error')
+        )
+        return None
     _misses[name] = time.monotonic() + _MISS_TTL
     return None
 

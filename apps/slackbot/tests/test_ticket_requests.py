@@ -222,6 +222,17 @@ class PostTests(FlowTestCase):
         )
         self.assertEqual('D-U1', self.slack.posts[0]['channel'])
 
+    async def test_owner_when_channels_cannot_be_listed(self) -> None:
+        self.slack.conversations_list = mock.AsyncMock(
+            side_effect=errors.SlackApiError(
+                'missing_scope', {'error': 'missing_scope'}
+            )
+        )
+        await ticket_requests.post(
+            self.slack, self.runtime, entry(slack_channel='#ops')
+        )
+        self.assertEqual('D-U1', self.slack.posts[0]['channel'])
+
     async def test_owner_when_the_channel_id_is_stale(self) -> None:
         await ticket_requests.post(
             self.slack, self.runtime, entry(slack_channel='C404')
