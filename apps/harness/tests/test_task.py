@@ -2678,6 +2678,46 @@ class ChildTaskTestCase(RoutedTestCase):
         )
         self.assertIn('runner_label_missing', result['content'][0]['text'])
 
+    async def test_children_run_in_parallel(self) -> None:
+        started: set[str] = set()
+        both = asyncio.Event()
+
+        async def create(body: dict[str, typing.Any]) -> dict[str, str]:
+            return {'short_id': body['title']}
+
+        async def child(short_id: str) -> dict[str, typing.Any]:
+            started.add(short_id)
+            if len(started) == 2:
+                both.set()
+            # Times out unless the other child starts while this waits.
+            await asyncio.wait_for(both.wait(), 1)
+            return {'short_id': short_id}
+
+        self.run_task.children = child
+        task_args = {'agent_slug': 'reviewer', 'instruction': 'Fix.'}
+        with mock.patch.object(self.run_task.api, 'create_child', create):
+            result = await self.run_task.child_tasks_tool().handler(
+                {
+                    'tasks': [
+                        task_args | {'title': 'T-2'},
+                        task_args | {'title': 'T-3'},
+                        task_args | {'agent_slug': 'admin', 'title': 't'},
+                    ]
+                }
+            )
+        texts = [part['text'] for part in result['content']]
+        self.assertEqual(json.loads(texts[0]), {'short_id': 'T-2'})
+        self.assertEqual(json.loads(texts[1]), {'short_id': 'T-3'})
+        self.assertIn("'admin' is not a subagent", texts[2])
+        self.assertFalse(result['is_error'])
+
+    async def test_child_tasks_errors(self) -> None:
+        self.run_task.children = None
+        result = await self.run_task.create_child_tasks({'tasks': []})
+        self.assertTrue(result['is_error'])
+        result = await self.run_task.create_child_tasks({'tasks': [{}]})
+        self.assertTrue(result['is_error'])
+
 
 class AttachProjectTestCase(TaskTestCase):
     async def test_attaches_by_id_or_slug(self) -> None:

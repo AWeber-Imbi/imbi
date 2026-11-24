@@ -186,6 +186,8 @@ _RULES = """\
   before you detach the last one.
 - Use `request_input` to ask a person a question. Use
   `create_child_task` to give work to another agent: {subagents}.
+  To give work to more than one agent at the same time, use
+  `create_child_tasks` once with all the tasks: they run in parallel.
 - Use `hand_off` to give the task to a person when a person must do
   the rest of the work, or must decide something that can take days.
   It ends this session: stop after it, with no `report_outcome`.
@@ -222,6 +224,13 @@ _CHILD_TASK_SCHEMA: dict[str, typing.Any] = {
         },
     },
     'required': ['agent_slug', 'title', 'instruction'],
+}
+_CHILD_TASKS_SCHEMA: dict[str, typing.Any] = {
+    'type': 'object',
+    'properties': {
+        'tasks': {'type': 'array', 'items': _CHILD_TASK_SCHEMA, 'minItems': 1}
+    },
+    'required': ['tasks'],
 }
 _ATTACH_PROJECT_SCHEMA: dict[str, typing.Any] = {
     'type': 'object',
@@ -1853,6 +1862,7 @@ class TaskRun:
                 self.run_with_secret_tool(),
                 self.request_input_tool(),
                 self.child_task_tool(),
+                self.child_tasks_tool(),
                 self.attach_project_tool(),
                 self.detach_project_tool(),
                 self.report_outcome_tool(),
@@ -2412,6 +2422,39 @@ class TaskRun:
         except (KeyError, TypeError):
             return _tool_error('The input is not valid')
         return await self.wait_child(str(child['short_id']))
+
+    def child_tasks_tool(self) -> sdk.SdkMcpTool[typing.Any]:
+        @sdk.tool(
+            'create_child_tasks',
+            'Give work to more than one agent in this workspace at the '
+            'same time, and wait for all the results. The children run '
+            'in parallel.',
+            _CHILD_TASKS_SCHEMA,
+        )
+        async def create_child_tasks(args: Body) -> Body:
+            return await self.create_child_tasks(args)
+
+        return create_child_tasks
+
+    async def create_child_tasks(self, args: Body) -> Body:
+        """Run :meth:`create_child_task` for each item in parallel.
+        Return one text part for each item, in the same order."""
+        tasks = args.get('tasks')
+        if not isinstance(tasks, list) or not tasks:
+            return _tool_error('The tasks must be a list that is not empty')
+        items = typing.cast('list[object]', tasks)
+        results = await asyncio.gather(
+            *(
+                self.create_child_task(
+                    typing.cast('Body', item) if isinstance(item, dict) else {}
+                )
+                for item in items
+            )
+        )
+        return {
+            'content': [part for r in results for part in r['content']],
+            'is_error': all(r.get('is_error') for r in results),
+        }
 
     async def wait_child(self, short_id: str) -> Body:
         """Run the child and return its summary, unless this task stops

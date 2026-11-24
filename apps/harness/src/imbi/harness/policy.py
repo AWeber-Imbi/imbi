@@ -27,6 +27,7 @@ HARNESS_TOOLS = frozenset(
     {
         'attach_project',
         'create_child_task',
+        'create_child_tasks',
         'detach_project',
         'hand_off',
         'report_outcome',
