@@ -10,12 +10,15 @@ import {
 
 import { Info, Settings, Sparkle, User, Wrench } from 'lucide-react'
 
+import { clockTime, fullTime } from '@/lib/formatDate'
 import { cn } from '@/lib/utils'
 
 import { FindStub } from './FindStub'
+import { formatElapsed } from './taskEvents'
 import {
   type Fold,
   KIND_LABEL,
+  pausesOf,
   type TrajectoryKind,
   type TrajectoryRecord,
   type TrajectoryRequest,
@@ -37,6 +40,10 @@ const TAG: Record<TrajectoryKind, string> = {
   tool: 'bg-(--tj-warn-3) text-(--tj-warn)',
   user: 'bg-(--tj-business-3) text-(--tj-business)',
 }
+
+/** Below this gap a row's time recedes; from `PAUSE_MS` on it stands out with the wait beside it. */
+const QUICK_MS = 2_000
+const PAUSE_MS = 10_000
 
 const MOVES: Record<string, (i: number, last: number) => number> = {
   ArrowDown: (i) => i + 1,
@@ -119,6 +126,7 @@ export function TrajectoryLedger({
   turnStarts,
 }: LedgerProps) {
   const pane = useRef<HTMLDivElement>(null)
+  const pauses = pausesOf(rows)
   const following = useRef(true)
   const requestAt = new Map(requests.map((r) => [r.assistant, r]))
   const shown = useRef<null | TrajectoryWindow>(null)
@@ -285,7 +293,7 @@ export function TrajectoryLedger({
         role="grid"
       >
         <colgroup>
-          <col className="w-34 @max-[620px]/tj:w-13" />
+          <col className="w-52 @max-[620px]/tj:w-28" />
           <col />
         </colgroup>
         <tbody
@@ -331,6 +339,7 @@ export function TrajectoryLedger({
                   measure={virtualizer.measureElement}
                   onDoubleClick={() => onDoubleClick(row.record)}
                   onSelect={onSelect}
+                  pause={pauses.get(row.record.id)}
                   record={row.record}
                   request={requestAt.get(row.record.id)}
                   requestSelected={
@@ -445,6 +454,7 @@ function RecordRow({
   measure,
   onDoubleClick,
   onSelect,
+  pause,
   record,
   request,
   requestSelected,
@@ -457,6 +467,7 @@ function RecordRow({
   measure: (row: HTMLElement | null) => void
   onDoubleClick: () => void
   onSelect: (selection: TrajectorySelection) => void
+  pause?: number
   record: TrajectoryRecord
   request?: TrajectoryRequest
   requestSelected: boolean
@@ -472,6 +483,9 @@ function RecordRow({
     }
   }
   const label = [
+    record.startedAt !== null && Number.isFinite(record.startedAt)
+      ? clockTime(record.startedAt, true)
+      : null,
     record.request ? `Request ${record.request}` : null,
     KIND_LABEL[record.kind],
     record.text,
@@ -486,7 +500,7 @@ function RecordRow({
       aria-rowindex={index + 1}
       aria-selected={selected}
       className={cn(
-        'h-9 cursor-default transition-[background-color,opacity] duration-120 outline-none focus-visible:shadow-[inset_0_0_0_1px_var(--tj-brand)]',
+        'group/row h-9 cursor-default transition-[background-color,opacity] duration-120 outline-none focus-visible:shadow-[inset_0_0_0_1px_var(--tj-brand)]',
         selected || requestSelected
           ? 'bg-action/10 inset-ring inset-ring-action/35'
           : 'hover:bg-(--tj-hover)',
@@ -516,7 +530,7 @@ function RecordRow({
           <span
             aria-hidden
             className={cn(
-              'absolute inset-y-0 left-0 w-0.5',
+              'absolute inset-y-0 left-0 w-1',
               record.error ? 'bg-(--tj-turn-error)' : 'bg-(--tj-turn-accent)',
             )}
           />
@@ -524,7 +538,7 @@ function RecordRow({
         {selected && record.error && (
           <span
             aria-hidden
-            className="absolute inset-y-0 left-0 w-0.75 bg-(--tj-error)"
+            className="absolute inset-y-0 left-0 w-1.5 bg-(--tj-error)"
           />
         )}
         {turnStart !== undefined && (
@@ -549,8 +563,11 @@ function RecordRow({
             selected={requestSelected}
           />
         )}
-        <span className="flex justify-end">
-          <span className="flex w-22 justify-end @max-[620px]/tj:w-auto">
+        <span className="flex items-center justify-end gap-2">
+          {record.startedAt !== null && Number.isFinite(record.startedAt) && (
+            <StartTime at={record.startedAt} pause={pause} />
+          )}
+          <span className="flex w-19 justify-end @max-[620px]/tj:w-auto">
             <KindTag kind={record.kind} />
           </span>
         </span>
@@ -594,6 +611,39 @@ function RequestDot({
         Request #{request.number}
       </span>
     </button>
+  )
+}
+
+/** A record's start: faint right after the row above, bright with the wait beside it after a pause. */
+function StartTime({ at, pause }: { at: number; pause?: number }) {
+  const long = pause !== undefined && pause >= PAUSE_MS
+  return (
+    <span className="flex items-center gap-1.5">
+      {long && (
+        <span
+          className={cn(
+            'rounded-[3px] bg-(--tj-bg-module) px-1 font-tj-code text-[10px] leading-3.5 text-(--tj-label-2) tabular-nums @max-[620px]/tj:hidden',
+          )}
+          title={`${formatElapsed(pause)} after the row above`}
+        >
+          +{formatElapsed(pause)}
+        </span>
+      )}
+      <time
+        className={cn(
+          'font-tj-code text-[11px] text-(--tj-label-3) tabular-nums',
+          long
+            ? 'text-(--tj-label-1)'
+            : pause !== undefined && pause < QUICK_MS
+              ? 'opacity-40'
+              : 'opacity-70',
+        )}
+        dateTime={new Date(at).toISOString()}
+        title={fullTime(at)}
+      >
+        {clockTime(at, true)}
+      </time>
+    </span>
   )
 }
 

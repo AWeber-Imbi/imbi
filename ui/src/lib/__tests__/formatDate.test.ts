@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest'
 
 import {
   absTime,
+  clockTime,
   formatByFormat,
   formatDate,
   formatDateTime,
   formatRelativeDate,
+  fullTime,
   parseServerTs,
   relTime,
   toDateOnlyIso,
@@ -315,5 +317,25 @@ describe('relTime with server timestamps', () => {
     expect(relTime('2026-07-29 12:00:00', now)).toBe(
       relTime('2026-07-29T12:00:00Z', now),
     )
+  })
+})
+
+describe('clockTime', () => {
+  const at = new Date(2026, 2, 17, 15, 5, 9).getTime()
+
+  it('formats the local time on a 24-hour clock', () => {
+    expect(clockTime(at)).toMatch(/^15\D05$/)
+    expect(clockTime(at, true)).toMatch(/^15\D05\D09$/)
+  })
+
+  it('returns an empty string for an unparseable input', () => {
+    expect(clockTime('not-a-date')).toBe('')
+  })
+})
+
+describe('fullTime', () => {
+  it('ends with the 24-hour time and the zone', () => {
+    const at = new Date(2026, 2, 17, 15, 5, 9).getTime()
+    expect(fullTime(at)).toMatch(/15\D05\D09 \S+$/)
   })
 })

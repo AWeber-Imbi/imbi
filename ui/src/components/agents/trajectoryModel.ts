@@ -316,6 +316,26 @@ export function formatDuration(ms: number): string {
   return `${(ms / 1000).toFixed(1)} s`
 }
 
+/** How long after the record row above each record started, in ms; none for the first row, a row after a fold, or a row next to one with no start. */
+export function pausesOf(rows: TrajectoryRow[]): Map<string, number> {
+  const pauses = new Map<string, number>()
+  let prev: null | number = null
+  for (const row of rows) {
+    if (row.kind === 'summary') {
+      prev = null
+      continue
+    }
+    const at = row.record.startedAt
+    if (at === null || !Number.isFinite(at)) {
+      prev = null
+      continue
+    }
+    if (prev !== null) pauses.set(row.record.id, at - prev)
+    prev = at
+  }
+  return pauses
+}
+
 /** One line of Markdown as text: at most 512 characters. */
 export function preview(markdown: string): string {
   const text = markdown
