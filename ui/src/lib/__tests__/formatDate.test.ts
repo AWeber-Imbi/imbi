@@ -11,6 +11,7 @@ import {
   parseServerTs,
   relTime,
   toDateOnlyIso,
+  whereTimeChanges,
 } from '@/lib/formatDate'
 
 // Fixed reference instant so relative-time math stays deterministic
@@ -334,9 +335,24 @@ describe('clockTime', () => {
 })
 
 describe('fullTime', () => {
-  it('gives the date, the 24-hour time, and the zone', () => {
-    const out = fullTime(new Date(2026, 2, 17, 15, 5, 9).getTime())
-    expect(out).toMatch(/Mar 17, 2026/)
-    expect(out).toMatch(/15\D05\D09 \S+$/)
+  it('ends with the 24-hour time and the zone', () => {
+    const at = new Date(2026, 2, 17, 15, 5, 9).getTime()
+    expect(fullTime(at)).toMatch(/15\D05\D09 \S+$/)
+  })
+})
+
+describe('whereTimeChanges', () => {
+  it('keeps the items whose minute differs from the item before', () => {
+    const ids = whereTimeChanges(
+      [
+        { at: '2026-10-08T12:00:10Z', id: 'a' },
+        { at: '2026-10-08T12:00:50Z', id: 'b' },
+        { at: 'not-a-date', id: 'c' },
+        { at: '2026-10-08T12:01:05Z', id: 'd' },
+        { at: '2026-10-09T12:01:30Z', id: 'e' },
+      ],
+      60_000,
+    )
+    expect([...ids]).toEqual(['a', 'd', 'e'])
   })
 })

@@ -1,3 +1,9 @@
+/** Something that happened at a time. */
+export interface Timed {
+  at: number | string
+  id: string
+}
+
 interface DateFormatOptions {
   /** String returned when the input is null/undefined or unparseable. */
   fallback?: string
@@ -121,19 +127,6 @@ export function formatRelativeDate(dateString?: null | string): string {
   }
 }
 
-/**
- * Parse a timestamp as the API means it, not as `new Date()` guesses.
- *
- * ClickHouse DateTime64 columns hold UTC but some endpoints serialize
- * them without an offset — "2026-07-29T12:00:00", or the space-separated
- * "2026-07-29 12:00:00" that Python's `str(datetime)` emits. `new Date()`
- * reads a bare timestamp as *local*, shifting it by the viewer's UTC
- * offset, so a missing offset is treated as UTC here.
- *
- * Date-only values are the opposite case: they name a calendar day, not
- * an instant, so they parse to local midnight. Reading "2026-07-29" as
- * UTC midnight would render it as the 28th anywhere west of Greenwich.
- */
 /** Date, 24-hour time, and zone: "Nov 24, 2026, 14:05:09 EST". */
 export function fullTime(at: number | string): string {
   const d = parseServerTs(at)
@@ -150,6 +143,19 @@ export function fullTime(at: number | string): string {
   })
 }
 
+/**
+ * Parse a timestamp as the API means it, not as `new Date()` guesses.
+ *
+ * ClickHouse DateTime64 columns hold UTC but some endpoints serialize
+ * them without an offset — "2026-07-29T12:00:00", or the space-separated
+ * "2026-07-29 12:00:00" that Python's `str(datetime)` emits. `new Date()`
+ * reads a bare timestamp as *local*, shifting it by the viewer's UTC
+ * offset, so a missing offset is treated as UTC here.
+ *
+ * Date-only values are the opposite case: they name a calendar day, not
+ * an instant, so they parse to local midnight. Reading "2026-07-29" as
+ * UTC midnight would render it as the 28th anywhere west of Greenwich.
+ */
 export function parseServerTs(value: number | string): Date {
   if (typeof value === 'number') return new Date(value)
   const raw = value.trim()
@@ -192,4 +198,18 @@ export function relTime(
 export function toDateOnlyIso(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+/** The ids of the items whose time falls in a different `unit` (in ms) than the item before, skipping unparseable times. */
+export function whereTimeChanges(items: Timed[], unit: number): Set<string> {
+  const ids = new Set<string>()
+  let last = NaN
+  for (const { at, id } of items) {
+    const ms = parseServerTs(at).getTime()
+    if (!Number.isFinite(ms)) continue
+    const bucket = Math.floor(ms / unit)
+    if (bucket !== last) ids.add(id)
+    last = bucket
+  }
+  return ids
 }

@@ -1,6 +1,7 @@
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { clockTime } from '@/lib/formatDate'
 import { act, cleanup, render, screen, waitFor, within } from '@/test/utils'
 import type { Ticket } from '@/types'
 
@@ -60,6 +61,13 @@ describe('ConversationTab', () => {
         store.set(key, value)
       },
     )
+  })
+
+  it('shows the minute once for messages sent in the same minute', () => {
+    renderTab('closed')
+    const minutes = screen.getAllByText(clockTime(LOG[0].at))
+    expect(minutes).toHaveLength(1)
+    expect(minutes[0].closest('time')).toBeInTheDocument()
   })
 
   it('folds a finished turn and keeps the messages in view', () => {

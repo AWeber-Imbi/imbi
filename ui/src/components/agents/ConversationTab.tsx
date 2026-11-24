@@ -44,7 +44,7 @@ import {
   TraceLine,
   TraceTitle,
 } from '@/components/ui/trace'
-import { clockTime, fullTime } from '@/lib/formatDate'
+import { clockTime, fullTime, whereTimeChanges } from '@/lib/formatDate'
 import { markdownText } from '@/lib/markdown-text'
 import { cn } from '@/lib/utils'
 import type { Ticket, TicketEvent } from '@/types'
@@ -72,7 +72,6 @@ import {
 import {
   entryKey,
   hashSeqOf,
-  minuteMarks,
   type ProcessGroup,
   revealSeqOf,
   type Turn,
@@ -230,13 +229,17 @@ export function ConversationTab({
   const askMatches =
     searching && matches((task.description || task.title || '').trim(), query)
   const showAsk = !searching || askMatches || shown.length > 0
+  const ask = showAsk && !!taskAsk(task, list[0])
   const stamped = useMemo(
     () =>
-      minuteMarks([
-        ...(showAsk ? [{ at: task.created_at, id: ASK_ID }] : []),
-        ...shown.flatMap(turnMessages),
-      ]),
-    [showAsk, shown, task.created_at],
+      whereTimeChanges(
+        [
+          ...(ask ? [{ at: task.created_at, id: ASK_ID }] : []),
+          ...shown.flatMap(turnMessages),
+        ],
+        60_000,
+      ),
+    [ask, shown, task.created_at],
   )
   const follow = useRef(true)
   const [whole, setWhole] = useState<ReadonlySet<string>>(() => new Set())
@@ -290,7 +293,6 @@ export function ConversationTab({
     setRevealed({ id: target.turn.id })
   }
 
-  const ask = showAsk && !!taskAsk(task, list[0])
   const [askAll, setAskAll] = useState(false)
   const rows = useMemo(
     () => [...(ask ? ['ask'] : []), ...shown.map((turn) => turn.id)],
@@ -796,11 +798,7 @@ function searchText(entry: TimelineEntry): string {
   ].join(' ')
 }
 
-/** What started the task, as the first message, unless a person already said it. */
-/**
- * When the message was sent, in the margin beside it: its minute when
- * `marked`, and the exact second while the message is hovered.
- */
+/** When the message was sent, in the margin beside it: its minute when `marked`, and the exact second while the message is hovered. */
 function Stamp({
   at,
   className,
@@ -819,9 +817,9 @@ function Stamp({
       dateTime={at}
       title={fullTime(at)}
     >
-      <span className={marked ? 'group-hover/message:hidden' : 'hidden'}>
-        {clockTime(at)}
-      </span>
+      {marked && (
+        <span className="group-hover/message:hidden">{clockTime(at)}</span>
+      )}
       <span className="hidden group-hover/message:inline">
         {clockTime(at, true)}
       </span>
@@ -829,6 +827,7 @@ function Stamp({
   )
 }
 
+/** What started the task, as the first message, unless a person already said it. */
 function TaskAsk({
   all,
   ctx,

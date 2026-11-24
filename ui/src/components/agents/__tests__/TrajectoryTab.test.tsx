@@ -107,6 +107,16 @@ describe('TrajectoryTab ledger', () => {
     expect(within(rows()[0]).getByText('Check the release')).toBeInTheDocument()
   })
 
+  it('shows a start time only where it differs from the row above', () => {
+    renderTab()
+    const times = rows().map(
+      (row) => row.querySelector('time')?.textContent ?? null,
+    )
+    const shown = times.filter((time) => time !== null)
+    expect(shown.length).toBeGreaterThan(1)
+    expect(new Set(shown).size).toBe(shown.length)
+  })
+
   it('shows a tool as name, args, an arrow and the result', () => {
     renderTab()
     const bash = rows()[3]

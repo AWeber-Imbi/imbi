@@ -1,4 +1,4 @@
-import { clockTime } from '@/lib/formatDate'
+import type { Timed } from '@/lib/formatDate'
 
 import { isError, type TimelineEntry } from './taskTimeline'
 
@@ -92,24 +92,6 @@ export function hashSeqOf(hash: string): null | number {
   return match ? Number(match[1]) : null
 }
 
-/**
- * The messages whose minute differs from the last minute shown, so a
- * run of messages sent in the same minute carries one time.
- */
-export function minuteMarks(
-  messages: { at: string; id: string }[],
-): Set<string> {
-  const marks = new Set<string>()
-  let last = ''
-  for (const { at, id } of messages) {
-    const minute = clockTime(at)
-    if (minute === last) continue
-    marks.add(id)
-    last = minute
-  }
-  return marks
-}
-
 /** The event seq a view asked the conversation to show, if any. */
 export function revealSeqOf(state: unknown): null | number {
   if (!state || typeof state !== 'object' || !('revealSeq' in state))
@@ -152,7 +134,7 @@ export function turnForSeq(
 }
 
 /** The person and agent messages of a turn, in the order they show. */
-export function turnMessages(turn: Turn): { at: string; id: string }[] {
+export function turnMessages(turn: Turn): Timed[] {
   return [
     ...turn.opening,
     ...turn.items.flatMap((item) =>
