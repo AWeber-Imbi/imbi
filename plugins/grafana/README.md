@@ -2,12 +2,21 @@
 
 The Grafana plugin for the [Imbi](https://github.com/AWeber-Imbi)
 platform, distributed as a single Python package (`imbi.plugins.grafana`)
-exposing one Integration (`grafana`) with one capability:
+exposing one Integration (`grafana`) with three capabilities:
 
+- **`lifecycle`** — writes the project's `EXISTS_IN` edge, whose
+  identifier (the project slug by default) the project's alert rules
+  carry in a label (`service` by default), and the `grafana` link to
+  the alert rules list searched by that label. Removes both on delete.
 - **`webhook-actions`** — receives deliveries from a Grafana Alerting
   webhook contact point. imbi-gateway verifies the signature, finds the
-  project, and records each delivery as an event. The capability
-  advertises no custom actions.
+  project by the label value, and records each delivery as an event.
+  The capability advertises no custom actions.
+- **`analysis`** — Project Doctor checks that the edge and link exist
+  and match the integration options, with a one-click repair.
+
+Options: `service_url` (the Grafana URL, required) and `label` (the
+alert rule label that names the project, default `service`).
 
 The Imbi host discovers the package by scanning `imbi.plugins.*` and
 reads the module-level `PLUGIN` attribute; there are no entry points.
@@ -66,7 +75,8 @@ moon run grafana:test   # coverage (fails under 85%)
 moon run grafana:lint grafana:typecheck grafana:format   # ruff + basedpyright + format check
 ```
 
-The plugin needs no credentials (`auth_type='none'`): it only receives.
+The plugin needs no credentials (`auth_type='none'`): it never calls
+Grafana.
 
 ## License
 

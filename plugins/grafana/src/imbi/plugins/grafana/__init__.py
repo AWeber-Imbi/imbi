@@ -1,4 +1,5 @@
-"""Imbi Grafana plugin: receive Grafana Alerting webhook deliveries."""
+"""Imbi Grafana plugin: link projects to Grafana alert rules and
+receive Grafana Alerting webhook deliveries."""
 
 from importlib import metadata
 

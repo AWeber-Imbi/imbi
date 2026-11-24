@@ -1,20 +1,61 @@
 # Grafana
 
-The `grafana` plugin receives deliveries from a Grafana Alerting webhook
-contact point. imbi-gateway verifies the signature of each delivery,
-finds the project that the notification is about, and records the
-delivery as an event. You can then add webhook rules that act on the
-events, for example start a workflow.
+The `grafana` plugin links each project to the Grafana alert rules that
+carry its slug in a label, and receives deliveries from a Grafana
+Alerting webhook contact point. imbi-gateway verifies the signature of
+each delivery, finds the project by that label, and records the delivery
+as an event. You can then add webhook rules that act on the events, for
+example start a workflow.
 
 ## Capabilities
 
 | Capability | Label | Default | Scope |
 |---|---|---|---|
+| `lifecycle` | Project lifecycle | On | Project-scoped. Events: `created`, `updated`, `deleted`. Supports lifecycle sync |
 | `webhook-actions` | Webhook actions | On | Project-scoped. Has no actions |
+| `analysis` | Project doctor | On | Project-scoped |
 
 ## Configuration
 
-The plugin has no options and no credentials. It only receives.
+The plugin has no credentials. It never calls Grafana.
+
+| Option | Required | Default | What it is |
+|---|---|---|---|
+| Grafana URL (`service_url`) | Yes | | Base URL of Grafana, for example `https://grafana.example.com`. Used for the alert rules link of each project |
+| Project label (`label`) | No | `service` | The alert rule label that names the project |
+
+## How a project is linked
+
+Grafana has no project resource. The link is a convention: every alert
+rule of a project carries the **Project label** with the project's
+identifier, which is the project slug unless an edge already exists
+with another value. The lifecycle capability writes that identifier to
+the project's `EXISTS_IN` edge and sets the `grafana` project link to
+the alert rules list searched by `label:<label>=<identifier>`. The
+gateway matches the identifier against the value that the webhook's
+Identifier Selector reads from each delivery.
+
+- **Created, updated, sync**: write the edge and the link. A project
+  that already has them is left as is.
+- **Deleted**: remove the edge and the link.
+- **Archived**: nothing. Grafana has no archive concept.
+
+In Grafana, add the label to each alert rule of the project, for
+example `service=webform`, and group the notification policy by that
+label so each delivery carries one value.
+
+## Doctor checks
+
+| Slug | Status | What it means | Fix |
+|---|---|---|---|
+| `exists-in` | `pass` | The edge and the `grafana` link match the integration options | |
+| `exists-in` | `fail` | The project has no edge, so the gateway cannot route deliveries to it | **Link the project to Grafana** writes the edge and the link |
+| `exists-in` | `warn` | The edge is not verified, or the edge or the link does not match the options | **Link the project to Grafana** refreshes them |
+| `identifier` | `pass` | The identifier is the project slug | |
+| `identifier` | `warn` | The identifier differs from the project slug, for example after a rename or a manual edit | **Use the project slug as the identifier** rewrites the edge. Alert rules labelled with the old value stop matching |
+
+The doctor cannot confirm that alert rules with the label exist, because
+the plugin has no Grafana credentials. Neither fix is sweepable.
 
 ## The delivery
 
@@ -84,13 +125,14 @@ To set up the webhook:
     | Field | Value |
     |---|---|
     | Secret | The secret you entered on the Grafana contact point |
-    | Identifier Selector | The JSON Pointer to the value that names the project, for example `/commonLabels/service` or `/alerts/0/labels/service` |
+    | Identifier Selector | The JSON Pointer to the label value that names the project: `/commonLabels/<label>`, for example `/commonLabels/service`, when the notification policy groups by the label; otherwise `/alerts/0/labels/<label>` |
     | User Subject Selector | Leave empty. Grafana sends no user |
     | Event Type Selector | `/status` |
 
-3. Link each project to the identifier in **Project settings >
-   Integrations**, or let the identifier selector point at a value that
-   already matches the project identifier in this integration.
+3. Assign the `lifecycle` capability to the project types that have
+   alert rules. New projects get their edge on creation. For existing
+   projects, run **Sync lifecycle** on the integration, or use the
+   Doctor fix on each project.
 4. In Grafana, set the contact point URL to the webhook URL from Imbi, and
    route the alert rules that you want to send to the contact point.
 
@@ -112,4 +154,7 @@ deliveries as events.
 - The gateway does not use `groupKey` as an idempotency key. A repeat
   notification of the same group is recorded as a second event.
 - One delivery can carry many alerts. The identifier selector reads one
-  value, so group the alert rules by the label that names the project.
+  value, so group the notification policy by the label that names the
+  project.
+- The plugin never calls Grafana. It cannot create alert rules, add the
+  label to them, or confirm that labelled rules exist.

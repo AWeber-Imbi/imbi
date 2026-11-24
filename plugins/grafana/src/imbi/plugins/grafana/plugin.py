@@ -10,8 +10,12 @@ notification group. The default body carries ``receiver``, ``status``
 
 The gateway's built-in event recording captures each delivery, driven by
 the Webhook's selectors (identifier, event type, user subject), so this
-plugin declares an empty action catalog. It exists so a Grafana webhook
-can be bound to an Integration and its deliveries verified: when the
+plugin declares an empty action catalog. The lifecycle capability writes
+the ``EXISTS_IN`` edge whose identifier (the project slug by default)
+the alert rules carry in one label, so the gateway can route a delivery
+to its project; the analysis capability repairs that edge. The webhook
+capability lets a Grafana webhook be bound to an Integration and its
+deliveries verified: when the
 contact point's **HMAC signature** is on, Grafana sends the hex
 HMAC-SHA256 of the raw body, keyed by the shared secret, in the
 ``X-Grafana-Alerting-Signature`` header. Leave the contact point's
@@ -21,6 +25,9 @@ HMAC-SHA256 of the raw body, keyed by the shared secret, in the
 
 from imbi.common import plugins
 from imbi.common.plugins.base import WebhookSignature
+from imbi.plugins.grafana import links
+from imbi.plugins.grafana.doctor import GrafanaDoctor
+from imbi.plugins.grafana.lifecycle import GrafanaLifecycle
 
 #: The default Grafana HMAC signature header, lower case.
 SIGNATURE_HEADER = 'x-grafana-alerting-signature'
@@ -55,12 +62,55 @@ class GrafanaPlugin(plugins.Plugin):
         name='Grafana',
         icon='si-grafana',
         description=(
-            'Receive Grafana Alerting webhook deliveries, verify their '
-            'HMAC signature, and record each notification against its '
-            'project.'
+            'Link each project to the Grafana alert rules that carry its '
+            'slug in a label, receive Grafana Alerting webhook deliveries, '
+            'verify their HMAC signature, and record each notification '
+            'against its project.'
         ),
         auth_type='none',
+        # A gateway delivery finds its project by the label value.
+        shareable_service_identifier=False,
+        options=[
+            plugins.PluginOption(
+                name='service_url',
+                label='Grafana URL',
+                description=(
+                    'Base URL of Grafana, for example '
+                    'https://grafana.example.com. Used for the alert rules '
+                    'link of each project.'
+                ),
+                type='string',
+                required=True,
+            ),
+            plugins.PluginOption(
+                name='label',
+                label='Project label',
+                description=(
+                    'The alert rule label that names the project. Each '
+                    'alert rule must carry this label with the project '
+                    'identifier (the project slug by default), and the '
+                    'webhook Identifier Selector must read it, for example '
+                    '`/commonLabels/service`.'
+                ),
+                type='string',
+                default=links.DEFAULT_LABEL,
+            ),
+        ],
         capabilities=[
+            plugins.Capability(
+                kind='lifecycle',
+                label='Project lifecycle',
+                description=(
+                    'Link each project to its Grafana alert rules when it '
+                    'is created or updated, and remove the link when it is '
+                    'deleted.'
+                ),
+                hints={
+                    'supports_lifecycle_sync': True,
+                    'lifecycle_events': ['created', 'updated', 'deleted'],
+                },
+                handler=GrafanaLifecycle,
+            ),
             plugins.Capability(
                 kind='webhook-actions',
                 label='Webhook actions',
@@ -70,6 +120,16 @@ class GrafanaPlugin(plugins.Plugin):
                     'advertises no actions.'
                 ),
                 handler=GrafanaWebhookActions,
-            )
+            ),
+            plugins.Capability(
+                kind='analysis',
+                label='Project doctor',
+                description=(
+                    'Check that the project is linked to Grafana with the '
+                    'identifier its alert rules carry, with a one-click '
+                    'repair.'
+                ),
+                handler=GrafanaDoctor,
+            ),
         ],
     )
