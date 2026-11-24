@@ -1919,7 +1919,17 @@ class TaskRun:
                     sdk.HookMatcher(
                         hooks=[self.pre_tool_use], timeout=HOOK_TIMEOUT
                     )
-                ]
+                ],
+                'PostToolUse': [
+                    sdk.HookMatcher(
+                        hooks=[self.post_tool_use], timeout=HOOK_TIMEOUT
+                    )
+                ],
+                'PostToolUseFailure': [
+                    sdk.HookMatcher(
+                        hooks=[self.post_tool_use], timeout=HOOK_TIMEOUT
+                    )
+                ],
             },
             mcp_servers={
                 'imbi': server,
@@ -2068,10 +2078,10 @@ class TaskRun:
         """Start a turn with the comments that people wrote during the
         last turn. Return ``True`` when a turn starts.
 
-        Comments go only between turns: the CLI queues a prompt that
-        comes during a turn, so each prompt sent here gets one result.
-        A comment after an error result or a stop is not sent; the
-        history of the next session has it.
+        The CLI queues a prompt that comes during a turn, so each prompt
+        sent here gets one result. During a turn, :meth:`post_tool_use`
+        gives the comments to the agent. A comment after an error result
+        or a stop is not sent; the history of the next session has it.
         """
         if not self._can_go_on(result):
             return False
@@ -2272,6 +2282,39 @@ class TaskRun:
                 'hookEventName': 'PreToolUse',
                 'permissionDecision': 'deny',
                 'permissionDecisionReason': f'Refused by Imbi: {reason}',
+            }
+        }
+
+    async def post_tool_use(
+        self,
+        data: sdk.HookInput,
+        _tool_use_id: str | None,
+        _context: sdk.HookContext,
+    ) -> sdk.HookJSONOutput:
+        """The ``PostToolUse`` hook: give the agent the comments that
+        people wrote during the turn, after the tool result.
+
+        A long turn, or a ``create_child_task`` call that waits for
+        the child, does not end before the agent sees a comment.
+        A subagent's tool call (``agent_id`` is set) leaves the
+        comments queued for the parent agent.
+        """
+        if data.get('agent_id'):
+            return {}
+        await self.read_events()
+        if self.stopping is not None or not self.comments:
+            return {}
+        if data['hook_event_name'] == 'PostToolUseFailure':
+            return {
+                'hookSpecificOutput': {
+                    'hookEventName': 'PostToolUseFailure',
+                    'additionalContext': self.take_comments(),
+                }
+            }
+        return {
+            'hookSpecificOutput': {
+                'hookEventName': 'PostToolUse',
+                'additionalContext': self.take_comments(),
             }
         }
 
