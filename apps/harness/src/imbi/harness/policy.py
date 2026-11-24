@@ -144,6 +144,7 @@ def check(  # noqa: PLR0913 - keyword-only inputs
     ):
         return Check(deny='environment_not_allowed')
     rules = _rule_names(name, key, plugin)
+    tasks = arguments.get('tasks')
     if batch:
         rules |= {CHILD_TASKS, 'imbi.create_child_tasks'}
     return Check(
@@ -151,7 +152,11 @@ def check(  # noqa: PLR0913 - keyword-only inputs
         or (automation and bool(rules & set(approval_tools))),
         rate_key=key if config.get('rate_limit') else None,
         rate_units=(
-            len(typing.cast('list[object]', arguments.get('tasks') or []))
+            (
+                len(typing.cast('list[object]', tasks))
+                if isinstance(tasks, list)
+                else 0
+            )
             if batch
             else 1
         ),

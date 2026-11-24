@@ -118,6 +118,8 @@ class PolicyTestCase(unittest.TestCase):
         self.assertTrue(checked.approval)
         self.assertEqual(checked.rate_key, 'imbi.create_child_task')
         self.assertEqual(checked.rate_units, 3)
+        invalid = check(policy.CHILD_TASKS, {'tasks': 1}, tool_map=tool_map)
+        self.assertEqual(invalid.rate_units, 0)
         for rule in (
             'mcp__imbi__create_child_task',
             'imbi.create_child_task',
