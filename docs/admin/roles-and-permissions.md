@@ -286,7 +286,7 @@ it.
 | `project:configuration:read` | Read project configuration via plugins | yes | yes |  |  |  |  |  |  |  |
 | `project:configuration:read_secrets` | Read secret configuration values via plugins | yes | yes |  |  |  |  |  |  |  |
 | `project:configuration:write` | Write project configuration via plugins | yes | yes |  |  |  |  |  |  |  |
-| `project:logs:read` | Read project logs via plugins | yes | yes |  |  |  |  |  |  |  |
+| `project:logs:read` | Read project logs via plugins | yes | yes |  |  |  |  | yes |  |  |
 | `project:deployment:read` | Read project deployment state via plugins | yes | yes | yes | yes |  |  | yes |  |  |
 | `project:deployment:write` | Trigger deployments and promotions via plugins | yes | yes |  |  |  |  | yes |  |  |
 | `project:commits:read` | Read commit history synced via plugins | yes | yes | yes | yes |  |  |  |  |  |
