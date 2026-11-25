@@ -129,8 +129,9 @@ async def put_agent_platform_config(
         409: A concurrent write took the version.
         422: An allowed marketplace is not registered, a default
             plugin is not in an allowed marketplace's catalog or has
-            ``server_settings``, or the model upstream URL is
-            ``http://`` without ``allow_insecure_http``.
+            ``server_settings`` (an MCP server turned off or given
+            secrets), or the model upstream URL is ``http://`` without
+            ``allow_insecure_http``.
 
     """
     if data.model_upstream.insecure():
@@ -158,8 +159,8 @@ async def put_agent_platform_config(
     )
     if overridden:
         raise _unprocessable(
-            'Default plugins cannot turn off MCP servers: '
-            + ', '.join(overridden)
+            'Default plugins cannot turn off MCP servers or give them '
+            'secrets; set them on each agent instead: ' + ', '.join(overridden)
         )
     version, current = await platform.load(store, org_id)
     try:

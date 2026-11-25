@@ -442,7 +442,7 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
 READERS = marketplaces.Readers([], [])
 
 
-def _reader(files: dict[str, str]) -> marketplaces.FileReader:
+def reader(files: dict[str, str]) -> marketplaces.FileReader:
     async def read(path: str) -> str | None:
         return files.get(path)
 
@@ -477,7 +477,7 @@ HTTP = {
 
 class PluginServerTests(unittest.IsolatedAsyncioTestCase):
     async def test_manifest_object(self) -> None:
-        read = _reader(
+        read = reader(
             {
                 'p/.claude-plugin/plugin.json': json.dumps(
                     {
@@ -521,7 +521,7 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_manifest_paths_and_list(self) -> None:
-        read = _reader(
+        read = reader(
             {
                 '.claude-plugin/plugin.json': json.dumps(
                     {
@@ -560,7 +560,7 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_a_later_source_replaces_a_server(self) -> None:
-        read = _reader(
+        read = reader(
             {
                 'p/.claude-plugin/plugin.json': json.dumps(
                     {
@@ -585,7 +585,7 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_a_single_path_in_the_manifest(self) -> None:
-        read = _reader(
+        read = reader(
             {
                 'p/.claude-plugin/plugin.json': json.dumps(
                     {'mcpServers': './servers.json'}
@@ -599,7 +599,7 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(_names(servers), ['file'])
 
     async def test_entry_servers_apply_without_a_manifest(self) -> None:
-        read = _reader(
+        read = reader(
             {
                 'p/servers.json': json.dumps({'mcpServers': {'file': HTTP}}),
                 'p/.mcp.json': json.dumps({'mcpServers': {'mcp': HTTP}}),
@@ -611,7 +611,7 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(_names(servers), ['file', 'inline', 'mcp'])
 
     async def test_a_single_path_in_the_entry(self) -> None:
-        read = _reader(
+        read = reader(
             {'p/servers.json': json.dumps({'mcpServers': {'file': HTTP}})}
         )
         servers = await marketplaces.plugin_servers(
@@ -620,7 +620,7 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(_names(servers), ['file'])
 
     async def test_a_manifest_overrides_entry_servers(self) -> None:
-        read = _reader(
+        read = reader(
             {
                 'p/.claude-plugin/plugin.json': '{"name": "p"}',
                 'p/.mcp.json': json.dumps({'mcpServers': {'mcp': HTTP}}),
@@ -632,14 +632,14 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
         entry.assert_not_awaited()
 
     async def test_an_invalid_manifest_overrides_entry_servers(self) -> None:
-        read = _reader({'p/.claude-plugin/plugin.json': 'not json'})
+        read = reader({'p/.claude-plugin/plugin.json': 'not json'})
         servers = await marketplaces.plugin_servers(
             read, 'p', _entry({'inline': HTTP}), 'p'
         )
         self.assertEqual(servers, [])
 
     async def testmissing_or_invalid_files_add_nothing(self) -> None:
-        read = _reader(
+        read = reader(
             {
                 'p/.claude-plugin/plugin.json': json.dumps(
                     {
@@ -665,7 +665,7 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_paths_outside_the_plugin_are_refused(self) -> None:
         outside = json.dumps({'mcpServers': {'outside': HTTP}})
-        read = _reader(
+        read = reader(
             {
                 'p/.claude-plugin/plugin.json': json.dumps(
                     {'mcpServers': ['../outside.json', '/etc/servers.json']}
@@ -1569,6 +1569,111 @@ class PinServerSettingsTests(unittest.TestCase):
         )
         self.assertEqual(plugin.sha, 'c' * 40)
         self.assertEqual(plugin.server_settings, self.off('anything'))
+
+    def test_a_new_pin_drops_the_secrets_of_unlisted_variables(
+        self,
+    ) -> None:
+        catalog = _marketplace()
+        catalog['plugins'] = [
+            {
+                'name': 'ops',
+                'path': 'plugins/ops',
+                'mcp_servers': [
+                    {
+                        'name': 'grafana',
+                        'type': 'http',
+                        'url': 'https://g.example.com/mcp',
+                        'headers': {'Authorization': ['TOKEN']},
+                    },
+                    {'name': 'tempo', 'type': 'http', 'url': 'https://t'},
+                ],
+            }
+        ]
+        origin = 'https://g.example.com'
+        (plugin,) = platform.pin_plugins(
+            [
+                models.AgentPlugin(
+                    marketplace='tools',
+                    plugin='ops',
+                    server_settings={
+                        'grafana': models.ServerSetting(
+                            secrets={
+                                'TOKEN': 'secret://ops/grafana',
+                                'ORG': 'secret://ops/org',
+                            },
+                            origin=origin,
+                        ),
+                        'tempo': models.ServerSetting(
+                            secrets={'TOKEN': 'secret://ops/tempo'},
+                            origin='https://t',
+                        ),
+                    },
+                )
+            ],
+            [],
+            {'tools': catalog},
+        )
+        self.assertEqual(
+            plugin.server_settings,
+            {
+                'grafana': models.ServerSetting(
+                    secrets={'TOKEN': 'secret://ops/grafana'}, origin=origin
+                )
+            },
+        )
+
+
+class ServerSecretsTests(unittest.TestCase):
+    @staticmethod
+    def plugin(origin: str | None) -> models.AgentPlugin:
+        return models.AgentPlugin(
+            marketplace='tools',
+            plugin='ops',
+            mcp_servers=[
+                models.CatalogServer(
+                    name='grafana',
+                    type='http',
+                    url='https://g.example.com/mcp',
+                    headers={'Authorization': ['TOKEN']},
+                )
+            ],
+            server_settings={
+                'grafana': models.ServerSetting(
+                    secrets={'TOKEN': 'secret://ops/grafana'}, origin=origin
+                )
+            },
+        )
+
+    def test_accepts_an_https_origin(self) -> None:
+        for origin in (
+            'https://g.example.com',
+            'https://g.example.com:8443',
+            'https://other.example.com',
+            'https://[::1]:8443',
+        ):
+            with self.subTest(origin=origin):
+                platform.check_server_secrets(self.plugin(origin))
+
+    def test_refuses_anything_but_an_https_origin(self) -> None:
+        for origin in (
+            None,
+            'http://g.example.com',
+            'https://g.example.com/',
+            'https://g.example.com/mcp',
+            'https://g.example.com?token=x',
+            'https://g.example.com#x',
+            'https://user@g.example.com',
+            'https://G.example.com',
+            'https://g.example.com:',
+            'https://g.example.com:port',
+            'https://',
+            'g.example.com',
+        ):
+            with (
+                self.subTest(origin=origin),
+                self.assertRaisesRegex(ValueError, 'needs an origin'),
+            ):
+                platform.check_server_secrets(self.plugin(origin))
 
 
 class RenderedPromptTests(unittest.IsolatedAsyncioTestCase):

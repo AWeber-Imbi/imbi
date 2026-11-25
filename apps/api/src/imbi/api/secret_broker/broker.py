@@ -74,7 +74,12 @@ MAX_TTL_SECONDS = 3600
 #: The runner's own setup secrets (ADR 0022, H22). The executor gets
 #: them on a file descriptor and never gives them to a model command.
 SETUP_PURPOSES = frozenset(
-    {'marketplace_fetch', 'model_inference', 'workspace_checkout'}
+    {
+        'marketplace_fetch',
+        'mcp_header',
+        'model_inference',
+        'workspace_checkout',
+    }
 )
 #: Purposes that nothing uses any more. Their stored grants were for the
 #: runner only, so the broker refuses them instead of letting them become

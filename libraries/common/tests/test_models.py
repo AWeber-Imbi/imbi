@@ -810,6 +810,23 @@ class AgentModelTestCase(unittest.TestCase):
             {'grafana': models.ServerSetting(enabled=False)},
         )
 
+    def test_plugin_keeps_a_server_setting_with_secrets(self) -> None:
+        setting = models.ServerSetting(
+            secrets={'TOKEN': 'secret://org/acme/ops#token'},
+            origin='https://ops.example.com',
+        )
+        plugin = models.AgentPlugin(
+            marketplace='tools',
+            plugin='ops',
+            server_settings={
+                'grafana': setting,
+                'tempo': models.ServerSetting(
+                    origin='https://tempo.example.com'
+                ),
+            },
+        )
+        self.assertEqual(plugin.server_settings, {'grafana': setting})
+
     def test_plugin_with_a_default_setting_equals_one_without(self) -> None:
         self.assertEqual(
             models.AgentPlugin(
