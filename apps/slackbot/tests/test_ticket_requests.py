@@ -45,6 +45,10 @@ class FakeSlack:
             raise errors.SlackApiError(
                 'channel_not_found', {'error': 'channel_not_found'}
             )
+        if channel == 'C500':
+            raise errors.SlackApiError(
+                'internal_error', {'error': 'internal_error'}
+            )
         self.updates.append({'channel': channel, 'ts': ts, 'text': text, **kw})
 
     async def conversations_list(self, **_kw):
@@ -68,8 +72,8 @@ class FakeValkey:
     def __init__(self) -> None:
         self.lists: dict[str, list[bytes]] = {}
 
-    async def rpush(self, key, value):
-        self.lists.setdefault(key, []).append(value)
+    async def rpush(self, key, *values):
+        self.lists.setdefault(key, []).extend(values)
 
     async def expire(self, key, ttl):
         pass
@@ -420,6 +424,28 @@ class CloseTests(FlowTestCase):
         (update,) = self.slack.updates
         self.assertEqual('C2', update['channel'])
         self.assertEqual(3, len(update['blocks']))
+        # A message that is gone is not tried again.
+        self.assertEqual({}, self.valkey.lists)
+
+    async def test_temporary_failure_is_tried_again(self) -> None:
+        key = ticket_requests._messages_key('r-1')
+        for channel in ('C500', 'C2'):
+            await self.valkey.rpush(
+                key,
+                orjson.dumps({'channel': channel, 'ts': 't', 'summary': ''}),
+            )
+        for tries in range(1, ticket_requests._CLOSE_TRIES):
+            with self.assertRaises(ticket_requests._Retry):
+                await ticket_requests.close(self.slack, RESOLVED)
+            (kept,) = self.valkey.lists[key]
+            self.assertEqual(
+                {'channel': 'C500', 'ts': 't', 'summary': '', 'tries': tries},
+                orjson.loads(kept),
+            )
+        # The last try drops the message.
+        await ticket_requests.close(self.slack, RESOLVED)
+        self.assertEqual({}, self.valkey.lists)
+        self.assertEqual(['C2'], [u['channel'] for u in self.slack.updates])
 
     async def test_unknown_request_changes_nothing(self) -> None:
         await ticket_requests.close(self.slack, RESOLVED)
@@ -599,3 +625,23 @@ class ConsumeTests(FlowTestCase):
             await ticket_requests.consume(self.slack, self.runtime)
         close.assert_awaited_once_with(self.slack, RESOLVED)
         self.assertEqual([], self.slack.posts)
+        client.xack.assert_awaited_once()
+
+    async def test_retry_is_not_acked(self) -> None:
+        client = mock.AsyncMock()
+        client.xautoclaim.return_value = ['0-0', [], []]
+        message = (b'1-0', {b'request': orjson.dumps(RESOLVED)})
+        client.xreadgroup.side_effect = [
+            [[b'imbi:ticket-requests', [message]]],
+            asyncio.CancelledError(),
+        ]
+        close = mock.AsyncMock(side_effect=ticket_requests._Retry('x'))
+        with (
+            mock.patch.object(
+                ticket_requests.valkey, 'get_client', return_value=client
+            ),
+            mock.patch.object(ticket_requests, 'close', close),
+            self.assertRaises(asyncio.CancelledError),
+        ):
+            await ticket_requests.consume(self.slack, self.runtime)
+        client.xack.assert_not_awaited()

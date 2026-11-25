@@ -69,6 +69,24 @@ _PAGE_SIZE = 200
 _MISS_TTL = 900
 #: Seconds that the ids of the messages of a request are kept.
 _MESSAGES_TTL = 30 * 86400
+#: The most times that a message of a resolved request is updated.
+_CLOSE_TRIES = 5
+#: Slack errors that mean the message cannot be updated again.
+_GONE = frozenset(
+    {
+        'cant_update_message',
+        'channel_not_found',
+        'is_archived',
+        'message_not_found',
+        'not_in_channel',
+    }
+)
+
+
+class _Retry(Exception):
+    """Some messages of a resolved request were not updated. Do not ack
+    the entry, so that it is claimed again after ``_CLAIM_IDLE_MS``."""
+
 
 #: Channel ids by name. ponytail: a found channel never expires; a
 #: renamed channel needs a restart.
@@ -109,6 +127,9 @@ async def consume(slack: SlackClient, runtime: forms.Runtime) -> None:
                         await close(slack, value)
                     else:
                         await post(slack, runtime, value)
+                except _Retry as err:
+                    LOGGER.warning('Will update %s again: %s', message_id, err)
+                    continue
                 except Exception:
                     LOGGER.exception('Could not post %s', message_id)
                 # ponytail: a failed post is not tried again. The request
@@ -185,9 +206,17 @@ async def post(
 
 
 async def close(slack: SlackClient, entry: Entry) -> None:
-    """Replace each message of a resolved request with the decision."""
+    """Replace each message of a resolved request with the decision.
+
+    A message that fails for a temporary reason is kept, and
+    :class:`_Retry` is raised after the other messages are updated.
+    A message is dropped after ``_CLOSE_TRIES`` failures, or when Slack
+    says that it cannot be updated.
+
+    """
     client: typing.Any = valkey.get_client()
     key = _messages_key(entry['request_id'])
+    kept: list[bytes] = []
     for raw in await client.lrange(key, 0, -1):
         message = orjson.loads(raw)
         try:
@@ -201,11 +230,22 @@ async def close(slack: SlackClient, entry: Entry) -> None:
                 ),
                 text=f'{entry["short_id"]} {entry["status"]}',
             )
-        except errors.SlackApiError:
+        except Exception as err:
             LOGGER.exception(
                 'Could not update %s in %s', message['ts'], message['channel']
             )
+            response: typing.Any = getattr(err, 'response', None)
+            gone = isinstance(err, errors.SlackApiError) and (
+                response.get('error') in _GONE
+            )
+            tries = message.get('tries', 0) + 1
+            if not gone and tries < _CLOSE_TRIES:
+                kept.append(orjson.dumps(message | {'tries': tries}))
     await client.delete(key)
+    if kept:
+        await client.rpush(key, *kept)
+        await client.expire(key, _MESSAGES_TTL)
+        raise _Retry(f'{len(kept)} message(s) of {entry["short_id"]}')
 
 
 async def answer(slack: SlackClient, submission: forms.Submission) -> bool:
