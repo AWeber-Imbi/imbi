@@ -194,7 +194,11 @@ async def close(slack: SlackClient, entry: Entry) -> None:
             await slack.chat_update(
                 channel=message['channel'],
                 ts=message['ts'],
-                blocks=_resolved_blocks(entry, message['summary']),
+                blocks=_resolved_blocks(
+                    entry,
+                    message['summary'],
+                    answer=message['channel'].startswith('D'),
+                ),
                 text=f'{entry["short_id"]} {entry["status"]}',
             )
         except errors.SlackApiError:
@@ -388,16 +392,22 @@ def _messages_key(request_id: str) -> str:
     return f'{valkey.TICKET_REQUESTS_STREAM}:messages:{request_id}'
 
 
-def _resolved_blocks(entry: Entry, summary: str) -> list[Entry]:
+def _resolved_blocks(
+    entry: Entry, summary: str, *, answer: bool
+) -> list[Entry]:
     """Return the blocks of a resolved request. The answer and the name
-    are plain text, so they make no links, formatting, or mentions."""
+    are plain text, so they make no links, formatting, or mentions.
+
+    ``answer`` adds the answer. Only a direct message shows it: an
+    answer in the UI can be for the person on the ticket only.
+    """
     status = entry['status']
     header = blocks.plain(f'{entry["short_id"]} {status}')
     resolved: list[Entry] = [
         {'type': 'header', 'text': header},
         {'type': 'markdown', 'text': summary},
     ]
-    if entry.get('answer'):
+    if answer and entry.get('answer'):
         text = blocks.plain(entry['answer'], blocks.SECTION_TEXT)
         resolved.append({'type': 'section', 'text': text})
     by = f'{status.capitalize()} by {entry["resolved_by"]}'

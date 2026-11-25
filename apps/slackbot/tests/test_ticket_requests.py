@@ -401,6 +401,10 @@ class CloseTests(FlowTestCase):
         self.assertEqual(
             'Answered by ada@example.com', blocks[3]['elements'][0]['text']
         )
+        # The channel message does not show the answer.
+        channel = self.slack.updates[1]['blocks']
+        self.assertEqual(3, len(channel))
+        self.assertNotIn('use main', str(channel))
         self.assertEqual({}, self.valkey.lists)
 
     async def test_failed_update_does_not_stop_the_others(self) -> None:

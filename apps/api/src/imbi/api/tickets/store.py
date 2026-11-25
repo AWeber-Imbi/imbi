@@ -3887,11 +3887,13 @@ async def _close(
 ) -> None:
     """Close the task with an outcome.
 
-    Close each open session (``session.closed``), then write
-    ``state.changed`` and ``outcome.set``. A ``done_*`` outcome
+    Close each open session (``session.closed``), withdraw each open
+    request (``request.withdrawn``), then write ``state.changed`` and
+    ``outcome.set``. A ``done_*`` outcome
     releases the dependents that the task gates, in this transaction.
     """
     await _close_sessions(write, 'task_closed', actor)
+    await _withdraw_requests(write, actor)
     await write.event(
         'state.changed',
         {
@@ -3987,20 +3989,25 @@ async def _queue_done_chain(conn: Conn, chain_id: uuid.UUID) -> None:
     )
 
 
-async def _hand_off(write: _Write, to: HandOff, actor: Actor) -> None:
-    """Change the assignee kind; see :meth:`TicketStore.hand_off`."""
-    task = write.task
+async def _withdraw_requests(write: _Write, actor: Actor) -> None:
+    """Withdraw each open request of the task (``request.withdrawn``)."""
     cursor = await write.conn.execute(
         "UPDATE tickets.requests SET status = 'withdrawn',"
         ' resolved_at = NOW(), resolved_by = %s'
         " WHERE ticket_id = %s AND status = 'open'"
         ' RETURNING id',
-        (actor.id, task['id']),
+        (actor.id, write.task['id']),
     )
     for (request_id,) in sorted(await cursor.fetchall()):
         await write.event(
             'request.withdrawn', {'request_id': str(request_id)}, actor
         )
+
+
+async def _hand_off(write: _Write, to: HandOff, actor: Actor) -> None:
+    """Change the assignee kind; see :meth:`TicketStore.hand_off`."""
+    task = write.task
+    await _withdraw_requests(write, actor)
     status: Status = (
         'held'
         if task['status'] == 'held'

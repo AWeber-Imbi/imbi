@@ -6,7 +6,7 @@ person on the ticket. An entry with ``escalation`` set comes from the
 sweeper after the agent's response SLA, and the slackbot posts it to
 ``slack_channel``. It also posts there when the direct message fails.
 An entry with ``resolved`` set tells the slackbot that the request is
-resolved (in the UI or in Slack) or withdrawn (by a hand-off).
+resolved (in the UI or in Slack) or withdrawn (by a hand-off or a close).
 """
 
 import logging

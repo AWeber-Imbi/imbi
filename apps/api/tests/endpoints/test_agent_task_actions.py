@@ -269,7 +269,16 @@ class ResolveTests(ActionTestCase):
 
     async def test_closed_task_refuses_resolution(self) -> None:
         opened = await self.open_request(FEEDBACK)
-        await self.post('outcome', {'outcome': 'done_acted'})
+        client = mock.AsyncMock()
+        with mock.patch.object(
+            announce.valkey, 'get_client', return_value=client
+        ):
+            await self.post('outcome', {'outcome': 'done_acted'})
+        # The close withdraws the request, and the slackbot closes its
+        # forms.
+        entry = orjson.loads(client.xadd.await_args.args[1]['request'])
+        self.assertEqual(entry['request_id'], opened['request']['id'])
+        self.assertEqual(entry['status'], 'withdrawn')
         response = await self.resolve(
             opened['request']['id'], status='answered', answer='a'
         )
