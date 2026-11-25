@@ -133,7 +133,9 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    event, and `unfurl_domains` (the host of `IMBI_UI_URL`) to the Slack
    app, then reinstall the app to the workspace. The
    [Slack app manifest](../slackbot/slack-app-manifest.md) has all of
-   them. Until you do this, Slack shows no previews.
+   them. Then, in the app settings, open **Work Object Previews**, turn it
+   on, and select the **Task** and **Item** entity types. Until you do
+   this, Slack shows no previews.
 6. **Before you deploy**, look for blueprints that use `pattern`,
    `minLength`, `maxLength`, `multipleOf`, or the formats `uuid`,
    `ipv4`, and `ipv6`. Imbi now enforces these

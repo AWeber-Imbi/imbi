@@ -388,7 +388,7 @@ def _build_app(bot_token: str) -> AsyncApp:
             event, client, bot_user_id=_bot_user_id or '', bot_id=_bot_id
         )
 
-    app.event('link_shared')(unfurl.handle)  # pyright: ignore[reportUnknownMemberType]
+    unfurl.register(app)
     create_ticket.register(app)
     home.register(app)
     return app

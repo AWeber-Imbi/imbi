@@ -22,18 +22,30 @@ TICKET = {
     'team': {'name': 'Core'},
 }
 PROJECT: dict[str, typing.Any] = {
-    'name': 'API',
-    'description': 'The API\nmore text',
-    'team': {'name': 'Core'},
-    'project_types': [{'name': 'Service', 'deployable': True}],
-    'drift_pairs': [
-        {'head': {'name': 'Testing'}, 'base': {'name': 'Production'}}
+    'id': 'p1',
+    'name': 'Admin v1',
+    'slug': 'admin',
+    'description': ' Administrative interface ',
+    'team': {'name': 'Backend'},
+    'project_types': [{'name': 'Web Application', 'deployable': True}],
+    'environments': [
+        {'name': 'Production', 'slug': 'prod', 'sort_order': 3},
+        {'name': 'Testing', 'slug': 'test', 'sort_order': 1},
+        {'name': 'Staging', 'slug': 'stage', 'sort_order': 2},
     ],
-    'score': 86.6,
-    'open_pr_count': 3,
-    'archived': False,
+    'current_releases': {
+        'prod': {'tag': '3.46.4', 'deployed_at': '2026-11-24T17:00:00+00:00'}
+    },
+    'drift_pairs': [
+        {
+            'head': {'name': 'Testing', 'slug': 'test'},
+            'base': {'name': 'Staging', 'slug': 'stage'},
+            'oldest': '2026-10-01T00:00:00',
+        }
+    ],
+    'score': 44.2,
+    'has_deployment_plugin': True,
 }
-LOGO = {'type': 'image', 'image_url': unfurl.LOGO_URL, 'alt_text': 'Imbi'}
 
 
 class SettingsTestCase(helpers.TestCase):
@@ -75,78 +87,160 @@ class ParseTests(SettingsTestCase):
             self.assertIsNone(unfurl.parse(TICKET_URL))
 
 
-class BlockTests(helpers.TestCase):
+def fields_by_key(entity: dict[str, typing.Any]) -> dict[str, typing.Any]:
+    return {f['key']: f for f in entity['entity_payload']['custom_fields']}
+
+
+class TicketEntityTests(helpers.TestCase):
     def test_ticket(self) -> None:
+        entity = unfurl.ticket_entity(
+            {**TICKET, 'assignee': 'ada@example.com'}, TICKET_URL
+        )
+        self.assertEqual('slack#/entities/task', entity['entity_type'])
+        self.assertEqual(TICKET_URL, entity['app_unfurl_url'])
+        payload = entity['entity_payload']
+        self.assertEqual(
+            {
+                'title': {'text': 'Fix <login>'},
+                'display_type': 'Bug',
+                'display_id': 'T-12',
+                'product_name': 'Imbi',
+                'product_icon': {'url': unfurl.LOGO_URL, 'alt_text': 'Imbi'},
+            },
+            payload['attributes'],
+        )
+        self.assertEqual(
+            {
+                'status': {'value': 'In Progress', 'tag_color': 'yellow'},
+                'priority': {'value': 'High'},
+                'assignee': {
+                    'type': 'slack#/types/user',
+                    'user': {
+                        'text': 'ada@example.com',
+                        'email': 'ada@example.com',
+                    },
+                },
+            },
+            payload['fields'],
+        )
+        [button] = payload['actions']['primary_actions']
+        self.assertEqual(
+            ('primary', TICKET_URL), (button['style'], button['url'])
+        )
+        self.assertTrue(button['action_id'].startswith(unfurl.ACTION_PREFIX))
+
+    def test_ticket_without_assignee_or_type(self) -> None:
+        entity = unfurl.ticket_entity(
+            {**TICKET, 'assignee': None, 'type': None, 'status': 'odd'},
+            TICKET_URL,
+        )
+        payload = entity['entity_payload']
+        self.assertNotIn('assignee', payload['fields'])
+        self.assertEqual('gray', payload['fields']['status']['tag_color'])
+        self.assertEqual('Ticket', payload['attributes']['display_type'])
+
+
+class ProjectEntityTests(SettingsTestCase):
+    def test_project(self) -> None:
+        entity = unfurl.project_entity(PROJECT, PROJECT_URL)
+        self.assertEqual('slack#/entities/item', entity['entity_type'])
+        attributes = entity['entity_payload']['attributes']
+        self.assertEqual(
+            ('Admin v1', 'Project', 'admin'),
+            (
+                attributes['title']['text'],
+                attributes['display_type'],
+                attributes['display_id'],
+            ),
+        )
+        fields = fields_by_key(entity)
         self.assertEqual(
             [
-                {
-                    'type': 'section',
-                    'text': {
-                        'type': 'mrkdwn',
-                        'text': f'*<{TICKET_URL}|T-12 · Fix &lt;login&gt;>*',
-                    },
-                    'fields': [
-                        {'type': 'mrkdwn', 'text': text}
-                        for text in (
-                            '*Status*\nIn Progress',
-                            '*Priority*\nHigh',
-                            '*Type*\nBug',
-                            '*Assignee*\nfixer',
-                        )
-                    ],
-                },
-                {
-                    'type': 'context',
-                    'elements': [LOGO, {'type': 'mrkdwn', 'text': 'Core'}],
-                },
+                'description',
+                'team',
+                'type',
+                'health',
+                'drift',
+                'release',
+                'deployed',
             ],
-            unfurl.ticket_blocks(TICKET, TICKET_URL),
-        )
-
-    def test_ticket_without_team(self) -> None:
-        result = unfurl.ticket_blocks({**TICKET, 'team': None}, TICKET_URL)
-        self.assertEqual([LOGO], result[1]['elements'])
-
-    def test_ticket_without_assignee(self) -> None:
-        result = unfurl.ticket_blocks({**TICKET, 'assignee': None}, TICKET_URL)
-        self.assertEqual(
-            '*Assignee*\nUnassigned', result[0]['fields'][3]['text']
-        )
-
-    def test_project(self) -> None:
-        result = unfurl.project_blocks(
-            {**PROJECT, 'archived': True}, PROJECT_URL
+            list(fields),
         )
         self.assertEqual(
-            f'*<{PROJECT_URL}|API>*\nThe API', result[0]['text']['text']
+            'Administrative interface', fields['description']['value']
         )
         self.assertEqual(
-            ['*Score*\n87', '*Open PRs*\n3', '*Drift*\nTesting → Production'],
-            [f['text'] for f in result[0]['fields']],
+            ('44', 'red'),
+            (fields['health']['value'], fields['health']['tag_color']),
         )
         self.assertEqual(
-            [LOGO, {'type': 'mrkdwn', 'text': 'Core · Service · archived'}],
-            result[1]['elements'],
+            ('Production', '3.46.4'),
+            (fields['release']['label'], fields['release']['value']),
+        )
+        self.assertEqual(1795539600, fields['deployed']['value'])
+        buttons = entity['entity_payload']['actions']['primary_actions']
+        self.assertEqual(
+            [PROJECT_URL, f'{UI}/projects/p1/deployments'],
+            [b['url'] for b in buttons],
         )
 
-    def test_no_score(self) -> None:
-        result = unfurl.project_blocks({**PROJECT, 'score': None}, PROJECT_URL)
-        self.assertEqual('*Score*\n—', result[0]['fields'][0]['text'])
+    def test_minimal_project(self) -> None:
+        entity = unfurl.project_entity(
+            {
+                'id': 'p1',
+                'name': 'API',
+                'slug': 'api',
+                'team': {'name': 'Core'},
+                'score': None,
+            },
+            PROJECT_URL,
+        )
+        self.assertEqual(['team'], list(fields_by_key(entity)))
+        buttons = entity['entity_payload']['actions']['primary_actions']
+        self.assertEqual(['Open in Imbi'], [b['text'] for b in buttons])
+
+    def test_health_bands(self) -> None:
+        for score, color in ((85, 'green'), (50, 'yellow'), (49.4, 'red')):
+            with self.subTest(score=score):
+                entity = unfurl.project_entity(
+                    {**PROJECT, 'score': score}, PROJECT_URL
+                )
+                self.assertEqual(
+                    color, fields_by_key(entity)['health']['tag_color']
+                )
 
 
 class DriftTests(helpers.TestCase):
-    def test_pairs(self) -> None:
+    def chips(self, project: dict[str, typing.Any]) -> list[tuple[str, str]]:
+        return [
+            (c['value'], c['tag_color']) for c in unfurl.drift_chips(project)
+        ]
+
+    def test_pipeline(self) -> None:
+        days = unfurl._days_since('2026-10-01T00:00:00')
         self.assertEqual(
-            ['Testing → Production'], unfurl.drift_labels(PROJECT)
+            [('T', 'green'), (f'S {days}', 'red'), ('P', 'green')],
+            self.chips(PROJECT),
         )
 
-    def test_none(self) -> None:
-        project = {**PROJECT, 'drift_pairs': []}
-        self.assertEqual([], unfurl.drift_labels(project))
+    def test_undated_drift(self) -> None:
+        pair = {**PROJECT['drift_pairs'][0], 'oldest': None}
+        self.assertEqual(
+            [('T', 'green'), ('S', 'red'), ('P', 'green')],
+            self.chips({**PROJECT, 'drift_pairs': [pair]}),
+        )
 
     def test_release(self) -> None:
-        project = {**PROJECT, 'drift_pairs': [], 'release_drifted': True}
-        self.assertEqual(['Unreleased commits'], unfurl.drift_labels(project))
+        project = {
+            **PROJECT,
+            'drift_pairs': [],
+            'environments': [],
+            'release_drifted': True,
+        }
+        self.assertEqual([('Release', 'red')], self.chips(project))
+
+    def test_none(self) -> None:
+        self.assertEqual([], self.chips({'environments': []}))
 
 
 class HandleTests(SettingsTestCase, test_create_ticket.ApiTestCase):
@@ -185,11 +279,8 @@ class HandleTests(SettingsTestCase, test_create_ticket.ApiTestCase):
         self.assertEqual('X1', kwargs['unfurl_id'])
         self.assertEqual('conversations_history', kwargs['source'])
         self.assertEqual(
-            {
-                'color': unfurl.COLOR,
-                'blocks': unfurl.ticket_blocks(TICKET, TICKET_URL),
-            },
-            kwargs['unfurls'][TICKET_URL],
+            {'entities': [unfurl.ticket_entity(TICKET, TICKET_URL)]},
+            kwargs['metadata'],
         )
 
     async def test_enterprise_event_targets_channel_and_ts(self) -> None:
@@ -208,8 +299,10 @@ class HandleTests(SettingsTestCase, test_create_ticket.ApiTestCase):
         self.ok('/organizations/two/projects/', [PROJECT])
         with self.api():
             await unfurl.handle(self.event(PROJECT_URL), self.slack)
-        unfurls = self.slack.chat_unfurl.await_args.kwargs['unfurls']
-        self.assertEqual([PROJECT_URL], list(unfurls))
+        entities = self.slack.chat_unfurl.await_args.kwargs['metadata']
+        self.assertEqual(
+            [PROJECT_URL], [e['app_unfurl_url'] for e in entities['entities']]
+        )
         self.assertEqual(
             {'slim': 'true', 'include_archived': 'true', 'project_id': 'p1'},
             dict(self.calls[-1].url.params),
@@ -222,8 +315,10 @@ class HandleTests(SettingsTestCase, test_create_ticket.ApiTestCase):
             await unfurl.handle(
                 self.event(TICKET_URL, PROJECT_URL), self.slack
             )
-        unfurls = self.slack.chat_unfurl.await_args.kwargs['unfurls']
-        self.assertEqual([TICKET_URL], list(unfurls))
+        entities = self.slack.chat_unfurl.await_args.kwargs['metadata']
+        self.assertEqual(
+            [TICKET_URL], [e['app_unfurl_url'] for e in entities['entities']]
+        )
 
     async def test_nothing_readable(self) -> None:
         with self.api():
