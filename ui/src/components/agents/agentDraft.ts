@@ -27,13 +27,13 @@ export interface AgentDraft {
   slug: string
   /** The agents that this agent can delegate to, in order. */
   subagents: AgentSubagent[]
-  tags: AgentTagChip[]
+  tags: AgentTag[]
   team: string
   /** The enabled tools, by tool key. A tool that is not here is off. */
   tools: AgentTools
 }
 
-export type AgentTagChip = Agent['tags'][number]
+export type AgentTag = Agent['tags'][number]
 
 export type AgentTools = Record<string, AgentToolConfig>
 

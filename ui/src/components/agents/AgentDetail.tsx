@@ -32,13 +32,13 @@ import type {
 } from '@/types'
 
 import { formatDuration, formatMoney, wordCount } from './agentDraft'
-import { AgentLabels } from './AgentLabelChip'
 import {
   useAgentToolCatalog,
   useAgentUsage,
   usePromptResolution,
 } from './agentQueries'
 import { agentsPath, ticketsPath } from './agentsNav'
+import { AgentTags } from './AgentTagChip'
 import { catalogTools, serverOf } from './agentTools'
 import {
   capStatus,
@@ -146,7 +146,7 @@ export function AgentDetail({ agent }: { agent: Agent }) {
       name: 'Runs (30 days)',
       value: usage ? formatCount(sumTotals(usage.agents).tasks) : '—',
     },
-    { name: 'Tags', value: <AgentLabels tags={agent.tags} /> },
+    { name: 'Tags', value: <AgentTags tags={agent.tags} /> },
   ]
 
   const system = version?.system ?? ''
