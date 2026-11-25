@@ -348,6 +348,7 @@ describe('taskStatistics', () => {
     const trajectory = buildTrajectory(runLog(), false)
     const stats = taskStatistics(t, trajectory, 'latest')
     expect(stats.totals.cost).toBeCloseTo(0.18)
+    expect(stats.turns[0].cost).toBeCloseTo(0.18)
     expect(stats.breakdown.cost.main).toBeCloseTo(0.15)
     expect(stats.breakdown.cost.subagents).toBeCloseTo(0.03)
     expect(stats.totals.subagents).toBe(1)
@@ -358,6 +359,32 @@ describe('taskStatistics', () => {
       'Lens: security',
       'Done',
     ])
+  })
+
+  it('counts a tool that runs beside a subagent once', () => {
+    const trajectory = buildTrajectory(
+      [
+        event(1, 'task.created', { title: 'T' }),
+        event(2, 'usage.reported', { message_id: 'm1', tokens_in: 100 }),
+        event(3, 'turn', { body: 'Asking', kind: 'text', message_id: 'm1' }),
+        event(7, 'tool.called', {
+          call_id: 'b1',
+          duration_ms: 1000,
+          message_id: 'm1',
+          tool: 'Bash',
+        }),
+        event(8, 'tool.called', {
+          call_id: 'c1',
+          duration_ms: 5000,
+          message_id: 'm1',
+          tool: 'Agent',
+        }),
+      ],
+      false,
+    )
+    const { time } = taskStatistics(t, trajectory, 'latest').breakdown
+    expect(time.subagents).toBe(5000)
+    expect(time.tools).toBe(0)
   })
 
   it('counts the time no turn ran as idle once the ticket closes', () => {
@@ -449,6 +476,23 @@ describe('StatisticsTab', () => {
     expect(screen.getByRole('button', { name: /^Turn 1: / })).toHaveTextContent(
       /· 2 steps$/,
     )
+  })
+
+  it('finds a subagent by its description', async () => {
+    const user = userEvent.setup()
+    const t = task({ status: 'closed' }) as unknown as Ticket
+    render(
+      <div className="flex h-150 flex-col">
+        <StatisticsTab events={runLog()} task={t} />
+      </div>,
+    )
+    await user.type(
+      screen.getByRole('searchbox', { name: 'Search statistics' }),
+      'Lens',
+    )
+    expect(
+      within(screen.getByRole('table')).getByText('Lens: security'),
+    ).toBeInTheDocument()
   })
 
   it('leaves the turn folds alone while searching', async () => {

@@ -1265,6 +1265,18 @@ describe('Tasks', () => {
       )
     })
 
+    it('opens a Statistics step in the Trajectory', async () => {
+      renderAt('/tickets/acme/T-3/statistics')
+      const [open] = await screen.findAllByRole('button', {
+        name: /: open in trajectory$/,
+      })
+      fireEvent.click(open)
+      await waitFor(() =>
+        expect(window.location.pathname).toBe('/tickets/acme/T-3/trajectory'),
+      )
+      expect(window.location.hash).toMatch(/^#e\d+$/)
+    })
+
     it('opens Activity on the view used last', async () => {
       vi.mocked(window.localStorage.getItem).mockImplementation((key) =>
         key === 'imbi.task.view' ? '"statistics"' : null,
