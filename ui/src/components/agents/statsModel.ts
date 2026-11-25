@@ -2,6 +2,7 @@ import type { Ticket, TicketEvent } from '@/types'
 
 import { TRIGGERS } from './taskEvents'
 import {
+  isAgentCall,
   preview,
   type Trajectory,
   type TrajectoryRecord,
@@ -10,11 +11,25 @@ import {
 
 export type ContextBasis = 'cumulative' | 'latest'
 
+/** Where the task's time and money went, for the summary. */
+export interface StatsBreakdown {
+  context: { step: number; turn: number; value: number }[]
+  cost: { main: number; subagents: number }
+  time: {
+    idle: number
+    model: number
+    other: number
+    subagents: number
+    tools: number
+  }
+}
+
 export interface StatsCells {
   cacheHit: null | number
   cacheRead: number
   cacheWrite: number
   context: null | number
+  cost: number
   input: number
   modelMs: number
   output: number
@@ -23,19 +38,45 @@ export interface StatsCells {
   totalMs: null | number
 }
 
+/** A step or subagent ranked by cost or time. */
+export interface StatsRanked {
+  label: string
+  step: number
+  subagent: null | string
+  turn: number
+  value: number
+}
+
 export interface StatsStep extends StatsCells {
   answer: string
   contextDelta: null | number
   did: string
   number: number
+  /** An event of the step, which the trajectory opens it by. */
+  seq: null | number
   startedAt: null | number
-  /** The model requests of the subagents that the step started. */
-  subrequests: number
+  subagents: StatsSubagent[]
+}
+
+/**
+ * A subagent the step started. Its context is its last request's prompt;
+ * its model time is an estimate, its run time minus its tool time.
+ */
+export interface StatsSubagent extends StatsCells {
+  description: string
+  errors: number
+  id: string
+  requests: number
+  /** The Agent call's event, which the trajectory opens it by. */
+  seq: null | number
+  startedAt: null | number
+  tools: number
+  type: string
 }
 
 export interface StatsTotals extends StatsCells {
   steps: number
-  subrequests: number
+  subagents: number
   turns: number
 }
 
@@ -49,6 +90,9 @@ export interface StatsTurn extends StatsCells {
 }
 
 export interface TaskStatistics {
+  breakdown: StatsBreakdown
+  costliest: StatsRanked[]
+  slowest: StatsRanked[]
   totals: StatsTotals
   turns: StatsTurn[]
 }
@@ -56,8 +100,8 @@ export interface TaskStatistics {
 /**
  * The steps are the main agent's model requests. A subagent's requests
  * have their own context, so they stay out of the steps, the context
- * and its deltas; each step counts the ones its Agent calls started.
- * Their tokens still count in the task total.
+ * and its deltas; each step lists the subagents its Agent calls started.
+ * Their tokens and cost still count in the task total.
  */
 export function taskStatistics(
   task: Ticket,
@@ -68,7 +112,13 @@ export function taskStatistics(
   const toolsOf = new Map<number, TrajectoryRecord[]>()
   const userOf = new Map<number, TrajectoryRecord>()
   const seqOf = new Map<number, number>()
+  const childrenOf = new Map<string, TrajectoryRecord[]>()
   for (const r of trajectory.records) {
+    if (r.parent !== null) {
+      const list = childrenOf.get(r.parent) ?? []
+      list.push(r)
+      childrenOf.set(r.parent, list)
+    }
     if (r.kind === 'tool' && r.request !== null) {
       const list = toolsOf.get(r.request) ?? []
       list.push(r)
@@ -82,18 +132,14 @@ export function taskStatistics(
   for (const request of trajectory.requests)
     if (!seqOf.has(request.turn) && request.usage)
       seqOf.set(request.turn, request.usage.seq)
-  const subrequestsOf = new Map<number, number>()
-  for (const s of trajectory.subrequests)
-    if (s.request !== null)
-      subrequestsOf.set(s.request, (subrequestsOf.get(s.request) ?? 0) + 1)
   const groups = new Map<number, StatsStep[]>()
+  const time = { idle: 0, model: 0, other: 0, subagents: 0, tools: 0 }
   for (const request of trajectory.requests) {
-    const step = stepOf(
-      request,
-      toolsOf.get(request.number) ?? [],
-      byId,
-      subrequestsOf.get(request.number) ?? 0,
-    )
+    const tools = toolsOf.get(request.number) ?? []
+    const step = stepOf(request, tools, byId, childrenOf)
+    time.model += step.modelMs
+    time.subagents += busy(tools.filter(isAgentCall))
+    time.tools += busy(tools.filter((r) => !isAgentCall(r)))
     const list = groups.get(request.turn) ?? []
     list.push(step)
     groups.set(request.turn, list)
@@ -129,40 +175,114 @@ export function taskStatistics(
   const input = plus(totals.input, (u) => u.input)
   const cacheRead = plus(totals.cacheRead, (u) => u.cacheRead)
   const cacheWrite = plus(totals.cacheWrite, (u) => u.cacheWrite)
+  const totalMs = turns.reduce((n, turn) => n + (turn.totalMs ?? 0), 0)
+  time.other = Math.max(0, totalMs - time.model - time.tools - time.subagents)
+  if (task.closed_at)
+    time.idle = Math.max(
+      0,
+      Date.parse(task.closed_at) - Date.parse(task.created_at) - totalMs,
+    )
+  const ranked = turns.flatMap(({ number: turn, steps }) =>
+    steps.flatMap((step) => [
+      { cells: step as StatsCells, label: step.did, step, sub: null, turn },
+      ...step.subagents.map((s) => ({
+        cells: s as StatsCells,
+        label: s.description,
+        step,
+        sub: s.id,
+        turn,
+      })),
+    ]),
+  )
+  const top = (
+    pick: (c: StatsCells) => number,
+    keep: (r: (typeof ranked)[number]) => boolean = () => true,
+  ) =>
+    ranked
+      .filter(keep)
+      .map(({ cells, label, step, sub: subagent, turn }) => ({
+        label: label || `Step ${step.number}`,
+        step: step.number,
+        subagent,
+        turn,
+        value: pick(cells),
+      }))
+      .filter((r) => r.value > 0)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5)
+  const subCost = sub.reduce((n, u) => n + u.cost, 0)
+  const mainCost = all.reduce((n, s) => n + s.cost, 0)
   return {
+    breakdown: {
+      context: turns.flatMap((t) =>
+        t.steps.flatMap((s) =>
+          s.context === null
+            ? []
+            : [{ step: s.number, turn: t.number, value: s.context }],
+        ),
+      ),
+      cost: { main: mainCost, subagents: subCost },
+      time,
+    },
+    costliest: top((c) => c.cost),
+    slowest: top(
+      (c) => c.totalMs ?? 0,
+      (r) => r.sub !== null || !r.step.subagents.length,
+    ),
     totals: {
       ...totals,
       cacheHit: hit(cacheRead, input + cacheRead + cacheWrite),
       cacheRead,
       cacheWrite,
+      cost: mainCost + subCost,
       input,
       output: plus(totals.output, (u) => u.output),
       steps: all.length,
-      subrequests: all.reduce((n, s) => n + s.subrequests, 0),
-      totalMs: turns.reduce((n, turn) => n + (turn.totalMs ?? 0), 0),
+      subagents: all.reduce((n, s) => n + s.subagents.length, 0),
+      totalMs,
       turns: turns.length,
     },
     turns,
   }
 }
 
-function didText(
-  tools: TrajectoryRecord[],
-  answer: string,
-  subrequests: number,
-): string {
+/** How long at least one of the records was running. */
+function busy(records: TrajectoryRecord[]): number {
+  const spans = records
+    .flatMap((r) =>
+      r.startedAt !== null && r.endedAt !== null && r.endedAt > r.startedAt
+        ? [[r.startedAt, r.endedAt] as const]
+        : [],
+    )
+    .sort((a, b) => a[0] - b[0])
+  let total = 0
+  let end = -Infinity
+  for (const [start, stop] of spans) {
+    if (stop <= end) continue
+    total += stop - Math.max(start, end)
+    end = stop
+  }
+  return total
+}
+
+function didText(tools: TrajectoryRecord[], answer: string): string {
   if (!tools.length) return answer ? preview(answer) : ''
   const counts = new Map<string, number>()
+  const agents = tools.filter(isAgentCall)
   for (const r of tools) {
+    if (isAgentCall(r)) continue
     const name = r.tool?.name ?? 'tool'
     counts.set(name, (counts.get(name) ?? 0) + 1)
   }
-  const did = [...counts]
-    .map(([name, n]) => (n > 1 ? `${name} ×${n}` : name))
-    .join(', ')
-  if (!subrequests) return did
-  const noun = subrequests === 1 ? 'subagent request' : 'subagent requests'
-  return `${did} · ${subrequests} ${noun}`
+  const did = [...counts].map(([name, n]) => (n > 1 ? `${name} ×${n}` : name))
+  if (agents.length === 1) did.push('1 subagent')
+  else if (agents.length > 1) {
+    const parallel =
+      busy(agents) <
+      agents.reduce((n, r) => n + span(r.startedAt, r.endedAt), 0)
+    did.push(`${agents.length} subagents${parallel ? ' in parallel' : ''}`)
+  }
+  return did.join(', ')
 }
 
 function hit(read: number, prompt: number): null | number {
@@ -190,7 +310,7 @@ function stepOf(
   request: TrajectoryRequest,
   tools: TrajectoryRecord[],
   byId: Map<string, TrajectoryRecord>,
-  subrequests: number,
+  childrenOf: Map<string, TrajectoryRecord[]>,
 ): StatsStep {
   const u = usageOf(request.usage)
   const assistant = byId.get(request.assistant)
@@ -207,20 +327,67 @@ function stepOf(
     cacheWrite: u.cacheWrite,
     context: u.reported ? prompt : null,
     contextDelta: null,
-    did: didText(tools, answer, subrequests),
+    cost: u.cost,
+    did: didText(tools, answer),
     input: u.input,
     modelMs,
     number: request.step,
     output: u.output,
     outputPerSecond: speed(u.output, modelMs),
+    seq: assistant?.seqs[0] ?? request.usage?.seq ?? null,
     startedAt: request.startedAt,
-    subrequests,
-    toolMs: tools.reduce((n, r) => n + span(r.startedAt, r.endedAt), 0),
+    subagents: tools
+      .flatMap((r) => subagentOf(r, childrenOf.get(r.id) ?? []))
+      .sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0)),
+    toolMs: busy(tools),
     totalMs:
       request.startedAt !== null && ends.length
         ? span(request.startedAt, Math.max(...ends))
         : null,
   }
+}
+
+function subagentOf(
+  record: TrajectoryRecord,
+  children: TrajectoryRecord[],
+): StatsSubagent[] {
+  const s = record.subagent
+  if (!s) return []
+  const reports = record.events.filter((e) => e.type === 'usage.reported')
+  const last = reports.length ? usageOf(reports[reports.length - 1]) : null
+  const u = s.usage
+  const totalMs =
+    record.startedAt !== null && record.endedAt !== null
+      ? span(record.startedAt, record.endedAt)
+      : null
+  const toolMs = busy(children)
+  const modelMs = totalMs === null ? 0 : Math.max(0, totalMs - toolMs)
+  return [
+    {
+      cacheHit: hit(u.cacheRead, u.input + u.cacheRead + u.cacheWrite),
+      cacheRead: u.cacheRead,
+      cacheWrite: u.cacheWrite,
+      context: last ? last.input + last.cacheRead + last.cacheWrite : null,
+      cost: u.cost,
+      description: s.description || 'Subagent',
+      errors: s.errors,
+      id: record.id,
+      input: u.input,
+      modelMs,
+      output: u.output,
+      outputPerSecond: speed(u.output, modelMs),
+      requests: u.requests,
+      seq:
+        record.events.find((e) => e.type === 'tool.called')?.seq ??
+        record.seqs[0] ??
+        null,
+      startedAt: record.startedAt,
+      toolMs,
+      tools: s.steps,
+      totalMs,
+      type: s.type,
+    },
+  ]
 }
 
 function sumCells(steps: StatsStep[], basis: ContextBasis): StatsCells {
@@ -253,6 +420,7 @@ function sumCells(steps: StatsStep[], basis: ContextBasis): StatsCells {
       : latest
         ? latest.context
         : measured.reduce((n, s) => n + (s.context ?? 0), 0),
+    cost: sum((s) => s.cost + s.subagents.reduce((n, a) => n + a.cost, 0)),
     input,
     modelMs,
     output,
@@ -282,6 +450,7 @@ function usageOf(e: null | TicketEvent) {
   return {
     cacheRead: num(p.cache_read_tokens),
     cacheWrite: num(p.cache_write_tokens),
+    cost: num(p.cost),
     input: num(p.tokens_in),
     output: num(p.tokens_out),
     reported:

@@ -350,6 +350,11 @@ export function TaskDetail({
             <StatisticsTab
               events={log}
               onShowInConversation={showInConversation}
+              onShowInTrajectory={(seq) =>
+                navigate(
+                  `${ticketsPath(orgSlug, shortId, 'trajectory')}#e${seq}`,
+                )
+              }
               task={t}
             />
           ) : (
