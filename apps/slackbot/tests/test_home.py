@@ -442,6 +442,56 @@ class BlocksTests(helpers.TestCase):
         )
 
 
+class InjectionTests(helpers.TestCase):
+    EVIL = '<https://evil.example|Click> *x* <!channel> & co'
+
+    def test_link_helper(self) -> None:
+        self.assertEqual(
+            '<https://ok.example/a?b=1&amp;c=2|x &lt;y&gt; ¦ z>',
+            blocks.link('https://ok.example/a?b=1&c=2', 'x <y> | z'),
+        )
+        for url in (
+            'javascript:alert(1)',
+            'https://ok.example/a|b',
+            'https://ok.example/a>b',
+            'https://ok.example/a b',
+            'slack://app',
+            None,
+        ):
+            self.assertEqual('a &lt;b&gt;', blocks.link(url, 'a <b>'), url)
+        # Escaping twice changes nothing.
+        once = blocks.escape(self.EVIL)
+        self.assertEqual(once, blocks.escape(once))
+
+    def test_api_values_are_escaped(self) -> None:
+        data = full_sections(1)
+        data['my_tickets']['tickets'][0].update(
+            title=self.EVIL, status=self.EVIL, due_date=self.EVIL
+        )
+        data['document_comments']['comments'][0].update(
+            body=self.EVIL, author_name=self.EVIL, document_title=self.EVIL
+        )
+        advisory = data['needs_attention']['advisories'][0]
+        advisory['url'] = 'javascript:alert(1)'
+        incident = data['needs_attention']['incidents'][0]
+        incident['url'] = 'https://pd.example/i|<!here>'
+        incident['title'] = self.EVIL
+        view = render.render(USER, prefs.Prefs(), gathered(data), NOW, TZ)
+        text = json.dumps(view, ensure_ascii=False)
+        self.assertNotIn('<https://evil', text)
+        self.assertNotIn('<!channel>', text)
+        self.assertNotIn('<!here>', text)
+        self.assertNotIn('javascript:', text)
+        self.assertNotIn('pd.example/i|', text)
+        self.assertIn('&lt;https://evil.example|Click&gt;', text)
+        self.assertIn('&lt;!channel&gt; &amp; co', text)
+        # The incident with the bad URL has no Acknowledge button.
+        incident_block = next(
+            b for b in view['blocks'] if 'Incident' in json.dumps(b)
+        )
+        self.assertNotIn('accessory', incident_block)
+
+
 class CustomizeTests(helpers.TestCase):
     def test_modal_and_submission(self) -> None:
         view = render.customize_view(prefs.Prefs())

@@ -79,7 +79,7 @@ class _Links:
         url = path_or_url
         if url and url.startswith('/'):
             url = self.url(url)
-        return b.link(url, b.escape(text)) if url else b.escape(text)
+        return b.link(url, text)
 
     def ticket(self, short_id: str) -> str:
         return f'/tickets/{self.org}/{short_id}'
@@ -94,9 +94,10 @@ class _Links:
         url = path_or_url
         if url and url.startswith('/'):
             url = self.url(url)
-        if not url:
+        safe = b.safe_url(url)
+        if not safe:
             return None
-        return b.button(text, action_id, url=url, style=style)
+        return b.button(text, action_id, url=safe, style=style)
 
 
 # ----- time --------------------------------------------------------
@@ -589,6 +590,24 @@ _PARTS: dict[str, typing.Callable[[Row, _Links, datetime.datetime], Part]] = {
 # ----- assembly ----------------------------------------------------
 
 
+def _escaped(value: typing.Any) -> typing.Any:
+    """Return ``value`` with each string in it escaped for ``mrkdwn``.
+
+    All API data goes through here before a section uses it, so no
+    value that a person wrote can make a link or a mention. Links and
+    link buttons unescape a URL before they check it.
+
+    """
+    if isinstance(value, str):
+        return b.escape(value)
+    if isinstance(value, dict):
+        items = typing.cast('dict[str, typing.Any]', value).items()
+        return {k: _escaped(v) for k, v in items}
+    if isinstance(value, list):
+        return [_escaped(v) for v in typing.cast('list[object]', value)]
+    return value
+
+
 def _menu(key: p.SectionKey, visible: list[p.SectionKey]) -> Block:
     options = [('Collapse', 'collapse')]
     if key != p.PINNED:
@@ -719,7 +738,11 @@ def _header(
     )
     buttons = [
         b.button('New ticket', 'home:header:new_ticket', style='primary'),
-        links.button('Ask Imbi', 'home:header:ask', gathered.ask_url or None),
+        # The slack:// link is built from the ids in the Slack payload,
+        # not from API data, so it skips the http(s) check.
+        b.button('Ask Imbi', 'home:header:ask', url=gathered.ask_url)
+        if gathered.ask_url
+        else None,
         links.button('Open Imbi', 'home:header:open', '/dashboard'),
         links.button(
             'My profile',
@@ -757,7 +780,7 @@ def render(
         part = (
             data
             if isinstance(data, sources.Failure)
-            else _PARTS[key](data, links, now)
+            else _PARTS[key](_escaped(data), links, now)
         )
         if (
             isinstance(part, Part)

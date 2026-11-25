@@ -8,6 +8,7 @@ the view. See https://docs.slack.dev/reference/block-kit/blocks.
 
 from __future__ import annotations
 
+import re
 import typing
 
 type Block = dict[str, typing.Any]
@@ -33,15 +34,51 @@ def cut(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1] + '…'
 
 
+#: An ``&`` that does not start an escape that :func:`escape` makes.
+_BARE_AMP = re.compile(r'&(?!(?:amp|lt|gt);)')
+#: A link target: http(s) only, no characters that end a Slack link.
+_SAFE_URL = re.compile(r'^https?://[^\s|<>]+$', re.IGNORECASE)
+
+
 def escape(text: str) -> str:
     """Escape the characters that Slack ``mrkdwn`` uses for links and
-    mentions, so text from Imbi shows as written."""
-    return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+    mentions, so text from Imbi shows as written.
+
+    The function is idempotent: text that it escaped already does not
+    change, so a value can go through it more than one time.
+
+    """
+    return (
+        _BARE_AMP.sub('&amp;', text).replace('<', '&lt;').replace('>', '&gt;')
+    )
 
 
-def link(url: str, text: str) -> str:
-    """Return a ``mrkdwn`` link. ``text`` must be escaped already."""
-    return f'<{url}|{text.replace("|", "¦")}>'
+def unescape(text: str) -> str:
+    """Undo :func:`escape`."""
+    return text.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')
+
+
+def safe_url(url: str | None) -> str | None:
+    """Return ``url`` (unescaped) when it is an http(s) URL that cannot
+    break out of a link, else ``None``."""
+    if not url:
+        return None
+    raw = unescape(url)
+    return raw if _SAFE_URL.match(raw) else None
+
+
+def link(url: str | None, text: str) -> str:
+    """Return a ``mrkdwn`` link to ``url`` with the text ``text``.
+
+    Both are escaped here. A URL that is not a safe http(s) URL gives
+    only the escaped text, with no link.
+
+    """
+    label = escape(text)
+    target = safe_url(url)
+    if target is None:
+        return label
+    return f'<{escape(target)}|{label.replace("|", "¦")}>'
 
 
 def mrkdwn(text: str, limit: int = SECTION_TEXT) -> Block:
