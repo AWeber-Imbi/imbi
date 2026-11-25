@@ -17,6 +17,7 @@ Every route needs the caller to be a member of the organization
 """
 
 import asyncio
+import dataclasses
 import datetime
 import functools
 import logging
@@ -923,6 +924,11 @@ async def save_workflow(
             status_code=404, detail=f'Workflow {slug!r} not found'
         )
     definition = await _definition(db, org_id, data, auth)
+    # A save without `tags` keeps the stored tags; `[]` clears them.
+    if 'tags' not in data.model_fields_set:
+        definition = dataclasses.replace(
+            definition, tag_ids=current['tag_ids']
+        )
     if (
         definition.owner_team_id != current['owner_team_id']
         and not auth.is_admin

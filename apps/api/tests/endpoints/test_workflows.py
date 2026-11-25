@@ -327,10 +327,12 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
         self.assertEqual(response.json()[0]['tags'][0]['slug'], 'ops')
         self.assertEqual(response.json()[0]['owner_team_name'], 'Ops')
 
-        response = await self.client.put(
-            f'{self.base}/deploy-guard',
-            json={'name': 'Deploy guard', 'owner_team_slug': self.team},
-        )
+        path = f'{self.base}/deploy-guard'
+        body = {'name': 'Deploy guard', 'owner_team_slug': self.team}
+        response = await self.client.put(path, json=body)
+        self.assertEqual(response.json()['tags'][0]['slug'], 'ops')
+
+        response = await self.client.put(path, json=body | {'tags': []})
         self.assertEqual(response.json()['tags'], [])
 
     async def test_validate(self) -> None:
