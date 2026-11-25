@@ -20,6 +20,7 @@ import pydantic
 from imbi.api import settings, version
 from imbi.api.auth import permissions
 from imbi.api.endpoints import _local_time
+from imbi.api.endpoints._helpers import caller_org_ids
 from imbi.common import clickhouse, graph, iggy, valkey
 
 LOGGER = logging.getLogger(__name__)
@@ -410,7 +411,11 @@ async def get_dashboard_metrics(
         (start_date + datetime.timedelta(days=offset)).isoformat()
         for offset in range(_METRICS_WINDOW_DAYS)
     ]
-    params: dict[str, typing.Any] = {'since': since, 'tz': zone.key}
+    params: dict[str, typing.Any] = {
+        'since': since,
+        'tz': zone.key,
+        'org_ids': await caller_org_ids(db, auth),
+    }
     # One scan of the (FINAL, merge-on-read) deploy rows yields both the
     # per-day series and the per-environment rollup.
     deploys, events, ops, prs = await asyncio.gather(
@@ -419,6 +424,7 @@ async def get_dashboard_metrics(
             ' environment_slug AS slug, count() AS c'
             ' FROM operations_log FINAL'
             " WHERE is_deleted = 0 AND entry_type = 'Deployed'"
+            ' AND organization_id IN {org_ids:Array(String)}'
             ' AND occurred_at >= {since:DateTime64(3)}'
             ' GROUP BY day, environment_slug',
             params,
@@ -433,6 +439,7 @@ async def get_dashboard_metrics(
             'SELECT toDate(occurred_at, {tz:String}) AS day, count() AS c'
             ' FROM operations_log FINAL'
             ' WHERE is_deleted = 0'
+            ' AND organization_id IN {org_ids:Array(String)}'
             ' AND occurred_at >= {since:DateTime64(3)}'
             ' GROUP BY day',
             params,

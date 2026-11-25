@@ -13,7 +13,7 @@ from fastapi import testclient
 from apps.api.tests import support
 from imbi.api import models as api_models
 from imbi.api.auth import permissions as api_permissions
-from imbi.api.endpoints import user_activity
+from imbi.api.endpoints import _helpers, user_activity
 from imbi.common import graph
 
 
@@ -76,8 +76,30 @@ class _Base(support.SharedAppTestCase):
         self.parse_patcher_local.start()
         self.addCleanup(self.parse_patcher_local.stop)
 
+        org_ids = mock.patch.object(
+            user_activity,
+            'caller_org_ids',
+            new=mock.AsyncMock(return_value=['org-1']),
+        )
+        org_ids.start()
+        self.addCleanup(org_ids.stop)
+
         self.client = testclient.TestClient(self.test_app)
         self.addCleanup(self.client.close)
+
+    def assert_opslog_scoped(self) -> None:
+        """Every ``operations_log`` read filters on the caller's orgs."""
+        calls = [
+            call
+            for call in self.mock_query.call_args_list
+            if 'FROM operations_log' in call.args[0]
+        ]
+        self.assertTrue(calls)
+        for call in calls:
+            self.assertIn(
+                'organization_id IN {org_ids:Array(String)}', call.args[0]
+            )
+            self.assertEqual(['org-1'], call.args[1]['org_ids'])
 
     def _execute_returns(
         self, payloads: list[list[dict[str, typing.Any]]]
@@ -186,6 +208,7 @@ class ContributionsTests(_Base):
         self.assertEqual(sources[opslog_day.isoformat()]['operations_log'], 5)
         self.assertEqual(sources[events_day.isoformat()]['events'], 2)
         self.assertEqual(sources['2026-04-17']['document'], 2)
+        self.assert_opslog_scoped()
 
     def test_invalid_tz_returns_400(self) -> None:
         self._execute_returns([[{'id': 'u1'}]])
@@ -226,6 +249,7 @@ class StatsTests(_Base):
             body['deployments_by_environment'],
             {'production': 30, 'staging': 20},
         )
+        self.assert_opslog_scoped()
 
     def test_zero_deployments_yields_null_success_rate(self) -> None:
         self._execute_returns(
@@ -345,6 +369,7 @@ class ActivityFeedTests(_Base):
         self.assertEqual(body['data'][1]['source'], 'document')
         # Has Link header
         self.assertIn('Link', resp.headers)
+        self.assert_opslog_scoped()
 
     def test_limit_validation(self) -> None:
         resp = self.client.get('/users/a@b/activity?limit=0')
@@ -525,3 +550,31 @@ class PermissionTests(support.SharedAppTestCase):
     def test_identities_requires_user_read(self) -> None:
         resp = self.client.get('/users/alice@example.com/identities')
         self.assertEqual(resp.status_code, 403)
+
+
+class CallerOrgIdsTests(unittest.IsolatedAsyncioTestCase):
+    """``caller_org_ids`` maps the caller's org slugs to ids."""
+
+    async def test_no_orgs_reads_nothing(self) -> None:
+        db = mock.AsyncMock(spec=graph.Graph)
+        with mock.patch.object(
+            _helpers, 'caller_org_slugs', mock.AsyncMock(return_value=set())
+        ):
+            self.assertEqual(
+                [], await _helpers.caller_org_ids(db, _make_auth())
+            )
+        db.execute.assert_not_awaited()
+
+    async def test_returns_sorted_ids_of_the_slugs(self) -> None:
+        db = mock.AsyncMock(spec=graph.Graph)
+        db.execute.return_value = [{'id': '"org-b"'}, {'id': '"org-a"'}]
+        with mock.patch.object(
+            _helpers,
+            'caller_org_slugs',
+            mock.AsyncMock(return_value={'b', 'a'}),
+        ):
+            ids = await _helpers.caller_org_ids(db, _make_auth())
+        self.assertCountEqual(['org-a', 'org-b'], ids)
+        self.assertCountEqual(
+            ['a', 'b'], db.execute.call_args.args[1]['slugs']
+        )

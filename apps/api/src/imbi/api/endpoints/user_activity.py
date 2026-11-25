@@ -23,6 +23,7 @@ import fastapi.responses
 import pydantic
 
 from imbi.api.auth import permissions
+from imbi.api.endpoints._helpers import caller_org_ids
 from imbi.api.endpoints._pagination import (
     build_link_header,
     decode_cursor,
@@ -216,6 +217,7 @@ def _coerce_dt(value: typing.Any) -> datetime.datetime | None:
 async def _opslog_buckets(
     *,
     email: str,
+    org_ids: list[str],
     since: datetime.datetime,
     until: datetime.datetime,
     tz: str,
@@ -226,13 +228,20 @@ async def _opslog_buckets(
         'FROM operations_log FINAL '
         'WHERE is_deleted = 0 '
         '  AND performed_by = {email:String} '
+        '  AND organization_id IN {org_ids:Array(String)} '
         '  AND occurred_at >= {since:DateTime64(3)} '
         '  AND occurred_at <  {until:DateTime64(3)} '
         'GROUP BY d'
     )
     rows = await clickhouse.query(
         sql,
-        {'email': email, 'since': since, 'until': until, 'tz': tz},
+        {
+            'email': email,
+            'org_ids': org_ids,
+            'since': since,
+            'until': until,
+            'tz': tz,
+        },
     )
     return {row['d']: int(row['c']) for row in rows if row.get('d')}
 
@@ -329,7 +338,7 @@ async def _graph_buckets(
 async def get_user_contributions(
     email: str,
     db: graph.Pool,
-    _auth: typing.Annotated[
+    auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('user:read')),
     ],
@@ -347,9 +356,13 @@ async def get_user_contributions(
     zone = _resolve_tz(tz)
     start, end = _resolve_window(since, until)
 
-    subjects = await _resolve_user_subjects(db, email)
+    subjects, org_ids = await asyncio.gather(
+        _resolve_user_subjects(db, email), caller_org_ids(db, auth)
+    )
     legs = await asyncio.gather(
-        _opslog_buckets(email=email, since=start, until=end, tz=tz),
+        _opslog_buckets(
+            email=email, org_ids=org_ids, since=start, until=end, tz=tz
+        ),
         _events_buckets(subjects=subjects, since=start, until=end, tz=tz),
         _graph_buckets(
             db,
@@ -427,6 +440,7 @@ async def _projects_touched(
     db: graph.Graph,
     *,
     email: str,
+    org_ids: list[str],
     subjects: list[str],
     since: datetime.datetime,
     until: datetime.datetime,
@@ -438,9 +452,10 @@ async def _projects_touched(
         'SELECT DISTINCT project_id FROM operations_log FINAL '
         'WHERE is_deleted = 0 '
         '  AND performed_by = {email:String} '
+        '  AND organization_id IN {org_ids:Array(String)} '
         '  AND occurred_at >= {since:DateTime64(3)} '
         '  AND occurred_at <  {until:DateTime64(3)}',
-        {'email': email, 'since': since, 'until': until},
+        {'email': email, 'org_ids': org_ids, 'since': since, 'until': until},
     )
     for row in opslog_rows:
         pid = row.get('project_id')
@@ -493,7 +508,7 @@ async def _projects_touched(
 async def get_user_stats(
     email: str,
     db: graph.Pool,
-    _auth: typing.Annotated[
+    auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('user:read')),
     ],
@@ -505,7 +520,9 @@ async def get_user_stats(
     _resolve_tz(tz)  # validate even though stats does not bucket by tz
     await _ensure_user_exists(db, email)
     start, end = _resolve_window(since, until)
-    subjects = await _resolve_user_subjects(db, email)
+    subjects, org_ids = await asyncio.gather(
+        _resolve_user_subjects(db, email), caller_org_ids(db, auth)
+    )
 
     deploy_totals_sql = (
         'SELECT '
@@ -514,6 +531,7 @@ async def get_user_stats(
         'FROM operations_log FINAL '
         'WHERE is_deleted = 0 '
         '  AND performed_by = {email:String} '
+        '  AND organization_id IN {org_ids:Array(String)} '
         '  AND occurred_at >= {since:DateTime64(3)} '
         '  AND occurred_at <  {until:DateTime64(3)}'
     )
@@ -522,12 +540,18 @@ async def get_user_stats(
         'FROM operations_log FINAL '
         'WHERE is_deleted = 0 '
         '  AND performed_by = {email:String} '
+        '  AND organization_id IN {org_ids:Array(String)} '
         "  AND entry_type = 'Deployed' "
         '  AND occurred_at >= {since:DateTime64(3)} '
         '  AND occurred_at <  {until:DateTime64(3)} '
         'GROUP BY environment_slug'
     )
-    params = {'email': email, 'since': start, 'until': end}
+    params = {
+        'email': email,
+        'org_ids': org_ids,
+        'since': start,
+        'until': end,
+    }
 
     totals_rows, env_rows, projects_touched = await asyncio.gather(
         clickhouse.query(deploy_totals_sql, params),
@@ -535,6 +559,7 @@ async def get_user_stats(
         _projects_touched(
             db,
             email=email,
+            org_ids=org_ids,
             subjects=subjects,
             since=start,
             until=end,
@@ -646,6 +671,7 @@ async def get_user_identities(
 async def _opslog_activity(
     *,
     email: str,
+    org_ids: list[str],
     before: datetime.datetime,
     limit: int,
 ) -> list[ActivityRecord]:
@@ -655,13 +681,19 @@ async def _opslog_activity(
         'FROM operations_log FINAL '
         'WHERE is_deleted = 0 '
         '  AND performed_by = {email:String} '
+        '  AND organization_id IN {org_ids:Array(String)} '
         '  AND occurred_at <= {before:DateTime64(3)} '
         'ORDER BY occurred_at DESC, id DESC '
         'LIMIT {row_limit:UInt32}'
     )
     rows = await clickhouse.query(
         sql,
-        {'email': email, 'before': before, 'row_limit': limit},
+        {
+            'email': email,
+            'org_ids': org_ids,
+            'before': before,
+            'row_limit': limit,
+        },
     )
     out: list[ActivityRecord] = []
     for row in rows:
@@ -928,7 +960,7 @@ async def get_user_activity(
     request: fastapi.Request,
     email: str,
     db: graph.Pool,
-    _auth: typing.Annotated[
+    auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('user:read')),
     ],
@@ -953,10 +985,14 @@ async def get_user_activity(
             )
         before, cursor_id = decoded
 
-    subjects = await _resolve_user_subjects(db, email)
+    subjects, org_ids = await asyncio.gather(
+        _resolve_user_subjects(db, email), caller_org_ids(db, auth)
+    )
     per_source = limit + 1
     legs = await asyncio.gather(
-        _opslog_activity(email=email, before=before, limit=per_source),
+        _opslog_activity(
+            email=email, org_ids=org_ids, before=before, limit=per_source
+        ),
         _events_activity(subjects=subjects, before=before, limit=per_source),
         _graph_activity(
             db, label='document', email=email, before=before, limit=per_source
