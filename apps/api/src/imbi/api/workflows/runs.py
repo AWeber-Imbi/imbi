@@ -396,7 +396,9 @@ class RunStore:
         its task (ADR 0021). A task is an orphan when its run is closed
         or gone, or its step is not ``running``. The engine cancels the
         task when the step ends, but only as best effort. A task that
-        waits for a cancel already is left out.
+        waits for a cancel already is left out, and so is a task that
+        was reopened or handed off after its step or run ended: its
+        period starts after that end (ADR 0028).
         """
         return await self._all(
             'SELECT t.organization_id, t.short_id'
@@ -409,7 +411,9 @@ class RunStore:
             " WHERE t.status <> 'closed' AND t.control <> 'cancel'"
             " AND t.origin ? 'workflow_run_id'"
             ' AND (r.id IS NULL OR r.status = ANY(%s)'
-            " OR s.status IS DISTINCT FROM 'running')",
+            " OR s.status IS DISTINCT FROM 'running')"
+            ' AND (t.period_started_at > COALESCE(s.finished_at, r.closed_at))'
+            ' IS NOT TRUE',
             (list(runtime.CLOSED),),
         )
 
