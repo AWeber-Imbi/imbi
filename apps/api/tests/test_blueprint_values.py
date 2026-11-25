@@ -388,6 +388,33 @@ class ValueCheckTests(unittest.TestCase):
                 self.matches, {'unusable': {'a': 1}}, partial=True
             )
 
+    def test_ref_into_annotation_fails_closed(self) -> None:
+        # A stored schema whose patternProperties are only in an x-
+        # annotation that a $ref reaches.
+        matches = [
+            models.Blueprint(
+                name='Rules',
+                type='Ticket',
+                json_schema=models.Schema.model_validate(
+                    {
+                        'type': 'object',
+                        'properties': {
+                            'value': {
+                                'type': 'object',
+                                '$ref': '#/x-rules',
+                                'unevaluatedProperties': False,
+                            }
+                        },
+                        'x-rules': {'patternProperties': {'^(a+)+$': {}}},
+                    }
+                ),
+            )
+        ]
+        with self.assertRaises(fastapi.HTTPException):
+            blueprint_values.validate(
+                matches, {'value': {'a' * 40000 + '!': 1}}, partial=True
+            )
+
     def test_invalid_values(self) -> None:
         for field, bad in (
             ('budget', '12.5'),
