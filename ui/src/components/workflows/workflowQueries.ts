@@ -164,6 +164,9 @@ export function useStepTypes(orgSlug: string | undefined) {
     enabled: !!orgSlug && canRead,
     queryFn: ({ signal }) => listWorkflowStepTypes(orgSlug!, signal),
     queryKey: queryKeys.workflowStepTypes(orgSlug ?? ''),
+    // Every step picker (palette, quick-add) lists steps A to Z.
+    select: (types) =>
+      [...types].sort((a, b) => a.label.localeCompare(b.label)),
     staleTime: 5 * 60_000,
   })
 }

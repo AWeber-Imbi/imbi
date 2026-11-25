@@ -543,6 +543,11 @@ _PLUGIN_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}')
 
 #: Fields of a marketplace entry that are not plugin manifest fields.
 _MARKETPLACE_ONLY = frozenset({'source', 'category', 'tags', 'strict'})
+MCP_STATUS_INTERVAL = 5
+MCP_STATUS_WAIT = 60
+_MCP_PROBLEMS = frozenset({'failed', 'needs-auth'})
+_VARIABLE = re.compile(r'\$\{([^}]+)\}')
+_CLI_VARIABLES = frozenset({'CLAUDE_PLUGIN_ROOT', 'CLAUDE_PLUGIN_DATA'})
 
 
 def _entry(entry: Body) -> str:
@@ -719,17 +724,75 @@ def _json(path: pathlib.Path) -> Body:
     return typing.cast('Body', document) if isinstance(document, dict) else {}
 
 
-def _servers(path: pathlib.Path, source: typing.Any) -> list[str]:
-    """The server names of one ``mcpServers`` source: an object, or a
-    JSON file (relative to the plugin) of one."""
+def _sources(path: pathlib.Path, manifest: Body) -> list[typing.Any]:
+    """The ``mcpServers`` sources of a plugin directory in the order
+    that the CLI loads them: ``.mcp.json``, then the ``mcpServers`` of
+    its ``plugin.json`` document ``manifest`` (an object, the path of a
+    JSON file, or a list of both)."""
+    declared: typing.Any = manifest.get('mcpServers')
+    return [path / '.mcp.json'] + (
+        list(typing.cast('abc.Iterable[typing.Any]', declared))
+        if isinstance(declared, list)
+        else [declared]
+    )
+
+
+def _source_file(
+    path: pathlib.Path, source: typing.Any
+) -> pathlib.Path | None:
+    """The JSON file of a source that is one, relative to the plugin."""
     if isinstance(source, str):
-        source = path / _relative(source)
-    if isinstance(source, pathlib.Path):
-        document = _json(source)
-        source = document.get('mcpServers', document)
-    if not isinstance(source, dict):
+        return path / _relative(source)
+    return source if isinstance(source, pathlib.Path) else None
+
+
+def _server_object(document: Body) -> Body:
+    """The servers of a JSON file: its ``mcpServers``, or the file
+    itself."""
+    servers = document.get('mcpServers', document)
+    return typing.cast('Body', servers) if isinstance(servers, dict) else {}
+
+
+def _servers(path: pathlib.Path, source: typing.Any) -> Body:
+    """The servers of one ``mcpServers`` source, by name: an object, or
+    a JSON file (relative to the plugin) of one."""
+    file = _source_file(path, source)
+    if file is not None:
+        return _server_object(_json(file))
+    return typing.cast('Body', source) if isinstance(source, dict) else {}
+
+
+def _declared(path: pathlib.Path) -> Body:
+    """The MCP servers of a plugin directory, by name. A later source
+    replaces the definition of an earlier one, as in the CLI."""
+    servers: Body = {}
+    for source in _sources(path, _json(path / PLUGIN_MANIFEST)):
+        for server, config in _servers(path, source).items():
+            servers[str(server)] = config
+    return servers
+
+
+def _statuses(status: typing.Any, names: abc.Set[str]) -> list[Body]:
+    """The entries of a ``get_mcp_status`` reply for the servers
+    ``names``. Malformed entries are left out."""
+    entries: typing.Any = (
+        typing.cast('Body', status).get('mcpServers')
+        if isinstance(status, dict)
+        else None
+    )
+    if not isinstance(entries, list):
         return []
-    return [str(key) for key in typing.cast('Body', source)]
+    return [
+        typing.cast('Body', entry)
+        for entry in typing.cast('list[object]', entries)
+        if isinstance(entry, dict)
+        and typing.cast('Body', entry).get('name') in names
+    ]
+
+
+def _plugin_name(path: pathlib.Path, name: str) -> str:
+    """The name that the CLI gives a plugin directory."""
+    return str(_json(path / PLUGIN_MANIFEST).get('name') or name)
 
 
 def _plugin_servers(path: pathlib.Path, name: str) -> list[str]:
@@ -737,26 +800,62 @@ def _plugin_servers(path: pathlib.Path, name: str) -> list[str]:
 
     Claude Code names a plugin server ``plugin:<plugin>:<server>`` and
     its tools ``mcp__plugin_<plugin>_<server>__<tool>``, with each
-    character outside ``[A-Za-z0-9_-]`` as ``_``. A plugin declares
-    servers in ``plugin.json`` ``mcpServers`` (an object, the path of a
-    JSON file, or a list of both) and in ``.mcp.json``.
+    character outside ``[A-Za-z0-9_-]`` as ``_``.
     """
-    manifest = _json(path / PLUGIN_MANIFEST)
-    name = str(manifest.get('name') or name)
-    declared: typing.Any = manifest.get('mcpServers')
-    sources: list[typing.Any] = (
-        list(typing.cast('abc.Iterable[typing.Any]', declared))
-        if isinstance(declared, list)
-        else [declared]
-    )
-    sources.append(path / '.mcp.json')
-    servers = {
-        server for source in sources for server in _servers(path, source)
-    }
+    plugin = _plugin_name(path, name)
     return [
-        _MCP_NAME.sub('_', f'mcp__plugin_{name}_{server}')
-        for server in sorted(servers)
+        _MCP_NAME.sub('_', f'mcp__plugin_{plugin}_{server}')
+        for server in sorted(_declared(path))
     ]
+
+
+def _remove_servers(path: pathlib.Path, names: abc.Set[str]) -> None:
+    """Remove the servers ``names`` from each ``mcpServers`` source of
+    a published plugin directory."""
+    manifest = path / PLUGIN_MANIFEST
+    document = _json(manifest)
+    files: list[pathlib.Path] = []
+    changed = False
+    for source in _sources(path, document):
+        file = _source_file(path, source)
+        if file is not None:
+            files.append(file)
+        elif isinstance(source, dict):
+            changed |= _drop(typing.cast('Body', source), names)
+    if changed:
+        manifest.write_text(json.dumps(document), encoding='utf-8')
+    for file in files:
+        found = _json(file)
+        if _drop(_server_object(found), names):
+            file.write_text(json.dumps(found), encoding='utf-8')
+
+
+def _drop(servers: Body, names: abc.Set[str]) -> bool:
+    """Remove ``names`` from ``servers``; true when one was there."""
+    found = names & servers.keys()
+    for name in found:
+        del servers[name]
+    return bool(found)
+
+
+def _header_variables(config: typing.Any) -> list[str]:
+    """The ``${VAR}`` of a server's header values that have no default
+    and that the CLI does not fill from the plugin."""
+    headers: typing.Any = (
+        typing.cast('Body', config).get('headers')
+        if isinstance(config, dict)
+        else None
+    )
+    if not isinstance(headers, dict):
+        return []
+    names = {
+        match
+        for value in typing.cast('Body', headers).values()
+        if isinstance(value, str)
+        for match in _VARIABLE.findall(value)
+        if ':-' not in match
+    }
+    return sorted(names - _CLI_VARIABLES)
 
 
 _MCP_NAME = re.compile(r'[^A-Za-z0-9_-]')
@@ -778,7 +877,7 @@ async def _no_prompt() -> abc.AsyncIterator[dict[str, typing.Any]]:
 class TaskRun:
     """Run one task of the runner's chain."""
 
-    def __init__(  # noqa: PLR0913
+    def __init__(  # noqa: PLR0913, PLR0915
         self,
         client: api.Api,
         claim: Body,
@@ -817,6 +916,9 @@ class TaskRun:
         #: ``mcp__plugin_<plugin>_<server>`` of each MCP server that a
         #: pinned plugin brings. A plugin that is on allows its servers.
         self.plugin_servers: list[str] = []
+        self.plugin_server_names: set[str] = set()
+        self.header_variables: list[tuple[str, str, list[str]]] = []
+        self.server_watch: asyncio.Task[None] | None = None
         self.session_id = ''
         self.control = 'run'
         self.closed = False
@@ -1398,9 +1500,49 @@ class TaskRun:
             name = f'{dest.name}-{len(self.plugins)}'
             path = _publish(path, self.layout.published / name)
             self.plugins.append(path)
-            self.plugin_servers.extend(
-                _plugin_servers(path, str(plugin['plugin']))
+            self._load_servers(plugin, path)
+
+    def _load_servers(self, plugin: Body, path: pathlib.Path) -> None:
+        """Remove the MCP servers that the agent turned off from the
+        published plugin ``path``, then allow the others. A setting for
+        a server that the plugin does not have gets a task warning."""
+        label = str(plugin['plugin'])
+        settings = typing.cast('Body', plugin.get('server_settings') or {})
+        declared = _declared(path)
+        for server in sorted(settings.keys() - declared.keys()):
+            self.recorder.notice(
+                f'The agent turns off the MCP server {server} of the plugin '
+                f'{label}, but the pinned plugin has no such server. If the '
+                'server was renamed, turn off the new name.'
             )
+        with privilege.effective():
+            _remove_servers(
+                path,
+                {
+                    server
+                    for server, setting in settings.items()
+                    if not typing.cast('Body', setting).get('enabled', True)
+                },
+            )
+        self.plugin_servers.extend(_plugin_servers(path, label))
+        name = _plugin_name(path, label)
+        for server, config in _declared(path).items():
+            self.plugin_server_names.add(f'plugin:{name}:{server}')
+            if variables := _header_variables(config):
+                self.header_variables.append((label, server, variables))
+
+    def note_unset_variables(self, env: abc.Mapping[str, str]) -> None:
+        """Warn about each plugin MCP server whose headers use a
+        variable with no default that ``env``, the environment of the
+        CLI, does not set."""
+        for label, server, variables in self.header_variables:
+            if unset := [name for name in variables if name not in env]:
+                self.recorder.notice(
+                    f'The MCP server {server} of the plugin {label} uses '
+                    + ', '.join(f'${{{name}}}' for name in unset)
+                    + ' in a header, and the variable has no value and no '
+                    'default, so the server gets no credential.'
+                )
 
     def _manifest(
         self, name: str, clone: pathlib.Path, path: pathlib.Path
@@ -1977,6 +2119,7 @@ class TaskRun:
         wait (:meth:`_interrupt`).
         """
         options = self.options(proxy_url)
+        self.note_unset_variables({**os.environ, **options.env})
         self.transcripts.mkdir(mode=0o700, exist_ok=True)
         path = self.transcripts / f'{self.task["id"]}.jsonl'
         LOGGER.info('Running task %s', self.api.short_id)
@@ -1984,29 +2127,37 @@ class TaskRun:
         self.client = sdk.ClaudeSDKClient(options, transport=transport)
         with path.open('a', encoding='utf-8') as transcript:
             async with self.client:
-                if self.stopping is not None:
-                    return None
-                # Comments written after the session opened are not in
-                # the history.
-                await self.read_events()
-                # A stop can come while the events are read.
-                if self.stopping is not None:
-                    return None
-                prompt = self.instruction()
-                if self.comments:
-                    prompt += f'\n\n{self.take_comments()}'
-                await self.client.query(prompt)
-                self.reader = asyncio.create_task(
-                    self._receive(self.client, transcript)
-                )
                 try:
-                    await self.reader
-                except asyncio.CancelledError:
-                    current = asyncio.current_task()
-                    if current is not None and current.cancelling():
-                        raise
+                    await self._converse(self.client, transcript)
+                finally:
+                    await self._stop_watch()
         self.client = None
         return self.result
+
+    async def _converse(
+        self, client: sdk.ClaudeSDKClient, transcript: typing.TextIO
+    ) -> None:
+        """Send the prompt and read the messages until the session
+        ends."""
+        if self.stopping is not None:
+            return
+        # Comments written after the session opened are not in the
+        # history.
+        await self.read_events()
+        # A stop can come while the events are read.
+        if self.stopping is not None:
+            return
+        prompt = self.instruction()
+        if self.comments:
+            prompt += f'\n\n{self.take_comments()}'
+        await client.query(prompt)
+        self.reader = asyncio.create_task(self._receive(client, transcript))
+        try:
+            await self.reader
+        except asyncio.CancelledError:
+            current = asyncio.current_task()
+            if current is not None and current.cancelling():
+                raise
 
     async def _receive(
         self, client: sdk.ClaudeSDKClient, transcript: typing.TextIO
@@ -2023,7 +2174,7 @@ class TaskRun:
                 + '\n'
             )
             transcript.flush()
-            self._check_plugins(message)
+            self._check_plugins(client, message)
             self._track_background(message)
             self.recorder.message(message)
             if isinstance(message, sdk.ResultMessage):
@@ -2169,8 +2320,11 @@ class TaskRun:
         text = '\n'.join(_entry(c) for c in comments)
         return f'New comments on the ticket, oldest first:\n{text}'
 
-    def _check_plugins(self, message: typing.Any) -> None:
-        """Fail the task when a pinned plugin did not load (plan 5.2)."""
+    def _check_plugins(
+        self, client: sdk.ClaudeSDKClient, message: typing.Any
+    ) -> None:
+        """Fail the task when a pinned plugin did not load (plan 5.2).
+        Start to watch the status of the plugin MCP servers."""
         if not (
             isinstance(message, sdk.SystemMessage)
             and message.subtype == 'init'
@@ -2189,6 +2343,74 @@ class TaskRun:
             LOGGER.error('Plugins did not load: %s', missing)
             self.failure = 'plugin_not_loaded'
             self.stop()
+        elif self.server_watch is None and self.plugin_server_names:
+            self.server_watch = asyncio.create_task(
+                self._watch_servers(client)
+            )
+
+    async def _watch_servers(self, client: sdk.ClaudeSDKClient) -> None:
+        """Warn about each plugin MCP server that fails or needs
+        authentication, and, :data:`MCP_STATUS_WAIT` seconds after the
+        watch starts, about each one that is still pending or did not
+        load. The run cancels the watch when the session ends, so a
+        server that is pending then gets no warning."""
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + MCP_STATUS_WAIT
+        reported: set[str] = set()
+        latest: dict[str, Body] = {}
+        while True:
+            try:
+                status: typing.Any = await client.get_mcp_status()
+            except Exception as error:  # noqa: BLE001
+                LOGGER.warning('Cannot read the MCP server status: %s', error)
+                return
+            for server in _statuses(status, self.plugin_server_names):
+                name = str(server['name'])
+                latest[name] = server
+                if server.get('status') in _MCP_PROBLEMS and (
+                    name not in reported
+                ):
+                    reported.add(name)
+                    self._server_notice(server)
+            waiting = sorted(
+                name
+                for name in self.plugin_server_names
+                if latest.get(name, {}).get('status', 'pending') == 'pending'
+            )
+            if not waiting:
+                return
+            if loop.time() >= deadline:
+                break
+            await asyncio.sleep(MCP_STATUS_INTERVAL)
+        for name in waiting:
+            if name in latest:
+                self._server_notice(latest[name])
+            else:
+                self.recorder.notice(f'The MCP server {name} did not load.')
+
+    def _server_notice(self, server: Body) -> None:
+        """A task warning for a plugin MCP server: its name, status, and
+        error. Never its config, whose headers can hold a secret."""
+        error = server.get('error')
+        self.recorder.notice(
+            f'The MCP server {server.get("name")} is {server.get("status")}'
+            + (f': {error}' if error else '.')
+        )
+
+    async def _stop_watch(self) -> None:
+        """Cancel the watch of the plugin MCP servers and wait for it.
+        An error in the watch is logged: it does not fail the task."""
+        if self.server_watch is None:
+            return
+        self.server_watch.cancel()
+        try:
+            await self.server_watch
+        except asyncio.CancelledError:
+            current = asyncio.current_task()
+            if current is not None and current.cancelling():
+                raise
+        except Exception:
+            LOGGER.exception('The MCP server status watch failed')
 
     async def flush(self) -> None:
         """Send the recorded events (plan section 6.6).

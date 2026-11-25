@@ -61,7 +61,7 @@ limits below (`LIMIT_CODES`).
 |---|---|
 | Steps | 100 (`MAX_NODES`) |
 | Connections | 200 (`MAX_EDGES`) |
-| Graph size, as JSON | 65536 bytes (`MAX_GRAPH_BYTES`) |
+| Graph size, as JSON | 262144 bytes (`MAX_GRAPH_BYTES`) |
 
 ## Run history
 

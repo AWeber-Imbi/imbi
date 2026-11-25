@@ -47,22 +47,6 @@ class SyncError(Exception):
     """The marketplace could not be read or parsed."""
 
 
-class CatalogServer(pydantic.BaseModel):
-    """One MCP server of a plugin.
-
-    ``headers`` maps each header name to the ``${VAR}`` names that its
-    value uses. A plugin author can commit a literal token in a header
-    or a URL, so no header value is stored, and ``url`` has no user
-    information, query, or fragment. ``url`` keeps the path, so a token
-    in the path is stored.
-    """
-
-    name: str
-    type: str = 'stdio'
-    url: str | None = None
-    headers: dict[str, list[str]] = {}
-
-
 class CatalogPlugin(pydantic.BaseModel):
     """One plugin entry of a marketplace."""
 
@@ -82,18 +66,7 @@ class CatalogPlugin(pydantic.BaseModel):
     #: ``None`` when the sync could not resolve it.
     repository_sha: str | None = None
     #: The MCP servers that the harness loads for the plugin.
-    mcp_servers: list[CatalogServer] = []
-
-    @pydantic.field_validator('mcp_servers', mode='before')
-    @classmethod
-    def _legacy_names(cls, value: object) -> object:
-        """Read a row that the sync wrote before it stored servers."""
-        if not isinstance(value, list):
-            return value
-        return [
-            {'name': item} if isinstance(item, str) else item
-            for item in typing.cast('list[object]', value)
-        ]
+    mcp_servers: models.CatalogServers = []
 
 
 class Catalog(pydantic.BaseModel):
@@ -175,11 +148,11 @@ def _public_url(value: object) -> str | None:
     return urllib.parse.urlunsplit((parts.scheme, host, parts.path, '', ''))
 
 
-def _server(name: str, config: dict[str, typing.Any]) -> CatalogServer:
+def _server(name: str, config: dict[str, typing.Any]) -> models.CatalogServer:
     kind = _text(config.get('type')) or 'stdio'
     if kind == 'stdio':
-        return CatalogServer(name=name)
-    return CatalogServer(
+        return models.CatalogServer(name=name)
+    return models.CatalogServer(
         name=name,
         type=kind,
         url=_public_url(config.get('url')),
@@ -187,18 +160,21 @@ def _server(name: str, config: dict[str, typing.Any]) -> CatalogServer:
     )
 
 
-def servers(sources: collections.abc.Iterable[object]) -> list[CatalogServer]:
+def servers(
+    sources: collections.abc.Iterable[object],
+) -> list[models.CatalogServer]:
     """Return the servers of ``mcpServers`` objects, sorted by name.
 
-    Of two servers with one name, the first is kept. A source that is
-    not an object, and a server that is not an object, add nothing.
+    Of two servers with one name, the later replaces the earlier, as in
+    the CLI. A source that is not an object, and a server that is not
+    an object, add nothing.
     """
-    found: dict[str, CatalogServer] = {}
+    found: dict[str, models.CatalogServer] = {}
     for source in sources:
         if not isinstance(source, dict):
             continue
         for name, config in typing.cast('dict[str, object]', source).items():
-            if isinstance(config, dict) and str(name) not in found:
+            if isinstance(config, dict):
                 found[str(name)] = _server(
                     str(name), typing.cast('dict[str, typing.Any]', config)
                 )
@@ -257,7 +233,7 @@ async def plugin_servers(
     directory: str,
     entry_servers: EntryServers,
     label: str,
-) -> list[CatalogServer]:
+) -> list[models.CatalogServer]:
     """Return the MCP servers that the harness loads for a plugin.
 
     With a ``.claude-plugin/plugin.json``, the servers come from its
@@ -294,7 +270,7 @@ async def plugin_servers(
     return servers(
         [
             await _source(read, directory, source, label)
-            for source in [*sources, '.mcp.json']
+            for source in ['.mcp.json', *sources]
         ]
     )
 

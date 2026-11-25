@@ -25,6 +25,13 @@ OPTIONAL MATCH (v:PromptVersion)-[:VERSION_OF]->(p)
 RETURN p, max(v.n) AS latest
 """
 
+LIST_NAMESPACE_QUERY: typing.LiteralString = """
+MATCH (p:Prompt {{namespace: {namespace}}})
+WHERE p.archived_at IS NULL
+OPTIONAL MATCH (v:PromptVersion)-[:VERSION_OF]->(p)
+RETURN p, max(v.n) AS latest
+"""
+
 VERSION_QUERY: typing.LiteralString = """
 MATCH (v:PromptVersion {{prompt_id: {prompt_id}, n: {n}}})
       -[:VERSION_OF]->(:Prompt {{id: {prompt_id}}})

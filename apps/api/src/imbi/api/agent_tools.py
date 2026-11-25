@@ -26,6 +26,7 @@ import datetime
 import logging
 import typing
 
+import fastapi
 import fastmcp
 import httpx
 import pydantic
@@ -37,8 +38,126 @@ from imbi.common import models
 
 LOGGER = logging.getLogger(__name__)
 
-CACHE_KEY = 'imbi:agents:tool-catalog'
+#: Change the version suffix when the catalog shape changes, so that
+#: entries in the old shape are not read.
+CACHE_KEY = 'imbi:agents:tool-catalog:v2'
 CACHE_TTL_SECONDS = 300
+
+#: The read-only Imbi routes whose tools every agent has, as
+#: ``"METHOD /template"`` without the API prefix (the form of
+#: :mod:`imbi.api.auth.agent_api_routes`). A tool name holds the API
+#: prefix, so :func:`index` finds the names when the app starts.
+DEFAULT_ROUTES: frozenset[str] = frozenset(
+    {
+        # Projects and search
+        'GET /organizations/{org_slug}/projects/',
+        'GET /organizations/{org_slug}/projects/{project_id}',
+        'GET /organizations/{org_slug}/projects/{project_id}/relationships',
+        'GET /organizations/{org_slug}/projects/{project_id}/events/',
+        'GET /organizations/{org_slug}/search',
+        # Documents
+        'GET /organizations/{org_slug}/documents/',
+        'GET /organizations/{org_slug}/documents/{document_id}',
+        'GET /organizations/{org_slug}/documents/{document_id}/versions',
+        'GET /organizations/{org_slug}/documents/{document_id}/versions/'
+        '{version}',
+        'GET /organizations/{org_slug}/projects/{project_id}/documents/',
+        'GET /organizations/{org_slug}/projects/{project_id}/documents/'
+        '{document_id}',
+        # Tickets
+        'GET /organizations/{org_slug}/tickets/',
+        'GET /organizations/{org_slug}/tickets/counts',
+        'GET /organizations/{org_slug}/tickets/labels',
+        'GET /organizations/{org_slug}/tickets/{short_id}',
+        'GET /organizations/{org_slug}/tickets/{short_id}/events',
+        'GET /organizations/{org_slug}/tickets/{short_id}/projects',
+        'GET /organizations/{org_slug}/tickets/{short_id}/relations',
+        # Operations log, pull requests, and drift
+        'GET /organizations/{org_slug}/projects/{project_id}/operations-log/',
+        'GET /organizations/{org_slug}/pull-requests/',
+        'GET /organizations/{org_slug}/pull-requests/activity',
+        'GET /organizations/{org_slug}/projects/{project_id}/pull-requests/',
+        'GET /organizations/{org_slug}/projects/{project_id}/deployments/'
+        'release-drift',
+        'GET /organizations/{org_slug}/projects/{project_id}/deployments/'
+        'recent-commits',
+        'GET /organizations/{org_slug}/projects/{project_id}/deployments/'
+        'refs/{ref:path}/commits',
+        # Environments
+        'GET /organizations/{org_slug}/environments/',
+        'GET /organizations/{org_slug}/environments/{slug}',
+        'GET /organizations/{org_slug}/environments/{slug}/edges/{rel_type}',
+        # Releases
+        'GET /organizations/{org_slug}/projects/{project_id}/releases/',
+        'GET /organizations/{org_slug}/projects/{project_id}/releases/current',
+        'GET /organizations/{org_slug}/projects/{project_id}/releases/'
+        '{release_id}',
+        'GET /organizations/{org_slug}/projects/{project_id}/releases/'
+        '{release_id}/dependencies',
+        'GET /organizations/{org_slug}/projects/{project_id}/deployments/'
+        'release-history',
+        'GET /organizations/{org_slug}/projects/{project_id}/deployments/'
+        'releases/{tag}/blockers',
+        # Deployments
+        'GET /organizations/{org_slug}/projects/{project_id}/releases/'
+        '{release_id}/environments',
+        'GET /organizations/{org_slug}/projects/{project_id}/releases/'
+        '{release_id}/environments/{env_slug}',
+        'GET /organizations/{org_slug}/projects/{project_id}/deployments/'
+        'environments/{env_slug}/deployments/{deployment_id}',
+        'GET /organizations/{org_slug}/projects/{project_id}/deployments/'
+        'runs/{run_id}',
+        'GET /organizations/{org_slug}/projects/{project_id}/deployments/'
+        'sync-status',
+        'GET /organizations/{org_slug}/pull-requests/pending-deploy',
+        # Components
+        'GET /organizations/{org_slug}/components/',
+        'GET /organizations/{org_slug}/components/{component_id}/usage',
+        'GET /organizations/{org_slug}/component-releases/'
+        '{component_release_id}/notes',
+        'GET /organizations/{org_slug}/component-releases/'
+        '{component_release_id}/advisories',
+        'GET /cves/{cve_id}',
+    }
+)
+
+#: The tool keys of :data:`DEFAULT_ROUTES`. :func:`index` sets them.
+_default_tools: frozenset[str] = frozenset()
+
+
+def index(app: fastapi.FastAPI) -> None:
+    """Find the tool keys of :data:`DEFAULT_ROUTES`, after
+    :func:`imbi.api.auth.agent_api.index` keeps the route keys.
+
+    The name is the one that fastmcp gives
+    (``OpenAPIProvider._generate_default_name``): the operation id up to
+    the first ``__``, at most 56 characters. A FastAPI operation id has
+    only the characters that its slug step keeps. A test checks the
+    names against the catalog.
+    """
+    global _default_tools
+    keys = app.state.agent_api_routes
+    _default_tools = frozenset(
+        f'imbi.{route.unique_id.split("__")[0][:56]}'
+        for route in app.routes
+        if isinstance(route, fastapi.routing.APIRoute)
+        for method in route.methods
+        if keys.get((route.endpoint, method)) in DEFAULT_ROUTES
+    )
+
+
+def default_tools() -> frozenset[str]:
+    """The tool keys that every agent has."""
+    return _default_tools
+
+
+def with_default_tools(tools: dict[str, typing.Any]) -> dict[str, typing.Any]:
+    """Return the tool map ``tools`` with the default tools added.
+
+    An entry in ``tools`` wins over the default configuration.
+    """
+    return {**{key: {} for key in _default_tools}, **tools}
+
 
 #: The maximum length of a tool description in the catalog.
 DESCRIPTION_LENGTH = 300
@@ -56,6 +175,8 @@ class AgentCatalogTool(pydantic.BaseModel):
     name: str
     description: str | None = None
     capability: Capability
+    #: On for every agent (:data:`DEFAULT_ROUTES`).
+    default: bool = False
 
 
 #: The catalog entries of the opt-in built-in tools, by name.
@@ -127,6 +248,7 @@ def _tool(
         name=name,
         description=_summary(description),
         capability=capability(annotations),
+        default=f'imbi.{name}' in _default_tools,
     )
 
 

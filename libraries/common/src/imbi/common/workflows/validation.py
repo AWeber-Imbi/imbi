@@ -21,7 +21,7 @@ from imbi.common.workflows.registry import condition
 MAX_NODES = 100
 MAX_EDGES = 200
 #: The largest graph, in bytes of JSON.
-MAX_GRAPH_BYTES = 64 * 1024
+MAX_GRAPH_BYTES = 256 * 1024
 
 #: The scope name of the trigger payload in references.
 TRIGGER_SCOPE = 'trigger'

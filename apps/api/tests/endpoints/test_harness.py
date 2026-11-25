@@ -15,7 +15,7 @@ import httpx
 
 from apps.api.tests.endpoints import test_agent_task_harness
 from apps.api.tests.endpoints.test_agent_task_log import ClickHouseTestCase
-from imbi.api import models, secret_broker
+from imbi.api import agent_tools, models, secret_broker
 from imbi.api.auth import password as password_auth
 from imbi.api.auth import permissions
 from imbi.api.endpoints import harness as harness_api
@@ -1831,6 +1831,11 @@ class RateLimitTests(RunnerTestCase):
         verdict = await self.check(self.tokens[0], 'T-1', 'gh.nope')
         self.assertFalse(verdict['allowed'])
         self.assertEqual(verdict['reason'], 'tool_not_configured')
+
+    async def test_default_tool_without_a_tool_map_entry(self) -> None:
+        tool = min(agent_tools.default_tools())
+        verdict = await self.check(self.tokens[0], 'T-1', tool)
+        self.assertTrue(verdict['allowed'])
 
 
 class LargeEventTests(RunnerTestCase, ClickHouseTestCase):

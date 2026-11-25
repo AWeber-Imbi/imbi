@@ -1515,6 +1515,174 @@ class WorkspaceTestCase(TaskTestCase):
         self.assertEqual(ctx.exception.reason, 'executor_unavailable')
 
 
+def write_plugin(plugin: pathlib.Path) -> pathlib.Path:
+    """A plugin named ``ops`` with servers in each kind of source."""
+    (plugin / '.claude-plugin').mkdir(parents=True)
+    (plugin / '.claude-plugin' / 'plugin.json').write_text(
+        json.dumps(
+            {
+                'name': 'ops',
+                'mcpServers': ['./servers.json', {'grafana': {}, 'loki': {}}],
+            }
+        )
+    )
+    (plugin / 'servers.json').write_text(
+        json.dumps({'mcpServers': {'tempo': {}, 'zoekt': {}}})
+    )
+    (plugin / '.mcp.json').write_text(
+        json.dumps({'sentry': {}, 'posthog': {}})
+    )
+    return plugin
+
+
+class PluginServersTestCase(TaskTestCase):
+    def published(self) -> pathlib.Path:
+        return write_plugin(self.tmp / 'published' / 'ops')
+
+    def load(self, plugin: pathlib.Path, **settings: bool) -> task.TaskRun:
+        subject = self.make()
+        subject._load_servers(
+            {
+                'plugin': 'ops-tools',
+                'server_settings': {
+                    name: {'enabled': enabled}
+                    for name, enabled in settings.items()
+                },
+            },
+            plugin,
+        )
+        return subject
+
+    def test_removes_the_servers_turned_off(self) -> None:
+        plugin = self.published()
+        subject = self.load(
+            plugin, grafana=False, tempo=False, sentry=False, loki=True
+        )
+        manifest = json.loads(
+            (plugin / '.claude-plugin' / 'plugin.json').read_text()
+        )
+        self.assertEqual(
+            manifest['mcpServers'], ['./servers.json', {'loki': {}}]
+        )
+        self.assertEqual(
+            json.loads((plugin / 'servers.json').read_text()),
+            {'mcpServers': {'zoekt': {}}},
+        )
+        self.assertEqual(
+            json.loads((plugin / '.mcp.json').read_text()), {'posthog': {}}
+        )
+        self.assertEqual(
+            subject.plugin_servers,
+            [
+                'mcp__plugin_ops_loki',
+                'mcp__plugin_ops_posthog',
+                'mcp__plugin_ops_zoekt',
+            ],
+        )
+        allowed, _denied = subject.tools()
+        self.assertNotIn('mcp__plugin_ops_grafana', allowed)
+        self.assertIn('mcp__plugin_ops_loki', allowed)
+        self.assertEqual(subject.recorder.take(), [])
+
+    def test_removes_a_server_of_an_inline_object(self) -> None:
+        plugin = self.tmp / 'published' / 'inline'
+        (plugin / '.claude-plugin').mkdir(parents=True)
+        (plugin / '.claude-plugin' / 'plugin.json').write_text(
+            json.dumps({'mcpServers': {'grafana': {}, 'loki': {}}})
+        )
+        (plugin / '.mcp.json').write_text(
+            json.dumps({'mcpServers': {'sentry': {}}})
+        )
+        subject = self.load(plugin, grafana=False, sentry=False)
+        self.assertEqual(
+            json.loads(
+                (plugin / '.claude-plugin' / 'plugin.json').read_text()
+            ),
+            {'mcpServers': {'loki': {}}},
+        )
+        self.assertEqual(
+            json.loads((plugin / '.mcp.json').read_text()),
+            {'mcpServers': {}},
+        )
+        self.assertEqual(
+            subject.plugin_servers, ['mcp__plugin_ops-tools_loki']
+        )
+
+    def test_leaves_a_plugin_with_no_settings_as_it_is(self) -> None:
+        plugin = self.published()
+        before = {path: path.read_bytes() for path in plugin.rglob('*.json')}
+        subject = self.load(plugin)
+        self.assertEqual(
+            {path: path.read_bytes() for path in plugin.rglob('*.json')},
+            before,
+        )
+        self.assertEqual(len(subject.plugin_servers), 6)
+
+    def test_warns_about_a_setting_for_a_missing_server(self) -> None:
+        subject = self.load(self.published(), renamed=False)
+        (notice,) = subject.recorder.take()
+        self.assertEqual(notice['payload']['kind'], 'warning')
+        self.assertEqual(
+            notice['payload']['body'],
+            'The agent turns off the MCP server renamed of the plugin '
+            'ops-tools, but the pinned plugin has no such server. If the '
+            'server was renamed, turn off the new name.',
+        )
+
+    def test_warns_about_a_header_variable_with_no_value(self) -> None:
+        plugin = self.tmp / 'published' / 'headers'
+        plugin.mkdir(parents=True)
+        (plugin / '.mcp.json').write_text(
+            json.dumps(
+                {
+                    'logzio': {
+                        'type': 'http',
+                        'url': 'https://api.logz.io/mcp',
+                        'headers': {
+                            'X-API-TOKEN': '${LOGZIO_TOKEN}',
+                            'X-Region': '${REGION:-us}',
+                            'X-Empty': '${EMPTY:-}',
+                            'X-Root': '${CLAUDE_PLUGIN_ROOT}/x ${OTHER}',
+                        },
+                    },
+                    'quiet': {'type': 'http', 'headers': {'A': 'b'}},
+                    'off': {'headers': {'A': '${OFF}'}},
+                }
+            )
+        )
+        subject = self.load(plugin, off=False)
+        self.assertEqual(subject.recorder.take(), [])
+        subject.note_unset_variables({'OTHER': 'set'})
+        (notice,) = subject.recorder.take()
+        self.assertEqual(
+            notice['payload']['body'],
+            'The MCP server logzio of the plugin ops-tools uses '
+            '${LOGZIO_TOKEN} in a header, and the variable has no value '
+            'and no default, so the server gets no credential.',
+        )
+
+    def test_checks_the_definition_that_the_cli_loads(self) -> None:
+        plugin = self.tmp / 'published' / 'repeated'
+        (plugin / '.claude-plugin').mkdir(parents=True)
+        (plugin / '.mcp.json').write_text(
+            json.dumps({'logzio': {'headers': {'A': '${EARLIER}'}}})
+        )
+        (plugin / '.claude-plugin' / 'plugin.json').write_text(
+            json.dumps(
+                {
+                    'mcpServers': [
+                        {'logzio': {'headers': {'A': '${MIDDLE}'}}},
+                        {'logzio': {'headers': {'A': '${LATER}'}}},
+                    ]
+                }
+            )
+        )
+        subject = self.load(plugin)
+        subject.note_unset_variables({})
+        (notice,) = subject.recorder.take()
+        self.assertIn('${LATER}', notice['payload']['body'])
+
+
 @dataclasses.dataclass
 class Report:
     """A ``report_outcome`` call of the model in a :class:`FakeClient`
@@ -1529,6 +1697,24 @@ class HandOff:
     """A ``hand_off`` call of the model in a :class:`FakeClient` replay."""
 
     note: str
+
+
+@dataclasses.dataclass
+class Init:
+    """The ``init`` message of the CLI in a :class:`FakeClient` replay,
+    with the plugins that the task published."""
+
+
+@dataclasses.dataclass
+class Watched:
+    """In a :class:`FakeClient` replay, wait until the watch of the
+    plugin MCP servers ends, without raising its error."""
+
+
+@dataclasses.dataclass
+class Polled:
+    """In a :class:`FakeClient` replay, wait until the harness read the
+    MCP server status once."""
 
 
 def result_message(**changes: typing.Any) -> sdk.ResultMessage:
@@ -1553,6 +1739,9 @@ class FakeClient:
     prompts: typing.ClassVar[list[str]] = []
     #: The results of the ``hand_off`` calls of the replay.
     tool_results: typing.ClassVar[list[typing.Any]] = []
+    statuses: typing.ClassVar[list[typing.Any]] = [{'mcpServers': []}]
+    status_reads: typing.ClassVar[int] = 0
+    polled: typing.ClassVar[asyncio.Event] = asyncio.Event()
 
     def __init__(
         self, options: sdk.ClaudeAgentOptions, **__: typing.Any
@@ -1577,9 +1766,36 @@ class FakeClient:
             {'outcome': report.outcome, 'reason': report.reason}
         )
 
+    async def get_mcp_status(self) -> typing.Any:
+        FakeClient.status_reads += 1
+        FakeClient.polled.set()
+        if len(self.statuses) > 1:
+            return self.statuses.pop(0)
+        return self.statuses[0]
+
+    def _run(self) -> task.TaskRun:
+        hooks = self.options.hooks or {}
+        hook = typing.cast(typing.Any, hooks['PreToolUse'][0].hooks[0])
+        return typing.cast(task.TaskRun, hook.__self__)
+
     async def receive_messages(self) -> typing.AsyncIterator[typing.Any]:
         for message in self.messages:
-            if isinstance(message, Report):
+            if isinstance(message, Init):
+                yield sdk.SystemMessage(
+                    'init',
+                    {
+                        'plugins': [
+                            {'path': str(p)} for p in self._run().plugins
+                        ]
+                    },
+                )
+            elif isinstance(message, Watched):
+                watch = self._run().server_watch
+                assert watch is not None
+                await asyncio.wait([watch])
+            elif isinstance(message, Polled):
+                await FakeClient.polled.wait()
+            elif isinstance(message, Report):
                 self._report(message)
             elif isinstance(message, HandOff):
                 hooks = self.options.hooks or {}
@@ -1667,6 +1883,9 @@ class RunTestCase(TaskTestCase):
         FakeClient.hang = False
         FakeClient.prompts = []
         FakeClient.tool_results = []
+        FakeClient.statuses = [{'mcpServers': []}]
+        FakeClient.status_reads = 0
+        FakeClient.polled = asyncio.Event()
 
     async def executor(self, message: dict[str, typing.Any]) -> typing.Any:
         if message['op'] == 'fetch':
@@ -2242,6 +2461,159 @@ class RunTestCase(TaskTestCase):
         self.assertEqual(
             self.posted('/outcome'),
             [{'outcome': 'failed_external', 'reason': 'plugin_not_loaded'}],
+        )
+
+    async def watch(
+        self,
+        *statuses: list[typing.Any],
+        wait: float = 60,
+        replay: tuple[typing.Any, ...] = (Init(), Watched(), Init()),
+    ) -> tuple[task.TaskRun, list[str]]:
+        """Run a task with a pinned plugin whose servers grafana and
+        tempo are on. Return the task and its warnings."""
+        off = {'enabled': False}
+        subject = self.make(
+            plugins=[
+                {
+                    'marketplace': 'tools',
+                    'plugin': 'ops-tools',
+                    'url': 'https://github.com/acme/tools',
+                    'sha': '0123456789abcdef',
+                    'path': 'plugins/ops',
+                    'server_settings': {
+                        'loki': off,
+                        'zoekt': off,
+                        'sentry': off,
+                        'posthog': off,
+                    },
+                }
+            ]
+        )
+
+        async def executor(message: dict[str, typing.Any]) -> typing.Any:
+            if message['op'] == 'clone':
+                write_plugin(pathlib.Path(message['dest']) / 'plugins' / 'ops')
+            return await self.executor(message)
+
+        self.call.side_effect = executor
+        FakeClient.messages[0:0] = list(replay)
+        FakeClient.statuses = [{'mcpServers': servers} for servers in statuses]
+        with (
+            mock.patch.object(task, 'MCP_STATUS_INTERVAL', 0.05),
+            mock.patch.object(task, 'MCP_STATUS_WAIT', wait),
+        ):
+            await subject.run()
+        warnings = [
+            event['payload']['body']
+            for batch in self.posted('/events')
+            for event in batch['events']
+            if event['type'] == 'turn'
+            and event['payload'].get('kind') == 'warning'
+        ]
+        return subject, warnings
+
+    async def test_plugin_server_problems_are_warnings(self) -> None:
+        _subject, warnings = await self.watch(
+            [
+                None,
+                {
+                    'name': 'plugin:ops:grafana',
+                    'status': 'failed',
+                    'error': 'HTTP 401',
+                    'config': {'headers': {'X-Token': 'secret-value'}},
+                },
+                {'name': 'plugin:ops:tempo', 'status': 'needs-auth'},
+                {'name': 'other', 'status': 'failed', 'error': 'x'},
+            ]
+        )
+        self.assertEqual(
+            warnings,
+            [
+                'The MCP server plugin:ops:grafana is failed: HTTP 401',
+                'The MCP server plugin:ops:tempo is needs-auth.',
+            ],
+        )
+        self.assertEqual(FakeClient.status_reads, 1)
+        self.assertEqual(
+            self.posted('/outcome'),
+            [{'outcome': 'done_acted', 'reason': 'listed'}],
+        )
+
+    async def test_a_failed_server_warns_once(self) -> None:
+        failed = {'name': 'plugin:ops:grafana', 'status': 'failed'}
+        _subject, warnings = await self.watch(
+            [failed, {'name': 'plugin:ops:tempo', 'status': 'pending'}],
+            [failed, {'name': 'plugin:ops:tempo', 'status': 'connected'}],
+        )
+        self.assertEqual(
+            warnings, ['The MCP server plugin:ops:grafana is failed.']
+        )
+        self.assertEqual(FakeClient.status_reads, 2)
+
+    async def test_a_server_still_pending_is_a_warning(self) -> None:
+        _subject, warnings = await self.watch(
+            [
+                {'name': 'plugin:ops:grafana', 'status': 'pending'},
+                {'name': 'plugin:ops:tempo', 'status': 'pending'},
+            ],
+            [
+                {'name': 'plugin:ops:grafana', 'status': 'connected'},
+                {'name': 'plugin:ops:tempo', 'status': 'pending'},
+            ],
+            wait=0.05,
+        )
+        self.assertEqual(
+            warnings, ['The MCP server plugin:ops:tempo is pending.']
+        )
+        self.assertEqual(FakeClient.status_reads, 2)
+
+    async def test_a_server_that_never_shows_did_not_load(self) -> None:
+        _subject, warnings = await self.watch(
+            [{'name': 'plugin:ops:grafana', 'status': 'connected'}],
+            wait=0.05,
+        )
+        self.assertEqual(
+            warnings, ['The MCP server plugin:ops:tempo did not load.']
+        )
+        self.assertEqual(FakeClient.status_reads, 2)
+
+    async def test_no_pending_warning_when_the_task_ends(self) -> None:
+        subject, warnings = await self.watch(
+            [{'name': 'plugin:ops:grafana', 'status': 'pending'}],
+            replay=(Init(), Polled()),
+        )
+        self.assertEqual(warnings, [])
+        assert subject.server_watch is not None
+        self.assertTrue(subject.server_watch.cancelled())
+
+    async def test_a_status_error_is_not_a_failure(self) -> None:
+        status = mock.AsyncMock(side_effect=sdk.CLIConnectionError('gone'))
+        with (
+            mock.patch.object(FakeClient, 'get_mcp_status', status),
+            self.assertLogs('imbi.harness.task', 'WARNING'),
+        ):
+            _subject, warnings = await self.watch()
+        self.assertEqual(warnings, [])
+        status.assert_awaited_once()
+        self.assertEqual(
+            self.posted('/outcome'),
+            [{'outcome': 'done_acted', 'reason': 'listed'}],
+        )
+
+    async def test_a_watch_error_is_logged(self) -> None:
+        with (
+            mock.patch.object(
+                task.TaskRun, '_server_notice', side_effect=RuntimeError('x')
+            ),
+            self.assertLogs('imbi.harness.task', 'ERROR') as logs,
+        ):
+            await self.watch(
+                [{'name': 'plugin:ops:grafana', 'status': 'pending'}], wait=0
+            )
+        self.assertIn('The MCP server status watch failed', logs.output[0])
+        self.assertEqual(
+            self.posted('/outcome'),
+            [{'outcome': 'done_acted', 'reason': 'listed'}],
         )
 
 
