@@ -228,6 +228,24 @@ def pattern_error(pattern: str) -> str | None:
     return None
 
 
+def unevaluated_re(schema: Schema) -> bool:
+    """Return ``True`` when ``schema`` uses ``unevaluatedProperties``
+    and ``patternProperties``. jsonschema then matches keys with Python
+    ``re``, which can backtrack for a long time."""
+    keys: set[str] = set()
+    stack: list[object] = [
+        schema.model_dump(mode='json', by_alias=True, exclude_none=True)
+    ]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, dict):
+            keys.update(typing.cast(dict[str, object], node))
+            stack.extend(typing.cast(dict[str, object], node).values())
+        elif isinstance(node, list):
+            stack.extend(typing.cast(list[object], node))
+    return {'patternProperties', 'unevaluatedProperties'} <= keys
+
+
 def check_patterns(schema: Schema) -> Schema:
     """Return ``schema`` of a new blueprint after a check that the regex
     engine can use the pattern of each property and of its items.
@@ -239,6 +257,10 @@ def check_patterns(schema: Schema) -> Schema:
         for pattern in (prop.pattern, getattr(prop.items, 'pattern', None)):
             if pattern is not None and (error := pattern_error(pattern)):
                 raise ValueError(f'{name}: pattern {pattern!r} {error}')
+    if unevaluated_re(schema):
+        raise ValueError(
+            'unevaluatedProperties cannot be used with patternProperties'
+        )
     return schema
 
 

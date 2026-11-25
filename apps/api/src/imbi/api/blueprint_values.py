@@ -139,7 +139,10 @@ def _schema_errors(
                 mode='json', by_alias=True, exclude_none=True
             ),
         )
-        cls = _linear(jsonschema.validators.validator_for(schema))
+        cls = _linear(
+            jsonschema.validators.validator_for(schema),
+            models.unevaluated_re(owners[name].json_schema),
+        )
         cls.check_schema(schema)
         # descend() keeps the resolver of the root schema and enters
         # the $id scope of the field, if the field has one.
@@ -273,15 +276,26 @@ def _additional_properties(
         )
 
 
+def _skip(*_args: object) -> collections.abc.Iterator[typing.Never]:
+    yield from ()
+
+
 @functools.cache
-def _linear(cls: typing.Any) -> typing.Any:
+def _linear(cls: typing.Any, skip_unevaluated: bool) -> typing.Any:
     """Return the validator class ``cls`` with the keywords that match
-    a pattern on the linear-time engine (:func:`_matches`)."""
+    a pattern on the linear-time engine (:func:`_matches`).
+
+    ``unevaluatedProperties`` matches the keys of ``patternProperties``
+    with Python ``re``. A blueprint cannot save that pair any more
+    (:func:`models.unevaluated_re`); for a stored one it is skipped.
+    """
+    keywords: dict[str, typing.Any] = {
+        'additionalProperties': _additional_properties,
+        'pattern': _pattern,
+        'patternProperties': _pattern_properties,
+    }
+    if skip_unevaluated:
+        keywords['unevaluatedProperties'] = _skip
     return jsonschema.validators.extend(  # type: ignore[no-untyped-call]  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
-        cls,
-        {
-            'additionalProperties': _additional_properties,
-            'pattern': _pattern,
-            'patternProperties': _pattern_properties,
-        },
+        cls, keywords
     )

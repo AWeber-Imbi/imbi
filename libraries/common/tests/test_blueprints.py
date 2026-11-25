@@ -603,6 +603,16 @@ class ValueCheckTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'value: pattern'):
             models.check_patterns(stored.json_schema)
 
+    def test_unevaluated_with_pattern_properties_is_refused(self) -> None:
+        message = self._save(
+            {
+                'type': 'object',
+                'patternProperties': {'^a': {}},
+                'unevaluatedProperties': False,
+            }
+        )
+        self.assertIn('unevaluatedProperties', message)
+
     def test_bad_item_pattern_is_refused_on_save(self) -> None:
         self._save(
             {'type': 'array', 'items': {'type': 'string', 'pattern': '['}}

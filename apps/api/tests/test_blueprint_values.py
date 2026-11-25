@@ -304,6 +304,12 @@ class ValueCheckTests(unittest.TestCase):
                             'patternProperties': {'^(a+)+$': {}},
                             'additionalProperties': False,
                         },
+                        # Stored before the save check refused the pair.
+                        'loose': {
+                            'type': 'object',
+                            'patternProperties': {'^(a+)+$': {}},
+                            'unevaluatedProperties': {'type': 'string'},
+                        },
                         'payload': {
                             'type': 'object',
                             'properties': {
@@ -327,6 +333,13 @@ class ValueCheckTests(unittest.TestCase):
         }
         self.assertEqual(
             blueprint_values.validate(self.matches, values, partial=False),
+            values,
+        )
+
+    def test_stored_unevaluated_is_skipped(self) -> None:
+        values = {'loose': {'a' * 40000 + '!': 1}}
+        self.assertEqual(
+            blueprint_values.validate(self.matches, values, partial=True),
             values,
         )
 
