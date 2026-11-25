@@ -353,6 +353,7 @@ export function NewTaskDialog({
       onOpenChange={(o) => !o && !create.isPending && onClose()}
       open={isOpen}
     >
+      {/* oxlint-disable-next-line overflow/no-clipped-max-height -- the form below scrolls (overflow-y-auto) */}
       <DialogContent className="max-h-[calc(100vh-48px)] max-w-160 gap-0 overflow-hidden p-0">
         <div className="border-tertiary shrink-0 border-b px-5 py-3.5 pr-12">
           <DialogTitle className="text-lg font-medium">New ticket</DialogTitle>

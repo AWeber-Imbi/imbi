@@ -62,3 +62,35 @@ Node 22.6+ (native TypeScript type stripping) so oxlint can load the `.ts` plugi
 ```sh
 npx vitest run tools/
 ```
+
+## overflow/no-clipped-max-height
+
+Catches an element that caps its height and hides what does not fit. Content past the cap is then cut off with no way to scroll to it, which is easy to miss in review because short content looks fine.
+
+### What it detects
+
+A class string, in a literal or a template literal, that has a `max-h-*` class and `overflow-hidden`, `overflow-y-hidden`, `overflow-clip` or `overflow-y-clip`, with no scrolling or clamping class. Variant prefixes (`sm:`, `data-[state=open]:`) are ignored when matching.
+
+```tsx
+<div className="max-h-65 overflow-hidden px-6 py-4">
+//              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ flagged
+
+<div className="max-h-65 overflow-y-auto px-6 py-4" />   // scrolls: allowed
+<p className="max-h-20 overflow-hidden line-clamp-3" />  // clamped on purpose: allowed
+```
+
+The rule reads one string at a time, so classes split across several `cn()` arguments are not combined.
+
+### When a child scrolls instead
+
+Some containers clip on purpose because a child is the scroll container, such as a dialog whose form scrolls or a Radix select whose viewport scrolls. Disable the rule on that line and name the child:
+
+```tsx
+// oxlint-disable-next-line overflow/no-clipped-max-height -- SelectPrimitive.Viewport below scrolls the options
+```
+
+### Tests
+
+```sh
+npx vitest run tools/
+```
