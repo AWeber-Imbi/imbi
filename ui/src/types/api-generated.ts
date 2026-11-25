@@ -11776,7 +11776,7 @@ export interface components {
             /** Task Timeout Seconds */
             task_timeout_seconds?: number | null;
             /** Response Sla */
-            response_sla?: ("4h" | "8h" | "24h" | "3d" | "none") | null;
+            response_sla?: string | null;
             /**
              * Required Labels
              * @default []
@@ -11830,7 +11830,7 @@ export interface components {
             /** Task Timeout Seconds */
             task_timeout_seconds?: number | null;
             /** Response Sla */
-            response_sla?: ("4h" | "8h" | "24h" | "3d" | "none") | null;
+            response_sla?: string | null;
             /**
              * Required Labels
              * @default []
@@ -22603,6 +22603,8 @@ export interface components {
             /** Icon */
             icon?: string | null;
             organization: components["schemas"]["Organization"];
+            /** Slack Channel */
+            slack_channel?: string | null;
         };
         /**
          * TeamMembership
@@ -24562,6 +24564,11 @@ export interface components {
              */
             icon: string | null;
             organization: components["schemas"]["Organization"];
+            /**
+             * Slack Channel
+             * @default null
+             */
+            slack_channel: string | null;
         };
         /** TeamResponse */
         TeamBlueprintResponse: {
@@ -24592,6 +24599,11 @@ export interface components {
              */
             icon: string | null;
             organization: components["schemas"]["Organization"];
+            /**
+             * Slack Channel
+             * @default null
+             */
+            slack_channel: string | null;
             /**
              * Relationships
              * @default null

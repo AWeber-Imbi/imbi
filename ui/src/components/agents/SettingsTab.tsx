@@ -3,16 +3,9 @@ import { useQuery } from '@tanstack/react-query'
 import { listEgressDestinations } from '@/api/endpoints'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { queryKeys } from '@/lib/queryKeys'
 
-import { type SettingsDraft, SLA_OPTIONS } from './agentDraft'
+import { type SettingsDraft } from './agentDraft'
 import { ClaudeSettingsSection } from './ClaudeSettingsSection'
 import { Field } from './OverviewTab'
 
@@ -106,27 +99,17 @@ export function SettingsTab({
           />
         </Field>
         <Field
-          help="How long a task may sit waiting on a person before it escalates."
+          error={errors.responseSla}
+          help="How long a request may wait on the person on the ticket before it goes to a team Slack channel. For example 4h, 1d or 1h30m."
           htmlFor="agent-sla"
           label="Human response SLA"
         >
-          <Select
-            onValueChange={(v) =>
-              set({ responseSla: v as SettingsDraft['responseSla'] })
-            }
-            value={value.responseSla || undefined}
-          >
-            <SelectTrigger id="agent-sla">
-              <SelectValue placeholder="Not set" />
-            </SelectTrigger>
-            <SelectContent>
-              {SLA_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Input
+            id="agent-sla"
+            onChange={(e) => set({ responseSla: e.target.value })}
+            placeholder="No SLA"
+            value={value.responseSla}
+          />
         </Field>
       </div>
       <EgressField

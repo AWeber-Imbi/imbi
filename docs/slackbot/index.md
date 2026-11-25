@@ -49,11 +49,22 @@ posts a form with the same choices as the "Waiting on you" box of the ticket:
 - A question with no options: write an answer.
 - An approval: Approve or Reject. The form lists the artifacts.
 
-The bot posts the form to the **Slack channel** of the agent (`#name` or a
-channel id). When the agent has no channel, or the bot cannot find it, the
-bot sends the form as a direct message to the owner of the ticket. Invite
-the bot to the channel first. The bot looks up a channel name that it did
-not find again after 15 minutes.
+The bot sends the form as a direct message to the person on the ticket:
+the assignee of a person ticket, else the owner.
+
+When the agent has a **Human response SLA** and the request is still open
+after it, the bot also posts the form to a team Slack channel. The channel
+is the first one that applies:
+
+1. The Slack channel of the owner team of the ticket's first project.
+2. The **Slack channel** of the agent.
+3. The Slack channel of the agent's owner team.
+
+A team with no Slack channel uses its slug as the channel name. The bot
+also posts to that channel at once when it cannot send the direct message
+(for example, the person has no Slack user). With no SLA, there is no
+later post to the channel, but this post still occurs. Invite the bot to the channel first. The bot looks up a
+channel name that it did not find again after 15 minutes.
 
 Any person who can see the form can send it. The bot resolves the request
 as that person, so the person needs `ticket:resolve`, and the ticket records

@@ -40,15 +40,15 @@ import fastapi
 import jsonschema
 import orjson
 import pydantic
-from valkey import asyncio as valkey_asyncio
 
 from imbi.api import harness, scoring, tickets
 from imbi.api.auth import autonomous
 from imbi.api.endpoints import tickets as tasks_api
 from imbi.api.harness import auth as harness_auth
 from imbi.api.harness import store as harness_store
+from imbi.api.tickets import announce
 from imbi.api.tickets import store as task_store
-from imbi.common import graph, models, valkey
+from imbi.common import graph, models
 from imbi.common.workflows.registry import agent as agent_step
 
 #: The largest inline event payload, in bytes of JSON.
@@ -359,11 +359,27 @@ class RequestOpenResponse(pydantic.BaseModel):
 
 LOGGER = logging.getLogger(__name__)
 
-#: The agent of a ticket, for the Slack post of its requests.
-_AGENT_SLACK_QUERY: typing.LiteralString = """
+#: The agent of a ticket, its team, and the team of the ticket's first
+#: project, for the Slack post of a request. A team with no channel, or
+#: an empty channel, uses its slug.
+_REQUEST_ROUTING_QUERY: typing.LiteralString = """
 MATCH (a:Agent {{id: {id}}})
-RETURN a.name AS name, a.slack_channel AS slack_channel
+OPTIONAL MATCH (a)-[:OWNED_BY]->(t:Team)
+OPTIONAL MATCH (:Project {{id: {project_id}}})-[:OWNED_BY]->(p:Team)
+RETURN a.name AS name, a.settings AS settings,
+       a.slack_channel AS slack_channel,
+       CASE WHEN coalesce(t.slack_channel, '') = '' THEN t.slug
+            ELSE t.slack_channel END AS agent_team_channel,
+       CASE WHEN coalesce(p.slack_channel, '') = '' THEN p.slug
+            ELSE p.slack_channel END AS project_team_channel
 """
+_REQUEST_ROUTING_COLUMNS = [
+    'name',
+    'settings',
+    'slack_channel',
+    'agent_team_channel',
+    'project_team_channel',
+]
 
 _AGENT_SETTINGS_QUERY: typing.LiteralString = """
 MATCH (a:Agent {{id: {id}}})
@@ -462,9 +478,14 @@ async def _agent_settings(
     records = await db.execute(
         _AGENT_SETTINGS_QUERY, {'id': agent_id}, ['settings']
     )
-    raw: typing.Any = (
+    return _parse_settings(
         graph.parse_agtype(records[0]['settings']) if records else None
     )
+
+
+def _parse_settings(raw: typing.Any) -> models.AgentSettings:
+    """Return agent settings from a parsed graph value; defaults when
+    there is none."""
     if isinstance(raw, str):
         return models.AgentSettings.model_validate_json(raw)
     return models.AgentSettings.model_validate(raw or {})
@@ -967,6 +988,7 @@ async def open_agent_task_request(
 
     """
     tasks_api.check_payload_size('The request', data.model_dump(mode='json'))
+    sla, escalation = await _request_routing(db, org_slug, task)
     try:
         row, request, created = await store.open_request(
             org_id,
@@ -981,13 +1003,17 @@ async def open_agent_task_request(
                 expires_at=data.expires_at,
                 session_id=data.session_id,
                 request_key=data.request_key,
+                escalate_after=sla,
+                escalation=escalation if sla else None,
             ),
             _agent_actor(task),
         )
     except _STORE_ERRORS as err:
         raise _translate(err, task['short_id']) from err
     if created:
-        await _announce_request(valkey_client, db, org_slug, row, request)
+        await announce.publish(
+            valkey_client, announce.entry(row, request, escalation)
+        )
     else:
         response.status_code = 200
     return RequestOpenResponse(
@@ -996,65 +1022,48 @@ async def open_agent_task_request(
     )
 
 
-#: The request fields that the slackbot shows in its form.
-_ANNOUNCED_FIELDS = (
-    'kind',
-    'title',
-    'why',
-    'options',
-    'artifacts',
-    'artifact_digests',
-)
+async def _request_routing(
+    db: graph.Graph, org_slug: str, task: dict[str, typing.Any]
+) -> tuple[datetime.timedelta | None, dict[str, typing.Any]]:
+    """Return the agent's response SLA and where a request of ``task``
+    goes after it.
 
-
-async def _announce_request(
-    client: valkey_asyncio.Valkey | None,
-    db: graph.Graph,
-    org_slug: str,
-    task: dict[str, typing.Any],
-    request: dict[str, typing.Any],
-) -> None:
-    """Add a new request to the stream that the slackbot posts from.
-
-    The slackbot posts it to the Slack channel of the agent, or to the
-    owner of the ticket. This is best effort: when it fails, the request
-    is still in the UI.
+    The channel is the team channel of the first project of the ticket,
+    else the agent's Slack channel, else the agent team's channel. This
+    is best effort: when the graph fails, there is no SLA and no
+    channel, and the request goes to the person only.
     """
-    if client is None:
-        return
+    projects: list[dict[str, typing.Any]] = task.get('projects') or []
     try:
         records = await db.execute(
-            _AGENT_SLACK_QUERY,
-            {'id': task['agent_id']},
-            ['name', 'slack_channel'],
+            _REQUEST_ROUTING_QUERY,
+            {
+                'id': task['agent_id'],
+                'project_id': projects[0]['project_id'] if projects else None,
+            },
+            _REQUEST_ROUTING_COLUMNS,
         )
-        agent = (
+        row = (
             {k: graph.parse_agtype(v) for k, v in records[0].items()}
             if records
             else {}
         )
-        entry = {
-            'org_slug': org_slug,
-            'short_id': task['short_id'],
-            'ticket_title': task['title'],
-            'owner': task['owner'],
-            'agent_name': agent.get('name'),
-            'slack_channel': agent.get('slack_channel'),
-            'request_id': request['id'],
-            **{k: request[k] for k in _ANNOUNCED_FIELDS},
-        }
-        await client.xadd(
-            valkey.TICKET_REQUESTS_STREAM,
-            {'request': orjson.dumps(entry)},
-            maxlen=valkey.TICKET_REQUESTS_MAXLEN,
-            approximate=True,
-        )
+        sla = _parse_settings(row.get('settings')).response_sla
     except Exception:
         LOGGER.exception(
-            'Could not announce request %s of %s',
-            request['id'],
-            task['short_id'],
+            'Could not route the requests of %s', task['short_id']
         )
+        row, sla = {}, None
+    escalation = {
+        'org_slug': org_slug,
+        'agent_name': row.get('name'),
+        'slack_channel': (
+            row.get('project_team_channel')
+            or row.get('slack_channel')
+            or row.get('agent_team_channel')
+        ),
+    }
+    return (models.parse_duration(sla) if sla else None), escalation
 
 
 def _check_structured_output(

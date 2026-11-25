@@ -65,7 +65,7 @@ def entry(**overrides: typing.Any) -> dict[str, typing.Any]:
         'org_slug': 'aweber',
         'short_id': 'T-7',
         'ticket_title': 'Fix the build',
-        'owner': 'ada@example.com',
+        'recipient': 'ada@example.com',
         'agent_name': 'Triage Bot',
         'slack_channel': None,
         'request_id': 'r-1',
@@ -196,43 +196,125 @@ class FlowTestCase(helpers.TestCase):
 
 
 class PostTests(FlowTestCase):
-    async def test_agent_channel_by_name(self) -> None:
+    async def test_recipient_first_even_with_a_channel(self) -> None:
         await ticket_requests.post(
             self.slack, self.runtime, entry(slack_channel='#ops')
         )
-        self.assertEqual('C2', self.slack.posts[0]['channel'])
+        self.assertEqual(['D-U1'], [p['channel'] for p in self.slack.posts])
         record = await self.stored()
         self.assertEqual(
             'r-1', record.metadata['ticket_request']['request_id']
         )
 
-    async def test_agent_channel_by_id(self) -> None:
-        await ticket_requests.post(
-            self.slack, self.runtime, entry(slack_channel='C9')
-        )
-        self.assertEqual('C9', self.slack.posts[0]['channel'])
+    async def test_earlier_entry_goes_to_the_owner(self) -> None:
+        legacy = entry(owner='ada@example.com')
+        del legacy['recipient']
+        await ticket_requests.post(self.slack, self.runtime, legacy)
+        self.assertEqual(['D-U1'], [p['channel'] for p in self.slack.posts])
 
-    async def test_owner_when_no_channel(self) -> None:
-        await ticket_requests.post(self.slack, self.runtime, entry())
-        self.assertEqual('D-U1', self.slack.posts[0]['channel'])
-
-    async def test_owner_when_the_channel_is_unknown(self) -> None:
+    async def test_escalation_goes_to_the_channel_by_name(self) -> None:
         await ticket_requests.post(
-            self.slack, self.runtime, entry(slack_channel='#nope')
+            self.slack,
+            self.runtime,
+            entry(slack_channel='#ops', escalation=True),
         )
-        self.assertEqual('D-U1', self.slack.posts[0]['channel'])
+        self.assertEqual(['C2'], [p['channel'] for p in self.slack.posts])
 
-    async def test_owner_when_the_channel_id_is_stale(self) -> None:
+    async def test_escalation_goes_to_the_channel_by_id(self) -> None:
         await ticket_requests.post(
-            self.slack, self.runtime, entry(slack_channel='C404')
+            self.slack,
+            self.runtime,
+            entry(slack_channel='C9', escalation=True),
         )
-        self.assertEqual('D-U1', self.slack.posts[0]['channel'])
+        self.assertEqual(['C9'], [p['channel'] for p in self.slack.posts])
 
-    async def test_owner_not_in_slack(self) -> None:
+    async def test_channel_when_the_recipient_is_not_in_slack(self) -> None:
         await ticket_requests.post(
-            self.slack, self.runtime, entry(owner='bob@example.com')
+            self.slack,
+            self.runtime,
+            entry(recipient='bob@example.com', slack_channel='ops'),
         )
+        self.assertEqual(['C2'], [p['channel'] for p in self.slack.posts])
+
+    async def test_channel_when_the_direct_message_is_rejected(self) -> None:
+        rejected = errors.SlackApiError('rejected', {'error': 'rejected'})
+        # The direct message channel cannot be opened.
+        self.slack.conversations_open = mock.AsyncMock(side_effect=rejected)
+        await ticket_requests.post(
+            self.slack, self.runtime, entry(slack_channel='ops')
+        )
+        self.assertEqual(['C2'], [p['channel'] for p in self.slack.posts])
+
+    async def test_channel_when_the_direct_post_is_rejected(self) -> None:
+        post = self.slack.chat_postMessage
+
+        async def reject_direct(channel, text=None, **kw):
+            if channel.startswith('D-'):
+                raise errors.SlackApiError('rejected', {'error': 'rejected'})
+            return await post(channel, text, **kw)
+
+        self.slack.chat_postMessage = reject_direct
+        await ticket_requests.post(
+            self.slack, self.runtime, entry(slack_channel='ops')
+        )
+        self.assertEqual(['C2'], [p['channel'] for p in self.slack.posts])
+
+    async def test_ambiguous_direct_post_error_is_raised(self) -> None:
+        post = self.slack.chat_postMessage
+
+        async def accept_then_fail(channel, text=None, **kw):
+            await post(channel, text, **kw)
+            raise errors.SlackApiError(
+                'internal_error', {'error': 'internal_error'}
+            )
+
+        self.slack.chat_postMessage = accept_then_fail
+        with self.assertRaises(errors.SlackApiError):
+            await ticket_requests.post(
+                self.slack, self.runtime, entry(slack_channel='ops')
+            )
+        self.assertEqual(['D-U1'], [p['channel'] for p in self.slack.posts])
+
+    async def test_non_200_direct_post_error_is_raised(self) -> None:
+        post = self.slack.chat_postMessage
+
+        class BadGateway(Resp):
+            status_code = 502
+
+        response = BadGateway(ok=False, error='Received a non-JSON response')
+
+        async def accept_then_fail(channel, text=None, **kw):
+            await post(channel, text, **kw)
+            raise errors.SlackApiError('bad gateway', response)
+
+        self.slack.chat_postMessage = accept_then_fail
+        with self.assertRaises(errors.SlackApiError):
+            await ticket_requests.post(
+                self.slack, self.runtime, entry(slack_channel='ops')
+            )
+        self.assertEqual(['D-U1'], [p['channel'] for p in self.slack.posts])
+
+    async def test_timeout_on_the_direct_message_is_raised(self) -> None:
+        self.slack.conversations_open = mock.AsyncMock(
+            side_effect=TimeoutError
+        )
+        with self.assertRaises(TimeoutError):
+            await ticket_requests.post(
+                self.slack, self.runtime, entry(slack_channel='ops')
+            )
         self.assertEqual([], self.slack.posts)
+
+    async def test_nowhere_to_post(self) -> None:
+        for overrides in (
+            {'recipient': 'bob@example.com'},
+            {'recipient': 'bob@example.com', 'slack_channel': '#nope'},
+            {'escalation': True, 'slack_channel': 'C404'},
+        ):
+            with self.subTest(**overrides):
+                await ticket_requests.post(
+                    self.slack, self.runtime, entry(**overrides)
+                )
+                self.assertEqual([], self.slack.posts)
 
     async def test_refused_form_is_a_message(self) -> None:
         await ticket_requests.post(

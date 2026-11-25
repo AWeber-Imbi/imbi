@@ -16,7 +16,7 @@ const NODE_BASE_FIELDS = [
 ]
 
 // Re-export under model-specific names for clarity in imports
-export const TEAM_BASE_FIELDS = [...NODE_BASE_FIELDS, 'id']
+export const TEAM_BASE_FIELDS = [...NODE_BASE_FIELDS, 'id', 'slack_channel']
 export const TEAM_BASE_FIELDS_SET = new Set(TEAM_BASE_FIELDS)
 
 export const ENVIRONMENT_BASE_FIELDS = [

@@ -189,7 +189,9 @@ remove members.
 2. Open **Admin > &lt;Org&gt; Admin > Teams**. &lt;Org&gt; is the name of the
    organization that you selected.
 3. Click **New Team**.
-4. Complete the form.
+4. Complete the form. **Slack channel** gets the ticket requests that
+   wait past an agent's response SLA. Empty uses the team slug. See
+   [Slack](../slackbot/index.md#answer-a-ticket-that-needs-input).
 5. Click **Create Team**.
 
 ### Change the members of a team

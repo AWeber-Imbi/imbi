@@ -202,6 +202,20 @@ describe('agentDraft', () => {
     })
   })
 
+  it('accepts a Go-style duration for the response SLA', () => {
+    const draft = draftFromAgent(agent(), promptVersion())
+    for (const value of ['30m', '1d', '2w', '1h30m', ' 4h ']) {
+      draft.settings.responseSla = value
+      expect(draftErrors(draft).responseSla).toBeUndefined()
+    }
+    for (const value of ['1y', '0h', '4 h', 'soon']) {
+      draft.settings.responseSla = value
+      expect(draftErrors(draft).responseSla).toBe(
+        'Enter a duration, for example 4h, 1d or 1h30m',
+      )
+    }
+  })
+
   it('maps tools to the draft and names a tool change', () => {
     const tools = {
       'imbi.update_project': {

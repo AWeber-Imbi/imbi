@@ -539,7 +539,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
                 'name': 'T',
                 'slug': 't',
                 'team': 'ops',
-                'settings': {'response_sla': '1w'},
+                'settings': {'response_sla': '1y'},
             },
             {'name': '', 'slug': 't', 'team': 'ops'},
         ]

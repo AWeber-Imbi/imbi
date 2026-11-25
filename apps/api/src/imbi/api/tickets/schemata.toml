@@ -619,6 +619,12 @@ resolved_at = "TIMESTAMP WITH TIME ZONE"
 resolution = "JSONB"
 # The client key that makes a request open idempotent.
 request_key = "TEXT"
+# When an open request goes to a team Slack channel: the open time plus
+# the agent's response SLA. NULL: no SLA, or the sweeper sent it.
+escalate_at = "TIMESTAMP WITH TIME ZONE"
+# What the sweeper needs to post the request: org_slug, agent_name, and
+# slack_channel.
+escalation = "JSONB"
 
 [tables.primary_key]
 columns = ["id"]
@@ -626,6 +632,10 @@ columns = ["id"]
 [[tables.indexes]]
 name = "requests_ticket_idx"
 columns = ["ticket_id", "status"]
+
+[[tables.indexes]]
+name = "requests_escalate_at_idx"
+columns = ["escalate_at"]
 
 # A repeat with the same key returns the first request of the task. NULL
 # keys are distinct, so requests without a key do not collide.

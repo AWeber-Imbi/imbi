@@ -108,6 +108,26 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    [Slack app manifest](../slackbot/slack-app-manifest.md) has both. A
    reinstall keeps the bot token, so the Slack bot does not need a
    restart. Until you do this, Slack does not show the command.
+4. The slackbot now sends a ticket request as a direct message to the
+   person on the ticket, not to the agent's Slack channel. A request goes
+   to a team Slack channel immediately only when Slack rejects the
+   direct message. After an ambiguous failure, such as a timeout, the
+   bot does not post to the channel immediately, because Slack can have
+   sent the message. A request also goes to the channel when it is
+   still open after the agent's **Human response SLA**. Set an SLA on
+   each agent that needs one. The API selects the channel in this
+   order: the team that owns the first project of the ticket, then the
+   agent's **Slack channel**, then the team that owns the agent. Thus,
+   when the project has no owner team and the agent has a Slack
+   channel, the post goes to the agent's channel, not to the channel of
+   the agent's team. The API stores the channel when the request opens.
+   A later change to a team or agent channel does not move the requests
+   that are already open. Set **Slack channel** on each team whose
+   channel name is not the team slug. Invite the bot to every channel
+   that can get these posts, including the channels that have the team
+   slug as their name and the channels that open requests already
+   store. The `channels:read` and `groups:read` scopes of 2.61.0 are
+   still necessary for the channel posts.
 
 ## 2.61.0
 

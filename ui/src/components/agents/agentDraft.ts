@@ -69,8 +69,6 @@ export interface PromptDraft {
   system: string
 }
 
-export type ResponseSla = NonNullable<AgentSettings['response_sla']>
-
 export interface SettingsDraft {
   /** Claude Code settings, as JSON text. Empty is none. */
   claudeSettings: string
@@ -88,7 +86,8 @@ export interface SettingsDraft {
   plugins: AgentPlugin[]
   /** Runner labels, separated by commas. */
   requiredLabels: string
-  responseSla: '' | ResponseSla
+  /** A duration such as `4h` or `1d`. Empty is no SLA. */
+  responseSla: string
   /** `secret://` references, one on each line. */
   secrets: string
   taskBudget: string
@@ -142,14 +141,6 @@ const PARAM_DEFAULTS: Record<ParamKey, string> = {
   promptCaching: '5m',
 }
 
-export const SLA_OPTIONS: { label: string; value: ResponseSla }[] = [
-  { label: '4 hours', value: '4h' },
-  { label: '8 business hours', value: '8h' },
-  { label: '24 hours', value: '24h' },
-  { label: '3 days', value: '3d' },
-  { label: 'No SLA', value: 'none' },
-]
-
 export function agentPromptRef(namespace: string, slug: string): string {
   return `${namespace}/${slug}@${AGENT_PROMPT_LABEL}`
 }
@@ -171,6 +162,9 @@ export function draftErrors(draft: AgentDraft): Record<string, string> {
     errors.maxConcurrentTasks = 'Enter a whole number above 0'
   if (s.taskTimeout.trim() && parseDuration(s.taskTimeout) === null)
     errors.taskTimeout = 'Enter a duration, for example 30m or 2h'
+  const sla = s.responseSla.trim()
+  if (sla && !(RESPONSE_SLA.test(sla) && /[1-9]/.test(sla)))
+    errors.responseSla = 'Enter a duration, for example 4h, 1d or 1h30m'
   if (parseLabels(s.requiredLabels).some((l) => !RUNNER_LABEL.test(l)))
     errors.requiredLabels =
       'Use lower-case letters, digits, ".", "_", and "-", for example gpu'
@@ -495,7 +489,7 @@ export function settingsFromDraft(draft: SettingsDraft): AgentSettings {
     monthly_cost_cap: cap,
     plugins: draft.plugins,
     required_labels: parseLabels(draft.requiredLabels),
-    response_sla: draft.responseSla || null,
+    response_sla: draft.responseSla.trim() || null,
     // The grants decide what the agent may request; the stored list
     // is no longer edited, so a save clears it.
     secrets: [],
@@ -516,6 +510,9 @@ export function settingsText(value?: ClaudeSettings | null): string {
 /** A runner label, as the API accepts it. */
 const RUNNER_LABEL = /^[a-z0-9][a-z0-9_.-]*$/
 
+/** A duration as the API accepts it: Go style, with `d` and `w`. */
+const RESPONSE_SLA = /^(?:\d+[smhdw])+$/
+
 /** A `secret://` reference, as the secrets broker accepts it. */
 const BINDING_REF = /^secret:\/\/[a-z0-9_]+\/[a-z0-9_]+(?:\/[a-z0-9_]+)*$/
 
@@ -526,10 +523,6 @@ export function parseLabels(value: string): string[] {
     .map((l) => l.trim())
     .filter(Boolean)
   return [...new Set(labels)].sort()
-}
-
-export function slaLabel(value: null | string | undefined): null | string {
-  return SLA_OPTIONS.find((o) => o.value === value)?.label ?? null
 }
 
 /** Say in words what a save changes, for the agent version note. */

@@ -3,9 +3,11 @@
 imbi-api adds each new request of a ticket (ADR 0020) to
 :data:`imbi.common.valkey.TICKET_REQUESTS_STREAM`. This module reads
 the stream and posts a slackwright form with the same choices as the
-"Waiting on you" box of the ticket in the UI. It posts to the Slack
-channel of the agent. When the agent has no channel, or the bot cannot
-find it, it sends a direct message to the owner of the ticket.
+"Waiting on you" box of the ticket in the UI. It sends the form as a
+direct message to ``recipient``, the person on the ticket. When that
+fails, it posts the form to ``slack_channel``. When the request is still
+open after the agent's response SLA, the imbi-api sweeper adds the
+entry again with ``escalation`` set, and the form goes to the channel.
 
 A submission resolves the request through imbi-api as the Slack user
 who answered. The API checks ``ticket:resolve`` and records the
@@ -49,6 +51,8 @@ _MAX_INTRO = 2000
 _CHANNEL_ID = re.compile(r'^[CG][A-Z0-9]+$')
 #: Slack errors that mean the bot cannot post to the channel.
 _NO_CHANNEL = frozenset({'channel_not_found', 'is_archived', 'not_in_channel'})
+# Slack can send the message and then return one of these errors.
+_AMBIGUOUS = frozenset({'internal_error', 'fatal_error'})
 
 #: Less than the socket timeout of the Valkey client (5 seconds), so an
 #: empty poll returns before the socket times out.
@@ -122,31 +126,52 @@ async def _create_group(client: typing.Any) -> None:
 async def post(
     slack: SlackClient, runtime: forms.Runtime, entry: Entry
 ) -> None:
-    """Post the form of ``entry`` to the agent channel or the owner."""
-    name = entry.get('slack_channel')
-    channel = name and await _channel_id(slack, name)
-    if channel:
+    """Send the form of ``entry`` to the person on the ticket, or post
+    it to the team channel for an escalation or a failed message."""
+    if not entry.get('escalation'):
+        # An entry from an earlier imbi-api has ``owner``, not
+        # ``recipient``.
+        recipient = entry.get('recipient') or entry['owner']
+        # A SlackApiError on an HTTP 200 is a definite rejection, so the
+        # channel post cannot duplicate the message. The ambiguous
+        # errors, a response that is not HTTP 200 (for example a 502
+        # from a gateway), and other errors, such as a timeout, are
+        # raised: Slack can have sent the message.
         try:
-            await _post_form(slack, runtime, entry, channel)
+            direct = await _direct_channel(slack, recipient)
+            await _post_form(slack, runtime, entry, direct)
         except errors.SlackApiError as err:
-            # Only a definite "no such channel" goes to the owner. After
-            # another error, Slack can have the post already.
             response: typing.Any = err.response
-            if response.get('error') not in _NO_CHANNEL:
+            if (
+                getattr(response, 'status_code', 200) != 200
+                or response.get('error') in _AMBIGUOUS
+            ):
                 raise
+            LOGGER.info(
+                'Cannot message %s (%s); posting %s to the channel',
+                recipient,
+                response.get('error'),
+                entry['short_id'],
+            )
         else:
             return
-    if name:
+    name = entry.get('slack_channel')
+    channel = name and await _channel_id(slack, name)
+    if not channel:
+        LOGGER.warning('No Slack channel %r for %s', name, entry['short_id'])
+        return
+    try:
+        await _post_form(slack, runtime, entry, channel)
+    except errors.SlackApiError as err:
+        response = err.response
+        if response.get('error') not in _NO_CHANNEL:
+            raise
         LOGGER.warning(
-            'No Slack channel %r for %s; sending to the owner',
+            'Cannot post to Slack channel %r for %s: %s',
             name,
             entry['short_id'],
+            response.get('error'),
         )
-    channel = await _direct_channel(slack, entry['owner'])
-    if not channel:
-        LOGGER.info('No Slack user for %s', entry['owner'])
-        return
-    await _post_form(slack, runtime, entry, channel)
 
 
 async def answer(slack: SlackClient, submission: forms.Submission) -> bool:
@@ -336,12 +361,9 @@ async def _channel_id(slack: SlackClient, name: str) -> str | None:
     return None
 
 
-async def _direct_channel(slack: SlackClient, email: str) -> str | None:
+async def _direct_channel(slack: SlackClient, email: str) -> str:
     """Return the direct message channel with the Slack user of ``email``."""
-    try:
-        user = await slack.users_lookupByEmail(email=email)
-    except errors.SlackApiError:
-        return None
+    user = await slack.users_lookupByEmail(email=email)
     opened = await slack.conversations_open(users=user['user']['id'])
     return str(opened['channel']['id'])
 
