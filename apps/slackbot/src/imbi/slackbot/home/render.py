@@ -657,7 +657,9 @@ def _section(
             ),
             b.section(
                 f'Could not load {title}. Try again.',
-                accessory=b.button('Retry', f'home:{key}:retry'),
+                accessory=b.button(
+                    'Retry', f'home:{key}:retry', value=links.org
+                ),
             ),
             b.divider(),
         ]

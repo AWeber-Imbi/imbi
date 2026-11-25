@@ -117,11 +117,14 @@ async def cached(
         await client.delete(lock)
 
 
-async def drop(section: str) -> None:
-    """Drop the shared caches of ``section``, for all orgs."""
+async def drop(org: str, section: str) -> None:
+    """Drop the shared caches of ``section`` in ``org``."""
+    if not org:
+        return
     client: typing.Any = valkey.get_client()
     for name in SECTION_CACHES.get(section, ()):
-        keys = [k async for k in client.scan_iter(match=f'home:*:{name}*')]
+        match = f'home:{org}:{name}*'
+        keys = [k async for k in client.scan_iter(match=match)]
         if keys:
             await client.delete(*keys)
 

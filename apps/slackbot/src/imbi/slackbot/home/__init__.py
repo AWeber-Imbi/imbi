@@ -200,7 +200,8 @@ async def handle_action(slack: SlackClient, body: Body) -> None:
     key = typing.cast('prefs.SectionKey', section)
     written: prefs.Prefs | None = None
     if verb == 'retry':
-        await sources.drop(section)
+        # The Retry button value is the org that the tab shows.
+        await sources.drop(action.get('value') or '', section)
     else:
 
         def apply(current: prefs.Prefs) -> None:

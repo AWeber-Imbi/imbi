@@ -611,7 +611,8 @@
             "type": "plain_text",
             "text": "Retry",
             "emoji": true
-          }
+          },
+          "value": "acme"
         }
       },
       {

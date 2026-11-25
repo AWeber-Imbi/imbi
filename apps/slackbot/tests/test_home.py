@@ -975,11 +975,17 @@ class HomeFlowTests(helpers.TestCase):
         self.assertTrue(
             any(':drift:' in k for k in self.valkey.data), self.valkey.data
         )
+        other = 'home:beta:drift:p1'
+        self.valkey.data[other] = b'{}'
         await home.handle_action(
-            self.slack, self.action('home:release_drift:retry')
+            self.slack, self.action('home:release_drift:retry', value='acme')
         )
         self.assertEqual([], self.puts())
-        self.assertEqual(1, sum(':drift:' in k for k in self.valkey.data))
+        # Only the drift keys of acme go; the render fills one again.
+        self.assertIn(other, self.valkey.data)
+        self.assertEqual(
+            1, sum(k.startswith('home:acme:drift:') for k in self.valkey.data)
+        )
 
     async def test_org_select(self) -> None:
         await home.handle_action(
