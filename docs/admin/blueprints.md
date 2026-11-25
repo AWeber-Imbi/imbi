@@ -78,13 +78,13 @@ you save. The blueprint editor shows them under **Advanced options**.
 | `items` | arrays: `pattern`, `minLength`, `maxLength`, `multipleOf`, and the formats `uuid`, `ipv4`, and `ipv6` of each item | `{"type": "string", "format": "uuid"}` |
 
 A `pattern` is a search, as in JSON Schema: it matches anywhere in the
-value unless you anchor it with `^` and `$`. The API checks it with
-Python regular expressions and the form with JavaScript ones, so use the
-syntax that both accept: character classes, `\d`, quantifiers, groups,
-and `(?=...)` lookaheads. The form does not check a pattern that only
-Python accepts, such as `(?P<name>...)`; the API still checks it on
-save. Imbi refuses to save a blueprint with a `pattern` that does not
-compile.
+value unless you anchor it with `^` and `$`. Use the syntax that both
+the API and the form accept: character classes, `\d`, quantifiers,
+groups, and alternation. The API uses a regular expression engine that
+runs in linear time, so no pattern can make a value check hang. That
+engine does not support lookarounds (`(?=...)`, `(?!...)`) or
+backreferences (`\1`). Imbi refuses to save a blueprint with a
+`pattern` that the engine cannot use.
 
 A list of UUIDs:
 

@@ -2,6 +2,7 @@ import collections.abc
 import dataclasses
 import datetime
 import decimal
+import functools
 import json
 import re
 import typing
@@ -10,6 +11,7 @@ import warnings
 
 import nanoid
 import pydantic
+import pydantic_core
 import slugify
 from jsonschema_models import models as schema_models
 from pydantic import alias_generators
@@ -197,25 +199,34 @@ class RelationshipEdge(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra='ignore')
 
 
-def _compiles(pattern: str) -> str:
-    """Return ``pattern``; raise ValueError when it does not compile."""
+@functools.lru_cache(maxsize=256)
+def pattern_error(pattern: str) -> str | None:
+    """Return why the regex engine of pydantic cannot use ``pattern``;
+    ``None`` when it can.
+
+    That engine runs in linear time, so a pattern of a blueprint cannot
+    make a value check hang. It has no lookarounds and no
+    backreferences.
+    """
     try:
-        re.compile(pattern)
-    except re.error as exc:
-        raise ValueError(f'Invalid regular expression: {exc}') from exc
-    return pattern
+        pydantic.TypeAdapter(
+            typing.Annotated[str, pydantic.StringConstraints(pattern=pattern)]
+        )
+    except pydantic_core.SchemaError:
+        return (
+            'is not a supported regular expression (lookarounds and '
+            'backreferences are not supported)'
+        )
+    return None
 
 
 def _patterns_checked(schema: Schema) -> Schema:
-    """Return ``schema`` of a new blueprint after a check that the pattern
-    of each property and of its items compiles."""
+    """Return ``schema`` of a new blueprint after a check that the regex
+    engine can use the pattern of each property and of its items."""
     for name, prop in (schema.properties or {}).items():
         for pattern in (prop.pattern, getattr(prop.items, 'pattern', None)):
-            if pattern is not None:
-                try:
-                    _compiles(pattern)
-                except ValueError as err:
-                    raise ValueError(f'{name}: {err}') from None
+            if pattern is not None and (error := pattern_error(pattern)):
+                raise ValueError(f'{name}: pattern {pattern!r} {error}')
     return schema
 
 
@@ -419,7 +430,11 @@ class TagFormat(pydantic.BaseModel):
     @pydantic.field_validator('pattern')
     @classmethod
     def _validate_pattern(cls, value: str) -> str:
-        return _compiles(value)
+        try:
+            re.compile(value)
+        except re.error as exc:
+            raise ValueError(f'Invalid regular expression: {exc}') from exc
+        return value
 
 
 # Convenience constant for seeding the common-case semver policy (e.g.

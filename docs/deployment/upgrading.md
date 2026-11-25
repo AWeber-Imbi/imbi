@@ -140,8 +140,9 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    [value rules](../admin/blueprints.md#value-rules); before, it stored
    them and did not check them. A record whose stored value breaks a
    rule fails its next update with `422` until someone corrects the
-   value. A blueprint with a `pattern` that does not compile can no
-   longer be saved; correct it before you change the blueprint again.
+   value. A blueprint with a `pattern` that does not compile, or that
+   has a lookaround or a backreference, can no longer be saved. Until
+   you correct it, Imbi skips that pattern and logs a warning.
 
 ## 2.61.0
 

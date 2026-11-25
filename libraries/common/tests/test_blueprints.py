@@ -509,10 +509,11 @@ class ValueCheckTests(unittest.TestCase):
             'a-b', self._check({'type': 'string', 'pattern': '-'}, 'a-b')
         )
 
-    def test_pattern_with_lookahead(self) -> None:
-        prop = {'type': 'string', 'pattern': '^(?!tmp-)'}
-        self.assertEqual('prod', self._check(prop, 'prod'))
-        self._refused(prop, 'tmp-x')
+    def test_evil_pattern_is_linear(self) -> None:
+        # A backtracking engine takes years on this input.
+        self._refused(
+            {'type': 'string', 'pattern': '^(a+)+$'}, 'a' * 40000 + '!'
+        )
 
     def test_lengths(self) -> None:
         prop = {'type': 'string', 'minLength': 2, 'maxLength': 3}
@@ -573,7 +574,11 @@ class ValueCheckTests(unittest.TestCase):
 
     def test_bad_pattern_is_refused_on_save(self) -> None:
         message = self._save({'type': 'string', 'pattern': '('})
-        self.assertIn('value: Invalid regular expression', message)
+        self.assertIn('value: pattern', message)
+
+    def test_lookahead_is_refused_on_save(self) -> None:
+        message = self._save({'type': 'string', 'pattern': '^(?!tmp-)'})
+        self.assertIn('lookarounds', message)
 
     def test_bad_item_pattern_is_refused_on_save(self) -> None:
         self._save(

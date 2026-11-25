@@ -336,8 +336,8 @@ export function validateDynamicFields(
   try {
     validate = ajv.compile(jsonSchema)
   } catch {
-    // A pattern in Python syntax that JavaScript cannot compile: the API
-    // checks the values on save.
+    // A pattern that JavaScript cannot compile, such as (?P<name>...):
+    // the API checks the values on save.
     return {}
   }
   validate(data)

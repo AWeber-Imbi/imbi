@@ -1,7 +1,6 @@
 import datetime
 import ipaddress
 import logging
-import re
 import types
 import typing
 import uuid
@@ -83,12 +82,12 @@ def _checks(
     ``maxLength`` of a string, the formats of :data:`_FORMATS`, and
     ``multipleOf`` of a number.
 
-    A compiled pattern makes pydantic use :mod:`re`: lookarounds work,
-    and the pattern is a search, as in JSON Schema.
+    A pattern is a search, as in JSON Schema. pydantic checks it with a
+    linear-time engine (see :func:`models.pattern_error`).
     """
     checks: list[typing.Any] = []
     if field_type is str:
-        pattern = _compiled(getattr(prop_schema, 'pattern', None))
+        pattern = _pattern(getattr(prop_schema, 'pattern', None))
         min_length = getattr(prop_schema, 'min_length', None)
         max_length = getattr(prop_schema, 'max_length', None)
         if (pattern, min_length, max_length) != (None, None, None):
@@ -108,16 +107,13 @@ def _checks(
     return checks
 
 
-def _compiled(pattern: str | None) -> re.Pattern[str] | None:
-    """Return the compiled pattern; ``None`` for a pattern that does not
-    compile, which only a blueprint saved before the save check has."""
-    if pattern is None:
+def _pattern(pattern: str | None) -> str | None:
+    """Return ``pattern``; ``None`` for one that the regex engine cannot
+    use, which only a blueprint saved before the save check has."""
+    if pattern is not None and models.pattern_error(pattern):
+        LOGGER.warning('Skipping the unsupported pattern %r', pattern)
         return None
-    try:
-        return re.compile(pattern)
-    except re.error:
-        LOGGER.warning('Skipping the pattern %r: it does not compile', pattern)
-        return None
+    return pattern
 
 
 def _format_check(
