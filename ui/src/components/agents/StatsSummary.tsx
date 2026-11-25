@@ -3,7 +3,7 @@ import { Bot } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 import type { StatsRanked, TaskStatistics } from './statsModel'
-import { formatElapsed, formatTokens } from './taskEvents'
+import { formatCost, formatElapsed, formatTokens } from './taskEvents'
 import { formatDuration } from './trajectoryModel'
 
 interface Part {
@@ -14,8 +14,7 @@ interface Part {
 }
 
 export function money(cost: number): string {
-  if (cost <= 0) return '—'
-  return cost < 0.01 ? '<$0.01' : `$${cost.toFixed(2)}`
+  return cost > 0 ? formatCost(cost) : '—'
 }
 
 export function StatsSummary({

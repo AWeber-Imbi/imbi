@@ -138,8 +138,9 @@ export function taskStatistics(
     const tools = toolsOf.get(request.number) ?? []
     const step = stepOf(request, tools, byId, childrenOf)
     time.model += step.modelMs
-    time.subagents += busy(tools.filter(isAgentCall))
-    time.tools += busy(tools.filter((r) => !isAgentCall(r)))
+    const agentMs = busy(tools.filter(isAgentCall))
+    time.subagents += agentMs
+    time.tools += busy(tools) - agentMs
     const list = groups.get(request.turn) ?? []
     list.push(step)
     groups.set(request.turn, list)
@@ -337,7 +338,7 @@ function stepOf(
     seq: assistant?.seqs[0] ?? request.usage?.seq ?? null,
     startedAt: request.startedAt,
     subagents: tools
-      .flatMap((r) => subagentOf(r, childrenOf.get(r.id) ?? []))
+      .flatMap((r) => subagentCells(r, childrenOf.get(r.id) ?? []))
       .sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0)),
     toolMs: busy(tools),
     totalMs:
@@ -347,7 +348,7 @@ function stepOf(
   }
 }
 
-function subagentOf(
+function subagentCells(
   record: TrajectoryRecord,
   children: TrajectoryRecord[],
 ): StatsSubagent[] {

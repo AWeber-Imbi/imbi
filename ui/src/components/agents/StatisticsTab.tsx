@@ -604,7 +604,7 @@ function OpenInTrajectory({
     <IconTooltip label="Open in trajectory">
       <Button
         aria-label={`${label}: open in trajectory`}
-        className="text-tertiary hover:text-primary -my-1 hidden size-6 shrink-0 group-focus-within/row:inline-flex group-hover/row:inline-flex group-data-selected/row:inline-flex"
+        className="text-tertiary hover:text-primary -my-1 hidden size-6 shrink-0 group-focus-within/row:inline-flex group-hover/row:inline-flex group-data-selected/row:inline-flex [&_svg]:size-3.5"
         onClick={(e) => {
           e.stopPropagation()
           onOpen()
@@ -613,7 +613,7 @@ function OpenInTrajectory({
         size="icon"
         variant="ghost"
       >
-        <ChartGantt className="size-3.5" />
+        <ChartGantt />
       </Button>
     </IconTooltip>
   )
