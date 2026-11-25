@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
@@ -48,8 +48,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu'
-import { HoverCard, HoverCardContent, HoverCardTrigger } from './ui/hover-card'
-import { Separator } from './ui/separator'
 import { UserIdentity } from './ui/user-identity'
 
 interface NavigationProps {
@@ -395,16 +393,32 @@ export function Navigation({ currentView }: NavigationProps) {
 
 /** The Agents entry: links to the dashboard; hover shows the other pages. */
 function AgentsMenu({ isActive }: { isActive: boolean }) {
+  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
+  const closeTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const agentsNav = useAgentsNav().filter((item) => item.id !== 'dashboard')
+  const show = () => {
+    clearTimeout(closeTimer.current)
+    setOpen(true)
+  }
+  const hide = () => {
+    clearTimeout(closeTimer.current)
+    closeTimer.current = setTimeout(() => setOpen(false), 100)
+  }
   return (
-    <HoverCard
-      closeDelay={100}
-      onOpenChange={setOpen}
-      open={open}
-      openDelay={100}
-    >
-      <HoverCardTrigger asChild>
+    <DropdownMenu modal={false} onOpenChange={setOpen} open={open}>
+      <DropdownMenuTrigger
+        asChild
+        onClick={() => setOpen(false)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            navigate(agentsPath('dashboard'))
+          }
+        }}
+        onPointerEnter={show}
+        onPointerLeave={hide}
+      >
         <Button
           asChild
           className={`h-auto rounded-lg px-4 py-2 transition-colors ${
@@ -414,36 +428,39 @@ function AgentsMenu({ isActive }: { isActive: boolean }) {
           }`}
           variant="ghost"
         >
-          <Link onClick={() => setOpen(false)} to={agentsPath('dashboard')}>
+          <Link to={agentsPath('dashboard')}>
             <Bot className="size-4" />
             <span>Agents</span>
             <ChevronDown className="size-3" />
           </Link>
         </Button>
-      </HoverCardTrigger>
-      <HoverCardContent align="start" className="w-64 p-1">
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        className="w-64"
+        onPointerEnter={show}
+        onPointerLeave={hide}
+      >
         {agentsNav.map((item, i) => {
           const Icon = item.icon
           const newGroup = i > 0 && agentsNav[i - 1].group !== item.group
           return (
             <div key={item.id}>
-              {newGroup && <Separator className="my-1" />}
-              <Link
-                className="hover:bg-accent focus:bg-accent flex items-center gap-3 rounded-sm px-2 py-2 outline-none"
-                onClick={() => setOpen(false)}
-                to={agentsPath(item.id)}
-              >
-                <Icon className="text-tertiary size-4" />
-                <span className="flex flex-col">
-                  <span className="text-sm font-medium">{item.label}</span>
-                  <span className="text-tertiary text-xs">{item.note}</span>
-                </span>
-              </Link>
+              {newGroup && <DropdownMenuSeparator />}
+              <DropdownMenuItem asChild className="gap-3 py-2">
+                <Link to={agentsPath(item.id)}>
+                  <Icon className="text-tertiary size-4" />
+                  <span className="flex flex-col">
+                    <span className="text-sm font-medium">{item.label}</span>
+                    <span className="text-tertiary text-xs">{item.note}</span>
+                  </span>
+                </Link>
+              </DropdownMenuItem>
             </div>
           )
         })}
-      </HoverCardContent>
-    </HoverCard>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 

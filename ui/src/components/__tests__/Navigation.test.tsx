@@ -1,7 +1,7 @@
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import { render, screen } from '@/test/utils'
+import { render, screen, waitFor } from '@/test/utils'
 
 const auth = vi.hoisted(() => ({
   user: {
@@ -60,10 +60,19 @@ describe('Navigation', () => {
     expect(agents).toHaveAttribute('href', '/agents/dashboard')
     await userEvent.hover(agents)
     expect(
-      await screen.findByRole('link', { name: /Runners/ }),
+      await screen.findByRole('menuitem', { name: /Runners/ }),
     ).toBeInTheDocument()
     expect(
-      screen.queryByRole('link', { name: /Dashboard/ }),
+      screen.queryByRole('menuitem', { name: /Dashboard/ }),
     ).not.toBeInTheDocument()
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() =>
+      expect(screen.queryByRole('menuitem')).not.toBeInTheDocument(),
+    )
+    agents.focus()
+    await userEvent.keyboard('{ArrowDown}')
+    expect(
+      await screen.findByRole('menuitem', { name: /Runners/ }),
+    ).toBeInTheDocument()
   })
 })
