@@ -89,13 +89,14 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
     2. Deploy imbi-api and imbi-ui together. The new UI reads only the
        new routes.
     3. Run **Backfill Organizations to Operations Log**
-       (`opslog-organization-backfill`) one time from
+       (`opslog-organization-backfill`) from
        **Admin > Global Admin > Maintenance**. Until it completes, the
        entries written before the deploy do not show in the operations
-       log. Run it when few deploys are in progress: an entry that
-       changes while the operation reads it loses that change. Entries
-       of a project that is no longer in the graph keep no
-       organization and do not show.
+       log. Then run it again, until it writes nothing: an entry that
+       changes during a run keeps that change, and the next run fills
+       its organization in. Archived projects are included. Entries of
+       a project that is no longer in the graph keep no organization
+       and do not show.
 
 ## 2.62.0
 

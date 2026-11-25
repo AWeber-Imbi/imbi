@@ -243,11 +243,12 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
                 'entry written before entries recorded it. The '
                 'organization operations log shows only the entries of '
                 'its organization, so an entry without one is not shown. '
-                'Deleted entries stay deleted. Reads only the graph and '
-                'ClickHouse. Safe to re-run.'
+                'Deleted entries stay deleted. Includes archived projects. '
+                'Run it again until it writes nothing: an entry that '
+                'changes during a run is filled in on the next run.'
             ),
             pause_key=None,
-            enumerate=operations.enumerate_all_projects,
+            enumerate=operations.enumerate_projects_with_archived,
             execute=operations.execute_opslog_organization_backfill,
         ),
         OperationDefinition(

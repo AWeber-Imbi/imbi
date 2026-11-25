@@ -62,6 +62,23 @@ class EnumerateAllProjectsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('coalesce(p.archived, false) = false', query)
 
 
+class EnumerateProjectsWithArchivedTests(unittest.IsolatedAsyncioTestCase):
+    async def test_includes_archived_projects(self) -> None:
+        db = mock.AsyncMock()
+        db.execute.return_value = [{'id': '"p1"'}, {'id': '""'}]
+        items = await operations.enumerate_projects_with_archived(db)
+        self.assertEqual(['p1'], items)
+        self.assertNotIn('archived', db.execute.await_args.args[0])
+
+    def test_the_organization_backfill_uses_it(self) -> None:
+        from imbi.api.maintenance import registry
+
+        definition = registry.OPERATIONS['opslog-organization-backfill']
+        self.assertIs(
+            operations.enumerate_projects_with_archived, definition.enumerate
+        )
+
+
 class ExecuteAnalysisTests(unittest.IsolatedAsyncioTestCase):
     async def test_skipped_without_org(self) -> None:
         with mock.patch.object(operations, '_org_slug_for', _org_slug(None)):

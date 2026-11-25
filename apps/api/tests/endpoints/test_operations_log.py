@@ -921,3 +921,64 @@ class OrganizationScopeTests(support.SharedAppAsyncTestCase):
             mock.AsyncMock(), mock.AsyncMock(), self.project, ctx=ctx
         )
         self.assertEqual('skipped', outcome)
+
+    async def test_backfill_keeps_a_write_made_after_its_read(self) -> None:
+        """A write that lands between the backfill's read and its insert
+        wins, and the next run fills the organization in on it."""
+        await self._insert('raced', '')
+        stale = await imbi_clickhouse.query(
+            'SELECT * FROM operations_log FINAL WHERE id = {id:String}',
+            {'id': 'raced'},
+        )
+        # A completion lands after the backfill read the row.
+        await imbi_clickhouse.command(
+            'INSERT INTO imbi.operations_log (id, occurred_at, recorded_at,'
+            ' recorded_by, project_id, project_slug, environment_slug,'
+            ' entry_type, description, organization_id, _row_version)'
+            " VALUES ('raced', now64(3), now64(3), 'test', {pid:String},"
+            " 'p', 'prod', 'Deployed', 'completed', '', {v:UInt64})",
+            {
+                'pid': self.project,
+                'v': operations_log.next_row_version(
+                    int(stale[0]['_row_version'])
+                ),
+            },
+        )
+        self.enterContext(
+            mock.patch(
+                'imbi.api.endpoints._helpers.lookup_project_organization_id',
+                mock.AsyncMock(return_value=self.org_a),
+            )
+        )
+        ctx = maintenance_log.MaintenanceContext(
+            run_id='run1',
+            attempt_id='attempt1',
+            item_id=self.project,
+            project_id=self.project,
+            project_slug='',
+            log=maintenance_log.ItemLog(
+                'slug', 'run1', 'attempt1', self.project, self.project
+            ),
+        )
+        instance = imbi_clickhouse.client.Clickhouse.get_instance()
+        with mock.patch.object(
+            instance, 'query', mock.AsyncMock(return_value=stale)
+        ):
+            await operations.execute_opslog_organization_backfill(
+                mock.AsyncMock(), mock.AsyncMock(), self.project, ctx=ctx
+            )
+        sql = (
+            'SELECT description, organization_id FROM operations_log FINAL'
+            ' WHERE id = {id:String}'
+        )
+        self.assertEqual(
+            [{'description': 'completed', 'organization_id': ''}],
+            await imbi_clickhouse.query(sql, {'id': 'raced'}),
+        )
+        await operations.execute_opslog_organization_backfill(
+            mock.AsyncMock(), mock.AsyncMock(), self.project, ctx=ctx
+        )
+        self.assertEqual(
+            [{'description': 'completed', 'organization_id': self.org_a}],
+            await imbi_clickhouse.query(sql, {'id': 'raced'}),
+        )

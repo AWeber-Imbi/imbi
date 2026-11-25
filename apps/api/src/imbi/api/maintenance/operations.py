@@ -99,6 +99,18 @@ async def enumerate_all_projects(db: graph.Graph) -> list[str]:
     return [v for r in rows if (v := graph.parse_agtype(r['id']))]
 
 
+_PROJECT_IDS_QUERY: typing.LiteralString = (
+    'MATCH (p:Project) RETURN p.id AS id'
+)
+
+
+async def enumerate_projects_with_archived(db: graph.Graph) -> list[str]:
+    """Every project id, archived ones too. For a data migration: the
+    rows of an archived project need it the same as the others."""
+    rows = await db.execute(_PROJECT_IDS_QUERY, {}, ['id'])
+    return [v for r in rows if (v := graph.parse_agtype(r['id']))]
+
+
 async def _org_slug_for(db: graph.Graph, project_id: str) -> str | None:
     rows = await db.execute(
         _ORG_SLUG_QUERY, {'project_id': project_id}, ['slug']
@@ -942,13 +954,17 @@ async def execute_opslog_organization_backfill(
 
     The org-scoped routes read only the rows of their organization, so a
     row without one is not shown. Each row goes back with a bumped
-    ``_row_version``, so the ``ReplacingMergeTree`` replaces it -- the
-    same read-modify-insert as ``complete_opslog_entry``. A row that
-    changes between the read and the insert loses that change, so run it
-    when few deploys are in progress.
+    ``_row_version``, so the ``ReplacingMergeTree`` replaces it.
+
+    The new version is the read version plus one, the lowest version
+    that replaces the row. A concurrent write (a completion, a patch, a
+    delete) gets its version from :func:`next_row_version`, which is
+    also above the read version and is a millisecond clock, so it wins
+    over this row and is not lost. That write can keep an empty
+    ``organization_id``; the next run fills it in, so run the operation
+    again until it writes nothing.
     """
     from imbi.api.endpoints._helpers import lookup_project_organization_id
-    from imbi.api.endpoints.operations_log import next_row_version
 
     action = 'opslog-organization-backfill'
     org_id = await lookup_project_organization_id(db, project_id)
@@ -961,7 +977,7 @@ async def execute_opslog_organization_backfill(
         return _skip(ctx, action, 'Every entry already has its organization.')
     for row in rows:
         row['organization_id'] = org_id
-        row['_row_version'] = next_row_version(int(row['_row_version']))
+        row['_row_version'] = int(row['_row_version']) + 1
     await iggy.publish_rows('operations_log', 'maintenance', rows)
     ctx.log.record(
         'succeeded',
