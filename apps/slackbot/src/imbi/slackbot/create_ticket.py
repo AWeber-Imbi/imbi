@@ -20,6 +20,7 @@ import logging
 import re
 import time
 import typing
+import uuid
 from collections import abc
 
 import httpx
@@ -38,8 +39,8 @@ LOGGER = logging.getLogger(__name__)
 COMMAND = '/create-ticket'
 CALLBACK_ID = 'ct:form'
 
-# Each input block uses the same id for the block and its element, so
-# that a value is at ``state.values[id][id]``.
+# Each input uses the id as its action id. The block id is the same,
+# except after a change of organization (see ``_block_id``).
 ORG = 'ct:org'
 SUBJECT = 'ct:subject'
 DESCRIPTION = 'ct:description'
@@ -61,6 +62,8 @@ PARENT = 'ct:parent'
 REQUIRES = 'ct:requires'
 GATING = 'ct:gating'
 FIELD = 'ct:field:'
+#: The inputs whose values do not name things of an organization.
+_STABLE = frozenset({ORG, SUBJECT, DESCRIPTION, KIND, TYPE, PRIORITY, DUE})
 
 #: The actions that build the view again. An input with one of these
 #: ids dispatches its changes.
@@ -157,6 +160,9 @@ async def on_command(ack: typing.Any, body: Json, client: SlackClient) -> None:
             'me': [user.email, user.display_name],
             'roles': 0,
             'extra': {},
+            # One key for each form, so that a submit again after a
+            # timeout does not create a second ticket.
+            'key': f'slack:{uuid.uuid4()}',
         }
         values: Json = {DESCRIPTION: (body.get('text') or '').strip()}
         sections = await _schema(user, meta['org'], values)
@@ -177,6 +183,7 @@ async def on_action(ack: typing.Any, body: Json, client: SlackClient) -> None:
     if action == ORG:
         meta['org'] = _value(values, ORG) or meta['org']
         meta['extra'] = {}
+        meta['gen'] = meta.get('gen', 0) + 1
         # The other fields name things of the old organization.
         values = {
             k: values.get(k)
@@ -229,9 +236,12 @@ async def on_submit(ack: typing.Any, body: Json, client: SlackClient) -> None:
     view = body['view']
     meta = _meta(view)
     values = read_values(view)
+    # The submit can come before the view that shows the gating input.
+    values[GATING] = gating(view, values)
     problems = check(meta, values)
     if problems:
-        await ack(response_action='errors', errors=problems)
+        errors = {_block_id(meta, k): v for k, v in problems.items()}
+        await ack(response_action='errors', errors=errors)
         return
     # The subject can need the model, which takes longer than the 3
     # seconds that Slack waits for an answer.
@@ -278,6 +288,7 @@ async def create(user: identity.ImbiUser, meta: Json, values: Json) -> Json:
             for short_id in _values_of(values, REQUIRES)
         ],
         'custom_fields': custom,
+        'idempotency_key': meta.get('key'),
     }
     if _person(values):
         body.update(assignee_kind='person', assignee=_value(values, PERSON))
@@ -420,7 +431,7 @@ def custom_fields(fields: Json, values: Json) -> tuple[Json, dict[str, str]]:
 def _field_value(prop: Json, raw: typing.Any) -> typing.Any:  # noqa: PLR0911
     kind = prop.get('type')
     # An unchecked required boolean means false, not "not set".
-    if kind == 'boolean':
+    if kind == 'boolean' and not prop.get('enum'):
         return bool(raw)
     if raw in (None, '', []):
         return None
@@ -557,7 +568,7 @@ def form_view(
         hint: str | None = None,
     ) -> Json:
         return _field(
-            values, problems, block_id, label, element, optional, hint
+            meta, values, problems, block_id, label, element, optional, hint
         )
 
     blocks: list[Json] = []
@@ -676,7 +687,8 @@ def form_view(
             field(
                 GATING,
                 'Gating',
-                {'type': 'checkboxes', 'options': requires},
+                # Checkboxes show at most 10 options.
+                {'type': 'multi_static_select', 'options': requires},
                 optional=True,
                 hint='A gating prerequisite holds the ticket until it closes '
                 'as done.',
@@ -694,33 +706,44 @@ def form_view(
 
 
 def _field(
+    meta: Json,
     values: Json,
     problems: dict[str, str],
-    block_id: str,
+    action_id: str,
     label: str,
     element: Json,
     optional: bool = False,
     hint: str | None = None,
 ) -> Json:
     """Return an input block with its value from ``values``."""
-    element = {**element, 'action_id': block_id}
-    value = values.get(block_id)
+    element = {**element, 'action_id': action_id}
+    value = values.get(action_id)
     if value not in (None, '', []):
         element[_slot(element['type'])[1]] = value
     block: Json = {
         'type': 'input',
-        'block_id': block_id,
+        'block_id': _block_id(meta, action_id),
         'label': _text(label),
         'optional': optional,
         'element': element,
     }
-    if block_id in problems:
-        hint = f'⚠ {problems[block_id]}'
+    if action_id in problems:
+        hint = f'⚠ {problems[action_id]}'
     if hint:
         block['hint'] = _text(hint)
-    if DISPATCH.match(block_id):
+    if DISPATCH.match(action_id):
         block['dispatch_action'] = True
     return block
+
+
+def _block_id(meta: Json, action_id: str) -> str:
+    """Return the block id of an input. Slack keeps the value of an
+    input whose block id does not change, so each change of organization
+    gives new block ids to the inputs of the organization."""
+    gen = meta.get('gen', 0)
+    if not gen or action_id in _STABLE:
+        return action_id
+    return f'{action_id}@{gen}'
 
 
 def _owner_block(
@@ -766,6 +789,7 @@ def _role_blocks(
     for i in range(meta['roles']):
         blocks += [
             _field(
+                meta,
                 values,
                 problems,
                 ROLE_NAME + str(i),
@@ -778,6 +802,7 @@ def _role_blocks(
                 optional=True,
             ),
             _field(
+                meta,
                 values,
                 problems,
                 ROLE_PERSON + str(i),
@@ -799,7 +824,7 @@ def _role_blocks(
 
 
 def read_values(view: Json) -> Json:
-    """Return the values of the inputs of ``view``, by block id.
+    """Return the values of the inputs of ``view``, by action id.
 
     A select gives its option, a multi-select and checkboxes give a list
     of options, a text or number input gives a string.
@@ -808,12 +833,12 @@ def read_values(view: Json) -> Json:
     values: Json = {}
     root: Json = view.get('state') or {}
     state: dict[str, Json] = root.get('values') or {}
-    for block_id, actions in state.items():
-        for entry in actions.values():
+    for actions in state.values():
+        for action_id, entry in actions.items():
             key = _slot(entry['type'])[0]
-            values[block_id] = entry.get(key)
+            values[action_id] = entry.get(key)
             if key == _MANY[0]:
-                values[block_id] = values[block_id] or []
+                values[action_id] = values[action_id] or []
     return values
 
 
@@ -823,7 +848,8 @@ def gating(view: Json, values: Json) -> list[Json]:
     listed: set[str] = set()
     blocks: list[Json] = view.get('blocks') or []
     for block in blocks:
-        if block.get('block_id') == GATING:
+        element: Json = block.get('element') or {}
+        if element.get('action_id') == GATING:
             listed = {o['value'] for o in block['element']['options']}
     unchecked = listed - set(_values_of(values, GATING))
     requires: list[Json] = values.get(REQUIRES) or []

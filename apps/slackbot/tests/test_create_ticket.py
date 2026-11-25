@@ -150,6 +150,10 @@ class FormViewTests(helpers.TestCase):
         self.assertEqual(
             blocks[ct.GATING]['element']['initial_options'], [opt('T-1')]
         )
+        # Checkboxes cannot show more than 10 prerequisites.
+        self.assertEqual(
+            blocks[ct.GATING]['element']['type'], 'multi_static_select'
+        )
         buttons = [
             e['action_id']
             for b in view['blocks']
@@ -206,8 +210,11 @@ class StateTests(helpers.TestCase):
         view = {
             'blocks': [
                 {
-                    'block_id': ct.GATING,
-                    'element': {'options': [opt('T-1'), opt('T-2')]},
+                    'block_id': ct.GATING + '@1',
+                    'element': {
+                        'action_id': ct.GATING,
+                        'options': [opt('T-1'), opt('T-2')],
+                    },
                 }
             ]
         }
@@ -279,6 +286,13 @@ class CustomFieldTests(helpers.TestCase):
                 'extra': {'k': 1},
             },
         )
+
+    def test_boolean_enum(self) -> None:
+        result, _ = ct.custom_fields(
+            {'b': {'type': 'boolean', 'enum': [False, True]}},
+            {ct.FIELD + 'b': opt('False', 'false')},
+        )
+        self.assertEqual(result, {'b': False})
 
     def test_bad_object(self) -> None:
         _, problems = ct.custom_fields(
@@ -594,6 +608,8 @@ class ListenerTests(ApiTestCase):
             blocks[ct.DESCRIPTION]['element']['initial_value'], 'Fix it'
         )
         self.assertIn(ct.OWNER, blocks)
+        key = orjson.loads(self.shown()['private_metadata'])['key']
+        self.assertTrue(key.startswith('slack:'))
 
     async def test_command_without_orgs(self) -> None:
         self.route('GET', '/users/me', 200, {'organizations': []})
@@ -690,7 +706,11 @@ class ListenerTests(ApiTestCase):
             orjson.loads(shown['private_metadata'])['org'], 'beta'
         )
         blocks = blocks_by_id(shown)
-        self.assertNotIn('initial_option', blocks[ct.AGENT]['element'])
+        # A new block id, so Slack does not keep the old agent.
+        self.assertNotIn(ct.AGENT, blocks)
+        agent = blocks[ct.AGENT + '@1']['element']
+        self.assertEqual(agent['action_id'], ct.AGENT)
+        self.assertNotIn('initial_option', agent)
         self.assertEqual(
             blocks[ct.DESCRIPTION]['element']['initial_value'], 'keep'
         )
@@ -714,7 +734,7 @@ class ListenerTests(ApiTestCase):
 
     async def test_submit_with_problems(self) -> None:
         view = {
-            'private_metadata': orjson.dumps(meta()).decode(),
+            'private_metadata': orjson.dumps(meta(gen=1)).decode(),
             'state': {
                 'values': {
                     ct.DUE: {
@@ -722,7 +742,19 @@ class ListenerTests(ApiTestCase):
                             'type': 'datepicker',
                             'selected_date': '2000-01-01',
                         }
-                    }
+                    },
+                    ct.PARENT + '@1': {
+                        ct.PARENT: {
+                            'type': 'external_select',
+                            'selected_option': opt('T-1'),
+                        }
+                    },
+                    ct.REQUIRES + '@1': {
+                        ct.REQUIRES: {
+                            'type': 'multi_external_select',
+                            'selected_options': [opt('T-1')],
+                        }
+                    },
                 }
             },
         }
@@ -730,6 +762,9 @@ class ListenerTests(ApiTestCase):
         with self.api():
             await ct.on_submit(ack, self.body(view), self.slack)
         self.assertEqual(ack.call_args.kwargs['response_action'], 'errors')
+        self.assertEqual(
+            set(ack.call_args.kwargs['errors']), {ct.DUE, ct.PARENT + '@1'}
+        )
         self.slack.views_update.assert_not_awaited()
 
     async def test_submit_creates(self) -> None:
@@ -757,9 +792,17 @@ class ListenerTests(ApiTestCase):
                     'selected_option': opt('A', 'a'),
                 }
             },
+            ct.REQUIRES: {
+                ct.REQUIRES: {
+                    'type': 'multi_external_select',
+                    'selected_options': [opt('T-1')],
+                }
+            },
         }
+        # No gating input yet: the view was not built again.
         view = {
-            'private_metadata': orjson.dumps(meta()).decode(),
+            'private_metadata': orjson.dumps(meta(key='k1')).decode(),
+            'blocks': [],
             'state': {'values': state},
         }
         ack = mock.AsyncMock()
@@ -767,6 +810,11 @@ class ListenerTests(ApiTestCase):
             await ct.on_submit(ack, self.body(view), self.slack)
         self.assertEqual(ack.call_args.kwargs['response_action'], 'update')
         self.assertIn('Starts held', str(self.shown()))
+        body = self.sent('POST', f'{T}/')
+        self.assertEqual(
+            body['requires'], [{'short_id': 'T-1', 'gates': True}]
+        )
+        self.assertEqual(body['idempotency_key'], 'k1')
 
 
 class RegisterTests(helpers.TestCase):
