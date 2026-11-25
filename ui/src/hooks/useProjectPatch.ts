@@ -122,6 +122,11 @@ export function useProjectPatch(
         // GET returns (e.g. environments as a map vs. an array). Invalidate
         // so the next read comes from the canonical GET.
         qc.invalidateQueries({ queryKey: key })
+        // A patch can change delivery mode, types, or environments, and
+        // with them the drift verdict.
+        qc.invalidateQueries({
+          queryKey: ['releaseDrift', orgSlug, projectId, 'verdicts'],
+        })
         // Activity events are written synchronously — refresh immediately.
         qc.invalidateQueries({
           queryKey: ['events', orgSlug, projectId],
