@@ -47,7 +47,8 @@ buttons and the Customize Home dialog.
 
 An app that you made from an older manifest does not show the Home tab.
 Update the app configuration with this manifest (*App Manifest* in the app
-settings), or reinstall the app.
+settings) first. Then reinstall the app if Slack asks you to. A reinstall
+alone does not apply the manifest, and the Home tab stays disabled.
 
 ## Manifest
 

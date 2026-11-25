@@ -12,7 +12,6 @@ other button is a link to Imbi, and its handler only acks.
 
 from __future__ import annotations
 
-import contextlib
 import datetime
 import logging
 import re
@@ -142,7 +141,8 @@ async def refresh(
             response: typing.Any = err.response
             if response.get('error') != 'hash_conflict' or attempt:
                 raise
-            view_hash = None
+            # A newer layout can be saved since; read the stored one.
+            view_hash, preferences = None, None
         else:
             return
 
@@ -189,11 +189,11 @@ async def handle_action(slack: SlackClient, body: Body) -> None:
     if verb != 'retry' and verb not in _VERBS:
         return
     slack_user_id: str = body['user']['id']
+    if verb == 'customize':
+        await _open_customize(slack, slack_user_id, body['trigger_id'])
+        return
     user = await _resolve(slack, slack_user_id)
     if not user:
-        return
-    if verb == 'customize':
-        await _open_customize(slack, user, body['trigger_id'])
         return
     store = valkey.get_client()
     await store.delete(sources.gathered_key(user.email))
@@ -271,15 +271,25 @@ async def _change(
 
 
 async def _open_customize(
-    slack: SlackClient, user: identity.ImbiUser, trigger_id: str
+    slack: SlackClient, slack_user_id: str, trigger_id: str
 ) -> None:
-    current = prefs.Prefs()
-    with contextlib.suppress(httpx.HTTPError):
-        async with identity.api_client(user) as client:
-            current = await prefs.read(client)
-    await slack.views_open(
-        trigger_id=trigger_id, view=render.customize_view(current)
+    # A trigger id expires after 3 seconds, so the modal opens before
+    # the calls to Slack and imbi-api.
+    opened = await slack.views_open(
+        trigger_id=trigger_id, view=render.customize_message('Loading…')
     )
+    user = await _resolve(slack, slack_user_id)
+    if user is None:
+        view = render.customize_message(identity.NO_USER_MESSAGE)
+    else:
+        view = render.customize_message('Imbi is not available. Try again.')
+        if user:
+            try:
+                async with identity.api_client(user) as client:
+                    view = render.customize_view(await prefs.read(client))
+            except httpx.HTTPError as err:
+                LOGGER.warning('Could not read Home settings: %s', err)
+    await slack.views_update(view_id=opened['view']['id'], view=view)
 
 
 async def handle_submission(slack: SlackClient, body: Body) -> None:

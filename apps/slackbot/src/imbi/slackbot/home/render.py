@@ -923,6 +923,17 @@ def customize_view(prefs: p.Prefs) -> Row:
     )
 
 
+def customize_message(text: str) -> Row:
+    """Return the Customize Home modal with one message, while it loads
+    or when it cannot load."""
+    return b.view(
+        'modal',
+        [b.section(b.escape(text))],
+        title=b.plain('Customize Home', 24),
+        close=b.plain('Close', 24),
+    )
+
+
 def apply_customize(prefs: p.Prefs, values: Row) -> None:
     """Apply the ``state.values`` of a Customize Home submission."""
     for key in p.DEFAULT_ORDER:

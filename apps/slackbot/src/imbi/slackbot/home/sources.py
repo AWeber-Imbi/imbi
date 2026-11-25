@@ -146,6 +146,18 @@ async def _json_or(
     return response.json()
 
 
+async def _fan_out[T](aws: abc.Iterable[abc.Awaitable[T]]) -> list[T]:
+    """Like :func:`asyncio.gather`, but when one call fails, cancel and
+    await the others, so the source timeout bounds all of them."""
+    tasks = [asyncio.ensure_future(a) for a in aws]
+    try:
+        return await asyncio.gather(*tasks)
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
 class Sources:
     """The sources of one render, each started one time."""
 
@@ -248,7 +260,7 @@ class Sources:
                 for i in incidents
             ]
 
-        found = await asyncio.gather(*(one(p) for p in projects))
+        found = await _fan_out(one(p) for p in projects)
         return [i for rows in found for i in rows]
 
     async def _advisories(self) -> list[Row]:
@@ -344,7 +356,7 @@ class Sources:
                 'blockers': len(blockers),
             }
 
-        found = await asyncio.gather(*(one(p) for p in projects))
+        found = await _fan_out(one(p) for p in projects)
         return [d for d in found if d]
 
     async def _trends(self) -> dict[str, Row]:
@@ -362,23 +374,21 @@ class Sources:
             )
             return trend
 
-        found = await asyncio.gather(*(one(p) for p in projects))
+        found = await _fan_out(one(p) for p in projects)
         return {p['id']: t for p, t in zip(projects, found, strict=True)}
 
     async def _agent_tickets(self) -> list[Row]:
         """The user's agent tickets that run, are paused, or wait."""
         groups = ('running', 'paused', 'queued')
-        found = await asyncio.gather(
-            *(
-                _json(
-                    self.client,
-                    f'{self.base}/tickets/',
-                    mine='true',
-                    group=g,
-                    limit=25,
-                )
-                for g in groups
+        found = await _fan_out(
+            _json(
+                self.client,
+                f'{self.base}/tickets/',
+                mine='true',
+                group=g,
+                limit=25,
             )
+            for g in groups
         )
         return [
             {**t, 'group': g}

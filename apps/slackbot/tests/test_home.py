@@ -878,6 +878,17 @@ class HomeFlowTests(helpers.TestCase):
             waiter.cancel()
             self.assertEqual(['p1'], await src.get('projects'))
 
+    async def test_failed_fan_out_cancels_the_others(self) -> None:
+        asyncio = __import__('asyncio')
+        slow = asyncio.ensure_future(asyncio.sleep(10))
+
+        async def fail() -> None:
+            raise RuntimeError('boom')
+
+        with self.assertRaises(RuntimeError):
+            await sources._fan_out([fail(), slow])
+        self.assertTrue(slow.cancelled())
+
     async def test_unknown_user(self) -> None:
         self.user = None
         await home.refresh(self.slack, 'U1')
@@ -900,6 +911,18 @@ class HomeFlowTests(helpers.TestCase):
         await home.refresh(self.slack, 'U1', view_hash='h1')
         self.assertEqual(1, len(self.slack.published))
         self.assertNotIn('hash', self.slack.published[0])
+
+    async def test_hash_conflict_reads_stored_preferences(self) -> None:
+        self.slack.conflict = True
+        await home.refresh(
+            self.slack, 'U1', view_hash='h1', preferences=prefs.Prefs()
+        )
+        reads = [
+            r
+            for r in self.api.requests
+            if r.method == 'GET' and r.url.path.endswith('/slack_home')
+        ]
+        self.assertEqual(1, len(reads))
 
     def action(self, action_id: str, **extra: typing.Any) -> dict:
         return {
@@ -1017,8 +1040,10 @@ class HomeFlowTests(helpers.TestCase):
             self.slack, self.action('home:header:customize')
         )
         self.assertEqual('trig', self.slack.opened[0]['trigger_id'])
+        self.assertIn('Loading', json.dumps(self.slack.opened[0]['view']))
+        self.assertEqual('V1', self.slack.updated[0]['view_id'])
         self.assertEqual(
-            render.CUSTOMIZE, self.slack.opened[0]['view']['callback_id']
+            render.CUSTOMIZE, self.slack.updated[0]['view']['callback_id']
         )
         await home.handle_action(
             self.slack,
@@ -1028,6 +1053,22 @@ class HomeFlowTests(helpers.TestCase):
         )
         self.assertEqual(2, len(self.slack.opened))
         self.assertEqual([], self.slack.published)
+
+    async def test_customize_opens_before_the_remote_reads(self) -> None:
+        opened_first: list[int] = []
+
+        async def resolve(*_: typing.Any) -> None:
+            opened_first.append(len(self.slack.opened))
+
+        with mock.patch.object(home.identity, 'resolve', new=resolve):
+            await home.handle_action(
+                self.slack, self.action('home:header:customize')
+            )
+        self.assertEqual([1], opened_first)
+        self.assertIn(
+            'match your Slack account',
+            json.dumps(self.slack.updated[0]['view']),
+        )
 
     async def test_new_ticket_opens_the_create_ticket_modal(self) -> None:
         create_ticket._cache.clear()
