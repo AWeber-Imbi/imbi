@@ -78,6 +78,10 @@ LOGGER = logging.getLogger(__name__)
 #: The origin kind of a task that a person makes with this API.
 HUMAN_ORIGIN = 'human'
 
+#: The origin kind of a workflow run that a service account other than
+#: Imbi's own services starts (see :func:`task_origin`).
+SERVICE_ACCOUNT_ORIGIN = 'service_account'
+
 #: The origin kind of the tasks that each of Imbi's own services makes
 #: (see :mod:`imbi.api.auth.internal_services`). Only these service
 #: accounts can make a task that a person did not start (CC9).
@@ -385,6 +389,7 @@ class AgentTaskOrigin(pydantic.BaseModel):
         'task',
         'ticket',
         'ticket_state_changed',
+        'service_account',
     ]
     #: The email of the person, for a ``human`` origin.
     user: str | None = None
@@ -1149,6 +1154,8 @@ def task_origin(
     delivery: str | None = None,
     scheduled_by: str | None = None,
     scheduled_org: str | None = None,
+    *,
+    service_accounts: bool = False,
 ) -> TaskOrigin:
     """Return the origin of a new task, from the caller (CC9).
 
@@ -1160,25 +1167,23 @@ def task_origin(
     it) and its org, which the author of the task cannot change. A
     person cannot name an origin, so a person cannot forge one.
 
+    With ``service_accounts``, another service account starts a
+    ``service_account`` origin, as a person does: it cannot name an
+    origin either.
+
     Raises:
         403: A person names an origin, or the caller is a service
-            account that is not in :data:`SERVICE_ORIGINS`.
+            account that is not in :data:`SERVICE_ORIGINS` (with
+            ``service_accounts``: that names an origin).
         422: A service does not name its origin.
 
     """
+    named = any(
+        (scheduled_task, webhook, delivery, scheduled_by, scheduled_org)
+    )
     if auth.user is not None:
-        named = (
-            scheduled_task,
-            webhook,
-            delivery,
-            scheduled_by,
-            scheduled_org,
-        )
-        if any(named):
-            raise autonomous.forbidden(
-                'origin_forbidden',
-                "Only Imbi's own services can name the origin of a task.",
-            )
+        if named:
+            raise _origin_forbidden()
         return TaskOrigin(
             HUMAN_ORIGIN,
             auth.user.id,
@@ -1206,8 +1211,23 @@ def task_origin(
             webhook,
             {'kind': kind, 'webhook_id': webhook, 'delivery_id': delivery},
         )
+    if service_accounts and slug:
+        if named:
+            raise _origin_forbidden()
+        return TaskOrigin(
+            SERVICE_ACCOUNT_ORIGIN,
+            slug,
+            {'kind': SERVICE_ACCOUNT_ORIGIN, 'service_account': slug},
+        )
     raise fastapi.HTTPException(
         403, 'This endpoint requires user authentication'
+    )
+
+
+def _origin_forbidden() -> fastapi.HTTPException:
+    return autonomous.forbidden(
+        'origin_forbidden',
+        "Only Imbi's own services can name the origin of a task.",
     )
 
 

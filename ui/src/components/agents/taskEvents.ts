@@ -92,6 +92,7 @@ export function groupOf(task: TicketListItem): InboxGroupId {
 export const TRIGGERS = {
   human: { icon: Play, label: 'Manual' },
   schedule: { icon: Timer, label: 'Schedule' },
+  service_account: { icon: Play, label: 'Service account' },
   task: { icon: CornerDownRight, label: 'Delegation' },
   // The ADR 0028 name of `task`.
   ticket: { icon: CornerDownRight, label: 'Delegation' },

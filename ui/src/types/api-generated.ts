@@ -6907,7 +6907,9 @@ export interface paths {
          * Start Run
          * @description Start a run of the active version.
          *
-         *     A person starts a manual trigger. The scheduler starts a schedule
+         *     A person, or a service account other than the scheduler and the
+         *     gateway (see :func:`tickets.task_origin`), starts a manual trigger. Its run
+         *     always starts, as a person's run does. The scheduler starts a schedule
          *     trigger, and the gateway a webhook trigger, with the origin in
          *     headers (see :func:`tickets.task_origin`). The idempotency key
          *     is the ``Idempotency-Key`` header (the scheduler sends its run id),
@@ -6923,9 +6925,9 @@ export interface paths {
          *
          *     Raises:
          *         403: The trigger's ``who`` does not include the caller, a person
-         *             names an origin, the caller is a service account other than
-         *             the scheduler or the gateway, or the scheduler task is not
-         *             the one that the trigger's binding records.
+         *             or a service account names an origin that it cannot name, or
+         *             the scheduler task is not the one that the trigger's binding
+         *             records.
          *         404: No such workflow.
          *         409: The workflow is not active, or its active version has no
          *             such schedule or webhook trigger.
@@ -12629,7 +12631,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "human" | "schedule" | "webhook" | "task" | "ticket" | "ticket_state_changed";
+            kind: "human" | "schedule" | "webhook" | "task" | "ticket" | "ticket_state_changed" | "service_account";
             /** User */
             user?: string | null;
         } & {
@@ -35911,6 +35913,8 @@ export interface operations {
                 "X-Imbi-Scheduled-Task"?: string | null;
                 "X-Imbi-Webhook"?: string | null;
                 "X-Imbi-Delivery"?: string | null;
+                "X-Imbi-Scheduled-Task-Accountable"?: string | null;
+                "X-Imbi-Scheduled-Task-Org"?: string | null;
             };
             path: {
                 slug: string;
