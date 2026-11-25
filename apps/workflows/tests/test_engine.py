@@ -2927,6 +2927,37 @@ class AgentStepTestCase(EngineTestCase):
             await self._control(task['short_id']), ('run', 'queued')
         )
 
+    async def test_reconcile_keeps_a_task_reopened_after_the_run(
+        self,
+    ) -> None:
+        run_id = await self._start(
+            await self._agent_workflow(), {'version': '1'}
+        )
+        task = await self._task(run_id)
+        await self.tasks.set_outcome(
+            self.org, task['short_id'], 'done_acted', None, self._agent()
+        )
+        run = await self._drive(run_id)
+        self.assertEqual(run['status'], 'succeeded')
+        await self.tasks.reopen(
+            self.org,
+            task['short_id'],
+            'Try again',
+            tickets.Actor('human', self.email, 'api'),
+            tickets.HandOff(
+                'agent',
+                agent_id=task['agent_id'],
+                agent_version=task['agent_version'],
+                prompt_version=task['prompt_version'],
+                service_account_id=task['service_account_id'],
+                budget=task['budget'],
+            ),
+        )
+        await sweeper.cancel_orphan_agent_tasks(self.runs, self.tasks)
+        self.assertEqual(
+            await self._control(task['short_id']), ('run', 'queued')
+        )
+
 
 COUNT = [{'name': 'count', 'type': 'integer'}]
 

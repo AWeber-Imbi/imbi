@@ -2777,6 +2777,11 @@ export interface paths {
          * @description Create a new operations log entry.
          *
          *     The entry belongs to the organization that owns its project.
+         *
+         *     Raises:
+         *         403: The caller is not a member of the project's organization,
+         *             or does not have ``operations_log:create`` in it.
+         *         404: No such project.
          */
         post: operations["create_operation_log_api_operations_log__post"];
         delete?: never;
@@ -4365,7 +4370,7 @@ export interface paths {
         };
         /**
          * List Tags
-         * @description List tags in an organization, each with a document count.
+         * @description List tags in an organization, each with usage counts.
          */
         get: operations["list_tags_api_organizations__org_slug__tags__get"];
         put?: never;
@@ -4406,6 +4411,30 @@ export interface paths {
          * @description Update a tag via JSON Patch (name/slug/description/color).
          */
         patch: operations["patch_tag_api_organizations__org_slug__tags__tag_slug__patch"];
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tags/{tag_slug}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge Tag
+         * @description Merge a tag into ``target``, then delete it.
+         *
+         *     Every node tagged with the source tag is tagged with the target
+         *     instead. ``MERGE`` makes sure that a node that already has the
+         *     target tag does not get a second edge.
+         */
+        post: operations["merge_tag_api_organizations__org_slug__tags__tag_slug__merge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/organizations/{org_slug}/documents/": {
@@ -11934,6 +11963,8 @@ export interface components {
             updated_by?: string | null;
             /** Last Version At */
             last_version_at?: string | null;
+            /** Created By */
+            created_by?: string | null;
             organization: components["schemas"]["OrganizationRef"];
         };
         /**
@@ -22976,6 +23007,11 @@ export interface components {
             /** Scheme */
             scheme?: string | null;
         };
+        /** TagMerge */
+        TagMerge: {
+            /** Target */
+            target: string;
+        };
         /** TagRef */
         TagRef: {
             /** Name */
@@ -24101,6 +24137,16 @@ export interface components {
              */
             owner_team_slug: string | null;
             /**
+             * Owner Team Name
+             * @description None when the owner team was deleted.
+             */
+            owner_team_name: string | null;
+            /**
+             * Tags
+             * @default []
+             */
+            tags: components["schemas"]["WorkflowTag"][];
+            /**
              * Status
              * @enum {string}
              */
@@ -24161,6 +24207,12 @@ export interface components {
             description: string;
             /** Owner Team Slug */
             owner_team_slug: string;
+            /**
+             * Tags
+             * @description Tag slugs. Must already exist in the org.
+             * @default []
+             */
+            tags: string[];
             graph?: components["schemas"]["Graph"];
             settings?: components["schemas"]["Settings"];
             /**
@@ -24180,6 +24232,12 @@ export interface components {
             description: string;
             /** Owner Team Slug */
             owner_team_slug: string;
+            /**
+             * Tags
+             * @description Tag slugs. Must already exist in the org.
+             * @default []
+             */
+            tags: string[];
             graph?: components["schemas"]["Graph"];
             settings?: components["schemas"]["Settings"];
         };
@@ -24196,6 +24254,16 @@ export interface components {
              * @description None when the owner team was deleted.
              */
             owner_team_slug: string | null;
+            /**
+             * Owner Team Name
+             * @description None when the owner team was deleted.
+             */
+            owner_team_name: string | null;
+            /**
+             * Tags
+             * @default []
+             */
+            tags: components["schemas"]["WorkflowTag"][];
             /**
              * Status
              * @enum {string}
@@ -24230,6 +24298,15 @@ export interface components {
             last_run_at?: string | null;
             /** Last Run Status */
             last_run_status?: string | null;
+        };
+        /** WorkflowTag */
+        WorkflowTag: {
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Color */
+            color?: string | null;
         };
         /** WorkflowValidate */
         WorkflowValidate: {
@@ -31673,6 +31750,42 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PatchOperation"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    merge_tag_api_organizations__org_slug__tags__tag_slug__merge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                tag_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagMerge"];
             };
         };
         responses: {

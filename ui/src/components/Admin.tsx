@@ -24,6 +24,7 @@ import {
   Shield,
   SlidersHorizontal,
   StickyNote,
+  Tags,
   Target,
   Users,
   UsersRound,
@@ -54,6 +55,7 @@ import { ScheduledJobsManagement } from './admin/ScheduledJobsManagement'
 import { ScoringPolicyManagement } from './admin/ScoringPolicyManagement'
 import { ServiceAccountManagement } from './admin/ServiceAccountManagement'
 import { ServicePromptTab } from './admin/ServicePromptTab'
+import { TagManagement } from './admin/TagManagement'
 import { TeamManagement } from './admin/TeamManagement'
 import { UserManagement } from './admin/UserManagement'
 import { Webhooks } from './admin/Webhooks'
@@ -125,6 +127,15 @@ const SECTIONS: SectionDef[] = [
     icon: StickyNote,
     id: 'document-templates',
     label: 'Document Templates',
+    scope: 'org',
+  },
+  {
+    component: TagManagement,
+    description: 'Edit, merge, and delete document and agent tags',
+    group: 'Catalog',
+    icon: Tags,
+    id: 'tags',
+    label: 'Tags',
     scope: 'org',
   },
   {

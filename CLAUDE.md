@@ -139,6 +139,19 @@ uv run --env-file .env.test pytest apps/slackbot/tests/test_agent.py::TestAgent:
   iterate in app code. Cypher params use `{param}`, property maps
   double-escape braces, timestamps are ISO strings.
 
+## Domain language
+
+`docs/GLOSSARY.md` defines Imbi's domain terms. ADRs live per member
+under `docs/<member>/adr/`.
+
+- Use glossary terms in code, docs, and discussion. Don't use the
+  synonyms a term lists under `_Avoid_`.
+- In design or decision work, flag any term that conflicts with the
+  glossary, and propose a precise term in place of a vague or overloaded one.
+- When that work settles a term, update the glossary in the same change.
+  Keep it to definitions, with no implementation details.
+- Don't edit the glossary during routine fixes.
+
 ## Releasing
 
 Use the `release` skill (`.claude/skills/release/SKILL.md`, or `/release`)

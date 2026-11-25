@@ -28,7 +28,7 @@ import nanoid
 import pydantic
 
 from imbi.api.auth import agent_api, organizations, permissions
-from imbi.api.endpoints._helpers import lookup_project_organization_id
+from imbi.api.endpoints._helpers import lookup_project_organization_slug
 from imbi.api.endpoints._pagination import (
     build_link_header,
     decode_cursor,
@@ -292,6 +292,11 @@ async def create_operation_log(
     """Create a new operations log entry.
 
     The entry belongs to the organization that owns its project.
+
+    Raises:
+        403: The caller is not a member of the project's organization,
+            or does not have ``operations_log:create`` in it.
+        404: No such project.
     """
     # An agent writes only for a project of its own organization.
     await agent_api.require_own_project(db, auth, data.get('project_id'))
@@ -327,12 +332,24 @@ async def create_operation_log(
     if entry.entry_type == AGENT_TASK_ENTRY_TYPE:
         raise _agent_task_entry()
 
-    entry.organization_id = await lookup_project_organization_id(
-        db, entry.project_id
-    )
-    if not entry.organization_id:
+    org_slug = await lookup_project_organization_slug(db, entry.project_id)
+    if not org_slug:
         raise fastapi.HTTPException(
             status_code=404, detail='Project not found'
+        )
+    # The caller must be a member of the project's organization and
+    # hold the permission there, not only in one of their other orgs.
+    entry.organization_id = await organizations.check_member(
+        org_slug, db, auth
+    )
+    # As require_permission: an admin passes, but must be a member.
+    if not auth.is_admin and 'operations_log:create' not in auth.permissions:
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail=(
+                f'Permission operations_log:create in organization '
+                f'{org_slug!r} is required'
+            ),
         )
 
     if entry.performed_by is None:

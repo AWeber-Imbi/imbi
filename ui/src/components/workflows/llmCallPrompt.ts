@@ -11,9 +11,9 @@ import type { PromptVersion, PromptVersionCreate } from '@/types'
 import { isRecord } from './schemaFields'
 import type {
   Workflow,
+  WorkflowDraft,
   WorkflowGraph,
   WorkflowNode,
-  WorkflowWrite,
 } from './types'
 
 // The prompt of an LLM Call step lives in the Prompt CMS, at
@@ -143,14 +143,15 @@ export function promptSlug(orgSlug: string, workflowSlug: string, key: string) {
 export async function saveWorkflow(
   orgSlug: string,
   slug: string | undefined,
-  draft: WorkflowWrite,
+  draft: WorkflowDraft,
   prompts: Record<string, StepPrompt>,
   onCreated?: (created: Workflow) => void,
 ): Promise<{ pins: Pins; saved: Workflow }> {
   const llmCalls = draft.graph.nodes.filter((n) => n.type === LLM_CALL)
+  const write = { ...draft, tags: draft.tags.map((t) => t.slug) }
   if (!slug) {
     const created = await createWorkflow(orgSlug, {
-      ...draft,
+      ...write,
       graph: unpinNodes(draft.graph),
     })
     onCreated?.(created)
@@ -203,7 +204,7 @@ export async function saveWorkflow(
       }
     }),
   )
-  const body = { ...draft, graph: pinNodes(draft.graph, pins) }
+  const body = { ...write, graph: pinNodes(draft.graph, pins) }
   return { pins, saved: await updateWorkflow(orgSlug, workflowSlug, body) }
 }
 

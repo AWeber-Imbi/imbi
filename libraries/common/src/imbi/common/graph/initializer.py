@@ -43,6 +43,7 @@ async def initialize() -> None:
                 postgres.graph_name,
                 schemata,
             )
+            await _backfill_tag_org_id(cursor, postgres.graph_name)
             await _create_vlabel_indexes(
                 cursor,
                 postgres.graph_name,
@@ -121,6 +122,34 @@ async def _create_vlabels(
                 vlabel=sql.Literal(vlabel),
             ),
         )
+
+
+async def _backfill_tag_org_id(
+    cursor: psycopg.AsyncCursor[typing.Any],
+    graph_name: str,
+) -> None:
+    """Copy the organization id onto tags that do not have it.
+
+    Tags created before the ``(org_id, slug)`` unique index have no
+    ``org_id``. This must run before the index is built, so it runs only
+    while the index does not exist. A normal restart does not scan the
+    tags.
+
+    """
+    await cursor.execute(
+        'SELECT 1 FROM pg_indexes WHERE schemaname = %s AND indexname = %s',
+        (graph_name, 'tag_org_id_slug_unique_idx'),
+    )
+    if await cursor.fetchone() is not None:
+        return
+    await cursor.execute(
+        sql.SQL(
+            'SELECT * FROM cypher({graph}, $$'
+            ' MATCH (t:Tag)-[:BELONGS_TO]->(o:Organization)'
+            ' WHERE t.org_id IS NULL SET t.org_id = o.id'
+            ' $$) AS (n agtype)',
+        ).format(graph=sql.Literal(graph_name)),
+    )
 
 
 async def _create_vlabel_indexes(

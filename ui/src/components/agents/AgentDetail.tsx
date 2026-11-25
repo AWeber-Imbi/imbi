@@ -99,6 +99,7 @@ export function AgentDetail({ agent }: { agent: Agent }) {
 
   const rows: { mono?: boolean; name: string; value: ReactNode }[] = [
     { name: 'Owner team', value: agent.team?.name ?? '—' },
+    { name: 'Author', value: agent.created_by || '—' },
     { mono: true, name: 'Model', value: model },
     { name: 'Slack channel', value: agent.slack_channel || '—' },
     {

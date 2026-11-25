@@ -50,6 +50,7 @@ name = [
   "ServiceAccount",
   "Session",
   "TOTPSecret",
+  "Tag",
   "Team",
   "TokenMetadata",
   "Upload",
@@ -107,6 +108,24 @@ attributes = ["slug"]
 
 [[vlabel_indexes]]
 vlabel = "Agent"
+attributes = ["org_id", "slug"]
+unique = true
+
+# ``Tag`` slugs are unique per organization, like ``Agent`` slugs.
+# ``org_id`` is a copy of the organization id, so ``(org_id, slug)``
+# can carry the unique index that stops two concurrent creates with the
+# same slug. The initializer copies ``org_id`` onto older tags first.
+[[vlabel_indexes]]
+vlabel = "Tag"
+attributes = ["id"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "Tag"
+attributes = ["slug"]
+
+[[vlabel_indexes]]
+vlabel = "Tag"
 attributes = ["org_id", "slug"]
 unique = true
 

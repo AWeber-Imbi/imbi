@@ -105,11 +105,48 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
        its organization in. Archived projects are included. Entries of
        a project that is no longer in the graph keep no organization
        and do not show.
-3. Run `imbi-api setup-permissions`. It adds the permission
+3. **Before you deploy**, make sure that no organization has two tags
+   with the same slug. imbi-api now builds a unique `(org_id, slug)`
+   index on `Tag` at startup, and startup stops with
+   `Cannot create unique index tag_org_id_slug_unique_idx` when
+   duplicates exist. To find them, run this in the database:
+
+    ```sql
+    SET search_path = ag_catalog, public;
+    SELECT * FROM cypher('imbi', $$
+      MATCH (t:Tag)-[:BELONGS_TO]->(o:Organization)
+      WITH o.slug AS org, t.slug AS slug, count(t) AS n
+      WHERE n > 1 RETURN org, slug, n
+    $$) AS (org agtype, slug agtype, n agtype);
+    ```
+
+   For each duplicate, keep one tag, connect its `TAGGED_WITH` edges to
+   the other nodes, and `DETACH DELETE` the others. After the upgrade,
+   use **Admin > &lt;Org&gt; Admin > Tags > Merge** for tags with
+   different slugs.
+4. **Before you deploy**, scale imbi-api to zero and wait until no pod
+   of the earlier release runs (see step 1 of 2.62.0). The first new
+   pod copies the organization id onto each tag as `org_id`, then
+   builds the unique index. It does this only one time. A pod of the
+   earlier release creates tags with no `org_id`, and the unique index
+   does not apply to them. If you cannot stop the service, run this
+   after the rollout is complete:
+
+    ```sql
+    SET search_path = ag_catalog, public;
+    SELECT * FROM cypher('imbi', $$
+      MATCH (t:Tag)-[:BELONGS_TO]->(o:Organization)
+      WHERE t.org_id IS NULL SET t.org_id = o.id
+    $$) AS (n agtype);
+    ```
+
+   If it stops with a unique violation, remove the duplicate tags as
+   step 3 tells you, then run it again.
+5. Run `imbi-api setup-permissions`. It adds the permission
    `integration:workflow-step:run` to the role of the `imbi-workflows`
    service account. Without it, every plugin workflow step fails with
    `403`.
-4. Deploy imbi-workflows with imbi-api. Both must load the same plugin
+6. Deploy imbi-workflows with imbi-api. Both must load the same plugin
    versions, because the engine reads the step catalog and imbi-api runs
    the steps.
 

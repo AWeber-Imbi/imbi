@@ -1,9 +1,9 @@
 """Tag management endpoints.
 
-Tags are org-scoped, slug-identified labels. Today they attach to
-``Document`` nodes via ``TAGGED_WITH``; the edge type is generic so
-future work can attach the same tags to ``Project``/``Service``
-nodes without schema changes.
+Tags are org-scoped, slug-identified labels. They attach to
+``Document``, ``DocumentTemplate`` and ``Agent`` nodes via
+``TAGGED_WITH``; the edge type is generic so future work can attach
+the same tags to other nodes without schema changes.
 """
 
 import datetime
@@ -54,18 +54,56 @@ class TagResponse(pydantic.BaseModel):
     relationships: dict[str, models.RelationshipLink] | None = None
 
 
+class TagMerge(pydantic.BaseModel):
+    target: str = pydantic.Field(min_length=1)
+
+
+#: Ends each query that returns a tag with its usage counts.
+_COUNTS_TAIL: typing.LiteralString = """
+    OPTIONAL MATCH (n)-[:TAGGED_WITH]->(t)
+    RETURN t, o,
+           count(CASE WHEN label(n) = 'Document' THEN 1 END)
+               AS document_count,
+           count(CASE WHEN label(n) = 'Agent' THEN 1 END) AS agent_count
+"""
+
+_COUNTS_COLUMNS = ['t', 'o', 'document_count', 'agent_count']
+
+
 def _tag_relationships(
     request: fastapi.Request,
     org_slug: str,
     tag_slug: str,
     document_count: int,
+    agent_count: int,
 ) -> dict[str, models.RelationshipLink]:
     return build_relationships(
         request.app.url_path_for(
             'get_tag', org_slug=org_slug, tag_slug=tag_slug
         ),
-        {'documents': RelationshipSpec('/documents', document_count)},
+        {
+            'documents': RelationshipSpec('/documents', document_count),
+            'agents': RelationshipSpec('/agents', agent_count),
+        },
     )
+
+
+def _tag_from_record(
+    request: fastapi.Request,
+    org_slug: str,
+    record: dict[str, typing.Any],
+) -> dict[str, typing.Any]:
+    """Build a tag response from a row that ends in ``_COUNTS_TAIL``."""
+    tag: dict[str, typing.Any] = graph.parse_agtype(record['t'])
+    tag['organization'] = graph.parse_agtype(record['o'])
+    tag['relationships'] = _tag_relationships(
+        request,
+        org_slug,
+        tag['slug'],
+        graph.parse_agtype(record['document_count']) or 0,
+        graph.parse_agtype(record['agent_count']) or 0,
+    )
+    return tag
 
 
 @tags_router.post('/', status_code=201, response_model=TagResponse)
@@ -101,7 +139,8 @@ async def create_tag(
         description: {description},
         color: {color},
         created_at: {created_at},
-        updated_at: {updated_at}
+        updated_at: {updated_at},
+        org_id: o.id
     }})
     CREATE (t)-[:BELONGS_TO]->(o)
     RETURN t, o
@@ -119,7 +158,7 @@ async def create_tag(
     org = graph.parse_agtype(records[0]['o'])
     tag['organization'] = org
     tag['relationships'] = _tag_relationships(
-        request, org_slug, tag['slug'], 0
+        request, org_slug, tag['slug'], 0, 0
     )
     return tag
 
@@ -134,31 +173,18 @@ async def list_tags(
         fastapi.Depends(permissions.require_permission('tag:read')),
     ],
 ) -> list[dict[str, typing.Any]]:
-    """List tags in an organization, each with a document count."""
-    query: typing.LiteralString = """
+    """List tags in an organization, each with usage counts."""
+    query: typing.LiteralString = (
+        """
     MATCH (t:Tag)-[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-    OPTIONAL MATCH (n:Document)-[:TAGGED_WITH]->(t)
-    WITH t, o, count(DISTINCT n) AS document_count
-    RETURN t, o, document_count
-    ORDER BY t.name
     """
-    records = await db.execute(
-        query,
-        {'org_slug': org_slug},
-        columns=['t', 'o', 'document_count'],
+        + _COUNTS_TAIL
+        + ' ORDER BY t.name'
     )
-    results: list[dict[str, typing.Any]] = []
-    for record in records:
-        tag = graph.parse_agtype(record['t'])
-        tag['organization'] = graph.parse_agtype(record['o'])
-        tag['relationships'] = _tag_relationships(
-            request,
-            org_slug,
-            tag['slug'],
-            graph.parse_agtype(record['document_count']) or 0,
-        )
-        results.append(tag)
-    return results
+    records = await db.execute(
+        query, {'org_slug': org_slug}, columns=_COUNTS_COLUMNS
+    )
+    return [_tag_from_record(request, org_slug, r) for r in records]
 
 
 @tags_router.get('/{tag_slug}', response_model=TagResponse, name='get_tag')
@@ -173,32 +199,24 @@ async def get_tag(
     ],
 ) -> dict[str, typing.Any]:
     """Retrieve a single tag by slug."""
-    query: typing.LiteralString = """
+    query: typing.LiteralString = (
+        """
     MATCH (t:Tag {{slug: {tag_slug}}})
           -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-    OPTIONAL MATCH (n:Document)-[:TAGGED_WITH]->(t)
-    WITH t, o, count(DISTINCT n) AS document_count
-    RETURN t, o, document_count
     """
+        + _COUNTS_TAIL
+    )
     records = await db.execute(
         query,
         {'tag_slug': tag_slug, 'org_slug': org_slug},
-        columns=['t', 'o', 'document_count'],
+        columns=_COUNTS_COLUMNS,
     )
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Tag {tag_slug!r} not found',
         )
-    tag: dict[str, typing.Any] = graph.parse_agtype(records[0]['t'])
-    tag['organization'] = graph.parse_agtype(records[0]['o'])
-    tag['relationships'] = _tag_relationships(
-        request,
-        org_slug,
-        tag['slug'],
-        graph.parse_agtype(records[0]['document_count']) or 0,
-    )
-    return tag
+    return _tag_from_record(request, org_slug, records[0])
 
 
 class TagUpdate(pydantic.BaseModel):
@@ -242,7 +260,6 @@ async def patch_tag(
             detail=f'Tag {tag_slug!r} not found',
         )
     existing = graph.parse_agtype(records[0]['t'])
-    org = graph.parse_agtype(records[0]['o'])
 
     current = {
         'name': existing.get('name'),
@@ -271,7 +288,8 @@ async def patch_tag(
     # that the patch removed the color.
     new_color = update.color
 
-    update_query: typing.LiteralString = """
+    update_query: typing.LiteralString = (
+        """
     MATCH (t:Tag {{slug: {tag_slug}}})
           -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
     SET t.name = {name},
@@ -280,10 +298,9 @@ async def patch_tag(
         t.color = {color},
         t.updated_at = {updated_at}
     WITH t, o
-    OPTIONAL MATCH (n:Document)-[:TAGGED_WITH]->(t)
-    WITH t, o, count(DISTINCT n) AS document_count
-    RETURN t, o, document_count
     """
+        + _COUNTS_TAIL
+    )
     with conflict_on_unique_violation(
         f'Tag with slug {new_slug!r} already exists',
     ):
@@ -298,22 +315,14 @@ async def patch_tag(
                 'color': new_color,
                 'updated_at': now.isoformat(),
             },
-            columns=['t', 'o', 'document_count'],
+            columns=_COUNTS_COLUMNS,
         )
     if not updated:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Tag {tag_slug!r} not found',
         )
-    tag: dict[str, typing.Any] = graph.parse_agtype(updated[0]['t'])
-    tag['organization'] = org
-    tag['relationships'] = _tag_relationships(
-        request,
-        org_slug,
-        tag['slug'],
-        graph.parse_agtype(updated[0]['document_count']) or 0,
-    )
-    return tag
+    return _tag_from_record(request, org_slug, updated[0])
 
 
 @tags_router.delete('/{tag_slug}', status_code=204)
@@ -341,3 +350,65 @@ async def delete_tag(
             status_code=404,
             detail=f'Tag {tag_slug!r} not found',
         )
+
+
+@tags_router.post('/{tag_slug}/merge', response_model=TagResponse)
+async def merge_tag(
+    org_slug: str,
+    tag_slug: str,
+    data: TagMerge,
+    request: fastapi.Request,
+    db: graph.Pool,
+    _auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('tag:delete')),
+    ],
+) -> dict[str, typing.Any]:
+    """Merge a tag into ``target``, then delete it.
+
+    Every node tagged with the source tag is tagged with the target
+    instead. ``MERGE`` makes sure that a node that already has the
+    target tag does not get a second edge.
+    """
+    if data.target == tag_slug:
+        raise fastapi.HTTPException(
+            status_code=422, detail='Cannot merge a tag into itself'
+        )
+    lookup_query: typing.LiteralString = """
+    MATCH (t:Tag)-[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+    WHERE t.slug IN [{source}, {target}]
+    RETURN t.slug AS slug, t.id AS id
+    """
+    records = await db.execute(
+        lookup_query,
+        {'org_slug': org_slug, 'source': tag_slug, 'target': data.target},
+        columns=['slug', 'id'],
+    )
+    ids = {
+        graph.parse_agtype(r['slug']): graph.parse_agtype(r['id'])
+        for r in records
+    }
+    for slug in (tag_slug, data.target):
+        if slug not in ids:
+            raise fastapi.HTTPException(
+                status_code=404, detail=f'Tag {slug!r} not found'
+            )
+    # One statement, so the move and the delete succeed or fail
+    # together. The source is deleted before the edges are made, so that
+    # a source that nothing uses is deleted too (``UNWIND`` of an empty
+    # list gives no rows).
+    merge_query: typing.LiteralString = """
+    MATCH (s:Tag {{id: {source_id}}}), (t:Tag {{id: {target_id}}})
+    OPTIONAL MATCH (n)-[:TAGGED_WITH]->(s)
+    WITH s, t, collect(n) AS nodes
+    DETACH DELETE s
+    WITH t, nodes
+    UNWIND nodes AS n
+    MERGE (n)-[:TAGGED_WITH]->(t)
+    """
+    await db.execute(
+        merge_query,
+        {'source_id': ids[tag_slug], 'target_id': ids[data.target]},
+        [],
+    )
+    return await get_tag(org_slug, data.target, request, db, _auth)

@@ -63,6 +63,8 @@ class Definition:
     settings: dict[str, typing.Any]
     validation: dict[str, typing.Any]
     author: str
+    #: The ids of the org tags that label the workflow.
+    tag_ids: list[str] = dataclasses.field(default_factory=list)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -131,8 +133,8 @@ class WorkflowStore:
             await relational.lock_organization_shared(conn, organization_id)
             await conn.execute(
                 'INSERT INTO workflows.workflows (id, organization_id,'
-                ' slug, name, description, owner_team_id, created_by)'
-                ' VALUES (%s, %s, %s, %s, %s, %s, %s)',
+                ' slug, name, description, owner_team_id, tag_ids,'
+                ' created_by) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)',
                 (
                     workflow_id,
                     organization_id,
@@ -140,6 +142,7 @@ class WorkflowStore:
                     definition.name,
                     definition.description,
                     definition.owner_team_id,
+                    definition.tag_ids,
                     definition.author,
                 ),
             )
@@ -175,7 +178,7 @@ class WorkflowStore:
             await relational.lock_organization_shared(conn, organization_id)
             cur = await conn.execute(
                 'UPDATE workflows.workflows SET name = %s,'
-                ' description = %s, owner_team_id = %s,'
+                ' description = %s, owner_team_id = %s, tag_ids = %s,'
                 ' latest_version = latest_version + 1, updated_at = NOW()'
                 ' WHERE organization_id = %s AND slug = %s'
                 ' AND owner_team_id = %s'
@@ -184,6 +187,7 @@ class WorkflowStore:
                     definition.name,
                     definition.description,
                     definition.owner_team_id,
+                    definition.tag_ids,
                     organization_id,
                     slug,
                     owner_team_id,
