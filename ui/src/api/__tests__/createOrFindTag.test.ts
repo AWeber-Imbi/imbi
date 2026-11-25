@@ -17,6 +17,18 @@ describe('createOrFindTag', () => {
     ).resolves.toEqual(existing)
   })
 
+  it('returns the tag with the conflicting slug, not a name match', async () => {
+    vi.spyOn(apiClient, 'post').mockRejectedValue(new ApiError(409, 'Conflict'))
+    const conflict = { name: 'Archived', slug: 'experiment' }
+    vi.spyOn(apiClient, 'get').mockResolvedValue([
+      { name: 'Experiment', slug: 'legacy' },
+      conflict,
+    ])
+    await expect(
+      createOrFindTag('acme', { name: 'Experiment' }),
+    ).resolves.toEqual(conflict)
+  })
+
   it('throws other errors', async () => {
     const error = new ApiError(500, 'Server Error')
     vi.spyOn(apiClient, 'post').mockRejectedValue(error)

@@ -124,6 +124,24 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    the other nodes, and `DETACH DELETE` the others. After the upgrade,
    use **Admin > &lt;Org&gt; Admin > Tags > Merge** for tags with
    different slugs.
+4. **Before you deploy**, scale imbi-api to zero and wait until no pod
+   of the earlier release runs (see step 1 of 2.62.0). The first new
+   pod copies the organization id onto each tag as `org_id`, then
+   builds the unique index. It does this only one time. A pod of the
+   earlier release creates tags with no `org_id`, and the unique index
+   does not apply to them. If you cannot stop the service, run this
+   after the rollout is complete:
+
+    ```sql
+    SET search_path = ag_catalog, public;
+    SELECT * FROM cypher('imbi', $$
+      MATCH (t:Tag)-[:BELONGS_TO]->(o:Organization)
+      WHERE t.org_id IS NULL SET t.org_id = o.id
+    $$) AS (n agtype);
+    ```
+
+   If it stops with a unique violation, remove the duplicate tags as
+   step 3 tells you, then run it again.
 
 ## 2.62.0
 

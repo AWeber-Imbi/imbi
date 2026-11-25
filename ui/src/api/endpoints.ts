@@ -2674,11 +2674,9 @@ export const createOrFindTag = async (
     return await createTag(orgSlug, data)
   } catch (error) {
     if (!(error instanceof ApiError) || error.status !== 409) throw error
+    // The API returns 409 only for a duplicate slug, so match the slug.
     const slug = data.slug ?? slugify(data.name)
-    const name = data.name.trim().toLowerCase()
-    const existing = (await listTags(orgSlug)).find(
-      (t) => t.slug === slug || t.name.toLowerCase() === name,
-    )
+    const existing = (await listTags(orgSlug)).find((t) => t.slug === slug)
     if (!existing) throw error
     return existing
   }
