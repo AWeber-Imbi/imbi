@@ -2579,19 +2579,20 @@ class RunTestCase(TaskTestCase):
             [{'outcome': 'done_acted', 'reason': 'listed'}],
         )
 
-    async def test_a_watch_error_is_raised(self) -> None:
+    async def test_a_watch_error_is_logged(self) -> None:
         with (
             mock.patch.object(
                 task.TaskRun, '_server_notice', side_effect=RuntimeError('x')
             ),
-            self.assertLogs('imbi.harness.task', 'ERROR'),
+            self.assertLogs('imbi.harness.task', 'ERROR') as logs,
         ):
             await self.watch(
                 [{'name': 'plugin:ops:grafana', 'status': 'pending'}], wait=0
             )
+        self.assertIn('The MCP server status watch failed', logs.output[0])
         self.assertEqual(
             self.posted('/outcome'),
-            [{'outcome': 'failed_external', 'reason': 'harness_error'}],
+            [{'outcome': 'done_acted', 'reason': 'listed'}],
         )
 
 

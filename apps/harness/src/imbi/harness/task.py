@@ -2399,8 +2399,8 @@ class TaskRun:
         )
 
     async def _stop_watch(self) -> None:
-        """Cancel the watch of the plugin MCP servers and wait for it,
-        so that an error in it is raised."""
+        """Cancel the watch of the plugin MCP servers and wait for it.
+        An error in the watch is logged: it does not fail the task."""
         if self.server_watch is None:
             return
         self.server_watch.cancel()
@@ -2410,6 +2410,8 @@ class TaskRun:
             current = asyncio.current_task()
             if current is not None and current.cancelling():
                 raise
+        except Exception:
+            LOGGER.exception('The MCP server status watch failed')
 
     async def flush(self) -> None:
         """Send the recorded events (plan section 6.6).
