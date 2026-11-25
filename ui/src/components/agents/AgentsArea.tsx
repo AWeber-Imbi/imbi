@@ -1,28 +1,17 @@
-import { type ReactNode, useEffect, useState } from 'react'
+import { type ReactNode, useEffect } from 'react'
 
-import { Link, useNavigate, useParams } from 'react-router-dom'
-
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { useNavigate, useParams } from 'react-router-dom'
 
 import { AgentRunners } from '@/components/admin/AgentRunners'
 import { AIModelsManagement } from '@/components/admin/AIModelsManagement'
 import { EgressDestinationManagement } from '@/components/admin/EgressDestinationManagement'
 import { SecretsManagement } from '@/components/admin/secrets/SecretsManagement'
 import { WorkflowsManagement } from '@/components/workflows/WorkflowsManagement'
-import { useOrganization } from '@/contexts/OrganizationContext'
-import { cn } from '@/lib/utils'
 
-import { useAgentList } from './agentQueries'
 import { AgentsManagement } from './AgentsManagement'
-import {
-  type AgentsNavItem,
-  agentsPath,
-  type AgentsSection,
-  useAgentsNav,
-} from './agentsNav'
+import { agentsPath, type AgentsSection, useAgentsNav } from './agentsNav'
 import { DashboardPage } from './DashboardPage'
 import { PlatformPage } from './PlatformPage'
-import { useResizableWidth } from './useResizableWidth'
 
 // The page of each section. The Record type makes a missing section a
 // compile error.
@@ -54,8 +43,8 @@ const PAGES: Record<AgentsSection, ReactNode> = {
 }
 
 /**
- * The Agents area: its own sidebar (Agentic platform, Settings) and the
- * page for the section in the URL.
+ * The Agents area: the page for the section in the URL. The header menu
+ * is the navigation between the sections.
  */
 export function AgentsArea() {
   const { section } = useParams<{ section?: string }>()
@@ -76,113 +65,5 @@ export function AgentsArea() {
     }
   }, [section, visible, navigate])
 
-  return (
-    <div className="flex min-h-[calc(100vh-4rem)]">
-      <AgentsSidebar current={current} items={items} />
-      <div className="min-w-0 flex-1">{PAGES[current]}</div>
-    </div>
-  )
-}
-
-function AgentsSidebar({
-  current,
-  items,
-}: {
-  current: AgentsSection
-  items: AgentsNavItem[]
-}) {
-  const [open, setOpen] = useState(true)
-  const { selectedOrganization } = useOrganization()
-  const { data: agents } = useAgentList(selectedOrganization?.slug)
-  const groups = ['Agentic platform', 'Settings'] as const
-  const { cancel, dragging, handleProps, width } = useResizableWidth(
-    'imbi:agents:sidebar-width',
-    250,
-    // The label "Egress Destinations" goes to a second line below 220.
-    220,
-    480,
-  )
-
-  // No transition during a drag: the width must follow the pointer.
-  return (
-    <aside
-      className={cn(
-        'sticky top-16 flex h-[calc(100vh-4rem)] shrink-0 flex-col border-r border-tertiary bg-primary',
-        !dragging && 'transition-all duration-300',
-        !open && 'w-16',
-      )}
-      style={open ? { width } : undefined}
-    >
-      <nav
-        aria-label="Agents"
-        className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-3 pt-5"
-      >
-        {groups.map((group) => (
-          <div className="flex flex-col gap-1" key={group}>
-            {open && group !== 'Agentic platform' && (
-              <div className="text-overline text-tertiary px-3 py-1 uppercase">
-                {group}
-              </div>
-            )}
-            {items
-              .filter((item) => item.group === group)
-              .map((item) => {
-                const Icon = item.icon
-                const active = item.id === current
-                const count =
-                  item.id === 'manage' && agents ? String(agents.length) : ''
-                return (
-                  <Link
-                    aria-current={active ? 'page' : undefined}
-                    className={cn(
-                      'flex h-10 w-full items-center gap-3 rounded-md text-sm transition-colors',
-                      open ? 'px-3' : 'justify-center',
-                      active
-                        ? 'bg-amber-bg font-medium text-amber-text'
-                        : 'text-secondary hover:bg-secondary hover:text-primary',
-                    )}
-                    key={item.id}
-                    title={item.label}
-                    to={agentsPath(item.id)}
-                  >
-                    <Icon className="size-4.5 shrink-0" />
-                    {open && (
-                      <span className="flex-1 text-left">{item.label}</span>
-                    )}
-                    {open && count && (
-                      <span className="font-mono text-xs tabular-nums opacity-70">
-                        {count}
-                      </span>
-                    )}
-                  </Link>
-                )
-              })}
-          </div>
-        ))}
-      </nav>
-      <div className="border-tertiary bg-primary shrink-0 border-t px-3 py-1.5">
-        <button
-          aria-label={open ? 'Collapse sidebar' : 'Expand sidebar'}
-          className={cn(
-            'flex h-10 w-full items-center gap-3 rounded-md text-sm text-secondary hover:bg-secondary hover:text-primary',
-            open ? 'px-3' : 'justify-center',
-          )}
-          onClick={() => {
-            // The collapse removes the handle, so a drag must stop here.
-            cancel()
-            setOpen(!open)
-          }}
-          type="button"
-        >
-          {open ? (
-            <PanelLeftClose className="size-4.5 shrink-0" />
-          ) : (
-            <PanelLeftOpen className="size-4.5 shrink-0" />
-          )}
-          {open && <span>Collapse</span>}
-        </button>
-      </div>
-      {open && <div {...handleProps} />}
-    </aside>
-  )
+  return PAGES[current]
 }

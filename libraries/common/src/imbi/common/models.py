@@ -1706,7 +1706,8 @@ class Agent(Node):
     prompt_version: int | None = pydantic.Field(default=None, gt=0)
     settings: AgentSettings = pydantic.Field(default_factory=AgentSettings)
     #: The tools that the agent can use, by tool key. A tool that is
-    #: not in this map is off.
+    #: not in this map is off, except the default tools of
+    #: ``imbi.api.agent_tools``, which imbi-api adds for every agent.
     tools: dict[AgentToolKey, AgentToolConfig] = {}
     #: The agents that the agent can delegate to, in order.
     subagents: list[AgentSubagent] = []

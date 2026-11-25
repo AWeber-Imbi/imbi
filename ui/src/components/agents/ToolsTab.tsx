@@ -43,6 +43,7 @@ import {
   TOOL_ERROR_MESSAGES,
   type ToolGroupView,
   type ToolRow,
+  withDefaults,
 } from './agentTools'
 
 /** A group shows at most this many rows. Search to see the others. */
@@ -59,6 +60,9 @@ interface ToolGroupCardProps {
   onChange: (tools: AgentTools) => void
   onConfigChange: (key: string, config: AgentToolConfig) => void
   onToggleOpen: () => void
+  /** The stored tool map, which the edits change. */
+  stored: AgentTools
+  /** The tool map with the default tools, which the rows show. */
   tools: AgentTools
   view: ToolGroupView
 }
@@ -108,11 +112,12 @@ export function ToolsTab({ onChange, orgSlug, value }: ToolsTabProps) {
     )
 
   const filters = { capabilities, enabledOnly, query: search }
-  const views = groupViews(catalog.data, value, filters)
+  const effective = withDefaults(catalog.data, value)
+  const views = groupViews(catalog.data, effective, filters)
   const filtering = !!search.trim() || enabledOnly || capabilities.size > 0
   const listed = catalogTools(catalog.data)
   const total = listed.length
-  const enabled = Object.keys(value).length
+  const enabled = Object.keys(effective).length
   const chips: EnvironmentChip[] = (environments.data ?? []).map((e) => ({
     name: e.name,
     slug: e.slug,
@@ -129,9 +134,10 @@ export function ToolsTab({ onChange, orgSlug, value }: ToolsTabProps) {
       <div>
         <div className="text-overline text-tertiary uppercase">Tools</div>
         <p className="text-tertiary mt-1 text-xs">
-          Switch on each Imbi API tool the agent may call. Built-in tools such
-          as Skill and Agent are off until you switch them on here. Other MCP
-          servers come with the plugins in the Plugins section.
+          Switch on each Imbi API tool the agent may call. Every agent can use
+          the default read tools. Built-in tools such as Skill and Agent are off
+          until you switch them on here. Other MCP servers come with the plugins
+          in the Plugins section.
         </p>
       </div>
       <div className="flex items-center gap-3">
@@ -205,7 +211,8 @@ export function ToolsTab({ onChange, orgSlug, value }: ToolsTabProps) {
               else next.add(view.slug)
               setOpen(next)
             }}
-            tools={value}
+            stored={value}
+            tools={effective}
             view={view}
           />
         ))}
@@ -330,10 +337,12 @@ function ToolGroupCard({
   onChange,
   onConfigChange,
   onToggleOpen,
+  stored,
   tools,
   view,
 }: ToolGroupCardProps) {
   const listed = view.allRows.filter((r) => !r.unavailable)
+  const switchable = view.allRows.filter((r) => !r.default)
   const on = view.allRows.filter((r) => tools[r.key]).length
   const allOn = listed.length > 0 && listed.every((r) => tools[r.key])
   const shown = view.rows.slice(0, ROW_LIMIT)
@@ -359,13 +368,13 @@ function ToolGroupCard({
               onChange(
                 allOn || listed.length === 0
                   ? setTools(
-                      tools,
-                      view.allRows.map((r) => r.key),
+                      stored,
+                      switchable.map((r) => r.key),
                       false,
                     )
                   : setTools(
-                      tools,
-                      listed.map((r) => r.key),
+                      stored,
+                      listed.filter((r) => !r.default).map((r) => r.key),
                       true,
                     ),
               )
@@ -395,7 +404,7 @@ function ToolGroupCard({
               key={row.key}
               onConfigChange={(config) => onConfigChange(row.key, config)}
               onToggle={(checked) =>
-                onChange(setTools(tools, [row.key], checked))
+                onChange(setTools(stored, [row.key], checked))
               }
               row={row}
             />
@@ -433,7 +442,9 @@ function ToolRowView({
       <Switch
         aria-label={`Enable ${row.key}`}
         checked={!!config}
+        disabled={row.default}
         onCheckedChange={onToggle}
+        title={row.default ? 'On for every agent' : undefined}
       />
       <div className="min-w-0 flex-1">
         <div
@@ -453,9 +464,12 @@ function ToolRowView({
       {row.unavailable ? (
         <Badge variant="neutral">Unavailable</Badge>
       ) : (
-        capability && (
-          <Badge variant={capability.tone}>{capability.label}</Badge>
-        )
+        <>
+          {row.default && <Badge variant="neutral">Default</Badge>}
+          {capability && (
+            <Badge variant={capability.tone}>{capability.label}</Badge>
+          )}
+        </>
       )}
       {config && (
         <div className="flex shrink-0 items-center gap-2">

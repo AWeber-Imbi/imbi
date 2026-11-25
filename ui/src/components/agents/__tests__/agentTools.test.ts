@@ -7,6 +7,7 @@ import {
   setTools,
   toggleEnvironment,
   type ToolFilters,
+  withDefaults,
 } from '../agentTools'
 import { catalog } from './fixtures'
 
@@ -37,12 +38,14 @@ describe('agentTools', () => {
     expect(views[1].rows).toEqual([
       {
         capability: null,
+        default: false,
         description: null,
         key: 'imbi.gone',
         unavailable: true,
       },
       {
         capability: null,
+        default: false,
         description: null,
         key: 'zoekt.search',
         unavailable: true,
@@ -118,6 +121,32 @@ describe('agentTools', () => {
       'github.read_file': { approval: true },
     })
     expect(setTools(tools, ['github.read_file'], false)).toEqual({})
+  })
+
+  it('adds the default tools; a stored config wins', () => {
+    const base = catalog()
+    const listed = {
+      ...base,
+      tools: base.tools.map((t) => ({
+        ...t,
+        default: t.key === 'imbi.list_projects',
+      })),
+    }
+    expect(withDefaults(listed, { 'imbi.get_me': {} })).toEqual({
+      'imbi.get_me': {},
+      'imbi.list_projects': {
+        approval: false,
+        environments: null,
+        rate_limit: null,
+      },
+    })
+    expect(
+      withDefaults(listed, { 'imbi.list_projects': { approval: true } }),
+    ).toEqual({ 'imbi.list_projects': { approval: true } })
+    const row = groupViews(listed, {}, none)[0].rows.find(
+      (r) => r.key === 'imbi.list_projects',
+    )
+    expect(row?.default).toBe(true)
   })
 
   it('toggles environments; all allowed is null', () => {

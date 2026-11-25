@@ -15,7 +15,8 @@ import typing
 import anthropic
 
 from imbi.common import external_mcp
-from imbi.slackbot import client, mcp
+from imbi.common.prompts import skills
+from imbi.slackbot import client, identity, mcp
 
 if typing.TYPE_CHECKING:
     import collections.abc
@@ -137,6 +138,8 @@ async def _execute(
     if toolkit is not None:
         result = await toolkit.call(name, tool_input)
         return result.text, result.is_error
+    if name == skills.TOOL_NAME:
+        return await skills.execute(identity.get_graph(), tool_input)
     if external.has_tool(name):
         return await external.execute_tool(name, tool_input)
     return await manager.execute_tool(name, tool_input, auth_token)

@@ -9,6 +9,7 @@ from fastapi.middleware import cors
 from uvicorn.middleware import proxy_headers
 
 from imbi.api import (
+    agent_tools,
     endpoints,
     harness,
     lifespans,
@@ -257,6 +258,7 @@ def create_app() -> fastapi.FastAPI:
     for router in endpoints.unprefixed_routers:
         app.include_router(router)
     agent_api.index(app, server_config.api_prefix)
+    agent_tools.index(app)
     # On the app root, not under the API prefix: Prometheus scrapes it
     # by pod IP, and the public routes do not reach it.
     metrics.add_route(app)
