@@ -122,6 +122,7 @@ settings, GitHub Apps, New GitHub App**.
 | Repository permissions: Pull requests | Read and write |
 | Repository permissions: Issues | Read and write |
 | Repository permissions: Actions | Read-only, for every App used with `github_read`. Each `github_read` token asks for `actions: read` |
+| Repository permissions: Checks and Commit statuses | Read and write, for an App used with `github_status` |
 | Repository permissions: Metadata | Read-only (GitHub adds it) |
 | Where can this GitHub App be installed? | **Any account**. A private App can only be installed in the organization that owns it |
 
@@ -137,6 +138,7 @@ token with more permissions than the App has.
 | `marketplace_fetch` | `contents: read` |
 | `github_read` | `actions: read`, `contents: read`, `issues: read`, `pull_requests: read` |
 | `github_write` | `contents: write`, `pull_requests: write`, `issues: write` |
+| `github_status` | `actions: read`, `checks: write`, `contents: read`, `issues: read`, `pull_requests: read`, `statuses: write` |
 
 `github_read` and `github_write` also ask for `checks: read` and
 `statuses: read`, and `github_write` for `actions: read`, but only the
@@ -152,6 +154,11 @@ that installation's token leaves out `workflows`.
 
 For an agent that only reads, such as a check, set every permission above
 to Read-only and grant `github_read`, not `github_write` (step 8).
+
+For an agent that publishes a verdict on a commit, such as a review
+that sets a check run or a commit status, grant `github_status`, not
+`github_write`. It cannot push. Give the App Checks and Commit statuses:
+Read and write, and keep the other permissions Read-only.
 
 ## Step 2: Generate the private key
 
@@ -273,9 +280,22 @@ requests, review comments, issues, and CI run logs with
 | Delivery modes | `environment` only |
 | Projects | All, or the selected projects |
 
-An agent that writes and also reads CI run logs needs both purposes. Put
-`github_read` and `github_write` in the one grant of this step, since
-they use the same delivery mode.
+An agent that publishes a verdict on a commit, such as a review that
+sets a check run or a commit status, uses `github_status`. It also
+reads what `github_read` reads, so it needs no other GitHub purpose:
+
+| Field | Value |
+|---|---|
+| Agents | `reviewer` |
+| Bindings | `ghe/reviewer` |
+| Purposes | `github_status` |
+| Delivery modes | `environment` only |
+| Projects | All, or the selected projects |
+
+An agent that needs more than one of these purposes gets them in the one
+grant of this step, since they use the same delivery mode. For example,
+an agent that writes and also reads CI run logs needs `github_read` and
+`github_write`.
 
 Keep the grants of steps 7 and 8 separate. A grant allows each of its
 purposes with each of its delivery modes, and exactly one grant must
@@ -289,7 +309,7 @@ Open **Agents**, the agent, **Edit**, then the **Access** tab. Select
 [Agents, Access](agents.md#access).
 
 The tab shows a row for `workspace_checkout`, `github_read`,
-`github_write`, and `marketplace_fetch`. Each row shows a check when a
+`github_write`, `github_status`, and `marketplace_fetch`. Each row shows a check when a
 grant allows it. A read-only agent leaves the `github_write` row without
 a check.
 
@@ -314,7 +334,7 @@ Open **Admin, Secrets, Resolutions** to see the token reads, and
 |---|---|
 | `installation_not_found` | Install the App in the GitHub organization of the repository (step 3) |
 | `permission_or_repository_not_granted` | Give the App the permission (step 1), or add the repository to the installation (step 3) |
-| `no_grant` | Check the grant's agents, binding, purposes, delivery modes, and projects (steps 7 and 8). Step 8 covers both `github_write` and `github_read` |
+| `no_grant` | Check the grant's agents, binding, purposes, delivery modes, and projects (steps 7 and 8). Step 8 covers `github_write`, `github_read`, and `github_status` |
 | `ambiguous_grants` | Remove the overlap, so that one grant matches (steps 7 and 8) |
 | `repositories_span_installations` | Use repositories of one GitHub organization for each task, or separate bindings |
 

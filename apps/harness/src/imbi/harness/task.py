@@ -168,7 +168,8 @@ _RULES = """\
   Do not set a git identity or a credential helper.
 - The `purpose` of a secret is one of the purposes listed for its
   reference below, not a description. For `git push` and `gh` with the
-  GitHub token, use `github_write` when it is listed.
+  GitHub token, use `github_write` when it is listed. To create a check
+  run or a commit status, use `github_status` when it is listed.
 - When a secret is a JSON object, set `env` to the name of the string
   member you need, such as `SENTRY_AUTH_TOKEN`: that variable holds the
   member, and each other string member with an upper-case name gets
