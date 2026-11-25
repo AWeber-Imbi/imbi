@@ -54,15 +54,11 @@ export function TagManagement() {
   const [editing, setEditing] = useState<null | Tag>(null)
   const [merging, setMerging] = useState<null | Tag>(null)
 
-  const tagsKey = queryKeys.tags(orgSlug)
-  const {
-    data: tags = [],
-    error,
-    isLoading,
-  } = useQuery({ ...orgTagsQuery(orgSlug), enabled: !!orgSlug })
+  const query = orgTagsQuery(orgSlug)
+  const { data: tags = [], error, isLoading } = useQuery(query)
 
   const onSuccess = () => {
-    queryClient.invalidateQueries({ queryKey: tagsKey })
+    queryClient.invalidateQueries({ queryKey: query.queryKey })
     // Cached agents and documents hold tag slugs and names. Reset them:
     // this removes the cached data, so that an editor cannot seed its
     // draft from a stale record before the refetch completes.

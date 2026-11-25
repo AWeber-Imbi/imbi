@@ -11,9 +11,10 @@ import { extractApiErrorDetail } from '@/lib/apiError'
 import { queryKeys } from '@/lib/queryKeys'
 import type { Tag, TagRef } from '@/types'
 
-/** The query of the org tags. Callers add `enabled` or `staleTime`. */
+/** The query of the org tags. It waits for an org slug. */
 export function orgTagsQuery(orgSlug: string) {
   return queryOptions({
+    enabled: !!orgSlug,
     queryFn: ({ signal }) => listTags(orgSlug, signal),
     queryKey: queryKeys.tags(orgSlug),
   })
@@ -31,7 +32,7 @@ export function tagRef(tag: TagRef): TagRef {
 export function useOrgTags(orgSlug: string, onCreated: (tag: Tag) => void) {
   const queryClient = useQueryClient()
   const query = orgTagsQuery(orgSlug)
-  const { data: tags = [] } = useQuery({ ...query, enabled: !!orgSlug })
+  const { data: tags = [] } = useQuery(query)
   const create = useMutation({
     mutationFn: (data: Parameters<typeof createOrFindTag>[1]) =>
       createOrFindTag(orgSlug, data),
