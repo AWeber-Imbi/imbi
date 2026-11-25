@@ -74,6 +74,13 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
+## Unreleased
+
+1. Deploy the runner (imbi-harness) image with imbi-api, or right after
+   it. A runner on an older image ignores the MCP server checkboxes of
+   **Tools and plugins**, so a server that someone turned off still
+   loads.
+
 ## 2.62.0
 
 1. **Before you deploy**, make sure that every imbi-api pod runs 2.59.0
@@ -162,16 +169,10 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    restricted, allow `raw.githubusercontent.com`. imbi-api now reads
    the files of public `github.com` repositories from that host. It
    still reads refs and commits from `api.github.com`.
-2. After you deploy, run **Sync Agent Marketplaces**
-   (`marketplace-sync`) from **Admin > Global Admin > Maintenance**. It
-   reads the MCP servers of every plugin and stores them with their
-   type and URL. Until it runs, or until the scheduler runs it within
-   6 hours, the **Tools and plugins** section shows each server of an
-   earlier sync by name only, as `stdio`.
-3. Run `imbi-api setup-permissions`. It gives the `imbi-workflows` role
+2. Run `imbi-api setup-permissions`. It gives the `imbi-workflows` role
    `project:logs:read`, which the new **Search logs** workflow step needs.
    Without it, the step fails with `forbidden`.
-4. To get the Slack forms of tickets that need input, add the bot
+3. To get the Slack forms of tickets that need input, add the bot
    scopes `channels:read`, `groups:read`, and `im:write` to the Slack
    app, and install the app again. Invite the bot to the Slack channel
    of each agent that has one. imbi-api and the slackbot must use the
@@ -180,7 +181,7 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    scopes, the slackbot logs an error and posts no form; the request is
    still in the UI. See
    [Slack App Setup](../slackbot/slack-app-manifest.md).
-5. Every route under `/organizations/{org}/projects` now requires
+4. Every route under `/organizations/{org}/projects` now requires
    membership of the organization. A platform administrator who is not a
    member of an organization gets 403 on its project list and project
    pages. Before you deploy, add each administrator who needs those

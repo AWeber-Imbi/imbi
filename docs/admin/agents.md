@@ -115,15 +115,41 @@ allows (see [Plugin marketplaces](#plugin-marketplaces)). Select a plugin
 to give it to the agent. Under each plugin, the row lists the MCP servers
 that the plugin brings, with the URL of each server, or `stdio` for a
 server that runs as a local command. While a plugin is on, the agent can
-use every tool of its MCP servers.
+use every tool of its MCP servers that is checked.
 
 - When you save, Imbi pins each new plugin to the commit that it synced
-  last.
+  last, and saves the list of its MCP servers at that commit.
 - When a newer commit exists, the row shows **Pin** with the commit. Click
   it, then save, to use the newer commit.
 - A default plugin of the organization is selected and you cannot clear it.
+  It uses the commit that the organization pins, so its row shows no
+  **Pin**.
 - A plugin with the badge **unsupported source** cannot load. See
   [Plugin sources](#plugin-sources).
+
+Clear the checkbox of an MCP server to turn it off for the agent. The agent
+keeps the plugin's skills, commands, and other servers. This works for a
+default plugin too. When two plugins bring servers with the same URL, turn
+off the one you do not want. The list shows the servers of the commit that
+the agent runs. For a plugin pinned before Imbi saved this list, it shows
+the servers of the newest synced commit and, when the agent runs an older
+commit, the note "Servers at <commit>. This agent runs <commit>."
+
+When the agent moves to a commit that no longer has a server that you
+turned off, the save drops the setting. Otherwise the server is listed
+under its plugin as **no longer in this plugin**. Click **Remove**, then
+save, to drop the setting. If the server was renamed, turn off its new
+name.
+
+While a task runs, the Conversation tab shows a warning, and the task goes
+on, when:
+
+- An MCP server of a plugin is `failed` or `needs-auth`, or still `pending`
+  60 seconds after the task starts. A task that ends sooner gets no
+  warning for a pending server.
+- A header of a server uses a `${VAR}` that has no value and no default.
+  Imbi does not give MCP servers secrets yet, so each such header warns.
+- The agent turns off a server that the pinned plugin does not have.
 
 **Tools** lists two groups: **Built-in** and **Imbi**. The MCP
 servers in **Admin > Global Admin > Assistant > MCP Servers** are for the
