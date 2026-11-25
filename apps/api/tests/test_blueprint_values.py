@@ -289,6 +289,12 @@ class ValueCheckTests(unittest.TestCase):
             json_schema=models.Schema.model_validate(
                 {
                     'type': 'object',
+                    '$defs': {
+                        'Loose': {
+                            'type': 'object',
+                            'unevaluatedProperties': {'type': 'string'},
+                        }
+                    },
                     'properties': {
                         'budget': {
                             'type': 'string',
@@ -309,6 +315,11 @@ class ValueCheckTests(unittest.TestCase):
                             'type': 'object',
                             'patternProperties': {'^(a+)+$': {}},
                             'unevaluatedProperties': {'type': 'string'},
+                        },
+                        'reffed': {
+                            'type': 'object',
+                            '$ref': '#/$defs/Loose',
+                            'patternProperties': {'^(a+)+$': {}},
                         },
                         'payload': {
                             'type': 'object',
@@ -337,14 +348,17 @@ class ValueCheckTests(unittest.TestCase):
         )
 
     def test_stored_unevaluated_fails_closed(self) -> None:
-        with self.assertRaises(fastapi.HTTPException) as ctx:
-            blueprint_values.validate(
-                self.matches,
-                {'loose': {'a' * 40000 + '!': 1}},
-                partial=True,
+        for field in ('loose', 'reffed'):
+            with self.assertRaises(fastapi.HTTPException) as ctx:
+                blueprint_values.validate(
+                    self.matches,
+                    {field: {'a' * 40000 + '!': 1}},
+                    partial=True,
+                )
+            detail = typing.cast(dict[str, typing.Any], ctx.exception.detail)
+            self.assertIn(
+                'unevaluatedProperties', detail['invalid'][0]['message']
             )
-        detail = typing.cast(dict[str, typing.Any], ctx.exception.detail)
-        self.assertIn('unevaluatedProperties', detail['invalid'][0]['message'])
 
     def test_invalid_values(self) -> None:
         for field, bad in (

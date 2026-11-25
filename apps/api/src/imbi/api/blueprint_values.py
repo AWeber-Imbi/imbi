@@ -139,22 +139,10 @@ def _schema_errors(
                 mode='json', by_alias=True, exclude_none=True
             ),
         )
-        owner = owners[name].json_schema
-        if 'unevaluatedProperties' in models.schema_keys(
-            (owner.properties or {})[name]
-        ) and 'patternProperties' in models.schema_keys(owner):
-            # Fail closed: the check of this pair uses Python re.
-            errors.append(
-                {
-                    'field': name,
-                    'message': (
-                        'The blueprint uses unevaluatedProperties with '
-                        'patternProperties; an administrator must correct it'
-                    ),
-                }
-            )
-            continue
-        cls = _linear(jsonschema.validators.validator_for(schema))
+        cls = _linear(
+            jsonschema.validators.validator_for(schema),
+            'patternProperties' in models.schema_keys(schema),
+        )
         cls.check_schema(schema)
         # descend() keeps the resolver of the root schema and enters
         # the $id scope of the field, if the field has one.
@@ -289,18 +277,35 @@ def _additional_properties(
 
 
 @functools.cache
-def _linear(cls: typing.Any) -> typing.Any:
+def _linear(cls: typing.Any, pattern_properties: bool) -> typing.Any:
     """Return the validator class ``cls`` with the keywords that match
     a pattern on the linear-time engine (:func:`_matches`).
 
     ``unevaluatedProperties`` matches the keys of ``patternProperties``
-    with Python ``re``. A blueprint cannot save that pair, and
-    :func:`_schema_errors` refuses a value for a stored one.
+    with Python ``re``. A blueprint cannot save that pair, and the
+    keyword refuses a value of a stored one.
     """
+    unevaluated = cls.VALIDATORS.get('unevaluatedProperties')
+
+    def _unevaluated_properties(
+        validator: typing.Any, *args: typing.Any
+    ) -> collections.abc.Iterator[jsonschema.exceptions.ValidationError]:
+        # Fail closed: the keyword matches the keys of patternProperties
+        # with Python re, also through a $ref, so the flag is for the
+        # whole schema of the blueprint.
+        if pattern_properties:
+            yield jsonschema.exceptions.ValidationError(
+                'The blueprint uses unevaluatedProperties with '
+                'patternProperties; an administrator must correct it'
+            )
+        elif unevaluated is not None:
+            yield from unevaluated(validator, *args)
+
     keywords: dict[str, typing.Any] = {
         'additionalProperties': _additional_properties,
         'pattern': _pattern,
         'patternProperties': _pattern_properties,
+        'unevaluatedProperties': _unevaluated_properties,
     }
     return jsonschema.validators.extend(  # type: ignore[no-untyped-call]  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
         cls, keywords

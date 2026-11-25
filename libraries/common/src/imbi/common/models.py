@@ -228,12 +228,10 @@ def pattern_error(pattern: str) -> str | None:
     return None
 
 
-def schema_keys(schema: Schema) -> set[str]:
-    """Return every key in ``schema`` and its subschemas."""
+def schema_keys(node: object) -> set[str]:
+    """Return every key of the JSON value ``node``, at every depth."""
     keys: set[str] = set()
-    stack: list[object] = [
-        schema.model_dump(mode='json', by_alias=True, exclude_none=True)
-    ]
+    stack: list[object] = [node]
     while stack:
         node = stack.pop()
         if isinstance(node, dict):
@@ -249,7 +247,7 @@ def unevaluated_re(schema: Schema) -> bool:
     and ``patternProperties``. jsonschema then matches keys with Python
     ``re``, which can backtrack for a long time."""
     return {'patternProperties', 'unevaluatedProperties'} <= schema_keys(
-        schema
+        schema.model_dump(mode='json', by_alias=True, exclude_none=True)
     )
 
 
