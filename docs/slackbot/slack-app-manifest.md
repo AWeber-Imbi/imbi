@@ -37,6 +37,21 @@ The bot also needs `ANTHROPIC_API_KEY`, the shared `IMBI_AUTH_JWT_SECRET`, and
 - `commands` — the `/create-ticket` slash command. It opens the New ticket
   dialog of the UI as a modal and creates the ticket as the Slack user who
   ran it. The text after the command fills in the description.
+- `links:read`, `links:write` — receive `link_shared` for Imbi ticket and
+  project URLs and add a preview card (`chat.unfurl`). The bot reads each
+  item as the Slack user who posted the link.
+- `mpim:read` — `conversations.info` for group DMs, so link previews work
+  there. The bot checks every channel and makes no preview in a Slack
+  Connect channel.
+
+## Link previews
+
+Set `features.unfurl_domains` to the host of `IMBI_UI_URL` for the install
+(`imbi.aweber.io` in production). Slack does not accept an Okteto dev host,
+so a dev Slack app cannot show link previews. See
+[Link previews](index.md#link-previews) for when the bot makes a card.
+
+A new scope needs a reinstall of the app.
 
 ## Home tab
 
@@ -64,6 +79,8 @@ features:
   bot_user:
     display_name: imbi
     always_online: true
+  unfurl_domains:
+    - imbi.aweber.io
   slash_commands:
     - command: /create-ticket
       description: Create an Imbi ticket
@@ -87,11 +104,15 @@ oauth_config:
       - groups:read
       - im:write
       - commands
+      - links:read
+      - links:write
+      - mpim:read
 settings:
   event_subscriptions:
     bot_events:
       - app_mention
       - app_home_opened
+      - link_shared
       - message.im
   interactivity:
     is_enabled: true

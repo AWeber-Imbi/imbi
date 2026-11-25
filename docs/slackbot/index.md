@@ -74,6 +74,19 @@ you why. When someone can still answer (for example, you do not have
 in the UI first, or the ticket closed), the form closes and shows the
 reason. A form stays open for 7 days.
 
+## Link previews
+
+When you post a link to an Imbi ticket
+(`/tickets/{org}/{short_id}`) or project (`/projects/{id}`), the bot adds a
+preview card. A ticket card shows the title, status, priority, type,
+assignee, and team. A project card shows the name, the first line of the
+description, the team, the project types, and the environments.
+
+The bot reads the item as you, so the card shows only what you can read.
+Everyone in the channel sees the card. The bot makes no card in a Slack
+Connect channel, or when you have no Imbi account or cannot read the item.
+See [Slack App Setup](slack-app-manifest.md#link-previews) for the setup.
+
 ## Home tab
 
 Open the Imbi app in Slack and select **Home**. The tab shows what waits on
