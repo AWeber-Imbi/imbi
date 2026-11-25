@@ -5348,7 +5348,8 @@ export interface paths {
          *     outcome that does not release them. ``count`` is the number of
          *     items. Without ``lists`` (the navigation badge, which polls), only
          *     ``count`` is sent and the lists are empty. A caller that is not a
-         *     person has none.
+         *     person has none. A request has ``agent_slug`` and ``agent_name``
+         *     of the agent that opened it, or ``None`` when no agent opened it.
          *
          *     Raises:
          *         403: The caller is not a member of the org.
@@ -23559,6 +23560,10 @@ export interface components {
             short_id: string;
             /** Ticket Title */
             ticket_title: string;
+            /** Agent Slug */
+            agent_slug?: string | null;
+            /** Agent Name */
+            agent_name?: string | null;
         };
         /**
          * WaitingTicket

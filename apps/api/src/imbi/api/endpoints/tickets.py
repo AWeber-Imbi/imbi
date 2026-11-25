@@ -575,6 +575,9 @@ class WaitingRequest(pydantic.BaseModel):
     #: The ticket of the request.
     short_id: str
     ticket_title: str
+    #: The agent that opened the request. ``None``: not an agent.
+    agent_slug: str | None = None
+    agent_name: str | None = None
 
 
 class WaitingTicket(pydantic.BaseModel):
@@ -887,6 +890,11 @@ _AGENT_QUERY: typing.LiteralString = """
 MATCH (a:Agent {{slug: {slug}}})
       -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
 RETURN a
+"""
+
+_AGENTS_BY_ID_QUERY: typing.LiteralString = """
+MATCH (a:Agent) WHERE a.id IN {ids}
+RETURN a.id AS id, a.slug AS slug, a.name AS name
 """
 
 _AGENT_BY_ID_QUERY: typing.LiteralString = """
@@ -2185,6 +2193,7 @@ async def _text_matches(
 async def count_waiting_agent_tasks(
     org_id: OrgId,
     store: tickets.Store,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('ticket:read')),
@@ -2203,7 +2212,8 @@ async def count_waiting_agent_tasks(
     outcome that does not release them. ``count`` is the number of
     items. Without ``lists`` (the navigation badge, which polls), only
     ``count`` is sent and the lists are empty. A caller that is not a
-    person has none.
+    person has none. A request has ``agent_slug`` and ``agent_name``
+    of the agent that opened it, or ``None`` when no agent opened it.
 
     Raises:
         403: The caller is not a member of the org.
@@ -2212,7 +2222,19 @@ async def count_waiting_agent_tasks(
     """
     if auth.user is None:
         return {'count': 0}
-    return await store.waiting(org_id, auth.user.email, lists=lists)
+    found = await store.waiting(org_id, auth.user.email, lists=lists)
+    requests = found.get('requests', [])
+    ids = list({r['request_agent_id'] for r in requests} - {None})
+    if ids:
+        records = await db.execute(
+            _AGENTS_BY_ID_QUERY, {'ids': ids}, ['id', 'slug', 'name']
+        )
+        agents = {graph.parse_agtype(r['id']): r for r in records}
+        for request in requests:
+            if agent := agents.get(request['request_agent_id']):
+                request['agent_slug'] = graph.parse_agtype(agent['slug'])
+                request['agent_name'] = graph.parse_agtype(agent['name'])
+    return found
 
 
 #: The CMS reference of the ticket subject prompt.
