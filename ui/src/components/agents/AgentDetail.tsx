@@ -58,6 +58,7 @@ import {
 } from './taskEvents'
 import { useTickets } from './taskQueries'
 import { UsageBars } from './UsageBars'
+import { useNow } from './useNow'
 
 // The design's runs line: the Dusk label swatch.
 const RUNS_COLOR = 'var(--color-entity-project)'
@@ -67,10 +68,10 @@ const RUNS_COLOR = 'var(--color-entity-project)'
 const HISTORY_LIMIT = 100
 
 /** From the run start to the close, or to now while the ticket is open. */
-const runDuration = (t: TicketListItem) =>
+const runDuration = (t: TicketListItem, now: number) =>
   t.run_started_at
     ? formatElapsed(
-        (t.closed_at ? Date.parse(t.closed_at) : Date.now()) -
+        (t.closed_at ? Date.parse(t.closed_at) : now) -
           Date.parse(t.run_started_at),
       )
     : '—'
@@ -350,6 +351,7 @@ function HistoryCard({ agent }: { agent: Agent }) {
   const params = { agent_id: [agent.id], limit: HISTORY_LIMIT }
   const tickets = useTickets(orgSlug, params)
   const rows = tickets.data ?? []
+  const now = useNow(rows.some((t) => t.run_started_at && !t.closed_at))
   const message = tickets.isLoading
     ? 'Loading…'
     : tickets.isError
@@ -391,7 +393,7 @@ function HistoryCard({ agent }: { agent: Agent }) {
                   <Badge variant={statusVariant(t)}>{statusLabel(t)}</Badge>
                 </TableCell>
                 <TableCell className="text-right font-mono tabular-nums">
-                  {runDuration(t)}
+                  {runDuration(t, now)}
                 </TableCell>
                 <TableCell className="text-right font-mono tabular-nums">
                   {formatCost(Number(t.cost_total))}
