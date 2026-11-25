@@ -228,10 +228,8 @@ def pattern_error(pattern: str) -> str | None:
     return None
 
 
-def unevaluated_re(schema: Schema) -> bool:
-    """Return ``True`` when ``schema`` uses ``unevaluatedProperties``
-    and ``patternProperties``. jsonschema then matches keys with Python
-    ``re``, which can backtrack for a long time."""
+def schema_keys(schema: Schema) -> set[str]:
+    """Return every key in ``schema`` and its subschemas."""
     keys: set[str] = set()
     stack: list[object] = [
         schema.model_dump(mode='json', by_alias=True, exclude_none=True)
@@ -243,7 +241,16 @@ def unevaluated_re(schema: Schema) -> bool:
             stack.extend(typing.cast(dict[str, object], node).values())
         elif isinstance(node, list):
             stack.extend(typing.cast(list[object], node))
-    return {'patternProperties', 'unevaluatedProperties'} <= keys
+    return keys
+
+
+def unevaluated_re(schema: Schema) -> bool:
+    """Return ``True`` when ``schema`` uses ``unevaluatedProperties``
+    and ``patternProperties``. jsonschema then matches keys with Python
+    ``re``, which can backtrack for a long time."""
+    return {'patternProperties', 'unevaluatedProperties'} <= schema_keys(
+        schema
+    )
 
 
 def check_patterns(schema: Schema) -> Schema:

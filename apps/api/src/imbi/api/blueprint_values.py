@@ -139,10 +139,22 @@ def _schema_errors(
                 mode='json', by_alias=True, exclude_none=True
             ),
         )
-        cls = _linear(
-            jsonschema.validators.validator_for(schema),
-            models.unevaluated_re(owners[name].json_schema),
-        )
+        owner = owners[name].json_schema
+        if 'unevaluatedProperties' in models.schema_keys(
+            (owner.properties or {})[name]
+        ) and 'patternProperties' in models.schema_keys(owner):
+            # Fail closed: the check of this pair uses Python re.
+            errors.append(
+                {
+                    'field': name,
+                    'message': (
+                        'The blueprint uses unevaluatedProperties with '
+                        'patternProperties; an administrator must correct it'
+                    ),
+                }
+            )
+            continue
+        cls = _linear(jsonschema.validators.validator_for(schema))
         cls.check_schema(schema)
         # descend() keeps the resolver of the root schema and enters
         # the $id scope of the field, if the field has one.
@@ -276,26 +288,20 @@ def _additional_properties(
         )
 
 
-def _skip(*_args: object) -> collections.abc.Iterator[typing.Never]:
-    yield from ()
-
-
 @functools.cache
-def _linear(cls: typing.Any, skip_unevaluated: bool) -> typing.Any:
+def _linear(cls: typing.Any) -> typing.Any:
     """Return the validator class ``cls`` with the keywords that match
     a pattern on the linear-time engine (:func:`_matches`).
 
     ``unevaluatedProperties`` matches the keys of ``patternProperties``
-    with Python ``re``. A blueprint cannot save that pair any more
-    (:func:`models.unevaluated_re`); for a stored one it is skipped.
+    with Python ``re``. A blueprint cannot save that pair, and
+    :func:`_schema_errors` refuses a value for a stored one.
     """
     keywords: dict[str, typing.Any] = {
         'additionalProperties': _additional_properties,
         'pattern': _pattern,
         'patternProperties': _pattern_properties,
     }
-    if skip_unevaluated:
-        keywords['unevaluatedProperties'] = _skip
     return jsonschema.validators.extend(  # type: ignore[no-untyped-call]  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
         cls, keywords
     )

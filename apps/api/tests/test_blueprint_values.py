@@ -336,12 +336,15 @@ class ValueCheckTests(unittest.TestCase):
             values,
         )
 
-    def test_stored_unevaluated_is_skipped(self) -> None:
-        values = {'loose': {'a' * 40000 + '!': 1}}
-        self.assertEqual(
-            blueprint_values.validate(self.matches, values, partial=True),
-            values,
-        )
+    def test_stored_unevaluated_fails_closed(self) -> None:
+        with self.assertRaises(fastapi.HTTPException) as ctx:
+            blueprint_values.validate(
+                self.matches,
+                {'loose': {'a' * 40000 + '!': 1}},
+                partial=True,
+            )
+        detail = typing.cast(dict[str, typing.Any], ctx.exception.detail)
+        self.assertIn('unevaluatedProperties', detail['invalid'][0]['message'])
 
     def test_invalid_values(self) -> None:
         for field, bad in (

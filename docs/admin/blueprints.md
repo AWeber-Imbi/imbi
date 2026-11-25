@@ -89,7 +89,9 @@ or backreferences (`\1`). Imbi refuses to save a blueprint with a
 `pattern` deeper in an object schema that the engine cannot use is
 not checked. The keys of `patternProperties` use the same engine.
 Imbi refuses a schema that uses `unevaluatedProperties` together with
-`patternProperties`, because that check uses the Python engine.
+`patternProperties`, because that check uses the Python engine. A
+value for a field of a stored blueprint with that pair is refused until
+an administrator corrects the blueprint.
 
 A list of UUIDs:
 
