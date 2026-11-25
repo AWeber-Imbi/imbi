@@ -1768,28 +1768,18 @@ class TaskRun:
                     await asyncio.wait({setup})
             if setup.cancelled():
                 return
-            server = setup.result()
-            if server is None:
-                continue
-            LOGGER.info(
-                'Relaying %d tools of %s', len(server.tools), server.name
-            )
-            self.plugin_relays.append(server)
-            self.recorder.writes |= server.writes()
-            self.recorder.audit = self.take_audit
+            setup.result()
 
-    async def _plugin_relay(
-        self, relayed: _Relayed
-    ) -> plugin_relay.Server | None:
+    async def _plugin_relay(self, relayed: _Relayed) -> None:
         what = relayed.describe()
         if found := plugin_relay.problem(
             relayed.config, relayed.setting.get('origin')
         ):
             self.recorder.notice(f'{what} is not available: {found}.')
-            return None
+            return
         secrets = await self._header_secrets(relayed)
         if secrets is None:
-            return None
+            return
         server = plugin_relay.Server(
             relayed.plugin,
             relayed.server,
@@ -1809,14 +1799,17 @@ class TaskRun:
                 f'{what} is not available: the runner could not open a '
                 f'session or list its tools ({safeguards.reason(error)}).'
             )
-            return None
+            return
         finally:
             if not started:
                 await server.close()
                 for secret in secrets.values():
                     secret.stop()
         self.header_secrets.extend(set(secrets.values()))
-        return server
+        self.plugin_relays.append(server)
+        self.recorder.writes |= server.writes()
+        self.recorder.audit = self.take_audit
+        LOGGER.info('Relaying %d tools of %s', len(server.tools), server.name)
 
     async def _header_secrets(
         self, relayed: _Relayed

@@ -4082,3 +4082,24 @@ class PluginRelayTestCase(TaskTestCase):
         close.assert_awaited_once()
         self.assertEqual(subject.plugin_relays, [])
         self.assertEqual(renewals(), [])
+
+    async def test_a_cancel_after_a_relay_starts_keeps_it_to_close(
+        self,
+    ) -> None:
+        self.call.return_value = self.expiring('logs-secret-value')
+        subject = self.load()
+        starting: asyncio.Task[None] | None = None
+
+        async def started(_server: task.plugin_relay.Server) -> list[str]:
+            assert starting is not None
+            starting.cancel()
+            return []
+
+        with mock.patch.object(
+            task.plugin_relay.Server, 'start', autospec=True
+        ) as start:
+            start.side_effect = started
+            starting = asyncio.create_task(subject.start_plugin_relays())
+            with self.assertRaises(asyncio.CancelledError):
+                await starting
+        self.assertEqual(len(subject.plugin_relays), 1)
