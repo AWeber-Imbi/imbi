@@ -38,6 +38,7 @@ MaintenanceSlug = typing.Literal[
     'marketplace-sync',
     'cve-sync',
     'ai-model-calls-prune',
+    'plugin-step-calls-prune',
 ]
 
 
@@ -346,6 +347,18 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             pause_key=None,
             enumerate=operations.enumerate_ai_model_calls_prune,
             execute=operations.execute_ai_model_calls_prune,
+            items_are_projects=False,
+        ),
+        OperationDefinition(
+            slug='plugin-step-calls-prune',
+            label='Prune Plugin Step Calls',
+            description=(
+                'Delete the records of plugin workflow step calls older '
+                'than 90 days. The scheduler runs this daily at 02:45 UTC.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_ai_model_calls_prune,
+            execute=operations.execute_plugin_step_calls_prune,
             items_are_projects=False,
         ),
     )

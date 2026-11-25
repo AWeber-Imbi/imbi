@@ -47,7 +47,7 @@ from imbi.common.auth import encryption
 from imbi.common.llm import drivers, typesafe
 from imbi.common.plugins import base
 from imbi.common.workflows import graph as wf
-from imbi.common.workflows import script_runner
+from imbi.common.workflows import registry, script_runner, step_type
 from imbi.common.workflows.registry import (
     agent,
     assign_ticket,
@@ -95,6 +95,8 @@ LLM_CALL_TIMEOUT = 190.0
 #: Seconds before the engine asks again for the answer of an LLM Call
 #: step that imbi-api still runs.
 LLM_CALL_POLL_SECONDS = 15
+#: The longest call of a plugin step that imbi-api makes (ADR 0032).
+PLUGIN_STEP_TIMEOUT = 60.0
 
 
 class StepError(Exception):
@@ -366,6 +368,9 @@ class Executors:
             case 'search_logs':
                 return await self._search_logs(call)
             case other:
+                step = registry.get(other)
+                if step is not None and step.plugin:
+                    return await self._plugin_step(call, step)
                 raise StepError(f'unknown_type:{other}', retry=False)
 
     def _wait(self, call: Call) -> Outcome:
@@ -684,6 +689,83 @@ class Executors:
                 {**answer, 'prompt_version': answer['n']}
             ).model_dump(mode='json')
         )
+
+    async def _plugin_step(
+        self, call: Call, step: step_type.StepType
+    ) -> Outcome:
+        """Ask imbi-api to run one call of a plugin step (ADR 0032).
+
+        Each call has its own key ``<run_id>:<node_id>:<attempt>:<poll>``.
+        A step that acts and cannot tell whether it acted sends the key
+        of the attempt that timed out again, so imbi-api gives the
+        outcome of that call instead of a second call.
+        """
+        params = _params(step.params, call).model_dump(mode='json')
+        integration = str(params.pop('integration'))
+        project_id = params.pop('project_id', None)
+        _check('integration', integration, _ID)
+        _check('project_id', project_id, _ID)
+        org = await self.org_slug(call.organization_id)
+        attempt = (
+            call.state.get('key_attempt', call.attempt)
+            if step.side_effect and not step.idempotent
+            else call.attempt
+        )
+        poll = int(call.state.get('poll', 0))
+        key = f'{call.run_id}:{call.node.id}:{attempt}:{poll}'
+        limit = min(PLUGIN_STEP_TIMEOUT, (call.time_limit or math.inf) * 0.9)
+        try:
+            found = await self.api.request(
+                'POST',
+                _path(
+                    'organizations',
+                    org,
+                    'integrations',
+                    integration,
+                    'workflow-steps',
+                    step.type.partition('.')[2],
+                    'run',
+                ),
+                json={
+                    'params': params,
+                    'project_id': project_id,
+                    'call': base.StepCall(
+                        run_id=str(call.run_id),
+                        workflow_slug=call.workflow_slug,
+                        node_id=call.node.id,
+                        attempt=call.attempt,
+                        idempotency_key=key,
+                        state=call.state.get('poll_state', {}),
+                        project_id=project_id,
+                    ).model_dump(mode='json'),
+                    'time_limit_seconds': limit,
+                },
+                headers={'Idempotency-Key': key},
+            )
+        except StepError as e:
+            if e.code != 'call_in_progress':
+                raise
+            # imbi-api still runs the call with this key: ask again.
+            return Outcome(
+                resume_at=_now()
+                + datetime.timedelta(seconds=LLM_CALL_POLL_SECONDS),
+                state=call.state,
+            )
+        result = base.StepResult.model_validate(found)
+        if result.poll:
+            return Outcome(
+                resume_at=_now()
+                + datetime.timedelta(seconds=step.poll_seconds or 60),
+                state={
+                    **call.state,
+                    'poll': poll + 1,
+                    'poll_state': result.state,
+                },
+            )
+        ports = step.ports or ('',)
+        if result.port not in ports:
+            raise StepError('plugin_result_invalid', retry=False)
+        return Outcome(output=result.output, port=ports.index(result.port))
 
     async def _search_logs(self, call: Call) -> Outcome:
         params = _params(search_logs.Params, call)

@@ -31,6 +31,10 @@ from imbi.common.workflows import graph as wf
 from imbi.common.workflows import history, script_runner
 from imbi.common.workflows.registry import search_logs
 from imbi.workflows import app, engine, executors, settings, store
+from libraries.common.tests.test_plugins import test_registry as registry_tests
+from libraries.common.tests.test_plugins import (
+    test_workflow_steps as step_tests,
+)
 
 CLOSED = {'succeeded', 'failed', 'cancelled', 'timed_out'}
 #: The commit that the fake imbi-api resolves every version to.
@@ -105,6 +109,10 @@ class FakeApi:
             ]
             | None
         ) = None
+        #: Takes the plugin step run calls when set.
+        self.plugin_step: (
+            abc.Callable[[httpx.Request], abc.Awaitable[httpx.Response]] | None
+        ) = None
 
     def _once(
         self, request: httpx.Request, act: typing.Callable[[], dict]
@@ -147,6 +155,18 @@ class FakeApi:
             return httpx.Response(200, json=self.draft)
         return None
 
+    def _hook(
+        self, path: str
+    ) -> abc.Callable[[httpx.Request], typing.Any] | None:
+        """The test handler that takes ``path``, if set."""
+        if '/agent-task' in path:
+            return self.agent
+        if path.endswith('/prompts/run'):
+            return self.llm_call
+        if '/workflow-steps/' in path:
+            return self.plugin_step
+        return None
+
     def handle(
         self, request: httpx.Request
     ) -> httpx.Response | abc.Awaitable[httpx.Response]:
@@ -162,10 +182,9 @@ class FakeApi:
         self.paths.append(request.url.raw_path.decode())
         self.requests.append((request.method, self.paths[-1]))
         path = request.url.path
-        if '/agent-task' in path and self.agent is not None:
-            return self.agent(request)
-        if path.endswith('/prompts/run') and self.llm_call is not None:
-            return self.llm_call(request)
+        hook = self._hook(path)
+        if hook is not None:
+            return hook(request)
         if path.endswith(('/email', '/failure-notice')):
             return self._once(request, lambda: self._email(request))
         if path.endswith('/slack'):
@@ -3362,6 +3381,218 @@ class LLMCallStepTestCase(EngineTestCase):
         self.assertEqual(len(self.calls), 1)
 
 
+class PluginStepTestCase(EngineTestCase):
+    """Plugin steps (ADR 0032), with a fake ``POST .../run``."""
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        step_tests._load()
+        self.addCleanup(registry_tests._reset_registry)
+        #: The requests to the run endpoint.
+        self.calls: list[httpx.Request] = []
+        #: The answers, in order; the last one repeats.
+        self.answers: list[httpx.Response] = []
+        #: Seconds each answer takes.
+        self.delay = 0.0
+
+        async def run(request: httpx.Request) -> httpx.Response:
+            self.calls.append(request)
+            await asyncio.sleep(self.delay)
+            return self.answers[min(len(self.calls), len(self.answers)) - 1]
+
+        self.api.plugin_step = run
+
+    @staticmethod
+    def _result(**result: typing.Any) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={'output': None, 'port': '', 'poll': False, 'state': {}}
+            | result,
+        )
+
+    async def _gate(
+        self, timeout_seconds: int | None = None, retries: int | None = None
+    ) -> uuid.UUID:
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'manual'),
+                {
+                    **_node(
+                        'gate',
+                        'stepper.metric_threshold',
+                        {
+                            'integration': 'grafana-prod',
+                            'project_id': 'proj-1',
+                            'query': 'up',
+                            'below': 2,
+                        },
+                    ),
+                    'timeout_seconds': timeout_seconds,
+                    'retries': retries,
+                },
+                _node('passed', 'wait', {'duration': '1s'}),
+                _node('failed', 'wait', {'duration': '1s'}),
+            ],
+            [
+                _edge('start', 'gate'),
+                _edge('gate', 'passed', 0),
+                _edge('gate', 'failed', 1),
+            ],
+        )
+        return await self._start(workflow_id)
+
+    async def test_action(self) -> None:
+        self.answers = [self._result(output={'value': 2.5})]
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'manual'),
+                _node(
+                    'gather',
+                    'stepper.gather_metrics',
+                    {
+                        'integration': 'grafana-prod',
+                        'datasource': 'prom',
+                        'query': '{{ trigger.query }}',
+                    },
+                ),
+            ],
+            [_edge('start', 'gather')],
+        )
+        run_id = await self._start(workflow_id, {'query': 'up'})
+        run = await self._drive(run_id)
+        self.assertEqual(run['status'], 'succeeded', run)
+        self.assertEqual(run['steps']['gather']['output'], {'value': 2.5})
+        request = self.calls[0]
+        self.assertEqual(
+            request.url.path,
+            f'/organizations/{self.org}/integrations/grafana-prod'
+            '/workflow-steps/gather_metrics/run',
+        )
+        self.assertEqual(
+            request.headers['Idempotency-Key'], f'{run_id}:gather:1:0'
+        )
+        body = json.loads(request.content)
+        self.assertEqual(body['params'], {'datasource': 'prom', 'query': 'up'})
+        self.assertIsNone(body['project_id'])
+        self.assertEqual(
+            body['call']['idempotency_key'], f'{run_id}:gather:1:0'
+        )
+        self.assertLessEqual(body['time_limit_seconds'], 60)
+
+    async def test_gate_takes_the_named_port(self) -> None:
+        self.answers = [self._result(output={'value': 3}, port='Failed')]
+        run = await self._drive(await self._gate())
+        self.assertEqual(run['status'], 'succeeded', run)
+        self.assertEqual(run['steps']['gate']['port'], 1)
+        self.assertEqual(run['steps']['failed']['status'], 'succeeded')
+        self.assertEqual(run['steps']['passed']['status'], 'skipped')
+        body = json.loads(self.calls[0].content)
+        self.assertEqual(body['project_id'], 'proj-1')
+        self.assertEqual(body['call']['project_id'], 'proj-1')
+
+    async def test_unknown_port_fails(self) -> None:
+        self.answers = [self._result(output={'value': 3}, port='Maybe')]
+        run = await self._drive(await self._gate())
+        self.assertEqual(
+            run['steps']['gate']['error'], 'plugin_result_invalid'
+        )
+        self.assertEqual(run['steps']['gate']['port'], 1)
+
+    async def test_poll_until_a_port(self) -> None:
+        self.answers = [
+            self._result(poll=True, state={'n': 1}),
+            self._result(output={'value': 1}, port='Pass'),
+        ]
+        run_id = await self._gate()
+        await self._drive(run_id, lambda r: len(self.calls) == 1)
+        run = await self._run(run_id)
+        self.assertEqual(run['steps']['gate']['status'], 'running')
+        self.assertEqual(
+            run['steps']['gate']['state'],
+            {'poll': 1, 'poll_state': {'n': 1}},
+        )
+        async with self.pool.connection() as conn:
+            cur = await conn.execute(
+                'SELECT due_at - NOW() FROM workflow_runtime.runs'
+                ' WHERE id = %s',
+                (run_id,),
+            )
+            row = await cur.fetchone()
+            assert row is not None
+            # poll_seconds of the fixture step.
+            self.assertGreater(row[0], datetime.timedelta(seconds=50))
+            await conn.execute(
+                'UPDATE workflow_runtime.runs SET due_at = NOW()'
+                ' WHERE id = %s',
+                (run_id,),
+            )
+        run = await self._drive(run_id)
+        self.assertEqual(run['status'], 'succeeded', run)
+        self.assertEqual(run['steps']['gate']['port'], 0)
+        self.assertEqual(
+            self.calls[1].headers['Idempotency-Key'], f'{run_id}:gate:1:1'
+        )
+        self.assertEqual(
+            json.loads(self.calls[1].content)['call']['state'], {'n': 1}
+        )
+
+    async def test_timeout_takes_the_failed_port(self) -> None:
+        self.delay = 5
+        self.answers = [self._result(output={'value': 1}, port='Pass')]
+        run = await self._drive(await self._gate(timeout_seconds=1))
+        self.assertEqual(run['status'], 'succeeded', run)
+        self.assertEqual(run['steps']['gate']['status'], 'failed')
+        self.assertEqual(run['steps']['gate']['error'], 'timeout')
+        self.assertEqual(run['steps']['gate']['port'], 1)
+        self.assertEqual(run['steps']['failed']['status'], 'succeeded')
+
+    async def test_server_error_is_retried(self) -> None:
+        self.answers = [
+            httpx.Response(
+                502, json={'detail': {'error': 'plugin_error', 'retry': True}}
+            ),
+            self._result(output={'value': 1}, port='Pass'),
+        ]
+        run_id = await self._gate(retries=1)
+        with mock.patch.object(engine, 'RETRY_BACKOFF', 0):
+            run = await self._drive(run_id)
+        self.assertEqual(run['status'], 'succeeded', run)
+        self.assertEqual(run['steps']['gate']['attempt'], 2)
+        self.assertEqual(run['steps']['gate']['port'], 0)
+        self.assertEqual(
+            [c.headers['Idempotency-Key'] for c in self.calls],
+            [f'{run_id}:gate:1:0', f'{run_id}:gate:2:0'],
+        )
+
+    async def test_client_error_fails(self) -> None:
+        self.answers = [httpx.Response(404, json={'detail': 'not found'})]
+        run = await self._drive(await self._gate())
+        self.assertEqual(run['steps']['gate']['error'], 'http_404')
+        self.assertEqual(len(self.calls), 1)
+
+    async def test_call_in_progress_asks_again_with_the_key(self) -> None:
+        self.answers = [
+            httpx.Response(
+                409,
+                json={'detail': {'error': 'call_in_progress', 'retry': True}},
+            ),
+        ]
+        run_id = await self._gate()
+        await self._drive(run_id, lambda r: len(self.calls) == 1)
+        run = await self._run(run_id)
+        self.assertEqual(run['steps']['gate']['status'], 'running')
+        self.assertEqual(run['steps']['gate']['attempt'], 1)
+        self.assertEqual(run['steps']['gate']['state'], {})
+
+    async def test_removed_plugin_fails_the_run(self) -> None:
+        run_id = await self._gate()
+        registry_tests._reset_registry()
+        run = await self._drive(run_id)
+        self.assertEqual(run['status'], 'failed')
+        self.assertEqual(run['error'], 'unknown_type:stepper.metric_threshold')
+        self.assertEqual(self.calls, [])
+
+
 class AppTestCase(unittest.IsolatedAsyncioTestCase):
     def test_sentry_is_initialised_first(self) -> None:
         with mock.patch.object(app.lifespan, 'Lifespan') as composed:
@@ -3380,6 +3611,7 @@ class AppTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_engine_lifespan_starts_and_stops(self) -> None:
         real_store = store.Store
         with (
+            mock.patch.object(app.plugin_registry, 'load_plugins') as load,
             mock.patch.dict(
                 'os.environ', {'IMBI_WORKFLOWS_POLL_INTERVAL': '0.1'}
             ),
@@ -3396,6 +3628,7 @@ class AppTestCase(unittest.IsolatedAsyncioTestCase):
             async with app.engine_lifespan() as runner:
                 await asyncio.sleep(0.3)
                 self.assertIsInstance(runner, engine.Engine)
+        load.assert_called_once_with()
 
 
 class ApiErrorTestCase(unittest.IsolatedAsyncioTestCase):

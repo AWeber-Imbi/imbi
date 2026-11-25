@@ -19,6 +19,7 @@ import typer
 import imbi.workflows
 from imbi.common import graph, iggy, lifespan, posthog, sentry, server
 from imbi.common import settings as common_settings
+from imbi.common.plugins import registry as plugin_registry
 from imbi.common.prompts import pool as prompt_pool
 from imbi.common.workflows import script_runner
 from imbi.workflows import bindings, engine, executors, settings, store
@@ -38,6 +39,9 @@ async def engine_lifespan() -> abc.AsyncGenerator[engine.Engine]:
     reads and writes them.
     """
     config = settings.Workflows()
+    # The step types of plugins (ADR 0032). The catalog only: imbi-api
+    # holds the Integration credentials and runs the steps.
+    plugin_registry.load_plugins()
     db = graph.Graph()
     await db.open()
     postgres = common_settings.Postgres()

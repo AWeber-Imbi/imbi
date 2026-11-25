@@ -65,6 +65,20 @@ SYSTEM_TASKS: tuple[dict[str, typing.Any], ...] = (
             'path': '/maintenance/operations/ai-model-calls-prune/run',
         },
     },
+    {
+        'slug': 'plugin-step-calls-prune',
+        'name': 'Prune plugin step calls',
+        'description': (
+            'Starts the plugin-step-calls-prune maintenance operation, '
+            'which deletes the plugin step call records older than 90 days.'
+        ),
+        'trigger': {'kind': 'cron', 'expression': '45 2 * * *'},
+        'target': {
+            'kind': 'api',
+            'method': 'POST',
+            'path': '/maintenance/operations/plugin-step-calls-prune/run',
+        },
+    },
 )
 
 

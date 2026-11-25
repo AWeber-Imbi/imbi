@@ -285,6 +285,7 @@ REFUSED_ROUTES: frozenset[str] = frozenset(
         'PATCH /organizations/{org_slug}/integrations/{slug}',
         'PATCH /organizations/{org_slug}/webhooks/{webhook}',
         'POST /organizations/{org_slug}/integrations/',
+        'POST /organizations/{org_slug}/integrations/{integration_slug}/workflow-steps/{step_name}/run',
         'POST /organizations/{org_slug}/projects/{project_id}/configuration/history:fetch',
         'POST /organizations/{org_slug}/projects/{project_id}/configuration/values:fetch',
         'POST /organizations/{org_slug}/projects/{project_id}/configuration/versions:restore',
