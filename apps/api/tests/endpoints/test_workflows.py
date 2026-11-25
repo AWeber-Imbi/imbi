@@ -292,6 +292,47 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
         response = await self._create(owner_team_slug='nope')
         self.assertEqual(response.status_code, 422)
 
+    async def test_owner_team_name_and_tags(self) -> None:
+        tag_id = f'tag-{uuid.uuid4().hex[:8]}'
+        await self.graph.execute(
+            """
+            MATCH (o:Organization {{id: {org}}})
+            CREATE (t:Tag {{id: {id}, slug: 'ops', name: 'Ops',
+                            color: '#3B82F6'}})
+            CREATE (t)-[:BELONGS_TO]->(o)
+            RETURN t.id AS id
+            """,
+            {'org': self.org, 'id': tag_id},
+            ['id'],
+        )
+        self.addAsyncCleanup(
+            self.graph.execute,
+            'MATCH (t:Tag {{id: {id}}}) DETACH DELETE t RETURN 1 AS ok',
+            {'id': tag_id},
+            ['ok'],
+        )
+
+        response = await self._create(tags=['nope'])
+        self.assertEqual(response.status_code, 422, response.text)
+
+        response = await self._create(tags=['ops', 'ops'])
+        self.assertEqual(response.status_code, 201, response.text)
+        body = response.json()
+        self.assertEqual(body['owner_team_name'], 'Ops')
+        self.assertEqual(
+            body['tags'], [{'name': 'Ops', 'slug': 'ops', 'color': '#3B82F6'}]
+        )
+
+        response = await self.client.get(self.base + '/')
+        self.assertEqual(response.json()[0]['tags'][0]['slug'], 'ops')
+        self.assertEqual(response.json()[0]['owner_team_name'], 'Ops')
+
+        response = await self.client.put(
+            f'{self.base}/deploy-guard',
+            json={'name': 'Deploy guard', 'owner_team_slug': self.team},
+        )
+        self.assertEqual(response.json()['tags'], [])
+
     async def test_validate(self) -> None:
         graph_body = {
             'nodes': [

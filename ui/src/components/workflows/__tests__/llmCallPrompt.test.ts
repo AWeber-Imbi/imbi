@@ -10,7 +10,7 @@ import {
   saveWorkflow,
   type StepPrompt,
 } from '../llmCallPrompt'
-import type { Workflow, WorkflowWrite } from '../types'
+import type { Workflow, WorkflowDraft } from '../types'
 import { node, workflow } from './fixtures'
 
 // fallow-ignore-next-line unresolved-import
@@ -63,7 +63,7 @@ const COPY_BODY = {
   summary: 'Saved from the workflow editor.',
 }
 
-function draft(params: Record<string, unknown> = {}): WorkflowWrite {
+function draft(params: Record<string, unknown> = {}): WorkflowDraft {
   return {
     description: '',
     graph: {
@@ -81,6 +81,7 @@ function draft(params: Record<string, unknown> = {}): WorkflowWrite {
     name: 'Deploy guard',
     owner_team_slug: 'platform',
     settings: workflow().version.settings,
+    tags: [],
   }
 }
 

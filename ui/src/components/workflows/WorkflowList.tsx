@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 
 import { startWorkflowRun } from '@/api/endpoints'
 import { AdminSection } from '@/components/admin/AdminSection'
+import { AgentLabels } from '@/components/agents/AgentLabelChip'
 import { agentsPath } from '@/components/agents/agentsNav'
 import { AdminTable } from '@/components/ui/admin-table'
 import { RelativeTime } from '@/components/ui/RelativeTime'
@@ -131,7 +132,13 @@ export function WorkflowList({
     const q = search.trim().toLowerCase()
     if (!q) return workflows
     return workflows.filter((w) =>
-      [w.name, w.description, w.owner_team_slug]
+      [
+        w.name,
+        w.description,
+        w.owner_team_name,
+        w.owner_team_slug,
+        ...w.tags.map((t) => t.name),
+      ]
         .join(' ')
         .toLowerCase()
         .includes(q),
@@ -165,6 +172,18 @@ export function WorkflowList({
                 )}
               </div>
             ),
+          },
+          {
+            header: 'Owner team',
+            key: 'team',
+            render: (w) => (
+              <span className="text-sm">{w.owner_team_name ?? '—'}</span>
+            ),
+          },
+          {
+            header: 'Tags',
+            key: 'tags',
+            render: (w) => <AgentLabels tags={w.tags} />,
           },
           {
             header: 'Trigger',

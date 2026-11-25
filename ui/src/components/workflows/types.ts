@@ -41,6 +41,10 @@ export type TestRunResult = Schemas['TestRunResult']
 export type ValidationIssue = Schemas['ValidationIssue']
 export type ValidationResult = Schemas['ValidationResult']
 export type Workflow = Schemas['Workflow']
+/** The editor state: a save body with the tags as chips. */
+export type WorkflowDraft = Omit<WorkflowWrite, 'tags'> & {
+  tags: WorkflowTag[]
+}
 export type WorkflowEdge = Schemas['Edge']
 export type WorkflowGraph = Schemas['Graph']
 export type WorkflowNode = Schemas['Node']
@@ -48,6 +52,7 @@ export type WorkflowRun = Schemas['Run']
 export type WorkflowRunDetail = Schemas['RunDetail']
 export type WorkflowStatus = Schemas['WorkflowSummary']['status']
 export type WorkflowSummary = Schemas['WorkflowSummary']
+export type WorkflowTag = Schemas['WorkflowTag']
 export type WorkflowVersion = Schemas['WorkflowVersion']
 
 /** The body of a save; the editor always sends the graph and settings. */

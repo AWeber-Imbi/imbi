@@ -31,6 +31,8 @@ slug = "TEXT NOT NULL"
 name = "TEXT NOT NULL"
 description = "TEXT NOT NULL DEFAULT ''"
 owner_team_id = "TEXT NOT NULL"
+# The ids of the org tags (graph `Tag` nodes) that label the workflow.
+tag_ids = "TEXT[] NOT NULL DEFAULT '{}'"
 status = "TEXT NOT NULL DEFAULT 'draft'"
 latest_version = "INTEGER NOT NULL DEFAULT 1"
 active_version = "INTEGER"
