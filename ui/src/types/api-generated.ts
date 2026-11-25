@@ -6309,8 +6309,9 @@ export interface paths {
          *         409: A concurrent write took the version.
          *         422: An allowed marketplace is not registered, a default
          *             plugin is not in an allowed marketplace's catalog or has
-         *             ``server_settings``, or the model upstream URL is
-         *             ``http://`` without ``allow_insecure_http``.
+         *             ``server_settings`` (an MCP server turned off or given
+         *             secrets), or the model upstream URL is ``http://`` without
+         *             ``allow_insecure_http``.
          */
         put: operations["put_agent_platform_config_api_organizations__org_slug__agent_platform_config__put"];
         post?: never;
@@ -22442,7 +22443,15 @@ export interface components {
         };
         /**
          * ServerSetting
-         * @description An agent's setting for one MCP server of a plugin.
+         * @description An agent's setting for one MCP server of a plugin (ADR 0031).
+         *
+         *     ``secrets`` maps each header variable of the server to the
+         *     ``secret://`` reference that fills it. ``origin`` is the origin of
+         *     the server URL that the person saw when they picked the secrets,
+         *     such as ``https://api.example.com``. A server with ``secrets`` is
+         *     relayed by the runner, which sends the credentials only to
+         *     ``origin``. The write endpoint checks the secrets and the origin,
+         *     not a validator, so a stored version still loads.
          */
         ServerSetting: {
             /**
@@ -22450,6 +22459,15 @@ export interface components {
              * @default true
              */
             enabled: boolean;
+            /**
+             * Secrets
+             * @default {}
+             */
+            secrets: {
+                [key: string]: string;
+            };
+            /** Origin */
+            origin?: string | null;
         };
         /**
          * ServiceAccountCreate

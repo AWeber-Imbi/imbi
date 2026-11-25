@@ -16,15 +16,27 @@ from unittest import mock
 import httpx
 from psycopg.types import json as pg_json
 
-from apps.api.tests import secret_support
-from apps.api.tests import test_agent_platform as unit
+from apps.api.tests import marketplace_support, secret_support
 from apps.api.tests.endpoints import test_harness
 from imbi.api.endpoints import harness as harness_api
 from imbi.api.harness import marketplaces
+from imbi.common import models
 
 SHA_1 = '1' * 40
 SHA_2 = '2' * 40
 URL = 'https://github.com/anthropics/claude-code'
+TOKEN_HEADER = {'Authorization': 'Bearer ${TOKEN}'}
+#: The ``.mcp.json`` of the code-review plugin of the fixture.
+MCP_FILE = 'plugins/code-review/.mcp.json'
+OPS = {'type': 'http', 'url': 'https://ops.example.com/mcp'}
+OPS_SECRETS = {
+    'secrets': {'TOKEN': 'secret://ops/token#value'},
+    'origin': 'https://ops.example.com',
+}
+
+
+def mcp_json(**servers: dict[str, typing.Any]) -> dict[str, str]:
+    return {MCP_FILE: json.dumps({'mcpServers': servers})}
 
 
 class PlatformTestCase(test_harness.RunnerTestCase):
@@ -100,9 +112,12 @@ class PlatformTestCase(test_harness.RunnerTestCase):
         )
 
     async def add_marketplace(
-        self, sha: str = SHA_1, slug: str = 'claude-code'
+        self,
+        sha: str = SHA_1,
+        slug: str = 'claude-code',
+        files: dict[str, str] | None = None,
     ) -> dict[str, typing.Any]:
-        with self.head(sha):
+        with self.head(sha, files):
             response = await self.client.post(
                 self.org_url('agent-marketplaces/'),
                 json={'slug': slug, 'url': URL},
@@ -111,21 +126,25 @@ class PlatformTestCase(test_harness.RunnerTestCase):
         return response.json()
 
     @contextlib.contextmanager
-    def head(self, sha: str) -> collections.abc.Generator[None]:
-        """Make the sync read the saved marketplace at ``sha``, with no
-        plugin files."""
+    def head(
+        self, sha: str, files: dict[str, str] | None = None
+    ) -> collections.abc.Generator[None]:
+        """Make the sync read the saved marketplace at ``sha``, with the
+        plugin ``files`` only."""
         with (
             mock.patch.object(
                 marketplaces,
                 'fetch',
                 mock.AsyncMock(
                     return_value=marketplaces.Head(
-                        'main', sha, unit.FIXTURE.read_text()
+                        'main', sha, marketplace_support.FIXTURE.read_text()
                     )
                 ),
             ),
             mock.patch.object(
-                marketplaces, 'file_reader', return_value=unit.missing
+                marketplaces,
+                'file_reader',
+                return_value=marketplace_support.reader(files or {}),
             ),
         ):
             yield
@@ -211,20 +230,27 @@ class ConfigTests(PlatformTestCase):
         self.assertEqual(plugin['url'], URL)
         self.assertEqual(plugin['path'], 'plugins/code-review')
 
-    async def test_default_plugins_turn_off_no_servers(self) -> None:
+    async def test_default_plugins_have_no_server_settings(self) -> None:
         await self.add_marketplace()
-        response = await self.put_config(
-            allowed_marketplaces=['claude-code'],
-            default_plugins=[
-                {
-                    'marketplace': 'claude-code',
-                    'plugin': 'code-review',
-                    'server_settings': {'github': {'enabled': False}},
-                }
-            ],
-        )
-        self.assertEqual(response.status_code, 422, response.text)
-        self.assertIn('code-review@claude-code', response.text)
+        for setting in ({'enabled': False}, OPS_SECRETS):
+            with self.subTest(setting=setting):
+                response = await self.put_config(
+                    allowed_marketplaces=['claude-code'],
+                    default_plugins=[
+                        {
+                            'marketplace': 'claude-code',
+                            'plugin': 'code-review',
+                            'server_settings': {'ops': setting},
+                        }
+                    ],
+                )
+                self.assertEqual(response.status_code, 422, response.text)
+                self.assertEqual(
+                    response.json()['detail'],
+                    'Default plugins cannot turn off MCP servers or give '
+                    'them secrets; set them on each agent instead: '
+                    'code-review@claude-code',
+                )
 
 
 class MarketplaceTests(PlatformTestCase):
@@ -394,7 +420,15 @@ class AgentFieldTests(PlatformTestCase):
         (plugin,) = response.json()['settings']['plugins']
         self.assertEqual(
             (plugin['sha'], plugin['path'], plugin['server_settings']),
-            (SHA_1, 'plugins/code-review', entry['server_settings']),
+            (
+                SHA_1,
+                'plugins/code-review',
+                {
+                    'github': models.ServerSetting(enabled=False).model_dump(
+                        mode='json'
+                    )
+                },
+            ),
         )
         response = await self.client.put(
             self.org_url('agents/builder'),
@@ -402,6 +436,154 @@ class AgentFieldTests(PlatformTestCase):
         )
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()['version'], 1)
+
+    async def save_ops(
+        self, settings: dict[str, typing.Any], sha: str | None = SHA_1
+    ) -> httpx.Response:
+        return await self.client.put(
+            self.org_url('agents/builder'),
+            json={
+                'settings': {
+                    'plugins': [
+                        {
+                            'marketplace': 'claude-code',
+                            'plugin': 'code-review',
+                            'sha': sha,
+                            'server_settings': settings,
+                        }
+                    ]
+                }
+            },
+        )
+
+    async def test_mcp_server_secrets_are_saved(self) -> None:
+        await self.add_marketplace(
+            files=mcp_json(ops=OPS | {'headers': TOKEN_HEADER})
+        )
+        await self.put_config(allowed_marketplaces=['claude-code'])
+        response = await self.create_agent(
+            plugins=[
+                {
+                    'marketplace': 'claude-code',
+                    'plugin': 'code-review',
+                    'server_settings': {'ops': OPS_SECRETS},
+                }
+            ]
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        (plugin,) = response.json()['settings']['plugins']
+        self.assertEqual(
+            plugin['server_settings'],
+            {'ops': {'enabled': True} | OPS_SECRETS},
+        )
+
+    async def test_a_kept_pin_refuses_secrets_the_runner_cannot_relay(
+        self,
+    ) -> None:
+        await self.add_marketplace(
+            files=mcp_json(ops=OPS | {'headers': TOKEN_HEADER})
+        )
+        await self.put_config(allowed_marketplaces=['claude-code'])
+        response = await self.create_agent(
+            plugins=[{'marketplace': 'claude-code', 'plugin': 'code-review'}]
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        response = await self.save_ops(
+            {'ops': OPS_SECRETS | {'secrets': {'ORG': 'secret://ops/org'}}}
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual(
+            response.json()['detail'],
+            "The MCP server 'ops' of code-review@claude-code has no header "
+            'variables ORG',
+        )
+
+    async def test_a_new_pin_drops_secrets_of_dropped_variables(
+        self,
+    ) -> None:
+        org_header = {'X-Org': '${ORG}'}
+        await self.add_marketplace(
+            files=mcp_json(ops=OPS | {'headers': TOKEN_HEADER | org_header})
+        )
+        await self.put_config(allowed_marketplaces=['claude-code'])
+        response = await self.create_agent()
+        self.assertEqual(response.status_code, 201, response.text)
+        both = OPS_SECRETS | {
+            'secrets': {
+                'TOKEN': 'secret://ops/token#value',
+                'ORG': 'secret://ops/org#value',
+            }
+        }
+        response = await self.save_ops({'ops': both}, sha=None)
+        self.assertEqual(response.status_code, 200, response.text)
+        (plugin,) = response.json()['settings']['plugins']
+        self.assertEqual(
+            (plugin['sha'], plugin['server_settings']),
+            (SHA_1, {'ops': {'enabled': True} | both}),
+        )
+        with self.head(SHA_2, mcp_json(ops=OPS | {'headers': TOKEN_HEADER})):
+            response = await self.client.post(
+                self.org_url('agent-marketplaces/claude-code/sync')
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        response = await self.save_ops({'ops': both}, sha=None)
+        self.assertEqual(response.status_code, 200, response.text)
+        (plugin,) = response.json()['settings']['plugins']
+        self.assertEqual(
+            (plugin['sha'], plugin['server_settings']),
+            (SHA_2, {'ops': {'enabled': True} | OPS_SECRETS}),
+        )
+
+    async def test_an_agent_gives_secrets_to_a_default_plugin(self) -> None:
+        await self.add_marketplace(
+            files=mcp_json(ops=OPS | {'headers': TOKEN_HEADER})
+        )
+        await self.put_config(
+            allowed_marketplaces=['claude-code'],
+            default_plugins=[
+                {'marketplace': 'claude-code', 'plugin': 'code-review'}
+            ],
+        )
+        response = await self.create_agent(
+            plugins=[
+                {
+                    'marketplace': 'claude-code',
+                    'plugin': 'code-review',
+                    'server_settings': {'ops': OPS_SECRETS},
+                }
+            ]
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        (plugin,) = response.json()['settings']['plugins']
+        self.assertEqual(
+            plugin['server_settings'], {'ops': {'enabled': True} | OPS_SECRETS}
+        )
+
+    async def test_a_default_pin_with_no_servers_refuses_secrets(
+        self,
+    ) -> None:
+        await self.add_marketplace()
+        await self.put_config(
+            allowed_marketplaces=['claude-code'],
+            default_plugins=[
+                {'marketplace': 'claude-code', 'plugin': 'code-review'}
+            ],
+        )
+        response = await self.create_agent(
+            plugins=[
+                {
+                    'marketplace': 'claude-code',
+                    'plugin': 'code-review',
+                    'server_settings': {'ops': OPS_SECRETS},
+                }
+            ]
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual(
+            response.json()['detail'],
+            "The MCP server 'ops' of code-review@claude-code is not an http "
+            'or sse server with a URL in the pinned plugin',
+        )
 
     async def test_secrets_and_github_app_binding(self) -> None:
         response = await self.create_agent(secrets=['not-a-ref'])

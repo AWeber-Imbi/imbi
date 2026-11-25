@@ -2,23 +2,16 @@ import { useState } from 'react'
 
 import { Link } from 'react-router-dom'
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Check, Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
 
-import {
-  createSecretGrant,
-  listSecretBindings,
-  listSecretGrants,
-  removeSecretGrantAgent,
-  updateSecretGrant,
-} from '@/api/endpoints'
+import { removeSecretGrantAgent } from '@/api/endpoints'
 import { GitHubAppBindingSelect } from '@/components/admin/secrets/GitHubAppBindingSelect'
 import { SecretDialog } from '@/components/admin/secrets/SecretDialog'
 import {
   type SecretBinding,
   type SecretGrant,
-  type SecretGrantCreate,
   SETUP_PURPOSES,
 } from '@/components/admin/secrets/types'
 import { Button } from '@/components/ui/button'
@@ -30,23 +23,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useHasPermission, useInTeam } from '@/hooks/useHasPermission'
 import { extractApiErrorDetail } from '@/lib/apiError'
 
 import {
   type AccessRow,
   accessRows,
-  agentGrants,
+  bindingOf,
+  canSupplyRunner,
   coveringGrant,
   covers,
+  fieldReferences,
   GITHUB_PURPOSES,
-  grantFor,
-  ownGrant,
   purposeSuggestions,
 } from './access'
 import type { SettingsDraft } from './agentDraft'
 import { agentsPath } from './agentsNav'
 import { Field } from './OverviewTab'
+import { type GrantAgent, useAgentGrant } from './useAgentGrant'
 
 // The purpose of the runner's model key resolution.
 const MODEL_PURPOSE = 'model_inference'
@@ -55,7 +48,7 @@ const MODEL_PURPOSE = 'model_inference'
 const ORG_KEY = '__organization__'
 
 interface AccessTabProps {
-  agent: null | { id: string; name: string; team?: string }
+  agent: GrantAgent | null
   errors: Record<string, string>
   onChange: (settings: SettingsDraft) => void
   orgSlug: string
@@ -75,51 +68,18 @@ export function AccessTab({
   orgSlug,
   value,
 }: AccessTabProps) {
-  const canReadGrants = useHasPermission('secret_grant:read', orgSlug)
-  const canReadBindings = useHasPermission('secret_binding:read', orgSlug)
-  const canRead = canReadGrants && canReadBindings
-  // Without secret_binding:write, the API allows grants only to agents
-  // of the user's teams, and only of grantable bindings (#871).
-  const canWriteBindings = useHasPermission('secret_binding:write', orgSlug)
-  const inTeam = useInTeam(orgSlug, agent?.team)
-  const canWrite =
-    useHasPermission('secret_grant:write', orgSlug) &&
-    (canWriteBindings || inTeam)
-  const mayGrant = (b: SecretBinding) => canWriteBindings || b.grantable
+  const {
+    bindings,
+    canGrant,
+    canRead,
+    canWrite,
+    ensure,
+    grants,
+    mayGrant,
+    mine,
+    save,
+  } = useAgentGrant(orgSlug, agent)
   const queryClient = useQueryClient()
-  const grants = useQuery({
-    enabled: canRead,
-    queryFn: ({ signal }) => listSecretGrants(orgSlug, signal),
-    queryKey: ['secret-grants', orgSlug],
-  })
-  const bindings = useQuery({
-    enabled: canRead,
-    queryFn: ({ signal }) => listSecretBindings(orgSlug, signal),
-    queryKey: ['secret-bindings', orgSlug],
-  })
-  // A new purpose goes on the agent's own grant of the binding, if it
-  // has one, not on a second grant for the same secret.
-  const save = useMutation({
-    mutationFn: ({
-      body,
-      own,
-    }: {
-      body: SecretGrantCreate
-      own?: SecretGrant
-    }) =>
-      own
-        ? updateSecretGrant(orgSlug, own.id, {
-            purposes: [...own.purposes, ...body.purposes],
-          })
-        : createSecretGrant(orgSlug, body),
-    onError: (err) => toast.error(extractApiErrorDetail(err)),
-    onSuccess: async () => {
-      toast.success('Access granted')
-      await queryClient.invalidateQueries({
-        queryKey: ['secret-grants', orgSlug],
-      })
-    },
-  })
   const revoke = useMutation({
     mutationFn: (grant: SecretGrant) =>
       removeSecretGrantAgent(orgSlug, grant.id, agent!.id),
@@ -132,25 +92,10 @@ export function AccessTab({
     },
   })
 
-  const mine = agent ? agentGrants(grants.data ?? [], agent.id) : []
   const github = (bindings.data ?? []).find(
     (b) => b.reference === value.githubAppBinding,
   )
   const rows = accessRows(mine, bindings.data ?? [], github?.id ?? null)
-  const grant = (
-    binding: SecretBinding,
-    purpose: string,
-    mode: SecretGrantCreate['delivery_modes'][number],
-    done?: () => void,
-  ) =>
-    agent &&
-    save.mutate(
-      {
-        body: grantFor(agent, binding, purpose, mode),
-        own: ownGrant(mine, binding.id, mode),
-      },
-      { onSuccess: done },
-    )
 
   return (
     <div className="flex flex-col gap-8">
@@ -201,10 +146,10 @@ export function AccessTab({
                   <span className="text-tertiary font-mono text-xs">
                     {purpose}
                   </span>
-                  {!ok && canWrite && mayGrant(github) && (
+                  {!ok && canGrant(github) && (
                     <Button
                       disabled={save.isPending}
-                      onClick={() => grant(github, purpose, mode)}
+                      onClick={() => ensure(github, purpose, mode)}
                       size="sm"
                       variant="outline"
                     >
@@ -232,14 +177,14 @@ export function AccessTab({
 
       <ModelKey
         bindings={bindings.data ?? []}
-        canGrant={(b) => Boolean(agent) && canRead && canWrite && mayGrant(b)}
+        canGrant={canGrant}
         covered={(bindingId) =>
           covers(mine, bindingId, MODEL_PURPOSE, 'file_descriptor')
         }
         isPending={save.isPending}
         loaded={bindings.isSuccess}
         onChange={(reference) => onChange({ ...value, modelKeyRef: reference })}
-        onGrant={(binding) => grant(binding, MODEL_PURPOSE, 'file_descriptor')}
+        onGrant={(binding) => ensure(binding, MODEL_PURPOSE, 'file_descriptor')}
         showGrant={Boolean(agent) && canRead}
         value={value.modelKeyRef}
       />
@@ -254,7 +199,7 @@ export function AccessTab({
           error={save.error}
           isPending={save.isPending || revoke.isPending}
           onGrant={(binding, purpose, done) =>
-            grant(binding, purpose, 'environment', done)
+            ensure(binding, purpose, 'environment', done)
           }
           onRemove={canWrite ? (g) => revoke.mutate(g) : undefined}
           purposes={purposeSuggestions(grants.data ?? [])}
@@ -334,8 +279,8 @@ function AgentSecrets({
       {runnerRows.length > 0 && (
         <>
           <p className="text-tertiary mt-2 text-xs">
-            Used by the runner for the agent, never given to it: the model key
-            and the repository tokens.
+            Used by the runner for the agent, never given to it: the model key,
+            the repository tokens, and the MCP header tokens.
           </p>
           <GrantTable
             isPending={isPending}
@@ -399,18 +344,6 @@ function AgentSecrets({
         />
       )}
     </section>
-  )
-}
-
-/**
- * The broker gives a model key only from an enabled binding that
- * allows file_descriptor delivery and is not a provider key.
- */
-function canSupplyModelKey(b: SecretBinding): boolean {
-  return (
-    b.enabled &&
-    !b.provider_key_usage &&
-    b.allowed_delivery_modes.includes('file_descriptor')
   )
 }
 
@@ -504,23 +437,15 @@ function ModelKey({
   showGrant: boolean
   value: string
 }) {
-  // A binding with a field list gives only those fields, so the
-  // reference must name one of them.
-  const references = bindings
-    .filter(canSupplyModelKey)
-    .flatMap((b) =>
-      b.allowed_fields.length
-        ? b.allowed_fields.map((f) => `${b.reference}#${f}`)
-        : [b.reference],
-    )
+  const references = fieldReferences(bindings.filter(canSupplyRunner))
   // Keep a saved value visible after its binding is gone or disabled.
   if (value && !references.includes(value)) references.push(value)
-  const [bindingRef, field] = value.split('#')
-  const binding = bindings.find((b) => b.reference === bindingRef)
+  const [, field] = value.split('#')
+  const binding = bindingOf(bindings, value)
   // A field that is not in the field list is not usable. A binding
   // without a field list accepts only a reference without a field.
   const usable = binding
-    ? canSupplyModelKey(binding) &&
+    ? canSupplyRunner(binding) &&
       (binding.allowed_fields.length
         ? binding.allowed_fields.includes(field ?? '')
         : field === undefined)

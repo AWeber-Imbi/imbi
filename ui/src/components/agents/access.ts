@@ -76,6 +76,22 @@ export function agentGrants(
   return grants.filter((g) => g.enabled && g.agent_ids.includes(agentId))
 }
 
+export function bindingOf(
+  bindings: SecretBinding[],
+  reference: string,
+): SecretBinding | undefined {
+  const [bindingReference] = reference.split('#')
+  return bindings.find((binding) => binding.reference === bindingReference)
+}
+
+export function canSupplyRunner(binding: SecretBinding): boolean {
+  return (
+    binding.enabled &&
+    !binding.provider_key_usage &&
+    binding.allowed_delivery_modes.includes('file_descriptor')
+  )
+}
+
 /** The first grant that allows the binding for the purpose and mode. */
 export function coveringGrant(
   grants: SecretGrant[],
@@ -99,6 +115,28 @@ export function covers(
   mode: string,
 ): boolean {
   return coveringGrant(grants, bindingId, purpose, mode) !== undefined
+}
+
+export function coversEveryProject(
+  grants: SecretGrant[],
+  bindingId: string,
+  purpose: string,
+  mode: string,
+): boolean {
+  return covers(
+    grants.filter((grant) => grant.project_ids.length === 0),
+    bindingId,
+    purpose,
+    mode,
+  )
+}
+
+export function fieldReferences(bindings: SecretBinding[]): string[] {
+  return bindings.flatMap((binding) =>
+    binding.allowed_fields.length
+      ? binding.allowed_fields.map((field) => `${binding.reference}#${field}`)
+      : [binding.reference],
+  )
 }
 
 /** A grant for one agent, one binding, one purpose, and one mode. */

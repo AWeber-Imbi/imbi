@@ -382,6 +382,7 @@ unset.
 | `IMBI_HARNESS_CLIENT_ID` | str | none | Client ID of the runner service account (egress sync) |
 | `IMBI_HARNESS_CLIENT_SECRET` | str | none | Its client secret |
 | `POD_NAME` | str | none | Pod name, from the Kubernetes downward API |
+| `IMBI_HARNESS_EXTRA_CA` | str | none | PEM file of extra CA certificates |
 | `IMBI_HARNESS_END_OF_CHAIN` | str | `''` | `delete_pod` or `exit` at the end of a chain |
 | `IMBI_HARNESS_EGRESS_ENFORCED` | str | `''` | `true` labels the pod with the egress destinations of each chain and runs the startup self-test |
 | `IMBI_HARNESS_EGRESS_CANARY` | str | `''` | `host:port` that the startup self-test must not reach. Required when egress is enforced. |
@@ -392,7 +393,6 @@ unset.
 | `IMBI_HARNESS_MCP_URL` | str | none | imbi-mcp URL that agents use |
 | `IMBI_HARNESS_EGRESS_PROXY_URL` | str | none | `http://host:port` of the egress proxy. Set: the agent CLI, `run_with_secret`, and `git clone` use the proxy for HTTPS, and the MCP client uses it for host name destinations. Unset: no proxy. |
 | `POD_UID` | str | none | Pod uid, from the Kubernetes downward API. The runner sends it with each claim; the proxy token holds it. |
-| `IMBI_HARNESS_EXTRA_CA` | str | none | PEM file of extra CA certificates |
 
 ### Container (entrypoint, Caddy, UI)
 

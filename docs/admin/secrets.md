@@ -214,8 +214,8 @@ A user with `secret_binding:write` can set **Grantable**, so these limits
 do not apply to that user.
 
 A grant with a runner purpose (`model_inference`, `workspace_checkout`,
-`marketplace_fetch`) must have the delivery mode `file_descriptor` and no
-other. Imbi refuses any other grant with a
+`marketplace_fetch`, `mcp_header`) must have the delivery mode
+`file_descriptor` and no other. Imbi refuses any other grant with a
 runner purpose, because the broker never gives such a secret in another
 mode.
 
@@ -256,6 +256,16 @@ Grant them with the `file_descriptor` delivery mode only.
 | `model_inference` | The model API key, from the agent's model settings |
 | `workspace_checkout` | Cloning the project repositories |
 | `marketplace_fetch` | Fetching plugins from private marketplaces |
+| `mcp_header` | A header of a plugin's MCP server, from the secrets that the agent's **Tools and plugins** section maps to the server's header variables |
+
+When a person picks a secret for an MCP header variable, Imbi adds
+`mcp_header` to the agent's `file_descriptor` grant for that binding, or
+creates the grant. The runner then connects to the server itself and
+sends the header only to the origin that the person saw. A `github_app`
+binding cannot serve `mcp_header`: its provider refuses the purpose with
+`purpose_not_supported`. For the agent to also use the token with
+`run_with_secret`, add a separate grant for the binding with the
+`environment` delivery mode.
 
 The `mcp_server` purpose is retired. The broker refuses each request
 for it with `retired_purpose`. Delete the grants that still name it.

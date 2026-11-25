@@ -29,6 +29,7 @@ flowchart TD
     D -->|bundle and tokens| R
     R -->|model calls| LLM[Anthropic API or LiteLLM]
     R -->|Imbi tools| MCP[imbi-mcp, then imbi-api]
+    R -->|relayed plugin tools| PMCP[Plugin MCP servers]
     R -->|resolution: handle| SB
     X -->|materialize and release| SB
     R --> EV
@@ -143,7 +144,29 @@ The runner has these parts:
   (for example approval). An agent cannot turn a default tool off.
 - **Other MCP servers.** An agent gets other MCP servers only from the
   plugins of its marketplaces. The MCP servers in Admin › Assistant are
-  for the assistant only.
+  for the assistant only. The CLI connects to a plugin's server itself,
+  unless the agent turns the server off or gives it secrets.
+- **Plugin relay.** When an agent maps the header variables of a
+  plugin's `http` or `sse` server to secrets, the runner removes the
+  server from its copy of the plugin and connects to it instead
+  ([ADR 0031](../api/adr/0031-plugin-mcp-server-credentials.md)). It
+  resolves each secret with the purpose `mcp_header` and fills the
+  headers on each request, so a renewed secret applies to the open
+  session. It sends the secrets only over HTTPS to the origin that the
+  agent's entry records, and refuses a redirect to another origin. It
+  goes through the egress proxy like the CLI, and trusts the
+  `extraCaCerts` bundle. The CLI gets the server as the in-process
+  server `plugin:<plugin>:<server>`, so its tools keep the names
+  `mcp__plugin_<plugin>_<server>__<tool>`, and the plugin's allow rule
+  and the tool policy apply to them. The relay keeps one session for
+  each server. When the server drops it, the failed call returns an
+  error and is not sent again, and the next call opens a new session.
+  Each call has the time limit, stop, and size limit of the Imbi relay.
+  The relay removes each secret value from a result, and the result and
+  the tool descriptions reach the model in `<untrusted>` tags. A server
+  that fails a check, whose secret Imbi refuses, or that does not
+  answer is left out with a task warning, and the CLI does not get it
+  either.
 - **PreToolUse policy.** A hook checks each tool call before the CLI runs
   it:
     1. A built-in tool must be in the allowed tools of the merged
@@ -184,9 +207,9 @@ The runner never gets a secret value from imbi-api directly:
    runner when its lease expires.
 
 The runner's own setup secrets use the same path, with the purposes
-`model_inference`, `workspace_checkout`, and `marketplace_fetch`. The
-executor gives them to the runner on a file descriptor, never to a model
-command. See [Secrets](../admin/secrets.md) and
+`model_inference`, `workspace_checkout`, `marketplace_fetch`, and
+`mcp_header`. The executor gives them to the runner on a file
+descriptor, never to a model command. See [Secrets](../admin/secrets.md) and
 [Secrets broker](security.md#secrets-broker).
 
 ## 6. Events and usage
