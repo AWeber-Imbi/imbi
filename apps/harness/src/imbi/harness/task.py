@@ -25,7 +25,6 @@ import json
 import logging
 import os
 import pathlib
-import random
 import re
 import shutil
 import stat
@@ -39,6 +38,7 @@ from claude_agent_sdk._internal.transport import subprocess_cli
 
 from imbi.harness import (
     api,
+    credential,
     egress,
     events,
     ipc,
@@ -69,12 +69,6 @@ RESOLUTION_TTL = 300
 #: The longest reply id the API takes on a usage report; a longer one
 #: is left out, so the report and its cost still count.
 MESSAGE_ID_MAX = 200
-#: The longest refresh lead of a model access token (WIF plan 4.6).
-KEY_REFRESH_LEAD = 300.0
-#: The longest wait between two failed refreshes.
-KEY_RETRY_MAX = 30.0
-#: The shortest wait between two successful refreshes.
-KEY_RENEW_MIN = 30.0
 ANTHROPIC_API = 'https://api.anthropic.com'
 #: The error code of an outcome that imbi-api refused for its
 #: structured output. The harness then ends the task without it.
@@ -135,6 +129,7 @@ SETUP_DELIVERY = {'mode': 'file_descriptor', 'target': '3'}
 SETUP_PURPOSES = frozenset(
     {
         'marketplace_fetch',
+        'mcp_header',
         'model_inference',
         'workspace_checkout',
     }
@@ -877,7 +872,7 @@ async def _no_prompt() -> abc.AsyncIterator[dict[str, typing.Any]]:
 class TaskRun:
     """Run one task of the runner's chain."""
 
-    def __init__(  # noqa: PLR0913, PLR0915
+    def __init__(  # noqa: PLR0913
         self,
         client: api.Api,
         claim: Body,
@@ -933,10 +928,7 @@ class TaskRun:
         self.loop: asyncio.AbstractEventLoop | None = None
         #: The model credential that the proxy sends. A refresh
         #: replaces it (WIF plan 4.7).
-        self.credential = proxy.Credential('')
-        #: One refresh at a time; a second caller waits for it.
-        self.key_lock = asyncio.Lock()
-        self.refresher: asyncio.Task[None] | None = None
+        self.key = credential.Refresher(self.model_key, 'Model key')
         #: Runs a child task of the chain and returns its summary.
         self.children = children
         #: The agent API token (P7): memory only. The runner heartbeat
@@ -1045,8 +1037,7 @@ class TaskRun:
             done = ('failed_external', 'harness_error')
         finally:
             heartbeat.cancel()
-            if self.refresher is not None:
-                self.refresher.cancel()
+            self.key.stop()
         if self.failure is not None:
             done = ('failed_external', self.failure)
         await self.flush()
@@ -1078,12 +1069,10 @@ class TaskRun:
             base_url
         ).scheme != 'https' and not upstream.get('allow_insecure_http'):
             raise Failed('model_upstream_insecure')
-        self.credential = await self.model_key()
-        if self.credential.expires_at is not None:
-            self.refresher = asyncio.create_task(self._refresh_key())
+        await self.key.start()
         url = proxy.start(
             base_url,
-            lambda: self.credential,
+            lambda: self.key.credential,
             litellm=upstream.get('kind') == 'litellm',
             meter=self.meter,
             allowed=self.allowed,
@@ -1296,18 +1285,34 @@ class TaskRun:
     async def model_key(self) -> proxy.Credential:
         """Get the model key through a ``model_inference`` resolution.
 
-        The executor materializes it and gives it to the runner, then
-        releases it: the release ends only Imbi access (plan section
-        9.1 rule 7). A dynamic credential has ``expires_at``; a vendor
-        access token is ``bearer``.
+        Raises:
+            Failed: ``model_key_missing``, or as :meth:`secret`.
+
         """
         upstream: Body = self.config.get('model_upstream') or {}
         reference = upstream.get('key_ref')
         if not reference:
             raise Failed('model_key_missing')
-        reply = await self.fetch(
+        return await self.secret(
             str(reference), 'model_inference', 'model_key'
         )
+
+    async def secret(
+        self, reference: str, purpose: str, name: str
+    ) -> proxy.Credential:
+        """A setup secret that the runner holds in memory: the model key
+        or an MCP header secret.
+
+        The executor materializes it and gives it to the runner, then
+        releases it: the release ends only Imbi access (plan section
+        9.1 rule 7). A dynamic credential has ``expires_at``; a vendor
+        access token is ``bearer``.
+
+        Raises:
+            Failed: as :meth:`fetch`.
+
+        """
+        reply = await self.fetch(reference, purpose, name)
         expires_at = reply.get('expires_at')
         return proxy.Credential(
             str(reply['material']),
@@ -1317,61 +1322,10 @@ class TaskRun:
             bearer=bool(reply.get('bearer')),
         )
 
-    # The renewal rules here are a copy of TokenCache in
-    # imbi/common/llm/tokens.py. The harness must not depend on
-    # imbi-common (see pyproject.toml), so keep the two in step.
-    async def renew_key(self, failed: str | None = None) -> None:
-        """Replace the model access token. With ``failed``, only when
-        that token is still the current one (another caller can have
-        replaced it). A call in progress keeps the old token.
-
-        Raises:
-            Failed: as :meth:`model_key`.
-
-        """
-        async with self.key_lock:
-            if self.credential.expires_at is None or (
-                failed is not None and failed != self.credential.value
-            ):
-                return
-            self.credential = await self.model_key()
-
-    async def _refresh_key(self) -> None:
-        """Renew the model access token before it expires (WIF plan
-        4.6): at the lesser of :data:`KEY_REFRESH_LEAD` and 20 percent
-        of its lifetime before the expiry, with a jitter of at most
-        half of that lead. Retry a failed renewal with bounded backoff.
-        Wait at least :data:`KEY_RENEW_MIN` after a renewal, also when
-        the new token is near its expiry. Task cancellation stops it."""
-        floor = 0.0
-        while (expires_at := self.credential.expires_at) is not None:
-            lifetime = (
-                expires_at - datetime.datetime.now(datetime.UTC)
-            ).total_seconds()
-            lead = min(KEY_REFRESH_LEAD, 0.2 * max(lifetime, 0.0))
-            await asyncio.sleep(
-                max(lifetime - lead - random.uniform(0, lead / 2), floor)  # noqa: S311 - jitter, not a secret
-            )
-            floor = KEY_RENEW_MIN
-            delay = 1.0
-            while self.credential.expires_at == expires_at:
-                try:
-                    await self.renew_key()
-                    break  # same expiry: the outer loop waits the floor
-                # ValueError: a partial JSON reply from the executor.
-                except (Failed, httpx.HTTPError, ValueError) as err:
-                    LOGGER.warning(
-                        'Model key renewal of %s failed: %s',
-                        self.api.short_id,
-                        err,
-                    )
-                    await asyncio.sleep(delay)
-                    delay = min(delay * 2, KEY_RETRY_MAX)
-
     def refresh_after_401(self, failed: str) -> None:
         """Renew the model access token after a ``401`` (proxy
         thread). Return when it is done or failed."""
-        self._wait_on_loop(self.renew_key(failed), 'Model key renewal')
+        self._wait_on_loop(self.key.renew(failed), 'Model key renewal')
 
     async def fetch_secret(
         self, reference: str, purpose: str, name: str

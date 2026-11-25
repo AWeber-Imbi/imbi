@@ -331,6 +331,7 @@ class ExecutorTestCase(BaseTestCase):
 
     async def test_setup_purposes_are_never_run(self) -> None:
         await self.hello()
+        self.assertIn('mcp_header', executor.SETUP_PURPOSES)
         for purpose in sorted(executor.SETUP_PURPOSES):
             with self.subTest(purpose=purpose):
                 self.api.release.reset_mock()
@@ -580,7 +581,13 @@ class FetchTestCase(BaseTestCase):
         )
         self.api.release.assert_awaited_once_with('ihe_token', 'r1')
 
-    async def test_only_the_model_key(self) -> None:
+    async def test_returns_an_mcp_header_secret(self) -> None:
+        await self.hello()
+        reply = await self.executor.dispatch(self.fetch('mcp_header'))
+        self.assertEqual(reply, {'material': SECRET})
+        self.api.release.assert_awaited_once_with('ihe_token', 'r1')
+
+    async def test_only_the_runner_secrets(self) -> None:
         await self.hello()
         reply = await self.executor.dispatch(self.fetch('github_write'))
         self.assertEqual(reply, {'error': 'purpose_not_allowed'})

@@ -22,7 +22,16 @@ from unittest import mock
 import claude_agent_sdk as sdk
 import httpx
 
-from imbi.harness import api, ipc, policy, privilege, proxy, redact, task
+from imbi.harness import (
+    api,
+    credential,
+    ipc,
+    policy,
+    privilege,
+    proxy,
+    redact,
+    task,
+)
 
 HANDLE = 'handle-that-must-not-reach-the-model-0123456789'
 KEY = 'sk-ant-model-key-0123456789abcdef'
@@ -235,6 +244,7 @@ class RunWithSecretTestCase(TaskTestCase):
             {'purpose': 'model_inference'},
             {'purpose': 'workspace_checkout'},
             {'purpose': 'marketplace_fetch'},
+            {'purpose': 'mcp_header'},
             {'reference': 'secret://production/anthropic/key'},
         ]
         for change in cases:
@@ -874,13 +884,27 @@ class KeyRefreshTestCase(TaskTestCase):
     async def test_access_token_has_its_expiry(self) -> None:
         reply = self.token('t1', 600)
         self.call.return_value = reply
-        credential = await self.run_task.model_key()
-        self.assertEqual(credential.value, 't1')
-        self.assertTrue(credential.bearer)
+        key = await self.run_task.model_key()
+        self.assertEqual(key.value, 't1')
+        self.assertTrue(key.bearer)
         self.assertEqual(
-            credential.expires_at,
+            key.expires_at,
             datetime.datetime.fromisoformat(reply['expires_at']),
         )
+
+    async def test_only_a_dynamic_key_is_renewed_in_the_background(
+        self,
+    ) -> None:
+        self.call.return_value = {'material': KEY}
+        await self.run_task.key.start()
+        self.assertIsNone(self.run_task.key.task)
+        self.call.return_value = self.token('t1', 600)
+        await self.run_task.key.start()
+        renewal = self.run_task.key.task
+        assert renewal is not None
+        self.run_task.key.stop()
+        with self.assertRaises(asyncio.CancelledError):
+            await renewal
 
     async def test_renews_before_expiry_and_retries(self) -> None:
         self.call.side_effect = [
@@ -888,7 +912,7 @@ class KeyRefreshTestCase(TaskTestCase):
             httpx.ConnectError('down'),
             self.token('t3', 600),
         ]
-        self.run_task.credential = proxy.Credential(
+        self.run_task.key.credential = proxy.Credential(
             't1', datetime.datetime.now(datetime.UTC)
         )
         sleeps: list[float] = []
@@ -901,12 +925,14 @@ class KeyRefreshTestCase(TaskTestCase):
             await real_sleep(0)
 
         with (
-            mock.patch.object(task, 'asyncio', wraps=asyncio, sleep=sleep),
-            self.assertLogs('imbi.harness.task', 'WARNING'),
+            mock.patch.object(
+                credential, 'asyncio', wraps=asyncio, sleep=sleep
+            ),
+            self.assertLogs('imbi.harness.credential', 'WARNING'),
             self.assertRaises(asyncio.CancelledError),
         ):
-            await self.run_task._refresh_key()  # pyright: ignore[reportPrivateUsage]
-        self.assertEqual(self.run_task.credential.value, 't3')
+            await self.run_task.key._refresh()  # pyright: ignore[reportPrivateUsage]
+        self.assertEqual(self.run_task.key.credential.value, 't3')
         # Expired: at once. A 600-second token: 120 seconds before the
         # expiry, with at most 60 seconds of jitter. A failure: 1 second.
         self.assertEqual(sleeps[0], 0.0)
@@ -918,7 +944,7 @@ class KeyRefreshTestCase(TaskTestCase):
             ValueError('partial reply'),
             self.token('t2', 0),
         ]
-        self.run_task.credential = proxy.Credential(
+        self.run_task.key.credential = proxy.Credential(
             't1', datetime.datetime.now(datetime.UTC)
         )
         sleeps: list[float] = []
@@ -929,20 +955,22 @@ class KeyRefreshTestCase(TaskTestCase):
                 raise asyncio.CancelledError
 
         with (
-            mock.patch.object(task, 'asyncio', wraps=asyncio, sleep=sleep),
-            self.assertLogs('imbi.harness.task', 'WARNING'),
+            mock.patch.object(
+                credential, 'asyncio', wraps=asyncio, sleep=sleep
+            ),
+            self.assertLogs('imbi.harness.credential', 'WARNING'),
             self.assertRaises(asyncio.CancelledError),
         ):
-            await self.run_task._refresh_key()  # pyright: ignore[reportPrivateUsage]
-        self.assertEqual(self.run_task.credential.value, 't2')
+            await self.run_task.key._refresh()  # pyright: ignore[reportPrivateUsage]
+        self.assertEqual(self.run_task.key.credential.value, 't2')
         # Expired: at once. A decode error: 1 second. The new token
         # is expired too: wait the minimum.
-        self.assertEqual(sleeps, [0.0, 1.0, task.KEY_RENEW_MIN])
+        self.assertEqual(sleeps, [0.0, 1.0, credential.RENEW_MIN])
 
     async def test_waits_after_renewal_with_same_expiry(self) -> None:
         reply = self.token('t2', 0)
         self.call.return_value = reply
-        self.run_task.credential = proxy.Credential(
+        self.run_task.key.credential = proxy.Credential(
             't1', datetime.datetime.fromisoformat(reply['expires_at'])
         )
         sleeps: list[float] = []
@@ -953,34 +981,36 @@ class KeyRefreshTestCase(TaskTestCase):
                 raise asyncio.CancelledError
 
         with (
-            mock.patch.object(task, 'asyncio', wraps=asyncio, sleep=sleep),
+            mock.patch.object(
+                credential, 'asyncio', wraps=asyncio, sleep=sleep
+            ),
             self.assertRaises(asyncio.CancelledError),
         ):
-            await self.run_task._refresh_key()  # pyright: ignore[reportPrivateUsage]
+            await self.run_task.key._refresh()  # pyright: ignore[reportPrivateUsage]
         # One renewal, then the minimum wait: no renewal loop.
         self.assertEqual(self.call.await_count, 1)
-        self.assertEqual(sleeps, [0.0, task.KEY_RENEW_MIN])
+        self.assertEqual(sleeps, [0.0, credential.RENEW_MIN])
 
     async def test_static_key_is_not_renewed(self) -> None:
-        self.run_task.credential = proxy.Credential(KEY)
-        await self.run_task._refresh_key()  # pyright: ignore[reportPrivateUsage]
-        await self.run_task.renew_key(KEY)
+        self.run_task.key.credential = proxy.Credential(KEY)
+        await self.run_task.key._refresh()  # pyright: ignore[reportPrivateUsage]
+        await self.run_task.key.renew(KEY)
         self.call.assert_not_called()
 
     async def test_renews_once_for_concurrent_401s(self) -> None:
         self.call.return_value = self.token('t2', 600)
-        self.run_task.credential = proxy.Credential(
+        self.run_task.key.credential = proxy.Credential(
             't1', datetime.datetime.now(datetime.UTC)
         )
         await asyncio.gather(
-            self.run_task.renew_key('t1'), self.run_task.renew_key('t1')
+            self.run_task.key.renew('t1'), self.run_task.key.renew('t1')
         )
-        self.assertEqual(self.run_task.credential.value, 't2')
+        self.assertEqual(self.run_task.key.credential.value, 't2')
         self.call.assert_awaited_once()
 
     async def test_401_from_the_proxy_thread(self) -> None:
         self.run_task.loop = asyncio.get_running_loop()
-        self.run_task.credential = proxy.Credential(
+        self.run_task.key.credential = proxy.Credential(
             't1', datetime.datetime.now(datetime.UTC)
         )
         self.call.return_value = {'error': 'secret_provider_unavailable'}
@@ -988,7 +1018,7 @@ class KeyRefreshTestCase(TaskTestCase):
             await asyncio.to_thread(self.run_task.refresh_after_401, 't1')
         self.call.return_value = self.token('t2', 600)
         await asyncio.to_thread(self.run_task.refresh_after_401, 't1')
-        self.assertEqual(self.run_task.credential.value, 't2')
+        self.assertEqual(self.run_task.key.credential.value, 't2')
 
 
 class UsageTestCase(TaskTestCase):
