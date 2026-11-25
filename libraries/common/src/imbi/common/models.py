@@ -228,18 +228,47 @@ def pattern_error(pattern: str) -> str | None:
     return None
 
 
+#: Keywords whose values are data, not schemas.
+_DATA_KEYWORDS = frozenset(
+    {'const', 'default', 'dependentRequired', 'enum', 'examples'}
+)
+#: Keywords whose values map names to schemas.
+_NAMED_SCHEMAS = frozenset(
+    {
+        '$defs',
+        'definitions',
+        'dependentSchemas',
+        'patternProperties',
+        'properties',
+    }
+)
+
+
+def _schemas(node: object) -> collections.abc.Iterator[dict[str, object]]:
+    """Yield the schema ``node`` and each subschema in it. Data (such as
+    ``default``) and ``x-`` annotations are not schemas."""
+    if isinstance(node, list):
+        for item in typing.cast(list[object], node):
+            yield from _schemas(item)
+        return
+    if not isinstance(node, dict):
+        return
+    schema = typing.cast(dict[str, object], node)
+    yield schema
+    for key, value in schema.items():
+        if key in _DATA_KEYWORDS or key.startswith('x-'):
+            continue
+        if key in _NAMED_SCHEMAS and isinstance(value, dict):
+            yield from _schemas(
+                list(typing.cast(dict[str, object], value).values())
+            )
+        else:
+            yield from _schemas(value)
+
+
 def schema_keys(node: object) -> set[str]:
-    """Return every key of the JSON value ``node``, at every depth."""
-    keys: set[str] = set()
-    stack: list[object] = [node]
-    while stack:
-        node = stack.pop()
-        if isinstance(node, dict):
-            keys.update(typing.cast(dict[str, object], node))
-            stack.extend(typing.cast(dict[str, object], node).values())
-        elif isinstance(node, list):
-            stack.extend(typing.cast(list[object], node))
-    return keys
+    """Return the keywords of the schema ``node`` and its subschemas."""
+    return {key for schema in _schemas(node) for key in schema}
 
 
 def unevaluated_re(schema: Schema) -> bool:
@@ -252,19 +281,13 @@ def unevaluated_re(schema: Schema) -> bool:
 
 
 def _patterns(node: object) -> collections.abc.Iterator[str]:
-    """Yield each ``pattern`` and ``patternProperties`` key in the JSON
-    value ``node``, at every depth."""
-    if isinstance(node, dict):
-        node = typing.cast(dict[str, object], node)
-        if isinstance(pattern := node.get('pattern'), str):
+    """Yield each ``pattern`` and ``patternProperties`` key of the schema
+    ``node`` and its subschemas."""
+    for schema in _schemas(node):
+        if isinstance(pattern := schema.get('pattern'), str):
             yield pattern
-        if isinstance(keys := node.get('patternProperties'), dict):
+        if isinstance(keys := schema.get('patternProperties'), dict):
             yield from typing.cast(dict[str, object], keys)
-        for value in node.values():
-            yield from _patterns(value)
-    elif isinstance(node, list):
-        for value in typing.cast(list[object], node):
-            yield from _patterns(value)
 
 
 def check_patterns(schema: Schema) -> Schema:
@@ -275,9 +298,10 @@ def check_patterns(schema: Schema) -> Schema:
     a schema that a request sends as a JSON string.
     """
     dumped = schema.model_dump(mode='json', by_alias=True, exclude_none=True)
-    scopes: dict[str, object] = dict(dumped.get('properties') or {})
-    scopes['schema'] = {k: v for k, v in dumped.items() if k != 'properties'}
-    for name, node in scopes.items():
+    properties = typing.cast(dict[str, object], dumped.get('properties') or {})
+    root = {k: v for k, v in dumped.items() if k != 'properties'}
+    scopes = [*properties.items(), ('the schema', root)]
+    for name, node in scopes:
         for pattern in _patterns(node):
             if error := pattern_error(pattern):
                 raise ValueError(f'{name}: pattern {pattern!r} {error}')

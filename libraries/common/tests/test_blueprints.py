@@ -633,6 +633,50 @@ class ValueCheckTests(unittest.TestCase):
         )
         self.assertIn('value: pattern', message)
 
+    def test_data_is_not_a_pattern(self) -> None:
+        models.Blueprint(
+            name='test',
+            type='Environment',
+            json_schema={
+                'type': 'object',
+                'properties': {
+                    'value': {
+                        'type': 'object',
+                        'default': {'pattern': '(?=a)'},
+                        'examples': [{'patternProperties': {'(?=a)': 1}}],
+                    }
+                },
+            },
+        )
+
+    def test_field_named_schema_is_checked(self) -> None:
+        with self.assertRaisesRegex(
+            pydantic.ValidationError, 'schema: pattern'
+        ):
+            models.Blueprint(
+                name='test',
+                type='Environment',
+                json_schema={
+                    'type': 'object',
+                    'properties': {
+                        'schema': {'type': 'string', 'pattern': '(?=a)'}
+                    },
+                },
+            )
+
+    def test_property_named_like_a_keyword(self) -> None:
+        # A property name is not a keyword.
+        schema = models.Schema.model_validate(
+            {
+                'type': 'object',
+                'properties': {
+                    'patternProperties': {'type': 'string'},
+                    'unevaluatedProperties': {'type': 'string'},
+                },
+            }
+        )
+        self.assertFalse(models.unevaluated_re(schema))
+
     def test_bad_item_pattern_is_refused_on_save(self) -> None:
         self._save(
             {'type': 'array', 'items': {'type': 'string', 'pattern': '['}}
