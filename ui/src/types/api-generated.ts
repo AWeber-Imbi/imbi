@@ -22603,6 +22603,8 @@ export interface components {
             /** Icon */
             icon?: string | null;
             organization: components["schemas"]["Organization"];
+            /** Slack Channel */
+            slack_channel?: string | null;
         };
         /**
          * TeamMembership
@@ -24562,6 +24564,11 @@ export interface components {
              */
             icon: string | null;
             organization: components["schemas"]["Organization"];
+            /**
+             * Slack Channel
+             * @default null
+             */
+            slack_channel: string | null;
         };
         /** TeamResponse */
         TeamBlueprintResponse: {
