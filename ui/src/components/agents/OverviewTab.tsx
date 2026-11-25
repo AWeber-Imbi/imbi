@@ -14,7 +14,7 @@ import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
 import { queryKeys } from '@/lib/queryKeys'
 
 import type { AgentDraft } from './agentDraft'
-import { AgentLabelPicker } from './AgentLabelPicker'
+import { AgentTagPicker } from './AgentTagPicker'
 
 interface OverviewTabProps {
   draft: AgentDraft
@@ -143,7 +143,7 @@ export function OverviewTab({
           />
         </Field>
         <Field label="Tags">
-          <AgentLabelPicker
+          <AgentTagPicker
             onChange={(tags) => onChange({ tags })}
             orgSlug={orgSlug}
             value={draft.tags}
