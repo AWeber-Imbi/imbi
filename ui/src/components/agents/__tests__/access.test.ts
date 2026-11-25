@@ -8,7 +8,11 @@ const grant = (purposes: string[]) => ({ purposes }) as SecretGrant
 
 describe('purposeSuggestions', () => {
   it('suggests the GitHub App purposes without grants', () => {
-    expect(purposeSuggestions([])).toEqual(['github_read', 'github_status', 'github_write'])
+    expect(purposeSuggestions([])).toEqual([
+      'github_read',
+      'github_status',
+      'github_write',
+    ])
   })
 
   it('adds each purpose of the grants once, sorted', () => {

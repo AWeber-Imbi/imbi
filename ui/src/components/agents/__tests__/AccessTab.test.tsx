@@ -337,7 +337,12 @@ describe('AccessTab', () => {
     const options = (await screen.findAllByRole('option')).map(
       (option) => option.textContent,
     )
-    expect(options).toEqual(['github_read', 'github_status', 'github_write', 'npm'])
+    expect(options).toEqual([
+      'github_read',
+      'github_status',
+      'github_write',
+      'npm',
+    ])
   })
 
   it('grants a suggested purpose', async () => {
