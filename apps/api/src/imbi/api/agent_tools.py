@@ -38,7 +38,9 @@ from imbi.common import models
 
 LOGGER = logging.getLogger(__name__)
 
-CACHE_KEY = 'imbi:agents:tool-catalog'
+#: Change the version suffix when the catalog shape changes, so that
+#: entries in the old shape are not read.
+CACHE_KEY = 'imbi:agents:tool-catalog:v2'
 CACHE_TTL_SECONDS = 300
 
 #: The read-only Imbi routes whose tools every agent has, as
