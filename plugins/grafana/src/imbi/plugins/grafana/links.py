@@ -65,20 +65,30 @@ def identifier(ctx: PluginContext) -> str:
 
 
 def canonical_url(base: str, name: str, value: str) -> str:
-    """The Grafana rules API, filtered to the rules with the label."""
+    """The Grafana rules API, filtered to the rules with the label.
+
+    ``rule_matcher`` filters the rules; ``matcher`` filters only the
+    alert instances of each rule.
+    """
     matcher = json.dumps(
         {'name': name, 'value': value, 'isRegex': False, 'isEqual': True},
         separators=(',', ':'),
     )
     return f'{base}/api/prometheus/grafana/api/v1/rules?' + (
-        urllib.parse.urlencode({'matcher': matcher})
+        urllib.parse.urlencode({'rule_matcher': matcher})
     )
 
 
 def dashboard_url(base: str, name: str, value: str) -> str:
-    """The alert rules list, searched by the label."""
+    """The alert rules list, searched by the label.
+
+    A filter with whitespace is quoted, as the Grafana search does.
+    """
+    term = f'{name}={value}'
+    if any(c.isspace() for c in term):
+        term = f'"{term}"'
     return f'{base}/alerting/list?' + urllib.parse.urlencode(
-        {'search': f'label:{name}={value}'}
+        {'search': f'label:{term}'}
     )
 
 

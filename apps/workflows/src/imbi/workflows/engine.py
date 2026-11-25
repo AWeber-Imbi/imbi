@@ -433,10 +433,14 @@ class Engine:
             # with the retry time as its ``due_at``.
             return started_at
         if step['call_started_at'] is not None and (
-            step_type.side_effect and not step_type.idempotent
+            step_type.side_effect
+            and not step_type.idempotent
+            and step_type.plugin is None
         ):
             # A crash or a timeout cut the last call short, and this type
-            # cannot find out whether it acted: do not act twice.
+            # cannot find out whether it acted: do not act twice. A plugin
+            # step sends the key of that call again, and imbi-api gives
+            # its recorded result, call_in_progress, or outcome_unknown.
             async with self.store.write(run['id']) as conn:
                 await self._fail(conn, run, step, 'outcome_unknown')
             return _now()
@@ -500,7 +504,7 @@ class Engine:
         except Exception as e:
             LOGGER.exception('Run %s: %s raised', run['id'], node.key)
             return await self._error(
-                run, node, step, slug, type(e).__name__, True
+                run, node, step, slug, type(e).__name__, True, unknown=True
             )
         key = {'run_id': run['id'], 'node_id': node_id}
         async with self.store.write(run['id']) as conn:
@@ -512,7 +516,13 @@ class Engine:
                     state=outcome.state,
                     call_started_at=None,
                 )
-                return outcome.resume_at
+                if timeout is None:
+                    return outcome.resume_at
+                # A poll past the step timeout wakes at the timeout.
+                return min(
+                    outcome.resume_at,
+                    started_at + datetime.timedelta(seconds=timeout),
+                )
             await store.update(
                 conn,
                 'step_runs',
@@ -540,6 +550,7 @@ class Engine:
         retry: bool,
         *,
         unreachable: bool = False,
+        unknown: bool = False,
     ) -> datetime.datetime:
         """Retry the step after a backoff, or fail it.
 
@@ -547,9 +558,17 @@ class Engine:
         first (best effort), so the task does not outlive the step.
         ``unreachable`` (no response from imbi-api) waits
         ``UNREACHABLE_BACKOFF`` instead of ``RETRY_BACKOFF``.
+        ``unknown`` marks an error that does not tell whether the call
+        acted, such as an exception in the engine.
         """
         step_type = registry.require(node.type)
         retries = step_type.retries if node.retries is None else node.retries
+        if code == 'plugin_timeout' and (
+            step_type.side_effect and not step_type.idempotent
+        ):
+            # imbi-api records the timeout. A repeat of the key gets the
+            # same timeout, and a new key can act a second time.
+            retry = False
         fail = not (retry and step['attempt'] <= retries)
         if fail:
             await self._cancel_agent_tasks(run, {step['node_id']: step}, slug)
@@ -563,14 +582,17 @@ class Engine:
             # code (for example, an HTML 502 page of a proxy), the outcome
             # of the last call is unknown. ``key_attempt`` lets a step
             # (LLM Call, a plugin step) send the key of that call again;
-            # after a known error it sends a new one.
+            # after a known error it sends a new one. A failed token
+            # refresh or an engine error does not answer for that key, so
+            # the key stays.
             state = {
                 k: v for k, v in step['state'].items() if k != 'key_attempt'
             }
             if (
-                code in ('timeout', 'plugin_timeout')
-                or code.startswith('http_5')
+                code == 'timeout'
+                or code.startswith(('http_5', 'token_http_'))
                 or unreachable
+                or unknown
             ):
                 state['key_attempt'] = step['state'].get(
                     'key_attempt', step['attempt']

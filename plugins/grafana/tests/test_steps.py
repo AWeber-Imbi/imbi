@@ -4,6 +4,7 @@ import json
 import typing
 
 import httpx
+import pydantic
 import pytest
 import respx
 
@@ -50,6 +51,51 @@ def _threshold(operator: str = 'lt', threshold: float = 1.0):
     )
 
 
+def _ds_query(kind: str = 'prometheus') -> respx.Route:
+    """The query route. The lookup of ``prom`` gives a ``kind`` source."""
+    respx.get(f'{URL}/api/datasources/uid/prom').mock(
+        return_value=httpx.Response(200, json={'uid': 'prom', 'type': kind})
+    )
+    return respx.post(f'{URL}/api/ds/query')
+
+
+@pytest.mark.parametrize('value', ['NaN', 'inf', '-inf'])
+def test_threshold_must_be_finite(value: str) -> None:
+    with pytest.raises(pydantic.ValidationError):
+        steps.ThresholdParams.model_validate(
+            {
+                'datasource': 'prom',
+                'expr': 'sum(x)',
+                'operator': 'lt',
+                'threshold': value,
+            }
+        )
+
+
+@respx.mock
+async def test_query_refuses_other_data_source_types() -> None:
+    route = _ds_query('mysql')
+    with pytest.raises(ValueError, match='not a Prometheus'):
+        await steps.metric_threshold(CTX, CREDS, _threshold(), CALL)
+    assert not route.called
+
+
+@respx.mock
+async def test_gather_metrics_stays_in_the_byte_limit() -> None:
+    times = list(range(steps.MAX_POINTS))
+    frames = [
+        _frame({'pad': 'x' * 12000, 'i': str(i)}, times, [1.0] * len(times))
+        for i in range(steps.MAX_SERIES)
+    ]
+    _ds_query().mock(return_value=httpx.Response(200, json=_results(*frames)))
+    params = steps.GatherMetricsParams(datasource='prom', expr='up')
+    result = await steps.gather_metrics(CTX, CREDS, params, CALL)
+    output = steps.GatherMetricsOutput.model_validate(result.output)
+    assert len(result.model_dump_json().encode()) <= steps.MAX_BYTES
+    assert 0 < len(output.series) < steps.MAX_SERIES
+    assert output.truncated is True
+
+
 def test_plugin_loads_and_registers_steps() -> None:
     result = plugins.load_plugins()
     assert 'grafana' in result.loaded
@@ -59,7 +105,7 @@ def test_plugin_loads_and_registers_steps() -> None:
 
 @respx.mock
 async def test_gather_metrics() -> None:
-    route = respx.post(f'{URL}/api/ds/query').mock(
+    route = _ds_query().mock(
         return_value=httpx.Response(
             200,
             json=_results(
@@ -92,7 +138,7 @@ async def test_gather_metrics() -> None:
 
 @respx.mock
 async def test_gather_metrics_stores_non_finite_values_as_null() -> None:
-    respx.post(f'{URL}/api/ds/query').mock(
+    _ds_query().mock(
         return_value=httpx.Response(
             200,
             json=_results(
@@ -118,9 +164,7 @@ async def test_gather_metrics_bounds_output() -> None:
         _frame({'i': str(i)}, times, [1.0] * len(times))
         for i in range(steps.MAX_SERIES + 1)
     ]
-    respx.post(f'{URL}/api/ds/query').mock(
-        return_value=httpx.Response(200, json=_results(*frames))
-    )
+    _ds_query().mock(return_value=httpx.Response(200, json=_results(*frames)))
     params = steps.GatherMetricsParams(datasource='prom', expr='up')
     result = await steps.gather_metrics(CTX, CREDS, params, CALL)
     output = steps.GatherMetricsOutput.model_validate(result.output)
@@ -131,7 +175,7 @@ async def test_gather_metrics_bounds_output() -> None:
 
 @respx.mock
 async def test_threshold_pass() -> None:
-    route = respx.post(f'{URL}/api/ds/query').mock(
+    route = _ds_query().mock(
         return_value=httpx.Response(200, json=_results(_frame({}, [1], [0.5])))
     )
     result = await steps.metric_threshold(CTX, CREDS, _threshold(), CALL)
@@ -149,7 +193,7 @@ async def test_threshold_pass() -> None:
 async def test_threshold_operators(
     operator: str, threshold: float, passes: bool
 ) -> None:
-    respx.post(f'{URL}/api/ds/query').mock(
+    _ds_query().mock(
         return_value=httpx.Response(200, json=_results(_frame({}, [1], [2])))
     )
     result = await steps.metric_threshold(
@@ -161,7 +205,7 @@ async def test_threshold_operators(
 
 @respx.mock
 async def test_threshold_polls_with_last_value() -> None:
-    respx.post(f'{URL}/api/ds/query').mock(
+    _ds_query().mock(
         return_value=httpx.Response(200, json=_results(_frame({}, [1], [5])))
     )
     result = await steps.metric_threshold(CTX, CREDS, _threshold(), CALL)
@@ -176,9 +220,7 @@ async def test_threshold_polls_with_last_value() -> None:
 async def test_threshold_polls_without_value(
     payload: dict[str, typing.Any],
 ) -> None:
-    respx.post(f'{URL}/api/ds/query').mock(
-        return_value=httpx.Response(200, json=payload)
-    )
+    _ds_query().mock(return_value=httpx.Response(200, json=payload))
     result = await steps.metric_threshold(CTX, CREDS, _threshold(), CALL)
     assert result.poll is True
     assert result.state == {'last': None}
@@ -186,7 +228,7 @@ async def test_threshold_polls_without_value(
 
 @respx.mock
 async def test_threshold_refuses_many_series() -> None:
-    respx.post(f'{URL}/api/ds/query').mock(
+    _ds_query().mock(
         return_value=httpx.Response(
             200, json=_results(_frame({}, [1], [1]), _frame({}, [1], [2]))
         )
@@ -197,7 +239,7 @@ async def test_threshold_refuses_many_series() -> None:
 
 @respx.mock
 async def test_query_error_in_result() -> None:
-    respx.post(f'{URL}/api/ds/query').mock(
+    _ds_query().mock(
         return_value=httpx.Response(
             200, json={'results': {'A': {'error': 'parse error'}}}
         )

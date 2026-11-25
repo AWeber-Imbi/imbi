@@ -8,7 +8,7 @@ from imbi.plugins.grafana import doctor, lifecycle, links, plugin
 
 _BASE = 'https://grafana.example.com'
 _RULES = (
-    f'{_BASE}/api/prometheus/grafana/api/v1/rules?matcher=%7B%22name%22'
+    f'{_BASE}/api/prometheus/grafana/api/v1/rules?rule_matcher=%7B%22name%22'
     '%3A%22service%22%2C%22value%22%3A%22demo-p1%22%2C%22isRegex%22%3Afalse'
     '%2C%22isEqual%22%3Atrue%7D'
 )
@@ -120,6 +120,13 @@ class LinksTestCase(unittest.TestCase):
         wb = links.writeback(ctx, 'demo-p1')
         self.assertIn('%22name%22%3A%22app%22', wb.canonical_url)
         self.assertIn('label%3Aapp%3Ddemo-p1', wb.dashboard_links['grafana'])
+
+    def test_whitespace_identifier_is_quoted(self) -> None:
+        self.assertEqual(
+            f'{_BASE}/alerting/list?search='
+            'label%3A%22service%3Dcheckout+api%22',
+            links.dashboard_url(_BASE, 'service', 'checkout api'),
+        )
 
     def test_missing_url_raises(self) -> None:
         with self.assertRaises(links.GrafanaConfigError):

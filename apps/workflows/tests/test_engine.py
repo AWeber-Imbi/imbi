@@ -7,6 +7,7 @@ contract of the deploy and email endpoints; TypeSafe is patched.
 
 import asyncio
 import collections
+import dataclasses
 import datetime
 import json
 import typing
@@ -28,7 +29,7 @@ from imbi.api.workflows import sweeper
 from imbi.common import graph, iggy, sentry
 from imbi.common.auth import encryption
 from imbi.common.workflows import graph as wf
-from imbi.common.workflows import history, script_runner
+from imbi.common.workflows import history, registry, script_runner, step_type
 from imbi.common.workflows.registry import search_logs
 from imbi.workflows import app, engine, executors, settings, store
 from libraries.common.tests.test_plugins import test_registry as registry_tests
@@ -70,6 +71,8 @@ class FakeApi:
         #: Refuse this many calls of any kind with ``httpx.ConnectError``,
         #: as imbi-api does while it restarts.
         self.refused = 0
+        #: Answer this many token requests with ``503``.
+        self.token_errors = 0
         #: Answer this many Slack calls with ``429 slack_ratelimited``.
         self.slack_ratelimited = 0
         #: The raw path of every request.
@@ -210,6 +213,9 @@ class FakeApi:
                 },
             )
         if path.endswith('/auth/token'):
+            if self.token_errors:
+                self.token_errors -= 1
+                return httpx.Response(503, text='unavailable')
             return httpx.Response(
                 200, json={'access_token': 'token', 'expires_in': 900}
             )
@@ -3596,26 +3602,134 @@ class PluginStepTestCase(EngineTestCase):
             [e.rsplit('/', 1)[1] for e in self.api.emails], ['failure-notice']
         )
 
-    async def test_plugin_timeout_retry_keeps_the_key_attempt(self) -> None:
+    def _acts(self) -> None:
+        """Make the plugin steps act and not be safe to repeat."""
+        get = registry.get
+
+        def patched(name: str) -> step_type.StepType | None:
+            found = get(name)
+            if found is not None and found.plugin:
+                return dataclasses.replace(
+                    found, side_effect=True, idempotent=False
+                )
+            return found
+
+        patcher = mock.patch.object(registry, 'get', patched)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _keys(self) -> list[str]:
+        return [c.headers['Idempotency-Key'] for c in self.calls]
+
+    _PLUGIN_TIMEOUT = httpx.Response(
+        504, json={'detail': {'error': 'plugin_timeout', 'retry': True}}
+    )
+    _PROXY_502 = httpx.Response(502, text='<html>Bad Gateway</html>')
+
+    async def test_plugin_timeout_retry_uses_a_new_key(self) -> None:
         self.answers = [
-            httpx.Response(
-                504,
-                json={'detail': {'error': 'plugin_timeout', 'retry': True}},
-            ),
+            self._PLUGIN_TIMEOUT,
+            self._result(output={'value': 1}, port='Pass'),
         ]
         run_id = await self._gate(retries=1)
-        await self._drive(run_id, lambda r: len(self.calls) == 1)
-        run = await self._run(run_id)
-        self.assertEqual(run['steps']['gate']['attempt'], 2)
-        self.assertEqual(run['steps']['gate']['state'], {'key_attempt': 1})
+        with mock.patch.object(engine, 'RETRY_BACKOFF', 0):
+            run = await self._drive(run_id)
+        self.assertEqual(run['steps']['gate']['port'], 0, run)
+        self.assertEqual(
+            self._keys(), [f'{run_id}:gate:1:0', f'{run_id}:gate:2:0']
+        )
 
-    async def test_proxy_502_retry_keeps_the_key_attempt(self) -> None:
-        self.answers = [httpx.Response(502, text='<html>Bad Gateway</html>')]
+    async def test_plugin_timeout_fails_a_step_that_acts(self) -> None:
+        self._acts()
+        self.answers = [self._PLUGIN_TIMEOUT]
+        run = await self._drive(await self._gate(retries=1))
+        self.assertEqual(run['steps']['gate']['error'], 'plugin_timeout')
+        self.assertEqual(run['steps']['gate']['port'], 1)
+        self.assertEqual(len(self.calls), 1)
+
+    async def test_proxy_502_retry_sends_the_key_again(self) -> None:
+        self._acts()
+        self.answers = [
+            self._PROXY_502,
+            self._result(output={'value': 1}, port='Pass'),
+        ]
         run_id = await self._gate(retries=1)
+        with mock.patch.object(engine, 'RETRY_BACKOFF', 0):
+            await self._drive(run_id, lambda r: len(self.calls) == 1)
+            run = await self._run(run_id)
+            self.assertEqual(run['steps']['gate']['attempt'], 2)
+            self.assertEqual(run['steps']['gate']['state'], {'key_attempt': 1})
+            run = await self._drive(run_id)
+        self.assertEqual(run['steps']['gate']['port'], 0, run)
+        self.assertEqual(
+            self._keys(), [f'{run_id}:gate:1:0', f'{run_id}:gate:1:0']
+        )
+
+    async def test_token_failure_keeps_the_key(self) -> None:
+        self._acts()
+        api = self.engine.steps.api
+
+        async def run(request: httpx.Request) -> httpx.Response:
+            self.calls.append(request)
+            if len(self.calls) == 1:
+                # The token lapses, and its refresh fails once.
+                api._token = None
+                self.api.token_errors = 1
+                return self._PROXY_502
+            return self._result(output={'value': 1}, port='Pass')
+
+        self.api.plugin_step = run
+        run_id = await self._gate(retries=2)
+        with mock.patch.object(engine, 'RETRY_BACKOFF', 0):
+            run_ = await self._drive(run_id)
+        self.assertEqual(run_['steps']['gate']['port'], 0, run_)
+        self.assertEqual(run_['steps']['gate']['attempt'], 3)
+        self.assertEqual(
+            self._keys(), [f'{run_id}:gate:1:0', f'{run_id}:gate:1:0']
+        )
+
+    async def test_restart_sends_the_key_again(self) -> None:
+        self._acts()
+        self.answers = [self._result(output={'value': 1}, port='Pass')]
+        real = self.engine.steps.run
+
+        async def crashing(call: executors.Call) -> executors.Outcome:
+            await real(call)
+            raise Crash
+
+        self.engine.steps.run = crashing  # type: ignore[method-assign]
+        run_id = await self._gate()
+        with self.assertRaises(Crash):
+            await self._drive(run_id)
+        self.engine.steps.run = real  # type: ignore[method-assign]
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE workflow_runtime.leases'
+                " SET expires_at = NOW() - INTERVAL '1 second'"
+                ' WHERE run_id = %s',
+                (run_id,),
+            )
+        run = await self._drive(run_id)
+        self.assertEqual(run['steps']['gate']['port'], 0, run)
+        self.assertIsNone(run['steps']['gate']['error'])
+        self.assertEqual(
+            self._keys(), [f'{run_id}:gate:1:0', f'{run_id}:gate:1:0']
+        )
+
+    async def test_poll_wakes_at_the_step_timeout(self) -> None:
+        self.answers = [self._result(poll=True)]
+        run_id = await self._gate(timeout_seconds=10)
         await self._drive(run_id, lambda r: len(self.calls) == 1)
-        run = await self._run(run_id)
-        self.assertEqual(run['steps']['gate']['attempt'], 2)
-        self.assertEqual(run['steps']['gate']['state'], {'key_attempt': 1})
+        async with self.pool.connection() as conn:
+            cur = await conn.execute(
+                'SELECT due_at - NOW() FROM workflow_runtime.runs'
+                ' WHERE id = %s',
+                (run_id,),
+            )
+            row = await cur.fetchone()
+        assert row is not None
+        # Not after poll_seconds (60) of the fixture step.
+        self.assertLess(row[0], datetime.timedelta(seconds=11))
 
 
 class AppTestCase(unittest.IsolatedAsyncioTestCase):

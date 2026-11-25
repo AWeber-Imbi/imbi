@@ -10,8 +10,9 @@ exposing one Integration (`grafana`) with three capabilities:
   alert rules list searched by that label. The link key is the
   integration slug. Removes both on delete.
 - **`webhook-actions`** — receives deliveries from a Grafana Alerting
-  webhook contact point. imbi-gateway verifies the signature, finds the
-  project by the label value, and records each delivery as an event.
+  webhook contact point. imbi-gateway finds the project by the label
+  value and records each delivery as an event. It verifies the
+  signature only when the webhook has a secret.
   The capability advertises no custom actions.
 - **`analysis`** — Project Doctor checks that the edge and link exist
   and match the integration options, with a one-click repair.
@@ -63,8 +64,11 @@ hex HMAC-SHA256 of the raw body, keyed by the shared secret, in the
 `X-Grafana-Alerting-Signature` header. Put the same secret in the
 **Secret** field of the Imbi webhook. Leave the contact point's
 **Timestamp Header** empty: with it set, Grafana signs
-`<timestamp>:<body>` instead, which the gateway does not compute. The
-gateway drops a delivery whose signature is missing or does not match.
+`<timestamp>:<body>` instead, which the gateway does not compute. When
+the webhook has a secret, the gateway drops a delivery whose signature
+is missing or does not match. When it has no secret, the gateway
+processes each delivery unverified and logs a warning one time for
+each webhook in each process.
 The header name and prefix are the `SIGNATURE_HEADER` and
 `SIGNATURE_PREFIX` constants in `imbi.plugins.grafana.plugin`.
 
@@ -81,7 +85,8 @@ Only the workflow steps call Grafana. They need the optional
 role) and send requests only to `service_url`. They use these Grafana
 APIs:
 
-- `GET /api/datasources` and `POST /api/ds/query`:
+- `GET /api/datasources`, `GET /api/datasources/uid/:uid`, and
+  `POST /api/ds/query`:
   <https://grafana.com/docs/grafana/latest/developers/http_api/data_source/>
 - The Prometheus query fields (`expr`, `range`, `instant`):
   <https://grafana.com/docs/grafana/latest/datasources/prometheus/query-editor/>

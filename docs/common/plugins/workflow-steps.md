@@ -146,11 +146,16 @@ and calls the callable. The rules:
   call. The `plugin-step-calls-prune` maintenance operation deletes the
   records after 90 days.
 - Each poll and each retry is a new call with a new key. A step with
-  `side_effect=True` and `idempotent=False` sends the key of a call that
-  timed out again, so it does not act twice.
+  `side_effect=True` and `idempotent=False` sends the key of a call
+  with an unknown outcome again, so it does not act twice. The outcome
+  is unknown after a timeout, a lost response, or a worker restart
+  during the call.
 - An exception or a timeout of the callable is a `5xx` error: the engine
-  retries the step up to `retries` times. A result that is not valid
-  (an unknown port, an output that does not validate) fails the step.
+  retries the step up to `retries` times. A step with
+  `side_effect=True` and `idempotent=False` is not retried after a
+  timeout of the callable (`plugin_timeout`): it fails. A result that
+  is not valid (an unknown port, an output that does not validate)
+  fails the step.
 - When the plugin of a step type is removed, a run of a workflow that
   uses the type fails with `unknown_type`.
 

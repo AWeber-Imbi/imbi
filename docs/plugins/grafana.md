@@ -2,10 +2,12 @@
 
 The `grafana` plugin links each project to the Grafana alert rules that
 carry its slug in a label, and receives deliveries from a Grafana
-Alerting webhook contact point. imbi-gateway verifies the signature of
-each delivery, finds the project by that label, and records the delivery
-as an event. You can then add webhook rules that act on the events, for
-example start a workflow.
+Alerting webhook contact point. imbi-gateway finds the project by that
+label and records the delivery as an event. When the webhook has a
+secret, the gateway also verifies the signature of each delivery. A
+webhook with no secret accepts deliveries unverified, so set a secret
+to authenticate them (see [Signature](#signature)). You can then add
+webhook rules that act on the events, for example start a workflow.
 
 ## Capabilities
 
@@ -115,8 +117,10 @@ signature** and set these values:
 | Timestamp Header | Leave empty |
 
 Grafana sends the hex HMAC-SHA256 of the raw body, keyed by the secret,
-in the signature header. The gateway drops a delivery whose signature is
-missing or does not match.
+in the signature header. When the Imbi webhook has a secret, the gateway
+drops a delivery whose signature is missing or does not match. When it
+has no secret, the gateway processes each delivery unverified and logs
+a warning one time for each webhook in each process.
 
 Leave **Timestamp Header** empty. With it set, Grafana signs
 `<timestamp>:<body>` instead of the body, and the gateway does not
@@ -134,7 +138,7 @@ To set up the webhook:
     | Field | Value |
     |---|---|
     | Secret | The secret you entered on the Grafana contact point |
-    | Identifier Selector | The JSON Pointer to the label value that names the project: `/commonLabels/<label>`, for example `/commonLabels/service`, when the notification policy groups by the label; otherwise `/alerts/0/labels/<label>` |
+    | Identifier Selector | `/commonLabels/<label>`, for example `/commonLabels/service`. Group the notification policy by the label, so that each delivery has the alerts of one project only |
     | User Subject Selector | Leave empty. Grafana sends no user |
     | Event Type Selector | `/status` |
 
@@ -163,10 +167,10 @@ to the **Grafana URL** of the integration.
 
 | Type | Kind | What it does |
 |---|---|---|
-| `grafana.gather_metrics` | Action | Runs a PromQL range query from `start` (default `now-1h`) to `end` (default `now`), with a step of `step_seconds` (default 60). The output has up to 50 series of up to 500 points, a `summary` with the min, max, and last value of each series, and `truncated` |
+| `grafana.gather_metrics` | Action | Runs a PromQL range query from `start` (default `now-1h`) to `end` (default `now`), with a step of `step_seconds` (default 60). The output has up to 50 series of up to 500 points, at most 1000 KiB in total, a `summary` with the min, max, and last value of each series, and `truncated` (true when the limits dropped data) |
 | `grafana.metric_threshold` | Gate | Runs an instant PromQL query that gives one value. When `value <operator> threshold` is true (`lt`, `lte`, `gt`, or `gte`), it takes the `Pass` port. Otherwise it polls each 60 seconds. After 30 minutes it takes the `Failed` port |
 
-The **Data source** field lists the Prometheus data sources of Grafana.
+The **Data source** field lists the Prometheus data sources of Grafana. A data source of another type fails the step.
 For the gate, reduce the query to one series, for example with `sum()`
 or `max()`. A query that gives more than one series fails the step. A
 query that gives no value, or `NaN`, polls again.

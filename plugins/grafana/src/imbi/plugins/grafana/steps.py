@@ -8,6 +8,7 @@ the Integration ``service_url`` option only, never from the step params.
 import math
 import time
 import typing
+import urllib.parse
 
 import httpx
 import pydantic
@@ -18,6 +19,9 @@ from imbi.common.plugins import base, errors
 MAX_SERIES = 50
 #: The maximum number of points in each series.
 MAX_POINTS = 500
+#: The maximum size of the ``gather_metrics`` output, in bytes. imbi-api
+#: refuses a result larger than 1 MiB; this leaves space for the rest.
+MAX_BYTES = 1000 * 1024
 
 _TIMEOUT = 30.0
 
@@ -58,7 +62,8 @@ class SeriesSummary(pydantic.BaseModel):
 class GatherMetricsOutput(pydantic.BaseModel):
     series: list[Series]
     summary: list[SeriesSummary]
-    #: True when series or points were dropped to stay in the limits.
+    #: True when series or points were dropped to stay in the limits,
+    #: including :data:`MAX_BYTES`.
     truncated: bool
 
 
@@ -69,7 +74,7 @@ class ThresholdParams(pydantic.BaseModel):
         description='A PromQL query that gives one value, e.g. sum(...).',
     )
     operator: typing.Literal['lt', 'lte', 'gt', 'gte']
-    threshold: float
+    threshold: pydantic.FiniteFloat
 
 
 class ThresholdOutput(pydantic.BaseModel):
@@ -112,12 +117,20 @@ async def gather_metrics(
         kept.append(
             Series(labels=item.labels, points=item.points[-MAX_POINTS:])
         )
-    output = GatherMetricsOutput(
+    output = _output(kept, truncated)
+    # ponytail: serializes once per dropped series; at most MAX_SERIES.
+    while kept and len(output.model_dump_json().encode()) > MAX_BYTES:
+        kept.pop()
+        output = _output(kept, True)
+    return base.StepResult(output=output.model_dump(mode='json'))
+
+
+def _output(kept: list[Series], truncated: bool) -> GatherMetricsOutput:
+    return GatherMetricsOutput(
         series=kept,
         summary=[_summarize(item) for item in kept],
         truncated=truncated,
     )
-    return base.StepResult(output=output.model_dump(mode='json'))
 
 
 async def metric_threshold(
@@ -184,6 +197,18 @@ async def _query(
     start: str,
     end: str,
 ) -> list[Series]:
+    # The picker lists only Prometheus data sources; a rendered or saved
+    # UID can name another type, so check it before the query.
+    found = await _request(
+        ctx,
+        credentials,
+        'GET',
+        '/api/datasources/uid/' + urllib.parse.quote(datasource, safe=''),
+    )
+    if typing.cast('dict[str, typing.Any]', found).get('type') != 'prometheus':
+        raise ValueError(
+            f'The data source {datasource!r} is not a Prometheus data source'
+        )
     body = {
         'queries': [
             {'refId': 'A', 'datasource': {'uid': datasource}, **query}
