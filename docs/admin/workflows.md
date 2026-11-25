@@ -21,7 +21,7 @@ Setup has four steps:
 
 | Part | What it is |
 |---|---|
-| Workflow | A name, a slug, an owner team, and its versions |
+| Workflow | A name, a slug, an owner team, tags, and its versions |
 | Version | One saved graph and its settings. A version never changes after you save it |
 | Active version | The one version that triggers start. Saving does not change it |
 | Step | A node on the canvas. Its step type sets its parameters and output ports |
@@ -108,6 +108,7 @@ Click empty canvas to see the workflow settings.
 |---|---|---|
 | **Description** | Free text | Empty |
 | **Owner team** | A team in the organization | None. Required |
+| **Tags** | Organization tags. They only classify the workflow. You can make a tag with a color from this field. The workflows list shows them, with the owner team | None |
 | **Concurrency** | **Unlimited**, **One run at a time**, **One run per key** | **Unlimited** |
 | **Concurrency key** | A key template, for **One run per key** only | None |
 | **Dedupe key** | A key template. A run that repeats the key of an earlier run is skipped. See [Dedupe](#dedupe) | None |

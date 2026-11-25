@@ -23929,6 +23929,16 @@ export interface components {
              */
             owner_team_slug: string | null;
             /**
+             * Owner Team Name
+             * @description None when the owner team was deleted.
+             */
+            owner_team_name: string | null;
+            /**
+             * Tags
+             * @default []
+             */
+            tags: components["schemas"]["WorkflowTag"][];
+            /**
              * Status
              * @enum {string}
              */
@@ -23989,6 +23999,12 @@ export interface components {
             description: string;
             /** Owner Team Slug */
             owner_team_slug: string;
+            /**
+             * Tags
+             * @description Tag slugs. Must already exist in the org.
+             * @default []
+             */
+            tags: string[];
             graph?: components["schemas"]["Graph"];
             settings?: components["schemas"]["Settings"];
             /**
@@ -24008,6 +24024,12 @@ export interface components {
             description: string;
             /** Owner Team Slug */
             owner_team_slug: string;
+            /**
+             * Tags
+             * @description Tag slugs. Must already exist in the org.
+             * @default []
+             */
+            tags: string[];
             graph?: components["schemas"]["Graph"];
             settings?: components["schemas"]["Settings"];
         };
@@ -24024,6 +24046,16 @@ export interface components {
              * @description None when the owner team was deleted.
              */
             owner_team_slug: string | null;
+            /**
+             * Owner Team Name
+             * @description None when the owner team was deleted.
+             */
+            owner_team_name: string | null;
+            /**
+             * Tags
+             * @default []
+             */
+            tags: components["schemas"]["WorkflowTag"][];
             /**
              * Status
              * @enum {string}
@@ -24058,6 +24090,15 @@ export interface components {
             last_run_at?: string | null;
             /** Last Run Status */
             last_run_status?: string | null;
+        };
+        /** WorkflowTag */
+        WorkflowTag: {
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Color */
+            color?: string | null;
         };
         /** WorkflowValidate */
         WorkflowValidate: {

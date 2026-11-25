@@ -2,6 +2,7 @@ import { type ReactNode, useMemo, useState } from 'react'
 
 import { Copy, Trash2 } from 'lucide-react'
 
+import { AgentTagPicker } from '@/components/agents/AgentTagPicker'
 import { FormField } from '@/components/ui/form-field'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -25,6 +26,7 @@ import { ScriptPreview } from './ScriptPreview'
 import { CATEGORY_TILE, stepIcon } from './stepStyle'
 import type {
   ValidationIssue,
+  WorkflowDraft,
   WorkflowGraph,
   WorkflowNode,
   WorkflowWrite,
@@ -288,9 +290,9 @@ export function SettingsPanel({
   orgSlug,
   readOnly,
 }: {
-  draft: WorkflowWrite
+  draft: WorkflowDraft
   issues: ValidationIssue[]
-  onChange: (patch: Partial<WorkflowWrite>) => void
+  onChange: (patch: Partial<WorkflowDraft>) => void
   orgSlug: string
   readOnly: boolean
 }) {
@@ -325,6 +327,13 @@ export function SettingsPanel({
             onChange={(owner_team_slug) => onChange({ owner_team_slug })}
             options={teams.options}
             value={draft.owner_team_slug}
+          />
+        </FormField>
+        <FormField label="Tags">
+          <AgentTagPicker
+            onChange={(tags) => onChange({ tags })}
+            orgSlug={orgSlug}
+            value={draft.tags}
           />
         </FormField>
         <FormField

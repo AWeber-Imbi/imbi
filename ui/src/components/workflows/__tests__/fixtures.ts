@@ -225,9 +225,11 @@ export function workflow(overrides: Partial<Workflow> = {}): Workflow {
     description: 'Ships and checks a deploy.',
     latest_version: 2,
     name: 'Deploy guard',
+    owner_team_name: 'Platform',
     owner_team_slug: 'platform',
     slug: 'deploy-guard',
     status: 'draft',
+    tags: [],
     trigger_types: ['manual'],
     updated_at: '2026-10-12T00:00:00Z',
     version: {

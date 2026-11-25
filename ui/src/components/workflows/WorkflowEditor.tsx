@@ -76,6 +76,7 @@ import {
   type TestRunResult,
   type ValidationIssue,
   type Workflow,
+  type WorkflowDraft,
   type WorkflowGraph,
   type WorkflowWrite,
 } from './types'
@@ -128,12 +129,13 @@ export function WorkflowEditor({
   const hasWrite = useHasPermission('workflow:write', orgSlug)
   const canDelete =
     useHasPermission('workflow:delete', orgSlug) || (hasWrite && inTeam)
-  const [draft, setDraft] = useState<WorkflowWrite>(() => ({
+  const [draft, setDraft] = useState<WorkflowDraft>(() => ({
     description: workflow?.description ?? '',
     graph: workflow?.version.graph ?? { edges: [], nodes: [] },
     name: workflow?.name ?? 'Untitled workflow',
     owner_team_slug: workflow?.owner_team_slug ?? '',
     settings: workflow?.version.settings ?? NEW_SETTINGS,
+    tags: workflow?.tags ?? [],
   }))
   // The edited prompts of LLM Call steps, by node id. They are written
   // to the Prompt CMS on save.
@@ -171,7 +173,7 @@ export function WorkflowEditor({
   const [startOpen, setStartOpen] = useState(false)
   const runDetail = useWorkflowRun(orgSlug, slug ?? '', runId)
 
-  const change = (patch: Partial<WorkflowWrite>) => {
+  const change = (patch: Partial<WorkflowDraft>) => {
     setDraft((d) => ({ ...d, ...patch }))
     markDirty()
   }

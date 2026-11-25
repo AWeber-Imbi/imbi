@@ -16,6 +16,8 @@ Every route needs the caller to be a member of the organization
 (``MEMBER_OF``): see :mod:`imbi.api.auth.organizations`.
 """
 
+import asyncio
+import dataclasses
 import datetime
 import functools
 import logging
@@ -71,6 +73,12 @@ class WorkflowVersion(pydantic.BaseModel):
     created_at: datetime.datetime
 
 
+class WorkflowTag(pydantic.BaseModel):
+    name: str
+    slug: str
+    color: str | None = None
+
+
 class WorkflowSummary(pydantic.BaseModel):
     slug: str
     name: str
@@ -78,6 +86,11 @@ class WorkflowSummary(pydantic.BaseModel):
     owner_team_slug: str | None = pydantic.Field(
         description='None when the owner team was deleted.'
     )
+    owner_team_name: str | None = pydantic.Field(
+        description='None when the owner team was deleted.'
+    )
+    #: The org tags that label the workflow. A deleted tag is left out.
+    tags: list[WorkflowTag] = []
     status: Status
     latest_version: int
     active_version: int | None
@@ -125,6 +138,9 @@ class WorkflowSave(pydantic.BaseModel):
     name: str = pydantic.Field(min_length=1)
     description: str = ''
     owner_team_slug: str = pydantic.Field(min_length=1)
+    tags: list[str] = pydantic.Field(
+        default=[], description='Tag slugs. Must already exist in the org.'
+    )
     graph: wf.Graph = pydantic.Field(default_factory=wf.Graph)
     settings: wf.Settings = pydantic.Field(default_factory=wf.Settings)
 
@@ -184,12 +200,66 @@ async def _team_id(db: graph.Graph, org_id: str, team_slug: str) -> str:
     return found[team_slug]
 
 
-async def _team_slugs(
+async def _teams(
     db: graph.Graph, org_id: str, rows: list[workflows.Row]
-) -> dict[str, str]:
+) -> dict[str, dict[str, str]]:
     ids = sorted({str(r['owner_team_id']) for r in rows})
-    found = await teams.by_id(db, org_id, ids)
-    return {team_id: team['slug'] for team_id, team in found.items()}
+    return await teams.by_id(db, org_id, ids)
+
+
+_TAGS_QUERY: typing.LiteralString = """
+MATCH (t:Tag)-[:BELONGS_TO]->(:Organization {{id: {org_id}}})
+WHERE t.id IN {ids} OR t.slug IN {slugs}
+RETURN t.id AS id, t.name AS name, t.slug AS slug, t.color AS color
+"""
+
+
+async def _find_tags(
+    db: graph.Graph,
+    org_id: str,
+    ids: abc.Iterable[str] = (),
+    slugs: abc.Iterable[str] = (),
+) -> list[dict[str, typing.Any]]:
+    """Return the org tags with these ids or slugs."""
+    ids, slugs = sorted(set(ids)), sorted(set(slugs))
+    if not ids and not slugs:
+        return []
+    records = await db.execute(
+        _TAGS_QUERY,
+        {'org_id': org_id, 'ids': ids, 'slugs': slugs},
+        ['id', 'name', 'slug', 'color'],
+    )
+    return [{k: graph.parse_agtype(v) for k, v in r.items()} for r in records]
+
+
+async def _tags(
+    db: graph.Graph, org_id: str, rows: list[workflows.Row]
+) -> dict[str, dict[str, typing.Any]]:
+    """Return ``{id: tag}`` for the tags of the rows."""
+    found = await _find_tags(
+        db, org_id, ids=(t for r in rows for t in r['tag_ids'])
+    )
+    return {t['id']: t for t in found}
+
+
+async def _tag_ids(
+    db: graph.Graph, org_id: str, slugs: list[str]
+) -> list[str]:
+    """Return the ids of the tags with these slugs.
+
+    Raises:
+        422: A slug is not a tag of the org.
+
+    """
+    found = {
+        t['slug']: t['id'] for t in await _find_tags(db, org_id, slugs=slugs)
+    }
+    missing = sorted(set(slugs) - found.keys())
+    if missing:
+        raise fastapi.HTTPException(
+            status_code=422, detail=f'Tag slug(s) not found: {missing!r}'
+        )
+    return list(found.values())
 
 
 #: For each kind of resource that a step names by id: the ids in
@@ -594,11 +664,19 @@ def _trigger_types(wf_graph: dict[str, typing.Any]) -> list[str]:
 
 
 def _workflow(
-    row: workflows.Row, team_slugs: dict[str, str]
+    row: workflows.Row,
+    team_map: dict[str, dict[str, str]],
+    tag_map: dict[str, dict[str, typing.Any]],
 ) -> dict[str, typing.Any]:
+    team = team_map.get(row['owner_team_id'], {})
     return {
         **row,
-        'owner_team_slug': team_slugs.get(row['owner_team_id']),
+        'owner_team_slug': team.get('slug'),
+        'owner_team_name': team.get('name'),
+        'tags': sorted(
+            (tag_map[t] for t in row['tag_ids'] if t in tag_map),
+            key=lambda t: t['slug'],
+        ),
         'trigger_types': _trigger_types(row['graph']),
         'active_trigger_types': _trigger_types(row['active_graph'] or {}),
         'agent_ids': workflows.agent_ids(row['graph']),
@@ -624,10 +702,12 @@ async def _get(
         raise fastapi.HTTPException(
             status_code=404, detail=f'Workflow {slug!r} not found'
         )
-    return {
-        **_workflow(row, await _team_slugs(db, org_id, [row])),
-        'bindings': await store.bindings(row['id']),
-    }
+    team_map, tag_map, bindings = await asyncio.gather(
+        _teams(db, org_id, [row]),
+        _tags(db, org_id, [row]),
+        store.bindings(row['id']),
+    )
+    return {**_workflow(row, team_map, tag_map), 'bindings': bindings}
 
 
 async def _definition(
@@ -639,7 +719,8 @@ async def _definition(
     """Validate a save. A graph over the size limits is refused.
 
     Raises:
-        422: The graph is too large, or the team is not in the org.
+        422: The graph is too large, or the team or a tag is not in
+            the org.
 
     """
     result = await _validate(db, org_id, data.graph, data.settings)
@@ -652,6 +733,7 @@ async def _definition(
         name=data.name,
         description=data.description,
         owner_team_id=await _team_id(db, org_id, data.owner_team_slug),
+        tag_ids=await _tag_ids(db, org_id, data.tags),
         graph=data.graph.model_dump(mode='json'),
         settings=data.settings.model_dump(mode='json'),
         validation=result.model_dump(mode='json'),
@@ -707,7 +789,9 @@ async def list_workflows(
     ``None`` and the list still loads (ADR 0021).
     """
     rows = await store.list_all(org_id)
-    team_slugs = await _team_slugs(db, org_id, rows)
+    team_map, tag_map = await asyncio.gather(
+        _teams(db, org_id, rows), _tags(db, org_id, rows)
+    )
     try:
         stats = await history.stats(org_id)
     except Exception:  # noqa: BLE001 -- the list loads without them
@@ -715,7 +799,7 @@ async def list_workflows(
         stats = None
     found: list[dict[str, typing.Any]] = []
     for row in rows:
-        item = _workflow(row, team_slugs)
+        item = _workflow(row, team_map, tag_map)
         if stats is not None:
             run = stats.get(str(row['id']), {})
             item['runs_30d'] = run.get('runs_30d', 0)
@@ -840,6 +924,11 @@ async def save_workflow(
             status_code=404, detail=f'Workflow {slug!r} not found'
         )
     definition = await _definition(db, org_id, data, auth)
+    # A save without `tags` keeps the stored tags; `[]` clears them.
+    if 'tags' not in data.model_fields_set:
+        definition = dataclasses.replace(
+            definition, tag_ids=current['tag_ids']
+        )
     if (
         definition.owner_team_id != current['owner_team_id']
         and not auth.is_admin
