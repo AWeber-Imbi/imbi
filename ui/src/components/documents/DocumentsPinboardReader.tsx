@@ -20,6 +20,7 @@ import {
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
+import { TagChip } from '@/components/tags/TagChip'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { FrontmatterTable } from '@/components/ui/frontmatter-table'
@@ -53,7 +54,6 @@ import {
   tagCounts,
   uniqueTagsFromDocuments,
 } from './documentsHelpers'
-import { DocumentTagChip } from './DocumentTagChip'
 import { DocumentVersionHistory } from './DocumentVersionHistory'
 import { estimatedReadSeconds, formatReadTime } from './readershipHelpers'
 import { useDocumentLike } from './useDocumentLike'
@@ -438,7 +438,7 @@ export function DocumentsPinboardReader({
               </div>
               <div className="flex flex-wrap gap-1">
                 {document.tags.map((t) => (
-                  <DocumentTagChip key={t.slug} tag={t} />
+                  <TagChip key={t.slug} tag={t} />
                 ))}
               </div>
 

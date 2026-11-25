@@ -23036,6 +23036,8 @@ export interface components {
             name: string;
             /** Slug */
             slug: string;
+            /** Color */
+            color?: string | null;
         };
         /** TagResponse */
         TagResponse: {

@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 
 import { Pin } from 'lucide-react'
 
+import { TagChip } from '@/components/tags/TagChip'
 import {
   Card,
   CardContent,
@@ -16,7 +17,6 @@ import type { Document, DocumentTemplate } from '@/types'
 import { DocumentRowTail, DocumentTagsCell } from './DocumentRowCells'
 import { DocumentsFilterRail } from './DocumentsFilterRail'
 import { deriveExcerpt, documentTitle, formatUpdated } from './documentsHelpers'
-import { DocumentTagChip } from './DocumentTagChip'
 import { NewDocumentMenu } from './NewDocumentMenu'
 import { useTagFilter } from './useTagFilter'
 
@@ -165,7 +165,7 @@ function HeroCard({
         {document.tags.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {document.tags.map((t) => (
-              <DocumentTagChip key={t.slug} size="sm" tag={t} />
+              <TagChip key={t.slug} size="sm" tag={t} />
             ))}
           </div>
         )}

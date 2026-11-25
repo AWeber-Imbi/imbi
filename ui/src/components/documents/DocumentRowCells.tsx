@@ -1,12 +1,12 @@
 import { ArrowUpRight, Pin } from 'lucide-react'
 
+import { TagChip } from '@/components/tags/TagChip'
 import { IconTooltip } from '@/components/ui/tooltip'
 import { UserIdentity } from '@/components/ui/user-identity'
 import { cn } from '@/lib/utils'
 import type { Document } from '@/types'
 
 import { formatUpdated } from './documentsHelpers'
-import { DocumentTagChip } from './DocumentTagChip'
 
 /**
  * The trailing cells shared by every document index row: optional
@@ -73,7 +73,7 @@ export function DocumentTagsCell({ document }: { document: Document }) {
   return (
     <div className="flex flex-wrap gap-1">
       {document.tags.slice(0, 3).map((t) => (
-        <DocumentTagChip key={t.slug} tag={t} />
+        <TagChip key={t.slug} tag={t} />
       ))}
     </div>
   )

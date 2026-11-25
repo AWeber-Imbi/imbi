@@ -2,12 +2,12 @@ import { useQuery } from '@tanstack/react-query'
 import { Plus, StickyNote } from 'lucide-react'
 
 import { listDocumentTemplates } from '@/api/endpoints'
+import { TagChip } from '@/components/tags/TagChip'
 import { Button } from '@/components/ui/button'
 import { EntityIcon } from '@/components/ui/entity-icon'
 import type { DocumentTemplate } from '@/types'
 
 import { filterTemplatesByProjectType } from './documentsHelpers'
-import { DocumentTagChip } from './DocumentTagChip'
 
 interface Props {
   context?: 'project' | 'project_type' | 'user'
@@ -99,7 +99,7 @@ export function DocumentsPinboardEmpty({
                   </span>
                   {t.tags && t.tags.length > 0 && (
                     <span className="ml-auto">
-                      <DocumentTagChip size="sm" tag={t.tags[0]} />
+                      <TagChip size="sm" tag={t.tags[0]} />
                     </span>
                   )}
                 </div>

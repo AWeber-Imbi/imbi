@@ -1,5 +1,6 @@
 import { FileText, FolderKanban, MessageSquare, Pin } from 'lucide-react'
 
+import { TagChip } from '@/components/tags/TagChip'
 import { Card } from '@/components/ui/card'
 import { UserIdentity } from '@/components/ui/user-identity'
 import { parseServerTs } from '@/lib/formatDate'
@@ -10,7 +11,6 @@ import {
   deriveExcerpt,
   documentTitle,
 } from './documentsHelpers'
-import { DocumentTagChip } from './DocumentTagChip'
 
 interface Props {
   displayNames?: Map<string, string>
@@ -131,7 +131,7 @@ function FeedCard({
         </span>
         <div className="ml-auto inline-flex items-center gap-1.5">
           {document.tags.map((t) => (
-            <DocumentTagChip key={t.slug} tag={t} />
+            <TagChip key={t.slug} tag={t} />
           ))}
         </div>
       </div>

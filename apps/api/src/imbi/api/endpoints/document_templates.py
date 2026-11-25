@@ -37,6 +37,7 @@ _TEMPLATE_READONLY_PATHS: frozenset[str] = frozenset(
 class TagRef(pydantic.BaseModel):
     name: str
     slug: str
+    color: str | None = None
 
 
 class OrganizationRef(pydantic.BaseModel):
@@ -108,7 +109,7 @@ class DocumentTemplateResponse(pydantic.BaseModel):
 _TAGS_TAIL: typing.LiteralString = """
     OPTIONAL MATCH (nt)-[:TAGGED_WITH]->(tag:Tag)
     WITH nt, o, collect(CASE WHEN tag IS NOT NULL
-                              THEN tag{{.name, .slug}}
+                              THEN tag{{.name, .slug, .color}}
                               END) AS raw_tags
     WITH nt, o, [t IN raw_tags WHERE t IS NOT NULL] AS tags
     RETURN nt, o, tags
@@ -121,7 +122,7 @@ def _parse_template_row(
     template: dict[str, typing.Any] = graph.parse_agtype(record['nt'])
     org: dict[str, typing.Any] = graph.parse_agtype(record['o'])
     raw_tags: list[typing.Any] = graph.parse_agtype(record['tags']) or []
-    tags: list[dict[str, str]] = []
+    tags: list[dict[str, str | None]] = []
     for t in raw_tags:
         if not isinstance(t, dict):
             continue
@@ -130,7 +131,11 @@ def _parse_template_row(
         if not slug:
             continue
         tags.append(
-            {'name': str(entry.get('name', '')), 'slug': str(slug)},
+            {
+                'name': str(entry.get('name', '')),
+                'slug': str(slug),
+                'color': entry.get('color'),
+            },
         )
     template['organization'] = {
         'name': str(org.get('name', '')),
@@ -146,51 +151,11 @@ def _parse_template_row(
     return template
 
 
-async def _attach_tags(
-    db: graph.Pool,
-    org_slug: str,
-    template_slug: str,
-    tag_slugs: list[str],
-) -> None:
-    if not tag_slugs:
-        return
-    # MERGE keeps this idempotent — defensive against any future caller
-    # that doesn't first run ``_detach_all_tags``. The TAGGED_WITH edge
-    # carries no properties, so no AGE MERGE-with-properties pitfall.
-    query: typing.LiteralString = """
-    MATCH (nt:DocumentTemplate {{slug: {tpl_slug}}})
-          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}}),
-          (t:Tag)-[:BELONGS_TO]->(o)
-    WHERE t.slug IN {tag_slugs}
-    MERGE (nt)-[:TAGGED_WITH]->(t)
-    RETURN count(t) AS attached
-    """
-    await db.execute(
-        query,
-        {
-            'tpl_slug': template_slug,
-            'org_slug': org_slug,
-            'tag_slugs': tag_slugs,
-        },
-        columns=['attached'],
-    )
-
-
-async def _detach_all_tags(
-    db: graph.Pool, org_slug: str, template_slug: str
-) -> None:
-    query: typing.LiteralString = """
-    MATCH (nt:DocumentTemplate {{slug: {tpl_slug}}})
-          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}}),
-          (nt)-[tw:TAGGED_WITH]->(:Tag)
-    DELETE tw
-    RETURN count(tw) AS removed
-    """
-    await db.execute(
-        query,
-        {'tpl_slug': template_slug, 'org_slug': org_slug},
-        columns=['removed'],
-    )
+#: Binds a template to ``n``, for :mod:`imbi.api.tags`.
+_TEMPLATE_NODE: typing.LiteralString = """
+MATCH (n:DocumentTemplate {{slug: {tpl_slug}}})
+      -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+"""
 
 
 async def _fetch_template(
@@ -281,7 +246,17 @@ async def create_document_template(
         )
 
     if tag_slugs:
-        await _attach_tags(db, org_slug, data.slug, tag_slugs)
+        await org_tags.execute(
+            db,
+            [
+                org_tags.attach_statement(
+                    _TEMPLATE_NODE,
+                    {'tpl_slug': data.slug, 'org_slug': org_slug},
+                    org_slug,
+                    tag_slugs,
+                )
+            ],
+        )
 
     template = await _fetch_template(db, org_slug, data.slug)
     if template is None:
@@ -432,8 +407,15 @@ async def _persist_update(
     )
 
     if tag_slugs is not None:
-        await _detach_all_tags(db, org_slug, new_slug)
-        await _attach_tags(db, org_slug, new_slug, tag_slugs)
+        await org_tags.execute(
+            db,
+            org_tags.replace_statements(
+                _TEMPLATE_NODE,
+                {'tpl_slug': new_slug, 'org_slug': org_slug},
+                org_slug,
+                tag_slugs,
+            ),
+        )
 
     template = await _fetch_template(db, org_slug, new_slug)
     if template is None:
