@@ -684,13 +684,15 @@ async def _definition(
         raise fastapi.HTTPException(
             status_code=422, detail=[i.model_dump() for i in limits]
         )
+    owner_team_id, tag_ids = await asyncio.gather(
+        _team_id(db, org_id, data.owner_team_slug),
+        org_tags.require_ids(db, org_slug, data.tags),
+    )
     return workflows.Definition(
         name=data.name,
         description=data.description,
-        owner_team_id=await _team_id(db, org_id, data.owner_team_slug),
-        tag_ids=list(
-            (await org_tags.require_ids(db, org_slug, data.tags)).values()
-        ),
+        owner_team_id=owner_team_id,
+        tag_ids=list(tag_ids.values()),
         graph=data.graph.model_dump(mode='json'),
         settings=data.settings.model_dump(mode='json'),
         validation=result.model_dump(mode='json'),

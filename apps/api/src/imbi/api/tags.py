@@ -1,4 +1,8 @@
-"""Find the tags of an organization in the graph, by slug or by id."""
+"""Find the tags of an organization in the graph, by slug or by id.
+
+The slug lookups take the organization slug, because most callers
+have only the slug.
+"""
 
 import typing
 

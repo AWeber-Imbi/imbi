@@ -294,19 +294,6 @@ async def _detach_all_tags(
     await db.execute(query, {'document_id': document_id}, columns=['removed'])
 
 
-async def filter_existing_tag_slugs(
-    db: graph.Pool, org_slug: str, tag_slugs: list[str]
-) -> list[str]:
-    """Drop tag slugs that no longer exist in the org.
-
-    Used by version restore, where a snapshot may reference tags
-    deleted since it was taken — the restore should proceed without
-    them rather than fail.
-    """
-    found = await org_tags.ids_by_slug(db, org_slug, tag_slugs)
-    return [t for t in tag_slugs if t in found]
-
-
 _DOCUMENT_CREATE_FRAGMENT: typing.LiteralString = """
     CREATE (n:Document {{
         id: {id},
