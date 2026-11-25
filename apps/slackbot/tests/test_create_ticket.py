@@ -623,6 +623,29 @@ class ListenerTests(ApiTestCase):
         key = orjson.loads(self.shown()['private_metadata'])['key']
         self.assertTrue(key.startswith('slack:'))
 
+    async def test_open_form_preselects_the_org(self) -> None:
+        orgs = [
+            {
+                'organization_slug': slug,
+                'organization_name': slug.title(),
+                'permissions': ['ticket:manage'],
+            }
+            for slug in ('acme', 'beta')
+        ]
+        self.route('GET', '/users/me', 200, {'organizations': orgs})
+        self.route(
+            'GET',
+            '/organizations/beta/tickets/schema',
+            200,
+            {'sections': [], 'filterable': []},
+        )
+        for org, expected in (('beta', 'beta'), (None, 'acme'), ('x', 'acme')):
+            with self.api():
+                await ct.open_form(self.slack, 't', 'U1', org=org)
+            meta = orjson.loads(self.shown()['private_metadata'])
+            self.assertEqual(expected, meta['org'], org)
+            ct._cache.clear()
+
     async def test_command_without_orgs(self) -> None:
         self.route('GET', '/users/me', 200, {'organizations': []})
         with self.api():

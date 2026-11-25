@@ -32,6 +32,7 @@ from imbi.slackbot import (
     agent,
     client,
     create_ticket,
+    home,
     identity,
     mcp,
     settings,
@@ -45,11 +46,7 @@ SlackClient = typing.Any
 
 LOGGER = logging.getLogger(__name__)
 
-_NO_USER_MESSAGE = (
-    "I couldn't match your Slack account to an Imbi user. Imbi matches "
-    'you by your email address — ask an Imbi administrator to make sure '
-    'your account exists and is active.'
-)
+_NO_USER_MESSAGE = identity.NO_USER_MESSAGE
 _EMPTY_MESSAGE = (
     'Hi! Ask me anything about your Imbi projects, teams, or data.'
 )
@@ -391,6 +388,7 @@ def _build_app(bot_token: str) -> AsyncApp:
         )
 
     create_ticket.register(app)
+    home.register(app)
     return app
 
 

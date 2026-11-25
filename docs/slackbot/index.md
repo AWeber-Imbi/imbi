@@ -74,6 +74,54 @@ you why. When someone can still answer (for example, you do not have
 in the UI first, or the ticket closed), the form closes and shows the
 reason. A form stays open for 7 days.
 
+## Home tab
+
+Open the Imbi app in Slack and select **Home**. The tab shows what waits on
+you in Imbi, for one organization:
+
+| Section | What it shows |
+|---|---|
+| Needs attention | Incidents on the projects of your teams, agent requests on your tickets, held tickets, critical advisories on packages that your teams' projects deploy, and workflow runs that you started that failed or are stuck. |
+| My tickets | Person tickets assigned to you that are not closed, by priority, then rank. |
+| Pull requests | Open pull requests that wait on your review, and your open pull requests. You must connect GitHub in Imbi (*Settings*). |
+| Merged, not deployed | Your pull requests merged in the last 90 days that are not in production. |
+| Release drift | Projects of your teams with commits since the latest tag. |
+| My projects | Score, incidents, and advisories of the projects of your teams. |
+| Agent activity | Your agent tickets that run, are paused, or are queued. |
+| Document comments | Comments that mention you, or are on your documents, that you did not acknowledge. |
+
+Each section shows 5 items (or 10, see below), then a link to the full list
+in Imbi. The bot reads the data as you, so you see only what you can see in
+the UI. When the bot cannot read a section, the section shows **Retry**.
+The other sections show as usual.
+
+The bot updates the tab when you open it and after each button you click.
+**New ticket** opens the `/create-ticket` form. Most other buttons open the
+item in Imbi or GitHub. To act on an item, use Imbi.
+
+### Change the layout
+
+- The menu of a section header has **Collapse**, **Hide from Home**,
+  **Move up**, **Move down**, and **Customize Home**. You cannot hide
+  Needs attention, but you can collapse it.
+- **Customize Home** (in the header and in each menu) sets each section to
+  Expanded, Collapsed, or Hidden, and sets these options:
+    - Hide sections with nothing in them (on by default).
+    - Show at most 5 items per section (when off, 10).
+    - Count only expanded sections in the header.
+- When you are a member of more than one organization, select the
+  organization in the header.
+
+Imbi stores the layout in your Imbi profile, so it is the same on each
+device.
+
+### Turn on the Home tab
+
+An existing Slack app does not show the tab until you update its
+configuration. Add `features.app_home` and the `app_home_opened` event from
+[Slack App Setup](slack-app-manifest.md#home-tab) to the app, or reinstall
+the app from the new manifest.
+
 ## How the bot knows who you are
 
 1. The bot reads the email of your Slack profile (`users.info`).

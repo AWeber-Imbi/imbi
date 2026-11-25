@@ -1,0 +1,275 @@
+{
+  "outline": [
+    "section: *Good afternoon, Ada*",
+    "context: Acme · *10* things need you · Updated 2:01 PM",
+    "actions: New ticket(primary), Ask Imbi(), Open Imbi(), My profile(), Customize Home()",
+    "divider: ",
+    "section: *▸ Needs attention (10)*  Collapsed · 10 items [button:home:needs_attention:expand]",
+    "divider: ",
+    "section: *▸ My tickets (2)*  Collapsed · T-200, T-201 [button:home:my_tickets:expand]",
+    "divider: ",
+    "section: *▸ Pull requests (4)*  Collapsed · 2 to review · 2 authored [button:home:pull_requests:expand]",
+    "divider: ",
+    "section: *▸ Merged, not deployed (2)*  Collapsed · imbi-api [button:home:merged_not_deployed:expand]",
+    "divider: ",
+    "section: *▸ Release drift (2)*  Collapsed · 1 blocked · proj-1, proj-0 [button:home:release_drift:expand]",
+    "divider: ",
+    "section: *▸ My projects (2)*  Collapsed · 2 need a look [button:home:my_projects:expand]",
+    "divider: ",
+    "section: *▸ Agent activity (2)*  Collapsed · T-500, T-501 [button:home:agent_activity:expand]",
+    "divider: ",
+    "section: *▸ Document comments (2)*  Collapsed · ADR 0028 [button:home:document_comments:expand]",
+    "divider: ",
+    "context: 8 sections collapsed · 0 hidden · Customize Home · Imbi refreshes this tab when you open it"
+  ],
+  "view": {
+    "type": "home",
+    "blocks": [
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*Good afternoon, Ada*"
+        },
+        "block_id": "home:header"
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": "Acme · *10* things need you · Updated 2:01 PM"
+          }
+        ]
+      },
+      {
+        "type": "actions",
+        "elements": [
+          {
+            "type": "button",
+            "action_id": "home:header:new_ticket",
+            "text": {
+              "type": "plain_text",
+              "text": "New ticket",
+              "emoji": true
+            },
+            "value": "acme",
+            "style": "primary"
+          },
+          {
+            "type": "button",
+            "action_id": "home:header:ask",
+            "text": {
+              "type": "plain_text",
+              "text": "Ask Imbi",
+              "emoji": true
+            },
+            "url": "slack://app?team=T1&id=A1&tab=messages"
+          },
+          {
+            "type": "button",
+            "action_id": "home:header:open",
+            "text": {
+              "type": "plain_text",
+              "text": "Open Imbi",
+              "emoji": true
+            },
+            "url": "https://imbi.example/dashboard"
+          },
+          {
+            "type": "button",
+            "action_id": "home:header:profile",
+            "text": {
+              "type": "plain_text",
+              "text": "My profile",
+              "emoji": true
+            },
+            "url": "https://imbi.example/users/ada%40example.com"
+          },
+          {
+            "type": "button",
+            "action_id": "home:header:customize",
+            "text": {
+              "type": "plain_text",
+              "text": "Customize Home",
+              "emoji": true
+            }
+          }
+        ],
+        "block_id": "home:header:actions"
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*▸ Needs attention (10)*  Collapsed · 10 items"
+        },
+        "block_id": "home:needs_attention:header",
+        "accessory": {
+          "type": "button",
+          "action_id": "home:needs_attention:expand",
+          "text": {
+            "type": "plain_text",
+            "text": "Expand",
+            "emoji": true
+          }
+        }
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*▸ My tickets (2)*  Collapsed · T-200, T-201"
+        },
+        "block_id": "home:my_tickets:header",
+        "accessory": {
+          "type": "button",
+          "action_id": "home:my_tickets:expand",
+          "text": {
+            "type": "plain_text",
+            "text": "Expand",
+            "emoji": true
+          }
+        }
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*▸ Pull requests (4)*  Collapsed · 2 to review · 2 authored"
+        },
+        "block_id": "home:pull_requests:header",
+        "accessory": {
+          "type": "button",
+          "action_id": "home:pull_requests:expand",
+          "text": {
+            "type": "plain_text",
+            "text": "Expand",
+            "emoji": true
+          }
+        }
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*▸ Merged, not deployed (2)*  Collapsed · imbi-api"
+        },
+        "block_id": "home:merged_not_deployed:header",
+        "accessory": {
+          "type": "button",
+          "action_id": "home:merged_not_deployed:expand",
+          "text": {
+            "type": "plain_text",
+            "text": "Expand",
+            "emoji": true
+          }
+        }
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*▸ Release drift (2)*  Collapsed · 1 blocked · proj-1, proj-0"
+        },
+        "block_id": "home:release_drift:header",
+        "accessory": {
+          "type": "button",
+          "action_id": "home:release_drift:expand",
+          "text": {
+            "type": "plain_text",
+            "text": "Expand",
+            "emoji": true
+          }
+        }
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*▸ My projects (2)*  Collapsed · 2 need a look"
+        },
+        "block_id": "home:my_projects:header",
+        "accessory": {
+          "type": "button",
+          "action_id": "home:my_projects:expand",
+          "text": {
+            "type": "plain_text",
+            "text": "Expand",
+            "emoji": true
+          }
+        }
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*▸ Agent activity (2)*  Collapsed · T-500, T-501"
+        },
+        "block_id": "home:agent_activity:header",
+        "accessory": {
+          "type": "button",
+          "action_id": "home:agent_activity:expand",
+          "text": {
+            "type": "plain_text",
+            "text": "Expand",
+            "emoji": true
+          }
+        }
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*▸ Document comments (2)*  Collapsed · ADR 0028"
+        },
+        "block_id": "home:document_comments:header",
+        "accessory": {
+          "type": "button",
+          "action_id": "home:document_comments:expand",
+          "text": {
+            "type": "plain_text",
+            "text": "Expand",
+            "emoji": true
+          }
+        }
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": "8 sections collapsed · 0 hidden · Customize Home · Imbi refreshes this tab when you open it"
+          }
+        ]
+      }
+    ]
+  }
+}

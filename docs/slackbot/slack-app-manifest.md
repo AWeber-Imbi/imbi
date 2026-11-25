@@ -38,6 +38,18 @@ The bot also needs `ANTHROPIC_API_KEY`, the shared `IMBI_AUTH_JWT_SECRET`, and
   dialog of the UI as a modal and creates the ticket as the Slack user who
   ran it. The text after the command fills in the description.
 
+## Home tab
+
+The `features.app_home` block and the `app_home_opened` event turn on the
+[Home tab](index.md#home-tab). The tab needs no new scope: `views.publish`
+and `views.open` use the bot token. Interactivity must be on, for the
+buttons and the Customize Home dialog.
+
+An app that you made from an older manifest does not show the Home tab.
+Update the app configuration with this manifest (*App Manifest* in the app
+settings) first. Then reinstall the app if Slack asks you to. A reinstall
+alone does not apply the manifest, and the Home tab stays disabled.
+
 ## Manifest
 
 ```yaml
@@ -45,6 +57,10 @@ display_information:
   name: Imbi
   description: Query and manage Imbi from Slack
 features:
+  app_home:
+    home_tab_enabled: true
+    messages_tab_enabled: true
+    messages_tab_read_only_enabled: false
   bot_user:
     display_name: imbi
     always_online: true
@@ -75,6 +91,7 @@ settings:
   event_subscriptions:
     bot_events:
       - app_mention
+      - app_home_opened
       - message.im
   interactivity:
     is_enabled: true

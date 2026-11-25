@@ -45,6 +45,8 @@ class ImbiUser:
     email: str
     display_name: str
     is_admin: bool = False
+    #: The IANA time zone of the Slack user (``users.info`` ``tz``).
+    tz: str | None = None
 
 
 @dataclasses.dataclass
@@ -84,13 +86,14 @@ def clear_cache() -> None:
 async def _slack_email(
     slack_client: SlackClient,
     slack_user_id: str,
-) -> str | None:
-    """Return the Slack user's profile email, if any."""
+) -> tuple[str | None, str | None]:
+    """Return the Slack user's profile email and time zone, if any."""
     response: typing.Any = await slack_client.users_info(user=slack_user_id)
     user: typing.Any = response['user'] or {}
     profile: typing.Any = user.get('profile') or {}
     email: typing.Any = profile.get('email')
-    return str(email) if email else None
+    tz: typing.Any = user.get('tz')
+    return (str(email) if email else None, str(tz) if tz else None)
 
 
 async def _load_imbi_user(email: str) -> ImbiUser | None:
@@ -136,8 +139,10 @@ async def resolve(
     if entry is not None and entry.expires_at > now:
         return entry.user
 
-    email = await _slack_email(slack_client, slack_user_id)
+    email, tz = await _slack_email(slack_client, slack_user_id)
     user = await _load_imbi_user(email) if email else None
+    if user is not None:
+        user = dataclasses.replace(user, tz=tz)
 
     ttl = settings.get_slackbot_settings().identity_cache_ttl
     _cache[slack_user_id] = _CacheEntry(
@@ -147,6 +152,13 @@ async def resolve(
     if user is None:
         LOGGER.info('No Imbi user for Slack user %s', slack_user_id)
     return user
+
+
+NO_USER_MESSAGE = (
+    "I couldn't match your Slack account to an Imbi user. Imbi matches "
+    'you by your email address — ask an Imbi administrator to make sure '
+    'your account exists and is active.'
+)
 
 
 def mint_token(user: ImbiUser) -> str:

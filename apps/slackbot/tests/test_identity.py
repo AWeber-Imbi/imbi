@@ -14,7 +14,7 @@ class FakeSlack:
     async def users_info(self, user: str) -> dict:
         self.calls += 1
         profile = {'email': self._email} if self._email else {}
-        return {'user': {'profile': profile}}
+        return {'user': {'profile': profile, 'tz': 'America/New_York'}}
 
 
 class FakeGraph:
@@ -58,6 +58,7 @@ class IdentityTestCase(helpers.TestCase):
         )
         slack = FakeSlack('ada@example.com')
         user = await identity.resolve(slack, 'U1')
+        self.assertEqual('America/New_York', user and user.tz)
         assert user is not None
         self.assertEqual('ada@example.com', user.email)
         self.assertEqual('Ada', user.display_name)

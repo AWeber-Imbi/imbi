@@ -1,0 +1,1164 @@
+{
+  "outline": [
+    "context: :warning: Could not hide X: boom.",
+    "section: *Good afternoon, Ada*",
+    "context: Acme · *15* things need you · Updated 2:01 PM",
+    "actions: New ticket(primary), Ask Imbi(), Open Imbi(), My profile(), Customize Home()",
+    "divider: ",
+    "section: *Needs attention (15)* [overflow:home:needs_attention:menu]",
+    "context: Agent requests, held tickets, and alerts on projects of your teams",
+    "section: :large_orange_circle: *Incident acknowledged on <https://imbi.example/projects/p1|imbi-api>* · high urgency\n“Elevated 5xx” · 2h ago [button:home:incident:open]",
+    "section: :red_circle: *Incident triggered on <https://imbi.example/projects/p1|imbi-api>* · high urgency\n“Elevated 5xx” · 1h ago [button:home:incident:open]",
+    "section: :large_orange_circle: *Incident acknowledged on <https://imbi.example/projects/p1|imbi-api>* · high urgency\n“Elevated 5xx” · just now [button:home:incident:open]",
+    "section: :large_orange_circle: *Waiting on you* · <https://imbi.example/tickets/acme/T-402|T-402> Upgrade pydantic\n“Approve the shim?” · asked 3h ago · expires in 23h",
+    "actions: Reply(primary), Hand off()",
+    "section: :large_orange_circle: *reviewbee is waiting on you* · <https://imbi.example/tickets/acme/T-401|T-401> Upgrade pydantic\n“Approve the shim?” · asked 2h ago · expires in 23h",
+    "actions: Approve(primary), Reject(danger), Hand off()",
+    "context: +10 more · <https://imbi.example/tickets/waiting|View all 15 in Imbi>",
+    "divider: ",
+    "section: *My tickets (3)* [overflow:home:my_tickets:menu]",
+    "context: Assigned to you, not closed · sorted by priority, then rank",
+    "section: :red_circle: <https://imbi.example/tickets/acme/T-200|T-200> Ticket 0\nIn progress · Urgent · due 2026-11-28 [button:home:ticket:open]",
+    "section: :large_orange_circle: <https://imbi.example/tickets/acme/T-201|T-201> Ticket 1\nOpen · High [button:home:ticket:start]",
+    "section: :white_circle: <https://imbi.example/tickets/acme/T-202|T-202> Ticket 2\nIn progress · Normal [button:home:ticket:open]",
+    "divider: ",
+    "section: *Pull requests (6)* [overflow:home:pull_requests:menu]",
+    "section: *Review requested (3)*",
+    "section: <https://github.com/acme/repo0/pull/102|repo0#102> Change &lt;2&gt; &amp; more\ngrace · +20 −2 · opened 3h ago [button:home:pr:review]",
+    "section: <https://github.com/acme/repo1/pull/101|repo1#101> Change &lt;1&gt; &amp; more\ngrace · +10 −1 · opened 2h ago [button:home:pr:review]",
+    "section: <https://github.com/acme/repo0/pull/100|repo0#100> Change &lt;0&gt; &amp; more\ngrace · +0 −0 · opened 1h ago [button:home:pr:review]",
+    "section: *Authored by you (3)*",
+    "section: <https://github.com/acme/repo0/pull/100|repo0#100> Change &lt;0&gt; &amp; more\nDraft · 1 approval, 1 pending · just now [button:home:pr:open]",
+    "section: <https://github.com/acme/repo1/pull/101|repo1#101> Change &lt;1&gt; &amp; more\n1 approval, 1 pending · 1h ago [button:home:pr:open]",
+    "section: <https://github.com/acme/repo0/pull/102|repo0#102> Change &lt;2&gt; &amp; more\nDraft · 1 approval, 1 pending · 2h ago [button:home:pr:open]",
+    "divider: ",
+    "section: *Merged, not deployed (3)* [overflow:home:merged_not_deployed:menu]",
+    "context: Your PRs merged in the last 90 days that are not yet in production",
+    "section: <https://github.com/acme/repo0/pull/100|repo0#100> Change &lt;0&gt; &amp; more\nimbi-api · merged 2d ago · last deployed 3d ago [button:home:deploy:promote]",
+    "section: <https://github.com/acme/repo1/pull/101|repo1#101> Change &lt;1&gt; &amp; more\nimbi-api · merged 2d ago · last deployed 3d ago [button:home:deploy:promote]",
+    "section: <https://github.com/acme/repo0/pull/102|repo0#102> Change &lt;2&gt; &amp; more\nimbi-api · merged 2d ago · last deployed 3d ago [button:home:deploy:promote]",
+    "divider: ",
+    "section: *Release drift (3)* [overflow:home:release_drift:menu]",
+    "section: <https://imbi.example/projects/p2/deployments|proj-2> · 3 commits since `2.0.0`\nTagged 4d ago · suggested `2.1.0` [button:home:release:cut]",
+    "section: <https://imbi.example/projects/p1/deployments|proj-1> · 2 commits since `2.0.0`\nTagged 4d ago · suggested `2.1.0` [button:home:release:cut]",
+    "section: <https://imbi.example/projects/p0/deployments|proj-0> · 1 commit since `2.0.0`\n:red_circle: 1 open blocker [button:home:release:blocker]",
+    "divider: ",
+    "section: *My projects (3)* [overflow:home:my_projects:menu]",
+    "context: Platform · 3 projects · 2 need a look · <https://imbi.example/reports/team-kpi|Team scorecard>",
+    "section: *<https://imbi.example/projects/p1|proj-1>*\nScore 89 ▼4 · 0 incidents · 0 critical CVEs | *<https://imbi.example/projects/p0|proj-0>*\nScore 90 ▲2 · 1 incident · 0 critical CVEs | *<https://imbi.example/projects/p2|proj-2>*\nScore 88 ▲2 · 0 incidents · 0 critical CVEs",
+    "divider: ",
+    "section: *Agent activity (3)* [overflow:home:agent_activity:menu]",
+    "context: Agent tickets you own",
+    "section: <https://imbi.example/tickets/acme/T-500|T-500> workerbee · Bump fastapi\n:large_green_circle: Running · updated 30 min ago · $6.85 so far [button:home:agent:pause]",
+    "section: <https://imbi.example/tickets/acme/T-501|T-501> workerbee · Bump fastapi\n:large_orange_circle: Paused · waiting on your reply · $6.85 so far [button:home:agent:resume]",
+    "section: <https://imbi.example/tickets/acme/T-502|T-502> workerbee · Bump fastapi\n:white_circle: Queued · $6.85 so far [button:home:agent:open]",
+    "divider: ",
+    "section: *Document comments (3)* [overflow:home:document_comments:menu]",
+    "section: *<https://imbi.example/documents/d0|ADR 0028>* · Grace mentioned you\n> xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\njust now · <https://imbi.example/documents/d0|Reply in Imbi> [button:home:comment:ack]",
+    "section: *<https://imbi.example/projects/p1/documents/d1|ADR 0028>* · Grace on “the rollout”\n> xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\n1h ago · <https://imbi.example/projects/p1/documents/d1|Reply in Imbi> [button:home:comment:ack]",
+    "section: *<https://imbi.example/documents/d2|ADR 0028>* · Grace commented\n> xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\n2h ago · <https://imbi.example/documents/d2|Reply in Imbi> [button:home:comment:ack]",
+    "divider: ",
+    "context: 0 sections collapsed · 0 hidden · Customize Home · Imbi refreshes this tab when you open it"
+  ],
+  "view": {
+    "type": "home",
+    "blocks": [
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": ":warning: Could not hide X: boom."
+          }
+        ]
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*Good afternoon, Ada*"
+        },
+        "block_id": "home:header"
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": "Acme · *15* things need you · Updated 2:01 PM"
+          }
+        ]
+      },
+      {
+        "type": "actions",
+        "elements": [
+          {
+            "type": "button",
+            "action_id": "home:header:new_ticket",
+            "text": {
+              "type": "plain_text",
+              "text": "New ticket",
+              "emoji": true
+            },
+            "value": "acme",
+            "style": "primary"
+          },
+          {
+            "type": "button",
+            "action_id": "home:header:ask",
+            "text": {
+              "type": "plain_text",
+              "text": "Ask Imbi",
+              "emoji": true
+            },
+            "url": "slack://app?team=T1&id=A1&tab=messages"
+          },
+          {
+            "type": "button",
+            "action_id": "home:header:open",
+            "text": {
+              "type": "plain_text",
+              "text": "Open Imbi",
+              "emoji": true
+            },
+            "url": "https://imbi.example/dashboard"
+          },
+          {
+            "type": "button",
+            "action_id": "home:header:profile",
+            "text": {
+              "type": "plain_text",
+              "text": "My profile",
+              "emoji": true
+            },
+            "url": "https://imbi.example/users/ada%40example.com"
+          },
+          {
+            "type": "button",
+            "action_id": "home:header:customize",
+            "text": {
+              "type": "plain_text",
+              "text": "Customize Home",
+              "emoji": true
+            }
+          }
+        ],
+        "block_id": "home:header:actions"
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*Needs attention (15)*"
+        },
+        "block_id": "home:needs_attention:header",
+        "accessory": {
+          "type": "overflow",
+          "action_id": "home:needs_attention:menu",
+          "options": [
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Collapse",
+                "emoji": true
+              },
+              "value": "collapse"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Move down",
+                "emoji": true
+              },
+              "value": "down"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Customize Home",
+                "emoji": true
+              },
+              "value": "customize"
+            }
+          ]
+        }
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": "Agent requests, held tickets, and alerts on projects of your teams"
+          }
+        ]
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": ":large_orange_circle: *Incident acknowledged on <https://imbi.example/projects/p1|imbi-api>* · high urgency\n“Elevated 5xx” · 2h ago"
+        },
+        "accessory": {
+          "type": "button",
+          "action_id": "home:incident:open",
+          "text": {
+            "type": "plain_text",
+            "text": "Acknowledge",
+            "emoji": true
+          },
+          "url": "https://pd.example/i2"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": ":red_circle: *Incident triggered on <https://imbi.example/projects/p1|imbi-api>* · high urgency\n“Elevated 5xx” · 1h ago"
+        },
+        "accessory": {
+          "type": "button",
+          "action_id": "home:incident:open",
+          "text": {
+            "type": "plain_text",
+            "text": "Acknowledge",
+            "emoji": true
+          },
+          "url": "https://pd.example/i1"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": ":large_orange_circle: *Incident acknowledged on <https://imbi.example/projects/p1|imbi-api>* · high urgency\n“Elevated 5xx” · just now"
+        },
+        "accessory": {
+          "type": "button",
+          "action_id": "home:incident:open",
+          "text": {
+            "type": "plain_text",
+            "text": "Acknowledge",
+            "emoji": true
+          },
+          "url": "https://pd.example/i0"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": ":large_orange_circle: *Waiting on you* · <https://imbi.example/tickets/acme/T-402|T-402> Upgrade pydantic\n“Approve the shim?” · asked 3h ago · expires in 23h"
+        }
+      },
+      {
+        "type": "actions",
+        "elements": [
+          {
+            "type": "button",
+            "action_id": "home:request:reply",
+            "text": {
+              "type": "plain_text",
+              "text": "Reply",
+              "emoji": true
+            },
+            "url": "https://imbi.example/tickets/acme/T-402",
+            "style": "primary"
+          },
+          {
+            "type": "button",
+            "action_id": "home:ticket:handoff",
+            "text": {
+              "type": "plain_text",
+              "text": "Hand off",
+              "emoji": true
+            },
+            "url": "https://imbi.example/tickets/acme/T-402"
+          }
+        ]
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": ":large_orange_circle: *reviewbee is waiting on you* · <https://imbi.example/tickets/acme/T-401|T-401> Upgrade pydantic\n“Approve the shim?” · asked 2h ago · expires in 23h"
+        }
+      },
+      {
+        "type": "actions",
+        "elements": [
+          {
+            "type": "button",
+            "action_id": "home:request:approve",
+            "text": {
+              "type": "plain_text",
+              "text": "Approve",
+              "emoji": true
+            },
+            "url": "https://imbi.example/tickets/acme/T-401",
+            "style": "primary"
+          },
+          {
+            "type": "button",
+            "action_id": "home:request:reject",
+            "text": {
+              "type": "plain_text",
+              "text": "Reject",
+              "emoji": true
+            },
+            "url": "https://imbi.example/tickets/acme/T-401",
+            "style": "danger"
+          },
+          {
+            "type": "button",
+            "action_id": "home:ticket:handoff",
+            "text": {
+              "type": "plain_text",
+              "text": "Hand off",
+              "emoji": true
+            },
+            "url": "https://imbi.example/tickets/acme/T-401"
+          }
+        ]
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": "+10 more · <https://imbi.example/tickets/waiting|View all 15 in Imbi>"
+          }
+        ]
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*My tickets (3)*"
+        },
+        "block_id": "home:my_tickets:header",
+        "accessory": {
+          "type": "overflow",
+          "action_id": "home:my_tickets:menu",
+          "options": [
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Collapse",
+                "emoji": true
+              },
+              "value": "collapse"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Hide from Home",
+                "emoji": true
+              },
+              "value": "hide"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Move up",
+                "emoji": true
+              },
+              "value": "up"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Move down",
+                "emoji": true
+              },
+              "value": "down"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Customize Home",
+                "emoji": true
+              },
+              "value": "customize"
+            }
+          ]
+        }
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": "Assigned to you, not closed · sorted by priority, then rank"
+          }
+        ]
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": ":red_circle: <https://imbi.example/tickets/acme/T-200|T-200> Ticket 0\nIn progress · Urgent · due 2026-11-28"
+        },
+        "accessory": {
+          "type": "button",
+          "action_id": "home:ticket:open",
+          "text": {
+            "type": "plain_text",
+            "text": "Open",
+            "emoji": true
+          },
+          "url": "https://imbi.example/tickets/acme/T-200"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": ":large_orange_circle: <https://imbi.example/tickets/acme/T-201|T-201> Ticket 1\nOpen · High"
+        },
+        "accessory": {
+          "type": "button",
+          "action_id": "home:ticket:start",
+          "text": {
+            "type": "plain_text",
+            "text": "Start",
+            "emoji": true
+          },
+          "url": "https://imbi.example/tickets/acme/T-201"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": ":white_circle: <https://imbi.example/tickets/acme/T-202|T-202> Ticket 2\nIn progress · Normal"
+        },
+        "accessory": {
+          "type": "button",
+          "action_id": "home:ticket:open",
+          "text": {
+            "type": "plain_text",
+            "text": "Open",
+            "emoji": true
+          },
+          "url": "https://imbi.example/tickets/acme/T-202"
+        }
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*Pull requests (6)*"
+        },
+        "block_id": "home:pull_requests:header",
+        "accessory": {
+          "type": "overflow",
+          "action_id": "home:pull_requests:menu",
+          "options": [
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Collapse",
+                "emoji": true
+              },
+              "value": "collapse"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Hide from Home",
+                "emoji": true
+              },
+              "value": "hide"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Move up",
+                "emoji": true
+              },
+              "value": "up"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Move down",
+                "emoji": true
+              },
+              "value": "down"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Customize Home",
+                "emoji": true
+              },
+              "value": "customize"
+            }
+          ]
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*Review requested (3)*"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "<https://github.com/acme/repo0/pull/102|repo0#102> Change &lt;2&gt; &amp; more\ngrace · +20 −2 · opened 3h ago"
+        },
+        "accessory": {
+          "type": "button",
+          "action_id": "home:pr:review",
+          "text": {
+            "type": "plain_text",
+            "text": "Review",
+            "emoji": true
+          },
+          "url": "https://github.com/acme/repo0/pull/102"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "<https://github.com/acme/repo1/pull/101|repo1#101> Change &lt;1&gt; &amp; more\ngrace · +10 −1 · opened 2h ago"
+        },
+        "accessory": {
+          "type": "button",
+          "action_id": "home:pr:review",
+          "text": {
+            "type": "plain_text",
+            "text": "Review",
+            "emoji": true
+          },
+          "url": "https://github.com/acme/repo1/pull/101"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "<https://github.com/acme/repo0/pull/100|repo0#100> Change &lt;0&gt; &amp; more\ngrace · +0 −0 · opened 1h ago"
+        },
+        "accessory": {
+          "type": "button",
+          "action_id": "home:pr:review",
+          "text": {
+            "type": "plain_text",
+            "text": "Review",
+            "emoji": true
+          },
+          "url": "https://github.com/acme/repo0/pull/100"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*Authored by you (3)*"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "<https://github.com/acme/repo0/pull/100|repo0#100> Change &lt;0&gt; &amp; more\nDraft · 1 approval, 1 pending · just now"
+        },
+        "accessory": {
+          "type": "button",
+          "action_id": "home:pr:open",
+          "text": {
+            "type": "plain_text",
+            "text": "Open",
+            "emoji": true
+          },
+          "url": "https://github.com/acme/repo0/pull/100"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "<https://github.com/acme/repo1/pull/101|repo1#101> Change &lt;1&gt; &amp; more\n1 approval, 1 pending · 1h ago"
+        },
+        "accessory": {
+          "type": "button",
+          "action_id": "home:pr:open",
+          "text": {
+            "type": "plain_text",
+            "text": "Open",
+            "emoji": true
+          },
+          "url": "https://github.com/acme/repo1/pull/101"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "<https://github.com/acme/repo0/pull/102|repo0#102> Change &lt;2&gt; &amp; more\nDraft · 1 approval, 1 pending · 2h ago"
+        },
+        "accessory": {
+          "type": "button",
+          "action_id": "home:pr:open",
+          "text": {
+            "type": "plain_text",
+            "text": "Open",
+            "emoji": true
+          },
+          "url": "https://github.com/acme/repo0/pull/102"
+        }
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*Merged, not deployed (3)*"
+        },
+        "block_id": "home:merged_not_deployed:header",
+        "accessory": {
+          "type": "overflow",
+          "action_id": "home:merged_not_deployed:menu",
+          "options": [
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Collapse",
+                "emoji": true
+              },
+              "value": "collapse"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Hide from Home",
+                "emoji": true
+              },
+              "value": "hide"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Move up",
+                "emoji": true
+              },
+              "value": "up"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Move down",
+                "emoji": true
+              },
+              "value": "down"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Customize Home",
+                "emoji": true
+              },
+              "value": "customize"
+            }
+          ]
+        }
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": "Your PRs merged in the last 90 days that are not yet in production"
+          }
+        ]
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "<https://github.com/acme/repo0/pull/100|repo0#100> Change &lt;0&gt; &amp; more\nimbi-api · merged 2d ago · last deployed 3d ago"
+        },
+        "accessory": {
+          "type": "button",
+          "action_id": "home:deploy:promote",
+          "text": {
+            "type": "plain_text",
+            "text": "Promote",
+            "emoji": true
+          },
+          "url": "https://imbi.example/projects/p0/deployments"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "<https://github.com/acme/repo1/pull/101|repo1#101> Change &lt;1&gt; &amp; more\nimbi-api · merged 2d ago · last deployed 3d ago"
+        },
+        "accessory": {
+          "type": "button",
+          "action_id": "home:deploy:promote",
+          "text": {
+            "type": "plain_text",
+            "text": "Promote",
+            "emoji": true
+          },
+          "url": "https://imbi.example/projects/p1/deployments"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "<https://github.com/acme/repo0/pull/102|repo0#102> Change &lt;2&gt; &amp; more\nimbi-api · merged 2d ago · last deployed 3d ago"
+        },
+        "accessory": {
+          "type": "button",
+          "action_id": "home:deploy:promote",
+          "text": {
+            "type": "plain_text",
+            "text": "Promote",
+            "emoji": true
+          },
+          "url": "https://imbi.example/projects/p2/deployments"
+        }
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*Release drift (3)*"
+        },
+        "block_id": "home:release_drift:header",
+        "accessory": {
+          "type": "overflow",
+          "action_id": "home:release_drift:menu",
+          "options": [
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Collapse",
+                "emoji": true
+              },
+              "value": "collapse"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Hide from Home",
+                "emoji": true
+              },
+              "value": "hide"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Move up",
+                "emoji": true
+              },
+              "value": "up"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Move down",
+                "emoji": true
+              },
+              "value": "down"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Customize Home",
+                "emoji": true
+              },
+              "value": "customize"
+            }
+          ]
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "<https://imbi.example/projects/p2/deployments|proj-2> · 3 commits since `2.0.0`\nTagged 4d ago · suggested `2.1.0`"
+        },
+        "accessory": {
+          "type": "button",
+          "action_id": "home:release:cut",
+          "text": {
+            "type": "plain_text",
+            "text": "Cut release",
+            "emoji": true
+          },
+          "url": "https://imbi.example/projects/p2/deployments"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "<https://imbi.example/projects/p1/deployments|proj-1> · 2 commits since `2.0.0`\nTagged 4d ago · suggested `2.1.0`"
+        },
+        "accessory": {
+          "type": "button",
+          "action_id": "home:release:cut",
+          "text": {
+            "type": "plain_text",
+            "text": "Cut release",
+            "emoji": true
+          },
+          "url": "https://imbi.example/projects/p1/deployments"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "<https://imbi.example/projects/p0/deployments|proj-0> · 1 commit since `2.0.0`\n:red_circle: 1 open blocker"
+        },
+        "accessory": {
+          "type": "button",
+          "action_id": "home:release:blocker",
+          "text": {
+            "type": "plain_text",
+            "text": "View blocker",
+            "emoji": true
+          },
+          "url": "https://imbi.example/projects/p0/deployments"
+        }
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*My projects (3)*"
+        },
+        "block_id": "home:my_projects:header",
+        "accessory": {
+          "type": "overflow",
+          "action_id": "home:my_projects:menu",
+          "options": [
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Collapse",
+                "emoji": true
+              },
+              "value": "collapse"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Hide from Home",
+                "emoji": true
+              },
+              "value": "hide"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Move up",
+                "emoji": true
+              },
+              "value": "up"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Move down",
+                "emoji": true
+              },
+              "value": "down"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Customize Home",
+                "emoji": true
+              },
+              "value": "customize"
+            }
+          ]
+        }
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": "Platform · 3 projects · 2 need a look · <https://imbi.example/reports/team-kpi|Team scorecard>"
+          }
+        ]
+      },
+      {
+        "type": "section",
+        "fields": [
+          {
+            "type": "mrkdwn",
+            "text": "*<https://imbi.example/projects/p1|proj-1>*\nScore 89 ▼4 · 0 incidents · 0 critical CVEs"
+          },
+          {
+            "type": "mrkdwn",
+            "text": "*<https://imbi.example/projects/p0|proj-0>*\nScore 90 ▲2 · 1 incident · 0 critical CVEs"
+          },
+          {
+            "type": "mrkdwn",
+            "text": "*<https://imbi.example/projects/p2|proj-2>*\nScore 88 ▲2 · 0 incidents · 0 critical CVEs"
+          }
+        ]
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*Agent activity (3)*"
+        },
+        "block_id": "home:agent_activity:header",
+        "accessory": {
+          "type": "overflow",
+          "action_id": "home:agent_activity:menu",
+          "options": [
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Collapse",
+                "emoji": true
+              },
+              "value": "collapse"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Hide from Home",
+                "emoji": true
+              },
+              "value": "hide"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Move up",
+                "emoji": true
+              },
+              "value": "up"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Move down",
+                "emoji": true
+              },
+              "value": "down"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Customize Home",
+                "emoji": true
+              },
+              "value": "customize"
+            }
+          ]
+        }
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": "Agent tickets you own"
+          }
+        ]
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "<https://imbi.example/tickets/acme/T-500|T-500> workerbee · Bump fastapi\n:large_green_circle: Running · updated 30 min ago · $6.85 so far"
+        },
+        "accessory": {
+          "type": "button",
+          "action_id": "home:agent:pause",
+          "text": {
+            "type": "plain_text",
+            "text": "Pause",
+            "emoji": true
+          },
+          "url": "https://imbi.example/tickets/acme/T-500"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "<https://imbi.example/tickets/acme/T-501|T-501> workerbee · Bump fastapi\n:large_orange_circle: Paused · waiting on your reply · $6.85 so far"
+        },
+        "accessory": {
+          "type": "button",
+          "action_id": "home:agent:resume",
+          "text": {
+            "type": "plain_text",
+            "text": "Resume",
+            "emoji": true
+          },
+          "url": "https://imbi.example/tickets/acme/T-501"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "<https://imbi.example/tickets/acme/T-502|T-502> workerbee · Bump fastapi\n:white_circle: Queued · $6.85 so far"
+        },
+        "accessory": {
+          "type": "button",
+          "action_id": "home:agent:open",
+          "text": {
+            "type": "plain_text",
+            "text": "Open",
+            "emoji": true
+          },
+          "url": "https://imbi.example/tickets/acme/T-502"
+        }
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*Document comments (3)*"
+        },
+        "block_id": "home:document_comments:header",
+        "accessory": {
+          "type": "overflow",
+          "action_id": "home:document_comments:menu",
+          "options": [
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Collapse",
+                "emoji": true
+              },
+              "value": "collapse"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Hide from Home",
+                "emoji": true
+              },
+              "value": "hide"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Move up",
+                "emoji": true
+              },
+              "value": "up"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Customize Home",
+                "emoji": true
+              },
+              "value": "customize"
+            }
+          ]
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*<https://imbi.example/documents/d0|ADR 0028>* · Grace mentioned you\n> xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\njust now · <https://imbi.example/documents/d0|Reply in Imbi>"
+        },
+        "accessory": {
+          "type": "button",
+          "action_id": "home:comment:ack",
+          "text": {
+            "type": "plain_text",
+            "text": "Acknowledge",
+            "emoji": true
+          },
+          "url": "https://imbi.example/documents/d0"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*<https://imbi.example/projects/p1/documents/d1|ADR 0028>* · Grace on “the rollout”\n> xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\n1h ago · <https://imbi.example/projects/p1/documents/d1|Reply in Imbi>"
+        },
+        "accessory": {
+          "type": "button",
+          "action_id": "home:comment:ack",
+          "text": {
+            "type": "plain_text",
+            "text": "Acknowledge",
+            "emoji": true
+          },
+          "url": "https://imbi.example/projects/p1/documents/d1"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*<https://imbi.example/documents/d2|ADR 0028>* · Grace commented\n> xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\n2h ago · <https://imbi.example/documents/d2|Reply in Imbi>"
+        },
+        "accessory": {
+          "type": "button",
+          "action_id": "home:comment:ack",
+          "text": {
+            "type": "plain_text",
+            "text": "Acknowledge",
+            "emoji": true
+          },
+          "url": "https://imbi.example/documents/d2"
+        }
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": "0 sections collapsed · 0 hidden · Customize Home · Imbi refreshes this tab when you open it"
+          }
+        ]
+      }
+    ]
+  }
+}

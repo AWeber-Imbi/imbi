@@ -131,14 +131,28 @@ def register(app: typing.Any) -> None:
 async def on_command(ack: typing.Any, body: Json, client: SlackClient) -> None:
     """Open the modal. The text after the command is the description."""
     await ack()
+    await open_form(
+        client, body['trigger_id'], body['user_id'], body.get('text') or ''
+    )
+
+
+async def open_form(
+    client: SlackClient,
+    trigger_id: str,
+    user_id: str,
+    text: str = '',
+    org: str | None = None,
+) -> None:
+    """Open the modal for ``user_id``, on ``org`` when the user is a
+    member of it, else on the first organization of the user."""
     # A trigger id expires after 3 seconds, so the modal opens before
     # the calls to imbi-api.
     opened = await client.views_open(
-        trigger_id=body['trigger_id'], view=message_view('Loading…')
+        trigger_id=trigger_id, view=message_view('Loading…')
     )
     view_id = opened['view']['id']
     try:
-        user = await identity.resolve(client, body['user_id'])
+        user = await identity.resolve(client, user_id)
         if user is None:
             await _show(client, view_id, message_view(_NO_USER))
             return
@@ -157,7 +171,7 @@ async def on_command(ack: typing.Any, body: Json, client: SlackClient) -> None:
             await _show(client, view_id, message_view(_NO_ORG))
             return
         meta: Json = {
-            'org': orgs[0][0],
+            'org': org if any(o[0] == org for o in orgs) else orgs[0][0],
             'orgs': orgs,
             'me': [user.email, user.display_name],
             'roles': 0,
@@ -166,7 +180,7 @@ async def on_command(ack: typing.Any, body: Json, client: SlackClient) -> None:
             # timeout does not create a second ticket.
             'key': f'slack:{uuid.uuid4()}',
         }
-        values: Json = {DESCRIPTION: (body.get('text') or '').strip()}
+        values: Json = {DESCRIPTION: text.strip()}
         sections = await _schema(user, meta['org'], values)
         await _show(client, view_id, form_view(meta, values, sections))
     except Exception:
