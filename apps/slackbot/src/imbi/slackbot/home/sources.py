@@ -166,7 +166,13 @@ class Sources:
         self._tasks: dict[str, asyncio.Future[Json]] = {}
 
     def get(self, name: str) -> asyncio.Future[Json]:
-        """Return the task of the source ``name``, started on first use."""
+        """Return the task of the source ``name``, started on first use.
+
+        The task is shielded: when one waiter is cancelled (for example
+        by the timeout of a source that waits on this one), the shared
+        task continues for the other waiters.
+
+        """
         if name not in self._tasks:
             source: abc.Callable[[], abc.Awaitable[Json]] = getattr(
                 self, f'_{name}'
@@ -174,7 +180,7 @@ class Sources:
             self._tasks[name] = asyncio.ensure_future(
                 asyncio.wait_for(source(), TIMEOUT)
             )
-        return self._tasks[name]
+        return asyncio.shield(self._tasks[name])
 
     async def optional(self, name: str, default: Json) -> Json:
         """Return the source, or ``default`` when it failed."""

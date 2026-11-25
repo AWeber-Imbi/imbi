@@ -862,6 +862,22 @@ class HomeFlowTests(helpers.TestCase):
             await home.refresh(self.slack, 'U1')
         self.assertIn('Could not load Document comments', self.text())
 
+    async def test_cancelled_waiter_keeps_shared_source(self) -> None:
+        asyncio = __import__('asyncio')
+
+        async def slow() -> list[str]:
+            await asyncio.sleep(0.05)
+            return ['p1']
+
+        src = sources.Sources(mock.Mock(), 'acme', 'a@x', [], set())
+        with mock.patch.object(
+            sources.Sources, '_projects', lambda self: slow()
+        ):
+            waiter = asyncio.ensure_future(src.get('projects'))
+            await asyncio.sleep(0)
+            waiter.cancel()
+            self.assertEqual(['p1'], await src.get('projects'))
+
     async def test_unknown_user(self) -> None:
         self.user = None
         await home.refresh(self.slack, 'U1')
