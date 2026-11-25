@@ -19,6 +19,7 @@ import contextlib
 import dataclasses
 import datetime
 import decimal
+import functools
 import hashlib
 import http
 import json
@@ -42,6 +43,8 @@ from imbi.harness import (
     egress,
     events,
     ipc,
+    outbound,
+    plugin_relay,
     policy,
     privilege,
     proxy,
@@ -791,20 +794,6 @@ def _plugin_name(path: pathlib.Path, name: str) -> str:
     return str(_json(path / PLUGIN_MANIFEST).get('name') or name)
 
 
-def _plugin_servers(path: pathlib.Path, name: str) -> list[str]:
-    """The permission rules for the MCP servers of a plugin directory.
-
-    Claude Code names a plugin server ``plugin:<plugin>:<server>`` and
-    its tools ``mcp__plugin_<plugin>_<server>__<tool>``, with each
-    character outside ``[A-Za-z0-9_-]`` as ``_``.
-    """
-    plugin = _plugin_name(path, name)
-    return [
-        _MCP_NAME.sub('_', f'mcp__plugin_{plugin}_{server}')
-        for server in sorted(_declared(path))
-    ]
-
-
 def _remove_servers(path: pathlib.Path, names: abc.Set[str]) -> None:
     """Remove the servers ``names`` from each ``mcpServers`` source of
     a published plugin directory."""
@@ -854,7 +843,43 @@ def _header_variables(config: typing.Any) -> list[str]:
     return sorted(names - _CLI_VARIABLES)
 
 
-_MCP_NAME = re.compile(r'[^A-Za-z0-9_-]')
+@dataclasses.dataclass(frozen=True)
+class _Relayed:
+    """A plugin MCP server that the runner relays (ADR 0031)."""
+
+    #: The plugin name of the agent's pin, for the reader of a warning.
+    label: str
+    #: The plugin name that the CLI uses.
+    plugin: str
+    server: str
+    config: Body
+    setting: Body
+
+    def describe(self) -> str:
+        return f'The MCP server {self.server} of the plugin {self.label}'
+
+
+def _secrets(setting: Body) -> dict[str, str]:
+    """The secret reference of each header variable of a setting."""
+    secrets: typing.Any = setting.get('secrets')
+    if not isinstance(secrets, dict):
+        return {}
+    return {
+        str(name): str(reference)
+        for name, reference in typing.cast('Body', secrets).items()
+        if reference
+    }
+
+
+def _headers(config: Body) -> dict[str, str]:
+    headers: typing.Any = config.get('headers')
+    if not isinstance(headers, dict):
+        return {}
+    return {
+        str(name): value
+        for name, value in typing.cast('Body', headers).items()
+        if isinstance(value, str)
+    }
 
 
 def _relative(value: typing.Any) -> pathlib.PurePosixPath:
@@ -873,7 +898,7 @@ async def _no_prompt() -> abc.AsyncIterator[dict[str, typing.Any]]:
 class TaskRun:
     """Run one task of the runner's chain."""
 
-    def __init__(  # noqa: PLR0913
+    def __init__(  # noqa: PLR0913, PLR0915
         self,
         client: api.Api,
         claim: Body,
@@ -912,7 +937,14 @@ class TaskRun:
         #: ``mcp__plugin_<plugin>_<server>`` of each MCP server that a
         #: pinned plugin brings. A plugin that is on allows its servers.
         self.plugin_servers: list[str] = []
+        #: ``plugin:<plugin>:<server>`` of each plugin MCP server that
+        #: the CLI connects to, for the status watch.
         self.plugin_server_names: set[str] = set()
+        #: The plugin MCP servers to relay, and those that are relayed.
+        self.to_relay: list[_Relayed] = []
+        self.plugin_relays: list[plugin_relay.Server] = []
+        #: The header secrets of the relayed servers (ADR 0031).
+        self.header_secrets: list[credential.Refresher] = []
         self.header_variables: list[tuple[str, str, list[str]]] = []
         self.server_watch: asyncio.Task[None] | None = None
         self.session_id = ''
@@ -1038,7 +1070,10 @@ class TaskRun:
             done = ('failed_external', 'harness_error')
         finally:
             heartbeat.cancel()
-            self.key.stop()
+            for each in self.plugin_relays:
+                await each.close()
+            for secret in [self.key, *self.header_secrets]:
+                secret.stop()
         if self.failure is not None:
             done = ('failed_external', self.failure)
         await self.flush()
@@ -1080,6 +1115,7 @@ class TaskRun:
             refresh=self.refresh_after_401,
         )
         await self.start_relay()
+        await self.start_plugin_relays()
         self.write_config()
         self.note_dropped_settings()
         return await self.run_sdk(url)
@@ -1458,30 +1494,52 @@ class TaskRun:
             self._load_servers(plugin, path)
 
     def _load_servers(self, plugin: Body, path: pathlib.Path) -> None:
-        """Remove the MCP servers that the agent turned off from the
-        published plugin ``path``, then allow the others. A setting for
-        a server that the plugin does not have gets a task warning."""
+        """Remove the MCP servers that the agent turned off or that the
+        runner relays from the published plugin ``path``, then allow the
+        servers that are on. A setting for a server that the plugin does
+        not have gets a task warning.
+
+        A relayed server is one that is on and has a secret for a header
+        variable (ADR 0031). The CLI must not connect to it, so it never
+        gets the server, also when the relay cannot start."""
         label = str(plugin['plugin'])
         settings = typing.cast('Body', plugin.get('server_settings') or {})
         declared = _declared(path)
         for server in sorted(settings.keys() - declared.keys()):
             self.recorder.notice(
-                f'The agent turns off the MCP server {server} of the plugin '
-                f'{label}, but the pinned plugin has no such server. If the '
-                'server was renamed, turn off the new name.'
+                f'The agent has a setting for the MCP server {server} of '
+                f'the plugin {label}, but the pinned plugin has no such '
+                'server. If the server was renamed, set up the new name.'
             )
+        off = {
+            server
+            for server, setting in settings.items()
+            if not typing.cast('Body', setting).get('enabled', True)
+        }
+        relayed = {
+            server
+            for server, setting in settings.items()
+            if server not in off and _secrets(typing.cast('Body', setting))
+        }
         with privilege.effective():
-            _remove_servers(
-                path,
-                {
-                    server
-                    for server, setting in settings.items()
-                    if not typing.cast('Body', setting).get('enabled', True)
-                },
-            )
-        self.plugin_servers.extend(_plugin_servers(path, label))
+            _remove_servers(path, off | relayed)
         name = _plugin_name(path, label)
-        for server, config in _declared(path).items():
+        for server in sorted(declared.keys() - off):
+            config = declared[server]
+            self.plugin_servers.append(plugin_relay.cli_name(name, server))
+            if server in relayed:
+                self.to_relay.append(
+                    _Relayed(
+                        label,
+                        name,
+                        server,
+                        typing.cast(
+                            'Body', config if isinstance(config, dict) else {}
+                        ),
+                        typing.cast('Body', settings[server]),
+                    )
+                )
+                continue
             self.plugin_server_names.add(f'plugin:{name}:{server}')
             if variables := _header_variables(config):
                 self.header_variables.append((label, server, variables))
@@ -1661,7 +1719,102 @@ class TaskRun:
         LOGGER.info('Relaying %d Imbi tools', len(names))
         self.relay = candidate
         self.recorder.audit = self.take_audit
-        self.recorder.writes = candidate.writes()
+        self.recorder.writes |= candidate.writes()
+
+    async def start_plugin_relays(self) -> None:
+        """Relay each plugin MCP server that the agent gave secrets
+        (ADR 0031). A server that a check refuses, whose secret Imbi
+        refuses, or that does not answer is left out with a task
+        warning."""
+        for relayed in self.to_relay:
+            server = await self._plugin_relay(relayed)
+            if server is None:
+                continue
+            LOGGER.info(
+                'Relaying %d tools of %s', len(server.tools), server.name
+            )
+            self.plugin_relays.append(server)
+            self.recorder.writes |= server.writes()
+            self.recorder.audit = self.take_audit
+
+    async def _plugin_relay(
+        self, relayed: _Relayed
+    ) -> plugin_relay.Server | None:
+        what = relayed.describe()
+        if found := plugin_relay.problem(
+            relayed.config, relayed.setting.get('origin')
+        ):
+            self.recorder.notice(f'{what} is not available: {found}.')
+            return None
+        secrets = await self._header_secrets(relayed)
+        if secrets is None:
+            return None
+        server = plugin_relay.Server(
+            relayed.plugin,
+            relayed.server,
+            relayed.config,
+            outbound.Headers(_headers(relayed.config), secrets),
+            proxy_env=self.proxy_env,
+            scrub=self.redactor.text,
+            stopped=lambda: self.stopped,
+            notice=self.recorder.notice,
+        )
+        try:
+            await server.start()
+        except plugin_relay.Unavailable as error:
+            for secret in secrets.values():
+                secret.stop()
+            self.recorder.notice(
+                f'{what} is not available: the runner could not open a '
+                f'session or list its tools ({error.reason}).'
+            )
+            return None
+        self.header_secrets.extend(set(secrets.values()))
+        return server
+
+    async def _header_secrets(
+        self, relayed: _Relayed
+    ) -> dict[str, credential.Refresher] | None:
+        """The secret of each header variable that the agent maps, from
+        ``mcp_header`` resolutions; ``None`` with a task warning when
+        Imbi refuses one. A variable with no secret and no default gets
+        a task warning too."""
+        what = relayed.describe()
+        mapped = _secrets(relayed.setting)
+        by_reference = {
+            reference: credential.Refresher(
+                functools.partial(
+                    self.secret, reference, 'mcp_header', 'mcp_header'
+                ),
+                f'{what}: secret',
+            )
+            for reference in sorted(set(mapped.values()))
+        }
+        try:
+            for secret in by_reference.values():
+                await secret.start()
+        except (Failed, httpx.HTTPError, ValueError) as error:
+            for secret in by_reference.values():
+                secret.stop()
+            self.recorder.notice(
+                f'{what} is not available: Imbi did not give the runner '
+                f'a secret for its headers ({safeguards.reason(error)}).'
+            )
+            return None
+        if unset := [
+            name
+            for name in _header_variables(relayed.config)
+            if name not in mapped
+        ]:
+            self.recorder.notice(
+                f'{what} uses '
+                + ', '.join(f'${{{name}}}' for name in unset)
+                + ' in a header, and the agent maps no secret to it and it '
+                'has no default, so the header gets an empty value.'
+            )
+        return {
+            name: by_reference[reference] for name, reference in mapped.items()
+        }
 
     async def probe_egress(self) -> None:
         """A warning for each TCP destination that does not connect
@@ -1675,7 +1828,14 @@ class TaskRun:
             )
 
     def take_audit(self, name: str, arguments: typing.Any) -> Body | None:
-        return self.relay.take_audit(name, arguments) if self.relay else None
+        relays: list[relay.Relay | plugin_relay.Server] = [
+            *([self.relay] if self.relay else []),
+            *self.plugin_relays,
+        ]
+        for each in relays:
+            if (audit := each.take_audit(name, arguments)) is not None:
+                return audit
+        return None
 
     def _repo_dirs(self) -> list[pathlib.Path]:
         """The clone directory of each repository: ``repos/<name>``, or
@@ -2039,6 +2199,12 @@ class TaskRun:
                     if self.relay
                     else {}
                 ),
+                **{
+                    server.name: sdk.create_sdk_mcp_server(
+                        server.name, tools=server.sdk_tools()
+                    )
+                    for server in self.plugin_relays
+                },
             },
             allowed_tools=allowed,
             disallowed_tools=denied,

@@ -1372,6 +1372,12 @@ class WorkspaceTestCase(TaskTestCase):
             task._publish(source, self.tmp / 'published' / 'p')
         self.assertEqual(ctx.exception.reason, 'plugin_too_large')
 
+    def rules(self, plugin: pathlib.Path, label: str) -> list[str]:
+        """The allow rules of the MCP servers of a plugin directory."""
+        subject = self.make()
+        subject._load_servers({'plugin': label}, plugin)
+        return subject.plugin_servers
+
     def test_plugin_servers(self) -> None:
         plugin = self.tmp / 'p'
         (plugin / '.claude-plugin').mkdir(parents=True)
@@ -1382,7 +1388,7 @@ class WorkspaceTestCase(TaskTestCase):
             json.dumps({'mcpServers': {'sentry': {}}})
         )
         self.assertEqual(
-            task._plugin_servers(plugin, 'fallback'),
+            self.rules(plugin, 'fallback'),
             ['mcp__plugin_ops_graf_ana', 'mcp__plugin_ops_sentry'],
         )
         # A manifest can name a JSON file of servers.
@@ -1394,7 +1400,7 @@ class WorkspaceTestCase(TaskTestCase):
             json.dumps({'mcpServers': './servers.json'})
         )
         self.assertEqual(
-            task._plugin_servers(plugin, 'search'),
+            self.rules(plugin, 'search'),
             ['mcp__plugin_search_zoekt'],
         )
         # Or a list of objects and files.
@@ -1402,10 +1408,10 @@ class WorkspaceTestCase(TaskTestCase):
             json.dumps({'mcpServers': ['./servers.json', {'grafana': {}}]})
         )
         self.assertEqual(
-            task._plugin_servers(plugin, 'ops'),
+            self.rules(plugin, 'ops'),
             ['mcp__plugin_ops_grafana', 'mcp__plugin_ops_zoekt'],
         )
-        self.assertEqual(task._plugin_servers(self.tmp / 'none', 'x'), [])
+        self.assertEqual(self.rules(self.tmp / 'none', 'x'), [])
 
     def test_plugin_with_a_manifest_loads_in_place(self) -> None:
         clone = self.marketplace({'name': 'hello', 'source': './hello'})
@@ -1654,9 +1660,9 @@ class PluginServersTestCase(TaskTestCase):
         self.assertEqual(notice['payload']['kind'], 'warning')
         self.assertEqual(
             notice['payload']['body'],
-            'The agent turns off the MCP server renamed of the plugin '
-            'ops-tools, but the pinned plugin has no such server. If the '
-            'server was renamed, turn off the new name.',
+            'The agent has a setting for the MCP server renamed of the '
+            'plugin ops-tools, but the pinned plugin has no such server. '
+            'If the server was renamed, set up the new name.',
         )
 
     def test_warns_about_a_header_variable_with_no_value(self) -> None:
@@ -3727,3 +3733,170 @@ class RelayStartTestCase(TaskTestCase):
         self.assertIn(
             'Imbi tools are not available', notice['payload']['body']
         )
+
+
+class PluginRelayTestCase(TaskTestCase):
+    """The plugin MCP servers that the runner relays (ADR 0031)."""
+
+    REFERENCE = 'secret://production/logs/token'
+    ORIGIN = 'https://logs.example.com'
+
+    def load(
+        self, logs: dict[str, typing.Any] | None = None, **setting: typing.Any
+    ) -> task.TaskRun:
+        """A plugin ``ops`` with the relayed server ``logs``, the CLI
+        server ``metrics``, and the turned-off server ``old``."""
+        plugin = pathlib.Path(tempfile.mkdtemp(dir=self.tmp / 'published'))
+        (plugin / '.mcp.json').write_text(
+            json.dumps(
+                {
+                    'logs': logs
+                    or {
+                        'type': 'http',
+                        'url': f'{self.ORIGIN}/mcp',
+                        'headers': {
+                            'Authorization': 'Bearer ${TOKEN}',
+                            'X-Team': '${TEAM}',
+                        },
+                    },
+                    'metrics': {
+                        'type': 'http',
+                        'url': 'https://metrics.example.com/mcp',
+                        'headers': {'X-Key': '${METRICS_KEY}'},
+                    },
+                    'old': {'type': 'http', 'url': 'https://old.example'},
+                }
+            )
+        )
+        self.plugin = plugin
+        subject = self.make()
+        subject._load_servers(
+            {
+                'plugin': 'ops',
+                'server_settings': {
+                    'logs': {
+                        'secrets': {'TOKEN': self.REFERENCE},
+                        'origin': self.ORIGIN,
+                    }
+                    | setting,
+                    'old': {'enabled': False},
+                },
+            },
+            plugin,
+        )
+        return subject
+
+    def notices(self, subject: task.TaskRun) -> list[str]:
+        return [event['payload']['body'] for event in subject.recorder.take()]
+
+    async def start(
+        self, subject: task.TaskRun, **start: typing.Any
+    ) -> list[str]:
+        with mock.patch.object(
+            task.plugin_relay.Server,
+            'start',
+            mock.AsyncMock(**({'return_value': ['search']} | start)),
+        ):
+            await subject.start_plugin_relays()
+        return self.notices(subject)
+
+    def test_a_relayed_server_is_kept_from_the_cli_but_allowed(self) -> None:
+        subject = self.load()
+        published = json.loads((self.plugin / '.mcp.json').read_text())
+        self.assertEqual(list(published), ['metrics'])
+        self.assertEqual(
+            subject.plugin_servers,
+            ['mcp__plugin_ops_logs', 'mcp__plugin_ops_metrics'],
+        )
+        self.assertEqual(subject.plugin_server_names, {'plugin:ops:metrics'})
+        subject.note_unset_variables({})
+        (notice,) = self.notices(subject)
+        self.assertIn('${METRICS_KEY}', notice)
+
+    def test_a_turned_off_server_with_secrets_is_not_relayed(self) -> None:
+        subject = self.load(enabled=False)
+        self.assertEqual(subject.plugin_servers, ['mcp__plugin_ops_metrics'])
+        self.assertEqual(subject.to_relay, [])
+
+    async def test_the_relay_gets_the_secret_and_registers_the_server(
+        self,
+    ) -> None:
+        self.call.return_value = {'material': 'logs-secret-value'}
+        subject = self.load()
+        notices = await self.start(subject)
+        body = self.client.create_resolution.call_args.args[1]
+        self.assertEqual(
+            (body['reference'], body['purpose']),
+            (self.REFERENCE, 'mcp_header'),
+        )
+        self.assertEqual(self.redactor.text('logs-secret-value'), '[REDACTED]')
+        self.assertEqual(
+            notices,
+            [
+                'The MCP server logs of the plugin ops uses ${TEAM} in a '
+                'header, and the agent maps no secret to it and it has no '
+                'default, so the header gets an empty value.'
+            ],
+        )
+        (server,) = subject.plugin_relays
+        self.assertEqual(server.name, 'plugin:ops:logs')
+        assert isinstance(server.auth, task.outbound.Headers)
+        self.assertEqual(server.auth.values(), {'TOKEN': 'logs-secret-value'})
+        servers = typing.cast(
+            'dict[str, typing.Any]',
+            subject.options('http://127.0.0.1:1').mcp_servers,
+        )
+        self.assertIn('plugin:ops:logs', servers)
+        self.assertIn('mcp__plugin_ops_logs', subject.tools()[0])
+        server.audits.add('search', {}, {'server': server.name})
+        self.assertEqual(
+            subject.recorder.audit
+            and subject.recorder.audit('mcp__plugin_ops_logs__search', {}),
+            {'server': 'plugin:ops:logs'},
+        )
+
+    async def test_a_server_that_fails_a_check_is_a_warning(self) -> None:
+        cases = {
+            'no longer at https://logs.example.com': {
+                'type': 'http',
+                'url': 'https://moved.example.com/mcp',
+            },
+            'not an http or sse server': {'command': 'logs-mcp'},
+        }
+        for expected, logs in cases.items():
+            with self.subTest(expected=expected):
+                subject = self.load(logs)
+                (notice,) = await self.start(subject)
+                self.assertIn(expected, notice)
+                self.assertEqual(subject.plugin_relays, [])
+                self.client.create_resolution.assert_not_called()
+
+    async def test_a_refused_secret_is_a_warning(self) -> None:
+        self.client.create_resolution.side_effect = api.Refused(
+            403, 'secret_access_denied'
+        )
+        subject = self.load()
+        notices = await self.start(subject)
+        self.assertIn(
+            'The MCP server logs of the plugin ops is not available: Imbi '
+            'did not give the runner a secret for its headers '
+            '(mcp_header_refused).',
+            notices,
+        )
+        self.assertEqual(subject.plugin_relays, [])
+
+    async def test_a_server_that_does_not_answer_is_a_warning(self) -> None:
+        self.call.return_value = {'material': 'logs-secret-value'}
+        subject = self.load()
+        notices = await self.start(
+            subject,
+            side_effect=task.plugin_relay.Unavailable('ConnectError'),
+        )
+        self.assertIn(
+            'The MCP server logs of the plugin ops is not available: the '
+            'runner could not open a session or list its tools '
+            '(ConnectError).',
+            notices,
+        )
+        self.assertEqual(subject.plugin_relays, [])
+        self.assertEqual(subject.header_secrets, [])
