@@ -5031,6 +5031,25 @@ class PromoteReclaimGuardTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual('new-run', run.run_id)
         project_deployments.append_deployment_event.assert_awaited_once()
 
+    async def test_a_failed_organization_lookup_stops_before_dispatch(
+        self,
+    ) -> None:
+        """The audit row needs the organization. A lookup that fails
+        after the dispatch would leave a running deploy with no row."""
+        db = self._db([])
+        with (
+            mock.patch(
+                f'{_MODULE}.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch(
+                f'{_MODULE}.lookup_project_organization_id',
+                mock.AsyncMock(side_effect=RuntimeError('graph down')),
+            ),
+            self.assertRaises(RuntimeError),
+        ):
+            await self._complete(db)
+        self.trigger.assert_not_awaited()
+
     async def test_a_failed_event_write_still_attributes_the_deploy(
         self,
     ) -> None:

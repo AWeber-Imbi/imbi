@@ -1037,3 +1037,39 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 404)
         self.assertEqual(_HistoryHandler.written, [])
+
+
+class AuditLookupOrderTestCase(unittest.IsolatedAsyncioTestCase):
+    """The audit row needs the project's slug and organization. A
+    lookup that fails after the plugin call would leave a changed key
+    with no audit row, so the lookups run first."""
+
+    async def test_a_failed_lookup_stops_before_the_plugin_call(
+        self,
+    ) -> None:
+        handler = mock.Mock(set_value=mock.AsyncMock())
+        resolved = mock.Mock(capability_cls=mock.Mock(return_value=handler))
+        with (
+            mock.patch.object(
+                project_configuration,
+                '_lookup_project_slug',
+                mock.AsyncMock(return_value='slug'),
+            ),
+            mock.patch.object(
+                project_configuration,
+                'lookup_project_organization_id',
+                mock.AsyncMock(side_effect=RuntimeError('graph down')),
+            ),
+            self.assertRaises(RuntimeError),
+        ):
+            await project_configuration._write_value(
+                mock.AsyncMock(),
+                mock.Mock(project_id='p1'),
+                resolved,
+                mock.Mock(),
+                {},
+                'foo',
+                ConfigValue(data_type='string', value='bar', secret=False),
+                action='set_value',
+            )
+        handler.set_value.assert_not_awaited()
