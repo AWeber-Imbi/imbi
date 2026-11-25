@@ -114,6 +114,7 @@ import {
 import { TicketReopen } from './TicketReopen'
 import { buildTrajectory } from './trajectoryModel'
 import { TrajectoryTab } from './TrajectoryTab'
+import { useNow } from './useNow'
 import { useStoredState } from './useStoredState'
 
 /** A tab, or one view of the Activity tab: what the URL names. */
@@ -1263,15 +1264,4 @@ function TicketPeopleAndLabels({
       )}
     </Card>
   )
-}
-
-/** The time now, ticking each second while `active`. */
-function useNow(active: boolean): number {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    if (!active) return
-    const timer = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(timer)
-  }, [active])
-  return now
 }
