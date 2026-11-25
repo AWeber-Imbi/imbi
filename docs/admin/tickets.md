@@ -586,7 +586,10 @@ The **Conversation** view shows the ticket as turns. A turn starts with a person
 - The work of a turn folds under one line, such as **Worked for 37s**. Click the line to open or close it.
 - Inside a turn, the work is grouped by kind, such as "ran 3 commands" or "read 2 files". A group with a failed or denied call is red.
 - Each tool call shows the tool, a summary of its input, and its duration. Open a call to see its input and output. Bash calls show the command and output in a terminal pane, and Edit and Write calls show a diff.
-- The work of a subagent shows under the call that started it.
+- **Open in trajectory**, under an open call, opens the Trajectory view at that call.
+- A subagent shows as a card: its description, its type, how many tools it called, its tokens and cost, and how long it ran, or **Running…** while it runs. Open the card to see what it was asked, its steps, and its answer, with **Open in trajectory**.
+- Subagents that ran at the same time show under one **Ran N subagents in parallel** line, with their summed work time, tokens, and cost, and the time they took together.
+- The line under a finished turn adds the subagents' share of its uncached tokens, such as **(18k in 7 subagents)**.
 - An open request shows where the agent asked it, with its buttons.
 - **Compact**, **Standard**, and **Verbose** set how much work shows open. The browser remembers the choice.
 - **Narrow** and **Wide** set the reading width. The browser remembers the choice.
@@ -599,18 +602,23 @@ The **Trajectory** view shows every event of the ticket as one row: a person's i
 - The strip at the top shows the Input, Model, and Tools lanes over time. A failed call is red. Click a block to select its row. The clock button switches between actual duration and equal widths, and the browser remembers the choice.
 - A tinted box on the strip marks the rows that the table shows, and moves as you scroll or fold. A thin line marks the selected event.
 - The fold buttons fold or unfold the turns, the tool calls, and the subagent calls. A greyed-out button has nothing to fold, and its tooltip says why. The browser remembers which fold buttons are on, and folds the new rows of a running ticket the same way.
-- Click a row to open the inspector. Its tabs depend on the row: a tool call has **Summary**, **Payload**, **Result**, and **Timing**, and most rows have **Raw**, which shows the raw event. The selected row, or the row of the selected request, is tinted and outlined.
+- A subagent's call shows its description, its type, how many tools it called, its tokens, cost, and duration. Subagent calls of one model request that ran at the same time sit under a **N subagents in parallel** row with their wall time, work time, tokens, and cost.
+- Click a row to open the inspector. Its tabs depend on the row: a tool call has **Summary**, **Payload**, **Result**, and **Timing**, a subagent's call adds **Usage** with its tokens and cost, and most rows have **Raw**, which shows the raw event. The selected row, or the row of the selected request, is tinted and outlined.
 - **Show in conversation**, at the bottom of the inspector, opens the Conversation view at the turn that holds the event.
-- A link that ends in `#e` and an event number opens the trajectory at that event.
+- A link that ends in `#e` and an event number opens the trajectory at that event, with its row in the middle of the list. Clicking a row inside the view selects it and leaves the list where it is.
 
 #### Statistics
 
-The **Statistics** view shows one row for each turn, and a **Task total** row at the bottom.
+The **Statistics** view opens with a summary of the ticket, then shows one row for each turn, and a **Task total** row at the bottom.
 
+- **Time** splits the ticket's time into model, subagents, tools, other, and **Idle**, the time no turn was running. Once the ticket closes, Time matches the duration in the header. Subagents that ran at the same time count once, and tool time counts only while no subagent ran.
+- **Cost** splits the cost between the main agent and its subagents. **Tokens** counts every token, subagents included. **Context** shows the main agent's prompt size at each step.
+- **Most expensive** and **Slowest** list the five steps or subagents that cost the most or ran the longest. Slowest leaves out steps that ran subagents and lists their subagents instead. Click an item to select its row in the table.
 - Hover a column heading to see how it is counted.
 - **Context** is the size of the prompt: uncached input, cache read, and cache write. **Cache** is the share of it served from the cache.
-- **Output**, **Model** (model time), **Tools** (tool time), and **Speed** (output tokens per model second) come from the model requests. The **Total** bar shows model time in purple, tool time in amber, and everything else in grey.
-- Click a turn to show its steps, one for each model request. Click a step to read its answer.
+- **Output**, **Cost**, **Model** (model time), and **Tools** (tool time) come from the model requests. Hover a Model cell to see the output speed. The **Total** bar shows model time in purple, tool time in amber, and everything else in grey.
+- Click a turn to show its steps, one for each model request. Under each step, its subagents show as rows with their own context, output, cache, cost, model time, and tools. The cost of a turn and of the task counts the subagents once.
+- Click a row to select it. Double-click it, or use its trajectory button, to open the Trajectory view at that step or subagent.
 - The speech-bubble button next to a turn opens the Conversation view at that turn.
 - **Latest** shows the context of the last step of a turn, and **Cumulative** adds up its steps. The **±** button shows how much the context grew at each step. The browser remembers both choices.
 

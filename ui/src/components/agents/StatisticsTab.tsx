@@ -1,8 +1,18 @@
-import { type ReactNode, useCallback, useMemo, useRef, useState } from 'react'
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import {
   ArrowRightToLine,
+  Bot,
   ChartColumn,
+  ChartGantt,
   ChevronRight,
   Diff,
   MessageSquareText,
@@ -29,12 +39,14 @@ import { FindStub } from './FindStub'
 import {
   type ContextBasis,
   type StatsCells,
+  type StatsRanked,
   type StatsStep,
+  type StatsSubagent,
   type StatsTurn,
   taskStatistics,
 } from './statsModel'
-import { Prose } from './taskEntryViews'
-import { formatElapsed, formatTokens } from './taskEvents'
+import { money, StatsSummary, time } from './StatsSummary'
+import { formatTokens } from './taskEvents'
 import {
   matches,
   ToolbarSearch,
@@ -48,11 +60,9 @@ import {
   type ToolbarOption,
   ToolbarToggle,
 } from './TaskToolbar'
-import { buildTrajectory, formatDuration } from './trajectoryModel'
+import { buildTrajectory } from './trajectoryModel'
 import { useStoredState } from './useStoredState'
 import { gapsOf, scrollToFound, useVirtualRows } from './virtualRows'
-
-const ANSWER_CAP = 16_000
 
 interface Measure {
   'aria-rowindex': number
@@ -62,8 +72,8 @@ interface Measure {
 
 type StatsRow =
   | { expanded: boolean; kind: 'turn'; steps: number; turn: StatsTurn }
-  | { key: string; kind: 'answer'; step: StatsStep }
-  | { key: string; kind: 'step'; max: number; shown: boolean; step: StatsStep }
+  | { key: string; kind: 'step'; max: number; step: StatsStep }
+  | { key: string; kind: 'subagent'; max: number; sub: StatsSubagent }
 
 const BASES: ToolbarOption<ContextBasis>[] = [
   {
@@ -89,8 +99,8 @@ const COLUMNS: {
   {
     label: 'Turn / step',
     title:
-      'A turn row holds the turn total. Click a turn to show or hide its steps, and a step to read its answer.',
-    width: '11.5rem',
+      'A turn row holds the turn total. Click a turn to show or hide its steps. Double-click a step or subagent to open it in the trajectory.',
+    width: '14rem',
   },
   {
     label: 'Trigger / execution',
@@ -116,27 +126,30 @@ const COLUMNS: {
     width: '4.5rem',
   },
   {
+    label: 'Cost',
+    number: true,
+    title:
+      'Cost of the model requests. A turn and the task total include their subagents.',
+    width: '4.75rem',
+  },
+  {
     label: 'Model',
     number: true,
-    title: 'Model time: from the start of the step to the model’s reply.',
-    width: '5rem',
+    title:
+      'Model time: from the start of the step to the model’s reply. Hover a cell for the output speed. A subagent reports no model time, so its cell shows its run time minus its tool time.',
+    width: '5.75rem',
   },
   {
     label: 'Tools',
     number: true,
-    title: 'Tool time: every tool call in the step, added up.',
+    title:
+      'Tool time: how long any tool call of the step was running. Calls that ran at the same time count once.',
     width: '5rem',
-  },
-  {
-    label: 'Speed',
-    number: true,
-    title: 'Output speed: output tokens ÷ model seconds.',
-    width: '5.25rem',
   },
   {
     label: 'Total',
     title:
-      'Total time. Purple is model time, amber is tool time, grey is everything else. Bar length uses a square-root scale: steps compare with steps of the same turn, turns with turns.',
+      'Total time. Purple is model time, amber is tool time, grey is everything else. A subagent’s purple is estimated. Bar length uses a square-root scale: steps compare with steps of the same turn, turns with turns.',
     width: '8.5rem',
   },
 ]
@@ -144,11 +157,14 @@ const COLUMNS: {
 export function StatisticsTab({
   events,
   onShowInConversation,
+  onShowInTrajectory,
   task,
 }: {
   events: TicketEvent[]
   /** Opens the conversation at the turn that holds this event. */
   onShowInConversation?: (seq: number) => void
+  /** Opens the trajectory at the row that holds this event. */
+  onShowInTrajectory?: (seq: number) => void
   task: Ticket
 }) {
   const [basis, setBasis] = useStoredState<ContextBasis>(
@@ -176,7 +192,6 @@ export function StatisticsTab({
     setSeeded(true)
     if (stats.turns.length === 1) setOpen(new Set([stats.turns[0].number]))
   }
-  const [answers, setAnswers] = useState<Set<string>>(new Set())
   const [query, setQuery] = useTaskSearch()
   const root = useRef<HTMLDivElement>(null)
   useSearchHighlight(root, query)
@@ -186,7 +201,10 @@ export function StatisticsTab({
       searching
         ? stats.turns.flatMap((turn) => {
             const steps = turn.steps.filter((s) =>
-              matches(`${s.did} ${s.answer}`, query),
+              matches(
+                `${s.did} ${s.subagents.map((a) => `${a.description} ${a.type}`).join(' ')}`,
+                query,
+              ),
             )
             return steps.length || matches(turn.trigger.text, query)
               ? [{ steps: steps.length ? steps : turn.steps, turn }]
@@ -212,22 +230,43 @@ export function StatisticsTab({
           head,
           ...steps.flatMap((step): StatsRow[] => {
             const key = `${turn.number}:${step.number}`
-            const row: StatsRow = {
-              key,
-              kind: 'step',
-              max,
-              shown: answers.has(key),
-              step,
-            }
-            return answers.has(key)
-              ? [row, { key: `${key}:answer`, kind: 'answer', step }]
-              : [row]
+            const row: StatsRow = { key, kind: 'step', max, step }
+            const subs = step.subagents.map(
+              (sub): StatsRow => ({
+                key: `${key}:${sub.id}`,
+                kind: 'subagent',
+                max,
+                sub,
+              }),
+            )
+            return [row, ...subs]
           }),
         ]
       }),
-    [answers, open, searching, shown],
+    [open, searching, shown],
   )
   const scroller = useRef<HTMLDivElement>(null)
+  const body = useRef<HTMLTableSectionElement>(null)
+  const [margin, setMargin] = useState(0)
+  const laidOut = shown.length > 0
+  useLayoutEffect(() => {
+    const pane = scroller.current
+    const rows = body.current
+    if (!pane || !rows) return
+    const measure = () =>
+      setMargin(
+        rows.getBoundingClientRect().top -
+          pane.getBoundingClientRect().top +
+          pane.scrollTop,
+      )
+    measure()
+    const observer = new ResizeObserver(measure)
+    for (const el of pane.querySelectorAll(':scope > :not(:last-child), thead'))
+      observer.observe(el)
+    return () => observer.disconnect()
+  }, [laidOut, searching])
+  const [reveal, setReveal] = useState<null | string>(null)
+  const [selected, setSelected] = useState<null | string>(null)
   const [focusKey, setFocusKey] = useState<null | string>(null)
   const keyOf = useCallback(
     (i: number) => {
@@ -240,10 +279,11 @@ export function StatisticsTab({
     focusKey === null ? -1 : flat.findIndex((_, i) => keyOf(i) === focusKey)
   const virtualizer = useVirtualRows({
     count: flat.length,
-    estimateSize: (i) => (flat[i]?.kind === 'answer' ? 160 : 37),
+    estimateSize: () => 37,
     getItemKey: keyOf,
     keep: [focusRow],
     scroller,
+    scrollMargin: margin,
   })
   const {
     after,
@@ -253,11 +293,31 @@ export function StatisticsTab({
     virtualizer.getVirtualItems(),
     virtualizer.getTotalSize(),
     flat.length,
+    margin,
   )
   const found = useCallback(
     (index: number) => scrollToFound(virtualizer, index),
     [virtualizer],
   )
+  useEffect(() => {
+    if (reveal === null) return
+    const index = flat.findIndex((_, i) => keyOf(i) === reveal)
+    if (index < 0) return
+    found(index)
+    setSelected(reveal)
+    setReveal(null)
+  }, [flat, found, keyOf, reveal])
+  const onReveal = (item: StatsRanked) => {
+    setQuery('')
+    setOpen((s) => new Set(s).add(item.turn))
+    setReveal(
+      `${item.turn}:${item.step}${item.subagent ? `:${item.subagent}` : ''}`,
+    )
+  }
+  const openIn = (seq: null | number) =>
+    onShowInTrajectory && seq !== null
+      ? () => onShowInTrajectory(seq)
+      : undefined
   const stubs = (indexes: number[]) =>
     indexes.map((i) => (
       <FindStub
@@ -305,30 +365,25 @@ export function StatisticsTab({
           key={row.key}
           max={row.max}
           measure={measure}
-          onToggle={
-            row.step.answer
-              ? () => setAnswers((s) => toggled(s, row.key))
-              : undefined
-          }
-          shown={row.shown}
+          onOpen={openIn(row.step.seq)}
+          onSelect={() => setSelected(row.key)}
+          selected={selected === row.key}
           step={row.step}
         />
       )
-    return (
-      <TableRow className="hover:bg-transparent" key={row.key} {...measure}>
-        <TableCell
-          className="bg-secondary py-3! pl-9!"
-          colSpan={COLUMNS.length}
-        >
-          <Prose>{row.step.answer.slice(0, ANSWER_CAP)}</Prose>
-          {row.step.answer.length > ANSWER_CAP && (
-            <p className="text-tertiary mt-2 text-xs">
-              The answer is cut off at {ANSWER_CAP.toLocaleString()} characters.
-            </p>
-          )}
-        </TableCell>
-      </TableRow>
-    )
+    if (row.kind === 'subagent')
+      return (
+        <SubagentRow
+          key={row.key}
+          max={row.max}
+          measure={measure}
+          onOpen={openIn(row.sub.seq)}
+          onSelect={() => setSelected(row.key)}
+          selected={selected === row.key}
+          sub={row.sub}
+        />
+      )
+    return null
   }
 
   return (
@@ -367,6 +422,7 @@ export function StatisticsTab({
         <NoMatches onClear={() => setQuery('')} query={query} />
       ) : (
         <div className="min-h-0 flex-1 overflow-auto" ref={scroller}>
+          {!searching && <StatsSummary onReveal={onReveal} stats={stats} />}
           <Table
             aria-rowcount={flat.length + 2}
             className="min-w-264 table-fixed text-sm [&_td]:px-2.5 [&_td]:py-1.5 [&_th]:px-2.5"
@@ -402,6 +458,7 @@ export function StatisticsTab({
                 )?.dataset.index
                 if (index !== undefined) setFocusKey(keyOf(Number(index)))
               }}
+              ref={body}
             >
               {rendered.flatMap(({ before, item, skipped }) => [
                 ...(before > 0 || skipped.length
@@ -431,15 +488,10 @@ export function StatisticsTab({
                 <TableCell className="text-secondary truncate">
                   {plural(stats.totals.turns, 'turn')} ·{' '}
                   {plural(stats.totals.steps, 'step')}
+                  {stats.totals.subagents > 0 &&
+                    ` · ${plural(stats.totals.subagents, 'subagent')}`}
                 </TableCell>
-                <Numbers
-                  cells={stats.totals}
-                  speedTitle={
-                    stats.totals.subrequests
-                      ? 'Main-agent output tokens per second of model time. Subagent tokens count in Output but carry no model time.'
-                      : undefined
-                  }
-                />
+                <Numbers cells={stats.totals} />
                 <TableCell className="truncate text-right tabular-nums">
                   {time(stats.totals.totalMs)}
                 </TableCell>
@@ -471,7 +523,7 @@ function findText(row: StatsRow, delta: boolean): string {
     return `Turn ${row.turn.number} ${row.turn.trigger.text} ${numbersText(row.turn, delta)}`
   if (row.kind === 'step')
     return `Step ${row.step.number} ${row.step.did} ${numbersText(row.step, delta)}`
-  return row.step.answer.slice(0, ANSWER_CAP)
+  return `${row.sub.description} ${row.sub.type} ${subagentText(row.sub)} ${numbersText({ ...row.sub, contextDelta: null }, false)}`
 }
 
 function Gap({ children, height }: { children?: ReactNode; height: number }) {
@@ -487,11 +539,9 @@ function Gap({ children, height }: { children?: ReactNode; height: number }) {
 function Numbers({
   cells,
   delta,
-  speedTitle = 'Output tokens per second of model time',
 }: {
   cells: StatsCells
   delta?: null | number
-  speedTitle?: string
 }) {
   const cell = 'truncate text-right tabular-nums'
   const change = changeText(delta)
@@ -517,14 +567,11 @@ function Numbers({
       >
         {percent(cells.cacheHit)}
       </TableCell>
-      <TableCell className={cell}>{time(cells.modelMs)}</TableCell>
-      <TableCell className={cell}>{time(cells.toolMs)}</TableCell>
-      <TableCell
-        className={cell}
-        title={cells.outputPerSecond === null ? undefined : speedTitle}
-      >
-        {speed(cells.outputPerSecond)}
+      <TableCell className={cell}>{money(cells.cost)}</TableCell>
+      <TableCell className={cell} title={speedText(cells.outputPerSecond)}>
+        {time(cells.modelMs)}
       </TableCell>
+      <TableCell className={cell}>{time(cells.toolMs)}</TableCell>
     </>
   )
 }
@@ -538,11 +585,38 @@ function numbersText(
     `${tokens(cells.context)}${changeText(delta ? cells.contextDelta : undefined)}`,
     tokens(cells.output),
     percent(cells.cacheHit),
+    money(cells.cost),
     time(cells.modelMs),
     time(cells.toolMs),
-    speed(cells.outputPerSecond),
     time(cells.totalMs),
   ].join(' ')
+}
+
+function OpenInTrajectory({
+  label,
+  onOpen,
+}: {
+  label: string
+  onOpen?: () => void
+}) {
+  if (!onOpen) return null
+  return (
+    <IconTooltip label="Open in trajectory">
+      <Button
+        aria-label={`${label}: open in trajectory`}
+        className="text-tertiary hover:text-primary -my-1 size-6 shrink-0 opacity-0 group-hover/row:opacity-100 group-data-selected/row:opacity-100 focus-visible:opacity-100 [&_svg]:size-3.5"
+        onClick={(e) => {
+          e.stopPropagation()
+          onOpen()
+        }}
+        onDoubleClick={(e) => e.stopPropagation()}
+        size="icon"
+        variant="ghost"
+      >
+        <ChartGantt />
+      </Button>
+    </IconTooltip>
+  )
 }
 
 function percent(share: null | number): string {
@@ -553,49 +627,46 @@ function plural(n: number, one: string): string {
   return `${n} ${n === 1 ? one : `${one}s`}`
 }
 
-function speed(perSecond: null | number): string {
-  if (perSecond === null) return '—'
-  return `${perSecond < 10 ? perSecond.toFixed(1) : Math.round(perSecond)}/s`
+function speedText(perSecond: null | number): string | undefined {
+  if (perSecond === null) return undefined
+  const n = perSecond < 10 ? perSecond.toFixed(1) : Math.round(perSecond)
+  return `${n} output tokens per second`
 }
 
 function StepRow({
   delta,
   max,
   measure,
-  onToggle,
-  shown,
+  onOpen,
+  onSelect,
+  selected,
   step,
 }: {
   delta: boolean
   max: number
   measure: Measure
-  onToggle?: () => void
-  shown: boolean
+  onOpen?: () => void
+  onSelect: () => void
+  selected: boolean
   step: StatsStep
 }) {
   return (
     <TableRow
-      className={cn('text-secondary', onToggle && 'cursor-pointer')}
-      onClick={onToggle}
+      className={cn(
+        'group/row cursor-pointer text-secondary',
+        selected &&
+          'bg-action/10 inset-ring inset-ring-action/35 hover:bg-action/10',
+      )}
+      data-selected={selected || undefined}
+      onClick={onSelect}
+      onDoubleClick={onOpen}
       {...measure}
     >
-      <TableCell className="truncate pl-9!" title={clock(step.startedAt)}>
-        {onToggle ? (
-          <button
-            aria-expanded={shown}
-            aria-label={`Step ${step.number}: ${shown ? 'hide' : 'show'} its answer`}
-            className="outline-none focus-visible:underline"
-            onClick={(e) => {
-              e.stopPropagation()
-              onToggle()
-            }}
-            type="button"
-          >
-            Step {step.number}
-          </button>
-        ) : (
-          `Step ${step.number}`
-        )}
+      <TableCell className="pl-9!" title={clock(step.startedAt)}>
+        <span className="flex min-w-0 items-center justify-between gap-1">
+          <span className="truncate">Step {step.number}</span>
+          <OpenInTrajectory label={`Step ${step.number}`} onOpen={onOpen} />
+        </span>
       </TableCell>
       <TableCell>
         <span className="block truncate" title={step.did}>
@@ -610,9 +681,90 @@ function StepRow({
   )
 }
 
-function time(ms: null | number): string {
-  if (ms === null) return '—'
-  return ms < 60_000 ? formatDuration(ms) : formatElapsed(ms)
+function SubagentRow({
+  max,
+  measure,
+  onOpen,
+  onSelect,
+  selected,
+  sub,
+}: {
+  max: number
+  measure: Measure
+  onOpen?: () => void
+  onSelect: () => void
+  selected: boolean
+  sub: StatsSubagent
+}) {
+  const cell = 'truncate text-right tabular-nums'
+  const none = <span className="text-tertiary">—</span>
+  return (
+    <TableRow
+      className={cn(
+        'group/row cursor-pointer text-secondary',
+        selected &&
+          'bg-action/10 inset-ring inset-ring-action/35 hover:bg-action/10',
+      )}
+      data-selected={selected || undefined}
+      onClick={onSelect}
+      onDoubleClick={onOpen}
+      {...measure}
+    >
+      <TableCell className="pl-14!" title={clock(sub.startedAt)}>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <Bot className="text-tertiary size-3.5 shrink-0" />
+          <span className="flex-1 truncate" title={sub.description}>
+            {sub.description}
+          </span>
+          <OpenInTrajectory label={sub.description} onOpen={onOpen} />
+        </span>
+      </TableCell>
+      <TableCell>
+        <span className="block truncate" title={subagentText(sub)}>
+          {sub.type && (
+            <span className="text-tertiary mr-1.5 font-mono text-xs">
+              {sub.type}
+            </span>
+          )}
+          {subagentText(sub)}
+        </span>
+      </TableCell>
+      <TableCell
+        className={cell}
+        title={`The prompt of the subagent’s last request. It made ${plural(sub.requests, 'model request')}.`}
+      >
+        {tokens(sub.context)}
+      </TableCell>
+      <TableCell className={cell}>{tokens(sub.output)}</TableCell>
+      <TableCell
+        className={cell}
+        title={`Cache read ${formatTokens(sub.cacheRead)} · uncached input ${formatTokens(sub.input)} · cache write ${formatTokens(sub.cacheWrite)}`}
+      >
+        {percent(sub.cacheHit)}
+      </TableCell>
+      <TableCell className={cell}>{money(sub.cost)}</TableCell>
+      <TableCell
+        className={cell}
+        title="Estimated: the subagent’s run time minus its tool time"
+      >
+        {sub.modelMs ? `≈${time(sub.modelMs)}` : none}
+      </TableCell>
+      <TableCell className={cell}>{time(sub.toolMs)}</TableCell>
+      <TableCell>
+        <TimeBar cells={sub} max={max} />
+      </TableCell>
+    </TableRow>
+  )
+}
+
+function subagentText(sub: StatsSubagent): string {
+  return [
+    plural(sub.tools, 'tool'),
+    plural(sub.requests, 'request'),
+    sub.errors > 0 && `${sub.errors} failed`,
+  ]
+    .filter(Boolean)
+    .join(' · ')
 }
 
 function TimeBar({ cells, max }: { cells: StatsCells; max: number }) {
@@ -642,7 +794,7 @@ function TimeBar({ cells, max }: { cells: StatsCells; max: number }) {
           />
         </div>
       </div>
-      <span className="w-12 text-right text-xs tabular-nums">
+      <span className="w-12 shrink-0 text-right text-xs whitespace-nowrap tabular-nums">
         {time(total)}
       </span>
     </div>

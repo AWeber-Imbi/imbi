@@ -17,7 +17,11 @@ import { ActivityEmpty, NoMatches } from './ActivityEmpty'
 import { useSearchHighlight, useTaskSearch } from './taskSearch'
 import { TaskCopyMenu } from './TaskToolbar'
 import { type InspectorTab, TrajectoryInspector } from './TrajectoryInspector'
-import { TrajectoryLedger, type TrajectorySelection } from './TrajectoryLedger'
+import {
+  type ScrollTarget,
+  TrajectoryLedger,
+  type TrajectorySelection,
+} from './TrajectoryLedger'
 import {
   buildTrajectory,
   type Fold,
@@ -82,7 +86,7 @@ export function TrajectoryTab({
   )
   const seen = useRef<Set<string>>(new Set())
   const [selection, setSelection] = useState<TrajectorySelection>(null)
-  const [scrollTo, setScrollTo] = useState<null | { id: string }>(null)
+  const [scrollTo, setScrollTo] = useState<null | ScrollTarget>(null)
   const [visible, setVisible] = useState<null | TrajectoryWindow>(null)
   const [query, setQuery] = useTaskSearch()
   const root = useRef<HTMLDivElement>(null)
@@ -184,9 +188,9 @@ export function TrajectoryTab({
   ) as Record<FoldButton, boolean | null>
 
   const reveal = useCallback(
-    (record: TrajectoryRecord) => {
+    (record: TrajectoryRecord, center = false) => {
       setFolds((prev) => unfoldFor(prev, record, trajectory))
-      setScrollTo({ id: record.id })
+      setScrollTo({ center, id: record.id })
     },
     [trajectory],
   )
@@ -226,7 +230,7 @@ export function TrajectoryTab({
         : { id: record.id, type: 'record' },
     )
     setQuery((q) => (hides(q, record.id) ? '' : q))
-    reveal(record)
+    reveal(record, true)
   }, [byId, hides, linked, records, reveal])
 
   const select = useCallback(
@@ -238,8 +242,9 @@ export function TrajectoryTab({
       if (focused && !focused.has(next.id)) setPicked(null)
       const record = byId.get(next.id)
       const seq = record?.seqs.length ? Math.min(...record.seqs) : null
-      if (seq !== null && hash !== `#e${seq}`)
-        navigate(`${pathname}#e${seq}`, { replace: true })
+      if (seq === null || hash === `#e${seq}`) return
+      handled.current = { exact: true, id, seq: String(seq) }
+      navigate(`${pathname}#e${seq}`, { replace: true })
     },
     [byId, focused, hash, hides, navigate, pathname],
   )

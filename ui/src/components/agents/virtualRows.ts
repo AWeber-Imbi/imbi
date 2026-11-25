@@ -21,6 +21,8 @@ interface Options {
   paddingEnd?: number
   paddingStart?: number
   scroller: React.RefObject<HTMLDivElement | null>
+  /** How far below the top of the scroller's content the first row is. */
+  scrollMargin?: number
 }
 
 /**
@@ -31,12 +33,13 @@ export function gapsOf(
   items: VirtualItem[],
   total: number,
   count = 0,
+  margin = 0,
 ): {
   after: number
   afterSkipped: number[]
   rows: { before: number; item: VirtualItem; skipped: number[] }[]
 } {
-  let end = 0
+  let end = margin
   let next = 0
   const rows = items.map((item) => {
     const before = Math.max(0, item.start - end)
@@ -46,7 +49,7 @@ export function gapsOf(
     return { before, item, skipped }
   })
   return {
-    after: Math.max(0, total - end),
+    after: Math.max(0, total + margin - end),
     afterSkipped: between(next, count),
     rows,
   }
@@ -82,6 +85,7 @@ export function useVirtualRows({
   paddingEnd,
   paddingStart,
   scroller,
+  scrollMargin,
 }: Options) {
   const unlaid = useRef(false)
   const [selected, setSelected] = useState('')
@@ -122,6 +126,7 @@ export function useVirtualRows({
     paddingEnd,
     paddingStart,
     rangeExtractor,
+    scrollMargin,
   })
   virtualizer.shouldAdjustScrollPositionOnItemSizeChange = growsAbove
   return virtualizer

@@ -196,6 +196,76 @@ describe('buildTrajectory', () => {
     expect(recordForSeq(t.records, 2)?.kind).toBe('assistant')
   })
 
+  it("gives a subagent's last report, which no event shares, to its Agent call", () => {
+    const t = buildTrajectory(
+      [
+        event(1, 'task.created', { title: 'T' }),
+        event(2, 'usage.reported', { message_id: 'm1', tokens_in: 900 }),
+        event(3, 'turn', { body: 'Asking', kind: 'text', message_id: 'm1' }),
+        event(4, 'usage.reported', {
+          cost: '0.02',
+          message_id: 's9',
+          tokens_in: 70,
+        }),
+        event(5, 'tool.called', {
+          arguments: { description: 'look', subagent_type: 'search' },
+          call_id: 'c1',
+          message_id: 'm1',
+          result:
+            '[Subagent hand-back] The subagent is done. The report follows: Found it.',
+          tool: 'Agent',
+        }),
+        event(6, 'usage.reported', { message_id: 'm2', tokens_in: 1000 }),
+        event(7, 'turn', { body: 'Done', kind: 'text', message_id: 'm2' }),
+      ],
+      false,
+    )
+    expect(t.requests).toHaveLength(2)
+    expect(t.subrequests.map((s) => s.agent)).toEqual(['c1'])
+    expect(t.records.find((r) => r.id === 'call:c1')?.subagent).toMatchObject({
+      answer: 'Found it.',
+      description: 'look',
+      type: 'search',
+      usage: { cost: 0.02, input: 70, requests: 1 },
+    })
+  })
+
+  it.each([
+    ['overlap', 3000, true],
+    ['run one after the other', 500, false],
+  ] as const)(
+    'heads Agent calls of one request with a batch row when they %s',
+    (_, ms, batched) => {
+      const agent = (seq: number, id: string, duration_ms: number) =>
+        event(seq, 'tool.called', {
+          call_id: id,
+          duration_ms,
+          message_id: 'm1',
+          tool: 'Agent',
+        })
+      const t = buildTrajectory(
+        [
+          event(1, 'task.created', { title: 'T' }),
+          event(2, 'usage.reported', { message_id: 'm1' }),
+          event(3, 'turn', { body: 'Two', kind: 'text', message_id: 'm1' }),
+          agent(4, 'c1', 3000),
+          agent(5, 'c2', ms),
+        ],
+        false,
+      )
+      const rows = rowsOf(t, none(), '')
+      const batch = rows.find((r) => r.kind === 'batch')
+      if (!batched) return expect(batch).toBeUndefined()
+      expect(batch).toMatchObject({ kind: 'batch' })
+      expect(batch?.kind === 'batch' && batch.runs.map((r) => r.id)).toEqual([
+        'call:c1',
+        'call:c2',
+      ])
+      const at = rows.indexOf(batch!)
+      expect(rows[at + 1]).toMatchObject({ record: { id: 'call:c1' } })
+    },
+  )
+
   it('keeps usage without a message id as a request of its own', () => {
     const t = buildTrajectory(subagentLog(false), false)
     expect(t.requests).toHaveLength(4)

@@ -1196,7 +1196,7 @@ describe('Tasks', () => {
         await screen.findByRole('button', { name: /Bash uv run pytest -q/ }),
       )
       fireEvent.click(
-        screen.getByRole('button', { name: 'Inspect Bash in the trajectory' }),
+        screen.getByRole('button', { name: 'Open Bash in the trajectory' }),
       )
       await waitFor(() =>
         expect(window.location.pathname).toBe('/tickets/acme/T-3/trajectory'),
@@ -1218,7 +1218,7 @@ describe('Tasks', () => {
         await screen.findByRole('button', { name: /Bash uv run pytest -q/ }),
       )
       fireEvent.click(
-        screen.getByRole('button', { name: 'Inspect Bash in the trajectory' }),
+        screen.getByRole('button', { name: 'Open Bash in the trajectory' }),
       )
       await waitFor(() =>
         expect(window.location.pathname).toBe('/tickets/acme/T-3/trajectory'),
@@ -1241,7 +1241,7 @@ describe('Tasks', () => {
       fireEvent.click(await screen.findByRole('button', { name: /Find calls/ }))
       fireEvent.click(await screen.findByRole('button', { name: /^Grep/ }))
       fireEvent.click(
-        screen.getByRole('button', { name: 'Inspect Grep in the trajectory' }),
+        screen.getByRole('button', { name: 'Open Grep in the trajectory' }),
       )
       await waitFor(() => expect(window.location.hash).toBe('#e7'))
       const rows = await ledgerRows()
@@ -1263,6 +1263,18 @@ describe('Tasks', () => {
       await waitFor(() =>
         expect(document.querySelector('[data-flash]')).toBeInTheDocument(),
       )
+    })
+
+    it('opens a Statistics step in the Trajectory', async () => {
+      renderAt('/tickets/acme/T-3/statistics')
+      const [open] = await screen.findAllByRole('button', {
+        name: /: open in trajectory$/,
+      })
+      fireEvent.click(open)
+      await waitFor(() =>
+        expect(window.location.pathname).toBe('/tickets/acme/T-3/trajectory'),
+      )
+      expect(window.location.hash).toMatch(/^#e\d+$/)
     })
 
     it('opens Activity on the view used last', async () => {

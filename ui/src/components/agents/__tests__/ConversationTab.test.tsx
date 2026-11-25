@@ -112,21 +112,21 @@ describe('ConversationTab', () => {
       </div>,
     )
     await user.click(screen.getByRole('radio', { name: 'Verbose' }))
-    const inspect = { name: 'Inspect Bash in the trajectory' }
+    const inspect = { name: 'Open Bash in the trajectory' }
     expect(screen.queryByRole('button', inspect)).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /Bash make test/ }))
     await user.click(screen.getByRole('button', inspect))
     expect(onInspect).toHaveBeenCalledWith(3)
   })
 
-  it('offers no Inspect without a trajectory to open', async () => {
+  it('offers no Open in trajectory without a trajectory to open', async () => {
     const user = userEvent.setup()
     renderTab('closed')
     await user.click(screen.getByRole('radio', { name: 'Verbose' }))
     await user.click(screen.getByRole('button', { name: /Bash make test/ }))
     expect(screen.getByText(/tests passed/)).toBeInTheDocument()
     expect(
-      screen.queryByRole('button', { name: /^Inspect/ }),
+      screen.queryByRole('button', { name: /in the trajectory$/ }),
     ).not.toBeInTheDocument()
   })
 
@@ -364,18 +364,68 @@ describe('ConversationTab', () => {
         result: 'a.py',
         tool: 'Bash',
       }),
-      event(3, 'tool.called', {
+      event(3, 'usage.reported', {
+        cost: '0.02',
+        message_id: 's9',
+        tokens_in: 70,
+      }),
+      event(4, 'tool.called', {
         arguments: { description: 'look', subagent_type: 'search' },
         call_id: 'task-1',
         result: 'Found it.',
         tool: 'Task',
       }),
-      event(4, 'turn', { body: 'fixed' }),
+      event(5, 'turn', { body: 'fixed' }),
     ])
     await user.click(screen.getByRole('radio', { name: 'Verbose' }))
-    await user.click(screen.getByRole('button', { name: /Subagent search/ }))
-    expect(screen.getByText(/search subagent/)).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /^look search.*\$0\.02/ }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/\(70 in a subagent\)/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /^look search/ }))
+    expect(screen.getByText('Steps · 1')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Bash ls/ })).toBeInTheDocument()
+    expect(screen.getByText('Found it.')).toBeInTheDocument()
+  })
+
+  it('shows the prompt of a subagent called with string arguments', async () => {
+    const user = userEvent.setup()
+    renderTab('closed', [
+      LOG[0],
+      event(4, 'tool.called', {
+        arguments: 'Find the auth bug',
+        call_id: 'task-1',
+        result: 'Found it.',
+        tool: 'Agent',
+      }),
+      event(5, 'turn', { body: 'fixed' }),
+    ])
+    await user.click(screen.getByRole('radio', { name: 'Verbose' }))
+    await user.click(screen.getByRole('button', { name: /^Subagent/ }))
+    expect(screen.getByText('Find the auth bug')).toBeInTheDocument()
+  })
+
+  it('groups subagents that ran at once under one parallel header', async () => {
+    const user = userEvent.setup()
+    const agent = (seq: number, id: string, description: string) =>
+      event(seq, 'tool.called', {
+        arguments: { description, subagent_type: 'general-purpose' },
+        call_id: id,
+        duration_ms: 3000,
+        result: `${description} done`,
+        tool: 'Agent',
+      })
+    renderTab('closed', [
+      LOG[0],
+      agent(4, 'c1', 'Lens: security'),
+      agent(5, 'c2', 'Lens: tests'),
+      agent(9, 'c3', 'Lens: later'),
+      event(10, 'turn', { body: 'fixed' }),
+    ])
+    await user.click(screen.getByRole('radio', { name: 'Verbose' }))
+    expect(screen.getByText('Ran 2 subagents in parallel')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /^Lens: tests/ }))
+    expect(screen.getByText('Lens: tests done')).toBeInTheDocument()
   })
 
   it('labels a subagent message as a message and hides usage', async () => {
@@ -393,11 +443,8 @@ describe('ConversationTab', () => {
       event(5, 'turn', { body: 'fixed' }),
     ])
     await user.click(screen.getByRole('radio', { name: 'Verbose' }))
-    await user.click(screen.getByRole('button', { name: /Subagent/ }))
-    const marker = screen
-      .getByText('search subagent · 1 step')
-      .closest('[data-slot="marker"]')
-    expect(marker?.nextElementSibling?.children).toHaveLength(1)
+    await user.click(screen.getByRole('button', { name: /^Subagent search/ }))
+    expect(screen.getByText('Steps · 1')).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: /^Looking around\.$/ }),
     ).toBeInTheDocument()
@@ -425,9 +472,11 @@ describe('ConversationTab', () => {
     )
     const { rerender } = render(view([LOG[0], child]))
     expect(screen.queryByRole('button', { name: /Bash ls/ })).toBeNull()
-    await user.click(screen.getByRole('button', { name: /Subagent Running/ }))
+    await user.click(
+      screen.getByRole('button', { name: /^Subagent.*Running…/ }),
+    )
     expect(screen.getByRole('button', { name: /Bash ls/ })).toBeInTheDocument()
-    expect(screen.getByText('Subagent · 1 step')).toBeInTheDocument()
+    expect(screen.getByText('Steps · 1')).toBeInTheDocument()
     rerender(
       view([
         LOG[0],
@@ -441,7 +490,7 @@ describe('ConversationTab', () => {
       ]),
     )
     expect(
-      screen.getByRole('button', { name: /Subagent search/ }),
+      screen.getByRole('button', { name: /^look search/ }),
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Bash ls/ })).toBeInTheDocument()
   })
@@ -459,7 +508,7 @@ describe('ConversationTab', () => {
       ])
       await user.click(screen.getByRole('radio', { name: 'Verbose' }))
       expect(
-        screen.getByRole('button', { name: new RegExp(`Subagent ${text}`) }),
+        screen.getByRole('button', { name: new RegExp(`^Subagent.*${text}`) }),
       ).toBeInTheDocument()
     },
   )

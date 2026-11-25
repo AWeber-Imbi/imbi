@@ -158,6 +158,41 @@ const TRAJECTORY: Trajectory = {
 }
 
 /**
+ * One step runs a 5 s subagent, then a second step answers. Costs: the
+ * main agent $0.10 and $0.05, the subagent $0.01 and $0.02.
+ */
+function runLog() {
+  const usage = (message_id: string, cost: string) => ({
+    cost,
+    message_id,
+    tokens_in: 100,
+    tokens_out: 5,
+  })
+  return [
+    event(1, 'task.created', { description: 'Review', title: 'T' }),
+    event(2, 'usage.reported', usage('m1', '0.10')),
+    event(3, 'turn', { body: 'Asking', kind: 'text', message_id: 'm1' }),
+    event(4, 'usage.reported', usage('s1', '0.01')),
+    event(5, 'tool.called', {
+      call_id: 'r1',
+      message_id: 's1',
+      parent_call_id: 'c1',
+      tool: 'Read',
+    }),
+    event(6, 'usage.reported', usage('s9', '0.02')),
+    event(8, 'tool.called', {
+      arguments: { description: 'Lens: security', subagent_type: 'general' },
+      call_id: 'c1',
+      duration_ms: 5000,
+      message_id: 'm1',
+      tool: 'Agent',
+    }),
+    event(9, 'usage.reported', usage('m2', '0.05')),
+    event(10, 'turn', { body: 'Done', kind: 'text', message_id: 'm2' }),
+  ]
+}
+
+/**
  * The main agent (prompts of 1000 then 1100) runs a subagent whose two
  * model requests have prompts of 60 and 80.
  */
@@ -226,7 +261,7 @@ describe('taskStatistics', () => {
       records: [...TRAJECTORY.records, { ...TRAJECTORY.records[2], id: 't2' }],
     }
     const { totals, turns } = taskStatistics(t, parallel, 'latest')
-    expect(totals.toolMs).toBe(2000)
+    expect(totals.toolMs).toBe(1000)
     expect(turns[0].totalMs).toBe(4000)
     expect(totals.totalMs).toBe(4000)
   })
@@ -277,10 +312,11 @@ describe('taskStatistics', () => {
       [1000, null],
       [1100, 100],
     ])
-    expect(steps[0].did).toBe('Subagent · 2 subagent requests')
+    expect(steps[0].did).toBe('1 subagent')
+    expect(steps[0].subagents.map((s) => s.requests)).toEqual([2])
     expect(turns[0].context).toBe(1100)
     expect(totals.steps).toBe(2)
-    expect(totals.subrequests).toBe(2)
+    expect(totals.subagents).toBe(1)
   })
 
   it('counts subagent tokens in the task total, not its context', () => {
@@ -306,7 +342,66 @@ describe('taskStatistics', () => {
     const { totals, turns } = taskStatistics(t, trajectory, 'latest')
     expect(turns[0].steps.map((s) => s.context)).toEqual([1000, 60, 80, 1100])
     expect(totals.steps).toBe(4)
-    expect(totals.subrequests).toBe(0)
+  })
+
+  it('ranks steps and subagents, leaving steps that ran subagents out of Slowest', () => {
+    const trajectory = buildTrajectory(runLog(), false)
+    const stats = taskStatistics(t, trajectory, 'latest')
+    expect(stats.totals.cost).toBeCloseTo(0.18)
+    expect(stats.turns[0].cost).toBeCloseTo(0.18)
+    expect(stats.breakdown.cost.main).toBeCloseTo(0.15)
+    expect(stats.breakdown.cost.subagents).toBeCloseTo(0.03)
+    expect(stats.totals.subagents).toBe(1)
+    const lens = stats.costliest.find((r) => r.label === 'Lens: security')
+    expect(lens).toMatchObject({ step: 1, subagent: 'call:c1', turn: 1 })
+    expect(lens?.value).toBeCloseTo(0.03)
+    expect(stats.slowest.map((r) => r.label)).toEqual([
+      'Lens: security',
+      'Done',
+    ])
+  })
+
+  it('counts a tool that runs beside a subagent once', () => {
+    const trajectory = buildTrajectory(
+      [
+        event(1, 'task.created', { title: 'T' }),
+        event(2, 'usage.reported', { message_id: 'm1', tokens_in: 100 }),
+        event(3, 'turn', { body: 'Asking', kind: 'text', message_id: 'm1' }),
+        event(7, 'tool.called', {
+          call_id: 'b1',
+          duration_ms: 1000,
+          message_id: 'm1',
+          tool: 'Bash',
+        }),
+        event(8, 'tool.called', {
+          call_id: 'c1',
+          duration_ms: 5000,
+          message_id: 'm1',
+          tool: 'Agent',
+        }),
+      ],
+      false,
+    )
+    const { time } = taskStatistics(t, trajectory, 'latest').breakdown
+    expect(time.subagents).toBe(5000)
+    expect(time.tools).toBe(0)
+  })
+
+  it('counts the time no turn ran as idle once the ticket closes', () => {
+    const trajectory = buildTrajectory(runLog(), false)
+    const closed = task({
+      closed_at: '2026-10-08T12:01:00Z',
+      created_at: '2026-10-08T12:00:00Z',
+      origin: { kind: 'human' },
+    }) as unknown as Ticket
+    const { breakdown, totals } = taskStatistics(closed, trajectory, 'latest')
+    expect(breakdown.time.idle).toBe(60_000 - (totals.totalMs ?? 0))
+    expect(breakdown.time.idle).toBeGreaterThan(0)
+    const open = task({ closed_at: null, origin: { kind: 'human' } })
+    expect(
+      taskStatistics(open as unknown as Ticket, trajectory, 'latest').breakdown
+        .time.idle,
+    ).toBe(0)
   })
 
   it('points each turn at its first event for the conversation', () => {
@@ -383,6 +478,23 @@ describe('StatisticsTab', () => {
     )
   })
 
+  it('finds a subagent by its description', async () => {
+    const user = userEvent.setup()
+    const t = task({ status: 'closed' }) as unknown as Ticket
+    render(
+      <div className="flex h-150 flex-col">
+        <StatisticsTab events={runLog()} task={t} />
+      </div>,
+    )
+    await user.type(
+      screen.getByRole('searchbox', { name: 'Search statistics' }),
+      'Lens',
+    )
+    expect(
+      within(screen.getByRole('table')).getByText('Lens: security'),
+    ).toBeInTheDocument()
+  })
+
   it('leaves the turn folds alone while searching', async () => {
     const user = userEvent.setup()
     const t = task({ status: 'closed' }) as unknown as Ticket
@@ -402,7 +514,7 @@ describe('StatisticsTab', () => {
     ).toHaveAttribute('aria-expanded', 'true')
   })
 
-  it('says the task total speed is the main agent only', () => {
+  it('puts the output speed in the tooltip of the Model cell', () => {
     const t = task({ status: 'closed' }) as unknown as Ticket
     render(
       <div className="flex h-150 flex-col">
@@ -411,7 +523,7 @@ describe('StatisticsTab', () => {
     )
     const footer = screen.getByText('Task total').closest('tr') as HTMLElement
     expect(
-      within(footer).getByTitle(/^Main-agent output tokens per second/),
+      within(footer).getByTitle(/ output tokens per second$/),
     ).toBeInTheDocument()
   })
 
@@ -427,7 +539,34 @@ describe('StatisticsTab', () => {
         <StatisticsTab events={LOG} task={t} />
       </div>,
     )
-    expect(screen.getByText('All done')).toBeInTheDocument()
+    expect(
+      within(screen.getByRole('table')).getByText('All done'),
+    ).toBeInTheDocument()
+  })
+
+  it('selects a ranked subagent and opens a row in the trajectory', async () => {
+    const user = userEvent.setup()
+    const onShowInTrajectory = vi.fn()
+    const t = task({ status: 'closed' }) as unknown as Ticket
+    render(
+      <div className="flex h-150 flex-col">
+        <StatisticsTab
+          events={runLog()}
+          onShowInTrajectory={onShowInTrajectory}
+          task={t}
+        />
+      </div>,
+    )
+    const ranked = screen.getByText('Most expensive').parentElement!
+    await user.click(
+      within(ranked).getByRole('button', { name: /^Lens: security/ }),
+    )
+    const row = document.querySelector('tr[data-selected]') as HTMLElement
+    expect(row).toHaveTextContent(/^Lens: security/)
+    await user.dblClick(row)
+    expect(onShowInTrajectory).toHaveBeenCalledWith(8)
+    const footer = screen.getByText('Task total').closest('tr') as HTMLElement
+    expect(footer).toHaveTextContent('1 subagent')
   })
 
   it('shows a turn in the conversation without folding it', async () => {

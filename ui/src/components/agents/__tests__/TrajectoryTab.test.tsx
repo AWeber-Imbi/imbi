@@ -1210,6 +1210,39 @@ describe('TrajectoryTab inspector', () => {
     expect(group('Session cumulative')).toHaveTextContent('321 tok')
   })
 
+  it('shows the cost of a subagent in its Usage tab', async () => {
+    renderTab('closed', [
+      event(1, 'task.created', { title: 'T' }),
+      event(2, 'usage.reported', { message_id: 'm1', tokens_in: 1 }),
+      event(3, 'usage.reported', {
+        cost: 0.02,
+        message_id: 's1',
+        tokens_in: 20,
+      }),
+      event(
+        4,
+        'tool.called',
+        { call_id: 'r1', message_id: 's1', parent_call_id: 'c1', tool: 'Read' },
+        { actor_kind: 'subagent' },
+      ),
+      event(5, 'tool.called', {
+        arguments: {},
+        call_id: 'c1',
+        message_id: 'm1',
+        tool: 'Agent',
+      }),
+    ])
+    await userEvent.click(
+      rows().find((r) => r.getAttribute('data-record') === 'call:c1')!,
+    )
+    await userEvent.click(
+      within(inspector()).getByRole('tab', { name: 'Usage' }),
+    )
+    expect(
+      within(inspector()).getByText('This subagent').parentElement,
+    ).toHaveTextContent('$0.0200')
+  })
+
   it('previews a person in full, with their Markdown', async () => {
     const long = `**Bold** ${'word '.repeat(150)}the end`
     renderTab('closed', [
@@ -1521,7 +1554,7 @@ describe('TrajectoryTab with many rows', () => {
     expect(findStub('Turn 76')).toBe(stub)
   })
 
-  it('scrolls to a record a late #e link points at', () => {
+  it('centres the record a late #e link points at', async () => {
     const scrollTo = vi.fn()
     window.history.replaceState(null, '', '/tickets/acme/T-1/trajectory#e434')
     const t = task({ status: 'running' }) as unknown as Ticket
@@ -1539,9 +1572,43 @@ describe('TrajectoryTab with many rows', () => {
     const selected = document.querySelector<HTMLElement>('[data-selected]')
     expect(selected).toHaveTextContent('ls 143')
     const index = Number(selected?.getAttribute('aria-rowindex')) - 1
+    await waitFor(() => expect(scrollTo).toHaveBeenCalled())
     const [{ top }] = scrollTo.mock.lastCall as [{ top: number }]
-    expect(top).toBeLessThanOrEqual(index * 36)
-    expect(top + 360).toBeGreaterThanOrEqual(index * 36 + 36)
+    expect(Math.abs(top + 180 - (index * 36 + 18))).toBeLessThanOrEqual(36)
+  })
+
+  it('keeps the scroll position when a row is clicked', async () => {
+    renderTab('closed', LONG)
+    scrollPane(ledger(), 1800)
+    const scrollTo = vi.fn()
+    ledger().scrollTo = scrollTo
+    await userEvent.click(rows()[rows().length - 2])
+    expect(window.location.hash).toMatch(/^#e\d+$/)
+    expect(document.querySelector('[data-selected]')).not.toBeNull()
+    await new Promise(requestAnimationFrame)
+    expect(scrollTo).not.toHaveBeenCalled()
+    expect(ledger().scrollTop).toBe(1800)
+  })
+
+  it('moves focus through a batch row with the arrow keys', async () => {
+    const agent = (seq: number, id: string) =>
+      event(seq, 'tool.called', {
+        call_id: id,
+        duration_ms: 3000,
+        message_id: 'm1',
+        tool: 'Agent',
+      })
+    renderTab('closed', [
+      event(1, 'task.created', { title: 'T' }),
+      event(2, 'usage.reported', { message_id: 'm1' }),
+      event(3, 'turn', { body: 'Two', kind: 'text', message_id: 'm1' }),
+      agent(4, 'c1'),
+      agent(5, 'c2'),
+    ])
+    const batch = rows().findIndex((r) => r.hasAttribute('data-batch'))
+    rows()[batch - 1].focus()
+    await userEvent.keyboard('{ArrowDown}{ArrowDown}')
+    expect(document.activeElement).toHaveAttribute('data-record', 'call:c1')
   })
 
   it('moves focus with the arrow keys, Home and End past the rows in view', async () => {
@@ -1796,6 +1863,21 @@ describe('inspector helpers', () => {
   it('gives each kind its tabs', () => {
     const t = { record: { kind: 'user' }, type: 'record' } as never
     expect(tabsFor(t)).toEqual(['Summary', 'Preview', 'Raw'])
+    const subagent = {
+      record: {
+        events: [{ type: 'tool.called' }, { type: 'usage.reported' }],
+        kind: 'tool',
+        subagent: {},
+      },
+      type: 'record',
+    } as never
+    expect(tabsFor(subagent)).toEqual([
+      'Summary',
+      'Usage',
+      'Payload',
+      'Result',
+      'Timing',
+    ])
   })
 
   it('formats the start time with milliseconds', () => {

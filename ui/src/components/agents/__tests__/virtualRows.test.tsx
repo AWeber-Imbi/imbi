@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { renderHook } from '@/test/utils'
 
-import { useVirtualRows } from '../virtualRows'
+import { gapsOf, useVirtualRows } from '../virtualRows'
 
 describe('useVirtualRows', () => {
   it('corrects the scroll only for a row that ends above the view', () => {
@@ -25,5 +25,21 @@ describe('useVirtualRows', () => {
     expect(scrollTo).not.toHaveBeenCalled()
     virtualizer.resizeItem(1, 150)
     expect(scrollTo).toHaveBeenCalled()
+  })
+})
+
+describe('gapsOf', () => {
+  it('measures gaps from the rows, not the content above them', () => {
+    const item = (index: number, start: number) => ({
+      end: start + 40,
+      index,
+      key: index,
+      lane: 0,
+      size: 40,
+      start,
+    })
+    const { after, rows } = gapsOf([item(0, 300), item(1, 340)], 200, 2, 300)
+    expect(rows.map((r) => r.before)).toEqual([0, 0])
+    expect(after).toBe(120)
   })
 })
