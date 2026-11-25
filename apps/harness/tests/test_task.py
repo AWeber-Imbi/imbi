@@ -3840,6 +3840,15 @@ class PluginRelayTestCase(TaskTestCase):
         self.assertIn('plugin:ops:logs', subject.plugin_server_names)
         self.assertEqual(subject.to_relay, [])
 
+    def test_a_server_whose_mappings_are_all_stale_stays_with_the_cli(
+        self,
+    ) -> None:
+        subject = self.load(secrets={'REMOVED': self.REFERENCE})
+        published = json.loads((self.plugin / '.mcp.json').read_text())
+        self.assertIn('logs', published)
+        self.assertIn('plugin:ops:logs', subject.plugin_server_names)
+        self.assertEqual(subject.to_relay, [])
+
     async def test_the_relay_resolves_the_secret(self) -> None:
         self.call.return_value = {'material': 'logs-secret-value'}
         subject = self.load()
@@ -3963,8 +3972,12 @@ class PluginRelayTestCase(TaskTestCase):
             'no longer at https://logs.example.com': {
                 'type': 'http',
                 'url': 'https://moved.example.com/mcp',
+                'headers': {'Authorization': '${TOKEN}'},
             },
-            'not an http or sse server': {'command': 'logs-mcp'},
+            'not an http or sse server': {
+                'command': 'logs-mcp',
+                'headers': {'Authorization': '${TOKEN}'},
+            },
         }
         for expected, logs in cases.items():
             with self.subTest(expected=expected):

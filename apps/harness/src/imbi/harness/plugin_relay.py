@@ -51,8 +51,6 @@ CLOSE_TIMEOUT = 10.0
 #: The server types that the relay can connect to.
 TYPES = frozenset({'http', 'sse'})
 _NOT_NAME = re.compile(r'[^A-Za-z0-9_-]')
-#: The code that the mcp client gives a request whose session the
-#: server ended (HTTP 404).
 _SESSION_TERMINATED = 32600
 type Body = dict[str, typing.Any]
 type _Write = memory.MemoryObjectSendStream[message.SessionMessage]
@@ -115,13 +113,13 @@ def _lost(error: BaseException) -> bool:
 def _scrubbed(
     value: typing.Any, scrub: abc.Callable[[str], str]
 ) -> typing.Any:
-    """``value`` with each string of a JSON value scrubbed and its
-    untrusted tags escaped."""
+    """``value`` with each string of a JSON value, keys included,
+    scrubbed and its untrusted tags escaped."""
     if isinstance(value, str):
         return safeguards.escape(scrub(value))
     if isinstance(value, dict):
         return {
-            key: _scrubbed(item, scrub)
+            _scrubbed(key, scrub): _scrubbed(item, scrub)
             for key, item in typing.cast('Body', value).items()
         }
     if isinstance(value, list):
@@ -132,8 +130,9 @@ def _scrubbed(
 
 def _schema(schema: Body) -> Body:
     """An input schema that the SDK reads as a JSON schema: it reads
-    one without ``properties`` as a map of parameter types."""
-    return {'properties': {}, **schema}
+    one without ``type`` and ``properties`` as a map of parameter
+    types."""
+    return {'type': 'object', 'properties': {}, **schema}
 
 
 class Unavailable(Exception):
@@ -250,6 +249,7 @@ class Server:
         self.tools: dict[str, _Tool] = {}
         self.audits = safeguards.Audits(f'{self.prefix}__')
         self.held: _Held | None = None
+        self.retiring: set[asyncio.Task[None]] = set()
         self.lock = asyncio.Lock()
         self.dropped = False
 
@@ -305,6 +305,8 @@ class Server:
         """
         async with self.lock:
             if self.held is None or not self.held.alive():
+                if self.held is not None:
+                    self._retire(self.held)
                 self.held = _Held(self._open())
             held = self.held
         try:
@@ -314,6 +316,13 @@ class Server:
                 raise Unavailable('session_closed') from None
             raise
         return held
+
+    def _retire(self, held: _Held) -> None:
+        """Close a session that no longer works without making the call
+        that replaces it wait; :meth:`close` waits for it."""
+        closing = asyncio.create_task(held.close())
+        self.retiring.add(closing)
+        closing.add_done_callback(self.retiring.discard)
 
     async def _drop(self, held: _Held) -> None:
         """Close ``held``, and forget it when it is the current session.
@@ -365,8 +374,11 @@ class Server:
                 return tools
 
     async def close(self) -> None:
+        """Close the session and each session that the relay
+        replaced."""
         if self.held is not None:
             await self._drop(self.held)
+        await asyncio.gather(*self.retiring)
 
     def writes(self) -> set[str]:
         """The CLI names of the tools that are not read only."""

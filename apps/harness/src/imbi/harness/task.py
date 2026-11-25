@@ -889,13 +889,15 @@ def _headers(config: Body) -> dict[str, str]:
     }
 
 
-def _used_variables(config: Body) -> set[str]:
+def _used_variables(config: typing.Any) -> set[str]:
     """The name of each ``${VAR}`` and ``${VAR:-default}`` in a server's
     header values. A secret mapped to another variable is stale: the
     pinned server no longer uses it."""
+    if not isinstance(config, dict):
+        return set()
     return {
         match.partition(':-')[0]
-        for value in _headers(config).values()
+        for value in _headers(typing.cast('Body', config)).values()
         for match in outbound.VARIABLE.findall(value)
     }
 
@@ -1523,9 +1525,10 @@ class TaskRun:
         servers that are on. A setting for a server that the plugin does
         not have gets a task warning.
 
-        A relayed server is one that is on and has a secret for a header
-        variable (ADR 0031). The CLI must not connect to it, so it never
-        gets the server, also when the relay cannot start."""
+        A relayed server is one that is on and has a secret for a
+        variable that its headers use (ADR 0031). The CLI must not
+        connect to it, so it never gets the server, also when the relay
+        cannot start."""
         label = str(plugin['plugin'])
         settings = typing.cast('Body', plugin.get('server_settings') or {})
         declared = _declared(path)
@@ -1543,7 +1546,9 @@ class TaskRun:
         relayed = {
             server
             for server, setting in settings.items()
-            if server not in off and _secrets(typing.cast('Body', setting))
+            if server in declared.keys() - off
+            and _secrets(typing.cast('Body', setting)).keys()
+            & _used_variables(declared[server])
         }
         with privilege.effective():
             _remove_servers(path, off | relayed)

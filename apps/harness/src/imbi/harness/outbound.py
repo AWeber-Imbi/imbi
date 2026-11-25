@@ -175,7 +175,6 @@ class Transport(httpx.AsyncBaseTransport):
         await self.inner.aclose()
 
 
-#: A ``${VAR}`` or ``${VAR:-default}`` in a header value.
 VARIABLE = re.compile(r'\$\{([^}]+)\}')
 
 
