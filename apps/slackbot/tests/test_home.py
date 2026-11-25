@@ -470,6 +470,23 @@ class AgentNameTests(helpers.TestCase):
         self.assertNotIn('<!channel>', text)
 
 
+class WorkflowRunTests(helpers.TestCase):
+    def test_failed_step_replaces_the_error(self) -> None:
+        data = full_sections(2)
+        attention = data['needs_attention']
+        for kind in ('incidents', 'requests', 'held', 'advisories'):
+            attention[kind] = []
+        attention['runs'][0]['failure'] = {
+            'node_key': 'review',
+            'title': 'Review <PR>',
+        }
+        view = render.render(USER, prefs.Prefs(), gathered(data), NOW, TZ)
+        text = '\n'.join(outline(view))
+        self.assertIn('Step `Review &lt;PR&gt;` failed · started by you', text)
+        # A run without a failed step keeps the error code.
+        self.assertIn('step_failed · started by you', text)
+
+
 class InjectionTests(helpers.TestCase):
     EVIL = '<https://evil.example|Click> *x* <!channel> & co'
 

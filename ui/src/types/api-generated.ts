@@ -13181,6 +13181,8 @@ export interface components {
             worker_id: string | null;
             /** Lease Expires At */
             lease_expires_at: string | null;
+            /** @description The failed step that finished last. ``None`` for a stuck run, when no step failed (a timeout), or when the archived step records are not available. */
+            failure?: components["schemas"]["RunFailure"] | null;
         };
         /**
          * AttributePolicy

@@ -283,11 +283,15 @@ def _attention_item(
         )
     # A failed or stuck workflow run that the user started.
     path = f'/agents/workflows/{row["workflow_slug"]}?run={row["id"]}'
-    error = f'{b.escape(row["error"])} · ' if row.get('error') else ''
+    step = row.get('failure')
+    if step:
+        detail = f'Step `{b.escape(step["title"])}` failed · '
+    else:
+        detail = f'{b.escape(row["error"])} · ' if row.get('error') else ''
     text = (
         f':red_circle: *Workflow run {row["reason"]}* · '
         f'{links.a(path, row["workflow_name"])}\n'
-        f'{error}started by you {ago(row["created_at"], now)}'
+        f'{detail}started by you {ago(row["created_at"], now)}'
     )
     return _item(text, links.button('Open run', 'home:run:open', path))
 

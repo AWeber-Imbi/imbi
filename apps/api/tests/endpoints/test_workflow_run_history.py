@@ -264,6 +264,9 @@ class AttentionTestCase(test_workflow_runs.WorkflowRunTestCase):
         self.assertEqual(found[failed]['error'], 'timeout')
         self.assertEqual(found[stuck]['reason'], 'stuck')
         self.assertEqual(found[stuck]['workflow_slug'], 'deploy-guard')
+        # No step failed, so the run has no failed step.
+        self.assertIsNone(found[failed]['failure'])
+        self.assertIsNone(found[stuck]['failure'])
 
     async def test_expired_lease_of_a_closed_run_is_not_stuck(self) -> None:
         url = await self._workflow()
@@ -383,6 +386,19 @@ class OrgRunsTestCase(RunHistoryTestCase):
             self.assertIsNone(failure['summary'])
             self.assertEqual(found[run_id]['workflow_slug'], 'deploy-guard')
             self.assertFalse(found[run_id]['stuck'])
+
+    async def test_attention_run_has_the_failed_step(self) -> None:
+        url = await self._workflow()
+        run_id = await self._start(url)
+        await self._fail(run_id)
+        response = await self.client.get(
+            f'/organizations/{self.org}/workflow-runs/attention'
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        found = {r['id']: r for r in response.json()}
+        failure = found[run_id]['failure']
+        self.assertEqual(failure['node_key'], 'review')
+        self.assertEqual(failure['title'], 'Review')
 
     async def test_retried_step_is_not_the_failure(self) -> None:
         """A step that failed, was retried, and succeeded is not the
