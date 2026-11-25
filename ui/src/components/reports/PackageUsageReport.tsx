@@ -547,9 +547,14 @@ function PackageSearch({
   // A new list has no highlighted row. Keyed on the ordered ids, not
   // the count: opening a recent package moves it to the top of the
   // recents without changing how many there are, and the old index
-  // would then highlight whatever slid into that slot.
-  const optionKey = options.map((row) => row.id).join('\n')
-  useEffect(() => setActive(-1), [browsing, query, optionKey])
+  // would then highlight whatever slid into that slot. Reset during
+  // render, not in an effect, so the stale index never commits.
+  const listKey = `${query}\n${options.map((row) => row.id).join('\n')}`
+  const [seenKey, setSeenKey] = useState(listKey)
+  if (seenKey !== listKey) {
+    setSeenKey(listKey)
+    setActive(-1)
+  }
 
   // The list is capped in height, so keep the highlighted row in view.
   useEffect(() => {
