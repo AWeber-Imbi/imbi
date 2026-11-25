@@ -12561,7 +12561,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "human" | "schedule" | "webhook" | "task" | "ticket" | "ticket_state_changed";
+            kind: "human" | "schedule" | "webhook" | "task" | "ticket" | "ticket_state_changed" | "service_account";
             /** User */
             user?: string | null;
         } & {

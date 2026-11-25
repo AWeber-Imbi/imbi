@@ -389,6 +389,7 @@ class AgentTaskOrigin(pydantic.BaseModel):
         'task',
         'ticket',
         'ticket_state_changed',
+        'service_account',
     ]
     #: The email of the person, for a ``human`` origin.
     user: str | None = None
