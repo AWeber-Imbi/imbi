@@ -54,7 +54,7 @@ class Part:
     groups: list[tuple[str | None, list[list[Block]]]]
     summary: str
     subtitle: str | None = None
-    more: tuple[int, str | None] | None = None
+    more: tuple[int, str] | None = None
     #: Blocks to show when the section is empty.
     empty: list[Block] | None = None
     #: Show the section also when it is empty.
@@ -428,7 +428,7 @@ def _merged_not_deployed(
         subtitle='Your PRs merged in the last 90 days that are not yet in '
         'production',
         summary=_names(sorted({pr['project'] for pr in data['prs']})),
-        more=(len(items), None),
+        more=(len(items), '/reports/merged-not-deployed?author=@me'),
     )
 
 
@@ -716,8 +716,6 @@ def _section(
                 b.context(
                     f'+{hidden} more · '
                     f'{links.a(path, f"View all {total} in Imbi")}'
-                    if path
-                    else f'+{hidden} more'
                 )
             )
     out.append(b.divider())

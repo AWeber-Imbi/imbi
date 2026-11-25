@@ -434,6 +434,20 @@ class BlockBudgetTests(helpers.TestCase):
             any('+10 more' in line for line in lines[-6:]), lines[-6:]
         )
 
+    def test_merged_not_deployed_links_to_the_report(self) -> None:
+        view = render.render(
+            USER,
+            prefs.Prefs(max_items=2),
+            gathered(full_sections(3)),
+            NOW,
+            TZ,
+        )
+        self.assertIn(
+            '+1 more · <https://imbi.example/reports/merged-not-deployed'
+            '?author=@me|View all 3 in Imbi>',
+            json.dumps(view, ensure_ascii=False),
+        )
+
 
 class BlocksTests(helpers.TestCase):
     def test_limits(self) -> None:

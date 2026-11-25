@@ -10,6 +10,7 @@ import {
   BookOpen,
   Bot,
   GitCommitHorizontal,
+  GitMerge,
   GitPullRequest,
   Network,
   Package,
@@ -20,6 +21,7 @@ import {
 import { Navigation } from '@/components/Navigation'
 import { AgentUsageReport } from '@/components/reports/AgentUsageReport'
 import { DocumentReadershipReport } from '@/components/reports/DocumentReadershipReport'
+import { MergedNotDeployedReport } from '@/components/reports/MergedNotDeployedReport'
 import { MonthlyImprovementReport } from '@/components/reports/MonthlyImprovementReport'
 import { OpenPullRequestsReport } from '@/components/reports/OpenPullRequestsReport'
 import { PackageUsageReport } from '@/components/reports/PackageUsageReport'
@@ -58,6 +60,15 @@ const REPORTS: Report[] = [
     id: 'open-pull-requests',
     label: 'Open Pull Requests',
     subtitle: 'Open pull requests, filterable by team and project type',
+  },
+  {
+    component: MergedNotDeployedReport,
+    description: 'Merged pull requests waiting on a deploy',
+    icon: GitMerge,
+    id: 'merged-not-deployed',
+    label: 'Merged, Not Deployed',
+    subtitle:
+      'Pull requests merged in the last 90 days whose project has not been deployed to a terminal environment since',
   },
   {
     component: PRActivityReport,

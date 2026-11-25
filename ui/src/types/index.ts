@@ -412,6 +412,7 @@ export interface PendingDeployPullRequest {
 export interface PendingDeployResponse {
   data: PendingDeployPullRequest[]
   environments: string[]
+  github_identity_missing?: boolean
   since: string
 }
 export interface PresenceScoringPolicy extends ScoringPolicyBase {
