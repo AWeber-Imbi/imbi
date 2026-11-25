@@ -42,6 +42,8 @@ LOGGER = logging.getLogger(__name__)
 
 #: The longest time to open a session and list the tools at start.
 LIST_TIMEOUT = 30.0
+#: The longest wait for a session to end.
+CLOSE_TIMEOUT = 10.0
 #: The server types that the relay can connect to.
 TYPES = frozenset({'http', 'sse'})
 _NOT_NAME = re.compile(r'[^A-Za-z0-9_-]')
@@ -132,8 +134,12 @@ class _Held:
         return not self.task.done()
 
     async def close(self) -> None:
+        """Close the session; cancel it when the server does not answer
+        the end of the session in :data:`CLOSE_TIMEOUT`."""
         self.closing.set()
-        await asyncio.wait({self.task})
+        _, pending = await asyncio.wait({self.task}, timeout=CLOSE_TIMEOUT)
+        for task in pending:
+            task.cancel()
 
 
 class Server:
