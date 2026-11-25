@@ -345,6 +345,25 @@ async def _org_slugs_of(
     return {str(graph.parse_agtype(r['slug'])) for r in records}
 
 
+_ORG_IDS_QUERY: typing.LiteralString = (
+    'MATCH (o:Organization) WHERE o.slug IN {slugs} RETURN o.id AS id'
+)
+
+
+async def caller_org_ids(
+    db: graph.Graph, auth: permissions.AuthContext
+) -> list[str]:
+    """The ids of the caller's organizations (see
+    :func:`caller_org_slugs`), for an ``IN`` filter on
+    ``organization_id``. An organization with no id yet is left out."""
+    slugs = list(await caller_org_slugs(db, auth))
+    if not slugs:
+        return []
+    records = await db.execute(_ORG_IDS_QUERY, {'slugs': slugs}, ['id'])
+    ids = (graph.parse_agtype(r['id']) for r in records)
+    return [str(value) for value in ids if value]
+
+
 async def caller_team_ids(
     db: graph.Graph, auth: permissions.AuthContext
 ) -> set[str]:

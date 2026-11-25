@@ -350,7 +350,31 @@ class DashboardMetricsEndpointTestCase(support.SharedAppTestCase):
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
             self.mock_db
         )
+        org_ids = mock.patch.object(
+            dashboard,
+            'caller_org_ids',
+            new=mock.AsyncMock(return_value=['org-1']),
+        )
+        org_ids.start()
+        self.addCleanup(org_ids.stop)
         self.client = testclient.TestClient(self.test_app)
+
+    def test_metrics_ops_log_reads_only_the_caller_orgs(self) -> None:
+        query = mock.AsyncMock(side_effect=[[], [], [], []])
+        with mock.patch.object(dashboard.clickhouse, 'query', query):
+            response = self.client.get('/admin/dashboard/metrics')
+        self.assertEqual(200, response.status_code, response.text)
+        calls = [
+            call
+            for call in query.call_args_list
+            if 'FROM operations_log' in call.args[0]
+        ]
+        self.assertEqual(2, len(calls))
+        for call in calls:
+            self.assertIn(
+                'organization_id IN {org_ids:Array(String)}', call.args[0]
+            )
+            self.assertEqual(['org-1'], call.args[1]['org_ids'])
 
     def test_metrics_aggregates_and_aligns_daily(self) -> None:
         today = datetime.datetime.now(datetime.UTC).date().isoformat()

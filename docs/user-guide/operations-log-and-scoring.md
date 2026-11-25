@@ -141,6 +141,10 @@ delete only an entry of an organization that you are a member of:
 - `DELETE /organizations/{org_slug}/operations-log/{id}` hides the entry.
   Imbi keeps a deleted marker for it.
 
+The admin dashboard metrics and the activity, contributions, and stats
+of a user profile count only the entries of the organizations that you
+are a member of.
+
 ## Scoring
 
 Each project has a score from 0 to 100. The score tells you how well the
