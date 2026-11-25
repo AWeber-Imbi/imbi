@@ -559,6 +559,31 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
             },
         )
 
+    async def test_a_later_source_replaces_a_server(self) -> None:
+        read = _reader(
+            {
+                'p/.claude-plugin/plugin.json': json.dumps(
+                    {
+                        'mcpServers': [
+                            {'first': {'command': 'x'}},
+                            './servers.json',
+                        ]
+                    }
+                ),
+                'p/servers.json': json.dumps({'first': HTTP}),
+                'p/.mcp.json': json.dumps(
+                    {'mcpServers': {'first': {'command': 'y'}}}
+                ),
+            }
+        )
+        servers = await marketplaces.plugin_servers(
+            read, 'p', _entry(None), 'p'
+        )
+        self.assertEqual(
+            {server.name: server.type for server in servers},
+            {'first': 'http'},
+        )
+
     async def test_a_single_path_in_the_manifest(self) -> None:
         read = _reader(
             {

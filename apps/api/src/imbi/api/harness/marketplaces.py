@@ -165,15 +165,16 @@ def servers(
 ) -> list[models.CatalogServer]:
     """Return the servers of ``mcpServers`` objects, sorted by name.
 
-    Of two servers with one name, the first is kept. A source that is
-    not an object, and a server that is not an object, add nothing.
+    Of two servers with one name, the later replaces the earlier, as in
+    the CLI. A source that is not an object, and a server that is not
+    an object, add nothing.
     """
     found: dict[str, models.CatalogServer] = {}
     for source in sources:
         if not isinstance(source, dict):
             continue
         for name, config in typing.cast('dict[str, object]', source).items():
-            if isinstance(config, dict) and str(name) not in found:
+            if isinstance(config, dict):
                 found[str(name)] = _server(
                     str(name), typing.cast('dict[str, typing.Any]', config)
                 )
@@ -269,7 +270,7 @@ async def plugin_servers(
     return servers(
         [
             await _source(read, directory, source, label)
-            for source in [*sources, '.mcp.json']
+            for source in ['.mcp.json', *sources]
         ]
     )
 

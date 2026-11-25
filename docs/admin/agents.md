@@ -429,9 +429,11 @@ runners use to load the plugin. When the plugin directory has a
 Otherwise they come from the `mcpServers` of the plugin's entry in
 `marketplace.json`. For a `url` or `github` source, that entry is the one
 in the `marketplace.json` of the plugin's own repository. The servers of
-the plugin's `.mcp.json` are added in both cases. A missing or invalid
-file adds no servers. A file counts as missing when no reader can read
-it and at least one reader finds no such file, even if another reader
+the plugin's `.mcp.json` are added in both cases. As in the CLI, the
+sync reads `.mcp.json` first, and of two definitions of one server name,
+the later one is kept. A missing or invalid file adds no servers. A file
+counts as missing when no reader can read it and at least one reader
+finds no such file, even if another reader
 fails, so such a sync can replace the catalog without an error badge.
 GitHub answers a private repository that a reader cannot access with the
 same "not found". When every reader fails, the sync fails and the
