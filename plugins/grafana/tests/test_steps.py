@@ -91,6 +91,27 @@ async def test_gather_metrics() -> None:
 
 
 @respx.mock
+async def test_gather_metrics_stores_non_finite_values_as_null() -> None:
+    respx.post(f'{URL}/api/ds/query').mock(
+        return_value=httpx.Response(
+            200,
+            json=_results(
+                _frame({}, [1000, 2000, 3000], [None, '+Inf', 'NaN'])
+            ),
+        )
+    )
+    params = steps.GatherMetricsParams(datasource='prom', expr='up')
+    result = await steps.gather_metrics(CTX, CREDS, params, CALL)
+    # PostgreSQL jsonb rejects NaN and Infinity.
+    json.dumps(result.output, allow_nan=False)
+    assert result.output['series'][0]['points'] == [
+        [1000, None],
+        [2000, None],
+        [3000, None],
+    ]
+
+
+@respx.mock
 async def test_gather_metrics_bounds_output() -> None:
     times = list(range(steps.MAX_POINTS + 10))
     frames = [

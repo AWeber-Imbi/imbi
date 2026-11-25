@@ -3608,6 +3608,14 @@ class PluginStepTestCase(EngineTestCase):
         self.assertEqual(run['steps']['gate']['attempt'], 2)
         self.assertEqual(run['steps']['gate']['state'], {'key_attempt': 1})
 
+    async def test_proxy_502_retry_keeps_the_key_attempt(self) -> None:
+        self.answers = [httpx.Response(502, text='<html>Bad Gateway</html>')]
+        run_id = await self._gate(retries=1)
+        await self._drive(run_id, lambda r: len(self.calls) == 1)
+        run = await self._run(run_id)
+        self.assertEqual(run['steps']['gate']['attempt'], 2)
+        self.assertEqual(run['steps']['gate']['state'], {'key_attempt': 1})
+
 
 class AppTestCase(unittest.IsolatedAsyncioTestCase):
     def test_sentry_is_initialised_first(self) -> None:

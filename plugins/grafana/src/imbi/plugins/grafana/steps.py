@@ -43,8 +43,9 @@ class GatherMetricsParams(pydantic.BaseModel):
 
 class Series(pydantic.BaseModel):
     labels: dict[str, str]
-    #: ``[timestamp_ms, value]`` pairs.
-    points: list[tuple[int, float]]
+    #: ``[timestamp_ms, value]`` pairs. The value is ``None`` for a
+    #: missing sample, NaN, or Infinity: JSON storage rejects these.
+    points: list[tuple[int, float | None]]
 
 
 class SeriesSummary(pydantic.BaseModel):
@@ -139,15 +140,14 @@ async def metric_threshold(
             f'The query gives {len(series)} series. '
             'Reduce it to one value, for example with sum() or max().'
         )
-    values = [v for _, v in series[0].points] if series else []
-    value = values[-1] if values else math.nan
-    if not math.isnan(value) and _OPERATORS[params.operator](
+    points = series[0].points if series else []
+    value = points[-1][1] if points else None
+    if value is not None and _OPERATORS[params.operator](
         value, params.threshold
     ):
         return base.StepResult(output={'value': value}, port='Pass')
     # No value yet, or the condition is false: try again on the next poll.
-    last = None if math.isnan(value) else value
-    return base.StepResult(poll=True, state={'last': last})
+    return base.StepResult(poll=True, state={'last': value})
 
 
 async def datasources(
@@ -167,7 +167,7 @@ async def datasources(
 
 
 def _summarize(series: Series) -> SeriesSummary:
-    values = [v for _, v in series.points if not math.isnan(v)]
+    values = [v for _, v in series.points if v is not None]
     return SeriesSummary(
         labels=series.labels,
         min=min(values) if values else None,
@@ -211,7 +211,7 @@ def _frame_series(frame: dict[str, typing.Any]) -> list[Series]:
         if field.get('type') != 'number' or i >= len(columns):
             continue
         points = [
-            (int(ts), math.nan if v is None else float(v))
+            (int(ts), _finite(v))
             for ts, v in zip(times, columns[i], strict=False)
         ]
         labels: dict[str, typing.Any] = field.get('labels') or {}
@@ -222,6 +222,14 @@ def _frame_series(frame: dict[str, typing.Any]) -> list[Series]:
             )
         )
     return series
+
+
+def _finite(value: typing.Any) -> float | None:
+    """The value as a float, or ``None`` when it is not finite."""
+    if value is None:
+        return None
+    number = float(value)
+    return number if math.isfinite(number) else None
 
 
 async def _request(

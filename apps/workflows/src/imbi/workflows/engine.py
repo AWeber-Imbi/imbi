@@ -559,14 +559,19 @@ class Engine:
                 return _now()
             attempt = step['attempt'] + 1
             # The state stays: a deploy or rollback resumes its run.
-            # After a timeout or a lost response, the outcome of the last
-            # call is unknown. ``key_attempt`` lets a step (LLM Call, a
-            # plugin step) send the key of that call again; after a known
-            # error it sends a new one.
+            # After a timeout, a lost response, or a 5xx with no error
+            # code (for example, an HTML 502 page of a proxy), the outcome
+            # of the last call is unknown. ``key_attempt`` lets a step
+            # (LLM Call, a plugin step) send the key of that call again;
+            # after a known error it sends a new one.
             state = {
                 k: v for k, v in step['state'].items() if k != 'key_attempt'
             }
-            if code in ('timeout', 'plugin_timeout') or unreachable:
+            if (
+                code in ('timeout', 'plugin_timeout')
+                or code.startswith('http_5')
+                or unreachable
+            ):
                 state['key_attempt'] = step['state'].get(
                     'key_attempt', step['attempt']
                 )

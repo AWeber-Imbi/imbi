@@ -6,8 +6,9 @@ exposing one Integration (`grafana`) with three capabilities:
 
 - **`lifecycle`** — writes the project's `EXISTS_IN` edge, whose
   identifier (`{slug}-{id}` by default) the project's alert rules
-  carry in a label (`service` by default), and the `grafana` link to
-  the alert rules list searched by that label. Removes both on delete.
+  carry in a label (`service` by default), and a project link to the
+  alert rules list searched by that label. The link key is the
+  integration slug. Removes both on delete.
 - **`webhook-actions`** — receives deliveries from a Grafana Alerting
   webhook contact point. imbi-gateway verifies the signature, finds the
   project by the label value, and records each delivery as an event.

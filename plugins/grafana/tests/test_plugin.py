@@ -127,6 +127,34 @@ class LinksTestCase(unittest.TestCase):
         with self.assertRaises(links.GrafanaConfigError):
             links.base_url(_ctx(options={'service_url': 'grafana.local'}))
 
+    def test_two_integrations_keep_their_own_links(self) -> None:
+        eu_base = 'https://grafana-eu.example.com'
+        eu_list = links.dashboard_url(eu_base, 'service', 'demo-p1')
+        both = {'grafana': _LIST, 'grafana-eu': eu_list}
+        us = _ctx(connected=True, links_=both)
+        eu = us.model_copy(
+            update={
+                'integration_slug': 'grafana-eu',
+                'integration_options': {'service_url': eu_base},
+                'service_connections': [
+                    ServiceConnection(
+                        integration_slug='grafana-eu',
+                        identifier='demo-p1',
+                        canonical_url=links.canonical_url(
+                            eu_base, 'service', 'demo-p1'
+                        ),
+                        verified_identifier='demo-p1',
+                    )
+                ],
+            }
+        )
+        us_wb = links.writeback(us, 'demo-p1')
+        eu_wb = links.writeback(eu, 'demo-p1')
+        self.assertEqual({'grafana': _LIST}, us_wb.dashboard_links)
+        self.assertEqual({'grafana-eu': eu_list}, eu_wb.dashboard_links)
+        self.assertTrue(links.matches(us, us_wb))
+        self.assertTrue(links.matches(eu, eu_wb))
+
     def test_identifier_prefers_edge(self) -> None:
         self.assertEqual('demo-p1', links.identifier(_ctx()))
         self.assertEqual(

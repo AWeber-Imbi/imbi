@@ -17,8 +17,6 @@ from imbi.common.plugins.base import (
     ServiceWriteback,
 )
 
-#: The ``Project.links`` key of the Grafana alert rules link.
-LINK_KEY = 'grafana'
 #: The alert rule label that names the project when ``label`` is unset.
 DEFAULT_LABEL = 'service'
 
@@ -84,6 +82,12 @@ def dashboard_url(base: str, name: str, value: str) -> str:
     )
 
 
+def link_key(ctx: PluginContext) -> str:
+    """The ``Project.links`` key: the integration slug, so a project
+    with two Grafana integrations keeps one link for each."""
+    return ctx.integration_slug or 'grafana'
+
+
 def writeback(ctx: PluginContext, value: str) -> ServiceWriteback:
     """Build the ``EXISTS_IN`` edge and the alert rules link."""
     base = base_url(ctx)
@@ -91,7 +95,7 @@ def writeback(ctx: PluginContext, value: str) -> ServiceWriteback:
     return ServiceWriteback(
         identifier=value,
         canonical_url=canonical_url(base, name, value),
-        dashboard_links={LINK_KEY: dashboard_url(base, name, value)},
+        dashboard_links={link_key(ctx): dashboard_url(base, name, value)},
     )
 
 
@@ -103,6 +107,6 @@ def matches(ctx: PluginContext, expected: ServiceWriteback) -> bool:
         and conn.identifier == expected.identifier
         and conn.verified_identifier == conn.identifier
         and conn.canonical_url == expected.canonical_url
-        and ctx.project_links.get(LINK_KEY)
-        == expected.dashboard_links[LINK_KEY]
+        and ctx.project_links.get(link_key(ctx))
+        == expected.dashboard_links[link_key(ctx)]
     )
