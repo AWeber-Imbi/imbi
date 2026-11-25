@@ -148,6 +148,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
             'latest': latest,
             'updated_by': 'dev@example.com',
             'last_version_at': '2026-10-01T12:00:00Z',
+            'created_by': 'author@example.com',
         }
 
     def _version(
@@ -247,6 +248,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         )
         self.assertEqual(body['organization']['slug'], 'engineering')
         self.assertEqual(body['updated_by'], 'dev@example.com')
+        self.assertEqual(body['created_by'], 'author@example.com')
         self.assertIsNotNone(body['last_version_at'])
         self.assertEqual(body['settings']['response_sla'], '24h')
         self.assertNotIn('model', body)

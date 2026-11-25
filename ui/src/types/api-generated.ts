@@ -11865,6 +11865,8 @@ export interface components {
             updated_by?: string | null;
             /** Last Version At */
             last_version_at?: string | null;
+            /** Created By */
+            created_by?: string | null;
             organization: components["schemas"]["OrganizationRef"];
         };
         /**
