@@ -259,7 +259,9 @@ the render fails.
 Use this when MCP servers use certificates from a private CA. The CLI gets
 the bundle as `NODE_EXTRA_CA_CERTS`, so plugin MCP servers can verify their
 certificates. Without it, these servers fail with "self-signed certificate
-in certificate chain".
+in certificate chain". The runner trusts the bundle too, with the default
+trust store, when it connects itself to a plugin MCP server that an agent
+gives secrets.
 
 ```bash
 kubectl create configmap private-ca -n imbi-runners \
@@ -267,10 +269,6 @@ kubectl create configmap private-ca -n imbi-runners \
 helm upgrade general helm/imbi-harness -n imbi-runners --reuse-values \
   --set extraCaCerts.configMap=private-ca
 ```
-
-!!! note
-    The bundle applies to the CLI only. The runner's own relay to MCP
-    servers that an administrator registered in Imbi does not use it.
 
 ### KEDA (`pool.mode: scaledJob` only)
 
@@ -713,7 +711,7 @@ not run it.
 |---|---|---|
 | `repositories_span_installations` | The repositories of one token are in more than one GitHub App installation | Use repositories from one GitHub organization per task, or use separate bindings |
 | `repository_not_allowed` | A `marketplace_fetch` request names a repository that is not in the binding's `repositories` | Add the repository to `repositories`, or empty the list to allow each repository of the installation |
-| `setup_purpose_file_descriptor_only` | A runner purpose was requested with a mode other than `file_descriptor` | Grant `model_inference`, `workspace_checkout`, and `marketplace_fetch` with `file_descriptor` only |
+| `setup_purpose_file_descriptor_only` | A runner purpose was requested with a mode other than `file_descriptor` | Grant `model_inference`, `workspace_checkout`, `marketplace_fetch`, and `mcp_header` with `file_descriptor` only |
 | `ambiguous_grants` | More than one grant allows the request | Remove the overlap, so that exactly one grant matches |
 | `no_grant` | No grant allows the request | Check the grant's agents, bindings, purposes, delivery modes, and projects |
 

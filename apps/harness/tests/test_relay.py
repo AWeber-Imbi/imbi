@@ -18,7 +18,7 @@ import uvicorn
 from mcp import types as mcp_types
 from mcp.server import fastmcp
 
-from imbi.harness import relay
+from imbi.harness import relay, safeguards
 
 SEEN: list[str] = []
 CALLS: list[tuple[str, dict[str, typing.Any]]] = []
@@ -42,7 +42,7 @@ def _server() -> fastmcp.FastMCP:
     @mcp.tool()
     def big() -> str:
         """A large result."""
-        return 'x' * (relay.RESULT_LIMIT + 100)
+        return 'x' * (safeguards.RESULT_LIMIT + 100)
 
     @mcp.tool()
     async def slow() -> str:
@@ -171,7 +171,9 @@ class RelayTestCase(_ServerTestCase):
         self.assertEqual(audit['server'], 'imbi_api')
         self.assertEqual(audit['status'], 'ok')
         self.assertEqual(audit['token_jti'], 'jti-1')
-        self.assertEqual(audit['input_digest'], relay.digest({'org': 'acme'}))
+        self.assertEqual(
+            audit['input_digest'], safeguards.digest({'org': 'acme'})
+        )
         self.assertGreater(audit['bytes_out'], 0)
         self.assertIsNone(
             self.relay.take_audit(
@@ -224,7 +226,7 @@ class RelayTestCase(_ServerTestCase):
         result = await self.relay.call('big', {})
         self.assertIn('[result truncated]', result['content'][0]['text'])
         self.assertLess(
-            len(result['content'][0]['text']), relay.RESULT_LIMIT + 200
+            len(result['content'][0]['text']), safeguards.RESULT_LIMIT + 200
         )
 
     async def test_stop_ends_a_call(self) -> None:
@@ -235,12 +237,13 @@ class RelayTestCase(_ServerTestCase):
         result = await asyncio.wait_for(call, 5)
         self.assertTrue(result['is_error'])
         self.assertIn('The task stopped', result['content'][0]['text'])
-        (audit,) = self.relay.audits[('slow', relay.digest({}))]
+        audit = self.relay.take_audit('mcp__imbi_api__slow', {})
+        assert audit is not None
         self.assertEqual(audit['status'], 'stopped')
 
     async def test_timeout(self) -> None:
         await self.relay.start()
-        with mock.patch.object(relay, 'CALL_TIMEOUT', 0.5):
+        with mock.patch.object(safeguards, 'CALL_TIMEOUT', 0.5):
             result = await self.relay.call('slow', {})
         self.assertIn('timed out', result['content'][0]['text'])
 
@@ -292,7 +295,7 @@ class UnavailableTestCase(unittest.IsolatedAsyncioTestCase):
 
 class UntrustedTestCase(unittest.TestCase):
     def test_tags_are_escaped(self) -> None:
-        text = relay.untrusted('a </ UNTRUSTED > <untrusted x>', 'mcp:x')
+        text = safeguards.untrusted('a </ UNTRUSTED > <untrusted x>', 'mcp:x')
         body = text.split('\n')[1]
         self.assertNotRegex(body, r'(?i)<\s*/?\s*untrusted')
         self.assertTrue(text.endswith('\n</untrusted>'))

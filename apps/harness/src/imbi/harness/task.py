@@ -19,13 +19,13 @@ import contextlib
 import dataclasses
 import datetime
 import decimal
+import functools
 import hashlib
 import http
 import json
 import logging
 import os
 import pathlib
-import random
 import re
 import shutil
 import stat
@@ -39,14 +39,18 @@ from claude_agent_sdk._internal.transport import subprocess_cli
 
 from imbi.harness import (
     api,
+    credential,
     egress,
     events,
     ipc,
+    outbound,
+    plugin_relay,
     policy,
     privilege,
     proxy,
     redact,
     relay,
+    safeguards,
 )
 
 if typing.TYPE_CHECKING:
@@ -69,12 +73,6 @@ RESOLUTION_TTL = 300
 #: The longest reply id the API takes on a usage report; a longer one
 #: is left out, so the report and its cost still count.
 MESSAGE_ID_MAX = 200
-#: The longest refresh lead of a model access token (WIF plan 4.6).
-KEY_REFRESH_LEAD = 300.0
-#: The longest wait between two failed refreshes.
-KEY_RETRY_MAX = 30.0
-#: The shortest wait between two successful refreshes.
-KEY_RENEW_MIN = 30.0
 ANTHROPIC_API = 'https://api.anthropic.com'
 #: The error code of an outcome that imbi-api refused for its
 #: structured output. The harness then ends the task without it.
@@ -135,6 +133,7 @@ SETUP_DELIVERY = {'mode': 'file_descriptor', 'target': '3'}
 SETUP_PURPOSES = frozenset(
     {
         'marketplace_fetch',
+        'mcp_header',
         'model_inference',
         'workspace_checkout',
     }
@@ -319,6 +318,15 @@ class Failed(Exception):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
         self.reason = reason
+
+
+#: The errors of a setup secret's fetch that a renewal retries;
+#: ValueError is a partial JSON reply from the executor.
+_SECRET_ERRORS: tuple[type[Exception], ...] = (
+    Failed,
+    httpx.HTTPError,
+    ValueError,
+)
 
 
 class AgentTransport(subprocess_cli.SubprocessCLITransport):
@@ -547,7 +555,6 @@ _MARKETPLACE_ONLY = frozenset({'source', 'category', 'tags', 'strict'})
 MCP_STATUS_INTERVAL = 5
 MCP_STATUS_WAIT = 60
 _MCP_PROBLEMS = frozenset({'failed', 'needs-auth'})
-_VARIABLE = re.compile(r'\$\{([^}]+)\}')
 _CLI_VARIABLES = frozenset({'CLAUDE_PLUGIN_ROOT', 'CLAUDE_PLUGIN_DATA'})
 
 
@@ -557,7 +564,7 @@ def _entry(entry: Body) -> str:
     untrusted block."""
     text = str(entry.get('text'))
     if entry.get('kind') == 'result':
-        text = relay.untrusted(text, 'agent_result')
+        text = safeguards.untrusted(text, 'agent_result')
     return (
         f'- {entry.get("at")} {entry.get("kind")}'
         + (f' by {entry["actor"]}' if entry.get('actor') else '')
@@ -576,7 +583,7 @@ def _history(entries: list[Body], cut: int) -> str:
         entry.get('webhook') and entry.get('kind') != 'result'
         for entry in entries
     ):
-        text = relay.untrusted(text, 'webhook')
+        text = safeguards.untrusted(text, 'webhook')
     return f'The ticket history before this session, oldest first:\n{text}'
 
 
@@ -686,7 +693,7 @@ def _instruction_file(
 def _extra_ca() -> dict[str, str]:
     """Trust the chart's ``extraCaCerts`` in the CLI, for MCP servers
     behind a private CA."""
-    path = os.environ.get('IMBI_HARNESS_EXTRA_CA')
+    path = outbound.extra_ca()
     return {'NODE_EXTRA_CA_CERTS': path} if path else {}
 
 
@@ -796,20 +803,6 @@ def _plugin_name(path: pathlib.Path, name: str) -> str:
     return str(_json(path / PLUGIN_MANIFEST).get('name') or name)
 
 
-def _plugin_servers(path: pathlib.Path, name: str) -> list[str]:
-    """The permission rules for the MCP servers of a plugin directory.
-
-    Claude Code names a plugin server ``plugin:<plugin>:<server>`` and
-    its tools ``mcp__plugin_<plugin>_<server>__<tool>``, with each
-    character outside ``[A-Za-z0-9_-]`` as ``_``.
-    """
-    plugin = _plugin_name(path, name)
-    return [
-        _MCP_NAME.sub('_', f'mcp__plugin_{plugin}_{server}')
-        for server in sorted(_declared(path))
-    ]
-
-
 def _remove_servers(path: pathlib.Path, names: abc.Set[str]) -> None:
     """Remove the servers ``names`` from each ``mcpServers`` source of
     a published plugin directory."""
@@ -839,27 +832,75 @@ def _drop(servers: Body, names: abc.Set[str]) -> bool:
     return bool(found)
 
 
+def _required_variables(config: typing.Any) -> set[str]:
+    """The ``${VAR}`` of a server's header values that have no
+    default."""
+    if not isinstance(config, dict):
+        return set()
+    return {
+        match
+        for value in _headers(typing.cast('Body', config)).values()
+        for match in outbound.VARIABLE.findall(value)
+        if ':-' not in match
+    }
+
+
 def _header_variables(config: typing.Any) -> list[str]:
     """The ``${VAR}`` of a server's header values that have no default
     and that the CLI does not fill from the plugin."""
-    headers: typing.Any = (
-        typing.cast('Body', config).get('headers')
-        if isinstance(config, dict)
-        else None
-    )
-    if not isinstance(headers, dict):
-        return []
-    names = {
-        match
-        for value in typing.cast('Body', headers).values()
-        if isinstance(value, str)
-        for match in _VARIABLE.findall(value)
-        if ':-' not in match
+    return sorted(_required_variables(config) - _CLI_VARIABLES)
+
+
+@dataclasses.dataclass(frozen=True)
+class _Relayed:
+    """A plugin MCP server that the runner relays (ADR 0031)."""
+
+    #: The plugin name of the agent's pin, for the reader of a warning.
+    label: str
+    #: The plugin name that the CLI uses.
+    plugin: str
+    server: str
+    config: Body
+    setting: Body
+
+    def describe(self) -> str:
+        return f'The MCP server {self.server} of the plugin {self.label}'
+
+
+def _secrets(setting: Body) -> dict[str, str]:
+    """The secret reference of each header variable of a setting."""
+    secrets: typing.Any = setting.get('secrets')
+    if not isinstance(secrets, dict):
+        return {}
+    return {
+        str(name): str(reference)
+        for name, reference in typing.cast('Body', secrets).items()
+        if reference
     }
-    return sorted(names - _CLI_VARIABLES)
 
 
-_MCP_NAME = re.compile(r'[^A-Za-z0-9_-]')
+def _headers(config: Body) -> dict[str, str]:
+    headers: typing.Any = config.get('headers')
+    if not isinstance(headers, dict):
+        return {}
+    return {
+        str(name): value
+        for name, value in typing.cast('Body', headers).items()
+        if isinstance(value, str)
+    }
+
+
+def _used_variables(config: typing.Any) -> set[str]:
+    """The name of each ``${VAR}`` and ``${VAR:-default}`` in a server's
+    header values. A secret mapped to another variable is stale: the
+    pinned server no longer uses it."""
+    if not isinstance(config, dict):
+        return set()
+    return {
+        match.partition(':-')[0]
+        for value in _headers(typing.cast('Body', config)).values()
+        for match in outbound.VARIABLE.findall(value)
+    }
 
 
 def _relative(value: typing.Any) -> pathlib.PurePosixPath:
@@ -917,7 +958,14 @@ class TaskRun:
         #: ``mcp__plugin_<plugin>_<server>`` of each MCP server that a
         #: pinned plugin brings. A plugin that is on allows its servers.
         self.plugin_servers: list[str] = []
+        #: ``plugin:<plugin>:<server>`` of each plugin MCP server that
+        #: the CLI connects to, for the status watch.
         self.plugin_server_names: set[str] = set()
+        #: The plugin MCP servers to relay, and those that are relayed.
+        self.to_relay: list[_Relayed] = []
+        self.plugin_relays: list[plugin_relay.Server] = []
+        #: The header secrets of the relayed servers (ADR 0031).
+        self.header_secrets: list[credential.Refresher] = []
         self.header_variables: list[tuple[str, str, list[str]]] = []
         self.server_watch: asyncio.Task[None] | None = None
         self.session_id = ''
@@ -934,10 +982,9 @@ class TaskRun:
         self.loop: asyncio.AbstractEventLoop | None = None
         #: The model credential that the proxy sends. A refresh
         #: replaces it (WIF plan 4.7).
-        self.credential = proxy.Credential('')
-        #: One refresh at a time; a second caller waits for it.
-        self.key_lock = asyncio.Lock()
-        self.refresher: asyncio.Task[None] | None = None
+        self.key = credential.Refresher(
+            self.model_key, 'Model key', self.api.short_id, _SECRET_ERRORS
+        )
         #: Runs a child task of the chain and returns its summary.
         self.children = children
         #: The agent API token (P7): memory only. The runner heartbeat
@@ -1046,8 +1093,14 @@ class TaskRun:
             done = ('failed_external', 'harness_error')
         finally:
             heartbeat.cancel()
-            if self.refresher is not None:
-                self.refresher.cancel()
+            try:
+                await asyncio.gather(
+                    *(each.close() for each in self.plugin_relays),
+                    return_exceptions=True,
+                )
+            finally:
+                for secret in [self.key, *self.header_secrets]:
+                    secret.stop()
         if self.failure is not None:
             done = ('failed_external', self.failure)
         await self.flush()
@@ -1079,18 +1132,17 @@ class TaskRun:
             base_url
         ).scheme != 'https' and not upstream.get('allow_insecure_http'):
             raise Failed('model_upstream_insecure')
-        self.credential = await self.model_key()
-        if self.credential.expires_at is not None:
-            self.refresher = asyncio.create_task(self._refresh_key())
+        await self.key.start()
         url = proxy.start(
             base_url,
-            lambda: self.credential,
+            lambda: self.key.credential,
             litellm=upstream.get('kind') == 'litellm',
             meter=self.meter,
             allowed=self.allowed,
             refresh=self.refresh_after_401,
         )
         await self.start_relay()
+        await self.start_plugin_relays()
         self.write_config()
         self.note_dropped_settings()
         return await self.run_sdk(url)
@@ -1297,18 +1349,34 @@ class TaskRun:
     async def model_key(self) -> proxy.Credential:
         """Get the model key through a ``model_inference`` resolution.
 
-        The executor materializes it and gives it to the runner, then
-        releases it: the release ends only Imbi access (plan section
-        9.1 rule 7). A dynamic credential has ``expires_at``; a vendor
-        access token is ``bearer``.
+        Raises:
+            Failed: ``model_key_missing``, or as :meth:`secret`.
+
         """
         upstream: Body = self.config.get('model_upstream') or {}
         reference = upstream.get('key_ref')
         if not reference:
             raise Failed('model_key_missing')
-        reply = await self.fetch(
+        return await self.secret(
             str(reference), 'model_inference', 'model_key'
         )
+
+    async def secret(
+        self, reference: str, purpose: str, name: str
+    ) -> proxy.Credential:
+        """A setup secret that the runner holds in memory: the model key
+        or an MCP header secret.
+
+        The executor materializes it and gives it to the runner, then
+        releases it: the release ends only Imbi access (plan section
+        9.1 rule 7). A dynamic credential has ``expires_at``; a vendor
+        access token is ``bearer``.
+
+        Raises:
+            Failed: as :meth:`fetch`.
+
+        """
+        reply = await self.fetch(reference, purpose, name)
         expires_at = reply.get('expires_at')
         return proxy.Credential(
             str(reply['material']),
@@ -1318,61 +1386,10 @@ class TaskRun:
             bearer=bool(reply.get('bearer')),
         )
 
-    # The renewal rules here are a copy of TokenCache in
-    # imbi/common/llm/tokens.py. The harness must not depend on
-    # imbi-common (see pyproject.toml), so keep the two in step.
-    async def renew_key(self, failed: str | None = None) -> None:
-        """Replace the model access token. With ``failed``, only when
-        that token is still the current one (another caller can have
-        replaced it). A call in progress keeps the old token.
-
-        Raises:
-            Failed: as :meth:`model_key`.
-
-        """
-        async with self.key_lock:
-            if self.credential.expires_at is None or (
-                failed is not None and failed != self.credential.value
-            ):
-                return
-            self.credential = await self.model_key()
-
-    async def _refresh_key(self) -> None:
-        """Renew the model access token before it expires (WIF plan
-        4.6): at the lesser of :data:`KEY_REFRESH_LEAD` and 20 percent
-        of its lifetime before the expiry, with a jitter of at most
-        half of that lead. Retry a failed renewal with bounded backoff.
-        Wait at least :data:`KEY_RENEW_MIN` after a renewal, also when
-        the new token is near its expiry. Task cancellation stops it."""
-        floor = 0.0
-        while (expires_at := self.credential.expires_at) is not None:
-            lifetime = (
-                expires_at - datetime.datetime.now(datetime.UTC)
-            ).total_seconds()
-            lead = min(KEY_REFRESH_LEAD, 0.2 * max(lifetime, 0.0))
-            await asyncio.sleep(
-                max(lifetime - lead - random.uniform(0, lead / 2), floor)  # noqa: S311 - jitter, not a secret
-            )
-            floor = KEY_RENEW_MIN
-            delay = 1.0
-            while self.credential.expires_at == expires_at:
-                try:
-                    await self.renew_key()
-                    break  # same expiry: the outer loop waits the floor
-                # ValueError: a partial JSON reply from the executor.
-                except (Failed, httpx.HTTPError, ValueError) as err:
-                    LOGGER.warning(
-                        'Model key renewal of %s failed: %s',
-                        self.api.short_id,
-                        err,
-                    )
-                    await asyncio.sleep(delay)
-                    delay = min(delay * 2, KEY_RETRY_MAX)
-
     def refresh_after_401(self, failed: str) -> None:
         """Renew the model access token after a ``401`` (proxy
         thread). Return when it is done or failed."""
-        self._wait_on_loop(self.renew_key(failed), 'Model key renewal')
+        self._wait_on_loop(self.key.renew(failed), 'Model key renewal')
 
     async def fetch_secret(
         self, reference: str, purpose: str, name: str
@@ -1504,30 +1521,55 @@ class TaskRun:
             self._load_servers(plugin, path)
 
     def _load_servers(self, plugin: Body, path: pathlib.Path) -> None:
-        """Remove the MCP servers that the agent turned off from the
-        published plugin ``path``, then allow the others. A setting for
-        a server that the plugin does not have gets a task warning."""
+        """Remove the MCP servers that the agent turned off or that the
+        runner relays from the published plugin ``path``, then allow the
+        servers that are on. A setting for a server that the plugin does
+        not have gets a task warning.
+
+        A relayed server is one that is on and has a secret for a
+        variable that its headers use (ADR 0031). The CLI must not
+        connect to it, so it never gets the server, also when the relay
+        cannot start."""
         label = str(plugin['plugin'])
         settings = typing.cast('Body', plugin.get('server_settings') or {})
         declared = _declared(path)
         for server in sorted(settings.keys() - declared.keys()):
             self.recorder.notice(
-                f'The agent turns off the MCP server {server} of the plugin '
-                f'{label}, but the pinned plugin has no such server. If the '
-                'server was renamed, turn off the new name.'
+                f'The agent has a setting for the MCP server {server} of '
+                f'the plugin {label}, but the pinned plugin has no such '
+                'server. If the server was renamed, set up the new name.'
             )
+        off = {
+            server
+            for server, setting in settings.items()
+            if not typing.cast('Body', setting).get('enabled', True)
+        }
+        relayed = {
+            server
+            for server, setting in settings.items()
+            if server in declared.keys() - off
+            and _secrets(typing.cast('Body', setting)).keys()
+            & _used_variables(declared[server])
+        }
         with privilege.effective():
-            _remove_servers(
-                path,
-                {
-                    server
-                    for server, setting in settings.items()
-                    if not typing.cast('Body', setting).get('enabled', True)
-                },
-            )
-        self.plugin_servers.extend(_plugin_servers(path, label))
+            _remove_servers(path, off | relayed)
         name = _plugin_name(path, label)
-        for server, config in _declared(path).items():
+        for server in sorted(declared.keys() - off):
+            config = declared[server]
+            self.plugin_servers.append(plugin_relay.cli_name(name, server))
+            if server in relayed:
+                self.to_relay.append(
+                    _Relayed(
+                        label,
+                        name,
+                        server,
+                        typing.cast(
+                            'Body', config if isinstance(config, dict) else {}
+                        ),
+                        typing.cast('Body', settings[server]),
+                    )
+                )
+                continue
             self.plugin_server_names.add(f'plugin:{name}:{server}')
             if variables := _header_variables(config):
                 self.header_variables.append((label, server, variables))
@@ -1707,7 +1749,121 @@ class TaskRun:
         LOGGER.info('Relaying %d Imbi tools', len(names))
         self.relay = candidate
         self.recorder.audit = self.take_audit
-        self.recorder.writes = candidate.writes()
+        self.recorder.writes |= candidate.writes()
+
+    async def start_plugin_relays(self) -> None:
+        """Relay each plugin MCP server that the agent gave secrets
+        (ADR 0031). A server that a check refuses, whose secret Imbi
+        refuses, or that does not answer is left out with a task
+        warning. When the task stops, the server being started is
+        closed and the rest are not started."""
+        for relayed in self.to_relay:
+            setup = asyncio.ensure_future(self._plugin_relay(relayed))
+            try:
+                while not setup.done() and not self.stopped:
+                    await asyncio.wait({setup}, timeout=1)
+            finally:
+                if not setup.done():
+                    setup.cancel()
+                    await asyncio.wait({setup})
+            if setup.cancelled():
+                return
+            setup.result()
+
+    async def _plugin_relay(self, relayed: _Relayed) -> None:
+        what = relayed.describe()
+        if found := plugin_relay.problem(
+            relayed.config, relayed.setting.get('origin')
+        ):
+            self.recorder.notice(f'{what} is not available: {found}.')
+            return
+        secrets = await self._header_secrets(relayed)
+        if secrets is None:
+            return
+        server = plugin_relay.Server(
+            relayed.plugin,
+            relayed.server,
+            relayed.config,
+            outbound.Headers(_headers(relayed.config), secrets),
+            proxy_env=self.proxy_env,
+            scrub=self.redactor.text,
+            stopped=lambda: self.stopped,
+            notice=self.recorder.notice,
+        )
+        started = False
+        try:
+            await server.start()
+            started = True
+        except Exception as error:  # noqa: BLE001 - no warning fails the task
+            self.recorder.notice(
+                f'{what} is not available: the runner could not open a '
+                f'session or list its tools ({safeguards.reason(error)}).'
+            )
+            return
+        finally:
+            if not started:
+                await server.close()
+                for secret in secrets.values():
+                    secret.stop()
+        self.header_secrets.extend(set(secrets.values()))
+        self.plugin_relays.append(server)
+        self.recorder.writes |= server.writes()
+        self.recorder.audit = self.take_audit
+        LOGGER.info('Relaying %d tools of %s', len(server.tools), server.name)
+
+    async def _header_secrets(
+        self, relayed: _Relayed
+    ) -> dict[str, credential.Refresher] | None:
+        """The secret of each header variable of the server that the agent
+        maps, from ``mcp_header`` resolutions; ``None`` with a task
+        warning when Imbi refuses one. A mapping for a variable that the
+        server does not use is not resolved. A variable with no secret
+        and no default gets a task warning too, the variables that the
+        CLI fills from the plugin included: the relay cannot fill
+        them."""
+        what = relayed.describe()
+        used = _used_variables(relayed.config)
+        mapped = {
+            name: reference
+            for name, reference in _secrets(relayed.setting).items()
+            if name in used
+        }
+        by_reference = {
+            reference: credential.Refresher(
+                functools.partial(
+                    self.secret, reference, 'mcp_header', 'mcp_header'
+                ),
+                f'MCP header secret {reference}',
+                self.api.short_id,
+                _SECRET_ERRORS,
+            )
+            for reference in sorted(set(mapped.values()))
+        }
+        started = False
+        try:
+            for secret in by_reference.values():
+                await secret.start()
+            started = True
+        except Exception as error:  # noqa: BLE001 - no warning fails the task
+            self.recorder.notice(
+                f'{what} is not available: Imbi did not give the runner '
+                f'a secret for its headers ({safeguards.reason(error)}).'
+            )
+            return None
+        finally:
+            if not started:
+                for secret in by_reference.values():
+                    secret.stop()
+        if unset := sorted(_required_variables(relayed.config) - set(mapped)):
+            self.recorder.notice(
+                f'{what} uses '
+                + ', '.join(f'${{{name}}}' for name in unset)
+                + ' in a header, and the agent maps no secret to it and it '
+                'has no default, so the header gets an empty value.'
+            )
+        return {
+            name: by_reference[reference] for name, reference in mapped.items()
+        }
 
     async def probe_egress(self) -> None:
         """A warning for each TCP destination that does not connect
@@ -1721,7 +1877,14 @@ class TaskRun:
             )
 
     def take_audit(self, name: str, arguments: typing.Any) -> Body | None:
-        return self.relay.take_audit(name, arguments) if self.relay else None
+        relays: list[relay.Relay | plugin_relay.Server] = [
+            *([self.relay] if self.relay else []),
+            *self.plugin_relays,
+        ]
+        for each in relays:
+            if (audit := each.take_audit(name, arguments)) is not None:
+                return audit
+        return None
 
     def _repo_dirs(self) -> list[pathlib.Path]:
         """The clone directory of each repository: ``repos/<name>``, or
@@ -1930,7 +2093,7 @@ class TaskRun:
             # An organization admin can rename the slug: data, not rules.
             lines.append(
                 'Your Imbi organization slug is the text in this block:\n'
-                + relay.untrusted(slug, 'organization_slug')
+                + safeguards.untrusted(slug, 'organization_slug')
             )
         project_ids = [
             f'`{project_id}`'
@@ -1946,7 +2109,7 @@ class TaskRun:
         text = str(self.task['description'])
         origin: Body = self.task.get('origin') or {}
         if origin.get('kind') == 'webhook':
-            return relay.untrusted(text, 'webhook')
+            return safeguards.untrusted(text, 'webhook')
         return text
 
     def brief(self) -> str:
@@ -1962,7 +2125,7 @@ class TaskRun:
         text = json.dumps(fields, indent=2, sort_keys=True)
         return (
             f'{self.description()}\n\nThe custom fields of the ticket:\n'
-            + relay.untrusted(text, 'custom_fields')
+            + safeguards.untrusted(text, 'custom_fields')
         )
 
     def instruction(self) -> str:
@@ -2085,6 +2248,12 @@ class TaskRun:
                     if self.relay
                     else {}
                 ),
+                **{
+                    server.name: sdk.create_sdk_mcp_server(
+                        server.name, tools=server.sdk_tools()
+                    )
+                    for server in self.plugin_relays
+                },
             },
             allowed_tools=allowed,
             disallowed_tools=denied,

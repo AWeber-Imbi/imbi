@@ -72,8 +72,13 @@ items:
                   valueFrom:
                     secretKeyRef: {name: harness-model, key: key}
                 - {name: PUBLIC_URL, value: "http://harness-fake-api:8080"}
+                # The TLS port of the plugin MCP server (ADR 0031).
+                # run-kind.sh makes the test certificate.
+                - {name: TLS_CERT, value: /etc/fake-api-tls/tls.crt}
+                - {name: TLS_KEY, value: /etc/fake-api-tls/tls.key}
               ports:
                 - containerPort: 8080
+                - containerPort: 8443
               readinessProbe:
                 httpGet: {path: /healthz, port: 8080}
                 periodSeconds: 2
@@ -85,9 +90,12 @@ items:
               # The git repositories that the fake serves.
               volumeMounts:
                 - {name: tmp, mountPath: /tmp}
+                - {name: tls, mountPath: /etc/fake-api-tls, readOnly: true}
           volumes:
             - name: tmp
               emptyDir: {}
+            - name: tls
+              secret: {secretName: harness-fake-api-tls}
   - apiVersion: v1
     kind: Service
     metadata:
@@ -98,9 +106,13 @@ items:
       selector:
         app: harness-fake-api
       ports:
-        - port: 8080
+        - name: http
+          port: 8080
           targetPort: 8080
           nodePort: 30080
+        - name: https
+          port: 8443
+          targetPort: 8443
   - apiVersion: v1
     kind: Pod
     metadata:
@@ -132,6 +144,9 @@ items:
           env:
             - {name: IMBI_API_URL, value: "http://harness-fake-api:8080"}
             - {name: IMBI_HARNESS_MCP_URL, value: "http://harness-fake-api:8080/mcp"}
+            # The chart's extraCaCerts bundle: the fake API's certificate,
+            # for the relayed plugin MCP server (ADR 0031).
+            - {name: IMBI_HARNESS_EXTRA_CA, value: /etc/imbi-harness/ca/ca.crt}
           securityContext: &privilege
             runAsUser: 0
             runAsNonRoot: false
@@ -146,6 +161,7 @@ items:
             - {name: runner-credentials, mountPath: /run/creds}
             - {name: plugins, mountPath: /run/plugins}
             - {name: tmp, mountPath: /tmp}
+            - {name: extra-ca, mountPath: /etc/imbi-harness/ca, readOnly: true}
             - {name: pool, mountPath: /var/run/secrets/imbi/pool, readOnly: true}
             - name: service-account-token
               mountPath: /var/run/secrets/kubernetes.io/serviceaccount
@@ -178,6 +194,10 @@ items:
         # Owned by uid 0, mode 0400: only the processes' uid 0 reads them.
         - name: pool
           secret: {secretName: harness-pool, defaultMode: 0400}
+        - name: extra-ca
+          secret:
+            secretName: harness-fake-api-tls
+            items: [{key: tls.crt, path: ca.crt}]
         - name: service-account-token
           projected:
             defaultMode: 0400

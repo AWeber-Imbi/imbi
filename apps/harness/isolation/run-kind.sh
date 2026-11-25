@@ -62,6 +62,15 @@ docker build -t "$PROXY_IMAGE" "$ROOT/proxy"
 kubectl --context "$CONTEXT" delete namespace "$NAMESPACE" \
   --ignore-not-found --wait
 kubectl --context "$CONTEXT" apply -f "$HERE/manifests.yaml"
+# The fake API's TLS certificate, for the relayed plugin MCP server. The
+# pods start once the secret exists.
+TLS=$(mktemp -d)
+openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+  -subj /CN=harness-fake-api -addext subjectAltName=DNS:harness-fake-api \
+  -keyout "$TLS/tls.key" -out "$TLS/tls.crt" 2>/dev/null
+k create secret tls harness-fake-api-tls --cert="$TLS/tls.crt" \
+  --key="$TLS/tls.key"
+rm -rf "$TLS"
 # The proxy token key and the internal target of test_proxy.py.
 kubectl --context "$CONTEXT" apply -f "$HERE/proxy-manifests.yaml"
 trap 'status=$?; if [ $status -ne 0 ]; then dump; fi' EXIT

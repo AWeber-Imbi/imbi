@@ -926,7 +926,8 @@ async def _check_platform(
         422: A secret reference does not parse, a new GitHub App
             binding is not an enabled ``github_app`` binding of the
             org, the settings widen the organization's agent
-            platform configuration, a plugin cannot be pinned, or a
+            platform configuration, a plugin cannot be pinned or maps
+            an MCP header variable that the runner cannot relay, or a
             new egress destination is unknown, global, or not for
             the org.
 
@@ -973,6 +974,8 @@ async def _check_platform(
             found,
             config.default_plugins,
         )
+        for plugin in plugins:
+            platform.check_server_secrets(plugin)
     except ValueError as err:
         raise _unprocessable(str(err)) from err
     return settings.model_copy(update={'plugins': plugins})

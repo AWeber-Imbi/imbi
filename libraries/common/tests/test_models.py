@@ -810,6 +810,56 @@ class AgentModelTestCase(unittest.TestCase):
             {'grafana': models.ServerSetting(enabled=False)},
         )
 
+    def test_plugin_keeps_a_server_setting_with_secrets(self) -> None:
+        setting = models.ServerSetting(
+            secrets={'TOKEN': 'secret://org/acme/ops#token'},
+            origin='https://ops.example.com',
+        )
+        plugin = models.AgentPlugin(
+            marketplace='tools',
+            plugin='ops',
+            server_settings={'grafana': setting},
+        )
+        self.assertEqual(plugin.server_settings, {'grafana': setting})
+
+    def test_plugin_drops_an_enabled_setting_with_only_an_origin(
+        self,
+    ) -> None:
+        plugin = models.AgentPlugin(
+            marketplace='tools',
+            plugin='ops',
+            server_settings={
+                'tempo': models.ServerSetting(
+                    origin='https://tempo.example.com'
+                )
+            },
+        )
+        self.assertEqual(plugin.server_settings, {})
+
+    def test_plugin_loads_secrets_the_write_endpoint_would_refuse(
+        self,
+    ) -> None:
+        plugin = models.AgentPlugin.model_validate(
+            {
+                'marketplace': 'tools',
+                'plugin': 'ops',
+                'server_settings': {
+                    'grafana': {
+                        'secrets': {'V': 'not-a-ref'},
+                        'origin': 'http://x',
+                    }
+                },
+            }
+        )
+        self.assertEqual(
+            plugin.server_settings,
+            {
+                'grafana': models.ServerSetting(
+                    secrets={'V': 'not-a-ref'}, origin='http://x'
+                )
+            },
+        )
+
     def test_plugin_with_a_default_setting_equals_one_without(self) -> None:
         self.assertEqual(
             models.AgentPlugin(

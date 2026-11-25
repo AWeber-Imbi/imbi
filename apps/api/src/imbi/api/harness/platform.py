@@ -15,6 +15,7 @@ An agent can only narrow them (plan section 5.1):
 
 import collections.abc
 import typing
+import urllib.parse
 
 import pydantic
 
@@ -174,6 +175,69 @@ def check_reference(value: str, *, field: bool = True) -> None:
         raise ValueError(f'Invalid secret reference {value!r}') from err
 
 
+def _is_origin(value: str) -> bool:
+    """Return true when ``value`` is an ``https`` origin, written as
+    ``https://host[:port]`` in lower case and with nothing else."""
+    parts = urllib.parse.urlsplit(value)
+    try:
+        port = parts.port
+    except ValueError:
+        return False
+    host = parts.hostname
+    if parts.scheme != 'https' or not host:
+        return False
+    netloc = f'[{host}]' if ':' in host else host
+    if port is not None:
+        netloc = f'{netloc}:{port}'
+    return value == f'https://{netloc}'
+
+
+def check_server_secrets(plugin: models.AgentPlugin) -> None:
+    """Raise :class:`ValueError` when ``plugin`` maps a header variable
+    of an MCP server that the runner cannot relay.
+
+    Each reference must parse, the setting must have an ``https``
+    origin, and the pinned server must be an ``http`` or ``sse`` server
+    with a URL and a header that uses the variable. The origin can
+    differ from the origin of the server URL: the runner refuses to
+    relay that server, and the UI asks for the secrets again.
+    """
+    servers = {server.name: server for server in plugin.mcp_servers}
+    owner = f'{plugin.plugin}@{plugin.marketplace}'
+    for name, setting in plugin.server_settings.items():
+        if setting.secrets:
+            _check_server(
+                f'MCP server {name!r} of {owner}', setting, servers.get(name)
+            )
+
+
+def _check_server(
+    label: str,
+    setting: models.ServerSetting,
+    server: models.CatalogServer | None,
+) -> None:
+    for reference in setting.secrets.values():
+        check_reference(reference)
+    if setting.origin is None or not _is_origin(setting.origin):
+        raise ValueError(
+            f'The {label} needs an origin such as https://host[:port]'
+        )
+    if server is None or server.type not in {'http', 'sse'} or not server.url:
+        raise ValueError(
+            f'The {label} is not an http or sse server with a URL in the '
+            'pinned plugin'
+        )
+    unknown = sorted(set(setting.secrets) - _variables(server))
+    if unknown:
+        raise ValueError(
+            f'The {label} has no header variables {", ".join(unknown)}'
+        )
+
+
+def _variables(server: models.CatalogServer) -> set[str]:
+    return {name for names in server.headers.values() for name in names}
+
+
 def _strictness(mode: str) -> int:
     return models.AGENT_PERMISSION_MODES.index(mode)
 
@@ -238,7 +302,8 @@ def merge(
     Each value is the stricter of the two. An agent plugin from a
     marketplace that ``config`` does not allow is left out. A default
     plugin wins over an agent plugin with the same name, and takes the
-    agent plugin's ``server_settings``. The agent's model key replaces
+    agent plugin's ``server_settings``, less those that its pin does
+    not list (:func:`pin_plugins`). The agent's model key replaces
     the key of the organization's model upstream.
 
     ``claude_settings`` is the exception: each path that the agent sets
@@ -268,8 +333,9 @@ def merge(
     plugins = [
         plugin.model_copy(
             update={
-                'server_settings': overrides.get(
-                    (plugin.marketplace, plugin.plugin), {}
+                'server_settings': _for_pin(
+                    overrides.get((plugin.marketplace, plugin.plugin), {}),
+                    plugin,
                 )
             }
         )
@@ -344,7 +410,8 @@ def pin_plugins(
 
     Each plugin keeps the requested ``server_settings``. A new pin, and
     a default's pin that lists its servers, drop the settings of the
-    servers that the pin does not list.
+    servers that the pin does not list, and the secrets of the header
+    variables that it does not list.
 
     Raises:
         ValueError: A plugin is given two times, or its marketplace or
@@ -367,11 +434,7 @@ def pin_plugins(
         existing = pinned.get(key)
         if default is not None:
             pin = default
-            settings = (
-                _listed(plugin.server_settings, default.mcp_servers)
-                if default.mcp_servers
-                else plugin.server_settings
-            )
+            settings = _for_pin(plugin.server_settings, default)
         elif (
             existing is not None
             and plugin.sha is not None
@@ -386,13 +449,37 @@ def pin_plugins(
     return out
 
 
+def _for_pin(
+    settings: dict[str, models.ServerSetting], pin: models.AgentPlugin
+) -> dict[str, models.ServerSetting]:
+    """The ``settings`` that a default ``pin`` can take: all of them
+    when the pin saved no servers."""
+    return _listed(settings, pin.mcp_servers) if pin.mcp_servers else settings
+
+
 def _listed(
     settings: dict[str, models.ServerSetting],
     servers: list[models.CatalogServer],
 ) -> dict[str, models.ServerSetting]:
-    """The ``settings`` of the servers that ``servers`` lists."""
-    names = {server.name for server in servers}
-    return {name: value for name, value in settings.items() if name in names}
+    """The ``settings`` of the servers that ``servers`` lists, with the
+    secrets of the header variables that each server uses."""
+    variables = {server.name: _variables(server) for server in servers}
+    listed = {
+        name: value.model_copy(
+            update={
+                'secrets': {
+                    variable: reference
+                    for variable, reference in value.secrets.items()
+                    if variable in variables[name]
+                }
+            }
+        )
+        for name, value in settings.items()
+        if name in variables
+    }
+    return {
+        name: value for name, value in listed.items() if not value.is_default()
+    }
 
 
 def _pin(

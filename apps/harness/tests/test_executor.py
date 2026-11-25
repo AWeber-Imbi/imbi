@@ -580,7 +580,13 @@ class FetchTestCase(BaseTestCase):
         )
         self.api.release.assert_awaited_once_with('ihe_token', 'r1')
 
-    async def test_only_the_model_key(self) -> None:
+    async def test_returns_an_mcp_header_secret(self) -> None:
+        await self.hello()
+        reply = await self.executor.dispatch(self.fetch('mcp_header'))
+        self.assertEqual(reply, {'material': SECRET})
+        self.api.release.assert_awaited_once_with('ihe_token', 'r1')
+
+    async def test_only_the_runner_secrets(self) -> None:
         await self.hello()
         reply = await self.executor.dispatch(self.fetch('github_write'))
         self.assertEqual(reply, {'error': 'purpose_not_allowed'})

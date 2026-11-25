@@ -519,7 +519,12 @@ class CreateResolutionTestCase(secret_support.SecretCase):
         )
 
     async def test_setup_purposes_need_a_file_descriptor(self) -> None:
-        for purpose in sorted(broker.SETUP_PURPOSES):
+        for purpose in (
+            'marketplace_fetch',
+            'mcp_header',
+            'model_inference',
+            'workspace_checkout',
+        ):
             for mode, target in (
                 ('environment', 'GH_TOKEN'),
                 ('stdin', None),

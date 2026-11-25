@@ -188,6 +188,26 @@ describe('AccessTab', () => {
     expect(endpoints.createSecretGrant).not.toHaveBeenCalled()
   })
 
+  it('counts a GitHub App grant for some projects', async () => {
+    vi.mocked(endpoints.listSecretGrants).mockResolvedValue([
+      grant({
+        binding_ids: ['b-gh'],
+        project_ids: ['p-1'],
+        purposes: ['github_read'],
+      }),
+    ])
+    renderTab()
+    const read = (
+      await screen.findByText('Read pull requests, issues, and CI run logs')
+    ).closest('li')!
+    expect(
+      within(read).queryByRole('button', { name: 'Grant' }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(read).getByRole('button', { name: 'Remove github_read' }),
+    ).toBeInTheDocument()
+  })
+
   it('grants the model key that the agent uses', async () => {
     renderTab('secret://anthropic/triage#api-key')
     const row = (await screen.findByText('Call the model')).closest('div')!

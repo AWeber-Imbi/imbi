@@ -1,11 +1,11 @@
 """Unit tests for the agent platform configuration and marketplaces."""
 
 import json
-import pathlib
 import typing
 import unittest
 from unittest import mock
 
+from apps.api.tests import marketplace_support
 from imbi.api.endpoints import harness as harness_api
 from imbi.api.harness import marketplaces, platform
 from imbi.api.plugins import assignments
@@ -14,16 +14,19 @@ from imbi.common.plugins import base
 from imbi.common.prompts import pool
 from imbi.common.prompts import resolve as prompt_resolve
 
-#: ``.claude-plugin/marketplace.json`` of github.com/anthropics/claude-code
-#: at b0b7bed9820350bb0942e32c7f00752a99ea3555.
-FIXTURE = (
-    pathlib.Path(__file__).parent
-    / 'fixtures'
-    / 'marketplaces'
-    / 'claude-code.json'
-)
-
 SHA = 'a' * 40
+GRAFANA = models.CatalogServer(
+    name='grafana',
+    type='http',
+    url='https://g.example.com/mcp',
+    headers={'Authorization': ['TOKEN']},
+)
+GRAFANA_SECRETS = models.ServerSetting(
+    secrets={'TOKEN': 'secret://ops/grafana'}, origin='https://g.example.com'
+)
+TOKEN_AND_ORG = GRAFANA_SECRETS.model_copy(
+    update={'secrets': GRAFANA_SECRETS.secrets | {'ORG': 'secret://ops/org'}}
+)
 
 
 def _marketplace(**plugins: str | None) -> dict[str, object]:
@@ -39,7 +42,7 @@ def _marketplace(**plugins: str | None) -> dict[str, object]:
 
 class ParseTests(unittest.TestCase):
     def test_real_marketplace(self) -> None:
-        catalog = marketplaces.parse(FIXTURE.read_text())
+        catalog = marketplaces.parse(marketplace_support.FIXTURE.read_text())
         self.assertEqual(catalog.name, 'claude-code-plugins')
         self.assertEqual(len(catalog.plugins), 13)
         by_name = {p.name: p for p in catalog.plugins}
@@ -442,13 +445,6 @@ class FetchTests(unittest.IsolatedAsyncioTestCase):
 READERS = marketplaces.Readers([], [])
 
 
-def _reader(files: dict[str, str]) -> marketplaces.FileReader:
-    async def read(path: str) -> str | None:
-        return files.get(path)
-
-    return read
-
-
 async def missing(_path: str) -> str | None:
     return None
 
@@ -477,7 +473,7 @@ HTTP = {
 
 class PluginServerTests(unittest.IsolatedAsyncioTestCase):
     async def test_manifest_object(self) -> None:
-        read = _reader(
+        read = marketplace_support.reader(
             {
                 'p/.claude-plugin/plugin.json': json.dumps(
                     {
@@ -521,7 +517,7 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_manifest_paths_and_list(self) -> None:
-        read = _reader(
+        read = marketplace_support.reader(
             {
                 '.claude-plugin/plugin.json': json.dumps(
                     {
@@ -560,7 +556,7 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_a_later_source_replaces_a_server(self) -> None:
-        read = _reader(
+        read = marketplace_support.reader(
             {
                 'p/.claude-plugin/plugin.json': json.dumps(
                     {
@@ -585,7 +581,7 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_a_single_path_in_the_manifest(self) -> None:
-        read = _reader(
+        read = marketplace_support.reader(
             {
                 'p/.claude-plugin/plugin.json': json.dumps(
                     {'mcpServers': './servers.json'}
@@ -599,7 +595,7 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(_names(servers), ['file'])
 
     async def test_entry_servers_apply_without_a_manifest(self) -> None:
-        read = _reader(
+        read = marketplace_support.reader(
             {
                 'p/servers.json': json.dumps({'mcpServers': {'file': HTTP}}),
                 'p/.mcp.json': json.dumps({'mcpServers': {'mcp': HTTP}}),
@@ -611,7 +607,7 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(_names(servers), ['file', 'inline', 'mcp'])
 
     async def test_a_single_path_in_the_entry(self) -> None:
-        read = _reader(
+        read = marketplace_support.reader(
             {'p/servers.json': json.dumps({'mcpServers': {'file': HTTP}})}
         )
         servers = await marketplaces.plugin_servers(
@@ -620,7 +616,7 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(_names(servers), ['file'])
 
     async def test_a_manifest_overrides_entry_servers(self) -> None:
-        read = _reader(
+        read = marketplace_support.reader(
             {
                 'p/.claude-plugin/plugin.json': '{"name": "p"}',
                 'p/.mcp.json': json.dumps({'mcpServers': {'mcp': HTTP}}),
@@ -632,14 +628,16 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
         entry.assert_not_awaited()
 
     async def test_an_invalid_manifest_overrides_entry_servers(self) -> None:
-        read = _reader({'p/.claude-plugin/plugin.json': 'not json'})
+        read = marketplace_support.reader(
+            {'p/.claude-plugin/plugin.json': 'not json'}
+        )
         servers = await marketplaces.plugin_servers(
             read, 'p', _entry({'inline': HTTP}), 'p'
         )
         self.assertEqual(servers, [])
 
     async def testmissing_or_invalid_files_add_nothing(self) -> None:
-        read = _reader(
+        read = marketplace_support.reader(
             {
                 'p/.claude-plugin/plugin.json': json.dumps(
                     {
@@ -665,7 +663,7 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_paths_outside_the_plugin_are_refused(self) -> None:
         outside = json.dumps({'mcpServers': {'outside': HTTP}})
-        read = _reader(
+        read = marketplace_support.reader(
             {
                 'p/.claude-plugin/plugin.json': json.dumps(
                     {'mcpServers': ['../outside.json', '/etc/servers.json']}
@@ -1311,6 +1309,35 @@ class ClaudeSettingsTests(unittest.TestCase):
             ],
         )
 
+    def test_merge_drops_agent_settings_a_default_pin_does_not_list(
+        self,
+    ) -> None:
+        config = platform.AgentPlatformConfig(
+            allowed_marketplaces=['tools'],
+            default_plugins=[
+                models.AgentPlugin(
+                    marketplace='tools',
+                    plugin='ops',
+                    sha=SHA,
+                    mcp_servers=[GRAFANA],
+                )
+            ],
+        )
+        settings = models.AgentSettings(
+            plugins=[
+                models.AgentPlugin(
+                    marketplace='tools',
+                    plugin='ops',
+                    server_settings={
+                        'grafana': TOKEN_AND_ORG,
+                        'gone': models.ServerSetting(enabled=False),
+                    },
+                )
+            ]
+        )
+        (plugin,) = platform.merge(config, settings).plugins
+        self.assertEqual(plugin.server_settings, {'grafana': GRAFANA_SECRETS})
+
 
 class ModelUpstreamTests(unittest.TestCase):
     def test_http_base_url_needs_the_flag(self) -> None:
@@ -1569,6 +1596,162 @@ class PinServerSettingsTests(unittest.TestCase):
         )
         self.assertEqual(plugin.sha, 'c' * 40)
         self.assertEqual(plugin.server_settings, self.off('anything'))
+
+    @staticmethod
+    def pin_grafana(
+        setting: models.ServerSetting,
+        server: models.CatalogServer = GRAFANA,
+    ) -> models.AgentPlugin:
+        catalog = _marketplace()
+        catalog['plugins'] = [
+            {
+                'name': 'ops',
+                'path': 'plugins/ops',
+                'mcp_servers': [server.model_dump()],
+            }
+        ]
+        (plugin,) = platform.pin_plugins(
+            [
+                models.AgentPlugin(
+                    marketplace='tools',
+                    plugin='ops',
+                    server_settings={'grafana': setting},
+                )
+            ],
+            [],
+            {'tools': catalog},
+        )
+        return plugin
+
+    def test_a_new_pin_drops_the_secrets_of_unlisted_variables(
+        self,
+    ) -> None:
+        plugin = self.pin_grafana(TOKEN_AND_ORG)
+        self.assertEqual(plugin.server_settings, {'grafana': GRAFANA_SECRETS})
+
+    def test_a_new_pin_drops_a_setting_left_with_no_secrets(self) -> None:
+        plugin = self.pin_grafana(
+            GRAFANA_SECRETS,
+            GRAFANA.model_copy(update={'headers': {'X-Org': ['ORG']}}),
+        )
+        self.assertEqual(plugin.server_settings, {})
+
+    def test_a_default_pin_drops_the_secrets_of_unlisted_variables(
+        self,
+    ) -> None:
+        default = models.AgentPlugin(
+            marketplace='tools',
+            plugin='ops',
+            url='u',
+            sha='c' * 40,
+            mcp_servers=[GRAFANA],
+        )
+        (plugin,) = platform.pin_plugins(
+            [
+                models.AgentPlugin(
+                    marketplace='tools',
+                    plugin='ops',
+                    server_settings={'grafana': TOKEN_AND_ORG},
+                )
+            ],
+            [],
+            {},
+            [default],
+        )
+        self.assertEqual(plugin.server_settings, {'grafana': GRAFANA_SECRETS})
+
+
+class ServerSecretsTests(unittest.TestCase):
+    @staticmethod
+    def check(
+        setting: models.ServerSetting = GRAFANA_SECRETS,
+        server: models.CatalogServer | None = GRAFANA,
+    ) -> None:
+        platform.check_server_secrets(
+            models.AgentPlugin(
+                marketplace='tools',
+                plugin='ops',
+                mcp_servers=[server] if server else [],
+                server_settings={'grafana': setting},
+            )
+        )
+
+    def test_accepts_an_https_origin(self) -> None:
+        for origin in (
+            'https://g.example.com',
+            'https://g.example.com:8443',
+            'https://other.example.com',
+            'https://[::1]:8443',
+        ):
+            with self.subTest(origin=origin):
+                self.check(
+                    GRAFANA_SECRETS.model_copy(update={'origin': origin})
+                )
+
+    def test_accepts_an_sse_server(self) -> None:
+        self.check(server=GRAFANA.model_copy(update={'type': 'sse'}))
+
+    def test_ignores_settings_without_secrets(self) -> None:
+        self.check(
+            models.ServerSetting(enabled=False, origin='http://x'), None
+        )
+
+    def test_refuses_anything_but_an_https_origin(self) -> None:
+        for origin in (
+            None,
+            'http://g.example.com',
+            'https://g.example.com/',
+            'https://g.example.com/mcp',
+            'https://g.example.com?token=x',
+            'https://g.example.com#x',
+            'https://user@g.example.com',
+            'https://G.example.com',
+            'https://g.example.com:',
+            'https://g.example.com:port',
+            'https://',
+            'g.example.com',
+        ):
+            with (
+                self.subTest(origin=origin),
+                self.assertRaisesRegex(ValueError, 'needs an origin'),
+            ):
+                self.check(
+                    GRAFANA_SECRETS.model_copy(update={'origin': origin})
+                )
+
+    def test_refuses_an_invalid_reference(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError, "Invalid secret reference 'not-a-ref'"
+        ):
+            self.check(
+                GRAFANA_SECRETS.model_copy(
+                    update={'secrets': {'TOKEN': 'not-a-ref'}}
+                )
+            )
+
+    def test_refuses_a_stdio_server(self) -> None:
+        with self.assertRaisesRegex(ValueError, 'not an http or sse server'):
+            self.check(server=models.CatalogServer(name='grafana'))
+
+    def test_refuses_a_server_of_another_type(self) -> None:
+        with self.assertRaisesRegex(ValueError, 'not an http or sse server'):
+            self.check(server=GRAFANA.model_copy(update={'type': 'ws'}))
+
+    def test_refuses_a_server_with_no_url(self) -> None:
+        with self.assertRaisesRegex(ValueError, 'not an http or sse server'):
+            self.check(server=GRAFANA.model_copy(update={'url': None}))
+
+    def test_refuses_a_server_the_pin_does_not_list(self) -> None:
+        with self.assertRaisesRegex(ValueError, 'not an http or sse server'):
+            self.check(server=None)
+
+    def test_refuses_a_variable_no_header_uses(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "The MCP server 'grafana' of ops@tools has no header "
+            'variables ORG',
+        ):
+            self.check(TOKEN_AND_ORG)
 
 
 class RenderedPromptTests(unittest.IsolatedAsyncioTestCase):

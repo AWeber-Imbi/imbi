@@ -1,11 +1,34 @@
 """The egress proxy environment of the runner and of the executor's
-commands (egress proxy plan 5.3)."""
+commands (egress proxy plan 5.3), and the outbound checks of the
+plugin MCP relay (ADR 0031).
 
+The runner, not the CLI, calls a relayed plugin MCP server, with the
+header secrets of the agent's entry. Each connection:
+
+- uses HTTPS, with the certificate checked against the server's host,
+  with the default trust store and the chart's ``extraCaCerts`` bundle,
+  the bundle that the CLI trusts too;
+- goes only to the origin of the agent's entry. A redirect is followed,
+  but a request to another origin is refused before it is sent, so a
+  credential goes to its origin only;
+- goes through the egress proxy unless ``NO_PROXY`` names the host, as
+  the CLI's own requests do.
+"""
+
+import asyncio
+import ipaddress
+import os
+import re
 import typing
 import urllib.parse
 
+import httpx
+
 if typing.TYPE_CHECKING:
+    import ssl
     from collections import abc
+
+    from imbi.harness import credential
 
 #: The egress destinations of the chain, from the claim: each has
 #: ``cidrs``, ``hostnames``, and ``ports`` (``{port, protocol}``).
@@ -55,3 +78,174 @@ def proxy_env(
 def proxy_token(env: abc.Mapping[str, str]) -> str | None:
     """The proxy token in the ``HTTPS_PROXY`` of ``env``, to redact."""
     return urllib.parse.urlsplit(env.get('HTTPS_PROXY', '')).password
+
+
+class Refused(httpx.TransportError):
+    """An outbound check refused the request. ``reason`` is a safe
+    code."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+def check_url(url: str) -> httpx.URL:
+    """The URL, when it is an HTTPS URL with a host and no user info.
+
+    Raises:
+        Refused: ``url_not_https`` or ``url_not_valid``.
+
+    """
+    try:
+        parsed = httpx.URL(url)
+    except (httpx.InvalidURL, TypeError) as error:
+        raise Refused('url_not_valid') from error
+    if parsed.scheme != 'https':
+        raise Refused('url_not_https')
+    if not parsed.host or parsed.userinfo:
+        raise Refused('url_not_valid')
+    return parsed
+
+
+def origin(url: httpx.URL) -> tuple[str, str, int | None]:
+    """The scheme, host, and port of ``url``; ``None`` for the scheme's
+    default port."""
+    return url.scheme, url.host, url.port
+
+
+def _names(host: str, entry: str) -> bool:
+    """Whether one ``NO_PROXY`` entry names ``host``."""
+    if entry == '*':
+        return True
+    try:
+        return ipaddress.ip_address(host) in ipaddress.ip_network(
+            entry, strict=False
+        )
+    except ValueError:
+        domain = entry.lstrip('.')
+        return host == domain or host.endswith(f'.{domain}')
+
+
+def bypasses(host: str, no_proxy: str) -> bool:
+    """Whether ``NO_PROXY`` names ``host``: the host, a parent domain,
+    ``*``, or a CIDR that holds an IP literal host."""
+    return any(
+        _names(host, entry.strip().lower())
+        for entry in no_proxy.split(',')
+        if entry.strip()
+    )
+
+
+def extra_ca() -> str | None:
+    """The path of the chart's ``extraCaCerts`` bundle, if it has one:
+    the private CAs of MCP servers."""
+    return os.environ.get('IMBI_HARNESS_EXTRA_CA') or None
+
+
+def ssl_context() -> ssl.SSLContext:
+    """The default trust store, with the :func:`extra_ca` bundle."""
+    context = httpx.create_ssl_context()
+    if path := extra_ca():
+        context.load_verify_locations(cafile=path)
+    return context
+
+
+class Transport(httpx.AsyncBaseTransport):
+    """HTTPS to the origin of ``url`` only, through the egress proxy of
+    ``proxy_env`` unless its ``NO_PROXY`` names the host."""
+
+    def __init__(self, url: str, proxy_env: abc.Mapping[str, str]) -> None:
+        checked = check_url(url)
+        self.origin = origin(checked)
+        proxy = proxy_env.get('HTTPS_PROXY')
+        if bypasses(checked.host, proxy_env.get('NO_PROXY', '')):
+            proxy = None
+        self.inner = httpx.AsyncHTTPTransport(
+            verify=ssl_context(), proxy=proxy or None
+        )
+
+    async def handle_async_request(
+        self, request: httpx.Request
+    ) -> httpx.Response:
+        if origin(request.url) != self.origin:
+            raise Refused('cross_origin_request')
+        return await self.inner.handle_async_request(request)
+
+    async def aclose(self) -> None:
+        await self.inner.aclose()
+
+
+VARIABLE = re.compile(r'\$\{([^}]+)\}')
+FIELD_VALUE = re.compile(r'(?:[^\x00\s]+(?:[ \t]+[^\x00\s]+)*)?', re.ASCII)
+
+
+def fill(template: str, values: abc.Mapping[str, str]) -> str:
+    """``template`` with each ``${VAR}`` and ``${VAR:-default}`` filled
+    from ``values``. A variable with no value gets its default, else an
+    empty value."""
+
+    def value(match: re.Match[str]) -> str:
+        name, _, default = match.group(1).partition(':-')
+        return values.get(name, default)
+
+    return VARIABLE.sub(value, template)
+
+
+class Headers(httpx.Auth):
+    """The headers of a plugin MCP server, filled from the current
+    secret values on each request, so a renewed secret applies to an
+    open session. After a ``401`` the secrets that were sent are renewed
+    once, and the request is sent again when one changed.
+
+    Args:
+        templates: The server's headers, by name.
+        secrets: The secret of each mapped variable, by name.
+
+    """
+
+    requires_request_body = True
+
+    def __init__(
+        self,
+        templates: abc.Mapping[str, str],
+        secrets: abc.Mapping[str, credential.Refresher],
+    ) -> None:
+        self.templates = templates
+        self.secrets = secrets
+
+    def values(self) -> dict[str, str]:
+        return {
+            name: secret.credential.value
+            for name, secret in self.secrets.items()
+        }
+
+    def _fill(self, request: httpx.Request, values: dict[str, str]) -> None:
+        """Raises:
+        Refused: ``header_value_not_valid``, before the HTTP client
+            can put the value in an error message.
+
+        """
+        for name, template in self.templates.items():
+            value = fill(template, values)
+            if not FIELD_VALUE.fullmatch(value):
+                raise Refused('header_value_not_valid')
+            request.headers[name] = value
+
+    async def async_auth_flow(
+        self, request: httpx.Request
+    ) -> abc.AsyncGenerator[httpx.Request, httpx.Response]:
+        sent = self.values()
+        self._fill(request, sent)
+        response = yield request
+        if response.status_code != int(httpx.codes.UNAUTHORIZED):
+            return
+        await asyncio.gather(
+            *(
+                secret.renew(sent[name])
+                for name, secret in self.secrets.items()
+            ),
+            return_exceptions=True,
+        )
+        if (current := self.values()) != sent:
+            self._fill(request, current)
+            yield request
