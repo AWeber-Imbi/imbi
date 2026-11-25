@@ -1,0 +1,231 @@
+{
+  "outline": [
+    "section: *Good afternoon, Ada*",
+    "context: Acme · *0* things need you · Updated 2:01 PM",
+    "actions: New ticket(primary), Ask Imbi(), Open Imbi(), My profile(), Customize Home()",
+    "divider: ",
+    "section: *Needs attention (0)* [overflow:home:needs_attention:menu]",
+    "context: Agent requests, held tickets, and alerts on projects of your teams",
+    "context: Nothing waits on you.",
+    "divider: ",
+    "section: *Pull requests (0)* [overflow:home:pull_requests:menu]",
+    "section: Connect GitHub to see your pull requests. [button:home:pr:connect]",
+    "divider: ",
+    "context: 0 sections collapsed · 0 hidden · Customize Home · Imbi refreshes this tab when you open it"
+  ],
+  "view": {
+    "type": "home",
+    "blocks": [
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*Good afternoon, Ada*"
+        },
+        "block_id": "home:header"
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": "Acme · *0* things need you · Updated 2:01 PM"
+          }
+        ]
+      },
+      {
+        "type": "actions",
+        "elements": [
+          {
+            "type": "button",
+            "action_id": "home:header:new_ticket",
+            "text": {
+              "type": "plain_text",
+              "text": "New ticket",
+              "emoji": true
+            },
+            "url": "https://imbi.example/tickets/acme",
+            "style": "primary"
+          },
+          {
+            "type": "button",
+            "action_id": "home:header:ask",
+            "text": {
+              "type": "plain_text",
+              "text": "Ask Imbi",
+              "emoji": true
+            },
+            "url": "slack://app?team=T1&id=A1&tab=messages"
+          },
+          {
+            "type": "button",
+            "action_id": "home:header:open",
+            "text": {
+              "type": "plain_text",
+              "text": "Open Imbi",
+              "emoji": true
+            },
+            "url": "https://imbi.example/dashboard"
+          },
+          {
+            "type": "button",
+            "action_id": "home:header:profile",
+            "text": {
+              "type": "plain_text",
+              "text": "My profile",
+              "emoji": true
+            },
+            "url": "https://imbi.example/users/ada%40example.com"
+          },
+          {
+            "type": "button",
+            "action_id": "home:header:customize",
+            "text": {
+              "type": "plain_text",
+              "text": "Customize Home",
+              "emoji": true
+            }
+          }
+        ],
+        "block_id": "home:header:actions"
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*Needs attention (0)*"
+        },
+        "block_id": "home:needs_attention:header",
+        "accessory": {
+          "type": "overflow",
+          "action_id": "home:needs_attention:menu",
+          "options": [
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Collapse",
+                "emoji": true
+              },
+              "value": "collapse"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Move down",
+                "emoji": true
+              },
+              "value": "down"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Customize Home",
+                "emoji": true
+              },
+              "value": "customize"
+            }
+          ]
+        }
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": "Agent requests, held tickets, and alerts on projects of your teams"
+          }
+        ]
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": "Nothing waits on you."
+          }
+        ]
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*Pull requests (0)*"
+        },
+        "block_id": "home:pull_requests:header",
+        "accessory": {
+          "type": "overflow",
+          "action_id": "home:pull_requests:menu",
+          "options": [
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Collapse",
+                "emoji": true
+              },
+              "value": "collapse"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Hide from Home",
+                "emoji": true
+              },
+              "value": "hide"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Move up",
+                "emoji": true
+              },
+              "value": "up"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Customize Home",
+                "emoji": true
+              },
+              "value": "customize"
+            }
+          ]
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "Connect GitHub to see your pull requests."
+        },
+        "accessory": {
+          "type": "button",
+          "action_id": "home:pr:connect",
+          "text": {
+            "type": "plain_text",
+            "text": "Connect GitHub",
+            "emoji": true
+          },
+          "url": "https://imbi.example/settings"
+        }
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": "0 sections collapsed · 0 hidden · Customize Home · Imbi refreshes this tab when you open it"
+          }
+        ]
+      }
+    ]
+  }
+}
