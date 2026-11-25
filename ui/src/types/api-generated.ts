@@ -4949,7 +4949,7 @@ export interface paths {
          *
          *     A thread waits on the caller when the caller created its document
          *     or a comment in it mentions the caller, and the caller did not
-         *     acknowledge the newest comment by another author.
+         *     reply after or acknowledge the newest comment by another author.
          */
         get: operations["list_attention_comments_api_organizations__org_slug__comments_attention_get"];
         put?: never;

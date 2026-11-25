@@ -858,7 +858,8 @@ class AttentionCommentListResponse(pydantic.BaseModel):
 # a comment that mentions the caller. For each thread, find the newest
 # comment by another author (max() and match-back, because AGE loses an
 # ORDER BY in WITH), break a created_at tie on the highest id, and keep
-# the row only if the caller did not acknowledge that comment.
+# the row only if the caller did not reply after it and did not
+# acknowledge it.
 _ATTENTION_QUERY: typing.LiteralString = """
     MATCH (o:Organization {{slug: {org_slug}}})
     MATCH (t:CommentThread)-[:ON_DOCUMENT]->(d:Document)
@@ -875,9 +876,12 @@ _ATTENTION_QUERY: typing.LiteralString = """
     WITH t, d, p,
          max(CASE WHEN c.author <> {principal}
                   THEN c.created_at END) AS newest_at,
+         max(CASE WHEN c.author = {principal}
+                  THEN c.created_at END) AS mine_at,
          count(CASE WHEN {principal} IN c.mentions
                     THEN 1 END) AS mention_count
     WHERE newest_at IS NOT NULL
+      AND (mine_at IS NULL OR mine_at < newest_at)
       AND (d.created_by = {principal} OR mention_count > 0)
     MATCH (n:Comment)-[:IN_THREAD]->(t)
     WHERE n.created_at = newest_at AND n.author <> {principal}
@@ -927,7 +931,7 @@ async def list_attention_comments(
 
     A thread waits on the caller when the caller created its document
     or a comment in it mentions the caller, and the caller did not
-    acknowledge the newest comment by another author.
+    reply after or acknowledge the newest comment by another author.
     """
     records = await db.execute(
         _ATTENTION_QUERY,

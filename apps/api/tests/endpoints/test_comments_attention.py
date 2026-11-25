@@ -168,13 +168,25 @@ class AttentionCommentsTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_own_comment_never_returned(self) -> None:
         await self._thread('mine', owner=ME, comments_=[{'author': ME}])
         thread = await self._thread(
-            'replied',
+            'before',
             owner=ME,
-            comments_=[{'body': 'from bob'}, {'author': ME}],
+            comments_=[{'author': ME}, {'body': 'from bob'}],
         )
         rows = await self._list()
         self.assertEqual([thread], [r['thread_id'] for r in rows])
         self.assertEqual('from bob', rows[0]['body'])
+
+    async def test_reply_hides_until_next_comment(self) -> None:
+        await self._thread('replied', owner=ME, comments_=[{}, {'author': ME}])
+        self.assertEqual([], await self._list())
+        thread = await self._thread(
+            'again',
+            owner=ME,
+            comments_=[{}, {'author': ME}, {'body': 'bob again'}],
+        )
+        rows = await self._list()
+        self.assertEqual([thread], [r['thread_id'] for r in rows])
+        self.assertEqual('bob again', rows[0]['body'])
 
     async def test_limit_and_newest_first(self) -> None:
         older = await self._thread('a', owner=ME, comments_=[{}])
