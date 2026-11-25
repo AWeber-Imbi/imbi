@@ -9599,11 +9599,15 @@ export interface paths {
          *
          *     Renaming ``namespace`` or ``slug`` changes the reference every
          *     consumer uses, and frees the old reference for another prompt. So
-         *     a rename requires ``prompt:promote``, like a label move.
+         *     a rename requires ``prompt:promote``, like a label move. The
+         *     ``name`` and ``description`` of a skill go into the system prompt
+         *     of every consumer, so a change to them also requires
+         *     ``prompt:promote``.
          *
          *     Raises:
          *         400: Invalid patch or a read-only path.
-         *         403: A rename without ``prompt:promote``.
+         *         403: A rename, or a change to the name or description of a
+         *             skill, without ``prompt:promote``.
          *         404: No such prompt.
          *         409: The new ``namespace/slug`` is taken, the rename moves
          *             a prompt into or out of the ``workflows`` namespace, or the
