@@ -244,31 +244,56 @@ _NAMED_SCHEMAS = frozenset(
 )
 
 
-def _schemas(node: object) -> collections.abc.Iterator[dict[str, object]]:
-    """Yield the schema ``node`` and each subschema in it. Data (such as
-    ``default``) and ``x-`` annotations are not schemas."""
+def _refs_into_data(node: object) -> bool:
+    """Return ``True`` when a ``$ref`` in ``node`` points into data or an
+    ``x-`` annotation, which makes that value a schema."""
+    stack: list[object] = [node]
+    while stack:
+        item = stack.pop()
+        if isinstance(item, list):
+            stack.extend(typing.cast(list[object], item))
+        elif isinstance(item, dict):
+            item = typing.cast(dict[str, object], item)
+            stack.extend(item.values())
+            for key in ('$ref', '$dynamicRef'):
+                if not isinstance(ref := item.get(key), str):
+                    continue
+                for part in ref.partition('#')[2].split('/'):
+                    part = urllib.parse.unquote(part)
+                    part = part.replace('~1', '/').replace('~0', '~')
+                    if part in _DATA_KEYWORDS or part.startswith('x-'):
+                        return True
+    return False
+
+
+def _schemas(
+    node: object, skip_data: bool
+) -> collections.abc.Iterator[dict[str, object]]:
+    """Yield the schema ``node`` and each subschema in it. With
+    ``skip_data``, data (such as ``default``) and ``x-`` annotations
+    are not schemas, and the keys of ``properties`` are names; without
+    it, every object at every depth is a schema."""
     if isinstance(node, list):
         for item in typing.cast(list[object], node):
-            yield from _schemas(item)
+            yield from _schemas(item, skip_data)
         return
     if not isinstance(node, dict):
         return
     schema = typing.cast(dict[str, object], node)
     yield schema
     for key, value in schema.items():
-        if key in _DATA_KEYWORDS or key.startswith('x-'):
+        if skip_data and (key in _DATA_KEYWORDS or key.startswith('x-')):
             continue
-        if key in _NAMED_SCHEMAS and isinstance(value, dict):
-            yield from _schemas(
-                list(typing.cast(dict[str, object], value).values())
-            )
-        else:
-            yield from _schemas(value)
+        if skip_data and key in _NAMED_SCHEMAS and isinstance(value, dict):
+            value = list(typing.cast(dict[str, object], value).values())
+        yield from _schemas(value, skip_data)
 
 
-def schema_keys(node: object) -> set[str]:
-    """Return the keywords of the schema ``node`` and its subschemas."""
-    return {key for schema in _schemas(node) for key in schema}
+def schema_keys(schema: object) -> set[str]:
+    """Return the keywords of the whole JSON ``schema`` and its
+    subschemas. A ``$ref`` into data makes every key count."""
+    skip_data = not _refs_into_data(schema)
+    return {key for node in _schemas(schema, skip_data) for key in node}
 
 
 def unevaluated_re(schema: Schema) -> bool:
@@ -280,10 +305,10 @@ def unevaluated_re(schema: Schema) -> bool:
     )
 
 
-def _patterns(node: object) -> collections.abc.Iterator[str]:
+def _patterns(node: object, skip_data: bool) -> collections.abc.Iterator[str]:
     """Yield each ``pattern`` and ``patternProperties`` key of the schema
-    ``node`` and its subschemas."""
-    for schema in _schemas(node):
+    ``node`` and its subschemas (see :func:`_schemas`)."""
+    for schema in _schemas(node, skip_data):
         if isinstance(pattern := schema.get('pattern'), str):
             yield pattern
         if isinstance(keys := schema.get('patternProperties'), dict):
@@ -301,8 +326,9 @@ def check_patterns(schema: Schema) -> Schema:
     properties = typing.cast(dict[str, object], dumped.get('properties') or {})
     root = {k: v for k, v in dumped.items() if k != 'properties'}
     scopes = [*properties.items(), ('the schema', root)]
+    skip_data = not _refs_into_data(dumped)
     for name, node in scopes:
-        for pattern in _patterns(node):
+        for pattern in _patterns(node, skip_data):
             if error := pattern_error(pattern):
                 raise ValueError(f'{name}: pattern {pattern!r} {error}')
     if unevaluated_re(schema):

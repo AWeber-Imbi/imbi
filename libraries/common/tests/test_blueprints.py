@@ -649,6 +649,31 @@ class ValueCheckTests(unittest.TestCase):
             },
         )
 
+    def test_ref_into_data_is_checked(self) -> None:
+        message = self._save(
+            {
+                'type': 'object',
+                'default': {'type': 'string', 'pattern': '(?=a)'},
+                'properties': {'code': {'$ref': '#/properties/value/default'}},
+            }
+        )
+        self.assertIn('pattern', message)
+        schema = models.Schema.model_validate(
+            {
+                'type': 'object',
+                'properties': {
+                    'a': {
+                        'x-loose': {
+                            'patternProperties': {'^a': {}},
+                            'unevaluatedProperties': False,
+                        }
+                    },
+                    'b': {'$ref': '#/properties/a/x-loose'},
+                },
+            }
+        )
+        self.assertTrue(models.unevaluated_re(schema))
+
     def test_field_named_schema_is_checked(self) -> None:
         with self.assertRaisesRegex(
             pydantic.ValidationError, 'schema: pattern'
