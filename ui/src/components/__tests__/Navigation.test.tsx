@@ -101,4 +101,17 @@ describe('Navigation', () => {
     await userEvent.keyboard('{ArrowDown}')
     expect(screen.getAllByRole('menuitem')[0]).toHaveFocus()
   })
+
+  it('keeps the Agents menu open on ArrowDown after the pointer leaves', async () => {
+    const { Navigation } = await import('../Navigation')
+    render(<Navigation />)
+    const agents = screen.getByRole('link', { name: /Agents/ })
+    await userEvent.hover(agents)
+    await screen.findByRole('menuitem', { name: /Runners/ })
+    await userEvent.unhover(agents)
+    agents.focus()
+    await userEvent.keyboard('{ArrowDown}')
+    await new Promise((resolve) => setTimeout(resolve, 150))
+    expect(screen.getAllByRole('menuitem')[0]).toHaveFocus()
+  })
 })
