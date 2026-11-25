@@ -240,8 +240,13 @@ describe('AgentsArea', () => {
     expect(names()).toEqual(['Mender', 'Herald'])
     fireEvent.click(screen.getByRole('button', { name: 'Name' }))
     expect(names()).toEqual(['Herald', 'Mender'])
-    fireEvent.click(screen.getByRole('button', { name: 'Name' }))
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Name, sorted ascending' }),
+    )
     expect(names()).toEqual(['Mender', 'Herald'])
+    expect(
+      screen.getByRole('button', { name: 'Name, sorted descending' }),
+    ).toBeInTheDocument()
     await waitFor(() =>
       expect(screen.getAllByRole('row')[1]).toHaveTextContent('$12.50'),
     )

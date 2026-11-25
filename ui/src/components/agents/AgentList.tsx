@@ -90,6 +90,11 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
         type="button"
       >
         {text}
+        {active && (
+          <span className="sr-only">
+            , sorted {sort.dir === 1 ? 'ascending' : 'descending'}
+          </span>
+        )}
         <Icon
           className={`size-3.5 shrink-0 ${active ? '' : 'text-tertiary/50'}`}
         />
