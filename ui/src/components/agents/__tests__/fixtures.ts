@@ -48,24 +48,28 @@ export function catalog(): AgentToolCatalog {
     tools: [
       {
         capability: 'write',
+        default: false,
         description: 'Create a project.',
         key: 'imbi.create_project',
         name: 'create_project',
       },
       {
         capability: 'destructive',
+        default: false,
         description: 'Delete a project.',
         key: 'imbi.delete_project',
         name: 'delete_project',
       },
       {
         capability: 'unknown',
+        default: false,
         description: 'Return the current user.',
         key: 'imbi.get_me',
         name: 'get_me',
       },
       {
         capability: 'read',
+        default: false,
         description: 'Search the service catalog.',
         key: 'imbi.list_projects',
         name: 'list_projects',

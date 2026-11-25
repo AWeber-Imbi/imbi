@@ -72,6 +72,8 @@ export interface ToolGroupView {
 
 export interface ToolRow {
   capability: Capability | null
+  /** On for every agent: the switch cannot turn it off. */
+  default: boolean
   description: null | string
   key: string
   /** The tool is enabled, but the catalog does not list it now. */
@@ -191,9 +193,22 @@ export function toggleEnvironment(
   return { ...config, environments: allowed ? null : [...next].sort() }
 }
 
+/**
+ * The tool map with each default tool of the catalog added, as the
+ * API applies it. A stored entry wins.
+ */
+export function withDefaults(
+  catalog: AgentToolCatalog,
+  tools: AgentTools,
+): AgentTools {
+  const defaults = catalog.tools.filter((t) => t.default).map((t) => t.key)
+  return setTools(tools, defaults, true)
+}
+
 function catalogRow(tool: AgentToolCatalog['tools'][number]): ToolRow {
   return {
     capability: tool.capability,
+    default: tool.default,
     description: tool.description ?? null,
     key: tool.key,
     unavailable: false,
@@ -201,5 +216,11 @@ function catalogRow(tool: AgentToolCatalog['tools'][number]): ToolRow {
 }
 
 function unavailableRow(key: string): ToolRow {
-  return { capability: null, description: null, key, unavailable: true }
+  return {
+    capability: null,
+    default: false,
+    description: null,
+    key,
+    unavailable: true,
+  }
 }

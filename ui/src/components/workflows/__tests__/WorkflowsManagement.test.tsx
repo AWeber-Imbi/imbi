@@ -487,6 +487,21 @@ describe('WorkflowsManagement', () => {
     expect(endpoints.listStaleSideEffects).not.toHaveBeenCalled()
   })
 
+  it('lists the palette steps of each category alphabetically', async () => {
+    renderAt('/agents/workflows/deploy-guard')
+    await screen.findByRole('button', { name: 'Test run' })
+    const labels = screen
+      .getAllByTitle('Click to add, or drag onto the canvas')
+      .map((el) => el.querySelector('.text-sm')?.textContent)
+    expect(labels).toEqual([
+      'Manual run',
+      'Model decision',
+      'Wait',
+      'Agent task',
+      'Deploy',
+    ])
+  })
+
   it('test runs the workflow and shows a step output', async () => {
     vi.mocked(endpoints.testRunWorkflow).mockResolvedValue({
       skipped: [],

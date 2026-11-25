@@ -28,6 +28,7 @@ from slack_sdk.http_retry import builtin_async_handlers
 from slackwright import forms, inflight, ingest, render, stores
 
 from imbi.common import external_mcp, valkey
+from imbi.common.prompts import skills
 from imbi.slackbot import (
     agent,
     client,
@@ -249,7 +250,12 @@ async def _process(
         manager = mcp.get_manager()
         tools = manager.get_tools() or None
         external = external_mcp.get_manager()
-        await external.sync_enabled(identity.get_graph())
+        db = identity.get_graph()
+        _, skill_list = await asyncio.gather(
+            external.sync_enabled(db), skills.list_skills(db)
+        )
+        if skill_list:
+            tools = [*(tools or []), skills.TOOL]
         toolkit = slackwright.Toolkit(
             slack_client,
             channel_id=channel,
@@ -263,7 +269,9 @@ async def _process(
                 *manager.get_tool_names(),
                 *external.get_tool_names(),
                 *(tool['name'] for tool in toolkit.anthropic()),
+                *([skills.TOOL_NAME] if skill_list else []),
             ],
+            skill_list,
         )
         answer = await agent.run_turn(
             messages=convo,

@@ -133,6 +133,14 @@ The runner has these parts:
   the Imbi tools that the agent's tool map has. imbi-api checks the
   permissions of the agent's service account on each call. See
   [Agent API tokens](security.md#agent-api-tokens).
+- **Default tools.** Every agent has a set of read-only Imbi tools:
+  projects and their relationships, search, documents, tickets, the
+  project operations log, pull requests, drift, environments, releases,
+  deployments, and components. `DEFAULT_ROUTES` in
+  `imbi.api.agent_tools` lists their routes. imbi-api adds them to the
+  tool map of the bundle, so the runner and the tool call check see
+  them. A tool map entry for a default tool sets its configuration
+  (for example approval). An agent cannot turn a default tool off.
 - **Other MCP servers.** An agent gets other MCP servers only from the
   plugins of its marketplaces. The MCP servers in Admin › Assistant are
   for the assistant only.

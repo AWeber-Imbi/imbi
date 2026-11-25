@@ -5,7 +5,7 @@ from unittest import mock
 from slackwright import forms, inflight
 
 from apps.slackbot.tests import helpers
-from imbi.common import external_mcp
+from imbi.common import external_mcp, models
 from imbi.common.prompts import system as prompt_system
 from imbi.slackbot import identity, settings, slack_handler
 
@@ -461,6 +461,36 @@ class HandleEventTests(helpers.TestCase):
         self.assertEqual(kwargs['model'], 'claude-opus-5-5')
         self.assertEqual(kwargs['max_tokens'], 2048)
         self.assertEqual(kwargs['temperature'], 0.3)
+
+    async def test_skills_reach_prompt_and_tools(self) -> None:
+        user = identity.ImbiUser('ada@example.com', 'Ada')
+        event = {'channel': 'C', 'ts': '1', 'user': 'U1', 'text': '<@BOT> hi'}
+        skill = models.Prompt(
+            name='Triage', slug='triage', namespace='imbi-skills'
+        )
+        run_turn = mock.AsyncMock(return_value='ok')
+        with (
+            mock.patch.object(
+                slack_handler.identity,
+                'resolve',
+                new=mock.AsyncMock(return_value=user),
+            ),
+            mock.patch.object(
+                slack_handler.skills,
+                'list_skills',
+                new=mock.AsyncMock(return_value=[skill]),
+            ),
+            mock.patch.object(slack_handler.agent, 'run_turn', new=run_turn),
+        ):
+            await slack_handler.handle_event(
+                event, FakeSlackClient(replies=[]), bot_user_id='BOT'
+            )
+        build = slack_handler.system_prompt.build_system_prompt
+        names, skill_list = build.await_args.args[1:]
+        self.assertEqual([skill], skill_list)
+        self.assertIn('skill_invoke', names)
+        tools = run_turn.await_args.kwargs['tools']
+        self.assertIn('skill_invoke', [tool['name'] for tool in tools])
 
     async def test_run_turn_failure_posts_fallback(self) -> None:
         user = identity.ImbiUser('ada@example.com', 'Ada')
