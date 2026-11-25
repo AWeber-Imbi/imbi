@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 
 import { patchAgent } from '@/api/endpoints'
 import { AdminSection } from '@/components/admin/AdminSection'
+import { TagChips } from '@/components/tags/TagChip'
 import { AdminTable } from '@/components/ui/admin-table'
 import { FilterPopover } from '@/components/ui/filter-popover'
 import { Switch } from '@/components/ui/switch'
@@ -20,7 +21,6 @@ import type { Agent } from '@/types'
 import { formatMoney } from './agentDraft'
 import { useAgentUsage } from './agentQueries'
 import { agentsPath } from './agentsNav'
-import { AgentTags } from './AgentTagChip'
 import { formatCount } from './agentUsage'
 
 interface AgentListProps {
@@ -224,7 +224,7 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
               ),
             ),
             key: 'tags',
-            render: (a) => <AgentTags tags={a.tags} />,
+            render: (a) => <TagChips tags={a.tags} />,
           },
           {
             header: header(

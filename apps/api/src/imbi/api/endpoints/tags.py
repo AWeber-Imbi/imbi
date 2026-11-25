@@ -15,6 +15,7 @@ import nanoid
 import pydantic
 import slugify
 
+from imbi.api import tags as org_tags
 from imbi.api.auth import permissions
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.relationships import RelationshipSpec, build_relationships
@@ -374,20 +375,7 @@ async def merge_tag(
         raise fastapi.HTTPException(
             status_code=422, detail='Cannot merge a tag into itself'
         )
-    lookup_query: typing.LiteralString = """
-    MATCH (t:Tag)-[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
-    WHERE t.slug IN [{source}, {target}]
-    RETURN t.slug AS slug, t.id AS id
-    """
-    records = await db.execute(
-        lookup_query,
-        {'org_slug': org_slug, 'source': tag_slug, 'target': data.target},
-        columns=['slug', 'id'],
-    )
-    ids = {
-        graph.parse_agtype(r['slug']): graph.parse_agtype(r['id'])
-        for r in records
-    }
+    ids = await org_tags.ids_by_slug(db, org_slug, [tag_slug, data.target])
     for slug in (tag_slug, data.target):
         if slug not in ids:
             raise fastapi.HTTPException(

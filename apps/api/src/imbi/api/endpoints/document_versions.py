@@ -13,6 +13,7 @@ import typing
 import fastapi
 import pydantic
 
+from imbi.api import tags as org_tags
 from imbi.api.auth import permissions
 from imbi.api.endpoints import documents
 from imbi.api.endpoints._document_history import ChangeKind
@@ -155,9 +156,11 @@ async def restore_document_version(
         detail=f'Version {version} of document {document_id!r} not found',
     )
     raw_tags: list[typing.Any] = row.get('tags') or []
-    tags = await documents.filter_existing_tag_slugs(
-        db, org_slug, [str(t) for t in raw_tags]
-    )
+    # Tags deleted since the version was saved are dropped, so the
+    # restore does not fail on them.
+    slugs = [str(t) for t in raw_tags]
+    found = await org_tags.ids_by_slug(db, org_slug, slugs)
+    tags = [t for t in slugs if t in found]
     return await documents.apply_document_update(
         db,
         auth,

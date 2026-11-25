@@ -217,7 +217,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         # version, fetch
         self.mock_db.execute.side_effect = [
             [{'slug': 'ops', 'id': 'team-1'}],
-            [{'tag_slug': 'red', 'found': True}],
+            [{'slug': 'red', 'id': 'red'}],
             [],
             [],
             [{'id': 'agent-1'}],
@@ -517,8 +517,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.side_effect = [
             [{'slug': 'ops', 'id': 'team-1'}],
             [
-                {'tag_slug': 'red', 'found': True},
-                {'tag_slug': 'ghost', 'found': False},
+                {'slug': 'red', 'id': 'red'},
             ],
         ]
         response = self.client.post(
@@ -686,7 +685,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.side_effect = [
             [self._row(tags=['red'])],
             [{'slug': 'dev', 'id': 'team-2'}],
-            [{'tag_slug': 'blue', 'found': True}],
+            [{'slug': 'blue', 'id': 'blue'}],
             [self._row(team='dev', tags=['blue'], latest=2)],
         ]
         response = self.client.put(

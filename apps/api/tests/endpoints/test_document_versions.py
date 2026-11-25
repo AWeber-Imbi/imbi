@@ -184,7 +184,7 @@ class DocumentVersionEndpointsTestCase(support.SharedAppTestCase):
         )
         self.mock_db.execute.side_effect = [
             [self._project_row(n=current)],
-            [{'tag_slug': 'runbook', 'found': True}],
+            [{'slug': 'runbook', 'id': 'runbook'}],
             [{'id': 'document-1', 'version': 3}],
             [{'removed': 0}],
             [{'attached': 1}],
@@ -231,8 +231,7 @@ class DocumentVersionEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.side_effect = [
             [self._project_row(n=current)],
             [
-                {'tag_slug': 'runbook', 'found': True},
-                {'tag_slug': 'gone', 'found': False},
+                {'slug': 'runbook', 'id': 'runbook'},
             ],
             [{'id': 'document-1', 'version': 3}],
             [{'removed': 0}],

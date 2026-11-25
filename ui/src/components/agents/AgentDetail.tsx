@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Bot } from 'lucide-react'
 
 import { listAgentMarketplaces } from '@/api/endpoints'
+import { TagChips } from '@/components/tags/TagChip'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { MarkdownPreview } from '@/components/ui/markdown-editor/MarkdownPreview'
@@ -38,7 +39,6 @@ import {
   usePromptResolution,
 } from './agentQueries'
 import { agentsPath, ticketsPath } from './agentsNav'
-import { AgentTags } from './AgentTagChip'
 import { catalogTools, serverOf } from './agentTools'
 import {
   capStatus,
@@ -147,7 +147,7 @@ export function AgentDetail({ agent }: { agent: Agent }) {
       name: 'Runs (30 days)',
       value: usage ? formatCount(sumTotals(usage.agents).tasks) : '—',
     },
-    { name: 'Tags', value: <AgentTags tags={agent.tags} /> },
+    { name: 'Tags', value: <TagChips tags={agent.tags} /> },
   ]
 
   const system = version?.system ?? ''

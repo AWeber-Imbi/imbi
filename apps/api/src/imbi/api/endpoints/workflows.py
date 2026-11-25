@@ -30,6 +30,7 @@ import psycopg
 import pydantic
 import slugify
 
+from imbi.api import tags as org_tags
 from imbi.api import teams, workflows
 from imbi.api.auth import autonomous, organizations, permissions
 from imbi.api.endpoints import prompts
@@ -215,59 +216,12 @@ async def _teams(
     return await teams.by_id(db, org_id, ids)
 
 
-_TAGS_QUERY: typing.LiteralString = """
-MATCH (t:Tag)-[:BELONGS_TO]->(:Organization {{id: {org_id}}})
-WHERE t.id IN {ids} OR t.slug IN {slugs}
-RETURN t.id AS id, t.name AS name, t.slug AS slug, t.color AS color
-"""
-
-
-async def _find_tags(
-    db: graph.Graph,
-    org_id: str,
-    ids: abc.Iterable[str] = (),
-    slugs: abc.Iterable[str] = (),
-) -> list[dict[str, typing.Any]]:
-    """Return the org tags with these ids or slugs."""
-    ids, slugs = sorted(set(ids)), sorted(set(slugs))
-    if not ids and not slugs:
-        return []
-    records = await db.execute(
-        _TAGS_QUERY,
-        {'org_id': org_id, 'ids': ids, 'slugs': slugs},
-        ['id', 'name', 'slug', 'color'],
-    )
-    return [{k: graph.parse_agtype(v) for k, v in r.items()} for r in records]
-
-
 async def _tags(
     db: graph.Graph, org_id: str, rows: list[workflows.Row]
 ) -> dict[str, dict[str, typing.Any]]:
     """Return ``{id: tag}`` for the tags of the rows."""
-    found = await _find_tags(
-        db, org_id, ids=(t for r in rows for t in r['tag_ids'])
-    )
-    return {t['id']: t for t in found}
-
-
-async def _tag_ids(
-    db: graph.Graph, org_id: str, slugs: list[str]
-) -> list[str]:
-    """Return the ids of the tags with these slugs.
-
-    Raises:
-        422: A slug is not a tag of the org.
-
-    """
-    found = {
-        t['slug']: t['id'] for t in await _find_tags(db, org_id, slugs=slugs)
-    }
-    missing = sorted(set(slugs) - found.keys())
-    if missing:
-        raise fastapi.HTTPException(
-            status_code=422, detail=f'Tag slug(s) not found: {missing!r}'
-        )
-    return list(found.values())
+    ids = [t for r in rows for t in r['tag_ids']]
+    return await org_tags.by_id(db, org_id, ids)
 
 
 #: For each kind of resource that a step names by id: the ids in
@@ -721,6 +675,7 @@ async def _get(
 async def _definition(
     db: graph.Graph,
     org_id: str,
+    org_slug: str,
     data: WorkflowSave,
     auth: permissions.AuthContext,
 ) -> workflows.Definition:
@@ -737,11 +692,15 @@ async def _definition(
         raise fastapi.HTTPException(
             status_code=422, detail=[i.model_dump() for i in limits]
         )
+    owner_team_id, tag_ids = await asyncio.gather(
+        _team_id(db, org_id, data.owner_team_slug),
+        org_tags.require_ids(db, org_slug, data.tags),
+    )
     return workflows.Definition(
         name=data.name,
         description=data.description,
-        owner_team_id=await _team_id(db, org_id, data.owner_team_slug),
-        tag_ids=await _tag_ids(db, org_id, data.tags),
+        owner_team_id=owner_team_id,
+        tag_ids=list(tag_ids.values()),
         graph=data.graph.model_dump(mode='json'),
         settings=data.settings.model_dump(mode='json'),
         validation=result.model_dump(mode='json'),
@@ -856,7 +815,7 @@ async def create_workflow(
             status_code=422,
             detail='The name gives an empty slug; supply a slug',
         )
-    definition = await _definition(db, org_id, data, auth)
+    definition = await _definition(db, org_id, org_slug, data, auth)
     if not auth.is_admin and not await teams.is_member(
         db, auth, definition.owner_team_id
     ):
@@ -931,7 +890,7 @@ async def save_workflow(
         raise fastapi.HTTPException(
             status_code=404, detail=f'Workflow {slug!r} not found'
         )
-    definition = await _definition(db, org_id, data, auth)
+    definition = await _definition(db, org_id, org_slug, data, auth)
     # A save without `tags` keeps the stored tags; `[]` clears them.
     if 'tags' not in data.model_fields_set:
         definition = dataclasses.replace(

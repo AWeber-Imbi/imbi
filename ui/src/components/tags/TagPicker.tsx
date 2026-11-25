@@ -25,24 +25,19 @@ import { LABEL_SWATCHES } from '@/lib/chip-colors'
 import { queryKeys } from '@/lib/queryKeys'
 import type { Tag } from '@/types'
 
-import type { AgentTag } from './agentDraft'
-import { AgentTagChip } from './AgentTagChip'
+import { type ChipTag, TagChip } from './TagChip'
 
-interface AgentTagPickerProps {
-  onChange: (tags: AgentTag[]) => void
+interface TagPickerProps {
+  onChange: (tags: ChipTag[]) => void
   orgSlug: string
-  value: AgentTag[]
+  value: ChipTag[]
 }
 
 /**
- * Agent tags are org tags. Pick an existing tag, or create one with a
- * color from the chip palette (or no color).
+ * Pick org tags: an existing tag, or a new one with a color from the
+ * chip palette (or no color).
  */
-export function AgentTagPicker({
-  onChange,
-  orgSlug,
-  value,
-}: AgentTagPickerProps) {
+export function TagPicker({ onChange, orgSlug, value }: TagPickerProps) {
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -77,7 +72,7 @@ export function AgentTagPicker({
   return (
     <div className="flex min-h-10 flex-wrap items-center gap-2">
       {value.map((tag) => (
-        <AgentTagChip key={tag.slug} tag={tag}>
+        <TagChip key={tag.slug} tag={tag}>
           <button
             aria-label={`Remove tag ${tag.name}`}
             className="ml-1 inline-flex opacity-70 hover:opacity-100"
@@ -86,7 +81,7 @@ export function AgentTagPicker({
           >
             <X className="size-3" />
           </button>
-        </AgentTagChip>
+        </TagChip>
       ))}
       <Popover onOpenChange={setOpen} open={open}>
         <PopoverTrigger asChild>
@@ -112,7 +107,7 @@ export function AgentTagPicker({
                       onSelect={() => add(t)}
                       value={t.name}
                     >
-                      <AgentTagChip tag={t} />
+                      <TagChip tag={t} />
                     </CommandItem>
                   ))}
               </CommandGroup>
