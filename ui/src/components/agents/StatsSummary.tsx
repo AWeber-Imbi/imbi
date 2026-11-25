@@ -40,7 +40,7 @@ export function StatsSummary({
             part('bg-(--tj-border-2)', 'Other', b.time.other, time),
             part('bg-(--tj-border-1)', 'Idle', b.time.idle, time),
           ]}
-          title="From the ticket's creation to its close. Idle is the time no turn was running. Subagents count once while they run at the same time."
+          title="From the ticket's creation to its close. Idle is the time no turn was running. Subagents count once while they run at the same time, and Tools only while no subagent runs."
           value={time((totals.totalMs ?? 0) + b.time.idle)}
         />
         <Figure

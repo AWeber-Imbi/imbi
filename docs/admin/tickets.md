@@ -609,12 +609,16 @@ The **Trajectory** view shows every event of the ticket as one row: a person's i
 
 #### Statistics
 
-The **Statistics** view shows one row for each turn, and a **Task total** row at the bottom.
+The **Statistics** view opens with a summary of the ticket, then shows one row for each turn, and a **Task total** row at the bottom.
 
+- **Time** splits the ticket's time into model, subagents, tools, other, and **Idle**, the time no turn was running. Once the ticket closes, Time matches the duration in the header. Subagents that ran at the same time count once, and tool time counts only while no subagent ran.
+- **Cost** splits the cost between the main agent and its subagents. **Tokens** counts every token, subagents included. **Context** shows the main agent's prompt size at each step.
+- **Most expensive** and **Slowest** list the five steps or subagents that cost the most or ran the longest. Slowest leaves out steps that ran subagents and lists their subagents instead. Click an item to select its row in the table.
 - Hover a column heading to see how it is counted.
 - **Context** is the size of the prompt: uncached input, cache read, and cache write. **Cache** is the share of it served from the cache.
-- **Output**, **Model** (model time), **Tools** (tool time), and **Speed** (output tokens per model second) come from the model requests. The **Total** bar shows model time in purple, tool time in amber, and everything else in grey.
-- Click a turn to show its steps, one for each model request. Click a step to read its answer.
+- **Output**, **Cost**, **Model** (model time), and **Tools** (tool time) come from the model requests. Hover a Model cell to see the output speed. The **Total** bar shows model time in purple, tool time in amber, and everything else in grey.
+- Click a turn to show its steps, one for each model request. Under each step, its subagents show as rows with their own context, output, cache, cost, model time, and tools. The cost of a turn and of the task counts the subagents once.
+- Click a row to select it. Double-click it, or use its trajectory button, to open the Trajectory view at that step or subagent.
 - The speech-bubble button next to a turn opens the Conversation view at that turn.
 - **Latest** shows the context of the last step of a turn, and **Cumulative** adds up its steps. The **±** button shows how much the context grew at each step. The browser remembers both choices.
 
