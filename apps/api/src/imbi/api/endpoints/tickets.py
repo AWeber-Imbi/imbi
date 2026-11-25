@@ -588,6 +588,9 @@ class WaitingTicket(pydantic.BaseModel):
     assignee: str | None = None
     agent_id: str | None = None
     owner: str
+    due_date: datetime.date | None = None
+    #: The place in the backlog, lower first. ``None``: not ranked.
+    backlog_rank: float | None = None
     created_at: datetime.datetime
     updated_at: datetime.datetime
     #: For a held ticket: its gating prerequisites that closed with an

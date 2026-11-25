@@ -130,3 +130,29 @@ class WaitingTests(test_agent_tasks.AgentTaskTestCase):
             await self.waiting(),
             {'count': 0, 'requests': [], 'assigned': [], 'held': []},
         )
+
+    async def test_assigned_carries_due_date_and_rank(self) -> None:
+        response = await self.client.post(
+            self.url(),
+            json={
+                'assignee_kind': 'person',
+                'assignee': self.email,
+                'title': 'Rotate',
+                'description': 'Rotate the key.',
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        short_id = response.json()['short_id']
+        body = await self.waiting()
+        self.assertEqual(body['assigned'][0]['due_date'], None)
+        self.assertEqual(body['assigned'][0]['backlog_rank'], None)
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE tickets.tickets SET due_date = '2026-12-01',"
+                ' backlog_rank = 2.5'
+                ' WHERE organization_id = %s AND short_id = %s',
+                (self.org, short_id),
+            )
+        body = await self.waiting()
+        self.assertEqual(body['assigned'][0]['due_date'], '2026-12-01')
+        self.assertEqual(body['assigned'][0]['backlog_rank'], 2.5)

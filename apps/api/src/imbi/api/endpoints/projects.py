@@ -19,7 +19,7 @@ from imbi.api import blueprint_attributes, blueprint_sections, secret_broker
 from imbi.api.auth import organizations, permissions
 from imbi.api.domain import scoring as scoring_models
 from imbi.api.domain.models import ExistsInResponse
-from imbi.api.endpoints import _search_index
+from imbi.api.endpoints import _search_index, pull_requests
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.endpoints._json_fields import (
     JSONFields,
@@ -2358,7 +2358,10 @@ async def list_projects(
         for p in project_data_list
         if p.get('id') and _delivery_of(p).releasable
     ]
-    viewer = auth.identity_for('github-enterprise-cloud')
+    # No projects, no PR counts: skip the identity read.
+    viewer = (
+        await pull_requests.github_login(db, auth) if project_ids else None
+    )
     (
         pr_counts,
         releases,

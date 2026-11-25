@@ -8917,7 +8917,12 @@ export interface paths {
          *     The set of projects is resolved from the graph so results are
          *     scoped to the calling user's org.  Optional ``state`` filter
          *     accepts ``open`` or ``closed``.  Optional ``author`` filter
-         *     accepts a GitHub login.  Results are ordered newest first.
+         *     accepts a GitHub login.  Optional ``reviewer`` filter accepts a
+         *     GitHub login and keeps the open PRs with a pending review request
+         *     for that login.  ``author`` and ``reviewer`` also accept ``@me``,
+         *     the GitHub login of the caller; when the caller has none, the list
+         *     is empty and ``github_identity_missing`` is true.  Results are
+         *     ordered newest first.
          */
         get: operations["list_org_pull_requests_api_organizations__org_slug__pull_requests__get"];
         put?: never;
@@ -8943,8 +8948,10 @@ export interface paths {
          *     environment of a promotion pipeline (production, typically)
          *     started at or before the merge.  Only PRs merged in the last
          *     ``days`` days are considered; ``author`` narrows to one GitHub
-         *     login and ``bots`` to authors named with GitHub's ``[bot]``
-         *     suffix.  Rows are ordered oldest merge first.
+         *     login (``@me``: the login of the caller; when the caller has none,
+         *     the list is empty and ``github_identity_missing`` is true) and
+         *     ``bots`` to authors named with GitHub's ``[bot]`` suffix.  Rows are
+         *     ordered oldest merge first.
          */
         get: operations["list_pending_deploy_pull_requests_api_organizations__org_slug__pull_requests_pending_deploy_get"];
         put?: never;
@@ -18193,6 +18200,11 @@ export interface components {
             environments: string[];
             /** Data */
             data: components["schemas"]["PendingDeployPullRequest"][];
+            /**
+             * Github Identity Missing
+             * @default false
+             */
+            github_identity_missing: boolean;
         };
         /**
          * Permission
@@ -19750,6 +19762,11 @@ export interface components {
             project_count: number;
             /** Total */
             total: number;
+            /**
+             * Github Identity Missing
+             * @default false
+             */
+            github_identity_missing: boolean;
         };
         /**
          * PullRequestResponse
@@ -23575,6 +23592,10 @@ export interface components {
             agent_id?: string | null;
             /** Owner */
             owner: string;
+            /** Due Date */
+            due_date?: string | null;
+            /** Backlog Rank */
+            backlog_rank?: number | null;
             /**
              * Created At
              * Format: date-time
@@ -38614,6 +38635,7 @@ export interface operations {
             query?: {
                 state?: string | null;
                 author?: string | null;
+                reviewer?: string | null;
                 limit?: number;
                 offset?: number;
             };
