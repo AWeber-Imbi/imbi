@@ -92,6 +92,7 @@ import {
 } from './subagentRuns'
 import { Prose, Todos, ToolReadable } from './taskEntryViews'
 import {
+  formatCost,
   formatElapsed,
   formatTokens,
   isFailed,
@@ -612,16 +613,10 @@ function CallRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
           />
         )}
         {e && ctx.onInspect && (
-          <Button
-            aria-label={`Open ${toolLabel(tool)} in the trajectory`}
-            className="text-muted-foreground hover:text-foreground -ml-1 h-6 w-fit gap-1 px-1 text-xs font-normal [&_svg]:size-3.5"
-            onClick={() => ctx.onInspect?.(e.seq)}
-            size="sm"
-            variant="ghost"
-          >
-            <ChartGantt />
-            Open in trajectory
-          </Button>
+          <OpenInTrajectory
+            label={`Open ${toolLabel(tool)} in the trajectory`}
+            onOpen={() => ctx.onInspect?.(e.seq)}
+          />
         )}
         {entry.children.length > 0 && (
           <div className="border-accent/40 flex flex-col gap-2 border-l-2 pl-3">
@@ -658,11 +653,6 @@ function callSummary(entry: TimelineEntry, ctx: Ctx): string {
   return typeof args === 'string'
     ? args.slice(0, 200)
     : toolSummary(String(tool ?? 'tool'), isRecord(args) ? args : {})
-}
-
-/** `$0.19`, `<$0.01`. */
-function formatCost(cost: number): string {
-  return cost < 0.01 ? '<$0.01' : `$${cost.toFixed(2)}`
 }
 
 function GroupView({
@@ -724,7 +714,27 @@ function holdsRequest(turn: Turn, open: Set<string>): boolean {
   )
 }
 
-/** Subagents that ran at once: one header for the batch, then each run. */
+function OpenInTrajectory({
+  label,
+  onOpen,
+}: {
+  label: string
+  onOpen: () => void
+}) {
+  return (
+    <Button
+      aria-label={label}
+      className="text-muted-foreground hover:text-foreground -ml-1 h-6 w-fit gap-1 px-1 text-xs font-normal [&_svg]:size-3.5"
+      onClick={onOpen}
+      size="sm"
+      variant="ghost"
+    >
+      <ChartGantt />
+      Open in trajectory
+    </Button>
+  )
+}
+
 function ParallelRuns({ ctx, runs }: { ctx: Ctx; runs: SubagentRun[] }) {
   const { wall, work } = spanOf(runs)
   const usage = sumUsage(runs)
@@ -855,7 +865,6 @@ function searchText(entry: TimelineEntry): string {
   ].join(' ')
 }
 
-/** A subagent as its own run: what it was asked, its steps, and its answer. */
 function SubagentCard({ ctx, run }: { ctx: Ctx; run: SubagentRun }) {
   const { entry } = run
   const e = entry.event
@@ -948,16 +957,10 @@ function SubagentCard({ ctx, run }: { ctx: Ctx; run: SubagentRun }) {
           </SubagentSection>
         )}
         {e && ctx.onInspect && (
-          <Button
-            aria-label="Open the subagent in the trajectory"
-            className="text-muted-foreground hover:text-foreground -ml-1 h-6 w-fit gap-1 px-1 text-xs font-normal [&_svg]:size-3.5"
-            onClick={() => ctx.onInspect?.(e.seq)}
-            size="sm"
-            variant="ghost"
-          >
-            <ChartGantt />
-            Open in trajectory
-          </Button>
+          <OpenInTrajectory
+            label="Open the subagent in the trajectory"
+            onOpen={() => ctx.onInspect?.(e.seq)}
+          />
         )}
       </TraceCollapsibleContent>
     </TraceCollapsible>

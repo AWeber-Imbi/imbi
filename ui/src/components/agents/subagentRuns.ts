@@ -40,11 +40,14 @@ const EMPTY: SubagentUsage = {
   requests: 0,
 }
 
+export function isAgentTool(tool: unknown): boolean {
+  return tool === 'Agent' || tool === 'Task'
+}
+
 export function isSubagent(entry: TimelineEntry): boolean {
   const e = entry.event
   if (!e) return entry.children.length > 0
-  const tool = e.payload.tool
-  return e.type === 'tool.called' && (tool === 'Agent' || tool === 'Task')
+  return e.type === 'tool.called' && isAgentTool(e.payload.tool)
 }
 
 /** Wall time from the first start to the last end, and the summed run time. */
@@ -55,6 +58,11 @@ export function spanOf(runs: SubagentRun[]): { wall: number; work: number } {
     wall: end - start,
     work: runs.reduce((n, r) => n + (r.end - r.start), 0),
   }
+}
+
+/** A subagent's answer, without the harness's hand-back preamble. */
+export function stripHandBack(text: string): string {
+  return text.replace(HAND_BACK, '').trim()
 }
 
 export function subagentRun(
@@ -98,22 +106,10 @@ export function subagentRun(
 export function subagentUsage(
   events: readonly TicketEvent[],
 ): Map<string, SubagentUsage> {
-  const out = new Map<string, SubagentUsage>()
-  const n = (v: unknown) => {
-    const x = typeof v === 'string' ? Number(v) : v
-    return typeof x === 'number' && Number.isFinite(x) ? x : 0
-  }
-  for (const [e, agent] of usageAgents(events)) {
-    const u = out.get(agent) ?? { ...EMPTY }
-    u.input += n(e.payload.tokens_in)
-    u.output += n(e.payload.tokens_out)
-    u.cacheRead += n(e.payload.cache_read_tokens)
-    u.cacheWrite += n(e.payload.cache_write_tokens)
-    u.cost += n(e.payload.cost)
-    u.requests++
-    out.set(agent, u)
-  }
-  return out
+  const reports = new Map<string, TicketEvent[]>()
+  for (const [e, agent] of usageAgents(events))
+    reports.set(agent, [...(reports.get(agent) ?? []), e])
+  return new Map([...reports].map(([agent, r]) => [agent, usageOf(r)]))
 }
 
 export function sumUsage(runs: SubagentRun[]): SubagentUsage {
@@ -162,16 +158,26 @@ export function usageAgents(
       if (agent) out.set(e, agent)
       unjoined = id !== null && !joined.has(id) ? e : null
     } else if (e.type === 'tool.called' && !p.parent_call_id) {
-      if (
-        unjoined &&
-        (p.tool === 'Agent' || p.tool === 'Task') &&
-        typeof p.call_id === 'string'
-      )
+      if (unjoined && isAgentTool(p.tool) && typeof p.call_id === 'string')
         out.set(unjoined, p.call_id)
       unjoined = null
     }
   }
   return out
+}
+
+/** The summed tokens and cost of usage reports. */
+export function usageOf(reports: readonly TicketEvent[]): SubagentUsage {
+  const u = { ...EMPTY }
+  for (const { payload: p } of reports) {
+    u.input += num(p.tokens_in)
+    u.output += num(p.tokens_out)
+    u.cacheRead += num(p.cache_read_tokens)
+    u.cacheWrite += num(p.cache_write_tokens)
+    u.cost += num(p.cost)
+    u.requests++
+  }
+  return u
 }
 
 /**
@@ -208,15 +214,20 @@ export function workSlots(
   return out
 }
 
-/** The subagent's answer, without the harness's hand-back preamble. */
 function answerOf(result: unknown): string {
   if (result == null) return ''
-  const text = typeof result === 'string' ? result : JSON.stringify(result)
-  return text.replace(HAND_BACK, '').trim()
+  return stripHandBack(
+    typeof result === 'string' ? result : JSON.stringify(result),
+  )
 }
 
 const HAND_BACK = /^\s*\[Subagent hand-back\][\s\S]*?The report follows:\s*/
 
 function flat(entry: TimelineEntry): TimelineEntry[] {
   return entry.children.flatMap((child) => [child, ...flat(child)])
+}
+
+function num(v: unknown): number {
+  const x = typeof v === 'string' ? Number(v) : v
+  return typeof x === 'number' && Number.isFinite(x) ? x : 0
 }

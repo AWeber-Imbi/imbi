@@ -144,6 +144,11 @@ export function checksFrom(events: TicketEvent[]): TicketEvent[] {
   return [...byName.values()]
 }
 
+/** `$0.19`, `<$0.01`. */
+export function formatCost(cost: number): string {
+  return cost < 0.01 ? '<$0.01' : `$${cost.toFixed(2)}`
+}
+
 /** `9m 12s`, `2h 4m`, `3d 2h`: the two largest units. */
 export function formatElapsed(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000))

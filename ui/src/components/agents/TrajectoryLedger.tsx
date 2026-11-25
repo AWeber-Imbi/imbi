@@ -22,7 +22,8 @@ import { clockTime, fullTime } from '@/lib/formatDate'
 import { cn } from '@/lib/utils'
 
 import { FindStub } from './FindStub'
-import { formatElapsed, formatTokens } from './taskEvents'
+import { totalTokens } from './subagentRuns'
+import { formatCost, formatElapsed, formatTokens } from './taskEvents'
 import {
   type Fold,
   KIND_LABEL,
@@ -407,16 +408,13 @@ function BatchRow({
   const wall = Math.max(...spans.map(([, e]) => e)) - start
   const work = spans.reduce((n, [s, e]) => n + (e - s), 0)
   const usage = runs.map((r) => r.subagent?.usage)
-  const tokens = usage.reduce(
-    (n, u) => n + (u ? u.input + u.output + u.cacheRead + u.cacheWrite : 0),
-    0,
-  )
+  const tokens = usage.reduce((n, u) => n + (u ? totalTokens(u) : 0), 0)
   const cost = usage.reduce((n, u) => n + (u?.cost ?? 0), 0)
   const stats = [
     `${formatElapsed(wall)} wall`,
     `${formatElapsed(work)} of work`,
     tokens ? `${formatTokens(tokens)} tok` : null,
-    cost ? `$${cost.toFixed(2)}` : null,
+    cost ? formatCost(cost) : null,
   ].filter(Boolean)
   return (
     <tr
@@ -757,11 +755,11 @@ function SubagentContent({ record }: { record: TrajectoryRecord }) {
       ? record.endedAt - record.startedAt
       : null
   const u = s.usage
-  const tokens = u.input + u.output + u.cacheRead + u.cacheWrite
+  const tokens = totalTokens(u)
   const stats = [
     `${s.steps} ${s.steps === 1 ? 'tool' : 'tools'}`,
     tokens ? `${formatTokens(tokens)} tok` : null,
-    u.cost ? `$${u.cost.toFixed(2)}` : null,
+    u.cost ? formatCost(u.cost) : null,
     ms === null ? 'running' : formatElapsed(ms),
   ].filter(Boolean)
   const answer = preview(s.answer)
@@ -799,7 +797,7 @@ function SubagentContent({ record }: { record: TrajectoryRecord }) {
         </span>
         <span className="mx-2 text-(--tj-caption)">→</span>
         <span
-          className={answer ? 'text-(--tj-label-2)' : 'text-(--tj-caption)'}
+          className={cn(answer ? 'text-(--tj-label-2)' : 'text-(--tj-caption)')}
         >
           {answer || 'No answer yet'}
         </span>

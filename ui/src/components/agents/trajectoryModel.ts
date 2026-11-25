@@ -1,6 +1,12 @@
 import type { TicketEvent } from '@/types'
 
-import { usageAgents } from './subagentRuns'
+import {
+  isAgentTool,
+  stripHandBack,
+  type SubagentUsage,
+  usageAgents,
+  usageOf,
+} from './subagentRuns'
 import { isCreated } from './taskEvents'
 import { systemText } from './taskText'
 import { isError, timeline, type TimelineEntry } from './taskTimeline'
@@ -90,14 +96,7 @@ export interface TrajectorySubagent {
   errors: number
   steps: number
   type: string
-  usage: {
-    cacheRead: number
-    cacheWrite: number
-    cost: number
-    input: number
-    output: number
-    requests: number
-  }
+  usage: SubagentUsage
 }
 
 export interface TrajectorySubrequest {
@@ -339,10 +338,7 @@ export function formatDuration(ms: number): string {
 }
 
 export function isAgentCall(record: TrajectoryRecord): boolean {
-  return (
-    record.kind === 'tool' &&
-    (record.tool?.tool === 'Agent' || record.tool?.tool === 'Task')
-  )
+  return record.kind === 'tool' && isAgentTool(record.tool?.tool)
 }
 
 /** How long after the record row above each record started, in ms; none for the first row, a row after a fold, or a row next to one with no start. */
@@ -682,6 +678,23 @@ function splitUsage(events: TicketEvent[]): {
   return { main, sub }
 }
 
+function subagentOf(
+  record: TrajectoryRecord,
+  records: TrajectoryRecord[],
+): TrajectorySubagent {
+  const args = isRecord(record.tool?.arguments) ? record.tool.arguments : {}
+  const text = (v: unknown) => (typeof v === 'string' ? v : '')
+  const children = records.filter((r) => r.parent === record.id)
+  return {
+    answer: stripHandBack(resultText(record.tool?.resultValue)),
+    description: text(args.description),
+    errors: children.filter((r) => r.error).length,
+    steps: children.length,
+    type: text(args.subagent_type),
+    usage: usageOf(record.events.filter((e) => e.type === 'usage.reported')),
+  }
+}
+
 /** The subagent tool calls under a call, flattened in start order. */
 function subcalls(entry: TimelineEntry): TimelineEntry[] {
   const out: TimelineEntry[] = []
@@ -693,43 +706,6 @@ function subcalls(entry: TimelineEntry): TimelineEntry[] {
   }
   walk(entry)
   return out.sort((a, b) => a.seq - b.seq)
-}
-
-const HAND_BACK = /^\s*\[Subagent hand-back\][\s\S]*?The report follows:\s*/
-
-function subagentOf(
-  record: TrajectoryRecord,
-  records: TrajectoryRecord[],
-): TrajectorySubagent {
-  const args = isRecord(record.tool?.arguments) ? record.tool.arguments : {}
-  const text = (v: unknown) => (typeof v === 'string' ? v : '')
-  const children = records.filter((r) => r.parent === record.id)
-  const usage = {
-    cacheRead: 0,
-    cacheWrite: 0,
-    cost: 0,
-    input: 0,
-    output: 0,
-    requests: 0,
-  }
-  for (const e of record.events) {
-    if (e.type !== 'usage.reported') continue
-    const p = e.payload
-    usage.input += Number(p.tokens_in ?? 0)
-    usage.output += Number(p.tokens_out ?? 0)
-    usage.cacheRead += Number(p.cache_read_tokens ?? 0)
-    usage.cacheWrite += Number(p.cache_write_tokens ?? 0)
-    usage.cost += Number(p.cost ?? 0)
-    usage.requests += 1
-  }
-  return {
-    answer: resultText(record.tool?.resultValue).replace(HAND_BACK, '').trim(),
-    description: text(args.description),
-    errors: children.filter((r) => r.error).length,
-    steps: children.length,
-    type: text(args.subagent_type),
-    usage,
-  }
 }
 
 function summary(records: TrajectoryRecord[]): string {
