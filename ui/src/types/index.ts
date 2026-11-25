@@ -1774,12 +1774,16 @@ export interface SchemaProperty {
   iconRange?: Record<string, string>
   id: string
   itemsEnumValues?: string[]
+  itemsFormat?: string
+  itemsPattern?: string
   itemsType?: 'boolean' | 'integer' | 'number' | 'string'
   maximum?: number
   maxLength?: number
   minimum?: number
   minLength?: number
+  multipleOf?: number
   name: string
+  pattern?: string
   required: boolean
   type: 'array' | 'boolean' | 'integer' | 'number' | 'object' | 'string'
 }

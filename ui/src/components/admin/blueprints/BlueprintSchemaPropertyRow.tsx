@@ -274,33 +274,11 @@ export function BlueprintSchemaPropertyRow({
 
           {prop.type === 'string' && (
             <div className="grid grid-cols-4 gap-3">
-              <div>
-                <Label className="text-secondary mb-1 block text-xs">
-                  Format
-                </Label>
-                {/* Radix disallows '' as a SelectItem value; the empty
-                    STRING_FORMATS entry becomes "none" and gets translated
-                    back to undefined on store. */}
-                <Select
-                  onValueChange={(v) =>
-                    updateProperty(prop.id, {
-                      format: v === 'none' ? undefined : v,
-                    })
-                  }
-                  value={prop.format || 'none'}
-                >
-                  <SelectTrigger aria-label="Format">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {STRING_FORMATS.map((f) => (
-                      <SelectItem key={f || 'none'} value={f || 'none'}>
-                        {f || '(none)'}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <FormatSelect
+                label="Format"
+                onChange={(format) => updateProperty(prop.id, { format })}
+                value={prop.format}
+              />
               <div>
                 <Label className="text-secondary mb-1 block text-xs">
                   Min Length
@@ -363,6 +341,15 @@ export function BlueprintSchemaPropertyRow({
                 </Select>
               </div>
             </div>
+          )}
+
+          {prop.type === 'string' && (
+            <PatternInput
+              label="Pattern"
+              onChange={(pattern) => updateProperty(prop.id, { pattern })}
+              placeholder="e.g. ^\d+(\.\d{2})?$"
+              value={prop.pattern}
+            />
           )}
 
           {prop.type === 'array' && (
@@ -430,11 +417,30 @@ export function BlueprintSchemaPropertyRow({
                   }
                 />
               </div>
+              {(prop.itemsType ?? 'string') === 'string' && (
+                <>
+                  <FormatSelect
+                    label="Items Format"
+                    onChange={(itemsFormat) =>
+                      updateProperty(prop.id, { itemsFormat })
+                    }
+                    value={prop.itemsFormat}
+                  />
+                  <PatternInput
+                    label="Items Pattern"
+                    onChange={(itemsPattern) =>
+                      updateProperty(prop.id, { itemsPattern })
+                    }
+                    placeholder="e.g. ^[A-Z]+-\d+$"
+                    value={prop.itemsPattern}
+                  />
+                </>
+              )}
             </div>
           )}
 
           {(prop.type === 'integer' || prop.type === 'number') && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div>
                 <Label className="text-secondary mb-1 block text-xs">
                   Minimum
@@ -467,6 +473,30 @@ export function BlueprintSchemaPropertyRow({
                   }
                   type="number"
                   value={prop.maximum ?? ''}
+                />
+              </div>
+              <div>
+                <Label className="text-secondary mb-1 block text-xs">
+                  Multiple Of
+                </Label>
+                {/* Uncontrolled: a draft such as "0" of "0.01" is not a
+                    valid step yet, and a controlled value would clear it. */}
+                <Input
+                  aria-label="Multiple of"
+                  className="text-sm"
+                  defaultValue={prop.multipleOf ?? ''}
+                  min={0}
+                  onChange={(e) =>
+                    updateProperty(prop.id, {
+                      multipleOf:
+                        Number(e.target.value) > 0
+                          ? Number(e.target.value)
+                          : undefined,
+                    })
+                  }
+                  placeholder="e.g. 0.01"
+                  step="any"
+                  type="number"
                 />
               </div>
             </div>
@@ -600,6 +630,70 @@ export function BlueprintSchemaPropertyRow({
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+/** A string format; '(none)' clears it. */
+function FormatSelect({
+  label,
+  onChange,
+  value,
+}: {
+  label: string
+  onChange: (value: string | undefined) => void
+  value?: string
+}) {
+  return (
+    <div>
+      <Label className="text-secondary mb-1 block text-xs">{label}</Label>
+      {/* Radix disallows '' as a SelectItem value; the empty
+          STRING_FORMATS entry becomes "none" and gets translated
+          back to undefined on store. */}
+      <Select
+        onValueChange={(v) => onChange(v === 'none' ? undefined : v)}
+        value={value || 'none'}
+      >
+        <SelectTrigger aria-label={label}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {STRING_FORMATS.map((f) => (
+            <SelectItem key={f || 'none'} value={f || 'none'}>
+              {f || '(none)'}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+/** A regular expression that a string value must match. */
+function PatternInput({
+  label,
+  onChange,
+  placeholder,
+  value,
+}: {
+  label: string
+  onChange: (value: string | undefined) => void
+  placeholder: string
+  value?: string
+}) {
+  return (
+    <div>
+      <Label className="text-secondary mb-1 block text-xs">
+        {label} (regular expression)
+      </Label>
+      <Input
+        aria-label={label}
+        className="font-mono text-sm"
+        keepLeadingSpace
+        onChange={(e) => onChange(e.target.value || undefined)}
+        placeholder={placeholder}
+        value={value ?? ''}
+      />
     </div>
   )
 }

@@ -1,6 +1,8 @@
 """The check of the values that blueprints define: the custom fields
 of a ticket and the fields of a deployment."""
 
+import collections.abc
+import functools
 import typing
 
 import fastapi
@@ -137,8 +139,29 @@ def _schema_errors(
                 mode='json', by_alias=True, exclude_none=True
             ),
         )
-        cls = jsonschema.validators.validator_for(schema)
-        cls.check_schema(schema)
+        cls = _linear(
+            jsonschema.validators.validator_for(schema),
+            'patternProperties' in models.schema_keys(schema),
+        )
+        # Not check_schema(): its regex format compiles each pattern
+        # with Python re, which refuses some patterns that the
+        # linear-time engine uses (such as \p{L}).
+        bad = typing.cast(
+            jsonschema.exceptions.ValidationError | None,
+            jsonschema.exceptions.best_match(  # pyright: ignore[reportUnknownMemberType]
+                cls(cls.META_SCHEMA).iter_errors(schema)
+            ),
+        )
+        if bad is not None:
+            errors.append(
+                {
+                    'field': name,
+                    'message': (
+                        f'The blueprint schema is not valid: {bad.message}'
+                    ),
+                }
+            )
+            continue
         # descend() keeps the resolver of the root schema and enters
         # the $id scope of the field, if the field has one.
         validator = cls(schema, registry=referencing.Registry[typing.Any]())
@@ -197,4 +220,119 @@ def _detail(
             'missing': missing,
             'invalid': invalid,
         },
+    )
+
+
+def _matches(pattern: str, value: str) -> bool | None:
+    """Search ``value`` for ``pattern`` with the linear-time engine of
+    pydantic (see :func:`models.pattern_adapter`), not Python ``re``;
+    ``None`` for a pattern that the engine cannot use."""
+    adapter = models.pattern_adapter(pattern)
+    if adapter is None:
+        return None
+    try:
+        adapter.validate_python(value)
+    except pydantic.ValidationError:
+        return False
+    return True
+
+
+def _pattern(
+    validator: typing.Any, pattern: str, instance: typing.Any, _schema: object
+) -> collections.abc.Iterator[jsonschema.exceptions.ValidationError]:
+    """``pattern`` with :func:`_matches`. A pattern that the engine
+    cannot use is skipped, as in the models."""
+    if validator.is_type(instance, 'string') and (
+        _matches(pattern, instance) is False
+    ):
+        yield jsonschema.exceptions.ValidationError(
+            f'{instance!r} does not match {pattern!r}'
+        )
+
+
+def _pattern_properties(
+    validator: typing.Any,
+    pattern_properties: dict[str, typing.Any],
+    instance: typing.Any,
+    _schema: object,
+) -> collections.abc.Iterator[jsonschema.exceptions.ValidationError]:
+    """``patternProperties`` with :func:`_matches`. A pattern that the
+    engine cannot use refuses a non-empty object, as
+    ``additionalProperties`` would."""
+    if not validator.is_type(instance, 'object'):
+        return
+    for pattern, subschema in pattern_properties.items():
+        if instance and models.pattern_adapter(pattern) is None:
+            yield jsonschema.exceptions.ValidationError(
+                f'The blueprint pattern {pattern!r} is not supported; '
+                'an administrator must correct it'
+            )
+            continue
+        for key, value in instance.items():
+            if _matches(pattern, key):
+                yield from validator.descend(
+                    value, subschema, path=key, schema_path=pattern
+                )
+
+
+def _additional_properties(
+    validator: typing.Any,
+    additional: typing.Any,
+    instance: typing.Any,
+    schema: dict[str, typing.Any],
+) -> collections.abc.Iterator[jsonschema.exceptions.ValidationError]:
+    """``additionalProperties`` with :func:`_matches` for the keys of
+    ``patternProperties``."""
+    if not validator.is_type(instance, 'object'):
+        return
+    properties = schema.get('properties', {})
+    patterns = schema.get('patternProperties', {})
+    extras = [
+        key
+        for key in instance
+        if key not in properties
+        and not any(_matches(pattern, key) for pattern in patterns)
+    ]
+    if validator.is_type(additional, 'object'):
+        for key in extras:
+            yield from validator.descend(instance[key], additional, path=key)
+    elif additional is False and extras:
+        yield jsonschema.exceptions.ValidationError(
+            f'Additional properties are not allowed ({extras!r})'
+        )
+
+
+@functools.cache
+def _linear(cls: typing.Any, pattern_properties: bool) -> typing.Any:
+    """Return the validator class ``cls`` with the keywords that match
+    a pattern on the linear-time engine (:func:`_matches`).
+
+    ``unevaluatedProperties`` matches the keys of ``patternProperties``
+    with Python ``re``. A blueprint cannot save that pair, and the
+    keyword refuses a value of a stored one.
+    """
+    unevaluated = cls.VALIDATORS.get('unevaluatedProperties')
+
+    def _unevaluated_properties(
+        validator: typing.Any, *args: typing.Any
+    ) -> collections.abc.Iterator[jsonschema.exceptions.ValidationError]:
+        # Fail closed: the keyword matches the keys of patternProperties
+        # with Python re, also through a $ref, so the flag is for the
+        # whole schema of the blueprint.
+        if pattern_properties:
+            yield jsonschema.exceptions.ValidationError(
+                'The blueprint uses unevaluatedProperties with '
+                'patternProperties; an administrator must correct it'
+            )
+        elif unevaluated is not None:
+            yield from unevaluated(validator, *args)
+
+    keywords: dict[str, typing.Any] = {
+        'additionalProperties': _additional_properties,
+        'pattern': _pattern,
+        'patternProperties': _pattern_properties,
+        'unevaluatedProperties': _unevaluated_properties,
+    }
+    return jsonschema.validators.extend(  # type: ignore[no-untyped-call]  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
+        cls, keywords
     )

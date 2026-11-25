@@ -2,6 +2,7 @@ import collections.abc
 import dataclasses
 import datetime
 import decimal
+import functools
 import json
 import re
 import typing
@@ -10,6 +11,7 @@ import warnings
 
 import nanoid
 import pydantic
+import pydantic_core
 import slugify
 from jsonschema_models import models as schema_models
 from pydantic import alias_generators
@@ -197,6 +199,141 @@ class RelationshipEdge(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra='ignore')
 
 
+@functools.lru_cache(maxsize=256)
+def pattern_adapter(pattern: str) -> pydantic.TypeAdapter[str] | None:
+    """Return an adapter that checks a string against ``pattern`` with
+    the regex engine of pydantic; ``None`` when that engine cannot use
+    ``pattern``.
+
+    That engine runs in linear time, so a pattern of a blueprint cannot
+    make a value check hang. It has no lookarounds and no
+    backreferences.
+    """
+    try:
+        return pydantic.TypeAdapter(
+            typing.Annotated[str, pydantic.StringConstraints(pattern=pattern)]
+        )
+    except pydantic_core.SchemaError:
+        return None
+
+
+def pattern_error(pattern: str) -> str | None:
+    """Return why the regex engine of pydantic cannot use ``pattern``;
+    ``None`` when it can (see :func:`pattern_adapter`)."""
+    if pattern_adapter(pattern) is None:
+        return (
+            'is not a supported regular expression (lookarounds and '
+            'backreferences are not supported)'
+        )
+    return None
+
+
+#: Keywords whose values are data, not schemas.
+_DATA_KEYWORDS = frozenset(
+    {'const', 'default', 'dependentRequired', 'enum', 'examples'}
+)
+#: Keywords whose values map names to schemas.
+_NAMED_SCHEMAS = frozenset(
+    {
+        '$defs',
+        'definitions',
+        'dependentSchemas',
+        'patternProperties',
+        'properties',
+    }
+)
+
+
+def _has_refs(node: object) -> bool:
+    """Return ``True`` when ``node`` has a ``$ref`` or ``$dynamicRef`` at
+    any depth. A reference can make data (such as ``default``) or the
+    names of ``properties`` a schema, so the walk then reads every
+    value."""
+    stack: list[object] = [node]
+    while stack:
+        item = stack.pop()
+        if isinstance(item, list):
+            stack.extend(typing.cast(list[object], item))
+        elif isinstance(item, dict):
+            item = typing.cast(dict[str, object], item)
+            if '$ref' in item or '$dynamicRef' in item:
+                return True
+            stack.extend(item.values())
+    return False
+
+
+def _schemas(
+    node: object, skip_data: bool
+) -> collections.abc.Iterator[dict[str, object]]:
+    """Yield the schema ``node`` and each subschema in it. With
+    ``skip_data``, data (such as ``default``) and ``x-`` annotations
+    are not schemas, and the keys of ``properties`` are names; without
+    it, every object at every depth is a schema."""
+    if isinstance(node, list):
+        for item in typing.cast(list[object], node):
+            yield from _schemas(item, skip_data)
+        return
+    if not isinstance(node, dict):
+        return
+    schema = typing.cast(dict[str, object], node)
+    yield schema
+    for key, value in schema.items():
+        if skip_data and (key in _DATA_KEYWORDS or key.startswith('x-')):
+            continue
+        if skip_data and key in _NAMED_SCHEMAS and isinstance(value, dict):
+            value = list(typing.cast(dict[str, object], value).values())
+        yield from _schemas(value, skip_data)
+
+
+def schema_keys(schema: object) -> set[str]:
+    """Return the keywords of the whole JSON ``schema`` and its
+    subschemas. A ``$ref`` makes every key count."""
+    skip_data = not _has_refs(schema)
+    return {key for node in _schemas(schema, skip_data) for key in node}
+
+
+def unevaluated_re(schema: Schema) -> bool:
+    """Return ``True`` when ``schema`` uses ``unevaluatedProperties``
+    and ``patternProperties``. jsonschema then matches keys with Python
+    ``re``, which can backtrack for a long time."""
+    return {'patternProperties', 'unevaluatedProperties'} <= schema_keys(
+        schema.model_dump(mode='json', by_alias=True, exclude_none=True)
+    )
+
+
+def _patterns(node: object, skip_data: bool) -> collections.abc.Iterator[str]:
+    """Yield each ``pattern`` and ``patternProperties`` key of the schema
+    ``node`` and its subschemas (see :func:`_schemas`)."""
+    for schema in _schemas(node, skip_data):
+        if isinstance(pattern := schema.get('pattern'), str):
+            yield pattern
+        if isinstance(keys := schema.get('patternProperties'), dict):
+            yield from typing.cast(dict[str, object], keys)
+
+
+def check_patterns(schema: Schema) -> Schema:
+    """Return ``schema`` of a new blueprint after a check that the regex
+    engine can use each pattern in it, at every depth.
+
+    A stored schema loads without this check, so the API calls it for
+    a schema that a request sends as a JSON string.
+    """
+    dumped = schema.model_dump(mode='json', by_alias=True, exclude_none=True)
+    properties = typing.cast(dict[str, object], dumped.get('properties') or {})
+    root = {k: v for k, v in dumped.items() if k != 'properties'}
+    scopes = [*properties.items(), ('the schema', root)]
+    skip_data = not _has_refs(dumped)
+    for name, node in scopes:
+        for pattern in _patterns(node, skip_data):
+            if error := pattern_error(pattern):
+                raise ValueError(f'{name}: pattern {pattern!r} {error}')
+    if unevaluated_re(schema):
+        raise ValueError(
+            'unevaluatedProperties cannot be used with patternProperties'
+        )
+    return schema
+
+
 class Blueprint(Node):
     # Overrides Node.slug to optional; model validator
     # below auto-generates slug from name at runtime.
@@ -321,9 +458,11 @@ class Blueprint(Node):
         value: typing.Any,
     ) -> Schema:
         if isinstance(value, str):
+            # A stored schema: a bad pattern in it must not stop the
+            # blueprints from loading (the models skip it).
             return Schema.model_validate_json(value)
         elif isinstance(value, dict):
-            return Schema.model_validate(value)
+            return check_patterns(Schema.model_validate(value))
         elif isinstance(value, Schema):
             return value
         raise ValueError('Invalid JSON Schema value')

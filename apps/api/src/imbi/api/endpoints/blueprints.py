@@ -66,6 +66,16 @@ async def _enqueue_for_blueprint(
         )
 
 
+def _check_patterns(blueprint: models.Blueprint) -> None:
+    """Refuse a new or changed schema with a pattern that the regex
+    engine cannot use. The model checks only a schema sent as an
+    object, as a stored schema is a JSON string."""
+    try:
+        models.check_patterns(blueprint.json_schema)
+    except ValueError as err:
+        raise fastapi.HTTPException(status_code=400, detail=str(err)) from err
+
+
 def _match_params(
     path_type: str,
     slug: str,
@@ -97,6 +107,7 @@ async def create_blueprint(
     ],
 ) -> models.Blueprint:
     """Create a new blueprint node in the graph database."""
+    _check_patterns(blueprint)
     if blueprint.kind == _RELATIONSHIP:
         match_on = ['slug', 'kind']
     else:
@@ -287,6 +298,8 @@ async def patch_blueprint(
             status_code=400,
             detail=f'Validation error: {e.errors()}',
         ) from e
+    if patched.get('json_schema') != current.get('json_schema'):
+        _check_patterns(blueprint)
 
     await db.merge(blueprint, match_on=match_on)
     try:

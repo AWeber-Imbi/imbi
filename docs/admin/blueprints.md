@@ -60,6 +60,51 @@ must complete the fields in the dialog before you can save the project.
 When you edit a project, you can set all the fields that the matching
 blueprints add.
 
+## Value rules
+
+Imbi checks these JSON Schema keywords on each value of a blueprint
+field, for projects, teams, environments, project types, link
+definitions, tickets, and deployments. The form checks them too, before
+you save. The blueprint editor shows them under **Advanced options**.
+
+| Keyword | Applies to | Example |
+|---|---|---|
+| `enum` | strings | `["tier-1", "tier-2"]` |
+| `minimum`, `maximum` | integers and numbers, of tickets and deployments only | `"minimum": 0` |
+| `multipleOf` | integers and numbers | `"multipleOf": 0.01` (cents) |
+| `pattern` | strings | `"pattern": "^\\d+(\\.\\d{2})?$"` |
+| `minLength`, `maxLength` | strings | `"maxLength": 64` |
+| `format` | strings: `date`, `date-time`, `time`, `email`, `uri`, `uuid`, `ipv4`, `ipv6` | `"format": "uuid"` |
+| `items` | arrays: `pattern`, `minLength`, `maxLength`, `multipleOf`, and the formats `uuid`, `ipv4`, and `ipv6` of each item | `{"type": "string", "format": "uuid"}` |
+
+A `pattern` is a search, as in JSON Schema: it matches anywhere in the
+value unless you anchor it with `^` and `$`. Use the syntax that both
+the API and the form accept: character classes, `\d`, quantifiers,
+groups, and alternation. The API uses a regular expression engine that
+runs in linear time for each `pattern`, also in the full-schema check
+of an object or array field, so no `pattern` can make a value check
+hang. That engine does not support lookarounds (`(?=...)`, `(?!...)`)
+or backreferences (`\1`). Imbi refuses to save a blueprint with a
+`pattern` or a `patternProperties` key, at any depth, that the engine
+cannot use. The keys of `patternProperties` use the same engine.
+Imbi refuses a schema that uses `unevaluatedProperties` together with
+`patternProperties`, because that check uses the Python engine. A
+value for a field of a stored blueprint with that pair is refused until
+an administrator corrects the blueprint.
+
+A list of UUIDs:
+
+```json
+{
+  "type": "array",
+  "items": {"type": "string", "format": "uuid"}
+}
+```
+
+Imbi does not check the formats `hostname` and `uri-reference`. For
+tickets and deployments, Imbi also checks an array or object field
+against its full schema; see [Deployment blueprints](#deployment-blueprints).
+
 ## Ticket blueprints
 
 A blueprint of type `Ticket` adds custom fields to tickets. Its filter

@@ -2,15 +2,18 @@ import * as React from 'react'
 
 import { cn } from '@/lib/utils'
 
-export type InputProps = React.InputHTMLAttributes<HTMLInputElement>
+export type InputProps = React.InputHTMLAttributes<HTMLInputElement> & {
+  /** Keep leading whitespace, as in a regular expression. */
+  keepLeadingSpace?: boolean
+}
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, onChange, type, ...props }, ref) => {
+  ({ className, keepLeadingSpace, onChange, type, ...props }, ref) => {
     // Strip leading whitespace as the user types or pastes. A leading space is
     // never meaningful in our text inputs, but it can be a valid password
     // character, so passwords are left untouched.
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (type !== 'password') {
+      if (type !== 'password' && !keepLeadingSpace) {
         const stripped = e.target.value.replace(/^\s+/, '')
         if (stripped !== e.target.value) e.target.value = stripped
       }

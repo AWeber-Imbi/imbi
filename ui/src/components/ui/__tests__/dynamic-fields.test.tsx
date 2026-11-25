@@ -49,3 +49,101 @@ describe('DynamicFormFields', () => {
     )
   })
 })
+
+describe('validateDynamicFields value checks', () => {
+  const schema = {
+    properties: {
+      budget: toDynamicField({ pattern: '^\\d+(\\.\\d{2})?$', type: 'string' }),
+      owners: toDynamicField({
+        items: { format: 'uuid', type: 'string' },
+        type: 'array',
+      }),
+      rate: toDynamicField({ multipleOf: 0.01, type: 'number' }),
+    },
+  }
+
+  it('accepts valid values', () => {
+    expect(
+      validateDynamicFields(schema, {
+        budget: '1250.00',
+        owners: ['a8098c1a-f86e-11da-bd1a-00112444be1e'],
+        rate: 19.99,
+      }),
+    ).toEqual({})
+  })
+
+  it('refuses a value that does not match the pattern', () => {
+    expect(validateDynamicFields(schema, { budget: '12.5' })).toHaveProperty(
+      'budget',
+    )
+  })
+
+  it('refuses an item that is not a UUID', () => {
+    expect(validateDynamicFields(schema, { owners: ['nope'] })).toHaveProperty(
+      'owners/0',
+    )
+  })
+
+  it('refuses a rate that is not a multiple of 0.01', () => {
+    expect(validateDynamicFields(schema, { rate: 1.005 })).toHaveProperty(
+      'rate',
+    )
+  })
+})
+
+describe('validateDynamicFields with a Python-only pattern', () => {
+  it('leaves the check to the API', () => {
+    const schema = {
+      properties: {
+        code: toDynamicField({ pattern: '(?P<n>x)', type: 'string' }),
+      },
+    }
+    expect(validateDynamicFields(schema, { code: 'y' })).toEqual({})
+  })
+
+  it('still checks the other fields', () => {
+    const schema = {
+      properties: {
+        code: toDynamicField({ pattern: '(?P<n>x)', type: 'string' }),
+        ids: toDynamicField({
+          items: { pattern: '(?P<n>x)', type: 'string' },
+          type: 'array',
+        }),
+        name: toDynamicField({ type: 'string' }),
+      },
+      required: ['name'],
+    }
+    expect(
+      Object.keys(validateDynamicFields(schema, { code: 'y', ids: ['y'] })),
+    ).toEqual(['name'])
+  })
+
+  it('checks item multipleOf', () => {
+    const schema = {
+      properties: {
+        steps: toDynamicField({
+          items: { multipleOf: 0.5, type: 'number' },
+          type: 'array',
+        }),
+      },
+    }
+    expect(validateDynamicFields(schema, { steps: [1.5] })).toEqual({})
+    expect(validateDynamicFields(schema, { steps: [1.25] })).toHaveProperty(
+      'steps/0',
+    )
+  })
+
+  it('checks item lengths', () => {
+    const schema = {
+      properties: {
+        tags: toDynamicField({
+          items: { maxLength: 3, type: 'string' },
+          type: 'array',
+        }),
+      },
+    }
+    expect(validateDynamicFields(schema, { tags: ['abcd'] })).toHaveProperty(
+      'tags/0',
+    )
+  })
+})

@@ -25,7 +25,9 @@ import {
 // behaviour of the native <select> this component replaced).
 const UNSET_VALUE = '__unset__'
 
-const ajv = new Ajv({ allErrors: true })
+// A float division makes 19.99 not a multiple of 0.01 without a
+// precision; the API checks multipleOf with decimals.
+const ajv = new Ajv({ allErrors: true, multipleOfPrecision: 9 })
 addFormats(ajv)
 
 interface DynamicDetailFieldsProps {
@@ -241,6 +243,7 @@ export function DynamicFormFields({
               className={` ${fieldError ? 'border-red-500' : ''}`}
               disabled={isLoading}
               id={`dynamic-${key}`}
+              keepLeadingSpace={field.pattern !== undefined}
               max={field.maximum}
               maxLength={field.maxLength}
               min={field.minimum}
@@ -305,11 +308,20 @@ export function toDynamicField(
     items: prop.items
       ? {
           enum: prop.items.enum ?? undefined,
+          format: prop.items.format ?? undefined,
+          maxLength: prop.items.maxLength ?? undefined,
+          minLength: prop.items.minLength ?? undefined,
+          multipleOf: prop.items.multipleOf ?? undefined,
+          pattern: prop.items.pattern ?? undefined,
           type: prop.items.type ?? undefined,
         }
       : undefined,
     maximum: prop.maximum ?? undefined,
+    maxLength: prop.maxLength ?? undefined,
     minimum: prop.minimum ?? undefined,
+    minLength: prop.minLength ?? undefined,
+    multipleOf: prop.multipleOf ?? undefined,
+    pattern: prop.pattern ?? undefined,
     title: prop.title ?? undefined,
     type: prop.type ?? undefined,
   }
@@ -319,8 +331,17 @@ export function validateDynamicFields(
   schema: DynamicSchema,
   data: Record<string, unknown>,
 ): Record<string, string> {
+  const properties = Object.fromEntries(
+    Object.entries(schema.properties).map(([name, prop]) => [
+      name,
+      {
+        ...withJsPattern(prop),
+        ...(prop.items ? { items: withJsPattern(prop.items) } : {}),
+      },
+    ]),
+  )
   const jsonSchema = {
-    properties: schema.properties,
+    properties,
     type: 'object' as const,
     ...(schema.required?.length ? { required: schema.required } : {}),
   }
@@ -354,4 +375,18 @@ function toTitleCase(key: string): string {
     .split('_')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
+}
+
+/** ``schema`` without a pattern that JavaScript cannot compile, such as
+ * (?P<name>...): the API checks that pattern on save. */
+function withJsPattern<T extends { pattern?: string }>(schema: T): T {
+  if (schema.pattern === undefined) return schema
+  try {
+    new RegExp(schema.pattern, 'u')
+    return schema
+  } catch {
+    const copy = { ...schema }
+    delete copy.pattern
+    return copy
+  }
 }

@@ -6,7 +6,7 @@ from unittest import mock
 
 import fastapi
 
-from imbi.api import blueprint_values
+from imbi.api import blueprint_sections, blueprint_values
 from imbi.common import models
 
 
@@ -277,3 +277,207 @@ class ValidateTests(unittest.TestCase):
             blueprint_values.validate(matches, {'a': None}, partial=True),
             {'a': None},
         )
+
+
+class ValueCheckTests(unittest.TestCase):
+    """``pattern``, ``multipleOf``, and item formats of ticket fields."""
+
+    matches: typing.ClassVar[list[models.Blueprint]] = [
+        models.Blueprint(
+            name='Costs',
+            type='Ticket',
+            json_schema=models.Schema.model_validate(
+                {
+                    'type': 'object',
+                    '$defs': {
+                        'Loose': {
+                            'type': 'object',
+                            'unevaluatedProperties': {'type': 'string'},
+                        }
+                    },
+                    'properties': {
+                        'budget': {
+                            'type': 'string',
+                            'pattern': r'^\d+(\.\d{2})?$',
+                        },
+                        'rate': {'type': 'number', 'multipleOf': 0.01},
+                        'owners': {
+                            'type': 'array',
+                            'items': {'type': 'string', 'format': 'uuid'},
+                        },
+                        'keyed': {
+                            'type': 'object',
+                            'patternProperties': {'^(a+)+$': {}},
+                            'additionalProperties': False,
+                        },
+                        # Stored before the save check refused the pair.
+                        'loose': {
+                            'type': 'object',
+                            'patternProperties': {'^(a+)+$': {}},
+                            'unevaluatedProperties': {'type': 'string'},
+                        },
+                        # Stored before the save check refused them.
+                        'unicode': {
+                            'type': 'object',
+                            'properties': {
+                                'name': {
+                                    'type': 'string',
+                                    'pattern': r'^\p{L}+$',
+                                }
+                            },
+                        },
+                        'unusable': {
+                            'type': 'object',
+                            'patternProperties': {'(?=a)': {}},
+                        },
+                        'reffed': {
+                            'type': 'object',
+                            '$ref': '#/$defs/Loose',
+                            'patternProperties': {'^(a+)+$': {}},
+                        },
+                        'payload': {
+                            'type': 'object',
+                            'properties': {
+                                'code': {
+                                    'type': 'string',
+                                    'pattern': '^(a+)+$',
+                                }
+                            },
+                        },
+                    },
+                }
+            ),
+        )
+    ]
+
+    def test_valid_values(self) -> None:
+        values = {
+            'budget': '1250.00',
+            'rate': 19.99,
+            'owners': ['a8098c1a-f86e-11da-bd1a-00112444be1e'],
+        }
+        self.assertEqual(
+            blueprint_values.validate(self.matches, values, partial=False),
+            values,
+        )
+
+    def test_stored_unevaluated_fails_closed(self) -> None:
+        for field in ('loose', 'reffed'):
+            with self.assertRaises(fastapi.HTTPException) as ctx:
+                blueprint_values.validate(
+                    self.matches,
+                    {field: {'a' * 40000 + '!': 1}},
+                    partial=True,
+                )
+            detail = typing.cast(dict[str, typing.Any], ctx.exception.detail)
+            self.assertIn(
+                'unevaluatedProperties', detail['invalid'][0]['message']
+            )
+
+    def test_python_only_pattern_does_not_fail(self) -> None:
+        # \p{L} is valid for the linear engine, but not for Python re.
+        values = {'unicode': {'name': 'Zoë'}}
+        self.assertEqual(
+            blueprint_values.validate(self.matches, values, partial=True),
+            values,
+        )
+
+    def test_unusable_pattern_properties_key_fails_closed(self) -> None:
+        with self.assertRaises(fastapi.HTTPException):
+            blueprint_values.validate(
+                self.matches, {'unusable': {'a': 1}}, partial=True
+            )
+
+    def test_ref_into_annotation_fails_closed(self) -> None:
+        # A stored schema whose patternProperties are only in an x-
+        # annotation that a $ref reaches.
+        matches = [
+            models.Blueprint(
+                name='Rules',
+                type='Ticket',
+                json_schema=models.Schema.model_validate(
+                    {
+                        'type': 'object',
+                        'properties': {
+                            'value': {
+                                'type': 'object',
+                                '$ref': '#/x-rules',
+                                'unevaluatedProperties': False,
+                            }
+                        },
+                        'x-rules': {'patternProperties': {'^(a+)+$': {}}},
+                    }
+                ),
+            )
+        ]
+        with self.assertRaises(fastapi.HTTPException):
+            blueprint_values.validate(
+                matches, {'value': {'a' * 40000 + '!': 1}}, partial=True
+            )
+
+    def test_invalid_values(self) -> None:
+        for field, bad in (
+            ('budget', '12.5'),
+            ('rate', 1.005),
+            ('owners', ['nope']),
+            # A backtracking engine takes years on this input.
+            ('payload', {'code': 'a' * 40000 + '!'}),
+            ('keyed', {'a' * 40000 + '!': 1}),
+        ):
+            with self.assertRaises(fastapi.HTTPException) as ctx:
+                blueprint_values.validate(
+                    self.matches, {field: bad}, partial=True
+                )
+            detail = typing.cast(dict[str, typing.Any], ctx.exception.detail)
+            self.assertEqual(detail['error'], 'custom_fields_invalid')
+            self.assertEqual(detail['invalid'][0]['field'], field)
+
+
+class SectionPropertyTests(unittest.TestCase):
+    """The form gets the keywords that it checks before a submit."""
+
+    def test_checks_and_items(self) -> None:
+        prop = blueprint_sections.section_property(
+            models.Schema.model_validate(
+                {
+                    'type': 'array',
+                    'items': {
+                        'type': 'string',
+                        'format': 'uuid',
+                        'pattern': '^a',
+                        'minLength': 1,
+                        'maxLength': 40,
+                    },
+                }
+            )
+        )
+        self.assertEqual(
+            prop.model_dump(exclude_none=True)['items'],
+            {
+                'type': 'string',
+                'format': 'uuid',
+                'pattern': '^a',
+                'minLength': 1,
+                'maxLength': 40,
+            },
+        )
+        prop = blueprint_sections.section_property(
+            models.Schema.model_validate(
+                {
+                    'type': 'string',
+                    'pattern': '^x$',
+                    'minLength': 1,
+                    'maxLength': 9,
+                }
+            )
+        )
+        dumped = prop.model_dump(exclude_none=True)
+        self.assertEqual(dumped['pattern'], '^x$')
+        self.assertEqual(dumped['minLength'], 1)
+        self.assertEqual(dumped['maxLength'], 9)
+        number = blueprint_sections.section_property(
+            models.Schema.model_validate(
+                {'type': 'number', 'multipleOf': 0.01}
+            )
+        )
+        self.assertEqual(number.model_dump()['multipleOf'], 0.01)
