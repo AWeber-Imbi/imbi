@@ -143,7 +143,25 @@ def _schema_errors(
             jsonschema.validators.validator_for(schema),
             'patternProperties' in models.schema_keys(schema),
         )
-        cls.check_schema(schema)
+        # Not check_schema(): its regex format compiles each pattern
+        # with Python re, which refuses some patterns that the
+        # linear-time engine uses (such as \p{L}).
+        bad = typing.cast(
+            jsonschema.exceptions.ValidationError | None,
+            jsonschema.exceptions.best_match(  # pyright: ignore[reportUnknownMemberType]
+                cls(cls.META_SCHEMA).iter_errors(schema)
+            ),
+        )
+        if bad is not None:
+            errors.append(
+                {
+                    'field': name,
+                    'message': (
+                        f'The blueprint schema is not valid: {bad.message}'
+                    ),
+                }
+            )
+            continue
         # descend() keeps the resolver of the root schema and enters
         # the $id scope of the field, if the field has one.
         validator = cls(schema, registry=referencing.Registry[typing.Any]())
@@ -238,10 +256,18 @@ def _pattern_properties(
     instance: typing.Any,
     _schema: object,
 ) -> collections.abc.Iterator[jsonschema.exceptions.ValidationError]:
-    """``patternProperties`` with :func:`_matches`."""
+    """``patternProperties`` with :func:`_matches`. A pattern that the
+    engine cannot use refuses a non-empty object, as
+    ``additionalProperties`` would."""
     if not validator.is_type(instance, 'object'):
         return
     for pattern, subschema in pattern_properties.items():
+        if instance and models.pattern_adapter(pattern) is None:
+            yield jsonschema.exceptions.ValidationError(
+                f'The blueprint pattern {pattern!r} is not supported; '
+                'an administrator must correct it'
+            )
+            continue
         for key, value in instance.items():
             if _matches(pattern, key):
                 yield from validator.descend(

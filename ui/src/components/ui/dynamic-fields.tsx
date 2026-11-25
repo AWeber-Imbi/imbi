@@ -243,6 +243,7 @@ export function DynamicFormFields({
               className={` ${fieldError ? 'border-red-500' : ''}`}
               disabled={isLoading}
               id={`dynamic-${key}`}
+              keepLeadingSpace={field.pattern !== undefined}
               max={field.maximum}
               maxLength={field.maxLength}
               min={field.minimum}
@@ -310,6 +311,7 @@ export function toDynamicField(
           format: prop.items.format ?? undefined,
           maxLength: prop.items.maxLength ?? undefined,
           minLength: prop.items.minLength ?? undefined,
+          multipleOf: prop.items.multipleOf ?? undefined,
           pattern: prop.items.pattern ?? undefined,
           type: prop.items.type ?? undefined,
         }

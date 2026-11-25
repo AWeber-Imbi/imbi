@@ -118,6 +118,21 @@ describe('validateDynamicFields with a Python-only pattern', () => {
     ).toEqual(['name'])
   })
 
+  it('checks item multipleOf', () => {
+    const schema = {
+      properties: {
+        steps: toDynamicField({
+          items: { multipleOf: 0.5, type: 'number' },
+          type: 'array',
+        }),
+      },
+    }
+    expect(validateDynamicFields(schema, { steps: [1.5] })).toEqual({})
+    expect(validateDynamicFields(schema, { steps: [1.25] })).toHaveProperty(
+      'steps/0',
+    )
+  })
+
   it('checks item lengths', () => {
     const schema = {
       properties: {

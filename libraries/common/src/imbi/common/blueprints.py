@@ -123,7 +123,10 @@ def _format_check(
 ) -> typing.Callable[[str], str]:
     def check(value: str) -> str:
         try:
-            parse(value)
+            parsed = parse(value)
+            # uuid.UUID also takes braces, urn:uuid:, and no hyphens.
+            if fmt == 'uuid' and str(parsed) != value.lower():
+                raise ValueError(value)
         except ValueError:
             raise pydantic_core.PydanticCustomError(
                 'string_format',

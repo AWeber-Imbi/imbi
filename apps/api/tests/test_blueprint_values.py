@@ -316,6 +316,20 @@ class ValueCheckTests(unittest.TestCase):
                             'patternProperties': {'^(a+)+$': {}},
                             'unevaluatedProperties': {'type': 'string'},
                         },
+                        # Stored before the save check refused them.
+                        'unicode': {
+                            'type': 'object',
+                            'properties': {
+                                'name': {
+                                    'type': 'string',
+                                    'pattern': r'^\p{L}+$',
+                                }
+                            },
+                        },
+                        'unusable': {
+                            'type': 'object',
+                            'patternProperties': {'(?=a)': {}},
+                        },
                         'reffed': {
                             'type': 'object',
                             '$ref': '#/$defs/Loose',
@@ -358,6 +372,20 @@ class ValueCheckTests(unittest.TestCase):
             detail = typing.cast(dict[str, typing.Any], ctx.exception.detail)
             self.assertIn(
                 'unevaluatedProperties', detail['invalid'][0]['message']
+            )
+
+    def test_python_only_pattern_does_not_fail(self) -> None:
+        # \p{L} is valid for the linear engine, but not for Python re.
+        values = {'unicode': {'name': 'Zoë'}}
+        self.assertEqual(
+            blueprint_values.validate(self.matches, values, partial=True),
+            values,
+        )
+
+    def test_unusable_pattern_properties_key_fails_closed(self) -> None:
+        with self.assertRaises(fastapi.HTTPException):
+            blueprint_values.validate(
+                self.matches, {'unusable': {'a': 1}}, partial=True
             )
 
     def test_invalid_values(self) -> None:

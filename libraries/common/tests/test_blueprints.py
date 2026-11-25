@@ -526,6 +526,13 @@ class ValueCheckTests(unittest.TestCase):
         value = 'a8098c1a-f86e-11da-bd1a-00112444be1e'
         self.assertEqual(value, self._check(prop, value))
         self.assertIn('valid uuid', self._refused(prop, 'nope'))
+        self.assertEqual(value.upper(), self._check(prop, value.upper()))
+        for loose in (
+            value.replace('-', ''),
+            '{' + value + '}',
+            'urn:uuid:' + value,
+        ):
+            self._refused(prop, loose)
 
     def test_ip_formats(self) -> None:
         self.assertEqual(
@@ -612,6 +619,19 @@ class ValueCheckTests(unittest.TestCase):
             }
         )
         self.assertIn('unevaluatedProperties', message)
+
+    def test_nested_patterns_are_refused_on_save(self) -> None:
+        message = self._save(
+            {
+                'type': 'object',
+                'properties': {'code': {'type': 'string', 'pattern': '(?=a)'}},
+            }
+        )
+        self.assertIn('value: pattern', message)
+        message = self._save(
+            {'type': 'object', 'patternProperties': {'(?=a)': {}}}
+        )
+        self.assertIn('value: pattern', message)
 
     def test_bad_item_pattern_is_refused_on_save(self) -> None:
         self._save(

@@ -13481,6 +13481,8 @@ export interface components {
             minLength?: number | null;
             /** Maxlength */
             maxLength?: number | null;
+            /** Multipleof */
+            multipleOf?: number | null;
         };
         /**
          * BlueprintSectionProperty

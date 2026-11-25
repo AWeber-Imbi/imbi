@@ -251,16 +251,35 @@ def unevaluated_re(schema: Schema) -> bool:
     )
 
 
+def _patterns(node: object) -> collections.abc.Iterator[str]:
+    """Yield each ``pattern`` and ``patternProperties`` key in the JSON
+    value ``node``, at every depth."""
+    if isinstance(node, dict):
+        node = typing.cast(dict[str, object], node)
+        if isinstance(pattern := node.get('pattern'), str):
+            yield pattern
+        if isinstance(keys := node.get('patternProperties'), dict):
+            yield from typing.cast(dict[str, object], keys)
+        for value in node.values():
+            yield from _patterns(value)
+    elif isinstance(node, list):
+        for value in typing.cast(list[object], node):
+            yield from _patterns(value)
+
+
 def check_patterns(schema: Schema) -> Schema:
     """Return ``schema`` of a new blueprint after a check that the regex
-    engine can use the pattern of each property and of its items.
+    engine can use each pattern in it, at every depth.
 
     A stored schema loads without this check, so the API calls it for
     a schema that a request sends as a JSON string.
     """
-    for name, prop in (schema.properties or {}).items():
-        for pattern in (prop.pattern, getattr(prop.items, 'pattern', None)):
-            if pattern is not None and (error := pattern_error(pattern)):
+    dumped = schema.model_dump(mode='json', by_alias=True, exclude_none=True)
+    scopes: dict[str, object] = dict(dumped.get('properties') or {})
+    scopes['schema'] = {k: v for k, v in dumped.items() if k != 'properties'}
+    for name, node in scopes.items():
+        for pattern in _patterns(node):
+            if error := pattern_error(pattern):
                 raise ValueError(f'{name}: pattern {pattern!r} {error}')
     if unevaluated_re(schema):
         raise ValueError(

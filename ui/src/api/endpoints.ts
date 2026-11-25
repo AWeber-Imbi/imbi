@@ -476,6 +476,7 @@ export interface ProjectSchemaSectionProperty {
     format?: null | string
     maxLength?: null | number
     minLength?: null | number
+    multipleOf?: null | number
     pattern?: null | string
     type?: null | string
   }
@@ -1619,6 +1620,7 @@ export interface DynamicFieldSchema {
     format?: string
     maxLength?: number
     minLength?: number
+    multipleOf?: number
     pattern?: string
     type?: string
   }

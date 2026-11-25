@@ -85,9 +85,8 @@ runs in linear time for each `pattern`, also in the full-schema check
 of an object or array field, so no `pattern` can make a value check
 hang. That engine does not support lookarounds (`(?=...)`, `(?!...)`)
 or backreferences (`\1`). Imbi refuses to save a blueprint with a
-`pattern` on a field or on its `items` that the engine cannot use. A
-`pattern` deeper in an object schema that the engine cannot use is
-not checked. The keys of `patternProperties` use the same engine.
+`pattern` or a `patternProperties` key, at any depth, that the engine
+cannot use. The keys of `patternProperties` use the same engine.
 Imbi refuses a schema that uses `unevaluatedProperties` together with
 `patternProperties`, because that check uses the Python engine. A
 value for a field of a stored blueprint with that pair is refused until

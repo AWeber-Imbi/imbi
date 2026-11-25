@@ -25,6 +25,9 @@ class BlueprintSectionItems(pydantic.BaseModel):
     pattern: str | None = None
     min_length: int | None = pydantic.Field(default=None, alias='minLength')
     max_length: int | None = pydantic.Field(default=None, alias='maxLength')
+    multiple_of: float | None = pydantic.Field(
+        default=None, alias='multipleOf'
+    )
 
 
 class BlueprintSectionProperty(pydantic.BaseModel):
