@@ -123,10 +123,13 @@ export function useProjectPatch(
         // so the next read comes from the canonical GET.
         qc.invalidateQueries({ queryKey: key })
         // A patch can change delivery mode, types, or environments, and
-        // with them the drift verdict.
-        qc.invalidateQueries({
-          queryKey: ['releaseDrift', orgSlug, projectId, 'verdicts'],
-        })
+        // with them the drift verdict. Cancel first: an in-flight first
+        // read can predate the patch, and invalidation alone reuses it.
+        const verdicts = ['releaseDrift', orgSlug, projectId, 'verdicts']
+        await qc.cancelQueries({ queryKey: verdicts })
+        qc.invalidateQueries({ queryKey: verdicts })
+        // The Projects list carries the same verdict.
+        qc.invalidateQueries({ queryKey: ['projects', orgSlug] })
         // Activity events are written synchronously — refresh immediately.
         qc.invalidateQueries({
           queryKey: ['events', orgSlug, projectId],

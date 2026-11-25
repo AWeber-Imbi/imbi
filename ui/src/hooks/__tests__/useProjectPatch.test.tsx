@@ -65,7 +65,7 @@ describe('useProjectPatch', () => {
     expect(qc.getQueryData(['project', 'o', 'p1'])).toEqual(optimistic)
   })
 
-  it('refreshes the drift verdict after a patch', async () => {
+  it('refreshes the drift verdict and the list after a patch', async () => {
     vi.spyOn(endpoints, 'patchProject').mockResolvedValue(baseProject as never)
     const invalidate = vi.spyOn(qc, 'invalidateQueries')
     const { result } = renderHook(() => useProjectPatch('o', 'p1'), {
@@ -79,6 +79,7 @@ describe('useProjectPatch', () => {
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: ['releaseDrift', 'o', 'p1', 'verdicts'],
     })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['projects', 'o'] })
   })
 
   it('rolls back on error and toasts', async () => {
