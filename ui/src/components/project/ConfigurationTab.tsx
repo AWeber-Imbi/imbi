@@ -231,8 +231,13 @@ export function ConfigurationTab({
     if (flashTimer.current) clearTimeout(flashTimer.current)
     flashTimer.current = setTimeout(() => setSavedFlash(false), 1400)
   }
+  // A create can finish after the tab unmounts. Its key selection then
+  // must not navigate back to this tab.
+  const mounted = useRef(false)
   useEffect(() => {
+    mounted.current = true
     return () => {
+      mounted.current = false
       if (flashTimer.current) clearTimeout(flashTimer.current)
     }
   }, [])
@@ -642,7 +647,7 @@ export function ConfigurationTab({
       )
       toast.success(`Key "${draft.key.trim()}" created`)
       setMode('view')
-      setSelectedKey(draft.key.trim())
+      if (mounted.current) setSelectedKey(draft.key.trim())
       void queryClient.invalidateQueries({
         queryKey: ['config-keys', orgSlug, projectId],
       })
@@ -1099,7 +1104,9 @@ function DetailPane({
                       )
                 }
                 isSet={isSet}
-                key={env.slug}
+                // Remount on a key change, so an unsaved edit is dropped
+                // and never committed to the newly selected key.
+                key={`${selected?.key ?? ''}:${env.slug}`}
                 onCommit={(v) => {
                   if (isCreate) {
                     onDraftChange?.({
