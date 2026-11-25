@@ -28,8 +28,8 @@ import pydantic
 from slack_sdk import errors
 from slackwright import forms, render
 
-from imbi.common import api, valkey
-from imbi.slackbot import identity, settings
+from imbi.common import valkey
+from imbi.slackbot import identity, links
 
 SlackClient = typing.Any
 type Entry = dict[str, typing.Any]
@@ -254,11 +254,7 @@ async def _resolve(
         f'/requests/{entry["request_id"]}/resolve'
     )
     try:
-        async with api.Imbi(
-            base_url=settings.get_slackbot_settings().api_base_url,
-            token=identity.mint_token(user),
-            timeout=10,
-        ) as client:
+        async with identity.api_client(user) as client:
             response = await client.post(path, json=body)
     except httpx.HTTPError:
         LOGGER.exception('Could not resolve %s', entry['request_id'])
@@ -352,10 +348,10 @@ async def _direct_channel(slack: SlackClient, email: str) -> str | None:
 
 def _heading(entry: Entry) -> str:
     """Return a Markdown line that names and links the ticket."""
-    ui_url = settings.get_slackbot_settings().ui_url
     ticket = entry['short_id']
-    if ui_url:
-        ticket = f'[{ticket}]({ui_url}/tickets/{entry["org_slug"]}/{ticket})'
+    url = links.ticket_url(entry['org_slug'], ticket)
+    if url:
+        ticket = f'[{ticket}]({url})'
     # The title is text of a person or an agent, so it must not notify
     # the channel.
     title = render.neutralize_broadcasts(entry['ticket_title'])
@@ -396,10 +392,7 @@ def _label(value: object) -> str:
 
 
 def _detail(response: httpx.Response) -> dict[str, typing.Any]:
-    try:
-        detail: object = response.json().get('detail')
-    except ValueError:
-        return {}
+    detail = identity.response_detail(response)
     if isinstance(detail, dict):
         return typing.cast('dict[str, typing.Any]', detail)
     return {}

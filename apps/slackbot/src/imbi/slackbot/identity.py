@@ -19,7 +19,9 @@ import datetime
 import logging
 import typing
 
-from imbi.common import graph
+import httpx
+
+from imbi.common import api, graph
 from imbi.common.auth import core
 from imbi.slackbot import settings
 
@@ -161,3 +163,20 @@ def mint_token(user: ImbiUser) -> str:
     return core.create_access_token(
         user.email, extra_claims={'channel': 'slack'}
     )
+
+
+def api_client(user: ImbiUser) -> api.Imbi:
+    """Return an imbi-api client that acts as ``user``."""
+    return api.Imbi(
+        base_url=settings.get_slackbot_settings().api_base_url,
+        token=mint_token(user),
+        timeout=10,
+    )
+
+
+def response_detail(response: httpx.Response) -> object:
+    """Return the ``detail`` of an imbi-api error response, if any."""
+    try:
+        return response.json().get('detail')
+    except ValueError:
+        return None
