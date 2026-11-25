@@ -90,4 +90,15 @@ describe('Navigation', () => {
     await screen.findByRole('menuitem', { name: /Runners/ })
     expect(input).toHaveFocus()
   })
+
+  it('moves focus into a hover-opened Agents menu on ArrowDown', async () => {
+    const { Navigation } = await import('../Navigation')
+    render(<Navigation />)
+    const agents = screen.getByRole('link', { name: /Agents/ })
+    await userEvent.hover(agents)
+    await screen.findByRole('menuitem', { name: /Runners/ })
+    agents.focus()
+    await userEvent.keyboard('{ArrowDown}')
+    expect(screen.getAllByRole('menuitem')[0]).toHaveFocus()
+  })
 })

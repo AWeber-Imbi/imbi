@@ -398,10 +398,15 @@ function AgentsMenu({ isActive }: { isActive: boolean }) {
   const closeTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const hoverOpened = useRef(false)
   const agentsNav = useAgentsNav().filter((item) => item.id !== 'dashboard')
-  const show = () => {
+  const contentRef = useRef<HTMLDivElement>(null)
+  // Keep the menu open without changing how it was opened.
+  const keepOpen = () => {
     clearTimeout(closeTimer.current)
-    hoverOpened.current = true
     setOpen(true)
+  }
+  const show = () => {
+    if (!open) hoverOpened.current = true
+    keepOpen()
   }
   const hide = () => {
     clearTimeout(closeTimer.current)
@@ -427,6 +432,13 @@ function AgentsMenu({ isActive }: { isActive: boolean }) {
           if (e.key === 'Enter') {
             e.preventDefault()
             navigate(agentsPath('dashboard'))
+          } else if (open && e.key === 'ArrowDown') {
+            // A hover open left focus on the trigger; move it into the menu.
+            e.preventDefault()
+            hoverOpened.current = false
+            contentRef.current
+              ?.querySelector<HTMLElement>('[role="menuitem"]')
+              ?.focus()
           }
         }}
         onPointerEnter={show}
@@ -452,8 +464,9 @@ function AgentsMenu({ isActive }: { isActive: boolean }) {
         align="start"
         className="w-64"
         onCloseAutoFocus={skipFocusOnHover}
-        onPointerEnter={show}
+        onPointerEnter={keepOpen}
         onPointerLeave={hide}
+        ref={contentRef}
         // Radix omits onOpenAutoFocus from the public type, but forwards it.
         {...{ onOpenAutoFocus: skipFocusOnHover }}
       >
