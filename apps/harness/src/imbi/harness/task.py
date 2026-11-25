@@ -725,18 +725,16 @@ def _json(path: pathlib.Path) -> Body:
 
 
 def _sources(path: pathlib.Path, manifest: Body) -> list[typing.Any]:
-    """The ``mcpServers`` sources of a plugin directory: the
-    ``mcpServers`` of its ``plugin.json`` document ``manifest`` (an
-    object, the path of a JSON file, or a list of both), then
-    ``.mcp.json``."""
+    """The ``mcpServers`` sources of a plugin directory in the order
+    that the CLI loads them: ``.mcp.json``, then the ``mcpServers`` of
+    its ``plugin.json`` document ``manifest`` (an object, the path of a
+    JSON file, or a list of both)."""
     declared: typing.Any = manifest.get('mcpServers')
-    sources: list[typing.Any] = (
+    return [path / '.mcp.json'] + (
         list(typing.cast('abc.Iterable[typing.Any]', declared))
         if isinstance(declared, list)
         else [declared]
     )
-    sources.append(path / '.mcp.json')
-    return sources
 
 
 def _source_file(
@@ -765,11 +763,12 @@ def _servers(path: pathlib.Path, source: typing.Any) -> Body:
 
 
 def _declared(path: pathlib.Path) -> Body:
-    """The MCP servers of a plugin directory, by name."""
+    """The MCP servers of a plugin directory, by name. A later source
+    replaces the definition of an earlier one, as in the CLI."""
     servers: Body = {}
     for source in _sources(path, _json(path / PLUGIN_MANIFEST)):
         for server, config in _servers(path, source).items():
-            servers.setdefault(str(server), config)
+            servers[str(server)] = config
     return servers
 
 

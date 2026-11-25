@@ -1661,6 +1661,27 @@ class PluginServersTestCase(TaskTestCase):
             'and no default, so the server gets no credential.',
         )
 
+    def test_checks_the_definition_that_the_cli_loads(self) -> None:
+        plugin = self.tmp / 'published' / 'repeated'
+        (plugin / '.claude-plugin').mkdir(parents=True)
+        (plugin / '.mcp.json').write_text(
+            json.dumps({'logzio': {'headers': {'A': '${EARLIER}'}}})
+        )
+        (plugin / '.claude-plugin' / 'plugin.json').write_text(
+            json.dumps(
+                {
+                    'mcpServers': [
+                        {'logzio': {'headers': {'A': '${MIDDLE}'}}},
+                        {'logzio': {'headers': {'A': '${LATER}'}}},
+                    ]
+                }
+            )
+        )
+        subject = self.load(plugin)
+        subject.note_unset_variables({})
+        (notice,) = subject.recorder.take()
+        self.assertIn('${LATER}', notice['payload']['body'])
+
 
 @dataclasses.dataclass
 class Report:
