@@ -208,7 +208,7 @@ export function AgentDetail({ agent }: { agent: Agent }) {
               </span>
             )}
           </div>
-          <div className="max-h-65 overflow-hidden px-6 py-4">
+          <div className="max-h-65 overflow-y-auto px-6 py-4">
             {prompt.isLoading ? (
               <p className="text-tertiary text-sm">Loading…</p>
             ) : system ? (
