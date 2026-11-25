@@ -84,6 +84,9 @@ class FakeValkey:
     async def delete(self, key):
         self.lists.pop(key, None)
 
+    async def rename(self, src, dst):
+        self.lists[dst] = self.lists.pop(src)
+
     def pipeline(self, transaction=True):
         return FakePipeline(self)
 
@@ -473,9 +476,10 @@ class CloseTests(FlowTestCase):
         key = ticket_requests._messages_key('r-1')
         record = orjson.dumps({'channel': 'C500', 'ts': 't', 'summary': ''})
         await self.valkey.rpush(key, record)
+        # RPUSH fails during EXEC, after the commands before it ran.
         with (
             mock.patch.object(
-                FakePipeline, 'execute', side_effect=ConnectionError
+                self.valkey, 'rpush', side_effect=ConnectionError
             ),
             self.assertRaises(ticket_requests._Retry),
         ):

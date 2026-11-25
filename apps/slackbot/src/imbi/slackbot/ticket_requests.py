@@ -247,14 +247,20 @@ async def close(slack: SlackClient, entry: Entry) -> None:
             tries = message.get('tries', 0) + 1
             if not gone and tries < _CLOSE_TRIES:
                 kept.append(orjson.dumps(message | {'tries': tries}))
-    # One MULTI/EXEC, so that a failed write keeps the old messages.
+    # Write the kept messages to a different key, then rename it over
+    # the old key. EXEC does not roll back, so a failed RPUSH must not
+    # come after a DEL of the old messages.
     try:
-        async with client.pipeline(transaction=True) as pipe:
-            pipe.delete(key)
-            if kept:
-                pipe.rpush(key, *kept)
-                pipe.expire(key, _MESSAGES_TTL)
-            await pipe.execute()
+        if not kept:
+            await client.delete(key)
+        else:
+            temp = f'{key}:next'
+            async with client.pipeline(transaction=True) as pipe:
+                pipe.delete(temp)
+                pipe.rpush(temp, *kept)
+                pipe.expire(temp, _MESSAGES_TTL)
+                pipe.rename(temp, key)
+                await pipe.execute()
     except Exception as err:
         raise _Retry(f'cannot keep the messages of {short_id}') from err
     if kept:
