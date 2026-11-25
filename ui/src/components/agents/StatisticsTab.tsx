@@ -523,7 +523,7 @@ function findText(row: StatsRow, delta: boolean): string {
     return `Turn ${row.turn.number} ${row.turn.trigger.text} ${numbersText(row.turn, delta)}`
   if (row.kind === 'step')
     return `Step ${row.step.number} ${row.step.did} ${numbersText(row.step, delta)}`
-  return `${row.sub.description} ${subagentText(row.sub)} ${numbersText({ ...row.sub, contextDelta: null }, false)}`
+  return `${row.sub.description} ${row.sub.type} ${subagentText(row.sub)} ${numbersText({ ...row.sub, contextDelta: null }, false)}`
 }
 
 function Gap({ children, height }: { children?: ReactNode; height: number }) {
