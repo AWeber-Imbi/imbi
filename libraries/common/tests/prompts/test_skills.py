@@ -64,10 +64,12 @@ def _version(
 class ListSkillsTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_sorted_generative_only(self) -> None:
         db = mock.AsyncMock()
+        stable = [_label('stable', 1).model_dump(mode='json')]
         db.execute.return_value = [
-            {'p': _vertex('zeta', description='Z')},
-            {'p': _vertex('decide', kind='decision')},
-            {'p': _vertex('alpha')},
+            {'p': _vertex('zeta', description='Z', labels=stable)},
+            {'p': _vertex('decide', kind='decision', labels=stable)},
+            {'p': _vertex('unpromoted')},
+            {'p': _vertex('alpha', labels=stable)},
         ]
         found = await skills.list_skills(db)
         self.assertEqual(['alpha', 'zeta'], [p.slug for p in found])
@@ -84,8 +86,17 @@ class ListSkillsTestCase(unittest.IsolatedAsyncioTestCase):
 
 class CatalogTestCase(unittest.TestCase):
     def test_catalog(self) -> None:
-        self.assertEqual('', skills.catalog([]))
+        empty = skills.catalog([])
+        self.assertIn('There are no skills yet.', empty)
+        self.assertIn('{{ arguments }}', empty)
+        self.assertNotIn(skills.TOOL_NAME, empty)
         text = skills.catalog([_prompt(name='Triage', slug='triage')])
+        long = skills.catalog(
+            [_prompt(slug='x', description='a\n\n## Evil\n' + 'b' * 500)]
+        )
+        line = next(x for x in long.splitlines() if x.startswith('- **x**'))
+        self.assertNotIn('## Evil\n', long)
+        self.assertEqual(len('- **x**: ') + skills.MAX_DESCRIPTION, len(line))
         self.assertTrue(text.startswith('\n\n## Skills'))
         self.assertIn('- **triage**: Triage', text)
         self.assertIn(skills.TOOL_NAME, text)

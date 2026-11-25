@@ -85,8 +85,10 @@ both the CMS and the packaged template.
 ## Skills
 
 A skill is a generative prompt in the `imbi-skills` namespace. The Slack
-bot lists the slug and description of each skill that is not archived in
-its system prompt. When a request matches a skill, the model calls the
+bot lists the slug and description of each skill in its system prompt.
+It lists only skills that are not archived and have a `stable` (or
+default) label, and it puts each description on one line of at most 300
+characters. When a request matches a skill, the model calls the
 `skill_invoke` tool, and the bot gives it the rendered `stable` version
 (or the default label) as instructions.
 
@@ -99,6 +101,11 @@ its system prompt. When a request matches a skill, the model calls the
 
 The bot reads the skills on each turn, so a change applies to the next
 message. Decision prompts in the namespace are ignored.
+
+You can also ask the bot to create or change a skill. It uses the prompt
+API with your token, so you need `prompt:create` (or `prompt:update`).
+When you cannot promote, the new version gets no label, and an admin
+must point `stable` at it before the bot uses it.
 
 ## Decision prompts
 

@@ -213,8 +213,9 @@ UI.
 ### Skills
 
 The bot adds the [skills](../admin/prompts.md#skills) of the prompt CMS
-to its system prompt, and loads the instructions of a skill when a
-request matches it.
+to its system prompt, with the description of each skill, and loads the
+instructions of a skill when a request matches it. Ask the bot to create
+or change a skill, and it writes the prompt for you.
 
 ## Settings
 

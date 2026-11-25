@@ -44,8 +44,13 @@ class SystemPromptTests(helpers.TestCase):
         )
         result = await system_prompt.build_system_prompt(user, [], [skill])
         self.assertIn('\n\n## Skills', result.text)
-        self.assertTrue(result.text.endswith('before you answer.'))
         self.assertIn('- **triage**: Triage', result.text)
+
+    async def test_no_skills_still_explains_how_to_create_one(self) -> None:
+        user = identity.ImbiUser('ada@example.com', 'Ada')
+        result = await system_prompt.build_system_prompt(user, [])
+        self.assertIn('There are no skills yet.', result.text)
+        self.assertIn('`imbi-skills` namespace', result.text)
 
     async def test_task_link_has_the_org(self) -> None:
         user = identity.ImbiUser('ada@example.com', 'Ada')
@@ -64,7 +69,7 @@ class SystemPromptTests(helpers.TestCase):
         ):
             user = identity.ImbiUser('a@example.com', 'Ada')
             prompt = await self.build(user, ['list'])
-        self.assertEqual('Custom for Ada', prompt)
+        self.assertTrue(prompt.startswith('Custom for Ada\n\n## Skills'))
 
     async def test_literal_braces_in_override_are_kept(self) -> None:
         # Single braces are plain text in Jinja syntax.
@@ -73,7 +78,7 @@ class SystemPromptTests(helpers.TestCase):
         ):
             user = identity.ImbiUser('a@example.com', 'Ada')
             prompt = await self.build(user, ['list'])
-        self.assertEqual('Example JSON: {"k": "v"}', prompt)
+        self.assertTrue(prompt.startswith('Example JSON: {"k": "v"}\n\n'))
 
     async def test_broken_override_uses_the_packaged_prompt(self) -> None:
         with self.override_environment(
@@ -108,8 +113,11 @@ class SystemPromptTests(helpers.TestCase):
         )
 
     async def test_passes_the_user_for_a_restricted_model(self) -> None:
+        loaded = system_prompt.system.SystemPrompt(text='x', source='cms')
         with mock.patch.object(
-            system_prompt.system, 'load_system_prompt'
+            system_prompt.system,
+            'load_system_prompt',
+            new=mock.AsyncMock(return_value=loaded),
         ) as load:
             await system_prompt.build_system_prompt(
                 identity.ImbiUser('a@example.com', 'Ada'), []

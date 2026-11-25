@@ -83,8 +83,6 @@ async def build_system_prompt(
         override=slackbot_settings.system_prompt,
         email=user.email,
     )
-    if not skill_list:
-        return prompt
     return dataclasses.replace(
         prompt, text=prompt.text + skills.catalog(skill_list)
     )
