@@ -74,7 +74,7 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
-## Unreleased
+## 2.63.0
 
 1. Deploy the runner (imbi-harness) image with imbi-api, or right after
    it. A runner on an older image ignores the MCP server checkboxes and
