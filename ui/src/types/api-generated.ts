@@ -10705,6 +10705,47 @@ export interface paths {
         patch: operations["patch_current_user_api_users_me_patch"];
         trace?: never;
     };
+    "/api/users/me/preferences/{namespace}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Current User Preferences
+         * @description Return the caller's stored preferences in ``namespace``.
+         *
+         *     The section ``order`` holds every key: the keys that are not
+         *     stored are added at the end. Requires a human user;
+         *     service-account tokens receive HTTP 403.
+         *
+         *     Raises:
+         *         fastapi.HTTPException: HTTP 404 when no preferences are
+         *             stored. The caller then uses the defaults.
+         */
+        get: operations["get_current_user_preferences_api_users_me_preferences__namespace__get"];
+        /**
+         * Put Current User Preferences
+         * @description Replace the caller's preferences in ``namespace``.
+         *
+         *     ``version`` must be the stored version, or 0 when no preferences
+         *     are stored. Each write adds 1 to the version. This is personal UI
+         *     state, so no operations log entry is written. Requires a human
+         *     user; service-account tokens receive HTTP 403.
+         *
+         *     Raises:
+         *         fastapi.HTTPException: HTTP 409 when ``version`` is not the
+         *             stored version. Read again and apply the change again.
+         */
+        put: operations["put_current_user_preferences_api_users_me_preferences__namespace__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/users/{email}": {
         parameters: {
             query?: never;
@@ -17577,6 +17618,12 @@ export interface components {
             /** Project Count */
             project_count: number;
         };
+        /**
+         * Namespace
+         * @description The preference namespaces. Each has a model of its value.
+         * @enum {string}
+         */
+        Namespace: "slack_home";
         /** Node */
         Node: {
             /** Id */
@@ -22239,6 +22286,62 @@ export interface components {
              * @description With ``mark_done`` on a deployment: the run, from ``GET side-effects/deployments``, that the operator confirmed. Imbi stores it as the result of the call, so a retried step follows that deployment.
              */
             deployment_run_id?: string | null;
+        };
+        /**
+         * SlackHomePreferences
+         * @description The layout of the Slack App Home tab of one user.
+         */
+        SlackHomePreferences: {
+            /** Org Slug */
+            org_slug?: string | null;
+            /** Order */
+            order?: ("needs_attention" | "my_tickets" | "pull_requests" | "merged_not_deployed" | "release_drift" | "my_projects" | "agent_activity" | "document_comments")[];
+            /** Sections */
+            sections?: {
+                [key: string]: components["schemas"]["SlackHomeSection"];
+            };
+            /**
+             * Hide Empty
+             * @default true
+             */
+            hide_empty: boolean;
+            /**
+             * Max Items
+             * @default 5
+             * @enum {integer}
+             */
+            max_items: 5 | 10;
+            /**
+             * Count Expanded Only
+             * @default false
+             */
+            count_expanded_only: boolean;
+        };
+        /** SlackHomePreferencesResponse */
+        SlackHomePreferencesResponse: {
+            value: components["schemas"]["SlackHomePreferences"];
+            /** Version */
+            version: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** SlackHomePreferencesWrite */
+        SlackHomePreferencesWrite: {
+            value: components["schemas"]["SlackHomePreferences"];
+            /** Version */
+            version: number;
+        };
+        /** SlackHomeSection */
+        SlackHomeSection: {
+            /**
+             * Display
+             * @default expanded
+             * @enum {string}
+             */
+            display: "expanded" | "collapsed" | "hidden";
         };
         /** SlackResult */
         SlackResult: {
@@ -41448,6 +41551,72 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_current_user_preferences_api_users_me_preferences__namespace__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: components["schemas"]["Namespace"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SlackHomePreferencesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_current_user_preferences_api_users_me_preferences__namespace__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: components["schemas"]["Namespace"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SlackHomePreferencesWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SlackHomePreferencesResponse"];
+                };
             };
             /** @description Validation Error */
             422: {
