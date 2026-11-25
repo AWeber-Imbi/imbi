@@ -95,3 +95,8 @@ class AgentActivityTests(test_agent_tasks.AgentTaskTestCase):
         listed = await self.client.get(self.url())
         rows = {t['short_id']: t for t in listed.json()}
         self.assertIsNone(rows['T-2']['run_started_at'])
+        listed = await self.client.get(self.url(), params={'group_by': 'run'})
+        self.assertEqual(listed.status_code, 200, listed.text)
+        rows = {t['short_id']: t for t in listed.json()}
+        self.assertEqual(rows['T-1']['run_started_at'], '2026-11-24T12:00:00Z')
+        self.assertIsNone(rows['T-2']['run_started_at'])
