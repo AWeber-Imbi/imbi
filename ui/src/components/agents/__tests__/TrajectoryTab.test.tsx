@@ -1521,7 +1521,7 @@ describe('TrajectoryTab with many rows', () => {
     expect(findStub('Turn 76')).toBe(stub)
   })
 
-  it('scrolls to a record a late #e link points at', () => {
+  it('centres the record a late #e link points at', async () => {
     const scrollTo = vi.fn()
     window.history.replaceState(null, '', '/tickets/acme/T-1/trajectory#e434')
     const t = task({ status: 'running' }) as unknown as Ticket
@@ -1539,9 +1539,22 @@ describe('TrajectoryTab with many rows', () => {
     const selected = document.querySelector<HTMLElement>('[data-selected]')
     expect(selected).toHaveTextContent('ls 143')
     const index = Number(selected?.getAttribute('aria-rowindex')) - 1
+    await waitFor(() => expect(scrollTo).toHaveBeenCalled())
     const [{ top }] = scrollTo.mock.lastCall as [{ top: number }]
-    expect(top).toBeLessThanOrEqual(index * 36)
-    expect(top + 360).toBeGreaterThanOrEqual(index * 36 + 36)
+    expect(Math.abs(top + 180 - (index * 36 + 18))).toBeLessThanOrEqual(36)
+  })
+
+  it('keeps the scroll position when a row is clicked', async () => {
+    renderTab('closed', LONG)
+    scrollPane(ledger(), 1800)
+    const scrollTo = vi.fn()
+    ledger().scrollTo = scrollTo
+    await userEvent.click(rows()[rows().length - 2])
+    expect(window.location.hash).toMatch(/^#e\d+$/)
+    expect(document.querySelector('[data-selected]')).not.toBeNull()
+    await new Promise(requestAnimationFrame)
+    expect(scrollTo).not.toHaveBeenCalled()
+    expect(ledger().scrollTop).toBe(1800)
   })
 
   it('moves focus with the arrow keys, Home and End past the rows in view', async () => {

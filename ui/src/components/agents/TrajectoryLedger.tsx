@@ -74,7 +74,7 @@ interface LedgerProps {
   requests: TrajectoryRequest[]
   rows: TrajectoryRow[]
   /** A new object scrolls the ledger to that record. */
-  scrollTo: null | { id: string }
+  scrollTo: null | { center?: boolean; id: string }
   selection: TrajectorySelection
   /** The turn number at the row where each turn starts. */
   turnStarts: Map<string, number>
@@ -196,7 +196,8 @@ export function TrajectoryLedger({
     )
     if (index < 0) return
     scrolled.current = scrollTo
-    virtualizer.scrollToIndex(index, { align: 'auto' })
+    if (scrollTo.center) scrollToFound(virtualizer, index)
+    else virtualizer.scrollToIndex(index, { align: 'auto' })
   }, [rows, scrollTo, virtualizer])
 
   useEffect(() => {
