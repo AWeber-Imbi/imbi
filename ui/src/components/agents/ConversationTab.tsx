@@ -19,6 +19,7 @@ import {
   FilePen,
   FileText,
   FoldHorizontal,
+  GitFork,
   List,
   ListCollapse,
   ListTodo,
@@ -78,9 +79,21 @@ import {
   turns,
 } from './conversationTurns'
 import { FindStub } from './FindStub'
+import {
+  isSubagent,
+  spanOf,
+  type SubagentRun,
+  subagentRun,
+  type SubagentUsage,
+  subagentUsage,
+  sumUsage,
+  totalTokens,
+  workSlots,
+} from './subagentRuns'
 import { Prose, Todos, ToolReadable } from './taskEntryViews'
 import {
   formatElapsed,
+  formatTokens,
   isFailed,
   type TaskRequestView,
   TRIGGERS,
@@ -120,6 +133,7 @@ interface Ctx {
   requests: TaskRequestView[]
   setOpen: (id: string, open: boolean) => void
   showWhole: (id: string) => void
+  subagents: ReadonlyMap<string, SubagentUsage>
   task: Ticket
 }
 
@@ -226,6 +240,7 @@ export function ConversationTab({
   const showAsk = !searching || askMatches || shown.length > 0
   const follow = useRef(true)
   const [whole, setWhole] = useState<ReadonlySet<string>>(() => new Set())
+  const subagents = useMemo(() => subagentUsage(events), [events])
   const ctx: Ctx = useMemo(
     () => ({
       isOpen: searching ? () => true : isOpen,
@@ -244,6 +259,7 @@ export function ConversationTab({
         follow.current = false
         setWhole((prev) => new Set(prev).add(id))
       },
+      subagents,
       task,
     }),
     [
@@ -254,6 +270,7 @@ export function ConversationTab({
       requests,
       searching,
       setOpen,
+      subagents,
       task,
       whole,
     ],
@@ -643,6 +660,11 @@ function callSummary(entry: TimelineEntry, ctx: Ctx): string {
     : toolSummary(String(tool ?? 'tool'), isRecord(args) ? args : {})
 }
 
+/** `$0.19`, `<$0.01`. */
+function formatCost(cost: number): string {
+  return cost < 0.01 ? '<$0.01' : `$${cost.toFixed(2)}`
+}
+
 function GroupView({
   ctx,
   group,
@@ -666,9 +688,25 @@ function GroupView({
         </TraceCollapsibleTrigger>
         <TraceCollapsibleContent>
           <Trace>
-            {group.entries.map((entry) => (
-              <WorkRow ctx={ctx} entry={entry} key={entryKey(entry)} />
-            ))}
+            {workSlots(
+              group.entries,
+              ctx.subagents,
+              ctx.task.status === 'running',
+            ).map((slot) =>
+              slot.kind === 'parallel' ? (
+                <ParallelRuns
+                  ctx={ctx}
+                  key={entryKey(slot.runs[0].entry)}
+                  runs={slot.runs}
+                />
+              ) : (
+                <WorkRow
+                  ctx={ctx}
+                  entry={slot.entry}
+                  key={entryKey(slot.entry)}
+                />
+              ),
+            )}
           </Trace>
         </TraceCollapsibleContent>
       </TraceCollapsible>
@@ -683,6 +721,44 @@ function holdsRequest(turn: Turn, open: Set<string>): boolean {
     entry.children.some(holds)
   return turn.items.some((item) =>
     (item.kind === 'group' ? item.entries : [item.entry]).some(holds),
+  )
+}
+
+/** Subagents that ran at once: one header for the batch, then each run. */
+function ParallelRuns({ ctx, runs }: { ctx: Ctx; runs: SubagentRun[] }) {
+  const { wall, work } = spanOf(runs)
+  const usage = sumUsage(runs)
+  const errors = runs.reduce((n, r) => n + r.errors, 0)
+  const tokens = totalTokens(usage)
+  const ordered = [...runs].sort((a, b) => a.start - b.start || a.end - b.end)
+  const parts = [
+    `${formatElapsed(work)} of work`,
+    tokens ? `${formatTokens(tokens)} tokens` : null,
+    usage.cost ? formatCost(usage.cost) : null,
+    errors ? `${errors} failed` : null,
+  ].filter(Boolean)
+  return (
+    <div className="flex w-full min-w-0 flex-col">
+      <TraceLine status={errors ? 'error' : undefined}>
+        <TraceIcon>
+          <GitFork />
+        </TraceIcon>
+        <TraceTitle>
+          <span className="font-medium">
+            Ran {runs.length} subagents in parallel
+          </span>
+        </TraceTitle>
+        <TraceDescription>{parts.join(' · ')}</TraceDescription>
+        <TraceDescription>{formatElapsed(wall)}</TraceDescription>
+      </TraceLine>
+      <div className="mt-2 ml-[calc(--spacing(2)-1px)] min-w-0 border-l pl-4">
+        <Trace>
+          {ordered.map((run) => (
+            <SubagentCard ctx={ctx} key={entryKey(run.entry)} run={run} />
+          ))}
+        </Trace>
+      </div>
+    </div>
   )
 }
 
@@ -777,6 +853,146 @@ function searchText(entry: TimelineEntry): string {
     ...values(entry.event?.payload ?? {}),
     ...entry.children.map(searchText),
   ].join(' ')
+}
+
+/** A subagent as its own run: what it was asked, its steps, and its answer. */
+function SubagentCard({ ctx, run }: { ctx: Ctx; run: SubagentRun }) {
+  const { entry } = run
+  const e = entry.event
+  const key = entryKey(entry)
+  const tokens = totalTokens(run.usage)
+  const failed = run.errors > 0 || isError(entry)
+  const stats = [
+    `${run.steps} ${run.steps === 1 ? 'tool' : 'tools'}`,
+    tokens ? `${formatTokens(tokens)} tokens` : null,
+    run.usage.cost ? formatCost(run.usage.cost) : null,
+    run.errors ? `${run.errors} failed` : null,
+  ].filter(Boolean)
+  const u = run.usage
+  const hint = u.requests
+    ? `${u.requests} model ${u.requests === 1 ? 'request' : 'requests'}: ${formatTokens(u.input)} in, ${formatTokens(u.output)} out, ${formatTokens(u.cacheRead)} cache read, ${formatTokens(u.cacheWrite)} cache write`
+    : undefined
+  const promptWhole = ctx.isWhole(`${key}:prompt`)
+  const resultWhole = ctx.isWhole(`${key}:result`)
+  const longResult = run.result.length > 900
+  const shown = entry.children.filter(
+    (child) => child.event?.type !== 'usage.reported',
+  )
+  return (
+    <TraceCollapsible
+      onOpenChange={(open) => ctx.setOpen(key, open)}
+      open={ctx.isOpen(key, false)}
+    >
+      <TraceCollapsibleTrigger>
+        <TraceLine
+          status={failed ? 'error' : run.running ? 'running' : undefined}
+        >
+          <TraceIcon>
+            <Bot />
+          </TraceIcon>
+          <TraceTitle>
+            <span className="font-medium">{run.description || 'Subagent'}</span>{' '}
+            {run.kind && <span className="font-mono text-xs">{run.kind}</span>}
+          </TraceTitle>
+          <TraceDescription title={hint}>{stats.join(' · ')}</TraceDescription>
+          <TraceDescription>
+            {e ? formatElapsed(run.end - run.start) : callSummary(entry, ctx)}
+          </TraceDescription>
+        </TraceLine>
+      </TraceCollapsibleTrigger>
+      <TraceCollapsibleContent className="flex flex-col gap-3">
+        {run.prompt && (
+          <SubagentSection label="Asked">
+            {promptWhole ? (
+              <Prose>{run.prompt}</Prose>
+            ) : (
+              <button
+                className="hover:text-foreground line-clamp-3 cursor-pointer text-left text-sm whitespace-pre-wrap"
+                onClick={() => ctx.showWhole(`${key}:prompt`)}
+                type="button"
+              >
+                {run.prompt}
+              </button>
+            )}
+          </SubagentSection>
+        )}
+        {shown.length > 0 && (
+          <SubagentSection label={`Steps · ${shown.length}`}>
+            <Trace>
+              {shown.map((child) => (
+                <WorkRow ctx={ctx} entry={child} key={entryKey(child)} />
+              ))}
+            </Trace>
+          </SubagentSection>
+        )}
+        {run.result && (
+          <SubagentSection label="Answered">
+            <div
+              className={cn(
+                longResult &&
+                  !resultWhole &&
+                  'max-h-64 overflow-hidden mask-b-from-60%',
+              )}
+            >
+              <Prose>{run.result}</Prose>
+            </div>
+            {longResult && !resultWhole && (
+              <button
+                className="text-muted-foreground hover:text-foreground w-fit cursor-pointer text-xs underline-offset-2 hover:underline"
+                onClick={() => ctx.showWhole(`${key}:result`)}
+                type="button"
+              >
+                Show the whole answer
+              </button>
+            )}
+          </SubagentSection>
+        )}
+        {e && ctx.onInspect && (
+          <Button
+            aria-label="Open the subagent in the trajectory"
+            className="text-muted-foreground hover:text-foreground -ml-1 h-6 w-fit gap-1 px-1 text-xs font-normal [&_svg]:size-3.5"
+            onClick={() => ctx.onInspect?.(e.seq)}
+            size="sm"
+            variant="ghost"
+          >
+            <ChartGantt />
+            Open in trajectory
+          </Button>
+        )}
+      </TraceCollapsibleContent>
+    </TraceCollapsible>
+  )
+}
+
+function SubagentSection({
+  children,
+  label: text,
+}: {
+  children: ReactNode
+  label: string
+}) {
+  return (
+    <section className="flex min-w-0 flex-col gap-1.5">
+      <h4 className="text-muted-foreground/70 text-xs">{text}</h4>
+      {children}
+    </section>
+  )
+}
+
+/** `(11k in 7 subagents)`: the subagents' share of the turn's tokens. */
+function subagentShare(turn: Turn, ctx: Ctx): null | string {
+  const live = ctx.task.status === 'running'
+  const runs = turn.items.flatMap((item) =>
+    item.kind === 'group'
+      ? item.entries
+          .filter(isSubagent)
+          .map((entry) => subagentRun(entry, ctx.subagents, live))
+      : [],
+  )
+  if (!runs.length) return null
+  const u = sumUsage(runs)
+  const n = runs.length === 1 ? 'a subagent' : `${runs.length} subagents`
+  return `(${formatTokens(u.input + u.output)} in ${n})`
 }
 
 /** What started the task, as the first message, unless a person already said it. */
@@ -979,7 +1195,9 @@ function TurnView({
     ctx.isOpen(turn.id, turnOpenByDefault(turn, ctx.mode))
   const actorName = useActorName(ctx.orgSlug)
   const hasWork = turn.items.some((i) => i.kind === 'group')
-  const footer = turnFooter(turn)
+  const share = subagentShare(turn, ctx)
+  const base = turnFooter(turn)
+  const footer = base && share ? `${base} ${share}` : base
   const firstReply = turn.items.find((i) => i.kind === 'reply')?.id
   return (
     <div
@@ -1057,6 +1275,13 @@ function values(value: unknown): string[] {
 /** One step inside a process group: a call, a thought, a plan, a note. */
 function WorkRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
   const e = entry.event
+  if (isSubagent(entry))
+    return (
+      <SubagentCard
+        ctx={ctx}
+        run={subagentRun(entry, ctx.subagents, ctx.task.status === 'running')}
+      />
+    )
   if (!e || e.type === 'tool.called') return <CallRow ctx={ctx} entry={entry} />
   if (e.type === 'usage.reported') return null
   const body = String(e.payload.body ?? '')
