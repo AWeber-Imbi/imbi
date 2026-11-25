@@ -674,6 +674,7 @@ class FakeApi:
         self.version = 0
         self.conflicts = 0
         self.fail: set[str] = set()
+        self.unmatched: list[str] = []
 
     def routes(self) -> list[tuple[str, typing.Any]]:
         project = {
@@ -803,7 +804,10 @@ class FakeApi:
                     return httpx.Response(500)
                 return httpx.Response(200, json=body)
         # A path with no route is a wrong path, not "nothing bound".
-        raise AssertionError(f'No FakeApi route for {path}')
+        # Record it: gather() turns a raised error into a section
+        # failure, which a test can miss.
+        self.unmatched.append(path)
+        return httpx.Response(404)
 
     def preferences(self, request: httpx.Request) -> httpx.Response:
         if request.method == 'GET':
@@ -852,6 +856,11 @@ class HomeFlowTests(helpers.TestCase):
     def setUp(self) -> None:
         super().setUp()
         self.api = FakeApi()
+        self.addCleanup(
+            lambda: self.assertEqual(
+                [], self.api.unmatched, 'No FakeApi route'
+            )
+        )
         self.valkey = FakeValkey()
         self.slack = FakeSlack()
         transport = httpx.MockTransport(self.api.handler)
@@ -914,6 +923,8 @@ class HomeFlowTests(helpers.TestCase):
         self.assertIn(drift.format('p1'), paths)
         # A project with no commits since its tag costs no drift call.
         self.assertNotIn(drift.format('p2'), paths)
+        # A new latest tag misses the cached drift of the previous tag.
+        self.assertIn('home:acme:drift:p1:1.0.0', self.valkey.data)
         text = self.text()
         # Only the run that the user started is in Needs attention.
         self.assertIn('run=run1', text)

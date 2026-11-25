@@ -344,7 +344,11 @@ class Sources:
             summary: Row = project['release_summary']
             path = f'{self.base}/projects/{project["id"]}/deployments'
             drift: Row = await cached(
-                self._key('drift', project['id']),
+                # The latest tag is in the key: a new release must not
+                # show beside a suggestion from the previous tag.
+                self._key(
+                    'drift', project['id'], summary.get('latest_tag') or ''
+                ),
                 DRIFT_TTL,
                 lambda: _json_or(self.client, f'{path}/release-drift', {}),
             )
