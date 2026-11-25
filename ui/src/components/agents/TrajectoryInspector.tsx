@@ -99,10 +99,16 @@ export function tabsFor(inspected: Inspected): InspectorTab[] {
   if (inspected.type === 'request') return ['Summary', 'Usage', 'Timing']
   switch (inspected.record.kind) {
     case 'subtool':
-    case 'tool':
-      return inspected.record.events.some((e) => e.type !== 'tool.called')
-        ? ['Summary', 'Payload', 'Result', 'Timing', 'Raw']
+    case 'tool': {
+      const tabs: InspectorTab[] = inspected.record.subagent
+        ? ['Summary', 'Usage', 'Payload', 'Result', 'Timing']
         : ['Summary', 'Payload', 'Result', 'Timing']
+      return inspected.record.events.some(
+        (e) => e.type !== 'tool.called' && e.type !== 'usage.reported',
+      )
+        ? [...tabs, 'Raw']
+        : tabs
+    }
     case 'system':
       return ['Summary', 'Raw']
     default:
@@ -201,7 +207,10 @@ export function TrajectoryInspector({
             </span>
           </>
         ) : (
-          <KindTag kind={inspected.record.kind} />
+          <KindTag
+            kind={inspected.record.kind}
+            subagent={!!inspected.record.subagent}
+          />
         )}
         {section && (
           <span className="font-tj-code truncate text-[11px] leading-4 text-(--tj-label-3)">
@@ -618,6 +627,8 @@ function TabBody({
   const parent = record.parent
     ? trajectory.records.find((r) => r.id === record.parent)
     : undefined
+  if (tab === 'Usage' && record.subagent)
+    return <UsageGroup title="This subagent" usage={record.subagent.usage} />
   if (tab === 'Payload') return <Payload value={record.tool?.arguments ?? {}} />
   if (tab === 'Result')
     return (
@@ -645,12 +656,22 @@ function TabBody({
             <LinkButton
               onClick={() => onSelect({ record: parent, type: 'record' })}
             >
-              Tool Call
+              {parent.subagent?.description || 'Tool Call'}
             </LinkButton>
           </Field>
         )}
         <Field label="Status">{statusOf(inspected, live)}</Field>
         {record.tool && <Field label="Tool">{record.tool.tool}</Field>}
+        {record.subagent && (
+          <>
+            <Field label="Subagent">
+              {record.subagent.type || 'Not recorded'}
+            </Field>
+            <Field label="Tool calls">{record.subagent.steps}</Field>
+            <Field label="Requests">{record.subagent.usage.requests}</Field>
+            <Field label="Cost">${record.subagent.usage.cost.toFixed(4)}</Field>
+          </>
+        )}
         {tokens !== null && (
           <Field label="Tokens">{`${tokens.toLocaleString('en-US')} tok`}</Field>
         )}

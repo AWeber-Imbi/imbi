@@ -8,17 +8,26 @@ import {
   useState,
 } from 'react'
 
-import { Info, Settings, Sparkle, User, Wrench } from 'lucide-react'
+import {
+  Bot,
+  GitFork,
+  Info,
+  Settings,
+  Sparkle,
+  User,
+  Wrench,
+} from 'lucide-react'
 
 import { clockTime, fullTime } from '@/lib/formatDate'
 import { cn } from '@/lib/utils'
 
 import { FindStub } from './FindStub'
-import { formatElapsed } from './taskEvents'
+import { formatElapsed, formatTokens } from './taskEvents'
 import {
   type Fold,
   KIND_LABEL,
   pausesOf,
+  preview,
   type TrajectoryKind,
   type TrajectoryRecord,
   type TrajectoryRequest,
@@ -89,20 +98,24 @@ interface LedgerProps {
 export function KindTag({
   className,
   kind,
+  subagent,
 }: {
   className?: string
   kind: TrajectoryKind
+  subagent?: boolean
 }) {
-  const Icon = ICON[kind]
+  const Icon = subagent ? Bot : ICON[kind]
   return (
     <span
       className={cn(
         'inline-flex h-5 shrink-0 items-center rounded-[4px] px-1.5 text-[11px] leading-4 font-[650] tracking-[.035em] uppercase @max-[620px]/tj:w-5 @max-[620px]/tj:justify-center @max-[620px]/tj:px-0',
-        TAG[kind],
+        TAG[subagent ? 'subtool' : kind],
         className,
       )}
     >
-      <span className="@max-[620px]/tj:hidden">{KIND_LABEL[kind]}</span>
+      <span className="@max-[620px]/tj:hidden">
+        {subagent ? 'SUBAGENT' : KIND_LABEL[kind]}
+      </span>
       <Icon
         aria-hidden
         className="hidden size-3.25 @max-[620px]/tj:block"
@@ -150,7 +163,7 @@ export function TrajectoryLedger({
   const keyOf = useCallback(
     (i: number) => {
       const row = rows[i]
-      return row.kind === 'summary' ? row.id : row.record.id
+      return row.kind === 'record' ? row.record.id : row.id
     },
     [rows],
   )
@@ -177,7 +190,8 @@ export function TrajectoryLedger({
   }
   const virtualizer = useVirtualRows({
     count: rows.length,
-    estimateSize: (i) => (rows[i]?.kind === 'summary' ? 24 : 36),
+    estimateSize: (i) =>
+      rows[i]?.kind === 'summary' ? 24 : rows[i]?.kind === 'batch' ? 28 : 36,
     getItemKey: keyOf,
     keep: [selectedRow, focusRow],
     onChange: report,
@@ -322,7 +336,14 @@ export function TrajectoryLedger({
                     </Gap>,
                   ]
                 : []),
-              row.kind === 'summary' ? (
+              row.kind === 'batch' ? (
+                <BatchRow
+                  index={i}
+                  key={item.key}
+                  measure={virtualizer.measureElement}
+                  runs={row.runs}
+                />
+              ) : row.kind === 'summary' ? (
                 <SummaryRow
                   index={i}
                   key={item.key}
@@ -371,7 +392,70 @@ export function TrajectoryLedger({
   )
 }
 
+function BatchRow({
+  index,
+  measure,
+  runs,
+}: {
+  index: number
+  measure: (row: HTMLElement | null) => void
+  runs: TrajectoryRecord[]
+}) {
+  const now = Date.now()
+  const spans = runs.map((r) => [r.startedAt ?? now, r.endedAt ?? now])
+  const start = Math.min(...spans.map(([s]) => s))
+  const wall = Math.max(...spans.map(([, e]) => e)) - start
+  const work = spans.reduce((n, [s, e]) => n + (e - s), 0)
+  const usage = runs.map((r) => r.subagent?.usage)
+  const tokens = usage.reduce(
+    (n, u) => n + (u ? u.input + u.output + u.cacheRead + u.cacheWrite : 0),
+    0,
+  )
+  const cost = usage.reduce((n, u) => n + (u?.cost ?? 0), 0)
+  const stats = [
+    `${formatElapsed(wall)} wall`,
+    `${formatElapsed(work)} of work`,
+    tokens ? `${formatTokens(tokens)} tok` : null,
+    cost ? `$${cost.toFixed(2)}` : null,
+  ].filter(Boolean)
+  return (
+    <tr
+      aria-label={batchText(runs)}
+      aria-rowindex={index + 1}
+      className="h-7"
+      data-batch
+      data-index={index}
+      ref={measure}
+    >
+      <td className="hairline-b relative h-7 border-(--tj-border-1) pr-1 pl-9 whitespace-nowrap @max-[620px]/tj:pr-0 @max-[620px]/tj:pl-7">
+        <span className="flex items-center justify-end gap-2">
+          <StartTime at={start} />
+          <span className="w-19 @max-[620px]/tj:hidden" />
+        </span>
+      </td>
+      <td className="hairline-b h-7 truncate border-(--tj-border-1) pr-2 pl-1 text-sm leading-5">
+        <GitFork
+          aria-hidden
+          className="mr-1.5 inline size-3.5 align-[-2px] text-(--tj-subtool)"
+          strokeWidth={1.75}
+        />
+        <span className="font-medium text-(--tj-label-1)">
+          {runs.length} subagents in parallel
+        </span>
+        <span className="font-tj-code ml-2.5 text-[12px] text-(--tj-label-3) tabular-nums">
+          {stats.join(' · ')}
+        </span>
+      </td>
+    </tr>
+  )
+}
+
+function batchText(runs: TrajectoryRecord[]): string {
+  return `${runs.length} subagents in parallel`
+}
+
 function Content({ record }: { record: TrajectoryRecord }) {
+  if (record.subagent) return <SubagentContent record={record} />
   if (record.tool) {
     const { args, name, result } = record.tool
     const request = `${name} ${args}`
@@ -418,6 +502,8 @@ function Content({ record }: { record: TrajectoryRecord }) {
 }
 
 function contentText(record: TrajectoryRecord): string {
+  if (record.subagent)
+    return `${record.subagent.description} ${record.subagent.type}`
   if (record.tool) {
     const { args, name, result } = record.tool
     return `${name} ${args} → ${result || 'No output'}`
@@ -432,6 +518,7 @@ function findText(
   turnStarts: Map<string, number>,
 ): string {
   if (row.kind === 'summary') return row.text
+  if (row.kind === 'batch') return batchText(row.runs)
   const { record } = row
   const turn = turnStarts.get(record.id)
   return [
@@ -574,11 +661,21 @@ function RecordRow({
             <StartTime at={record.startedAt} pause={pause} />
           )}
           <span className="flex w-19 justify-end @max-[620px]/tj:w-auto">
-            <KindTag kind={record.kind} />
+            <KindTag kind={record.kind} subagent={!!record.subagent} />
           </span>
         </span>
       </td>
       <td className={cn(cell, 'overflow-hidden pr-2 pl-1')}>
+        {(record.kind === 'subtool' ||
+          (record.subagent && record.subagent.steps > 0)) && (
+          <span
+            aria-hidden
+            className={cn(
+              'absolute bottom-0 left-2.75 w-0.5 bg-(--tj-subtool) opacity-40',
+              record.kind === 'subtool' ? 'top-0' : 'top-6.5',
+            )}
+          />
+        )}
         <Content record={record} />
       </td>
     </tr>
@@ -649,6 +746,64 @@ function StartTime({ at, pause }: { at: number; pause?: number }) {
       >
         {clockTime(at, true)}
       </time>
+    </span>
+  )
+}
+
+function SubagentContent({ record }: { record: TrajectoryRecord }) {
+  const s = record.subagent!
+  const ms =
+    record.startedAt !== null && record.endedAt !== null
+      ? record.endedAt - record.startedAt
+      : null
+  const u = s.usage
+  const tokens = u.input + u.output + u.cacheRead + u.cacheWrite
+  const stats = [
+    `${s.steps} ${s.steps === 1 ? 'tool' : 'tools'}`,
+    tokens ? `${formatTokens(tokens)} tok` : null,
+    u.cost ? `$${u.cost.toFixed(2)}` : null,
+    ms === null ? 'running' : formatElapsed(ms),
+  ].filter(Boolean)
+  const answer = preview(s.answer)
+  return (
+    <span
+      className="grid grid-cols-[clamp(180px,calc(36cqw-56px),480px)_minmax(0,1fr)] gap-2 text-[14px]"
+      title={`${s.description} → ${answer || 'No answer yet'}`}
+    >
+      <span className="flex min-w-0 items-center">
+        <Bot
+          aria-hidden
+          className="mr-1.5 size-3.5 shrink-0 text-(--tj-subtool)"
+          strokeWidth={1.75}
+        />
+        <span className="truncate">
+          <span className="font-medium text-(--tj-label-1)">
+            {s.description || 'Subagent'}
+          </span>
+          {s.type && (
+            <span className="font-tj-code ml-1.75 text-[12px] text-(--tj-label-3)">
+              {s.type}
+            </span>
+          )}
+        </span>
+      </span>
+      <span className="truncate">
+        <span
+          className={cn(
+            'font-tj-code text-[12px] tabular-nums',
+            s.errors ? 'text-(--tj-error)' : 'text-(--tj-label-2)',
+          )}
+        >
+          {stats.join(' · ')}
+          {s.errors ? ` · ${s.errors} failed` : ''}
+        </span>
+        <span className="mx-2 text-(--tj-caption)">→</span>
+        <span
+          className={answer ? 'text-(--tj-label-2)' : 'text-(--tj-caption)'}
+        >
+          {answer || 'No answer yet'}
+        </span>
+      </span>
     </span>
   )
 }
