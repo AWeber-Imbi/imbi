@@ -275,6 +275,25 @@ class PostTests(FlowTestCase):
             )
         self.assertEqual(['D-U1'], [p['channel'] for p in self.slack.posts])
 
+    async def test_non_200_direct_post_error_is_raised(self) -> None:
+        post = self.slack.chat_postMessage
+
+        class BadGateway(Resp):
+            status_code = 502
+
+        response = BadGateway(ok=False, error='Received a non-JSON response')
+
+        async def accept_then_fail(channel, text=None, **kw):
+            await post(channel, text, **kw)
+            raise errors.SlackApiError('bad gateway', response)
+
+        self.slack.chat_postMessage = accept_then_fail
+        with self.assertRaises(errors.SlackApiError):
+            await ticket_requests.post(
+                self.slack, self.runtime, entry(slack_channel='ops')
+            )
+        self.assertEqual(['D-U1'], [p['channel'] for p in self.slack.posts])
+
     async def test_timeout_on_the_direct_message_is_raised(self) -> None:
         self.slack.conversations_open = mock.AsyncMock(
             side_effect=TimeoutError
