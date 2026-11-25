@@ -75,4 +75,19 @@ describe('Navigation', () => {
       await screen.findByRole('menuitem', { name: /Runners/ }),
     ).toBeInTheDocument()
   })
+
+  it('keeps focus where it is when hover opens the Agents menu', async () => {
+    const { Navigation } = await import('../Navigation')
+    render(
+      <>
+        <input aria-label="Scratch input" />
+        <Navigation />
+      </>,
+    )
+    const input = screen.getByRole('textbox', { name: 'Scratch input' })
+    input.focus()
+    await userEvent.hover(screen.getByRole('link', { name: /Agents/ }))
+    await screen.findByRole('menuitem', { name: /Runners/ })
+    expect(input).toHaveFocus()
+  })
 })

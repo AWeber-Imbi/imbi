@@ -396,17 +396,30 @@ function AgentsMenu({ isActive }: { isActive: boolean }) {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const closeTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const hoverOpened = useRef(false)
   const agentsNav = useAgentsNav().filter((item) => item.id !== 'dashboard')
   const show = () => {
     clearTimeout(closeTimer.current)
+    hoverOpened.current = true
     setOpen(true)
   }
   const hide = () => {
     clearTimeout(closeTimer.current)
     closeTimer.current = setTimeout(() => setOpen(false), 100)
   }
+  // A hover open must not move focus into the menu, or back to the trigger.
+  const skipFocusOnHover = (e: Event) => {
+    if (hoverOpened.current) e.preventDefault()
+  }
   return (
-    <DropdownMenu modal={false} onOpenChange={setOpen} open={open}>
+    <DropdownMenu
+      modal={false}
+      onOpenChange={(next) => {
+        if (next) hoverOpened.current = false
+        setOpen(next)
+      }}
+      open={open}
+    >
       <DropdownMenuTrigger
         asChild
         onClick={() => setOpen(false)}
@@ -438,8 +451,11 @@ function AgentsMenu({ isActive }: { isActive: boolean }) {
       <DropdownMenuContent
         align="start"
         className="w-64"
+        onCloseAutoFocus={skipFocusOnHover}
         onPointerEnter={show}
         onPointerLeave={hide}
+        // Radix omits onOpenAutoFocus from the public type, but forwards it.
+        {...{ onOpenAutoFocus: skipFocusOnHover }}
       >
         {agentsNav.map((item, i) => {
           const Icon = item.icon
