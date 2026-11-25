@@ -95,4 +95,40 @@ describe('MergedNotDeployedReport', () => {
       ),
     )
   })
+
+  it('shows a notice when the API limit cuts the list', async () => {
+    const row = {
+      additions: 1,
+      author: 'gmr',
+      deletions: 0,
+      last_deployed_at: null,
+      merged_at: '2026-09-10T12:00:00Z',
+      project_id: 'p1',
+      title: 'A pull request',
+      url: 'https://github.example/org/repo/pull/1',
+    }
+    spy.mockResolvedValue({
+      data: Array.from({ length: 200 }, (_, i) => ({
+        ...row,
+        pr_id: `PR_${i}`,
+        pr_number: i,
+      })),
+      environments: ['production'],
+      since: '2026-06-18T00:00:00Z',
+    })
+    renderAt('/reports/merged-not-deployed')
+
+    expect(
+      await screen.findByText(
+        'Showing the oldest 200. Deploy or filter to see more.',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('shows no notice under the API limit', async () => {
+    renderAt('/reports/merged-not-deployed')
+
+    await screen.findByText('Add the widget')
+    expect(screen.queryByText(/Showing the oldest/)).not.toBeInTheDocument()
+  })
 })

@@ -8,6 +8,8 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import { useProjectsSlimMap } from '@/hooks/useProjectsSlimMap'
 
 const MINE = '@me'
+// The API returns at most this many rows (PENDING_DEPLOY_LIMIT).
+const PENDING_DEPLOY_LIMIT = 200
 
 /**
  * Merged pull requests not yet deployed to a terminal environment.
@@ -66,6 +68,12 @@ export function MergedNotDeployedReport() {
           prs={prs}
           showAuthor={author !== MINE}
         />
+        {prs.length >= PENDING_DEPLOY_LIMIT && (
+          <p className="text-tertiary mt-3 text-xs">
+            Showing the oldest {PENDING_DEPLOY_LIMIT}. Deploy or filter to see
+            more.
+          </p>
+        )}
       </div>
     </div>
   )
