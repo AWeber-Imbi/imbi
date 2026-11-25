@@ -231,15 +231,14 @@ async def handle_action(slack: SlackClient, body: Body) -> None:
 
 
 async def _new_ticket(slack: SlackClient, body: Body) -> None:
-    """Open the modal of the ``/create-ticket`` command."""
-
-    async def acked() -> None:
-        """The Home action is acked already."""
-
-    await create_ticket.on_command(
-        acked,
-        {'trigger_id': body['trigger_id'], 'user_id': body['user']['id']},
+    """Open the modal of the ``/create-ticket`` command, on the org that
+    the Home tab shows (the button value)."""
+    action: Body = body['actions'][0]
+    await create_ticket.open_form(
         slack,
+        body['trigger_id'],
+        body['user']['id'],
+        org=action.get('value') or None,
     )
 
 

@@ -737,7 +737,12 @@ def _header(
         )
     )
     buttons = [
-        b.button('New ticket', 'home:header:new_ticket', style='primary'),
+        b.button(
+            'New ticket',
+            'home:header:new_ticket',
+            value=links.org,
+            style='primary',
+        ),
         # The slack:// link is built from the ids in the Slack payload,
         # not from API data, so it skips the http(s) check.
         b.button('Ask Imbi', 'home:header:ask', url=gathered.ask_url)

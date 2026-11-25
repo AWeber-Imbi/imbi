@@ -982,11 +982,12 @@ class HomeFlowTests(helpers.TestCase):
     async def test_new_ticket_opens_the_create_ticket_modal(self) -> None:
         create_ticket._cache.clear()
         await home.handle_action(
-            self.slack, self.action('home:header:new_ticket')
+            self.slack, self.action('home:header:new_ticket', value='acme')
         )
         self.assertEqual('trig', self.slack.opened[0]['trigger_id'])
         view = self.slack.updated[-1]['view']
         self.assertEqual(create_ticket.CALLBACK_ID, view['callback_id'])
+        self.assertEqual('acme', json.loads(view['private_metadata'])['org'])
         self.assertEqual('V1', self.slack.updated[-1]['view_id'])
         self.assertEqual([], self.slack.published)
         for request in self.api.requests:
