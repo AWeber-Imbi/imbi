@@ -79,8 +79,8 @@ def parse(url: str) -> Ticket | Project | None:
     return None
 
 
-def ticket_entity(ticket: Json, url: str) -> Json:
-    """Build the Work Object (a Slack task) for a ticket."""
+def ticket_entity(ticket: Json, url: str, org: str) -> Json:
+    """Build the Work Object (a Slack task) for a ticket of ``org``."""
     status = ticket.get('status')
     fields: Json = {
         'status': {
@@ -97,6 +97,8 @@ def ticket_entity(ticket: Json, url: str) -> Json:
     short_id = ticket.get('short_id') or ''
     return _entity(
         url,
+        {'id': f'{org}/{short_id}', 'type': 'ticket'},
+        f'{settings.get_slackbot_settings().ui_url}/tickets/{org}/{short_id}',
         'slack#/entities/task',
         {'fields': fields},
         title=ticket.get('title') or short_id,
@@ -134,13 +136,15 @@ def project_entity(project: Json, url: str) -> Json:
             }
         )
     fields.extend(_current_release(project))
+    ui_url = settings.get_slackbot_settings().ui_url
     buttons = [_button('Open in Imbi', url, primary=True)]
     if project.get('has_deployment_plugin'):
-        ui_url = settings.get_slackbot_settings().ui_url
         deployments = f'{ui_url}/projects/{project["id"]}/deployments'
         buttons.append(_button('Deployments', deployments))
     return _entity(
         url,
+        {'id': project['id'], 'type': 'project'},
+        f'{ui_url}/projects/{project["id"]}',
         'slack#/entities/item',
         {'custom_fields': [f for f in fields if f]},
         title=project.get('name') or '',
@@ -263,6 +267,8 @@ def _button(text: str, url: str, *, primary: bool = False) -> Json:
 
 def _entity(
     url: str,
+    ref: Json,
+    canonical: str,
     entity_type: str,
     payload: Json,
     *,
@@ -273,8 +279,9 @@ def _entity(
 ) -> Json:
     return {
         'app_unfurl_url': url,
-        'url': url,
-        'external_ref': {'id': url},
+        'url': canonical,
+        # The same item for every link to it (a tab, a query string).
+        'external_ref': ref,
         'entity_type': entity_type,
         'entity_payload': {
             'attributes': {
@@ -358,7 +365,7 @@ async def _external(client: SlackClient, channel: str) -> bool:
 async def _ticket_card(imbi: api.Imbi, item: Ticket, url: str) -> Json | None:
     path = f'/organizations/{item.org}/tickets/{item.short_id}'
     ticket = await _get(imbi, path)
-    return ticket_entity(ticket, url) if ticket else None
+    return ticket_entity(ticket, url, item.org) if ticket else None
 
 
 async def _project_card(

@@ -91,10 +91,37 @@ def fields_by_key(entity: dict[str, typing.Any]) -> dict[str, typing.Any]:
     return {f['key']: f for f in entity['entity_payload']['custom_fields']}
 
 
-class TicketEntityTests(helpers.TestCase):
+class EntityRefTests(SettingsTestCase):
+    def test_equivalent_links_share_a_ref(self) -> None:
+        cases = {
+            'ticket': (
+                lambda u: unfurl.ticket_entity(TICKET, u, 'acme'),
+                TICKET_URL,
+                f'{UI}/tickets/acme/T-12?tab=x#y',
+                {'id': 'acme/T-12', 'type': 'ticket'},
+                f'{UI}/tickets/acme/T-12',
+            ),
+            'project': (
+                lambda u: unfurl.project_entity(PROJECT, u),
+                PROJECT_URL,
+                f'{PROJECT_URL}/logs',
+                {'id': 'p1', 'type': 'project'},
+                PROJECT_URL,
+            ),
+        }
+        for name, (build, first, second, ref, canonical) in cases.items():
+            with self.subTest(name):
+                a, b = build(first), build(second)
+                self.assertEqual(ref, a['external_ref'])
+                self.assertEqual(a['external_ref'], b['external_ref'])
+                self.assertEqual((canonical, canonical), (a['url'], b['url']))
+                self.assertEqual(second, b['app_unfurl_url'])
+
+
+class TicketEntityTests(SettingsTestCase):
     def test_ticket(self) -> None:
         entity = unfurl.ticket_entity(
-            {**TICKET, 'assignee': 'ada@example.com'}, TICKET_URL
+            {**TICKET, 'assignee': 'ada@example.com'}, TICKET_URL, 'acme'
         )
         self.assertEqual('slack#/entities/task', entity['entity_type'])
         self.assertEqual(TICKET_URL, entity['app_unfurl_url'])
@@ -133,6 +160,7 @@ class TicketEntityTests(helpers.TestCase):
         entity = unfurl.ticket_entity(
             {**TICKET, 'assignee': None, 'type': None, 'status': 'odd'},
             TICKET_URL,
+            'acme',
         )
         payload = entity['entity_payload']
         self.assertNotIn('assignee', payload['fields'])
@@ -279,7 +307,7 @@ class HandleTests(SettingsTestCase, test_create_ticket.ApiTestCase):
         self.assertEqual('X1', kwargs['unfurl_id'])
         self.assertEqual('conversations_history', kwargs['source'])
         self.assertEqual(
-            {'entities': [unfurl.ticket_entity(TICKET, TICKET_URL)]},
+            {'entities': [unfurl.ticket_entity(TICKET, TICKET_URL, 'acme')]},
             kwargs['metadata'],
         )
 
