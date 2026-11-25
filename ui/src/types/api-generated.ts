@@ -11620,6 +11620,11 @@ export interface components {
              * @enum {string}
              */
             capability: "read" | "write" | "destructive" | "unknown";
+            /**
+             * Default
+             * @default false
+             */
+            default: boolean;
         };
         /** AgentCreate */
         AgentCreate: {
