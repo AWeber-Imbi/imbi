@@ -209,10 +209,10 @@ export function AgentDetail({ agent }: { agent: Agent }) {
             )}
           </div>
           <div
-            className="max-h-65 overflow-y-auto px-6 py-4"
-            tabIndex={0}
-            role="region"
             aria-label="System prompt"
+            className="max-h-65 overflow-y-auto px-6 py-4"
+            role="region"
+            tabIndex={0}
           >
             {prompt.isLoading ? (
               <p className="text-tertiary text-sm">Loading…</p>
