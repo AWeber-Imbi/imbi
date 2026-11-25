@@ -38,7 +38,7 @@ import {
   type ParamField,
   TRIGGER_PROJECT,
 } from './schemaFields'
-import { useSourceOptions } from './workflowQueries'
+import { useSourceOptions, useStepChoices } from './workflowQueries'
 
 interface ParamsFormProps {
   fields: ParamField[]
@@ -95,6 +95,7 @@ export function ParamsForm({
               onChange={(v) => onChange(field.name, v)}
               onRemoveItem={(i) => onRemoveItem(field.name, i)}
               orgSlug={orgSlug}
+              params={params}
               references={references}
               value={value}
               webhookProject={webhookProject}
@@ -175,12 +176,100 @@ function ChecksField({
   )
 }
 
+/**
+ * A plugin step field with choices from its integration (ADR 0032). It
+ * also takes free text, because the value can be a template.
+ */
+function ChoicesField({
+  field,
+  id,
+  onChange,
+  orgSlug,
+  params,
+  value,
+}: {
+  field: Extract<ParamField, { kind: 'choices' }>
+  id: string
+  onChange: (value: unknown) => void
+  orgSlug: string
+  params: Record<string, unknown>
+  value: unknown
+}) {
+  const choices = useStepChoices(
+    orgSlug,
+    params.integration,
+    field.step,
+    field.name,
+    Object.fromEntries(field.dependsOn.map((name) => [name, params[name]])),
+  )
+  const options = choices.data ?? []
+  const placeholder = choices.isFetching ? 'Loading…' : 'Choose or type…'
+  const error = choices.isError && (
+    <p className="text-danger mt-1 text-xs">
+      Could not load the choices. Type a value.
+    </p>
+  )
+  if (!field.multiple) {
+    return (
+      <>
+        <Combobox
+          creatable
+          id={id}
+          onChange={onChange}
+          options={options}
+          placeholder={placeholder}
+          value={typeof value === 'string' ? value : ''}
+        />
+        {error}
+      </>
+    )
+  }
+  const selected = Array.isArray(value) ? value.map(String) : []
+  const label = (v: string) => options.find((o) => o.value === v)?.label ?? v
+  return (
+    <div className="flex flex-col gap-1.5">
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {selected.map((v) => (
+            <span
+              className="bg-secondary inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs"
+              key={v}
+            >
+              {label(v)}
+              <button
+                aria-label={`Remove ${label(v)}`}
+                className="text-secondary hover:text-primary"
+                onClick={() => onChange(selected.filter((s) => s !== v))}
+                type="button"
+              >
+                <X className="size-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <Combobox
+        creatable
+        id={id}
+        onChange={(v) => {
+          if (v && !selected.includes(v)) onChange([...selected, v])
+        }}
+        options={options.filter((o) => !selected.includes(o.value))}
+        placeholder={placeholder}
+        value=""
+      />
+      {error}
+    </div>
+  )
+}
+
 function FieldControl({
   field,
   id,
   onChange,
   onRemoveItem,
   orgSlug,
+  params,
   references,
   value,
   webhookProject,
@@ -190,6 +279,7 @@ function FieldControl({
   onChange: (value: unknown) => void
   onRemoveItem: (index: number) => void
   orgSlug: string
+  params: Record<string, unknown>
   references: ReferenceGroup[]
   value: unknown
   webhookProject: boolean
@@ -211,6 +301,17 @@ function FieldControl({
           onChange={onChange}
           options={field.options}
           value={Array.isArray(value) ? value.map(String) : []}
+        />
+      )
+    case 'choices':
+      return (
+        <ChoicesField
+          field={field}
+          id={id}
+          onChange={onChange}
+          orgSlug={orgSlug}
+          params={params}
+          value={value}
         />
       )
     case 'code':
@@ -328,6 +429,7 @@ function FieldControl({
           onChange={onChange}
           optional={!field.required}
           orgSlug={orgSlug}
+          plugin={field.plugin}
           source={field.source}
           value={typeof value === 'string' ? value : ''}
           webhookProject={webhookProject}
@@ -537,6 +639,7 @@ function SourceField({
   onChange,
   optional,
   orgSlug,
+  plugin,
   source,
   value,
   webhookProject,
@@ -545,11 +648,12 @@ function SourceField({
   onChange: (value: string | undefined) => void
   optional: boolean
   orgSlug: string
+  plugin?: string
   source: FieldSource
   value: string
   webhookProject: boolean
 }) {
-  const { loading, options } = useSourceOptions(orgSlug, source)
+  const { loading, options } = useSourceOptions(orgSlug, source, plugin)
   const detect = source === 'project' && webhookProject
   return (
     <>

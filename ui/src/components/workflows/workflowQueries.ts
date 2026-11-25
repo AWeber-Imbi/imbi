@@ -8,18 +8,20 @@ import {
   listAgents,
   listAIModels,
   listEnvironments,
+  listIntegrations,
   listTeams,
   listWebhooks,
   listWorkflowOrgRuns,
   listWorkflowRuns,
   listWorkflows,
+  listWorkflowStepChoices,
   listWorkflowStepTypes,
 } from '@/api/endpoints'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { queryKeys } from '@/lib/queryKeys'
 
 import { isOpen } from './runs'
-import type { FieldSource } from './schemaFields'
+import { type FieldSource, hasTemplate } from './schemaFields'
 
 /** How often an open run refreshes. Live views read Postgres (ADR 0021). */
 const LIVE_MS = 2000
@@ -42,8 +44,13 @@ export function useOrgRuns(orgSlug: string | undefined, days: number) {
   })
 }
 
-/** Options for a live-data select, loaded only when a field needs them. */
-export function useSourceOptions(orgSlug: string, source: FieldSource) {
+/** Options for a live-data select, loaded only when a field needs them.
+ * `plugin` limits integrations to those of a plugin with workflow steps. */
+export function useSourceOptions(
+  orgSlug: string,
+  source: FieldSource,
+  plugin?: string,
+) {
   const models = useQuery({
     enabled: source === 'model',
     queryFn: ({ signal }) => listAIModels(signal),
@@ -84,15 +91,72 @@ export function useSourceOptions(orgSlug: string, source: FieldSource) {
     queryKey: queryKeys.agents(orgSlug),
     select: (rows) => rows.map((a) => ({ label: a.name, value: a.id })),
   })
+  const integrations = useQuery({
+    enabled: source === 'integration',
+    queryFn: ({ signal }) => listIntegrations(orgSlug, signal),
+    queryKey: queryKeys.integrations(orgSlug),
+    select: (rows) =>
+      rows
+        .filter(
+          (i) =>
+            i.plugin === plugin &&
+            i.status !== 'inactive' &&
+            i.capabilities?.['workflow-steps']?.enabled,
+        )
+        .map((i) => ({ label: i.name, value: i.slug })),
+  })
   const query = {
     agent: agents,
     environment: environments,
+    integration: integrations,
     model: models,
     project: projects,
     team: teams,
     webhook: webhooks,
   }[source]
   return { loading: query.isLoading, options: query.data ?? [] }
+}
+
+/**
+ * The choices of a plugin step field (ADR 0032). `params` holds the
+ * values of the fields that the choices depend on. No lookup while the
+ * integration is unset or a value is a template: the plugin cannot read
+ * them before the run.
+ */
+export function useStepChoices(
+  orgSlug: string,
+  integration: unknown,
+  step: string,
+  field: string,
+  params: Record<string, unknown>,
+) {
+  const ready =
+    typeof integration === 'string' &&
+    integration !== '' &&
+    !hasTemplate(integration) &&
+    Object.values(params).every((v) => typeof v !== 'string' || !hasTemplate(v))
+  return useQuery({
+    enabled: ready,
+    queryFn: ({ signal }) =>
+      listWorkflowStepChoices(
+        orgSlug,
+        integration as string,
+        step,
+        { field, params },
+        signal,
+      ),
+    queryKey: [
+      'workflow-step-choices',
+      orgSlug,
+      integration,
+      step,
+      field,
+      params,
+    ],
+    retry: false,
+    select: (rows) => rows.map((c) => ({ label: c.label, value: c.value })),
+    staleTime: 60_000,
+  })
 }
 
 export function useStepTypes(orgSlug: string | undefined) {

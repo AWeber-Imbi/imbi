@@ -7,6 +7,7 @@ import type { JsonSchema } from './types'
 export type FieldSource =
   | 'agent'
   | 'environment'
+  | 'integration'
   | 'model'
   | 'project'
   | 'team'
@@ -14,11 +15,18 @@ export type FieldSource =
 
 export type ParamField =
   | (FieldBase & {
+      dependsOn: string[]
+      kind: 'choices'
+      multiple: boolean
+      /** The plugin step name, for the choices endpoint (ADR 0032). */
+      step: string
+    })
+  | (FieldBase & {
       kind: 'checks' | 'conditions' | 'manualInputs' | 'select'
       options: { label: string; value: string }[]
     })
   | (FieldBase & { kind: 'multiline'; mono: boolean })
-  | (FieldBase & { kind: 'source'; source: FieldSource })
+  | (FieldBase & { kind: 'source'; plugin?: string; source: FieldSource })
   | (FieldBase & {
       kind:
         | 'boolean'
@@ -62,10 +70,12 @@ const MULTILINE = new Set([
 const MONO = new Set(['filter'])
 
 /** `rawParams` names the params that are never templates (`raw_params`
- * of the step type), such as a script's code. */
+ * of the step type), such as a script's code. `stepType` is the type of
+ * the step, which a plugin field with choices needs. */
 export function paramFields(
   schema: JsonSchema,
   rawParams: readonly string[] = [],
+  stepType = '',
 ): ParamField[] {
   const required = new Set(schema.required ?? [])
   return Object.entries(schema.properties ?? {}).map(([name, raw]) => {
@@ -77,6 +87,25 @@ export function paramFields(
       label: humanize(name),
       name,
       required: required.has(name),
+    }
+    // A plugin step (ADR 0032): the host adds the integration param, and
+    // the plugin marks the fields that its `choices` callable fills.
+    if (prop['x-imbi-source'] === 'integration') {
+      return {
+        ...base,
+        kind: 'source',
+        plugin: prop['x-imbi-plugin'],
+        source: 'integration',
+      }
+    }
+    if (prop['x-imbi-choices']) {
+      return {
+        ...base,
+        dependsOn: prop['x-imbi-depends-on'] ?? [],
+        kind: 'choices',
+        multiple: prop.type === 'array',
+        step: stepType.slice(stepType.indexOf('.') + 1),
+      }
     }
     if (SOURCES[name]) return { ...base, kind: 'source', source: SOURCES[name] }
     if (name === 'output_fields') return { ...base, kind: 'outputFields' }

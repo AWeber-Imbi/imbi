@@ -370,6 +370,57 @@ describe('paramSummary', () => {
   })
 })
 
+describe('paramFields for a plugin step', () => {
+  const schema = {
+    properties: {
+      datasource: {
+        type: 'string',
+        'x-imbi-choices': true,
+        'x-imbi-depends-on': ['region'],
+      },
+      integration: {
+        type: 'string',
+        'x-imbi-plugin': 'grafana',
+        'x-imbi-source': 'integration',
+      },
+      labels: {
+        items: { type: 'string' },
+        type: 'array',
+        'x-imbi-choices': true,
+      },
+      region: { type: 'string' },
+    },
+    required: ['integration'],
+    type: 'object',
+  }
+
+  it('picks the integration from those of the plugin', () => {
+    const fields = paramFields(schema, [], 'grafana.gather_metrics')
+    expect(fields.find((f) => f.name === 'integration')).toMatchObject({
+      kind: 'source',
+      plugin: 'grafana',
+      required: true,
+      source: 'integration',
+    })
+  })
+
+  it('loads choices for the plugin step, as a multi-select for a list', () => {
+    const fields = paramFields(schema, [], 'grafana.gather_metrics')
+    expect(fields.find((f) => f.name === 'datasource')).toMatchObject({
+      dependsOn: ['region'],
+      kind: 'choices',
+      multiple: false,
+      step: 'gather_metrics',
+    })
+    expect(fields.find((f) => f.name === 'labels')).toMatchObject({
+      dependsOn: [],
+      kind: 'choices',
+      multiple: true,
+    })
+    expect(fields.find((f) => f.name === 'region')?.kind).toBe('text')
+  })
+})
+
 describe('isIdOrReference', () => {
   it('takes a literal id or one plain reference only', () => {
     expect(isIdOrReference('')).toBe(true)

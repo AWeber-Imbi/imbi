@@ -3911,6 +3911,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/integrations/{integration_slug}/workflow-steps/{step_name}/choices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * List Choices
+         * @description Return at most 1000 choices for a field of a plugin step.
+         *
+         *     Raises:
+         *         400: The field does not have choices.
+         *         404: Integration or step not found, or workflow steps are off.
+         *         502: The plugin failed (``plugin_error``) or did not answer in
+         *             10 seconds (``plugin_timeout``).
+         */
+        post: operations["list_choices_api_organizations__org_slug__integrations__integration_slug__workflow_steps__step_name__choices_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/webhooks/": {
         parameters: {
             query?: never;
@@ -13774,6 +13800,18 @@ export interface components {
             };
         };
         /**
+         * Choice
+         * @description One value that a workflow step form field can take.
+         */
+        Choice: {
+            /** Value */
+            value: string;
+            /** Label */
+            label: string;
+            /** Description */
+            description?: string | null;
+        };
+        /**
          * ChoiceQuestion
          * @description Pick one of up to 255 named options.
          */
@@ -13788,6 +13826,21 @@ export interface components {
             /** Criteria */
             criteria: {
                 [key: string]: string | null;
+            };
+        };
+        /**
+         * ChoicesRequest
+         * @description The field to load and the params that the editor has so far.
+         */
+        ChoicesRequest: {
+            /** Field */
+            field: string;
+            /**
+             * Params
+             * @default {}
+             */
+            params: {
+                [key: string]: unknown;
             };
         };
         /** Claim */
@@ -30437,6 +30490,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CapabilityAssignment"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_choices_api_organizations__org_slug__integrations__integration_slug__workflow_steps__step_name__choices_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                integration_slug: string;
+                step_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChoicesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Choice"][];
                 };
             };
             /** @description Validation Error */
