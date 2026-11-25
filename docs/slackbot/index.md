@@ -74,6 +74,12 @@ you why. When someone can still answer (for example, you do not have
 in the UI first, or the ticket closed), the form closes and shows the
 reason. A form stays open for 7 days.
 
+When a person resolves the request, in the UI or in Slack, each form of the
+request changes to show the decision and who resolved it. Only a form in a
+direct message also shows the answer. A hand-off or a close of the ticket
+withdraws its open requests, and their forms show `withdrawn`. Forms that
+the bot posted before this release do not change.
+
 ## Link previews
 
 When you post a link to an Imbi ticket

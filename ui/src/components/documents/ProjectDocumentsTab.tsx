@@ -10,6 +10,7 @@ import {
 import { type DocumentsScope, DocumentsTab } from './DocumentsTab'
 
 interface Props {
+  basePath: string
   initialAction?: string
   initialDocumentId?: string
   orgSlug: string
@@ -19,6 +20,7 @@ interface Props {
 
 /** The project-detail Documents tab — a project-scoped {@link DocumentsTab}. */
 export function ProjectDocumentsTab({
+  basePath,
   initialAction,
   initialDocumentId,
   orgSlug,
@@ -27,7 +29,7 @@ export function ProjectDocumentsTab({
 }: Props) {
   const scope = useMemo<DocumentsScope>(
     () => ({
-      basePath: `/projects/${projectId}/documents`,
+      basePath,
       commentsProjectId: projectId,
       create: (draft) => createProjectDocument(orgSlug, projectId, draft),
       list: (signal) =>
@@ -40,7 +42,7 @@ export function ProjectDocumentsTab({
         deleteProjectDocument(orgSlug, projectId, documentId),
       templateContext: 'project',
     }),
-    [orgSlug, projectId, projectTypeSlugs],
+    [basePath, orgSlug, projectId, projectTypeSlugs],
   )
 
   return (

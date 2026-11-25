@@ -10,8 +10,10 @@ import asyncio
 import datetime
 import typing
 import uuid
+from unittest import mock
 
 import httpx
+import orjson
 
 from apps.api.tests.endpoints import (
     test_agent_task_harness,
@@ -19,6 +21,8 @@ from apps.api.tests.endpoints import (
 )
 from imbi.api import models, tickets
 from imbi.api.auth import permissions
+from imbi.api.tickets import announce
+from imbi.common import valkey
 from scripts import ticket_client
 
 FEEDBACK = {'kind': 'feedback', 'title': 'Which repo?', 'options': ['a']}
@@ -99,6 +103,39 @@ class ResolveTests(ActionTestCase):
         self.assertEqual(
             [(e['type'], e['payload']['to']) for e in events],
             [('state.changed', 'queued')],
+        )
+
+    async def test_resolve_goes_to_the_slack_stream(self) -> None:
+        opened = await self.open_request(FEEDBACK)
+        request_id = opened['request']['id']
+        client = mock.AsyncMock()
+        patcher = mock.patch.object(
+            announce.valkey, 'get_client', return_value=client
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        response = await self.resolve(
+            request_id, status='answered', answer='a'
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        # The same answer again changes nothing, so it is not posted.
+        response = await self.resolve(
+            request_id, status='answered', answer='a'
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        client.xadd.assert_awaited_once()
+        stream, fields = client.xadd.await_args.args
+        self.assertEqual(stream, valkey.TICKET_REQUESTS_STREAM)
+        self.assertEqual(
+            orjson.loads(fields['request']),
+            {
+                'resolved': True,
+                'short_id': 'T-1',
+                'request_id': request_id,
+                'status': 'answered',
+                'answer': 'a',
+                'resolved_by': self.email,
+            },
         )
 
     async def test_resolve_with_a_session_open_runs_the_task(self) -> None:
@@ -232,7 +269,16 @@ class ResolveTests(ActionTestCase):
 
     async def test_closed_task_refuses_resolution(self) -> None:
         opened = await self.open_request(FEEDBACK)
-        await self.post('outcome', {'outcome': 'done_acted'})
+        client = mock.AsyncMock()
+        with mock.patch.object(
+            announce.valkey, 'get_client', return_value=client
+        ):
+            await self.post('outcome', {'outcome': 'done_acted'})
+        # The close withdraws the request, and the slackbot closes its
+        # forms.
+        entry = orjson.loads(client.xadd.await_args.args[1]['request'])
+        self.assertEqual(entry['request_id'], opened['request']['id'])
+        self.assertEqual(entry['status'], 'withdrawn')
         response = await self.resolve(
             opened['request']['id'], status='answered', answer='a'
         )

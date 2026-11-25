@@ -955,7 +955,7 @@ graph is too large.
 
 | Check | Issue code |
 |---|---|
-| At most 100 steps, 200 connections, and 64 KiB of graph JSON. A save is refused | `too_many_nodes`, `too_many_edges`, `graph_too_large` |
+| At most 100 steps, 200 connections, and 256 KiB of graph JSON. A save is refused | `too_many_nodes`, `too_many_edges`, `graph_too_large` |
 | At least one trigger | `no_trigger` |
 | Each step type exists | `unknown_type` |
 | Parameters are valid. A missing required parameter is a warning | `invalid_param`, `missing_param` (warning) |

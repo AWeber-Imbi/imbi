@@ -3,12 +3,15 @@
 import decimal
 import typing
 import uuid
+from unittest import mock
 
 import httpx
+import orjson
 
 from apps.api.tests.endpoints import test_agent_task_harness, test_harness
 from imbi.api import tickets
 from imbi.api.endpoints import harness as harness_api
+from imbi.api.tickets import announce
 
 
 class HandOffTestCase(test_agent_task_harness.HarnessTestCase):
@@ -169,9 +172,17 @@ class HandOffTests(HandOffTestCase):
         request_id = response.json()['request']['id']
         await self.close_sessions()
         self.assertEqual((await self.task_row())['status'], 'blocked')
-        response = await self.to_person()
+        client = mock.AsyncMock()
+        with mock.patch.object(
+            announce.valkey, 'get_client', return_value=client
+        ):
+            response = await self.to_person()
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()['status'], 'open')
+        # The slackbot closes the forms of the request.
+        entry = orjson.loads(client.xadd.await_args.args[1]['request'])
+        self.assertEqual(entry['request_id'], request_id)
+        self.assertEqual(entry['status'], 'withdrawn')
         events = await self.events()
         withdrawn = [e for e in events if e['type'] == 'request.withdrawn']
         self.assertEqual(

@@ -344,7 +344,10 @@ function ConfigCard({
   const toggleDefault = (marketplace: string, plugin: string, on: boolean) =>
     setConfig({
       default_plugins: on
-        ? [...defaults, { marketplace, plugin }]
+        ? [
+            ...defaults,
+            { marketplace, mcp_servers: [], plugin, server_settings: {} },
+          ]
         : defaults.filter(
             (p) => !(p.marketplace === marketplace && p.plugin === plugin),
           ),

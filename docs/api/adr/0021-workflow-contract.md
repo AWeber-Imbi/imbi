@@ -113,7 +113,7 @@ errors and no warnings. Checks:
 - The graph has no cycles. v1 workflows are directed acyclic graphs.
 - Every node is reachable from a trigger.
 - Every reference names a node `key` upstream of the node that uses it.
-- Size limits: 100 nodes, 200 edges, 64 KiB of graph JSON.
+- Size limits: 100 nodes, 200 edges, 256 KiB of graph JSON.
 
 ### Runs
 

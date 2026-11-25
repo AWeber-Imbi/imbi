@@ -104,8 +104,8 @@ token in the path is stored.
 
 ### Agent configuration
 
-`AgentPlugin` gets a new field, `mcp_servers`, with one entry for each
-server that the agent changes from the default. An entry can turn the
+An agent's plugin entry gets one setting for each server that the
+agent changes from the default. An entry can turn the
 server off, or map its header variables to secret references. An entry
 with secrets also records the origin of the server URL that the person
 saw when they picked the secrets, and the origin must be `https`. A

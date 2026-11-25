@@ -50,6 +50,7 @@ import {
 } from '@/lib/deployment-drift'
 import { sortByPipelineOrder } from '@/lib/environment-chains'
 import { absTime, parseServerTs, relTime } from '@/lib/formatDate'
+import { projectPath } from '@/lib/project-path'
 import { storage } from '@/lib/storage'
 import type { DeploymentStatus, LatestDeployment } from '@/types'
 
@@ -73,6 +74,7 @@ type DriftCellProject = DriftProject & {
   has_deployment_plugin: boolean
   id: string
   project_types?: null | object[]
+  slug: string
 }
 
 type FacetKey = 'drifts' | 'scores' | 'teams' | 'types'
@@ -665,7 +667,7 @@ export function ProjectsView() {
                 <Link
                   aria-label={`View ${project.name}`}
                   className="focus-visible:ring-ring absolute inset-0 rounded-lg focus-visible:ring-2 focus-visible:outline-none"
-                  to={`/projects/${project.id}`}
+                  to={projectPath(project)}
                 />
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
@@ -692,7 +694,7 @@ export function ProjectsView() {
                     <Link
                       aria-label={`View pull requests for ${project.name}`}
                       className={`border-accent bg-accent text-accent relative z-10 inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs ${(project.open_pr_count ?? 0) > 0 ? '' : 'pointer-events-none invisible'}`}
-                      to={`/projects/${project.id}/pull-requests?state=open`}
+                      to={`${projectPath(project)}/pull-requests?state=open`}
                     >
                       <GitPullRequest className="size-3.5" />
                       <span>{project.open_pr_count ?? 0}</span>
@@ -700,7 +702,7 @@ export function ProjectsView() {
                     <Link
                       aria-label={`View your pull requests for ${project.name}`}
                       className={`border-info bg-info text-info relative z-10 inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs ${(project.viewer_open_pr_count ?? 0) > 0 ? '' : 'pointer-events-none invisible'}`}
-                      to={`/projects/${project.id}/pull-requests?state=open&author=me`}
+                      to={`${projectPath(project)}/pull-requests?state=open&author=me`}
                     >
                       <User className="size-3.5" />
                       <span>{project.viewer_open_pr_count ?? 0}</span>
@@ -1013,9 +1015,10 @@ function DeploymentCards({
 function deploymentsHref(project: {
   has_deployment_plugin: boolean
   id: string
+  slug: string
 }): string | undefined {
   return project.has_deployment_plugin
-    ? `/projects/${project.id}/deployments`
+    ? projectPath(project, 'deployments')
     : undefined
 }
 
@@ -1399,12 +1402,10 @@ function PipelineConnector({
 // fallow-ignore-next-line complexity
 function ReleaseCards({
   deployments,
-  projectId,
   projectName,
   release_summary,
 }: {
   deployments: string | undefined
-  projectId: string
   projectName: string
   release_summary: NonNullable<ProjectListItem['release_summary']>
 }) {
@@ -1415,14 +1416,13 @@ function ReleaseCards({
   const behind = projectReleaseDrifted({ release_summary })
   const since = release_summary.oldest_actionable_at
   const tone = driftTone(since)
-  const releases = deployments && `/projects/${projectId}/releases`
-  const viewSuffix = releases ? ': view releases' : ''
+  const viewSuffix = deployments ? ': view releases' : ''
   return (
     <div className="flex items-stretch pt-2" style={{ flexWrap: 'nowrap' }}>
       <LinkOrDiv
         aria-label={`${projectName} latest commit ${headSha ?? 'unknown'}${viewSuffix}`}
         className="border-border bg-card relative z-10 w-50 rounded-lg border px-3 py-2 wrap-anywhere"
-        to={releases}
+        to={deployments}
       >
         <p className="text-secondary mb-1.5 flex items-center gap-1.5 text-sm font-medium">
           <GitCommit className="size-3 shrink-0" />
@@ -1454,7 +1454,7 @@ function ReleaseCards({
       <LinkOrDiv
         aria-label={`${projectName} current release ${release_summary.latest_tag ?? 'none'}${behind ? `, waiting on ${headSha ?? 'a new release'}` : ''}${viewSuffix}`}
         className={`bg-amber-bg relative z-10 w-50 rounded-lg border px-3 py-2 wrap-anywhere ${behind ? DRIFT_TONE[tone].card : 'border-amber-border'}`}
-        to={releases}
+        to={deployments}
       >
         {behind && <BehindTab tone={tone} />}
         <p className="text-amber-text mb-1.5 flex items-center gap-1.5 text-sm font-medium">
@@ -1807,7 +1807,7 @@ const ProjectListRow = React.memo(function ProjectListRow({
       <Link
         aria-label={`View ${project.name}`}
         className="focus-visible:ring-ring absolute inset-0 focus-visible:ring-2 focus-visible:outline-none"
-        to={`/projects/${project.id}`}
+        to={projectPath(project)}
       />
       <div className="w-65 shrink-0 px-6 py-4">
         <p className="text-primary font-medium">{project.name}</p>
@@ -1824,7 +1824,7 @@ const ProjectListRow = React.memo(function ProjectListRow({
             <Link
               aria-label={`View pull requests for ${project.name}`}
               className="border-accent bg-accent text-accent relative z-10 inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-xs"
-              to={`/projects/${project.id}/pull-requests?state=open`}
+              to={`${projectPath(project)}/pull-requests?state=open`}
             >
               <GitPullRequest className="size-3.5" />
               <span>{project.open_pr_count}</span>
@@ -1834,7 +1834,7 @@ const ProjectListRow = React.memo(function ProjectListRow({
             <Link
               aria-label={`View your pull requests for ${project.name}`}
               className="border-info bg-info text-info relative z-10 inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-xs"
-              to={`/projects/${project.id}/pull-requests?state=open&author=me`}
+              to={`${projectPath(project)}/pull-requests?state=open&author=me`}
             >
               <User className="size-3.5" />
               <span>{project.viewer_open_pr_count}</span>
@@ -1859,7 +1859,6 @@ const ProjectListRow = React.memo(function ProjectListRow({
             <div className="min-w-0 overflow-x-auto">
               <ReleaseCards
                 deployments={deployments}
-                projectId={project.id}
                 projectName={project.name}
                 release_summary={project.release_summary}
               />

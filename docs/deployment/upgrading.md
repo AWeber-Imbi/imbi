@@ -76,7 +76,11 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 
 ## Unreleased
 
-1. The operations log now belongs to an organization. Each entry records
+1. Deploy the runner (imbi-harness) image with imbi-api, or right after
+   it. A runner on an older image ignores the MCP server checkboxes of
+   **Tools and plugins**, so a server that someone turned off still
+   loads.
+2. The operations log now belongs to an organization. Each entry records
    the organization that owns its project in the new ClickHouse column
    `operations_log.organization_id`, and the list, get, change, and
    delete routes moved to `/organizations/{org_slug}/operations-log/`.
