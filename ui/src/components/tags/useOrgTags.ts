@@ -1,10 +1,23 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  queryOptions,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import { createOrFindTag, listTags } from '@/api/endpoints'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { queryKeys } from '@/lib/queryKeys'
 import type { Tag, TagRef } from '@/types'
+
+/** The query of the org tags. Callers add `enabled` or `staleTime`. */
+export function orgTagsQuery(orgSlug: string) {
+  return queryOptions({
+    queryFn: ({ signal }) => listTags(orgSlug, signal),
+    queryKey: queryKeys.tags(orgSlug),
+  })
+}
 
 /** The fields of an org tag that a chip shows, copied from any tag. */
 export function tagRef(tag: TagRef): TagRef {
@@ -17,19 +30,15 @@ export function tagRef(tag: TagRef): TagRef {
  */
 export function useOrgTags(orgSlug: string, onCreated: (tag: Tag) => void) {
   const queryClient = useQueryClient()
-  const tagsKey = queryKeys.tags(orgSlug)
-  const { data: tags = [] } = useQuery({
-    enabled: !!orgSlug,
-    queryFn: ({ signal }) => listTags(orgSlug, signal),
-    queryKey: tagsKey,
-  })
+  const query = orgTagsQuery(orgSlug)
+  const { data: tags = [] } = useQuery({ ...query, enabled: !!orgSlug })
   const create = useMutation({
     mutationFn: (data: Parameters<typeof createOrFindTag>[1]) =>
       createOrFindTag(orgSlug, data),
     onError: (error) =>
       toast.error(`Failed to create the tag: ${extractApiErrorDetail(error)}`),
     onSuccess: (tag) => {
-      void queryClient.invalidateQueries({ queryKey: tagsKey })
+      void queryClient.invalidateQueries({ queryKey: query.queryKey })
       onCreated(tag)
     },
   })

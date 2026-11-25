@@ -4,8 +4,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { GitMerge, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { deleteTag, listTags, mergeTag, patchTag } from '@/api/endpoints'
+import { deleteTag, mergeTag, patchTag } from '@/api/endpoints'
 import { TagChip } from '@/components/tags/TagChip'
+import { orgTagsQuery } from '@/components/tags/useOrgTags'
 import { AdminTable } from '@/components/ui/admin-table'
 import { Button } from '@/components/ui/button'
 import {
@@ -58,11 +59,7 @@ export function TagManagement() {
     data: tags = [],
     error,
     isLoading,
-  } = useQuery({
-    enabled: !!orgSlug,
-    queryFn: ({ signal }) => listTags(orgSlug, signal),
-    queryKey: tagsKey,
-  })
+  } = useQuery({ ...orgTagsQuery(orgSlug), enabled: !!orgSlug })
 
   const onSuccess = () => {
     queryClient.invalidateQueries({ queryKey: tagsKey })

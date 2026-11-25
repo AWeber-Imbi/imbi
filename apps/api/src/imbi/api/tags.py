@@ -10,9 +10,40 @@ The tag writes take a ``MATCH`` clause that binds the tagged node to
 import typing
 
 import fastapi
+import pydantic
 
 from imbi.common import graph
 from imbi.common.graph import cypher as graph_cypher
+
+
+class TagRef(pydantic.BaseModel):
+    """An org tag as a response shows it."""
+
+    name: str
+    slug: str
+    color: str | None = None
+
+
+def parse_refs(raw: typing.Any) -> list[dict[str, typing.Any]]:
+    """Return the :class:`TagRef` fields of the tag maps of a graph
+    row (``tag{.name, .slug, .color}``), in order. An entry with no slug
+    is left out."""
+    refs: list[dict[str, typing.Any]] = []
+    entries: list[typing.Any] = raw or []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        tag = typing.cast('dict[str, typing.Any]', entry)
+        if tag.get('slug'):
+            refs.append(
+                {
+                    'name': str(tag.get('name', '')),
+                    'slug': str(tag['slug']),
+                    'color': tag.get('color'),
+                }
+            )
+    return refs
+
 
 _BY_SLUG_QUERY: typing.LiteralString = """
 MATCH (t:Tag)-[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})

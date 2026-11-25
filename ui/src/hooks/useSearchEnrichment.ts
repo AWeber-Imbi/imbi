@@ -5,11 +5,10 @@ import {
   listBlueprints,
   listDocumentTemplates,
   listEnvironments,
-  listTags,
   listTeams,
 } from '@/api/endpoints'
 import type { SearchResult } from '@/api/search'
-import { queryKeys } from '@/lib/queryKeys'
+import { orgTagsQuery } from '@/components/tags/useOrgTags'
 
 export interface EnrichedInfo {
   breadcrumb?: string
@@ -65,9 +64,8 @@ export function useSearchEnrichment(
   })
 
   const tagsQuery = useQuery({
+    ...orgTagsQuery(orgSlug!),
     enabled: !!orgSlug && hasLabel('Tag'),
-    queryFn: ({ signal }) => listTags(orgSlug!, signal),
-    queryKey: queryKeys.tags(orgSlug!),
     staleTime: 60_000,
   })
 
