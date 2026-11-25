@@ -72,9 +72,16 @@ class FakeValkey:
     def __init__(self) -> None:
         self.lists: dict[str, list[bytes]] = {}
         self.values: dict[str, bytes] = {}
+        self.stream: list[dict[str, typing.Any]] = []
 
-    async def set(self, key, value, ex=None):
+    async def set(self, key, value, ex=None, nx=False):
+        if nx and key in self.values:
+            return None
         self.values[key] = value
+        return True
+
+    async def xadd(self, stream, fields, **_kw):
+        self.stream.append(fields)
 
     async def get(self, key):
         return self.values.get(key)
@@ -90,6 +97,7 @@ class FakeValkey:
 
     async def delete(self, key):
         self.lists.pop(key, None)
+        self.values.pop(key, None)
 
     async def ltrim(self, key, start, end):
         rest = self.lists.get(key, [])[start:]
@@ -497,15 +505,31 @@ class CloseTests(FlowTestCase):
             await ticket_requests.close(self.slack, RESOLVED)
         self.assertEqual([late], self.valkey.lists[key])
 
-    async def test_post_after_close_closes_the_form(self) -> None:
+    async def test_post_after_close_adds_the_close_again(self) -> None:
         # close() ran before the post kept its message.
         await ticket_requests.close(self.slack, RESOLVED)
         await ticket_requests.post(self.slack, self.runtime, entry())
+        (added,) = self.valkey.stream
+        self.assertEqual(RESOLVED, orjson.loads(added['request']))
+        # The added entry closes the new form.
+        await ticket_requests.close(self.slack, RESOLVED)
         self.assertEqual(
             [('D-U1', 'ts1')],
             [(u['channel'], u['ts']) for u in self.slack.updates],
         )
         self.assertEqual({}, self.valkey.lists)
+
+    async def test_concurrent_close_is_tried_again(self) -> None:
+        key = ticket_requests._messages_key('r-1')
+        record = orjson.dumps({'channel': 'C2', 'ts': 't', 'summary': ''})
+        await self.valkey.rpush(key, record)
+        await self.valkey.set(f'{key}:closing', b'1')
+        with self.assertRaises(ticket_requests._Retry):
+            await ticket_requests.close(self.slack, RESOLVED)
+        self.assertEqual([], self.slack.updates)
+        self.assertEqual([record], self.valkey.lists[key])
+        # The lock of the other consumer stays.
+        self.assertIn(f'{key}:closing', self.valkey.values)
 
     async def test_failed_read_is_tried_again(self) -> None:
         with (

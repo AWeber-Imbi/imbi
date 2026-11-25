@@ -71,6 +71,9 @@ _MISS_TTL = 900
 _MESSAGES_TTL = 30 * 86400
 #: The most times that a message of a resolved request is updated.
 _CLOSE_TRIES = 5
+#: Seconds that one consumer holds the close of a request. More than
+#: ``_CLAIM_IDLE_MS``, after which a slow close is claimed again.
+_CLOSE_LOCK_TTL = 120
 #: Slack errors that mean the message cannot be updated again.
 _GONE = frozenset(
     {
@@ -212,10 +215,31 @@ async def close(slack: SlackClient, entry: Entry) -> None:
     :class:`_Retry` is raised after the other messages are updated.
     A message is dropped after ``_CLOSE_TRIES`` failures, or when Slack
     says that it cannot be updated. A Valkey failure also raises
-    :class:`_Retry`, and no message is lost.
+    :class:`_Retry`, and no message is lost. When another consumer
+    closes the same request, :class:`_Retry` is raised at once.
 
     """
     client: typing.Any = valkey.get_client()
+    short_id = entry['short_id']
+    lock = f'{_messages_key(entry["request_id"])}:closing'
+    try:
+        # ponytail: a close that runs longer than the lock can overlap
+        # with a second close.
+        locked = await client.set(lock, b'1', nx=True, ex=_CLOSE_LOCK_TTL)
+    except Exception as err:
+        raise _Retry(f'cannot lock {short_id}') from err
+    if not locked:
+        raise _Retry(f'another consumer closes {short_id}')
+    try:
+        await _close(slack, client, entry)
+    finally:
+        try:
+            await client.delete(lock)
+        except Exception:
+            LOGGER.exception('Could not unlock %s', short_id)
+
+
+async def _close(slack: SlackClient, client: typing.Any, entry: Entry) -> None:
     key = _messages_key(entry['request_id'])
     short_id = entry['short_id']
     try:
@@ -434,20 +458,29 @@ async def _post_form(
     resolved = await _remember(entry, channel, record.message_ts)
     if resolved:
         # The request was resolved during the post, and close() can
-        # have read the messages before this one was kept.
+        # have read the messages before this one was kept. Add the
+        # resolved entry again, so that a consumer closes this message
+        # with the retries of the stream.
         try:
-            await close(slack, resolved)
-        except _Retry as err:
-            LOGGER.warning('Could not close %s: %s', entry['short_id'], err)
+            client: typing.Any = valkey.get_client()
+            await client.xadd(
+                valkey.TICKET_REQUESTS_STREAM,
+                {'request': resolved},
+                maxlen=valkey.TICKET_REQUESTS_MAXLEN,
+                approximate=True,
+            )
+        except Exception:
+            LOGGER.exception('Could not close %s', entry['short_id'])
 
 
 async def _remember(
     entry: Entry, channel: str, ts: str | None
-) -> Entry | None:
+) -> bytes | None:
     """Keep the id of a form message, to change it when the request is
     resolved. Best effort: when it fails, the form stays open.
 
-    Return the resolved entry when the request is already resolved.
+    Return the JSON of the resolved entry when the request is already
+    resolved.
     close() sets it before it reads the messages, so close() sees this
     message, or this function sees the resolved entry, or both.
 
@@ -461,11 +494,13 @@ async def _remember(
         client: typing.Any = valkey.get_client()
         await client.rpush(key, orjson.dumps(value))
         await client.expire(key, _MESSAGES_TTL)
-        resolved = await client.get(_resolved_key(entry['request_id']))
+        resolved: bytes | None = await client.get(
+            _resolved_key(entry['request_id'])
+        )
     except Exception:
         LOGGER.exception('Could not keep the message of %s', entry['short_id'])
         return None
-    return orjson.loads(resolved) if resolved else None
+    return resolved
 
 
 def _messages_key(request_id: str) -> str:
