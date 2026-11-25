@@ -34,7 +34,8 @@ credential.
 
 Grafana has no project resource. The link is a convention: every alert
 rule of a project carries the **Project label** with the project's
-identifier, which is the project slug unless an edge already exists
+identifier, which is `{slug}-{id}` (for example `webform-V1StGXR8_Z5jdHi6B-myT`;
+slugs are not unique) unless an edge already exists
 with another value. The lifecycle capability writes that identifier to
 the project's `EXISTS_IN` edge and sets the `grafana` project link to
 the alert rules list searched by `label:<label>=<identifier>`. The
@@ -47,7 +48,7 @@ Identifier Selector reads from each delivery.
 - **Archived**: nothing. Grafana has no archive concept.
 
 In Grafana, add the label to each alert rule of the project, for
-example `service=webform`, and group the notification policy by that
+example `service=webform-V1StGXR8_Z5jdHi6B-myT`, and group the notification policy by that
 label so each delivery carries one value.
 
 ## Doctor checks
@@ -57,8 +58,8 @@ label so each delivery carries one value.
 | `exists-in` | `pass` | The edge and the `grafana` link match the integration options | |
 | `exists-in` | `fail` | The project has no edge, so the gateway cannot route deliveries to it | **Link the project to Grafana** writes the edge and the link |
 | `exists-in` | `warn` | The edge is not verified, or the edge or the link does not match the options | **Link the project to Grafana** refreshes them |
-| `identifier` | `pass` | The identifier is the project slug | |
-| `identifier` | `warn` | The identifier differs from the project slug, for example after a rename or a manual edit | **Use the project slug as the identifier** rewrites the edge. Alert rules labelled with the old value stop matching |
+| `identifier` | `pass` | The identifier is `{slug}-{id}` | |
+| `identifier` | `warn` | The identifier differs from `{slug}-{id}`, for example after a rename or a manual edit. The old value still works | **Use the current project value as the identifier** rewrites the edge. Update the labels in Grafana first: alert rules labelled with the old value stop matching |
 
 The doctor cannot confirm that alert rules with the label exist, because
 the doctor does not call Grafana. Neither fix is sweepable.

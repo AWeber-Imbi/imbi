@@ -5,7 +5,7 @@ platform, distributed as a single Python package (`imbi.plugins.grafana`)
 exposing one Integration (`grafana`) with three capabilities:
 
 - **`lifecycle`** — writes the project's `EXISTS_IN` edge, whose
-  identifier (the project slug by default) the project's alert rules
+  identifier (`{slug}-{id}` by default) the project's alert rules
   carry in a label (`service` by default), and the `grafana` link to
   the alert rules list searched by that label. Removes both on delete.
 - **`webhook-actions`** — receives deliveries from a Grafana Alerting

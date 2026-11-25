@@ -9,16 +9,16 @@ from imbi.plugins.grafana import doctor, lifecycle, links, plugin
 _BASE = 'https://grafana.example.com'
 _RULES = (
     f'{_BASE}/api/prometheus/grafana/api/v1/rules?matcher=%7B%22name%22'
-    '%3A%22service%22%2C%22value%22%3A%22demo%22%2C%22isRegex%22%3Afalse'
+    '%3A%22service%22%2C%22value%22%3A%22demo-p1%22%2C%22isRegex%22%3Afalse'
     '%2C%22isEqual%22%3Atrue%7D'
 )
-_LIST = f'{_BASE}/alerting/list?search=label%3Aservice%3Ddemo'
+_LIST = f'{_BASE}/alerting/list?search=label%3Aservice%3Ddemo-p1'
 
 
 def _ctx(
     *,
     connected: bool = False,
-    identifier: str = 'demo',
+    identifier: str = 'demo-p1',
     verified: bool = True,
     links_: dict[str, str] | None = None,
     options: dict[str, object] | None = None,
@@ -110,16 +110,16 @@ class WebhookActionsTestCase(unittest.TestCase):
 
 class LinksTestCase(unittest.TestCase):
     def test_writeback(self) -> None:
-        wb = links.writeback(_ctx(), 'demo')
-        self.assertEqual('demo', wb.identifier)
+        wb = links.writeback(_ctx(), 'demo-p1')
+        self.assertEqual('demo-p1', wb.identifier)
         self.assertEqual(_RULES, wb.canonical_url)
         self.assertEqual({'grafana': _LIST}, wb.dashboard_links)
 
     def test_custom_label(self) -> None:
         ctx = _ctx(options={'service_url': _BASE, 'label': 'app'})
-        wb = links.writeback(ctx, 'demo')
+        wb = links.writeback(ctx, 'demo-p1')
         self.assertIn('%22name%22%3A%22app%22', wb.canonical_url)
-        self.assertIn('label%3Aapp%3Ddemo', wb.dashboard_links['grafana'])
+        self.assertIn('label%3Aapp%3Ddemo-p1', wb.dashboard_links['grafana'])
 
     def test_missing_url_raises(self) -> None:
         with self.assertRaises(links.GrafanaConfigError):
@@ -128,7 +128,7 @@ class LinksTestCase(unittest.TestCase):
             links.base_url(_ctx(options={'service_url': 'grafana.local'}))
 
     def test_identifier_prefers_edge(self) -> None:
-        self.assertEqual('demo', links.identifier(_ctx()))
+        self.assertEqual('demo-p1', links.identifier(_ctx()))
         self.assertEqual(
             'legacy',
             links.identifier(_ctx(connected=True, identifier='legacy')),
@@ -141,7 +141,7 @@ class LifecycleTestCase(unittest.IsolatedAsyncioTestCase):
         result = await lifecycle.GrafanaLifecycle().on_project_created(ctx, {})
         self.assertEqual('ok', result.status)
         assert ctx.service_writeback is not None
-        self.assertEqual('demo', ctx.service_writeback.identifier)
+        self.assertEqual('demo-p1', ctx.service_writeback.identifier)
         self.assertEqual(_RULES, ctx.service_writeback.canonical_url)
         self.assertEqual(
             {'grafana': _LIST}, ctx.service_writeback.dashboard_links
@@ -167,7 +167,7 @@ class LifecycleTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual('ok', result.status)
         assert ctx.service_writeback is not None
         self.assertTrue(ctx.service_writeback.remove)
-        self.assertEqual('demo', ctx.service_writeback.identifier)
+        self.assertEqual('demo-p1', ctx.service_writeback.identifier)
 
     async def test_deleted_without_edge_skips(self) -> None:
         ctx = _ctx()
@@ -237,7 +237,7 @@ class DoctorTestCase(unittest.IsolatedAsyncioTestCase):
             assert items['exists-in'].remediation is not None
             self.assertEqual('link-project', items['exists-in'].remediation.id)
 
-    async def test_identifier_differs_from_slug(self) -> None:
+    async def test_identifier_differs_from_default(self) -> None:
         items = {
             i.slug: i
             for i in await doctor.GrafanaDoctor().analyze(
@@ -248,7 +248,7 @@ class DoctorTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual('warn', items['identifier'].status)
         assert items['identifier'].remediation is not None
         self.assertEqual(
-            'use-project-slug', items['identifier'].remediation.id
+            'use-project-value', items['identifier'].remediation.id
         )
 
     async def test_remediate_link(self) -> None:
@@ -258,7 +258,7 @@ class DoctorTestCase(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual('fixed', result.status)
         assert ctx.service_writeback is not None
-        self.assertEqual('demo', ctx.service_writeback.identifier)
+        self.assertEqual('demo-p1', ctx.service_writeback.identifier)
 
     async def test_remediate_link_noop(self) -> None:
         ctx = _ctx(connected=True)
@@ -268,14 +268,14 @@ class DoctorTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual('noop', result.status)
         self.assertIsNone(ctx.service_writeback)
 
-    async def test_remediate_use_slug(self) -> None:
+    async def test_remediate_use_default(self) -> None:
         ctx = _ctx(connected=True, identifier='legacy')
         result = await doctor.GrafanaDoctor().remediate(
-            ctx, {}, 'use-project-slug'
+            ctx, {}, 'use-project-value'
         )
         self.assertEqual('fixed', result.status)
         assert ctx.service_writeback is not None
-        self.assertEqual('demo', ctx.service_writeback.identifier)
+        self.assertEqual('demo-p1', ctx.service_writeback.identifier)
 
     async def test_remediate_missing_url_fails(self) -> None:
         result = await doctor.GrafanaDoctor().remediate(

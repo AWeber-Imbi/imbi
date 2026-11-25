@@ -3,8 +3,8 @@
 Checks that the project has an ``EXISTS_IN`` edge to the Grafana
 integration, that the plugin verified it, and that the edge and the
 ``grafana`` link match the integration options. Warns when the edge
-identifier differs from the project slug, because the alert rules must
-carry that value in the label.
+identifier differs from ``{slug}-{id}`` (for example after a rename),
+because the alert rules must carry that value in the label.
 
 The plugin has no Grafana credentials, so the doctor cannot confirm
 that alert rules with the label exist.
@@ -25,8 +25,8 @@ from imbi.plugins.grafana import links
 
 #: Write the edge and link for the current identifier.
 _LINK = 'link-project'
-#: Rewrite the edge and link with the project slug as the identifier.
-_USE_SLUG = 'use-project-slug'
+#: Rewrite the edge and link with ``{slug}-{id}`` as the identifier.
+_USE_DEFAULT = 'use-project-value'
 
 _LINK_OFFER = RemediationOffer(
     id=_LINK,
@@ -37,9 +37,9 @@ _LINK_OFFER = RemediationOffer(
     ),
     destructive=True,
 )
-_USE_SLUG_OFFER = RemediationOffer(
-    id=_USE_SLUG,
-    label='Use the project slug as the identifier',
+_USE_DEFAULT_OFFER = RemediationOffer(
+    id=_USE_DEFAULT,
+    label='Use the current project value as the identifier',
     confirm=(
         'This changes the identifier that Grafana deliveries must carry. '
         'Alert rules labelled with the old value stop matching this '
@@ -130,21 +130,23 @@ class GrafanaDoctor(AnalysisCapability):
         ctx: PluginContext, value: str
     ) -> AnalysisResultItem:
         name = links.label(ctx)
-        if value == ctx.project_slug:
+        default = links.default_identifier(ctx)
+        if value == default:
             return _item(
                 'identifier',
                 'Grafana identifier',
                 'pass',
-                f'Alert rules must carry `{name}={value}`.',
+                f'Alert rules and dashboards must carry `{name}={value}`.',
             )
         return _item(
             'identifier',
             'Grafana identifier',
             'warn',
-            f'The Grafana identifier `{value}` differs from the project '
-            f'slug `{ctx.project_slug}`. Alert rules must carry '
-            f'`{name}={value}`. Use the Fix action to switch to the slug.',
-            _USE_SLUG_OFFER,
+            f'The Grafana identifier `{value}` differs from the current '
+            f'project value `{default}`. Alert rules must carry '
+            f'`{name}={value}`. Update the labels in Grafana, then use the '
+            f'Fix action to switch to `{default}`.',
+            _USE_DEFAULT_OFFER,
         )
 
     async def remediate(
@@ -153,11 +155,11 @@ class GrafanaDoctor(AnalysisCapability):
         credentials: dict[str, str],
         remediation_id: str,
     ) -> RemediationResult:
-        if remediation_id not in (_LINK, _USE_SLUG):
+        if remediation_id not in (_LINK, _USE_DEFAULT):
             return await super().remediate(ctx, credentials, remediation_id)
         value = (
-            ctx.project_slug
-            if remediation_id == _USE_SLUG
+            links.default_identifier(ctx)
+            if remediation_id == _USE_DEFAULT
             else links.identifier(ctx)
         )
         try:

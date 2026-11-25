@@ -54,10 +54,16 @@ def connection(ctx: PluginContext) -> ServiceConnection | None:
     )
 
 
+def default_identifier(ctx: PluginContext) -> str:
+    """``{slug}-{id}``: readable, and unique because slugs are not."""
+    return f'{ctx.project_slug}-{ctx.project_id}'
+
+
 def identifier(ctx: PluginContext) -> str:
-    """The edge's identifier wins over the project-slug convention."""
+    """The edge's identifier wins over the default, so a rename keeps
+    the labels that Grafana already has working."""
     conn = connection(ctx)
-    return conn.identifier if conn else ctx.project_slug
+    return conn.identifier if conn else default_identifier(ctx)
 
 
 def canonical_url(base: str, name: str, value: str) -> str:

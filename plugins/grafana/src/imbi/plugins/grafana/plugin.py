@@ -11,7 +11,7 @@ notification group. The default body carries ``receiver``, ``status``
 The gateway's built-in event recording captures each delivery, driven by
 the Webhook's selectors (identifier, event type, user subject), so this
 plugin declares an empty action catalog. The lifecycle capability writes
-the ``EXISTS_IN`` edge whose identifier (the project slug by default)
+the ``EXISTS_IN`` edge whose identifier (`{slug}-{id}` by default)
 the alert rules carry in one label, so the gateway can route a delivery
 to its project; the analysis capability repairs that edge. The webhook
 capability lets a Grafana webhook be bound to an Integration and its
@@ -89,7 +89,7 @@ class GrafanaPlugin(plugins.Plugin):
                 description=(
                     'The alert rule label that names the project. Each '
                     'alert rule must carry this label with the project '
-                    'identifier (the project slug by default), and the '
+                    'identifier (`{slug}-{id}` by default), and the '
                     'webhook Identifier Selector must read it, for example '
                     '`/commonLabels/service`.'
                 ),
