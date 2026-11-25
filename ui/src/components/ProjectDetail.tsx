@@ -116,6 +116,7 @@ import { formatDateTime } from '@/lib/formatDate'
 import { projectRepoUrl } from '@/lib/github-refs'
 import { getIcon, useIconRegistryVersion } from '@/lib/icons'
 import { formatFieldKey } from '@/lib/project-field-formatting'
+import { projectPath } from '@/lib/project-path'
 import { treatNotFoundAsNull } from '@/lib/queryHelpers'
 import { sanitizeHttpUrl, sortEnvironments } from '@/lib/utils'
 import type {
@@ -192,16 +193,14 @@ export function ProjectDetail({
   const { search } = useLocation()
   const { copied: copiedProjectId, copy: copyProjectId } = useClipboard()
 
+  const projectBase = projectPath(project)
   const resolvedTab = initialTab ? (TAB_ALIASES[initialTab] ?? initialTab) : ''
   const activeTab: TabType = VALID_TAB_SET.has(resolvedTab)
     ? (resolvedTab as TabType)
     : 'overview'
 
   const handleTabChange = (value: string) => {
-    const path =
-      value === 'overview'
-        ? `/projects/${project.id}`
-        : `/projects/${project.id}/${value}`
+    const path = value === 'overview' ? projectBase : `${projectBase}/${value}`
     navigate(path, { replace: true })
   }
 
@@ -317,7 +316,7 @@ export function ProjectDetail({
     if (initialTab && initialTab in TAB_ALIASES) {
       navigate(
         {
-          pathname: `/projects/${project.id}/${TAB_ALIASES[initialTab]}`,
+          pathname: `${projectBase}/${TAB_ALIASES[initialTab]}`,
           search,
         },
         { replace: true },
@@ -325,9 +324,9 @@ export function ProjectDetail({
       return
     }
     if (initialTab && !VALID_TAB_SET.has(initialTab)) {
-      navigate(`/projects/${project.id}`, { replace: true })
+      navigate(projectBase, { replace: true })
     }
-  }, [initialTab, navigate, project.id, search])
+  }, [initialTab, navigate, projectBase, search])
 
   const { data: linkDefs = [], isPending: linkDefsPending } = useQuery({
     enabled: !!orgSlug,
@@ -841,7 +840,7 @@ export function ProjectDetail({
       (activeTab === 'deployments' && !hasShipTab) ||
       (activeTab === 'pull-requests' && !hasLifecyclePlugin)
     ) {
-      navigate(`/projects/${project.id}`, { replace: true })
+      navigate(projectBase, { replace: true })
     }
   }, [
     activeTab,
@@ -851,7 +850,7 @@ export function ProjectDetail({
     hasLogsPlugin,
     hasShipTab,
     navigate,
-    project.id,
+    projectBase,
     projectPluginsFetched,
     projectPluginsSuccess,
   ])
@@ -1499,6 +1498,7 @@ export function ProjectDetail({
         )}
         <TabsContent value="documents">
           <ProjectDocumentsTab
+            basePath={`${projectBase}/documents`}
             initialAction={
               activeTab === 'documents' ? initialSubAction : undefined
             }

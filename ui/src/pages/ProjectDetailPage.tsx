@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom'
+import { Navigate, useLocation, useParams } from 'react-router-dom'
 
 import { useQuery } from '@tanstack/react-query'
 
@@ -8,14 +8,15 @@ import { ProjectDetail } from '@/components/ProjectDetail'
 import { Sk } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { parseProjectSegments, projectPath } from '@/lib/project-path'
 
 export function ProjectDetailPage() {
-  const { projectId, subAction, subId, tab } = useParams<{
-    projectId: string
-    subAction?: string
-    subId?: string
-    tab?: string
-  }>()
+  const { '*': splat = '' } = useParams()
+  const { hash, search } = useLocation()
+  const { projectId, rest, slug } = parseProjectSegments(
+    splat.split('/').filter(Boolean),
+  )
+  const [tab, subId, subAction] = rest
   const { selectedOrganization } = useOrganization()
 
   const orgSlug = selectedOrganization?.slug || ''
@@ -52,14 +53,21 @@ export function ProjectDetailPage() {
             </div>
           </div>
         )}
-        {project && (
-          <ProjectDetail
-            initialSubAction={subAction}
-            initialSubId={subId}
-            initialTab={tab}
-            project={project}
-          />
-        )}
+        {project &&
+          // Legacy ID-only URLs and renamed slugs land on the canonical URL.
+          (slug === project.slug ? (
+            <ProjectDetail
+              initialSubAction={subAction}
+              initialSubId={subId}
+              initialTab={tab}
+              project={project}
+            />
+          ) : (
+            <Navigate
+              replace
+              to={{ hash, pathname: projectPath(project, ...rest), search }}
+            />
+          ))}
       </main>
     </div>
   )
