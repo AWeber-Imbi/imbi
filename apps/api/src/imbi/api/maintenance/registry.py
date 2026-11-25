@@ -30,6 +30,7 @@ MaintenanceSlug = typing.Literal[
     'commit-pushed-at-check',
     'commit-pushed-at-repair',
     'opslog-backfill',
+    'opslog-organization-backfill',
     'orphan-release-check',
     'orphan-release-purge',
     'commit-sync',
@@ -233,6 +234,22 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             pause_key=None,
             enumerate=operations.enumerate_all_projects,
             execute=operations.execute_opslog_backfill,
+        ),
+        OperationDefinition(
+            slug='opslog-organization-backfill',
+            label='Backfill Organizations to Operations Log',
+            description=(
+                'Fill the owning organization in on every operations log '
+                'entry written before entries recorded it. The '
+                'organization operations log shows only the entries of '
+                'its organization, so an entry without one is not shown. '
+                'Deleted entries stay deleted. Includes archived projects. '
+                'Run it again until it writes nothing: an entry that '
+                'changes during a run is filled in on the next run.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_projects_with_archived,
+            execute=operations.execute_opslog_organization_backfill,
         ),
         OperationDefinition(
             slug='orphan-release-check',

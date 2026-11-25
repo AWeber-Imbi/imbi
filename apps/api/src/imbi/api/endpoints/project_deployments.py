@@ -36,6 +36,7 @@ from imbi.api.endpoints._helpers import (
     deployed_operation_log,
     fetch_or_404,
     lookup_project_links,
+    lookup_project_organization_id,
     lookup_project_slugs,
     lookup_project_type_slugs,
     persist_link_writeback,
@@ -1170,6 +1171,7 @@ def _resolve_credentials(
 
 async def _record_deployment_audit(
     *,
+    db: graph.Graph,
     project_id: str,
     project_slug: str,
     environment_slug: str,
@@ -1185,6 +1187,7 @@ async def _record_deployment_audit(
     ci_status: str = 'unknown',
     ci_override: bool = False,
     credential: str | None = None,
+    organization_id: str | None = None,
 ) -> None:
     """Write a deployment audit row to the ``operations_log``.
 
@@ -1210,9 +1213,17 @@ async def _record_deployment_audit(
     ``PluginContext.credential_note`` after the call, so an autonomous
     deploy records the App installation that carried it out alongside
     the service account that asked for it.
+
+    ``organization_id`` is looked up from the project when it is not
+    given. A caller that writes the row after an external change, in
+    the request, looks it up first, so a failed lookup stops the request
+    before the change.
     """
+    if organization_id is None:
+        organization_id = await lookup_project_organization_id(db, project_id)
     entry = deployed_operation_log(
         project_id=project_id,
+        organization_id=organization_id,
         project_slug=project_slug,
         environment_slug=environment_slug,
         recorded_by=recorded_by,
@@ -3708,6 +3719,7 @@ async def _handle_deploy(
         # the activity history and can lag by milliseconds.
         background.add_task(
             _record_deployment_audit,
+            db=db,
             project_id=project_id,
             project_slug=ctx.project_slug,
             environment_slug=body.environment,
@@ -4779,6 +4791,7 @@ async def _handle_promote(
     # response goes out (same rationale as the deploy path above).
     background.add_task(
         _record_deployment_audit,
+        db=db,
         project_id=project_id,
         project_slug=ctx.project_slug,
         environment_slug=body.to_environment,
@@ -5850,6 +5863,9 @@ async def complete_promote_build(
         )
         return in_flight
 
+    # Look up before the dispatch: a failed lookup must stop the promote
+    # before a deployment starts, not orphan a run with no audit row.
+    organization_id = await lookup_project_organization_id(db, project_id)
     inputs: dict[str, str] | None = None
     if ctx.environment_config:
         inputs = {
@@ -5916,7 +5932,9 @@ async def complete_promote_build(
         db, project_id=project_id, release_id=release_id
     )
     await _record_deployment_audit(
+        db=db,
         project_id=project_id,
+        organization_id=organization_id,
         project_slug=ctx.project_slug,
         environment_slug=to_environment,
         recorded_by=requested_by or principals.RELEASE_PROMOTE,
@@ -7676,6 +7694,7 @@ async def cut_release(
     )
     background.add_task(
         _record_deployment_audit,
+        db=db,
         project_id=project_id,
         project_slug=ctx.project_slug,
         environment_slug='',
@@ -7861,6 +7880,7 @@ async def publish_release(
     )
     background.add_task(
         _record_deployment_audit,
+        db=db,
         project_id=project_id,
         project_slug=ctx.project_slug,
         environment_slug='',
@@ -8607,6 +8627,7 @@ async def delete_release_blocker(
     )
     background.add_task(
         _record_deployment_audit,
+        db=db,
         project_id=project_id,
         project_slug=project_slug,
         environment_slug='',

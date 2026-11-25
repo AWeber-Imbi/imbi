@@ -294,8 +294,8 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         try:
             rows: list[dict[str, typing.Any]] = await ch.query(
                 'SELECT id, project_id, project_slug, environment_slug,'
-                ' entry_type, description, recorded_by, plugin_slug'
-                ' FROM operations_log FINAL'
+                ' entry_type, description, recorded_by, plugin_slug,'
+                ' organization_id FROM operations_log FINAL'
                 ' WHERE project_id = {pid:String}'
                 '   AND recorded_at >= {after:DateTime64(3)}'
                 ' ORDER BY recorded_at',
@@ -722,6 +722,11 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
                     '.parse_agtype',
                     return_value='fake-slug',
                 ),
+                mock.patch(
+                    'imbi.api.endpoints.project_configuration'
+                    '.lookup_project_organization_id',
+                    return_value='org-1',
+                ),
             ):
                 response = client.put(
                     f'/organizations/myorg/projects/{self.project_id}'
@@ -745,6 +750,7 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         row = rows[0]
         self.assertEqual(row['project_id'], self.project_id)
         self.assertEqual(row['project_slug'], 'fake-slug')
+        self.assertEqual(row['organization_id'], 'org-1')
         self.assertEqual(row['environment_slug'], 'production')
         self.assertEqual(row['entry_type'], 'Configured')
         self.assertEqual(row['recorded_by'], 'admin@example.com')
@@ -1031,3 +1037,39 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 404)
         self.assertEqual(_HistoryHandler.written, [])
+
+
+class AuditLookupOrderTestCase(unittest.IsolatedAsyncioTestCase):
+    """The audit row needs the project's slug and organization. A
+    lookup that fails after the plugin call would leave a changed key
+    with no audit row, so the lookups run first."""
+
+    async def test_a_failed_lookup_stops_before_the_plugin_call(
+        self,
+    ) -> None:
+        handler = mock.Mock(set_value=mock.AsyncMock())
+        resolved = mock.Mock(capability_cls=mock.Mock(return_value=handler))
+        with (
+            mock.patch.object(
+                project_configuration,
+                '_lookup_project_slug',
+                mock.AsyncMock(return_value='slug'),
+            ),
+            mock.patch.object(
+                project_configuration,
+                'lookup_project_organization_id',
+                mock.AsyncMock(side_effect=RuntimeError('graph down')),
+            ),
+            self.assertRaises(RuntimeError),
+        ):
+            await project_configuration._write_value(
+                mock.AsyncMock(),
+                mock.Mock(project_id='p1'),
+                resolved,
+                mock.Mock(),
+                {},
+                'foo',
+                ConfigValue(data_type='string', value='bar', secret=False),
+                action='set_value',
+            )
+        handler.set_value.assert_not_awaited()

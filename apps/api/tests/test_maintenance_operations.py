@@ -62,6 +62,23 @@ class EnumerateAllProjectsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('coalesce(p.archived, false) = false', query)
 
 
+class EnumerateProjectsWithArchivedTests(unittest.IsolatedAsyncioTestCase):
+    async def test_includes_archived_projects(self) -> None:
+        db = mock.AsyncMock()
+        db.execute.return_value = [{'id': '"p1"'}, {'id': '""'}]
+        items = await operations.enumerate_projects_with_archived(db)
+        self.assertEqual(['p1'], items)
+        self.assertNotIn('archived', db.execute.await_args.args[0])
+
+    def test_the_organization_backfill_uses_it(self) -> None:
+        from imbi.api.maintenance import registry
+
+        definition = registry.OPERATIONS['opslog-organization-backfill']
+        self.assertIs(
+            operations.enumerate_projects_with_archived, definition.enumerate
+        )
+
+
 class ExecuteAnalysisTests(unittest.IsolatedAsyncioTestCase):
     async def test_skipped_without_org(self) -> None:
         with mock.patch.object(operations, '_org_slug_for', _org_slug(None)):
@@ -724,6 +741,10 @@ class ExecuteOpslogBackfillTests(unittest.IsolatedAsyncioTestCase):
                 'imbi.api.endpoints._helpers.lookup_project_slugs',
                 mock.AsyncMock(return_value=('proj', 'team')),
             ),
+            mock.patch(
+                'imbi.api.endpoints._helpers.lookup_project_organization_id',
+                mock.AsyncMock(return_value='org-1'),
+            ),
         ):
             outcome = await operations.execute_opslog_backfill(
                 db, mock.AsyncMock(), 'p1', ctx=_ctx()
@@ -754,6 +775,7 @@ class ExecuteOpslogBackfillTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual('Deployed', row['entry_type'])
         self.assertEqual('alice@example.com', row['performed_by'])
         self.assertEqual('maintenance-opslog-backfill', row['recorded_by'])
+        self.assertEqual('org-1', row['organization_id'])
         self.assertEqual('production', row['environment_slug'])
         self.assertEqual('v1.2.3', row['version'])
         self.assertEqual('run-1', row['external_run_id'])
