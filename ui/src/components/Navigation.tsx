@@ -408,8 +408,10 @@ function AgentsMenu({ isActive }: { isActive: boolean }) {
     if (!open) hoverOpened.current = true
     keepOpen()
   }
+  // Pointer leave closes only a menu that hover opened.
   const hide = () => {
     clearTimeout(closeTimer.current)
+    if (!hoverOpened.current) return
     closeTimer.current = setTimeout(() => setOpen(false), 100)
   }
   // A hover open must not move focus into the menu, or back to the trigger.

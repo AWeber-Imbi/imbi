@@ -114,4 +114,17 @@ describe('Navigation', () => {
     await new Promise((resolve) => setTimeout(resolve, 150))
     expect(screen.getAllByRole('menuitem')[0]).toHaveFocus()
   })
+
+  it('keeps a keyboard-opened Agents menu open when the pointer leaves', async () => {
+    const { Navigation } = await import('../Navigation')
+    render(<Navigation />)
+    const agents = screen.getByRole('link', { name: /Agents/ })
+    agents.focus()
+    await userEvent.keyboard('{ArrowDown}')
+    await screen.findByRole('menuitem', { name: /Runners/ })
+    await userEvent.hover(agents)
+    await userEvent.unhover(agents)
+    await new Promise((resolve) => setTimeout(resolve, 150))
+    expect(screen.getAllByRole('menuitem')[0]).toHaveFocus()
+  })
 })
