@@ -408,8 +408,10 @@ function AgentsMenu({ isActive }: { isActive: boolean }) {
     if (!open) hoverOpened.current = true
     keepOpen()
   }
+  // Pointer leave closes only a menu that hover opened.
   const hide = () => {
     clearTimeout(closeTimer.current)
+    if (!hoverOpened.current) return
     closeTimer.current = setTimeout(() => setOpen(false), 100)
   }
   // A hover open must not move focus into the menu, or back to the trigger.
@@ -420,6 +422,8 @@ function AgentsMenu({ isActive }: { isActive: boolean }) {
     <DropdownMenu
       modal={false}
       onOpenChange={(next) => {
+        // A Radix open or close replaces any pending hover close.
+        clearTimeout(closeTimer.current)
         if (next) hoverOpened.current = false
         setOpen(next)
       }}
@@ -435,6 +439,7 @@ function AgentsMenu({ isActive }: { isActive: boolean }) {
           } else if (open && e.key === 'ArrowDown') {
             // A hover open left focus on the trigger; move it into the menu.
             e.preventDefault()
+            clearTimeout(closeTimer.current)
             hoverOpened.current = false
             contentRef.current
               ?.querySelector<HTMLElement>('[role="menuitem"]')
