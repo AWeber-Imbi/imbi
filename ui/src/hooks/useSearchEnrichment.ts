@@ -9,6 +9,7 @@ import {
   listTeams,
 } from '@/api/endpoints'
 import type { SearchResult } from '@/api/search'
+import { queryKeys } from '@/lib/queryKeys'
 
 export interface EnrichedInfo {
   breadcrumb?: string
@@ -66,7 +67,7 @@ export function useSearchEnrichment(
   const tagsQuery = useQuery({
     enabled: !!orgSlug && hasLabel('Tag'),
     queryFn: ({ signal }) => listTags(orgSlug!, signal),
-    queryKey: ['tags', orgSlug],
+    queryKey: queryKeys.tags(orgSlug!),
     staleTime: 60_000,
   })
 

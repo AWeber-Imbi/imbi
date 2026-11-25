@@ -212,6 +212,7 @@ ALLOWED_ROUTES: frozenset[str] = frozenset(
         'POST /organizations/{org_slug}/projects/{project_id}/unarchive',
         'POST /organizations/{org_slug}/prompts/render',
         'POST /organizations/{org_slug}/tags/',
+        'POST /organizations/{org_slug}/tags/{tag_slug}/merge',
         'POST /organizations/{org_slug}/users/{email}/documents/',
         'POST /organizations/{org_slug}/workflows/{slug}/validate',
         'PUT /organizations/{org_slug}/document-templates/{slug}',

@@ -4275,7 +4275,7 @@ export interface paths {
         };
         /**
          * List Tags
-         * @description List tags in an organization, each with a document count.
+         * @description List tags in an organization, each with usage counts.
          */
         get: operations["list_tags_api_organizations__org_slug__tags__get"];
         put?: never;
@@ -4316,6 +4316,30 @@ export interface paths {
          * @description Update a tag via JSON Patch (name/slug/description/color).
          */
         patch: operations["patch_tag_api_organizations__org_slug__tags__tag_slug__patch"];
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/tags/{tag_slug}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge Tag
+         * @description Merge a tag into ``target``, then delete it.
+         *
+         *     Every node tagged with the source tag is tagged with the target
+         *     instead. ``MERGE`` makes sure that a node that already has the
+         *     target tag does not get a second edge.
+         */
+        post: operations["merge_tag_api_organizations__org_slug__tags__tag_slug__merge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/organizations/{org_slug}/documents/": {
@@ -22761,6 +22785,11 @@ export interface components {
             /** Scheme */
             scheme?: string | null;
         };
+        /** TagMerge */
+        TagMerge: {
+            /** Target */
+            target: string;
+        };
         /** TagRef */
         TagRef: {
             /** Name */
@@ -31377,6 +31406,42 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PatchOperation"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    merge_tag_api_organizations__org_slug__tags__tag_slug__merge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                tag_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagMerge"];
             };
         };
         responses: {

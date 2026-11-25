@@ -20,9 +20,9 @@ import { agent, catalog, promptVersion, usage } from './fixtures'
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', () => ({
   createAgent: vi.fn(),
+  createOrFindTag: vi.fn(),
   createPrompt: vi.fn(),
   createPromptVersion: vi.fn(),
-  createTag: vi.fn(),
   deleteAgent: vi.fn(),
   deleteUpload: vi.fn(),
   getAgentPlatformConfig: vi.fn(),

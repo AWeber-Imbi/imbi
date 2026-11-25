@@ -4,9 +4,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CornerDownLeft, Plus, Tag as TagIcon, X } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { createTag, listTags } from '@/api/endpoints'
+import { createOrFindTag, listTags } from '@/api/endpoints'
 import { Keystroke } from '@/components/ui/keystroke'
 import { extractApiErrorDetail } from '@/lib/apiError'
+import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
 import type { Tag, TagRef } from '@/types'
 
@@ -41,7 +42,7 @@ export function TagCombobox({
   const inputRef = useRef<HTMLInputElement>(null)
   const qc = useQueryClient()
 
-  const tagsKey = ['tags', orgSlug] as const
+  const tagsKey = queryKeys.tags(orgSlug)
   const { data: allTags = [] } = useQuery({
     enabled: !!orgSlug,
     queryFn: ({ signal }) => listTags(orgSlug, signal),
@@ -49,13 +50,15 @@ export function TagCombobox({
   })
 
   const createMutation = useMutation({
-    mutationFn: (name: string) => createTag(orgSlug, { name }),
+    mutationFn: (name: string) => createOrFindTag(orgSlug, { name }),
     onError: (err) => {
       toast.error(`Create tag failed: ${extractApiErrorDetail(err)}`)
     },
     onSuccess: (tag) => {
-      qc.setQueryData<Tag[]>(tagsKey, (prev) => [...(prev ?? []), tag])
-      onChange([...selected, { name: tag.name, slug: tag.slug }])
+      qc.invalidateQueries({ queryKey: tagsKey })
+      if (!selectedSlugs.has(tag.slug)) {
+        onChange([...selected, { name: tag.name, slug: tag.slug }])
+      }
       setQuery('')
       setActiveIdx(0)
     },

@@ -92,6 +92,7 @@ export const queryKeys = {
   // different consumers. Mutations on the admin list must invalidate both so
   // the LoginPage picker stays in sync.
   publicAuthProviders: () => ['authProviders'] as const,
+  tags: (orgSlug: string) => ['tags', orgSlug] as const,
   teams: (orgSlug: string) => ['teams', orgSlug] as const,
   // Without a short id: the prefix for every task of the org.
   ticket: (orgSlug: string, ...shortId: string[]) =>
