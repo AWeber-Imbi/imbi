@@ -1,5 +1,5 @@
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '@/api/client'
 import {
@@ -313,5 +313,56 @@ describe('ConfigurationTab history', () => {
       }),
     )
     expect(await screen.findByText('No history.')).toBeInTheDocument()
+  })
+})
+
+describe('ConfigurationTab deep link', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(listConfigurationKeys).mockImplementation(
+      async () => keyList() as never,
+    )
+    stubValues({
+      production: async () => [
+        value(PASSWORD_KEY, 'pw-prod'),
+        value(USER_KEY, 'user-prod'),
+      ],
+      staging: async () => [
+        value(PASSWORD_KEY, 'pw-staging'),
+        value(USER_KEY, 'user-staging'),
+      ],
+    })
+  })
+
+  afterEach(() => window.history.replaceState(null, '', '/'))
+
+  it('selects the key named in ?key=', async () => {
+    window.history.replaceState(null, '', `/?key=${USER_KEY}`)
+    renderTab()
+    expect(await screen.findByDisplayValue('user-staging')).toBeInTheDocument()
+  })
+
+  it('holds the detail pane until every key list resolves', async () => {
+    vi.mocked(listConfigurationKeys).mockImplementation(
+      (_org, _project, params) =>
+        (params?.environment === 'production'
+          ? new Promise(() => {})
+          : Promise.resolve(keyList())) as never,
+    )
+    renderTab()
+    await waitFor(() => expect(listConfigurationKeys).toHaveBeenCalledTimes(2))
+    expect(screen.queryByDisplayValue('pw-staging')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /duplicate/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('writes the selected key to ?key=', async () => {
+    renderTab()
+    await screen.findByDisplayValue('pw-staging')
+    await userEvent.click(screen.getByTitle(USER_KEY))
+    expect(new URLSearchParams(window.location.search).get('key')).toBe(
+      USER_KEY,
+    )
   })
 })

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 
 import {
   useMutation,
@@ -162,7 +162,16 @@ export function ConfigurationTab({
 
   const [source, setSource] = useState<string | undefined>()
   const [filter, setFilter] = useState('')
-  const [selectedKey, setSelectedKey] = useState<null | string>(null)
+  // The selected key lives in ``?key=`` so a key can be deep-linked.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const selectedKey = searchParams.get('key')
+  const setSelectedKey = (key: null | string) =>
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (key) next.set('key', key)
+      else next.delete('key')
+      return next
+    })
   const [mode, setMode] = useState<'create' | 'view'>('view')
   const [revealed, setRevealed] = useState<Record<string, boolean>>({})
   const [confirmDelete, setConfirmDelete] = useState<null | string>(null)
@@ -222,8 +231,13 @@ export function ConfigurationTab({
     if (flashTimer.current) clearTimeout(flashTimer.current)
     flashTimer.current = setTimeout(() => setSavedFlash(false), 1400)
   }
+  // A create can finish after the tab unmounts. Its key selection then
+  // must not navigate back to this tab.
+  const mounted = useRef(false)
   useEffect(() => {
+    mounted.current = true
     return () => {
+      mounted.current = false
       if (flashTimer.current) clearTimeout(flashTimer.current)
     }
   }, [])
@@ -393,16 +407,11 @@ export function ConfigurationTab({
   const displayPrefix = configuredPrefix?.prefix || derivedPrefix
 
   const selected = useMemo(
-    () => aggregated.find((a) => a.key === selectedKey) ?? null,
+    // Fall back to the first key when ``?key=`` is absent or stale.
+    () =>
+      aggregated.find((a) => a.key === selectedKey) ?? aggregated[0] ?? null,
     [aggregated, selectedKey],
   )
-
-  // When data first arrives, auto-select the first key.
-  useEffect(() => {
-    if (mode === 'view' && !selected && aggregated.length > 0) {
-      setSelectedKey(aggregated[0].key)
-    }
-  }, [aggregated, mode, selected])
 
   const selectedTypeOverride: DataType | null =
     typeOverride && selected && typeOverride.key === selected.key
@@ -638,7 +647,7 @@ export function ConfigurationTab({
       )
       toast.success(`Key "${draft.key.trim()}" created`)
       setMode('view')
-      setSelectedKey(draft.key.trim())
+      if (mounted.current) setSelectedKey(draft.key.trim())
       void queryClient.invalidateQueries({
         queryKey: ['config-keys', orgSlug, projectId],
       })
@@ -742,7 +751,7 @@ export function ConfigurationTab({
                 setMode('view')
               }}
               prefix={prefix}
-              selectedKey={mode === 'create' ? null : selectedKey}
+              selectedKey={mode === 'create' ? null : (selected?.key ?? null)}
             />
           )}
         </Panel>
@@ -766,7 +775,9 @@ export function ConfigurationTab({
               prefix={prefix}
               savedFlash={false}
             />
-          ) : selected ? (
+          ) : isLoading ? null : selected ? (
+            // Wait for every environment's key list. Otherwise the fallback
+            // key can change under an unsaved edit as later lists resolve.
             <DetailPane
               duplicateBlockedReason={duplicateBlocked}
               environments={sortedEnvironments}
@@ -1095,7 +1106,9 @@ function DetailPane({
                       )
                 }
                 isSet={isSet}
-                key={env.slug}
+                // Remount on a key change, so an unsaved edit is dropped
+                // and never committed to the newly selected key.
+                key={`${selected?.key ?? ''}:${env.slug}`}
                 onCommit={(v) => {
                   if (isCreate) {
                     onDraftChange?.({
