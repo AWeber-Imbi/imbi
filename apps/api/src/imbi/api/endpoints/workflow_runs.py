@@ -1969,7 +1969,7 @@ def simulate(
     """Walk ``wf_graph`` from a trigger with sample outputs."""
     nodes = {n.id: n for n in wf_graph.nodes}
     triggers = [
-        n.id for n in wf_graph.nodes if registry.STEP_TYPES[n.type].trigger
+        n.id for n in wf_graph.nodes if registry.require(n.type).trigger
     ]
     if not triggers:
         raise fastapi.HTTPException(
@@ -1988,7 +1988,7 @@ def simulate(
     node_id: str | None = start
     while node_id is not None:
         node = nodes[node_id]
-        step = registry.STEP_TYPES[node.type]
+        step = registry.require(node.type)
         names = step.ports_for(node.params)
         port = picked.get(node_id, 0)
         if not 0 <= port < len(names):

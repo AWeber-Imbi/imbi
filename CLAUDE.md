@@ -158,8 +158,8 @@ Use the `release` skill (`.claude/skills/release/SKILL.md`, or `/release`)
 — it runs the whole thing: version bump, release notes, tag, push, and
 confirming the published release.
 
-`scripts/bump-version.sh <version>` does the lockstep bump — all 21
-pyprojects (versions *and* the 37 `imbi-*==` cross-member pins),
+`scripts/bump-version.sh <version>` does the lockstep bump — all 22
+pyprojects (versions *and* the 38 `imbi-*==` cross-member pins),
 `ui/package.json`, and `uv.lock`. Never hand-edit those; the count is why
 lockstep used to drift. `scripts/bump-version.sh --check` asserts they all
 agree — `uv lock` accepts a member that disagrees with the meta-package's

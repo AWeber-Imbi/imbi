@@ -19,6 +19,8 @@ import type {
   WorkloadIdentityPut,
 } from '@/components/admin/secrets/types'
 import type {
+  Choice,
+  ChoicesRequest,
   OrgRun,
   ScriptPreviewRequest,
   ScriptPreviewResult,
@@ -4448,6 +4450,20 @@ export const listWorkflowStepTypes = async (
   )
   return Array.isArray(response) ? response : []
 }
+
+/** The choices of a plugin step field, from its integration (ADR 0032). */
+export const listWorkflowStepChoices = (
+  orgSlug: string,
+  integrationSlug: string,
+  step: string,
+  body: ChoicesRequest,
+  signal?: AbortSignal,
+) =>
+  apiClient.post<Choice[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/integrations/${encodeURIComponent(integrationSlug)}/workflow-steps/${encodeURIComponent(step)}/choices`,
+    body,
+    signal,
+  )
 
 // --- Secrets broker (ADR 0022) ------------------------------------------
 

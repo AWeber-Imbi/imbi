@@ -292,6 +292,7 @@ deliberate base-model change.
 | `commit-sync` | `CommitSyncCapability` | api, webhook | [Commit Sync](commit-sync.md) |
 | `pr-sync` | `PullRequestSyncCapability` | api, webhook | [Pull Request Sync](pr-sync.md) |
 | `tools` | `ToolsCapability` | tools | [Tools](tools.md) |
+| `workflow-steps` | `WorkflowStepsCapability` | api | [Workflow Steps](workflow-steps.md) |
 
 ### Hint allowlist
 
@@ -447,8 +448,8 @@ demand) to populate the registry from the first-party `imbi.plugins`
 scan, the `imbi_plugin_*` convention scan, and `IMBI_PLUGINS`. Every discovered plugin is validated fail-loud at load:
 the class must subclass `Plugin`; its `manifest` must be a
 `PluginManifest` with a supported `api_version`; every capability's
-`handler` must subclass the contract for its kind; `webhook-actions` and
-`tools` catalogs must enumerate cleanly with unique names; declared
+`handler` must subclass the contract for its kind; `webhook-actions`,
+`tools`, and `workflow-steps` catalogs must enumerate cleanly with unique names; declared
 vertex/edge labels must not collide; and plugin slugs must be unique.
 
 Lookups are by plugin slug — `get_plugin(slug)` returns a

@@ -7,6 +7,8 @@ from collections import abc
 
 import pydantic
 
+from imbi.common.plugins import base
+
 Category = typing.Literal['trigger', 'logic', 'action']
 
 
@@ -44,6 +46,15 @@ class StepType:
     raw_params: frozenset[str] = frozenset()
     #: ``params.output_fields`` declares the fields of ``output.result``.
     structured_output: bool = False
+    #: The slug of the plugin that gives this type, else ``None``.
+    #: imbi-api runs the steps of a plugin type (ADR 0032).
+    plugin: str | None = None
+    #: The icon of the plugin, in the ``library-icon-name`` form.
+    icon: str | None = None
+    #: Seconds between the polls of a plugin step that polls.
+    poll_seconds: int | None = None
+    #: The declaration of a plugin step, for imbi-api to run it.
+    descriptor: base.WorkflowStepDescriptor | None = None
 
     def ports_for(self, params: dict[str, typing.Any]) -> list[str]:
         """Return the output ports of a node of this type.
@@ -80,4 +91,6 @@ class StepType:
             'timeout_seconds': self.timeout_seconds,
             'retries': self.retries,
             'raw_params': sorted(self.raw_params),
+            'plugin': self.plugin,
+            'icon': self.icon,
         }

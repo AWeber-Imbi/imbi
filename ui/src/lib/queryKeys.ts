@@ -129,6 +129,14 @@ export const queryKeys = {
     ['workflowSideEffects', orgSlug, 'deployments', key] as const,
   workflowSideEffects: (orgSlug: string) =>
     ['workflowSideEffects', orgSlug] as const,
+  workflowStepChoices: (
+    orgSlug: string,
+    integration: unknown,
+    step: string,
+    field: string,
+    params: Record<string, unknown>,
+  ) =>
+    ['workflowStepChoices', orgSlug, integration, step, field, params] as const,
   workflowStepTypes: (orgSlug: string) =>
     ['workflowStepTypes', orgSlug] as const,
 } as const

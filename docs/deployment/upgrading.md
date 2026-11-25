@@ -142,6 +142,13 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 
    If it stops with a unique violation, remove the duplicate tags as
    step 3 tells you, then run it again.
+5. Run `imbi-api setup-permissions`. It adds the permission
+   `integration:workflow-step:run` to the role of the `imbi-workflows`
+   service account. Without it, every plugin workflow step fails with
+   `403`.
+6. Deploy imbi-workflows with imbi-api. Both must load the same plugin
+   versions, because the engine reads the step catalog and imbi-api runs
+   the steps.
 
 ## 2.62.0
 

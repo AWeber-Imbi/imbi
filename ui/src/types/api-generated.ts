@@ -3886,6 +3886,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/integrations/{integration_slug}/workflow-steps/{step_type}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Workflow Step
+         * @description Run one call of a plugin workflow step with the credentials of
+         *     the Integration.
+         *
+         *     Only the ``imbi-workflows`` service account holds the permission.
+         *     The ``Idempotency-Key`` is ``<run_id>:<node_id>:<attempt>:<poll>``:
+         *     a repeat of the key gets the result of the first call. An error of
+         *     the call has ``detail={'error': <code>, 'retry': <bool>}`` (see
+         *     :data:`CALL_ERRORS`).
+         *
+         *     Raises:
+         *         403: No permission, or not a member of the organization.
+         *         404: No such Integration, step of its plugin, or project.
+         *         409: The plugin or its ``workflow-steps`` capability is off, a
+         *             call with the key is still running (``call_in_progress``),
+         *             or one did not finish (``outcome_unknown``).
+         *         413: The request is larger than 1 MiB.
+         *         422: The params are not valid, or a project-scoped step has no
+         *             ``project_id``.
+         *         502: The plugin failed or returned a result that is not valid.
+         *         504: The plugin did not answer in time.
+         */
+        post: operations["run_workflow_step_api_organizations__org_slug__integrations__integration_slug__workflow_steps__step_type__run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/integrations/{integration_slug}/workflow-steps/{step_type}/choices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * List Choices
+         * @description Return at most 1000 choices for a field of a plugin step.
+         *
+         *     The workflow builder calls this to fill a field that has
+         *     ``x-imbi-choices``. ``params`` are the values typed so far.
+         *
+         *     Raises:
+         *         400: The field does not have choices.
+         *         404: No such Integration, or its plugin has no such step.
+         *         409: The plugin or its ``workflow-steps`` capability is off.
+         *         502: The plugin failed (``plugin_error``) or did not answer in
+         *             10 seconds (``plugin_timeout``).
+         */
+        post: operations["list_choices_api_organizations__org_slug__integrations__integration_slug__workflow_steps__step_type__choices_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/webhooks/": {
         parameters: {
             query?: never;
@@ -9382,9 +9451,9 @@ export interface paths {
          * Delete Organization
          * @description Delete an empty organization.
          *
-         *     Its memberships, agent tasks, workflow runs, AI model calls,
-         *     ``workflows/<org>.*`` and ``agents/<org>.*`` prompts, secret
-         *     grants, and settled secret resolutions go with it.
+         *     Its memberships, agent tasks, workflow runs, plugin step calls,
+         *     AI model calls, ``workflows/<org>.*`` and ``agents/<org>.*``
+         *     prompts, secret grants, and settled secret resolutions go with it.
          *
          *     Parameters:
          *         slug: Organization slug to delete.
@@ -13850,6 +13919,18 @@ export interface components {
             };
         };
         /**
+         * Choice
+         * @description One value that a workflow step form field can take.
+         */
+        Choice: {
+            /** Value */
+            value: string;
+            /** Label */
+            label: string;
+            /** Description */
+            description?: string | null;
+        };
+        /**
          * ChoiceQuestion
          * @description Pick one of up to 255 named options.
          */
@@ -13864,6 +13945,21 @@ export interface components {
             /** Criteria */
             criteria: {
                 [key: string]: string | null;
+            };
+        };
+        /**
+         * ChoicesRequest
+         * @description The field to load and the params that the editor has so far.
+         */
+        ChoicesRequest: {
+            /** Field */
+            field: string;
+            /**
+             * Params
+             * @default {}
+             */
+            params: {
+                [key: string]: unknown;
             };
         };
         /** Claim */
@@ -22708,6 +22804,56 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /**
+         * StepCall
+         * @description The workflow context of one call of a plugin step.
+         */
+        StepCall: {
+            /** Run Id */
+            run_id: string;
+            /** Workflow Slug */
+            workflow_slug: string;
+            /** Node Id */
+            node_id: string;
+            /** Attempt */
+            attempt: number;
+            /** Idempotency Key */
+            idempotency_key: string;
+            /**
+             * State
+             * @default {}
+             */
+            state: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * StepResult
+         * @description What one call of a plugin step returns.
+         */
+        StepResult: {
+            /** Output */
+            output?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Port
+             * @default
+             */
+            port: string;
+            /**
+             * Poll
+             * @default false
+             */
+            poll: boolean;
+            /**
+             * State
+             * @default {}
+             */
+            state: {
+                [key: string]: unknown;
+            };
+        };
         /** StepRun */
         StepRun: {
             /** Node Id */
@@ -22741,6 +22887,24 @@ export interface components {
             started_at: string | null;
             /** Finished At */
             finished_at: string | null;
+        };
+        /**
+         * StepRunRequest
+         * @description One call of a plugin step.
+         */
+        StepRunRequest: {
+            /**
+             * Params
+             * @default {}
+             */
+            params: {
+                [key: string]: unknown;
+            };
+            /** Project Id */
+            project_id?: string | null;
+            call: components["schemas"]["StepCall"];
+            /** Time Limit Seconds */
+            time_limit_seconds?: number | null;
         };
         /** StepType */
         StepType: {
@@ -22788,6 +22952,16 @@ export interface components {
              * @default []
              */
             raw_params: string[];
+            /**
+             * Plugin
+             * @description The slug of the plugin that gives this type (ADR 0032), else null.
+             */
+            plugin?: string | null;
+            /**
+             * Icon
+             * @description The icon of the plugin.
+             */
+            icon?: string | null;
         };
         /** SurfaceCount */
         SurfaceCount: {
@@ -30445,6 +30619,82 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CapabilityAssignment"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_workflow_step_api_organizations__org_slug__integrations__integration_slug__workflow_steps__step_type__run_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                org_slug: string;
+                integration_slug: string;
+                step_type: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StepRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StepResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_choices_api_organizations__org_slug__integrations__integration_slug__workflow_steps__step_type__choices_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                integration_slug: string;
+                step_type: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChoicesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Choice"][];
                 };
             };
             /** @description Validation Error */

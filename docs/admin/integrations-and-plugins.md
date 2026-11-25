@@ -39,6 +39,7 @@ work that Imbi can ask the plugin to do.
 | `commit-sync` | Records commit and tag history |
 | `pr-sync` | Records pull request history |
 | `release-tracking` | Records each new Imbi release in the remote platform, for example a Sentry release |
+| `workflow-steps` | Gives workflow steps and logic gates that use this Integration |
 
 A capability is either *project-scoped* or *organization-wide*. An
 organization-wide capability, for example `identity`, applies to the full
@@ -49,8 +50,8 @@ integration. A project-scoped capability applies to projects, as
 
 Plugins are installed with the server. You cannot install or remove a
 plugin from the UI. The Imbi distribution includes these plugins:
-`aws`, `github`, `google`, `logzio`, `oidc`, `pagerduty`, `posthog`, `sentry`, and
-`sonarqube`.
+`aws`, `github`, `google`, `grafana`, `logzio`, `oidc`, `pagerduty`, `posthog`,
+`sentry`, and `sonarqube`.
 
 A plugin that Imbi finds for the first time is **disabled**. Enable it
 before you make an integration of it.

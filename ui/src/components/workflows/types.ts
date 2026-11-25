@@ -2,6 +2,10 @@ import type { components } from '@/types/api-generated'
 
 // Workflow API types (ADR 0021), from the generated OpenAPI schema.
 
+/** A value of a plugin step field, from the plugin (ADR 0032). */
+export type Choice = Schemas['Choice']
+export type ChoicesRequest = Schemas['ChoicesRequest']
+
 /** A JSON Schema object. The API types the step schemas as `dict[str, Any]`. */
 export interface JsonSchema {
   $defs?: Record<string, JsonSchema>
@@ -16,6 +20,10 @@ export interface JsonSchema {
   required?: string[]
   title?: string
   type?: string
+  'x-imbi-choices'?: boolean
+  'x-imbi-depends-on'?: string[]
+  'x-imbi-plugin'?: string
+  'x-imbi-source'?: string
 }
 export type OrgRun = Schemas['OrgRun']
 export type RunStatus = WorkflowRun['status']

@@ -165,6 +165,7 @@ CapabilityKind = typing.Literal[
     'pr-sync',  # pull-request ingestion      → api, webhook
     'release-tracking',  # record releases remotely → api
     'tools',  # agent tools (reserved)      → tools
+    'workflow-steps',  # workflow step types     → api
 ]
 
 CAPABILITY_SURFACES: dict[str, frozenset[str]] = {
@@ -180,6 +181,7 @@ CAPABILITY_SURFACES: dict[str, frozenset[str]] = {
     'pr-sync': frozenset({'api', 'webhook'}),
     'release-tracking': frozenset({'api'}),
     'tools': frozenset({'tools'}),
+    'workflow-steps': frozenset({'api'}),
 }
 
 #: ``cacheable`` is accepted for every kind (v1 default ``True`` carries
@@ -204,6 +206,7 @@ HINT_ALLOWLIST: dict[str, frozenset[str]] = {
     'pr-sync': _COMMON_HINTS,
     'release-tracking': _COMMON_HINTS,
     'tools': _COMMON_HINTS,
+    'workflow-steps': _COMMON_HINTS,
 }
 
 
@@ -2386,6 +2389,152 @@ class ToolsCapability(CapabilityHandler):
         """Return the static catalog of tools this capability exposes."""
 
 
+class StepCall(pydantic.BaseModel):
+    """The workflow context of one call of a plugin step."""
+
+    run_id: str
+    workflow_slug: str
+    node_id: str
+    attempt: int
+    #: Unique for each call: ``<run_id>:<node_id>:<attempt>:<poll>``.
+    idempotency_key: str
+    #: The ``state`` of the :class:`StepResult` of the last poll, else
+    #: empty.
+    state: dict[str, typing.Any] = {}
+
+
+class StepResult(pydantic.BaseModel):
+    """What one call of a plugin step returns."""
+
+    #: Validated against :attr:`WorkflowStepDescriptor.output_model`.
+    #: Ignored when :attr:`poll` is true.
+    output: dict[str, typing.Any] | None = None
+    #: A name in :attr:`WorkflowStepDescriptor.ports`.
+    port: str = ''
+    #: Call the step again after
+    #: :attr:`WorkflowStepDescriptor.poll_seconds`. The step timeout
+    #: limits the polls in total.
+    poll: bool = False
+    #: Given back in :attr:`StepCall.state` on the next poll.
+    state: dict[str, typing.Any] = {}
+
+
+class Choice(pydantic.BaseModel):
+    """One value that a workflow step form field can take."""
+
+    value: str
+    label: str
+    description: str | None = None
+
+
+#: ``async def run(ctx, credentials, params, call) -> StepResult``.
+#: ``params`` is an instance of the descriptor's ``params_model``.
+WorkflowStepCallable = collections.abc.Callable[
+    ..., collections.abc.Awaitable[StepResult]
+]
+
+#: ``async def choices(ctx, credentials, field, params) -> list[Choice]``.
+#: ``params`` holds the values typed so far and is untrusted: take hosts
+#: and URLs from the Integration options only, never from ``params``.
+WorkflowChoicesCallable = collections.abc.Callable[
+    ..., collections.abc.Awaitable[list[Choice]]
+]
+
+#: The ``json_schema_extra`` key that marks a params field whose choices
+#: the descriptor's ``choices`` callable gives.
+CHOICES_KEY = 'x-imbi-choices'
+
+
+class WorkflowStepDescriptor(pydantic.BaseModel):
+    """One workflow step type of a ``workflow-steps`` capability.
+
+    The workflow type is ``<plugin_slug>.<name>``. The step gets an
+    ``integration`` param (and ``project_id`` when
+    :attr:`project_scoped`) from the host, so :attr:`params_model` must
+    not declare ``integration`` or ``project_id``. imbi-api calls
+    :attr:`callable` with the credentials of the Integration that the
+    node selects.
+    """
+
+    name: str = pydantic.Field(pattern=r'^[a-z][a-z0-9_]*$')
+    category: typing.Literal['action', 'logic']
+    label: str = pydantic.Field(min_length=1)
+    description: str = pydantic.Field(min_length=1)
+    params_model: pydantic.ImportString[type[pydantic.BaseModel]]
+    output_model: pydantic.ImportString[type[pydantic.BaseModel]]
+    sample_output: dict[str, typing.Any]
+    #: The output ports. A gate names one port per result, for example
+    #: ``('Pass', 'Fail')``. A port named ``Failed`` also takes the
+    #: errors of the step.
+    ports: tuple[str, ...] = ('',)
+    side_effect: bool = False
+    idempotent: bool = True
+    #: The time limit of the step, all polls included.
+    timeout_seconds: int = pydantic.Field(default=300, ge=1)
+    retries: int = pydantic.Field(default=0, ge=0, le=10)
+    #: Set when the step can return ``StepResult(poll=True)``.
+    poll_seconds: int | None = pydantic.Field(default=None, ge=30)
+    project_scoped: bool = False
+    #: The permissions the person who activates the workflow must have,
+    #: in addition to ``integration:read``.
+    permissions: frozenset[str] = frozenset()
+    callable: pydantic.ImportString[WorkflowStepCallable]
+    choices: pydantic.ImportString[WorkflowChoicesCallable] | None = None
+
+    @property
+    def choice_fields(self) -> list[str]:
+        """The params fields whose choices :attr:`choices` gives.
+
+        Each field has its name in the JSON schema (its alias, if it has
+        one): the workflow builder and :attr:`choices` use that name.
+        """
+        return [
+            field.alias or name
+            for name, field in self.params_model.model_fields.items()
+            if isinstance(field.json_schema_extra, dict)
+            and field.json_schema_extra.get(CHOICES_KEY)
+        ]
+
+    @pydantic.model_validator(mode='after')
+    def _validate(self) -> typing.Self:
+        if not self.ports or len(set(self.ports)) != len(self.ports):
+            raise ValueError('ports must be non-empty and unique')
+        # The workflows engine takes both out of the params of every
+        # plugin step, project-scoped or not.
+        names = {
+            key
+            for name, field in self.params_model.model_fields.items()
+            for key in (name, field.alias)
+            if key
+        }
+        taken = sorted({'integration', 'project_id'} & names)
+        if taken:
+            raise ValueError(f'params_model must not declare {taken}')
+        if self.side_effect and not self.permissions:
+            # The run uses the imbi-workflows service account: without a
+            # permission, anyone who can read the Integration could make
+            # it act.
+            raise ValueError('a side_effect step must declare permissions')
+        if self.choice_fields and self.choices is None:
+            raise ValueError(
+                f'fields {self.choice_fields} need a choices callable'
+            )
+        return self
+
+
+class WorkflowStepsCapability(CapabilityHandler):
+    """Declares a static catalog of workflow step types.
+
+    imbi-api runs each step and loads the choices of its form fields;
+    the workflows engine and the builder read the catalog only.
+    """
+
+    @classmethod
+    @abc.abstractmethod
+    def steps(cls) -> list[WorkflowStepDescriptor]:
+        """Return the step types of this capability."""
+
+
 #: One contract ABC per :data:`CapabilityKind`. The registry validates a
 #: capability's ``handler`` against the entry for its kind.
 CAPABILITY_CONTRACTS: dict[str, type[CapabilityHandler]] = {
@@ -2401,6 +2550,7 @@ CAPABILITY_CONTRACTS: dict[str, type[CapabilityHandler]] = {
     'pr-sync': PullRequestSyncCapability,
     'release-tracking': ReleaseTrackingCapability,
     'tools': ToolsCapability,
+    'workflow-steps': WorkflowStepsCapability,
 }
 
 

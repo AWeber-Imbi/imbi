@@ -1265,3 +1265,24 @@ async def execute_ai_model_calls_prune(
         deleted=deleted,
     )
     return 'succeeded'
+
+
+async def execute_plugin_step_calls_prune(
+    db: graph.Graph,
+    client: valkey.Valkey,
+    item_id: str,
+    *,
+    ctx: log.MaintenanceContext,
+) -> ExecuteOutcome:
+    """Delete the plugin step call rows older than 90 days."""
+    from imbi.api import workflows
+
+    deleted = await workflows.plugin_call_store().prune()
+    ctx.log.record(
+        'succeeded',
+        'plugin-step-calls-prune',
+        f'Deleted {deleted} plugin step calls older than '
+        f'{workflows.plugin_calls.RETENTION}',
+        deleted=deleted,
+    )
+    return 'succeeded'

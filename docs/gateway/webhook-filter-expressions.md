@@ -114,7 +114,8 @@ cannot filter on the *value* of these headers (only on their presence):
 
 `authorization`, `cookie`, `set-cookie`, `proxy-authorization`,
 `x-hub-signature`, `x-hub-signature-256`, `x-gitlab-token`,
-`x-pagerduty-signature`, `x-sonar-webhook-hmac-sha256`, `webhook-signature`.
+`x-pagerduty-signature`, `x-sonar-webhook-hmac-sha256`, `webhook-signature`,
+`x-grafana-alerting-signature`.
 
 ## Available functions
 

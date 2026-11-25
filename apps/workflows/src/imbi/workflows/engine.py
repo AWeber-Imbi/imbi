@@ -171,7 +171,7 @@ class Engine:
 
     # --- One pass ------------------------------------------------------
 
-    async def _process(  # noqa: PLR0911
+    async def _process(  # noqa: PLR0911, PLR0912
         self, run: store.Row
     ) -> datetime.datetime | None:
         """Do the next thing for ``run``. Return when it is due again."""
@@ -181,6 +181,16 @@ class Engine:
         if run['cancel_requested']:
             await self._cancel_agent_tasks(run, steps, version['slug'])
             await self._close(run, steps, 'cancelled')
+            return None
+        unknown = next(
+            (n for n in wf_graph.nodes if registry.get(n.type) is None), None
+        )
+        if unknown is not None:
+            # The plugin of a step type was removed after the workflow
+            # was saved (ADR 0032).
+            await self._unknown_type(run, steps, unknown)
+            if wf_settings.on_failure == 'notify_owner_team':
+                await self._notify_owner_team(run, version['slug'])
             return None
         if run['status'] == 'queued':
             if not await self._activator_allowed(run, wf_graph):
@@ -246,7 +256,7 @@ class Engine:
                 scope_steps,
                 payload,
                 {n.id: n for n in wf_graph.nodes},
-                registry.STEP_TYPES[node.type].raw_params,
+                registry.require(node.type).raw_params,
             )
         except rendering.RenderError as e:
             LOGGER.info('Run %s: %s: %s', run['id'], node.key, e)
@@ -267,6 +277,18 @@ class Engine:
                 conn, run['id'], node_id, 'step.started'
             )
         return _now()
+
+    async def _unknown_type(
+        self, run: store.Row, steps: dict[str, store.Row], node: wf.Node
+    ) -> None:
+        """Fail the step of ``node`` and the run with ``unknown_type``."""
+        code = f'unknown_type:{node.type}'
+        async with self.store.write(run['id']) as conn:
+            step = steps.get(node.id)
+            if step is not None and step['status'] in ('pending', 'running'):
+                await self._finish(conn, run, step, 'failed', None, code)
+            others = {k: v for k, v in steps.items() if k != node.id}
+            await self._close_in(conn, run, others, 'failed', code)
 
     async def _activator_allowed(
         self, run: store.Row, wf_graph: wf.Graph
@@ -306,7 +328,7 @@ class Engine:
             return True
         required: set[str] = set()
         for node in wf_graph.nodes:
-            step = registry.STEP_TYPES[node.type]
+            step = registry.require(node.type)
             required |= step.required_permissions(node.params)
         if not required:
             return True
@@ -348,7 +370,7 @@ class Engine:
                     return
             for node in wf_graph.nodes:
                 started = node.id == run['trigger_node_id']
-                trigger = registry.STEP_TYPES[node.type].trigger
+                trigger = registry.require(node.type).trigger
                 await conn.execute(
                     'INSERT INTO workflow_runtime.step_runs (run_id,'
                     ' node_id, node_key, node_type, title, status, port,'
@@ -381,7 +403,7 @@ class Engine:
             # Trigger steps get their status here, not from a call, so
             # history has an event for each of them too.
             for node in wf_graph.nodes:
-                if registry.STEP_TYPES[node.type].trigger:
+                if registry.require(node.type).trigger:
                     started = node.id == run['trigger_node_id']
                     await runtime.append_step_event(
                         conn,
@@ -403,7 +425,7 @@ class Engine:
         """Make one call of a running step and record what it returns."""
         node = next(n for n in wf_graph.nodes if n.id == node_id)
         step = steps[node_id]
-        step_type = registry.STEP_TYPES[node.type]
+        step_type = registry.require(node.type)
         started_at: datetime.datetime = step['started_at']
         if started_at > _now():
             # A retry whose backoff has not ended. The run can be claimed
@@ -411,10 +433,14 @@ class Engine:
             # with the retry time as its ``due_at``.
             return started_at
         if step['call_started_at'] is not None and (
-            step_type.side_effect and not step_type.idempotent
+            step_type.side_effect
+            and not step_type.idempotent
+            and step_type.plugin is None
         ):
             # A crash or a timeout cut the last call short, and this type
-            # cannot find out whether it acted: do not act twice.
+            # cannot find out whether it acted: do not act twice. A plugin
+            # step sends the key of that call again, and imbi-api gives
+            # its recorded result, call_in_progress, or outcome_unknown.
             async with self.store.write(run['id']) as conn:
                 await self._fail(conn, run, step, 'outcome_unknown')
             return _now()
@@ -478,7 +504,7 @@ class Engine:
         except Exception as e:
             LOGGER.exception('Run %s: %s raised', run['id'], node.key)
             return await self._error(
-                run, node, step, slug, type(e).__name__, True
+                run, node, step, slug, type(e).__name__, True, unknown=True
             )
         key = {'run_id': run['id'], 'node_id': node_id}
         async with self.store.write(run['id']) as conn:
@@ -490,7 +516,13 @@ class Engine:
                     state=outcome.state,
                     call_started_at=None,
                 )
-                return outcome.resume_at
+                if timeout is None:
+                    return outcome.resume_at
+                # A poll past the step timeout wakes at the timeout.
+                return min(
+                    outcome.resume_at,
+                    started_at + datetime.timedelta(seconds=timeout),
+                )
             await store.update(
                 conn,
                 'step_runs',
@@ -518,6 +550,7 @@ class Engine:
         retry: bool,
         *,
         unreachable: bool = False,
+        unknown: bool = False,
     ) -> datetime.datetime:
         """Retry the step after a backoff, or fail it.
 
@@ -525,9 +558,17 @@ class Engine:
         first (best effort), so the task does not outlive the step.
         ``unreachable`` (no response from imbi-api) waits
         ``UNREACHABLE_BACKOFF`` instead of ``RETRY_BACKOFF``.
+        ``unknown`` marks an error that does not tell whether the call
+        acted, such as an exception in the engine.
         """
-        step_type = registry.STEP_TYPES[node.type]
+        step_type = registry.require(node.type)
         retries = step_type.retries if node.retries is None else node.retries
+        if code == 'plugin_timeout' and (
+            step_type.side_effect and not step_type.idempotent
+        ):
+            # imbi-api records the timeout. A repeat of the key gets the
+            # same timeout, and a new key can act a second time.
+            retry = False
         fail = not (retry and step['attempt'] <= retries)
         if fail:
             await self._cancel_agent_tasks(run, {step['node_id']: step}, slug)
@@ -537,13 +578,22 @@ class Engine:
                 return _now()
             attempt = step['attempt'] + 1
             # The state stays: a deploy or rollback resumes its run.
-            # After a timeout, the outcome of the last call is unknown.
-            # ``key_attempt`` lets a step (LLM Call) send the key of that
-            # call again; after a known error it sends a new one.
+            # After a timeout, a lost response, or a 5xx with no error
+            # code (for example, an HTML 502 page of a proxy), the outcome
+            # of the last call is unknown. ``key_attempt`` lets a step
+            # (LLM Call, a plugin step) send the key of that call again;
+            # after a known error it sends a new one. A failed token
+            # refresh or an engine error does not answer for that key, so
+            # the key stays.
             state = {
                 k: v for k, v in step['state'].items() if k != 'key_attempt'
             }
-            if code == 'timeout':
+            if (
+                code == 'timeout'
+                or code.startswith(('http_5', 'token_http_'))
+                or unreachable
+                or unknown
+            ):
                 state['key_attempt'] = step['state'].get(
                     'key_attempt', step['attempt']
                 )
@@ -573,7 +623,7 @@ class Engine:
         self, conn: store.Conn, run: store.Row, step: store.Row, code: str
     ) -> None:
         """Fail a step. It takes its ``Failed`` port when it has one."""
-        names = registry.STEP_TYPES[step['node_type']].ports or ()
+        names = registry.require(step['node_type']).ports or ()
         port = names.index('Failed') if 'Failed' in names else None
         await self._finish(conn, run, step, 'failed', port, code)
 
@@ -720,7 +770,7 @@ def _blank_output(
     The ``result`` of a step with structured output has empty text for
     each of its output fields too.
     """
-    step = registry.STEP_TYPES[node_type]
+    step = registry.require(node_type)
     blank: dict[str, typing.Any] = dict.fromkeys(step.output.model_fields, '')
     fields = agent_step.structured_fields(step, node.params) if node else None
     if fields is not None:
