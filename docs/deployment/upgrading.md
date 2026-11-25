@@ -134,6 +134,14 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    app, then reinstall the app to the workspace. The
    [Slack app manifest](../slackbot/slack-app-manifest.md) has all of
    them. Until you do this, Slack shows no previews.
+6. **Before you deploy**, look for blueprints that use `pattern`,
+   `minLength`, `maxLength`, `multipleOf`, or the formats `uuid`,
+   `ipv4`, and `ipv6`. Imbi now enforces these
+   [value rules](../admin/blueprints.md#value-rules); before, it stored
+   them and did not check them. A record whose stored value breaks a
+   rule fails its next update with `422` until someone corrects the
+   value. A blueprint with a `pattern` that does not compile can no
+   longer be saved; correct it before you change the blueprint again.
 
 ## 2.61.0
 

@@ -12,6 +12,15 @@ import pydantic
 from imbi.common import models
 
 
+class BlueprintSectionItems(pydantic.BaseModel):
+    """The ``items`` schema of an array property."""
+
+    type: str | None = None
+    format: str | None = None
+    enum: list[typing.Any] | None = None
+    pattern: str | None = None
+
+
 class BlueprintSectionProperty(pydantic.BaseModel):
     """A single property from a blueprint's JSON Schema."""
 
@@ -27,6 +36,13 @@ class BlueprintSectionProperty(pydantic.BaseModel):
     default: typing.Any = None
     minimum: float | None = None
     maximum: float | None = None
+    multiple_of: float | None = pydantic.Field(
+        default=None, alias='multipleOf'
+    )
+    pattern: str | None = None
+    min_length: int | None = pydantic.Field(default=None, alias='minLength')
+    max_length: int | None = pydantic.Field(default=None, alias='maxLength')
+    items: BlueprintSectionItems | None = None
     x_ui: dict[str, typing.Any] = pydantic.Field(
         default_factory=dict,
         alias='x-ui',
@@ -66,6 +82,15 @@ def section_property(prop_schema: models.Schema) -> BlueprintSectionProperty:
     if x_ui.get('editable') is None:
         x_ui['editable'] = True
     raw_x_display = extra.get('x-display')
+    items = getattr(prop_schema, 'items', None)
+    # By alias: the type checker knows only the alias of a field.
+    aliased: dict[str, typing.Any] = {
+        'multipleOf': getattr(prop_schema, 'multiple_of', None),
+        'minLength': getattr(prop_schema, 'min_length', None),
+        'maxLength': getattr(prop_schema, 'max_length', None),
+        'x-ui': x_ui,
+        'x-display': dict(raw_x_display or {}),
+    }
     return BlueprintSectionProperty(
         type=getattr(prop_schema, 'type', None),
         format=getattr(prop_schema, 'format', None),
@@ -75,7 +100,13 @@ def section_property(prop_schema: models.Schema) -> BlueprintSectionProperty:
         default=getattr(prop_schema, 'default', None),
         minimum=getattr(prop_schema, 'minimum', None),
         maximum=getattr(prop_schema, 'maximum', None),
-        **{'x-ui': x_ui, 'x-display': dict(raw_x_display or {})},
+        pattern=getattr(prop_schema, 'pattern', None),
+        items=(
+            BlueprintSectionItems.model_validate(items, from_attributes=True)
+            if isinstance(items, models.Schema)
+            else None
+        ),
+        **aliased,
     )
 
 

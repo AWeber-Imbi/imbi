@@ -25,7 +25,9 @@ import {
 // behaviour of the native <select> this component replaced).
 const UNSET_VALUE = '__unset__'
 
-const ajv = new Ajv({ allErrors: true })
+// A float division makes 19.99 not a multiple of 0.01 without a
+// precision; the API checks multipleOf with decimals.
+const ajv = new Ajv({ allErrors: true, multipleOfPrecision: 9 })
 addFormats(ajv)
 
 interface DynamicDetailFieldsProps {
@@ -305,11 +307,17 @@ export function toDynamicField(
     items: prop.items
       ? {
           enum: prop.items.enum ?? undefined,
+          format: prop.items.format ?? undefined,
+          pattern: prop.items.pattern ?? undefined,
           type: prop.items.type ?? undefined,
         }
       : undefined,
     maximum: prop.maximum ?? undefined,
+    maxLength: prop.maxLength ?? undefined,
     minimum: prop.minimum ?? undefined,
+    minLength: prop.minLength ?? undefined,
+    multipleOf: prop.multipleOf ?? undefined,
+    pattern: prop.pattern ?? undefined,
     title: prop.title ?? undefined,
     type: prop.type ?? undefined,
   }
@@ -324,7 +332,14 @@ export function validateDynamicFields(
     type: 'object' as const,
     ...(schema.required?.length ? { required: schema.required } : {}),
   }
-  const validate = ajv.compile(jsonSchema)
+  let validate: ReturnType<typeof ajv.compile>
+  try {
+    validate = ajv.compile(jsonSchema)
+  } catch {
+    // A pattern in Python syntax that JavaScript cannot compile: the API
+    // checks the values on save.
+    return {}
+  }
   validate(data)
   const fieldErrors: Record<string, string> = {}
   if (validate.errors) {

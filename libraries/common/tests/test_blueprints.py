@@ -480,6 +480,125 @@ class MapArrayTypeTests(unittest.TestCase):
         self.assertEqual(list, blueprints._map_array_type(schema))
 
 
+# -- value checks (pattern, lengths, formats, multipleOf) ---------------
+
+
+class ValueCheckTests(unittest.TestCase):
+    def _model(self, prop: dict[str, typing.Any]) -> typing.Any:
+        bp = _blueprint(properties={'value': prop})
+        return blueprints.apply_blueprints(models.Environment, [bp])
+
+    def _check(self, prop: dict[str, typing.Any], value: object) -> object:
+        model = self._model(prop)
+        return model(name='T', slug='t', organization=ORG, value=value).value
+
+    def _refused(self, prop: dict[str, typing.Any], value: object) -> str:
+        with self.assertRaises(pydantic.ValidationError) as raised:
+            self._check(prop, value)
+        return raised.exception.errors()[0]['msg']
+
+    def test_pattern(self) -> None:
+        money = {'type': 'string', 'pattern': r'^\d+(\.\d{2})?$'}
+        self.assertEqual('1250.00', self._check(money, '1250.00'))
+        self.assertEqual('7', self._check(money, '7'))
+        message = self._refused(money, '12.5')
+        self.assertIn('should match pattern', message)
+
+    def test_pattern_is_a_search(self) -> None:
+        self.assertEqual(
+            'a-b', self._check({'type': 'string', 'pattern': '-'}, 'a-b')
+        )
+
+    def test_pattern_with_lookahead(self) -> None:
+        prop = {'type': 'string', 'pattern': '^(?!tmp-)'}
+        self.assertEqual('prod', self._check(prop, 'prod'))
+        self._refused(prop, 'tmp-x')
+
+    def test_lengths(self) -> None:
+        prop = {'type': 'string', 'minLength': 2, 'maxLength': 3}
+        self.assertEqual('ab', self._check(prop, 'ab'))
+        self.assertIn('at least 2', self._refused(prop, 'a'))
+        self.assertIn('at most 3', self._refused(prop, 'abcd'))
+
+    def test_uuid_format(self) -> None:
+        prop = {'type': 'string', 'format': 'uuid'}
+        value = 'a8098c1a-f86e-11da-bd1a-00112444be1e'
+        self.assertEqual(value, self._check(prop, value))
+        self.assertIn('valid uuid', self._refused(prop, 'nope'))
+
+    def test_ip_formats(self) -> None:
+        self.assertEqual(
+            '10.0.0.1',
+            self._check({'type': 'string', 'format': 'ipv4'}, '10.0.0.1'),
+        )
+        self._refused({'type': 'string', 'format': 'ipv6'}, '10.0.0.1')
+
+    def test_multiple_of(self) -> None:
+        cents = {'type': 'number', 'multipleOf': 0.01}
+        self.assertEqual(0.3, self._check(cents, 0.3))
+        self.assertEqual(19.99, self._check(cents, 19.99))
+        self.assertIn('multiple of 0.01', self._refused(cents, 1.005))
+        self._refused({'type': 'integer', 'multipleOf': 5}, 12)
+
+    def test_array_of_uuids(self) -> None:
+        prop = {
+            'type': 'array',
+            'items': {'type': 'string', 'format': 'uuid'},
+        }
+        value = ['a8098c1a-f86e-11da-bd1a-00112444be1e']
+        self.assertEqual(value, self._check(prop, value))
+        self._refused(prop, [*value, 'nope'])
+
+    def test_array_item_pattern(self) -> None:
+        prop = {
+            'type': 'array',
+            'items': {'type': 'string', 'pattern': '^[A-Z]+-\\d+$'},
+        }
+        self.assertEqual(['OPS-1'], self._check(prop, ['OPS-1']))
+        self._refused(prop, ['ops-1'])
+
+    def test_optional_value_can_be_none(self) -> None:
+        self.assertIsNone(
+            self._check({'type': 'string', 'pattern': '^x$'}, None)
+        )
+
+    def _save(self, prop: dict[str, typing.Any]) -> str:
+        with self.assertRaises(pydantic.ValidationError) as raised:
+            models.Blueprint(
+                name='test',
+                type='Environment',
+                json_schema={'type': 'object', 'properties': {'value': prop}},
+            )
+        return str(raised.exception)
+
+    def test_bad_pattern_is_refused_on_save(self) -> None:
+        message = self._save({'type': 'string', 'pattern': '('})
+        self.assertIn('value: Invalid regular expression', message)
+
+    def test_bad_item_pattern_is_refused_on_save(self) -> None:
+        self._save(
+            {'type': 'array', 'items': {'type': 'string', 'pattern': '['}}
+        )
+
+
+class StoredBadPatternTests(unittest.TestCase):
+    """A blueprint saved before the save check can have a bad pattern."""
+
+    def test_loads_and_skips_the_pattern(self) -> None:
+        stored = models.Blueprint(
+            name='old',
+            type='Environment',
+            json_schema=(
+                '{"type": "object", "properties": '
+                '{"value": {"type": "string", "pattern": "("}}}'
+            ),
+        )
+        with self.assertLogs('imbi.common.blueprints', 'WARNING'):
+            model = blueprints.apply_blueprints(models.Environment, [stored])
+        instance = model(name='T', slug='t', organization=ORG, value='x')
+        self.assertEqual('x', instance.value)
+
+
 # -- _map_schema_type_to_python tests --------------------------------------
 
 

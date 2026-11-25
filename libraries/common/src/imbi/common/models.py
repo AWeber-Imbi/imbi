@@ -197,6 +197,28 @@ class RelationshipEdge(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra='ignore')
 
 
+def _compiles(pattern: str) -> str:
+    """Return ``pattern``; raise ValueError when it does not compile."""
+    try:
+        re.compile(pattern)
+    except re.error as exc:
+        raise ValueError(f'Invalid regular expression: {exc}') from exc
+    return pattern
+
+
+def _patterns_checked(schema: Schema) -> Schema:
+    """Return ``schema`` of a new blueprint after a check that the pattern
+    of each property and of its items compiles."""
+    for name, prop in (schema.properties or {}).items():
+        for pattern in (prop.pattern, getattr(prop.items, 'pattern', None)):
+            if pattern is not None:
+                try:
+                    _compiles(pattern)
+                except ValueError as err:
+                    raise ValueError(f'{name}: {err}') from None
+    return schema
+
+
 class Blueprint(Node):
     # Overrides Node.slug to optional; model validator
     # below auto-generates slug from name at runtime.
@@ -321,9 +343,11 @@ class Blueprint(Node):
         value: typing.Any,
     ) -> Schema:
         if isinstance(value, str):
+            # A stored schema: a bad pattern in it must not stop the
+            # blueprints from loading (the models skip it).
             return Schema.model_validate_json(value)
         elif isinstance(value, dict):
-            return Schema.model_validate(value)
+            return _patterns_checked(Schema.model_validate(value))
         elif isinstance(value, Schema):
             return value
         raise ValueError('Invalid JSON Schema value')
@@ -395,11 +419,7 @@ class TagFormat(pydantic.BaseModel):
     @pydantic.field_validator('pattern')
     @classmethod
     def _validate_pattern(cls, value: str) -> str:
-        try:
-            re.compile(value)
-        except re.error as exc:
-            raise ValueError(f'Invalid regular expression: {exc}') from exc
-        return value
+        return _compiles(value)
 
 
 # Convenience constant for seeding the common-case semver policy (e.g.

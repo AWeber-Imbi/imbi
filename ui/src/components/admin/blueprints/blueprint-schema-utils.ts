@@ -107,18 +107,20 @@ export function buildJsonSchema(
     if (prop.maximum !== undefined) propSchema.maximum = prop.maximum
     if (prop.minLength !== undefined) propSchema.minLength = prop.minLength
     if (prop.maxLength !== undefined) propSchema.maxLength = prop.maxLength
+    if (prop.pattern) propSchema.pattern = prop.pattern
+    if (prop.multipleOf !== undefined) propSchema.multipleOf = prop.multipleOf
 
     if (prop.type === 'array') {
       const itemType = prop.itemsType ?? 'string'
       const itemsSchema: Record<string, unknown> = {
         type: itemType,
       }
-      if (
-        itemType === 'string' &&
-        prop.itemsEnumValues &&
-        prop.itemsEnumValues.length > 0
-      ) {
-        itemsSchema.enum = prop.itemsEnumValues
+      if (itemType === 'string') {
+        if (prop.itemsEnumValues && prop.itemsEnumValues.length > 0) {
+          itemsSchema.enum = prop.itemsEnumValues
+        }
+        if (prop.itemsFormat) itemsSchema.format = prop.itemsFormat
+        if (prop.itemsPattern) itemsSchema.pattern = prop.itemsPattern
       }
       propSchema.items = itemsSchema
     }
@@ -190,12 +192,16 @@ export function schemaToProperties(
       iconRange: xUi?.['icon-range'] as Record<string, string> | undefined,
       id: generateId(),
       itemsEnumValues: items?.enum as string[] | undefined,
+      itemsFormat: items?.format as string | undefined,
+      itemsPattern: items?.pattern as string | undefined,
       itemsType: items?.type as SchemaProperty['itemsType'] | undefined,
       maximum: propSchema.maximum as number | undefined,
       maxLength: propSchema.maxLength as number | undefined,
       minimum: propSchema.minimum as number | undefined,
       minLength: propSchema.minLength as number | undefined,
+      multipleOf: propSchema.multipleOf as number | undefined,
       name,
+      pattern: propSchema.pattern as string | undefined,
       required: required.includes(name),
       type: (propSchema.type as SchemaProperty['type']) || 'string',
     })

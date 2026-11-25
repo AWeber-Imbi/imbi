@@ -13465,6 +13465,20 @@ export interface components {
             required: string[];
         };
         /**
+         * BlueprintSectionItems
+         * @description The ``items`` schema of an array property.
+         */
+        BlueprintSectionItems: {
+            /** Type */
+            type?: string | null;
+            /** Format */
+            format?: string | null;
+            /** Enum */
+            enum?: unknown[] | null;
+            /** Pattern */
+            pattern?: string | null;
+        };
+        /**
          * BlueprintSectionProperty
          * @description A single property from a blueprint's JSON Schema.
          */
@@ -13485,6 +13499,15 @@ export interface components {
             minimum?: number | null;
             /** Maximum */
             maximum?: number | null;
+            /** Multipleof */
+            multipleOf?: number | null;
+            /** Pattern */
+            pattern?: string | null;
+            /** Minlength */
+            minLength?: number | null;
+            /** Maxlength */
+            maxLength?: number | null;
+            items?: components["schemas"]["BlueprintSectionItems"] | null;
             /** X-Ui */
             "x-ui"?: {
                 [key: string]: unknown;

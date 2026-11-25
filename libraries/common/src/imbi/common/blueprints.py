@@ -1,9 +1,25 @@
 import datetime
+import ipaddress
+import logging
+import re
+import types
 import typing
+import uuid
 
 import pydantic
+import pydantic_core
 
 from imbi.common import graph, models
+
+LOGGER = logging.getLogger(__name__)
+
+#: The string formats that :func:`_checks` tests. The pydantic types of
+#: :func:`_map_string_type` check ``email``, ``uri``, and the dates.
+_FORMATS: dict[str, typing.Callable[[str], object]] = {
+    'uuid': uuid.UUID,
+    'ipv4': ipaddress.IPv4Address,
+    'ipv6': ipaddress.IPv6Address,
+}
 
 
 def _coerce_enum_case(
@@ -59,23 +75,96 @@ def _map_string_type(
     return str, None
 
 
+def _checks(
+    prop_schema: typing.Any, field_type: typing.Any
+) -> list[typing.Any]:
+    """Return the constraints of the JSON Schema keywords that the type
+    of a property does not check: ``pattern``, ``minLength``, and
+    ``maxLength`` of a string, the formats of :data:`_FORMATS`, and
+    ``multipleOf`` of a number.
+
+    A compiled pattern makes pydantic use :mod:`re`: lookarounds work,
+    and the pattern is a search, as in JSON Schema.
+    """
+    checks: list[typing.Any] = []
+    if field_type is str:
+        pattern = _compiled(getattr(prop_schema, 'pattern', None))
+        min_length = getattr(prop_schema, 'min_length', None)
+        max_length = getattr(prop_schema, 'max_length', None)
+        if (pattern, min_length, max_length) != (None, None, None):
+            checks.append(
+                pydantic.StringConstraints(
+                    pattern=pattern,
+                    min_length=min_length,
+                    max_length=max_length,
+                )
+            )
+        fmt = getattr(prop_schema, 'format', None) or ''
+        if parse := _FORMATS.get(fmt):
+            checks.append(pydantic.AfterValidator(_format_check(fmt, parse)))
+    elif field_type in (int, float):
+        if multiple_of := getattr(prop_schema, 'multiple_of', None):
+            checks.append(pydantic.Field(multiple_of=multiple_of))
+    return checks
+
+
+def _compiled(pattern: str | None) -> re.Pattern[str] | None:
+    """Return the compiled pattern; ``None`` for a pattern that does not
+    compile, which only a blueprint saved before the save check has."""
+    if pattern is None:
+        return None
+    try:
+        return re.compile(pattern)
+    except re.error:
+        LOGGER.warning('Skipping the pattern %r: it does not compile', pattern)
+        return None
+
+
+def _format_check(
+    fmt: str, parse: typing.Callable[[str], object]
+) -> typing.Callable[[str], str]:
+    def check(value: str) -> str:
+        try:
+            parse(value)
+        except ValueError:
+            raise pydantic_core.PydanticCustomError(
+                'string_format',
+                'String should be a valid {format}',
+                {'format': fmt},
+            ) from None
+        return value
+
+    return check
+
+
+def _with_checks(
+    field_type: typing.Any, prop_schema: typing.Any
+) -> typing.Any:
+    """Return ``field_type`` with the constraints of :func:`_checks`."""
+    checks = _checks(prop_schema, field_type)
+    return typing.Annotated[field_type, *checks] if checks else field_type
+
+
 def _map_array_type(prop_schema: typing.Any) -> type[typing.Any]:
     """Map JSON Schema array to appropriate list type"""
     items_schema = getattr(prop_schema, 'items', None)
     if not items_schema:
         return list
 
-    items_type = getattr(items_schema, 'type', None)
-    if items_type == 'string':
-        return list[str]
-    elif items_type == 'integer':
-        return list[int]
-    elif items_type == 'number':
-        return list[float]
-    elif items_type == 'boolean':
-        return list[bool]
-    else:
+    item_types: dict[str, type[typing.Any]] = {
+        'string': str,
+        'integer': int,
+        'number': float,
+        'boolean': bool,
+    }
+    item_type = item_types.get(getattr(items_schema, 'type', None) or '')
+    if item_type is None:
         return list
+    # A GenericAlias, as list[...] cannot take a computed item type.
+    return typing.cast(
+        'type[typing.Any]',
+        types.GenericAlias(list, (_with_checks(item_type, items_schema),)),
+    )
 
 
 def _map_schema_type_to_python(
@@ -144,6 +233,8 @@ def apply_blueprints[ModelType: pydantic.BaseModel](
                             _coerce_enum_case(enum_values)
                         ),
                     ]
+
+                field_type = _with_checks(field_type, prop_schema)
 
                 # Get metadata from schema
                 schema_default = getattr(prop_schema, 'default', None)

@@ -473,10 +473,16 @@ export interface ProjectSchemaSectionProperty {
   format?: null | string
   items?: null | {
     enum?: null | string[]
+    format?: null | string
+    pattern?: null | string
     type?: null | string
   }
   maximum?: null | number
+  maxLength?: null | number
   minimum?: null | number
+  minLength?: null | number
+  multipleOf?: null | number
+  pattern?: null | string
   title?: null | string
   type?: null | string
   // Optional value-display transform applied to the rendered string
@@ -1606,11 +1612,13 @@ export interface DynamicFieldSchema {
   description?: string
   enum?: string[]
   format?: string
-  items?: { enum?: string[]; type?: string }
+  items?: { enum?: string[]; format?: string; pattern?: string; type?: string }
   maximum?: number
   maxLength?: number
   minimum?: number
   minLength?: number
+  multipleOf?: number
+  pattern?: string
   title?: string
   type?: string
 }

@@ -6,7 +6,7 @@ from unittest import mock
 
 import fastapi
 
-from imbi.api import blueprint_values
+from imbi.api import blueprint_sections, blueprint_values
 from imbi.common import models
 
 
@@ -277,3 +277,97 @@ class ValidateTests(unittest.TestCase):
             blueprint_values.validate(matches, {'a': None}, partial=True),
             {'a': None},
         )
+
+
+class ValueCheckTests(unittest.TestCase):
+    """``pattern``, ``multipleOf``, and item formats of ticket fields."""
+
+    matches: typing.ClassVar[list[models.Blueprint]] = [
+        models.Blueprint(
+            name='Costs',
+            type='Ticket',
+            json_schema=models.Schema.model_validate(
+                {
+                    'type': 'object',
+                    'properties': {
+                        'budget': {
+                            'type': 'string',
+                            'pattern': r'^\d+(\.\d{2})?$',
+                        },
+                        'rate': {'type': 'number', 'multipleOf': 0.01},
+                        'owners': {
+                            'type': 'array',
+                            'items': {'type': 'string', 'format': 'uuid'},
+                        },
+                    },
+                }
+            ),
+        )
+    ]
+
+    def test_valid_values(self) -> None:
+        values = {
+            'budget': '1250.00',
+            'rate': 19.99,
+            'owners': ['a8098c1a-f86e-11da-bd1a-00112444be1e'],
+        }
+        self.assertEqual(
+            blueprint_values.validate(self.matches, values, partial=False),
+            values,
+        )
+
+    def test_invalid_values(self) -> None:
+        for field, bad in (
+            ('budget', '12.5'),
+            ('rate', 1.005),
+            ('owners', ['nope']),
+        ):
+            with self.assertRaises(fastapi.HTTPException) as ctx:
+                blueprint_values.validate(
+                    self.matches, {field: bad}, partial=True
+                )
+            detail = typing.cast(dict[str, typing.Any], ctx.exception.detail)
+            self.assertEqual(detail['error'], 'custom_fields_invalid')
+            self.assertEqual(detail['invalid'][0]['field'], field)
+
+
+class SectionPropertyTests(unittest.TestCase):
+    """The form gets the keywords that it checks before a submit."""
+
+    def test_checks_and_items(self) -> None:
+        prop = blueprint_sections.section_property(
+            models.Schema.model_validate(
+                {
+                    'type': 'array',
+                    'items': {
+                        'type': 'string',
+                        'format': 'uuid',
+                        'pattern': '^a',
+                    },
+                }
+            )
+        )
+        self.assertEqual(
+            prop.model_dump(exclude_none=True)['items'],
+            {'type': 'string', 'format': 'uuid', 'pattern': '^a'},
+        )
+        prop = blueprint_sections.section_property(
+            models.Schema.model_validate(
+                {
+                    'type': 'string',
+                    'pattern': '^x$',
+                    'minLength': 1,
+                    'maxLength': 9,
+                }
+            )
+        )
+        dumped = prop.model_dump(exclude_none=True)
+        self.assertEqual(dumped['pattern'], '^x$')
+        self.assertEqual(dumped['minLength'], 1)
+        self.assertEqual(dumped['maxLength'], 9)
+        number = blueprint_sections.section_property(
+            models.Schema.model_validate(
+                {'type': 'number', 'multipleOf': 0.01}
+            )
+        )
+        self.assertEqual(number.model_dump()['multipleOf'], 0.01)
