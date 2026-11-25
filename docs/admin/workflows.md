@@ -198,6 +198,12 @@ value of the wrong type.
 `admins` means Imbi administrators. An administrator can always start and
 cancel a run.
 
+A service account with the `workflow:run` permission can also start a
+manual run through the API (`POST
+/organizations/{org}/workflows/{slug}/runs`). A service account is not a
+member of a team, so the trigger's `who` must be `anyone`. The run's origin
+is `service_account`, and the run shows the slug of the service account.
+
 ### Schedule
 
 imbi-scheduler starts a run on a cron schedule.
