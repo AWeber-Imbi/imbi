@@ -261,6 +261,14 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'delete',
         'Delete integrations',
     ),
+    # Run a plugin workflow step with the credentials of an Integration
+    # (ADR 0032). Only the imbi-workflows service role has it.
+    (
+        'integration:workflow-step:run',
+        'integration',
+        'workflow-step:run',
+        'Run the workflow steps of an integration plugin',
+    ),
     # Webhook management
     ('webhook:create', 'webhook', 'create', 'Create webhooks'),
     ('webhook:read', 'webhook', 'read', 'View webhooks'),
@@ -638,6 +646,12 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'admin',
         'maintenance:ai-model-calls-prune',
         'Start the ai-model-calls-prune maintenance operation',
+    ),
+    (
+        'admin:maintenance:plugin-step-calls-prune',
+        'admin',
+        'maintenance:plugin-step-calls-prune',
+        'Start the plugin-step-calls-prune maintenance operation',
     ),
     # Project plugin access
     (
@@ -1038,10 +1052,11 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             # who can make a task that runs as this account could then
             # start any operation, including the purges.
             'admin:maintenance:marketplace-sync',
-            # The cve-sync and ai-model-calls-prune system tasks, for
-            # the same reason.
+            # The cve-sync, ai-model-calls-prune, and
+            # plugin-step-calls-prune system tasks, for the same reason.
             'admin:maintenance:cve-sync',
             'admin:maintenance:ai-model-calls-prune',
+            'admin:maintenance:plugin-step-calls-prune',
             'agent:read',
             # An `api` task can start agent work with a `schedule`
             # origin (ADR 0020).
@@ -1115,6 +1130,9 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'prompt:run',
             # The Search logs step reads the logs of a project.
             'project:logs:read',
+            # Plugin steps run in imbi-api with the credentials of the
+            # Integration of the node (ADR 0032).
+            'integration:workflow-step:run',
             # Not `integration:act-as-service`: an operator grants it,
             # as ADR 0017 requires for every autonomous principal.
         ],

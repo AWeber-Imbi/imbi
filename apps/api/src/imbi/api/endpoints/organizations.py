@@ -46,6 +46,7 @@ from .documents import (
 )
 from .environments import environments_router
 from .events import events_project_router
+from .integration_workflow_steps import integration_workflow_steps_router
 from .integrations import integrations_router
 from .link_definitions import link_definitions_router
 from .operations_log import operations_log_project_router
@@ -137,6 +138,10 @@ organizations_router.include_router(
 organizations_router.include_router(
     integrations_router,
     prefix='/{org_slug}/integrations',
+)
+organizations_router.include_router(
+    integration_workflow_steps_router,
+    prefix='/{org_slug}/integrations/{integration_slug}/workflow-steps',
 )
 organizations_router.include_router(
     webhooks_router,
@@ -842,6 +847,7 @@ _ORG_OWNED_TABLES: tuple[tuple[str, str], ...] = (
     ('tickets', 'ticket_projects'),
     ('tickets', 'tickets'),
     ('tickets', 'ticket_id_sequences'),
+    ('workflow_runtime', 'plugin_step_calls'),
     ('workflow_runtime', 'runs'),
     ('ai_runtime', 'ai_model_calls'),
     ('secrets', 'grants'),
@@ -862,9 +868,9 @@ async def delete_organization(
 ) -> None:
     """Delete an empty organization.
 
-    Its memberships, agent tasks, workflow runs, AI model calls,
-    ``workflows/<org>.*`` and ``agents/<org>.*`` prompts, secret
-    grants, and settled secret resolutions go with it.
+    Its memberships, agent tasks, workflow runs, plugin step calls,
+    AI model calls, ``workflows/<org>.*`` and ``agents/<org>.*``
+    prompts, secret grants, and settled secret resolutions go with it.
 
     Parameters:
         slug: Organization slug to delete.

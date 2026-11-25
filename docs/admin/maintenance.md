@@ -22,6 +22,7 @@ is the first page that the Admin menu opens.
 | `admin:maintenance:marketplace-sync` | Start the marketplace-sync maintenance operation | `admin`, `imbi-scheduler` |
 | `admin:maintenance:cve-sync` | Start the cve-sync maintenance operation | `admin`, `imbi-scheduler` |
 | `admin:maintenance:ai-model-calls-prune` | Start the ai-model-calls-prune maintenance operation | `admin`, `imbi-scheduler` |
+| `admin:maintenance:plugin-step-calls-prune` | Start the plugin-step-calls-prune maintenance operation | `admin`, `imbi-scheduler` |
 | `admin:dashboard:read` | View the admin system-health dashboard | `admin` |
 
 <!-- END GENERATED -->
@@ -63,13 +64,14 @@ The page has two tabs: **Operations** and **Activity**.
 | **Sync Agent Marketplaces** | `marketplace-sync` | Read the catalog of every agent marketplace in every organization again at its default branch head. Agent versions keep the commit they pinned. The scheduler runs this every 6 hours. |
 | **Sync CVE Catalog** | `cve-sync` | Import the CVE List (CVEProject/cvelistV5) into the CVE catalog that advisories read severity and descriptions from. Only records that changed since the last import are written. The first run imports every record and needs about 1.5 GB of temporary disk. The scheduler runs this daily at 01:30 UTC. |
 | **Prune AI Model Calls** | `ai-model-calls-prune` | Delete the records of AI model calls (prompt runs and workflow LLM Call steps) older than 90 days. The scheduler runs this daily at 02:30 UTC. |
+| **Prune Plugin Step Calls** | `plugin-step-calls-prune` | Delete the records of plugin workflow step calls older than 90 days. The scheduler runs this daily at 02:45 UTC. |
 
 <!-- END GENERATED -->
 
 The descriptions come from the code. Imbi runs only **Sync Agent
-Marketplaces**, **Sync CVE Catalog**, and **Prune AI Model Calls** on a
-schedule, as system jobs
-(see [Scheduled jobs](scheduled-jobs.md)). It runs no other operation
+Marketplaces**, **Sync CVE Catalog**, **Prune AI Model Calls**, and
+**Prune Plugin Step Calls** on a schedule, as system jobs (see
+[Scheduled jobs](scheduled-jobs.md)). It runs no other operation
 on a schedule, **Close Out Stuck Deployments** included. Deployments stay
 `pending` until an administrator runs it or schedules it. See
 [Run an operation](#run-an-operation).
@@ -114,8 +116,9 @@ A run has one of these states: `idle`, `running`, `completed`,
 The API endpoint is `POST /maintenance/operations/{slug}/run`. The
 caller needs `admin:maintenance:manage`, or `admin:maintenance:<slug>`
 for that one operation. The `imbi-scheduler` role has only
-`admin:maintenance:marketplace-sync`, `admin:maintenance:cve-sync`, and
-`admin:maintenance:ai-model-calls-prune`, for its system jobs. To run
+`admin:maintenance:marketplace-sync`, `admin:maintenance:cve-sync`,
+`admin:maintenance:ai-model-calls-prune`, and
+`admin:maintenance:plugin-step-calls-prune`, for its system jobs. To run
 another operation on a schedule, an administrator makes a scheduled job
 that calls this endpoint: a scheduled job runs with the permissions of
 the person accountable for it, so the job works only when that person

@@ -209,6 +209,7 @@ it.
 | `integration:read` | View integrations | yes | yes | yes | yes | yes |  |  |  |  |
 | `integration:update` | Update integrations | yes | yes |  |  |  |  |  |  |  |
 | `integration:delete` | Delete integrations | yes |  |  |  |  |  |  |  |  |
+| `integration:workflow-step:run` | Run the workflow steps of an integration plugin | yes |  |  |  |  |  | yes |  |  |
 | `webhook:create` | Create webhooks | yes |  |  |  |  |  |  |  |  |
 | `webhook:read` | View webhooks | yes | yes | yes | yes | yes |  |  |  |  |
 | `webhook:update` | Update webhooks | yes | yes |  |  |  |  |  |  |  |
@@ -283,6 +284,7 @@ it.
 | `admin:maintenance:marketplace-sync` | Start the marketplace-sync maintenance operation | yes |  |  |  | yes |  |  |  |  |
 | `admin:maintenance:cve-sync` | Start the cve-sync maintenance operation | yes |  |  |  | yes |  |  |  |  |
 | `admin:maintenance:ai-model-calls-prune` | Start the ai-model-calls-prune maintenance operation | yes |  |  |  | yes |  |  |  |  |
+| `admin:maintenance:plugin-step-calls-prune` | Start the plugin-step-calls-prune maintenance operation | yes |  |  |  | yes |  |  |  |  |
 | `project:configuration:read` | Read project configuration via plugins | yes | yes |  |  |  |  |  |  |  |
 | `project:configuration:read_secrets` | Read secret configuration values via plugins | yes | yes |  |  |  |  |  |  |  |
 | `project:configuration:write` | Write project configuration via plugins | yes | yes |  |  |  |  |  |  |  |
