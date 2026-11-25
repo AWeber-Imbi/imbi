@@ -34,7 +34,7 @@
     "divider: ",
     "section: *Merged, not deployed (3)* [overflow:home:merged_not_deployed:menu]",
     "context: Your PRs merged in the last 90 days that are not yet in production",
-    "section: <https://github.com/acme/repo0/pull/100|repo0#100> Change &lt;0&gt; &amp; more\nimbi-api · merged 2d ago · last deployed 3d ago [button:home:deploy:promote]",
+    "section: <https://github.com/acme/repo0/pull/100|repo0#100> Change &lt;0&gt; &amp; more\nimbi-api · merged 2d ago · last deployed to Production 3d ago [button:home:deploy:promote]",
     "section: <https://github.com/acme/repo1/pull/101|repo1#101> Change &lt;1&gt; &amp; more\nimbi-api · merged 2d ago · last deployed 3d ago [button:home:deploy:promote]",
     "section: <https://github.com/acme/repo0/pull/102|repo0#102> Change &lt;2&gt; &amp; more\nimbi-api · merged 2d ago · last deployed 3d ago [button:home:deploy:promote]",
     "divider: ",
@@ -692,7 +692,7 @@
         "type": "section",
         "text": {
           "type": "mrkdwn",
-          "text": "<https://github.com/acme/repo0/pull/100|repo0#100> Change &lt;0&gt; &amp; more\nimbi-api · merged 2d ago · last deployed 3d ago"
+          "text": "<https://github.com/acme/repo0/pull/100|repo0#100> Change &lt;0&gt; &amp; more\nimbi-api · merged 2d ago · last deployed to Production 3d ago"
         },
         "accessory": {
           "type": "button",

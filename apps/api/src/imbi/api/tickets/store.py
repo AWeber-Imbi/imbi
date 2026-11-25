@@ -460,6 +460,15 @@ _AGENT_ACTIVITY = sql.SQL(
     " THEN 'stalled' ELSE 'working' END AS agent_activity"
 ).format(open=_OPEN_REQUESTS, stalled=sql.Literal(STALLED_SECONDS))
 
+#: For a ``running`` ticket ``t``, the time its open session opened;
+#: else ``NULL``.
+_RUN_STARTED_AT = sql.SQL(
+    "CASE WHEN t.status = 'running' THEN"
+    ' (SELECT max(s.opened_at) FROM tickets.sessions AS s'
+    ' WHERE s.ticket_id = t.id AND s.closed_at IS NULL)'
+    ' END AS run_started_at'
+)
+
 #: A task row with its projects. Continue it with a WHERE clause.
 _SELECT_TASKS: typing.LiteralString = (
     'SELECT t.*, ' + PROJECTS + ' FROM tickets.tickets AS t'  # noqa: S608
@@ -1426,7 +1435,9 @@ class TicketStore:
         rows. Each row also has ``blocked_since``: for a task that waits
         on a person (see :data:`_OPEN_REQUESTS`), the time its oldest
         open request opened, so the queue can sort oldest block first
-        (O2); else ``None``.
+        (O2); else ``None``. A ``running`` task also has
+        ``run_started_at``: the time its open session opened; else
+        ``None``.
 
         With ``group_by='run'`` each row is a unit of work (see
         :meth:`_search_units`) and ``before`` is not used.
@@ -1459,12 +1470,14 @@ class TicketStore:
         statement = sql.SQL(
             'SELECT t.*, ' + PROJECTS + ', {activity},'  # noqa: S608
             " CASE WHEN t.status <> 'closed' THEN"
-            ' (SELECT min(r.opened_at) {open}) END AS blocked_since'
+            ' (SELECT min(r.opened_at) {open}) END AS blocked_since,'
+            ' {run_started_at}'
             ' FROM tickets.tickets AS t WHERE {where}'
             ' ORDER BY {order} LIMIT %s OFFSET %s'
         ).format(
             activity=_AGENT_ACTIVITY,
             open=_OPEN_REQUESTS,
+            run_started_at=_RUN_STARTED_AT,
             where=sql.SQL(' AND ').join(conditions),
             order=order,
         )
@@ -1620,7 +1633,7 @@ class TicketStore:
             ' SELECT t.*, {projects}, {activity},'
             " CASE WHEN t.status <> 'closed' THEN"
             ' (SELECT min(r.opened_at) {open}) END AS blocked_since,'
-            ' page.unit_key, page.run_id AS unit_run_id,'
+            ' {run_started_at}, page.unit_key, page.run_id AS unit_run_id,'
             ' page.tickets AS unit_tickets, page.children AS unit_children,'
             ' page.cost_total AS unit_cost_total,'
             ' page.last_activity_at AS unit_last_activity_at,'
@@ -1640,6 +1653,7 @@ class TicketStore:
             projects=sql.SQL(PROJECTS),
             activity=_AGENT_ACTIVITY,
             open=_OPEN_REQUESTS,
+            run_started_at=_RUN_STARTED_AT,
             items=_UNIT_ITEMS,
             uuid=_UUID,
         )

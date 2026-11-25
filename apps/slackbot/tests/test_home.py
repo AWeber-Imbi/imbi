@@ -146,6 +146,12 @@ def full_sections(n: int) -> dict[str, typing.Any]:
                     **pr(i),
                     'merged_at': ts(48),
                     'last_deployed_at': ts(72),
+                    'last_deployed_environment': (
+                        'production' if i == 0 else None
+                    ),
+                    'last_deployed_environment_name': (
+                        'Production' if i == 0 else None
+                    ),
                     'project': 'imbi-api',
                 }
                 for i in r
@@ -312,6 +318,8 @@ class RenderSnapshotTests(helpers.TestCase):
         # Text from Imbi is escaped, so it cannot make a link or mention.
         self.assertIn('Change &lt;1&gt; &amp; more', text)
         self.assertIn('Good afternoon, Ada', text)
+        self.assertIn('last deployed to Production 3d ago', text)
+        self.assertIn('2d ago \\u00b7 last deployed 3d ago', text)
         self.assertEqual(
             'context: :warning: Could not hide X: boom.', outline(view)[0]
         )
@@ -426,6 +434,38 @@ class BlockBudgetTests(helpers.TestCase):
             any('+10 more' in line for line in lines[-6:]), lines[-6:]
         )
 
+    def test_merged_not_deployed_links_to_the_report(self) -> None:
+        view = render.render(
+            USER,
+            prefs.Prefs(max_items=2),
+            gathered(full_sections(3)),
+            NOW,
+            TZ,
+        )
+        self.assertIn(
+            '+1 more · <https://imbi.example/reports/merged-not-deployed'
+            '?author=@me|View all 3 in Imbi>',
+            json.dumps(view, ensure_ascii=False),
+        )
+
+    def test_merged_not_deployed_uses_the_api_total(self) -> None:
+        sections = full_sections(3)
+        sections['merged_not_deployed']['total'] = 250
+        view = render.render(
+            USER,
+            prefs.Prefs(max_items=2),
+            gathered(sections),
+            NOW,
+            TZ,
+        )
+        text = json.dumps(view, ensure_ascii=False)
+        self.assertIn('Merged, not deployed (250)', text)
+        self.assertIn(
+            '+248 more · <https://imbi.example/reports/merged-not-deployed'
+            '?author=@me|View all 250 in Imbi>',
+            text,
+        )
+
 
 class BlocksTests(helpers.TestCase):
     def test_limits(self) -> None:
@@ -461,6 +501,27 @@ class AgentNameTests(helpers.TestCase):
             )
         )
 
+    def test_running_shows_the_run_duration(self) -> None:
+        data = full_sections(4)
+        tickets = data['agent_activity']['tickets']
+        tickets[0]['run_started_at'] = (
+            NOW - datetime.timedelta(minutes=31)
+        ).isoformat()
+        tickets[3]['run_started_at'] = None
+        lines = outline(
+            render.render(USER, prefs.Prefs(), gathered(data), NOW, TZ)
+        )
+        self.assertTrue(
+            any(':large_green_circle: Running 31 min ·' in x for x in lines)
+        )
+        # Without a start time, the text keeps the last update.
+        self.assertTrue(
+            any(
+                ':large_green_circle: Running · updated 30 min ago' in x
+                for x in lines
+            )
+        )
+
     def test_agent_name_is_escaped(self) -> None:
         data = full_sections(2)
         data['needs_attention']['requests'][1]['agent_name'] = '<!channel>'
@@ -468,6 +529,23 @@ class AgentNameTests(helpers.TestCase):
         text = json.dumps(view, ensure_ascii=False)
         self.assertIn('&lt;!channel&gt; is waiting on you', text)
         self.assertNotIn('<!channel>', text)
+
+
+class WorkflowRunTests(helpers.TestCase):
+    def test_failed_step_replaces_the_error(self) -> None:
+        data = full_sections(2)
+        attention = data['needs_attention']
+        for kind in ('incidents', 'requests', 'held', 'advisories'):
+            attention[kind] = []
+        attention['runs'][0]['failure'] = {
+            'node_key': 'review',
+            'title': 'Review <PR>',
+        }
+        view = render.render(USER, prefs.Prefs(), gathered(data), NOW, TZ)
+        text = '\n'.join(outline(view))
+        self.assertIn('Step `Review &lt;PR&gt;` failed · started by you', text)
+        # A run without a failed step keeps the error code.
+        self.assertIn('step_failed · started by you', text)
 
 
 class InjectionTests(helpers.TestCase):

@@ -161,6 +161,7 @@ Improvement**.
 |---|---|---|
 | Monthly Improvement | `monthly-improvement` | For each team, the change in score during the month that you select in **Month**, and the stack health score |
 | Open Pull Requests | `open-pull-requests` | The open pull requests of the organization. See [Pull requests and dependencies](pull-requests-and-dependencies.md#pull-request-reports) |
+| Merged, Not Deployed | `merged-not-deployed` | Pull requests merged in the last 90 days that are not deployed to a terminal environment. Add `?author=@me` to show only your pull requests, or click **Mine** |
 | PR Activity | `pr-activity` | Pull requests created, open, closed, and merged for each author, since a date. See [Pull requests and dependencies](pull-requests-and-dependencies.md#pull-request-reports) |
 | Package Usage | `package-usage` | Every project and environment that runs one package, by version. See [Package reports](pull-requests-and-dependencies.md#package-reports) |
 | Problem Packages | `problem-packages` | Projects that run a deprecated or forbidden version, or one with a known advisory. See [Package reports](pull-requests-and-dependencies.md#package-reports) |

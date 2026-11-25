@@ -125,6 +125,9 @@ class PendingDeployPullRequest(pydantic.BaseModel):
     # Start of the project's most recent deploy to a terminal
     # environment; it predates ``merged_at`` by construction.
     last_deployed_at: datetime.datetime
+    # Slug and name of the environment of that deploy.
+    last_deployed_environment: str | None = None
+    last_deployed_environment_name: str | None = None
 
 
 class PendingDeployResponse(pydantic.BaseModel):
@@ -135,6 +138,8 @@ class PendingDeployResponse(pydantic.BaseModel):
     # environment of every promotion pipeline.
     environments: list[str]
     data: list[PendingDeployPullRequest]
+    #: The number of matching PRs across every page.
+    total: int = 0
     #: ``author=@me`` was asked for and the caller has no GitHub
     #: identity.
     github_identity_missing: bool = False
@@ -572,8 +577,8 @@ def terminal_environment_slugs(
     return slugs
 
 
-async def _fetch_terminal_environment_slugs(db: graph.Pool) -> list[str]:
-    """Resolve the terminal environment slugs from the graph."""
+async def _fetch_terminal_environments(db: graph.Pool) -> dict[str, str]:
+    """Resolve the terminal environments from the graph, slug to name."""
     query: typing.LiteralString = """
     MATCH (e:Environment)
     RETURN e.slug AS slug,
@@ -588,7 +593,8 @@ async def _fetch_terminal_environment_slugs(db: graph.Pool) -> list[str]:
         {key: graph.parse_agtype(record[key]) for key in record}
         for record in records
     ]
-    return terminal_environment_slugs(envs)
+    names = {str(e['slug']): str(e['name'] or e['slug']) for e in envs}
+    return {slug: names[slug] for slug in terminal_environment_slugs(envs)}
 
 
 async def _list_pending_deploy(
@@ -598,7 +604,9 @@ async def _list_pending_deploy(
     author: str | None,
     since: datetime.datetime,
     bots: bool = False,
-) -> list[PendingDeployPullRequest]:
+    limit: int = PENDING_DEPLOY_LIMIT,
+    offset: int = 0,
+) -> tuple[list[PendingDeployPullRequest], int]:
     """Merged PRs whose project has not deployed to a terminal env since.
 
     ``bots`` keeps only PRs opened by GitHub Apps and bot accounts,
@@ -609,13 +617,16 @@ async def _list_pending_deploy(
     deploy that started before the merge cannot contain it, whichever
     way it finished.  Projects with no terminal deploy on record (a
     library, say) never appear -- there is nothing to deploy them to.
+
+    Returns one page of rows and the number of rows on all pages.
     """
     if not project_ids or not environment_slugs:
-        return []
+        return [], 0
     params: dict[str, typing.Any] = {
         'environments': environment_slugs,
         'since': since,
-        'limit': PENDING_DEPLOY_LIMIT,
+        'limit': limit,
+        'offset': offset,
     }
     author_clause = ''
     if author is not None:
@@ -625,34 +636,47 @@ async def _list_pending_deploy(
         # GitHub names Apps and bot accounts with a trailing ``[bot]``;
         # anchor the suffix so ``user[bot]archive`` is not a bot.
         author_clause += " AND pr.author LIKE '%[bot]'"
-    sql = (
-        'WITH deployed AS ('  # noqa: S608
-        ' SELECT project_id, max(occurred_at) AS last_deployed_at'
+    cte = (
+        'WITH deployed AS ('
+        ' SELECT project_id, max(occurred_at) AS last_deployed_at,'
+        " nullIf(argMax(environment_slug, occurred_at), '')"
+        ' AS last_deployed_environment'
         ' FROM operations_log FINAL'
         " WHERE entry_type = 'Deployed' AND is_deleted = 0"
         ' AND environment_slug IN {environments:Array(String)}'
         ' AND project_id IN (SELECT project_id FROM project_ids)'
         ' GROUP BY project_id)'
-        ' SELECT pr.project_id AS project_id, pr.pr_id AS pr_id,'
-        ' pr.pr_number AS pr_number, pr.title AS title, pr.url AS url,'
-        ' pr.author AS author, pr.merged_at AS merged_at,'
-        ' pr.additions AS additions, pr.deletions AS deletions,'
-        ' d.last_deployed_at AS last_deployed_at'
-        ' FROM pull_requests AS pr FINAL'
+    )
+    body = (
+        ' FROM pull_requests AS pr FINAL'  # noqa: S608
         ' INNER JOIN deployed AS d ON d.project_id = pr.project_id'
         ' WHERE pr.project_id IN (SELECT project_id FROM project_ids)'
         ' AND pr.merged AND NOT pr.draft'
         ' AND pr.merged_at >= {since:DateTime64(3)}'
-        ' AND d.last_deployed_at <= pr.merged_at'
-        + author_clause
+        ' AND d.last_deployed_at <= pr.merged_at' + author_clause
+    )
+    count_rows = await clickhouse.query(
+        cte + ' SELECT count() AS total' + body,
+        params,
+        project_ids=project_ids,
+    )
+    total = int(count_rows[0]['total']) if count_rows else 0
+    sql = (
+        cte + ' SELECT pr.project_id AS project_id, pr.pr_id AS pr_id,'
+        ' pr.pr_number AS pr_number, pr.title AS title, pr.url AS url,'
+        ' pr.author AS author, pr.merged_at AS merged_at,'
+        ' pr.additions AS additions, pr.deletions AS deletions,'
+        ' d.last_deployed_at AS last_deployed_at,'
+        ' d.last_deployed_environment AS last_deployed_environment'
+        + body
         + ' ORDER BY pr.merged_at ASC, pr.pr_id ASC'
-        ' LIMIT {limit:UInt32}'
+        ' LIMIT {limit:UInt32} OFFSET {offset:UInt32}'
     )
     rows = await clickhouse.query(sql, params, project_ids=project_ids)
     return [
         PendingDeployPullRequest.model_validate(_row_to_response(row))
         for row in rows
-    ]
+    ], total
 
 
 @pull_requests_router.get(
@@ -670,6 +694,8 @@ async def list_pending_deploy_pull_requests(
     author: str | None = None,
     days: int = DEFAULT_PENDING_DEPLOY_DAYS,
     bots: bool = False,
+    limit: int = PENDING_DEPLOY_LIMIT,
+    offset: int = 0,
 ) -> PendingDeployResponse:
     """List merged PRs not yet deployed to a terminal environment.
 
@@ -680,8 +706,10 @@ async def list_pending_deploy_pull_requests(
     login (``@me``: the login of the caller; when the caller has none,
     the list is empty and ``github_identity_missing`` is true) and
     ``bots`` to authors named with GitHub's ``[bot]`` suffix.  Rows are
-    ordered oldest merge first.
+    ordered oldest merge first and paged with ``limit`` and ``offset``;
+    ``total`` is the number of rows on all pages.
     """
+    _check_pagination(limit, offset)
     if days < 1 or days > MAX_PENDING_DEPLOY_DAYS:
         raise fastapi.HTTPException(
             status_code=400,
@@ -697,15 +725,25 @@ async def list_pending_deploy_pull_requests(
             github_identity_missing=True,
         )
     project_ids = await _fetch_org_project_ids(db, org_slug)
-    slugs = await _fetch_terminal_environment_slugs(db)
-    data = await _list_pending_deploy(
+    envs = await _fetch_terminal_environments(db)
+    slugs = list(envs)
+    data, total = await _list_pending_deploy(
         project_ids=project_ids,
         environment_slugs=slugs,
         author=author,
         since=since,
         bots=bots,
+        limit=limit,
+        offset=offset,
     )
-    return PendingDeployResponse(since=since, environments=slugs, data=data)
+    for row in data:
+        if row.last_deployed_environment:
+            row.last_deployed_environment_name = envs.get(
+                row.last_deployed_environment
+            )
+    return PendingDeployResponse(
+        since=since, environments=slugs, data=data, total=total
+    )
 
 
 def _parse_since(value: str | None) -> datetime.datetime:

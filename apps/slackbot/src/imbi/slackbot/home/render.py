@@ -54,7 +54,7 @@ class Part:
     groups: list[tuple[str | None, list[list[Block]]]]
     summary: str
     subtitle: str | None = None
-    more: tuple[int, str | None] | None = None
+    more: tuple[int, str] | None = None
     #: Blocks to show when the section is empty.
     empty: list[Block] | None = None
     #: Show the section also when it is empty.
@@ -283,11 +283,15 @@ def _attention_item(
         )
     # A failed or stuck workflow run that the user started.
     path = f'/agents/workflows/{row["workflow_slug"]}?run={row["id"]}'
-    error = f'{b.escape(row["error"])} · ' if row.get('error') else ''
+    step = row.get('failure')
+    if step:
+        detail = f'Step `{b.escape(step["title"])}` failed · '
+    else:
+        detail = f'{b.escape(row["error"])} · ' if row.get('error') else ''
     text = (
         f':red_circle: *Workflow run {row["reason"]}* · '
         f'{links.a(path, row["workflow_name"])}\n'
-        f'{error}started by you {ago(row["created_at"], now)}'
+        f'{detail}started by you {ago(row["created_at"], now)}'
     )
     return _item(text, links.button('Open run', 'home:run:open', path))
 
@@ -394,6 +398,13 @@ def _pull_requests(data: Row, links: _Links, now: datetime.datetime) -> Part:
     )
 
 
+def _deployed_to(pr: Row) -> str:
+    env = pr.get('last_deployed_environment_name') or pr.get(
+        'last_deployed_environment'
+    )
+    return f'to {b.escape(env)} ' if env else ''
+
+
 def _merged_not_deployed(
     data: Row, links: _Links, now: datetime.datetime
 ) -> Part:
@@ -402,7 +413,7 @@ def _merged_not_deployed(
             f'{links.a(pr["url"], f"{_repo(pr['url'])}#{pr['pr_number']}")} '
             f'{b.escape(pr["title"])}\n{b.escape(pr["project"])} · merged '
             f'{ago(pr["merged_at"], now)} · last deployed '
-            f'{ago(pr["last_deployed_at"], now)}',
+            f'{_deployed_to(pr)}{ago(pr["last_deployed_at"], now)}',
             links.button(
                 'Promote',
                 'home:deploy:promote',
@@ -411,13 +422,14 @@ def _merged_not_deployed(
         )
         for pr in data['prs']
     ]
+    total = data.get('total', len(items))
     return Part(
-        count=len(items),
+        count=total,
         groups=[(None, items)],
         subtitle='Your PRs merged in the last 90 days that are not yet in '
         'production',
         summary=_names(sorted({pr['project'] for pr in data['prs']})),
-        more=(len(items), None),
+        more=(total, '/reports/merged-not-deployed?author=@me'),
     )
 
 
@@ -514,10 +526,13 @@ def _agent_activity(data: Row, links: _Links, now: datetime.datetime) -> Part:
         path = links.ticket(t['short_id'])
         agent = f'{b.escape(t["agent"])} · ' if t.get('agent') else ''
         if t['group'] == 'running':
-            status = (
-                ':large_green_circle: Running · updated '
-                f'{ago(t["updated_at"], now)}'
-            )
+            started = _when(t.get('run_started_at'))
+            if started:
+                ran = _span((now - started).total_seconds())
+                status = f':large_green_circle: Running {ran}'
+            else:
+                updated = ago(t['updated_at'], now)
+                status = f':large_green_circle: Running · updated {updated}'
             button = links.button('Pause', 'home:agent:pause', path)
         elif t['group'] == 'paused':
             status = ':large_orange_circle: Paused'
@@ -701,8 +716,6 @@ def _section(
                 b.context(
                     f'+{hidden} more · '
                     f'{links.a(path, f"View all {total} in Imbi")}'
-                    if path
-                    else f'+{hidden} more'
                 )
             )
     out.append(b.divider())

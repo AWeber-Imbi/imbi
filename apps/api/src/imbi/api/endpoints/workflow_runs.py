@@ -154,14 +154,6 @@ class RunDetail(Run):
     steps: list[StepRun]
 
 
-class AttentionRun(Run):
-    workflow_slug: str
-    workflow_name: str
-    reason: typing.Literal['failed', 'stuck']
-    worker_id: str | None
-    lease_expires_at: datetime.datetime | None
-
-
 class RunFailure(pydantic.BaseModel):
     """The failed step of a run that finished last.
 
@@ -180,6 +172,20 @@ class RunFailure(pydantic.BaseModel):
     outcome: str | None = None
     reason: str | None = None
     summary: str | None = None
+
+
+class AttentionRun(Run):
+    workflow_slug: str
+    workflow_name: str
+    reason: typing.Literal['failed', 'stuck']
+    worker_id: str | None
+    lease_expires_at: datetime.datetime | None
+    failure: RunFailure | None = pydantic.Field(
+        default=None,
+        description='The failed step that finished last. ``None`` for a '
+        'stuck run, when no step failed (a timeout), or when the archived '
+        'step records are not available.',
+    )
 
 
 class OrgRun(Run):
@@ -1193,7 +1199,9 @@ async def list_attention_runs(
     A stuck run is open and no engine works on it: see
     :meth:`imbi.api.workflows.RunStore.attention`.
     """
-    return [_run_for(auth, r) for r in await runs.attention(org_id)]
+    return await _with_failures(
+        org_id, runs, auth, await runs.attention(org_id)
+    )
 
 
 @workflow_attention_router.get('/', response_model=list[OrgRun])
@@ -1212,7 +1220,19 @@ async def list_org_runs(
     run's log is archived. When ClickHouse is not available, an archived
     run has no ``failure``.
     """
-    found = await runs.org_runs(org_id, days, limit)
+    return await _with_failures(
+        org_id, runs, auth, await runs.org_runs(org_id, days, limit)
+    )
+
+
+async def _with_failures(
+    org_id: str,
+    runs: workflows.Runs,
+    auth: permissions.AuthContext,
+    found: list[workflows.Row],
+) -> list[dict[str, typing.Any]]:
+    """Return ``found`` for ``auth``, each run with its failed step
+    that finished last (``failure``), read in one batch."""
     failed = [r for r in found if r['status'] in ('failed', 'timed_out')]
     live = [r['id'] for r in failed if r['log_archived_at'] is None]
     archived = [str(r['id']) for r in failed if r['log_archived_at']]

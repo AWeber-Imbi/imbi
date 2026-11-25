@@ -454,7 +454,7 @@ class MeFiltersTestCase(_PullRequestsTestBase):
     def test_pending_deploy_author_me(self) -> None:
         self.mock_db.execute.return_value = []
         url = f'/organizations/{ORG}/pull-requests/pending-deploy?author=@me'
-        pending = mock.AsyncMock(return_value=[])
+        pending = mock.AsyncMock(return_value=([], 0))
         with (
             mock.patch.object(pull_requests, '_list_pending_deploy', pending),
             _identities(GITHUB_IDENTITY),
@@ -472,7 +472,83 @@ class MeFiltersTestCase(_PullRequestsTestBase):
         body = response.json()
         self.assertTrue(body['github_identity_missing'])
         self.assertEqual(body['data'], [])
+        self.assertEqual(body['total'], 0)
         pending.assert_awaited_once()
+
+    def test_pending_deploy_environment_name(self) -> None:
+        now = datetime.datetime.now(datetime.UTC)
+        rows = [
+            pull_requests.PendingDeployPullRequest(
+                project_id='p1',
+                pr_id=f'PR_{n}',
+                pr_number=n,
+                title='Ship it',
+                url='https://example.test/pr',
+                author='gmr',
+                merged_at=now,
+                additions=1,
+                deletions=0,
+                last_deployed_at=now,
+                last_deployed_environment=slug,
+            )
+            for n, slug in enumerate(['production', None])
+        ]
+        envs = mock.AsyncMock(return_value={'production': 'Production'})
+        with (
+            mock.patch.object(
+                pull_requests,
+                '_list_pending_deploy',
+                mock.AsyncMock(return_value=(rows, 2)),
+            ),
+            mock.patch.object(
+                pull_requests, '_fetch_terminal_environments', envs
+            ),
+        ):
+            response = self.client.get(
+                f'/organizations/{ORG}/pull-requests/pending-deploy'
+            )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(['production'], body['environments'])
+        self.assertEqual(2, body['total'])
+        first, second = body['data']
+        self.assertEqual('production', first['last_deployed_environment'])
+        self.assertEqual('Production', first['last_deployed_environment_name'])
+        self.assertIsNone(second['last_deployed_environment'])
+        self.assertIsNone(second['last_deployed_environment_name'])
+
+    def _pending(self, query: str) -> tuple[typing.Any, mock.AsyncMock]:
+        self.mock_db.execute.return_value = []
+        pending = mock.AsyncMock(return_value=([], 250))
+        envs = mock.AsyncMock(return_value={'production': 'Production'})
+        with (
+            mock.patch.object(pull_requests, '_list_pending_deploy', pending),
+            mock.patch.object(
+                pull_requests, '_fetch_terminal_environments', envs
+            ),
+        ):
+            response = self.client.get(
+                f'/organizations/{ORG}/pull-requests/pending-deploy{query}'
+            )
+        return response, pending
+
+    def test_pending_deploy_pages(self) -> None:
+        response, pending = self._pending('')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(pending.call_args.kwargs['limit'], 200)
+        self.assertEqual(pending.call_args.kwargs['offset'], 0)
+        response, pending = self._pending('?limit=200&offset=200')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['total'], 250)
+        self.assertEqual(pending.call_args.kwargs['limit'], 200)
+        self.assertEqual(pending.call_args.kwargs['offset'], 200)
+
+    def test_pending_deploy_validates_pagination(self) -> None:
+        for query in ('?limit=0', '?limit=501', '?offset=-1'):
+            with self.subTest(query=query):
+                response, pending = self._pending(query)
+                self.assertEqual(response.status_code, 400)
+                pending.assert_not_awaited()
 
 
 class PullRequestActivityTestCase(_PullRequestsTestBase):

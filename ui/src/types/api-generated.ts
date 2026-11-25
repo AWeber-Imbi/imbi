@@ -8976,7 +8976,8 @@ export interface paths {
          *     login (``@me``: the login of the caller; when the caller has none,
          *     the list is empty and ``github_identity_missing`` is true) and
          *     ``bots`` to authors named with GitHub's ``[bot]`` suffix.  Rows are
-         *     ordered oldest merge first.
+         *     ordered oldest merge first and paged with ``limit`` and ``offset``;
+         *     ``total`` is the number of rows on all pages.
          */
         get: operations["list_pending_deploy_pull_requests_api_organizations__org_slug__pull_requests_pending_deploy_get"];
         put?: never;
@@ -12458,6 +12459,8 @@ export interface components {
             agent_activity?: ("working" | "subagent" | "approval" | "person" | "stalled") | null;
             /** Blocked Since */
             blocked_since?: string | null;
+            /** Run Started At */
+            run_started_at?: string | null;
             /** Highlights */
             highlights?: components["schemas"]["TaskHighlight"][];
             /** Project Icons */
@@ -13181,6 +13184,8 @@ export interface components {
             worker_id: string | null;
             /** Lease Expires At */
             lease_expires_at: string | null;
+            /** @description The failed step that finished last. ``None`` for a stuck run, when no step failed (a timeout), or when the archived step records are not available. */
+            failure?: components["schemas"]["RunFailure"] | null;
         };
         /**
          * AttributePolicy
@@ -18248,6 +18253,10 @@ export interface components {
              * Format: date-time
              */
             last_deployed_at: string;
+            /** Last Deployed Environment */
+            last_deployed_environment?: string | null;
+            /** Last Deployed Environment Name */
+            last_deployed_environment_name?: string | null;
         };
         /**
          * PendingDeployResponse
@@ -18263,6 +18272,11 @@ export interface components {
             environments: string[];
             /** Data */
             data: components["schemas"]["PendingDeployPullRequest"][];
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
             /**
              * Github Identity Missing
              * @default false
@@ -38785,6 +38799,8 @@ export interface operations {
                 author?: string | null;
                 days?: number;
                 bots?: boolean;
+                limit?: number;
+                offset?: number;
             };
             header?: never;
             path: {
