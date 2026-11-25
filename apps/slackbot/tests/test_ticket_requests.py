@@ -41,7 +41,15 @@ class FakeSlack:
         return Resp(ts=f'ts{len(self.posts)}')
 
     async def chat_update(self, channel, ts, text=None, **kw):
-        self.updates.append({'channel': channel, 'ts': ts, 'text': text})
+        if channel == 'C404':
+            raise errors.SlackApiError(
+                'channel_not_found', {'error': 'channel_not_found'}
+            )
+        if channel == 'C500':
+            raise errors.SlackApiError(
+                'internal_error', {'error': 'internal_error'}
+            )
+        self.updates.append({'channel': channel, 'ts': ts, 'text': text, **kw})
 
     async def conversations_list(self, **_kw):
         return Pages(
@@ -58,6 +66,49 @@ class FakeSlack:
 
     async def conversations_open(self, users):
         return Resp(channel={'id': f'D-{users}'})
+
+
+class FakeValkey:
+    def __init__(self) -> None:
+        self.lists: dict[str, list[bytes]] = {}
+        self.values: dict[str, bytes] = {}
+        self.stream: list[dict[str, typing.Any]] = []
+
+    async def set(self, key, value, ex=None, nx=False):
+        if nx and key in self.values:
+            return None
+        self.values[key] = value
+        return True
+
+    async def xadd(self, stream, fields, **_kw):
+        self.stream.append(fields)
+
+    async def get(self, key):
+        return self.values.get(key)
+
+    async def rpush(self, key, *values):
+        self.lists.setdefault(key, []).extend(values)
+
+    async def expire(self, key, ttl):
+        pass
+
+    async def lrange(self, key, start, end):
+        return list(self.lists.get(key, []))
+
+    async def eval(self, script, numkeys, key, token):
+        # The compare-and-delete of ticket_requests._UNLOCK.
+        if self.values.get(key) == token:
+            del self.values[key]
+
+    async def ltrim(self, key, start, end):
+        rest = self.lists.get(key, [])[start:]
+        if rest:
+            self.lists[key] = rest
+        else:
+            self.lists.pop(key, None)
+
+    async def llen(self, key):
+        return len(self.lists.get(key, []))
 
 
 def entry(**overrides: typing.Any) -> dict[str, typing.Any]:
@@ -187,6 +238,12 @@ class FlowTestCase(helpers.TestCase):
         self.slack = FakeSlack()
         self.store = forms.MemoryFormStore()
         self.runtime = forms.Runtime(self.store, mock.AsyncMock())
+        self.valkey = FakeValkey()
+        patcher = mock.patch.object(
+            ticket_requests.valkey, 'get_client', return_value=self.valkey
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     async def stored(self) -> forms.FormRecord:
         (form_id,) = self.store._records
@@ -336,6 +393,214 @@ class PostTests(FlowTestCase):
         self.assertEqual({}, self.store._records)
 
 
+RESOLVED = {
+    'resolved': True,
+    'short_id': 'T-7',
+    'request_id': 'r-1',
+    'status': 'answered',
+    'answer': '<!channel> use main',
+    'resolved_by': 'ada@example.com',
+}
+
+
+class CloseTests(FlowTestCase):
+    async def test_each_message_shows_the_decision(self) -> None:
+        await ticket_requests.post(self.slack, self.runtime, entry())
+        await ticket_requests.post(
+            self.slack,
+            self.runtime,
+            entry(escalation=True, slack_channel='#ops'),
+        )
+        await ticket_requests.close(self.slack, RESOLVED)
+        self.assertEqual(
+            [('D-U1', 'ts1'), ('C2', 'ts2')],
+            [(u['channel'], u['ts']) for u in self.slack.updates],
+        )
+        blocks = self.slack.updates[0]['blocks']
+        self.assertEqual('T-7 answered', blocks[0]['text']['text'])
+        self.assertIn('Triage Bot asked: **Which branch?**', blocks[1]['text'])
+        # The answer is plain text, so it cannot notify the channel.
+        self.assertEqual(
+            {
+                'type': 'plain_text',
+                'text': '<!channel> use main',
+                'emoji': True,
+            },
+            blocks[2]['text'],
+        )
+        self.assertEqual(
+            'Answered by ada@example.com', blocks[3]['elements'][0]['text']
+        )
+        # The channel message does not show the answer.
+        channel = self.slack.updates[1]['blocks']
+        self.assertEqual(3, len(channel))
+        self.assertNotIn('use main', str(channel))
+        self.assertEqual({}, self.valkey.lists)
+
+    async def test_failed_update_does_not_stop_the_others(self) -> None:
+        key = ticket_requests._messages_key('r-1')
+        for channel in ('C404', 'C2'):
+            await self.valkey.rpush(
+                key,
+                orjson.dumps({'channel': channel, 'ts': 't', 'summary': ''}),
+            )
+        await ticket_requests.close(
+            self.slack, RESOLVED | {'status': 'rejected', 'answer': None}
+        )
+        (update,) = self.slack.updates
+        self.assertEqual('C2', update['channel'])
+        self.assertEqual(3, len(update['blocks']))
+        # A message that is gone is not tried again.
+        self.assertEqual({}, self.valkey.lists)
+
+    async def test_temporary_failure_is_tried_again(self) -> None:
+        key = ticket_requests._messages_key('r-1')
+        for channel in ('C500', 'C2'):
+            await self.valkey.rpush(
+                key,
+                orjson.dumps({'channel': channel, 'ts': 't', 'summary': ''}),
+            )
+        for tries in range(1, ticket_requests._CLOSE_TRIES):
+            with self.assertRaises(ticket_requests._Retry):
+                await ticket_requests.close(self.slack, RESOLVED)
+            (kept,) = self.valkey.lists[key]
+            self.assertEqual(
+                {'channel': 'C500', 'ts': 't', 'summary': '', 'tries': tries},
+                orjson.loads(kept),
+            )
+        # The last try drops the message.
+        await ticket_requests.close(self.slack, RESOLVED)
+        self.assertEqual({}, self.valkey.lists)
+        self.assertEqual(['C2'], [u['channel'] for u in self.slack.updates])
+
+    async def test_failed_write_keeps_the_messages(self) -> None:
+        key = ticket_requests._messages_key('r-1')
+        record = orjson.dumps({'channel': 'C500', 'ts': 't', 'summary': ''})
+        await self.valkey.rpush(key, record)
+        with (
+            mock.patch.object(
+                self.valkey, 'rpush', side_effect=ConnectionError
+            ),
+            self.assertRaises(ticket_requests._Retry),
+        ):
+            await ticket_requests.close(self.slack, RESOLVED)
+        self.assertEqual([record], self.valkey.lists[key])
+
+    async def test_message_added_during_close_is_kept(self) -> None:
+        key = ticket_requests._messages_key('r-1')
+        late = orjson.dumps({'channel': 'C3', 'ts': 't', 'summary': ''})
+        await self.valkey.rpush(
+            key, orjson.dumps({'channel': 'C2', 'ts': 't', 'summary': ''})
+        )
+        update = self.slack.chat_update
+
+        async def chat_update(**kw):
+            # A post of the same request remembers its message now.
+            await self.valkey.rpush(key, late)
+            return await update(**kw)
+
+        with (
+            mock.patch.object(self.slack, 'chat_update', chat_update),
+            self.assertRaises(ticket_requests._Retry),
+        ):
+            await ticket_requests.close(self.slack, RESOLVED)
+        self.assertEqual([late], self.valkey.lists[key])
+
+    async def close_during_the_post(self) -> None:
+        # close() runs after the form is sent and before the post keeps
+        # its message.
+        post = self.slack.chat_postMessage
+
+        async def chat_post(channel, text=None, **kw):
+            response = await post(channel, text, **kw)
+            await ticket_requests.close(self.slack, RESOLVED)
+            return response
+
+        self.slack.chat_postMessage = chat_post
+
+    async def test_post_after_close_adds_the_close_again(self) -> None:
+        await self.close_during_the_post()
+        await ticket_requests.post(self.slack, self.runtime, entry())
+        (added,) = self.valkey.stream
+        self.assertEqual(RESOLVED, orjson.loads(added['request']))
+        # The added entry closes the new form.
+        await ticket_requests.close(self.slack, RESOLVED)
+        self.assertEqual(
+            [('D-U1', 'ts1')],
+            [(u['channel'], u['ts']) for u in self.slack.updates],
+        )
+        self.assertEqual({}, self.valkey.lists)
+
+    async def test_concurrent_close_is_tried_again(self) -> None:
+        key = ticket_requests._messages_key('r-1')
+        record = orjson.dumps({'channel': 'C2', 'ts': 't', 'summary': ''})
+        await self.valkey.rpush(key, record)
+        await self.valkey.set(f'{key}:closing', b'1')
+        with self.assertRaises(ticket_requests._Retry):
+            await ticket_requests.close(self.slack, RESOLVED)
+        self.assertEqual([], self.slack.updates)
+        self.assertEqual([record], self.valkey.lists[key])
+        # The lock of the other consumer stays.
+        self.assertIn(f'{key}:closing', self.valkey.values)
+
+    async def test_expired_close_keeps_the_next_lock(self) -> None:
+        key = ticket_requests._messages_key('r-1')
+        lock = f'{key}:closing'
+        await self.valkey.rpush(
+            key, orjson.dumps({'channel': 'C2', 'ts': 't', 'summary': ''})
+        )
+        update = self.slack.chat_update
+
+        async def chat_update(**kw):
+            # The lock expires, and another close takes it.
+            self.valkey.values[lock] = b'other'
+            return await update(**kw)
+
+        with mock.patch.object(self.slack, 'chat_update', chat_update):
+            await ticket_requests.close(self.slack, RESOLVED)
+        self.assertEqual(b'other', self.valkey.values[lock])
+
+    async def test_close_releases_its_lock(self) -> None:
+        await ticket_requests.close(self.slack, RESOLVED)
+        key = ticket_requests._messages_key('r-1')
+        self.assertNotIn(f'{key}:closing', self.valkey.values)
+
+    async def test_resolved_request_posts_no_form(self) -> None:
+        await ticket_requests.close(self.slack, RESOLVED)
+        await ticket_requests.post(self.slack, self.runtime, entry())
+        self.assertEqual([], self.slack.posts)
+        (added,) = self.valkey.stream
+        self.assertEqual(RESOLVED, orjson.loads(added['request']))
+
+    async def test_failed_late_close_is_tried_again(self) -> None:
+        await self.close_during_the_post()
+        with (
+            mock.patch.object(
+                self.valkey, 'xadd', side_effect=ConnectionError
+            ),
+            self.assertRaises(ticket_requests._Retry),
+        ):
+            await ticket_requests.post(self.slack, self.runtime, entry())
+        # The retry adds the close and does not post a second form.
+        await ticket_requests.post(self.slack, self.runtime, entry())
+        self.assertEqual(['D-U1'], [p['channel'] for p in self.slack.posts])
+        (added,) = self.valkey.stream
+        self.assertEqual(RESOLVED, orjson.loads(added['request']))
+
+    async def test_failed_read_is_tried_again(self) -> None:
+        with (
+            mock.patch.object(
+                self.valkey, 'lrange', side_effect=ConnectionError
+            ),
+            self.assertRaises(ticket_requests._Retry),
+        ):
+            await ticket_requests.close(self.slack, RESOLVED)
+
+    async def test_unknown_request_changes_nothing(self) -> None:
+        await ticket_requests.close(self.slack, RESOLVED)
+        self.assertEqual([], self.slack.updates)
+
+
 class AnswerTests(helpers.TestCase):
     def setUp(self) -> None:
         super().setUp()
@@ -472,6 +737,7 @@ class ConsumeTests(FlowTestCase):
         # A claimed entry of a stopped consumer, with decoded keys.
         claimed = ('0-9', {'request': orjson.dumps(entry())})
         client.xautoclaim.return_value = ['0-0', [claimed], []]
+        client.get.return_value = None
         client.xreadgroup.side_effect = [
             [[b'imbi:ticket-requests', [message]]],
             asyncio.CancelledError(),
@@ -489,3 +755,43 @@ class ConsumeTests(FlowTestCase):
             [c.args[2] for c in client.xack.await_args_list],
         )
         self.assertEqual(2, len(self.slack.posts))
+
+    async def test_resolved_entry_closes_the_forms(self) -> None:
+        client = mock.AsyncMock()
+        client.xautoclaim.return_value = ['0-0', [], []]
+        message = (b'1-0', {b'request': orjson.dumps(RESOLVED)})
+        client.xreadgroup.side_effect = [
+            [[b'imbi:ticket-requests', [message]]],
+            asyncio.CancelledError(),
+        ]
+        close = mock.AsyncMock()
+        with (
+            mock.patch.object(
+                ticket_requests.valkey, 'get_client', return_value=client
+            ),
+            mock.patch.object(ticket_requests, 'close', close),
+            self.assertRaises(asyncio.CancelledError),
+        ):
+            await ticket_requests.consume(self.slack, self.runtime)
+        close.assert_awaited_once_with(self.slack, RESOLVED)
+        self.assertEqual([], self.slack.posts)
+        client.xack.assert_awaited_once()
+
+    async def test_retry_is_not_acked(self) -> None:
+        client = mock.AsyncMock()
+        client.xautoclaim.return_value = ['0-0', [], []]
+        message = (b'1-0', {b'request': orjson.dumps(RESOLVED)})
+        client.xreadgroup.side_effect = [
+            [[b'imbi:ticket-requests', [message]]],
+            asyncio.CancelledError(),
+        ]
+        close = mock.AsyncMock(side_effect=ticket_requests._Retry('x'))
+        with (
+            mock.patch.object(
+                ticket_requests.valkey, 'get_client', return_value=client
+            ),
+            mock.patch.object(ticket_requests, 'close', close),
+            self.assertRaises(asyncio.CancelledError),
+        ):
+            await ticket_requests.consume(self.slack, self.runtime)
+        client.xack.assert_not_awaited()
