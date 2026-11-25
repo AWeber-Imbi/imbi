@@ -170,6 +170,8 @@ class FakeApp:
 
     action = event
     view = event
+    command = event
+    options = event
 
 
 class FakeHandler:

@@ -34,6 +34,9 @@ The bot also needs `ANTHROPIC_API_KEY`, the shared `IMBI_AUTH_JWT_SECRET`, and
 - `channels:read`, `groups:read` — find the Slack channel of an agent by
   name, to post the forms of tickets that need input.
 - `im:write` — send those forms as a direct message to the ticket owner.
+- `commands` — the `/create-ticket` slash command. It opens the New ticket
+  dialog of the UI as a modal and creates the ticket as the Slack user who
+  ran it. The text after the command fills in the description.
 
 ## Manifest
 
@@ -45,6 +48,11 @@ features:
   bot_user:
     display_name: imbi
     always_online: true
+  slash_commands:
+    - command: /create-ticket
+      description: Create an Imbi ticket
+      usage_hint: "[describe the work]"
+      should_escape: false
 oauth_config:
   scopes:
     bot:
@@ -62,6 +70,7 @@ oauth_config:
       - channels:read
       - groups:read
       - im:write
+      - commands
 settings:
   event_subscriptions:
     bot_events:
