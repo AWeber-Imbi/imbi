@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { CornerDownLeft, Plus, Tag as TagIcon, X } from 'lucide-react'
 
 import { TagChip } from '@/components/tags/TagChip'
-import { useOrgTags } from '@/components/tags/useOrgTags'
+import { tagRef, useOrgTags } from '@/components/tags/useOrgTags'
 import { Keystroke } from '@/components/ui/keystroke'
 import { cn } from '@/lib/utils'
 import type { Tag, TagRef } from '@/types'
@@ -38,7 +38,7 @@ export function TagCombobox({
   const { create: createMutation, tags: allTags } = useOrgTags(
     orgSlug,
     (tag) => {
-      if (!selectedSlugs.has(tag.slug)) onChange([...selected, chip(tag)])
+      if (!selectedSlugs.has(tag.slug)) onChange([...selected, tagRef(tag)])
       setQuery('')
       setActiveIdx(0)
     },
@@ -84,7 +84,7 @@ export function TagCombobox({
   }, [open])
 
   const addExisting = (tag: Tag | TagRef) => {
-    onChange([...selected, chip(tag)])
+    onChange([...selected, tagRef(tag)])
     setQuery('')
     setActiveIdx(0)
   }
@@ -251,9 +251,4 @@ export function TagCombobox({
       )}
     </div>
   )
-}
-
-/** A selected tag keeps its color, so its chip shows it at once. */
-function chip(tag: Tag | TagRef): TagRef {
-  return { color: tag.color, name: tag.name, slug: tag.slug }
 }

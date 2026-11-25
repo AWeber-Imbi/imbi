@@ -4,8 +4,7 @@ The slug lookups take the organization slug, because most callers
 have only the slug.
 
 The tag writes take a ``MATCH`` clause that binds the tagged node to
-``n`` and its organization to ``o``, so that one pair of queries serves
-every label.
+``n``, so that one pair of queries serves every label.
 """
 
 import typing
@@ -99,24 +98,40 @@ def detach_statement(
 def attach_statement(
     node: typing.LiteralString,
     params: dict[str, typing.Any],
+    org_slug: str,
     slugs: list[str],
 ) -> graph_cypher.Statement:
-    """Return the statement that tags the node with the org tags that
-    have these slugs. ``MERGE`` does not make a second edge for a tag
-    that the node already has."""
+    """Return the statement that tags the node with the tags of the org
+    that have these slugs. ``MERGE`` does not make a second edge for a
+    tag that the node already has."""
     return graph_cypher.Statement(
         node
         + """
-        MATCH (t:Tag)-[:BELONGS_TO]->(o)
+        MATCH (t:Tag)-[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
         WHERE t.slug IN {tag_slugs}
         MERGE (n)-[:TAGGED_WITH]->(t)
         RETURN count(t) AS changed
         """,
-        {**params, 'tag_slugs': slugs},
+        {**params, 'org_slug': org_slug, 'tag_slugs': slugs},
     )
 
 
-async def execute(db: graph.Graph, statement: graph_cypher.Statement) -> None:
-    """Run a statement of :func:`detach_statement` or
-    :func:`attach_statement` on its own."""
-    await db.execute(statement.cypher, statement.params, ['changed'])
+def replace_statements(
+    node: typing.LiteralString,
+    params: dict[str, typing.Any],
+    org_slug: str,
+    slugs: list[str],
+) -> list[graph_cypher.Statement]:
+    """Return the statements that replace the tags of the node."""
+    statements = [detach_statement(node, params)]
+    if slugs:
+        statements.append(attach_statement(node, params, org_slug, slugs))
+    return statements
+
+
+async def execute(
+    db: graph.Graph, statements: list[graph_cypher.Statement]
+) -> None:
+    """Run tag statements one after the other, with no transaction."""
+    for statement in statements:
+        await db.execute(statement.cypher, statement.params, ['changed'])

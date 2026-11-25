@@ -4,6 +4,7 @@ import { ArrowLeft, Check, Columns2, Eye, PencilLine } from 'lucide-react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
+import { tagRef } from '@/components/tags/useOrgTags'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { FrontmatterTable } from '@/components/ui/frontmatter-table'
@@ -69,15 +70,7 @@ export function DocumentsPinboardNew({
     initialDocument?.content ?? seed?.content ?? '',
   )
   const [tags, setTags] = useState<TagRef[]>(
-    initialDocument
-      ? initialDocument.tags.map((t) => ({
-          color: t.color,
-          name: t.name,
-          slug: t.slug,
-        }))
-      : seed?.tags
-        ? seed.tags.map((t) => ({ color: t.color, name: t.name, slug: t.slug }))
-        : [],
+    (initialDocument ? initialDocument.tags : (seed?.tags ?? [])).map(tagRef),
   )
   const titleRef = useRef<HTMLInputElement>(null)
   const contentRef = useRef<HTMLTextAreaElement>(null)

@@ -254,12 +254,10 @@ _DOCUMENT_COLUMNS: list[str] = [
 ]
 
 
-#: Binds a document to ``n`` and its organization to ``o``, for
-#: :mod:`imbi.api.tags`.
-_DOCUMENT_NODE: typing.LiteralString = """
-MATCH (n:Document {{id: {document_id}}}),
-      (o:Organization {{slug: {org_slug}}})
-"""
+#: Binds a document to ``n``, for :mod:`imbi.api.tags`.
+_DOCUMENT_NODE: typing.LiteralString = (
+    'MATCH (n:Document {{id: {document_id}}})'
+)
 
 
 _DOCUMENT_CREATE_FRAGMENT: typing.LiteralString = """
@@ -317,11 +315,14 @@ async def _create_document_impl(
     if tag_slugs:
         await org_tags.execute(
             db,
-            org_tags.attach_statement(
-                _DOCUMENT_NODE,
-                {'document_id': document_id, 'org_slug': org_slug},
-                tag_slugs,
-            ),
+            [
+                org_tags.attach_statement(
+                    _DOCUMENT_NODE,
+                    {'document_id': document_id},
+                    org_slug,
+                    tag_slugs,
+                )
+            ],
         )
 
     # Snapshot capture is best-effort and independent of the response,
@@ -959,14 +960,12 @@ async def apply_document_update(
     new_version = int(graph.parse_agtype(records[0]['version']) or 1)
 
     if replace_tags:
-        node = {'document_id': document_id, 'org_slug': org_slug}
         await org_tags.execute(
-            db, org_tags.detach_statement(_DOCUMENT_NODE, node)
+            db,
+            org_tags.replace_statements(
+                _DOCUMENT_NODE, {'document_id': document_id}, org_slug, tags
+            ),
         )
-        if tags:
-            await org_tags.execute(
-                db, org_tags.attach_statement(_DOCUMENT_NODE, node, tags)
-            )
 
     if content_changed:
         # Snapshot capture is best-effort and independent of the

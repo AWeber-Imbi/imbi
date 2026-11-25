@@ -151,11 +151,10 @@ def _parse_template_row(
     return template
 
 
-#: Binds a template to ``n`` and its organization to ``o``, for
-#: :mod:`imbi.api.tags`.
+#: Binds a template to ``n``, for :mod:`imbi.api.tags`.
 _TEMPLATE_NODE: typing.LiteralString = """
 MATCH (n:DocumentTemplate {{slug: {tpl_slug}}})
-      -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
+      -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
 """
 
 
@@ -249,11 +248,14 @@ async def create_document_template(
     if tag_slugs:
         await org_tags.execute(
             db,
-            org_tags.attach_statement(
-                _TEMPLATE_NODE,
-                {'tpl_slug': data.slug, 'org_slug': org_slug},
-                tag_slugs,
-            ),
+            [
+                org_tags.attach_statement(
+                    _TEMPLATE_NODE,
+                    {'tpl_slug': data.slug, 'org_slug': org_slug},
+                    org_slug,
+                    tag_slugs,
+                )
+            ],
         )
 
     template = await _fetch_template(db, org_slug, data.slug)
@@ -405,15 +407,15 @@ async def _persist_update(
     )
 
     if tag_slugs is not None:
-        node = {'tpl_slug': new_slug, 'org_slug': org_slug}
         await org_tags.execute(
-            db, org_tags.detach_statement(_TEMPLATE_NODE, node)
+            db,
+            org_tags.replace_statements(
+                _TEMPLATE_NODE,
+                {'tpl_slug': new_slug, 'org_slug': org_slug},
+                org_slug,
+                tag_slugs,
+            ),
         )
-        if tag_slugs:
-            await org_tags.execute(
-                db,
-                org_tags.attach_statement(_TEMPLATE_NODE, node, tag_slugs),
-            )
 
     template = await _fetch_template(db, org_slug, new_slug)
     if template is None:

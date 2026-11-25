@@ -2,13 +2,7 @@ import type { ReactNode } from 'react'
 
 import { LabelChip } from '@/components/ui/label-chip'
 import { cn } from '@/lib/utils'
-
-/** The fields of an org tag that a chip shows. */
-export interface ChipTag {
-  color?: null | string
-  name: string
-  slug: string
-}
+import type { TagRef } from '@/types'
 
 /** A tag as a label chip in the tag color, or neutral with no color. */
 export function TagChip({
@@ -18,7 +12,7 @@ export function TagChip({
 }: {
   children?: ReactNode
   size?: 'md' | 'sm'
-  tag: ChipTag
+  tag: TagRef
 }) {
   return (
     <LabelChip
@@ -34,7 +28,7 @@ export function TagChip({
   )
 }
 
-export function TagChips({ tags }: { tags: ChipTag[] }) {
+export function TagChips({ tags }: { tags: TagRef[] }) {
   if (tags.length === 0) return <span className="text-tertiary text-sm">—</span>
   return (
     <div className="flex flex-wrap gap-1.5">

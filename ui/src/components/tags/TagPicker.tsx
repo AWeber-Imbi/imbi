@@ -18,15 +18,15 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { LABEL_SWATCHES } from '@/lib/chip-colors'
-import type { Tag } from '@/types'
+import type { Tag, TagRef } from '@/types'
 
-import { type ChipTag, TagChip } from './TagChip'
-import { useOrgTags } from './useOrgTags'
+import { TagChip } from './TagChip'
+import { tagRef, useOrgTags } from './useOrgTags'
 
 interface TagPickerProps {
-  onChange: (tags: ChipTag[]) => void
+  onChange: (tags: TagRef[]) => void
   orgSlug: string
-  value: ChipTag[]
+  value: TagRef[]
 }
 
 /**
@@ -38,7 +38,7 @@ export function TagPicker({ onChange, orgSlug, value }: TagPickerProps) {
   const [query, setQuery] = useState('')
   const [color, setColor] = useState<null | string>(LABEL_SWATCHES[4].hex)
   const add = (tag: Tag) => {
-    onChange([...value, { color: tag.color, name: tag.name, slug: tag.slug }])
+    onChange([...value, tagRef(tag)])
     setQuery('')
   }
 

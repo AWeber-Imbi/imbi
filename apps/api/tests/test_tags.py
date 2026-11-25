@@ -93,15 +93,17 @@ class TagsTestCase(unittest.IsolatedAsyncioTestCase):
         return sorted(str(graph.parse_agtype(r['slug'])) for r in records)
 
     async def test_attach_and_detach(self) -> None:
-        node: typing.LiteralString = (
-            'MATCH (n:Agent {{id: {id}}})-[:BELONGS_TO]->(o:Organization)'
-        )
+        node: typing.LiteralString = 'MATCH (n:Agent {{id: {id}}})'
         params = {'id': self.node}
         # A tag of another org is not attached; a repeat adds no edge.
         for _ in range(2):
             await tags.execute(
                 self.graph,
-                tags.attach_statement(node, params, ['ops', 'other']),
+                [
+                    tags.attach_statement(
+                        node, params, self.org, ['ops', 'other']
+                    )
+                ],
             )
         records = await self.graph.execute(
             'MATCH (:Agent {{id: {id}}})-[r:TAGGED_WITH]->(:Tag)'
@@ -112,5 +114,7 @@ class TagsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(graph.parse_agtype(records[0]['edges']), 1)
         self.assertEqual(await self._tag_slugs(), ['ops'])
 
-        await tags.execute(self.graph, tags.detach_statement(node, params))
+        await tags.execute(
+            self.graph, tags.replace_statements(node, params, self.org, [])
+        )
         self.assertEqual(await self._tag_slugs(), [])

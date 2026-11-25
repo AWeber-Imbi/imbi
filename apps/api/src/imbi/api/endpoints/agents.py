@@ -376,11 +376,8 @@ WHERE a.id <> {id}
 RETURN a.name AS name, a.slug AS slug, a.subagents AS subagents
 """
 
-#: Binds an agent to ``n`` and its organization to ``o``, for
-#: :mod:`imbi.api.tags`.
-_AGENT_NODE: typing.LiteralString = """
-MATCH (n:Agent {{id: {id}}})-[:BELONGS_TO]->(o:Organization)
-"""
+#: Binds an agent to ``n``, for :mod:`imbi.api.tags`.
+_AGENT_NODE: typing.LiteralString = 'MATCH (n:Agent {{id: {id}}})'
 
 _VERSIONS_QUERY: typing.LiteralString = """
 MATCH (v:AgentVersion)-[:VERSION_OF]->(:Agent {{id: {id}}})
@@ -1182,11 +1179,9 @@ async def _apply(
                 ),
             ]
         if target.tags != current.tags:
-            statements.append(org_tags.detach_statement(_AGENT_NODE, ids))
-            if target.tags:
-                statements.append(
-                    org_tags.attach_statement(_AGENT_NODE, ids, target.tags)
-                )
+            statements += org_tags.replace_statements(
+                _AGENT_NODE, ids, org_slug, target.tags
+            )
         props.update(
             {
                 'name': target.name,
@@ -1391,9 +1386,11 @@ async def create_agent(
         if snapshot.tags:
             await org_tags.execute(
                 db,
-                org_tags.attach_statement(
-                    _AGENT_NODE, {'id': agent_id}, snapshot.tags
-                ),
+                [
+                    org_tags.attach_statement(
+                        _AGENT_NODE, {'id': agent_id}, org_slug, snapshot.tags
+                    )
+                ],
             )
         await _write_version(
             db,

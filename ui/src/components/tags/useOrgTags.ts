@@ -4,7 +4,12 @@ import { toast } from 'sonner'
 import { createOrFindTag, listTags } from '@/api/endpoints'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { queryKeys } from '@/lib/queryKeys'
-import type { Tag } from '@/types'
+import type { Tag, TagRef } from '@/types'
+
+/** The fields of an org tag that a chip shows, copied from any tag. */
+export function tagRef(tag: TagRef): TagRef {
+  return { color: tag.color, name: tag.name, slug: tag.slug }
+}
 
 /**
  * The org tags, and a mutation that creates a tag (or finds the tag with
