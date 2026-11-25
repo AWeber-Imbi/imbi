@@ -775,7 +775,9 @@ export function ConfigurationTab({
               prefix={prefix}
               savedFlash={false}
             />
-          ) : selected ? (
+          ) : isLoading ? null : selected ? (
+            // Wait for every environment's key list. Otherwise the fallback
+            // key can change under an unsaved edit as later lists resolve.
             <DetailPane
               duplicateBlockedReason={duplicateBlocked}
               environments={sortedEnvironments}

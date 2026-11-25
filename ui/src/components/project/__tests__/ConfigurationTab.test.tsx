@@ -342,6 +342,21 @@ describe('ConfigurationTab deep link', () => {
     expect(await screen.findByDisplayValue('user-staging')).toBeInTheDocument()
   })
 
+  it('holds the detail pane until every key list resolves', async () => {
+    vi.mocked(listConfigurationKeys).mockImplementation(
+      (_org, _project, params) =>
+        (params?.environment === 'production'
+          ? new Promise(() => {})
+          : Promise.resolve(keyList())) as never,
+    )
+    renderTab()
+    await waitFor(() => expect(listConfigurationKeys).toHaveBeenCalledTimes(2))
+    expect(screen.queryByDisplayValue('pw-staging')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /duplicate/i }),
+    ).not.toBeInTheDocument()
+  })
+
   it('writes the selected key to ?key=', async () => {
     renderTab()
     await screen.findByDisplayValue('pw-staging')
