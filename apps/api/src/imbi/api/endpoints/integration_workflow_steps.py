@@ -14,6 +14,7 @@ import typing
 
 import fastapi
 import pydantic
+import pydantic_core
 
 from imbi.api import workflows
 from imbi.api.auth import organizations as org_auth
@@ -182,10 +183,16 @@ def _result(
             output = descriptor.output_model.model_validate(result.output)
         except pydantic.ValidationError:
             raise _call_error('plugin_result_invalid') from None
-        checked = base.StepResult(
-            output=output.model_dump(mode='json'), port=result.port
-        )
-    if len(checked.model_dump_json().encode()) > MAX_BYTES:
+        try:
+            dumped = output.model_dump(mode='json')
+        except pydantic_core.PydanticSerializationError:
+            raise _call_error('plugin_result_invalid') from None
+        checked = base.StepResult(output=dumped, port=result.port)
+    try:
+        size = len(checked.model_dump_json().encode())
+    except pydantic_core.PydanticSerializationError:
+        raise _call_error('plugin_result_invalid') from None
+    if size > MAX_BYTES:
         raise _call_error('plugin_result_invalid')
     return checked
 

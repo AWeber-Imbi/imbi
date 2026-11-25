@@ -309,6 +309,26 @@ class RunStepTestCase(support.SharedAppAsyncTestCase):
             self._error(response)['error'], 'plugin_result_invalid'
         )
 
+    async def test_state_that_is_not_json_is_stored(self) -> None:
+        handler = self._plugin(
+            'run_threshold',
+            return_value=base.StepResult(
+                poll=True, state={'client': object()}
+            ),
+        )
+        for _ in range(2):
+            response = await self._run(
+                'stepper.metric_threshold',
+                params={'query': 'up', 'below': 2},
+                project_id=self.project,
+            )
+            self.assertEqual(response.status_code, 502)
+            self.assertEqual(
+                self._error(response),
+                {'error': 'plugin_result_invalid', 'retry': False},
+            )
+        handler.assert_awaited_once()
+
     async def test_bad_output_is_stored(self) -> None:
         handler = self._plugin(
             return_value=base.StepResult(output={'value': 'high'})

@@ -51,6 +51,13 @@ class DescriptorTestCase(unittest.TestCase):
                     params_model=params, choices=None, project_scoped=scoped
                 )
 
+    def test_alias_is_reserved(self) -> None:
+        params = pydantic.create_model(
+            'P', project=(str, pydantic.Field(alias='project_id'))
+        )
+        with self.assertRaisesRegex(pydantic.ValidationError, 'project_id'):
+            step_plugin.query_descriptor(params_model=params, choices=None)
+
     def test_choice_fields_use_alias(self) -> None:
         params = pydantic.create_model(
             'P',

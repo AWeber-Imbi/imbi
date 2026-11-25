@@ -2501,9 +2501,13 @@ class WorkflowStepDescriptor(pydantic.BaseModel):
             raise ValueError('ports must be non-empty and unique')
         # The workflows engine takes both out of the params of every
         # plugin step, project-scoped or not.
-        taken = sorted(
-            {'integration', 'project_id'} & set(self.params_model.model_fields)
-        )
+        names = {
+            key
+            for name, field in self.params_model.model_fields.items()
+            for key in (name, field.alias)
+            if key
+        }
+        taken = sorted({'integration', 'project_id'} & names)
         if taken:
             raise ValueError(f'params_model must not declare {taken}')
         if self.side_effect and not self.permissions:
