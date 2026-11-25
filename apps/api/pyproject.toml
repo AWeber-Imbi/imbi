@@ -1,6 +1,6 @@
 [project]
 name = "imbi-api"
-version = "2.61.0"
+version = "2.62.0"
 description = "Imbi is the open-source service catalog that tracks every service's ownership, deployments, and health, and runs the AI agents and workflows that fix them."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -29,7 +29,7 @@ dependencies = [
   "filetype",
   "httpx>=0.28.1,<1",
   "idna>=3.18",
-  "imbi-common[databases,llm,mcp,script,sentry,server]==2.61.0",
+  "imbi-common[databases,llm,mcp,script,sentry,server]==2.62.0",
   "jinja2",
   "jsonpatch>=1.33",
   "jsonschema>=4.26",
