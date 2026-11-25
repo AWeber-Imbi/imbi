@@ -76,6 +76,7 @@ export function RecentDeploymentsWidget() {
     initialPageParam: undefined,
     queryFn: ({ pageParam, signal }) =>
       listOperationsLog(
+        orgSlug,
         {
           cursor: pageParam,
           filters: {

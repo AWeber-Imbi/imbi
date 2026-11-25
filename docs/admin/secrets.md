@@ -267,8 +267,9 @@ delivery mode:
 |---|---|
 | `github_read` | Reading pull requests, review comments, issues, and CI run logs |
 | `github_write` | Pushing, opening pull requests and issues, and reading check results |
+| `github_status` | Creating check runs and commit statuses, and reading pull requests. It cannot push |
 
-Both purposes add `checks`, `statuses` and (for `github_write`)
+`github_read` and `github_write` add `checks`, `statuses` and (for `github_write`)
 `actions` read access when the App's installation grants them, so a
 writer can wait for CI with `gh pr checks`. `github_write` also adds
 `workflows` write access when the installation grants it, so a writer

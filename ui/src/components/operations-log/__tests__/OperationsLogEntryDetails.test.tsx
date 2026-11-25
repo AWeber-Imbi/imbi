@@ -11,6 +11,13 @@ vi.mock('@/components/NewOpsLogDialog', () => ({
 }))
 
 // fallow-ignore-next-line unresolved-import
+vi.mock('@/contexts/OrganizationContext', () => ({
+  useOrganization: () => ({
+    selectedOrganization: { name: 'AWeber', slug: 'aweber' },
+  }),
+}))
+
+// fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', () => ({
   getOperationsLogEntry: vi.fn(async () => makeRecord()),
   listPluginOpsLogTemplates: vi.fn(async () => []),

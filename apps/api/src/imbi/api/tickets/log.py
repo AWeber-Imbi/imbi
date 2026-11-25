@@ -200,10 +200,10 @@ def opslog_rows(task: Row, event: Row) -> list[Row]:
     project of the task.
 
     Only a resolution or an outcome has rows. The Operations Log is
-    project scoped, and its list is not scoped to an organization, so a
-    task with no project never goes there. The description has no task,
-    request, or reply text. The row id comes from the event id and the
-    project id, so a row that is published again collapses.
+    project scoped, so a task with no project never goes there. The
+    description has no task, request, or reply text. The row id comes
+    from the event id and the project id, so a row that is published
+    again collapses.
     """
     if event['type'] not in OPSLOG_EVENT_TYPES:
         return []
@@ -223,6 +223,7 @@ def opslog_rows(task: Row, event: Row) -> list[Row]:
             performed_by=actor,
             completed_at=event['at'],
             project_id=project['project_id'],
+            organization_id=task['organization_id'],
             project_slug=project['project_slug'],
             environment_slug='',
             entry_type='Agent Task',

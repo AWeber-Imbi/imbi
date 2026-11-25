@@ -88,11 +88,11 @@ export function SettingsTab({
         <Field
           error={errors.requiredLabels}
           help="Used only to select a harness runner. A runner needs every label to run the tasks of this agent. Separate labels with commas."
-          htmlFor="agent-labels"
+          htmlFor="agent-runner-labels"
           label="Required runner labels"
         >
           <Input
-            id="agent-labels"
+            id="agent-runner-labels"
             onChange={(e) => set({ requiredLabels: e.target.value })}
             placeholder="Any runner"
             value={value.requiredLabels}

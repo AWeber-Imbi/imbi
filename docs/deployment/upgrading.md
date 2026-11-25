@@ -80,6 +80,31 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    it. A runner on an older image ignores the MCP server checkboxes of
    **Tools and plugins**, so a server that someone turned off still
    loads.
+2. The operations log now belongs to an organization. Each entry records
+   the organization that owns its project in the new ClickHouse column
+   `operations_log.organization_id`, and the list, get, change, and
+   delete routes moved to `/organizations/{org_slug}/operations-log/`.
+   The global `GET /operations-log/` and the global
+   `GET`, `PATCH`, and `DELETE /operations-log/{entry_id}` are removed.
+   `POST /operations-log/` stays. Do these steps in this order:
+    1. **Before you deploy**, run `imbi-api setup-clickhouse` from the
+       **new** imbi-api image, for example in a one-off pod
+       (`kubectl run --rm -it --image=<new imbi-api image> ...`) with
+       the imbi-api environment. Do not run it in a pod of the previous
+       release: its packaged schema does not have the column. The
+       command adds the column (`ALTER TABLE ... ADD COLUMN IF NOT
+       EXISTS`). Read its log: it continues after a failed statement.
+    2. Deploy imbi-api and imbi-ui together. The new UI reads only the
+       new routes.
+    3. Run **Backfill Organizations to Operations Log**
+       (`opslog-organization-backfill`) from
+       **Admin > Global Admin > Maintenance**. Until it completes, the
+       entries written before the deploy do not show in the operations
+       log. Then run it again, until it writes nothing: an entry that
+       changes during a run keeps that change, and the next run fills
+       its organization in. Archived projects are included. Entries of
+       a project that is no longer in the graph keep no organization
+       and do not show.
 
 ## 2.62.0
 
@@ -140,7 +165,9 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    event, and `unfurl_domains` (the host of `IMBI_UI_URL`) to the Slack
    app, then reinstall the app to the workspace. The
    [Slack app manifest](../slackbot/slack-app-manifest.md) has all of
-   them. Until you do this, Slack shows no previews.
+   them. Then, in the app settings, open **Work Object Previews**, turn it
+   on, and select the **Task** and **Item** entity types. Until you do
+   this, Slack shows no previews.
 6. **Before you deploy**, look for blueprints that use `pattern`,
    `minLength`, `maxLength`, `multipleOf`, or the formats `uuid`,
    `ipv4`, and `ipv6`. Imbi now enforces these
@@ -162,6 +189,14 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    [Slack App Setup](../slackbot/slack-app-manifest.md#home-tab) to the
    Slack app, or reinstall the app from the new manifest. Until you do
    this, Slack shows no Home tab.
+8. Deploy imbi-api before the UI and imbi-slackbot. imbi-api now
+   calculates project drift and sends it in the projects list as
+   `drift_pairs` and `release_drifted`; the Projects page, the project
+   page, and the Slack cards and Home tab only read these fields. The
+   list no longer sends `drift_range_oldest`; each pair in
+   `drift_pairs` has its `oldest` date. A client of an earlier release
+   that runs against the new imbi-api shows no drift dates. A new client
+   that runs against an earlier imbi-api shows no drift.
 
 ## 2.61.0
 

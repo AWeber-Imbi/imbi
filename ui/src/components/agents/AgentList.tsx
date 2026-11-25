@@ -18,9 +18,9 @@ import { queryKeys } from '@/lib/queryKeys'
 import type { Agent } from '@/types'
 
 import { formatMoney } from './agentDraft'
-import { AgentLabels } from './AgentLabelChip'
 import { useAgentUsage } from './agentQueries'
 import { agentsPath } from './agentsNav'
+import { AgentTags } from './AgentTagChip'
 import { formatCount } from './agentUsage'
 
 interface AgentListProps {
@@ -30,8 +30,8 @@ interface AgentListProps {
   orgSlug: string
 }
 
-type FacetKey = 'label' | 'status' | 'team'
-type SortKey = 'labels' | 'name' | 'team' | UsageKey
+type FacetKey = 'status' | 'tag' | 'team'
+type SortKey = 'name' | 'tags' | 'team' | UsageKey
 type Usage = { cost: number; runs: number }
 // One accessor per usage column, shared by the cell and the sort.
 const USAGE_METRICS = {
@@ -47,8 +47,8 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
   const canWrite = useHasPermission('agent:write', orgSlug)
   const [search, setSearch] = useState('')
   const [facets, setFacets] = useState<Record<FacetKey, string[]>>({
-    label: [],
     status: [],
+    tag: [],
     team: [],
   })
   const [sort, setSort] = useState<null | { dir: -1 | 1; key: SortKey }>(null)
@@ -62,7 +62,7 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
   const sortValue = (a: Agent, key: SortKey): number | string => {
     if (key === 'name') return a.name
     if (key === 'team') return a.team?.name ?? ''
-    if (key === 'labels')
+    if (key === 'tags')
       return a.tags
         .map((t) => t.name)
         .sort()
@@ -131,8 +131,8 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
             .toLowerCase()
             .includes(q)) &&
         has('team', a.team?.slug ?? '') &&
-        (facets.label.length === 0 ||
-          a.tags.some((t) => facets.label.includes(t.slug))) &&
+        (facets.tag.length === 0 ||
+          a.tags.some((t) => facets.tag.includes(t.slug))) &&
         has('status', a.enabled ? 'enabled' : 'disabled'),
     )
   }, [agents, facets, search])
@@ -174,7 +174,7 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
   )
 
   const teams = uniqueBySlug(agents.flatMap((a) => (a.team ? [a.team] : [])))
-  const labels = uniqueBySlug(agents.flatMap((a) => a.tags))
+  const tags = uniqueBySlug(agents.flatMap((a) => a.tags))
 
   return (
     <AdminSection
@@ -216,15 +216,15 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
           usageColumn('avg', 'Avg / run'),
           {
             header: header(
-              sortButton('labels', 'Tags'),
+              sortButton('tags', 'Tags'),
               facet(
-                'label',
+                'tag',
                 'Tags',
-                labels.map((t) => ({ label: t.name, slug: t.slug })),
+                tags.map((t) => ({ label: t.name, slug: t.slug })),
               ),
             ),
-            key: 'labels',
-            render: (a) => <AgentLabels tags={a.tags} />,
+            key: 'tags',
+            render: (a) => <AgentTags tags={a.tags} />,
           },
           {
             header: header(
@@ -296,7 +296,7 @@ function AgentNameCell({ agent }: { agent: Agent }) {
 
 function facetValues(agent: Agent, key: FacetKey): string[] {
   if (key === 'team') return agent.team ? [agent.team.slug] : []
-  if (key === 'label') return agent.tags.map((t) => t.slug)
+  if (key === 'tag') return agent.tags.map((t) => t.slug)
   return [agent.enabled ? 'enabled' : 'disabled']
 }
 

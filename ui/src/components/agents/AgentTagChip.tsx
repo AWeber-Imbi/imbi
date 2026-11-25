@@ -9,7 +9,7 @@ interface ChipTag {
 }
 
 /** A tag as a label chip in the tag color, or neutral with no color. */
-export function AgentLabelChip({
+export function AgentTagChip({
   children,
   tag,
 }: {
@@ -27,12 +27,12 @@ export function AgentLabelChip({
   )
 }
 
-export function AgentLabels({ tags }: { tags: ChipTag[] }) {
+export function AgentTags({ tags }: { tags: ChipTag[] }) {
   if (tags.length === 0) return <span className="text-tertiary text-sm">—</span>
   return (
     <div className="flex flex-wrap gap-1.5">
       {tags.map((t) => (
-        <AgentLabelChip key={t.slug} tag={t} />
+        <AgentTagChip key={t.slug} tag={t} />
       ))}
     </div>
   )

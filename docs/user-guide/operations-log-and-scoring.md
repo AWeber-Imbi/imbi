@@ -132,12 +132,14 @@ The description is plain text. It is not Markdown.
 
 ### Change or delete an entry
 
-The UI cannot change or delete an entry. Use the API:
+The UI cannot change or delete an entry. Use the API. You can change or
+delete only an entry of an organization that you are a member of:
 
-- `PATCH /operations-log/{id}` takes a JSON Patch. You cannot change `id`,
-  `project_id`, `occurred_at`, `recorded_at`, or `recorded_by`.
-- `DELETE /operations-log/{id}` hides the entry. Imbi keeps a deleted
-  marker for it.
+- `PATCH /organizations/{org_slug}/operations-log/{id}` takes a JSON
+  Patch. You cannot change `id`, `project_id`, `organization_id`,
+  `occurred_at`, `recorded_at`, or `recorded_by`.
+- `DELETE /organizations/{org_slug}/operations-log/{id}` hides the entry.
+  Imbi keeps a deleted marker for it.
 
 ## Scoring
 
