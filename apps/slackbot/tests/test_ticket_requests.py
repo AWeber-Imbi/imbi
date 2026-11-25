@@ -71,6 +71,13 @@ class FakeSlack:
 class FakeValkey:
     def __init__(self) -> None:
         self.lists: dict[str, list[bytes]] = {}
+        self.values: dict[str, bytes] = {}
+
+    async def set(self, key, value, ex=None):
+        self.values[key] = value
+
+    async def get(self, key):
+        return self.values.get(key)
 
     async def rpush(self, key, *values):
         self.lists.setdefault(key, []).extend(values)
@@ -490,6 +497,16 @@ class CloseTests(FlowTestCase):
             await ticket_requests.close(self.slack, RESOLVED)
         self.assertEqual([late], self.valkey.lists[key])
 
+    async def test_post_after_close_closes_the_form(self) -> None:
+        # close() ran before the post kept its message.
+        await ticket_requests.close(self.slack, RESOLVED)
+        await ticket_requests.post(self.slack, self.runtime, entry())
+        self.assertEqual(
+            [('D-U1', 'ts1')],
+            [(u['channel'], u['ts']) for u in self.slack.updates],
+        )
+        self.assertEqual({}, self.valkey.lists)
+
     async def test_failed_read_is_tried_again(self) -> None:
         with (
             mock.patch.object(
@@ -640,6 +657,7 @@ class ConsumeTests(FlowTestCase):
         # A claimed entry of a stopped consumer, with decoded keys.
         claimed = ('0-9', {'request': orjson.dumps(entry())})
         client.xautoclaim.return_value = ['0-0', [claimed], []]
+        client.get.return_value = None
         client.xreadgroup.side_effect = [
             [[b'imbi:ticket-requests', [message]]],
             asyncio.CancelledError(),

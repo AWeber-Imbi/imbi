@@ -219,6 +219,13 @@ async def close(slack: SlackClient, entry: Entry) -> None:
     key = _messages_key(entry['request_id'])
     short_id = entry['short_id']
     try:
+        # Before the read, so that a post that keeps its message after
+        # the read closes it (see _remember()).
+        await client.set(
+            _resolved_key(entry['request_id']),
+            orjson.dumps(entry),
+            ex=_MESSAGES_TTL,
+        )
         records = await client.lrange(key, 0, -1)
     except Exception as err:
         raise _Retry(f'cannot read the messages of {short_id}') from err
@@ -424,12 +431,27 @@ async def _post_form(
         requester='',
         metadata={METADATA_KEY: entry},
     )
-    await _remember(entry, channel, record.message_ts)
+    resolved = await _remember(entry, channel, record.message_ts)
+    if resolved:
+        # The request was resolved during the post, and close() can
+        # have read the messages before this one was kept.
+        try:
+            await close(slack, resolved)
+        except _Retry as err:
+            LOGGER.warning('Could not close %s: %s', entry['short_id'], err)
 
 
-async def _remember(entry: Entry, channel: str, ts: str | None) -> None:
+async def _remember(
+    entry: Entry, channel: str, ts: str | None
+) -> Entry | None:
     """Keep the id of a form message, to change it when the request is
-    resolved. Best effort: when it fails, the form stays open."""
+    resolved. Best effort: when it fails, the form stays open.
+
+    Return the resolved entry when the request is already resolved.
+    close() sets it before it reads the messages, so close() sees this
+    message, or this function sees the resolved entry, or both.
+
+    """
     summary = blocks.cut(
         render.neutralize_broadcasts(_question(entry, 'asked')), _MAX_INTRO
     )
@@ -439,12 +461,19 @@ async def _remember(entry: Entry, channel: str, ts: str | None) -> None:
         client: typing.Any = valkey.get_client()
         await client.rpush(key, orjson.dumps(value))
         await client.expire(key, _MESSAGES_TTL)
+        resolved = await client.get(_resolved_key(entry['request_id']))
     except Exception:
         LOGGER.exception('Could not keep the message of %s', entry['short_id'])
+        return None
+    return orjson.loads(resolved) if resolved else None
 
 
 def _messages_key(request_id: str) -> str:
     return f'{valkey.TICKET_REQUESTS_STREAM}:messages:{request_id}'
+
+
+def _resolved_key(request_id: str) -> str:
+    return f'{valkey.TICKET_REQUESTS_STREAM}:resolved:{request_id}'
 
 
 def _resolved_blocks(
