@@ -21,14 +21,24 @@ TICKET = {
     'assignee': 'fixer',
     'team': {'name': 'Core'},
 }
-PROJECT = {
+PROJECT: dict[str, typing.Any] = {
     'name': 'API',
     'description': 'The API\nmore text',
     'team': {'name': 'Core'},
-    'project_types': [{'name': 'Service'}],
-    'environments': [{'name': 'production'}],
+    'project_types': [{'name': 'Service', 'deployable': True}],
+    'environments': [
+        {'name': 'Testing', 'slug': 'testing', 'sort_order': 1},
+        {'name': 'Production', 'slug': 'production', 'sort_order': 2},
+    ],
+    'current_releases': {
+        'testing': {'committish': 'bbb'},
+        'production': {'committish': 'aaa'},
+    },
+    'score': 86.6,
+    'open_pr_count': 3,
     'archived': False,
 }
+LOGO = {'type': 'image', 'image_url': unfurl.LOGO_URL, 'alt_text': 'Imbi'}
 
 
 class SettingsTestCase(helpers.TestCase):
@@ -84,10 +94,11 @@ class BlockTests(helpers.TestCase):
                 {
                     'type': 'context',
                     'elements': [
+                        LOGO,
                         {
                             'type': 'mrkdwn',
                             'text': 'running · high · bug · fixer · Core',
-                        }
+                        },
                     ],
                 },
             ],
@@ -102,9 +113,67 @@ class BlockTests(helpers.TestCase):
             f'*<{PROJECT_URL}|API>*\nThe API', result[0]['text']['text']
         )
         self.assertEqual(
-            'Core · Service · production · archived',
-            result[1]['elements'][0]['text'],
+            ['*Score*\n87', '*Open PRs*\n3', '*Drift*\nTesting → Production'],
+            [f['text'] for f in result[0]['fields']],
         )
+        self.assertEqual(
+            [LOGO, {'type': 'mrkdwn', 'text': 'Core · Service · archived'}],
+            result[1]['elements'],
+        )
+
+    def test_no_score(self) -> None:
+        result = unfurl.project_blocks({**PROJECT, 'score': None}, PROJECT_URL)
+        self.assertEqual('*Score*\n—', result[0]['fields'][0]['text'])
+
+
+class DriftTests(helpers.TestCase):
+    def test_pair_drift(self) -> None:
+        self.assertEqual(
+            ['Testing → Production'], unfurl.drift_labels(PROJECT)
+        )
+
+    def test_range_proven_clean(self) -> None:
+        project = {**PROJECT, 'drift_ranges': {'aaa..bbb': False}}
+        self.assertEqual([], unfurl.drift_labels(project))
+
+    def test_same_release(self) -> None:
+        releases = {
+            'testing': {'committish': 'aaa'},
+            'production': {'committish': 'aaa'},
+        }
+        project = {**PROJECT, 'current_releases': releases}
+        self.assertEqual([], unfurl.drift_labels(project))
+
+    def test_missing_release_fails_closed(self) -> None:
+        releases = {'testing': {'committish': 'bbb'}}
+        project = {**PROJECT, 'current_releases': releases}
+        self.assertEqual(
+            ['Testing → Production'], unfurl.drift_labels(project)
+        )
+
+    def test_no_pair_across_terminal(self) -> None:
+        envs = [
+            {**PROJECT['environments'][0], 'terminal': True},
+            PROJECT['environments'][1],
+        ]
+        self.assertEqual(
+            [], unfurl.drift_labels({**PROJECT, 'environments': envs})
+        )
+
+    def test_disabled_delivery(self) -> None:
+        project = {**PROJECT, 'delivery_mode': 'disabled'}
+        self.assertEqual([], unfurl.drift_labels(project))
+
+    def test_releasable(self) -> None:
+        summary = {'head_sha': 'abc', 'commits_since_tag': 2}
+        project = {
+            **PROJECT,
+            'project_types': [{'name': 'Library', 'releasable': True}],
+            'release_summary': summary,
+        }
+        self.assertEqual(['Unreleased commits'], unfurl.drift_labels(project))
+        summary['drift_detected'] = False
+        self.assertEqual([], unfurl.drift_labels(project))
 
 
 class HandleTests(SettingsTestCase, test_create_ticket.ApiTestCase):
@@ -143,8 +212,11 @@ class HandleTests(SettingsTestCase, test_create_ticket.ApiTestCase):
         self.assertEqual('X1', kwargs['unfurl_id'])
         self.assertEqual('conversations_history', kwargs['source'])
         self.assertEqual(
-            unfurl.ticket_blocks(TICKET, TICKET_URL),
-            kwargs['unfurls'][TICKET_URL]['blocks'],
+            {
+                'color': unfurl.COLOR,
+                'blocks': unfurl.ticket_blocks(TICKET, TICKET_URL),
+            },
+            kwargs['unfurls'][TICKET_URL],
         )
 
     async def test_enterprise_event_targets_channel_and_ts(self) -> None:
@@ -159,11 +231,16 @@ class HandleTests(SettingsTestCase, test_create_ticket.ApiTestCase):
 
     async def test_project_in_second_org(self) -> None:
         self.ok('/organizations/', [{'slug': 'one'}, {'slug': 'two'}])
-        self.ok('/organizations/two/projects/p1', PROJECT)
+        self.ok('/organizations/one/projects/', [])
+        self.ok('/organizations/two/projects/', [PROJECT])
         with self.api():
             await unfurl.handle(self.event(PROJECT_URL), self.slack)
         unfurls = self.slack.chat_unfurl.await_args.kwargs['unfurls']
         self.assertEqual([PROJECT_URL], list(unfurls))
+        self.assertEqual(
+            {'slim': 'true', 'include_archived': 'true', 'project_id': 'p1'},
+            dict(self.calls[-1].url.params),
+        )
 
     async def test_unreadable_link_is_skipped(self) -> None:
         self.ok('/organizations/acme/tickets/T-12', TICKET)
