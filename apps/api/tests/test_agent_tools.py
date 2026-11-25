@@ -8,7 +8,7 @@ from unittest import mock
 import httpx
 from mcp import types as mcp_types
 
-from imbi.api import agent_tools
+from imbi.api import agent_tools, app
 
 
 def _operation(
@@ -99,6 +99,32 @@ class CatalogTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             tools['imbi.delete_project'].capability, 'destructive'
         )
+
+    async def test_default_tools_are_read_tools_of_the_api(self) -> None:
+        # The names come from the routes, so check them against the
+        # tools that fastmcp makes from the real document.
+        spec = app.create_app().openapi()
+        defaults = agent_tools.default_tools()
+        self.assertEqual(len(defaults), len(agent_tools.DEFAULT_ROUTES))
+        catalog = await agent_tools.build_catalog(spec)
+        tools = {t.key: t for t in catalog.tools}
+        self.assertEqual(defaults - set(tools), set())
+        for key in defaults:
+            with self.subTest(key=key):
+                self.assertEqual(tools[key].capability, 'read')
+                # A name collision gives the second tool a suffix.
+                self.assertNotIn(f'{key}_2', tools)
+        self.assertEqual({k for k, t in tools.items() if t.default}, defaults)
+
+    def test_with_default_tools(self) -> None:
+        app.create_app()
+        key = min(agent_tools.default_tools())
+        merged = agent_tools.with_default_tools(
+            {key: {'approval': True}, 'gh.pr': {}}
+        )
+        self.assertEqual(merged[key], {'approval': True})
+        self.assertEqual(merged['gh.pr'], {})
+        self.assertEqual(set(merged), agent_tools.default_tools() | {'gh.pr'})
 
     async def test_error(self) -> None:
         with self.assertLogs(agent_tools.LOGGER, 'ERROR'):

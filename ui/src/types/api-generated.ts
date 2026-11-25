@@ -11620,6 +11620,11 @@ export interface components {
              * @enum {string}
              */
             capability: "read" | "write" | "destructive" | "unknown";
+            /**
+             * Default
+             * @default false
+             */
+            default: boolean;
         };
         /** AgentCreate */
         AgentCreate: {
@@ -11662,7 +11667,7 @@ export interface components {
             settings?: components["schemas"]["AgentSettings-Input"];
             /**
              * Tools
-             * @description The tools that the agent can use, by tool key (<server slug>.<tool name>). A tool that is not in the map is off. builtin.Skill and builtin.Agent turn on those Claude Code built-in tools. Environment slugs must exist in the org.
+             * @description The tools that the agent can use, by tool key (<server slug>.<tool name>). A tool that is not in the map is off, except the default tools that the tool catalog marks with default: true; they are on for every agent, and an entry sets their configuration. builtin.Skill and builtin.Agent turn on those Claude Code built-in tools. Environment slugs must exist in the org.
              * @default {}
              */
             tools: {
