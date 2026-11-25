@@ -751,6 +751,7 @@ function parseNextCursor(headers: Headers): string | undefined {
 
 // fallow-ignore-next-line complexity
 export const listOperationsLog = async (
+  orgSlug: string,
   params: {
     cursor?: string
     filters?: OperationsLogFilters
@@ -767,7 +768,7 @@ export const listOperationsLog = async (
   }
   const { data, headers } =
     await apiClient.getWithHeaders<OperationsLogEnvelope>(
-      '/operations-log/',
+      `/organizations/${encodeURIComponent(orgSlug)}/operations-log/`,
       query,
       signal,
     )
@@ -778,9 +779,13 @@ export const listOperationsLog = async (
   }
 }
 
-export const getOperationsLogEntry = (entryId: string, signal?: AbortSignal) =>
+export const getOperationsLogEntry = (
+  orgSlug: string,
+  entryId: string,
+  signal?: AbortSignal,
+) =>
   apiClient.get<OperationsLogRecord>(
-    `/operations-log/${encodeURIComponent(entryId)}`,
+    `/organizations/${encodeURIComponent(orgSlug)}/operations-log/${encodeURIComponent(entryId)}`,
     undefined,
     signal,
   )

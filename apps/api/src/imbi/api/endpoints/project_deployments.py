@@ -36,6 +36,7 @@ from imbi.api.endpoints._helpers import (
     deployed_operation_log,
     fetch_or_404,
     lookup_project_links,
+    lookup_project_organization_id,
     lookup_project_slugs,
     lookup_project_type_slugs,
     persist_link_writeback,
@@ -1170,6 +1171,7 @@ def _resolve_credentials(
 
 async def _record_deployment_audit(
     *,
+    db: graph.Graph,
     project_id: str,
     project_slug: str,
     environment_slug: str,
@@ -1213,6 +1215,7 @@ async def _record_deployment_audit(
     """
     entry = deployed_operation_log(
         project_id=project_id,
+        organization_id=await lookup_project_organization_id(db, project_id),
         project_slug=project_slug,
         environment_slug=environment_slug,
         recorded_by=recorded_by,
@@ -3708,6 +3711,7 @@ async def _handle_deploy(
         # the activity history and can lag by milliseconds.
         background.add_task(
             _record_deployment_audit,
+            db=db,
             project_id=project_id,
             project_slug=ctx.project_slug,
             environment_slug=body.environment,
@@ -4779,6 +4783,7 @@ async def _handle_promote(
     # response goes out (same rationale as the deploy path above).
     background.add_task(
         _record_deployment_audit,
+        db=db,
         project_id=project_id,
         project_slug=ctx.project_slug,
         environment_slug=body.to_environment,
@@ -5916,6 +5921,7 @@ async def complete_promote_build(
         db, project_id=project_id, release_id=release_id
     )
     await _record_deployment_audit(
+        db=db,
         project_id=project_id,
         project_slug=ctx.project_slug,
         environment_slug=to_environment,
@@ -7676,6 +7682,7 @@ async def cut_release(
     )
     background.add_task(
         _record_deployment_audit,
+        db=db,
         project_id=project_id,
         project_slug=ctx.project_slug,
         environment_slug='',
@@ -7861,6 +7868,7 @@ async def publish_release(
     )
     background.add_task(
         _record_deployment_audit,
+        db=db,
         project_id=project_id,
         project_slug=ctx.project_slug,
         environment_slug='',
@@ -8607,6 +8615,7 @@ async def delete_release_blocker(
     )
     background.add_task(
         _record_deployment_audit,
+        db=db,
         project_id=project_id,
         project_slug=project_slug,
         environment_slug='',

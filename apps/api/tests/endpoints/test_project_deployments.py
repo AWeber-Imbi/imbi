@@ -3117,6 +3117,7 @@ class DeployedOperationLogTestCase(unittest.TestCase):
 
         entry = deployed_operation_log(
             project_id='p1',
+            organization_id='org-1',
             project_slug='webform',
             environment_slug='production',
             recorded_by='dang@aweber.com',
@@ -3141,10 +3142,18 @@ class RecordDeploymentAuditTestCase(unittest.IsolatedAsyncioTestCase):
     """A release-action row is complete when it is written (#488)."""
 
     async def _record(self, environment_slug: str) -> dict[str, typing.Any]:
-        with mock.patch(
-            f'{_MODULE}.iggy.publish_rows', new_callable=mock.AsyncMock
-        ) as publish:
+        db = mock.AsyncMock()
+        with (
+            mock.patch(
+                f'{_MODULE}.iggy.publish_rows', new_callable=mock.AsyncMock
+            ) as publish,
+            mock.patch(
+                f'{_MODULE}.lookup_project_organization_id',
+                mock.AsyncMock(return_value='org-1'),
+            ) as lookup,
+        ):
             await project_deployments._record_deployment_audit(
+                db=db,
                 project_id='p1',
                 project_slug='webform',
                 environment_slug=environment_slug,
@@ -3155,7 +3164,12 @@ class RecordDeploymentAuditTestCase(unittest.IsolatedAsyncioTestCase):
                 plugin_slug='github',
                 run_url=None,
             )
+        lookup.assert_awaited_once_with(db, 'p1')
         return publish.await_args.args[2][0]
+
+    async def test_row_records_the_project_organization(self) -> None:
+        row = await self._record('production')
+        self.assertEqual('org-1', row['organization_id'])
 
     async def test_release_action_row_is_born_completed(self) -> None:
         row = await self._record('')

@@ -724,6 +724,10 @@ class ExecuteOpslogBackfillTests(unittest.IsolatedAsyncioTestCase):
                 'imbi.api.endpoints._helpers.lookup_project_slugs',
                 mock.AsyncMock(return_value=('proj', 'team')),
             ),
+            mock.patch(
+                'imbi.api.endpoints._helpers.lookup_project_organization_id',
+                mock.AsyncMock(return_value='org-1'),
+            ),
         ):
             outcome = await operations.execute_opslog_backfill(
                 db, mock.AsyncMock(), 'p1', ctx=_ctx()
@@ -754,6 +758,7 @@ class ExecuteOpslogBackfillTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual('Deployed', row['entry_type'])
         self.assertEqual('alice@example.com', row['performed_by'])
         self.assertEqual('maintenance-opslog-backfill', row['recorded_by'])
+        self.assertEqual('org-1', row['organization_id'])
         self.assertEqual('production', row['environment_slug'])
         self.assertEqual('v1.2.3', row['version'])
         self.assertEqual('run-1', row['external_run_id'])

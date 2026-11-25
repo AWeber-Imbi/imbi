@@ -2770,15 +2770,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * List Operation Logs
-         * @description List operations log entries (newest first, keyset paginated).
-         */
-        get: operations["list_operation_logs_api_operations_log__get"];
+        get?: never;
         put?: never;
         /**
          * Create Operation Log
          * @description Create a new operations log entry.
+         *
+         *     The entry belongs to the organization that owns its project.
          */
         post: operations["create_operation_log_api_operations_log__post"];
         delete?: never;
@@ -2810,34 +2808,6 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
-        trace?: never;
-    };
-    "/api/operations-log/{entry_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Operation Log
-         * @description Get a single operations log entry.
-         */
-        get: operations["get_operation_log_api_operations_log__entry_id__get"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete Operation Log
-         * @description Soft-delete an operations log entry (tombstone insert).
-         */
-        delete: operations["delete_operation_log_api_operations_log__entry_id__delete"];
-        options?: never;
-        head?: never;
-        /**
-         * Patch Operation Log
-         * @description Apply a JSON Patch to an operations log entry.
-         */
-        patch: operations["patch_operation_log_api_operations_log__entry_id__patch"];
         trace?: never;
     };
     "/api/organizations/{org_slug}/teams/": {
@@ -3993,6 +3963,57 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/operations-log/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Operation Logs
+         * @description List the operations log entries of the organization (newest
+         *     first, keyset paginated).
+         */
+        get: operations["list_operation_logs_api_organizations__org_slug__operations_log__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/operations-log/{entry_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Operation Log
+         * @description Get a single operations log entry of the organization.
+         */
+        get: operations["get_operation_log_api_organizations__org_slug__operations_log__entry_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Operation Log
+         * @description Soft-delete an operations log entry of the organization
+         *     (tombstone insert).
+         */
+        delete: operations["delete_operation_log_api_organizations__org_slug__operations_log__entry_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Operation Log
+         * @description Apply a JSON Patch to an operations log entry of the
+         *     organization.
+         */
+        patch: operations["patch_operation_log_api_organizations__org_slug__operations_log__entry_id__patch"];
         trace?: never;
     };
     "/api/organizations/{org_slug}/projects/{project_id}/operations-log/": {
@@ -28486,46 +28507,6 @@ export interface operations {
             };
         };
     };
-    list_operation_logs_api_operations_log__get: {
-        parameters: {
-            query?: {
-                limit?: number;
-                cursor?: string | null;
-                project_id?: string | null;
-                project_slug?: string | null;
-                environment_slug?: string | null;
-                entry_type?: string | null;
-                ticket_slug?: string | null;
-                performed_by?: string | null;
-                since?: string | null;
-                until?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OperationLogListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     create_operation_log_api_operations_log__post: {
         parameters: {
             query?: never;
@@ -28577,101 +28558,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PluginOpsLogTemplatesResponse"];
-                };
-            };
-        };
-    };
-    get_operation_log_api_operations_log__entry_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                entry_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OperationLogResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_operation_log_api_operations_log__entry_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                entry_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    patch_operation_log_api_operations_log__entry_id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                entry_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PatchOperation"][];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OperationLogResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -30631,6 +30517,146 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventsPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_operation_logs_api_organizations__org_slug__operations_log__get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+                project_id?: string | null;
+                project_slug?: string | null;
+                environment_slug?: string | null;
+                entry_type?: string | null;
+                ticket_slug?: string | null;
+                performed_by?: string | null;
+                since?: string | null;
+                until?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationLogListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_operation_log_api_organizations__org_slug__operations_log__entry_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationLogResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_operation_log_api_organizations__org_slug__operations_log__entry_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_operation_log_api_organizations__org_slug__operations_log__entry_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchOperation"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationLogResponse"];
                 };
             };
             /** @description Validation Error */

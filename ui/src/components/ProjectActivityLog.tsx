@@ -92,13 +92,14 @@ export function ProjectActivityLog({ orgSlug, projectId, projectSlug }: Props) {
   })
 
   const { data: opsPage, isPending: opsPending } = useQuery({
-    enabled: Boolean(projectSlug),
+    enabled: Boolean(orgSlug) && Boolean(projectSlug),
     queryFn: ({ signal }) =>
       listOperationsLog(
+        orgSlug,
         { filters: { project_slug: projectSlug }, limit: MAX_ROWS },
         signal,
       ),
-    queryKey: ['opsLog', projectSlug],
+    queryKey: ['opsLog', orgSlug, projectSlug],
     staleTime: 30_000,
   })
 

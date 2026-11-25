@@ -74,6 +74,29 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
+## Unreleased
+
+1. The operations log now belongs to an organization. Each entry records
+   the organization that owns its project in the new ClickHouse column
+   `operations_log.organization_id`, and the list, get, change, and
+   delete routes moved to `/organizations/{org_slug}/operations-log/`.
+   The global `GET /operations-log/` and the global
+   `GET`, `PATCH`, and `DELETE /operations-log/{entry_id}` are removed.
+   `POST /operations-log/` stays. Do these steps in this order:
+    1. **Before you deploy**, run `imbi-api setup-clickhouse`. It adds the
+       column (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`). Read its log:
+       it continues after a failed statement.
+    2. Deploy imbi-api and imbi-ui together. The new UI reads only the
+       new routes.
+    3. Run **Backfill Organizations to Operations Log**
+       (`opslog-organization-backfill`) one time from
+       **Admin > Global Admin > Maintenance**. Until it completes, the
+       entries written before the deploy do not show in the operations
+       log. Run it when few deploys are in progress: an entry that
+       changes while the operation reads it loses that change. Entries
+       of a project that is no longer in the graph keep no
+       organization and do not show.
+
 ## 2.62.0
 
 1. **Before you deploy**, make sure that every imbi-api pod runs 2.59.0

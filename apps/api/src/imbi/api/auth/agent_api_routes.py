@@ -77,6 +77,8 @@ ALLOWED_ROUTES: frozenset[str] = frozenset(
         'GET /organizations/{org_slug}/integrations/{slug}/capabilities/{kind}/assignments',
         'GET /organizations/{org_slug}/link-definitions/',
         'GET /organizations/{org_slug}/link-definitions/{slug}',
+        'GET /organizations/{org_slug}/operations-log/',
+        'GET /organizations/{org_slug}/operations-log/{entry_id}',
         'GET /organizations/{org_slug}/project-types/',
         'GET /organizations/{org_slug}/project-types/{slug}',
         'GET /organizations/{org_slug}/project-types/{type_slug}/documents/',
@@ -336,13 +338,13 @@ REFUSED_ROUTES: frozenset[str] = frozenset(
         'PUT /organizations/{org_slug}/component-releases/{component_release_id}/advisories/{cve_id}',
         'PUT /organizations/{org_slug}/component-releases/{component_release_id}/status',
         'PUT /organizations/{org_slug}/components/{component_id}/status',
-        # Lists and records of every organization: an agent reaches its own organization's data only. Use the project routes instead: GET /organizations/{org_slug}/projects/{project_id}/events/ and GET /organizations/{org_slug}/projects/{project_id}/operations-log/.
-        'DELETE /operations-log/{entry_id}',
+        # Operations log edits: an entry is an audit record. An agent adds entries (POST /operations-log/) but does not change or delete them.
+        'DELETE /organizations/{org_slug}/operations-log/{entry_id}',
+        'PATCH /organizations/{org_slug}/operations-log/{entry_id}',
+        # Lists and records of every organization: an agent reaches its own organization's data only. Use the project route instead: GET /organizations/{org_slug}/projects/{project_id}/events/.
         'DELETE /uploads/{upload_id}',
         'GET /events/',
         'GET /events/{event_id}',
-        'GET /operations-log/',
-        'GET /operations-log/{entry_id}',
         'GET /organizations/',
         'GET /uploads/',
         'GET /uploads/{upload_id}',
@@ -355,7 +357,6 @@ REFUSED_ROUTES: frozenset[str] = frozenset(
         'GET /users/{email}/contributions',
         'GET /users/{email}/identities',
         'GET /users/{email}/stats',
-        'PATCH /operations-log/{entry_id}',
         'POST /uploads/',
         # Platform administration reads: platform-wide, not data of one organization.
         'GET /admin/dashboard/iggy',

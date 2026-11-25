@@ -808,6 +808,7 @@ async def execute_opslog_backfill(
     """
     from imbi.api.endpoints._helpers import (
         deployed_operation_log,
+        lookup_project_organization_id,
         lookup_project_slugs,
     )
     from imbi.api.endpoints.projects import ops_log_version_candidates
@@ -825,6 +826,7 @@ async def execute_opslog_backfill(
     existing_run_ids, existing_rows = await _existing_opslog_rows(project_id)
     existing_env_versions = set(existing_rows)
     project_slug, _team_slug = await lookup_project_slugs(db, project_id)
+    org_id = await lookup_project_organization_id(db, project_id)
 
     pending: list[common_models.OperationLog] = []
     repairs: list[dict[str, typing.Any]] = []
@@ -868,6 +870,7 @@ async def execute_opslog_backfill(
             pending.append(
                 deployed_operation_log(
                     project_id=project_id,
+                    organization_id=org_id,
                     project_slug=project_slug,
                     environment_slug=env_slug,
                     recorded_by=OPSLOG_BACKFILL_RECORDED_BY,
@@ -913,6 +916,58 @@ async def execute_opslog_backfill(
         f'{len(repairs)}.',
         written=len(pending),
         repaired=len(repairs),
+    )
+    return 'succeeded'
+
+
+#: The rows of a project written before ``organization_id`` existed.
+#: No ``is_deleted`` filter: a tombstone is the latest version of its
+#: row, so it goes back with the organization and stays deleted.
+_OPSLOG_WITHOUT_ORG_SQL: typing.LiteralString = (
+    'SELECT * FROM operations_log FINAL'
+    ' WHERE project_id = {project_id:String}'
+    " AND organization_id = ''"
+)
+
+
+async def execute_opslog_organization_backfill(
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
+) -> ExecuteOutcome:
+    """Fill ``organization_id`` in on the project's ``operations_log``
+    rows that have none, from the organization that owns the project.
+
+    The org-scoped routes read only the rows of their organization, so a
+    row without one is not shown. Each row goes back with a bumped
+    ``_row_version``, so the ``ReplacingMergeTree`` replaces it -- the
+    same read-modify-insert as ``complete_opslog_entry``. A row that
+    changes between the read and the insert loses that change, so run it
+    when few deploys are in progress.
+    """
+    from imbi.api.endpoints._helpers import lookup_project_organization_id
+    from imbi.api.endpoints.operations_log import next_row_version
+
+    action = 'opslog-organization-backfill'
+    org_id = await lookup_project_organization_id(db, project_id)
+    if not org_id:
+        return _skip(ctx, action, _NO_ORG)
+    rows = await clickhouse.client.Clickhouse.get_instance().query(
+        _OPSLOG_WITHOUT_ORG_SQL, {'project_id': project_id}
+    )
+    if not rows:
+        return _skip(ctx, action, 'Every entry already has its organization.')
+    for row in rows:
+        row['organization_id'] = org_id
+        row['_row_version'] = next_row_version(int(row['_row_version']))
+    await iggy.publish_rows('operations_log', 'maintenance', rows)
+    ctx.log.record(
+        'succeeded',
+        action,
+        f'Filled the organization in on {len(rows)} entry(ies).',
+        written=len(rows),
     )
     return 'succeeded'
 

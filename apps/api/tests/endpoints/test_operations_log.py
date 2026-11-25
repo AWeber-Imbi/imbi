@@ -5,8 +5,10 @@ import datetime
 import json
 import typing
 import unittest
+import uuid
 from unittest import mock
 
+import httpx
 from fastapi import testclient
 
 from apps.api.tests import support
@@ -14,8 +16,13 @@ from imbi.api import models as api_models
 from imbi.api.auth import organizations as org_auth
 from imbi.api.auth import permissions as api_permissions
 from imbi.api.endpoints import operations_log
+from imbi.api.maintenance import log as maintenance_log
+from imbi.api.maintenance import operations
 from imbi.common import clickhouse as imbi_clickhouse
-from imbi.common import iggy
+from imbi.common import graph, iggy
+
+#: The org-scoped routes of organization ``engineering`` (id ``org-1``).
+ORG_LOG = '/organizations/engineering/operations-log'
 
 ALL_OPSLOG_PERMS: set[str] = {
     'operations_log:create',
@@ -51,6 +58,7 @@ def _sample_row(**overrides: typing.Any) -> dict[str, typing.Any]:
         '_row_version': 1,
         'is_deleted': 0,
         'plugin_slug': '',
+        'organization_id': 'org-1',
     }
     base.update(overrides)
     return base
@@ -84,6 +92,19 @@ class _OpsLogTestBase(support.SharedAppTestCase):
         self.test_app.dependency_overrides[org_auth.member_project_org_id] = (
             lambda: 'org-1'
         )
+        self.test_app.dependency_overrides[org_auth.member_org_id] = (
+            lambda: 'org-1'
+        )
+        self.test_app.dependency_overrides[graph._inject_graph] = (
+            lambda: mock.AsyncMock()
+        )
+        org_patcher = mock.patch.object(
+            operations_log,
+            'lookup_project_organization_id',
+            mock.AsyncMock(return_value='org-1'),
+        )
+        self.mock_org_lookup = org_patcher.start()
+        self.addCleanup(org_patcher.stop)
         self.test_app.dependency_overrides[
             api_permissions.get_current_user
         ] = _current_user
@@ -219,6 +240,21 @@ class PostOperationLogTests(_OpsLogTestBase):
         self.assertNotIn('is_deleted', body)
         self.mock_publish.assert_awaited_once()
 
+    def test_create_records_the_project_organization(self) -> None:
+        body = self._valid_body() | {'organization_id': 'org-2'}
+        response = self.client.post('/operations-log/', json=body)
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual('org-1', self._published_row()['organization_id'])
+        self.assertEqual('proj-xyz', self.mock_org_lookup.await_args.args[1])
+
+    def test_create_unknown_project_is_404(self) -> None:
+        self.mock_org_lookup.return_value = ''
+        response = self.client.post(
+            '/operations-log/', json=self._valid_body()
+        )
+        self.assertEqual(response.status_code, 404)
+        self.mock_publish.assert_not_awaited()
+
     def test_create_with_explicit_performed_by(self) -> None:
         body = self._valid_body() | {'performed_by': 'ci-bot'}
         response = self.client.post('/operations-log/', json=body)
@@ -250,7 +286,7 @@ class GetSingleEntryTests(_OpsLogTestBase):
     def test_get_returns_200(self) -> None:
         self.mock_query.return_value = [_sample_row()]
 
-        response = self.client.get('/operations-log/entry-abc')
+        response = self.client.get(f'{ORG_LOG}/entry-abc')
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body['id'], 'entry-abc')
@@ -258,18 +294,20 @@ class GetSingleEntryTests(_OpsLogTestBase):
         self.assertNotIn('_row_version', body)
         self.assertNotIn('is_deleted', body)
         self.mock_query.assert_awaited_once()
-        sent_sql = self.mock_query.await_args.args[0]
+        sent_sql, sent_params = self.mock_query.await_args.args
         self.assertIn('FINAL', sent_sql)
         self.assertIn('is_deleted = 0', sent_sql)
+        self.assertIn('organization_id = {org_id:String}', sent_sql)
+        self.assertEqual('org-1', sent_params['org_id'])
 
     def test_get_not_found(self) -> None:
         self.mock_query.return_value = []
-        response = self.client.get('/operations-log/missing-id')
+        response = self.client.get(f'{ORG_LOG}/missing-id')
         self.assertEqual(response.status_code, 404)
 
     def test_get_forbidden_without_permission(self) -> None:
         self._revoke_permissions()
-        response = self.client.get('/operations-log/entry-abc')
+        response = self.client.get(f'{ORG_LOG}/entry-abc')
         self.assertEqual(response.status_code, 403)
         self.mock_query.assert_not_awaited()
 
@@ -287,7 +325,7 @@ class ListEntriesTests(_OpsLogTestBase):
 
     def test_list_default_limit(self) -> None:
         self._stub_list(self._rows(3))
-        response = self.client.get('/operations-log/')
+        response = self.client.get(f'{ORG_LOG}/')
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(len(body['data']), 3)
@@ -300,7 +338,7 @@ class ListEntriesTests(_OpsLogTestBase):
     def test_list_has_next_link_when_more_results(self) -> None:
         # Endpoint requests limit+1 rows; we return 3 for limit=2.
         self._stub_list(self._rows(3))
-        response = self.client.get('/operations-log/?limit=2')
+        response = self.client.get(f'{ORG_LOG}/?limit=2')
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(len(body['data']), 2)  # extra row popped
@@ -314,7 +352,7 @@ class ListEntriesTests(_OpsLogTestBase):
 
         rows = self._rows(3)
         self._stub_list(rows)
-        response = self.client.get('/operations-log/?limit=2')
+        response = self.client.get(f'{ORG_LOG}/?limit=2')
         link = response.headers['Link']
         match = re.search(r'<[^>]*cursor=([^&>]+)[^>]*>;\s*rel="next"', link)
         assert match is not None, link
@@ -328,13 +366,13 @@ class ListEntriesTests(_OpsLogTestBase):
         self.assertEqual(ts, rows[1]['occurred_at'])
 
     def test_list_invalid_cursor(self) -> None:
-        response = self.client.get('/operations-log/?cursor=!!!bad!!!')
+        response = self.client.get(f'{ORG_LOG}/?cursor=!!!bad!!!')
         self.assertEqual(response.status_code, 400)
 
     def test_list_limit_out_of_range(self) -> None:
-        response = self.client.get('/operations-log/?limit=0')
+        response = self.client.get(f'{ORG_LOG}/?limit=0')
         self.assertEqual(response.status_code, 400)
-        response = self.client.get('/operations-log/?limit=501')
+        response = self.client.get(f'{ORG_LOG}/?limit=501')
         self.assertEqual(response.status_code, 400)
 
     def test_list_reads_payload_only_for_the_selected_page(self) -> None:
@@ -346,7 +384,7 @@ class ListEntriesTests(_OpsLogTestBase):
         # pick the page keys from the light ``(occurred_at, id)`` columns
         # in a subquery, then read the full row only for those keys.
         self._stub_list([])
-        response = self.client.get('/operations-log/')
+        response = self.client.get(f'{ORG_LOG}/')
         self.assertEqual(response.status_code, 200)
         sql = self.mock_query.await_args_list[0].args[0]
         # Outer query reads the full (heavy) row exactly once...
@@ -363,9 +401,20 @@ class ListEntriesTests(_OpsLogTestBase):
         self.assertNotIn('notes', inner_page)
         self.assertIn('LIMIT {row_limit:UInt32}', inner)
 
+    def test_list_reads_only_the_organization(self) -> None:
+        self._stub_list([])
+        response = self.client.get(f'{ORG_LOG}/?organization_id=org-2')
+        self.assertEqual(response.status_code, 200)
+        for call in self.mock_query.await_args_list:
+            sent_sql, sent_params = call.args
+            self.assertIn(
+                'organization_id = {organization_id:String}', sent_sql
+            )
+            self.assertEqual('org-1', sent_params['organization_id'])
+
     def test_list_project_slug_filter(self) -> None:
         self._stub_list(self._rows(1))
-        response = self.client.get('/operations-log/?project_slug=imbi-api')
+        response = self.client.get(f'{ORG_LOG}/?project_slug=imbi-api')
         self.assertEqual(response.status_code, 200)
         sent_sql, sent_params = self.mock_query.await_args_list[0].args
         self.assertIn('project_slug = {project_slug:String}', sent_sql)
@@ -375,9 +424,7 @@ class ListEntriesTests(_OpsLogTestBase):
         self._stub_list([])
         since = '2026-04-01T00:00:00Z'
         until = '2026-05-01T00:00:00Z'
-        response = self.client.get(
-            f'/operations-log/?since={since}&until={until}'
-        )
+        response = self.client.get(f'{ORG_LOG}/?since={since}&until={until}')
         self.assertEqual(response.status_code, 200)
         sent_sql, sent_params = self.mock_query.await_args_list[0].args
         self.assertIn('occurred_at >= {since:DateTime64(3)}', sent_sql)
@@ -386,12 +433,12 @@ class ListEntriesTests(_OpsLogTestBase):
         self.assertIn('until', sent_params)
 
     def test_list_invalid_since(self) -> None:
-        response = self.client.get('/operations-log/?since=not-a-date')
+        response = self.client.get(f'{ORG_LOG}/?since=not-a-date')
         self.assertEqual(response.status_code, 400)
 
     def test_list_forbidden_without_permission(self) -> None:
         self._revoke_permissions()
-        response = self.client.get('/operations-log/')
+        response = self.client.get(f'{ORG_LOG}/')
         self.assertEqual(response.status_code, 403)
         self.mock_query.assert_not_awaited()
 
@@ -407,7 +454,7 @@ class PatchOperationLogTests(_OpsLogTestBase):
     def test_patch_replace_description(self) -> None:
         self._setup_existing()
         response = self.client.patch(
-            '/operations-log/entry-abc',
+            f'{ORG_LOG}/entry-abc',
             json=[
                 {
                     'op': 'replace',
@@ -422,12 +469,22 @@ class PatchOperationLogTests(_OpsLogTestBase):
         columns = self._published_row()
         self.assertGreater(columns['_row_version'], 1)
         self.assertEqual(columns['id'], 'entry-abc')
+        self.assertEqual(columns['organization_id'], 'org-1')
+        self.assertEqual('org-1', self.mock_query.await_args.args[1]['org_id'])
+
+    def test_patch_readonly_organization_id_is_400(self) -> None:
+        self._setup_existing(organization_id='org-1')
+        response = self.client.patch(
+            f'{ORG_LOG}/entry-abc',
+            json=[{'op': 'replace', 'path': '/organization_id', 'value': 'x'}],
+        )
+        self.assertEqual(response.status_code, 400)
 
     def test_patch_refuses_agent_task_entries(self) -> None:
         # A change to Agent Task.
         self._setup_existing()
         response = self.client.patch(
-            '/operations-log/entry-abc',
+            f'{ORG_LOG}/entry-abc',
             json=[
                 {'op': 'replace', 'path': '/entry_type', 'value': 'Agent Task'}
             ],
@@ -436,7 +493,7 @@ class PatchOperationLogTests(_OpsLogTestBase):
         # A change to a row that is Agent Task.
         self._setup_existing(entry_type='Agent Task')
         response = self.client.patch(
-            '/operations-log/entry-abc',
+            f'{ORG_LOG}/entry-abc',
             json=[{'op': 'replace', 'path': '/description', 'value': 'x'}],
         )
         self.assertEqual(response.status_code, 400)
@@ -445,7 +502,7 @@ class PatchOperationLogTests(_OpsLogTestBase):
     def test_patch_readonly_id_is_400(self) -> None:
         self._setup_existing()
         response = self.client.patch(
-            '/operations-log/entry-abc',
+            f'{ORG_LOG}/entry-abc',
             json=[{'op': 'replace', 'path': '/id', 'value': 'x'}],
         )
         self.assertEqual(response.status_code, 400)
@@ -453,7 +510,7 @@ class PatchOperationLogTests(_OpsLogTestBase):
     def test_patch_readonly_occurred_at_is_400(self) -> None:
         self._setup_existing()
         response = self.client.patch(
-            '/operations-log/entry-abc',
+            f'{ORG_LOG}/entry-abc',
             json=[
                 {
                     'op': 'replace',
@@ -467,7 +524,7 @@ class PatchOperationLogTests(_OpsLogTestBase):
     def test_patch_readonly_row_version_is_400(self) -> None:
         self._setup_existing()
         response = self.client.patch(
-            '/operations-log/entry-abc',
+            f'{ORG_LOG}/entry-abc',
             json=[{'op': 'replace', 'path': '/row_version', 'value': 99}],
         )
         self.assertEqual(response.status_code, 400)
@@ -475,7 +532,7 @@ class PatchOperationLogTests(_OpsLogTestBase):
     def test_patch_test_op_failure_is_422(self) -> None:
         self._setup_existing()
         response = self.client.patch(
-            '/operations-log/entry-abc',
+            f'{ORG_LOG}/entry-abc',
             json=[
                 {
                     'op': 'test',
@@ -489,7 +546,7 @@ class PatchOperationLogTests(_OpsLogTestBase):
     def test_patch_not_found(self) -> None:
         self.mock_query.return_value = []
         response = self.client.patch(
-            '/operations-log/missing',
+            f'{ORG_LOG}/missing',
             json=[
                 {
                     'op': 'replace',
@@ -503,7 +560,7 @@ class PatchOperationLogTests(_OpsLogTestBase):
     def test_patch_forbidden_without_permission(self) -> None:
         self._revoke_permissions()
         response = self.client.patch(
-            '/operations-log/entry-abc',
+            f'{ORG_LOG}/entry-abc',
             json=[
                 {
                     'op': 'replace',
@@ -547,32 +604,33 @@ class ProjectScopedListTests(_OpsLogTestBase):
 class DeleteOperationLogTests(_OpsLogTestBase):
     def test_delete_204(self) -> None:
         self.mock_query.return_value = [_sample_row()]
-        response = self.client.delete('/operations-log/entry-abc')
+        response = self.client.delete(f'{ORG_LOG}/entry-abc')
         self.assertEqual(response.status_code, 204)
         row = self._published_row()
         self.assertEqual(row['id'], 'entry-abc')
         self.assertEqual(row['is_deleted'], 1)
+        self.assertEqual('org-1', self.mock_query.await_args.args[1]['org_id'])
         self.assertGreater(row['_row_version'], 1)
 
     def test_delete_idempotent_after_tombstone(self) -> None:
         # First delete: row exists.
         self.mock_query.return_value = [_sample_row()]
-        first = self.client.delete('/operations-log/entry-abc')
+        first = self.client.delete(f'{ORG_LOG}/entry-abc')
         self.assertEqual(first.status_code, 204)
 
         # Second delete: tombstoned rows are invisible due to is_deleted = 0.
         self.mock_query.return_value = []
-        second = self.client.delete('/operations-log/entry-abc')
+        second = self.client.delete(f'{ORG_LOG}/entry-abc')
         self.assertEqual(second.status_code, 404)
 
     def test_delete_not_found(self) -> None:
         self.mock_query.return_value = []
-        response = self.client.delete('/operations-log/missing')
+        response = self.client.delete(f'{ORG_LOG}/missing')
         self.assertEqual(response.status_code, 404)
 
     def test_delete_forbidden_without_permission(self) -> None:
         self._revoke_permissions()
-        response = self.client.delete('/operations-log/entry-abc')
+        response = self.client.delete(f'{ORG_LOG}/entry-abc')
         self.assertEqual(response.status_code, 403)
 
 
@@ -663,6 +721,8 @@ class CompleteOpslogEntryTestCase(unittest.IsolatedAsyncioTestCase):
         row_dict = rows[0]
         self.assertEqual(row_dict['completed_at'], now)
         self.assertGreater(int(row_dict['_row_version']), 1)
+        # The gateway's status report keeps the row in its organization.
+        self.assertEqual('org-1', row_dict['organization_id'])
 
     async def _complete(
         self, description: str, status: str | None
@@ -734,3 +794,130 @@ class CompleteOpslogEntryTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_keeps_a_free_text_description(self) -> None:
         row = await self._complete('Rolled out v2.4.0', 'failed')
         self.assertEqual('Rolled out v2.4.0', row['description'])
+
+
+class OrganizationScopeTests(support.SharedAppAsyncTestCase):
+    """Against the test ClickHouse: a member of one organization never
+    reaches the entries of another, and the backfill brings the rows
+    written before ``organization_id`` into the list of their
+    organization."""
+
+    async def asyncSetUp(self) -> None:
+        suffix = uuid.uuid4().hex
+        self.org_a = f'org-a-{suffix}'
+        self.org_b = f'org-b-{suffix}'
+        self.project = f'project-{suffix}'
+        self.caller_org = self.org_a
+        user = api_models.User(
+            email='alice@example.com',
+            display_name='Alice',
+            is_active=True,
+            is_admin=False,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+
+        async def current_user() -> api_permissions.AuthContext:
+            return api_permissions.AuthContext(
+                user=user,
+                session_id='test-session',
+                auth_method='jwt',
+                permissions=set(ALL_OPSLOG_PERMS),
+            )
+
+        overrides = self.test_app.dependency_overrides
+        overrides[api_permissions.get_current_user] = current_user
+        overrides[org_auth.member_org_id] = lambda: self.caller_org
+        self.client = httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=self.test_app),
+            base_url='http://test',
+        )
+        self.addAsyncCleanup(self.client.aclose)
+        self.enterContext(support.sink_to_clickhouse())
+
+    async def _insert(
+        self, entry_id: str, org_id: str, *, is_deleted: int = 0
+    ) -> None:
+        await imbi_clickhouse.command(
+            'INSERT INTO imbi.operations_log (id, occurred_at, recorded_at,'
+            ' recorded_by, project_id, project_slug, environment_slug,'
+            ' entry_type, description, is_deleted, organization_id) VALUES'
+            " ({id:String}, now64(3), now64(3), 'test', {pid:String}, 'p',"
+            " 'prod', 'Deployed', 'd', {deleted:UInt8}, {org:String})",
+            {
+                'id': entry_id,
+                'pid': self.project,
+                'deleted': is_deleted,
+                'org': org_id,
+            },
+        )
+
+    async def _listed(self) -> set[str]:
+        response = await self.client.get(f'{ORG_LOG}/?limit=500')
+        self.assertEqual(response.status_code, 200, response.text)
+        return {entry['id'] for entry in response.json()['data']}
+
+    async def test_a_member_never_reaches_another_organization(
+        self,
+    ) -> None:
+        await self._insert('mine', self.org_a)
+        await self._insert('theirs', self.org_b)
+        self.assertEqual({'mine'}, await self._listed())
+        patch = [{'op': 'replace', 'path': '/description', 'value': 'x'}]
+        responses = [
+            await self.client.get(f'{ORG_LOG}/theirs'),
+            await self.client.patch(f'{ORG_LOG}/theirs', json=patch),
+            await self.client.delete(f'{ORG_LOG}/theirs'),
+        ]
+        self.assertEqual([404] * 3, [r.status_code for r in responses])
+        # Untouched: the owner still reads it as it was.
+        self.caller_org = self.org_b
+        response = await self.client.get(f'{ORG_LOG}/theirs')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual('d', response.json()['description'])
+
+    async def test_backfill_shows_old_rows_in_the_organization(self) -> None:
+        await self._insert('old', '')
+        await self._insert('old-deleted', '', is_deleted=1)
+        self.assertEqual(set(), await self._listed())
+        self.enterContext(
+            mock.patch(
+                'imbi.api.endpoints._helpers.lookup_project_organization_id',
+                mock.AsyncMock(return_value=self.org_a),
+            )
+        )
+        ctx = maintenance_log.MaintenanceContext(
+            run_id='run1',
+            attempt_id='attempt1',
+            item_id=self.project,
+            project_id=self.project,
+            project_slug='',
+            log=maintenance_log.ItemLog(
+                'slug', 'run1', 'attempt1', self.project, self.project
+            ),
+        )
+        outcome = await operations.execute_opslog_organization_backfill(
+            mock.AsyncMock(), mock.AsyncMock(), self.project, ctx=ctx
+        )
+        self.assertEqual('succeeded', outcome)
+        self.assertEqual({'old'}, await self._listed())
+        rows = await imbi_clickhouse.query(
+            'SELECT id, is_deleted, organization_id FROM operations_log'
+            ' FINAL WHERE project_id = {pid:String} ORDER BY id',
+            {'pid': self.project},
+        )
+        self.assertEqual(
+            [
+                {'id': 'old', 'is_deleted': 0, 'organization_id': self.org_a},
+                {
+                    'id': 'old-deleted',
+                    'is_deleted': 1,
+                    'organization_id': self.org_a,
+                },
+            ],
+            rows,
+        )
+        # A second run has nothing left to do.
+        outcome = await operations.execute_opslog_organization_backfill(
+            mock.AsyncMock(), mock.AsyncMock(), self.project, ctx=ctx
+        )
+        self.assertEqual('skipped', outcome)

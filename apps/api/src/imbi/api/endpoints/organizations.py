@@ -48,7 +48,10 @@ from .environments import environments_router
 from .events import events_project_router
 from .integrations import integrations_router
 from .link_definitions import link_definitions_router
-from .operations_log import operations_log_project_router
+from .operations_log import (
+    operations_log_org_router,
+    operations_log_project_router,
+)
 from .project_analysis import project_analysis_router
 from .project_commit_sync import project_commit_sync_router
 from .project_configuration import project_configuration_router
@@ -146,6 +149,10 @@ organizations_router.include_router(
     events_project_router,
     prefix='/{org_slug}/projects/{project_id}/events',
     dependencies=org_auth.PROJECT_MEMBER,
+)
+organizations_router.include_router(
+    operations_log_org_router,
+    prefix='/{org_slug}/operations-log',
 )
 organizations_router.include_router(
     operations_log_project_router,

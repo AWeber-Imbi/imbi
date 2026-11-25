@@ -12,6 +12,7 @@ import nanoid
 from imbi.api.auth import permissions
 from imbi.api.domain import models
 from imbi.api.endpoints._helpers import (
+    lookup_project_organization_id,
     lookup_project_slugs,
     lookup_project_type_slugs,
     require_org_environments,
@@ -460,6 +461,7 @@ async def _write_value(
     await _invalidate_cache(resolved.integration_id, ctx.project_id)
     project_slug = await _lookup_project_slug(db, ctx.project_id)
     await _write_audit(
+        db=db,
         project_id=ctx.project_id,
         project_slug=project_slug,
         environment_slug=ctx.environment or '',
@@ -509,6 +511,7 @@ async def delete_configuration_key(
     await _invalidate_cache(resolved.integration_id, project_id)
     project_slug = await _lookup_project_slug(db, project_id)
     await _write_audit(
+        db=db,
         project_id=project_id,
         project_slug=project_slug,
         environment_slug=environment or '',
@@ -523,6 +526,7 @@ async def delete_configuration_key(
 
 async def _write_audit(
     *,
+    db: graph.Graph,
     project_id: str,
     project_slug: str,
     environment_slug: str,
@@ -564,6 +568,7 @@ async def _write_audit(
         recorded_by=recorded_by,
         performed_by=recorded_by,
         project_id=project_id,
+        organization_id=await lookup_project_organization_id(db, project_id),
         project_slug=project_slug,
         environment_slug=environment_slug,
         entry_type='Configured',
