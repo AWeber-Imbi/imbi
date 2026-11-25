@@ -248,7 +248,11 @@ export function TaskDetail({
       key: 'related',
       label: 'Related tickets',
     },
-    { key: 'projects', label: 'Associated projects' },
+    {
+      count: t.projects.length || undefined,
+      key: 'projects',
+      label: 'Associated projects',
+    },
   ]
   const wanted = legacyRoute(tab)
   const route: RouteKey = isRouteKey(wanted)
