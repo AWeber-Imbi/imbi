@@ -709,7 +709,7 @@ class FakeApi:
                     ],
                 },
             ),
-            (r'/projects$', [project]),
+            (r'/projects/$', [project]),
             (
                 r'/tickets/waiting$',
                 {'count': 0, 'requests': [], 'assigned': [], 'held': []},
@@ -771,7 +771,7 @@ class FakeApi:
                 ],
             ),
             (r'/pull-requests/pending-deploy$', {'data': []}),
-            (r'/pull-requests$', {'data': [], 'total': 0}),
+            (r'/pull-requests/$', {'data': [], 'total': 0}),
             (
                 r'/release-drift$',
                 {

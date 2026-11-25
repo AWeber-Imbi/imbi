@@ -213,7 +213,7 @@ class Sources:
     async def _projects(self) -> list[Row]:
         """``GET /projects?slim=true``: every project of the org."""
         rows: list[Row] = await _json(
-            self.client, f'{self.base}/projects', slim='true'
+            self.client, f'{self.base}/projects/', slim='true'
         )
         return rows
 
@@ -299,7 +299,7 @@ class Sources:
     async def _review_prs(self) -> Row:
         row: Row = await _json(
             self.client,
-            f'{self.base}/pull-requests',
+            f'{self.base}/pull-requests/',
             state='open',
             reviewer='@me',
             limit=10,
@@ -309,7 +309,7 @@ class Sources:
     async def _authored_prs(self) -> Row:
         row: Row = await _json(
             self.client,
-            f'{self.base}/pull-requests',
+            f'{self.base}/pull-requests/',
             state='open',
             author='@me',
             limit=10,
