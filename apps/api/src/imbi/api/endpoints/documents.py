@@ -249,49 +249,12 @@ _DOCUMENT_COLUMNS: list[str] = [
 ]
 
 
-async def _attach_tags(
-    db: graph.Pool,
-    org_slug: str,
-    document_id: str,
-    tag_slugs: list[str],
-) -> None:
-    """Create ``TAGGED_WITH`` edges from document -> tags.
-
-    Split from the CREATE/SET query because AGE's Cypher translator does
-    not support ``FOREACH``; a plain ``UNWIND`` + ``MATCH`` + ``CREATE``
-    is portable.
-    """
-    if not tag_slugs:
-        return
-    query: typing.LiteralString = """
-    MATCH (n:Document {{id: {document_id}}}),
-          (:Organization {{slug: {org_slug}}})<-[:BELONGS_TO]-(t:Tag)
-    WHERE t.slug IN {tag_slugs}
-    CREATE (n)-[:TAGGED_WITH]->(t)
-    RETURN count(t) AS attached
-    """
-    await db.execute(
-        query,
-        {
-            'document_id': document_id,
-            'org_slug': org_slug,
-            'tag_slugs': tag_slugs,
-        },
-        columns=['attached'],
-    )
-
-
-async def _detach_all_tags(
-    db: graph.Pool,
-    document_id: str,
-) -> None:
-    """Remove every ``TAGGED_WITH`` edge from ``document``."""
-    query: typing.LiteralString = """
-    MATCH (n:Document {{id: {document_id}}})-[tw:TAGGED_WITH]->(:Tag)
-    DELETE tw
-    RETURN count(tw) AS removed
-    """
-    await db.execute(query, {'document_id': document_id}, columns=['removed'])
+#: Binds a document to ``n`` and its organization to ``o``, for
+#: :mod:`imbi.api.tags`.
+_DOCUMENT_NODE: typing.LiteralString = """
+MATCH (n:Document {{id: {document_id}}}),
+      (o:Organization {{slug: {org_slug}}})
+"""
 
 
 _DOCUMENT_CREATE_FRAGMENT: typing.LiteralString = """
@@ -347,7 +310,14 @@ async def _create_document_impl(
         raise fastapi.HTTPException(status_code=404, detail=not_found_detail)
 
     if tag_slugs:
-        await _attach_tags(db, org_slug, document_id, tag_slugs)
+        await org_tags.execute(
+            db,
+            org_tags.attach_statement(
+                _DOCUMENT_NODE,
+                {'document_id': document_id, 'org_slug': org_slug},
+                tag_slugs,
+            ),
+        )
 
     # Snapshot capture is best-effort and independent of the response,
     # so run it after the response instead of adding ClickHouse latency
@@ -984,8 +954,14 @@ async def apply_document_update(
     new_version = int(graph.parse_agtype(records[0]['version']) or 1)
 
     if replace_tags:
-        await _detach_all_tags(db, document_id)
-        await _attach_tags(db, org_slug, document_id, tags)
+        node = {'document_id': document_id, 'org_slug': org_slug}
+        await org_tags.execute(
+            db, org_tags.detach_statement(_DOCUMENT_NODE, node)
+        )
+        if tags:
+            await org_tags.execute(
+                db, org_tags.attach_statement(_DOCUMENT_NODE, node, tags)
+            )
 
     if content_changed:
         # Snapshot capture is best-effort and independent of the

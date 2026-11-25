@@ -376,18 +376,10 @@ WHERE a.id <> {id}
 RETURN a.name AS name, a.slug AS slug, a.subagents AS subagents
 """
 
-_DETACH_TAGS_QUERY: typing.LiteralString = """
-MATCH (a:Agent {{id: {id}}})-[r:TAGGED_WITH]->(:Tag)
-DELETE r
-RETURN count(r) AS removed
-"""
-
-_ATTACH_TAGS_QUERY: typing.LiteralString = """
-MATCH (a:Agent {{id: {id}}})-[:BELONGS_TO]->(o:Organization),
-      (t:Tag)-[:BELONGS_TO]->(o)
-WHERE t.slug IN {tag_slugs}
-MERGE (a)-[:TAGGED_WITH]->(t)
-RETURN count(t) AS attached
+#: Binds an agent to ``n`` and its organization to ``o``, for
+#: :mod:`imbi.api.tags`.
+_AGENT_NODE: typing.LiteralString = """
+MATCH (n:Agent {{id: {id}}})-[:BELONGS_TO]->(o:Organization)
 """
 
 _VERSIONS_QUERY: typing.LiteralString = """
@@ -1190,12 +1182,10 @@ async def _apply(
                 ),
             ]
         if target.tags != current.tags:
-            statements.append(graph_cypher.Statement(_DETACH_TAGS_QUERY, ids))
+            statements.append(org_tags.detach_statement(_AGENT_NODE, ids))
             if target.tags:
                 statements.append(
-                    graph_cypher.Statement(
-                        _ATTACH_TAGS_QUERY, {**ids, 'tag_slugs': target.tags}
-                    )
+                    org_tags.attach_statement(_AGENT_NODE, ids, target.tags)
                 )
         props.update(
             {
@@ -1399,10 +1389,11 @@ async def create_agent(
     # version 1.
     try:
         if snapshot.tags:
-            await db.execute(
-                _ATTACH_TAGS_QUERY,
-                {'id': agent_id, 'tag_slugs': snapshot.tags},
-                ['attached'],
+            await org_tags.execute(
+                db,
+                org_tags.attach_statement(
+                    _AGENT_NODE, {'id': agent_id}, snapshot.tags
+                ),
             )
         await _write_version(
             db,

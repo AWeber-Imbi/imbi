@@ -1,7 +1,11 @@
-"""Find the tags of an organization in the graph, by slug or by id.
+"""Find the tags of an organization in the graph, and tag nodes.
 
 The slug lookups take the organization slug, because most callers
 have only the slug.
+
+The tag writes take a ``MATCH`` clause that binds the tagged node to
+``n`` and its organization to ``o``, so that one pair of queries serves
+every label.
 """
 
 import typing
@@ -9,6 +13,7 @@ import typing
 import fastapi
 
 from imbi.common import graph
+from imbi.common.graph import cypher as graph_cypher
 
 _BY_SLUG_QUERY: typing.LiteralString = """
 MATCH (t:Tag)-[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
@@ -74,3 +79,44 @@ async def by_id(
     )
     tags = [{k: graph.parse_agtype(v) for k, v in r.items()} for r in records]
     return {t['id']: t for t in tags}
+
+
+def detach_statement(
+    node: typing.LiteralString, params: dict[str, typing.Any]
+) -> graph_cypher.Statement:
+    """Return the statement that removes every tag of the node."""
+    return graph_cypher.Statement(
+        node
+        + """
+        MATCH (n)-[r:TAGGED_WITH]->(:Tag)
+        DELETE r
+        RETURN count(r) AS changed
+        """,
+        params,
+    )
+
+
+def attach_statement(
+    node: typing.LiteralString,
+    params: dict[str, typing.Any],
+    slugs: list[str],
+) -> graph_cypher.Statement:
+    """Return the statement that tags the node with the org tags that
+    have these slugs. ``MERGE`` does not make a second edge for a tag
+    that the node already has."""
+    return graph_cypher.Statement(
+        node
+        + """
+        MATCH (t:Tag)-[:BELONGS_TO]->(o)
+        WHERE t.slug IN {tag_slugs}
+        MERGE (n)-[:TAGGED_WITH]->(t)
+        RETURN count(t) AS changed
+        """,
+        {**params, 'tag_slugs': slugs},
+    )
+
+
+async def execute(db: graph.Graph, statement: graph_cypher.Statement) -> None:
+    """Run a statement of :func:`detach_statement` or
+    :func:`attach_statement` on its own."""
+    await db.execute(statement.cypher, statement.params, ['changed'])

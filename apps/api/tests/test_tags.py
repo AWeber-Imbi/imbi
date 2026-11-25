@@ -1,5 +1,6 @@
 """The org tag lookups of imbi.api.tags, against the live graph."""
 
+import typing
 import unittest
 import uuid
 
@@ -15,6 +16,7 @@ class TagsTestCase(unittest.IsolatedAsyncioTestCase):
         self.org = f'tags-{suffix}'
         self.other = f'tags-other-{suffix}'
         self.ids = {'ops': f'ops-{suffix}', 'other': f'other-{suffix}'}
+        self.node = f'agent-{suffix}'
         await graph.initialize()
         self.graph = graph.Graph()
         await self.graph.open()
@@ -27,6 +29,7 @@ class TagsTestCase(unittest.IsolatedAsyncioTestCase):
                             color: '#3B82F6'}})-[:BELONGS_TO]->(o)
             CREATE (x:Tag {{id: {other_tag}, slug: 'other',
                             name: 'Other'}})-[:BELONGS_TO]->(f)
+            CREATE (:Agent {{id: {node}}})-[:BELONGS_TO]->(o)
             RETURN 1 AS ok
             """,
             {
@@ -34,6 +37,7 @@ class TagsTestCase(unittest.IsolatedAsyncioTestCase):
                 'other': self.other,
                 'ops': self.ids['ops'],
                 'other_tag': self.ids['other'],
+                'node': self.node,
             },
             ['ok'],
         )
@@ -42,7 +46,7 @@ class TagsTestCase(unittest.IsolatedAsyncioTestCase):
     async def _cleanup(self) -> None:
         await self.graph.execute(
             'MATCH (n) WHERE n.id IN {ids} DETACH DELETE n RETURN 1 AS ok',
-            {'ids': [self.org, self.other, *self.ids.values()]},
+            {'ids': [self.org, self.other, self.node, *self.ids.values()]},
             ['ok'],
         )
 
@@ -78,3 +82,35 @@ class TagsTestCase(unittest.IsolatedAsyncioTestCase):
                 }
             },
         )
+
+    async def _tag_slugs(self) -> list[str]:
+        records = await self.graph.execute(
+            'MATCH (:Agent {{id: {id}}})-[:TAGGED_WITH]->(t:Tag)'
+            ' RETURN t.slug AS slug',
+            {'id': self.node},
+            ['slug'],
+        )
+        return sorted(str(graph.parse_agtype(r['slug'])) for r in records)
+
+    async def test_attach_and_detach(self) -> None:
+        node: typing.LiteralString = (
+            'MATCH (n:Agent {{id: {id}}})-[:BELONGS_TO]->(o:Organization)'
+        )
+        params = {'id': self.node}
+        # A tag of another org is not attached; a repeat adds no edge.
+        for _ in range(2):
+            await tags.execute(
+                self.graph,
+                tags.attach_statement(node, params, ['ops', 'other']),
+            )
+        records = await self.graph.execute(
+            'MATCH (:Agent {{id: {id}}})-[r:TAGGED_WITH]->(:Tag)'
+            ' RETURN count(r) AS edges',
+            params,
+            ['edges'],
+        )
+        self.assertEqual(graph.parse_agtype(records[0]['edges']), 1)
+        self.assertEqual(await self._tag_slugs(), ['ops'])
+
+        await tags.execute(self.graph, tags.detach_statement(node, params))
+        self.assertEqual(await self._tag_slugs(), [])
