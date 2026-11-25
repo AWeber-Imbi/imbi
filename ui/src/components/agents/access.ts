@@ -87,10 +87,7 @@ export function canSupplyRunner(binding: SecretBinding): boolean {
   )
 }
 
-/**
- * The first grant that allows the binding for the purpose and mode, for
- * any project.
- */
+/** The first grant that allows the binding for the purpose and mode. */
 export function coveringGrant(
   grants: SecretGrant[],
   bindingId: string,
@@ -101,15 +98,11 @@ export function coveringGrant(
     (g) =>
       g.binding_ids.includes(bindingId) &&
       g.purposes.includes(purpose) &&
-      g.delivery_modes.includes(mode) &&
-      g.project_ids.length === 0,
+      g.delivery_modes.includes(mode),
   )
 }
 
-/**
- * Whether a grant allows the binding for the purpose and mode, for any
- * project.
- */
+/** Whether a grant allows the binding for the purpose and mode. */
 export function covers(
   grants: SecretGrant[],
   bindingId: string,
@@ -117,6 +110,20 @@ export function covers(
   mode: string,
 ): boolean {
   return coveringGrant(grants, bindingId, purpose, mode) !== undefined
+}
+
+export function coversEveryProject(
+  grants: SecretGrant[],
+  bindingId: string,
+  purpose: string,
+  mode: string,
+): boolean {
+  return covers(
+    grants.filter((grant) => grant.project_ids.length === 0),
+    bindingId,
+    purpose,
+    mode,
+  )
 }
 
 export function fieldReferences(bindings: SecretBinding[]): string[] {

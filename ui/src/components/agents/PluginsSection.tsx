@@ -27,7 +27,12 @@ import { useHasPermission } from '@/hooks/useHasPermission'
 import { queryKeys } from '@/lib/queryKeys'
 import type { AgentMarketplace, AgentPlugin, CatalogServer } from '@/types'
 
-import { bindingOf, canSupplyRunner, covers, fieldReferences } from './access'
+import {
+  bindingOf,
+  canSupplyRunner,
+  coversEveryProject,
+  fieldReferences,
+} from './access'
 import type { SettingsDraft } from './agentDraft'
 import { type GrantAgent, useAgentGrant } from './useAgentGrant'
 
@@ -199,7 +204,12 @@ export function PluginsSection({
     bindings,
     canGrant: access.canGrant,
     covered: (bindingId) =>
-      covers(access.mine, bindingId, HEADER_PURPOSE, 'file_descriptor'),
+      coversEveryProject(
+        access.mine,
+        bindingId,
+        HEADER_PURPOSE,
+        'file_descriptor',
+      ),
     grant: (reference) => {
       const binding = bindingOf(bindings, reference)
       if (binding) access.ensure(binding, HEADER_PURPOSE, 'file_descriptor')
@@ -635,7 +645,11 @@ function ServerSecrets({
       {origin
         ? variables.map((variable) => (
             <HeaderSecret
-              disabled={disabled || !picker.loaded || picker.isPending}
+              disabled={
+                disabled ||
+                (!picker.loaded && !picker.missing) ||
+                picker.isPending
+              }
               key={variable}
               label={`${label} header ${variable}`}
               onChange={(reference) => {

@@ -15,7 +15,7 @@ import type {
 import { useHasPermission, useInTeam } from '@/hooks/useHasPermission'
 import { extractApiErrorDetail } from '@/lib/apiError'
 
-import { agentGrants, covers, grantFor, ownGrant } from './access'
+import { agentGrants, coversEveryProject, grantFor, ownGrant } from './access'
 
 export interface GrantAgent {
   id: string
@@ -81,7 +81,7 @@ export function useAgentGrant(orgSlug: string, agent: GrantAgent | null) {
     done?: () => void,
   ) => {
     if (!agent || !grants.isSuccess || !canGrant(binding)) return
-    if (covers(mine, binding.id, purpose, mode)) return
+    if (coversEveryProject(mine, binding.id, purpose, mode)) return
     save.mutate(
       {
         body: grantFor(agent, binding, purpose, mode),

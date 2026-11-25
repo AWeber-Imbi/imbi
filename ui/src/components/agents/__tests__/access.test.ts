@@ -9,6 +9,7 @@ import {
   bindingOf,
   canSupplyRunner,
   covers,
+  coversEveryProject,
   fieldReferences,
   purposeSuggestions,
 } from '../access'
@@ -71,7 +72,7 @@ describe('fieldReferences', () => {
   })
 })
 
-describe('covers', () => {
+describe('coversEveryProject', () => {
   const scoped = (project_ids: string[]) =>
     ({
       binding_ids: ['b-1'],
@@ -81,15 +82,26 @@ describe('covers', () => {
     }) as unknown as SecretGrant
 
   it('counts a grant for every project', () => {
-    expect(covers([scoped([])], 'b-1', 'mcp_header', 'file_descriptor')).toBe(
-      true,
-    )
+    expect(
+      coversEveryProject([scoped([])], 'b-1', 'mcp_header', 'file_descriptor'),
+    ).toBe(true)
   })
 
   it('does not count a grant for some projects', () => {
     expect(
-      covers([scoped(['p-1'])], 'b-1', 'mcp_header', 'file_descriptor'),
+      coversEveryProject(
+        [scoped(['p-1'])],
+        'b-1',
+        'mcp_header',
+        'file_descriptor',
+      ),
     ).toBe(false)
+  })
+
+  it('leaves covers counting a grant for some projects', () => {
+    expect(
+      covers([scoped(['p-1'])], 'b-1', 'mcp_header', 'file_descriptor'),
+    ).toBe(true)
   })
 })
 

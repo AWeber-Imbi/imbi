@@ -620,7 +620,24 @@ describe('PluginsSection', () => {
       expect(
         within(servers).getByText(/need .*secret_provider:read to pick/),
       ).toBeInTheDocument()
-      expect(screen.getByRole('combobox', { name: PICKER })).toBeDisabled()
+    })
+
+    it('lets a user who cannot list providers clear a pick', async () => {
+      developer(['ops'])
+      const user = auth.user as { organizations: { permissions: string[] }[] }
+      user.organizations[0].permissions = [
+        'secret_binding:read',
+        'secret_grant:read',
+      ]
+      render(<Harness initial={grafana(relayed({ GRAFANA_TOKEN: TOKEN }))} />)
+      fireEvent.click(await picker())
+      const options = (await screen.findAllByRole('option')).map(
+        (option) => option.textContent,
+      )
+      expect(options).toEqual(['No secret', TOKEN])
+      fireEvent.click(screen.getByRole('option', { name: 'No secret' }))
+      expect(plugins()).toEqual([pinned('grafana-mcp')])
+      noGrantCalls()
     })
 
     it('offers only bindings that can fill a header', async () => {

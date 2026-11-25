@@ -152,8 +152,9 @@ binding. For a binding with a field list, pick a field.
   not. For a new agent, save first, then click **Grant**.
 - A grant for some projects only does not count, because a task for
   another project would get no secret.
-- The pickers need `secret_binding:read`, `secret_grant:read`, and
-  `secret_provider:read`.
+- Picking a secret needs `secret_binding:read`, `secret_grant:read`,
+  and `secret_provider:read`. Without them, you can only choose **No
+  secret**.
 - A plugin pinned before Imbi saved its server list shows no pickers.
   Click **Pin**, then save, to pin it again. For a default plugin, the
   organization must pin it again.
