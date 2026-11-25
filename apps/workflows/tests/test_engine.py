@@ -2654,7 +2654,8 @@ class AgentStepTestCase(EngineTestCase):
         """Tick until the agent step has its task; return the task."""
         run = await self._drive(
             run_id,
-            until=lambda r: bool(r['steps'].get('ask', {}).get('state')),
+            until=lambda r: 'task_id'
+            in r['steps'].get('ask', {}).get('state', {}),
         )
         task = await self.tasks.get(
             self.org, run['steps']['ask']['state']['task_id']
