@@ -98,8 +98,8 @@ def check_url(url: str) -> httpx.URL:
     """
     try:
         parsed = httpx.URL(url)
-    except (httpx.InvalidURL, TypeError) as err:
-        raise Refused('url_not_valid') from err
+    except (httpx.InvalidURL, TypeError) as error:
+        raise Refused('url_not_valid') from error
     if parsed.scheme != 'https':
         raise Refused('url_not_https')
     if not parsed.host or parsed.userinfo:
@@ -175,7 +175,8 @@ class Transport(httpx.AsyncBaseTransport):
         await self.inner.aclose()
 
 
-_VARIABLE = re.compile(r'\$\{([^}]+)\}')
+#: A ``${VAR}`` or ``${VAR:-default}`` in a header value.
+VARIABLE = re.compile(r'\$\{([^}]+)\}')
 
 
 def fill(template: str, values: abc.Mapping[str, str]) -> str:
@@ -187,7 +188,7 @@ def fill(template: str, values: abc.Mapping[str, str]) -> str:
         name, _, default = match.group(1).partition(':-')
         return values.get(name, default)
 
-    return _VARIABLE.sub(value, template)
+    return VARIABLE.sub(value, template)
 
 
 class Headers(httpx.Auth):
@@ -230,7 +231,6 @@ class Headers(httpx.Auth):
         response = yield request
         if response.status_code != int(httpx.codes.UNAUTHORIZED):
             return
-        # A failed renewal keeps the 401; the refresher retries later.
         await asyncio.gather(
             *(
                 secret.renew(sent[name])

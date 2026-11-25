@@ -15,6 +15,7 @@ import os
 import pathlib
 import subprocess
 import tempfile
+import time
 import typing
 import unittest
 from unittest import mock
@@ -869,7 +870,8 @@ class ModelKeyTestCase(TaskTestCase):
 
 
 class KeyRefreshTestCase(TaskTestCase):
-    """The model access token refresh (WIF plan 4.6 and 4.7)."""
+    """The model key's renewal (WIF plan 4.6 and 4.7); the rules are
+    in ``test_credential``."""
 
     def token(self, name: str, seconds: float) -> dict[str, str]:
         expires = datetime.datetime.now(datetime.UTC) + datetime.timedelta(
@@ -892,121 +894,37 @@ class KeyRefreshTestCase(TaskTestCase):
             datetime.datetime.fromisoformat(reply['expires_at']),
         )
 
-    async def test_only_a_dynamic_key_is_renewed_in_the_background(
-        self,
-    ) -> None:
-        self.call.return_value = {'material': KEY}
-        await self.run_task.key.start()
-        self.assertIsNone(self.run_task.key.task)
-        self.call.return_value = self.token('t1', 600)
-        await self.run_task.key.start()
-        renewal = self.run_task.key.task
-        assert renewal is not None
-        self.run_task.key.stop()
-        with self.assertRaises(asyncio.CancelledError):
-            await renewal
-
-    async def test_renews_before_expiry_and_retries(self) -> None:
+    async def test_a_refused_renewal_is_retried_and_logged(self) -> None:
         self.call.side_effect = [
+            self.token('t1', 0),
+            {'error': 'secret_provider_unavailable'},
             self.token('t2', 600),
-            httpx.ConnectError('down'),
-            self.token('t3', 600),
         ]
-        self.run_task.key.credential = proxy.Credential(
-            't1', datetime.datetime.now(datetime.UTC)
-        )
         sleeps: list[float] = []
+        renewed = asyncio.Event()
         real_sleep = asyncio.sleep
 
         async def sleep(seconds: float) -> None:
             sleeps.append(seconds)
-            if len(sleeps) > 3:
-                raise asyncio.CancelledError
+            if len(sleeps) > 2:
+                renewed.set()
+                await asyncio.Event().wait()
             await real_sleep(0)
 
         with (
             mock.patch.object(
                 credential, 'asyncio', wraps=asyncio, sleep=sleep
             ),
-            self.assertLogs('imbi.harness.credential', 'WARNING'),
-            self.assertRaises(asyncio.CancelledError),
+            self.assertLogs('imbi.harness.credential', 'WARNING') as logs,
         ):
-            await self.run_task.key._refresh()  # pyright: ignore[reportPrivateUsage]
-        self.assertEqual(self.run_task.key.credential.value, 't3')
-        # Expired: at once. A 600-second token: 120 seconds before the
-        # expiry, with at most 60 seconds of jitter. A failure: 1 second.
-        self.assertEqual(sleeps[0], 0.0)
-        self.assertTrue(420 <= sleeps[1] <= 481, sleeps[1])
-        self.assertEqual(sleeps[2], 1.0)
-
-    async def test_waits_after_renewal_to_expired_token(self) -> None:
-        self.call.side_effect = [
-            ValueError('partial reply'),
-            self.token('t2', 0),
-        ]
-        self.run_task.key.credential = proxy.Credential(
-            't1', datetime.datetime.now(datetime.UTC)
-        )
-        sleeps: list[float] = []
-
-        async def sleep(seconds: float) -> None:
-            sleeps.append(seconds)
-            if len(sleeps) > 2:
-                raise asyncio.CancelledError
-
-        with (
-            mock.patch.object(
-                credential, 'asyncio', wraps=asyncio, sleep=sleep
-            ),
-            self.assertLogs('imbi.harness.credential', 'WARNING'),
-            self.assertRaises(asyncio.CancelledError),
-        ):
-            await self.run_task.key._refresh()  # pyright: ignore[reportPrivateUsage]
+            await self.run_task.key.start()
+            self.addCleanup(self.run_task.key.stop)
+            await asyncio.wait_for(renewed.wait(), 5)
         self.assertEqual(self.run_task.key.credential.value, 't2')
-        # Expired: at once. A decode error: 1 second. The new token
-        # is expired too: wait the minimum.
-        self.assertEqual(sleeps, [0.0, 1.0, credential.RENEW_MIN])
-
-    async def test_waits_after_renewal_with_same_expiry(self) -> None:
-        reply = self.token('t2', 0)
-        self.call.return_value = reply
-        self.run_task.key.credential = proxy.Credential(
-            't1', datetime.datetime.fromisoformat(reply['expires_at'])
+        self.assertIn(
+            'Model key renewal of T-1 failed: model_key_unavailable',
+            logs.output[0],
         )
-        sleeps: list[float] = []
-
-        async def sleep(seconds: float) -> None:
-            sleeps.append(seconds)
-            if len(sleeps) > 1:
-                raise asyncio.CancelledError
-
-        with (
-            mock.patch.object(
-                credential, 'asyncio', wraps=asyncio, sleep=sleep
-            ),
-            self.assertRaises(asyncio.CancelledError),
-        ):
-            await self.run_task.key._refresh()  # pyright: ignore[reportPrivateUsage]
-        # One renewal, then the minimum wait: no renewal loop.
-        self.assertEqual(self.call.await_count, 1)
-        self.assertEqual(sleeps, [0.0, credential.RENEW_MIN])
-
-    async def test_static_key_is_not_renewed(self) -> None:
-        self.run_task.key.credential = proxy.Credential(KEY)
-        await self.run_task.key._refresh()  # pyright: ignore[reportPrivateUsage]
-        await self.run_task.key.renew(KEY)
-        self.call.assert_not_called()
-
-    async def test_renews_once_for_concurrent_401s(self) -> None:
-        self.call.return_value = self.token('t2', 600)
-        self.run_task.key.credential = proxy.Credential(
-            't1', datetime.datetime.now(datetime.UTC)
-        )
-        await asyncio.gather(
-            self.run_task.key.renew('t1'), self.run_task.key.renew('t1')
-        )
-        self.assertEqual(self.run_task.key.credential.value, 't2')
-        self.call.assert_awaited_once()
 
     async def test_401_from_the_proxy_thread(self) -> None:
         self.run_task.loop = asyncio.get_running_loop()
@@ -1927,6 +1845,62 @@ class RunTestCase(TaskTestCase):
         if message['op'] == 'fetch':
             return {'material': KEY}
         return {'exit_code': 0, 'output': ''}
+
+    async def with_relays(self, close: typing.Any) -> list[mock.Mock]:
+        """Run the task with two relays whose ``close`` is ``close``;
+        return the header secrets."""
+        secrets = [mock.Mock(), mock.Mock()]
+
+        async def start(subject: task.TaskRun) -> None:
+            subject.plugin_relays = [
+                mock.Mock(close=close, tools={}, writes=set),
+                mock.Mock(close=close, tools={}, writes=set),
+            ]
+            subject.header_secrets = secrets
+
+        with (
+            mock.patch.object(
+                task.TaskRun, 'start_plugin_relays', autospec=True
+            ) as patched,
+            mock.patch.object(task.TaskRun, 'options', autospec=True),
+            mock.patch.object(task.TaskRun, 'run_sdk', autospec=True),
+        ):
+            patched.side_effect = start
+            await self.run_task.run()
+        return secrets
+
+    async def test_task_end_closes_the_relays_at_once(self) -> None:
+        both = asyncio.Event()
+        closing: list[bool] = []
+
+        async def close() -> None:
+            closing.append(True)
+            if len(closing) == 2:
+                both.set()
+            await asyncio.wait_for(both.wait(), 2)
+
+        started = time.monotonic()
+        secrets = await self.with_relays(close)
+        self.assertLess(time.monotonic() - started, 1.5)
+        self.assertEqual(len(closing), 2)
+        for secret in secrets:
+            secret.stop.assert_called_once()
+
+    async def test_a_cancel_while_closing_still_stops_the_secrets(
+        self,
+    ) -> None:
+        closing = asyncio.Event()
+
+        async def close() -> None:
+            closing.set()
+            await asyncio.Event().wait()
+
+        run = asyncio.create_task(self.with_relays(close))
+        await asyncio.wait_for(closing.wait(), 5)
+        run.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await run
+        self.run_task.header_secrets[0].stop.assert_called_once()
 
     async def test_runs_to_done(self) -> None:
         await self.run_task.run()
@@ -3735,14 +3709,32 @@ class RelayStartTestCase(TaskTestCase):
         )
 
 
+def renewals() -> list[asyncio.Task[typing.Any]]:
+    """The secret renewals that still run."""
+    return [
+        running
+        for running in asyncio.all_tasks()
+        if not running.done()
+        and running.get_coro().__qualname__ == 'Refresher._refresh'  # type: ignore[union-attr]
+    ]
+
+
 class PluginRelayTestCase(TaskTestCase):
     """The plugin MCP servers that the runner relays (ADR 0031)."""
 
     REFERENCE = 'secret://production/logs/token'
+    OTHER = 'secret://production/logs/vault'
     ORIGIN = 'https://logs.example.com'
+    HEADERS: typing.ClassVar[dict[str, str]] = {
+        'Authorization': 'Bearer ${TOKEN}',
+        'X-Team': '${TEAM}',
+    }
 
     def load(
-        self, logs: dict[str, typing.Any] | None = None, **setting: typing.Any
+        self,
+        headers: dict[str, str] | None = None,
+        logs: dict[str, typing.Any] | None = None,
+        **setting: typing.Any,
     ) -> task.TaskRun:
         """A plugin ``ops`` with the relayed server ``logs``, the CLI
         server ``metrics``, and the turned-off server ``old``."""
@@ -3754,10 +3746,9 @@ class PluginRelayTestCase(TaskTestCase):
                     or {
                         'type': 'http',
                         'url': f'{self.ORIGIN}/mcp',
-                        'headers': {
-                            'Authorization': 'Bearer ${TOKEN}',
-                            'X-Team': '${TEAM}',
-                        },
+                        'headers': self.HEADERS
+                        if headers is None
+                        else headers,
                     },
                     'metrics': {
                         'type': 'http',
@@ -3790,15 +3781,39 @@ class PluginRelayTestCase(TaskTestCase):
         return [event['payload']['body'] for event in subject.recorder.take()]
 
     async def start(
-        self, subject: task.TaskRun, **start: typing.Any
+        self, subject: task.TaskRun, error: Exception | None = None
     ) -> list[str]:
+        """Start the relays, with a server that lists one write tool or
+        fails with ``error``."""
+
+        async def started(server: task.plugin_relay.Server) -> list[str]:
+            if error is not None:
+                raise error
+            server.tools = {
+                'search': task.plugin_relay._Tool(
+                    'search', 'Search.', {}, read_only=False
+                )
+            }
+            return ['search']
+
         with mock.patch.object(
-            task.plugin_relay.Server,
-            'start',
-            mock.AsyncMock(**({'return_value': ['search']} | start)),
-        ):
+            task.plugin_relay.Server, 'start', autospec=True
+        ) as start:
+            start.side_effect = started
             await subject.start_plugin_relays()
         return self.notices(subject)
+
+    def expiring(self, value: str) -> dict[str, typing.Any]:
+        expires = datetime.datetime.now(datetime.UTC) + datetime.timedelta(
+            hours=1
+        )
+        return {'material': value, 'expires_at': expires.isoformat()}
+
+    def references(self) -> list[str]:
+        return [
+            call.args[1]['reference']
+            for call in self.client.create_resolution.call_args_list
+        ]
 
     def test_a_relayed_server_is_kept_from_the_cli_but_allowed(self) -> None:
         subject = self.load()
@@ -3818,18 +3833,30 @@ class PluginRelayTestCase(TaskTestCase):
         self.assertEqual(subject.plugin_servers, ['mcp__plugin_ops_metrics'])
         self.assertEqual(subject.to_relay, [])
 
-    async def test_the_relay_gets_the_secret_and_registers_the_server(
-        self,
-    ) -> None:
+    def test_a_server_without_secrets_stays_with_the_cli(self) -> None:
+        subject = self.load(secrets={})
+        published = json.loads((self.plugin / '.mcp.json').read_text())
+        self.assertIn('logs', published)
+        self.assertIn('plugin:ops:logs', subject.plugin_server_names)
+        self.assertEqual(subject.to_relay, [])
+
+    async def test_the_relay_resolves_the_secret(self) -> None:
         self.call.return_value = {'material': 'logs-secret-value'}
         subject = self.load()
-        notices = await self.start(subject)
+        await self.start(subject)
         body = self.client.create_resolution.call_args.args[1]
         self.assertEqual(
             (body['reference'], body['purpose']),
             (self.REFERENCE, 'mcp_header'),
         )
         self.assertEqual(self.redactor.text('logs-secret-value'), '[REDACTED]')
+        (server,) = subject.plugin_relays
+        assert isinstance(server.auth, task.outbound.Headers)
+        self.assertEqual(server.auth.values(), {'TOKEN': 'logs-secret-value'})
+
+    async def test_an_unmapped_variable_is_a_warning(self) -> None:
+        self.call.return_value = {'material': 'logs-secret-value'}
+        notices = await self.start(self.load())
         self.assertEqual(
             notices,
             [
@@ -3838,21 +3865,71 @@ class PluginRelayTestCase(TaskTestCase):
                 'default, so the header gets an empty value.'
             ],
         )
-        (server,) = subject.plugin_relays
-        self.assertEqual(server.name, 'plugin:ops:logs')
-        assert isinstance(server.auth, task.outbound.Headers)
-        self.assertEqual(server.auth.values(), {'TOKEN': 'logs-secret-value'})
+
+    async def test_a_cli_variable_in_a_relayed_header_is_a_warning(
+        self,
+    ) -> None:
+        self.call.return_value = {'material': 'logs-secret-value'}
+        subject = self.load(
+            {'Authorization': '${TOKEN}', 'X-Root': '${CLAUDE_PLUGIN_ROOT}'}
+        )
+        (notice,) = await self.start(subject)
+        self.assertIn('${CLAUDE_PLUGIN_ROOT}', notice)
+        self.assertEqual(len(subject.plugin_relays), 1)
+
+    async def test_the_relayed_server_reaches_the_cli(self) -> None:
+        self.call.return_value = {'material': 'logs-secret-value'}
+        subject = self.load()
+        await self.start(subject)
         servers = typing.cast(
             'dict[str, typing.Any]',
             subject.options('http://127.0.0.1:1').mcp_servers,
         )
         self.assertIn('plugin:ops:logs', servers)
         self.assertIn('mcp__plugin_ops_logs', subject.tools()[0])
+
+    async def test_a_relayed_call_is_audited(self) -> None:
+        self.call.return_value = {'material': 'logs-secret-value'}
+        subject = self.load()
+        await self.start(subject)
+        (server,) = subject.plugin_relays
         server.audits.add('search', {}, {'server': server.name})
         self.assertEqual(
             subject.recorder.audit
             and subject.recorder.audit('mcp__plugin_ops_logs__search', {}),
             {'server': 'plugin:ops:logs'},
+        )
+
+    async def test_a_relayed_write_tool_is_a_mutation(self) -> None:
+        self.call.return_value = {'material': 'logs-secret-value'}
+        subject = self.load()
+        await self.start(subject)
+        self.assertIn('mcp__plugin_ops_logs__search', subject.recorder.writes)
+
+    async def test_imbi_and_plugin_writes_are_both_kept(self) -> None:
+        self.call.return_value = {'material': 'logs-secret-value'}
+        subject = self.load()
+        subject.bundle['snapshot'] = {'tools': {'imbi.update_project': {}}}
+        subject.mcp_url = 'http://imbi-mcp:8001/mcp'
+        subject.api_token = 'api-token'
+
+        async def imbi_started(candidate: task.relay.Relay) -> list[str]:
+            candidate.tools['update_project'] = task.relay._Tool(
+                'update_project', 'Update.', {}, False, None
+            )
+            return ['update_project']
+
+        with mock.patch.object(
+            task.relay.Relay, 'start', autospec=True, side_effect=imbi_started
+        ):
+            await subject.start_relay()
+        await self.start(subject)
+        self.assertLessEqual(
+            {
+                'mcp__imbi_api__update_project',
+                'mcp__plugin_ops_logs__search',
+            },
+            subject.recorder.writes,
         )
 
     async def test_a_stale_mapping_is_not_resolved(self) -> None:
@@ -3864,16 +3941,22 @@ class PluginRelayTestCase(TaskTestCase):
             }
         )
         await self.start(subject)
-        self.assertEqual(
-            [
-                call.args[1]['reference']
-                for call in self.client.create_resolution.call_args_list
-            ],
-            [self.REFERENCE],
-        )
+        self.assertEqual(self.references(), [self.REFERENCE])
         (server,) = subject.plugin_relays
         assert isinstance(server.auth, task.outbound.Headers)
         self.assertEqual(server.auth.values(), {'TOKEN': 'logs-secret-value'})
+
+    async def test_one_reference_for_two_variables_is_resolved_once(
+        self,
+    ) -> None:
+        self.call.return_value = {'material': 'logs-secret-value'}
+        subject = self.load(
+            {'Authorization': '${TOKEN}', 'X-Team': '${TEAM}'},
+            secrets={'TOKEN': self.REFERENCE, 'TEAM': self.REFERENCE},
+        )
+        await self.start(subject)
+        self.assertEqual(self.references(), [self.REFERENCE])
+        self.assertEqual(len(subject.header_secrets), 1)
 
     async def test_a_server_that_fails_a_check_is_a_warning(self) -> None:
         cases = {
@@ -3885,11 +3968,18 @@ class PluginRelayTestCase(TaskTestCase):
         }
         for expected, logs in cases.items():
             with self.subTest(expected=expected):
-                subject = self.load(logs)
+                subject = self.load(logs=logs)
                 (notice,) = await self.start(subject)
                 self.assertIn(expected, notice)
                 self.assertEqual(subject.plugin_relays, [])
                 self.client.create_resolution.assert_not_called()
+
+    async def test_an_unset_origin_is_a_warning(self) -> None:
+        subject = self.load(origin=None)
+        (notice,) = await self.start(subject)
+        self.assertIn('has no https origin', notice)
+        self.assertEqual(subject.plugin_relays, [])
+        self.client.create_resolution.assert_not_called()
 
     async def test_a_refused_secret_is_a_warning(self) -> None:
         self.client.create_resolution.side_effect = api.Refused(
@@ -3905,13 +3995,31 @@ class PluginRelayTestCase(TaskTestCase):
         )
         self.assertEqual(subject.plugin_relays, [])
 
+    async def test_a_refused_second_secret_stops_the_first(self) -> None:
+        def resolution(_token: str, body: dict[str, typing.Any]) -> typing.Any:
+            if body['reference'] == self.OTHER:
+                raise api.Refused(403, 'secret_access_denied')
+            return created(body['purpose'])
+
+        self.client.create_resolution.side_effect = resolution
+        self.call.return_value = self.expiring('logs-secret-value')
+        subject = self.load(
+            {'Authorization': '${TOKEN}', 'X-Team': '${TEAM}'},
+            secrets={'TOKEN': self.REFERENCE, 'TEAM': self.OTHER},
+        )
+        await self.start(subject)
+        await asyncio.sleep(0)
+        self.assertEqual(self.references(), [self.REFERENCE, self.OTHER])
+        self.assertEqual(renewals(), [])
+        self.assertEqual(subject.plugin_relays, [])
+
     async def test_a_server_that_does_not_answer_is_a_warning(self) -> None:
-        self.call.return_value = {'material': 'logs-secret-value'}
+        self.call.return_value = self.expiring('logs-secret-value')
         subject = self.load()
         notices = await self.start(
-            subject,
-            side_effect=task.plugin_relay.Unavailable('ConnectError'),
+            subject, task.plugin_relay.Unavailable('ConnectError')
         )
+        await asyncio.sleep(0)
         self.assertIn(
             'The MCP server logs of the plugin ops is not available: the '
             'runner could not open a session or list its tools '
@@ -3919,4 +4027,19 @@ class PluginRelayTestCase(TaskTestCase):
             notices,
         )
         self.assertEqual(subject.plugin_relays, [])
-        self.assertEqual(subject.header_secrets, [])
+        self.assertEqual(renewals(), [])
+
+    async def test_an_unexpected_start_error_is_a_warning(self) -> None:
+        self.call.return_value = self.expiring('logs-secret-value')
+        subject = self.load()
+        notices = await self.start(
+            subject, RuntimeError('Unsupported protocol version')
+        )
+        await asyncio.sleep(0)
+        self.assertIn(
+            'The MCP server logs of the plugin ops is not available: the '
+            'runner could not open a session or list its tools '
+            '(RuntimeError).',
+            notices,
+        )
+        self.assertEqual(renewals(), [])

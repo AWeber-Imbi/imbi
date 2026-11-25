@@ -27,11 +27,15 @@ import re
 import time
 import typing
 
+import anyio
 import claude_agent_sdk as sdk
 import httpx
+from anyio.streams import memory
 from mcp import types
 from mcp.client import session as mcp_session
 from mcp.client import sse, streamable_http
+from mcp.shared import exceptions as mcp_exceptions
+from mcp.shared import message
 
 from imbi.harness import outbound, safeguards
 
@@ -47,8 +51,11 @@ CLOSE_TIMEOUT = 10.0
 #: The server types that the relay can connect to.
 TYPES = frozenset({'http', 'sse'})
 _NOT_NAME = re.compile(r'[^A-Za-z0-9_-]')
-
+#: The code that the mcp client gives a request whose session the
+#: server ended (HTTP 404).
+_SESSION_TERMINATED = 32600
 type Body = dict[str, typing.Any]
+type _Write = memory.MemoryObjectSendStream[message.SessionMessage]
 
 
 def cli_name(plugin: str, server: str) -> str:
@@ -67,9 +74,15 @@ def problem(config: Body, origin: str | None) -> str | None:
         return 'it is not an http or sse server'
     try:
         url = outbound.check_url(str(config.get('url') or ''))
+    except outbound.Refused:
+        return 'its URL is not an https URL'
+    try:
         pinned = outbound.check_url(str(origin or ''))
     except outbound.Refused:
-        return 'its URL or the origin of its secrets is not an https URL'
+        return (
+            "the agent's entry has no https origin for its secrets. Pick "
+            'the secrets again'
+        )
     if outbound.origin(url) != outbound.origin(pinned):
         return (
             f'its URL is no longer at {origin}, the origin that its '
@@ -77,6 +90,50 @@ def problem(config: Body, origin: str | None) -> str | None:
             'the new URL'
         )
     return None
+
+
+def _lost(error: BaseException) -> bool:
+    """Whether ``error`` means that the session no longer works: the
+    transport failed, or the server ended the session. Any other error
+    belongs to one call."""
+    if isinstance(error, mcp_exceptions.McpError):
+        return error.error.code in {
+            types.CONNECTION_CLOSED,
+            _SESSION_TERMINATED,
+        }
+    return isinstance(
+        error,
+        (
+            Unavailable,
+            *safeguards.ERRORS,
+            anyio.ClosedResourceError,
+            anyio.BrokenResourceError,
+        ),
+    )
+
+
+def _scrubbed(
+    value: typing.Any, scrub: abc.Callable[[str], str]
+) -> typing.Any:
+    """``value`` with each string of a JSON value scrubbed and its
+    untrusted tags escaped."""
+    if isinstance(value, str):
+        return safeguards.escape(scrub(value))
+    if isinstance(value, dict):
+        return {
+            key: _scrubbed(item, scrub)
+            for key, item in typing.cast('Body', value).items()
+        }
+    if isinstance(value, list):
+        items: list[typing.Any] = value  # pyright: ignore[reportUnknownVariableType]
+        return [_scrubbed(item, scrub) for item in items]
+    return value
+
+
+def _schema(schema: Body) -> Body:
+    """An input schema that the SDK reads as a JSON schema: it reads
+    one without ``properties`` as a map of parameter types."""
+    return {'properties': {}, **schema}
 
 
 class Unavailable(Exception):
@@ -104,19 +161,19 @@ class _Held:
     def __init__(
         self,
         opened: contextlib.AbstractAsyncContextManager[
-            mcp_session.ClientSession
+            tuple[mcp_session.ClientSession, _Write]
         ],
     ) -> None:
-        self.ready: asyncio.Future[mcp_session.ClientSession] = (
-            asyncio.get_running_loop().create_future()
-        )
+        self.ready: asyncio.Future[
+            tuple[mcp_session.ClientSession, _Write]
+        ] = asyncio.get_running_loop().create_future()
         self.closing = asyncio.Event()
         self.task = asyncio.create_task(self._hold(opened))
 
     async def _hold(
         self,
         opened: contextlib.AbstractAsyncContextManager[
-            mcp_session.ClientSession
+            tuple[mcp_session.ClientSession, _Write]
         ],
     ) -> None:
         try:
@@ -130,8 +187,19 @@ class _Held:
         finally:
             self.ready.cancel()
 
+    @property
+    def session(self) -> mcp_session.ClientSession:
+        return self.ready.result()[0]
+
     def alive(self) -> bool:
-        return not self.task.done()
+        """Whether the session can still send. The SSE client closes its
+        write side after a failed request but keeps its event stream."""
+        if self.task.done():
+            return False
+        if not self.ready.done():
+            return True
+        write = self.ready.result()[1]
+        return write.statistics().open_send_streams > 0
 
     async def close(self) -> None:
         """Close the session; cancel it when the server does not answer
@@ -204,7 +272,9 @@ class Server:
         )
 
     @contextlib.asynccontextmanager
-    async def _open(self) -> abc.AsyncGenerator[mcp_session.ClientSession]:
+    async def _open(
+        self,
+    ) -> abc.AsyncGenerator[tuple[mcp_session.ClientSession, _Write]]:
         async with contextlib.AsyncExitStack() as stack:
             if self.sse:
                 read, write = await stack.enter_async_context(
@@ -223,10 +293,11 @@ class Server:
                 mcp_session.ClientSession(read, write)
             )
             await session.initialize()
-            yield session
+            yield session, write
 
     async def _session(self) -> _Held:
-        """The open session, or a new one when there is none.
+        """The open session, or a new one when there is none or it no
+        longer works.
 
         Raises:
             Unavailable: The session closed while it opened.
@@ -244,28 +315,27 @@ class Server:
             raise
         return held
 
-    async def _drop(self, held: _Held | None) -> None:
+    async def _drop(self, held: _Held) -> None:
+        """Close ``held``, and forget it when it is the current session.
+        Another call can have opened a newer one."""
         async with self.lock:
             if self.held is held:
                 self.held = None
-        if held is not None:
-            await held.close()
+        await held.close()
 
     async def start(self) -> list[str]:
         """Open the session and list the tools. Return their names.
 
         Raises:
             Unavailable: The session did not open, or the tools were not
-                listed in time.
+                listed in time or were not valid.
 
         """
         try:
             async with asyncio.timeout(LIST_TIMEOUT):
-                listed = await self._list(
-                    (await self._session()).ready.result()
-                )
-        except (TimeoutError, Unavailable, *safeguards.ERRORS) as error:
-            await self._drop(self.held)
+                listed = await self._list((await self._session()).session)
+        except Exception as error:
+            await self.close()
             raise Unavailable(safeguards.reason(error)) from error
         for tool in listed:
             if not safeguards.TOOL_NAME.fullmatch(tool.name):
@@ -274,9 +344,10 @@ class Server:
             self.tools[tool.name] = _Tool(
                 name=tool.name,
                 description=safeguards.untrusted(
-                    tool.description or tool.name, f'mcp:{self.name}'
+                    self.scrub(tool.description or tool.name),
+                    f'mcp:{self.name}',
                 ),
-                schema=tool.inputSchema,
+                schema=_scrubbed(_schema(tool.inputSchema), self.scrub),
                 read_only=bool(hints and hints.readOnlyHint),
             )
         return sorted(self.tools)
@@ -294,7 +365,8 @@ class Server:
                 return tools
 
     async def close(self) -> None:
-        await self._drop(self.held)
+        if self.held is not None:
+            await self._drop(self.held)
 
     def writes(self) -> set[str]:
         """The CLI names of the tools that are not read only."""
@@ -306,7 +378,6 @@ class Server:
 
     def sdk_tools(self) -> list[sdk.SdkMcpTool[typing.Any]]:
         def make(tool: _Tool) -> sdk.SdkMcpTool[typing.Any]:
-            # The CLI runs tools with readOnlyHint in parallel (#899).
             hints = types.ToolAnnotations(readOnlyHint=True)
 
             @sdk.tool(
@@ -326,19 +397,25 @@ class Server:
         return self.audits.take(name, arguments)
 
     async def call(self, name: str, args: Body) -> Body:
-        """Relay one call; return the tool result for the model."""
+        """Relay one call; return the tool result for the model. Every
+        failure is a scrubbed, untrusted, audited error result."""
         started = time.monotonic()
+        status = 'error'
         try:
             result = await safeguards.until_stopped(
                 self._call(name, args), self.stopped
             )
         except Unavailable:
-            status = 'error'
             text = f'The MCP server {self.name} is not available'
         except TimeoutError:
             status, text = 'timeout', 'The MCP call timed out'
         except safeguards.Stopped:
             status, text = 'stopped', 'The task stopped'
+        except Exception as error:  # noqa: BLE001 - the model gets an error
+            LOGGER.warning(
+                'MCP call to %s failed: %s', self.name, type(error).__name__
+            )
+            text = self.scrub(f'The MCP call failed: {error}')
         else:
             status = 'error' if result.isError else 'ok'
             text = self.scrub(safeguards.text(result))
@@ -357,32 +434,40 @@ class Server:
         return safeguards.reply(text, f'mcp:{self.name}', ok=status == 'ok')
 
     async def _call(self, name: str, arguments: Body) -> types.CallToolResult:
-        """One call in the open session. A failure closes the session,
-        and the next call opens a new one.
+        """One call in the open session. When the session no longer
+        works, the call fails and the next call opens a new session.
 
         Raises:
-            Unavailable: The session did not open, or the call failed.
+            Unavailable: The session did not open, or it was lost.
 
         """
         held: _Held | None = None
         try:
             held = await self._session()
-            return await held.ready.result().call_tool(
+            return await held.session.call_tool(
                 name,
                 arguments,
                 read_timeout_seconds=datetime.timedelta(
                     seconds=safeguards.CALL_TIMEOUT + 10
                 ),
             )
-        except (Unavailable, *safeguards.ERRORS) as error:
-            reason = safeguards.reason(error)
-            LOGGER.warning('MCP session of %s failed: %s', self.name, reason)
-            if not self.dropped:
-                self.dropped = True
-                self.notice(
-                    f'The relay lost the session of the MCP server '
-                    f'{self.name}, or could not open one ({reason}). The '
-                    'call failed, and the next call opens a new session.'
-                )
-            await self._drop(held or self.held)
-            raise Unavailable(reason) from error
+        except Exception as error:
+            if not _lost(error):
+                raise
+            await self._lose(held, safeguards.reason(error))
+            raise Unavailable(safeguards.reason(error)) from error
+
+    async def _lose(self, held: _Held | None, reason: str) -> None:
+        """Warn once that a session was lost or did not open, and close
+        the session of the call. A session that did not open is closed
+        already."""
+        LOGGER.warning('MCP session of %s failed: %s', self.name, reason)
+        if not self.dropped:
+            self.dropped = True
+            self.notice(
+                f'The relay lost the session of the MCP server {self.name}, '
+                f'or could not open one ({reason}). The call failed, and '
+                'the next call opens a new session.'
+            )
+        if held is not None:
+            await self._drop(held)

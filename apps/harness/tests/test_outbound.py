@@ -5,6 +5,7 @@ import asyncio
 import base64
 import datetime
 import socket
+import typing
 import unittest
 from unittest import mock
 
@@ -92,49 +93,9 @@ class BypassesTestCase(unittest.TestCase):
         self.assertFalse(outbound.bypasses('mcp.example.com', ''))
 
 
-class TransportTestCase(unittest.IsolatedAsyncioTestCase):
-    """The origin pin, with the network replaced by a mock."""
-
-    def setUp(self) -> None:
-        self.sent: list[httpx.URL] = []
-        self.transport = outbound.Transport('https://mcp.example.com/mcp', {})
-
-        def network(request: httpx.Request) -> httpx.Response:
-            self.sent.append(request.url)
-            target = {
-                '/same': 'https://mcp.example.com/moved',
-                '/other': 'https://evil.example.com/mcp',
-                '/port': 'https://mcp.example.com:8443/mcp',
-                '/plain': 'http://mcp.example.com/mcp',
-            }.get(request.url.path)
-            if target is None:
-                return httpx.Response(200, json={})
-            return httpx.Response(302, headers={'Location': target})
-
-        self.transport.inner = httpx.MockTransport(network)  # type: ignore[assignment]
-
-    async def get(self, path: str) -> httpx.Response:
-        async with httpx.AsyncClient(
-            transport=self.transport, follow_redirects=True
-        ) as client:
-            return await client.get(f'https://mcp.example.com{path}')
-
-    async def test_redirect_to_the_same_origin_is_followed(self) -> None:
-        response = await self.get('/same')
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual([url.path for url in self.sent], ['/same', '/moved'])
-
-    async def test_redirect_to_another_origin_is_refused(self) -> None:
-        for path in ('/other', '/port', '/plain'):
-            with (
-                self.subTest(path=path),
-                self.assertRaises(outbound.Refused) as ctx,
-            ):
-                await self.get(path)
-            self.assertEqual(ctx.exception.reason, 'cross_origin_request')
-        self.assertEqual(
-            [url.host for url in self.sent], ['mcp.example.com'] * 3
-        )
+class TransportTestCase(unittest.TestCase):
+    """The origin pin is tested through the relay, in
+    ``test_plugin_relay``."""
 
     def test_the_url_is_checked(self) -> None:
         with self.assertRaises(outbound.Refused):
@@ -163,16 +124,17 @@ class ProxyRouteTestCase(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(self.server.close)
         port = self.server.sockets[0].getsockname()[1]
         self.proxy = f'http://chain:tok.en@127.0.0.1:{port}'
-        with socket.socket() as sock:
-            sock.bind(('127.0.0.1', 0))
-            self.closed = sock.getsockname()[1]
+        reserved = socket.socket()
+        self.addCleanup(reserved.close)
+        reserved.bind(('127.0.0.1', 0))
+        self.closed = reserved.getsockname()[1]
 
     async def post(self, no_proxy: str) -> None:
         url = f'https://127.0.0.1:{self.closed}/mcp'
         transport = outbound.Transport(
             url, {'HTTPS_PROXY': self.proxy, 'NO_PROXY': no_proxy}
         )
-        async with httpx.AsyncClient(transport=transport) as client:
+        async with httpx.AsyncClient(transport=transport, timeout=2) as client:
             await client.post(url)
 
     async def test_through_the_proxy(self) -> None:
@@ -188,21 +150,29 @@ class ProxyRouteTestCase(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_no_proxy_goes_direct(self) -> None:
-        with self.assertRaises(httpx.ConnectError):
+        with self.assertRaises((httpx.ConnectError, httpx.ConnectTimeout)):
             await self.post('127.0.0.0/8')
         self.assertEqual(self.heads, [])
 
 
-def _refresher(*values: str, expires: bool = True) -> credential.Refresher:
-    """A refresher whose fetches return ``values`` in order."""
-    expiry = datetime.datetime(2099, 1, 1, tzinfo=datetime.UTC)
+EXPIRY = datetime.datetime(2099, 1, 1, tzinfo=datetime.UTC)
+
+
+async def _refresher(*results: typing.Any) -> credential.Refresher:
+    """A started refresher whose fetches give ``results`` in order: a
+    value with an expiry, a :class:`proxy.Credential`, or an error."""
     fetch = mock.AsyncMock(
         side_effect=[
-            proxy.Credential(value, expiry if expires else None)
-            for value in values
+            proxy.Credential(result, EXPIRY)
+            if isinstance(result, str)
+            else result
+            for result in results
         ]
     )
-    return credential.Refresher(fetch, 'test')
+    made = credential.Refresher(fetch, 'test', 'T-1', (ValueError,))
+    await made.start()
+    made.stop()
+    return made
 
 
 class HeadersTestCase(unittest.IsolatedAsyncioTestCase):
@@ -210,11 +180,13 @@ class HeadersTestCase(unittest.IsolatedAsyncioTestCase):
         self,
         auth: outbound.Headers,
         statuses: list[int],
+        on_request: typing.Callable[[], None] = lambda: None,
     ) -> tuple[httpx.Response, list[httpx.Headers]]:
         seen: list[httpx.Headers] = []
 
         def network(request: httpx.Request) -> httpx.Response:
             seen.append(httpx.Headers(request.headers))
+            on_request()
             return httpx.Response(statuses[len(seen) - 1])
 
         async with httpx.AsyncClient(
@@ -224,9 +196,7 @@ class HeadersTestCase(unittest.IsolatedAsyncioTestCase):
         return response, seen
 
     async def test_templates_are_filled(self) -> None:
-        token = _refresher('t1')
-        await token.start()
-        token.stop()
+        token = await _refresher('t1')
         auth = outbound.Headers(
             {
                 'Authorization': 'Bearer ${TOKEN}',
@@ -243,18 +213,14 @@ class HeadersTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_a_renewed_secret_applies_to_the_next_request(
         self,
     ) -> None:
-        token = _refresher('t1', 't2')
-        await token.start()
-        token.stop()
+        token = await _refresher('t1', 't2')
         auth = outbound.Headers({'Authorization': 'Bearer ${T}'}, {'T': token})
         await token.renew()
         _, (headers,) = await self.send(auth, [200])
         self.assertEqual(headers['authorization'], 'Bearer t2')
 
     async def test_a_401_renews_once_and_sends_again(self) -> None:
-        token = _refresher('t1', 't2')
-        await token.start()
-        token.stop()
+        token = await _refresher('t1', 't2')
         auth = outbound.Headers({'Authorization': 'Bearer ${T}'}, {'T': token})
         response, seen = await self.send(auth, [401, 401])
         self.assertEqual(response.status_code, 401)
@@ -265,9 +231,42 @@ class HeadersTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_a_static_secret_is_not_sent_again_after_a_401(
         self,
     ) -> None:
-        token = _refresher('static', expires=False)
-        await token.start()
+        token = await _refresher(proxy.Credential('static'))
         auth = outbound.Headers({'X-Api-Key': '${KEY}'}, {'KEY': token})
         response, seen = await self.send(auth, [401])
         self.assertEqual(response.status_code, 401)
         self.assertEqual(len(seen), 1)
+
+    async def test_a_failed_renewal_keeps_the_401(self) -> None:
+        token = await _refresher('t1', ValueError('refused'))
+        auth = outbound.Headers({'Authorization': 'Bearer ${T}'}, {'T': token})
+        response, seen = await self.send(auth, [401])
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(len(seen), 1)
+
+    async def test_a_value_renewed_by_another_caller_is_sent(self) -> None:
+        token = await _refresher('t1')
+        auth = outbound.Headers({'Authorization': 'Bearer ${T}'}, {'T': token})
+
+        def renewed_elsewhere() -> None:
+            token.credential = proxy.Credential('t2', EXPIRY)
+
+        _, seen = await self.send(auth, [401, 200], renewed_elsewhere)
+        self.assertEqual(
+            [h['authorization'] for h in seen], ['Bearer t1', 'Bearer t2']
+        )
+        typing.cast('mock.AsyncMock', token.fetch).assert_awaited_once()
+
+    async def test_only_the_dynamic_secret_is_renewed(self) -> None:
+        static = await _refresher(proxy.Credential('s1'))
+        dynamic = await _refresher('d1', 'd2')
+        auth = outbound.Headers(
+            {'X-Key': '${S}', 'Authorization': 'Bearer ${D}'},
+            {'S': static, 'D': dynamic},
+        )
+        _, seen = await self.send(auth, [401, 200])
+        self.assertEqual(
+            [(h['x-key'], h['authorization']) for h in seen],
+            [('s1', 'Bearer d1'), ('s1', 'Bearer d2')],
+        )
+        typing.cast('mock.AsyncMock', static.fetch).assert_awaited_once()

@@ -38,13 +38,17 @@ class Stopped(Exception):
     """The task stopped during the call."""
 
 
+def escape(text: str) -> str:
+    """``text`` with each untrusted tag, in any case and spacing,
+    escaped, so it can neither close an untrusted block nor open a
+    nested one."""
+    return _UNTRUSTED_TAG.sub(lambda match: '&lt;' + match.group(0)[1:], text)
+
+
 def untrusted(text: str, source: str) -> str:
     """Wrap text from outside Imbi's people in an untrusted block
-    (plan section 6.7). A tag in the text, in any case and spacing,
-    is escaped, so the text can neither close the block nor open a
-    nested one."""
-    text = _UNTRUSTED_TAG.sub(lambda match: '&lt;' + match.group(0)[1:], text)
-    return f'<untrusted source="{source}">\n{text}\n</untrusted>'
+    (plan section 6.7), with :func:`escape`."""
+    return f'<untrusted source="{source}">\n{escape(text)}\n</untrusted>'
 
 
 def digest(arguments: typing.Any) -> str:

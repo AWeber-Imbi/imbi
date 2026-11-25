@@ -319,6 +319,15 @@ class Failed(Exception):
         self.reason = reason
 
 
+#: The errors of a setup secret's fetch that a renewal retries;
+#: ValueError is a partial JSON reply from the executor.
+_SECRET_ERRORS: tuple[type[Exception], ...] = (
+    Failed,
+    httpx.HTTPError,
+    ValueError,
+)
+
+
 class AgentTransport(subprocess_cli.SubprocessCLITransport):
     """Start the CLI wrapper as uid 0 (real, effective and saved).
 
@@ -545,7 +554,6 @@ _MARKETPLACE_ONLY = frozenset({'source', 'category', 'tags', 'strict'})
 MCP_STATUS_INTERVAL = 5
 MCP_STATUS_WAIT = 60
 _MCP_PROBLEMS = frozenset({'failed', 'needs-auth'})
-_VARIABLE = re.compile(r'\$\{([^}]+)\}')
 _CLI_VARIABLES = frozenset({'CLAUDE_PLUGIN_ROOT', 'CLAUDE_PLUGIN_DATA'})
 
 
@@ -823,24 +831,23 @@ def _drop(servers: Body, names: abc.Set[str]) -> bool:
     return bool(found)
 
 
+def _required_variables(config: typing.Any) -> set[str]:
+    """The ``${VAR}`` of a server's header values that have no
+    default."""
+    if not isinstance(config, dict):
+        return set()
+    return {
+        match
+        for value in _headers(typing.cast('Body', config)).values()
+        for match in outbound.VARIABLE.findall(value)
+        if ':-' not in match
+    }
+
+
 def _header_variables(config: typing.Any) -> list[str]:
     """The ``${VAR}`` of a server's header values that have no default
     and that the CLI does not fill from the plugin."""
-    headers: typing.Any = (
-        typing.cast('Body', config).get('headers')
-        if isinstance(config, dict)
-        else None
-    )
-    if not isinstance(headers, dict):
-        return []
-    names = {
-        match
-        for value in typing.cast('Body', headers).values()
-        if isinstance(value, str)
-        for match in _VARIABLE.findall(value)
-        if ':-' not in match
-    }
-    return sorted(names - _CLI_VARIABLES)
+    return sorted(_required_variables(config) - _CLI_VARIABLES)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -889,7 +896,7 @@ def _used_variables(config: Body) -> set[str]:
     return {
         match.partition(':-')[0]
         for value in _headers(config).values()
-        for match in _VARIABLE.findall(value)
+        for match in outbound.VARIABLE.findall(value)
     }
 
 
@@ -972,7 +979,9 @@ class TaskRun:
         self.loop: asyncio.AbstractEventLoop | None = None
         #: The model credential that the proxy sends. A refresh
         #: replaces it (WIF plan 4.7).
-        self.key = credential.Refresher(self.model_key, 'Model key')
+        self.key = credential.Refresher(
+            self.model_key, 'Model key', self.api.short_id, _SECRET_ERRORS
+        )
         #: Runs a child task of the chain and returns its summary.
         self.children = children
         #: The agent API token (P7): memory only. The runner heartbeat
@@ -1081,10 +1090,14 @@ class TaskRun:
             done = ('failed_external', 'harness_error')
         finally:
             heartbeat.cancel()
-            for each in self.plugin_relays:
-                await each.close()
-            for secret in [self.key, *self.header_secrets]:
-                secret.stop()
+            try:
+                await asyncio.gather(
+                    *(each.close() for each in self.plugin_relays),
+                    return_exceptions=True,
+                )
+            finally:
+                for secret in [self.key, *self.header_secrets]:
+                    secret.stop()
         if self.failure is not None:
             done = ('failed_external', self.failure)
         await self.flush()
@@ -1770,16 +1783,21 @@ class TaskRun:
             stopped=lambda: self.stopped,
             notice=self.recorder.notice,
         )
+        started = False
         try:
             await server.start()
-        except plugin_relay.Unavailable as error:
-            for secret in secrets.values():
-                secret.stop()
+            started = True
+        except Exception as error:  # noqa: BLE001 - no warning fails the task
             self.recorder.notice(
                 f'{what} is not available: the runner could not open a '
-                f'session or list its tools ({error.reason}).'
+                f'session or list its tools ({safeguards.reason(error)}).'
             )
             return None
+        finally:
+            if not started:
+                await server.close()
+                for secret in secrets.values():
+                    secret.stop()
         self.header_secrets.extend(set(secrets.values()))
         return server
 
@@ -1790,7 +1808,9 @@ class TaskRun:
         maps, from ``mcp_header`` resolutions; ``None`` with a task
         warning when Imbi refuses one. A mapping for a variable that the
         server does not use is not resolved. A variable with no secret
-        and no default gets a task warning too."""
+        and no default gets a task warning too, the variables that the
+        CLI fills from the plugin included: the relay cannot fill
+        them."""
         what = relayed.describe()
         used = _used_variables(relayed.config)
         mapped = {
@@ -1803,26 +1823,28 @@ class TaskRun:
                 functools.partial(
                     self.secret, reference, 'mcp_header', 'mcp_header'
                 ),
-                f'{what}: secret',
+                f'MCP header secret {reference}',
+                self.api.short_id,
+                _SECRET_ERRORS,
             )
             for reference in sorted(set(mapped.values()))
         }
+        started = False
         try:
             for secret in by_reference.values():
                 await secret.start()
-        except (Failed, httpx.HTTPError, ValueError) as error:
-            for secret in by_reference.values():
-                secret.stop()
+            started = True
+        except Exception as error:  # noqa: BLE001 - no warning fails the task
             self.recorder.notice(
                 f'{what} is not available: Imbi did not give the runner '
                 f'a secret for its headers ({safeguards.reason(error)}).'
             )
             return None
-        if unset := [
-            name
-            for name in _header_variables(relayed.config)
-            if name not in mapped
-        ]:
+        finally:
+            if not started:
+                for secret in by_reference.values():
+                    secret.stop()
+        if unset := sorted(_required_variables(relayed.config) - set(mapped)):
             self.recorder.notice(
                 f'{what} uses '
                 + ', '.join(f'${{{name}}}' for name in unset)

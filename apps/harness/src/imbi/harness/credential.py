@@ -35,6 +35,9 @@ class Refresher:
     Args:
         fetch: Gets the secret from the secrets broker.
         name: The secret in log messages.
+        owner: The task in log messages.
+        errors: The errors of ``fetch`` that a background renewal
+            retries.
 
     """
 
@@ -42,9 +45,13 @@ class Refresher:
         self,
         fetch: abc.Callable[[], abc.Awaitable[proxy.Credential]],
         name: str,
+        owner: str,
+        errors: tuple[type[Exception], ...],
     ) -> None:
         self.fetch = fetch
         self.name = name
+        self.owner = owner
+        self.errors = errors
         self.credential = proxy.Credential('')
         #: One renewal at a time; a second caller waits for it.
         self.lock = asyncio.Lock()
@@ -95,7 +102,12 @@ class Refresher:
                 try:
                     await self.renew()
                     break  # same expiry: the outer loop waits the floor
-                except Exception as error:  # noqa: BLE001 - retried
-                    LOGGER.warning('%s renewal failed: %s', self.name, error)
+                except self.errors as error:
+                    LOGGER.warning(
+                        '%s renewal of %s failed: %s',
+                        self.name,
+                        self.owner,
+                        error,
+                    )
                     await asyncio.sleep(delay)
                     delay = min(delay * 2, RETRY_MAX)
