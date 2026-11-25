@@ -46,6 +46,18 @@ class UniqueIndexTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(any('CREATE' in q for q in executed(cur)))
 
 
+class BackfillTagOrgIdTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_existing_index_skips_the_backfill(self) -> None:
+        cur = cursor(index_exists=True, duplicates=[])
+        await initializer._backfill_tag_org_id(cur, 'imbi')
+        self.assertFalse(any('cypher' in q for q in executed(cur)))
+
+    async def test_missing_index_runs_the_backfill(self) -> None:
+        cur = cursor(index_exists=False, duplicates=[])
+        await initializer._backfill_tag_org_id(cur, 'imbi')
+        self.assertTrue(any('SET t.org_id' in q for q in executed(cur)))
+
+
 class InitializeLockTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_ddl_runs_under_an_advisory_lock(self) -> None:
         """Services that start together must not race on the DDL.
@@ -62,6 +74,7 @@ class InitializeLockTestCase(unittest.IsolatedAsyncioTestCase):
             '_create_extensions',
             '_create_graph',
             '_create_vlabels',
+            '_backfill_tag_org_id',
             '_create_vlabel_indexes',
             '_create_embeddings_table',
             '_create_functions',

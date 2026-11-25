@@ -41,6 +41,7 @@ import {
 } from '@/lib/constants'
 import type { DeliveryMode } from '@/lib/delivery'
 import { treatNotFoundAsNull } from '@/lib/queryHelpers'
+import { slugify } from '@/lib/utils'
 import type {
   AdminSettings,
   AdminUser,
@@ -2646,7 +2647,7 @@ export const listTags = async (
   return Array.isArray(response) ? response : []
 }
 
-export const createTag = (
+const createTag = (
   orgSlug: string,
   data: {
     color?: null | string
@@ -2658,6 +2659,49 @@ export const createTag = (
   apiClient.post<Tag>(
     `/organizations/${encodeURIComponent(orgSlug)}/tags/`,
     data,
+  )
+
+/**
+ * Create a tag. When the tag already exists (409), for example because
+ * another user created it after this client loaded the tag list, return
+ * the existing tag instead.
+ */
+export const createOrFindTag = async (
+  orgSlug: string,
+  data: Parameters<typeof createTag>[1],
+): Promise<Tag> => {
+  try {
+    return await createTag(orgSlug, data)
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 409) throw error
+    // The API returns 409 only for a duplicate slug, so match the slug.
+    const slug = data.slug ?? slugify(data.name)
+    const existing = (await listTags(orgSlug)).find((t) => t.slug === slug)
+    if (!existing) throw error
+    return existing
+  }
+}
+
+export const patchTag = (
+  orgSlug: string,
+  tagSlug: string,
+  operations: PatchOperation[],
+) =>
+  apiClient.patch<Tag>(
+    `/organizations/${encodeURIComponent(orgSlug)}/tags/${encodeURIComponent(tagSlug)}`,
+    operations,
+  )
+
+export const deleteTag = (orgSlug: string, tagSlug: string) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/tags/${encodeURIComponent(tagSlug)}`,
+  )
+
+/** Move every use of `tagSlug` to `target`, then delete `tagSlug`. */
+export const mergeTag = (orgSlug: string, tagSlug: string, target: string) =>
+  apiClient.post<Tag>(
+    `/organizations/${encodeURIComponent(orgSlug)}/tags/${encodeURIComponent(tagSlug)}/merge`,
+    { target },
   )
 
 // Releases

@@ -1,10 +1,10 @@
 import { useState } from 'react'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Plus, X } from 'lucide-react'
+import { Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { createTag, listTags } from '@/api/endpoints'
+import { createOrFindTag, listTags } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import {
   Command,
@@ -14,6 +14,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
+import { LabelSwatchPicker } from '@/components/ui/label-swatch-picker'
 import {
   Popover,
   PopoverContent,
@@ -21,7 +22,7 @@ import {
 } from '@/components/ui/popover'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { LABEL_SWATCHES } from '@/lib/chip-colors'
-import { cn } from '@/lib/utils'
+import { queryKeys } from '@/lib/queryKeys'
 import type { Tag } from '@/types'
 
 import type { AgentTag } from './agentDraft'
@@ -46,7 +47,7 @@ export function AgentTagPicker({
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [color, setColor] = useState<null | string>(LABEL_SWATCHES[4].hex)
-  const tagsKey = ['tags', orgSlug] as const
+  const tagsKey = queryKeys.tags(orgSlug)
 
   const { data: tags = [] } = useQuery({
     enabled: !!orgSlug,
@@ -60,12 +61,12 @@ export function AgentTagPicker({
   }
 
   const create = useMutation({
-    mutationFn: () => createTag(orgSlug, { color, name: query.trim() }),
+    mutationFn: () => createOrFindTag(orgSlug, { color, name: query.trim() }),
     onError: (error) =>
       toast.error(`Failed to create the tag: ${extractApiErrorDetail(error)}`),
     onSuccess: (tag) => {
-      queryClient.setQueryData<Tag[]>(tagsKey, (prev) => [...(prev ?? []), tag])
-      add(tag)
+      queryClient.invalidateQueries({ queryKey: tagsKey })
+      if (!selected.has(tag.slug)) add(tag)
     },
   })
 
@@ -122,26 +123,11 @@ export function AgentTagPicker({
               <div className="text-overline text-tertiary uppercase">
                 New tag color
               </div>
-              <div
-                aria-label="Tag color"
-                className="flex flex-wrap gap-1.5"
-                role="radiogroup"
-              >
-                <SwatchButton
-                  checked={color === null}
-                  label="No color"
-                  onClick={() => setColor(null)}
-                />
-                {LABEL_SWATCHES.map((s) => (
-                  <SwatchButton
-                    checked={color === s.hex}
-                    hex={s.hex}
-                    key={s.hex}
-                    label={s.name}
-                    onClick={() => setColor(s.hex)}
-                  />
-                ))}
-              </div>
+              <LabelSwatchPicker
+                label="Tag color"
+                onChange={setColor}
+                value={color}
+              />
               <Button
                 disabled={create.isPending}
                 onClick={() => create.mutate()}
@@ -156,36 +142,5 @@ export function AgentTagPicker({
         </PopoverContent>
       </Popover>
     </div>
-  )
-}
-
-function SwatchButton({
-  checked,
-  hex,
-  label,
-  onClick,
-}: {
-  checked: boolean
-  hex?: string
-  label: string
-  onClick: () => void
-}) {
-  return (
-    <button
-      aria-checked={checked}
-      aria-label={label}
-      className={cn(
-        'flex size-6 items-center justify-center rounded-md border-2',
-        checked ? 'border-primary' : 'border-transparent',
-        !hex && 'bg-secondary',
-      )}
-      onClick={onClick}
-      role="radio"
-      style={hex ? { backgroundColor: hex } : undefined}
-      title={label}
-      type="button"
-    >
-      {checked && <Check className={cn('size-3', hex && 'text-white')} />}
-    </button>
   )
 }

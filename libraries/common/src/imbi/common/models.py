@@ -1870,7 +1870,15 @@ class Project(Node):
 
 
 class Tag(Node):
+    """An org-scoped label for documents and agents.
+
+    ``slug`` is unique per organization: the ``(org_id, slug)`` unique
+    index enforces it.
+    """
+
     organization: BelongsToOrganization
+    #: Denormalised so ``(org_id, slug)`` can carry a unique index.
+    org_id: str | None = None
 
     color: typing.Annotated[
         str | None,

@@ -73,6 +73,8 @@ interface AdminTableProps<T> {
   canDelete?: (row: T) => CanDeleteResult
   columns: AdminTableColumn<T>[]
   emptyMessage?: string
+  /** The delete confirmation text. Defaults to "cannot be undone". */
+  getDeleteDescription?: (row: T) => string
   getDeleteLabel?: (row: T) => string
   // Returns the destination for a row. When provided, the row renders a real
   // anchor so cmd/ctrl/middle-click and the browser context menu work
@@ -154,6 +156,7 @@ export function AdminTable<T>({
   canDelete,
   columns,
   emptyMessage = 'No items found.',
+  getDeleteDescription,
   getDeleteLabel,
   getRowHref,
   getRowKey,
@@ -301,7 +304,9 @@ export function AdminTable<T>({
               &quot;?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone.
+              {deleteTarget && getDeleteDescription
+                ? getDeleteDescription(deleteTarget)
+                : 'This action cannot be undone.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
