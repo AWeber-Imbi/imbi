@@ -14,7 +14,7 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAuth } from '@/hooks/useAuth'
 import { hasPermission } from '@/hooks/useHasPermission'
 
-// The pages of the Agents area. The header menu and the area sidebar
+// The pages of the Agents area. The header menu and the area routing
 // both use this list, so they always agree.
 
 export interface AgentsNavItem {
