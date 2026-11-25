@@ -1,6 +1,6 @@
 [project]
 name = "imbi-plugin-posthog"
-version = "2.62.0"
+version = "2.62.1"
 description = "PostHog webhook plugin for Imbi"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -17,7 +17,7 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-  "imbi-common==2.62.0",
+  "imbi-common==2.62.1",
   "pydantic>=2",
 ]
 
