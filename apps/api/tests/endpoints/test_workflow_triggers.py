@@ -768,10 +768,16 @@ class OriginTestCase(TriggerTestCase):
             f'{self.url}/runs', json={'trigger': 'tick'}
         )
         self.assertEqual(response.status_code, 422, response.text)
-        response = await self.client.post(
-            f'{self.url}/runs',
-            json={'trigger': 'tick'},
-            headers={'X-Imbi-Scheduled-Task': 'task-1'},
-        )
-        self.assertEqual(response.status_code, 403, response.text)
+        for header in (
+            'X-Imbi-Scheduled-Task',
+            'X-Imbi-Scheduled-Task-Accountable',
+            'X-Imbi-Scheduled-Task-Org',
+        ):
+            with self.subTest(header=header):
+                response = await self.client.post(
+                    f'{self.url}/runs',
+                    json={'trigger': 'tick'},
+                    headers={header: 'value-1'},
+                )
+                self.assertEqual(response.status_code, 403, response.text)
         self.assertEqual(await self._run_count(), 0)

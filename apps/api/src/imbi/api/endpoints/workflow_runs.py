@@ -973,6 +973,12 @@ async def start_run(
     ] = None,
     webhook: typing.Annotated[str | None, _header('X-Imbi-Webhook')] = None,
     delivery: typing.Annotated[str | None, _header('X-Imbi-Delivery')] = None,
+    scheduled_by: typing.Annotated[
+        str | None, _header('X-Imbi-Scheduled-Task-Accountable')
+    ] = None,
+    scheduled_org: typing.Annotated[
+        str | None, _header('X-Imbi-Scheduled-Task-Org')
+    ] = None,
 ) -> workflows.Row:
     """Start a run of the active version.
 
@@ -1006,7 +1012,13 @@ async def start_run(
 
     """
     origin = tickets.task_origin(
-        auth, scheduled_task, webhook, delivery, service_accounts=True
+        auth,
+        scheduled_task,
+        webhook,
+        delivery,
+        scheduled_by,
+        scheduled_org,
+        service_accounts=True,
     )
     workflow = await _workflow(store, org_id, slug)
     if workflow['status'] != 'active' or workflow['active_version'] is None:
