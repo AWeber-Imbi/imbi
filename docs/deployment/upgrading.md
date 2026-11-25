@@ -74,7 +74,7 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
-## Unreleased
+## 2.63.0
 
 1. Deploy the runner (imbi-harness) image with imbi-api, or right after
    it. A runner on an older image ignores the MCP server checkboxes and
@@ -150,6 +150,17 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 6. Deploy imbi-workflows with imbi-api. Both must load the same plugin
    versions, because the engine reads the step catalog and imbi-api runs
    the steps.
+7. Deploy imbi-api before the UI and imbi-slackbot. imbi-api now
+   calculates project drift and sends it in the projects list as
+   `drift_pairs` and `release_drifted`; the Projects page, the project
+   page, and the Slack cards and Home tab only read these fields. The
+   list no longer sends `drift_range_oldest`; each pair in
+   `drift_pairs` has its `oldest` date. A client of an earlier release
+   that runs against the new imbi-api shows no drift dates. A new client
+   that runs against an earlier imbi-api shows no drift.
+8. Slack link previews are now Work Objects. In the Slack app settings,
+   open **Work Object Previews**, turn it on, and select the **Task** and
+   **Item** entity types. Until you do this, Slack shows no previews.
 
 ## 2.62.0
 
@@ -210,9 +221,7 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    event, and `unfurl_domains` (the host of `IMBI_UI_URL`) to the Slack
    app, then reinstall the app to the workspace. The
    [Slack app manifest](../slackbot/slack-app-manifest.md) has all of
-   them. Then, in the app settings, open **Work Object Previews**, turn it
-   on, and select the **Task** and **Item** entity types. Until you do
-   this, Slack shows no previews.
+   them. Until you do this, Slack shows no previews.
 6. **Before you deploy**, look for blueprints that use `pattern`,
    `minLength`, `maxLength`, `multipleOf`, or the formats `uuid`,
    `ipv4`, and `ipv6`. Imbi now enforces these
@@ -234,14 +243,6 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    [Slack App Setup](../slackbot/slack-app-manifest.md#home-tab) to the
    Slack app, or reinstall the app from the new manifest. Until you do
    this, Slack shows no Home tab.
-8. Deploy imbi-api before the UI and imbi-slackbot. imbi-api now
-   calculates project drift and sends it in the projects list as
-   `drift_pairs` and `release_drifted`; the Projects page, the project
-   page, and the Slack cards and Home tab only read these fields. The
-   list no longer sends `drift_range_oldest`; each pair in
-   `drift_pairs` has its `oldest` date. A client of an earlier release
-   that runs against the new imbi-api shows no drift dates. A new client
-   that runs against an earlier imbi-api shows no drift.
 
 ## 2.61.0
 
