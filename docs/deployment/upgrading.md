@@ -77,9 +77,10 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 ## Unreleased
 
 1. Deploy the runner (imbi-harness) image with imbi-api, or right after
-   it. A runner on an older image ignores the MCP server checkboxes of
-   **Tools and plugins**, so a server that someone turned off still
-   loads.
+   it. A runner on an older image ignores the MCP server checkboxes and
+   secrets of **Tools and plugins**: a server that someone turned off
+   still loads, and a server that someone gave secrets connects without
+   them.
 
 ## 2.62.0
 

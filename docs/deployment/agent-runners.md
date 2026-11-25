@@ -269,8 +269,9 @@ helm upgrade general helm/imbi-harness -n imbi-runners --reuse-values \
 ```
 
 !!! note
-    The bundle applies to the CLI only. The runner's own relay to MCP
-    servers that an administrator registered in Imbi does not use it.
+    The bundle applies to the CLI only. The runner connects itself to a
+    plugin MCP server that an agent gives secrets, and that connection
+    does not use the bundle.
 
 ### KEDA (`pool.mode: scaledJob` only)
 
@@ -713,7 +714,7 @@ not run it.
 |---|---|---|
 | `repositories_span_installations` | The repositories of one token are in more than one GitHub App installation | Use repositories from one GitHub organization per task, or use separate bindings |
 | `repository_not_allowed` | A `marketplace_fetch` request names a repository that is not in the binding's `repositories` | Add the repository to `repositories`, or empty the list to allow each repository of the installation |
-| `setup_purpose_file_descriptor_only` | A runner purpose was requested with a mode other than `file_descriptor` | Grant `model_inference`, `workspace_checkout`, and `marketplace_fetch` with `file_descriptor` only |
+| `setup_purpose_file_descriptor_only` | A runner purpose was requested with a mode other than `file_descriptor` | Grant `model_inference`, `workspace_checkout`, `marketplace_fetch`, and `mcp_header` with `file_descriptor` only |
 | `ambiguous_grants` | More than one grant allows the request | Remove the overlap, so that exactly one grant matches |
 | `no_grant` | No grant allows the request | Check the grant's agents, bindings, purposes, delivery modes, and projects |
 
