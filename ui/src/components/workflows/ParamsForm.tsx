@@ -215,8 +215,13 @@ function ChoicesField({
         <Combobox
           creatable
           id={id}
-          onChange={onChange}
-          options={options}
+          // The "None" option clears an optional field.
+          onChange={(v) => onChange(v || undefined)}
+          options={
+            field.required
+              ? options
+              : [{ label: 'None', value: '' }, ...options]
+          }
           placeholder={placeholder}
           value={typeof value === 'string' ? value : ''}
         />

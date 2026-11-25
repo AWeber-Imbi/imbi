@@ -134,7 +134,9 @@ export function useStepChoices(
     typeof integration === 'string' &&
     integration !== '' &&
     !hasTemplate(integration) &&
-    Object.values(params).every((v) => typeof v !== 'string' || !hasTemplate(v))
+    Object.values(params)
+      .flat()
+      .every((v) => typeof v !== 'string' || !hasTemplate(v))
   return useQuery({
     enabled: ready,
     queryFn: ({ signal }) =>

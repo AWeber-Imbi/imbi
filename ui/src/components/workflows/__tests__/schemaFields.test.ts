@@ -419,6 +419,29 @@ describe('paramFields for a plugin step', () => {
     })
     expect(fields.find((f) => f.name === 'region')?.kind).toBe('text')
   })
+
+  it('keeps the choices marker of a $ref field', () => {
+    const fields = paramFields(
+      {
+        $defs: { Kind: { enum: ['a', 'b'], type: 'string' } },
+        properties: {
+          kind: {
+            $ref: '#/$defs/Kind',
+            'x-imbi-choices': true,
+            'x-imbi-depends-on': ['region'],
+          },
+        },
+        type: 'object',
+      },
+      [],
+      'grafana.gather_metrics',
+    )
+    expect(fields[0]).toMatchObject({
+      dependsOn: ['region'],
+      kind: 'choices',
+      multiple: false,
+    })
+  })
 })
 
 describe('isIdOrReference', () => {

@@ -11,6 +11,7 @@ import typing
 import uuid
 from unittest import mock
 
+import fastapi
 import httpx
 
 from apps.api.tests import support
@@ -338,6 +339,19 @@ class RunStepTestCase(support.SharedAppAsyncTestCase):
             self._error(response), {'error': 'plugin_error', 'retry': True}
         )
 
+    async def test_plugin_http_error_is_a_plugin_error(self) -> None:
+        handler = self._plugin(
+            side_effect=fastapi.HTTPException(429, detail='rate limited')
+        )
+        for _ in range(2):
+            response = await self._run()
+            self.assertEqual(response.status_code, 502)
+            self.assertEqual(
+                self._error(response),
+                {'error': 'plugin_error', 'retry': True},
+            )
+        handler.assert_awaited_once()
+
     async def test_time_limit(self) -> None:
         async def slow(*_: typing.Any) -> base.StepResult:
             await asyncio.sleep(5)
@@ -357,6 +371,16 @@ class RunStepTestCase(support.SharedAppAsyncTestCase):
     async def test_request_size(self) -> None:
         response = await self._run(
             params={'datasource': 'prom', 'query': 'x' * endpoint.MAX_BYTES}
+        )
+        self.assertEqual(response.status_code, 413)
+
+    async def test_request_size_counts_bytes(self) -> None:
+        # Three bytes each in UTF-8: fewer characters than MAX_BYTES.
+        response = await self._run(
+            params={
+                'datasource': 'prom',
+                'query': '\u754c' * (endpoint.MAX_BYTES // 2),
+            }
         )
         self.assertEqual(response.status_code, 413)
 

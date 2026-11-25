@@ -3591,6 +3591,22 @@ class PluginStepTestCase(EngineTestCase):
         self.assertEqual(run['status'], 'failed')
         self.assertEqual(run['error'], 'unknown_type:stepper.metric_threshold')
         self.assertEqual(self.calls, [])
+        self.assertEqual(
+            [e.rsplit('/', 1)[1] for e in self.api.emails], ['failure-notice']
+        )
+
+    async def test_plugin_timeout_retry_keeps_the_key_attempt(self) -> None:
+        self.answers = [
+            httpx.Response(
+                504,
+                json={'detail': {'error': 'plugin_timeout', 'retry': True}},
+            ),
+        ]
+        run_id = await self._gate(retries=1)
+        await self._drive(run_id, lambda r: len(self.calls) == 1)
+        run = await self._run(run_id)
+        self.assertEqual(run['steps']['gate']['attempt'], 2)
+        self.assertEqual(run['steps']['gate']['state'], {'key_attempt': 1})
 
 
 class AppTestCase(unittest.IsolatedAsyncioTestCase):

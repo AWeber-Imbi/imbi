@@ -189,6 +189,8 @@ class Engine:
             # The plugin of a step type was removed after the workflow
             # was saved (ADR 0032).
             await self._unknown_type(run, steps, unknown)
+            if wf_settings.on_failure == 'notify_owner_team':
+                await self._notify_owner_team(run, version['slug'])
             return None
         if run['status'] == 'queued':
             if not await self._activator_allowed(run, wf_graph):
@@ -557,13 +559,14 @@ class Engine:
                 return _now()
             attempt = step['attempt'] + 1
             # The state stays: a deploy or rollback resumes its run.
-            # After a timeout, the outcome of the last call is unknown.
-            # ``key_attempt`` lets a step (LLM Call) send the key of that
-            # call again; after a known error it sends a new one.
+            # After a timeout or a lost response, the outcome of the last
+            # call is unknown. ``key_attempt`` lets a step (LLM Call, a
+            # plugin step) send the key of that call again; after a known
+            # error it sends a new one.
             state = {
                 k: v for k, v in step['state'].items() if k != 'key_attempt'
             }
-            if code == 'timeout':
+            if code in ('timeout', 'plugin_timeout') or unreachable:
                 state['key_attempt'] = step['state'].get(
                     'key_attempt', step['attempt']
                 )

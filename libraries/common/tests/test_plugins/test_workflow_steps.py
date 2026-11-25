@@ -41,13 +41,29 @@ class DescriptorTestCase(unittest.TestCase):
                 choices=None,
             )
 
-    def test_project_id_is_reserved_when_project_scoped(self) -> None:
+    def test_project_id_is_reserved(self) -> None:
         params = pydantic.create_model('P', project_id=(str, ...))
-        step_plugin.query_descriptor(params_model=params, choices=None)
-        with self.assertRaisesRegex(pydantic.ValidationError, 'project_id'):
-            step_plugin.query_descriptor(
-                params_model=params, choices=None, project_scoped=True
-            )
+        for scoped in (False, True):
+            with self.assertRaisesRegex(
+                pydantic.ValidationError, 'project_id'
+            ):
+                step_plugin.query_descriptor(
+                    params_model=params, choices=None, project_scoped=scoped
+                )
+
+    def test_choice_fields_use_alias(self) -> None:
+        params = pydantic.create_model(
+            'P',
+            datasource_id=(
+                str,
+                pydantic.Field(
+                    alias='datasourceId',
+                    json_schema_extra={'x-imbi-choices': True},
+                ),
+            ),
+        )
+        descriptor = step_plugin.query_descriptor(params_model=params)
+        self.assertEqual(descriptor.choice_fields, ['datasourceId'])
 
     def test_side_effect_needs_permissions(self) -> None:
         with self.assertRaisesRegex(pydantic.ValidationError, 'permissions'):

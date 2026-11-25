@@ -185,7 +185,7 @@ def _result(
         checked = base.StepResult(
             output=output.model_dump(mode='json'), port=result.port
         )
-    if len(checked.model_dump_json()) > MAX_BYTES:
+    if len(checked.model_dump_json().encode()) > MAX_BYTES:
         raise _call_error('plugin_result_invalid')
     return checked
 
@@ -232,7 +232,7 @@ async def run_workflow_step(
         504: The plugin did not answer in time.
 
     """
-    if len(data.model_dump_json()) > MAX_BYTES:
+    if len(data.model_dump_json().encode()) > MAX_BYTES:
         raise fastapi.HTTPException(
             status_code=413, detail='The request is larger than 1 MiB'
         )
@@ -280,11 +280,6 @@ async def run_workflow_step(
             answer = await descriptor.callable(
                 ctx, credentials, params, data.call
             )
-        result = _result(descriptor, answer)
-    except fastapi.HTTPException as e:
-        detail = typing.cast('dict[str, str]', e.detail)
-        await calls.finish(row['id'], error=detail['error'])
-        raise
     except TimeoutError:
         await calls.finish(row['id'], error='plugin_timeout')
         raise _call_error('plugin_timeout') from None
@@ -292,6 +287,11 @@ async def run_workflow_step(
         LOGGER.exception('Plugin step %s failed', step_type)
         await calls.finish(row['id'], error='plugin_error')
         raise _call_error('plugin_error') from None
+    try:
+        result = _result(descriptor, answer)
+    except fastapi.HTTPException:
+        await calls.finish(row['id'], error='plugin_result_invalid')
+        raise
     await calls.finish(row['id'], result=result.model_dump(mode='json'))
     return result
 

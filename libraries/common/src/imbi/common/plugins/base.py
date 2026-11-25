@@ -2451,8 +2451,9 @@ class WorkflowStepDescriptor(pydantic.BaseModel):
     The workflow type is ``<plugin_slug>.<name>``. The step gets an
     ``integration`` param (and ``project_id`` when
     :attr:`project_scoped`) from the host, so :attr:`params_model` must
-    not declare them. imbi-api calls :attr:`callable` with the
-    credentials of the Integration that the node selects.
+    not declare ``integration`` or ``project_id``. imbi-api calls
+    :attr:`callable` with the credentials of the Integration that the
+    node selects.
     """
 
     name: str = pydantic.Field(pattern=r'^[a-z][a-z0-9_]*$')
@@ -2482,9 +2483,13 @@ class WorkflowStepDescriptor(pydantic.BaseModel):
 
     @property
     def choice_fields(self) -> list[str]:
-        """The params fields whose choices :attr:`choices` gives."""
+        """The params fields whose choices :attr:`choices` gives.
+
+        Each field has its name in the JSON schema (its alias, if it has
+        one): the workflow builder and :attr:`choices` use that name.
+        """
         return [
-            name
+            field.alias or name
             for name, field in self.params_model.model_fields.items()
             if isinstance(field.json_schema_extra, dict)
             and field.json_schema_extra.get(CHOICES_KEY)
@@ -2494,10 +2499,11 @@ class WorkflowStepDescriptor(pydantic.BaseModel):
     def _validate(self) -> typing.Self:
         if not self.ports or len(set(self.ports)) != len(self.ports):
             raise ValueError('ports must be non-empty and unique')
-        reserved = {'integration'} | (
-            {'project_id'} if self.project_scoped else set()
+        # The workflows engine takes both out of the params of every
+        # plugin step, project-scoped or not.
+        taken = sorted(
+            {'integration', 'project_id'} & set(self.params_model.model_fields)
         )
-        taken = sorted(reserved & set(self.params_model.model_fields))
         if taken:
             raise ValueError(f'params_model must not declare {taken}')
         if self.side_effect and not self.permissions:

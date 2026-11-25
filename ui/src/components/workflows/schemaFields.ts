@@ -205,7 +205,10 @@ function humanize(name: string): string {
 /** Follow a local `$ref`, and take the non-null branch of `X | None`. */
 function resolve(root: JsonSchema, prop: JsonSchema): JsonSchema {
   if (prop.$ref) {
-    return root.$defs?.[prop.$ref.replace('#/$defs/', '')] ?? prop
+    // Keep the keys of the property, such as `x-imbi-choices`: Pydantic
+    // puts `json_schema_extra` next to the `$ref`, not in the definition.
+    const def = root.$defs?.[prop.$ref.replace('#/$defs/', '')]
+    return def ? { ...prop, ...def, $ref: undefined } : prop
   }
   const branch = prop.anyOf?.find((s) => s.type !== 'null')
   return branch ? { ...prop, ...branch, anyOf: undefined } : prop

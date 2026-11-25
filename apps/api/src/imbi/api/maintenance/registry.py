@@ -354,7 +354,9 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             label='Prune Plugin Step Calls',
             description=(
                 'Delete the records of plugin workflow step calls older '
-                'than 90 days. The scheduler runs this daily at 02:45 UTC.'
+                'than 90 days. The records of a workflow run that is '
+                'still open stay until the run closes. The scheduler '
+                'runs this daily at 02:45 UTC.'
             ),
             pause_key=None,
             enumerate=operations.enumerate_ai_model_calls_prune,

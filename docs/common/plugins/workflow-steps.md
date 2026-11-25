@@ -95,8 +95,8 @@ The registry refuses the plugin when:
 
 - two descriptors have the same `name`;
 - `ports` is empty or has a duplicate;
-- `params_model` declares `integration`, or `project_id` on a
-  project-scoped step;
+- `params_model` declares `integration` or `project_id`. This applies
+  to every step, also a step that is not project-scoped;
 - `side_effect=True` and `permissions` is empty. The engine runs steps
   as a service account, so a permission must limit who can activate a
   workflow that acts;
@@ -126,9 +126,13 @@ The workflows engine does not hold Integration credentials. It sends
 each call to imbi-api as the `imbi-workflows` service account:
 
 ```text
-POST /organizations/{org}/integrations/{integration}/workflow-steps/{name}/run
+POST /organizations/{org}/integrations/{integration}/workflow-steps/{step_type}/run
 Idempotency-Key: <run_id>:<node_id>:<attempt>:<poll>
 ```
+
+`{step_type}` is the full workflow type `<plugin>.<name>`, for example
+`grafana.metric_threshold`, not the descriptor `name` only. The
+`<plugin>` part must be the plugin of the Integration.
 
 imbi-api checks that the Integration is in the organization, is of the
 plugin of the step, and has the `workflow-steps` capability on. Then it

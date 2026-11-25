@@ -14,6 +14,7 @@ from psycopg import rows
 from psycopg.types import json as pg_json
 
 from imbi.api.workflows import store
+from imbi.common import relational
 from imbi.common.workflows import runtime
 
 #: Rows older than this are deleted by ``plugin-step-calls-prune``,
@@ -55,11 +56,21 @@ class PluginCallStore:
         idempotency key, return the row of the first call and ``False``.
         A ``running`` first call older than ``stale_after`` seconds is
         set to ``outcome_unknown`` first: it will not finish now.
+
+        Raises:
+            relational.OrganizationDeleted: The organization was deleted.
+
         """
         async with (
             self._pool.connection() as conn,
+            conn.transaction(),
             conn.cursor(row_factory=rows.dict_row) as cur,
         ):
+            # The organization delete cannot remove the rows of the
+            # organization between this lock and the insert.
+            await relational.lock_organization_shared(
+                conn, str(call['organization_id'])
+            )
             await cur.execute(
                 _START, {**call, 'id': uuid.uuid4(), 'stale': stale_after}
             )
