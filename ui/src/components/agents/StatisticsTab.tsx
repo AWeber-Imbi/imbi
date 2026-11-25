@@ -604,7 +604,7 @@ function OpenInTrajectory({
     <IconTooltip label="Open in trajectory">
       <Button
         aria-label={`${label}: open in trajectory`}
-        className="text-tertiary hover:text-primary -my-1 hidden size-6 shrink-0 group-focus-within/row:inline-flex group-hover/row:inline-flex group-data-selected/row:inline-flex [&_svg]:size-3.5"
+        className="text-tertiary hover:text-primary -my-1 size-6 shrink-0 opacity-0 group-hover/row:opacity-100 group-data-selected/row:opacity-100 focus-visible:opacity-100 [&_svg]:size-3.5"
         onClick={(e) => {
           e.stopPropagation()
           onOpen()
