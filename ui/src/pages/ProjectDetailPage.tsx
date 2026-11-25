@@ -1,4 +1,6 @@
-import { useParams } from 'react-router-dom'
+import { useEffect } from 'react'
+
+import { useLocation, useNavigate } from 'react-router-dom'
 
 import { useQuery } from '@tanstack/react-query'
 
@@ -8,14 +10,13 @@ import { ProjectDetail } from '@/components/ProjectDetail'
 import { Sk } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { parseProjectPath, projectPath, urlSlug } from '@/lib/project-path'
 
 export function ProjectDetailPage() {
-  const { projectId, subAction, subId, tab } = useParams<{
-    projectId: string
-    subAction?: string
-    subId?: string
-    tab?: string
-  }>()
+  const { hash, pathname, search } = useLocation()
+  const navigate = useNavigate()
+  const { projectId, rest, slug } = parseProjectPath(pathname)
+  const [tab, subId, subAction] = rest
   const { selectedOrganization } = useOrganization()
 
   const orgSlug = selectedOrganization?.slug || ''
@@ -32,6 +33,17 @@ export function ProjectDetailPage() {
   })
 
   usePageTitle(project?.name ?? 'Project')
+
+  // Legacy ID-only URLs and renamed slugs move to the canonical URL. This
+  // runs as an effect so ProjectDetail stays mounted (and keeps its state)
+  // when a slug edit changes the cached project.
+  const canonical = project && projectPath(project, ...rest)
+  const needsRedirect = !!project && slug !== urlSlug(project.slug)
+  useEffect(() => {
+    if (needsRedirect && canonical) {
+      navigate({ hash, pathname: canonical, search }, { replace: true })
+    }
+  }, [canonical, hash, navigate, needsRedirect, search])
 
   return (
     <div className="bg-tertiary text-primary min-h-screen">

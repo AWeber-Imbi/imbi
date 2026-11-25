@@ -129,7 +129,7 @@ function App() {
                       <ProjectDetailPage />
                     </ProtectedRoute>
                   }
-                  path="/projects/:projectId/:tab?/:subId?/:subAction?"
+                  path="/projects/*"
                 />
                 <Route
                   element={
