@@ -409,6 +409,24 @@ async def lookup_project_organization_id(
     return str(value) if value else ''
 
 
+_PROJECT_ORG_SLUG_QUERY: typing.LiteralString = (
+    'MATCH (p:Project {{id: {project_id}}})-[:OWNED_BY]->(:Team)'
+    '-[:BELONGS_TO]->(o:Organization) RETURN o.slug AS slug LIMIT 1'
+)
+
+
+async def lookup_project_organization_slug(
+    db: graph.Graph, project_id: str
+) -> str | None:
+    """The slug of the organization that owns the project, or ``None``
+    when the project or its owner is missing."""
+    records = await db.execute(
+        _PROJECT_ORG_SLUG_QUERY, {'project_id': project_id}, ['slug']
+    )
+    value = graph.parse_agtype(records[0]['slug']) if records else None
+    return str(value) if value else None
+
+
 async def lookup_project_name_description(
     db: graph.Graph,
     project_id: str,

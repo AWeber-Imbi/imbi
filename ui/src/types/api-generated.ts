@@ -2777,6 +2777,11 @@ export interface paths {
          * @description Create a new operations log entry.
          *
          *     The entry belongs to the organization that owns its project.
+         *
+         *     Raises:
+         *         403: The caller is not a member of the project's organization,
+         *             or does not have ``operations_log:create`` in it.
+         *         404: No such project.
          */
         post: operations["create_operation_log_api_operations_log__post"];
         delete?: never;

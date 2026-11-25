@@ -51,11 +51,6 @@ ExecuteOutcome = typing.Literal['succeeded', 'skipped']
 #: organization, which every org-scoped service call needs.
 _NO_ORG = 'Project has no owning organization.'
 
-_ORG_SLUG_QUERY: typing.LiteralString = (
-    'MATCH (p:Project {{id: {project_id}}})-[:OWNED_BY]->(:Team)'
-    '-[:BELONGS_TO]->(o:Organization) RETURN o.slug AS slug'
-)
-
 
 class MaintenanceItemFailed(Exception):
     """One project's operation failed; the message is user-safe."""
@@ -112,13 +107,9 @@ async def enumerate_projects_with_archived(db: graph.Graph) -> list[str]:
 
 
 async def _org_slug_for(db: graph.Graph, project_id: str) -> str | None:
-    rows = await db.execute(
-        _ORG_SLUG_QUERY, {'project_id': project_id}, ['slug']
-    )
-    if not rows:
-        return None
-    value = graph.parse_agtype(rows[0].get('slug'))
-    return str(value) if value else None
+    from imbi.api.endpoints._helpers import lookup_project_organization_slug
+
+    return await lookup_project_organization_slug(db, project_id)
 
 
 async def execute_analysis(
