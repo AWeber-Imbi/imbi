@@ -24,7 +24,7 @@ from .agent_platform import (
 )
 from .agent_usage import agent_usage_router
 from .agents import agents_router
-from .comments import comments_router
+from .comments import attention_router, comments_router
 from .components import (
     component_releases_router,
     component_reports_router,
@@ -218,6 +218,10 @@ organizations_router.include_router(
 organizations_router.include_router(
     comments_router,
     prefix='/{org_slug}/documents/{document_id}/comments',
+)
+organizations_router.include_router(
+    attention_router,
+    prefix='/{org_slug}/comments',
 )
 organizations_router.include_router(
     document_templates_router,

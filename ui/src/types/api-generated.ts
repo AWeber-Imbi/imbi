@@ -4936,6 +4936,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/comments/attention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Attention Comments
+         * @description List open threads that wait on the caller, newest first.
+         *
+         *     A thread waits on the caller when the caller created its document
+         *     or a comment in it mentions the caller, and the caller did not
+         *     acknowledge the newest comment by another author.
+         */
+        get: operations["list_attention_comments_api_organizations__org_slug__comments_attention_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/document-templates/": {
         parameters: {
             query?: never;
@@ -13049,6 +13073,42 @@ export interface components {
              * @default []
              */
             project_types: string[];
+        };
+        /** AttentionComment */
+        AttentionComment: {
+            /** Document Id */
+            document_id: string;
+            /** Document Title */
+            document_title: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** Thread Id */
+            thread_id: string;
+            /** Anchor Text */
+            anchor_text?: string | null;
+            /** Comment Id */
+            comment_id: string;
+            /** Author Email */
+            author_email: string;
+            /** Author Name */
+            author_name?: string | null;
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "owner" | "mention";
+        };
+        /** AttentionCommentListResponse */
+        AttentionCommentListResponse: {
+            /** Data */
+            data: components["schemas"]["AttentionComment"][];
         };
         /** AttentionRun */
         AttentionRun: {
@@ -32637,6 +32697,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CommentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_attention_comments_api_organizations__org_slug__comments_attention_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttentionCommentListResponse"];
                 };
             };
             /** @description Validation Error */
