@@ -169,6 +169,14 @@ class StepType(pydantic.BaseModel):
         description='Params that are never templates, such as the code '
         'of a script.',
     )
+    plugin: str | None = pydantic.Field(
+        default=None,
+        description='The slug of the plugin that gives this type (ADR '
+        '0032), else null.',
+    )
+    icon: str | None = pydantic.Field(
+        default=None, description='The icon of the plugin.'
+    )
 
 
 # --- Helpers -----------------------------------------------------------
@@ -355,7 +363,7 @@ def _check_trigger_project(
     if all(
         n.type == 'webhook'
         for n in wf_graph.nodes
-        if (step := registry.STEP_TYPES.get(n.type)) and step.trigger
+        if (step := registry.get(n.type)) and step.trigger
     ):
         return
     for node in wf_graph.nodes:
@@ -587,7 +595,7 @@ def _version(row: workflows.Row) -> dict[str, typing.Any]:
 def _trigger_types(wf_graph: dict[str, typing.Any]) -> list[str]:
     found: list[str] = []
     for node in wf_graph.get('nodes', []):
-        step = registry.STEP_TYPES.get(node.get('type'))
+        step = registry.get(node.get('type'))
         if step is not None and step.trigger and step.type not in found:
             found.append(step.type)
     return found
@@ -691,7 +699,7 @@ async def list_step_types(
     _: ReadAuth,
 ) -> list[dict[str, typing.Any]]:
     """Return the step types that a workflow can use."""
-    return [step.describe() for step in registry.STEP_TYPES.values()]
+    return [step.describe() for step in registry.all_types().values()]
 
 
 @workflows_router.get('/', response_model=list[WorkflowSummary])
@@ -1054,7 +1062,7 @@ async def activate_workflow(
         )
     required: set[str] = set()
     for node in wf_graph.nodes:
-        step = registry.STEP_TYPES[node.type]
+        step = registry.require(node.type)
         required |= step.required_permissions(node.params)
     missing = (
         set[str]()

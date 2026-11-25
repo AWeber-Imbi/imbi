@@ -55,6 +55,7 @@ export type CapabilityKind =
   | 'release-tracking'
   | 'tools'
   | 'webhook-actions'
+  | 'workflow-steps'
 
 export type CapabilitySurface = 'api' | 'tools' | 'ui' | 'webhook'
 

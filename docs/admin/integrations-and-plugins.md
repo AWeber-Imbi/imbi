@@ -39,6 +39,7 @@ work that Imbi can ask the plugin to do.
 | `commit-sync` | Records commit and tag history |
 | `pr-sync` | Records pull request history |
 | `release-tracking` | Records each new Imbi release in the remote platform, for example a Sentry release |
+| `workflow-steps` | Gives workflow steps and logic gates that use this Integration |
 
 A capability is either *project-scoped* or *organization-wide*. An
 organization-wide capability, for example `identity`, applies to the full

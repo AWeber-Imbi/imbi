@@ -19,6 +19,7 @@ import {
   SlidersHorizontal,
   Tag,
   Webhook,
+  Workflow,
   Wrench,
 } from 'lucide-react'
 
@@ -107,6 +108,12 @@ const CAPABILITY_META: Record<CapabilityKind, CapabilityMeta> = {
     projectScoped: true,
     surfaces: ['webhook'],
   },
+  'workflow-steps': {
+    icon: Workflow,
+    label: 'Workflow steps',
+    projectScoped: false,
+    surfaces: ['api'],
+  },
 }
 
 // Stable display order for capability lists.
@@ -121,6 +128,7 @@ const CAPABILITY_KINDS: CapabilityKind[] = [
   'pr-sync',
   'release-tracking',
   'webhook-actions',
+  'workflow-steps',
   'identity',
   'tools',
 ]

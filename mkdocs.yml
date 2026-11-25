@@ -167,6 +167,7 @@ nav:
           - Pull Request Sync: common/plugins/pr-sync.md
           - Release Tracking: common/plugins/release-tracking.md
           - Tools: common/plugins/tools.md
+          - Workflow Steps: common/plugins/workflow-steps.md
           - Secret Providers: common/plugins/secret-providers.md
       - Architecture Decision Records:
           - API:
@@ -202,6 +203,7 @@ nav:
               - 0029 Automations: api/adr/0029-automations.md
               - 0030 Workflow LLM Call Step: api/adr/0030-workflow-llm-call-step.md
               - 0031 Plugin MCP Server Credentials: api/adr/0031-plugin-mcp-server-credentials.md
+              - 0032 Plugin Workflow Steps: api/adr/0032-plugin-workflow-steps.md
           - Library:
               - 0001 Library Extraction: common/adr/0001-imbi-common-library-extraction.md
               - 0002 Lifespan Composition: common/adr/0002-lifespan-composition.md

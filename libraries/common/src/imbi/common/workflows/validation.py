@@ -141,13 +141,13 @@ def _attribute_paths(value: typing.Any) -> list[list[str]]:
 
 def _output_fields(node: graph.Node) -> list[agent_step.OutputField] | None:
     """Return the output fields of a node with structured output."""
-    step = registry.STEP_TYPES.get(node.type)
+    step = registry.get(node.type)
     return agent_step.structured_fields(step, node.params) if step else None
 
 
 def _renderable(node: graph.Node) -> dict[str, typing.Any]:
     """Return the params of ``node`` that can hold references."""
-    step = registry.STEP_TYPES.get(node.type)
+    step = registry.get(node.type)
     return step.renderable(node.params) if step else node.params
 
 
@@ -169,7 +169,7 @@ def _conditions(node: graph.Node) -> list[condition.Condition]:
 
 
 def _check_params(node: graph.Node, issues: _Issues) -> None:
-    step = registry.STEP_TYPES[node.type]
+    step = registry.require(node.type)
     try:
         step.params.model_validate(node.params)
     except pydantic.ValidationError as e:
@@ -446,7 +446,7 @@ class _Validator:
                     node_id=node.id,
                 )
             self.by_key.setdefault(node.key, node.id)
-            step = registry.STEP_TYPES.get(node.type)
+            step = registry.get(node.type)
             if step is None:
                 self.issues.add(
                     'error',
@@ -614,7 +614,7 @@ class _Validator:
         if fields is not None and len(path) > 2 and path[1] == 'result':
             found = agent_step.field_type(fields, path[2:])
             return {found} if found else set()
-        step = registry.STEP_TYPES.get(source.type)
+        step = registry.get(source.type)
         schema = step.output.model_json_schema() if step else {}
         properties: dict[str, typing.Any] = schema.get('properties', {})
         if len(path) != 2 or path[1] not in properties:

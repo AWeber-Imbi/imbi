@@ -22681,6 +22681,16 @@ export interface components {
              * @default []
              */
             raw_params: string[];
+            /**
+             * Plugin
+             * @description The slug of the plugin that gives this type (ADR 0032), else null.
+             */
+            plugin?: string | null;
+            /**
+             * Icon
+             * @description The icon of the plugin.
+             */
+            icon?: string | null;
         };
         /** SurfaceCount */
         SurfaceCount: {

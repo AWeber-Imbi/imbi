@@ -42,6 +42,7 @@ from imbi.common.plugins.base import (
     PluginManifest,
     ToolDescriptor,
     WebhookActionsCapability,
+    WorkflowStepDescriptor,
 )
 from imbi.common.plugins.errors import PluginNotFoundError
 
@@ -231,6 +232,10 @@ def _validate_plugin(
             error = _validate_tool_names(source, capability.handler)
             if error is not None:
                 return None, error, False
+        if capability.kind == 'workflow-steps':
+            error = _validate_step_names(source, capability.handler)
+            if error is not None:
+                return None, error, False
 
     entry = RegistryEntry(
         plugin_cls=cls,
@@ -264,6 +269,18 @@ def _validate_tool_names(source: str, handler: type) -> str | None:
     ):
         return f'{source}: tools() must return list[ToolDescriptor]'
     return _validate_catalog(source, 'tool', [d.name for d in descriptors])
+
+
+def _validate_step_names(source: str, handler: type) -> str | None:
+    try:
+        descriptors = handler.steps()  # type: ignore[attr-defined]
+    except Exception as exc:  # noqa: BLE001 - report as a load error
+        return f'{source}: steps() raised: {exc}'
+    if not isinstance(descriptors, list) or any(
+        not isinstance(d, WorkflowStepDescriptor) for d in descriptors
+    ):
+        return f'{source}: steps() must return list[WorkflowStepDescriptor]'
+    return _validate_catalog(source, 'step', [d.name for d in descriptors])
 
 
 def load_plugins() -> LoadResult:

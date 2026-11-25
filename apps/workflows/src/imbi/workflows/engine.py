@@ -246,7 +246,7 @@ class Engine:
                 scope_steps,
                 payload,
                 {n.id: n for n in wf_graph.nodes},
-                registry.STEP_TYPES[node.type].raw_params,
+                registry.require(node.type).raw_params,
             )
         except rendering.RenderError as e:
             LOGGER.info('Run %s: %s: %s', run['id'], node.key, e)
@@ -306,7 +306,7 @@ class Engine:
             return True
         required: set[str] = set()
         for node in wf_graph.nodes:
-            step = registry.STEP_TYPES[node.type]
+            step = registry.require(node.type)
             required |= step.required_permissions(node.params)
         if not required:
             return True
@@ -348,7 +348,7 @@ class Engine:
                     return
             for node in wf_graph.nodes:
                 started = node.id == run['trigger_node_id']
-                trigger = registry.STEP_TYPES[node.type].trigger
+                trigger = registry.require(node.type).trigger
                 await conn.execute(
                     'INSERT INTO workflow_runtime.step_runs (run_id,'
                     ' node_id, node_key, node_type, title, status, port,'
@@ -381,7 +381,7 @@ class Engine:
             # Trigger steps get their status here, not from a call, so
             # history has an event for each of them too.
             for node in wf_graph.nodes:
-                if registry.STEP_TYPES[node.type].trigger:
+                if registry.require(node.type).trigger:
                     started = node.id == run['trigger_node_id']
                     await runtime.append_step_event(
                         conn,
@@ -403,7 +403,7 @@ class Engine:
         """Make one call of a running step and record what it returns."""
         node = next(n for n in wf_graph.nodes if n.id == node_id)
         step = steps[node_id]
-        step_type = registry.STEP_TYPES[node.type]
+        step_type = registry.require(node.type)
         started_at: datetime.datetime = step['started_at']
         if started_at > _now():
             # A retry whose backoff has not ended. The run can be claimed
@@ -526,7 +526,7 @@ class Engine:
         ``unreachable`` (no response from imbi-api) waits
         ``UNREACHABLE_BACKOFF`` instead of ``RETRY_BACKOFF``.
         """
-        step_type = registry.STEP_TYPES[node.type]
+        step_type = registry.require(node.type)
         retries = step_type.retries if node.retries is None else node.retries
         fail = not (retry and step['attempt'] <= retries)
         if fail:
@@ -573,7 +573,7 @@ class Engine:
         self, conn: store.Conn, run: store.Row, step: store.Row, code: str
     ) -> None:
         """Fail a step. It takes its ``Failed`` port when it has one."""
-        names = registry.STEP_TYPES[step['node_type']].ports or ()
+        names = registry.require(step['node_type']).ports or ()
         port = names.index('Failed') if 'Failed' in names else None
         await self._finish(conn, run, step, 'failed', port, code)
 
@@ -720,7 +720,7 @@ def _blank_output(
     The ``result`` of a step with structured output has empty text for
     each of its output fields too.
     """
-    step = registry.STEP_TYPES[node_type]
+    step = registry.require(node_type)
     blank: dict[str, typing.Any] = dict.fromkeys(step.output.model_fields, '')
     fields = agent_step.structured_fields(step, node.params) if node else None
     if fields is not None:
