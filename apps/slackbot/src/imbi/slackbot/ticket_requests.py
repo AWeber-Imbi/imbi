@@ -130,15 +130,22 @@ async def post(
         # An entry from an earlier imbi-api has ``owner``, not
         # ``recipient``.
         recipient = entry.get('recipient') or entry['owner']
-        channel = await _direct_channel(slack, recipient)
-        if channel:
-            await _post_form(slack, runtime, entry, channel)
+        # A SlackApiError is a definite rejection, so the channel post
+        # cannot duplicate the message. Other errors, such as a timeout,
+        # are raised: Slack can have sent the message.
+        try:
+            direct = await _direct_channel(slack, recipient)
+            await _post_form(slack, runtime, entry, direct)
+        except errors.SlackApiError as err:
+            response: typing.Any = err.response
+            LOGGER.info(
+                'Cannot message %s (%s); posting %s to the channel',
+                recipient,
+                response.get('error'),
+                entry['short_id'],
+            )
+        else:
             return
-        LOGGER.info(
-            'No Slack user for %s; posting %s to the channel',
-            recipient,
-            entry['short_id'],
-        )
     name = entry.get('slack_channel')
     channel = name and await _channel_id(slack, name)
     if not channel:
@@ -147,7 +154,7 @@ async def post(
     try:
         await _post_form(slack, runtime, entry, channel)
     except errors.SlackApiError as err:
-        response: typing.Any = err.response
+        response = err.response
         if response.get('error') not in _NO_CHANNEL:
             raise
         LOGGER.warning(
@@ -345,12 +352,9 @@ async def _channel_id(slack: SlackClient, name: str) -> str | None:
     return None
 
 
-async def _direct_channel(slack: SlackClient, email: str) -> str | None:
+async def _direct_channel(slack: SlackClient, email: str) -> str:
     """Return the direct message channel with the Slack user of ``email``."""
-    try:
-        user = await slack.users_lookupByEmail(email=email)
-    except errors.SlackApiError:
-        return None
+    user = await slack.users_lookupByEmail(email=email)
     opened = await slack.conversations_open(users=user['user']['id'])
     return str(opened['channel']['id'])
 

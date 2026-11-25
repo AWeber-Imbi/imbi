@@ -236,6 +236,39 @@ class PostTests(FlowTestCase):
         )
         self.assertEqual(['C2'], [p['channel'] for p in self.slack.posts])
 
+    async def test_channel_when_the_direct_message_is_rejected(self) -> None:
+        rejected = errors.SlackApiError('rejected', {'error': 'rejected'})
+        # The direct message channel cannot be opened.
+        self.slack.conversations_open = mock.AsyncMock(side_effect=rejected)
+        await ticket_requests.post(
+            self.slack, self.runtime, entry(slack_channel='ops')
+        )
+        self.assertEqual(['C2'], [p['channel'] for p in self.slack.posts])
+
+    async def test_channel_when_the_direct_post_is_rejected(self) -> None:
+        post = self.slack.chat_postMessage
+
+        async def reject_direct(channel, text=None, **kw):
+            if channel.startswith('D-'):
+                raise errors.SlackApiError('rejected', {'error': 'rejected'})
+            return await post(channel, text, **kw)
+
+        self.slack.chat_postMessage = reject_direct
+        await ticket_requests.post(
+            self.slack, self.runtime, entry(slack_channel='ops')
+        )
+        self.assertEqual(['C2'], [p['channel'] for p in self.slack.posts])
+
+    async def test_timeout_on_the_direct_message_is_raised(self) -> None:
+        self.slack.conversations_open = mock.AsyncMock(
+            side_effect=TimeoutError
+        )
+        with self.assertRaises(TimeoutError):
+            await ticket_requests.post(
+                self.slack, self.runtime, entry(slack_channel='ops')
+            )
+        self.assertEqual([], self.slack.posts)
+
     async def test_nowhere_to_post(self) -> None:
         for overrides in (
             {'recipient': 'bob@example.com'},
