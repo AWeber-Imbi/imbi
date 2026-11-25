@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import secrets
 import socket
 import time
 import typing
@@ -74,6 +75,15 @@ _CLOSE_TRIES = 5
 #: Seconds that one consumer holds the close of a request. More than
 #: ``_CLAIM_IDLE_MS``, after which a slow close is claimed again.
 _CLOSE_LOCK_TTL = 120
+#: Delete the close lock only when it holds the token of this close. A
+#: close that ran longer than the lock must not delete the lock of the
+#: next close.
+_UNLOCK = """
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+end
+return 0
+"""
 #: Slack errors that mean the message cannot be updated again.
 _GONE = frozenset(
     {
@@ -162,6 +172,13 @@ async def post(
 ) -> None:
     """Send the form of ``entry`` to the person on the ticket, or post
     it to the team channel for an escalation or a failed message."""
+    resolved = await _resolved(entry)
+    if resolved:
+        # The request is resolved, for example when this is the retry of
+        # a post whose close was not added. Do not post a second form.
+        # Add the close, so that it closes the forms that were posted.
+        await _add_close(entry, resolved)
+        return
     if not entry.get('escalation'):
         # An entry from an earlier imbi-api has ``owner``, not
         # ``recipient``.
@@ -222,10 +239,11 @@ async def close(slack: SlackClient, entry: Entry) -> None:
     client: typing.Any = valkey.get_client()
     short_id = entry['short_id']
     lock = f'{_messages_key(entry["request_id"])}:closing'
+    token = secrets.token_hex(16)
     try:
         # ponytail: a close that runs longer than the lock can overlap
         # with a second close.
-        locked = await client.set(lock, b'1', nx=True, ex=_CLOSE_LOCK_TTL)
+        locked = await client.set(lock, token, nx=True, ex=_CLOSE_LOCK_TTL)
     except Exception as err:
         raise _Retry(f'cannot lock {short_id}') from err
     if not locked:
@@ -234,7 +252,7 @@ async def close(slack: SlackClient, entry: Entry) -> None:
         await _close(slack, client, entry)
     finally:
         try:
-            await client.delete(lock)
+            await client.eval(_UNLOCK, 1, lock, token)
         except Exception:
             LOGGER.exception('Could not unlock %s', short_id)
 
@@ -461,16 +479,40 @@ async def _post_form(
         # have read the messages before this one was kept. Add the
         # resolved entry again, so that a consumer closes this message
         # with the retries of the stream.
-        try:
-            client: typing.Any = valkey.get_client()
-            await client.xadd(
-                valkey.TICKET_REQUESTS_STREAM,
-                {'request': resolved},
-                maxlen=valkey.TICKET_REQUESTS_MAXLEN,
-                approximate=True,
-            )
-        except Exception:
-            LOGGER.exception('Could not close %s', entry['short_id'])
+        await _add_close(entry, resolved)
+
+
+async def _resolved(entry: Entry) -> bytes | None:
+    """Return the JSON of the resolved entry when the request is
+    resolved. Best effort: a Valkey failure returns ``None``."""
+    try:
+        client: typing.Any = valkey.get_client()
+        resolved: bytes | None = await client.get(
+            _resolved_key(entry['request_id'])
+        )
+    except Exception:
+        LOGGER.exception('Could not read the state of %s', entry['short_id'])
+        return None
+    return resolved
+
+
+async def _add_close(entry: Entry, resolved: bytes) -> None:
+    """Add the resolved entry to the stream again.
+
+    Raise :class:`_Retry` when that fails, so that the post entry is not
+    acked. Its retry sees the resolved request and only adds the close.
+
+    """
+    try:
+        client: typing.Any = valkey.get_client()
+        await client.xadd(
+            valkey.TICKET_REQUESTS_STREAM,
+            {'request': resolved},
+            maxlen=valkey.TICKET_REQUESTS_MAXLEN,
+            approximate=True,
+        )
+    except Exception as err:
+        raise _Retry(f'cannot close {entry["short_id"]}') from err
 
 
 async def _remember(

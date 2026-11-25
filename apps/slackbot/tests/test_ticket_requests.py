@@ -95,9 +95,10 @@ class FakeValkey:
     async def lrange(self, key, start, end):
         return list(self.lists.get(key, []))
 
-    async def delete(self, key):
-        self.lists.pop(key, None)
-        self.values.pop(key, None)
+    async def eval(self, script, numkeys, key, token):
+        # The compare-and-delete of ticket_requests._UNLOCK.
+        if self.values.get(key) == token:
+            del self.values[key]
 
     async def ltrim(self, key, start, end):
         rest = self.lists.get(key, [])[start:]
@@ -505,9 +506,20 @@ class CloseTests(FlowTestCase):
             await ticket_requests.close(self.slack, RESOLVED)
         self.assertEqual([late], self.valkey.lists[key])
 
+    async def close_during_the_post(self) -> None:
+        # close() runs after the form is sent and before the post keeps
+        # its message.
+        post = self.slack.chat_postMessage
+
+        async def chat_post(channel, text=None, **kw):
+            response = await post(channel, text, **kw)
+            await ticket_requests.close(self.slack, RESOLVED)
+            return response
+
+        self.slack.chat_postMessage = chat_post
+
     async def test_post_after_close_adds_the_close_again(self) -> None:
-        # close() ran before the post kept its message.
-        await ticket_requests.close(self.slack, RESOLVED)
+        await self.close_during_the_post()
         await ticket_requests.post(self.slack, self.runtime, entry())
         (added,) = self.valkey.stream
         self.assertEqual(RESOLVED, orjson.loads(added['request']))
@@ -530,6 +542,50 @@ class CloseTests(FlowTestCase):
         self.assertEqual([record], self.valkey.lists[key])
         # The lock of the other consumer stays.
         self.assertIn(f'{key}:closing', self.valkey.values)
+
+    async def test_expired_close_keeps_the_next_lock(self) -> None:
+        key = ticket_requests._messages_key('r-1')
+        lock = f'{key}:closing'
+        await self.valkey.rpush(
+            key, orjson.dumps({'channel': 'C2', 'ts': 't', 'summary': ''})
+        )
+        update = self.slack.chat_update
+
+        async def chat_update(**kw):
+            # The lock expires, and another close takes it.
+            self.valkey.values[lock] = b'other'
+            return await update(**kw)
+
+        with mock.patch.object(self.slack, 'chat_update', chat_update):
+            await ticket_requests.close(self.slack, RESOLVED)
+        self.assertEqual(b'other', self.valkey.values[lock])
+
+    async def test_close_releases_its_lock(self) -> None:
+        await ticket_requests.close(self.slack, RESOLVED)
+        key = ticket_requests._messages_key('r-1')
+        self.assertNotIn(f'{key}:closing', self.valkey.values)
+
+    async def test_resolved_request_posts_no_form(self) -> None:
+        await ticket_requests.close(self.slack, RESOLVED)
+        await ticket_requests.post(self.slack, self.runtime, entry())
+        self.assertEqual([], self.slack.posts)
+        (added,) = self.valkey.stream
+        self.assertEqual(RESOLVED, orjson.loads(added['request']))
+
+    async def test_failed_late_close_is_tried_again(self) -> None:
+        await self.close_during_the_post()
+        with (
+            mock.patch.object(
+                self.valkey, 'xadd', side_effect=ConnectionError
+            ),
+            self.assertRaises(ticket_requests._Retry),
+        ):
+            await ticket_requests.post(self.slack, self.runtime, entry())
+        # The retry adds the close and does not post a second form.
+        await ticket_requests.post(self.slack, self.runtime, entry())
+        self.assertEqual(['D-U1'], [p['channel'] for p in self.slack.posts])
+        (added,) = self.valkey.stream
+        self.assertEqual(RESOLVED, orjson.loads(added['request']))
 
     async def test_failed_read_is_tried_again(self) -> None:
         with (
