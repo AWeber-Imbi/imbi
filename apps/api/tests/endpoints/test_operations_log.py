@@ -8,6 +8,7 @@ import unittest
 import uuid
 from unittest import mock
 
+import fastapi
 import httpx
 from fastapi import testclient
 
@@ -100,11 +101,16 @@ class _OpsLogTestBase(support.SharedAppTestCase):
         )
         org_patcher = mock.patch.object(
             operations_log,
-            'lookup_project_organization_id',
-            mock.AsyncMock(return_value='org-1'),
+            'lookup_project_organization_slug',
+            mock.AsyncMock(return_value='org-one'),
         )
         self.mock_org_lookup = org_patcher.start()
         self.addCleanup(org_patcher.stop)
+        member_patcher = mock.patch.object(
+            org_auth, 'check_member', mock.AsyncMock(return_value='org-1')
+        )
+        self.mock_check_member = member_patcher.start()
+        self.addCleanup(member_patcher.stop)
         self.test_app.dependency_overrides[
             api_permissions.get_current_user
         ] = _current_user
@@ -246,9 +252,42 @@ class PostOperationLogTests(_OpsLogTestBase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual('org-1', self._published_row()['organization_id'])
         self.assertEqual('proj-xyz', self.mock_org_lookup.await_args.args[1])
+        self.assertEqual('org-one', self.mock_check_member.await_args.args[0])
+
+    def test_create_refuses_a_non_member(self) -> None:
+        self.mock_check_member.side_effect = fastapi.HTTPException(
+            status_code=403, detail='organization_forbidden'
+        )
+        response = self.client.post(
+            '/operations-log/', json=self._valid_body()
+        )
+        self.assertEqual(response.status_code, 403)
+        self.mock_publish.assert_not_awaited()
+
+    def test_create_needs_the_permission_in_the_project_organization(
+        self,
+    ) -> None:
+        """A permission from another of the caller's organizations
+        does not count once check_member narrows to this one."""
+        self._revoke_permissions()
+        self.auth_context.permissions = {'operations_log:create'}
+
+        async def narrow(
+            _slug: str, _db: object, auth: api_permissions.AuthContext
+        ) -> str:
+            auth.permissions = set()
+            return 'org-1'
+
+        self.mock_check_member.side_effect = narrow
+        response = self.client.post(
+            '/operations-log/', json=self._valid_body()
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertIn('org-one', response.json()['detail'])
+        self.mock_publish.assert_not_awaited()
 
     def test_create_unknown_project_is_404(self) -> None:
-        self.mock_org_lookup.return_value = ''
+        self.mock_org_lookup.return_value = None
         response = self.client.post(
             '/operations-log/', json=self._valid_body()
         )
