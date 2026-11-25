@@ -228,6 +228,32 @@ describe('AgentsArea', () => {
     expect(herald).toHaveTextContent('—')
   })
 
+  it('sorts the agent list by a column header', async () => {
+    renderAt('/agents/manage')
+    await screen.findByText('Mender')
+    const names = () =>
+      screen
+        .getAllByRole('row')
+        .slice(1)
+        .map((r) => r.textContent ?? '')
+        .map((t) => (t.includes('Mender') ? 'Mender' : 'Herald'))
+    expect(names()).toEqual(['Mender', 'Herald'])
+    fireEvent.click(screen.getByRole('button', { name: 'Name' }))
+    expect(names()).toEqual(['Herald', 'Mender'])
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Name, sorted ascending' }),
+    )
+    expect(names()).toEqual(['Mender', 'Herald'])
+    expect(
+      screen.getByRole('button', { name: 'Name, sorted descending' }),
+    ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getAllByRole('row')[1]).toHaveTextContent('$12.50'),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Cost 30d' }))
+    expect(names()).toEqual(['Herald', 'Mender'])
+  })
+
   it('sends the old Usage page to the Agent Usage report', async () => {
     renderAt('/agents/usage')
     await waitFor(() =>

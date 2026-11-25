@@ -3,7 +3,7 @@ import { type ReactNode, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Bot } from 'lucide-react'
+import { Bot, ChevronDown, ChevronsUpDown, ChevronUp } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { patchAgent } from '@/api/endpoints'
@@ -31,6 +31,15 @@ interface AgentListProps {
 }
 
 type FacetKey = 'label' | 'status' | 'team'
+type SortKey = 'labels' | 'name' | 'team' | UsageKey
+type Usage = { cost: number; runs: number }
+// One accessor per usage column, shared by the cell and the sort.
+const USAGE_METRICS = {
+  avg: [(u: Usage) => (u.runs > 0 ? u.cost / u.runs : null), formatMoney],
+  cost: [(u: Usage) => u.cost, formatMoney],
+  runs: [(u: Usage) => u.runs, formatCount],
+} as const
+type UsageKey = keyof typeof USAGE_METRICS
 
 export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
   const navigate = useNavigate()
@@ -42,6 +51,7 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
     status: [],
     team: [],
   })
+  const [sort, setSort] = useState<null | { dir: -1 | 1; key: SortKey }>(null)
   const toggleEnabled = useToggleEnabled(orgSlug)
   const { data: usage } = useAgentUsage(orgSlug)
   const usageOf = (a: Agent) => {
@@ -49,20 +59,60 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
     const row = usage.agents.find((u) => u.agent_id === a.id)
     return { cost: Number(row?.cost ?? 0), runs: row?.tasks ?? 0 }
   }
-  const usageColumn = (
-    key: string,
-    header: string,
-    value: (u: { cost: number; runs: number }) => string,
-  ) => ({
+  const sortValue = (a: Agent, key: SortKey): number | string => {
+    if (key === 'name') return a.name
+    if (key === 'team') return a.team?.name ?? ''
+    if (key === 'labels')
+      return a.tags
+        .map((t) => t.name)
+        .sort()
+        .join(' ')
+    const u = usageOf(a)
+    return (u && USAGE_METRICS[key][0](u)) ?? 0
+  }
+  const sortButton = (key: SortKey, text: string) => {
+    const active = sort?.key === key
+    const Icon = !active
+      ? ChevronsUpDown
+      : sort.dir === 1
+        ? ChevronUp
+        : ChevronDown
+    return (
+      <button
+        className="hover:text-primary inline-flex items-center gap-1"
+        onClick={() =>
+          setSort((s) =>
+            s?.key === key
+              ? { dir: s.dir === 1 ? -1 : 1, key }
+              : { dir: 1, key },
+          )
+        }
+        type="button"
+      >
+        {text}
+        {active && (
+          <span className="sr-only">
+            , sorted {sort.dir === 1 ? 'ascending' : 'descending'}
+          </span>
+        )}
+        <Icon
+          className={`size-3.5 shrink-0 ${active ? '' : 'text-tertiary/50'}`}
+        />
+      </button>
+    )
+  }
+  const usageColumn = (key: UsageKey, header: string) => ({
     cellAlign: 'right' as const,
-    header,
+    header: sortButton(key, header),
     headerAlign: 'right' as const,
     key,
     render: (a: Agent) => {
       const u = usageOf(a)
+      const [metric, format] = USAGE_METRICS[key]
+      const v = u && metric(u)
       return (
         <span className="text-secondary font-mono text-sm tabular-nums">
-          {u ? value(u) : '—'}
+          {v == null ? '—' : format(v)}
         </span>
       )
     },
@@ -86,6 +136,17 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
         has('status', a.enabled ? 'enabled' : 'disabled'),
     )
   }, [agents, facets, search])
+
+  const sorted = sort
+    ? [...rows].sort((a, b) => {
+        const x = sortValue(a, sort.key)
+        const y = sortValue(b, sort.key)
+        return (
+          sort.dir *
+          (typeof x === 'string' ? x.localeCompare(String(y)) : x - Number(y))
+        )
+      })
+    : rows
 
   const facet = (
     key: FacetKey,
@@ -130,13 +191,13 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
       <AdminTable
         columns={[
           {
-            header: 'Name',
+            header: sortButton('name', 'Name'),
             key: 'name',
             render: (a) => <AgentNameCell agent={a} />,
           },
           {
             header: header(
-              'Owner team',
+              sortButton('team', 'Owner team'),
               facet(
                 'team',
                 'Owner team',
@@ -150,14 +211,12 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
               </span>
             ),
           },
-          usageColumn('runs', 'Runs 30d', (u) => formatCount(u.runs)),
-          usageColumn('cost', 'Cost 30d', (u) => formatMoney(u.cost)),
-          usageColumn('avg', 'Avg / run', (u) =>
-            u.runs > 0 ? formatMoney(u.cost / u.runs) : '—',
-          ),
+          usageColumn('runs', 'Runs 30d'),
+          usageColumn('cost', 'Cost 30d'),
+          usageColumn('avg', 'Avg / run'),
           {
             header: header(
-              'Tags',
+              sortButton('labels', 'Tags'),
               facet(
                 'label',
                 'Tags',
@@ -210,7 +269,7 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
         getRowKey={(a) => a.slug}
         getRowLabel={(a) => a.name}
         loading={loading}
-        rows={rows}
+        rows={sorted}
       />
     </AdminSection>
   )
@@ -241,7 +300,7 @@ function facetValues(agent: Agent, key: FacetKey): string[] {
   return [agent.enabled ? 'enabled' : 'disabled']
 }
 
-function header(text: string, control: ReactNode) {
+function header(text: ReactNode, control: ReactNode) {
   return (
     <span className="flex items-center gap-1">
       {text}
