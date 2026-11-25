@@ -299,6 +299,15 @@ class ValueCheckTests(unittest.TestCase):
                             'type': 'array',
                             'items': {'type': 'string', 'format': 'uuid'},
                         },
+                        'payload': {
+                            'type': 'object',
+                            'properties': {
+                                'code': {
+                                    'type': 'string',
+                                    'pattern': '^(a+)+$',
+                                }
+                            },
+                        },
                     },
                 }
             ),
@@ -321,6 +330,8 @@ class ValueCheckTests(unittest.TestCase):
             ('budget', '12.5'),
             ('rate', 1.005),
             ('owners', ['nope']),
+            # A backtracking engine takes years on this input.
+            ('payload', {'code': 'a' * 40000 + '!'}),
         ):
             with self.assertRaises(fastapi.HTTPException) as ctx:
                 blueprint_values.validate(
@@ -343,13 +354,21 @@ class SectionPropertyTests(unittest.TestCase):
                         'type': 'string',
                         'format': 'uuid',
                         'pattern': '^a',
+                        'minLength': 1,
+                        'maxLength': 40,
                     },
                 }
             )
         )
         self.assertEqual(
             prop.model_dump(exclude_none=True)['items'],
-            {'type': 'string', 'format': 'uuid', 'pattern': '^a'},
+            {
+                'type': 'string',
+                'format': 'uuid',
+                'pattern': '^a',
+                'minLength': 1,
+                'maxLength': 40,
+            },
         )
         prop = blueprint_sections.section_property(
             models.Schema.model_validate(

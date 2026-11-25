@@ -100,4 +100,35 @@ describe('validateDynamicFields with a Python-only pattern', () => {
     }
     expect(validateDynamicFields(schema, { code: 'y' })).toEqual({})
   })
+
+  it('still checks the other fields', () => {
+    const schema = {
+      properties: {
+        code: toDynamicField({ pattern: '(?P<n>x)', type: 'string' }),
+        ids: toDynamicField({
+          items: { pattern: '(?P<n>x)', type: 'string' },
+          type: 'array',
+        }),
+        name: toDynamicField({ type: 'string' }),
+      },
+      required: ['name'],
+    }
+    expect(
+      Object.keys(validateDynamicFields(schema, { code: 'y', ids: ['y'] })),
+    ).toEqual(['name'])
+  })
+
+  it('checks item lengths', () => {
+    const schema = {
+      properties: {
+        tags: toDynamicField({
+          items: { maxLength: 3, type: 'string' },
+          type: 'array',
+        }),
+      },
+    }
+    expect(validateDynamicFields(schema, { tags: ['abcd'] })).toHaveProperty(
+      'tags/0',
+    )
+  })
 })

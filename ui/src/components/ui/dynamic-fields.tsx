@@ -308,6 +308,8 @@ export function toDynamicField(
       ? {
           enum: prop.items.enum ?? undefined,
           format: prop.items.format ?? undefined,
+          maxLength: prop.items.maxLength ?? undefined,
+          minLength: prop.items.minLength ?? undefined,
           pattern: prop.items.pattern ?? undefined,
           type: prop.items.type ?? undefined,
         }
@@ -327,19 +329,21 @@ export function validateDynamicFields(
   schema: DynamicSchema,
   data: Record<string, unknown>,
 ): Record<string, string> {
+  const properties = Object.fromEntries(
+    Object.entries(schema.properties).map(([name, prop]) => [
+      name,
+      {
+        ...withJsPattern(prop),
+        ...(prop.items ? { items: withJsPattern(prop.items) } : {}),
+      },
+    ]),
+  )
   const jsonSchema = {
-    properties: schema.properties,
+    properties,
     type: 'object' as const,
     ...(schema.required?.length ? { required: schema.required } : {}),
   }
-  let validate: ReturnType<typeof ajv.compile>
-  try {
-    validate = ajv.compile(jsonSchema)
-  } catch {
-    // A pattern that JavaScript cannot compile, such as (?P<name>...):
-    // the API checks the values on save.
-    return {}
-  }
+  const validate = ajv.compile(jsonSchema)
   validate(data)
   const fieldErrors: Record<string, string> = {}
   if (validate.errors) {
@@ -369,4 +373,18 @@ function toTitleCase(key: string): string {
     .split('_')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
+}
+
+/** ``schema`` without a pattern that JavaScript cannot compile, such as
+ * (?P<name>...): the API checks that pattern on save. */
+function withJsPattern<T extends { pattern?: string }>(schema: T): T {
+  if (schema.pattern === undefined) return schema
+  try {
+    new RegExp(schema.pattern, 'u')
+    return schema
+  } catch {
+    const copy = { ...schema }
+    delete copy.pattern
+    return copy
+  }
 }

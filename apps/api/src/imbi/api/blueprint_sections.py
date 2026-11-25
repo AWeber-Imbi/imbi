@@ -15,10 +15,16 @@ from imbi.common import models
 class BlueprintSectionItems(pydantic.BaseModel):
     """The ``items`` schema of an array property."""
 
+    model_config = pydantic.ConfigDict(
+        populate_by_name=True, serialize_by_alias=True
+    )
+
     type: str | None = None
     format: str | None = None
     enum: list[typing.Any] | None = None
     pattern: str | None = None
+    min_length: int | None = pydantic.Field(default=None, alias='minLength')
+    max_length: int | None = pydantic.Field(default=None, alias='maxLength')
 
 
 class BlueprintSectionProperty(pydantic.BaseModel):

@@ -479,9 +479,12 @@ export function BlueprintSchemaPropertyRow({
                 <Label className="text-secondary mb-1 block text-xs">
                   Multiple Of
                 </Label>
+                {/* Uncontrolled: a draft such as "0" of "0.01" is not a
+                    valid step yet, and a controlled value would clear it. */}
                 <Input
                   aria-label="Multiple of"
                   className="text-sm"
+                  defaultValue={prop.multipleOf ?? ''}
                   min={0}
                   onChange={(e) =>
                     updateProperty(prop.id, {
@@ -494,7 +497,6 @@ export function BlueprintSchemaPropertyRow({
                   placeholder="e.g. 0.01"
                   step="any"
                   type="number"
-                  value={prop.multipleOf ?? ''}
                 />
               </div>
             </div>
@@ -687,6 +689,7 @@ function PatternInput({
       <Input
         aria-label={label}
         className="font-mono text-sm"
+        keepLeadingSpace
         onChange={(e) => onChange(e.target.value || undefined)}
         placeholder={placeholder}
         value={value ?? ''}

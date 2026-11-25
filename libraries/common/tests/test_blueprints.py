@@ -558,6 +558,17 @@ class ValueCheckTests(unittest.TestCase):
         self.assertEqual(['OPS-1'], self._check(prop, ['OPS-1']))
         self._refused(prop, ['ops-1'])
 
+    def test_enum_with_string_checks(self) -> None:
+        prop = {
+            'type': 'string',
+            'enum': ['abc', 'xyzw'],
+            'pattern': '^x',
+            'minLength': 4,
+        }
+        # The checks run after the case coercion of the enum.
+        self.assertEqual('xyzw', self._check(prop, 'XYZW'))
+        self._refused(prop, 'abc')
+
     def test_optional_value_can_be_none(self) -> None:
         self.assertIsNone(
             self._check({'type': 'string', 'pattern': '^x$'}, None)
@@ -579,6 +590,18 @@ class ValueCheckTests(unittest.TestCase):
     def test_lookahead_is_refused_on_save(self) -> None:
         message = self._save({'type': 'string', 'pattern': '^(?!tmp-)'})
         self.assertIn('lookarounds', message)
+
+    def test_check_patterns_of_a_json_string(self) -> None:
+        stored = models.Blueprint(
+            name='test',
+            type='Environment',
+            json_schema=(
+                '{"type": "object", "properties": '
+                '{"value": {"type": "string", "pattern": "(?=a)"}}}'
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, 'value: pattern'):
+            models.check_patterns(stored.json_schema)
 
     def test_bad_item_pattern_is_refused_on_save(self) -> None:
         self._save(

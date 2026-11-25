@@ -1,6 +1,8 @@
 """The check of the values that blueprints define: the custom fields
 of a ticket and the fields of a deployment."""
 
+import collections.abc
+import functools
 import typing
 
 import fastapi
@@ -137,7 +139,7 @@ def _schema_errors(
                 mode='json', by_alias=True, exclude_none=True
             ),
         )
-        cls = jsonschema.validators.validator_for(schema)
+        cls = _linear(jsonschema.validators.validator_for(schema))
         cls.check_schema(schema)
         # descend() keeps the resolver of the root schema and enters
         # the $id scope of the field, if the field has one.
@@ -197,4 +199,29 @@ def _detail(
             'missing': missing,
             'invalid': invalid,
         },
+    )
+
+
+def _pattern(
+    validator: typing.Any, pattern: str, instance: typing.Any, _schema: object
+) -> collections.abc.Iterator[jsonschema.exceptions.ValidationError]:
+    """The ``pattern`` keyword with the linear-time engine of pydantic
+    (see :func:`models.pattern_adapter`), not Python ``re``. A pattern
+    that the engine cannot use is skipped, as in the models."""
+    adapter = models.pattern_adapter(pattern)
+    if adapter is None or not validator.is_type(instance, 'string'):
+        return
+    try:
+        adapter.validate_python(instance)
+    except pydantic.ValidationError:
+        yield jsonschema.exceptions.ValidationError(
+            f'{instance!r} does not match {pattern!r}'
+        )
+
+
+@functools.cache
+def _linear(cls: typing.Any) -> typing.Any:
+    """Return the validator class ``cls`` with :func:`_pattern`."""
+    return jsonschema.validators.extend(  # type: ignore[no-untyped-call]  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
+        cls, {'pattern': _pattern}
     )

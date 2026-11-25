@@ -200,19 +200,27 @@ class RelationshipEdge(pydantic.BaseModel):
 
 
 @functools.lru_cache(maxsize=256)
-def pattern_error(pattern: str) -> str | None:
-    """Return why the regex engine of pydantic cannot use ``pattern``;
-    ``None`` when it can.
+def pattern_adapter(pattern: str) -> pydantic.TypeAdapter[str] | None:
+    """Return an adapter that checks a string against ``pattern`` with
+    the regex engine of pydantic; ``None`` when that engine cannot use
+    ``pattern``.
 
     That engine runs in linear time, so a pattern of a blueprint cannot
     make a value check hang. It has no lookarounds and no
     backreferences.
     """
     try:
-        pydantic.TypeAdapter(
+        return pydantic.TypeAdapter(
             typing.Annotated[str, pydantic.StringConstraints(pattern=pattern)]
         )
     except pydantic_core.SchemaError:
+        return None
+
+
+def pattern_error(pattern: str) -> str | None:
+    """Return why the regex engine of pydantic cannot use ``pattern``;
+    ``None`` when it can (see :func:`pattern_adapter`)."""
+    if pattern_adapter(pattern) is None:
         return (
             'is not a supported regular expression (lookarounds and '
             'backreferences are not supported)'
@@ -220,9 +228,13 @@ def pattern_error(pattern: str) -> str | None:
     return None
 
 
-def _patterns_checked(schema: Schema) -> Schema:
+def check_patterns(schema: Schema) -> Schema:
     """Return ``schema`` of a new blueprint after a check that the regex
-    engine can use the pattern of each property and of its items."""
+    engine can use the pattern of each property and of its items.
+
+    A stored schema loads without this check, so the API calls it for
+    a schema that a request sends as a JSON string.
+    """
     for name, prop in (schema.properties or {}).items():
         for pattern in (prop.pattern, getattr(prop.items, 'pattern', None)):
             if pattern is not None and (error := pattern_error(pattern)):
@@ -358,7 +370,7 @@ class Blueprint(Node):
             # blueprints from loading (the models skip it).
             return Schema.model_validate_json(value)
         elif isinstance(value, dict):
-            return _patterns_checked(Schema.model_validate(value))
+            return check_patterns(Schema.model_validate(value))
         elif isinstance(value, Schema):
             return value
         raise ValueError('Invalid JSON Schema value')

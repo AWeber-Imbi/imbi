@@ -81,10 +81,14 @@ A `pattern` is a search, as in JSON Schema: it matches anywhere in the
 value unless you anchor it with `^` and `$`. Use the syntax that both
 the API and the form accept: character classes, `\d`, quantifiers,
 groups, and alternation. The API uses a regular expression engine that
-runs in linear time, so no pattern can make a value check hang. That
-engine does not support lookarounds (`(?=...)`, `(?!...)`) or
-backreferences (`\1`). Imbi refuses to save a blueprint with a
-`pattern` that the engine cannot use.
+runs in linear time for each `pattern`, also in the full-schema check
+of an object or array field, so no `pattern` can make a value check
+hang. That engine does not support lookarounds (`(?=...)`, `(?!...)`)
+or backreferences (`\1`). Imbi refuses to save a blueprint with a
+`pattern` on a field or on its `items` that the engine cannot use. A
+`pattern` deeper in an object schema that the engine cannot use is
+not checked. `patternProperties` uses the Python engine, so do not
+use nested quantifiers such as `(a+)+` in it.
 
 A list of UUIDs:
 

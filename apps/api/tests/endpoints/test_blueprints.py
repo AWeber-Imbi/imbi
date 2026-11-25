@@ -162,6 +162,24 @@ class BlueprintEndpointsTestCase(support.SharedAppTestCase):
 
         self.assertEqual(response.status_code, 422)
 
+    def test_create_blueprint_string_schema_bad_pattern(self) -> None:
+        """A schema sent as a JSON string gets the pattern check."""
+        response = self.client.post(
+            '/blueprints/',
+            json={
+                'name': 'Bad',
+                'type': 'Project',
+                'json_schema': (
+                    '{"type": "object", "properties": '
+                    '{"v": {"type": "string", "pattern": "(?=a)"}}}'
+                ),
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('v: pattern', response.json()['detail'])
+        self.mock_db.merge.assert_not_called()
+
     def test_list_blueprints_empty(self) -> None:
         """Test listing blueprints when none exist."""
         self.mock_db.match.return_value = []

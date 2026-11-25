@@ -13477,6 +13477,10 @@ export interface components {
             enum?: unknown[] | null;
             /** Pattern */
             pattern?: string | null;
+            /** Minlength */
+            minLength?: number | null;
+            /** Maxlength */
+            maxLength?: number | null;
         };
         /**
          * BlueprintSectionProperty

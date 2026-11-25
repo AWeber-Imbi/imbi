@@ -86,7 +86,9 @@ def _checks(
     linear-time engine (see :func:`models.pattern_error`).
     """
     checks: list[typing.Any] = []
-    if field_type is str:
+    # A string enum is a Literal; its checks run after the case
+    # coercion of apply_blueprints.
+    if field_type is str or typing.get_origin(field_type) is typing.Literal:
         pattern = _pattern(getattr(prop_schema, 'pattern', None))
         min_length = getattr(prop_schema, 'min_length', None)
         max_length = getattr(prop_schema, 'max_length', None)
@@ -217,6 +219,7 @@ def apply_blueprints[ModelType: pydantic.BaseModel](
                 field_type, enum_values = _map_schema_type_to_python(
                     prop_schema
                 )
+                field_type = _with_checks(field_type, prop_schema)
 
                 # Wrap enum string fields with a case-coercing
                 # BeforeValidator so that incoming values are
@@ -229,8 +232,6 @@ def apply_blueprints[ModelType: pydantic.BaseModel](
                             _coerce_enum_case(enum_values)
                         ),
                     ]
-
-                field_type = _with_checks(field_type, prop_schema)
 
                 # Get metadata from schema
                 schema_default = getattr(prop_schema, 'default', None)
