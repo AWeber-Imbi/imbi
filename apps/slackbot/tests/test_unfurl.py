@@ -26,14 +26,9 @@ PROJECT: dict[str, typing.Any] = {
     'description': 'The API\nmore text',
     'team': {'name': 'Core'},
     'project_types': [{'name': 'Service', 'deployable': True}],
-    'environments': [
-        {'name': 'Testing', 'slug': 'testing', 'sort_order': 1},
-        {'name': 'Production', 'slug': 'production', 'sort_order': 2},
+    'drift_pairs': [
+        {'head': {'name': 'Testing'}, 'base': {'name': 'Production'}}
     ],
-    'current_releases': {
-        'testing': {'committish': 'bbb'},
-        'production': {'committish': 'aaa'},
-    },
     'score': 86.6,
     'open_pr_count': 3,
     'archived': False,
@@ -140,53 +135,18 @@ class BlockTests(helpers.TestCase):
 
 
 class DriftTests(helpers.TestCase):
-    def test_pair_drift(self) -> None:
+    def test_pairs(self) -> None:
         self.assertEqual(
             ['Testing → Production'], unfurl.drift_labels(PROJECT)
         )
 
-    def test_range_proven_clean(self) -> None:
-        project = {**PROJECT, 'drift_ranges': {'aaa..bbb': False}}
+    def test_none(self) -> None:
+        project = {**PROJECT, 'drift_pairs': []}
         self.assertEqual([], unfurl.drift_labels(project))
 
-    def test_same_release(self) -> None:
-        releases = {
-            'testing': {'committish': 'aaa'},
-            'production': {'committish': 'aaa'},
-        }
-        project = {**PROJECT, 'current_releases': releases}
-        self.assertEqual([], unfurl.drift_labels(project))
-
-    def test_missing_release_fails_closed(self) -> None:
-        releases = {'testing': {'committish': 'bbb'}}
-        project = {**PROJECT, 'current_releases': releases}
-        self.assertEqual(
-            ['Testing → Production'], unfurl.drift_labels(project)
-        )
-
-    def test_no_pair_across_terminal(self) -> None:
-        envs = [
-            {**PROJECT['environments'][0], 'terminal': True},
-            PROJECT['environments'][1],
-        ]
-        self.assertEqual(
-            [], unfurl.drift_labels({**PROJECT, 'environments': envs})
-        )
-
-    def test_disabled_delivery(self) -> None:
-        project = {**PROJECT, 'delivery_mode': 'disabled'}
-        self.assertEqual([], unfurl.drift_labels(project))
-
-    def test_releasable(self) -> None:
-        summary = {'head_sha': 'abc', 'commits_since_tag': 2}
-        project = {
-            **PROJECT,
-            'project_types': [{'name': 'Library', 'releasable': True}],
-            'release_summary': summary,
-        }
+    def test_release(self) -> None:
+        project = {**PROJECT, 'drift_pairs': [], 'release_drifted': True}
         self.assertEqual(['Unreleased commits'], unfurl.drift_labels(project))
-        summary['drift_detected'] = False
-        self.assertEqual([], unfurl.drift_labels(project))
 
 
 class HandleTests(SettingsTestCase, test_create_ticket.ApiTestCase):
