@@ -396,7 +396,6 @@ class AgentFieldTests(PlatformTestCase):
             (plugin['sha'], plugin['path'], plugin['server_settings']),
             (SHA_1, 'plugins/code-review', entry['server_settings']),
         )
-        # The same settings write no new version.
         response = await self.client.put(
             self.org_url('agents/builder'),
             json={'settings': {'plugins': [entry]}},

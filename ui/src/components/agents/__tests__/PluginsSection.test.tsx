@@ -230,6 +230,7 @@ describe('PluginsSection', () => {
     ])
     fireEvent.click(grafana)
     expect(plugins()).toEqual([pinned('grafana-mcp')])
+    expect(screen.queryByText(/^Servers at/)).not.toBeInTheDocument()
   })
 
   it('locks the servers of a plugin that is off', async () => {
@@ -246,7 +247,6 @@ describe('PluginsSection', () => {
     const servers = await screen.findByRole('list', {
       name: 'MCP servers of ops-tools',
     })
-    // The servers of the default's pin, not of the catalog head.
     expect(within(servers).getAllByRole('listitem')).toHaveLength(2)
     expect(screen.queryByText('mimir')).not.toBeInTheDocument()
     const loki = screen.getByLabelText('ops-tools MCP server loki')
@@ -255,10 +255,19 @@ describe('PluginsSection', () => {
     expect(plugins()).toEqual([
       pinned('ops-tools', { server_settings: { loki: OFF } }),
     ])
-    // Its last setting removed, the entry goes, so the plugin is not
-    // added to the agent.
     fireEvent.click(loki)
     expect(plugins()).toEqual([])
+  })
+
+  it('keeps the entry of a default plugin with another setting', async () => {
+    const initial = withPlugins(
+      pinned('ops-tools', { server_settings: { loki: OFF, tempo: OFF } }),
+    )
+    render(<Harness initial={initial} />)
+    fireEvent.click(await screen.findByLabelText('ops-tools MCP server loki'))
+    expect(plugins()).toEqual([
+      pinned('ops-tools', { server_settings: { tempo: OFF } }),
+    ])
   })
 
   it('hides the pin of a default plugin', async () => {
@@ -291,6 +300,10 @@ describe('PluginsSection', () => {
       name: 'Turned-off MCP servers no longer in grafana-mcp',
     })
     expect(within(gone).getByText('gone')).toBeInTheDocument()
+    expect(
+      screen.queryByLabelText('grafana-mcp MCP server local'),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText(/^Servers at/)).not.toBeInTheDocument()
     expect(
       within(gone).getByText('no longer in this plugin'),
     ).toBeInTheDocument()

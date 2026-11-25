@@ -1441,6 +1441,52 @@ class PinServerSettingsTests(unittest.TestCase):
             default.model_copy(update={'server_settings': self.off('loki')}),
         )
 
+    def test_a_default_pin_wins_over_a_kept_pin(self) -> None:
+        old = models.AgentPlugin(
+            marketplace='tools', plugin='ops', url='u', sha='b' * 40
+        )
+        default = models.AgentPlugin(
+            marketplace='tools', plugin='ops', url='u', sha='c' * 40
+        )
+        (plugin,) = platform.pin_plugins(
+            [
+                models.AgentPlugin(
+                    marketplace='tools', plugin='ops', sha='b' * 40
+                )
+            ],
+            [old],
+            self.catalog,
+            [default],
+        )
+        self.assertEqual(plugin, default)
+
+    def test_an_external_pin_saves_the_servers(self) -> None:
+        catalog = _marketplace()
+        catalog['plugins'] = [
+            {
+                'name': 'remote',
+                'path': None,
+                'repository_url': 'https://github.com/acme/remote.git',
+                'repository_sha': 'b' * 40,
+                'mcp_servers': [{'name': 'grafana'}],
+            }
+        ]
+        (plugin,) = platform.pin_plugins(
+            [
+                models.AgentPlugin(
+                    marketplace='tools',
+                    plugin='remote',
+                    server_settings=self.off('grafana', 'gone'),
+                )
+            ],
+            [],
+            {'tools': catalog},
+        )
+        self.assertEqual(
+            (plugin.path, plugin.mcp_servers, plugin.server_settings),
+            ('.', [models.CatalogServer(name='grafana')], self.off('grafana')),
+        )
+
     def test_a_default_pin_with_no_saved_servers_keeps_settings(
         self,
     ) -> None:

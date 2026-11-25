@@ -11739,7 +11739,9 @@ export interface components {
          *     The caller sets ``marketplace``, ``plugin``, and
          *     ``server_settings``. Imbi sets ``url``, ``sha``, ``path``, and
          *     ``mcp_servers`` when it writes a version, from the synced catalog,
-         *     so the version pins the plugin.
+         *     so the version pins the plugin and its servers. A pin made before
+         *     Imbi saved the servers has none. ``server_settings`` keeps only the
+         *     settings that differ from the default.
          */
         AgentPlugin: {
             /** Marketplace */

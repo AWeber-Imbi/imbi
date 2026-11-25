@@ -809,6 +809,8 @@ class AgentModelTestCase(unittest.TestCase):
             plugin.server_settings,
             {'grafana': models.ServerSetting(enabled=False)},
         )
+
+    def test_plugin_with_a_default_setting_equals_one_without(self) -> None:
         self.assertEqual(
             models.AgentPlugin(
                 marketplace='tools',
@@ -817,7 +819,6 @@ class AgentModelTestCase(unittest.TestCase):
             ),
             models.AgentPlugin(marketplace='tools', plugin='ops'),
         )
-        self.assertEqual(plugin.mcp_servers, [])
 
 
 class DocumentTemplateModelTestCase(unittest.TestCase):

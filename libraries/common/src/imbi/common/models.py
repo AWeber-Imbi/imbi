@@ -1453,7 +1453,9 @@ class AgentPlugin(pydantic.BaseModel):
     The caller sets ``marketplace``, ``plugin``, and
     ``server_settings``. Imbi sets ``url``, ``sha``, ``path``, and
     ``mcp_servers`` when it writes a version, from the synced catalog,
-    so the version pins the plugin.
+    so the version pins the plugin and its servers. A pin made before
+    Imbi saved the servers has none. ``server_settings`` keeps only the
+    settings that differ from the default.
     """
 
     #: The slug of the marketplace in the organization.
@@ -1466,11 +1468,7 @@ class AgentPlugin(pydantic.BaseModel):
     sha: str | None = None
     #: The plugin directory, relative to the root of ``url``.
     path: str | None = None
-    #: The MCP servers of the plugin at ``sha``. Empty for a pin made
-    #: before Imbi saved them.
     mcp_servers: list[CatalogServer] = []
-    #: The agent's settings for the plugin's MCP servers, by server
-    #: name. Only the settings that differ from the default are kept.
     server_settings: dict[str, ServerSetting] = {}
 
     @pydantic.field_validator('server_settings')
