@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
@@ -391,14 +391,61 @@ export function Navigation({ currentView }: NavigationProps) {
   )
 }
 
-/** The Agents entry: a menu of the pages in the Agents area. */
+/** The Agents entry: links to the dashboard; hover shows the other pages. */
 function AgentsMenu({ isActive }: { isActive: boolean }) {
   const navigate = useNavigate()
-  const agentsNav = useAgentsNav()
+  const [open, setOpen] = useState(false)
+  const closeTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const hoverOpened = useRef(false)
+  const agentsNav = useAgentsNav().filter((item) => item.id !== 'dashboard')
+  const contentRef = useRef<HTMLDivElement>(null)
+  // Keep the menu open without changing how it was opened.
+  const keepOpen = () => {
+    clearTimeout(closeTimer.current)
+    setOpen(true)
+  }
+  const show = () => {
+    if (!open) hoverOpened.current = true
+    keepOpen()
+  }
+  const hide = () => {
+    clearTimeout(closeTimer.current)
+    closeTimer.current = setTimeout(() => setOpen(false), 100)
+  }
+  // A hover open must not move focus into the menu, or back to the trigger.
+  const skipFocusOnHover = (e: Event) => {
+    if (hoverOpened.current) e.preventDefault()
+  }
   return (
-    <DropdownMenu modal={false}>
-      <DropdownMenuTrigger asChild>
+    <DropdownMenu
+      modal={false}
+      onOpenChange={(next) => {
+        if (next) hoverOpened.current = false
+        setOpen(next)
+      }}
+      open={open}
+    >
+      <DropdownMenuTrigger
+        asChild
+        onClick={() => setOpen(false)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            navigate(agentsPath('dashboard'))
+          } else if (open && e.key === 'ArrowDown') {
+            // A hover open left focus on the trigger; move it into the menu.
+            e.preventDefault()
+            hoverOpened.current = false
+            contentRef.current
+              ?.querySelector<HTMLElement>('[role="menuitem"]')
+              ?.focus()
+          }
+        }}
+        onPointerEnter={show}
+        onPointerLeave={hide}
+      >
         <Button
+          asChild
           className={`h-auto rounded-lg px-4 py-2 transition-colors ${
             isActive
               ? 'bg-amber-bg text-amber-text hover:bg-amber-bg hover:text-amber-text'
@@ -406,27 +453,37 @@ function AgentsMenu({ isActive }: { isActive: boolean }) {
           }`}
           variant="ghost"
         >
-          <Bot className="size-4" />
-          <span>Agents</span>
-          <ChevronDown className="size-3" />
+          <Link to={agentsPath('dashboard')}>
+            <Bot className="size-4" />
+            <span>Agents</span>
+            <ChevronDown className="size-3" />
+          </Link>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-64">
+      <DropdownMenuContent
+        align="start"
+        className="w-64"
+        onCloseAutoFocus={skipFocusOnHover}
+        onPointerEnter={keepOpen}
+        onPointerLeave={hide}
+        ref={contentRef}
+        // Radix omits onOpenAutoFocus from the public type, but forwards it.
+        {...{ onOpenAutoFocus: skipFocusOnHover }}
+      >
         {agentsNav.map((item, i) => {
           const Icon = item.icon
           const newGroup = i > 0 && agentsNav[i - 1].group !== item.group
           return (
             <div key={item.id}>
               {newGroup && <DropdownMenuSeparator />}
-              <DropdownMenuItem
-                className="gap-3 py-2"
-                onClick={() => navigate(agentsPath(item.id))}
-              >
-                <Icon className="text-tertiary size-4" />
-                <span className="flex flex-col">
-                  <span className="text-sm font-medium">{item.label}</span>
-                  <span className="text-tertiary text-xs">{item.note}</span>
-                </span>
+              <DropdownMenuItem asChild className="gap-3 py-2">
+                <Link to={agentsPath(item.id)}>
+                  <Icon className="text-tertiary size-4" />
+                  <span className="flex flex-col">
+                    <span className="text-sm font-medium">{item.label}</span>
+                    <span className="text-tertiary text-xs">{item.note}</span>
+                  </span>
+                </Link>
               </DropdownMenuItem>
             </div>
           )

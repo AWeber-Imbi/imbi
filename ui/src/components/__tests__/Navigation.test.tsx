@@ -1,7 +1,7 @@
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import { render, screen } from '@/test/utils'
+import { render, screen, waitFor } from '@/test/utils'
 
 const auth = vi.hoisted(() => ({
   user: {
@@ -56,9 +56,49 @@ describe('Navigation', () => {
     const { Navigation } = await import('../Navigation')
     render(<Navigation />)
     expect(screen.queryByText('Admin')).not.toBeInTheDocument()
-    await userEvent.click(screen.getByText('Agents'))
+    const agents = screen.getByRole('link', { name: /Agents/ })
+    expect(agents).toHaveAttribute('href', '/agents/dashboard')
+    await userEvent.hover(agents)
     expect(
       await screen.findByRole('menuitem', { name: /Runners/ }),
     ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('menuitem', { name: /Dashboard/ }),
+    ).not.toBeInTheDocument()
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() =>
+      expect(screen.queryByRole('menuitem')).not.toBeInTheDocument(),
+    )
+    agents.focus()
+    await userEvent.keyboard('{ArrowDown}')
+    expect(
+      await screen.findByRole('menuitem', { name: /Runners/ }),
+    ).toBeInTheDocument()
+  })
+
+  it('keeps focus where it is when hover opens the Agents menu', async () => {
+    const { Navigation } = await import('../Navigation')
+    render(
+      <>
+        <input aria-label="Scratch input" />
+        <Navigation />
+      </>,
+    )
+    const input = screen.getByRole('textbox', { name: 'Scratch input' })
+    input.focus()
+    await userEvent.hover(screen.getByRole('link', { name: /Agents/ }))
+    await screen.findByRole('menuitem', { name: /Runners/ })
+    expect(input).toHaveFocus()
+  })
+
+  it('moves focus into a hover-opened Agents menu on ArrowDown', async () => {
+    const { Navigation } = await import('../Navigation')
+    render(<Navigation />)
+    const agents = screen.getByRole('link', { name: /Agents/ })
+    await userEvent.hover(agents)
+    await screen.findByRole('menuitem', { name: /Runners/ })
+    agents.focus()
+    await userEvent.keyboard('{ArrowDown}')
+    expect(screen.getAllByRole('menuitem')[0]).toHaveFocus()
   })
 })
