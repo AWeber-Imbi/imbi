@@ -118,8 +118,9 @@ def _reply(ident: typing.Any, **fields: typing.Any) -> bytes:
 def _paged(message: Body) -> bytes:
     """Two pages of tools: the second has a tool whose name the CLI
     refuses, and a tool with no ``properties``."""
-    cursor = (message.get('params') or {}).get('cursor')
-    if cursor is None:
+    params: Body = message.get('params') or {}
+    page: Body
+    if params.get('cursor') is None:
         page = {
             'tools': [
                 {'name': 'first', 'inputSchema': {'type': 'object'}},
@@ -150,7 +151,8 @@ def _short_circuit(path: str, message: Body | None) -> bytes | None:
     """The reply that a misbehavior in :data:`BEHAVIOR` gives instead of
     the server's, if any."""
     method = (message or {}).get('method')
-    name = ((message or {}).get('params') or {}).get('name')
+    params: Body = (message or {}).get('params') or {}
+    name = params.get('name')
     ident = (message or {}).get('id')
     if method == 'tools/list' and 'paged' in BEHAVIOR:
         return _paged(typing.cast('Body', message))
