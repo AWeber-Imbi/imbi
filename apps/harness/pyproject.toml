@@ -12,7 +12,7 @@ classifiers = []
 # No imbi-common: the runner image must stay small and must not hold the
 # platform's database and queue clients.
 dependencies = [
-  "claude-agent-sdk>=0.2.150",
+  "claude-agent-sdk>=0.2.164",
   "httpx>=0.28.1",
   "mcp>=1.23.0",
   "pyjwt>=2.10.1",
