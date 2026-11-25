@@ -140,9 +140,15 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    [value rules](../admin/blueprints.md#value-rules); before, it stored
    them and did not check them. A record whose stored value breaks a
    rule fails its next update with `422` until someone corrects the
-   value. A blueprint with a `pattern` that does not compile, or that
-   has a lookaround or a backreference, can no longer be saved. Until
-   you correct it, Imbi skips that pattern and logs a warning.
+   value. A blueprint with a `pattern` or a `patternProperties` key, at
+   any depth, that does not compile, or that has a lookaround or a
+   backreference, can no longer be saved. Until you correct it, Imbi
+   skips that `pattern` and logs a warning; such a `patternProperties`
+   key refuses each non-empty object value with `422`. Also look for
+   blueprints that use `unevaluatedProperties` together with
+   `patternProperties`. Imbi refuses to save that pair, and a field
+   that evaluates `unevaluatedProperties` refuses each value with `422`.
+   Remove or replace the pair before you change the blueprint's schema.
 
 ## 2.61.0
 
