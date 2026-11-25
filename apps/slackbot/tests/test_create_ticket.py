@@ -51,6 +51,14 @@ def blocks_by_id(view: dict[str, typing.Any]) -> dict[str, typing.Any]:
     return {b['block_id']: b for b in view['blocks'] if 'block_id' in b}
 
 
+def gating_block(view: dict[str, typing.Any]) -> dict[str, typing.Any]:
+    return next(
+        b
+        for b in view['blocks']
+        if b.get('element', {}).get('action_id') == ct.GATING
+    )
+
+
 class FormViewTests(helpers.TestCase):
     def test_agent_form(self) -> None:
         view = ct.form_view(meta(), {}, [])
@@ -147,13 +155,10 @@ class FormViewTests(helpers.TestCase):
         blocks = blocks_by_id(view)
         self.assertIn(ct.ROLE_NAME + '1', blocks)
         self.assertIn(ct.ROLE_PERSON + '1', blocks)
-        self.assertEqual(
-            blocks[ct.GATING]['element']['initial_options'], [opt('T-1')]
-        )
+        gate = gating_block(view)['element']
+        self.assertEqual(gate['initial_options'], [opt('T-1')])
         # Checkboxes cannot show more than 10 prerequisites.
-        self.assertEqual(
-            blocks[ct.GATING]['element']['type'], 'multi_static_select'
-        )
+        self.assertEqual(gate['type'], 'multi_static_select')
         buttons = [
             e['action_id']
             for b in view['blocks']
@@ -240,6 +245,13 @@ class StateTests(helpers.TestCase):
             set(ct.check(meta(roles=2), values)),
             {ct.DUE, ct.ROLE_PERSON + '0', ct.ROLE_NAME + '1', ct.PARENT},
         )
+
+    def test_check_org_change_pending(self) -> None:
+        orgs = [['acme', 'Acme', True], ['beta', 'Beta', True]]
+        values = {ct.ORG: opt('Beta', 'beta')}
+        self.assertEqual(set(ct.check(meta(orgs=orgs), values)), {ct.ORG})
+        values = {ct.ORG: opt('Acme', 'acme')}
+        self.assertEqual(ct.check(meta(orgs=orgs), values), {})
 
     def test_roles(self) -> None:
         values = {
@@ -714,6 +726,44 @@ class ListenerTests(ApiTestCase):
         self.assertEqual(
             blocks[ct.DESCRIPTION]['element']['initial_value'], 'keep'
         )
+
+    async def test_new_prerequisite_gates_after_rebuild(self) -> None:
+        old = ct.form_view(meta(), {ct.REQUIRES: [opt('T-1'), opt('T-2')]}, [])
+        old_gate = gating_block(old)
+        state = {
+            ct.REQUIRES: {
+                ct.REQUIRES: {
+                    'type': 'multi_external_select',
+                    'selected_options': [opt('T-1'), opt('T-2'), opt('T-3')],
+                }
+            },
+            # The person unchecked T-2.
+            old_gate['block_id']: {
+                ct.GATING: {
+                    'type': 'multi_static_select',
+                    'selected_options': [opt('T-1')],
+                }
+            },
+        }
+        view = {
+            'private_metadata': old['private_metadata'],
+            'blocks': old['blocks'],
+            'state': {'values': state},
+        }
+        with self.api():
+            await ct.on_action(
+                mock.AsyncMock(),
+                self.body(view, actions=[{'action_id': ct.REQUIRES}]),
+                self.slack,
+            )
+        gate = gating_block(self.shown())
+        # A new block id, so Slack shows the new initial options.
+        self.assertNotEqual(gate['block_id'], old_gate['block_id'])
+        self.assertEqual(
+            gate['element']['initial_options'], [opt('T-1'), opt('T-3')]
+        )
+        # The other inputs keep their block ids.
+        self.assertIn(ct.REQUIRES, blocks_by_id(self.shown()))
 
     async def test_options(self) -> None:
         self.route(

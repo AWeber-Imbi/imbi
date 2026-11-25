@@ -16,6 +16,7 @@ of the organization, type, priority, and labels, the same as in the UI.
 from __future__ import annotations
 
 import datetime
+import hashlib
 import logging
 import re
 import time
@@ -40,7 +41,8 @@ COMMAND = '/create-ticket'
 CALLBACK_ID = 'ct:form'
 
 # Each input uses the id as its action id. The block id is the same,
-# except after a change of organization (see ``_block_id``).
+# except after a change of organization (see ``_block_id``) and for the
+# gating input (see ``form_view``).
 ORG = 'ct:org'
 SUBJECT = 'ct:subject'
 DESCRIPTION = 'ct:description'
@@ -366,6 +368,11 @@ def _refused(
 def check(meta: Json, values: Json) -> dict[str, str]:
     """Return the errors that need no call to imbi-api, by block id."""
     problems: dict[str, str] = {}
+    # A submit before the view of the new organization: the other
+    # selections still name things of the old organization.
+    org = _value(values, ORG)
+    if org and org != meta['org']:
+        problems[ORG] = 'Wait for the form to update, then submit again.'
     due = values.get(DUE)
     today = datetime.datetime.now(datetime.UTC).date()
     if due and datetime.date.fromisoformat(due) < today:
@@ -683,17 +690,22 @@ def form_view(
     ]
     requires: list[Json] = values.get(REQUIRES) or []
     if requires:
-        blocks.append(
-            field(
-                GATING,
-                'Gating',
-                # Checkboxes show at most 10 options.
-                {'type': 'multi_static_select', 'options': requires},
-                optional=True,
-                hint='A gating prerequisite holds the ticket until it closes '
-                'as done.',
-            )
+        block = field(
+            GATING,
+            'Gating',
+            # Checkboxes show at most 10 options.
+            {'type': 'multi_static_select', 'options': requires},
+            optional=True,
+            hint='A gating prerequisite holds the ticket until it closes '
+            'as done.',
         )
+        # Slack keeps the old selection while the block id stays the
+        # same, so a new prerequisite would show as unchecked. A new
+        # option set gets a new block id; ``gating`` gave the selection.
+        listed = ','.join(sorted(o['value'] for o in requires))
+        digest = hashlib.sha256(listed.encode()).hexdigest()[:8]
+        block['block_id'] += f'#{digest}'
+        blocks.append(block)
     return {
         'type': 'modal',
         'callback_id': CALLBACK_ID,
