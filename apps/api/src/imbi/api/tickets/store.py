@@ -34,7 +34,7 @@ from psycopg import rows, sql
 from psycopg.types import json as pg_json
 
 from imbi.api import blueprint_attributes
-from imbi.api.tickets import log
+from imbi.api.tickets import announce, log
 from imbi.common import relational
 from imbi.common.labels import (
     normalize_label as normalize_label,
@@ -112,10 +112,12 @@ async def after_commit(
     *,
     outbox: bool = False,
 ) -> None:
-    """Publish the events of a commit, then call every change hook when
-    they created the ticket or changed its status. A hook failure is
-    logged; the change stays."""
+    """Publish the events of a commit, tell the slackbot about closed
+    requests, then call every change hook when the events created the
+    ticket or changed its status. A hook failure is logged; the change
+    stays."""
     await log.publish(task, events, ledger)
+    await announce.publish_closed(task['short_id'], events)
     if not any(event['type'] in _CHANGE_EVENTS for event in events):
         return
     for hook in list(_change_hooks):

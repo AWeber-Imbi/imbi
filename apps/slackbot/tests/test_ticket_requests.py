@@ -41,7 +41,11 @@ class FakeSlack:
         return Resp(ts=f'ts{len(self.posts)}')
 
     async def chat_update(self, channel, ts, text=None, **kw):
-        self.updates.append({'channel': channel, 'ts': ts, 'text': text})
+        if channel == 'C404':
+            raise errors.SlackApiError(
+                'channel_not_found', {'error': 'channel_not_found'}
+            )
+        self.updates.append({'channel': channel, 'ts': ts, 'text': text, **kw})
 
     async def conversations_list(self, **_kw):
         return Pages(
@@ -58,6 +62,23 @@ class FakeSlack:
 
     async def conversations_open(self, users):
         return Resp(channel={'id': f'D-{users}'})
+
+
+class FakeValkey:
+    def __init__(self) -> None:
+        self.lists: dict[str, list[bytes]] = {}
+
+    async def rpush(self, key, value):
+        self.lists.setdefault(key, []).append(value)
+
+    async def expire(self, key, ttl):
+        pass
+
+    async def lrange(self, key, start, end):
+        return list(self.lists.get(key, []))
+
+    async def delete(self, key):
+        self.lists.pop(key, None)
 
 
 def entry(**overrides: typing.Any) -> dict[str, typing.Any]:
@@ -187,6 +208,12 @@ class FlowTestCase(helpers.TestCase):
         self.slack = FakeSlack()
         self.store = forms.MemoryFormStore()
         self.runtime = forms.Runtime(self.store, mock.AsyncMock())
+        self.valkey = FakeValkey()
+        patcher = mock.patch.object(
+            ticket_requests.valkey, 'get_client', return_value=self.valkey
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     async def stored(self) -> forms.FormRecord:
         (form_id,) = self.store._records
@@ -334,6 +361,65 @@ class PostTests(FlowTestCase):
         self.assertNotIn('@here', text)
         self.assertNotIn('<!channel>', text)
         self.assertEqual({}, self.store._records)
+
+
+RESOLVED = {
+    'resolved': True,
+    'short_id': 'T-7',
+    'request_id': 'r-1',
+    'status': 'answered',
+    'answer': '<!channel> use main',
+    'resolved_by': 'ada@example.com',
+}
+
+
+class CloseTests(FlowTestCase):
+    async def test_each_message_shows_the_decision(self) -> None:
+        await ticket_requests.post(self.slack, self.runtime, entry())
+        await ticket_requests.post(
+            self.slack,
+            self.runtime,
+            entry(escalation=True, slack_channel='#ops'),
+        )
+        await ticket_requests.close(self.slack, RESOLVED)
+        self.assertEqual(
+            [('D-U1', 'ts1'), ('C2', 'ts2')],
+            [(u['channel'], u['ts']) for u in self.slack.updates],
+        )
+        blocks = self.slack.updates[0]['blocks']
+        self.assertEqual('T-7 answered', blocks[0]['text']['text'])
+        self.assertIn('Triage Bot asked: **Which branch?**', blocks[1]['text'])
+        # The answer is plain text, so it cannot notify the channel.
+        self.assertEqual(
+            {
+                'type': 'plain_text',
+                'text': '<!channel> use main',
+                'emoji': True,
+            },
+            blocks[2]['text'],
+        )
+        self.assertEqual(
+            'Answered by ada@example.com', blocks[3]['elements'][0]['text']
+        )
+        self.assertEqual({}, self.valkey.lists)
+
+    async def test_failed_update_does_not_stop_the_others(self) -> None:
+        key = ticket_requests._messages_key('r-1')
+        for channel in ('C404', 'C2'):
+            await self.valkey.rpush(
+                key,
+                orjson.dumps({'channel': channel, 'ts': 't', 'summary': ''}),
+            )
+        await ticket_requests.close(
+            self.slack, RESOLVED | {'status': 'rejected', 'answer': None}
+        )
+        (update,) = self.slack.updates
+        self.assertEqual('C2', update['channel'])
+        self.assertEqual(3, len(update['blocks']))
+
+    async def test_unknown_request_changes_nothing(self) -> None:
+        await ticket_requests.close(self.slack, RESOLVED)
+        self.assertEqual([], self.slack.updates)
 
 
 class AnswerTests(helpers.TestCase):
@@ -489,3 +575,23 @@ class ConsumeTests(FlowTestCase):
             [c.args[2] for c in client.xack.await_args_list],
         )
         self.assertEqual(2, len(self.slack.posts))
+
+    async def test_resolved_entry_closes_the_forms(self) -> None:
+        client = mock.AsyncMock()
+        client.xautoclaim.return_value = ['0-0', [], []]
+        message = (b'1-0', {b'request': orjson.dumps(RESOLVED)})
+        client.xreadgroup.side_effect = [
+            [[b'imbi:ticket-requests', [message]]],
+            asyncio.CancelledError(),
+        ]
+        close = mock.AsyncMock()
+        with (
+            mock.patch.object(
+                ticket_requests.valkey, 'get_client', return_value=client
+            ),
+            mock.patch.object(ticket_requests, 'close', close),
+            self.assertRaises(asyncio.CancelledError),
+        ):
+            await ticket_requests.consume(self.slack, self.runtime)
+        close.assert_awaited_once_with(self.slack, RESOLVED)
+        self.assertEqual([], self.slack.posts)
