@@ -104,6 +104,22 @@ class PromotionPairsTests(unittest.TestCase):
             [(head['slug'], base['slug']) for head, base in pairs],
         )
 
+    def test_sort_order_ties_break_by_code_point(self) -> None:
+        # Mirrors the UI test: upper case sorts first, so the terminal
+        # Production ends its own pipeline and no pair forms.
+        pairs = environments.promotion_pairs(
+            [
+                {'name': 'dev', 'slug': 'dev', 'sort_order': 0},
+                {
+                    'name': 'Production',
+                    'slug': 'production',
+                    'sort_order': 0,
+                    'terminal': True,
+                },
+            ]
+        )
+        self.assertEqual([], pairs)
+
     def test_an_explicit_false_terminal_does_not_split(self) -> None:
         envs = [_env('testing', 1), _env('staging', 2)]
         envs[0]['terminal'] = False

@@ -20,7 +20,7 @@ import urllib.parse
 import httpx
 from slack_sdk import errors
 
-from imbi.common import api, environments, models
+from imbi.common import api
 from imbi.slackbot import blocks, identity, settings
 
 SlackClient = typing.Any
@@ -120,48 +120,13 @@ def project_blocks(project: Json, url: str) -> list[blocks.Block]:
 def drift_labels(project: Json) -> list[str]:
     """The drift the projects list shows for ``project``.
 
-    Mirrors ``driftSlugsFor`` in ``ui/src/components/ProjectsView.tsx``
-    and the range key of ``_range_key`` in imbi-api's projects endpoint:
-    a drifted environment pair counts unless the server proved its
-    range clean, and a releasable project drifts with commits past its
-    latest tag unless every one was answered ``false``.
+    imbi-api computes the verdict (``drift_pairs`` and
+    ``release_drifted``); the card only names it.
 
     """
-    types: list[Json] = project.get('project_types') or []
-    delivery = models.resolve_delivery(
-        project.get('delivery_mode'),
-        deployable=any(t.get('deployable') for t in types),
-        releasable=any(t.get('releasable') for t in types),
-    )
-    labels: list[str] = []
-    if delivery.deployable:
-        releases: Json = project.get('current_releases') or {}
-        ranges: Json = project.get('drift_ranges') or {}
-        envs: list[Json] = project.get('environments') or []
-        for head_env, base_env in environments.promotion_pairs(envs):
-            head: Json = releases.get(head_env['slug']) or {}
-            base: Json = releases.get(base_env['slug']) or {}
-            head_sha: str | None = head.get('committish')
-            base_sha: str | None = base.get('committish')
-            if head_sha and base_sha:
-                # A range proven clean (every commit ``false``) is hidden.
-                drifted = (
-                    head_sha != base_sha
-                    and ranges.get(f'{base_sha}..{head_sha}') is not False
-                )
-            else:
-                drifted = (head.get('tag') or head_sha) != (
-                    base.get('tag') or base_sha
-                )
-            if drifted:
-                labels.append(f'{head_env["name"]} → {base_env["name"]}')
-    summary: Json = project.get('release_summary') or {}
-    if (
-        delivery.releasable
-        and summary.get('head_sha')
-        and (summary.get('commits_since_tag') or 0) > 0
-        and summary.get('drift_detected') is not False
-    ):
+    pairs: list[Json] = project.get('drift_pairs') or []
+    labels = [f'{p["head"]["name"]} → {p["base"]["name"]}' for p in pairs]
+    if project.get('release_drifted'):
         labels.append('Unreleased commits')
     return labels
 

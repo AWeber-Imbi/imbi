@@ -15497,6 +15497,20 @@ export interface components {
             updated: number;
         };
         /**
+         * DriftPair
+         * @description One promotion step the projects list shows as drifted.
+         *
+         *     ``head`` runs code that ``base``, the next environment down its
+         *     pipeline, does not.  ``oldest`` is when the oldest commit that needs
+         *     action in the range landed; ``None`` when the server has no date.
+         */
+        DriftPair: {
+            head: components["schemas"]["ProjectListEnvironmentRef"];
+            base: components["schemas"]["ProjectListEnvironmentRef"];
+            /** Oldest */
+            oldest?: string | null;
+        };
+        /**
          * DriverInfo
          * @description One entry in the static provider-driver catalog.
          */
@@ -19083,10 +19097,16 @@ export interface components {
             drift_ranges?: {
                 [key: string]: boolean;
             };
-            /** Drift Range Oldest */
-            drift_range_oldest?: {
-                [key: string]: string;
-            };
+            /**
+             * Drift Pairs
+             * @default []
+             */
+            drift_pairs: components["schemas"]["DriftPair"][];
+            /**
+             * Release Drifted
+             * @default false
+             */
+            release_drifted: boolean;
             /**
              * Has Deployment Plugin
              * @default false

@@ -162,6 +162,14 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    [Slack App Setup](../slackbot/slack-app-manifest.md#home-tab) to the
    Slack app, or reinstall the app from the new manifest. Until you do
    this, Slack shows no Home tab.
+8. Deploy imbi-api before the UI and imbi-slackbot. imbi-api now
+   calculates project drift and sends it in the projects list as
+   `drift_pairs` and `release_drifted`; the Projects page, the project
+   page, and the Slack cards and Home tab only read these fields. The
+   list no longer sends `drift_range_oldest`; each pair in
+   `drift_pairs` has its `oldest` date. A client of an earlier release
+   that runs against the new imbi-api shows no drift dates. A new client
+   that runs against an earlier imbi-api shows no drift.
 
 ## 2.61.0
 
