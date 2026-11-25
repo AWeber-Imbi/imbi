@@ -10,7 +10,7 @@ import typing
 
 import pydantic
 
-from imbi.common.plugins import base
+from imbi.common.plugins import base, errors
 from imbi.common.plugins import registry as plugins_registry
 from imbi.common.workflows.registry import (
     agent,
@@ -56,32 +56,37 @@ STEP_TYPES: dict[str, StepType] = {
     )
 }
 
-#: The fields that a plugin step gets from the host (ADR 0032).
-INTEGRATION_SOURCE = 'integration'
-
 
 def get(step_type: str) -> StepType | None:
     """Return a built-in or plugin step type, else ``None``."""
-    if '.' not in step_type:
+    slug, dot, _ = step_type.partition('.')
+    if not dot:
         return STEP_TYPES.get(step_type)
-    return all_types().get(step_type)
+    try:
+        entry = plugins_registry.get_plugin(slug)
+    except errors.PluginNotFoundError:
+        return None
+    return _types_of(entry).get(step_type)
 
 
 def all_types() -> dict[str, StepType]:
     """Return the built-in step types and those of the loaded plugins."""
     types = dict(STEP_TYPES)
     for entry in plugins_registry.list_plugins():
-        capability = entry.manifest.get_capability('workflow-steps')
-        if capability is not None:
-            types.update(
-                _plugin_types(
-                    entry.manifest.slug,
-                    entry.manifest.name,
-                    entry.manifest.icon,
-                    capability.handler,
-                )
-            )
+        types.update(_types_of(entry))
     return types
+
+
+def _types_of(entry: plugins_registry.RegistryEntry) -> dict[str, StepType]:
+    capability = entry.manifest.get_capability('workflow-steps')
+    if capability is None:
+        return {}
+    return _plugin_types(
+        entry.manifest.slug,
+        entry.manifest.name,
+        entry.manifest.icon,
+        capability.handler,
+    )
 
 
 @functools.cache
@@ -110,7 +115,7 @@ def _plugin_type(
                 min_length=1,
                 description=f'The slug of the {plugin_label} integration.',
                 json_schema_extra={
-                    'x-imbi-source': INTEGRATION_SOURCE,
+                    'x-imbi-source': 'integration',
                     'x-imbi-plugin': slug,
                 },
             ),
@@ -123,7 +128,7 @@ def _plugin_type(
         __base__=descriptor.params_model,
         **fields,
     )
-    permissions = {'integration:read', *descriptor.permissions}
+    permissions = frozenset({'integration:read', *descriptor.permissions})
     return StepType(
         type=f'{slug}.{descriptor.name}',
         category=descriptor.category,
@@ -141,6 +146,7 @@ def _plugin_type(
         plugin=slug,
         icon=icon,
         poll_seconds=descriptor.poll_seconds,
+        descriptor=descriptor,
     )
 
 

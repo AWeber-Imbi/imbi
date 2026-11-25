@@ -10,6 +10,7 @@ import {
 
 import { useResizableWidth } from '@/components/agents/useResizableWidth'
 import { useStoredState } from '@/components/agents/useStoredState'
+import { EntityIcon } from '@/components/ui/entity-icon'
 import { cn } from '@/lib/utils'
 
 import { STEP_MIME } from './Canvas'
@@ -197,7 +198,11 @@ function StepTile({ type }: { type: StepType }) {
         CATEGORY_TILE[type.category],
       )}
     >
-      <Icon className="size-3.5" />
+      {type.icon ? (
+        <EntityIcon className="size-3.5" icon={type.icon} />
+      ) : (
+        <Icon className="size-3.5" />
+      )}
     </span>
   )
 }

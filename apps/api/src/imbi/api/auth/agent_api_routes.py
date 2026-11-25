@@ -287,6 +287,7 @@ REFUSED_ROUTES: frozenset[str] = frozenset(
         'PATCH /organizations/{org_slug}/integrations/{slug}',
         'PATCH /organizations/{org_slug}/webhooks/{webhook}',
         'POST /organizations/{org_slug}/integrations/',
+        'POST /organizations/{org_slug}/integrations/{integration_slug}/workflow-steps/{step_type}/run',
         'POST /organizations/{org_slug}/projects/{project_id}/configuration/history:fetch',
         'POST /organizations/{org_slug}/projects/{project_id}/configuration/values:fetch',
         'POST /organizations/{org_slug}/projects/{project_id}/configuration/versions:restore',
@@ -321,6 +322,8 @@ REFUSED_ROUTES: frozenset[str] = frozenset(
         'GET /organizations/{org_slug}/workflow-runs/side-effects/deployments',
         'POST /organizations/{org_slug}/workflow-runs/side-effects/resolve',
         'POST /organizations/{org_slug}/workflows/{slug}/test-runs',
+        # Calls the plugin with the Integration credentials (ADR 0032).
+        'POST /organizations/{org_slug}/integrations/{integration_slug}/workflow-steps/{step_type}/choices',
         # Runs code in a sandbox inside imbi-api (ADR 0027).
         'POST /organizations/{org_slug}/workflows/script-preview',
         'PUT /organizations/{org_slug}/workflows/{slug}',

@@ -21,7 +21,7 @@ import fastapi
 
 from imbi.api.tickets import TicketStore, create_pool
 from imbi.api.tickets import store as task_store
-from imbi.api.workflows import runs, sweeper, ticket_trigger
+from imbi.api.workflows import plugin_calls, runs, sweeper, ticket_trigger
 from imbi.api.workflows.runs import NewRun, NotActive, RunStore
 from imbi.api.workflows.store import (
     SCHEMA,
@@ -39,6 +39,7 @@ SCHEMATA_PATH = pathlib.Path(__file__).parent / 'schemata.toml'
 RUNTIME_SCHEMATA_PATH = pathlib.Path(__file__).parent / 'runtime_schemata.toml'
 
 _runs: RunStore | None = None
+_plugin_calls: plugin_calls.PluginCallStore | None = None
 
 
 async def initialize() -> None:
@@ -65,12 +66,13 @@ def _graph() -> graph.Graph | None:
 @contextlib.asynccontextmanager
 async def store_lifespan() -> abc.AsyncGenerator[WorkflowStore]:
     """Initialize the schemas, hold the workflow stores open, and sweep."""
-    global _runs
+    global _runs, _plugin_calls
     await initialize()
     pool = create_pool()
     try:
         await pool.open()
         _runs = RunStore(pool)
+        _plugin_calls = plugin_calls.PluginCallStore(pool)
         definitions = WorkflowStore(pool)
         tasks = TicketStore(pool)
         trigger = ticket_trigger.TaskTrigger(definitions, _runs, tasks, _graph)
@@ -91,6 +93,7 @@ async def store_lifespan() -> abc.AsyncGenerator[WorkflowStore]:
                 await sweep
     finally:
         _runs = None
+        _plugin_calls = None
         await pool.close()
 
 
@@ -105,6 +108,14 @@ def run_store() -> RunStore:
     return _runs
 
 
+def plugin_call_store() -> plugin_calls.PluginCallStore:
+    """Return the plugin step call store that :func:`store_lifespan`
+    opened (ADR 0032)."""
+    if _plugin_calls is None:
+        raise RuntimeError('store_lifespan has not opened the call store')
+    return _plugin_calls
+
+
 async def _inject_store(
     context: lifespan.InjectLifespan,
 ) -> abc.AsyncIterator[WorkflowStore]:
@@ -113,12 +124,16 @@ async def _inject_store(
 
 Store = typing.Annotated[WorkflowStore, fastapi.Depends(_inject_store)]
 Runs = typing.Annotated[RunStore, fastapi.Depends(run_store)]
+PluginCalls = typing.Annotated[
+    plugin_calls.PluginCallStore, fastapi.Depends(plugin_call_store)
+]
 
 __all__ = [
     'SCHEMA',
     'Definition',
     'NewRun',
     'NotActive',
+    'PluginCalls',
     'Pool',
     'Row',
     'RunStore',
@@ -129,6 +144,8 @@ __all__ = [
     'agent_ids',
     'create_pool',
     'initialize',
+    'plugin_call_store',
+    'plugin_calls',
     'run_store',
     'runs',
     'store_lifespan',

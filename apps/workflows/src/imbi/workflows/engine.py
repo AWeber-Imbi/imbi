@@ -171,7 +171,7 @@ class Engine:
 
     # --- One pass ------------------------------------------------------
 
-    async def _process(  # noqa: PLR0911
+    async def _process(  # noqa: PLR0911, PLR0912
         self, run: store.Row
     ) -> datetime.datetime | None:
         """Do the next thing for ``run``. Return when it is due again."""
@@ -181,6 +181,16 @@ class Engine:
         if run['cancel_requested']:
             await self._cancel_agent_tasks(run, steps, version['slug'])
             await self._close(run, steps, 'cancelled')
+            return None
+        unknown = next(
+            (n for n in wf_graph.nodes if registry.get(n.type) is None), None
+        )
+        if unknown is not None:
+            # The plugin of a step type was removed after the workflow
+            # was saved (ADR 0032).
+            await self._unknown_type(run, steps, unknown)
+            if wf_settings.on_failure == 'notify_owner_team':
+                await self._notify_owner_team(run, version['slug'])
             return None
         if run['status'] == 'queued':
             if not await self._activator_allowed(run, wf_graph):
@@ -267,6 +277,18 @@ class Engine:
                 conn, run['id'], node_id, 'step.started'
             )
         return _now()
+
+    async def _unknown_type(
+        self, run: store.Row, steps: dict[str, store.Row], node: wf.Node
+    ) -> None:
+        """Fail the step of ``node`` and the run with ``unknown_type``."""
+        code = f'unknown_type:{node.type}'
+        async with self.store.write(run['id']) as conn:
+            step = steps.get(node.id)
+            if step is not None and step['status'] in ('pending', 'running'):
+                await self._finish(conn, run, step, 'failed', None, code)
+            others = {k: v for k, v in steps.items() if k != node.id}
+            await self._close_in(conn, run, others, 'failed', code)
 
     async def _activator_allowed(
         self, run: store.Row, wf_graph: wf.Graph
@@ -537,13 +559,14 @@ class Engine:
                 return _now()
             attempt = step['attempt'] + 1
             # The state stays: a deploy or rollback resumes its run.
-            # After a timeout, the outcome of the last call is unknown.
-            # ``key_attempt`` lets a step (LLM Call) send the key of that
-            # call again; after a known error it sends a new one.
+            # After a timeout or a lost response, the outcome of the last
+            # call is unknown. ``key_attempt`` lets a step (LLM Call, a
+            # plugin step) send the key of that call again; after a known
+            # error it sends a new one.
             state = {
                 k: v for k, v in step['state'].items() if k != 'key_attempt'
             }
-            if code == 'timeout':
+            if code in ('timeout', 'plugin_timeout') or unreachable:
                 state['key_attempt'] = step['state'].get(
                     'key_attempt', step['attempt']
                 )

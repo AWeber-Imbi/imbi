@@ -199,3 +199,40 @@ created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 
 [tables.primary_key]
 columns = ["key"]
+
+# One row for each call of a plugin step (ADR 0032) by its idempotency
+# key `<run_id>:<node_id>:<attempt>:<poll>`. imbi-api inserts the row
+# before it calls the plugin, so a repeat of the key gets the stored
+# result and makes no second call. `status` is `running`, `done`,
+# `failed`, or `outcome_unknown`. `error` is the error code of a failed
+# call. The `plugin-step-calls-prune` maintenance operation deletes rows
+# older than 90 days.
+[[tables]]
+name = "plugin_step_calls"
+
+[tables.columns]
+id = "UUID NOT NULL"
+organization_id = "TEXT NOT NULL"
+principal = "TEXT NOT NULL"
+idempotency_key = "TEXT NOT NULL"
+run_id = "TEXT NOT NULL"
+integration_slug = "TEXT NOT NULL"
+step_type = "TEXT NOT NULL"
+status = "TEXT NOT NULL DEFAULT 'running'"
+result = "JSONB"
+error = "TEXT"
+started_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+finished_at = "TIMESTAMP WITH TIME ZONE"
+
+[tables.primary_key]
+columns = ["id"]
+
+[[tables.indexes]]
+name = "plugin_step_calls_idempotency_key"
+columns = ["organization_id", "principal", "idempotency_key"]
+unique = true
+
+# The prune.
+[[tables.indexes]]
+name = "plugin_step_calls_started_idx"
+columns = ["started_at"]

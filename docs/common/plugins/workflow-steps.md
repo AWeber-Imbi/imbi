@@ -95,8 +95,8 @@ The registry refuses the plugin when:
 
 - two descriptors have the same `name`;
 - `ports` is empty or has a duplicate;
-- `params_model` declares `integration`, or `project_id` on a
-  project-scoped step;
+- `params_model` declares `integration` or `project_id`. This applies
+  to every step, also a step that is not project-scoped;
 - `side_effect=True` and `permissions` is empty. The engine runs steps
   as a service account, so a permission must limit who can activate a
   workflow that acts;
@@ -119,6 +119,40 @@ The callable returns a `StepResult`:
 
 `timeout_seconds` limits all the polls of a step in total. When it ends,
 the step fails, and it takes its `Failed` port if it has one.
+
+## How a step runs
+
+The workflows engine does not hold Integration credentials. It sends
+each call to imbi-api as the `imbi-workflows` service account:
+
+```text
+POST /organizations/{org}/integrations/{integration}/workflow-steps/{step_type}/run
+Idempotency-Key: <run_id>:<node_id>:<attempt>:<poll>
+```
+
+`{step_type}` is the full workflow type `<plugin>.<name>`, for example
+`grafana.metric_threshold`, not the descriptor `name` only. The
+`<plugin>` part must be the plugin of the Integration.
+
+imbi-api checks that the Integration is in the organization, is of the
+plugin of the step, and has the `workflow-steps` capability on. Then it
+decrypts the credentials, validates `params` against `params_model`,
+and calls the callable. The rules:
+
+- One call has at most 60 seconds, or less when the step has less time
+  left. The request and the result have at most 1 MiB each.
+- Each call is recorded in `workflow_runtime.plugin_step_calls` by its
+  key. A repeat of the key gets the first result and makes no second
+  call. The `plugin-step-calls-prune` maintenance operation deletes the
+  records after 90 days.
+- Each poll and each retry is a new call with a new key. A step with
+  `side_effect=True` and `idempotent=False` sends the key of a call that
+  timed out again, so it does not act twice.
+- An exception or a timeout of the callable is a `5xx` error: the engine
+  retries the step up to `retries` times. A result that is not valid
+  (an unknown port, an output that does not validate) fails the step.
+- When the plugin of a step type is removed, a run of a workflow that
+  uses the type fails with `unknown_type`.
 
 ## Form fields
 
