@@ -70,16 +70,26 @@ def parse(url: str) -> Ticket | Project | None:
 def ticket_blocks(ticket: Json, url: str) -> list[blocks.Block]:
     title = f'{ticket.get("short_id", "")} · {ticket.get("title") or ""}'
     team: Json = ticket.get('team') or {}
-    return [
-        blocks.section(f'*{blocks.link(url, title)}*'),
-        _context(
-            ticket.get('status'),
-            ticket.get('priority'),
-            ticket.get('type'),
-            ticket.get('assignee'),
-            team.get('name'),
-        ),
+    fields = [
+        f'*{name}*\n{_title_case(ticket.get(key))}'
+        for name, key in (
+            ('Status', 'status'),
+            ('Priority', 'priority'),
+            ('Type', 'type'),
+        )
     ]
+    fields.append(
+        f'*Assignee*\n{blocks.escape(ticket.get("assignee") or "Unassigned")}'
+    )
+    return [
+        blocks.section(f'*{blocks.link(url, title)}*', fields=fields),
+        _context(team.get('name')),
+    ]
+
+
+def _title_case(value: str | None) -> str:
+    """``in_progress`` -> ``In Progress``; ``—`` when there is no value."""
+    return blocks.escape(value.replace('_', ' ').title()) if value else '—'
 
 
 def project_blocks(project: Json, url: str) -> list[blocks.Block]:

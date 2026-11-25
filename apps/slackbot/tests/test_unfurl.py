@@ -15,7 +15,7 @@ PROJECT_URL = f'{UI}/projects/p1'
 TICKET = {
     'short_id': 'T-12',
     'title': 'Fix <login>',
-    'status': 'running',
+    'status': 'in_progress',
     'priority': 'high',
     'type': 'bug',
     'assignee': 'fixer',
@@ -90,19 +90,28 @@ class BlockTests(helpers.TestCase):
                         'type': 'mrkdwn',
                         'text': f'*<{TICKET_URL}|T-12 · Fix &lt;login&gt;>*',
                     },
+                    'fields': [
+                        {'type': 'mrkdwn', 'text': text}
+                        for text in (
+                            '*Status*\nIn Progress',
+                            '*Priority*\nHigh',
+                            '*Type*\nBug',
+                            '*Assignee*\nfixer',
+                        )
+                    ],
                 },
                 {
                     'type': 'context',
-                    'elements': [
-                        LOGO,
-                        {
-                            'type': 'mrkdwn',
-                            'text': 'running · high · bug · fixer · Core',
-                        },
-                    ],
+                    'elements': [LOGO, {'type': 'mrkdwn', 'text': 'Core'}],
                 },
             ],
             unfurl.ticket_blocks(TICKET, TICKET_URL),
+        )
+
+    def test_ticket_without_assignee(self) -> None:
+        result = unfurl.ticket_blocks({**TICKET, 'assignee': None}, TICKET_URL)
+        self.assertEqual(
+            '*Assignee*\nUnassigned', result[0]['fields'][3]['text']
         )
 
     def test_project(self) -> None:
