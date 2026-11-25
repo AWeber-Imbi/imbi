@@ -2029,9 +2029,12 @@ async def patch_prompt(
         await _require_access(db, auth, updated.namespace, updated.slug)
         await _assert_ref_free(db, updated.namespace, updated.slug, prompt.id)
     updated.updated_at = _now()
-    props = updated.model_dump(
-        mode='json', include={*_PATCHABLE_FIELDS, 'updated_at'}
-    )
+    written = set(_PATCHABLE_FIELDS)
+    if namespace == skills.NAMESPACE and not can_promote:
+        # Do not write back a stale skill name or description over a
+        # concurrent change by a promoter.
+        written -= {'name', 'description'}
+    props = updated.model_dump(mode='json', include={*written, 'updated_at'})
     # The match on the reference that this patch read stops it from
     # writing an old slug back over a move (an organization rename).
     query = (

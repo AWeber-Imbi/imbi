@@ -688,6 +688,22 @@ class PatchPromptTestCase(PromptTestBase):
                 )
                 self.assertEqual(response.status_code, status, response.text)
 
+    def test_skill_patch_without_promote_keeps_text(self) -> None:
+        # Without prompt:promote, the write leaves out the skill name
+        # and description, so a stale read cannot revert a promoter.
+        self.as_principal('prompt:update')
+        row = prompt_row(namespace=skills.NAMESPACE)
+        router = self.route((GET_PROMPT, row), (UPDATE, row))
+        response = self.client.patch(
+            f'{BASE}/{skills.NAMESPACE}/core',
+            json=[{'op': 'replace', 'path': '/icon', 'value': 'star'}],
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        params = router.params_for(UPDATE)
+        self.assertNotIn('name', params)
+        self.assertNotIn('description', params)
+        self.assertEqual(params['icon'], 'star')
+
     def test_rename_to_taken_ref_is_409(self) -> None:
         self.route(
             (
