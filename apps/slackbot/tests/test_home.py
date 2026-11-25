@@ -674,6 +674,8 @@ class FakeApi:
         self.version = 0
         self.conflicts = 0
         self.fail: set[str] = set()
+        self.unmatched: list[str] = []
+        self.drift_tag = '1.0.0'
 
     def routes(self) -> list[tuple[str, typing.Any]]:
         project = {
@@ -682,6 +684,14 @@ class FakeApi:
             'slug': 'imbi-api',
             'team': {'name': 'Platform', 'slug': 'platform'},
             'score': 80,
+            'release_summary': {'commits_since_tag': 4, 'latest_tag': '1.0.0'},
+        }
+        released = {
+            **project,
+            'id': 'p2',
+            'name': 'imbi-ui',
+            'slug': 'imbi-ui',
+            'release_summary': {'commits_since_tag': 0},
         }
         return [
             (
@@ -709,13 +719,13 @@ class FakeApi:
                     ],
                 },
             ),
-            (r'/projects/$', [project]),
+            (r'/projects/$', [project, released]),
             (
                 r'/tickets/waiting$',
                 {'count': 0, 'requests': [], 'assigned': [], 'held': []},
             ),
             (
-                r'/incidents$',
+                r'/incidents/$',
                 {
                     'incidents': [
                         {
@@ -774,11 +784,7 @@ class FakeApi:
             (r'/pull-requests/$', {'data': [], 'total': 0}),
             (
                 r'/release-drift$',
-                {
-                    'commits_since_tag': 4,
-                    'latest_tag': '1.0.0',
-                    'suggested_tag': '1.1.0',
-                },
+                {'latest_tag': self.drift_tag, 'suggested_tag': '1.1.0'},
             ),
             (r'/blockers$', []),
             (r'/score/trend$', {'current': 80, 'delta': -5}),
@@ -798,6 +804,10 @@ class FakeApi:
                 if pattern in self.fail:
                     return httpx.Response(500)
                 return httpx.Response(200, json=body)
+        # A path with no route is a wrong path, not "nothing bound".
+        # Record it: gather() turns a raised error into a section
+        # failure, which a test can miss.
+        self.unmatched.append(path)
         return httpx.Response(404)
 
     def preferences(self, request: httpx.Request) -> httpx.Response:
@@ -847,6 +857,11 @@ class HomeFlowTests(helpers.TestCase):
     def setUp(self) -> None:
         super().setUp()
         self.api = FakeApi()
+        self.addCleanup(
+            lambda: self.assertEqual(
+                [], self.api.unmatched, 'No FakeApi route'
+            )
+        )
         self.valkey = FakeValkey()
         self.slack = FakeSlack()
         transport = httpx.MockTransport(self.api.handler)
@@ -905,6 +920,12 @@ class HomeFlowTests(helpers.TestCase):
             )
         paths = {r.url.path for r in self.api.requests}
         self.assertIn('/api/organizations/acme/workflow-runs/attention', paths)
+        drift = '/api/organizations/acme/projects/{}/deployments/release-drift'
+        self.assertIn(drift.format('p1'), paths)
+        # A project with no commits since its tag costs no drift call.
+        self.assertNotIn(drift.format('p2'), paths)
+        # A new latest tag misses the cached drift of the previous tag.
+        self.assertIn('home:acme:drift:p1:1.0.0', self.valkey.data)
         text = self.text()
         # Only the run that the user started is in Needs attention.
         self.assertIn('run=run1', text)
@@ -917,6 +938,15 @@ class HomeFlowTests(helpers.TestCase):
         count = len(self.api.requests)
         await home.refresh(self.slack, 'U1')
         self.assertEqual(count + 2, len(self.api.requests))
+
+    async def test_drift_from_another_tag_is_not_shown(self) -> None:
+        await home.refresh(self.slack, 'U1')
+        self.assertIn('1.1.0', self.text())
+        # The drift call saw a newer tag than the project row.
+        self.valkey.data.clear()
+        self.api.drift_tag = '1.2.0'
+        await home.refresh(self.slack, 'U1')
+        self.assertNotIn('1.1.0', self.text())
 
     async def test_failed_source_fails_only_its_section(self) -> None:
         self.api.fail.add(r'/comments/attention$')

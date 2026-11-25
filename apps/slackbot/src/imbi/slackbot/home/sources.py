@@ -243,7 +243,7 @@ class Sources:
         projects: list[Row] = await self.get('team_projects')
 
         async def one(project: Row) -> list[Row]:
-            path = f'{self.base}/projects/{project["id"]}/incidents'
+            path = f'{self.base}/projects/{project["id"]}/incidents/'
             result: Row = await cached(
                 self._key('incidents', project['id']),
                 INCIDENTS_TTL,
@@ -326,19 +326,37 @@ class Sources:
 
     async def _drift(self) -> list[Row]:
         """Release drift of the team projects with commits since the
-        latest tag, with the open blockers of the suggested tag."""
+        latest tag, with the open blockers of the suggested tag.
+
+        The slim project row has the commit count already, so only a
+        project with drift costs the slow ``release-drift`` call.
+
+        """
         if 'project:deployment:read' not in self.permissions:
             return []
-        projects: list[Row] = await self.get('team_projects')
+        projects: list[Row] = [
+            p
+            for p in await self.get('team_projects')
+            if dig(p, 'release_summary', 'commits_since_tag')
+        ]
 
         async def one(project: Row) -> Row | None:
+            summary: Row = project['release_summary']
             path = f'{self.base}/projects/{project["id"]}/deployments'
             drift: Row = await cached(
-                self._key('drift', project['id']),
+                # The latest tag is in the key: a new release must not
+                # show beside a suggestion from the previous tag.
+                self._key(
+                    'drift', project['id'], summary.get('latest_tag') or ''
+                ),
                 DRIFT_TTL,
                 lambda: _json_or(self.client, f'{path}/release-drift', {}),
             )
-            if not drift.get('commits_since_tag'):
+            # A response from a different tag, fresh or cached, must
+            # not show its suggestion beside the row's tag.
+            if not drift.get('suggested_tag') or drift.get(
+                'latest_tag'
+            ) != summary.get('latest_tag'):
                 return None
             blockers: list[Row] = await _json_or(
                 self.client,
@@ -349,9 +367,9 @@ class Sources:
             return {
                 'project_id': project['id'],
                 'project': project['name'],
-                'commits': drift['commits_since_tag'],
-                'latest_tag': drift.get('latest_tag'),
-                'latest_tag_at': drift.get('latest_tag_at'),
+                'commits': summary['commits_since_tag'],
+                'latest_tag': summary.get('latest_tag'),
+                'latest_tag_at': summary.get('latest_tag_at'),
                 'suggested_tag': drift['suggested_tag'],
                 'blockers': len(blockers),
             }
