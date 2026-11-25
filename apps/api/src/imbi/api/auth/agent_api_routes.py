@@ -382,5 +382,7 @@ REFUSED_ROUTES: frozenset[str] = frozenset(
         'GET /prompts/{namespace}/{slug}/versions',
         'GET /prompts/{namespace}/{slug}/versions/{n}',
         'POST /organizations/{org_slug}/component-releases/{component_release_id}/notes',
+        # Personal UI preferences of a human user: a service account gets 403.
+        'GET /users/me/preferences/{namespace}',
     }
 )

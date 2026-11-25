@@ -43,7 +43,7 @@ Use 2.41.0 or later for a new install.
 
 imbi-api applies the PostgreSQL graph schema and the relational schemas
 (`tickets`, `workflows`, `workflow_runtime`, `secrets`, `harness`,
-`ai_runtime`) at startup. You do not run a command for them.
+`ai_runtime`, `preferences`) at startup. You do not run a command for them.
 
 ### Where to run the commands
 

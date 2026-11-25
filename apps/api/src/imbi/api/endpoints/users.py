@@ -6,9 +6,10 @@ import typing
 from urllib import parse as urlparse
 
 import fastapi
+import psycopg
 import pydantic
 
-from imbi.api import models
+from imbi.api import models, preferences
 from imbi.api.auth import organizations as organizations_auth
 from imbi.api.auth import password, permissions
 from imbi.api.endpoints import _helpers
@@ -569,6 +570,89 @@ async def patch_current_user(
     )
 
 
+@users_router.get(
+    '/me/preferences/{namespace}',
+    response_model=preferences.SlackHomePreferencesResponse,
+)
+async def get_current_user_preferences(
+    namespace: preferences.Namespace,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.get_current_user),
+    ],
+) -> preferences.SlackHomePreferencesResponse:
+    """Return the caller's stored preferences in ``namespace``.
+
+    The section ``order`` holds every key: the keys that are not
+    stored are added at the end. Requires a human user;
+    service-account tokens receive HTTP 403.
+
+    Raises:
+        fastapi.HTTPException: HTTP 404 when no preferences are
+            stored. The caller then uses the defaults.
+
+    """
+    email = auth.require_user.email
+
+    async def read(
+        _execute: graph.CypherExecute,
+        conn: psycopg.AsyncConnection[typing.Any],
+    ) -> dict[str, typing.Any] | None:
+        return await preferences.get(conn, email, namespace)
+
+    row = await db.locked_with_connection(preferences.lock_key(email), read)
+    if row is None:
+        raise fastapi.HTTPException(
+            status_code=404, detail='No preferences are stored'
+        )
+    return preferences.SlackHomePreferencesResponse.model_validate(row)
+
+
+@users_router.put(
+    '/me/preferences/{namespace}',
+    response_model=preferences.SlackHomePreferencesResponse,
+)
+async def put_current_user_preferences(
+    namespace: preferences.Namespace,
+    body: preferences.SlackHomePreferencesWrite,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.get_current_user),
+    ],
+) -> preferences.SlackHomePreferencesResponse:
+    """Replace the caller's preferences in ``namespace``.
+
+    ``version`` must be the stored version, or 0 when no preferences
+    are stored. Each write adds 1 to the version. This is personal UI
+    state, so no operations log entry is written. Requires a human
+    user; service-account tokens receive HTTP 403.
+
+    Raises:
+        fastapi.HTTPException: HTTP 409 when ``version`` is not the
+            stored version. Read again and apply the change again.
+
+    """
+    email = auth.require_user.email
+
+    async def write(
+        _execute: graph.CypherExecute,
+        conn: psycopg.AsyncConnection[typing.Any],
+    ) -> dict[str, typing.Any] | None:
+        return await preferences.put(
+            conn, email, namespace, body.value.model_dump(), body.version
+        )
+
+    row = await db.locked_with_connection(preferences.lock_key(email), write)
+    if row is None:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=f'Version {body.version} is not the stored version',
+        )
+    return preferences.SlackHomePreferencesResponse.model_validate(row)
+
+
 @users_router.get('/{email}', response_model=models.UserResponse)
 async def get_user(
     email: str,
@@ -819,15 +903,22 @@ async def delete_user(
             detail='Cannot delete your own account',
         )
 
-    records = await db.execute(
-        'MATCH (n:User {{email: {email}}}) DETACH DELETE n RETURN n',
-        {'email': email},
-    )
-    if not records:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=f'User with email {email!r} not found',
+    async def delete(
+        execute: graph.CypherExecute,
+        conn: psycopg.AsyncConnection[typing.Any],
+    ) -> None:
+        records = await execute(
+            'MATCH (n:User {{email: {email}}}) DETACH DELETE n RETURN n',
+            {'email': email},
         )
+        if not records:
+            raise fastapi.HTTPException(
+                status_code=404,
+                detail=f'User with email {email!r} not found',
+            )
+        await preferences.delete_user(conn, email)
+
+    await db.locked_with_connection(preferences.lock_key(email), delete)
 
 
 @users_router.post('/{email}/password', status_code=204)
