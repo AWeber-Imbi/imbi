@@ -12,6 +12,7 @@ organization.
 | Link Definitions | **Admin > &lt;Org&gt; Admin > Link Definitions** | The types of link that a project can have |
 | Default Settings | **Admin > &lt;Org&gt; Admin > Default Settings** | The version formats of the organization |
 | Document Templates | **Admin > &lt;Org&gt; Admin > Document Templates** | Starter content for new documents |
+| Tags | **Admin > &lt;Org&gt; Admin > Tags** | Labels for documents and agents, and their colors |
 
 The **Admin** item shows only for platform administrators. A
 [blueprint](blueprints.md) can add fields to environments and project
@@ -19,7 +20,7 @@ types. The forms show those fields below the standard fields.
 
 ## Permissions
 
-<!-- BEGIN GENERATED: scripts/docs_permissions_subset.py environment: project_type: link_definition: document_template: organization:update -->
+<!-- BEGIN GENERATED: scripts/docs_permissions_subset.py environment: project_type: link_definition: document_template: tag: organization:update -->
 
 | Permission | Lets you | Roles that have it |
 |---|---|---|
@@ -36,6 +37,10 @@ types. The forms show those fields below the standard fields.
 | `project_type:read` | View project types | `admin`, `developer`, `default`, `readonly`, `imbi-scheduler` |
 | `project_type:update` | Update project types | `admin` |
 | `project_type:delete` | Delete project types | `admin` |
+| `tag:create` | Create tags | `admin`, `developer` |
+| `tag:read` | View tags | `admin`, `developer`, `default`, `readonly`, `imbi-scheduler` |
+| `tag:write` | Update tags | `admin`, `developer` |
+| `tag:delete` | Delete tags | `admin`, `developer` |
 | `document_template:create` | Create document templates | `admin` |
 | `document_template:read` | View document templates | `admin`, `developer`, `default`, `readonly`, `imbi-scheduler` |
 | `document_template:write` | Update document templates | `admin` |
@@ -316,6 +321,26 @@ The form does not show the type. A template that you make in the form has
 the type `project`. To set another type, send it in
 `POST /organizations/{org}/document-templates` or change it with
 `PATCH`. The organization documents page offers templates of every type.
+
+## Tags
+
+Tags label documents and agents. Users create them from the tag field of
+a document or the label field of an agent. Each slug is unique in the
+organization. If two users create the same tag at the same time, the
+second user gets the tag that exists.
+
+**Admin > &lt;Org&gt; Admin > Tags** shows each tag with its color, its
+slug, and the number of documents and agents that use it.
+
+- **Edit** changes the name, the description, and the color.
+- **Merge** moves all documents and agents of a tag to another tag, then
+  deletes the first tag. Use it for two tags with the same meaning, for
+  example `experiments` and `experiment`.
+- **Delete** removes the tag from all documents and agents.
+
+An agent version that you saved before a merge or a delete still names
+the old tag. Imbi cannot restore that version: the restore fails with
+`422`, because the tag does not exist.
 
 ## Related pages
 

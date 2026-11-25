@@ -80,6 +80,25 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    it. A runner on an older image ignores the MCP server checkboxes of
    **Tools and plugins**, so a server that someone turned off still
    loads.
+2. **Before you deploy**, make sure that no organization has two tags
+   with the same slug. imbi-api now builds a unique `(org_id, slug)`
+   index on `Tag` at startup, and startup stops with
+   `Cannot create unique index tag_org_id_slug_unique_idx` when
+   duplicates exist. To find them, run this in the database:
+
+    ```sql
+    SET search_path = ag_catalog, public;
+    SELECT * FROM cypher('imbi', $$
+      MATCH (t:Tag)-[:BELONGS_TO]->(o:Organization)
+      WITH o.slug AS org, t.slug AS slug, count(t) AS n
+      WHERE n > 1 RETURN org, slug, n
+    $$) AS (org agtype, slug agtype, n agtype);
+    ```
+
+   For each duplicate, keep one tag, connect its `TAGGED_WITH` edges to
+   the other nodes, and `DETACH DELETE` the others. After the upgrade,
+   use **Admin > &lt;Org&gt; Admin > Tags > Merge** for tags with
+   different slugs.
 
 ## 2.62.0
 
