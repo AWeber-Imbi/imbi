@@ -80,6 +80,13 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    it. A runner on an older image ignores the MCP server checkboxes of
    **Tools and plugins**, so a server that someone turned off still
    loads.
+2. Run `imbi-api setup-permissions`. It adds the permission
+   `integration:workflow-step:run` to the role of the `imbi-workflows`
+   service account. Without it, every plugin workflow step fails with
+   `403`.
+3. Deploy imbi-workflows with imbi-api. Both must load the same plugin
+   versions, because the engine reads the step catalog and imbi-api runs
+   the steps.
 
 ## 2.62.0
 
