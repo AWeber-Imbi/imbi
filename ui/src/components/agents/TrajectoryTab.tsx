@@ -17,7 +17,11 @@ import { ActivityEmpty, NoMatches } from './ActivityEmpty'
 import { useSearchHighlight, useTaskSearch } from './taskSearch'
 import { TaskCopyMenu } from './TaskToolbar'
 import { type InspectorTab, TrajectoryInspector } from './TrajectoryInspector'
-import { TrajectoryLedger, type TrajectorySelection } from './TrajectoryLedger'
+import {
+  type ScrollTarget,
+  TrajectoryLedger,
+  type TrajectorySelection,
+} from './TrajectoryLedger'
 import {
   buildTrajectory,
   type Fold,
@@ -82,10 +86,7 @@ export function TrajectoryTab({
   )
   const seen = useRef<Set<string>>(new Set())
   const [selection, setSelection] = useState<TrajectorySelection>(null)
-  const [scrollTo, setScrollTo] = useState<null | {
-    center?: boolean
-    id: string
-  }>(null)
+  const [scrollTo, setScrollTo] = useState<null | ScrollTarget>(null)
   const [visible, setVisible] = useState<null | TrajectoryWindow>(null)
   const [query, setQuery] = useTaskSearch()
   const root = useRef<HTMLDivElement>(null)

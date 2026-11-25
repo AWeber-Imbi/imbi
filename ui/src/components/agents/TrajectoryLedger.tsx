@@ -27,6 +27,11 @@ import {
 import { sameWindow, type TrajectoryWindow, windowOf } from './trajectoryWindow'
 import { gapsOf, scrollToFound, unlaidOf, useVirtualRows } from './virtualRows'
 
+export interface ScrollTarget {
+  center?: boolean
+  id: string
+}
+
 export type TrajectorySelection =
   | null
   | { assistant: string; type: 'request' }
@@ -74,7 +79,7 @@ interface LedgerProps {
   requests: TrajectoryRequest[]
   rows: TrajectoryRow[]
   /** A new object scrolls the ledger to that record. */
-  scrollTo: null | { center?: boolean; id: string }
+  scrollTo: null | ScrollTarget
   selection: TrajectorySelection
   /** The turn number at the row where each turn starts. */
   turnStarts: Map<string, number>
