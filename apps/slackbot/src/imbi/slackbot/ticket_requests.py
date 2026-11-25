@@ -211,13 +211,19 @@ async def close(slack: SlackClient, entry: Entry) -> None:
     A message that fails for a temporary reason is kept, and
     :class:`_Retry` is raised after the other messages are updated.
     A message is dropped after ``_CLOSE_TRIES`` failures, or when Slack
-    says that it cannot be updated.
+    says that it cannot be updated. A Valkey failure also raises
+    :class:`_Retry`, and the kept messages do not change.
 
     """
     client: typing.Any = valkey.get_client()
     key = _messages_key(entry['request_id'])
+    short_id = entry['short_id']
+    try:
+        records = await client.lrange(key, 0, -1)
+    except Exception as err:
+        raise _Retry(f'cannot read the messages of {short_id}') from err
     kept: list[bytes] = []
-    for raw in await client.lrange(key, 0, -1):
+    for raw in records:
         message = orjson.loads(raw)
         try:
             await slack.chat_update(
@@ -241,11 +247,18 @@ async def close(slack: SlackClient, entry: Entry) -> None:
             tries = message.get('tries', 0) + 1
             if not gone and tries < _CLOSE_TRIES:
                 kept.append(orjson.dumps(message | {'tries': tries}))
-    await client.delete(key)
+    # One MULTI/EXEC, so that a failed write keeps the old messages.
+    try:
+        async with client.pipeline(transaction=True) as pipe:
+            pipe.delete(key)
+            if kept:
+                pipe.rpush(key, *kept)
+                pipe.expire(key, _MESSAGES_TTL)
+            await pipe.execute()
+    except Exception as err:
+        raise _Retry(f'cannot keep the messages of {short_id}') from err
     if kept:
-        await client.rpush(key, *kept)
-        await client.expire(key, _MESSAGES_TTL)
-        raise _Retry(f'{len(kept)} message(s) of {entry["short_id"]}')
+        raise _Retry(f'{len(kept)} message(s) of {short_id}')
 
 
 async def answer(slack: SlackClient, submission: forms.Submission) -> bool:

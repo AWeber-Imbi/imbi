@@ -84,6 +84,28 @@ class FakeValkey:
     async def delete(self, key):
         self.lists.pop(key, None)
 
+    def pipeline(self, transaction=True):
+        return FakePipeline(self)
+
+
+class FakePipeline:
+    def __init__(self, valkey: FakeValkey) -> None:
+        self.valkey = valkey
+        self.calls: list[tuple[str, tuple[typing.Any, ...]]] = []
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_exc):
+        return None
+
+    def __getattr__(self, name):
+        return lambda *args: self.calls.append((name, args))
+
+    async def execute(self):
+        for name, args in self.calls:
+            await getattr(self.valkey, name)(*args)
+
 
 def entry(**overrides: typing.Any) -> dict[str, typing.Any]:
     return {
@@ -446,6 +468,28 @@ class CloseTests(FlowTestCase):
         await ticket_requests.close(self.slack, RESOLVED)
         self.assertEqual({}, self.valkey.lists)
         self.assertEqual(['C2'], [u['channel'] for u in self.slack.updates])
+
+    async def test_failed_write_keeps_the_messages(self) -> None:
+        key = ticket_requests._messages_key('r-1')
+        record = orjson.dumps({'channel': 'C500', 'ts': 't', 'summary': ''})
+        await self.valkey.rpush(key, record)
+        with (
+            mock.patch.object(
+                FakePipeline, 'execute', side_effect=ConnectionError
+            ),
+            self.assertRaises(ticket_requests._Retry),
+        ):
+            await ticket_requests.close(self.slack, RESOLVED)
+        self.assertEqual([record], self.valkey.lists[key])
+
+    async def test_failed_read_is_tried_again(self) -> None:
+        with (
+            mock.patch.object(
+                self.valkey, 'lrange', side_effect=ConnectionError
+            ),
+            self.assertRaises(ticket_requests._Retry),
+        ):
+            await ticket_requests.close(self.slack, RESOLVED)
 
     async def test_unknown_request_changes_nothing(self) -> None:
         await ticket_requests.close(self.slack, RESOLVED)
