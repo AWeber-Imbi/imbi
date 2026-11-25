@@ -29,6 +29,8 @@ only through ``setpriv`` as that user.
 - ``BudgetTests`` and ``CancelTests`` (P5): a task over budget ends as
   ``exceeded_ceiling`` with no more model calls; a cancel stops a
   running command.
+- ``PluginRelayTests`` (ADR 0031): a plugin MCP server with a header
+  secret is relayed by the runner under the CLI's plugin tool names.
 """
 
 import base64
@@ -1459,6 +1461,112 @@ class RelayTests(unittest.TestCase):
                 ('transcript', transcript),
             ):
                 self.assertNotIn(token, text, where)
+
+
+# --- ADR 0031: the plugin MCP relay -----------------------------------
+
+
+def transcript_of(task: Row) -> str:
+    path = f'/run/creds/runner/transcripts/{task["id"]}.jsonl'
+    return as_user('runner', ['cat', path]).stdout
+
+
+class PluginRelayTests(unittest.TestCase):
+    """The greeter plugin's MCP server has a header secret, so the runner
+    relays it as the in-process server ``plugin:greeter:greet``.
+
+    This guards the CLI behavior that ADR 0031 depends on: the CLI names
+    the tools of that server ``mcp__plugin_greeter_greet__<tool>``, the
+    names of the plugin's own server, so its allow rule and the tool
+    policy apply to them.
+    """
+
+    task: typing.ClassVar[Row]
+    results: typing.ClassVar[list[str]]
+    calls: typing.ClassVar[list[Row]]
+    tool = 'mcp__plugin_greeter_greet__hello'
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.task = queue(
+            {
+                'plugin_relay': True,
+                'binding': True,
+                'script': [
+                    {'name': cls.tool, 'input': {'name': 'kind'}},
+                    report(),
+                ],
+            }
+        )
+        run_task_until_done(cls.task)
+        cls.results = tool_results(cls.task)
+        cls.calls = [
+            call
+            for call in fake_api('GET', '/test/plugin-mcp-calls')
+            if call['task'] == cls.task['short_id']
+        ]
+
+    def test_init_lists_the_relayed_server(self) -> None:
+        init = next(
+            json.loads(line)
+            for line in transcript_of(self.task).splitlines()
+            if '"subtype": "init"' in line
+        )
+        names = [server['name'] for server in init['data']['mcp_servers']]
+        self.assertIn('plugin:greeter:greet', names)
+        self.assertIn(self.tool, init['data']['tools'])
+
+    def test_the_model_gets_the_plugin_tool_name(self) -> None:
+        requests = fake_api(
+            'GET', f'/test/model-requests?task={self.task["short_id"]}'
+        )
+        tools = {tool['name']: tool for tool in requests[0]['tools']}
+        self.assertIn(self.tool, tools)
+        self.assertIn(
+            '<untrusted source="mcp:plugin:greeter:greet">',
+            tools[self.tool]['description'],
+        )
+
+    def test_the_call_passes_the_policy_and_reaches_the_server(self) -> None:
+        (call,) = self.calls
+        self.assertEqual(call['tool'], 'hello')
+        self.assertEqual(call['arguments'], {'name': 'kind'})
+        self.assertTrue(call['token'].startswith('greeter_'))
+        (event,) = (e for e in tool_calls(self.task) if e['tool'] == self.tool)
+        self.assertEqual(event['policy']['decision'], 'allow')
+        self.assertFalse(event['is_error'])
+        self.assertEqual(event['relay']['server'], 'plugin:greeter:greet')
+        self.assertEqual(event['relay']['status'], 'ok')
+
+    def test_the_result_is_untrusted_and_scrubbed(self) -> None:
+        first = self.results[0]
+        self.assertTrue(
+            first.startswith('<untrusted source="mcp:plugin:greeter:greet">'),
+            first,
+        )
+        self.assertIn('Hello, kind. You sent Bearer [REDACTED]', first)
+        self.assertIn('&lt;/untrusted>', first)
+
+    def test_the_secret_is_runner_only_and_released(self) -> None:
+        (resolution,) = resolutions_of(self.task, 'mcp_header')
+        self.assertEqual(resolution['delivery']['mode'], 'file_descriptor')
+        self.assertEqual(resolution['state'], 'released')
+        self.assertEqual(resolution['ended_by'], 'executor')
+
+    def test_the_token_is_in_no_output(self) -> None:
+        (call,) = self.calls
+        requests = json.dumps(
+            fake_api(
+                'GET', f'/test/model-requests?task={self.task["short_id"]}'
+            )
+        )
+        events = json.dumps(task_of(self.task)['events'])
+        for where, text in (
+            ('model requests', requests),
+            ('events', events),
+            ('transcript', transcript_of(self.task)),
+        ):
+            self.assertNotIn(call['token'], text, where)
 
 
 class HistoryTests(unittest.TestCase):
