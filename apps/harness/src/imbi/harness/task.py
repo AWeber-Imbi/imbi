@@ -47,6 +47,7 @@ from imbi.harness import (
     proxy,
     redact,
     relay,
+    safeguards,
 )
 
 if typing.TYPE_CHECKING:
@@ -551,7 +552,7 @@ def _entry(entry: Body) -> str:
     untrusted block."""
     text = str(entry.get('text'))
     if entry.get('kind') == 'result':
-        text = relay.untrusted(text, 'agent_result')
+        text = safeguards.untrusted(text, 'agent_result')
     return (
         f'- {entry.get("at")} {entry.get("kind")}'
         + (f' by {entry["actor"]}' if entry.get('actor') else '')
@@ -570,7 +571,7 @@ def _history(entries: list[Body], cut: int) -> str:
         entry.get('webhook') and entry.get('kind') != 'result'
         for entry in entries
     ):
-        text = relay.untrusted(text, 'webhook')
+        text = safeguards.untrusted(text, 'webhook')
     return f'The ticket history before this session, oldest first:\n{text}'
 
 
@@ -1883,7 +1884,7 @@ class TaskRun:
             # An organization admin can rename the slug: data, not rules.
             lines.append(
                 'Your Imbi organization slug is the text in this block:\n'
-                + relay.untrusted(slug, 'organization_slug')
+                + safeguards.untrusted(slug, 'organization_slug')
             )
         project_ids = [
             f'`{project_id}`'
@@ -1899,7 +1900,7 @@ class TaskRun:
         text = str(self.task['description'])
         origin: Body = self.task.get('origin') or {}
         if origin.get('kind') == 'webhook':
-            return relay.untrusted(text, 'webhook')
+            return safeguards.untrusted(text, 'webhook')
         return text
 
     def brief(self) -> str:
@@ -1915,7 +1916,7 @@ class TaskRun:
         text = json.dumps(fields, indent=2, sort_keys=True)
         return (
             f'{self.description()}\n\nThe custom fields of the ticket:\n'
-            + relay.untrusted(text, 'custom_fields')
+            + safeguards.untrusted(text, 'custom_fields')
         )
 
     def instruction(self) -> str:
