@@ -299,6 +299,11 @@ class ValueCheckTests(unittest.TestCase):
                             'type': 'array',
                             'items': {'type': 'string', 'format': 'uuid'},
                         },
+                        'keyed': {
+                            'type': 'object',
+                            'patternProperties': {'^(a+)+$': {}},
+                            'additionalProperties': False,
+                        },
                         'payload': {
                             'type': 'object',
                             'properties': {
@@ -332,6 +337,7 @@ class ValueCheckTests(unittest.TestCase):
             ('owners', ['nope']),
             # A backtracking engine takes years on this input.
             ('payload', {'code': 'a' * 40000 + '!'}),
+            ('keyed', {'a' * 40000 + '!': 1}),
         ):
             with self.assertRaises(fastapi.HTTPException) as ctx:
                 blueprint_values.validate(

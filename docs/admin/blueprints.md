@@ -87,8 +87,7 @@ hang. That engine does not support lookarounds (`(?=...)`, `(?!...)`)
 or backreferences (`\1`). Imbi refuses to save a blueprint with a
 `pattern` on a field or on its `items` that the engine cannot use. A
 `pattern` deeper in an object schema that the engine cannot use is
-not checked. `patternProperties` uses the Python engine, so do not
-use nested quantifiers such as `(a+)+` in it.
+not checked. The keys of `patternProperties` use the same engine.
 
 A list of UUIDs:
 

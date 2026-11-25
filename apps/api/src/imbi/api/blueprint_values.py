@@ -202,26 +202,86 @@ def _detail(
     )
 
 
+def _matches(pattern: str, value: str) -> bool | None:
+    """Search ``value`` for ``pattern`` with the linear-time engine of
+    pydantic (see :func:`models.pattern_adapter`), not Python ``re``;
+    ``None`` for a pattern that the engine cannot use."""
+    adapter = models.pattern_adapter(pattern)
+    if adapter is None:
+        return None
+    try:
+        adapter.validate_python(value)
+    except pydantic.ValidationError:
+        return False
+    return True
+
+
 def _pattern(
     validator: typing.Any, pattern: str, instance: typing.Any, _schema: object
 ) -> collections.abc.Iterator[jsonschema.exceptions.ValidationError]:
-    """The ``pattern`` keyword with the linear-time engine of pydantic
-    (see :func:`models.pattern_adapter`), not Python ``re``. A pattern
-    that the engine cannot use is skipped, as in the models."""
-    adapter = models.pattern_adapter(pattern)
-    if adapter is None or not validator.is_type(instance, 'string'):
-        return
-    try:
-        adapter.validate_python(instance)
-    except pydantic.ValidationError:
+    """``pattern`` with :func:`_matches`. A pattern that the engine
+    cannot use is skipped, as in the models."""
+    if validator.is_type(instance, 'string') and (
+        _matches(pattern, instance) is False
+    ):
         yield jsonschema.exceptions.ValidationError(
             f'{instance!r} does not match {pattern!r}'
         )
 
 
+def _pattern_properties(
+    validator: typing.Any,
+    pattern_properties: dict[str, typing.Any],
+    instance: typing.Any,
+    _schema: object,
+) -> collections.abc.Iterator[jsonschema.exceptions.ValidationError]:
+    """``patternProperties`` with :func:`_matches`."""
+    if not validator.is_type(instance, 'object'):
+        return
+    for pattern, subschema in pattern_properties.items():
+        for key, value in instance.items():
+            if _matches(pattern, key):
+                yield from validator.descend(
+                    value, subschema, path=key, schema_path=pattern
+                )
+
+
+def _additional_properties(
+    validator: typing.Any,
+    additional: typing.Any,
+    instance: typing.Any,
+    schema: dict[str, typing.Any],
+) -> collections.abc.Iterator[jsonschema.exceptions.ValidationError]:
+    """``additionalProperties`` with :func:`_matches` for the keys of
+    ``patternProperties``."""
+    if not validator.is_type(instance, 'object'):
+        return
+    properties = schema.get('properties', {})
+    patterns = schema.get('patternProperties', {})
+    extras = [
+        key
+        for key in instance
+        if key not in properties
+        and not any(_matches(pattern, key) for pattern in patterns)
+    ]
+    if validator.is_type(additional, 'object'):
+        for key in extras:
+            yield from validator.descend(instance[key], additional, path=key)
+    elif additional is False and extras:
+        yield jsonschema.exceptions.ValidationError(
+            f'Additional properties are not allowed ({extras!r})'
+        )
+
+
 @functools.cache
 def _linear(cls: typing.Any) -> typing.Any:
-    """Return the validator class ``cls`` with :func:`_pattern`."""
+    """Return the validator class ``cls`` with the keywords that match
+    a pattern on the linear-time engine (:func:`_matches`)."""
     return jsonschema.validators.extend(  # type: ignore[no-untyped-call]  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
-        cls, {'pattern': _pattern}
+        cls,
+        {
+            'additionalProperties': _additional_properties,
+            'pattern': _pattern,
+            'patternProperties': _pattern_properties,
+        },
     )
