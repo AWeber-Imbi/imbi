@@ -211,7 +211,8 @@ describe('buildTrajectory', () => {
           arguments: { description: 'look', subagent_type: 'search' },
           call_id: 'c1',
           message_id: 'm1',
-          result: 'Found it.',
+          result:
+            '[Subagent hand-back] The subagent is done. The report follows: Found it.',
           tool: 'Agent',
         }),
         event(6, 'usage.reported', { message_id: 'm2', tokens_in: 1000 }),

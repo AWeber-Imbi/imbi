@@ -1809,6 +1809,21 @@ describe('inspector helpers', () => {
   it('gives each kind its tabs', () => {
     const t = { record: { kind: 'user' }, type: 'record' } as never
     expect(tabsFor(t)).toEqual(['Summary', 'Preview', 'Raw'])
+    const subagent = {
+      record: {
+        events: [{ type: 'tool.called' }, { type: 'usage.reported' }],
+        kind: 'tool',
+        subagent: {},
+      },
+      type: 'record',
+    } as never
+    expect(tabsFor(subagent)).toEqual([
+      'Summary',
+      'Usage',
+      'Payload',
+      'Result',
+      'Timing',
+    ])
   })
 
   it('formats the start time with milliseconds', () => {
