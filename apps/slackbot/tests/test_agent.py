@@ -218,6 +218,39 @@ class RunTurnTests(helpers.TestCase):
         names = [tool['name'] for tool in client.messages.calls[0]['tools']]
         self.assertEqual(['list', 'mcp_zoekt_search'], names)
 
+    async def _run_skill(self, execute: mock.AsyncMock) -> dict:
+        client = FakeClient(
+            [
+                Response(
+                    [_tool('t1', 'skill_invoke', {'name': 'triage'})],
+                    'tool_use',
+                ),
+                Response([_text('done')], 'end_turn'),
+            ]
+        )
+        manager = FakeManager([])
+        with (
+            mock.patch.object(agent.identity, 'get_graph', return_value=1),
+            mock.patch.object(agent.skills, 'execute', execute),
+        ):
+            self.assertEqual('done', await self._run(client, manager))
+        self.assertEqual([], manager.executed)
+        execute.assert_awaited_once_with(1, {'name': 'triage'})
+        return client.messages.calls[1]['messages'][-1]['content'][0]
+
+    async def test_skill_tool_runs_the_skill(self) -> None:
+        result = await self._run_skill(
+            mock.AsyncMock(return_value=('Do the triage.', False))
+        )
+        self.assertEqual('Do the triage.', result['content'])
+        self.assertNotIn('is_error', result)
+
+    async def test_skill_tool_error_is_a_tool_error(self) -> None:
+        result = await self._run_skill(
+            mock.AsyncMock(return_value=('ERROR: not found', True))
+        )
+        self.assertTrue(result['is_error'])
+
     async def test_max_rounds(self) -> None:
         client = FakeClient(
             [

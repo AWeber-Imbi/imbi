@@ -8,7 +8,11 @@ for example ``{{ display_name }}``. A prompt that fails to render never
 fails an event: the packaged prompt is used instead.
 """
 
-from imbi.common.prompts import system
+import collections.abc
+import dataclasses
+
+from imbi.common import models
+from imbi.common.prompts import skills, system
 from imbi.slackbot import identity, links, settings
 
 
@@ -56,23 +60,31 @@ def _variables(
 async def build_system_prompt(
     user: identity.ImbiUser,
     tool_names: list[str],
+    skill_list: collections.abc.Sequence[models.Prompt] = (),
 ) -> system.SystemPrompt:
     """Build the system prompt for the resolved Slack user.
 
     Args:
         user: The resolved Imbi user.
         tool_names: Names of tools available to this user.
+        skill_list: The skills, listed after the rendered prompt so that
+            every prompt source (override, CMS, packaged) gets them.
 
     Returns:
         The rendered prompt with the model settings of its version.
 
     """
     slackbot_settings = settings.get_slackbot_settings()
-    return await system.load_system_prompt(
+    prompt = await system.load_system_prompt(
         identity.get_graph(),
         slackbot_settings.prompt_ref,
         _variables(user, tool_names),
         system.SLACKBOT,
         override=slackbot_settings.system_prompt,
         email=user.email,
+    )
+    if not skill_list:
+        return prompt
+    return dataclasses.replace(
+        prompt, text=prompt.text + skills.catalog(skill_list)
     )

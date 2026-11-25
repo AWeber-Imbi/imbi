@@ -210,6 +210,12 @@ The prompt tells the model the name of the person, the tools, and the URL
 patterns of the UI. The bot reads the URL patterns from `llms.txt` of the
 UI.
 
+### Skills
+
+The bot adds the [skills](../admin/prompts.md#skills) of the prompt CMS
+to its system prompt, and loads the instructions of a skill when a
+request matches it.
+
 ## Settings
 
 The full list is in [Configuration](../api/configuration.md).

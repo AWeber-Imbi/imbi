@@ -1,6 +1,7 @@
 from unittest import mock
 
 from apps.slackbot.tests import helpers
+from imbi.common import models
 from imbi.common.prompts import resolve
 from imbi.slackbot import identity, settings, system_prompt
 
@@ -35,6 +36,16 @@ class SystemPromptTests(helpers.TestCase):
         user = identity.ImbiUser('ada@example.com', 'Ada')
         prompt = await self.build(user, [])
         self.assertIn('NO tools', prompt)
+
+    async def test_skills_follow_the_prompt(self) -> None:
+        user = identity.ImbiUser('ada@example.com', 'Ada')
+        skill = models.Prompt(
+            name='Triage', slug='triage', namespace='imbi-skills'
+        )
+        result = await system_prompt.build_system_prompt(user, [], [skill])
+        self.assertIn('\n\n## Skills', result.text)
+        self.assertTrue(result.text.endswith('before you answer.'))
+        self.assertIn('- **triage**: Triage', result.text)
 
     async def test_task_link_has_the_org(self) -> None:
         user = identity.ImbiUser('ada@example.com', 'Ada')
