@@ -2358,10 +2358,14 @@ async def list_projects(
         for p in project_data_list
         if p.get('id') and _delivery_of(p).releasable
     ]
-    # No projects, no PR counts: skip the identity read.
-    viewer = (
-        await pull_requests.github_login(db, auth) if project_ids else None
-    )
+    # No projects, no PR counts: skip the identity read. PR counts are
+    # best-effort, so a failed read gives the aggregate counts.
+    viewer = None
+    if project_ids:
+        try:
+            viewer = await pull_requests.github_login(db, auth)
+        except Exception:  # noqa: BLE001
+            LOGGER.warning('Failed to read the GitHub login', exc_info=True)
     (
         pr_counts,
         releases,

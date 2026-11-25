@@ -426,6 +426,13 @@ class MeFiltersTestCase(_PullRequestsTestBase):
                 )
                 ch.assert_not_awaited()
 
+    def test_me_without_identity_validates_pagination(self) -> None:
+        for query in ('?author=@me&limit=0', '?author=@me&offset=-1'):
+            with self.subTest(query=query), _identities():
+                response, ch = self._list(query)
+                self.assertEqual(response.status_code, 400)
+                ch.assert_not_awaited()
+
     def test_reviewer_filter_is_in_the_query_before_the_limit(self) -> None:
         with _identities(GITHUB_IDENTITY):
             response, ch = self._list('?reviewer=@me')

@@ -632,14 +632,24 @@ async def put_current_user_preferences(
     Raises:
         fastapi.HTTPException: HTTP 409 when ``version`` is not the
             stored version. Read again and apply the change again.
+        fastapi.HTTPException: HTTP 404 when the user was deleted
+            before the first write.
 
     """
     email = auth.require_user.email
 
     async def write(
-        _execute: graph.CypherExecute,
+        execute: graph.CypherExecute,
         conn: psycopg.AsyncConnection[typing.Any],
     ) -> dict[str, typing.Any] | None:
+        # A delete of the user can finish between the auth check and
+        # this lock. Do not insert a row for a user that is gone.
+        if body.version == 0 and not await execute(
+            'MATCH (n:User {{email: {email}}}) RETURN n', {'email': email}
+        ):
+            raise fastapi.HTTPException(
+                status_code=404, detail='User not found'
+            )
         return await preferences.put(
             conn, email, namespace, body.value.model_dump(), body.version
         )

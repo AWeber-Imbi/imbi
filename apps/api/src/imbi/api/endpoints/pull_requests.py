@@ -241,6 +241,20 @@ async def _resolve_me(
     return [login if v == ME else v for v in values], login is None
 
 
+def _check_pagination(limit: int, offset: int) -> None:
+    """Raise 400 when ``limit`` or ``offset`` is out of range."""
+    if limit < 1 or limit > MAX_LIMIT:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=f'limit must be 1..{MAX_LIMIT}',
+        )
+    if offset < 0:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='offset must be >= 0',
+        )
+
+
 async def _list_prs(
     *,
     project_ids: list[str],
@@ -255,16 +269,7 @@ async def _list_prs(
 
     Draft PRs are excluded unless ``include_drafts`` is set.
     """
-    if limit < 1 or limit > MAX_LIMIT:
-        raise fastapi.HTTPException(
-            status_code=400,
-            detail=f'limit must be 1..{MAX_LIMIT}',
-        )
-    if offset < 0:
-        raise fastapi.HTTPException(
-            status_code=400,
-            detail='offset must be >= 0',
-        )
+    _check_pagination(limit, offset)
     if not project_ids:
         return PullRequestListResponse(data=[], project_count=0, total=0)
 
@@ -534,6 +539,7 @@ async def list_org_pull_requests(
     """
     (author, reviewer), missing = await _resolve_me(db, auth, author, reviewer)
     if missing:
+        _check_pagination(limit, offset)
         return PullRequestListResponse(
             data=[], project_count=0, total=0, github_identity_missing=True
         )

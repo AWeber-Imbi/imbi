@@ -10769,6 +10769,8 @@ export interface paths {
          *     Raises:
          *         fastapi.HTTPException: HTTP 409 when ``version`` is not the
          *             stored version. Read again and apply the change again.
+         *         fastapi.HTTPException: HTTP 404 when the user was deleted
+         *             before the first write.
          */
         put: operations["put_current_user_preferences_api_users_me_preferences__namespace__put"];
         post?: never;

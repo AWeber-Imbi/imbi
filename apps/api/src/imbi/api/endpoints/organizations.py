@@ -222,6 +222,7 @@ organizations_router.include_router(
 organizations_router.include_router(
     attention_router,
     prefix='/{org_slug}/comments',
+    dependencies=[fastapi.Depends(org_auth.member_org_id)],
 )
 organizations_router.include_router(
     document_templates_router,

@@ -515,6 +515,35 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(rels['outbound_count'], 3)
         self.assertEqual(rels['inbound_count'], 0)
 
+    def test_list_survives_identity_lookup_failure(self) -> None:
+        """A failed GitHub login read gives aggregate PR counts."""
+        self.mock_db.execute.return_value = [
+            {
+                'project': self._project_data(),
+                'outbound_count': 0,
+                'inbound_count': 0,
+            },
+        ]
+        counts = mock.AsyncMock(return_value={})
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch(
+                'imbi.api.endpoints.pull_requests.github_login',
+                side_effect=RuntimeError('graph down'),
+            ),
+            mock.patch(
+                'imbi.api.endpoints.projects._fetch_pr_counts', new=counts
+            ),
+        ):
+            response = self.client.get(
+                '/organizations/engineering/projects/',
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIsNone(counts.await_args.kwargs['viewer'])
+
     def test_list_slim_omits_full_fields(self) -> None:
         """``slim=true`` returns the trimmed shape only.
 

@@ -4,9 +4,13 @@ import datetime
 import typing
 import unittest
 import uuid
+from unittest import mock
 
+import fastapi.testclient
+
+from apps.api.tests import support
 from imbi.api import models
-from imbi.api.auth import permissions
+from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import comments
 from imbi.common import graph
 
@@ -120,7 +124,7 @@ class AttentionCommentsTestCase(unittest.IsolatedAsyncioTestCase):
                 body=c.get('body', f'body {name} {i}'),
                 mentions=c.get('mentions', []),
                 acked=c.get('acked', []),
-                created_at=f'2026-11-{10 + i:02d}T12:00:00+00:00',
+                created_at=c.get('at', f'2026-11-{10 + i:02d}T12:00:00+00:00'),
             )
         return thread_id
 
@@ -188,6 +192,24 @@ class AttentionCommentsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([thread], [r['thread_id'] for r in rows])
         self.assertEqual('bob again', rows[0]['body'])
 
+    async def test_equal_time_reply_uses_id_tie_break(self) -> None:
+        at = '2026-11-20T12:00:00+00:00'
+        # The caller reply has the higher id, so it sorts after.
+        await self._thread(
+            'tie-after',
+            owner=ME,
+            comments_=[{'at': at}, {'author': ME, 'at': at}],
+        )
+        # The caller reply has the lower id, so it sorts before.
+        thread = await self._thread(
+            'tie-before',
+            owner=ME,
+            comments_=[{'author': ME, 'at': at}, {'at': at, 'body': 'b'}],
+        )
+        rows = await self._list()
+        self.assertEqual([thread], [r['thread_id'] for r in rows])
+        self.assertEqual('b', rows[0]['body'])
+
     async def test_limit_and_newest_first(self) -> None:
         older = await self._thread('a', owner=ME, comments_=[{}])
         newer = await self._thread('b', owner=ME, comments_=[{}, {}])
@@ -201,3 +223,45 @@ class AttentionCommentsTestCase(unittest.IsolatedAsyncioTestCase):
             'other', owner=ME, org=self.other_org, comments_=[{}]
         )
         self.assertEqual([], await self._list())
+
+
+class AttentionMembershipTestCase(support.SharedAppTestCase):
+    """The attention route needs membership in the organization."""
+
+    def setUp(self) -> None:
+        auth = permissions.AuthContext(
+            user=models.User(
+                email=ME,
+                display_name='Alice',
+                password_hash='$argon2id$hashed',
+                is_active=True,
+                is_admin=False,
+                is_service_account=False,
+                created_at=datetime.datetime.now(datetime.UTC),
+            ),
+            session_id='test-session',
+            auth_method='jwt',
+            permissions={'document:read'},
+        )
+
+        async def current_user() -> permissions.AuthContext:
+            return auth
+
+        self.db = mock.AsyncMock(spec=graph.Graph)
+        self.test_app.dependency_overrides[permissions.get_current_user] = (
+            current_user
+        )
+        self.test_app.dependency_overrides[graph._inject_graph] = (
+            lambda: self.db
+        )
+        self.client = fastapi.testclient.TestClient(self.test_app)
+
+    def test_non_member_gets_403(self) -> None:
+        self.db.execute.return_value = [{'id': 'org-1', 'member': False}]
+        response = self.client.get('/organizations/acme/comments/attention')
+        self.assertEqual(response.status_code, 403, response.text)
+        self.db.execute.assert_awaited_once()
+        self.assertIs(
+            self.db.execute.await_args.args[0],
+            organizations._ORG_MEMBER_QUERY,
+        )

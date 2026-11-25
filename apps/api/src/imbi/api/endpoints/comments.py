@@ -859,7 +859,8 @@ class AttentionCommentListResponse(pydantic.BaseModel):
 # comment by another author (max() and match-back, because AGE loses an
 # ORDER BY in WITH), break a created_at tie on the highest id, and keep
 # the row only if the caller did not reply after it and did not
-# acknowledge it.
+# acknowledge it. A caller reply with the same created_at counts as
+# after it only when its id is higher (the same tie-break).
 _ATTENTION_QUERY: typing.LiteralString = """
     MATCH (o:Organization {{slug: {org_slug}}})
     MATCH (t:CommentThread)-[:ON_DOCUMENT]->(d:Document)
@@ -881,11 +882,14 @@ _ATTENTION_QUERY: typing.LiteralString = """
          count(CASE WHEN {principal} IN c.mentions
                     THEN 1 END) AS mention_count
     WHERE newest_at IS NOT NULL
-      AND (mine_at IS NULL OR mine_at < newest_at)
+      AND (mine_at IS NULL OR mine_at <= newest_at)
       AND (d.created_by = {principal} OR mention_count > 0)
     MATCH (n:Comment)-[:IN_THREAD]->(t)
-    WHERE n.created_at = newest_at AND n.author <> {principal}
-    WITH t, d, p, mention_count, max(n.id) AS newest_id
+    WHERE n.created_at = newest_at
+    WITH t, d, p, mention_count,
+         max(CASE WHEN n.author <> {principal} THEN n.id END) AS newest_id,
+         max(CASE WHEN n.author = {principal} THEN n.id END) AS mine_id
+    WHERE mine_id IS NULL OR mine_id < newest_id
     MATCH (n:Comment {{id: newest_id}})-[:IN_THREAD]->(t)
     WHERE NOT {principal} IN coalesce(n.acknowledged_by, [])
     OPTIONAL MATCH (a:User {{email: n.author}})

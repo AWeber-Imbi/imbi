@@ -26,6 +26,11 @@ class UserPreferencesTestCase(support.SharedAppAsyncTestCase):
         self.graph = graph.Graph()
         await self.graph.open()
         self.addAsyncCleanup(self._cleanup)
+        await self.graph.execute(
+            'CREATE (u:User {{email: {email}}}) RETURN u.email AS email',
+            {'email': self.email},
+            ['email'],
+        )
         self.user = models.User(
             email=self.email,
             display_name='Prefs',
@@ -56,6 +61,10 @@ class UserPreferencesTestCase(support.SharedAppAsyncTestCase):
         await self.graph.locked_with_connection(
             preferences.lock_key(self.email),
             lambda _execute, conn: preferences.delete_user(conn, self.email),
+        )
+        await self.graph.execute(
+            'MATCH (u:User {{email: {email}}}) DETACH DELETE u',
+            {'email': self.email},
         )
         await self.graph.close()
 
@@ -143,15 +152,18 @@ class UserPreferencesTestCase(support.SharedAppAsyncTestCase):
 
     async def test_user_delete_removes_rows(self) -> None:
         self.assertEqual((await self._put({}, 0)).status_code, 200)
-        await self.graph.execute(
-            'CREATE (u:User {{email: {email}}}) RETURN u.email AS email',
-            {'email': self.email},
-            ['email'],
-        )
         self.context.user = self.user.model_copy(
             update={'email': 'admin@example.com'}
         )
         response = await self.client.delete(f'/users/{self.email}')
         self.assertEqual(response.status_code, 204)
         self.context.user = self.user
+        self.assertEqual((await self.client.get(_URL)).status_code, 404)
+
+    async def test_first_write_for_deleted_user_is_404(self) -> None:
+        await self.graph.execute(
+            'MATCH (u:User {{email: {email}}}) DETACH DELETE u',
+            {'email': self.email},
+        )
+        self.assertEqual((await self._put({}, 0)).status_code, 404)
         self.assertEqual((await self.client.get(_URL)).status_code, 404)
