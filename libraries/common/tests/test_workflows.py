@@ -26,12 +26,10 @@ DEPLOY = {'project_id': 'p1', 'environment': 'staging', 'version': '1.0'}
 DECIDE = {'model_id': 'm1', 'prompt': 'Ship it?', 'branches': ['yes', 'no']}
 
 
-def _check(
-    nodes: list[dict[str, typing.Any]],
-    edges: list[tuple[str, int, str]],
-    settings: dict[str, typing.Any] | None = None,
-) -> list[graph.ValidationIssue]:
-    wf_graph = graph.Graph.model_validate(
+def _graph(
+    nodes: list[dict[str, typing.Any]], edges: list[tuple[str, int, str]]
+) -> graph.Graph:
+    return graph.Graph.model_validate(
         {
             'nodes': nodes,
             'edges': [
@@ -39,13 +37,34 @@ def _check(
             ],
         }
     )
+
+
+def _check(
+    nodes: list[dict[str, typing.Any]],
+    edges: list[tuple[str, int, str]],
+    settings: dict[str, typing.Any] | None = None,
+) -> list[graph.ValidationIssue]:
     return validation.validate(
-        wf_graph, graph.Settings.model_validate(settings or {})
+        _graph(nodes, edges), graph.Settings.model_validate(settings or {})
     ).issues
 
 
 def _codes(issues: list[graph.ValidationIssue]) -> set[str]:
     return {i.code for i in issues}
+
+
+PAUSE_EDGES = [('start', 0, 'pause')]
+
+
+def _sized(size: int) -> list[dict[str, typing.Any]]:
+    """A trigger and a wait whose graph is ``size`` bytes of JSON."""
+    nodes = [
+        _node('start', 'manual'),
+        _node('pause', 'wait', {'duration': '1m'}),
+    ]
+    used = len(_graph(nodes, PAUSE_EDGES).model_dump_json().encode())
+    nodes[1]['title'] += 'x' * (size - used)
+    return nodes
 
 
 class ValidationTestCase(unittest.TestCase):
@@ -367,6 +386,13 @@ class ValidationTestCase(unittest.TestCase):
             for i in range(validation.MAX_NODES)
         ]
         self.assertEqual(_codes(_check(nodes, [])), {'too_many_nodes'})
+
+    def test_graph_at_byte_limit(self) -> None:
+        self.assertEqual(_check(_sized(256 * 1024), PAUSE_EDGES), [])
+
+    def test_graph_over_byte_limit(self) -> None:
+        issues = _check(_sized(256 * 1024 + 1), PAUSE_EDGES)
+        self.assertEqual(_codes(issues), {'graph_too_large'})
 
     def test_duplicate_edge(self) -> None:
         issues = _check(
