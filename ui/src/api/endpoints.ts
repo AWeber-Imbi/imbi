@@ -328,9 +328,12 @@ export interface ProjectListItem {
   >
   delivery_mode?: DeliveryMode
   description: null | string
-  // `"<base>..<head>"` -> when the oldest commit that needs action in
-  // that range landed.
-  drift_range_oldest?: Record<string, string>
+  // The promotion steps that need action, as the server judged them.
+  drift_pairs: {
+    base: ProjectListItem['environments'][number]
+    head: ProjectListItem['environments'][number]
+    oldest: null | string
+  }[]
   // `"<base>..<head>"` -> whether CI flagged any commit in that range.
   // Keyed by the two committishes of one promotion step; a step with no
   // entry was never evaluated.
@@ -356,6 +359,8 @@ export interface ProjectListItem {
     releasable: boolean
     slug: string
   }[]
+  // Commits past the latest tag need a release (releasable projects).
+  release_drifted: boolean
   release_summary: null | {
     commits_since_tag: number
     drift_answered?: number
@@ -752,6 +757,7 @@ function parseNextCursor(headers: Headers): string | undefined {
 
 // fallow-ignore-next-line complexity
 export const listOperationsLog = async (
+  orgSlug: string,
   params: {
     cursor?: string
     filters?: OperationsLogFilters
@@ -768,7 +774,7 @@ export const listOperationsLog = async (
   }
   const { data, headers } =
     await apiClient.getWithHeaders<OperationsLogEnvelope>(
-      '/operations-log/',
+      `/organizations/${encodeURIComponent(orgSlug)}/operations-log/`,
       query,
       signal,
     )
@@ -779,9 +785,13 @@ export const listOperationsLog = async (
   }
 }
 
-export const getOperationsLogEntry = (entryId: string, signal?: AbortSignal) =>
+export const getOperationsLogEntry = (
+  orgSlug: string,
+  entryId: string,
+  signal?: AbortSignal,
+) =>
   apiClient.get<OperationsLogRecord>(
-    `/operations-log/${encodeURIComponent(entryId)}`,
+    `/organizations/${encodeURIComponent(orgSlug)}/operations-log/${encodeURIComponent(entryId)}`,
     undefined,
     signal,
   )

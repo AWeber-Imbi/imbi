@@ -39,15 +39,7 @@ import { useSearchShortcut } from '@/hooks/useSearchShortcut'
 import { useUrlSearchQuery } from '@/hooks/useUrlSearchQuery'
 import { deriveChipColors } from '@/lib/chip-colors'
 import { type DeliveryProject, resolveDelivery } from '@/lib/delivery'
-import {
-  computeDriftPairs,
-  driftIsStale,
-  type DriftPair,
-  type DriftProject,
-  projectReleaseDrifted,
-  rangeNeedsAction,
-  rangeOldest,
-} from '@/lib/deployment-drift'
+import { computeDriftPairs, driftIsStale } from '@/lib/deployment-drift'
 import { sortByPipelineOrder } from '@/lib/environment-chains'
 import { absTime, parseServerTs, relTime } from '@/lib/formatDate'
 import { projectPath } from '@/lib/project-path'
@@ -70,12 +62,15 @@ import { ScoreBadge } from './ui/score-badge'
 import { Sk } from './ui/skeleton'
 
 // The dropdown filters, each backed by its own URL search param.
-type DriftCellProject = DriftProject & {
-  has_deployment_plugin: boolean
-  id: string
-  project_types?: null | object[]
-  slug: string
-}
+type DriftCellProject = Pick<
+  ProjectListItem,
+  | 'drift_pairs'
+  | 'has_deployment_plugin'
+  | 'id'
+  | 'release_drifted'
+  | 'release_summary'
+  | 'slug'
+>
 
 type FacetKey = 'drifts' | 'scores' | 'teams' | 'types'
 
@@ -898,7 +893,7 @@ function DeploymentCards({
   const latest = project.latest_deployments ?? {}
   const sorted = sortByPipelineOrder(environments)
   const pairs = computeDriftPairs(environments, releases)
-  const { releaseDrifted } = driftBadges(project)
+  const releaseDrifted = project.release_drifted
   const releaseSince = project.release_summary?.oldest_actionable_at
   return (
     <div className="flex w-full items-stretch justify-center-safe pt-2">
@@ -918,11 +913,14 @@ function DeploymentCards({
         const pair = prev
           ? pairs.find((p) => p.from === prev.name && p.toSlug === env.slug)
           : undefined
-        const behind =
-          !!pair && pair.drifted && rangeNeedsAction(project.drift_ranges, pair)
-        const since = pair
-          ? rangeOldest(project.drift_range_oldest, pair)
-          : null
+        // The server's verdict; ``pair`` only tells "=" from a plain line.
+        const verdict = prev
+          ? project.drift_pairs.find(
+              (d) => d.head.slug === prev.slug && d.base.slug === env.slug,
+            )
+          : undefined
+        const behind = !!verdict
+        const since = verdict?.oldest ?? null
         const tone = driftTone(since)
         const release = releases[env.slug]
         const upstream = prev ? releases[prev.slug] : undefined
@@ -1022,24 +1020,6 @@ function deploymentsHref(project: {
     : undefined
 }
 
-// The badges a project shows. Same predicate the count and the filter
-// use, so a badge never appears for a project the "Drifted" tally does
-// not include.
-function driftBadges(project: DriftCellProject): {
-  deployDrifted: DriftPair[]
-  releaseDrifted: boolean
-} {
-  const deployDrifted: DriftPair[] = isProjectDeployable(project)
-    ? computeDriftPairs(
-        project.environments ?? [],
-        project.current_releases ?? {},
-      ).filter((p) => p.drifted && rangeNeedsAction(project.drift_ranges, p))
-    : []
-  const releaseDrifted =
-    isProjectReleasable(project) && projectReleaseDrifted(project)
-  return { deployDrifted, releaseDrifted }
-}
-
 // fallow-ignore-next-line complexity
 function DriftCell({ project }: { project: DriftCellProject }) {
   const { isDarkMode } = useTheme()
@@ -1050,7 +1030,8 @@ function DriftCell({ project }: { project: DriftCellProject }) {
   const fallbackCls = 'border-amber-border bg-amber-bg text-amber-text border'
   const staleCls = `border ${DRIFT_TONE.red.pill}`
 
-  const { deployDrifted, releaseDrifted } = driftBadges(project)
+  const deployDrifted = project.drift_pairs
+  const releaseDrifted = project.release_drifted
 
   if (deployDrifted.length === 0 && !releaseDrifted) return null
 
@@ -1059,19 +1040,18 @@ function DriftCell({ project }: { project: DriftCellProject }) {
 
   return (
     <div className="relative z-10 flex flex-row flex-wrap items-center gap-1">
-      {deployDrifted.map((p) => {
-        const since = rangeOldest(project.drift_range_oldest, p)
+      {deployDrifted.map(({ base, head, oldest: since }) => {
         const stale = driftIsStale(since)
         const derived =
-          !stale && p.toLabelColor
-            ? deriveChipColors(p.toLabelColor, isDarkMode)
+          !stale && base.label_color
+            ? deriveChipColors(base.label_color, isDarkMode)
             : null
         return (
           <LinkOrDiv
             aria-label={
               since
-                ? `Deploy ${p.from} to ${p.to}, waiting since ${absTime(since)}`
-                : `Deploy ${p.from} to ${p.to}`
+                ? `Deploy ${head.name} to ${base.name}, waiting since ${absTime(since)}`
+                : `Deploy ${head.name} to ${base.name}`
             }
             className={
               stale
@@ -1080,7 +1060,7 @@ function DriftCell({ project }: { project: DriftCellProject }) {
                   ? `${badgeBaseCls} border`
                   : `${badgeBaseCls} ${fallbackCls}`
             }
-            key={`${p.from}->${p.to}`}
+            key={`${head.name}->${base.name}`}
             style={
               derived
                 ? {
@@ -1092,13 +1072,13 @@ function DriftCell({ project }: { project: DriftCellProject }) {
             }
             to={
               deployments &&
-              `${deployments}?env=${encodeURIComponent(p.toSlug)}`
+              `${deployments}?env=${encodeURIComponent(base.slug)}`
             }
           >
             <span className="font-medium">Δ</span>
-            <span>{abbreviateEnvName(p.from)}</span>
+            <span>{abbreviateEnvName(head.name)}</span>
             <span>→</span>
-            <span>{abbreviateEnvName(p.to)}</span>
+            <span>{abbreviateEnvName(base.name)}</span>
             <WaitingAge since={since} />
           </LinkOrDiv>
         )
@@ -1159,21 +1139,8 @@ function DriftPill({
 // when a releasable project has commits past its latest tag. Backs both
 // the drift filter and the per-option counts in its popover.
 function driftSlugsFor(project: ProjectListItem): string[] {
-  const slugs: string[] = []
-  if (isProjectDeployable(project)) {
-    const pairs = computeDriftPairs(
-      project.environments ?? [],
-      project.current_releases ?? {},
-    )
-    for (const pair of pairs) {
-      if (pair.drifted && rangeNeedsAction(project.drift_ranges, pair)) {
-        slugs.push(`${pair.from}->${pair.to}`)
-      }
-    }
-  }
-  if (isProjectReleasable(project) && projectReleaseDrifted(project)) {
-    slugs.push('C->R')
-  }
+  const slugs = project.drift_pairs.map((p) => `${p.head.name}->${p.base.name}`)
+  if (project.release_drifted) slugs.push('C->R')
   return slugs
 }
 
@@ -1364,11 +1331,8 @@ function nextSortParams(prev: URLSearchParams, key: SortKey): URLSearchParams {
 // When the oldest change waiting behind any of the project's badges
 // landed, in ms. Null when no badge has a date.
 function oldestPendingTime(project: DriftCellProject): null | number {
-  const { deployDrifted, releaseDrifted } = driftBadges(project)
-  const dates = deployDrifted.map((p) =>
-    rangeOldest(project.drift_range_oldest, p),
-  )
-  if (releaseDrifted)
+  const dates = project.drift_pairs.map((p) => p.oldest)
+  if (project.release_drifted)
     dates.push(project.release_summary?.oldest_actionable_at ?? null)
   const times = dates
     .filter((d): d is string => !!d)
@@ -1404,16 +1368,18 @@ function ReleaseCards({
   deployments,
   projectName,
   release_summary,
+  releaseDrifted,
 }: {
   deployments: string | undefined
   projectName: string
   release_summary: NonNullable<ProjectListItem['release_summary']>
+  releaseDrifted: boolean
 }) {
   const headSha =
     release_summary.head_short_sha ??
     release_summary.head_sha?.slice(0, 7) ??
     null
-  const behind = projectReleaseDrifted({ release_summary })
+  const behind = releaseDrifted
   const since = release_summary.oldest_actionable_at
   const tone = driftTone(since)
   const viewSuffix = deployments ? ': view releases' : ''
@@ -1861,6 +1827,7 @@ const ProjectListRow = React.memo(function ProjectListRow({
                 deployments={deployments}
                 projectName={project.name}
                 release_summary={project.release_summary}
+                releaseDrifted={project.release_drifted}
               />
             </div>
           )}

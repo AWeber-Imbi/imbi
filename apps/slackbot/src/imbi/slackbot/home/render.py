@@ -103,7 +103,9 @@ class _Links:
 # ----- time --------------------------------------------------------
 
 
-def _when(value: str | datetime.datetime | None) -> datetime.datetime | None:
+def parse_when(
+    value: str | datetime.datetime | None,
+) -> datetime.datetime | None:
     if value is None or isinstance(value, datetime.datetime):
         return value
     when = datetime.datetime.fromisoformat(value)
@@ -121,7 +123,7 @@ def _span(seconds: float) -> str:
 
 def ago(value: str | datetime.datetime | None, now: datetime.datetime) -> str:
     """Return a relative time such as ``3h ago`` (R6)."""
-    when = _when(value)
+    when = parse_when(value)
     if when is None:
         return ''
     seconds = (now - when).total_seconds()
@@ -219,7 +221,7 @@ def _attention_item(
         )
     if kind == 'request':
         ticket = links.ticket(row['short_id'])
-        expires_at = _when(row.get('expires_at'))
+        expires_at = parse_when(row.get('expires_at'))
         expires = (
             f' · expires in {_span((expires_at - now).total_seconds())}'
             if expires_at
@@ -526,7 +528,7 @@ def _agent_activity(data: Row, links: _Links, now: datetime.datetime) -> Part:
         path = links.ticket(t['short_id'])
         agent = f'{b.escape(t["agent"])} · ' if t.get('agent') else ''
         if t['group'] == 'running':
-            started = _when(t.get('run_started_at'))
+            started = parse_when(t.get('run_started_at'))
             if started:
                 ran = _span((now - started).total_seconds())
                 status = f':large_green_circle: Running {ran}'

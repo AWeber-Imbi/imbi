@@ -25,24 +25,24 @@ import { LABEL_SWATCHES } from '@/lib/chip-colors'
 import { queryKeys } from '@/lib/queryKeys'
 import type { Tag } from '@/types'
 
-import type { AgentTagChip } from './agentDraft'
-import { AgentLabelChip } from './AgentLabelChip'
+import type { AgentTag } from './agentDraft'
+import { AgentTagChip } from './AgentTagChip'
 
-interface AgentLabelPickerProps {
-  onChange: (tags: AgentTagChip[]) => void
+interface AgentTagPickerProps {
+  onChange: (tags: AgentTag[]) => void
   orgSlug: string
-  value: AgentTagChip[]
+  value: AgentTag[]
 }
 
 /**
- * Labels are org tags. Pick an existing tag, or create one with a color
- * from the label palette (or no color).
+ * Agent tags are org tags. Pick an existing tag, or create one with a
+ * color from the chip palette (or no color).
  */
-export function AgentLabelPicker({
+export function AgentTagPicker({
   onChange,
   orgSlug,
   value,
-}: AgentLabelPickerProps) {
+}: AgentTagPickerProps) {
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -63,9 +63,7 @@ export function AgentLabelPicker({
   const create = useMutation({
     mutationFn: () => createOrFindTag(orgSlug, { color, name: query.trim() }),
     onError: (error) =>
-      toast.error(
-        `Failed to create the label: ${extractApiErrorDetail(error)}`,
-      ),
+      toast.error(`Failed to create the tag: ${extractApiErrorDetail(error)}`),
     onSuccess: (tag) => {
       queryClient.invalidateQueries({ queryKey: tagsKey })
       if (!selected.has(tag.slug)) add(tag)
@@ -79,32 +77,32 @@ export function AgentLabelPicker({
   return (
     <div className="flex min-h-10 flex-wrap items-center gap-2">
       {value.map((tag) => (
-        <AgentLabelChip key={tag.slug} tag={tag}>
+        <AgentTagChip key={tag.slug} tag={tag}>
           <button
-            aria-label={`Remove label ${tag.name}`}
+            aria-label={`Remove tag ${tag.name}`}
             className="ml-1 inline-flex opacity-70 hover:opacity-100"
             onClick={() => onChange(value.filter((t) => t.slug !== tag.slug))}
             type="button"
           >
             <X className="size-3" />
           </button>
-        </AgentLabelChip>
+        </AgentTagChip>
       ))}
       <Popover onOpenChange={setOpen} open={open}>
         <PopoverTrigger asChild>
           <Button size="sm" type="button" variant="outline">
-            Add label
+            Add tag
           </Button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-72 p-0">
           <Command>
             <CommandInput
               onValueChange={setQuery}
-              placeholder="Find or create a label"
+              placeholder="Find or create a tag"
               value={query}
             />
             <CommandList>
-              <CommandEmpty>No labels match.</CommandEmpty>
+              <CommandEmpty>No tags match.</CommandEmpty>
               <CommandGroup>
                 {tags
                   .filter((t) => !selected.has(t.slug))
@@ -114,7 +112,7 @@ export function AgentLabelPicker({
                       onSelect={() => add(t)}
                       value={t.name}
                     >
-                      <AgentLabelChip tag={t} />
+                      <AgentTagChip tag={t} />
                     </CommandItem>
                   ))}
               </CommandGroup>
@@ -123,10 +121,10 @@ export function AgentLabelPicker({
           {q && !exists && (
             <div className="border-tertiary flex flex-col gap-2 border-t p-3">
               <div className="text-overline text-tertiary uppercase">
-                New label color
+                New tag color
               </div>
               <LabelSwatchPicker
-                label="Label color"
+                label="Tag color"
                 onChange={setColor}
                 value={color}
               />

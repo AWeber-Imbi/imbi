@@ -11,7 +11,6 @@ import type { ReleaseBuildStarted } from '@/components/deploy/ReleaseBuildWatche
 import { useDeploymentSync } from '@/components/deployments/useDeploymentSync'
 import { Sk, SkText, Swap } from '@/components/ui/skeleton'
 import { useProjectDriftVerdicts } from '@/hooks/useProjectDriftVerdicts'
-import { releaseRangeClean } from '@/lib/deployment-drift'
 import type { Project } from '@/types'
 
 import { deriveArtifact } from './artifact'
@@ -66,7 +65,8 @@ export function ReleasesTab({
 
   // The verdict the projects list uses, so the card and the list agree.
   const driftVerdicts = useProjectDriftVerdicts(orgSlug, project.id, enabled)
-  const driftDetected = !releaseRangeClean(driftVerdicts?.release_summary)
+  // Fails closed until the verdict loads.
+  const driftDetected = driftVerdicts?.release_drifted ?? true
 
   const { isSyncing, sync } = useDeploymentSync(orgSlug, project.id)
 

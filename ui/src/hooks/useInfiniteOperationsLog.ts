@@ -38,6 +38,7 @@ export function useInfiniteOperationsLog(
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam, signal }) =>
       listOperationsLog(
+        orgSlug,
         {
           cursor: pageParam as string | undefined,
           filters,

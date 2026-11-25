@@ -234,6 +234,17 @@ class GitHubAppTestCase(unittest.IsolatedAsyncioTestCase):
                     'pull_requests': 'write',
                 },
             ),
+            'github_status': (
+                {'repository_ids': [101]},
+                {
+                    'actions': 'read',
+                    'checks': 'write',
+                    'contents': 'read',
+                    'issues': 'read',
+                    'pull_requests': 'read',
+                    'statuses': 'write',
+                },
+            ),
             'marketplace_fetch': (
                 {'repositories': ['plugins']},
                 {'contents': 'read'},

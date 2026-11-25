@@ -3,7 +3,8 @@
 Slack sends ``link_shared`` when a message holds a URL on a domain of
 the app's ``unfurl_domains``. The bot reads each item from imbi-api as
 the Slack user who posted the link, so the card shows only what that
-person can read, and answers with ``chat.unfurl``. No card is made in
+person can read, and answers with ``chat.unfurl``: a Slack Work
+Object (a task for a ticket, an item for a project). No card is made in
 a Slack Connect channel or from the composer (docs/slackbot/index.md).
 
 """
@@ -12,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import datetime
 import logging
 import re
 import typing
@@ -20,8 +22,9 @@ import urllib.parse
 import httpx
 from slack_sdk import errors
 
-from imbi.common import api, environments, models
-from imbi.slackbot import blocks, identity, settings
+from imbi.common import api, environments
+from imbi.slackbot import identity, settings
+from imbi.slackbot.home import render
 
 SlackClient = typing.Any
 #: A JSON payload from Slack or imbi-api.
@@ -32,13 +35,22 @@ LOGGER = logging.getLogger(__name__)
 _TICKET = re.compile(r'^/tickets/(?P<org>[^/]+)/(?P<short_id>[A-Za-z]+-\d+)')
 _PROJECT = re.compile(r'^/projects/(?P<project_id>[^/]+)')
 
-#: The amber brand color (docs/design.md) for the card's side bar.
-COLOR = '#ef9f27'
 #: Slack fetches the image itself, so it must be on a public host.
 LOGO_URL = (
     'https://raw.githubusercontent.com/AWeber-Imbi/imbi/main/'
     'ui/public/icons/pwa-192x192.png'
 )
+#: The prefix of the card buttons' ``action_id``.  The buttons open a
+#: URL; Slack still sends ``block_actions``, which the bot only acks.
+ACTION_PREFIX = 'unfurl_'
+#: ``tag_color`` of each ticket status (Slack allows red, yellow,
+#: green, gray, blue).
+STATUS_COLORS = {
+    'open': 'blue',
+    'in_progress': 'yellow',
+    'blocked': 'red',
+    'closed': 'green',
+}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -67,114 +79,233 @@ def parse(url: str) -> Ticket | Project | None:
     return None
 
 
-def ticket_blocks(ticket: Json, url: str) -> list[blocks.Block]:
-    title = f'{ticket.get("short_id", "")} · {ticket.get("title") or ""}'
-    team: Json = ticket.get('team') or {}
-    fields = [
-        f'*{name}*\n{_title_case(ticket.get(key))}'
-        for name, key in (
-            ('Status', 'status'),
-            ('Priority', 'priority'),
-            ('Type', 'type'),
-        )
-    ]
-    fields.append(
-        f'*Assignee*\n{blocks.escape(ticket.get("assignee") or "Unassigned")}'
+def ticket_entity(ticket: Json, url: str, org: str) -> Json:
+    """Build the Work Object (a Slack task) for a ticket of ``org``."""
+    status = ticket.get('status')
+    fields: Json = {
+        'status': {
+            'value': _title_case(status),
+            'tag_color': STATUS_COLORS.get(status or '', 'gray'),
+        },
+        'priority': {'value': _title_case(ticket.get('priority'))},
+    }
+    if assignee := ticket.get('assignee'):
+        user: Json = {'text': assignee}
+        if '@' in assignee:  # Slack shows the matching Slack user.
+            user['email'] = assignee
+        fields['assignee'] = {'type': 'slack#/types/user', 'user': user}
+    short_id = ticket.get('short_id') or ''
+    return _entity(
+        url,
+        {'id': f'{org}/{short_id}', 'type': 'ticket'},
+        f'{settings.get_slackbot_settings().ui_url}/tickets/{org}/{short_id}',
+        'slack#/entities/task',
+        {'fields': fields},
+        title=ticket.get('title') or short_id,
+        display_type=_title_case(ticket.get('type')) or 'Ticket',
+        display_id=short_id,
+        buttons=[_button('Open in Imbi', url, primary=True)],
     )
-    return [
-        blocks.section(f'*{blocks.link(url, title)}*', fields=fields),
-        _context(team.get('name')),
-    ]
 
 
 def _title_case(value: str | None) -> str:
-    """``in_progress`` -> ``In Progress``; ``—`` when there is no value."""
-    return blocks.escape(value.replace('_', ' ').title()) if value else '—'
+    """``in_progress`` -> ``In Progress``; ``''`` when there is no value."""
+    return value.replace('_', ' ').title() if value else ''
 
 
-def project_blocks(project: Json, url: str) -> list[blocks.Block]:
-    """Build the card from a ``ProjectListItem`` (``slim=true``)."""
-    text = f'*{blocks.link(url, project.get("name") or "")}*'
-    description = (project.get('description') or '').strip().splitlines()
-    if description:
-        text += f'\n{blocks.escape(description[0])}'
-    score = project.get('score')
-    drift = drift_labels(project)
-    fields = [
-        f'*Score*\n{"—" if score is None else round(score)}',
-        f'*Open PRs*\n{project.get("open_pr_count") or 0}',
-        f'*Drift*\n{blocks.escape(", ".join(drift)) if drift else "None"}',
-    ]
+def project_entity(project: Json, url: str) -> Json:
+    """Build the Work Object for a ``ProjectListItem`` (``slim=true``)."""
     team: Json = project.get('team') or {}
     types: list[Json] = project.get('project_types') or []
-    return [
-        blocks.section(text, fields=fields),
-        _context(
-            team.get('name'),
-            *(t.get('name') for t in types),
-            'archived' if project.get('archived') else None,
+    fields = [
+        _string(
+            'description', 'Description', project.get('description'), long=True
         ),
+        _string('team', 'Team', team.get('name')),
+        _string('type', 'Type', ', '.join(t['name'] for t in types)),
+        _health(project.get('score')),
     ]
+    if chips := drift_chips(project):
+        fields.append(
+            {
+                'key': 'drift',
+                'label': 'Drift',
+                'type': 'array',
+                'item_type': 'string',
+                'value': chips,
+            }
+        )
+    fields.extend(_current_release(project))
+    ui_url = settings.get_slackbot_settings().ui_url
+    buttons = [_button('Open in Imbi', url, primary=True)]
+    if project.get('has_deployment_plugin'):
+        deployments = f'{ui_url}/projects/{project["id"]}/deployments'
+        buttons.append(_button('Deployments', deployments))
+    return _entity(
+        url,
+        {'id': project['id'], 'type': 'project'},
+        f'{ui_url}/projects/{project["id"]}',
+        'slack#/entities/item',
+        {'custom_fields': [f for f in fields if f]},
+        title=project.get('name') or '',
+        display_type='Project',
+        display_id=project.get('slug') or '',
+        buttons=buttons,
+    )
 
 
-def drift_labels(project: Json) -> list[str]:
-    """The drift the projects list shows for ``project``.
+def _string(
+    key: str,
+    label: str,
+    value: str | None,
+    color: str | None = None,
+    *,
+    long: bool = False,
+) -> Json | None:
+    value = (value or '').strip()
+    if not value:
+        return None
+    field: Json = {
+        'key': key,
+        'label': label,
+        'type': 'string',
+        'value': value,
+    }
+    if color:
+        field['tag_color'] = color
+    if long:
+        field['long'] = True
+    return field
 
-    Mirrors ``driftSlugsFor`` in ``ui/src/components/ProjectsView.tsx``
-    and the range key of ``_range_key`` in imbi-api's projects endpoint:
-    a drifted environment pair counts unless the server proved its
-    range clean, and a releasable project drifts with commits past its
-    latest tag unless every one was answered ``false``.
+
+def _health(score: float | None) -> Json | None:
+    """The score, colored by ``scoreBucket`` of the projects list.
+
+    healthy is green, fair and at-risk are yellow, unhealthy is red.
 
     """
-    types: list[Json] = project.get('project_types') or []
-    delivery = models.resolve_delivery(
-        project.get('delivery_mode'),
-        deployable=any(t.get('deployable') for t in types),
-        releasable=any(t.get('releasable') for t in types),
-    )
-    labels: list[str] = []
-    if delivery.deployable:
-        releases: Json = project.get('current_releases') or {}
-        ranges: Json = project.get('drift_ranges') or {}
-        envs: list[Json] = project.get('environments') or []
-        for head_env, base_env in environments.promotion_pairs(envs):
-            head: Json = releases.get(head_env['slug']) or {}
-            base: Json = releases.get(base_env['slug']) or {}
-            head_sha: str | None = head.get('committish')
-            base_sha: str | None = base.get('committish')
-            if head_sha and base_sha:
-                # A range proven clean (every commit ``false``) is hidden.
-                drifted = (
-                    head_sha != base_sha
-                    and ranges.get(f'{base_sha}..{head_sha}') is not False
-                )
-            else:
-                drifted = (head.get('tag') or head_sha) != (
-                    base.get('tag') or base_sha
-                )
-            if drifted:
-                labels.append(f'{head_env["name"]} → {base_env["name"]}')
-    summary: Json = project.get('release_summary') or {}
-    if (
-        delivery.releasable
-        and summary.get('head_sha')
-        and (summary.get('commits_since_tag') or 0) > 0
-        and summary.get('drift_detected') is not False
-    ):
-        labels.append('Unreleased commits')
-    return labels
+    if score is None:
+        return None
+    color = 'green' if score >= 85 else 'yellow' if score >= 50 else 'red'
+    return _string('health', 'Health', str(round(score)), color)
 
 
-def _context(*facts: object) -> blocks.Block:
-    text = ' · '.join(blocks.escape(str(f)) for f in facts if f)
-    elements: list[blocks.Block] = [
-        {'type': 'image', 'image_url': LOGO_URL, 'alt_text': 'Imbi'}
+def drift_chips(project: Json) -> list[Json]:
+    """One chip per environment, in pipeline order.
+
+    imbi-api computes the verdict (``drift_pairs`` and
+    ``release_drifted``); the card only draws it.  An environment that
+    is behind the one before it is red, with the days since the oldest
+    commit that waits; the others are green.
+
+    """
+    pairs: list[Json] = project.get('drift_pairs') or []
+    behind: dict[str, Json] = {p['base']['slug']: p for p in pairs}
+    chips: list[Json] = []
+    if project.get('release_drifted'):
+        chips.append(_chip('Release', 'red'))
+    for env in _pipeline(project):
+        initial = env['name'][:1].upper()
+        pair = behind.get(env['slug'])
+        days = pair and _days_since(pair.get('oldest'))
+        chips.append(
+            _chip(
+                f'{initial} {days}' if days else initial,
+                'red' if pair else 'green',
+            )
+        )
+    return chips
+
+
+def _pipeline(project: Json) -> list[Json]:
+    """The environments in pipeline order, as the projects list sorts."""
+    return sorted(project.get('environments') or [], key=environments.sort_key)
+
+
+def _chip(value: str, color: str) -> Json:
+    return {'type': 'string', 'value': value, 'tag_color': color}
+
+
+def _days_since(value: str | None) -> int | None:
+    then = render.parse_when(value)
+    return (datetime.datetime.now(datetime.UTC) - then).days if then else None
+
+
+def _current_release(project: Json) -> list[Json]:
+    """The release of the last environment in the pipeline."""
+    envs = _pipeline(project)
+    if not envs:
+        return []
+    last = envs[-1]
+    releases: dict[str, Json] = project.get('current_releases') or {}
+    release: Json = releases.get(last['slug']) or {}
+    version: str | None = release.get('tag') or release.get('committish')
+    deployed = render.parse_when(release.get('deployed_at'))
+    if not version or not deployed:
+        return []
+    return [
+        _string('release', last['name'], version),
+        {
+            'key': 'deployed',
+            'label': 'Deployed',
+            'type': 'slack#/types/timestamp',
+            'value': int(deployed.timestamp()),
+        },
     ]
-    # Slack refuses an empty text element, and with it the whole unfurl.
-    if text:
-        elements.append(blocks.mrkdwn(text, blocks.CONTEXT_TEXT))
-    return {'type': 'context', 'elements': elements}
+
+
+def _button(text: str, url: str, *, primary: bool = False) -> Json:
+    button: Json = {
+        'text': text,
+        'action_id': f'{ACTION_PREFIX}{text.lower().replace(" ", "_")}',
+        'url': url,
+    }
+    if primary:
+        button['style'] = 'primary'
+    return button
+
+
+def _entity(
+    url: str,
+    ref: Json,
+    canonical: str,
+    entity_type: str,
+    payload: Json,
+    *,
+    title: str,
+    display_type: str,
+    display_id: str,
+    buttons: list[Json],
+) -> Json:
+    return {
+        'app_unfurl_url': url,
+        'url': canonical,
+        # The same item for every link to it (a tab, a query string).
+        'external_ref': ref,
+        'entity_type': entity_type,
+        'entity_payload': {
+            'attributes': {
+                'title': {'text': title},
+                'display_type': display_type,
+                'display_id': display_id,
+                'product_name': 'Imbi',
+                'product_icon': {'url': LOGO_URL, 'alt_text': 'Imbi'},
+            },
+            **payload,
+            'actions': {'primary_actions': buttons},
+        },
+    }
+
+
+def register(app: typing.Any) -> None:
+    """Add the unfurl listeners to a Bolt app."""
+    app.event('link_shared')(handle)
+    # The card buttons open a URL; Slack still sends their clicks.
+    app.action(re.compile(f'^{ACTION_PREFIX}'))(_ack)
+
+
+async def _ack(ack: typing.Any) -> None:
+    await ack()
 
 
 async def handle(event: Json, client: SlackClient) -> None:
@@ -204,12 +335,8 @@ async def handle(event: Json, client: SlackClient) -> None:
                 for url, item in urls
             )
         )
-    unfurls = {
-        url: {'color': COLOR, 'blocks': card}
-        for (url, _), card in zip(urls, cards, strict=True)
-        if card
-    }
-    if not unfurls:
+    entities = [card for card in cards if card]
+    if not entities:
         return
     # Enterprise Grid events have no unfurl_id/source; use channel + ts.
     target = (
@@ -218,7 +345,7 @@ async def handle(event: Json, client: SlackClient) -> None:
         else {'channel': event.get('channel'), 'ts': event.get('message_ts')}
     )
     try:
-        await client.chat_unfurl(unfurls=unfurls, **target)
+        await client.chat_unfurl(metadata={'entities': entities}, **target)
     except errors.SlackApiError:
         LOGGER.warning('chat.unfurl failed', exc_info=True)
 
@@ -235,17 +362,15 @@ async def _external(client: SlackClient, channel: str) -> bool:
     return bool(info.get('is_ext_shared') or info.get('is_pending_ext_shared'))
 
 
-async def _ticket_card(
-    imbi: api.Imbi, item: Ticket, url: str
-) -> list[blocks.Block] | None:
+async def _ticket_card(imbi: api.Imbi, item: Ticket, url: str) -> Json | None:
     path = f'/organizations/{item.org}/tickets/{item.short_id}'
     ticket = await _get(imbi, path)
-    return ticket_blocks(ticket, url) if ticket else None
+    return ticket_entity(ticket, url, item.org) if ticket else None
 
 
 async def _project_card(
     imbi: api.Imbi, item: Project, url: str, orgs: list[Json]
-) -> list[blocks.Block] | None:
+) -> Json | None:
     # ponytail: the project URL carries no org, so ask every org. A miss
     # costs one graph query. Upstream fix: an org-free project lookup in
     # imbi-api, or the org slug in project URLs.
@@ -262,7 +387,7 @@ async def _project_card(
         )
     )
     found = next((r[0] for r in results if r), None)
-    return project_blocks(found, url) if found else None
+    return project_entity(found, url) if found else None
 
 
 async def _get(

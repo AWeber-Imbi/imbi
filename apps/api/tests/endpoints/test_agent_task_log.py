@@ -530,6 +530,7 @@ class OpsLogRowsTests(unittest.TestCase):
         event_id = uuid.uuid4()
         task = {
             'short_id': 'T-1',
+            'organization_id': 'org-1',
             'projects': [
                 {'project_id': 'p1', 'project_slug': 'one'},
                 {'project_id': 'p2', 'project_slug': 'two'},
@@ -550,4 +551,5 @@ class OpsLogRowsTests(unittest.TestCase):
                 (str(uuid.uuid5(event_id, 'p2')), 'p2', 'two'),
             ],
         )
+        self.assertEqual({r['organization_id'] for r in rows}, {'org-1'})
         self.assertEqual(log.opslog_rows({**task, 'projects': []}, event), [])

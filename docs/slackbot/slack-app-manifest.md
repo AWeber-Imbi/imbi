@@ -57,6 +57,10 @@ settings), then reinstall the app. A reinstall alone does not add the
 scopes or the `link_shared` event. A change to `unfurl_domains` also needs
 a reinstall, even when the scopes do not change.
 
+The cards are Slack Work Objects. In the
+app settings, open **Work Object Previews**, turn it on, select the **Task**
+and **Item** entity types, and save. Without this, Slack shows no card.
+
 ## Home tab
 
 The `features.app_home` block and the `app_home_opened` event turn on the

@@ -65,6 +65,23 @@ describe('useProjectPatch', () => {
     expect(qc.getQueryData(['project', 'o', 'p1'])).toEqual(optimistic)
   })
 
+  it('refreshes the drift verdict and the list after a patch', async () => {
+    vi.spyOn(endpoints, 'patchProject').mockResolvedValue(baseProject as never)
+    const invalidate = vi.spyOn(qc, 'invalidateQueries')
+    const { result } = renderHook(() => useProjectPatch('o', 'p1'), {
+      wrapper: wrapper(qc),
+    })
+
+    await act(async () => {
+      await result.current.patch('/project_type_slugs', ['library'])
+    })
+
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ['releaseDrift', 'o', 'p1', 'verdicts'],
+    })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['projects', 'o'] })
+  })
+
   it('rolls back on error and toasts', async () => {
     vi.spyOn(endpoints, 'patchProject').mockRejectedValue(
       new ApiError(400, 'Bad Request', { detail: 'nope' }),
