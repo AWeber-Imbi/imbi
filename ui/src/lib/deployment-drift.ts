@@ -72,34 +72,6 @@ export function computeDriftPairs(
   return pairs
 }
 
-// Whether this promotion step needs acting on. Only proven clean is
-// clean: the pair is suppressed when the server evaluated its range and
-// every commit carried a `false` verdict. A `true` verdict, an
-// unanswered commit, or a range the server could not evaluate at all
-// (absent key, missing committish) each mean show it -- an unverified
-// difference is still work someone must look at. Only called for pairs
-// `computeDriftPairs` marked drifted, so equal pairs never reach the
-// fail-closed branches.
-export function rangeNeedsAction(
-  ranges: Record<string, boolean> | undefined,
-  pair: DriftPair,
-): boolean {
-  if (!pair.baseSha || !pair.headSha) return true
-  return ranges?.[`${pair.baseSha}..${pair.headSha}`] !== false
-}
-
-// Whether the tag..HEAD verdict proves the unreleased commits clean. A
-// project with no tag has no evaluated range, so its `false` default is
-// not a verdict and does not count.
-export function releaseRangeClean(
-  summary:
-    | null
-    | undefined
-    | { drift_detected?: boolean; latest_tag: null | string },
-): boolean {
-  return !!summary?.latest_tag && summary.drift_detected === false
-}
-
 const DURATION_UNITS_MS: Record<string, number> = {
   d: 86_400_000,
   h: 3_600_000,

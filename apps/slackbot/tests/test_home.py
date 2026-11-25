@@ -685,6 +685,7 @@ class FakeApi:
             'team': {'name': 'Platform', 'slug': 'platform'},
             'score': 80,
             'release_summary': {'commits_since_tag': 4, 'latest_tag': '1.0.0'},
+            'release_drifted': True,
         }
         released = {
             **project,
@@ -692,6 +693,7 @@ class FakeApi:
             'name': 'imbi-ui',
             'slug': 'imbi-ui',
             'release_summary': {'commits_since_tag': 0},
+            'release_drifted': False,
         }
         return [
             (
