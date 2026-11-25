@@ -1515,29 +1515,29 @@ class WorkspaceTestCase(TaskTestCase):
         self.assertEqual(ctx.exception.reason, 'executor_unavailable')
 
 
+def write_plugin(plugin: pathlib.Path) -> pathlib.Path:
+    """A plugin named ``ops`` with servers in each kind of source."""
+    (plugin / '.claude-plugin').mkdir(parents=True)
+    (plugin / '.claude-plugin' / 'plugin.json').write_text(
+        json.dumps(
+            {
+                'name': 'ops',
+                'mcpServers': ['./servers.json', {'grafana': {}, 'loki': {}}],
+            }
+        )
+    )
+    (plugin / 'servers.json').write_text(
+        json.dumps({'mcpServers': {'tempo': {}, 'zoekt': {}}})
+    )
+    (plugin / '.mcp.json').write_text(
+        json.dumps({'sentry': {}, 'posthog': {}})
+    )
+    return plugin
+
+
 class PluginServersTestCase(TaskTestCase):
     def published(self) -> pathlib.Path:
-        """A published plugin with servers in each kind of source."""
-        plugin = self.tmp / 'published' / 'ops'
-        (plugin / '.claude-plugin').mkdir(parents=True)
-        (plugin / '.claude-plugin' / 'plugin.json').write_text(
-            json.dumps(
-                {
-                    'name': 'ops',
-                    'mcpServers': [
-                        './servers.json',
-                        {'grafana': {}, 'loki': {}},
-                    ],
-                }
-            )
-        )
-        (plugin / 'servers.json').write_text(
-            json.dumps({'mcpServers': {'tempo': {}, 'zoekt': {}}})
-        )
-        (plugin / '.mcp.json').write_text(
-            json.dumps({'sentry': {}, 'posthog': {}})
-        )
-        return plugin
+        return write_plugin(self.tmp / 'published' / 'ops')
 
     def load(self, plugin: pathlib.Path, **settings: bool) -> task.TaskRun:
         subject = self.make()
@@ -1578,10 +1578,6 @@ class PluginServersTestCase(TaskTestCase):
                 'mcp__plugin_ops_posthog',
                 'mcp__plugin_ops_zoekt',
             ],
-        )
-        self.assertEqual(
-            subject.plugin_server_names,
-            {'plugin:ops:loki', 'plugin:ops:posthog', 'plugin:ops:zoekt'},
         )
         allowed, _denied = subject.tools()
         self.assertNotIn('mcp__plugin_ops_grafana', allowed)
@@ -1655,12 +1651,14 @@ class PluginServersTestCase(TaskTestCase):
             )
         )
         subject = self.load(plugin, off=False)
+        self.assertEqual(subject.recorder.take(), [])
+        subject.note_unset_variables({'OTHER': 'set'})
         (notice,) = subject.recorder.take()
         self.assertEqual(
             notice['payload']['body'],
             'The MCP server logzio of the plugin ops-tools uses '
-            '${LOGZIO_TOKEN}, ${OTHER} in a header with no value and no '
-            'default, so the server gets no credential.',
+            '${LOGZIO_TOKEN} in a header, and the variable has no value '
+            'and no default, so the server gets no credential.',
         )
 
 
@@ -1681,11 +1679,21 @@ class HandOff:
 
 
 @dataclasses.dataclass
-class Pause:
-    """A wait of the CLI between two messages in a :class:`FakeClient`
-    replay."""
+class Init:
+    """The ``init`` message of the CLI in a :class:`FakeClient` replay,
+    with the plugins that the task published."""
 
-    seconds: float
+
+@dataclasses.dataclass
+class Watched:
+    """In a :class:`FakeClient` replay, wait until the watch of the
+    plugin MCP servers ends, without raising its error."""
+
+
+@dataclasses.dataclass
+class Polled:
+    """In a :class:`FakeClient` replay, wait until the harness read the
+    MCP server status once."""
 
 
 def result_message(**changes: typing.Any) -> sdk.ResultMessage:
@@ -1710,10 +1718,9 @@ class FakeClient:
     prompts: typing.ClassVar[list[str]] = []
     #: The results of the ``hand_off`` calls of the replay.
     tool_results: typing.ClassVar[list[typing.Any]] = []
-    #: The replies of ``get_mcp_status``, in order; the last repeats.
     statuses: typing.ClassVar[list[typing.Any]] = [{'mcpServers': []}]
-    #: How many times the harness read the MCP server status.
     status_reads: typing.ClassVar[int] = 0
+    polled: typing.ClassVar[asyncio.Event] = asyncio.Event()
 
     def __init__(
         self, options: sdk.ClaudeAgentOptions, **__: typing.Any
@@ -1740,14 +1747,33 @@ class FakeClient:
 
     async def get_mcp_status(self) -> typing.Any:
         FakeClient.status_reads += 1
+        FakeClient.polled.set()
         if len(self.statuses) > 1:
             return self.statuses.pop(0)
         return self.statuses[0]
 
+    def _run(self) -> task.TaskRun:
+        hooks = self.options.hooks or {}
+        hook = typing.cast(typing.Any, hooks['PreToolUse'][0].hooks[0])
+        return typing.cast(task.TaskRun, hook.__self__)
+
     async def receive_messages(self) -> typing.AsyncIterator[typing.Any]:
         for message in self.messages:
-            if isinstance(message, Pause):
-                await asyncio.sleep(message.seconds)
+            if isinstance(message, Init):
+                yield sdk.SystemMessage(
+                    'init',
+                    {
+                        'plugins': [
+                            {'path': str(p)} for p in self._run().plugins
+                        ]
+                    },
+                )
+            elif isinstance(message, Watched):
+                watch = self._run().server_watch
+                assert watch is not None
+                await asyncio.wait([watch])
+            elif isinstance(message, Polled):
+                await FakeClient.polled.wait()
             elif isinstance(message, Report):
                 self._report(message)
             elif isinstance(message, HandOff):
@@ -1838,6 +1864,7 @@ class RunTestCase(TaskTestCase):
         FakeClient.tool_results = []
         FakeClient.statuses = [{'mcpServers': []}]
         FakeClient.status_reads = 0
+        FakeClient.polled = asyncio.Event()
 
     async def executor(self, message: dict[str, typing.Any]) -> typing.Any:
         if message['op'] == 'fetch':
@@ -2416,25 +2443,42 @@ class RunTestCase(TaskTestCase):
         )
 
     async def watch(
-        self, *statuses: list[dict[str, typing.Any]], wait: float = 0.001
+        self,
+        *statuses: list[typing.Any],
+        wait: float = 60,
+        replay: tuple[typing.Any, ...] = (Init(), Watched(), Init()),
     ) -> tuple[task.TaskRun, list[str]]:
-        """Run a task with a plugin with two MCP servers. Return the
-        task and its warnings."""
-        subject = self.make()
-        plugin = self.tmp / 'published' / 'ops'
-        init = sdk.SystemMessage('init', {'plugins': [{'path': str(plugin)}]})
-        FakeClient.messages[0:0] = [init, Pause(0.05), init]
+        """Run a task with a pinned plugin whose servers grafana and
+        tempo are on. Return the task and its warnings."""
+        off = {'enabled': False}
+        subject = self.make(
+            plugins=[
+                {
+                    'marketplace': 'tools',
+                    'plugin': 'ops-tools',
+                    'url': 'https://github.com/acme/tools',
+                    'sha': '0123456789abcdef',
+                    'path': 'plugins/ops',
+                    'server_settings': {
+                        'loki': off,
+                        'zoekt': off,
+                        'sentry': off,
+                        'posthog': off,
+                    },
+                }
+            ]
+        )
+
+        async def executor(message: dict[str, typing.Any]) -> typing.Any:
+            if message['op'] == 'clone':
+                write_plugin(pathlib.Path(message['dest']) / 'plugins' / 'ops')
+            return await self.executor(message)
+
+        self.call.side_effect = executor
+        FakeClient.messages[0:0] = list(replay)
         FakeClient.statuses = [{'mcpServers': servers} for servers in statuses]
-
-        async def load_plugins() -> None:
-            subject.plugins.append(plugin)
-            subject.plugin_server_names.update(
-                {'plugin:ops:grafana', 'plugin:ops:tempo'}
-            )
-
         with (
-            mock.patch.object(subject, 'load_plugins', load_plugins),
-            mock.patch.object(task, 'MCP_STATUS_INTERVAL', 0.001),
+            mock.patch.object(task, 'MCP_STATUS_INTERVAL', 0.05),
             mock.patch.object(task, 'MCP_STATUS_WAIT', wait),
         ):
             await subject.run()
@@ -2450,6 +2494,7 @@ class RunTestCase(TaskTestCase):
     async def test_plugin_server_problems_are_warnings(self) -> None:
         _subject, warnings = await self.watch(
             [
+                None,
                 {
                     'name': 'plugin:ops:grafana',
                     'status': 'failed',
@@ -2473,6 +2518,17 @@ class RunTestCase(TaskTestCase):
             [{'outcome': 'done_acted', 'reason': 'listed'}],
         )
 
+    async def test_a_failed_server_warns_once(self) -> None:
+        failed = {'name': 'plugin:ops:grafana', 'status': 'failed'}
+        _subject, warnings = await self.watch(
+            [failed, {'name': 'plugin:ops:tempo', 'status': 'pending'}],
+            [failed, {'name': 'plugin:ops:tempo', 'status': 'connected'}],
+        )
+        self.assertEqual(
+            warnings, ['The MCP server plugin:ops:grafana is failed.']
+        )
+        self.assertEqual(FakeClient.status_reads, 2)
+
     async def test_a_server_still_pending_is_a_warning(self) -> None:
         _subject, warnings = await self.watch(
             [
@@ -2483,35 +2539,59 @@ class RunTestCase(TaskTestCase):
                 {'name': 'plugin:ops:grafana', 'status': 'connected'},
                 {'name': 'plugin:ops:tempo', 'status': 'pending'},
             ],
+            wait=0.05,
         )
         self.assertEqual(
             warnings, ['The MCP server plugin:ops:tempo is pending.']
         )
         self.assertEqual(FakeClient.status_reads, 2)
 
+    async def test_a_server_that_never_shows_did_not_load(self) -> None:
+        _subject, warnings = await self.watch(
+            [{'name': 'plugin:ops:grafana', 'status': 'connected'}],
+            wait=0.05,
+        )
+        self.assertEqual(
+            warnings, ['The MCP server plugin:ops:tempo did not load.']
+        )
+        self.assertEqual(FakeClient.status_reads, 2)
+
     async def test_no_pending_warning_when_the_task_ends(self) -> None:
         subject, warnings = await self.watch(
-            [{'name': 'plugin:ops:grafana', 'status': 'pending'}], wait=60
+            [{'name': 'plugin:ops:grafana', 'status': 'pending'}],
+            replay=(Init(), Polled()),
         )
         self.assertEqual(warnings, [])
         assert subject.server_watch is not None
-        await asyncio.sleep(0)
         self.assertTrue(subject.server_watch.cancelled())
 
     async def test_a_status_error_is_not_a_failure(self) -> None:
+        status = mock.AsyncMock(side_effect=sdk.CLIConnectionError('gone'))
         with (
-            mock.patch.object(
-                FakeClient,
-                'get_mcp_status',
-                mock.AsyncMock(side_effect=sdk.CLIConnectionError('gone')),
-            ),
+            mock.patch.object(FakeClient, 'get_mcp_status', status),
             self.assertLogs('imbi.harness.task', 'WARNING'),
         ):
             _subject, warnings = await self.watch()
         self.assertEqual(warnings, [])
+        status.assert_awaited_once()
         self.assertEqual(
             self.posted('/outcome'),
             [{'outcome': 'done_acted', 'reason': 'listed'}],
+        )
+
+    async def test_a_watch_error_is_raised(self) -> None:
+        with (
+            mock.patch.object(
+                task.TaskRun, '_server_notice', side_effect=RuntimeError('x')
+            ),
+            self.assertLogs('imbi.harness.task', 'ERROR'),
+        ):
+            await self.watch(
+                [{'name': 'plugin:ops:grafana', 'status': 'pending'}], wait=0
+            )
+        self.assertEqual(
+            self.posted('/outcome'),
+            [{'outcome': 'failed_external', 'reason': 'harness_error'}],
         )
 
 

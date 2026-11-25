@@ -543,13 +543,10 @@ _PLUGIN_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}')
 
 #: Fields of a marketplace entry that are not plugin manifest fields.
 _MARKETPLACE_ONLY = frozenset({'source', 'category', 'tags', 'strict'})
-#: How often, and how long, the runner reads the status of the plugin
-#: MCP servers after the session starts.
 MCP_STATUS_INTERVAL = 5
 MCP_STATUS_WAIT = 60
 _MCP_PROBLEMS = frozenset({'failed', 'needs-auth'})
 _VARIABLE = re.compile(r'\$\{([^}]+)\}')
-#: Variables that the CLI fills itself in a plugin's server config.
 _CLI_VARIABLES = frozenset({'CLAUDE_PLUGIN_ROOT', 'CLAUDE_PLUGIN_DATA'})
 
 
@@ -776,6 +773,24 @@ def _declared(path: pathlib.Path) -> Body:
     return servers
 
 
+def _statuses(status: typing.Any, names: abc.Set[str]) -> list[Body]:
+    """The entries of a ``get_mcp_status`` reply for the servers
+    ``names``. Malformed entries are left out."""
+    entries: typing.Any = (
+        typing.cast('Body', status).get('mcpServers')
+        if isinstance(status, dict)
+        else None
+    )
+    if not isinstance(entries, list):
+        return []
+    return [
+        typing.cast('Body', entry)
+        for entry in typing.cast('list[object]', entries)
+        if isinstance(entry, dict)
+        and typing.cast('Body', entry).get('name') in names
+    ]
+
+
 def _plugin_name(path: pathlib.Path, name: str) -> str:
     """The name that the CLI gives a plugin directory."""
     return str(_json(path / PLUGIN_MANIFEST).get('name') or name)
@@ -824,9 +839,9 @@ def _drop(servers: Body, names: abc.Set[str]) -> bool:
     return bool(found)
 
 
-def _unset_variables(config: typing.Any) -> list[str]:
+def _header_variables(config: typing.Any) -> list[str]:
     """The ``${VAR}`` of a server's header values that have no default
-    and that the CLI does not fill."""
+    and that the CLI does not fill from the plugin."""
     headers: typing.Any = (
         typing.cast('Body', config).get('headers')
         if isinstance(config, dict)
@@ -902,11 +917,8 @@ class TaskRun:
         #: ``mcp__plugin_<plugin>_<server>`` of each MCP server that a
         #: pinned plugin brings. A plugin that is on allows its servers.
         self.plugin_servers: list[str] = []
-        #: ``plugin:<plugin>:<server>``, the status name of each MCP
-        #: server that a pinned plugin brings.
         self.plugin_server_names: set[str] = set()
-        #: Reads the status of the plugin MCP servers; started at the
-        #: first ``init``.
+        self.header_variables: list[tuple[str, str, list[str]]] = []
         self.server_watch: asyncio.Task[None] | None = None
         self.session_id = ''
         self.control = 'run'
@@ -1494,8 +1506,7 @@ class TaskRun:
     def _load_servers(self, plugin: Body, path: pathlib.Path) -> None:
         """Remove the MCP servers that the agent turned off from the
         published plugin ``path``, then allow the others. A setting for
-        a server that the plugin does not have, and a header variable
-        with no value, get a task warning."""
+        a server that the plugin does not have gets a task warning."""
         label = str(plugin['plugin'])
         settings = typing.cast('Body', plugin.get('server_settings') or {})
         declared = _declared(path)
@@ -1518,12 +1529,20 @@ class TaskRun:
         name = _plugin_name(path, label)
         for server, config in _declared(path).items():
             self.plugin_server_names.add(f'plugin:{name}:{server}')
-            if variables := _unset_variables(config):
+            if variables := _header_variables(config):
+                self.header_variables.append((label, server, variables))
+
+    def note_unset_variables(self, env: abc.Mapping[str, str]) -> None:
+        """Warn about each plugin MCP server whose headers use a
+        variable with no default that ``env``, the environment of the
+        CLI, does not set."""
+        for label, server, variables in self.header_variables:
+            if unset := [name for name in variables if name not in env]:
                 self.recorder.notice(
                     f'The MCP server {server} of the plugin {label} uses '
-                    + ', '.join(f'${{{variable}}}' for variable in variables)
-                    + ' in a header with no value and no default, so the '
-                    'server gets no credential.'
+                    + ', '.join(f'${{{name}}}' for name in unset)
+                    + ' in a header, and the variable has no value and no '
+                    'default, so the server gets no credential.'
                 )
 
     def _manifest(
@@ -2101,6 +2120,7 @@ class TaskRun:
         wait (:meth:`_interrupt`).
         """
         options = self.options(proxy_url)
+        self.note_unset_variables({**os.environ, **options.env})
         self.transcripts.mkdir(mode=0o700, exist_ok=True)
         path = self.transcripts / f'{self.task["id"]}.jsonl'
         LOGGER.info('Running task %s', self.api.short_id)
@@ -2111,8 +2131,7 @@ class TaskRun:
                 try:
                     await self._converse(self.client, transcript)
                 finally:
-                    if self.server_watch is not None:
-                        self.server_watch.cancel()
+                    await self._stop_watch()
         self.client = None
         return self.result
 
@@ -2331,42 +2350,46 @@ class TaskRun:
             )
 
     async def _watch_servers(self, client: sdk.ClaudeSDKClient) -> None:
-        """Warn about each plugin MCP server that fails, needs
-        authentication, or is still pending after
-        :data:`MCP_STATUS_WAIT` seconds. The run cancels the watch when
-        the session ends, so a server that is pending then gets no
-        warning."""
+        """Warn about each plugin MCP server that fails or needs
+        authentication, and, :data:`MCP_STATUS_WAIT` seconds after the
+        watch starts, about each one that is still pending or did not
+        load. The run cancels the watch when the session ends, so a
+        server that is pending then gets no warning."""
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + MCP_STATUS_WAIT
         reported: set[str] = set()
-        waited = 0
+        latest: dict[str, Body] = {}
         while True:
             try:
-                status = await client.get_mcp_status()
+                status: typing.Any = await client.get_mcp_status()
             except Exception as error:  # noqa: BLE001
                 LOGGER.warning('Cannot read the MCP server status: %s', error)
                 return
-            servers = [
-                server
-                for server in status.get('mcpServers', [])
-                if server.get('name') in self.plugin_server_names
-            ]
-            for server in servers:
-                name = server.get('name')
+            for server in _statuses(status, self.plugin_server_names):
+                name = str(server['name'])
+                latest[name] = server
                 if server.get('status') in _MCP_PROBLEMS and (
                     name not in reported
                 ):
                     reported.add(name)
                     self._server_notice(server)
-            pending = [s for s in servers if s.get('status') == 'pending']
-            if not pending:
+            waiting = sorted(
+                name
+                for name in self.plugin_server_names
+                if latest.get(name, {}).get('status', 'pending') == 'pending'
+            )
+            if not waiting:
                 return
-            if waited >= MCP_STATUS_WAIT:
+            if loop.time() >= deadline:
                 break
             await asyncio.sleep(MCP_STATUS_INTERVAL)
-            waited += MCP_STATUS_INTERVAL
-        for server in pending:
-            self._server_notice(server)
+        for name in waiting:
+            if name in latest:
+                self._server_notice(latest[name])
+            else:
+                self.recorder.notice(f'The MCP server {name} did not load.')
 
-    def _server_notice(self, server: sdk.McpServerStatus) -> None:
+    def _server_notice(self, server: Body) -> None:
         """A task warning for a plugin MCP server: its name, status, and
         error. Never its config, whose headers can hold a secret."""
         error = server.get('error')
@@ -2374,6 +2397,19 @@ class TaskRun:
             f'The MCP server {server.get("name")} is {server.get("status")}'
             + (f': {error}' if error else '.')
         )
+
+    async def _stop_watch(self) -> None:
+        """Cancel the watch of the plugin MCP servers and wait for it,
+        so that an error in it is raised."""
+        if self.server_watch is None:
+            return
+        self.server_watch.cancel()
+        try:
+            await self.server_watch
+        except asyncio.CancelledError:
+            current = asyncio.current_task()
+            if current is not None and current.cancelling():
+                raise
 
     async def flush(self) -> None:
         """Send the recorded events (plan section 6.6).

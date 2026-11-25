@@ -144,11 +144,12 @@ name.
 While a task runs, the Conversation tab shows a warning, and the task goes
 on, when:
 
-- An MCP server of a plugin is `failed` or `needs-auth`, or still `pending`
-  60 seconds after the task starts. A task that ends sooner gets no
-  warning for a pending server.
-- A header of a server uses a `${VAR}` that has no value and no default.
-  Imbi does not give MCP servers secrets yet, so each such header warns.
+- An MCP server of a plugin is `failed` or `needs-auth`, or is still
+  `pending` or did not load 60 seconds after the agent session starts. A
+  task that ends sooner gets no warning for a pending server.
+- A header of a server uses a `${VAR}` that has no default and that the
+  Claude Code environment does not set. Imbi does not give MCP servers
+  secrets yet, so such a header gets no credential.
 - The agent turns off a server that the pinned plugin does not have.
 
 **Tools** lists two groups: **Built-in** and **Imbi**. The MCP
