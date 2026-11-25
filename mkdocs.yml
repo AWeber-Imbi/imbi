@@ -54,6 +54,7 @@ nav:
       - Documents and Reports: user-guide/documents-and-reports.md
       - Search and Assistant: user-guide/search-and-assistant.md
       - Your Settings: user-guide/settings.md
+  - Glossary: GLOSSARY.md
   - Administration:
       - Access:
           - Authentication: admin/authentication.md
