@@ -51,6 +51,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { RichMarkdown } from '@/components/ui/rich-markdown'
+import { Sk } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { UserIdentity } from '@/components/ui/user-identity'
 import { useHasPermission } from '@/hooks/useHasPermission'
@@ -227,8 +228,16 @@ export function TaskDetail({
     : 0
   const tabs: { count?: number | string; key: TabKey; label: string }[] = [
     { key: 'overview', label: 'Overview' },
-    { count: open, key: 'input', label: 'Input required' },
-    { count: trajectoryCount, key: 'activity', label: 'Activity' },
+    {
+      count: events.isPending ? undefined : open,
+      key: 'input',
+      label: 'Input required',
+    },
+    {
+      count: events.isPending ? undefined : trajectoryCount,
+      key: 'activity',
+      label: 'Activity',
+    },
     {
       count: failing ? `${failing} failing` : undefined,
       key: 'checks',
@@ -306,7 +315,13 @@ export function TaskDetail({
         <ToolbarLead.Provider
           value={view && <ActivityViewSwitch onChange={go} value={view} />}
         >
-          {view === 'conversation' ? (
+          {events.isPending &&
+          (view || current === 'input' || current === 'checks') ? (
+            // The log reads every page before it shows, which can take
+            // seconds for a long task. Until then these tabs would say
+            // that the task has no activity, input, or checks.
+            <LogSkeleton />
+          ) : view === 'conversation' ? (
             <ConversationTab
               events={log}
               footer={
@@ -385,6 +400,25 @@ function isRouteKey(value: unknown): value is RouteKey {
 /** The route an old tab name now opens. */
 function legacyRoute(tab: string | undefined): string | undefined {
   return tab === 'actions' ? 'conversation' : tab === 'log' ? 'trajectory' : tab
+}
+
+/** Rows shaped like log entries, shown while the task log loads. */
+function LogSkeleton() {
+  return (
+    <div
+      aria-busy
+      aria-label="Loading the task log"
+      className="flex flex-col gap-4 p-6"
+      role="status"
+    >
+      {['70%', '55%', '80%', '45%', '65%'].map((w, i) => (
+        <div className="flex items-center gap-3" key={i}>
+          <Sk circle h={14} w={14} />
+          <Sk line w={w} />
+        </div>
+      ))}
+    </div>
+  )
 }
 
 function OverviewTab({
