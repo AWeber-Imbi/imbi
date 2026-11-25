@@ -28,6 +28,7 @@ from imbi.common.plugins.base import WebhookSignature
 from imbi.plugins.grafana import links
 from imbi.plugins.grafana.doctor import GrafanaDoctor
 from imbi.plugins.grafana.lifecycle import GrafanaLifecycle
+from imbi.plugins.grafana.steps import GrafanaSteps
 
 #: The default Grafana HMAC signature header, lower case.
 SIGNATURE_HEADER = 'x-grafana-alerting-signature'
@@ -67,7 +68,7 @@ class GrafanaPlugin(plugins.Plugin):
             'verify their HMAC signature, and record each notification '
             'against its project.'
         ),
-        auth_type='none',
+        auth_type='api_token',
         # A gateway delivery finds its project by the label value.
         shareable_service_identifier=False,
         options=[
@@ -94,6 +95,17 @@ class GrafanaPlugin(plugins.Plugin):
                 ),
                 type='string',
                 default=links.DEFAULT_LABEL,
+            ),
+        ],
+        credentials=[
+            plugins.CredentialField(
+                name='api_token',
+                label='Service Account Token',
+                description=(
+                    'A Grafana service account token with the Viewer '
+                    'role. Only the workflow steps use it.'
+                ),
+                required=False,
             ),
         ],
         capabilities=[
@@ -130,6 +142,16 @@ class GrafanaPlugin(plugins.Plugin):
                     'repair.'
                 ),
                 handler=GrafanaDoctor,
+            ),
+            plugins.Capability(
+                kind='workflow-steps',
+                label='Workflow steps',
+                description=(
+                    'Workflow steps that read Prometheus metrics: gather '
+                    'metrics, and a metric threshold gate.'
+                ),
+                project_scoped=False,
+                handler=GrafanaSteps,
             ),
         ],
     )

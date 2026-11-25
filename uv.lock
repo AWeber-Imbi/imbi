@@ -1787,12 +1787,14 @@ name = "imbi-plugin-grafana"
 version = "2.62.1"
 source = { editable = "plugins/grafana" }
 dependencies = [
+    { name = "httpx" },
     { name = "imbi-common" },
     { name = "pydantic" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "httpx", specifier = ">=0.27" },
     { name = "imbi-common", editable = "libraries/common" },
     { name = "pydantic", specifier = ">=2" },
 ]

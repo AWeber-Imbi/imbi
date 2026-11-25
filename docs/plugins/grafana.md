@@ -14,15 +14,21 @@ example start a workflow.
 | `lifecycle` | Project lifecycle | On | Project-scoped. Events: `created`, `updated`, `deleted`. Supports lifecycle sync |
 | `webhook-actions` | Webhook actions | On | Project-scoped. Has no actions |
 | `analysis` | Project doctor | On | Project-scoped |
+| `workflow-steps` | Workflow steps | On | Organization. See [Workflow steps](#workflow-steps) |
 
 ## Configuration
 
-The plugin has no credentials. It never calls Grafana.
+Only the workflow steps call Grafana. The other capabilities use no
+credential.
 
 | Option | Required | Default | What it is |
 |---|---|---|---|
 | Grafana URL (`service_url`) | Yes | | Base URL of Grafana, for example `https://grafana.example.com`. Used for the alert rules link of each project |
 | Project label (`label`) | No | `service` | The alert rule label that names the project |
+
+| Credential | Required | What it is |
+|---|---|---|
+| Service Account Token (`api_token`) | No | A Grafana service account token with the `Viewer` role. The workflow steps need it |
 
 ## How a project is linked
 
@@ -55,7 +61,7 @@ label so each delivery carries one value.
 | `identifier` | `warn` | The identifier differs from the project slug, for example after a rename or a manual edit | **Use the project slug as the identifier** rewrites the edge. Alert rules labelled with the old value stop matching |
 
 The doctor cannot confirm that alert rules with the label exist, because
-the plugin has no Grafana credentials. Neither fix is sweepable.
+the doctor does not call Grafana. Neither fix is sweepable.
 
 ## The delivery
 
@@ -146,6 +152,24 @@ example `payload.status == "firing"` or
 None. The capability has no actions. imbi-gateway records Grafana
 deliveries as events.
 
+## Workflow steps
+
+The workflow steps read Prometheus metrics through a Grafana data
+source. They need the `api_token` credential. They send requests only
+to the **Grafana URL** of the integration.
+
+| Type | Kind | What it does |
+|---|---|---|
+| `grafana.gather_metrics` | Action | Runs a PromQL range query from `start` (default `now-1h`) to `end` (default `now`), with a step of `step_seconds` (default 60). The output has up to 50 series of up to 500 points, a `summary` with the min, max, and last value of each series, and `truncated` |
+| `grafana.metric_threshold` | Gate | Runs an instant PromQL query that gives one value. When `value <operator> threshold` is true (`lt`, `lte`, `gt`, or `gte`), it takes the `Pass` port. Otherwise it polls each 60 seconds. After 30 minutes it takes the `Failed` port |
+
+The **Data source** field lists the Prometheus data sources of Grafana.
+For the gate, reduce the query to one series, for example with `sum()`
+or `max()`. A query that gives more than one series fails the step. A
+query that gives no value, or `NaN`, polls again.
+
+See [Workflow Steps Capability](../common/plugins/workflow-steps.md).
+
 ## Known limits
 
 - The signature header and scheme are fixed in the plugin. A contact
@@ -156,5 +180,5 @@ deliveries as events.
 - One delivery can carry many alerts. The identifier selector reads one
   value, so group the notification policy by the label that names the
   project.
-- The plugin never calls Grafana. It cannot create alert rules, add the
-  label to them, or confirm that labelled rules exist.
+- The plugin cannot create alert rules, add the label to them, or
+  confirm that labelled rules exist.

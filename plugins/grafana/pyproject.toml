@@ -17,6 +17,7 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
+  "httpx>=0.27",
   "imbi-common==2.62.1",
   "pydantic>=2",
 ]

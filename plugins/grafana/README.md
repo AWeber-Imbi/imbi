@@ -75,8 +75,17 @@ moon run grafana:test   # coverage (fails under 85%)
 moon run grafana:lint grafana:typecheck grafana:format   # ruff + basedpyright + format check
 ```
 
-The plugin needs no credentials (`auth_type='none'`): it never calls
-Grafana.
+Only the workflow steps call Grafana. They need the optional
+`api_token` credential (a service account token with the `Viewer`
+role) and send requests only to `service_url`. They use these Grafana
+APIs:
+
+- `GET /api/datasources` and `POST /api/ds/query`:
+  <https://grafana.com/docs/grafana/latest/developers/http_api/data_source/>
+- The Prometheus query fields (`expr`, `range`, `instant`):
+  <https://grafana.com/docs/grafana/latest/datasources/prometheus/query-editor/>
+  and
+  <https://grafana.github.io/grafana-foundation-sdk/typescript/Reference/prometheus/object-dataquery>
 
 ## License
 

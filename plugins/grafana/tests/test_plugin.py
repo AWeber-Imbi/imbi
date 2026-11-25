@@ -60,14 +60,15 @@ class ManifestTestCase(unittest.TestCase):
     def test_manifest(self) -> None:
         manifest = imbi.plugins.grafana.PLUGIN.manifest
         self.assertEqual('grafana', manifest.slug)
-        self.assertEqual('none', manifest.auth_type)
-        self.assertEqual([], manifest.credentials)
+        self.assertEqual('api_token', manifest.auth_type)
+        self.assertEqual(['api_token'], [c.name for c in manifest.credentials])
+        self.assertFalse(manifest.credentials[0].required)
         self.assertFalse(manifest.shareable_service_identifier)
         self.assertEqual(
             ['service_url', 'label'], [o.name for o in manifest.options]
         )
         self.assertEqual(
-            ['lifecycle', 'webhook-actions', 'analysis'],
+            ['lifecycle', 'webhook-actions', 'analysis', 'workflow-steps'],
             [c.kind for c in manifest.capabilities],
         )
         capability = manifest.get_capability('webhook-actions')
