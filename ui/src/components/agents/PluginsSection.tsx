@@ -23,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { useHasPermission } from '@/hooks/useHasPermission'
 import { queryKeys } from '@/lib/queryKeys'
 import type { AgentMarketplace, AgentPlugin, CatalogServer } from '@/types'
 
@@ -30,10 +31,8 @@ import { bindingOf, canSupplyRunner, covers, fieldReferences } from './access'
 import type { SettingsDraft } from './agentDraft'
 import { type GrantAgent, useAgentGrant } from './useAgentGrant'
 
-// The runner resolves header secrets with this purpose (ADR 0031).
 const HEADER_PURPOSE = 'mcp_header'
 
-// Radix Select refuses an empty item value.
 const NO_SECRET = '__none__'
 
 type ChangeSetting = (setting: ServerSetting) => ServerSetting
@@ -42,7 +41,6 @@ type ServerSetting = AgentPlugin['server_settings'][string]
 
 const DEFAULT_SETTING: ServerSetting = { enabled: true, secrets: {} }
 
-/** What a header secret picker offers, and the grants it can add. */
 interface HeaderPicker {
   bindings: SecretBinding[]
   canGrant: (binding: SecretBinding) => boolean
@@ -50,6 +48,7 @@ interface HeaderPicker {
   grant: (reference: string) => void
   isPending: boolean
   loaded: boolean
+  missing: null | string
   references: string[]
   showGrant: boolean
 }
@@ -72,7 +71,6 @@ const entry = (
 const same = (p: AgentPlugin, marketplace: string, plugin: string) =>
   p.marketplace === marketplace && p.plugin === plugin
 
-/** The origin of an https URL; null for any other URL. */
 const httpsOrigin = (url?: null | string): null | string => {
   try {
     const parsed = new URL(url ?? '')
@@ -85,17 +83,11 @@ const httpsOrigin = (url?: null | string): null | string => {
 const hasSecrets = (setting?: ServerSetting) =>
   Object.keys(setting?.secrets ?? {}).length > 0
 
-/** The header variables of a server that the runner can relay. */
 const headerVariables = (server: CatalogServer): string[] =>
   server.type === 'http' || server.type === 'sse'
     ? [...new Set(Object.values(server.headers).flat())]
     : []
 
-/**
- * The setting with one header variable mapped to a reference, or
- * unmapped. The secrets were picked for the URL at `origin`, so the
- * secrets picked for another origin go.
- */
 const withSecret = (
   setting: ServerSetting,
   variable: string,
@@ -108,7 +100,6 @@ const withSecret = (
   return { ...setting, origin, secrets }
 }
 
-/** The setting to store, or null when it changes nothing. */
 const settled = (setting: ServerSetting): null | ServerSetting => {
   if (hasSecrets(setting)) return setting
   return setting.enabled ? null : { enabled: false, secrets: {} }
@@ -120,10 +111,8 @@ const settled = (setting: ServerSetting): null | ServerSetting => {
  * configuration is the upper limit; the API pins each plugin to a
  * marketplace commit. A plugin's MCP servers come with it: while the
  * plugin is on, the agent can use all of their tools, unless it turns a
- * server off. A server's header variables can take secrets, which the
- * runner sends only to the origin that the person saw (ADR 0031). A
- * server setting of a default plugin adds an agent entry for the
- * plugin, which holds only the server settings.
+ * server off. Turning off a server of a default plugin adds an agent
+ * entry for the plugin, which holds only the server settings.
  */
 export function PluginsSection({
   agent,
@@ -142,8 +131,10 @@ export function PluginsSection({
     queryKey: queryKeys.agentMarketplaces(orgSlug),
   })
   const access = useAgentGrant(orgSlug, agent)
+  const canReadProviders = useHasPermission('secret_provider:read', orgSlug)
+  const canList = access.canRead && canReadProviders
   const providers = useQuery({
-    enabled: access.canRead,
+    enabled: canList,
     queryFn: ({ signal }) => listSecretProviders(orgSlug, signal),
     queryKey: ['secret-providers', orgSlug],
   })
@@ -198,10 +189,9 @@ export function PluginsSection({
     }
   }
 
-  // GitHub App bindings do not serve mcp_header.
-  const appProviders = new Set(
+  const headerProviders = new Set(
     (providers.data ?? [])
-      .filter((provider) => provider.type === 'github_app')
+      .filter((provider) => provider.enabled && provider.type !== 'github_app')
       .map((provider) => provider.id),
   )
   const bindings = access.bindings.data ?? []
@@ -215,14 +205,19 @@ export function PluginsSection({
       if (binding) access.ensure(binding, HEADER_PURPOSE, 'file_descriptor')
     },
     isPending: access.save.isPending,
-    loaded: access.bindings.isSuccess && providers.isSuccess,
-    references: providers.isSuccess
-      ? fieldReferences(
-          bindings.filter(
-            (b) => canSupplyRunner(b) && !appProviders.has(b.provider_id),
-          ),
-        )
-      : [],
+    loaded:
+      access.bindings.isSuccess &&
+      access.grants.isSuccess &&
+      providers.isSuccess,
+    missing: canList
+      ? null
+      : 'You need secret_binding:read, secret_grant:read, and secret_provider:read to pick secrets.',
+    references: fieldReferences(
+      bindings.filter(
+        (binding) =>
+          canSupplyRunner(binding) && headerProviders.has(binding.provider_id),
+      ),
+    ),
     showGrant: Boolean(agent) && access.canRead,
   }
 
@@ -303,7 +298,6 @@ function HeaderSecret({
   variable: string
 }) {
   const usable = picker.references.includes(value)
-  // Keep a saved value visible after its binding is gone or disabled.
   const options =
     value && !usable ? [...picker.references, value] : picker.references
   const binding = usable ? bindingOf(picker.bindings, value) : undefined
@@ -417,8 +411,10 @@ function MarketplacePlugins({
               !!head &&
               (pin.sha !== head ||
                 (external && pin.url !== plugin.repository_url))
-            const stale = !isDefault && behind
             const saved = !!pin?.sha && pin.mcp_servers.length > 0
+            const legacy = !!pin?.sha && !saved && plugin.mcp_servers.length > 0
+            const repinnable =
+              !isDefault && !!chosen && !!head && (behind || legacy)
             return (
               <li
                 className="flex items-start gap-3 px-3 py-2"
@@ -455,7 +451,7 @@ function MarketplacePlugins({
                         pinned {short(chosen.sha)}
                       </span>
                     )}
-                    {stale && chosen && (
+                    {repinnable && chosen && (
                       <button
                         className="text-action text-xs hover:underline"
                         onClick={() => onRepin(chosen)}
@@ -473,6 +469,13 @@ function MarketplacePlugins({
                   <PluginServers
                     enabled={isDefault || !!chosen}
                     label={plugin.name}
+                    locked={
+                      legacy
+                        ? isDefault
+                          ? 'Secrets need a new pin of this default plugin by the organization.'
+                          : 'Pin the plugin again to pick secrets for its servers.'
+                        : null
+                    }
                     note={
                       !saved && behind
                         ? `Servers at ${short(head)}. This agent runs ${short(pin?.sha)}.`
@@ -500,6 +503,7 @@ function MarketplacePlugins({
 function PluginServers({
   enabled,
   label,
+  locked,
   note,
   onServer,
   picker,
@@ -508,6 +512,7 @@ function PluginServers({
 }: {
   enabled: boolean
   label: string
+  locked: null | string
   note: null | string
   onServer: (server: string, change: ChangeSetting) => void
   picker: HeaderPicker
@@ -554,6 +559,7 @@ function PluginServers({
                 <ServerSecrets
                   disabled={!on}
                   label={`${label} ${server.name}`}
+                  locked={locked}
                   onChange={change}
                   picker={picker}
                   server={server}
@@ -589,15 +595,10 @@ function PluginServers({
   )
 }
 
-/**
- * A secret picker for each header variable of an http or sse server.
- * The setting records the origin of the URL in this row. When the URL
- * has moved to another origin, the saved secrets do not show, so the
- * person picks them again for the new origin.
- */
 function ServerSecrets({
   disabled,
   label,
+  locked,
   onChange,
   picker,
   server,
@@ -605,6 +606,7 @@ function ServerSecrets({
 }: {
   disabled: boolean
   label: string
+  locked: null | string
   onChange: (change: ChangeSetting) => void
   picker: HeaderPicker
   server: CatalogServer
@@ -614,6 +616,7 @@ function ServerSecrets({
   const origin = httpsOrigin(server.url)
   const moved = hasSecrets(setting) && setting?.origin !== origin
   if (variables.length === 0 && !moved) return null
+  if (locked) return <p className="text-tertiary ml-6 text-xs">{locked}</p>
   return (
     <div className="ml-6 flex flex-col gap-1">
       {moved && (
@@ -632,7 +635,7 @@ function ServerSecrets({
       {origin
         ? variables.map((variable) => (
             <HeaderSecret
-              disabled={disabled || picker.isPending}
+              disabled={disabled || !picker.loaded || picker.isPending}
               key={variable}
               label={`${label} header ${variable}`}
               onChange={(reference) => {
@@ -651,6 +654,9 @@ function ServerSecrets({
               Imbi sends header secrets only to an https URL.
             </p>
           )}
+      {origin && variables.length > 0 && picker.missing && (
+        <p className="text-tertiary text-xs">{picker.missing}</p>
+      )}
     </div>
   )
 }

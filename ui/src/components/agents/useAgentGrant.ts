@@ -23,10 +23,6 @@ export interface GrantAgent {
   team?: string
 }
 
-/**
- * The secret grants of an agent, and the grants that the user can add.
- * Grants apply at once; they are not part of the agent version.
- */
 export function useAgentGrant(orgSlug: string, agent: GrantAgent | null) {
   const canReadGrants = useHasPermission('secret_grant:read', orgSlug)
   const canReadBindings = useHasPermission('secret_binding:read', orgSlug)
@@ -84,7 +80,7 @@ export function useAgentGrant(orgSlug: string, agent: GrantAgent | null) {
     mode: SecretGrantCreate['delivery_modes'][number],
     done?: () => void,
   ) => {
-    if (!agent || !canGrant(binding)) return
+    if (!agent || !grants.isSuccess || !canGrant(binding)) return
     if (covers(mine, binding.id, purpose, mode)) return
     save.mutate(
       {

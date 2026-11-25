@@ -71,20 +71,14 @@ export function agentGrants(
   return grants.filter((g) => g.enabled && g.agent_ids.includes(agentId))
 }
 
-/** The binding that a `secret://` reference, with or without a field, names. */
 export function bindingOf(
   bindings: SecretBinding[],
   reference: string,
 ): SecretBinding | undefined {
   const [bindingReference] = reference.split('#')
-  return bindings.find((b) => b.reference === bindingReference)
+  return bindings.find((binding) => binding.reference === bindingReference)
 }
 
-/**
- * The broker gives the runner a setup secret only from an enabled
- * binding that allows file_descriptor delivery and is not a provider
- * key.
- */
 export function canSupplyRunner(binding: SecretBinding): boolean {
   return (
     binding.enabled &&
@@ -93,7 +87,10 @@ export function canSupplyRunner(binding: SecretBinding): boolean {
   )
 }
 
-/** The first grant that allows the binding for the purpose and mode. */
+/**
+ * The first grant that allows the binding for the purpose and mode, for
+ * any project.
+ */
 export function coveringGrant(
   grants: SecretGrant[],
   bindingId: string,
@@ -104,11 +101,15 @@ export function coveringGrant(
     (g) =>
       g.binding_ids.includes(bindingId) &&
       g.purposes.includes(purpose) &&
-      g.delivery_modes.includes(mode),
+      g.delivery_modes.includes(mode) &&
+      g.project_ids.length === 0,
   )
 }
 
-/** Whether a grant allows the binding for the purpose and mode. */
+/**
+ * Whether a grant allows the binding for the purpose and mode, for any
+ * project.
+ */
 export function covers(
   grants: SecretGrant[],
   bindingId: string,
@@ -118,15 +119,11 @@ export function covers(
   return coveringGrant(grants, bindingId, purpose, mode) !== undefined
 }
 
-/**
- * The references that a picker offers. A binding with a field list
- * gives only those fields, so the reference must name one of them.
- */
 export function fieldReferences(bindings: SecretBinding[]): string[] {
-  return bindings.flatMap((b) =>
-    b.allowed_fields.length
-      ? b.allowed_fields.map((field) => `${b.reference}#${field}`)
-      : [b.reference],
+  return bindings.flatMap((binding) =>
+    binding.allowed_fields.length
+      ? binding.allowed_fields.map((field) => `${binding.reference}#${field}`)
+      : [binding.reference],
   )
 }
 

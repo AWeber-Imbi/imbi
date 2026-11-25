@@ -150,6 +150,13 @@ binding. For a binding with a field list, pick a field.
   grant applies at once and is not part of the agent version. The
   picker shows whether a grant allows it, and **Grant** when it does
   not. For a new agent, save first, then click **Grant**.
+- A grant for some projects only does not count, because a task for
+  another project would get no secret.
+- The pickers need `secret_binding:read`, `secret_grant:read`, and
+  `secret_provider:read`.
+- A plugin pinned before Imbi saved its server list shows no pickers.
+  Click **Pin**, then save, to pin it again. For a default plugin, the
+  organization must pin it again.
 - Choose **No secret** to unmap a variable. A server that is on and has
   no secrets needs no setting, so the save drops it.
 - Turning a server off keeps its secrets for when you turn it on again.
