@@ -959,8 +959,8 @@ async def execute_opslog_organization_backfill(
     The new version is the read version plus one, the lowest version
     that replaces the row. A concurrent write (a completion, a patch, a
     delete) gets its version from :func:`next_row_version`, which is
-    also above the read version and is a millisecond clock, so it wins
-    over this row and is not lost. That write can keep an empty
+    at least the read version plus two, so it wins over this row and is
+    not lost. That write can keep an empty
     ``organization_id``; the next run fills it in, so run the operation
     again until it writes nothing.
     """

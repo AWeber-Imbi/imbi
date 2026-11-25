@@ -382,10 +382,14 @@ def next_row_version(current_version: int) -> int:
     strictly-increasing versions; the result is also kept greater than
     ``current_version`` to remain safe against any older/current values
     already in ClickHouse.
+
+    The result is at least ``current_version + 2``. The organization
+    backfill writes ``current_version + 1``, so a write that read the
+    same row always gets a higher version than the backfill and wins.
     """
     global _row_version_last
     now_ms = int(datetime.datetime.now(datetime.UTC).timestamp() * 1000)
-    candidate = max(now_ms, _row_version_last + 1, current_version + 1)
+    candidate = max(now_ms, _row_version_last + 1, current_version + 2)
     _row_version_last = candidate
     return candidate
 

@@ -1219,12 +1219,11 @@ async def _record_deployment_audit(
     the request, looks it up first, so a failed lookup stops the request
     before the change.
     """
+    if organization_id is None:
+        organization_id = await lookup_project_organization_id(db, project_id)
     entry = deployed_operation_log(
         project_id=project_id,
-        organization_id=(
-            organization_id
-            or await lookup_project_organization_id(db, project_id)
-        ),
+        organization_id=organization_id,
         project_slug=project_slug,
         environment_slug=environment_slug,
         recorded_by=recorded_by,

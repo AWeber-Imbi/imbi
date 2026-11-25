@@ -927,8 +927,9 @@ class OrganizationScopeTests(support.SharedAppAsyncTestCase):
         wins, and the next run fills the organization in on it."""
         await self._insert('raced', '')
         stale = await imbi_clickhouse.query(
-            'SELECT * FROM operations_log FINAL WHERE id = {id:String}',
-            {'id': 'raced'},
+            'SELECT * FROM operations_log FINAL WHERE id = {id:String}'
+            ' AND project_id = {pid:String}',
+            {'id': 'raced', 'pid': self.project},
         )
         # A completion lands after the backfill read the row.
         await imbi_clickhouse.command(
@@ -969,16 +970,29 @@ class OrganizationScopeTests(support.SharedAppAsyncTestCase):
             )
         sql = (
             'SELECT description, organization_id FROM operations_log FINAL'
-            ' WHERE id = {id:String}'
+            ' WHERE id = {id:String} AND project_id = {pid:String}'
         )
+        params = {'id': 'raced', 'pid': self.project}
         self.assertEqual(
             [{'description': 'completed', 'organization_id': ''}],
-            await imbi_clickhouse.query(sql, {'id': 'raced'}),
+            await imbi_clickhouse.query(sql, params),
         )
         await operations.execute_opslog_organization_backfill(
             mock.AsyncMock(), mock.AsyncMock(), self.project, ctx=ctx
         )
         self.assertEqual(
             [{'description': 'completed', 'organization_id': self.org_a}],
-            await imbi_clickhouse.query(sql, {'id': 'raced'}),
+            await imbi_clickhouse.query(sql, params),
         )
+
+
+class NextRowVersionTestCase(unittest.TestCase):
+    def test_stays_above_the_backfill_version(self) -> None:
+        """A version above the clock and the guard still gets two more
+        than the read version, so it beats the backfill's ``v + 1``."""
+        read_version = 10**15
+        with mock.patch.object(operations_log, '_row_version_last', 0):
+            self.assertEqual(
+                read_version + 2,
+                operations_log.next_row_version(read_version),
+            )
