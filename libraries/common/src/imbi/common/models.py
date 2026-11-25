@@ -1441,6 +1441,22 @@ class CatalogServer(pydantic.BaseModel):
     headers: dict[str, list[str]] = {}
 
 
+def _server_names(value: object) -> object:
+    """Read a server list that the marketplace sync wrote before it
+    stored servers: names only."""
+    if not isinstance(value, list):
+        return value
+    return [
+        {'name': item} if isinstance(item, str) else item
+        for item in typing.cast('list[object]', value)
+    ]
+
+
+CatalogServers = typing.Annotated[
+    list[CatalogServer], pydantic.BeforeValidator(_server_names)
+]
+
+
 class ServerSetting(pydantic.BaseModel):
     """An agent's setting for one MCP server of a plugin."""
 
@@ -1468,7 +1484,7 @@ class AgentPlugin(pydantic.BaseModel):
     sha: str | None = None
     #: The plugin directory, relative to the root of ``url``.
     path: str | None = None
-    mcp_servers: list[CatalogServer] = []
+    mcp_servers: CatalogServers = []
     server_settings: dict[str, ServerSetting] = {}
 
     @pydantic.field_validator('server_settings')

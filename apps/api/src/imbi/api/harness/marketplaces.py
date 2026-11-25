@@ -66,7 +66,7 @@ class CatalogPlugin(pydantic.BaseModel):
     #: ``None`` when the sync could not resolve it.
     repository_sha: str | None = None
     #: The MCP servers that the harness loads for the plugin.
-    mcp_servers: list[models.CatalogServer] = []
+    mcp_servers: models.CatalogServers = []
 
 
 class Catalog(pydantic.BaseModel):

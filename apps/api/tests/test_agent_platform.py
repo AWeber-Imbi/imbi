@@ -716,6 +716,22 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
             {'listed': {}, 'repeated': {'A': ['A'], 'B': []}},
         )
 
+    def test_legacy_rows_parse(self) -> None:
+        plugin = marketplaces.CatalogPlugin.model_validate(
+            {
+                'name': 'grafana',
+                'source': './grafana',
+                'mcp_servers': ['grafana', {'name': 'tempo', 'type': 'http'}],
+            }
+        )
+        self.assertEqual(
+            plugin.mcp_servers,
+            [
+                models.CatalogServer(name='grafana'),
+                models.CatalogServer(name='tempo', type='http'),
+            ],
+        )
+
 
 class FileReaderTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
@@ -1388,6 +1404,27 @@ class PinServerSettingsTests(unittest.TestCase):
                 ),
                 models.CatalogServer(name='tempo'),
             ],
+        )
+        self.assertEqual(plugin.server_settings, self.off('grafana'))
+
+    def test_a_legacy_catalog_entry_saves_server_names(self) -> None:
+        catalog = _marketplace()
+        catalog['plugins'] = [
+            {'name': 'ops', 'path': 'plugins/ops', 'mcp_servers': ['grafana']}
+        ]
+        (plugin,) = platform.pin_plugins(
+            [
+                models.AgentPlugin(
+                    marketplace='tools',
+                    plugin='ops',
+                    server_settings=self.off('grafana', 'tempo'),
+                )
+            ],
+            [],
+            {'tools': catalog},
+        )
+        self.assertEqual(
+            plugin.mcp_servers, [models.CatalogServer(name='grafana')]
         )
         self.assertEqual(plugin.server_settings, self.off('grafana'))
 
