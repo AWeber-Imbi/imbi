@@ -134,8 +134,9 @@ The runner has these parts:
   permissions of the agent's service account on each call. See
   [Agent API tokens](security.md#agent-api-tokens).
 - **Default tools.** Every agent has a set of read-only Imbi tools:
-  projects, search, documents, tickets, the project operations log,
-  pull requests, and drift. `DEFAULT_ROUTES` in
+  projects and their relationships, search, documents, tickets, the
+  project operations log, pull requests, drift, environments, releases,
+  deployments, and components. `DEFAULT_ROUTES` in
   `imbi.api.agent_tools` lists their routes. imbi-api adds them to the
   tool map of the bundle, so the runner and the tool call check see
   them. A tool map entry for a default tool sets its configuration

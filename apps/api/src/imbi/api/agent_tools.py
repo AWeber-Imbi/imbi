@@ -81,6 +81,41 @@ DEFAULT_ROUTES: frozenset[str] = frozenset(
         'recent-commits',
         'GET /organizations/{org_slug}/projects/{project_id}/deployments/'
         'refs/{ref:path}/commits',
+        # Environments
+        'GET /organizations/{org_slug}/environments/',
+        'GET /organizations/{org_slug}/environments/{slug}',
+        'GET /organizations/{org_slug}/environments/{slug}/edges/{rel_type}',
+        # Releases
+        'GET /organizations/{org_slug}/projects/{project_id}/releases/',
+        'GET /organizations/{org_slug}/projects/{project_id}/releases/current',
+        'GET /organizations/{org_slug}/projects/{project_id}/releases/'
+        '{release_id}',
+        'GET /organizations/{org_slug}/projects/{project_id}/releases/'
+        '{release_id}/dependencies',
+        'GET /organizations/{org_slug}/projects/{project_id}/deployments/'
+        'release-history',
+        'GET /organizations/{org_slug}/projects/{project_id}/deployments/'
+        'releases/{tag}/blockers',
+        # Deployments
+        'GET /organizations/{org_slug}/projects/{project_id}/releases/'
+        '{release_id}/environments',
+        'GET /organizations/{org_slug}/projects/{project_id}/releases/'
+        '{release_id}/environments/{env_slug}',
+        'GET /organizations/{org_slug}/projects/{project_id}/deployments/'
+        'environments/{env_slug}/deployments/{deployment_id}',
+        'GET /organizations/{org_slug}/projects/{project_id}/deployments/'
+        'runs/{run_id}',
+        'GET /organizations/{org_slug}/projects/{project_id}/deployments/'
+        'sync-status',
+        'GET /organizations/{org_slug}/pull-requests/pending-deploy',
+        # Components
+        'GET /organizations/{org_slug}/components/',
+        'GET /organizations/{org_slug}/components/{component_id}/usage',
+        'GET /organizations/{org_slug}/component-releases/'
+        '{component_release_id}/notes',
+        'GET /organizations/{org_slug}/component-releases/'
+        '{component_release_id}/advisories',
+        'GET /cves/{cve_id}',
     }
 )
 
