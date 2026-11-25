@@ -168,13 +168,13 @@ def drift_labels(project: Json) -> list[str]:
 
 def _context(*facts: object) -> blocks.Block:
     text = ' · '.join(blocks.escape(str(f)) for f in facts if f)
-    return {
-        'type': 'context',
-        'elements': [
-            {'type': 'image', 'image_url': LOGO_URL, 'alt_text': 'Imbi'},
-            blocks.mrkdwn(text, blocks.CONTEXT_TEXT),
-        ],
-    }
+    elements: list[blocks.Block] = [
+        {'type': 'image', 'image_url': LOGO_URL, 'alt_text': 'Imbi'}
+    ]
+    # Slack refuses an empty text element, and with it the whole unfurl.
+    if text:
+        elements.append(blocks.mrkdwn(text, blocks.CONTEXT_TEXT))
+    return {'type': 'context', 'elements': elements}
 
 
 async def handle(event: Json, client: SlackClient) -> None:

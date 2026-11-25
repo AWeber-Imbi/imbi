@@ -108,6 +108,10 @@ class BlockTests(helpers.TestCase):
             unfurl.ticket_blocks(TICKET, TICKET_URL),
         )
 
+    def test_ticket_without_team(self) -> None:
+        result = unfurl.ticket_blocks({**TICKET, 'team': None}, TICKET_URL)
+        self.assertEqual([LOGO], result[1]['elements'])
+
     def test_ticket_without_assignee(self) -> None:
         result = unfurl.ticket_blocks({**TICKET, 'assignee': None}, TICKET_URL)
         self.assertEqual(
