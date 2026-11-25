@@ -83,6 +83,11 @@ class ListSkillsTestCase(unittest.IsolatedAsyncioTestCase):
         db.execute.side_effect = RuntimeError('down')
         self.assertEqual([], await skills.list_skills(db))
 
+    async def test_malformed_record_gives_no_skills(self) -> None:
+        db = mock.AsyncMock()
+        db.execute.return_value = [{'p': _vertex('bad', labels=[{'x': 1}])}]
+        self.assertEqual([], await skills.list_skills(db))
+
 
 class CatalogTestCase(unittest.TestCase):
     def test_catalog(self) -> None:
@@ -176,6 +181,14 @@ class ExecuteTestCase(unittest.IsolatedAsyncioTestCase):
                 )
                 self.assertTrue(is_error)
                 self.assertIn(str(error), text)
+        with mock.patch.object(
+            resolve,
+            'fetch_prompt',
+            mock.AsyncMock(side_effect=OSError('db down')),
+        ):
+            text, is_error = await skills.execute(mock.Mock(), {'name': 't'})
+        self.assertTrue(is_error)
+        self.assertNotIn('db down', text)
         invoke = mock.AsyncMock(return_value='Go')
         db = mock.Mock()
         with mock.patch.object(skills, 'invoke', invoke):

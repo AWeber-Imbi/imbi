@@ -105,7 +105,9 @@ message. Decision prompts in the namespace are ignored.
 You can also ask the bot to create or change a skill. It uses the prompt
 API with your token, so you need `prompt:create` (or `prompt:update`).
 When you cannot promote, the new version gets no label, and an admin
-must point `stable` at it before the bot uses it.
+must point `stable` at it before the bot uses it. The name and
+description go into every user's system prompt, so a change to the name
+or description of a skill needs `prompt:promote`.
 
 ## Decision prompts
 

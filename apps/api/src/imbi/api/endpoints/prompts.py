@@ -47,7 +47,7 @@ from imbi.common.auth import permissions as common_permissions
 from imbi.common.auth.encryption import decrypt_config_value
 from imbi.common.graph import cypher as graph_cypher
 from imbi.common.llm import drivers, generate, typesafe
-from imbi.common.prompts import rendering
+from imbi.common.prompts import rendering, skills
 from imbi.common.prompts import resolve as prompt_resolve
 from imbi.common.workflows.registry import agent, llm_call
 
@@ -1976,11 +1976,15 @@ async def patch_prompt(
 
     Renaming ``namespace`` or ``slug`` changes the reference every
     consumer uses, and frees the old reference for another prompt. So
-    a rename requires ``prompt:promote``, like a label move.
+    a rename requires ``prompt:promote``, like a label move. The
+    ``name`` and ``description`` of a skill go into the system prompt
+    of every consumer, so a change to them also requires
+    ``prompt:promote``.
 
     Raises:
         400: Invalid patch or a read-only path.
-        403: A rename without ``prompt:promote``.
+        403: A rename, or a change to the name or description of a
+            skill, without ``prompt:promote``.
         404: No such prompt.
         409: The new ``namespace/slug`` is taken, the rename moves
             a prompt into or out of the ``workflows`` namespace, or the
@@ -2002,10 +2006,22 @@ async def patch_prompt(
         raise _unprocessable(f'Validation error: {e.errors()}') from e
     if not re.match(models.PROMPT_NAME_PATTERN, updated.slug):
         raise _unprocessable(f'Slug {updated.slug!r} is not valid')
+    can_promote = auth.is_admin or 'prompt:promote' in auth.permissions
+    if (
+        namespace == skills.NAMESPACE
+        and (updated.name, updated.description)
+        != (prompt.name, prompt.description)
+        and not can_promote
+    ):
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail='Changing the name or description of a skill requires '
+            'prompt:promote',
+        )
     if (updated.namespace, updated.slug) != (namespace, slug):
         if WORKFLOWS_NAMESPACE in (namespace, updated.namespace):
             raise _workflow_prompt_locked()
-        if not (auth.is_admin or 'prompt:promote' in auth.permissions):
+        if not can_promote:
             raise fastapi.HTTPException(
                 status_code=403,
                 detail='Renaming a prompt requires prompt:promote',

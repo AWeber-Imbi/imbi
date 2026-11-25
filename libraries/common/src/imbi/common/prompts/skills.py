@@ -64,14 +64,14 @@ async def list_skills(db: graph.Graph | None) -> list[models.Prompt]:
             {'namespace': NAMESPACE},
             ['p', 'latest'],
         )
+        prompts = [
+            resolve.parse_prompt(props)
+            for record in records
+            if (props := resolve.vertex_props(record['p'])) is not None
+        ]
     except Exception:  # noqa: BLE001 - a turn must never fail on this
         LOGGER.warning('Failed to list the skills', exc_info=True)
         return []
-    prompts = [
-        resolve.parse_prompt(props)
-        for record in records
-        if (props := resolve.vertex_props(record['p'])) is not None
-    ]
     # Only a promoted skill is listed: the description goes into every
     # user's system prompt, and a prompt:create holder can write one
     # without a label.
@@ -163,4 +163,7 @@ async def execute(
         )
     except (resolve.PromptError, rendering.RenderError) as exc:
         return f'ERROR: {exc}', True
+    except Exception:  # a turn must never fail on this
+        LOGGER.exception('Failed to invoke a skill')
+        return 'ERROR: the skill could not be loaded right now.', True
     return text, False

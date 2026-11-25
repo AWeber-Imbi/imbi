@@ -11,6 +11,7 @@ from apps.api.tests.endpoints import test_ai_providers as provider_tests
 from imbi.api import model_calls, workflows
 from imbi.api.endpoints import projects, prompts
 from imbi.common import graph
+from imbi.common.prompts import skills
 
 ORG = provider_tests.ORG
 BASE = '/prompts'
@@ -668,6 +669,24 @@ class PatchPromptTestCase(PromptTestBase):
             json=[{'op': 'replace', 'path': '/slug', 'value': 'other'}],
         )
         self.assertEqual(response.status_code, 403)
+
+    def test_skill_description_needs_promote(self) -> None:
+        # A skill's description goes into every consumer's system
+        # prompt, so changing it needs prompt:promote, like a label move.
+        patch = [{'op': 'replace', 'path': '/description', 'value': 'X'}]
+        for namespace, granted, status in (
+            (skills.NAMESPACE, ('prompt:update',), 403),
+            (skills.NAMESPACE, ('prompt:update', 'prompt:promote'), 200),
+            ('mender', ('prompt:update',), 200),
+        ):
+            with self.subTest(namespace=namespace, granted=granted):
+                self.as_principal(*granted)
+                row = prompt_row(namespace=namespace)
+                self.route((GET_PROMPT, row), (UPDATE, row))
+                response = self.client.patch(
+                    f'{BASE}/{namespace}/core', json=patch
+                )
+                self.assertEqual(response.status_code, status, response.text)
 
     def test_rename_to_taken_ref_is_409(self) -> None:
         self.route(
