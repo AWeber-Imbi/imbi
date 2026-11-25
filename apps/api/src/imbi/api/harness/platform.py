@@ -237,8 +237,9 @@ def merge(
 
     Each value is the stricter of the two. An agent plugin from a
     marketplace that ``config`` does not allow is left out. A default
-    plugin wins over an agent plugin with the same name. The agent's
-    model key replaces the key of the organization's model upstream.
+    plugin wins over an agent plugin with the same name, and takes the
+    agent plugin's ``server_settings``. The agent's model key replaces
+    the key of the organization's model upstream.
 
     ``claude_settings`` is the exception: each path that the agent sets
     replaces the organization's value, a list too, unless the
@@ -261,7 +262,19 @@ def merge(
                 and settings.sandbox.allow_unsandboxed_commands
             ),
         )
-    plugins = list(config.default_plugins)
+    overrides = {
+        (p.marketplace, p.plugin): p.server_settings for p in settings.plugins
+    }
+    plugins = [
+        plugin.model_copy(
+            update={
+                'server_settings': overrides.get(
+                    (plugin.marketplace, plugin.plugin), {}
+                )
+            }
+        )
+        for plugin in config.default_plugins
+    ]
     seen = {(p.marketplace, p.plugin) for p in plugins}
     allowed = set(config.allowed_marketplaces)
     for plugin in settings.plugins:
@@ -318,14 +331,20 @@ def pin_plugins(
     requested: list[models.AgentPlugin],
     current: list[models.AgentPlugin],
     marketplaces: dict[str, dict[str, typing.Any]],
+    defaults: list[models.AgentPlugin] | None = None,
 ) -> list[models.AgentPlugin]:
     """Pin each requested plugin to a marketplace commit.
 
-    A plugin that ``current`` pins, and that the request gives with the
-    same ``sha``, keeps its pin. Any other plugin is pinned to the
-    commit of the synced catalog. Omit ``sha`` to pin a plugin again.
-    ``marketplaces`` are the marketplace rows of the organization, by
-    slug.
+    A plugin of ``defaults``, the organization's default plugins, gets
+    the default's pin. A plugin that ``current`` pins, and that the
+    request gives with the same ``sha``, keeps its pin. Any other
+    plugin is pinned to the commit of the synced catalog. Omit ``sha``
+    to pin a plugin again. ``marketplaces`` are the marketplace rows of
+    the organization, by slug.
+
+    Each plugin keeps the requested ``server_settings``. A new pin, and
+    a default's pin that lists its servers, drop the settings of the
+    servers that the pin does not list.
 
     Raises:
         ValueError: A plugin is given two times, or its marketplace or
@@ -333,6 +352,7 @@ def pin_plugins(
 
     """
     pinned = {(p.marketplace, p.plugin): p for p in current}
+    default_pins = {(p.marketplace, p.plugin): p for p in defaults or []}
     out: list[models.AgentPlugin] = []
     seen: set[tuple[str, str]] = set()
     for plugin in requested:
@@ -343,16 +363,36 @@ def pin_plugins(
                 'two times'
             )
         seen.add(key)
+        default = default_pins.get(key)
         existing = pinned.get(key)
-        if (
+        if default is not None:
+            pin = default
+            settings = (
+                _listed(plugin.server_settings, default.mcp_servers)
+                if default.mcp_servers
+                else plugin.server_settings
+            )
+        elif (
             existing is not None
             and plugin.sha is not None
             and plugin.sha == existing.sha
         ):
-            out.append(existing)
-            continue
-        out.append(_pin(plugin, marketplaces.get(plugin.marketplace)))
+            pin = existing
+            settings = plugin.server_settings
+        else:
+            pin = _pin(plugin, marketplaces.get(plugin.marketplace))
+            settings = _listed(plugin.server_settings, pin.mcp_servers)
+        out.append(pin.model_copy(update={'server_settings': settings}))
     return out
+
+
+def _listed(
+    settings: dict[str, models.ServerSetting],
+    servers: list[models.CatalogServer],
+) -> dict[str, models.ServerSetting]:
+    """The ``settings`` of the servers that ``servers`` lists."""
+    names = {server.name for server in servers}
+    return {name: value for name, value in settings.items() if name in names}
 
 
 def _pin(
@@ -384,6 +424,7 @@ def _pin(
             url=entry['repository_url'],
             sha=entry['repository_sha'],
             path='.',
+            mcp_servers=entry.get('mcp_servers') or [],
         )
     return models.AgentPlugin(
         marketplace=plugin.marketplace,
@@ -391,6 +432,7 @@ def _pin(
         url=marketplace['url'],
         sha=marketplace['head_sha'],
         path=entry['path'],
+        mcp_servers=entry.get('mcp_servers') or [],
     )
 
 

@@ -211,6 +211,21 @@ class ConfigTests(PlatformTestCase):
         self.assertEqual(plugin['url'], URL)
         self.assertEqual(plugin['path'], 'plugins/code-review')
 
+    async def test_default_plugins_turn_off_no_servers(self) -> None:
+        await self.add_marketplace()
+        response = await self.put_config(
+            allowed_marketplaces=['claude-code'],
+            default_plugins=[
+                {
+                    'marketplace': 'claude-code',
+                    'plugin': 'code-review',
+                    'server_settings': {'github': {'enabled': False}},
+                }
+            ],
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn('code-review@claude-code', response.text)
+
 
 class MarketplaceTests(PlatformTestCase):
     async def test_picker_lists_the_real_catalog(self) -> None:
@@ -354,6 +369,40 @@ class AgentFieldTests(PlatformTestCase):
         self.assertEqual(
             response.json()['settings']['plugins'][0]['sha'], SHA_2
         )
+
+    async def test_a_default_plugin_entry_gets_the_default_pin(
+        self,
+    ) -> None:
+        await self.add_marketplace(SHA_1)
+        await self.put_config(
+            allowed_marketplaces=['claude-code'],
+            default_plugins=[
+                {'marketplace': 'claude-code', 'plugin': 'code-review'}
+            ],
+        )
+        with self.head(SHA_2):
+            await self.client.post(
+                self.org_url('agent-marketplaces/claude-code/sync')
+            )
+        entry = {
+            'marketplace': 'claude-code',
+            'plugin': 'code-review',
+            'server_settings': {'github': {'enabled': False}},
+        }
+        response = await self.create_agent(plugins=[entry])
+        self.assertEqual(response.status_code, 201, response.text)
+        (plugin,) = response.json()['settings']['plugins']
+        self.assertEqual(
+            (plugin['sha'], plugin['path'], plugin['server_settings']),
+            (SHA_1, 'plugins/code-review', entry['server_settings']),
+        )
+        # The same settings write no new version.
+        response = await self.client.put(
+            self.org_url('agents/builder'),
+            json={'settings': {'plugins': [entry]}},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['version'], 1)
 
     async def test_secrets_and_github_app_binding(self) -> None:
         response = await self.create_agent(secrets=['not-a-ref'])

@@ -4,7 +4,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as endpoints from '@/api/endpoints'
 import { fireEvent, render, screen, within } from '@/test/utils'
-import type { AgentMarketplace, AgentPlatformConfigResponse } from '@/types'
+import type {
+  AgentMarketplace,
+  AgentPlatformConfigResponse,
+  AgentPlugin,
+  CatalogServer,
+} from '@/types'
 
 import { emptyDraft, type SettingsDraft } from '../agentDraft'
 import { PluginsSection } from '../PluginsSection'
@@ -25,12 +30,35 @@ vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }))
 const HEAD = 'b0b7bed9820350bb0942e32c7f00752a99ea3555'
 const NOW = new Date().toISOString()
 
+const server = (name: string): CatalogServer => ({
+  headers: {},
+  name,
+  type: 'stdio',
+})
+
+const pinned = (
+  plugin: string,
+  changes: Partial<AgentPlugin> = {},
+): AgentPlugin => ({
+  marketplace: 'claude-code',
+  mcp_servers: [],
+  plugin,
+  server_settings: {},
+  ...changes,
+})
+
+const OFF = { enabled: false }
+
 function config(): AgentPlatformConfigResponse {
   return {
     config: {
       allowed_marketplaces: ['claude-code'],
       default_plugins: [
-        { marketplace: 'claude-code', plugin: 'commit-commands', sha: HEAD },
+        pinned('commit-commands', { sha: HEAD }),
+        pinned('ops-tools', {
+          mcp_servers: [server('loki'), server('tempo')],
+          sha: 'd'.repeat(40),
+        }),
       ],
     },
     version: 2,
@@ -82,6 +110,10 @@ function marketplace(): AgentMarketplace {
           { headers: {}, name: 'local', type: 'stdio' },
         ],
       },
+      {
+        ...plugin('ops-tools'),
+        mcp_servers: [server('loki'), server('tempo'), server('mimir')],
+      },
       plugin('remote', null),
       {
         ...plugin('linked', null),
@@ -95,6 +127,14 @@ function marketplace(): AgentMarketplace {
     updated_at: NOW,
     url: 'https://github.com/anthropics/claude-code',
   }
+}
+
+function plugins() {
+  return JSON.parse(screen.getByTestId('plugins').textContent!)
+}
+
+function withPlugins(...entries: AgentPlugin[]): SettingsDraft {
+  return { ...emptyDraft().settings, plugins: entries }
 }
 
 describe('PluginsSection', () => {
@@ -119,10 +159,7 @@ describe('PluginsSection', () => {
 
   it('shows an unusable plugin that is a default', async () => {
     const withRemote = config()
-    withRemote.config.default_plugins.push({
-      marketplace: 'claude-code',
-      plugin: 'remote',
-    })
+    withRemote.config.default_plugins.push(pinned('remote'))
     vi.mocked(endpoints.getAgentPlatformConfig).mockResolvedValue(withRemote)
     render(<Harness initial={emptyDraft().settings} />)
     expect(await screen.findByLabelText('remote')).toBeChecked()
@@ -150,46 +187,133 @@ describe('PluginsSection', () => {
   it('adds a plugin without a sha, so the API pins it', async () => {
     render(<Harness initial={emptyDraft().settings} />)
     fireEvent.click(await screen.findByLabelText('code-review'))
-    expect(JSON.parse(screen.getByTestId('plugins').textContent!)).toEqual([
-      { marketplace: 'claude-code', plugin: 'code-review' },
-    ])
+    expect(plugins()).toEqual([pinned('code-review')])
   })
 
   it('offers to pin a stale plugin again', async () => {
-    const initial = {
-      ...emptyDraft().settings,
-      plugins: [
-        {
-          marketplace: 'claude-code',
-          plugin: 'code-review',
-          sha: 'a'.repeat(40),
-        },
-      ],
-    }
+    const initial = withPlugins(
+      pinned('grafana-mcp', {
+        mcp_servers: [server('grafana')],
+        server_settings: { grafana: OFF },
+        sha: 'a'.repeat(40),
+      }),
+    )
     render(<Harness initial={initial} />)
     expect(await screen.findByText('pinned aaaaaaa')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Pin b0b7bed' }))
-    expect(JSON.parse(screen.getByTestId('plugins').textContent!)).toEqual([
-      { marketplace: 'claude-code', plugin: 'code-review' },
+    expect(plugins()).toEqual([
+      pinned('grafana-mcp', { server_settings: { grafana: OFF } }),
     ])
   })
 
   it('offers to pin an external plugin that moved', async () => {
-    const initial = {
-      ...emptyDraft().settings,
-      plugins: [
-        {
-          marketplace: 'claude-code',
-          plugin: 'linked',
-          sha: 'c'.repeat(40),
-          url: 'https://github.com/a/old.git',
-        },
-      ],
-    }
+    const initial = withPlugins(
+      pinned('linked', {
+        sha: 'c'.repeat(40),
+        url: 'https://github.com/a/old.git',
+      }),
+    )
     render(<Harness initial={initial} />)
     fireEvent.click(await screen.findByRole('button', { name: 'Pin ccccccc' }))
-    expect(JSON.parse(screen.getByTestId('plugins').textContent!)).toEqual([
-      { marketplace: 'claude-code', plugin: 'linked' },
+    expect(plugins()).toEqual([pinned('linked')])
+  })
+
+  it('turns a server of an agent plugin off and on', async () => {
+    render(<Harness initial={withPlugins(pinned('grafana-mcp'))} />)
+    const grafana = await screen.findByLabelText(
+      'grafana-mcp MCP server grafana',
+    )
+    expect(grafana).toBeChecked()
+    fireEvent.click(grafana)
+    expect(plugins()).toEqual([
+      pinned('grafana-mcp', { server_settings: { grafana: OFF } }),
     ])
+    fireEvent.click(grafana)
+    expect(plugins()).toEqual([pinned('grafana-mcp')])
+  })
+
+  it('locks the servers of a plugin that is off', async () => {
+    render(<Harness initial={emptyDraft().settings} />)
+    const grafana = await screen.findByLabelText(
+      'grafana-mcp MCP server grafana',
+    )
+    expect(grafana).toBeDisabled()
+    expect(grafana).not.toBeChecked()
+  })
+
+  it('turns off a server of a default plugin with an agent entry', async () => {
+    render(<Harness initial={emptyDraft().settings} />)
+    const servers = await screen.findByRole('list', {
+      name: 'MCP servers of ops-tools',
+    })
+    // The servers of the default's pin, not of the catalog head.
+    expect(within(servers).getAllByRole('listitem')).toHaveLength(2)
+    expect(screen.queryByText('mimir')).not.toBeInTheDocument()
+    const loki = screen.getByLabelText('ops-tools MCP server loki')
+    expect(loki).toBeEnabled()
+    fireEvent.click(loki)
+    expect(plugins()).toEqual([
+      pinned('ops-tools', { server_settings: { loki: OFF } }),
+    ])
+    // Its last setting removed, the entry goes, so the plugin is not
+    // added to the agent.
+    fireEvent.click(loki)
+    expect(plugins()).toEqual([])
+  })
+
+  it('hides the pin of a default plugin', async () => {
+    const initial = withPlugins(
+      pinned('ops-tools', {
+        server_settings: { loki: OFF },
+        sha: 'e'.repeat(40),
+      }),
+    )
+    render(<Harness initial={initial} />)
+    expect(
+      await screen.findByLabelText('ops-tools MCP server loki'),
+    ).not.toBeChecked()
+    expect(screen.queryByText('pinned eeeeeee')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /^Pin / }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('lists a setting for a server that the plugin no longer has', async () => {
+    const initial = withPlugins(
+      pinned('grafana-mcp', {
+        mcp_servers: [server('grafana')],
+        server_settings: { gone: OFF, grafana: OFF },
+        sha: HEAD,
+      }),
+    )
+    render(<Harness initial={initial} />)
+    const gone = await screen.findByRole('list', {
+      name: 'Turned-off MCP servers no longer in grafana-mcp',
+    })
+    expect(within(gone).getByText('gone')).toBeInTheDocument()
+    expect(
+      within(gone).getByText('no longer in this plugin'),
+    ).toBeInTheDocument()
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Remove the setting of gone' }),
+    )
+    expect(plugins()).toEqual([
+      pinned('grafana-mcp', {
+        mcp_servers: [server('grafana')],
+        server_settings: { grafana: OFF },
+        sha: HEAD,
+      }),
+    ])
+  })
+
+  it('shows the catalog servers for a pin with no saved list', async () => {
+    const initial = withPlugins(pinned('grafana-mcp', { sha: 'a'.repeat(40) }))
+    render(<Harness initial={initial} />)
+    expect(
+      await screen.findByText('Servers at b0b7bed. This agent runs aaaaaaa.'),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByLabelText('grafana-mcp MCP server local'),
+    ).toBeInTheDocument()
   })
 })

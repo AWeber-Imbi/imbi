@@ -793,6 +793,32 @@ class AgentModelTestCase(unittest.TestCase):
                 created_by='admin@example.com',
             )
 
+    def test_plugin_keeps_only_changed_server_settings(self) -> None:
+        plugin = models.AgentPlugin.model_validate(
+            {
+                'marketplace': 'tools',
+                'plugin': 'ops',
+                'server_settings': {
+                    'grafana': {'enabled': False},
+                    'tempo': {'enabled': True},
+                    'loki': {},
+                },
+            }
+        )
+        self.assertEqual(
+            plugin.server_settings,
+            {'grafana': models.ServerSetting(enabled=False)},
+        )
+        self.assertEqual(
+            models.AgentPlugin(
+                marketplace='tools',
+                plugin='ops',
+                server_settings={'tempo': models.ServerSetting()},
+            ),
+            models.AgentPlugin(marketplace='tools', plugin='ops'),
+        )
+        self.assertEqual(plugin.mcp_servers, [])
+
 
 class DocumentTemplateModelTestCase(unittest.TestCase):
     """Test cases for DocumentTemplate model."""

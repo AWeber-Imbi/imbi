@@ -6189,9 +6189,9 @@ export interface paths {
          *     Raises:
          *         409: A concurrent write took the version.
          *         422: An allowed marketplace is not registered, a default
-         *             plugin is not in an allowed marketplace's catalog, or the
-         *             model upstream URL is ``http://`` without
-         *             ``allow_insecure_http``.
+         *             plugin is not in an allowed marketplace's catalog or has
+         *             ``server_settings``, or the model upstream URL is
+         *             ``http://`` without ``allow_insecure_http``.
          */
         put: operations["put_agent_platform_config_api_organizations__org_slug__agent_platform_config__put"];
         post?: never;
@@ -11736,9 +11736,10 @@ export interface components {
          * AgentPlugin
          * @description A plugin from a registered marketplace (ADR 0022).
          *
-         *     The caller sets ``marketplace`` and ``plugin``. Imbi sets ``url``,
-         *     ``sha``, and ``path`` when it writes a version, from the synced
-         *     catalog, so the version pins the plugin.
+         *     The caller sets ``marketplace``, ``plugin``, and
+         *     ``server_settings``. Imbi sets ``url``, ``sha``, ``path``, and
+         *     ``mcp_servers`` when it writes a version, from the synced catalog,
+         *     so the version pins the plugin.
          */
         AgentPlugin: {
             /** Marketplace */
@@ -11751,6 +11752,18 @@ export interface components {
             sha?: string | null;
             /** Path */
             path?: string | null;
+            /**
+             * Mcp Servers
+             * @default []
+             */
+            mcp_servers: components["schemas"]["CatalogServer"][];
+            /**
+             * Server Settings
+             * @default {}
+             */
+            server_settings: {
+                [key: string]: components["schemas"]["ServerSetting"];
+            };
         };
         /**
          * AgentRateLimit
@@ -22247,6 +22260,17 @@ export interface components {
             state: string;
             /** Revocation State */
             revocation_state: string;
+        };
+        /**
+         * ServerSetting
+         * @description An agent's setting for one MCP server of a plugin.
+         */
+        ServerSetting: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
         };
         /**
          * ServiceAccountCreate

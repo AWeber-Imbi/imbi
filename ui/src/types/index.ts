@@ -820,6 +820,8 @@ export interface BlueprintCreate {
 // Blueprint types
 export type BlueprintFilter = Schemas['BlueprintFilter']
 
+export type CatalogServer = Schemas['CatalogServer']
+
 // Claude Code settings of an organization or an agent: an allowlist.
 export type ClaudeSettings = Schemas['ClaudeSettings']
 
