@@ -17,7 +17,7 @@ from libraries.common.tests.test_plugins.fixtures import step_plugin
 
 URL = (
     '/organizations/myorg/integrations/stepper-prod'
-    '/workflow-steps/gather_metrics/choices'
+    '/workflow-steps/stepper.gather_metrics/choices'
 )
 
 
@@ -80,7 +80,7 @@ class ChoicesTestCase(support.SharedAppTestCase):
         )
         for patcher in (
             mock.patch.object(
-                module.registry,
+                module.integration_workflow_steps.plugin_registry,
                 'get_plugin',
                 return_value=support.registry_entry(manifest),
             ),
@@ -130,7 +130,7 @@ class ChoicesTestCase(support.SharedAppTestCase):
 
     def test_unknown_step(self) -> None:
         response = self.client.post(
-            URL.replace('gather_metrics', 'nope'),
+            URL.replace('stepper.gather_metrics', 'other.gather_metrics'),
             json={'field': 'datasource'},
         )
         self.assertEqual(response.status_code, 404)

@@ -123,7 +123,7 @@ class RunStepTestCase(support.SharedAppAsyncTestCase):
 
     async def _run(
         self,
-        step: str = 'gather_metrics',
+        step: str = 'stepper.gather_metrics',
         *,
         key: str = 'k:1',
         params: dict[str, typing.Any] | None = None,
@@ -190,7 +190,11 @@ class RunStepTestCase(support.SharedAppAsyncTestCase):
         response = await self._run()
         self.assertEqual(response.status_code, 404)
         self.integration['plugin'] = 'stepper'
-        response = await self._run('no_such_step')
+        response = await self._run('stepper.no_such_step')
+        self.assertEqual(response.status_code, 404)
+        # The type names its plugin: a step of the same name with the
+        # Integration of another plugin does not run.
+        response = await self._run('other.gather_metrics')
         self.assertEqual(response.status_code, 404)
 
     async def test_unknown_integration(self) -> None:
@@ -211,14 +215,14 @@ class RunStepTestCase(support.SharedAppAsyncTestCase):
             return_value=base.StepResult(output={'value': 1}, port='Pass'),
         )
         params = {'query': 'up', 'below': 2}
-        response = await self._run('metric_threshold', params=params)
+        response = await self._run('stepper.metric_threshold', params=params)
         self.assertEqual(response.status_code, 422)
         response = await self._run(
-            'metric_threshold', params=params, project_id='elsewhere'
+            'stepper.metric_threshold', params=params, project_id='elsewhere'
         )
         self.assertEqual(response.status_code, 404)
         response = await self._run(
-            'metric_threshold', params=params, project_id=self.project
+            'stepper.metric_threshold', params=params, project_id=self.project
         )
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()['port'], 'Pass')
@@ -282,7 +286,7 @@ class RunStepTestCase(support.SharedAppAsyncTestCase):
             return_value=base.StepResult(poll=True, state={'n': 1}),
         )
         response = await self._run(
-            'metric_threshold',
+            'stepper.metric_threshold',
             params={'query': 'up', 'below': 2},
             project_id=self.project,
         )

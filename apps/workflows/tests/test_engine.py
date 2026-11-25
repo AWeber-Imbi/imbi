@@ -3466,7 +3466,7 @@ class PluginStepTestCase(EngineTestCase):
         self.assertEqual(
             request.url.path,
             f'/organizations/{self.org}/integrations/grafana-prod'
-            '/workflow-steps/gather_metrics/run',
+            '/workflow-steps/stepper.gather_metrics/run',
         )
         self.assertEqual(
             request.headers['Idempotency-Key'], f'{run_id}:gather:1:0'

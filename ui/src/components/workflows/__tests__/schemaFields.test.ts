@@ -410,7 +410,7 @@ describe('paramFields for a plugin step', () => {
       dependsOn: ['region'],
       kind: 'choices',
       multiple: false,
-      step: 'gather_metrics',
+      step: 'grafana.gather_metrics',
     })
     expect(fields.find((f) => f.name === 'labels')).toMatchObject({
       dependsOn: [],

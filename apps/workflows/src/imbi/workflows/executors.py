@@ -723,7 +723,7 @@ class Executors:
                     'integrations',
                     integration,
                     'workflow-steps',
-                    step.type.partition('.')[2],
+                    step.type,
                     'run',
                 ),
                 json={

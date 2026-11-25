@@ -100,13 +100,21 @@ async def _integration(
     return found
 
 
-def _descriptor(plugin_slug: str, name: str) -> base.WorkflowStepDescriptor:
+def step_descriptor(
+    plugin_slug: str, step_type: str
+) -> base.WorkflowStepDescriptor:
+    """Return the step ``<plugin>.<name>`` of the Integration plugin.
+
+    The type names its plugin, so a node of one plugin cannot run a step
+    of the same name with an Integration of another plugin.
+    """
+    owner, _, name = step_type.partition('.')
     try:
         entry = plugin_registry.get_plugin(plugin_slug)
     except errors.PluginNotFoundError:
         entry = None
     capability = entry.manifest.get_capability(CAPABILITY) if entry else None
-    if capability is not None:
+    if capability is not None and owner == plugin_slug:
         handler = typing.cast(
             'type[base.WorkflowStepsCapability]', capability.handler
         )
@@ -115,7 +123,7 @@ def _descriptor(plugin_slug: str, name: str) -> base.WorkflowStepDescriptor:
                 return descriptor
     raise fastapi.HTTPException(
         status_code=404,
-        detail=f'Plugin {plugin_slug!r} has no workflow step {name!r}',
+        detail=f'Plugin {plugin_slug!r} has no workflow step {step_type!r}',
     )
 
 
@@ -145,12 +153,12 @@ def _result(
 
 
 @integration_workflow_steps_router.post(
-    '/{step_name}/run', response_model=base.StepResult
+    '/{step_type}/run', response_model=base.StepResult
 )
 async def run_workflow_step(
     org_slug: str,
     integration_slug: str,
-    step_name: str,
+    step_type: str,
     data: StepRunRequest,
     db: graph.Pool,
     calls: workflows.PluginCalls,
@@ -192,7 +200,7 @@ async def run_workflow_step(
         )
     integration = await _integration(db, org_slug, integration_slug)
     plugin_slug = str(integration['plugin'])
-    descriptor = _descriptor(plugin_slug, step_name)
+    descriptor = step_descriptor(plugin_slug, step_type)
     if not (
         assignments.capability_enabled(integration, CAPABILITY)
         and await lifecycle.is_plugin_enabled(db, plugin_slug)
@@ -236,7 +244,7 @@ async def run_workflow_step(
             'idempotency_key': idempotency_key,
             'run_id': data.call.run_id,
             'integration_slug': integration_slug,
-            'step_type': f'{plugin_slug}.{step_name}',
+            'step_type': step_type,
         },
         STALE_AFTER,
     )
@@ -267,9 +275,7 @@ async def run_workflow_step(
         except TimeoutError:
             raise _call_error('plugin_timeout') from None
         except Exception:
-            LOGGER.exception(
-                'Plugin step %s.%s failed', plugin_slug, step_name
-            )
+            LOGGER.exception('Plugin step %s failed', step_type)
             raise _call_error('plugin_error') from None
         result = _result(descriptor, answer)
     except fastapi.HTTPException as e:

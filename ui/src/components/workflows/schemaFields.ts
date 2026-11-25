@@ -104,7 +104,7 @@ export function paramFields(
         dependsOn: prop['x-imbi-depends-on'] ?? [],
         kind: 'choices',
         multiple: prop.type === 'array',
-        step: stepType.slice(stepType.indexOf('.') + 1),
+        step: stepType,
       }
     }
     if (SOURCES[name]) return { ...base, kind: 'source', source: SOURCES[name] }

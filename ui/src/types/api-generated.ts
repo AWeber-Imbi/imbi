@@ -3911,7 +3911,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/organizations/{org_slug}/integrations/{integration_slug}/workflow-steps/{step_name}/choices": {
+    "/api/organizations/{org_slug}/integrations/{integration_slug}/workflow-steps/{step_type}/choices": {
         parameters: {
             query?: never;
             header?: never;
@@ -3930,14 +3930,14 @@ export interface paths {
          *         502: The plugin failed (``plugin_error``) or did not answer in
          *             10 seconds (``plugin_timeout``).
          */
-        post: operations["list_choices_api_organizations__org_slug__integrations__integration_slug__workflow_steps__step_name__choices_post"];
+        post: operations["list_choices_api_organizations__org_slug__integrations__integration_slug__workflow_steps__step_type__choices_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/organizations/{org_slug}/integrations/{integration_slug}/workflow-steps/{step_name}/run": {
+    "/api/organizations/{org_slug}/integrations/{integration_slug}/workflow-steps/{step_type}/run": {
         parameters: {
             query?: never;
             header?: never;
@@ -3969,7 +3969,7 @@ export interface paths {
          *         502: The plugin failed or returned a result that is not valid.
          *         504: The plugin did not answer in time.
          */
-        post: operations["run_workflow_step_api_organizations__org_slug__integrations__integration_slug__workflow_steps__step_name__run_post"];
+        post: operations["run_workflow_step_api_organizations__org_slug__integrations__integration_slug__workflow_steps__step_type__run_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -30612,14 +30612,14 @@ export interface operations {
             };
         };
     };
-    list_choices_api_organizations__org_slug__integrations__integration_slug__workflow_steps__step_name__choices_post: {
+    list_choices_api_organizations__org_slug__integrations__integration_slug__workflow_steps__step_type__choices_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 org_slug: string;
                 integration_slug: string;
-                step_name: string;
+                step_type: string;
             };
             cookie?: never;
         };
@@ -30649,7 +30649,7 @@ export interface operations {
             };
         };
     };
-    run_workflow_step_api_organizations__org_slug__integrations__integration_slug__workflow_steps__step_name__run_post: {
+    run_workflow_step_api_organizations__org_slug__integrations__integration_slug__workflow_steps__step_type__run_post: {
         parameters: {
             query?: never;
             header: {
@@ -30658,7 +30658,7 @@ export interface operations {
             path: {
                 org_slug: string;
                 integration_slug: string;
-                step_name: string;
+                step_type: string;
             };
             cookie?: never;
         };

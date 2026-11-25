@@ -19,7 +19,7 @@ const FIELD: ParamField = {
   multiple: false,
   name: 'datasource',
   required: true,
-  step: 'gather_metrics',
+  step: 'grafana.gather_metrics',
 }
 
 function renderChoices(
@@ -63,7 +63,7 @@ describe('ParamsForm choices', () => {
     expect(endpoints.listWorkflowStepChoices).toHaveBeenCalledWith(
       'acme',
       'grafana-prod',
-      'gather_metrics',
+      'grafana.gather_metrics',
       { field: 'datasource', params: { region: 'us' } },
       expect.anything(),
     )

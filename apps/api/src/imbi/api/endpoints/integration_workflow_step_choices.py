@@ -13,9 +13,10 @@ import fastapi
 import pydantic
 
 from imbi.api.auth import organizations, permissions
+from imbi.api.endpoints import integration_workflow_steps
 from imbi.api.plugins import assignments, lifecycle
 from imbi.common import graph
-from imbi.common.plugins import base, credentials, errors, registry
+from imbi.common.plugins import base, credentials
 
 LOGGER = logging.getLogger(__name__)
 
@@ -49,7 +50,7 @@ def _not_found(detail: str) -> fastapi.HTTPException:
 
 
 async def _descriptor(
-    db: graph.Graph, integration: dict[str, typing.Any], step_name: str
+    db: graph.Graph, integration: dict[str, typing.Any], step_type: str
 ) -> base.WorkflowStepDescriptor:
     """Return the step of the Integration plugin, when it can run."""
     plugin_slug = str(integration.get('plugin') or '')
@@ -60,25 +61,11 @@ async def _descriptor(
         or not await lifecycle.is_plugin_enabled(db, plugin_slug)
     ):
         raise off
-    try:
-        capability = registry.get_plugin(plugin_slug).manifest.get_capability(
-            KIND
-        )
-    except errors.PluginNotFoundError:
-        capability = None
-    if capability is None:
-        raise off
-    handler = typing.cast(
-        type[base.WorkflowStepsCapability], capability.handler
-    )
-    for descriptor in handler.steps():
-        if descriptor.name == step_name:
-            return descriptor
-    raise _not_found(f'Workflow step {step_name!r} not found')
+    return integration_workflow_steps.step_descriptor(plugin_slug, step_type)
 
 
 @integration_workflow_step_choices_router.post(
-    '/{integration_slug}/workflow-steps/{step_name}/choices',
+    '/{integration_slug}/workflow-steps/{step_type}/choices',
     dependencies=[
         fastapi.Depends(permissions.require_permission('integration:read'))
     ],
@@ -86,7 +73,7 @@ async def _descriptor(
 async def list_choices(
     org_slug: str,
     integration_slug: str,
-    step_name: str,
+    step_type: str,
     data: ChoicesRequest,
     db: graph.Pool,
     _: typing.Annotated[
@@ -113,7 +100,7 @@ async def list_choices(
     integration = assignments.hydrate_integration(
         graph.parse_agtype(records[0]['integration'])
     )
-    descriptor = await _descriptor(db, integration, step_name)
+    descriptor = await _descriptor(db, integration, step_type)
     if (
         descriptor.choices is None
         or data.field not in descriptor.choice_fields
@@ -147,9 +134,7 @@ async def list_choices(
             status_code=502, detail={'error': 'plugin_timeout'}
         ) from None
     except Exception:  # The plugin can raise anything.
-        LOGGER.exception(
-            'Choices of %s.%s failed', integration.get('plugin'), step_name
-        )
+        LOGGER.exception('Choices of %s failed', step_type)
         raise fastapi.HTTPException(
             status_code=502, detail={'error': 'plugin_error'}
         ) from None
