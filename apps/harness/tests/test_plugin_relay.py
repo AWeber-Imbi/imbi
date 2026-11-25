@@ -435,6 +435,11 @@ class StartTestCase(_ServerTestCase):
             self.assertIn('[REDACTED]', text)
             self.assertNotRegex(text.split('\n', 1)[-1], r'</untrusted>\s')
         self.assertIn('&lt;/untrusted>', schema)
+        self.assertTrue(
+            tool.input_schema['properties']['name']['description'].startswith(
+                '<untrusted source="mcp:plugin:hello:srv">'
+            )
+        )
 
     async def test_read_only_hints_pass_through(self) -> None:
         relayed = self.server_for()
@@ -739,7 +744,11 @@ class ProblemTestCase(unittest.TestCase):
                 self.assertIsNone(plugin_relay.problem(config, pinned))
 
     def test_another_type(self) -> None:
-        for config in ({'type': 'stdio', 'command': 'x'}, {'url': 'x'}):
+        for config in (
+            {'type': 'stdio', 'command': 'x'},
+            {'url': 'x'},
+            {'type': ['http'], 'url': f'{self.origin}/mcp'},
+        ):
             with self.subTest(config=config):
                 self.assertEqual(
                     plugin_relay.problem(config, self.origin),

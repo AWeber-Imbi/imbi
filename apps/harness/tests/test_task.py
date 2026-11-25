@@ -15,7 +15,6 @@ import os
 import pathlib
 import subprocess
 import tempfile
-import time
 import typing
 import unittest
 from unittest import mock
@@ -1871,18 +1870,18 @@ class RunTestCase(TaskTestCase):
 
     async def test_task_end_closes_the_relays_at_once(self) -> None:
         both = asyncio.Event()
-        closing: list[bool] = []
+        entered: list[bool] = []
+        overlapped: list[bool] = []
 
         async def close() -> None:
-            closing.append(True)
-            if len(closing) == 2:
+            entered.append(True)
+            if len(entered) == 2:
                 both.set()
-            await asyncio.wait_for(both.wait(), 2)
+            await asyncio.wait_for(both.wait(), 5)
+            overlapped.append(True)
 
-        started = time.monotonic()
         secrets = await self.with_relays(close)
-        self.assertLess(time.monotonic() - started, 1.5)
-        self.assertEqual(len(closing), 2)
+        self.assertEqual(len(overlapped), 2)
         for secret in secrets:
             secret.stop.assert_called_once()
 
@@ -4055,4 +4054,31 @@ class PluginRelayTestCase(TaskTestCase):
             '(RuntimeError).',
             notices,
         )
+        self.assertEqual(renewals(), [])
+
+    async def test_a_stop_ends_the_start_of_a_relay(self) -> None:
+        self.call.return_value = self.expiring('logs-secret-value')
+        subject = self.load()
+        entered = asyncio.Event()
+
+        async def hanging(_server: task.plugin_relay.Server) -> list[str]:
+            entered.set()
+            await asyncio.Event().wait()
+            return []
+
+        with (
+            mock.patch.object(
+                task.plugin_relay.Server, 'start', autospec=True
+            ) as start,
+            mock.patch.object(
+                task.plugin_relay.Server, 'close', autospec=True
+            ) as close,
+        ):
+            start.side_effect = hanging
+            starting = asyncio.create_task(subject.start_plugin_relays())
+            await asyncio.wait_for(entered.wait(), 5)
+            subject.control = 'cancel'
+            await asyncio.wait_for(starting, 5)
+        close.assert_awaited_once()
+        self.assertEqual(subject.plugin_relays, [])
         self.assertEqual(renewals(), [])

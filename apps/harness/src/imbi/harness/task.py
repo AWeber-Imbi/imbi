@@ -1755,9 +1755,20 @@ class TaskRun:
         """Relay each plugin MCP server that the agent gave secrets
         (ADR 0031). A server that a check refuses, whose secret Imbi
         refuses, or that does not answer is left out with a task
-        warning."""
+        warning. When the task stops, the server being started is
+        closed and the rest are not started."""
         for relayed in self.to_relay:
-            server = await self._plugin_relay(relayed)
+            setup = asyncio.ensure_future(self._plugin_relay(relayed))
+            try:
+                while not setup.done() and not self.stopped:
+                    await asyncio.wait({setup}, timeout=1)
+            finally:
+                if not setup.done():
+                    setup.cancel()
+                    await asyncio.wait({setup})
+            if setup.cancelled():
+                return
+            server = setup.result()
             if server is None:
                 continue
             LOGGER.info(

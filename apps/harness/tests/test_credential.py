@@ -3,6 +3,7 @@
 import asyncio
 import contextlib
 import datetime
+import types
 import typing
 import unittest
 from unittest import mock
@@ -80,13 +81,37 @@ class RefresherTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(made.credential.value, 'static')
         self.fetch.assert_awaited_once()
 
-    async def test_a_secret_is_renewed_before_it_expires(self) -> None:
-        made = self.refresher(expiring('t1', 600), expiring('t2', 600))
-        clock = await self.renewing(made, 2)
-        # 120 seconds before the expiry, with at most 60 seconds of
-        # jitter; then the renewed secret's own wait.
-        self.assertTrue(420 <= clock.sleeps[0] <= 481, clock.sleeps)
+    async def first_wait(
+        self, jitter: typing.Callable[[float, float], float]
+    ) -> float:
+        """The wait before the first renewal of a secret that expires in
+        600 seconds, with the clock frozen and ``jitter`` choosing from
+        its range."""
+        now = datetime.datetime.now(datetime.UTC)
+        made = self.refresher(
+            proxy.Credential(
+                't1', now + datetime.timedelta(seconds=600), bearer=True
+            ),
+            expiring('t2', 600),
+        )
+        frozen = types.SimpleNamespace(
+            UTC=datetime.UTC,
+            datetime=types.SimpleNamespace(now=mock.Mock(return_value=now)),
+        )
+        with mock.patch.multiple(
+            credential,
+            datetime=frozen,
+            random=types.SimpleNamespace(uniform=jitter),
+        ):
+            clock = await self.renewing(made, 2)
         self.assertEqual(made.credential.value, 't2')
+        return clock.sleeps[0]
+
+    async def test_a_secret_is_renewed_before_it_expires(self) -> None:
+        self.assertEqual(await self.first_wait(min), 480.0)
+
+    async def test_the_jitter_is_at_most_half_of_the_lead(self) -> None:
+        self.assertEqual(await self.first_wait(max), 420.0)
 
     async def test_a_failed_renewal_is_retried_and_logged(self) -> None:
         made = self.refresher(

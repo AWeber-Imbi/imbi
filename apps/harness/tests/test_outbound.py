@@ -210,6 +210,15 @@ class HeadersTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(headers['x-region'], 'us-east-1')
         self.assertEqual(headers['x-team'], '')
 
+    async def test_a_value_that_is_not_a_field_value_is_refused(
+        self,
+    ) -> None:
+        token = await _refresher('t1\n')
+        auth = outbound.Headers({'Authorization': 'Bearer ${T}'}, {'T': token})
+        with self.assertRaises(outbound.Refused) as caught:
+            await self.send(auth, [200])
+        self.assertEqual(str(caught.exception), 'header_value_not_valid')
+
     async def test_a_renewed_secret_applies_to_the_next_request(
         self,
     ) -> None:

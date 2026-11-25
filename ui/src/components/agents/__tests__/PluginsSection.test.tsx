@@ -609,6 +609,46 @@ describe('PluginsSection', () => {
       noGrantCalls()
     })
 
+    it('lets a pick be cleared when the bindings do not load', async () => {
+      vi.mocked(endpoints.listSecretBindings).mockRejectedValue(
+        new Error('down'),
+      )
+      render(<Harness initial={grafana(relayed({ GRAFANA_TOKEN: TOKEN }))} />)
+      expect(
+        await screen.findByText(
+          'Failed to load the secrets for MCP server headers',
+        ),
+      ).toBeInTheDocument()
+      fireEvent.click(await picker())
+      const options = (await screen.findAllByRole('option')).map(
+        (option) => option.textContent,
+      )
+      expect(options).toEqual(['No secret', TOKEN])
+      fireEvent.click(screen.getByRole('option', { name: 'No secret' }))
+      expect(plugins()).toEqual([pinned('grafana-mcp')])
+      noGrantCalls()
+    })
+
+    it('loads the secrets again after a failure', async () => {
+      vi.mocked(endpoints.listSecretBindings).mockRejectedValueOnce(
+        new Error('down'),
+      )
+      render(<Harness initial={grafana()} />)
+      fireEvent.click(await screen.findByRole('button', { name: 'Try again' }))
+      await waitFor(() =>
+        expect(
+          screen.queryByText(
+            'Failed to load the secrets for MCP server headers',
+          ),
+        ).not.toBeInTheDocument(),
+      )
+      fireEvent.click(await picker())
+      const options = (await screen.findAllByRole('option')).map(
+        (option) => option.textContent,
+      )
+      expect(options).toEqual(['No secret', TOKEN, MULTI])
+    })
+
     it('says which permissions picking secrets needs', async () => {
       developer(['ops'])
       const user = auth.user as { organizations: { permissions: string[] }[] }

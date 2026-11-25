@@ -68,7 +68,8 @@ def problem(config: Body, origin: str | None) -> str | None:
     not: it is not an ``http`` or ``sse`` server, or its URL is not an
     HTTPS URL at ``origin``, the origin that the person saw when they
     picked the secrets."""
-    if config.get('type') not in TYPES:
+    kind = config.get('type')
+    if not isinstance(kind, str) or kind not in TYPES:
         return 'it is not an http or sse server'
     try:
         url = outbound.check_url(str(config.get('url') or ''))
@@ -111,20 +112,25 @@ def _lost(error: BaseException) -> bool:
 
 
 def _scrubbed(
-    value: typing.Any, scrub: abc.Callable[[str], str]
+    value: typing.Any, scrub: abc.Callable[[str], str], source: str
 ) -> typing.Any:
     """``value`` with each string of a JSON value, keys included,
-    scrubbed and its untrusted tags escaped."""
+    scrubbed and its untrusted tags escaped, and each ``description``
+    text in an untrusted block from ``source``."""
     if isinstance(value, str):
         return safeguards.escape(scrub(value))
     if isinstance(value, dict):
         return {
-            _scrubbed(key, scrub): _scrubbed(item, scrub)
+            _scrubbed(key, scrub, source): (
+                safeguards.untrusted(scrub(item), source)
+                if key == 'description' and isinstance(item, str)
+                else _scrubbed(item, scrub, source)
+            )
             for key, item in typing.cast('Body', value).items()
         }
     if isinstance(value, list):
         items: list[typing.Any] = value  # pyright: ignore[reportUnknownVariableType]
-        return [_scrubbed(item, scrub) for item in items]
+        return [_scrubbed(item, scrub, source) for item in items]
     return value
 
 
@@ -350,13 +356,15 @@ class Server:
             if not safeguards.TOOL_NAME.fullmatch(tool.name):
                 continue
             hints = tool.annotations
+            source = f'mcp:{self.name}'
             self.tools[tool.name] = _Tool(
                 name=tool.name,
                 description=safeguards.untrusted(
-                    self.scrub(tool.description or tool.name),
-                    f'mcp:{self.name}',
+                    self.scrub(tool.description or tool.name), source
                 ),
-                schema=_scrubbed(_schema(tool.inputSchema), self.scrub),
+                schema=_scrubbed(
+                    _schema(tool.inputSchema), self.scrub, source
+                ),
                 read_only=bool(hints and hints.readOnlyHint),
             )
         return sorted(self.tools)

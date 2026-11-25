@@ -176,6 +176,7 @@ class Transport(httpx.AsyncBaseTransport):
 
 
 VARIABLE = re.compile(r'\$\{([^}]+)\}')
+FIELD_VALUE = re.compile(r'(?:[^\x00\s]+(?:[ \t]+[^\x00\s]+)*)?', re.ASCII)
 
 
 def fill(template: str, values: abc.Mapping[str, str]) -> str:
@@ -219,8 +220,16 @@ class Headers(httpx.Auth):
         }
 
     def _fill(self, request: httpx.Request, values: dict[str, str]) -> None:
+        """Raises:
+        Refused: ``header_value_not_valid``, before the HTTP client
+            can put the value in an error message.
+
+        """
         for name, template in self.templates.items():
-            request.headers[name] = fill(template, values)
+            value = fill(template, values)
+            if not FIELD_VALUE.fullmatch(value):
+                raise Refused('header_value_not_valid')
+            request.headers[name] = value
 
     async def async_auth_flow(
         self, request: httpx.Request

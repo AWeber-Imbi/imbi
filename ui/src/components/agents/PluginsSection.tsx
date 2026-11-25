@@ -50,6 +50,7 @@ interface HeaderPicker {
   bindings: SecretBinding[]
   canGrant: (binding: SecretBinding) => boolean
   covered: (bindingId: string) => boolean
+  failed: boolean
   grant: (reference: string) => void
   isPending: boolean
   loaded: boolean
@@ -200,6 +201,9 @@ export function PluginsSection({
       .map((provider) => provider.id),
   )
   const bindings = access.bindings.data ?? []
+  const pickerQueries = [access.bindings, access.grants, providers]
+  const pickerLoaded = pickerQueries.every((query) => query.isSuccess)
+  const pickerError = pickerQueries.find((query) => query.isError)?.error
   const picker: HeaderPicker = {
     bindings,
     canGrant: access.canGrant,
@@ -210,24 +214,25 @@ export function PluginsSection({
         HEADER_PURPOSE,
         'file_descriptor',
       ),
+    failed: Boolean(pickerError),
     grant: (reference) => {
       const binding = bindingOf(bindings, reference)
       if (binding) access.ensure(binding, HEADER_PURPOSE, 'file_descriptor')
     },
     isPending: access.save.isPending,
-    loaded:
-      access.bindings.isSuccess &&
-      access.grants.isSuccess &&
-      providers.isSuccess,
+    loaded: pickerLoaded,
     missing: canList
       ? null
       : 'You need secret_binding:read, secret_grant:read, and secret_provider:read to pick secrets.',
-    references: fieldReferences(
-      bindings.filter(
-        (binding) =>
-          canSupplyRunner(binding) && headerProviders.has(binding.provider_id),
-      ),
-    ),
+    references: pickerLoaded
+      ? fieldReferences(
+          bindings.filter(
+            (binding) =>
+              canSupplyRunner(binding) &&
+              headerProviders.has(binding.provider_id),
+          ),
+        )
+      : [],
     showGrant: Boolean(agent) && access.canRead,
   }
 
@@ -238,6 +243,25 @@ export function PluginsSection({
           error={config.error ?? marketplaces.error}
           title="Failed to load the plugin marketplaces"
         />
+      )}
+      {pickerError && (
+        <div className="flex flex-col items-start gap-2">
+          <ErrorBanner
+            error={pickerError}
+            title="Failed to load the secrets for MCP server headers"
+          />
+          <Button
+            onClick={() => {
+              for (const query of pickerQueries) {
+                if (query.isError) void query.refetch()
+              }
+            }}
+            size="sm"
+            variant="outline"
+          >
+            Try again
+          </Button>
+        </div>
       )}
       <section className="flex flex-col gap-3">
         <div>
@@ -647,7 +671,7 @@ function ServerSecrets({
             <HeaderSecret
               disabled={
                 disabled ||
-                (!picker.loaded && !picker.missing) ||
+                (!picker.loaded && !picker.missing && !picker.failed) ||
                 picker.isPending
               }
               key={variable}
