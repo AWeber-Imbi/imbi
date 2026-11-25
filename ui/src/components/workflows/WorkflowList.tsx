@@ -7,8 +7,8 @@ import { toast } from 'sonner'
 
 import { startWorkflowRun } from '@/api/endpoints'
 import { AdminSection } from '@/components/admin/AdminSection'
-import { AgentLabels } from '@/components/agents/AgentLabelChip'
 import { agentsPath } from '@/components/agents/agentsNav'
+import { AgentTags } from '@/components/agents/AgentTagChip'
 import { AdminTable } from '@/components/ui/admin-table'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import { useOrganization } from '@/contexts/OrganizationContext'
@@ -183,7 +183,7 @@ export function WorkflowList({
           {
             header: 'Tags',
             key: 'tags',
-            render: (w) => <AgentLabels tags={w.tags} />,
+            render: (w) => <AgentTags tags={w.tags} />,
           },
           {
             header: 'Trigger',
