@@ -244,9 +244,11 @@ _NAMED_SCHEMAS = frozenset(
 )
 
 
-def _refs_into_data(node: object) -> bool:
-    """Return ``True`` when a ``$ref`` in ``node`` points into data or an
-    ``x-`` annotation, which makes that value a schema."""
+def _has_refs(node: object) -> bool:
+    """Return ``True`` when ``node`` has a ``$ref`` or ``$dynamicRef`` at
+    any depth. A reference can make data (such as ``default``) or the
+    names of ``properties`` a schema, so the walk then reads every
+    value."""
     stack: list[object] = [node]
     while stack:
         item = stack.pop()
@@ -254,15 +256,9 @@ def _refs_into_data(node: object) -> bool:
             stack.extend(typing.cast(list[object], item))
         elif isinstance(item, dict):
             item = typing.cast(dict[str, object], item)
+            if '$ref' in item or '$dynamicRef' in item:
+                return True
             stack.extend(item.values())
-            for key in ('$ref', '$dynamicRef'):
-                if not isinstance(ref := item.get(key), str):
-                    continue
-                for part in ref.partition('#')[2].split('/'):
-                    part = urllib.parse.unquote(part)
-                    part = part.replace('~1', '/').replace('~0', '~')
-                    if part in _DATA_KEYWORDS or part.startswith('x-'):
-                        return True
     return False
 
 
@@ -291,8 +287,8 @@ def _schemas(
 
 def schema_keys(schema: object) -> set[str]:
     """Return the keywords of the whole JSON ``schema`` and its
-    subschemas. A ``$ref`` into data makes every key count."""
-    skip_data = not _refs_into_data(schema)
+    subschemas. A ``$ref`` makes every key count."""
+    skip_data = not _has_refs(schema)
     return {key for node in _schemas(schema, skip_data) for key in node}
 
 
@@ -326,7 +322,7 @@ def check_patterns(schema: Schema) -> Schema:
     properties = typing.cast(dict[str, object], dumped.get('properties') or {})
     root = {k: v for k, v in dumped.items() if k != 'properties'}
     scopes = [*properties.items(), ('the schema', root)]
-    skip_data = not _refs_into_data(dumped)
+    skip_data = not _has_refs(dumped)
     for name, node in scopes:
         for pattern in _patterns(node, skip_data):
             if error := pattern_error(pattern):

@@ -673,6 +673,16 @@ class ValueCheckTests(unittest.TestCase):
             }
         )
         self.assertTrue(models.unevaluated_re(schema))
+        # A percent-encoded pointer, and a pointer to a map of names.
+        for ref in ('#/properties/value/%64efault', '#/properties'):
+            message = self._save(
+                {
+                    'type': 'object',
+                    'default': {'type': 'string', 'pattern': '(?=a)'},
+                    'properties': {'code': {'$ref': ref}},
+                }
+            )
+            self.assertIn('pattern', message)
 
     def test_field_named_schema_is_checked(self) -> None:
         with self.assertRaisesRegex(
