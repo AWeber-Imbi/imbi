@@ -56,9 +56,14 @@ describe('Navigation', () => {
     const { Navigation } = await import('../Navigation')
     render(<Navigation />)
     expect(screen.queryByText('Admin')).not.toBeInTheDocument()
-    await userEvent.click(screen.getByText('Agents'))
+    const agents = screen.getByRole('link', { name: /Agents/ })
+    expect(agents).toHaveAttribute('href', '/agents/dashboard')
+    await userEvent.hover(agents)
     expect(
-      await screen.findByRole('menuitem', { name: /Runners/ }),
+      await screen.findByRole('link', { name: /Runners/ }),
     ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', { name: /Dashboard/ }),
+    ).not.toBeInTheDocument()
   })
 })

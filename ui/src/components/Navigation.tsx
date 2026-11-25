@@ -48,6 +48,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu'
+import { HoverCard, HoverCardContent, HoverCardTrigger } from './ui/hover-card'
+import { Separator } from './ui/separator'
 import { UserIdentity } from './ui/user-identity'
 
 interface NavigationProps {
@@ -391,14 +393,20 @@ export function Navigation({ currentView }: NavigationProps) {
   )
 }
 
-/** The Agents entry: a menu of the pages in the Agents area. */
+/** The Agents entry: links to the dashboard; hover shows the other pages. */
 function AgentsMenu({ isActive }: { isActive: boolean }) {
-  const navigate = useNavigate()
-  const agentsNav = useAgentsNav()
+  const [open, setOpen] = useState(false)
+  const agentsNav = useAgentsNav().filter((item) => item.id !== 'dashboard')
   return (
-    <DropdownMenu modal={false}>
-      <DropdownMenuTrigger asChild>
+    <HoverCard
+      closeDelay={100}
+      onOpenChange={setOpen}
+      open={open}
+      openDelay={100}
+    >
+      <HoverCardTrigger asChild>
         <Button
+          asChild
           className={`h-auto rounded-lg px-4 py-2 transition-colors ${
             isActive
               ? 'bg-amber-bg text-amber-text hover:bg-amber-bg hover:text-amber-text'
@@ -406,33 +414,36 @@ function AgentsMenu({ isActive }: { isActive: boolean }) {
           }`}
           variant="ghost"
         >
-          <Bot className="size-4" />
-          <span>Agents</span>
-          <ChevronDown className="size-3" />
+          <Link onClick={() => setOpen(false)} to={agentsPath('dashboard')}>
+            <Bot className="size-4" />
+            <span>Agents</span>
+            <ChevronDown className="size-3" />
+          </Link>
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-64">
+      </HoverCardTrigger>
+      <HoverCardContent align="start" className="w-64 p-1">
         {agentsNav.map((item, i) => {
           const Icon = item.icon
           const newGroup = i > 0 && agentsNav[i - 1].group !== item.group
           return (
             <div key={item.id}>
-              {newGroup && <DropdownMenuSeparator />}
-              <DropdownMenuItem
-                className="gap-3 py-2"
-                onClick={() => navigate(agentsPath(item.id))}
+              {newGroup && <Separator className="my-1" />}
+              <Link
+                className="hover:bg-accent focus:bg-accent flex items-center gap-3 rounded-sm px-2 py-2 outline-none"
+                onClick={() => setOpen(false)}
+                to={agentsPath(item.id)}
               >
                 <Icon className="text-tertiary size-4" />
                 <span className="flex flex-col">
                   <span className="text-sm font-medium">{item.label}</span>
                   <span className="text-tertiary text-xs">{item.note}</span>
                 </span>
-              </DropdownMenuItem>
+              </Link>
             </div>
           )
         })}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </HoverCardContent>
+    </HoverCard>
   )
 }
 
