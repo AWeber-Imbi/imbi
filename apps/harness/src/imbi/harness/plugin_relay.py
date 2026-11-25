@@ -52,7 +52,18 @@ CLOSE_TIMEOUT = 10.0
 TYPES = frozenset({'http', 'sse'})
 _NOT_NAME = re.compile(r'[^A-Za-z0-9_-]')
 _SESSION_TERMINATED = 32600
+_LITERALS = frozenset({'const', 'default', 'enum', 'examples'})
+_NAMED_SCHEMAS = frozenset(
+    {
+        '$defs',
+        'definitions',
+        'dependentSchemas',
+        'patternProperties',
+        'properties',
+    }
+)
 type Body = dict[str, typing.Any]
+type _Part = typing.Literal['schema', 'names', 'data']
 type _Write = memory.MemoryObjectSendStream[message.SessionMessage]
 
 
@@ -111,26 +122,42 @@ def _lost(error: BaseException) -> bool:
     )
 
 
+def _part(key: str, part: _Part) -> _Part:
+    """What the value under ``key`` of a ``part`` object is."""
+    if part == 'names':
+        return 'schema'
+    if part == 'data' or key in _LITERALS:
+        return 'data'
+    return 'names' if key in _NAMED_SCHEMAS else 'schema'
+
+
 def _scrubbed(
-    value: typing.Any, scrub: abc.Callable[[str], str], source: str
+    value: typing.Any,
+    scrub: abc.Callable[[str], str],
+    source: str,
+    part: _Part = 'schema',
 ) -> typing.Any:
-    """``value`` with each string of a JSON value, keys included,
+    """``value`` with each string of a JSON schema, keys included,
     scrubbed and its untrusted tags escaped, and each ``description``
-    text in an untrusted block from ``source``."""
+    keyword text in an untrusted block from ``source``. Literal data,
+    such as an ``enum`` value, keeps its ``description`` keys as
+    data."""
     if isinstance(value, str):
         return safeguards.escape(scrub(value))
     if isinstance(value, dict):
         return {
-            _scrubbed(key, scrub, source): (
+            _scrubbed(key, scrub, source, 'data'): (
                 safeguards.untrusted(scrub(item), source)
-                if key == 'description' and isinstance(item, str)
-                else _scrubbed(item, scrub, source)
+                if part == 'schema'
+                and key == 'description'
+                and isinstance(item, str)
+                else _scrubbed(item, scrub, source, _part(key, part))
             )
             for key, item in typing.cast('Body', value).items()
         }
     if isinstance(value, list):
         items: list[typing.Any] = value  # pyright: ignore[reportUnknownVariableType]
-        return [_scrubbed(item, scrub, source) for item in items]
+        return [_scrubbed(item, scrub, source, part) for item in items]
     return value
 
 
