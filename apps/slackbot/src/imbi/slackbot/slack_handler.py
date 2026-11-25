@@ -31,6 +31,7 @@ from imbi.common import external_mcp, valkey
 from imbi.slackbot import (
     agent,
     client,
+    create_ticket,
     identity,
     mcp,
     settings,
@@ -389,6 +390,7 @@ def _build_app(bot_token: str) -> AsyncApp:
             event, client, bot_user_id=_bot_user_id or '', bot_id=_bot_id
         )
 
+    create_ticket.register(app)
     return app
 
 

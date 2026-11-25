@@ -102,6 +102,12 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    **History** dialog shows an access error; reading and writing values
    still work. A role that is missing any SSM action now gets `403`
    (`identity_access_denied`) instead of `503`.
+3. To use the `/create-ticket` slash command of the Slack bot, add the
+   slash command and the `commands` scope to the Slack app, then
+   reinstall the app to the workspace. The
+   [Slack app manifest](../slackbot/slack-app-manifest.md) has both. A
+   reinstall keeps the bot token, so the Slack bot does not need a
+   restart. Until you do this, Slack does not show the command.
 
 ## 2.61.0
 

@@ -131,11 +131,11 @@ class FormSpecTests(helpers.TestCase):
 
     def test_ticket_link(self) -> None:
         with self.override_environment(IMBI_UI_URL='https://imbi.test'):
-            ticket_requests.settings._slackbot_settings = None
+            ticket_requests.links.settings._slackbot_settings = None
             try:
                 spec = ticket_requests.form_spec(entry())
             finally:
-                ticket_requests.settings._slackbot_settings = None
+                ticket_requests.links.settings._slackbot_settings = None
         self.assertIn(
             '[T-7](https://imbi.test/tickets/aweber/T-7)', spec.intro
         )
@@ -271,14 +271,14 @@ class AnswerTests(helpers.TestCase):
 
         transport = httpx.MockTransport(handler)
 
-        class Client(ticket_requests.api.Imbi):
+        class Client(ticket_requests.identity.api.Imbi):
             def __init__(self, **kw: typing.Any) -> None:
                 super().__init__(**kw)
                 self._transport = transport
 
         user = identity.ImbiUser('ada@example.com', 'Ada')
         with (
-            mock.patch.object(ticket_requests.api, 'Imbi', Client),
+            mock.patch.object(ticket_requests.identity.api, 'Imbi', Client),
             mock.patch.object(
                 ticket_requests.identity,
                 'resolve',

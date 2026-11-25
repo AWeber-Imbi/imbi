@@ -89,3 +89,9 @@ async def initialize() -> None:
 def get_url_patterns() -> str:
     """Return the cached UI URL patterns (or the built-in fallback)."""
     return _url_patterns or FALLBACK_URL_PATTERNS
+
+
+def ticket_url(org: str, short_id: str) -> str | None:
+    """Return the UI link of a ticket; ``None`` without ``IMBI_UI_URL``."""
+    ui_url = settings.get_slackbot_settings().ui_url
+    return f'{ui_url}/tickets/{org}/{short_id}' if ui_url else None
