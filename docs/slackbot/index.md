@@ -80,7 +80,11 @@ When you post a link to an Imbi ticket
 (`/tickets/{org}/{short_id}`) or project (`/projects/{id}`), the bot adds a
 preview card. A ticket card shows the title, status, priority, type,
 assignee, and team. A project card shows the name, the first line of the
-description, the team, the project types, and the environments.
+description, the score, the count of open pull requests, the drift, the
+team, and the project types. The drift uses the same rule as the
+**Projects** page: each environment pair that is out of step, and
+unreleased commits for a releasable project. Each card has the Imbi logo
+and an amber side bar.
 
 The bot reads the item as you, so the card shows only what you can read.
 Everyone in the channel sees the card. The bot makes no card in a Slack

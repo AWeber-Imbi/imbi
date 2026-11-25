@@ -26,9 +26,6 @@ export function useResizableWidth(
   const [grab, setGrab] = useState<null | { id: number; offset: number }>(null)
 
   return {
-    /** Stop the drag. Call it before you remove the handle. */
-    cancel: () => setGrab(null),
-    dragging: grab !== null,
     handleProps: {
       'aria-label': 'Resize sidebar',
       'aria-orientation': 'vertical' as const,

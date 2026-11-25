@@ -4,9 +4,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '@/api/client'
 import * as endpoints from '@/api/endpoints'
-import { fireEvent, render, screen, waitFor, within } from '@/test/utils'
+import {
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+  within,
+} from '@/test/utils'
 
 import { AgentsArea } from '../AgentsArea'
+import { useAgentsNav } from '../agentsNav'
 import { agent, catalog, promptVersion, usage } from './fixtures'
 
 // fallow-ignore-next-line unresolved-import
@@ -28,6 +36,7 @@ vi.mock('@/api/endpoints', () => ({
   listEnvironments: vi.fn(),
   listTags: vi.fn(),
   listTeams: vi.fn(),
+  listTickets: vi.fn(),
   listWorkflows: vi.fn(),
   listWorkflowStepTypes: vi.fn(),
   patchAgent: vi.fn(),
@@ -71,6 +80,16 @@ function renderAt(path: string) {
   )
 }
 
+function runnerReader() {
+  return {
+    is_admin: false,
+    organizations: [
+      { organization_slug: 'acme', permissions: ['harness_pool:read'] },
+    ],
+    permissions: ['harness_pool:read'],
+  }
+}
+
 describe('AgentsArea', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -104,53 +123,16 @@ describe('AgentsArea', () => {
     vi.mocked(endpoints.getAgentUsage).mockResolvedValue(usage())
   })
 
-  it('shows the workflows page and the agent count', async () => {
+  it('shows the workflows page', async () => {
     vi.mocked(endpoints.listWorkflows).mockResolvedValue([])
     vi.mocked(endpoints.listWorkflowStepTypes).mockResolvedValue([])
     renderAt('/agents/workflows')
     expect(await screen.findByText('No workflows yet.')).toBeInTheDocument()
-    await waitFor(() => expect(screen.getByText('2')).toBeInTheDocument())
   })
 
-  it('shows Runners and Egress Destinations to an administrator', async () => {
-    vi.mocked(endpoints.listWorkflows).mockResolvedValue([])
-    vi.mocked(endpoints.listWorkflowStepTypes).mockResolvedValue([])
-    renderAt('/agents/workflows')
-    const nav = await screen.findByRole('navigation', { name: 'Agents' })
-    expect(nav).toHaveTextContent('Runners')
-    expect(nav).toHaveTextContent('Egress Destinations')
-  })
-
-  it('hides Egress Destinations from a runner reader', async () => {
-    auth.user = {
-      is_admin: false,
-      organizations: [
-        { organization_slug: 'acme', permissions: ['harness_pool:read'] },
-      ],
-      permissions: ['harness_pool:read'],
-    }
-    vi.mocked(endpoints.listWorkflows).mockResolvedValue([])
-    vi.mocked(endpoints.listWorkflowStepTypes).mockResolvedValue([])
-    renderAt('/agents/egress')
-    await waitFor(() =>
-      expect(window.location.pathname).toBe('/agents/dashboard'),
-    )
-    const nav = screen.getByRole('navigation', { name: 'Agents' })
-    expect(nav).toHaveTextContent('Runners')
-    expect(nav).not.toHaveTextContent('Egress Destinations')
-    expect(nav).not.toHaveTextContent('AI Models')
-    expect(nav).not.toHaveTextContent('Secrets')
-  })
-
-  it('lists the Settings pages in alphabetical order', async () => {
-    vi.mocked(endpoints.listWorkflows).mockResolvedValue([])
-    vi.mocked(endpoints.listWorkflowStepTypes).mockResolvedValue([])
-    renderAt('/agents/workflows')
-    const nav = await screen.findByRole('navigation', { name: 'Agents' })
-    const labels = within(nav)
-      .getAllByRole('link')
-      .map((link) => link.getAttribute('title'))
-    expect(labels).toEqual([
+  it('lists the pages in order for an administrator', () => {
+    const { result } = renderHook(() => useAgentsNav())
+    expect(result.current.map((item) => item.label)).toEqual([
       'Dashboard',
       'Agents',
       'AI Models',
@@ -160,6 +142,24 @@ describe('AgentsArea', () => {
       'Secrets',
       'Workflows',
     ])
+  })
+
+  it('sends a runner reader away from Egress Destinations', async () => {
+    auth.user = runnerReader()
+    renderAt('/agents/egress')
+    await waitFor(() =>
+      expect(window.location.pathname).toBe('/agents/dashboard'),
+    )
+  })
+
+  it('hides the admin pages from a runner reader', () => {
+    auth.user = runnerReader()
+    const { result } = renderHook(() => useAgentsNav())
+    const labels = result.current.map((item) => item.label)
+    expect(labels).toContain('Runners')
+    expect(labels).not.toContain('Egress Destinations')
+    expect(labels).not.toContain('AI Models')
+    expect(labels).not.toContain('Secrets')
   })
 
   it('toggles enabled from the list without opening the agent', async () => {
@@ -197,7 +197,39 @@ describe('AgentsArea', () => {
       await screen.findByText('$340.00 of $400.00', { exact: false }),
     ).toBeInTheDocument()
     expect(screen.getByText('30m')).toBeInTheDocument()
-    expect(screen.getByText('You fix bugs.')).toBeInTheDocument()
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'System prompt' }))
+    expect(await screen.findByText('You fix bugs.')).toBeInTheDocument()
+  })
+
+  it('lists the tickets of the agent on the History tab', async () => {
+    vi.mocked(endpoints.listTickets).mockResolvedValue([
+      {
+        closed_at: '2026-11-20T10:09:12Z',
+        cost_total: '0.19',
+        id: 't-1',
+        origin: { kind: 'schedule' },
+        outcome: 'done_acted',
+        run_started_at: '2026-11-20T10:00:00Z',
+        short_id: 'TKT-42',
+        status: 'closed',
+        title: 'Fix the flaky test',
+      },
+    ] as unknown as Awaited<ReturnType<typeof endpoints.listTickets>>)
+    renderAt('/agents/manage/mender')
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'History' }))
+    const link = await screen.findByRole('link', { name: 'TKT-42' })
+    expect(link).toHaveAttribute('href', '/tickets/acme/TKT-42')
+    expect(endpoints.listTickets).toHaveBeenCalledWith(
+      'acme',
+      { agent_id: ['agt-1'], limit: 100 },
+      expect.anything(),
+    )
+    const row = link.closest('tr') as HTMLElement
+    expect(within(row).getByText('Fix the flaky test')).toBeInTheDocument()
+    expect(within(row).getByText('Completed')).toBeInTheDocument()
+    expect(within(row).getByText('9m 12s')).toBeInTheDocument()
+    expect(within(row).getByText('$0.19')).toBeInTheDocument()
+    expect(within(row).getByText('Schedule')).toBeInTheDocument()
   })
 
   it('shows runs, cost, and the cap warning on the detail page', async () => {
