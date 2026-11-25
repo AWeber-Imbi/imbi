@@ -83,16 +83,15 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    The global `GET /operations-log/` and the global
    `GET`, `PATCH`, and `DELETE /operations-log/{entry_id}` are removed.
    `POST /operations-log/` stays. Do these steps in this order:
-    1. Deploy imbi-api and imbi-ui together. The new UI reads only the
+    1. **Before you deploy**, run `imbi-api setup-clickhouse` from the
+       **new** imbi-api image, for example in a one-off pod
+       (`kubectl run --rm -it --image=<new imbi-api image> ...`) with
+       the imbi-api environment. Do not run it in a pod of the previous
+       release: its packaged schema does not have the column. The
+       command adds the column (`ALTER TABLE ... ADD COLUMN IF NOT
+       EXISTS`). Read its log: it continues after a failed statement.
+    2. Deploy imbi-api and imbi-ui together. The new UI reads only the
        new routes.
-    2. As soon as the first new imbi-api pod is up, run
-       `imbi-api setup-clickhouse` in that pod. Pick the pod by name,
-       from the new ReplicaSet: `kubectl exec deploy/<deployment>` can
-       select a pod of the previous release, whose packaged schema does
-       not have the column. The command adds the column
-       (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`). Read its log: it
-       continues after a failed statement. Until the column exists, the
-       new operations-log routes fail.
     3. Run **Backfill Organizations to Operations Log**
        (`opslog-organization-backfill`) from
        **Admin > Global Admin > Maintenance**. Until it completes, the
