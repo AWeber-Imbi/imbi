@@ -701,7 +701,10 @@ class Executors:
         of the attempt that timed out again, so imbi-api gives the
         outcome of that call instead of a second call.
         """
-        params = _params(step.params, call).model_dump(mode='json')
+        # By alias: imbi-api validates the plugin model by alias.
+        params = _params(step.params, call).model_dump(
+            mode='json', by_alias=True
+        )
         integration = str(params.pop('integration'))
         project_id = params.pop('project_id', None)
         _check('integration', integration, _ID)
