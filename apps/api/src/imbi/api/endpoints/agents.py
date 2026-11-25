@@ -92,6 +92,7 @@ _READONLY_PATHS: frozenset[str] = frozenset(
         '/updated_at',
         '/updated_by',
         '/last_version_at',
+        '/created_by',
     ]
 )
 
@@ -274,6 +275,8 @@ class AgentResponse(pydantic.BaseModel):
     updated_by: str | None = None
     #: When the newest version was written.
     last_version_at: datetime.datetime | None = None
+    #: The principal that wrote the first version.
+    created_by: str | None = None
     organization: OrganizationRef
 
 
@@ -295,15 +298,17 @@ _AGENT_TAIL: typing.LiteralString = """
     WITH a, o, max(v.n) AS latest
     OPTIONAL MATCH (lv:AgentVersion)-[:VERSION_OF]->(a)
     WHERE lv.n = latest
+    OPTIONAL MATCH (fv:AgentVersion {{n: 1}})-[:VERSION_OF]->(a)
     OPTIONAL MATCH (a)-[:OWNED_BY]->(t:Team)
     OPTIONAL MATCH (a)-[:TAGGED_WITH]->(tag:Tag)
-    WITH a, o, t, lv, latest,
+    WITH a, o, t, lv, fv, latest,
          collect(CASE WHEN tag IS NOT NULL
                       THEN tag{{.name, .slug, .color}}
                       END) AS raw_tags
     RETURN a, o, t, raw_tags AS tags, latest,
            lv.created_by AS updated_by,
-           lv.created_at AS last_version_at
+           lv.created_at AS last_version_at,
+           fv.created_by AS created_by
 """
 
 _COLUMNS = [
@@ -314,6 +319,7 @@ _COLUMNS = [
     'latest',
     'updated_by',
     'last_version_at',
+    'created_by',
 ]
 
 _GET_QUERY: typing.LiteralString = (
@@ -690,6 +696,7 @@ def _parse_row(record: dict[str, typing.Any]) -> dict[str, typing.Any]:
         'version': agent.get('version') or latest or 1,
         'updated_by': graph.parse_agtype(record['updated_by']),
         'last_version_at': graph.parse_agtype(record['last_version_at']),
+        'created_by': graph.parse_agtype(record['created_by']),
         'organization': {
             'name': str(org.get('name', '')),
             'slug': str(org.get('slug', '')),

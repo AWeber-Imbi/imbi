@@ -58,22 +58,26 @@ from imbi.plugins.github.deployment import (
 
 LOGGER = logging.getLogger(__name__)
 
+_GITHUB_READ = {
+    'actions': 'read',
+    'contents': 'read',
+    'issues': 'read',
+    'pull_requests': 'read',
+}
+
 #: The token permissions of each purpose. The App's own permissions are
 #: the upper limit: GitHub refuses a request for more (422).
 PURPOSE_PERMISSIONS: dict[str, dict[str, str]] = {
     'workspace_checkout': {'contents': 'read'},
     'marketplace_fetch': {'contents': 'read'},
-    'github_read': {
-        'actions': 'read',
-        'contents': 'read',
-        'issues': 'read',
-        'pull_requests': 'read',
-    },
+    'github_read': _GITHUB_READ,
     'github_write': {
         'contents': 'write',
         'pull_requests': 'write',
         'issues': 'write',
     },
+    # Publish a verdict on a commit without the right to push to it.
+    'github_status': {**_GITHUB_READ, 'checks': 'write', 'statuses': 'write'},
 }
 
 #: Permissions that a purpose adds when the installation grants them:

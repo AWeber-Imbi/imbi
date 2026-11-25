@@ -2520,6 +2520,9 @@ class OperationLog(pydantic.BaseModel):
     is_deleted: bool = False
     plugin_slug: str = ''
     external_run_id: str | None = None
+    #: The id of the organization that owns the project. The
+    #: org-scoped routes read only the rows of their organization.
+    organization_id: str = ''
 
 
 class Event(pydantic.BaseModel):

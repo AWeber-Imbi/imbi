@@ -12,6 +12,7 @@ import nanoid
 from imbi.api.auth import permissions
 from imbi.api.domain import models
 from imbi.api.endpoints._helpers import (
+    lookup_project_organization_id,
     lookup_project_slugs,
     lookup_project_type_slugs,
     require_org_environments,
@@ -442,6 +443,10 @@ async def _write_value(
     """Write ``value`` through the plugin, drop the list cache, and
     record the change in the operations log."""
     handler = typing.cast(ConfigurationCapability, resolved.capability_cls())
+    # Look up before the plugin call: a failed lookup must stop the
+    # request before the external change, not leave it unrecorded.
+    project_slug = await _lookup_project_slug(db, ctx.project_id)
+    organization_id = await lookup_project_organization_id(db, ctx.project_id)
 
     async def _set_value(c: PluginContext) -> typing.Any:
         return await call_with_timeout(
@@ -458,9 +463,9 @@ async def _write_value(
         raise fastapi.HTTPException(status_code=400, detail=str(exc)) from exc
 
     await _invalidate_cache(resolved.integration_id, ctx.project_id)
-    project_slug = await _lookup_project_slug(db, ctx.project_id)
     await _write_audit(
         project_id=ctx.project_id,
+        organization_id=organization_id,
         project_slug=project_slug,
         environment_slug=ctx.environment or '',
         recorded_by=auth.principal_name,
@@ -500,6 +505,8 @@ async def delete_configuration_key(
     )
 
     handler = typing.cast(ConfigurationCapability, resolved.capability_cls())
+    project_slug = await _lookup_project_slug(db, project_id)
+    organization_id = await lookup_project_organization_id(db, project_id)
 
     async def _delete_key(c: PluginContext) -> None:
         await call_with_timeout(handler.delete_key(c, credentials, key))
@@ -507,9 +514,9 @@ async def delete_configuration_key(
     await call_with_identity_retry(db, ctx, resolved, auth, fn=_delete_key)
 
     await _invalidate_cache(resolved.integration_id, project_id)
-    project_slug = await _lookup_project_slug(db, project_id)
     await _write_audit(
         project_id=project_id,
+        organization_id=organization_id,
         project_slug=project_slug,
         environment_slug=environment or '',
         recorded_by=auth.principal_name,
@@ -524,6 +531,7 @@ async def delete_configuration_key(
 async def _write_audit(
     *,
     project_id: str,
+    organization_id: str,
     project_slug: str,
     environment_slug: str,
     recorded_by: str,
@@ -564,6 +572,7 @@ async def _write_audit(
         recorded_by=recorded_by,
         performed_by=recorded_by,
         project_id=project_id,
+        organization_id=organization_id,
         project_slug=project_slug,
         environment_slug=environment_slug,
         entry_type='Configured',

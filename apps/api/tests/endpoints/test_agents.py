@@ -148,6 +148,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
             'latest': latest,
             'updated_by': 'dev@example.com',
             'last_version_at': '2026-10-01T12:00:00Z',
+            'created_by': 'author@example.com',
         }
 
     def _version(
@@ -222,7 +223,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
             [{'id': 'agent-1'}],
             [{'attached': 1}],
             [{'n': 1}],
-            [self._row(tags=['red'])],
+            [{**self._row(tags=['red']), 'created_by': 'dev@example.com'}],
         ]
         response = self.client.post(
             BASE + '/',
@@ -247,6 +248,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         )
         self.assertEqual(body['organization']['slug'], 'engineering')
         self.assertEqual(body['updated_by'], 'dev@example.com')
+        self.assertEqual(body['created_by'], 'dev@example.com')
         self.assertIsNotNone(body['last_version_at'])
         self.assertEqual(body['settings']['response_sla'], '24h')
         self.assertNotIn('model', body)
@@ -577,11 +579,16 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         )
 
     def test_get(self) -> None:
-        self.mock_db.execute.return_value = [self._row(tags=['b', 'a'])]
+        self.mock_db.execute.return_value = [
+            self._row(tags=['b', 'a'], latest=2)
+        ]
         response = self.client.get(BASE + '/triage')
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual([t['slug'] for t in body['tags']], ['a', 'b'])
+        # Version 1 and the latest version have different writers.
+        self.assertEqual(body['created_by'], 'author@example.com')
+        self.assertEqual(body['updated_by'], 'dev@example.com')
         self.assertEqual(
             body['prompt_ref'], 'agents/engineering.triage@stable'
         )
@@ -2359,6 +2366,35 @@ class AgentMembershipTests(support.SharedAppAsyncTestCase):
         response = await self.client.get(self.url('triage'))
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()['organization']['slug'], self.org)
+
+    async def test_created_by_is_first_version_writer(self) -> None:
+        response = await self.client.post(
+            self.url(),
+            json={'name': 'Triage', 'slug': 'triage', 'team': self.team},
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        response = await self.client.patch(
+            self.url('triage'),
+            json=[{'op': 'replace', 'path': '/name', 'value': 'Triage 2'}],
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        # Give version 1 a different writer than version 2.
+        await self.graph.execute(
+            """
+            MATCH (v:AgentVersion {{n: 1}})-[:VERSION_OF]->(a:Agent)
+                  -[:BELONGS_TO]->(:Organization {{slug: {org}}})
+            SET v.created_by = 'author@example.com'
+            RETURN v.n AS n
+            """,
+            {'org': self.org},
+            ['n'],
+        )
+        response = await self.client.get(self.url('triage'))
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body['version'], 2)
+        self.assertEqual(body['created_by'], 'author@example.com')
+        self.assertEqual(body['updated_by'], self.email)
 
     async def test_unknown_organization_is_not_found(self) -> None:
         response = await self.client.get(self.url(org='no-such-org'))

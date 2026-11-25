@@ -57,6 +57,7 @@ function project(overrides: Partial<ProjectListItem> = {}): ProjectListItem {
     closed_pr_count: 0,
     current_releases: {},
     description: null,
+    drift_pairs: [],
     environments: [],
     has_deployment_plugin: true,
     id: 'p1',
@@ -65,6 +66,7 @@ function project(overrides: Partial<ProjectListItem> = {}): ProjectListItem {
     project_types: [
       { deployable: false, name: 'API', releasable: false, slug: 'api' },
     ],
+    release_drifted: false,
     release_summary: null,
     score: 90,
     slug: 'project-one',
@@ -96,6 +98,14 @@ function releaseSummary(
   }
 }
 
+const STAGING = { name: 'Staging', slug: 'staging', sort_order: 1 }
+const PRODUCTION = { name: 'Production', slug: 'production', sort_order: 2 }
+
+// The server's verdict: staging runs code production does not.
+function stagingAhead(oldest: null | string = null) {
+  return [{ base: PRODUCTION, head: STAGING, oldest }]
+}
+
 const PROJECTS: ProjectListItem[] = [
   project({ id: 'p1', name: 'Alpha', score: 90 }),
   project({ id: 'p2', name: 'Bravo', score: 60 }),
@@ -105,27 +115,22 @@ const PROJECTS: ProjectListItem[] = [
     score: 90,
     team: { name: 'Payments', slug: 'payments' },
   }),
-  // Drifts on both axes (staging behind production, commits past the
+  // Drifts on both axes (production behind staging, commits past the
   // latest tag) and carries no score, so it exercises the drift facet
-  // and the unscored bucket. Both axes also need a CI verdict saying
-  // the range matters, or the rule suppresses them.
+  // and the unscored bucket.
   project({
     current_releases: {
       production: { committish: 'bbb', deployed_at: DEPLOYED_AT, tag: 'v2' },
       staging: { committish: 'aaa', deployed_at: DEPLOYED_AT, tag: 'v1' },
     },
-    // Staging sorts first and so runs the newer code: production's
-    // commit is the base of the range, staging's the head.
-    drift_ranges: { 'bbb..aaa': true },
-    environments: [
-      { name: 'Staging', slug: 'staging', sort_order: 1 },
-      { name: 'Production', slug: 'production', sort_order: 2 },
-    ],
+    drift_pairs: stagingAhead(),
+    environments: [STAGING, PRODUCTION],
     id: 'p4',
     name: 'Delta',
     project_types: [
       { deployable: true, name: 'Service', releasable: true, slug: 'service' },
     ],
+    release_drifted: true,
     release_summary: releaseSummary({
       commits_since_tag: 2,
       drift_detected: true,
@@ -136,19 +141,15 @@ const PROJECTS: ProjectListItem[] = [
   }),
 ]
 
-// Same shape as Delta, but CI called every commit in both ranges
-// ignorable -- a docs-only promotion step.
+// Same shape as Delta, but the server found nothing that needs action
+// -- CI called every commit in both ranges ignorable.
 const QUIET_PROJECTS: ProjectListItem[] = [
   project({
     current_releases: {
       production: { committish: 'bbb', deployed_at: DEPLOYED_AT, tag: 'v2' },
       staging: { committish: 'aaa', deployed_at: DEPLOYED_AT, tag: 'v1' },
     },
-    drift_ranges: { 'bbb..aaa': false },
-    environments: [
-      { name: 'Staging', slug: 'staging', sort_order: 1 },
-      { name: 'Production', slug: 'production', sort_order: 2 },
-    ],
+    environments: [STAGING, PRODUCTION],
     id: 'p9',
     name: 'Quiet',
     project_types: [
@@ -230,32 +231,6 @@ describe('ProjectsView filter counts', () => {
     const panel = await openFilter(userEvent.setup(), /filter by drift/i)
     expect(panel.queryByText(/S → P/)).not.toBeInTheDocument()
     expect(panel.queryByText(/C → R/)).not.toBeInTheDocument()
-  })
-
-  it('shows a version difference nothing has verified', async () => {
-    // Same commits differ as Delta's, but no commit in either range
-    // carries a verdict at all. Only proven clean is clean, so an
-    // unverified difference stays in the queue: absent range keys and
-    // an absent drift_detected both fail closed.
-    vi.mocked(endpoints.getProjectsSlim).mockResolvedValue([
-      {
-        ...QUIET_PROJECTS[0],
-        drift_ranges: {},
-        id: 'p10',
-        name: 'Unverified',
-        release_summary: releaseSummary({
-          commits_since_tag: 2,
-          head_sha: 'ccc',
-        }),
-      },
-    ])
-    renderView()
-    await waitFor(() =>
-      expect(screen.getByText('Unverified')).toBeInTheDocument(),
-    )
-    const panel = await openFilter(userEvent.setup(), /filter by drift/i)
-    expect(countFor(panel, /S → P/)).toBe('1')
-    expect(countFor(panel, /C → R/)).toBe('1')
   })
 
   it('offers an unscored option for projects with no score', async () => {
@@ -354,7 +329,7 @@ describe('ProjectsView waiting age', () => {
   ): ProjectListItem {
     return {
       ...PROJECTS[3],
-      drift_range_oldest: oldest ? { 'bbb..aaa': oldest } : {},
+      drift_pairs: stagingAhead(oldest),
       id,
       name,
       release_summary: releaseSummary({

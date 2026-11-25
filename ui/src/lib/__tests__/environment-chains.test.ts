@@ -40,6 +40,19 @@ describe('splitChains', () => {
     expect(chains).toHaveLength(1)
   })
 
+  it('breaks sort_order ties by code point, like the API', () => {
+    // Upper case sorts first, so the terminal Production ends its own
+    // pipeline and builds no dev..Production pair.
+    const chains = splitChains([
+      { name: 'dev', slug: 'dev', sort_order: 0 },
+      { name: 'Production', slug: 'production', sort_order: 0, terminal: true },
+    ])
+    expect(chains.map((c) => c.map((e) => e.slug))).toEqual([
+      ['production'],
+      ['dev'],
+    ])
+  })
+
   it('handles an empty list', () => {
     expect(splitChains([])).toEqual([])
   })

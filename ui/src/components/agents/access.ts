@@ -32,6 +32,11 @@ export const GITHUB_PURPOSES: {
     purpose: 'github_write',
   },
   {
+    label: 'Publish check runs and commit statuses',
+    mode: 'environment',
+    purpose: 'github_status',
+  },
+  {
     label: 'Fetch plugins from private marketplaces',
     mode: 'file_descriptor',
     purpose: 'marketplace_fetch',

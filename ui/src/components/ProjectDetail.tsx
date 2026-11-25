@@ -42,7 +42,6 @@ import {
   type ProjectSchemaResponse,
   type ScoreTrend,
 } from '@/api/endpoints'
-import { getReleaseDrift } from '@/api/releases'
 import { DependenciesTab } from '@/components/dependencies/DependenciesTab'
 import { ConnectIdentityPrompt } from '@/components/deploy/ConnectIdentityPrompt'
 import {
@@ -107,11 +106,6 @@ import { useProjectTypes, useTeams } from '@/hooks/useOrgResources'
 import { useProjectDriftVerdicts } from '@/hooks/useProjectDriftVerdicts'
 import { useProjectPatch } from '@/hooks/useProjectPatch'
 import { resolveDelivery } from '@/lib/delivery'
-import {
-  computeDriftPairs,
-  rangeNeedsAction,
-  releaseRangeClean,
-} from '@/lib/deployment-drift'
 import { formatDateTime } from '@/lib/formatDate'
 import { projectRepoUrl } from '@/lib/github-refs'
 import { getIcon, useIconRegistryVersion } from '@/lib/icons'
@@ -799,30 +793,30 @@ export function ProjectDetail({
   })
   const openPrCount = openPrCountData?.total ?? 0
 
-  // Drift marks the tab with a rocket: something is ready to ship. For a
-  // release-only project that's untagged commits on the head; for a
-  // deployed one it's an environment running something the next one down
-  // the pipeline isn't. Same query key as the Releases tab, so the tab
-  // and its badge share one request.
-  const { data: releaseDrift } = useQuery({
-    enabled: isReleaseOnly && !!orgSlug && !!project.id,
-    queryFn: ({ signal }) => getReleaseDrift(orgSlug, project.id, signal),
-    queryKey: ['releaseDrift', orgSlug, project.id],
-  })
-  // Same rule as the projects-list badge: a difference is shown unless
-  // CI answered `false` for every commit in it.
+  // Drift marks the tab with a rocket: something is ready to ship. The
+  // verdict is the projects list's, so the tab and the list agree.
   const driftVerdicts = useProjectDriftVerdicts(orgSlug, project.id)
-  const hasReleaseDrift =
-    (releaseDrift?.commits_since_tag ?? 0) > 0 &&
-    !releaseRangeClean(driftVerdicts?.release_summary)
-  const hasDeploymentDrift = useMemo(
-    () =>
-      computeDriftPairs(sortedEnvironments, deploymentStatus).some(
-        (pair) =>
-          pair.drifted && rangeNeedsAction(driftVerdicts?.drift_ranges, pair),
-      ),
-    [sortedEnvironments, deploymentStatus, driftVerdicts],
-  )
+  const hasReleaseDrift = !!driftVerdicts?.release_drifted
+  const hasDeploymentDrift = !!driftVerdicts?.drift_pairs.length
+  // The verdict is not polled. Refresh it when the polled deployment
+  // state shows a different serving release in any environment.
+  const servingKey = releasesPending
+    ? null
+    : currentReleases
+        .map((r) => `${r.environment.slug}:${r.release?.committish ?? ''}`)
+        .join(',')
+  const lastServingKey = useRef<null | string>(null)
+  useEffect(() => {
+    if (servingKey === null) return
+    if (
+      lastServingKey.current !== null &&
+      lastServingKey.current !== servingKey
+    )
+      void queryClient.invalidateQueries({
+        queryKey: ['releaseDrift', orgSlug, project.id, 'verdicts'],
+      })
+    lastServingKey.current = servingKey
+  }, [orgSlug, project.id, queryClient, servingKey])
 
   // Redirect to overview when a deep-link points at a tab that no
   // longer surfaces (e.g. /configuration on a project type with no
