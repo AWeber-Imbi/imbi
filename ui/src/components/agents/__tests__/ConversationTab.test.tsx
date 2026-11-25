@@ -112,21 +112,21 @@ describe('ConversationTab', () => {
       </div>,
     )
     await user.click(screen.getByRole('radio', { name: 'Verbose' }))
-    const inspect = { name: 'Inspect Bash in the trajectory' }
+    const inspect = { name: 'Open Bash in the trajectory' }
     expect(screen.queryByRole('button', inspect)).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /Bash make test/ }))
     await user.click(screen.getByRole('button', inspect))
     expect(onInspect).toHaveBeenCalledWith(3)
   })
 
-  it('offers no Inspect without a trajectory to open', async () => {
+  it('offers no Open in trajectory without a trajectory to open', async () => {
     const user = userEvent.setup()
     renderTab('closed')
     await user.click(screen.getByRole('radio', { name: 'Verbose' }))
     await user.click(screen.getByRole('button', { name: /Bash make test/ }))
     expect(screen.getByText(/tests passed/)).toBeInTheDocument()
     expect(
-      screen.queryByRole('button', { name: /^Inspect/ }),
+      screen.queryByRole('button', { name: /in the trajectory$/ }),
     ).not.toBeInTheDocument()
   })
 

@@ -596,14 +596,14 @@ function CallRow({ ctx, entry }: { ctx: Ctx; entry: TimelineEntry }) {
         )}
         {e && ctx.onInspect && (
           <Button
-            aria-label={`Inspect ${toolLabel(tool)} in the trajectory`}
+            aria-label={`Open ${toolLabel(tool)} in the trajectory`}
             className="text-muted-foreground hover:text-foreground -ml-1 h-6 w-fit gap-1 px-1 text-xs font-normal [&_svg]:size-3.5"
             onClick={() => ctx.onInspect?.(e.seq)}
             size="sm"
             variant="ghost"
           >
             <ChartGantt />
-            Inspect
+            Open in trajectory
           </Button>
         )}
         {entry.children.length > 0 && (
