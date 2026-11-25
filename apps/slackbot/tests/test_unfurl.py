@@ -147,6 +147,16 @@ class HandleTests(SettingsTestCase, test_create_ticket.ApiTestCase):
             kwargs['unfurls'][TICKET_URL]['blocks'],
         )
 
+    async def test_enterprise_event_targets_channel_and_ts(self) -> None:
+        self.ok('/organizations/acme/tickets/T-12', TICKET)
+        event = self.event(TICKET_URL, message_ts='1.2')
+        del event['unfurl_id'], event['source']
+        with self.api():
+            await unfurl.handle(event, self.slack)
+        kwargs = self.slack.chat_unfurl.await_args.kwargs
+        self.assertEqual(('C1', '1.2'), (kwargs['channel'], kwargs['ts']))
+        self.assertNotIn('unfurl_id', kwargs)
+
     async def test_project_in_second_org(self) -> None:
         self.ok('/organizations/', [{'slug': 'one'}, {'slug': 'two'}])
         self.ok('/organizations/two/projects/p1', PROJECT)

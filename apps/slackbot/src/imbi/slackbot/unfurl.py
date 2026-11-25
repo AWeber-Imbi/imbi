@@ -133,12 +133,14 @@ async def handle(event: Json, client: SlackClient) -> None:
     }
     if not unfurls:
         return
+    # Enterprise Grid events have no unfurl_id/source; use channel + ts.
+    target = (
+        {'unfurl_id': event['unfurl_id'], 'source': event['source']}
+        if event.get('unfurl_id') and event.get('source')
+        else {'channel': event.get('channel'), 'ts': event.get('message_ts')}
+    )
     try:
-        await client.chat_unfurl(
-            unfurl_id=event.get('unfurl_id'),
-            source=event.get('source'),
-            unfurls=unfurls,
-        )
+        await client.chat_unfurl(unfurls=unfurls, **target)
     except errors.SlackApiError:
         LOGGER.warning('chat.unfurl failed', exc_info=True)
 

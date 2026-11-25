@@ -42,7 +42,8 @@ The bot also needs `ANTHROPIC_API_KEY`, the shared `IMBI_AUTH_JWT_SECRET`, and
   item as the Slack user who posted the link.
 - `mpim:read` — `conversations.info` for group DMs, so link previews work
   there. The bot checks every channel and makes no preview in a Slack
-  Connect channel.
+  Connect channel. The scope gives access only to group DMs that include
+  the bot, so add `@imbi` to a group DM to get previews there.
 
 ## Link previews
 
@@ -51,7 +52,10 @@ Set `features.unfurl_domains` to the host of `IMBI_UI_URL` for the install
 so a dev Slack app cannot show link previews. See
 [Link previews](index.md#link-previews) for when the bot makes a card.
 
-A new scope needs a reinstall of the app.
+For an existing app, apply this manifest first (*App Manifest* in the app
+settings), then reinstall the app. A reinstall alone does not add the
+scopes or the `link_shared` event. A change to `unfurl_domains` also needs
+a reinstall, even when the scopes do not change.
 
 ## Home tab
 
