@@ -135,11 +135,35 @@ the agent runs. For a plugin pinned before Imbi saved this list, it shows
 the servers of the newest synced commit and, when the agent runs an older
 commit, the note "Servers at <commit>. This agent runs <commit>."
 
+An `http` or `sse` server whose headers use `${VAR}` variables shows a
+secret picker for each variable. Pick a secret to have the runner fill
+that header. The list offers each enabled binding that allows
+`file_descriptor` delivery and is not a provider key or a GitHub App
+binding. For a binding with a field list, pick a field.
+
+- Picking a secret records the origin of the server URL that the row
+  shows, and the runner sends the secret only to that origin, over
+  `https`. A server URL that is not `https` shows no pickers.
+- Picking a secret also grants it to the agent at once, with the
+  purpose `mcp_header`: Imbi adds the purpose to the agent's own
+  `file_descriptor` grant of that binding, or creates that grant. The
+  grant applies at once and is not part of the agent version. The
+  picker shows whether a grant allows it, and **Grant** when it does
+  not. For a new agent, save first, then click **Grant**.
+- Choose **No secret** to unmap a variable. A server that is on and has
+  no secrets needs no setting, so the save drops it.
+- Turning a server off keeps its secrets for when you turn it on again.
+
+When a new pin moves a server to another origin, the row shows the new
+URL and asks you to pick its secrets again. Until you do, the agent does
+not get the server. **Remove the secrets** drops them instead.
+
 When the agent moves to a commit that no longer has a server that you
-turned off, the save drops the setting. Otherwise the server is listed
-under its plugin as **no longer in this plugin**. Click **Remove**, then
-save, to drop the setting. If the server was renamed, turn off its new
-name.
+turned off or gave secrets, the save drops the setting, and it drops the
+secret of a header variable that the server no longer uses. Otherwise the
+server is listed under its plugin as **no longer in this plugin**. Click
+**Remove**, then save, to drop the setting. If the server was renamed,
+set up its new name again.
 
 While a task runs, the Conversation tab shows a warning, and the task goes
 on, when:
@@ -147,9 +171,12 @@ on, when:
 - An MCP server of a plugin is `failed` or `needs-auth`, or is still
   `pending` or did not load 60 seconds after the agent session starts. A
   task that ends sooner gets no warning for a pending server.
-- A header of a server uses a `${VAR}` that has no default and that the
-  Claude Code environment does not set. Imbi does not give MCP servers
-  secrets yet, so such a header gets no credential.
+- A header of a server uses a `${VAR}` that has no default, no picked
+  secret, and no value in the Claude Code environment. The header is sent
+  empty.
+- The runner cannot relay a server with secrets: its URL is no longer an
+  `https` URL at the origin that you picked the secrets for, or the
+  secrets broker refuses a secret. The agent does not get that server.
 - The agent turns off a server that the pinned plugin does not have.
 
 **Tools** lists two groups: **Built-in** and **Imbi**. The MCP
@@ -254,8 +281,8 @@ one:
 4. Click **Save**.
 
 The tab also lists the secrets that the runner uses for the agent, for
-example the model key and the repository tokens. The agent never gets
-these values.
+example the model key, the repository tokens, and the MCP server header
+secrets. The agent never gets these values.
 
 To remove a secret, click **X** on its row. This removes the agent from
 the grant. A grant that names other agents stays for them. A grant that

@@ -3,7 +3,12 @@ import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as endpoints from '@/api/endpoints'
-import { fireEvent, render, screen, within } from '@/test/utils'
+import type {
+  SecretBinding,
+  SecretGrant,
+  SecretProvider,
+} from '@/components/admin/secrets/types'
+import { fireEvent, render, screen, waitFor, within } from '@/test/utils'
 import type {
   AgentMarketplace,
   AgentPlatformConfigResponse,
@@ -16,13 +21,26 @@ import { PluginsSection } from '../PluginsSection'
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', () => ({
+  createSecretGrant: vi.fn(),
   getAgentPlatformConfig: vi.fn(),
   listAgentMarketplaces: vi.fn(),
+  listSecretBindings: vi.fn(),
+  listSecretGrants: vi.fn(),
+  listSecretProviders: vi.fn(),
+  updateSecretGrant: vi.fn(),
 }))
 
-const auth = vi.hoisted(() => ({
-  user: { is_admin: false, permissions: [] as string[] },
+vi.mock('sonner', () => ({
+  toast: { error: vi.fn(), success: vi.fn() },
 }))
+
+const VIEWER = { is_admin: false, permissions: [] as string[] }
+const ADMIN = {
+  is_admin: true,
+  organizations: [{ organization_slug: 'acme', permissions: [] as string[] }],
+  permissions: [] as string[],
+}
+const auth = vi.hoisted(() => ({ user: {} as object }))
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }))
@@ -47,7 +65,28 @@ const pinned = (
   ...changes,
 })
 
-const OFF = { enabled: false }
+const OFF = { enabled: false, secrets: {} }
+
+const AGENT = { id: 'agt-1', name: 'Mender', team: 'ops' }
+const GRAFANA_ORIGIN = 'https://grafana.example.com'
+const TOKEN = 'secret://ops/grafana'
+
+function binding(
+  id: string,
+  reference: string,
+  changes: Partial<SecretBinding> = {},
+): SecretBinding {
+  return {
+    allowed_delivery_modes: ['file_descriptor', 'environment'],
+    allowed_fields: [],
+    enabled: true,
+    id,
+    max_ttl_seconds: 3600,
+    provider_id: 'p-vault',
+    reference,
+    ...changes,
+  } as SecretBinding
+}
 
 function config(): AgentPlatformConfigResponse {
   return {
@@ -65,11 +104,30 @@ function config(): AgentPlatformConfigResponse {
   } as AgentPlatformConfigResponse
 }
 
+function grant(changes: Partial<SecretGrant>): SecretGrant {
+  return {
+    agent_ids: [AGENT.id],
+    binding_ids: [],
+    delivery_modes: ['file_descriptor'],
+    enabled: true,
+    id: 'g-1',
+    max_ttl_seconds: 900,
+    project_ids: [],
+    purposes: [],
+    ...changes,
+  } as SecretGrant
+}
+
 function Harness({ initial }: { initial: SettingsDraft }) {
   const [value, setValue] = useState(initial)
   return (
     <>
-      <PluginsSection onChange={setValue} orgSlug="acme" value={value} />
+      <PluginsSection
+        agent={AGENT}
+        onChange={setValue}
+        orgSlug="acme"
+        value={value}
+      />
       <output data-testid="plugins">{JSON.stringify(value.plugins)}</output>
     </>
   )
@@ -133,6 +191,10 @@ function plugins() {
   return JSON.parse(screen.getByTestId('plugins').textContent!)
 }
 
+function provider(id: string, type: string): SecretProvider {
+  return { enabled: true, id, type } as SecretProvider
+}
+
 function withPlugins(...entries: AgentPlugin[]): SettingsDraft {
   return { ...emptyDraft().settings, plugins: entries }
 }
@@ -140,6 +202,7 @@ function withPlugins(...entries: AgentPlugin[]): SettingsDraft {
 describe('PluginsSection', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    auth.user = VIEWER
     vi.mocked(endpoints.getAgentPlatformConfig).mockResolvedValue(config())
     vi.mocked(endpoints.listAgentMarketplaces).mockResolvedValue([
       marketplace(),
@@ -297,7 +360,7 @@ describe('PluginsSection', () => {
     )
     render(<Harness initial={initial} />)
     const gone = await screen.findByRole('list', {
-      name: 'Turned-off MCP servers no longer in grafana-mcp',
+      name: 'Settings of MCP servers no longer in grafana-mcp',
     })
     expect(within(gone).getByText('gone')).toBeInTheDocument()
     expect(
@@ -328,5 +391,167 @@ describe('PluginsSection', () => {
     expect(
       screen.getByLabelText('grafana-mcp MCP server local'),
     ).toBeInTheDocument()
+  })
+
+  describe('header secrets', () => {
+    beforeEach(() => {
+      auth.user = ADMIN
+      vi.mocked(endpoints.listSecretProviders).mockResolvedValue([
+        provider('p-vault', 'vault'),
+        provider('p-gh', 'github_app'),
+      ])
+      vi.mocked(endpoints.listSecretBindings).mockResolvedValue([
+        binding('b-graf', TOKEN),
+        binding('b-multi', 'secret://ops/multi', {
+          allowed_fields: ['token'],
+        }),
+        binding('b-gh', 'secret://dev/github_app', { provider_id: 'p-gh' }),
+        binding('b-env', 'secret://ops/env_only', {
+          allowed_delivery_modes: ['environment'],
+        }),
+      ])
+      vi.mocked(endpoints.listSecretGrants).mockResolvedValue([])
+      vi.mocked(endpoints.createSecretGrant).mockResolvedValue(
+        grant({}) as never,
+      )
+      vi.mocked(endpoints.updateSecretGrant).mockResolvedValue(
+        grant({}) as never,
+      )
+    })
+
+    const PICKER = 'grafana-mcp grafana header GRAFANA_TOKEN'
+
+    async function pick(name: string) {
+      fireEvent.click(await screen.findByRole('combobox', { name: PICKER }))
+      fireEvent.click(await screen.findByRole('option', { name }))
+    }
+
+    function relayed(secrets: Record<string, string>, origin = GRAFANA_ORIGIN) {
+      return { enabled: true, origin, secrets }
+    }
+
+    it('maps a header variable and grants mcp_header', async () => {
+      render(<Harness initial={withPlugins(pinned('grafana-mcp'))} />)
+      await pick(TOKEN)
+      expect(plugins()).toEqual([
+        pinned('grafana-mcp', {
+          server_settings: { grafana: relayed({ GRAFANA_TOKEN: TOKEN }) },
+        }),
+      ])
+      await waitFor(() =>
+        expect(endpoints.createSecretGrant).toHaveBeenCalledWith('acme', {
+          agent_ids: [AGENT.id],
+          binding_ids: ['b-graf'],
+          delivery_modes: ['file_descriptor'],
+          description: `Mender: mcp_header with ${TOKEN}`,
+          enabled: true,
+          max_ttl_seconds: 900,
+          project_ids: [],
+          purposes: ['mcp_header'],
+        }),
+      )
+    })
+
+    it('adds mcp_header to the agent grant of the secret', async () => {
+      vi.mocked(endpoints.listSecretGrants).mockResolvedValue([
+        grant({ binding_ids: ['b-graf'], purposes: ['model_inference'] }),
+      ])
+      render(<Harness initial={withPlugins(pinned('grafana-mcp'))} />)
+      await pick(TOKEN)
+      await waitFor(() =>
+        expect(endpoints.updateSecretGrant).toHaveBeenCalledWith(
+          'acme',
+          'g-1',
+          { purposes: ['model_inference', 'mcp_header'] },
+        ),
+      )
+      expect(endpoints.createSecretGrant).not.toHaveBeenCalled()
+    })
+
+    it('adds no grant when one already allows mcp_header', async () => {
+      vi.mocked(endpoints.listSecretGrants).mockResolvedValue([
+        grant({ binding_ids: ['b-graf'], purposes: ['mcp_header'] }),
+      ])
+      render(<Harness initial={withPlugins(pinned('grafana-mcp'))} />)
+      await pick(TOKEN)
+      expect(await screen.findByLabelText('Granted')).toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: 'Grant' }),
+      ).not.toBeInTheDocument()
+      expect(endpoints.createSecretGrant).not.toHaveBeenCalled()
+      expect(endpoints.updateSecretGrant).not.toHaveBeenCalled()
+    })
+
+    it('offers only bindings that can fill a header', async () => {
+      render(<Harness initial={withPlugins(pinned('grafana-mcp'))} />)
+      fireEvent.click(await screen.findByRole('combobox', { name: PICKER }))
+      const options = (await screen.findAllByRole('option')).map(
+        (option) => option.textContent,
+      )
+      expect(options).toEqual(['No secret', TOKEN, 'secret://ops/multi#token'])
+    })
+
+    it('asks for the secrets again when the server origin changed', async () => {
+      const initial = withPlugins(
+        pinned('grafana-mcp', {
+          server_settings: {
+            grafana: relayed(
+              { GRAFANA_TOKEN: 'secret://ops/old', OTHER: TOKEN },
+              'https://old.example.com',
+            ),
+          },
+        }),
+      )
+      render(<Harness initial={initial} />)
+      expect(
+        await screen.findByText(
+          /now at https:\/\/grafana\.example\.com\/mcp, not at https:\/\/old\.example\.com/,
+        ),
+      ).toBeInTheDocument()
+      expect(
+        await screen.findByRole('combobox', { name: PICKER }),
+      ).toHaveTextContent('No secret')
+      await pick(TOKEN)
+      expect(plugins()).toEqual([
+        pinned('grafana-mcp', {
+          server_settings: { grafana: relayed({ GRAFANA_TOKEN: TOKEN }) },
+        }),
+      ])
+      expect(
+        screen.queryByText(/Pick its secrets again/),
+      ).not.toBeInTheDocument()
+    })
+
+    it('keeps the secrets of a server that is turned off and on', async () => {
+      const initial = withPlugins(
+        pinned('grafana-mcp', {
+          server_settings: { grafana: relayed({ GRAFANA_TOKEN: TOKEN }) },
+        }),
+      )
+      render(<Harness initial={initial} />)
+      const grafana = await screen.findByLabelText(
+        'grafana-mcp MCP server grafana',
+      )
+      fireEvent.click(grafana)
+      expect(plugins()[0].server_settings.grafana).toEqual({
+        ...relayed({ GRAFANA_TOKEN: TOKEN }),
+        enabled: false,
+      })
+      fireEvent.click(grafana)
+      expect(plugins()[0].server_settings.grafana).toEqual(
+        relayed({ GRAFANA_TOKEN: TOKEN }),
+      )
+    })
+
+    it('drops the setting when its last secret is cleared', async () => {
+      const initial = withPlugins(
+        pinned('grafana-mcp', {
+          server_settings: { grafana: relayed({ GRAFANA_TOKEN: TOKEN }) },
+        }),
+      )
+      render(<Harness initial={initial} />)
+      await pick('No secret')
+      expect(plugins()).toEqual([pinned('grafana-mcp')])
+    })
   })
 })

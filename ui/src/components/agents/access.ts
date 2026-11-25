@@ -71,6 +71,28 @@ export function agentGrants(
   return grants.filter((g) => g.enabled && g.agent_ids.includes(agentId))
 }
 
+/** The binding that a `secret://` reference, with or without a field, names. */
+export function bindingOf(
+  bindings: SecretBinding[],
+  reference: string,
+): SecretBinding | undefined {
+  const [bindingReference] = reference.split('#')
+  return bindings.find((b) => b.reference === bindingReference)
+}
+
+/**
+ * The broker gives the runner a setup secret only from an enabled
+ * binding that allows file_descriptor delivery and is not a provider
+ * key.
+ */
+export function canSupplyRunner(binding: SecretBinding): boolean {
+  return (
+    binding.enabled &&
+    !binding.provider_key_usage &&
+    binding.allowed_delivery_modes.includes('file_descriptor')
+  )
+}
+
 /** The first grant that allows the binding for the purpose and mode. */
 export function coveringGrant(
   grants: SecretGrant[],
@@ -94,6 +116,18 @@ export function covers(
   mode: string,
 ): boolean {
   return coveringGrant(grants, bindingId, purpose, mode) !== undefined
+}
+
+/**
+ * The references that a picker offers. A binding with a field list
+ * gives only those fields, so the reference must name one of them.
+ */
+export function fieldReferences(bindings: SecretBinding[]): string[] {
+  return bindings.flatMap((b) =>
+    b.allowed_fields.length
+      ? b.allowed_fields.map((field) => `${b.reference}#${field}`)
+      : [b.reference],
+  )
 }
 
 /** A grant for one agent, one binding, one purpose, and one mode. */

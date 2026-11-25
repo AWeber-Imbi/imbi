@@ -180,6 +180,9 @@ function AgentEditorForm({
   }
 
   const tabs = agent ? TABS : TABS.filter((t) => t.key !== 'versions')
+  const grantAgent = agent
+    ? { id: agent.id, name: agent.name, team: agent.team?.slug }
+    : null
 
   return (
     <div className="flex flex-col gap-6 p-8">
@@ -260,6 +263,7 @@ function AgentEditorForm({
       {tab === 'tools' && (
         <div className="flex flex-col gap-10">
           <PluginsSection
+            agent={grantAgent}
             onChange={(settings) => update({ settings })}
             orgSlug={orgSlug}
             value={draft.settings}
@@ -273,11 +277,7 @@ function AgentEditorForm({
       )}
       {tab === 'access' && (
         <AccessTab
-          agent={
-            agent
-              ? { id: agent.id, name: agent.name, team: agent.team?.slug }
-              : null
-          }
+          agent={grantAgent}
           errors={errors}
           onChange={(settings) => update({ settings })}
           orgSlug={orgSlug}
