@@ -29,6 +29,7 @@ export function MergedNotDeployedReport() {
     hasNextPage,
     isError,
     isFetchingNextPage,
+    isFetchNextPageError,
     isLoading,
   } = useInfiniteQuery<
     PendingDeployResponse,
@@ -55,6 +56,9 @@ export function MergedNotDeployedReport() {
   const { projectsById } = useProjectsSlimMap(orgSlug)
   const prs = data?.pages.flatMap((p) => p.data) ?? []
   const first = data?.pages[0]
+  // A failed next page keeps the loaded rows; only a failed first page
+  // replaces the list with the error state.
+  const initialError = isError && !data
 
   const setMine = (mine: boolean) =>
     setSearchParams(mine ? { author: MINE } : {}, { replace: true })
@@ -76,7 +80,7 @@ export function MergedNotDeployedReport() {
             {o.label}
           </button>
         ))}
-        {!isLoading && !isError && (
+        {!isLoading && !initialError && (
           <span className="text-tertiary ml-auto text-xs">
             {first?.total ?? prs.length}
           </span>
@@ -89,14 +93,19 @@ export function MergedNotDeployedReport() {
               ? 'No GitHub identity connected.'
               : 'Every merged pull request has reached a terminal environment.'
           }
-          isError={isError}
+          isError={initialError}
           isLoading={isLoading}
           projectsById={projectsById}
           prs={prs}
           showAuthor={author !== MINE}
         />
         {hasNextPage && (
-          <div className="mt-3 flex justify-center">
+          <div className="mt-3 flex items-center justify-center gap-3">
+            {isFetchNextPageError && (
+              <span className="text-danger text-xs">
+                Could not load more pull requests.
+              </span>
+            )}
             <Button
               disabled={isFetchingNextPage}
               onClick={() => void fetchNextPage()}

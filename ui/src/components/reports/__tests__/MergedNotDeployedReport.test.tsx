@@ -138,4 +138,45 @@ describe('MergedNotDeployedReport', () => {
       screen.queryByRole('button', { name: 'Load more' }),
     ).not.toBeInTheDocument()
   })
+
+  it('keeps loaded rows when the next page fails and retries', async () => {
+    const page = (n: number) => ({
+      data: [
+        {
+          additions: 1,
+          author: 'gmr',
+          deletions: 0,
+          last_deployed_at: '2026-09-01T10:00:00Z',
+          merged_at: '2026-09-10T12:00:00Z',
+          pr_id: `PR_${n}`,
+          pr_number: n,
+          project_id: 'p1',
+          title: `Pull request ${n}`,
+          url: `https://github.example/org/repo/pull/${n}`,
+        },
+      ],
+      environments: ['production'],
+      since: '2026-06-18T00:00:00Z',
+      total: 2,
+    })
+    spy
+      .mockResolvedValueOnce(page(1))
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValueOnce(page(2))
+    renderAt('/reports/merged-not-deployed')
+
+    await screen.findByText('Pull request 1')
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
+
+    await screen.findByText('Could not load more pull requests.')
+    expect(screen.getByText('Pull request 1')).toBeInTheDocument()
+    expect(screen.queryByText('Unavailable')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
+    await screen.findByText('Pull request 2')
+    expect(screen.getByText('Pull request 1')).toBeInTheDocument()
+    expect(
+      screen.queryByText('Could not load more pull requests.'),
+    ).not.toBeInTheDocument()
+  })
 })
