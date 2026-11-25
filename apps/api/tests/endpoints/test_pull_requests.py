@@ -474,6 +474,47 @@ class MeFiltersTestCase(_PullRequestsTestBase):
         self.assertEqual(body['data'], [])
         pending.assert_awaited_once()
 
+    def test_pending_deploy_environment_name(self) -> None:
+        now = datetime.datetime.now(datetime.UTC)
+        rows = [
+            pull_requests.PendingDeployPullRequest(
+                project_id='p1',
+                pr_id=f'PR_{n}',
+                pr_number=n,
+                title='Ship it',
+                url='https://example.test/pr',
+                author='gmr',
+                merged_at=now,
+                additions=1,
+                deletions=0,
+                last_deployed_at=now,
+                last_deployed_environment=slug,
+            )
+            for n, slug in enumerate(['production', None])
+        ]
+        envs = mock.AsyncMock(return_value={'production': 'Production'})
+        with (
+            mock.patch.object(
+                pull_requests,
+                '_list_pending_deploy',
+                mock.AsyncMock(return_value=rows),
+            ),
+            mock.patch.object(
+                pull_requests, '_fetch_terminal_environments', envs
+            ),
+        ):
+            response = self.client.get(
+                f'/organizations/{ORG}/pull-requests/pending-deploy'
+            )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(['production'], body['environments'])
+        first, second = body['data']
+        self.assertEqual('production', first['last_deployed_environment'])
+        self.assertEqual('Production', first['last_deployed_environment_name'])
+        self.assertIsNone(second['last_deployed_environment'])
+        self.assertIsNone(second['last_deployed_environment_name'])
+
 
 class PullRequestActivityTestCase(_PullRequestsTestBase):
     """GET /organizations/{org}/pull-requests/activity"""

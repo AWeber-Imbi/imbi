@@ -146,6 +146,12 @@ def full_sections(n: int) -> dict[str, typing.Any]:
                     **pr(i),
                     'merged_at': ts(48),
                     'last_deployed_at': ts(72),
+                    'last_deployed_environment': (
+                        'production' if i == 0 else None
+                    ),
+                    'last_deployed_environment_name': (
+                        'Production' if i == 0 else None
+                    ),
                     'project': 'imbi-api',
                 }
                 for i in r
@@ -312,6 +318,8 @@ class RenderSnapshotTests(helpers.TestCase):
         # Text from Imbi is escaped, so it cannot make a link or mention.
         self.assertIn('Change &lt;1&gt; &amp; more', text)
         self.assertIn('Good afternoon, Ada', text)
+        self.assertIn('last deployed to Production 3d ago', text)
+        self.assertIn('2d ago \\u00b7 last deployed 3d ago', text)
         self.assertEqual(
             'context: :warning: Could not hide X: boom.', outline(view)[0]
         )

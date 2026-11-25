@@ -18250,6 +18250,10 @@ export interface components {
              * Format: date-time
              */
             last_deployed_at: string;
+            /** Last Deployed Environment */
+            last_deployed_environment?: string | null;
+            /** Last Deployed Environment Name */
+            last_deployed_environment_name?: string | null;
         };
         /**
          * PendingDeployResponse

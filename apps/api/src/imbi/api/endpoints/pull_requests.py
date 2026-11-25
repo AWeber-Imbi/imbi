@@ -125,6 +125,9 @@ class PendingDeployPullRequest(pydantic.BaseModel):
     # Start of the project's most recent deploy to a terminal
     # environment; it predates ``merged_at`` by construction.
     last_deployed_at: datetime.datetime
+    # Slug and name of the environment of that deploy.
+    last_deployed_environment: str | None = None
+    last_deployed_environment_name: str | None = None
 
 
 class PendingDeployResponse(pydantic.BaseModel):
@@ -572,8 +575,8 @@ def terminal_environment_slugs(
     return slugs
 
 
-async def _fetch_terminal_environment_slugs(db: graph.Pool) -> list[str]:
-    """Resolve the terminal environment slugs from the graph."""
+async def _fetch_terminal_environments(db: graph.Pool) -> dict[str, str]:
+    """Resolve the terminal environments from the graph, slug to name."""
     query: typing.LiteralString = """
     MATCH (e:Environment)
     RETURN e.slug AS slug,
@@ -588,7 +591,8 @@ async def _fetch_terminal_environment_slugs(db: graph.Pool) -> list[str]:
         {key: graph.parse_agtype(record[key]) for key in record}
         for record in records
     ]
-    return terminal_environment_slugs(envs)
+    names = {str(e['slug']): str(e['name'] or e['slug']) for e in envs}
+    return {slug: names[slug] for slug in terminal_environment_slugs(envs)}
 
 
 async def _list_pending_deploy(
@@ -627,7 +631,9 @@ async def _list_pending_deploy(
         author_clause += " AND pr.author LIKE '%[bot]'"
     sql = (
         'WITH deployed AS ('  # noqa: S608
-        ' SELECT project_id, max(occurred_at) AS last_deployed_at'
+        ' SELECT project_id, max(occurred_at) AS last_deployed_at,'
+        " nullIf(argMax(environment_slug, occurred_at), '')"
+        ' AS last_deployed_environment'
         ' FROM operations_log FINAL'
         " WHERE entry_type = 'Deployed' AND is_deleted = 0"
         ' AND environment_slug IN {environments:Array(String)}'
@@ -637,7 +643,8 @@ async def _list_pending_deploy(
         ' pr.pr_number AS pr_number, pr.title AS title, pr.url AS url,'
         ' pr.author AS author, pr.merged_at AS merged_at,'
         ' pr.additions AS additions, pr.deletions AS deletions,'
-        ' d.last_deployed_at AS last_deployed_at'
+        ' d.last_deployed_at AS last_deployed_at,'
+        ' d.last_deployed_environment AS last_deployed_environment'
         ' FROM pull_requests AS pr FINAL'
         ' INNER JOIN deployed AS d ON d.project_id = pr.project_id'
         ' WHERE pr.project_id IN (SELECT project_id FROM project_ids)'
@@ -697,7 +704,8 @@ async def list_pending_deploy_pull_requests(
             github_identity_missing=True,
         )
     project_ids = await _fetch_org_project_ids(db, org_slug)
-    slugs = await _fetch_terminal_environment_slugs(db)
+    envs = await _fetch_terminal_environments(db)
+    slugs = list(envs)
     data = await _list_pending_deploy(
         project_ids=project_ids,
         environment_slugs=slugs,
@@ -705,6 +713,11 @@ async def list_pending_deploy_pull_requests(
         since=since,
         bots=bots,
     )
+    for row in data:
+        if row.last_deployed_environment:
+            row.last_deployed_environment_name = envs.get(
+                row.last_deployed_environment
+            )
     return PendingDeployResponse(since=since, environments=slugs, data=data)
 
 

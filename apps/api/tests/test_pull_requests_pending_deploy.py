@@ -93,6 +93,7 @@ class ListPendingDeployTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("entry_type = 'Deployed'", sql)
         self.assertIn('environment_slug IN {environments:Array(String)}', sql)
         self.assertIn('d.last_deployed_at <= pr.merged_at', sql)
+        self.assertIn('argMax(environment_slug, occurred_at)', sql)
         self.assertIn('pr.merged_at >= {since:DateTime64(3)}', sql)
         self.assertIn('pr.author = {author:String}', sql)
         self.assertIn('NOT pr.draft', sql)
@@ -156,6 +157,7 @@ class ListPendingDeployTests(unittest.IsolatedAsyncioTestCase):
                 'additions': 3,
                 'deletions': 1,
                 'last_deployed_at': deployed,
+                'last_deployed_environment': 'production',
             }
         ]
         rows = await pull_requests._list_pending_deploy(
@@ -168,3 +170,5 @@ class ListPendingDeployTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(datetime.UTC, rows[0].merged_at.tzinfo)
         self.assertEqual(datetime.UTC, rows[0].last_deployed_at.tzinfo)
         self.assertEqual(7, rows[0].pr_number)
+        self.assertEqual('production', rows[0].last_deployed_environment)
+        self.assertIsNone(rows[0].last_deployed_environment_name)

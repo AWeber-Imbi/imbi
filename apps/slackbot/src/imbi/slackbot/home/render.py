@@ -398,6 +398,13 @@ def _pull_requests(data: Row, links: _Links, now: datetime.datetime) -> Part:
     )
 
 
+def _deployed_to(pr: Row) -> str:
+    env = pr.get('last_deployed_environment_name') or pr.get(
+        'last_deployed_environment'
+    )
+    return f'to {b.escape(env)} ' if env else ''
+
+
 def _merged_not_deployed(
     data: Row, links: _Links, now: datetime.datetime
 ) -> Part:
@@ -406,7 +413,7 @@ def _merged_not_deployed(
             f'{links.a(pr["url"], f"{_repo(pr['url'])}#{pr['pr_number']}")} '
             f'{b.escape(pr["title"])}\n{b.escape(pr["project"])} · merged '
             f'{ago(pr["merged_at"], now)} · last deployed '
-            f'{ago(pr["last_deployed_at"], now)}',
+            f'{_deployed_to(pr)}{ago(pr["last_deployed_at"], now)}',
             links.button(
                 'Promote',
                 'home:deploy:promote',
