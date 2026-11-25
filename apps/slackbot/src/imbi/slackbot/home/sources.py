@@ -352,7 +352,11 @@ class Sources:
                 DRIFT_TTL,
                 lambda: _json_or(self.client, f'{path}/release-drift', {}),
             )
-            if not drift.get('suggested_tag'):
+            # A response from a different tag, fresh or cached, must
+            # not show its suggestion beside the row's tag.
+            if not drift.get('suggested_tag') or drift.get(
+                'latest_tag'
+            ) != summary.get('latest_tag'):
                 return None
             blockers: list[Row] = await _json_or(
                 self.client,

@@ -675,6 +675,7 @@ class FakeApi:
         self.conflicts = 0
         self.fail: set[str] = set()
         self.unmatched: list[str] = []
+        self.drift_tag = '1.0.0'
 
     def routes(self) -> list[tuple[str, typing.Any]]:
         project = {
@@ -783,7 +784,7 @@ class FakeApi:
             (r'/pull-requests/$', {'data': [], 'total': 0}),
             (
                 r'/release-drift$',
-                {'suggested_tag': '1.1.0'},
+                {'latest_tag': self.drift_tag, 'suggested_tag': '1.1.0'},
             ),
             (r'/blockers$', []),
             (r'/score/trend$', {'current': 80, 'delta': -5}),
@@ -937,6 +938,15 @@ class HomeFlowTests(helpers.TestCase):
         count = len(self.api.requests)
         await home.refresh(self.slack, 'U1')
         self.assertEqual(count + 2, len(self.api.requests))
+
+    async def test_drift_from_another_tag_is_not_shown(self) -> None:
+        await home.refresh(self.slack, 'U1')
+        self.assertIn('1.1.0', self.text())
+        # The drift call saw a newer tag than the project row.
+        self.valkey.data.clear()
+        self.api.drift_tag = '1.2.0'
+        await home.refresh(self.slack, 'U1')
+        self.assertNotIn('1.1.0', self.text())
 
     async def test_failed_source_fails_only_its_section(self) -> None:
         self.api.fail.add(r'/comments/attention$')
