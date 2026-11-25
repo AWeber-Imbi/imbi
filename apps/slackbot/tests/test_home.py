@@ -469,6 +469,27 @@ class AgentNameTests(helpers.TestCase):
             )
         )
 
+    def test_running_shows_the_run_duration(self) -> None:
+        data = full_sections(4)
+        tickets = data['agent_activity']['tickets']
+        tickets[0]['run_started_at'] = (
+            NOW - datetime.timedelta(minutes=31)
+        ).isoformat()
+        tickets[3]['run_started_at'] = None
+        lines = outline(
+            render.render(USER, prefs.Prefs(), gathered(data), NOW, TZ)
+        )
+        self.assertTrue(
+            any(':large_green_circle: Running 31 min ·' in x for x in lines)
+        )
+        # Without a start time, the text keeps the last update.
+        self.assertTrue(
+            any(
+                ':large_green_circle: Running · updated 30 min ago' in x
+                for x in lines
+            )
+        )
+
     def test_agent_name_is_escaped(self) -> None:
         data = full_sections(2)
         data['needs_attention']['requests'][1]['agent_name'] = '<!channel>'

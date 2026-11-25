@@ -525,8 +525,12 @@ def _agent_activity(data: Row, links: _Links, now: datetime.datetime) -> Part:
         path = links.ticket(t['short_id'])
         agent = f'{b.escape(t["agent"])} · ' if t.get('agent') else ''
         if t['group'] == 'running':
+            started = _when(t.get('run_started_at'))
             status = (
-                ':large_green_circle: Running · updated '
+                f':large_green_circle: Running '
+                f'{_span((now - started).total_seconds())}'
+                if started
+                else ':large_green_circle: Running · updated '
                 f'{ago(t["updated_at"], now)}'
             )
             button = links.button('Pause', 'home:agent:pause', path)

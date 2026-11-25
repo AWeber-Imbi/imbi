@@ -534,6 +534,9 @@ class AgentTaskListItem(AgentTaskDetail):
     #: When the oldest open request opened, for a task that waits on a
     #: person; ``null`` when the task is closed or has none open.
     blocked_since: datetime.datetime | None = None
+    #: When the open session of a ``running`` task opened; ``null`` when
+    #: the task is not ``running`` or has no open session.
+    run_started_at: datetime.datetime | None = None
     #: What ``q`` matched; empty without ``q``.
     highlights: list[TaskHighlight] = pydantic.Field(default_factory=list)
     #: The icon of each project of the task that has one, by project id:

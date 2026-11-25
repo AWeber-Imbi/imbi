@@ -12458,6 +12458,8 @@ export interface components {
             agent_activity?: ("working" | "subagent" | "approval" | "person" | "stalled") | null;
             /** Blocked Since */
             blocked_since?: string | null;
+            /** Run Started At */
+            run_started_at?: string | null;
             /** Highlights */
             highlights?: components["schemas"]["TaskHighlight"][];
             /** Project Icons */

@@ -1426,7 +1426,9 @@ class TicketStore:
         rows. Each row also has ``blocked_since``: for a task that waits
         on a person (see :data:`_OPEN_REQUESTS`), the time its oldest
         open request opened, so the queue can sort oldest block first
-        (O2); else ``None``.
+        (O2); else ``None``. A ``running`` task also has
+        ``run_started_at``: the time its open session opened; else
+        ``None``.
 
         With ``group_by='run'`` each row is a unit of work (see
         :meth:`_search_units`) and ``before`` is not used.
@@ -1459,7 +1461,11 @@ class TicketStore:
         statement = sql.SQL(
             'SELECT t.*, ' + PROJECTS + ', {activity},'  # noqa: S608
             " CASE WHEN t.status <> 'closed' THEN"
-            ' (SELECT min(r.opened_at) {open}) END AS blocked_since'
+            ' (SELECT min(r.opened_at) {open}) END AS blocked_since,'
+            " CASE WHEN t.status = 'running' THEN"
+            ' (SELECT max(s.opened_at) FROM tickets.sessions AS s'
+            ' WHERE s.ticket_id = t.id AND s.closed_at IS NULL)'
+            ' END AS run_started_at'
             ' FROM tickets.tickets AS t WHERE {where}'
             ' ORDER BY {order} LIMIT %s OFFSET %s'
         ).format(
