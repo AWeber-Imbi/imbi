@@ -44,7 +44,6 @@
               "text": "New ticket",
               "emoji": true
             },
-            "url": "https://imbi.example/tickets/acme",
             "style": "primary"
           },
           {

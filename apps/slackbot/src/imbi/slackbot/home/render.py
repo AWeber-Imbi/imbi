@@ -718,12 +718,7 @@ def _header(
         )
     )
     buttons = [
-        links.button(
-            'New ticket',
-            'home:header:new_ticket',
-            f'/tickets/{links.org}',
-            'primary',
-        ),
+        b.button('New ticket', 'home:header:new_ticket', style='primary'),
         links.button('Ask Imbi', 'home:header:ask', gathered.ask_url or None),
         links.button('Open Imbi', 'home:header:open', '/dashboard'),
         links.button(

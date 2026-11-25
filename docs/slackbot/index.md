@@ -96,7 +96,8 @@ the UI. When the bot cannot read a section, the section shows **Retry**.
 The other sections show as usual.
 
 The bot updates the tab when you open it and after each button you click.
-Most buttons open the item in Imbi or GitHub. To act on an item, use Imbi.
+**New ticket** opens the `/create-ticket` form. Most other buttons open the
+item in Imbi or GitHub. To act on an item, use Imbi.
 
 ### Change the layout
 

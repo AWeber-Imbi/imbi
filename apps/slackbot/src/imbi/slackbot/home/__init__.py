@@ -5,7 +5,8 @@ Every API call runs as the user, with a token minted for them. The
 layout (collapse, hide, order, options) is stored in imbi-api.
 
 Action ids are ``home:<section>:<verb>``. Phase 1 handles the layout
-verbs; every other button is a link to Imbi, and its handler only acks.
+verbs and New ticket, which opens the ``/create-ticket`` modal. Every
+other button is a link to Imbi, and its handler only acks.
 
 """
 
@@ -22,8 +23,8 @@ import httpx
 from slack_bolt.async_app import AsyncApp
 from slack_sdk import errors
 
-from imbi.common import api, valkey
-from imbi.slackbot import identity, settings
+from imbi.common import valkey
+from imbi.slackbot import create_ticket, identity, settings
 from imbi.slackbot.home import prefs, render, sources
 
 SlackClient = typing.Any
@@ -80,15 +81,6 @@ def _ask_url(team_id: str | None, app_id: str | None) -> str:
     if not team_id or not app_id:
         return ''
     return f'slack://app?team={team_id}&id={app_id}&tab=messages'
-
-
-def _client(user: identity.ImbiUser) -> api.Imbi:
-    """Return an API client that calls as ``user``."""
-    return api.Imbi(
-        base_url=settings.get_slackbot_settings().api_base_url,
-        token=identity.mint_token(user),
-        timeout=10,
-    )
 
 
 def _zone(name: str | None) -> zoneinfo.ZoneInfo:
@@ -159,7 +151,7 @@ async def _build(
     user: identity.ImbiUser, ask_url: str, preferences: prefs.Prefs | None
 ) -> Body:
     try:
-        async with _client(user) as client:
+        async with identity.api_client(user) as client:
             gathered, preferences = await sources.gather(
                 client, user.email, preferences
             )
@@ -189,6 +181,9 @@ async def handle_action(slack: SlackClient, body: Body) -> None:
     """Run a layout action and render again. Link buttons only ack."""
     action: Body = body['actions'][0]
     section, verb = _parse(action['action_id'])
+    if (section, verb) == ('header', 'new_ticket'):
+        await _new_ticket(slack, body)
+        return
     if verb == 'menu':
         verb = str(sources.dig(action, 'selected_option', 'value') or '')
     if verb != 'retry' and verb not in _VERBS:
@@ -235,6 +230,19 @@ async def handle_action(slack: SlackClient, body: Body) -> None:
     )
 
 
+async def _new_ticket(slack: SlackClient, body: Body) -> None:
+    """Open the modal of the ``/create-ticket`` command."""
+
+    async def acked() -> None:
+        """The Home action is acked already."""
+
+    await create_ticket.on_command(
+        acked,
+        {'trigger_id': body['trigger_id'], 'user_id': body['user']['id']},
+        slack,
+    )
+
+
 async def _change(
     store: typing.Any,
     user: identity.ImbiUser,
@@ -245,7 +253,7 @@ async def _change(
     """Write a change of the preferences. On failure, store a notice
     for the next render (§5.8) and return ``None``."""
     try:
-        async with _client(user) as client:
+        async with identity.api_client(user) as client:
             return await prefs.change(client, apply)
     except httpx.HTTPError as err:
         LOGGER.warning('Could not %s %s: %s', verb, section, err)
@@ -267,7 +275,7 @@ async def _open_customize(
 ) -> None:
     current = prefs.Prefs()
     with contextlib.suppress(httpx.HTTPError):
-        async with _client(user) as client:
+        async with identity.api_client(user) as client:
             current = await prefs.read(client)
     await slack.views_open(
         trigger_id=trigger_id, view=render.customize_view(current)

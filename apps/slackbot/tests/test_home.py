@@ -15,7 +15,7 @@ import httpx
 from slack_sdk import errors
 
 from apps.slackbot.tests import helpers
-from imbi.slackbot import home, identity
+from imbi.slackbot import create_ticket, home, identity
 from imbi.slackbot.home import blocks, prefs, render, sources
 
 NOW = datetime.datetime(2026, 11, 24, 19, 1, tzinfo=datetime.UTC)
@@ -629,6 +629,7 @@ class FakeApi:
             (r'/tickets/$', []),
             (r'/agents/$', []),
             (r'/comments/attention$', {'data': []}),
+            (r'/tickets/schema$', {'sections': []}),
         ]
 
     def handler(self, request: httpx.Request) -> httpx.Response:
@@ -667,6 +668,7 @@ class FakeSlack:
     def __init__(self) -> None:
         self.published: list[dict[str, typing.Any]] = []
         self.opened: list[dict[str, typing.Any]] = []
+        self.updated: list[dict[str, typing.Any]] = []
         self.conflict = False
 
     async def views_publish(self, **kwargs: typing.Any) -> None:
@@ -677,8 +679,12 @@ class FakeSlack:
             )
         self.published.append(kwargs)
 
-    async def views_open(self, **kwargs: typing.Any) -> None:
+    async def views_open(self, **kwargs: typing.Any) -> dict:
         self.opened.append(kwargs)
+        return {'view': {'id': f'V{len(self.opened)}'}}
+
+    async def views_update(self, **kwargs: typing.Any) -> None:
+        self.updated.append(kwargs)
 
 
 class HomeFlowTests(helpers.TestCase):
@@ -689,14 +695,14 @@ class HomeFlowTests(helpers.TestCase):
         self.slack = FakeSlack()
         transport = httpx.MockTransport(self.api.handler)
 
-        class Client(home.api.Imbi):
+        class Client(identity.api.Imbi):
             def __init__(self, **kw: typing.Any) -> None:
                 super().__init__(**kw)
                 self._transport = transport
 
         self.user: identity.ImbiUser | None = USER
         patches = [
-            mock.patch.object(home.api, 'Imbi', Client),
+            mock.patch.object(identity.api, 'Imbi', Client),
             mock.patch.object(
                 home.identity,
                 'resolve',
@@ -923,10 +929,24 @@ class HomeFlowTests(helpers.TestCase):
         self.assertEqual(2, len(self.slack.opened))
         self.assertEqual([], self.slack.published)
 
-    async def test_link_buttons_only_ack(self) -> None:
+    async def test_new_ticket_opens_the_create_ticket_modal(self) -> None:
+        create_ticket._cache.clear()
         await home.handle_action(
             self.slack, self.action('home:header:new_ticket')
         )
+        self.assertEqual('trig', self.slack.opened[0]['trigger_id'])
+        view = self.slack.updated[-1]['view']
+        self.assertEqual(create_ticket.CALLBACK_ID, view['callback_id'])
+        self.assertEqual('V1', self.slack.updated[-1]['view_id'])
+        self.assertEqual([], self.slack.published)
+        for request in self.api.requests:
+            self.assertEqual(
+                f'Bearer token-for-{USER.email}',
+                request.headers['authorization'],
+            )
+
+    async def test_link_buttons_only_ack(self) -> None:
+        await home.handle_action(self.slack, self.action('home:header:open'))
         await home.handle_action(self.slack, self.action('home:pr:review'))
         self.assertEqual([], self.slack.published)
         self.assertEqual([], self.api.requests)
