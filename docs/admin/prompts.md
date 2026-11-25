@@ -82,6 +82,33 @@ both the CMS and the packaged template.
     `{{ display_name }}`. An override that does not render is ignored,
     and the packaged template is used.
 
+## Skills
+
+A skill is a generative prompt in the `imbi-skills` namespace. The Slack
+bot lists the slug and description of each skill in its system prompt.
+It lists only skills that are not archived and have a `stable` (or
+default) label, and it puts each description on one line of at most 300
+characters. When a request matches a skill, the model calls the
+`skill_invoke` tool, and the bot gives it the rendered `stable` version
+(or the default label) as instructions.
+
+1. Open **Admin > Prompts** and create a prompt in the namespace
+   `imbi-skills`.
+2. Write a description that tells the model when to use the skill.
+3. To get input from the model, declare the variable `arguments` and use
+   `{{ arguments }}` in the template.
+4. Point the `stable` label at the version.
+
+The bot reads the skills on each turn, so a change applies to the next
+message. Decision prompts in the namespace are ignored.
+
+You can also ask the bot to create or change a skill. It uses the prompt
+API with your token, so you need `prompt:create` (or `prompt:update`).
+When you cannot promote, the new version gets no label, and an admin
+must point `stable` at it before the bot uses it. The name and
+description go into every user's system prompt, so a change to the name
+or description of a skill needs `prompt:promote`.
+
 ## Decision prompts
 
 A prompt has a kind, chosen when it is created and fixed after that:

@@ -685,13 +685,16 @@ class FakeApi:
             'team': {'name': 'Platform', 'slug': 'platform'},
             'score': 80,
             'release_summary': {'commits_since_tag': 4, 'latest_tag': '1.0.0'},
+            'release_drifted': True,
         }
         released = {
             **project,
             'id': 'p2',
             'name': 'imbi-ui',
             'slug': 'imbi-ui',
-            'release_summary': {'commits_since_tag': 0},
+            # Commits past the tag, but CI says none needs a release.
+            'release_summary': {'commits_since_tag': 2},
+            'release_drifted': False,
         }
         return [
             (
@@ -922,7 +925,8 @@ class HomeFlowTests(helpers.TestCase):
         self.assertIn('/api/organizations/acme/workflow-runs/attention', paths)
         drift = '/api/organizations/acme/projects/{}/deployments/release-drift'
         self.assertIn(drift.format('p1'), paths)
-        # A project with no commits since its tag costs no drift call.
+        # A project the list does not mark drifted costs no drift call,
+        # even with commits since its tag.
         self.assertNotIn(drift.format('p2'), paths)
         # A new latest tag misses the cached drift of the previous tag.
         self.assertIn('home:acme:drift:p1:1.0.0', self.valkey.data)

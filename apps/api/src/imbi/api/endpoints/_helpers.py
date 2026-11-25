@@ -181,6 +181,7 @@ def safe_audit_url(value: str | None) -> str | None:
 def deployed_operation_log(
     *,
     project_id: str,
+    organization_id: str,
     project_slug: str,
     environment_slug: str,
     recorded_by: str,
@@ -254,6 +255,7 @@ def deployed_operation_log(
         'recorded_by': recorded_by,
         'performed_by': performed_by,
         'project_id': project_id,
+        'organization_id': organization_id,
         'project_slug': project_slug,
         'environment_slug': environment_slug,
         'entry_type': 'Deployed',
@@ -386,6 +388,25 @@ async def lookup_project_slugs(
         str(slug_raw) if slug_raw else '',
         str(team_raw) if team_raw else None,
     )
+
+
+_PROJECT_ORG_ID_QUERY: typing.LiteralString = (
+    'MATCH (p:Project {{id: {project_id}}})-[:OWNED_BY]->(:Team)'
+    '-[:BELONGS_TO]->(o:Organization) RETURN o.id AS id LIMIT 1'
+)
+
+
+async def lookup_project_organization_id(
+    db: graph.Graph, project_id: str
+) -> str:
+    """The id of the organization that owns the project, or ``''``
+    when the project or its owner is missing. An ``operations_log``
+    row records it as ``organization_id``."""
+    records = await db.execute(
+        _PROJECT_ORG_ID_QUERY, {'project_id': project_id}, ['id']
+    )
+    value = graph.parse_agtype(records[0]['id']) if records else None
+    return str(value) if value else ''
 
 
 async def lookup_project_name_description(

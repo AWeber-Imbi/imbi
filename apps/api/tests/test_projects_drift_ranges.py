@@ -416,3 +416,98 @@ class FetchActionableCommitTimesTests(unittest.IsolatedAsyncioTestCase):
             {'p1': [projects.ActionableCommit('twin', _at(10), _at(10))]},
             result,
         )
+
+
+def _verdict(
+    summary: projects.ReleaseSummary | None = None, **overrides: typing.Any
+) -> dict[str, typing.Any]:
+    """A deployable testing -> production project, with the verdict set."""
+    project: dict[str, typing.Any] = {
+        'project_types': [{'deployable': True}],
+        'environments': PIPELINE[::2],
+        'current_releases': {
+            'testing': _release('bbb'),
+            'production': _release('aaa'),
+        },
+        **overrides,
+    }
+    projects._apply_drift_verdict(project, summary)
+    return project
+
+
+def _pair_slugs(project: dict[str, typing.Any]) -> list[tuple[str, str]]:
+    pairs: list[projects.DriftPair] = project['drift_pairs']
+    return [(p.head.slug, p.base.slug) for p in pairs]
+
+
+class DriftVerdictTests(unittest.TestCase):
+    def test_an_unevaluated_range_fails_closed(self) -> None:
+        self.assertEqual([('testing', 'production')], _pair_slugs(_verdict()))
+
+    def test_a_range_that_needs_action_shows(self) -> None:
+        project = _verdict(drift_ranges={'aaa..bbb': True})
+        self.assertEqual([('testing', 'production')], _pair_slugs(project))
+
+    def test_a_range_proven_clean_is_hidden(self) -> None:
+        project = _verdict(drift_ranges={'aaa..bbb': False})
+        self.assertEqual([], _pair_slugs(project))
+
+    def test_the_oldest_date_rides_on_the_pair(self) -> None:
+        project = _verdict(
+            drift_ranges={'aaa..bbb': True},
+            drift_range_oldest={'aaa..bbb': _at(3)},
+        )
+        self.assertEqual(_at(3), project['drift_pairs'][0].oldest)
+
+    def test_the_same_release_does_not_drift(self) -> None:
+        releases = {'testing': _release('aaa'), 'production': _release('aaa')}
+        self.assertEqual([], _pair_slugs(_verdict(current_releases=releases)))
+
+    def test_a_missing_release_fails_closed(self) -> None:
+        releases = {'testing': _release('bbb')}
+        self.assertEqual(
+            [('testing', 'production')],
+            _pair_slugs(_verdict(current_releases=releases)),
+        )
+
+    def test_tags_compare_when_a_committish_is_missing(self) -> None:
+        def tagged(tag: str) -> projects.ReleaseInfo:
+            return projects.ReleaseInfo(deployed_at=_at(1), tag=tag)
+
+        same = {'testing': tagged('1.0'), 'production': tagged('1.0')}
+        self.assertEqual([], _pair_slugs(_verdict(current_releases=same)))
+        other = {'testing': tagged('1.1'), 'production': tagged('1.0')}
+        self.assertEqual(
+            [('testing', 'production')],
+            _pair_slugs(_verdict(current_releases=other)),
+        )
+
+    def test_no_pair_across_a_terminal_boundary(self) -> None:
+        envs = [_env('testing', 1, terminal=True), _env('production', 3)]
+        self.assertEqual([], _pair_slugs(_verdict(environments=envs)))
+
+    def test_disabled_delivery_shows_nothing(self) -> None:
+        summary = projects.ReleaseSummary(
+            head_sha='abc', commits_since_tag=2, drift_detected=True
+        )
+        project = _verdict(summary, delivery_mode='disabled')
+        self.assertEqual([], _pair_slugs(project))
+        self.assertFalse(project['release_drifted'])
+
+    def test_release_drift(self) -> None:
+        library = [{'releasable': True}]
+        summary = projects.ReleaseSummary(
+            head_sha='abc', commits_since_tag=2, drift_detected=True
+        )
+        project = _verdict(summary, project_types=library)
+        self.assertTrue(project['release_drifted'])
+        self.assertEqual([], _pair_slugs(project))
+        summary.drift_detected = False
+        project = _verdict(summary, project_types=library)
+        self.assertFalse(project['release_drifted'])
+
+    def test_a_deployable_project_has_no_release_drift(self) -> None:
+        summary = projects.ReleaseSummary(
+            head_sha='abc', commits_since_tag=2, drift_detected=True
+        )
+        self.assertFalse(_verdict(summary)['release_drifted'])

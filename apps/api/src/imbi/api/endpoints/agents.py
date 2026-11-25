@@ -193,7 +193,10 @@ class AgentWrite(pydantic.BaseModel):
         description=(
             'The tools that the agent can use, by tool key '
             '(<server slug>.<tool name>). A tool that is not in the map '
-            'is off. builtin.Skill and builtin.Agent turn on those '
+            'is off, except the default tools that the tool catalog marks '
+            'with default: true; they are on for every agent, and an '
+            'entry sets their configuration. builtin.Skill and '
+            'builtin.Agent turn on those '
             'Claude Code built-in tools. Environment slugs must exist in '
             'the org.'
         ),
@@ -935,7 +938,8 @@ async def _check_platform(
     """Check the platform fields of ``settings``; pin its plugins.
 
     ``current`` is the stored settings of the agent, so a plugin that
-    keeps its ``sha`` keeps its pin.
+    keeps its ``sha`` keeps its pin. A plugin that the organization
+    gives every agent gets the default's pin.
 
     Raises:
         422: A secret reference does not parse, a new GitHub App
@@ -983,7 +987,10 @@ async def _check_platform(
     found = {row['slug']: row for row in await store.marketplaces(org_id)}
     try:
         plugins = platform.pin_plugins(
-            settings.plugins, current.plugins if current else [], found
+            settings.plugins,
+            current.plugins if current else [],
+            found,
+            config.default_plugins,
         )
     except ValueError as err:
         raise _unprocessable(str(err)) from err

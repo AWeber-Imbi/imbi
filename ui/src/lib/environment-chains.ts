@@ -21,13 +21,19 @@ export function chainTerminals<T extends ChainEnvironment>(
   return splitChains(environments).map((chain) => chain[chain.length - 1])
 }
 
-/** The canonical environment ordering: sort_order, then name. */
+/**
+ * The canonical environment ordering: sort_order, then name. Names
+ * compare by code unit, not locale, to match the API's Python sort:
+ * otherwise `Production` and `dev` swap places and the pipelines differ.
+ */
 export function sortByPipelineOrder<T extends ChainEnvironment>(
   environments: T[],
 ): T[] {
   return [...environments].sort((a, b) => {
     const orderDiff = (a.sort_order ?? 0) - (b.sort_order ?? 0)
-    return orderDiff !== 0 ? orderDiff : a.name.localeCompare(b.name)
+    if (orderDiff !== 0) return orderDiff
+    if (a.name === b.name) return 0
+    return a.name < b.name ? -1 : 1
   })
 }
 

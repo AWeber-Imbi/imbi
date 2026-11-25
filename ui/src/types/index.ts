@@ -820,6 +820,8 @@ export interface BlueprintCreate {
 // Blueprint types
 export type BlueprintFilter = Schemas['BlueprintFilter']
 
+export type CatalogServer = Schemas['CatalogServer']
+
 // Claude Code settings of an organization or an agent: an allowlist.
 export type ClaudeSettings = Schemas['ClaudeSettings']
 
@@ -1433,7 +1435,7 @@ export interface OperationsLogFilters {
   until?: string
 }
 
-// Raw record returned by the /operations-log/ API.
+// Raw record returned by the /organizations/{org_slug}/operations-log/ API.
 // `plugin_slug` is augmented here pending an openapi snapshot refresh against
 // the upstream `imbi-api` change — the backend already returns it.
 export type OperationsLogRecord = Schemas['OperationLogResponse'] & {

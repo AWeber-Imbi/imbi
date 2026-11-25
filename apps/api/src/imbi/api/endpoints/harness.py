@@ -40,7 +40,7 @@ import fastapi
 import pydantic
 from fastapi import responses
 
-from imbi.api import harness, secret_broker, tickets
+from imbi.api import agent_tools, harness, secret_broker, tickets
 from imbi.api import settings as api_settings
 from imbi.api.auth import autonomous, organizations, permissions
 from imbi.api.endpoints import _helpers
@@ -584,6 +584,10 @@ async def _bundle(
     )
     snapshot: dict[str, typing.Any] = (
         json.loads(raw) if isinstance(raw, str) else raw or {}
+    )
+    # The runner and the tool call check read the tool map from here.
+    snapshot['tools'] = agent_tools.with_default_tools(
+        snapshot.get('tools') or {}
     )
     slug = snapshot.get('slug')
     if slug is None:

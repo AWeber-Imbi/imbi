@@ -157,6 +157,48 @@ describe('ToolsTab', () => {
     expect(last()).toEqual({})
   })
 
+  it('shows a default tool as on and does not store it', async () => {
+    const data = catalog()
+    data.tools[3].default = true
+    vi.mocked(endpoints.getAgentToolCatalog).mockResolvedValue(data)
+    render(<Harness initial={{}} />)
+    await screen.findAllByText('1 of 4 enabled')
+    const toggle = screen.getByRole('switch', {
+      name: 'Enable imbi.list_projects',
+    })
+    expect(toggle).toBeChecked()
+    expect(toggle).toBeDisabled()
+    expect(screen.getByText('Default')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Enable imbi.get_me' }))
+    expect(Object.keys(last())).toEqual(['imbi.get_me'])
+    fireEvent.click(screen.getByRole('button', { name: 'Enable all' }))
+    expect(Object.keys(last()).sort()).toEqual([
+      'imbi.create_project',
+      'imbi.delete_project',
+      'imbi.get_me',
+    ])
+    fireEvent.click(screen.getByRole('button', { name: 'Disable all' }))
+    expect(last()).toEqual({})
+  })
+
+  it('keeps the stored settings of a default tool on bulk edits', async () => {
+    const data = catalog()
+    data.tools[3].default = true
+    vi.mocked(endpoints.getAgentToolCatalog).mockResolvedValue(data)
+    const config = {
+      approval: true,
+      environments: null,
+      rate_limit: { count: 5, per: 'hour' as const },
+    }
+    render(<Harness initial={{ 'imbi.list_projects': config }} />)
+    await screen.findAllByText('1 of 4 enabled')
+    fireEvent.click(screen.getByRole('button', { name: 'Enable all' }))
+    expect(last()['imbi.list_projects']).toEqual(config)
+    fireEvent.click(screen.getByRole('button', { name: 'Disable all' }))
+    expect(last()).toEqual({ 'imbi.list_projects': config })
+  })
+
   it('switches a built-in tool on, without environments', async () => {
     vi.mocked(endpoints.getAgentToolCatalog).mockResolvedValue({
       ...catalog(),

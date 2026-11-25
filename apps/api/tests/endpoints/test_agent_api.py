@@ -319,7 +319,7 @@ class RouteTests(AgentApiTestCase):
             'global lists': ('GET', '/users/'),
             'organizations': ('GET', '/organizations/'),
             'events by id': ('GET', '/events/e1'),
-            'operations log by id': ('PATCH', '/operations-log/x'),
+            'operations log edits': ('PATCH', f'{org}/operations-log/x'),
             'uploads': ('GET', '/uploads/u1'),
             'blueprint writes': ('POST', '/blueprints/'),
             'rescore': ('POST', '/scoring/rescore'),

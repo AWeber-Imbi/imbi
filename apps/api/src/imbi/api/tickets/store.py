@@ -34,7 +34,7 @@ from psycopg import rows, sql
 from psycopg.types import json as pg_json
 
 from imbi.api import blueprint_attributes
-from imbi.api.tickets import log
+from imbi.api.tickets import announce, log
 from imbi.common import relational
 from imbi.common.labels import (
     normalize_label as normalize_label,
@@ -112,10 +112,12 @@ async def after_commit(
     *,
     outbox: bool = False,
 ) -> None:
-    """Publish the events of a commit, then call every change hook when
-    they created the ticket or changed its status. A hook failure is
-    logged; the change stays."""
+    """Publish the events of a commit, tell the slackbot about closed
+    requests, then call every change hook when the events created the
+    ticket or changed its status. A hook failure is logged; the change
+    stays."""
     await log.publish(task, events, ledger)
+    await announce.publish_closed(task['short_id'], events)
     if not any(event['type'] in _CHANGE_EVENTS for event in events):
         return
     for hook in list(_change_hooks):
@@ -3885,11 +3887,13 @@ async def _close(
 ) -> None:
     """Close the task with an outcome.
 
-    Close each open session (``session.closed``), then write
-    ``state.changed`` and ``outcome.set``. A ``done_*`` outcome
+    Close each open session (``session.closed``), withdraw each open
+    request (``request.withdrawn``), then write ``state.changed`` and
+    ``outcome.set``. A ``done_*`` outcome
     releases the dependents that the task gates, in this transaction.
     """
     await _close_sessions(write, 'task_closed', actor)
+    await _withdraw_requests(write, actor)
     await write.event(
         'state.changed',
         {
@@ -3985,20 +3989,25 @@ async def _queue_done_chain(conn: Conn, chain_id: uuid.UUID) -> None:
     )
 
 
-async def _hand_off(write: _Write, to: HandOff, actor: Actor) -> None:
-    """Change the assignee kind; see :meth:`TicketStore.hand_off`."""
-    task = write.task
+async def _withdraw_requests(write: _Write, actor: Actor) -> None:
+    """Withdraw each open request of the task (``request.withdrawn``)."""
     cursor = await write.conn.execute(
         "UPDATE tickets.requests SET status = 'withdrawn',"
         ' resolved_at = NOW(), resolved_by = %s'
         " WHERE ticket_id = %s AND status = 'open'"
         ' RETURNING id',
-        (actor.id, task['id']),
+        (actor.id, write.task['id']),
     )
     for (request_id,) in sorted(await cursor.fetchall()):
         await write.event(
             'request.withdrawn', {'request_id': str(request_id)}, actor
         )
+
+
+async def _hand_off(write: _Write, to: HandOff, actor: Actor) -> None:
+    """Change the assignee kind; see :meth:`TicketStore.hand_off`."""
+    task = write.task
+    await _withdraw_requests(write, actor)
     status: Status = (
         'held'
         if task['status'] == 'held'

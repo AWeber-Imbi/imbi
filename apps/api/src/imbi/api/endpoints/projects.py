@@ -5,6 +5,7 @@ belong to multiple project types.  See ADR-0006 for rationale.
 """
 
 import asyncio
+import collections.abc
 import datetime
 import json
 import logging
@@ -267,6 +268,19 @@ class ProjectListEnvironmentRef(pydantic.BaseModel):
     terminal: bool = False
 
 
+class DriftPair(pydantic.BaseModel):
+    """One promotion step the projects list shows as drifted.
+
+    ``head`` runs code that ``base``, the next environment down its
+    pipeline, does not.  ``oldest`` is when the oldest commit that needs
+    action in the range landed; ``None`` when the server has no date.
+    """
+
+    head: ProjectListEnvironmentRef
+    base: ProjectListEnvironmentRef
+    oldest: datetime.datetime | None = None
+
+
 class ProjectListItem(pydantic.BaseModel):
     """Slim project payload returned from ``GET /projects/?slim=true``.
 
@@ -312,14 +326,10 @@ class ProjectListItem(pydantic.BaseModel):
     #: every pair it draws.  A pair with no entry was never evaluated,
     #: which the client must fail closed on and show.
     drift_ranges: dict[str, bool] = pydantic.Field(default_factory=dict)
-    #: ``"<base>..<head>"`` -> when the oldest commit that needs action
-    #: in that range landed on the default branch.  Only ranges that
-    #: ``drift_ranges`` marks ``true`` from their commits have an entry:
-    #: a range that needs action only because it could not be evaluated
-    #: has no date.
-    drift_range_oldest: dict[str, datetime.datetime] = pydantic.Field(
-        default_factory=dict
-    )
+    #: The drift verdict that the projects list, the Slack card, and
+    #: other clients show.  See :func:`_apply_drift_verdict`.
+    drift_pairs: list[DriftPair] = []
+    release_drifted: bool = False
     #: Whether a deployment plugin serves the project.  The project page
     #: shows its Deployments tab only then, so the list links to it only
     #: then.
@@ -1132,6 +1142,30 @@ def _environment_ranges(
     pair with nothing to compare has no range, and an identical pair has
     an empty one.
     """
+    out: list[tuple[str, str]] = []
+    for _, _, head, base in _promotion_releases(project_data):
+        head_sha = head.committish or '' if head else ''
+        base_sha = base.committish or '' if base else ''
+        if head_sha and base_sha and head_sha != base_sha:
+            out.append((base_sha, head_sha))
+    return out
+
+
+def _promotion_releases(
+    project_data: dict[str, typing.Any],
+) -> collections.abc.Iterator[
+    tuple[
+        dict[str, typing.Any],
+        dict[str, typing.Any],
+        ReleaseInfo | None,
+        ReleaseInfo | None,
+    ]
+]:
+    """Each promotion step as ``(head_env, base_env, head, base)``.
+
+    ``head``/``base`` are the releases the two environments run, or
+    ``None`` where nothing is deployed.
+    """
     envs = [
         e
         for e in typing.cast(
@@ -1143,20 +1177,76 @@ def _environment_ranges(
         'dict[str, ReleaseInfo]',
         project_data.get('current_releases') or {},
     )
-    out: list[tuple[str, str]] = []
     for head_env, base_env in environment_chains.promotion_pairs(envs):
-        head = releases.get(str(head_env['slug']))
-        base = releases.get(str(base_env['slug']))
-        head_sha = head.committish or '' if head else ''
-        base_sha = base.committish or '' if base else ''
-        if head_sha and base_sha and head_sha != base_sha:
-            out.append((base_sha, head_sha))
-    return out
+        yield (
+            head_env,
+            base_env,
+            releases.get(str(head_env['slug'])),
+            releases.get(str(base_env['slug'])),
+        )
 
 
 def _range_key(base: str, head: str) -> str:
     """The wire key for one range, as the UI reconstructs it."""
     return f'{base}..{head}'
+
+
+def _apply_drift_verdict(
+    project_data: dict[str, typing.Any], summary: ReleaseSummary | None
+) -> None:
+    """Set ``drift_pairs`` and ``release_drifted`` on a listed project.
+
+    The one copy of the drift rule; clients read the result.  A
+    promotion pair is drifted when its two sides run different code:
+    committish against committish when both have one, else the tag (or
+    the committish) of each side.  A pair with both committishes is
+    hidden only when the server evaluated its range and CI answered
+    ``false`` for every commit in it; a range not evaluated shows.  A
+    releasable project drifts when commits past its latest tag need
+    action (``ReleaseSummary.drift_detected``).
+    """
+    delivery = _delivery_of(project_data)
+    pairs: list[DriftPair] = []
+    if delivery.deployable:
+        ranges = typing.cast(
+            dict[str, bool], project_data.get('drift_ranges') or {}
+        )
+        oldest = typing.cast(
+            dict[str, datetime.datetime],
+            project_data.get('drift_range_oldest') or {},
+        )
+        for head_env, base_env, head, base in _promotion_releases(
+            project_data
+        ):
+            head_sha = head.committish if head else None
+            base_sha = base.committish if base else None
+            key = (
+                _range_key(base_sha, head_sha) if head_sha and base_sha else ''
+            )
+            if key:
+                drifted = head_sha != base_sha and ranges.get(key) is not False
+            else:
+                drifted = ((head.tag if head else None) or head_sha) != (
+                    (base.tag if base else None) or base_sha
+                )
+            if drifted:
+                pairs.append(
+                    DriftPair.model_validate(
+                        {
+                            'head': head_env,
+                            'base': base_env,
+                            'oldest': oldest.get(key),
+                        }
+                    )
+                )
+    project_data['drift_pairs'] = pairs
+    project_data['release_drifted'] = bool(
+        delivery.releasable
+        and summary is not None
+        and summary.head_sha
+        and summary.commits_since_tag > 0
+        and summary.drift_detected
+    )
 
 
 class EnvironmentDrift(typing.NamedTuple):
@@ -2415,9 +2505,9 @@ async def list_projects(
 
     if slim:
         for project_data in project_data_list:
-            project_data['has_deployment_plugin'] = (
-                str(project_data.get('id', '')) in deployment_ids
-            )
+            pid = str(project_data.get('id', ''))
+            project_data['has_deployment_plugin'] = pid in deployment_ids
+            _apply_drift_verdict(project_data, release_summaries.get(pid))
         return [ProjectListItem.model_validate(p) for p in project_data_list]
     return [ProjectResponse.model_validate(p) for p in project_data_list]
 

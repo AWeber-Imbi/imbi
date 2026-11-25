@@ -2770,15 +2770,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * List Operation Logs
-         * @description List operations log entries (newest first, keyset paginated).
-         */
-        get: operations["list_operation_logs_api_operations_log__get"];
+        get?: never;
         put?: never;
         /**
          * Create Operation Log
          * @description Create a new operations log entry.
+         *
+         *     The entry belongs to the organization that owns its project.
          */
         post: operations["create_operation_log_api_operations_log__post"];
         delete?: never;
@@ -2810,34 +2808,6 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
-        trace?: never;
-    };
-    "/api/operations-log/{entry_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Operation Log
-         * @description Get a single operations log entry.
-         */
-        get: operations["get_operation_log_api_operations_log__entry_id__get"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete Operation Log
-         * @description Soft-delete an operations log entry (tombstone insert).
-         */
-        delete: operations["delete_operation_log_api_operations_log__entry_id__delete"];
-        options?: never;
-        head?: never;
-        /**
-         * Patch Operation Log
-         * @description Apply a JSON Patch to an operations log entry.
-         */
-        patch: operations["patch_operation_log_api_operations_log__entry_id__patch"];
         trace?: never;
     };
     "/api/organizations/{org_slug}/teams/": {
@@ -3993,6 +3963,57 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/operations-log/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Operation Logs
+         * @description List the operations log entries of the organization (newest
+         *     first, keyset paginated).
+         */
+        get: operations["list_operation_logs_api_organizations__org_slug__operations_log__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/operations-log/{entry_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Operation Log
+         * @description Get a single operations log entry of the organization.
+         */
+        get: operations["get_operation_log_api_organizations__org_slug__operations_log__entry_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Operation Log
+         * @description Soft-delete an operations log entry of the organization
+         *     (tombstone insert).
+         */
+        delete: operations["delete_operation_log_api_organizations__org_slug__operations_log__entry_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Operation Log
+         * @description Apply a JSON Patch to an operations log entry of the
+         *     organization.
+         */
+        patch: operations["patch_operation_log_api_organizations__org_slug__operations_log__entry_id__patch"];
         trace?: never;
     };
     "/api/organizations/{org_slug}/projects/{project_id}/operations-log/": {
@@ -6189,9 +6210,9 @@ export interface paths {
          *     Raises:
          *         409: A concurrent write took the version.
          *         422: An allowed marketplace is not registered, a default
-         *             plugin is not in an allowed marketplace's catalog, or the
-         *             model upstream URL is ``http://`` without
-         *             ``allow_insecure_http``.
+         *             plugin is not in an allowed marketplace's catalog or has
+         *             ``server_settings``, or the model upstream URL is
+         *             ``http://`` without ``allow_insecure_http``.
          */
         put: operations["put_agent_platform_config_api_organizations__org_slug__agent_platform_config__put"];
         post?: never;
@@ -9599,11 +9620,15 @@ export interface paths {
          *
          *     Renaming ``namespace`` or ``slug`` changes the reference every
          *     consumer uses, and frees the old reference for another prompt. So
-         *     a rename requires ``prompt:promote``, like a label move.
+         *     a rename requires ``prompt:promote``, like a label move. The
+         *     ``name`` and ``description`` of a skill go into the system prompt
+         *     of every consumer, so a change to them also requires
+         *     ``prompt:promote``.
          *
          *     Raises:
          *         400: Invalid patch or a read-only path.
-         *         403: A rename without ``prompt:promote``.
+         *         403: A rename, or a change to the name or description of a
+         *             skill, without ``prompt:promote``.
          *         404: No such prompt.
          *         409: The new ``namespace/slug`` is taken, the rename moves
          *             a prompt into or out of the ``workflows`` namespace, or the
@@ -11620,6 +11645,11 @@ export interface components {
              * @enum {string}
              */
             capability: "read" | "write" | "destructive" | "unknown";
+            /**
+             * Default
+             * @default false
+             */
+            default: boolean;
         };
         /** AgentCreate */
         AgentCreate: {
@@ -11662,7 +11692,7 @@ export interface components {
             settings?: components["schemas"]["AgentSettings-Input"];
             /**
              * Tools
-             * @description The tools that the agent can use, by tool key (<server slug>.<tool name>). A tool that is not in the map is off. builtin.Skill and builtin.Agent turn on those Claude Code built-in tools. Environment slugs must exist in the org.
+             * @description The tools that the agent can use, by tool key (<server slug>.<tool name>). A tool that is not in the map is off, except the default tools that the tool catalog marks with default: true; they are on for every agent, and an entry sets their configuration. builtin.Skill and builtin.Agent turn on those Claude Code built-in tools. Environment slugs must exist in the org.
              * @default {}
              */
             tools: {
@@ -11736,9 +11766,12 @@ export interface components {
          * AgentPlugin
          * @description A plugin from a registered marketplace (ADR 0022).
          *
-         *     The caller sets ``marketplace`` and ``plugin``. Imbi sets ``url``,
-         *     ``sha``, and ``path`` when it writes a version, from the synced
-         *     catalog, so the version pins the plugin.
+         *     The caller sets ``marketplace``, ``plugin``, and
+         *     ``server_settings``. Imbi sets ``url``, ``sha``, ``path``, and
+         *     ``mcp_servers`` when it writes a version, from the synced catalog,
+         *     so the version pins the plugin and its servers. A pin made before
+         *     Imbi saved the servers has none. ``server_settings`` keeps only the
+         *     settings that differ from the default.
          */
         AgentPlugin: {
             /** Marketplace */
@@ -11751,6 +11784,18 @@ export interface components {
             sha?: string | null;
             /** Path */
             path?: string | null;
+            /**
+             * Mcp Servers
+             * @default []
+             */
+            mcp_servers: components["schemas"]["CatalogServer"][];
+            /**
+             * Server Settings
+             * @default {}
+             */
+            server_settings: {
+                [key: string]: components["schemas"]["ServerSetting"];
+            };
         };
         /**
          * AgentRateLimit
@@ -15473,6 +15518,20 @@ export interface components {
             updated: number;
         };
         /**
+         * DriftPair
+         * @description One promotion step the projects list shows as drifted.
+         *
+         *     ``head`` runs code that ``base``, the next environment down its
+         *     pipeline, does not.  ``oldest`` is when the oldest commit that needs
+         *     action in the range landed; ``None`` when the server has no date.
+         */
+        DriftPair: {
+            head: components["schemas"]["ProjectListEnvironmentRef"];
+            base: components["schemas"]["ProjectListEnvironmentRef"];
+            /** Oldest */
+            oldest?: string | null;
+        };
+        /**
          * DriverInfo
          * @description One entry in the static provider-driver catalog.
          */
@@ -19059,10 +19118,16 @@ export interface components {
             drift_ranges?: {
                 [key: string]: boolean;
             };
-            /** Drift Range Oldest */
-            drift_range_oldest?: {
-                [key: string]: string;
-            };
+            /**
+             * Drift Pairs
+             * @default []
+             */
+            drift_pairs: components["schemas"]["DriftPair"][];
+            /**
+             * Release Drifted
+             * @default false
+             */
+            release_drifted: boolean;
             /**
              * Has Deployment Plugin
              * @default false
@@ -22247,6 +22312,17 @@ export interface components {
             state: string;
             /** Revocation State */
             revocation_state: string;
+        };
+        /**
+         * ServerSetting
+         * @description An agent's setting for one MCP server of a plugin.
+         */
+        ServerSetting: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
         };
         /**
          * ServiceAccountCreate
@@ -28496,46 +28572,6 @@ export interface operations {
             };
         };
     };
-    list_operation_logs_api_operations_log__get: {
-        parameters: {
-            query?: {
-                limit?: number;
-                cursor?: string | null;
-                project_id?: string | null;
-                project_slug?: string | null;
-                environment_slug?: string | null;
-                entry_type?: string | null;
-                ticket_slug?: string | null;
-                performed_by?: string | null;
-                since?: string | null;
-                until?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OperationLogListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     create_operation_log_api_operations_log__post: {
         parameters: {
             query?: never;
@@ -28587,101 +28623,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PluginOpsLogTemplatesResponse"];
-                };
-            };
-        };
-    };
-    get_operation_log_api_operations_log__entry_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                entry_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OperationLogResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_operation_log_api_operations_log__entry_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                entry_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    patch_operation_log_api_operations_log__entry_id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                entry_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PatchOperation"][];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OperationLogResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -30641,6 +30582,146 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventsPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_operation_logs_api_organizations__org_slug__operations_log__get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+                project_id?: string | null;
+                project_slug?: string | null;
+                environment_slug?: string | null;
+                entry_type?: string | null;
+                ticket_slug?: string | null;
+                performed_by?: string | null;
+                since?: string | null;
+                until?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationLogListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_operation_log_api_organizations__org_slug__operations_log__entry_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationLogResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_operation_log_api_organizations__org_slug__operations_log__entry_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_operation_log_api_organizations__org_slug__operations_log__entry_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchOperation"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationLogResponse"];
                 };
             };
             /** @description Validation Error */

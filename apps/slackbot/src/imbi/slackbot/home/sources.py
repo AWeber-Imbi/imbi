@@ -325,11 +325,11 @@ class Sources:
         return row
 
     async def _drift(self) -> list[Row]:
-        """Release drift of the team projects with commits since the
-        latest tag, with the open blockers of the suggested tag.
+        """Release drift of the team projects the projects list marks
+        ``release_drifted``, with the open blockers of the suggested tag.
 
-        The slim project row has the commit count already, so only a
-        project with drift costs the slow ``release-drift`` call.
+        The slim project row has the verdict already, so only a project
+        with drift costs the slow ``release-drift`` call.
 
         """
         if 'project:deployment:read' not in self.permissions:
@@ -337,7 +337,7 @@ class Sources:
         projects: list[Row] = [
             p
             for p in await self.get('team_projects')
-            if dig(p, 'release_summary', 'commits_since_tag')
+            if p.get('release_drifted')
         ]
 
         async def one(project: Row) -> Row | None:

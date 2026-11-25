@@ -74,17 +74,27 @@ you why. When someone can still answer (for example, you do not have
 in the UI first, or the ticket closed), the form closes and shows the
 reason. A form stays open for 7 days.
 
+When a person resolves the request, in the UI or in Slack, each form of the
+request changes to show the decision and who resolved it. Only a form in a
+direct message also shows the answer. A hand-off or a close of the ticket
+withdraws its open requests, and their forms show `withdrawn`. Forms that
+the bot posted before this release do not change.
+
 ## Link previews
 
 When you post a link to an Imbi ticket
 (`/tickets/{org}/{short_id}`) or project (`/projects/{id}`), the bot adds a
-preview card. A ticket card shows the title, status, priority, type,
-assignee, and team. A project card shows the name, the first line of the
-description, the score, the count of open pull requests, the drift, the
-team, and the project types. The drift uses the same rule as the
-**Projects** page: each environment pair that is out of step, and
-unreleased commits for a releasable project. Each card has the Imbi logo
-and an amber side bar.
+preview card: a Slack Work Object. A ticket card shows the title, the type
+and ID, the status, the priority, and the assignee. A project card shows
+the name, the slug, the description, the team, the project types, the
+health score, the drift, and the release in the last environment of the
+pipeline, with when it was deployed. The drift shows one chip for each
+environment, in pipeline order. An environment that is behind the one
+before it is red, with the number of days that its oldest change has
+waited; the others are green. A red **Release** chip shows unreleased
+commits for a releasable project. The drift uses the same rule as the
+**Projects** page. Each card has an **Open in Imbi** button; a project
+with a deployment plugin also has a **Deployments** button.
 
 The bot reads the item as you, so the card shows only what you can read.
 Everyone in the channel sees the card. The bot makes no card in a Slack
@@ -213,6 +223,13 @@ label at that version.
 The prompt tells the model the name of the person, the tools, and the URL
 patterns of the UI. The bot reads the URL patterns from `llms.txt` of the
 UI.
+
+### Skills
+
+The bot adds the [skills](../admin/prompts.md#skills) of the prompt CMS
+to its system prompt, with the description of each skill, and loads the
+instructions of a skill when a request matches it. Ask the bot to create
+or change a skill, and it writes the prompt for you.
 
 ## Settings
 

@@ -42,7 +42,6 @@ import {
   type ProjectSchemaResponse,
   type ScoreTrend,
 } from '@/api/endpoints'
-import { getReleaseDrift } from '@/api/releases'
 import { DependenciesTab } from '@/components/dependencies/DependenciesTab'
 import { ConnectIdentityPrompt } from '@/components/deploy/ConnectIdentityPrompt'
 import {
@@ -107,15 +106,11 @@ import { useProjectTypes, useTeams } from '@/hooks/useOrgResources'
 import { useProjectDriftVerdicts } from '@/hooks/useProjectDriftVerdicts'
 import { useProjectPatch } from '@/hooks/useProjectPatch'
 import { resolveDelivery } from '@/lib/delivery'
-import {
-  computeDriftPairs,
-  rangeNeedsAction,
-  releaseRangeClean,
-} from '@/lib/deployment-drift'
 import { formatDateTime } from '@/lib/formatDate'
 import { projectRepoUrl } from '@/lib/github-refs'
 import { getIcon, useIconRegistryVersion } from '@/lib/icons'
 import { formatFieldKey } from '@/lib/project-field-formatting'
+import { projectPath } from '@/lib/project-path'
 import { treatNotFoundAsNull } from '@/lib/queryHelpers'
 import { sanitizeHttpUrl, sortEnvironments } from '@/lib/utils'
 import type {
@@ -192,16 +187,14 @@ export function ProjectDetail({
   const { search } = useLocation()
   const { copied: copiedProjectId, copy: copyProjectId } = useClipboard()
 
+  const projectBase = projectPath(project)
   const resolvedTab = initialTab ? (TAB_ALIASES[initialTab] ?? initialTab) : ''
   const activeTab: TabType = VALID_TAB_SET.has(resolvedTab)
     ? (resolvedTab as TabType)
     : 'overview'
 
   const handleTabChange = (value: string) => {
-    const path =
-      value === 'overview'
-        ? `/projects/${project.id}`
-        : `/projects/${project.id}/${value}`
+    const path = value === 'overview' ? projectBase : `${projectBase}/${value}`
     navigate(path, { replace: true })
   }
 
@@ -317,7 +310,7 @@ export function ProjectDetail({
     if (initialTab && initialTab in TAB_ALIASES) {
       navigate(
         {
-          pathname: `/projects/${project.id}/${TAB_ALIASES[initialTab]}`,
+          pathname: `${projectBase}/${TAB_ALIASES[initialTab]}`,
           search,
         },
         { replace: true },
@@ -325,9 +318,9 @@ export function ProjectDetail({
       return
     }
     if (initialTab && !VALID_TAB_SET.has(initialTab)) {
-      navigate(`/projects/${project.id}`, { replace: true })
+      navigate(projectBase, { replace: true })
     }
-  }, [initialTab, navigate, project.id, search])
+  }, [initialTab, navigate, projectBase, search])
 
   const { data: linkDefs = [], isPending: linkDefsPending } = useQuery({
     enabled: !!orgSlug,
@@ -800,30 +793,30 @@ export function ProjectDetail({
   })
   const openPrCount = openPrCountData?.total ?? 0
 
-  // Drift marks the tab with a rocket: something is ready to ship. For a
-  // release-only project that's untagged commits on the head; for a
-  // deployed one it's an environment running something the next one down
-  // the pipeline isn't. Same query key as the Releases tab, so the tab
-  // and its badge share one request.
-  const { data: releaseDrift } = useQuery({
-    enabled: isReleaseOnly && !!orgSlug && !!project.id,
-    queryFn: ({ signal }) => getReleaseDrift(orgSlug, project.id, signal),
-    queryKey: ['releaseDrift', orgSlug, project.id],
-  })
-  // Same rule as the projects-list badge: a difference is shown unless
-  // CI answered `false` for every commit in it.
+  // Drift marks the tab with a rocket: something is ready to ship. The
+  // verdict is the projects list's, so the tab and the list agree.
   const driftVerdicts = useProjectDriftVerdicts(orgSlug, project.id)
-  const hasReleaseDrift =
-    (releaseDrift?.commits_since_tag ?? 0) > 0 &&
-    !releaseRangeClean(driftVerdicts?.release_summary)
-  const hasDeploymentDrift = useMemo(
-    () =>
-      computeDriftPairs(sortedEnvironments, deploymentStatus).some(
-        (pair) =>
-          pair.drifted && rangeNeedsAction(driftVerdicts?.drift_ranges, pair),
-      ),
-    [sortedEnvironments, deploymentStatus, driftVerdicts],
-  )
+  const hasReleaseDrift = !!driftVerdicts?.release_drifted
+  const hasDeploymentDrift = !!driftVerdicts?.drift_pairs.length
+  // The verdict is not polled. Refresh it when the polled deployment
+  // state shows a different serving release in any environment.
+  const servingKey = releasesPending
+    ? null
+    : currentReleases
+        .map((r) => `${r.environment.slug}:${r.release?.committish ?? ''}`)
+        .join(',')
+  const lastServingKey = useRef<null | string>(null)
+  useEffect(() => {
+    if (servingKey === null) return
+    if (
+      lastServingKey.current !== null &&
+      lastServingKey.current !== servingKey
+    )
+      void queryClient.invalidateQueries({
+        queryKey: ['releaseDrift', orgSlug, project.id, 'verdicts'],
+      })
+    lastServingKey.current = servingKey
+  }, [orgSlug, project.id, queryClient, servingKey])
 
   // Redirect to overview when a deep-link points at a tab that no
   // longer surfaces (e.g. /configuration on a project type with no
@@ -841,7 +834,7 @@ export function ProjectDetail({
       (activeTab === 'deployments' && !hasShipTab) ||
       (activeTab === 'pull-requests' && !hasLifecyclePlugin)
     ) {
-      navigate(`/projects/${project.id}`, { replace: true })
+      navigate(projectBase, { replace: true })
     }
   }, [
     activeTab,
@@ -851,7 +844,7 @@ export function ProjectDetail({
     hasLogsPlugin,
     hasShipTab,
     navigate,
-    project.id,
+    projectBase,
     projectPluginsFetched,
     projectPluginsSuccess,
   ])
@@ -1499,6 +1492,7 @@ export function ProjectDetail({
         )}
         <TabsContent value="documents">
           <ProjectDocumentsTab
+            basePath={`${projectBase}/documents`}
             initialAction={
               activeTab === 'documents' ? initialSubAction : undefined
             }

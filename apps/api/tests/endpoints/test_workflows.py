@@ -18,6 +18,7 @@ from imbi.api.auth import permissions
 from imbi.api.endpoints import prompts
 from imbi.api.endpoints import workflows as workflows_endpoints
 from imbi.common import graph
+from imbi.common.workflows import graph as wf
 from imbi.common.workflows import script_runner
 
 ALL_PERMISSIONS = frozenset(
@@ -59,6 +60,15 @@ DEPLOY_GRAPH = {
     ],
     'edges': [{'source': 'start', 'port': 0, 'target': 'ship'}],
 }
+
+
+def _sized(size: int) -> dict[str, typing.Any]:
+    """:data:`DEPLOY_GRAPH`, padded to ``size`` bytes of graph JSON."""
+    nodes = [dict(node) for node in DEPLOY_GRAPH['nodes']]
+    body = {**DEPLOY_GRAPH, 'nodes': nodes}
+    used = len(wf.Graph.model_validate(body).model_dump_json().encode())
+    nodes[1]['title'] += 'x' * (size - used)
+    return body
 
 
 class WorkflowTestCase(support.SharedAppAsyncTestCase):
@@ -245,6 +255,32 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
             f'{self.base}/deploy-guard/versions/9'
         )
         self.assertEqual(response.status_code, 404)
+
+    async def test_save_at_graph_byte_limit(self) -> None:
+        response = await self._create()
+        self.assertEqual(response.status_code, 201, response.text)
+        path = f'{self.base}/deploy-guard'
+        body = {'name': 'Deploy guard', 'owner_team_slug': self.team}
+
+        response = await self.client.put(
+            path, json=body | {'graph': _sized(256 * 1024)}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['latest_version'], 2)
+        self.assertEqual(
+            response.json()['version']['validation'], {'issues': []}
+        )
+
+        response = await self.client.put(
+            path, json=body | {'graph': _sized(256 * 1024 + 1)}
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual(
+            [i['code'] for i in response.json()['detail']],
+            ['graph_too_large'],
+        )
+        response = await self.client.get(path)
+        self.assertEqual(response.json()['latest_version'], 2)
 
     async def test_create_with_empty_derived_slug(self) -> None:
         response = await self._create(name='!!!')

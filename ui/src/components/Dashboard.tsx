@@ -307,7 +307,7 @@ export function Dashboard({ onProjectSelect, onViewChange }: DashboardProps) {
   // TODO(active-count): This counts active deployments within the latest
   // 50 operations-log entries — it undercounts when more than 50 active
   // deployments exist. Replace with a dedicated server-side count endpoint
-  // (e.g. GET /operations-log/count?action=deployed&completed_at=null) once
+  // (e.g. GET /organizations/{org_slug}/operations-log/count) once
   // imbi-api exposes one. Adding that endpoint is out of scope for this PR.
   const activeDeploymentCount = (recentDeployments ?? []).filter(
     (d) => d.completed_at == null,

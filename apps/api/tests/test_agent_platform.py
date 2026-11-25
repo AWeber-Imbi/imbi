@@ -460,7 +460,7 @@ def _entry(servers: object) -> marketplaces.EntryServers:
     return entry
 
 
-def _names(servers: list[marketplaces.CatalogServer]) -> list[str]:
+def _names(servers: list[models.CatalogServer]) -> list[str]:
     return [server.name for server in servers]
 
 
@@ -557,6 +557,31 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
                 'inline': 'stdio',
                 'remote': 'http',
             },
+        )
+
+    async def test_a_later_source_replaces_a_server(self) -> None:
+        read = _reader(
+            {
+                'p/.claude-plugin/plugin.json': json.dumps(
+                    {
+                        'mcpServers': [
+                            {'first': {'command': 'x'}},
+                            './servers.json',
+                        ]
+                    }
+                ),
+                'p/servers.json': json.dumps({'first': HTTP}),
+                'p/.mcp.json': json.dumps(
+                    {'mcpServers': {'first': {'command': 'y'}}}
+                ),
+            }
+        )
+        servers = await marketplaces.plugin_servers(
+            read, 'p', _entry(None), 'p'
+        )
+        self.assertEqual(
+            {server.name: server.type for server in servers},
+            {'first': 'http'},
         )
 
     async def test_a_single_path_in_the_manifest(self) -> None:
@@ -727,8 +752,8 @@ class PluginServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             plugin.mcp_servers,
             [
-                marketplaces.CatalogServer(name='grafana'),
-                marketplaces.CatalogServer(name='tempo', type='http'),
+                models.CatalogServer(name='grafana'),
+                models.CatalogServer(name='tempo', type='http'),
             ],
         )
 
@@ -1251,6 +1276,41 @@ class ClaudeSettingsTests(unittest.TestCase):
         self.assertEqual(merged.claude_settings_dropped, ['hooks'])
         self.assertEqual(merged.hooks, HOOKS)
 
+    def test_merge_gives_a_default_plugin_the_agent_settings(self) -> None:
+        off = {'grafana': models.ServerSetting(enabled=False)}
+        stale = {'gone': models.ServerSetting(enabled=False)}
+        config = platform.AgentPlatformConfig(
+            allowed_marketplaces=['tools'],
+            default_plugins=[
+                models.AgentPlugin(marketplace='tools', plugin='ops', sha=SHA),
+                models.AgentPlugin(
+                    marketplace='tools', plugin='lint', sha=SHA
+                ),
+            ],
+        )
+        settings = models.AgentSettings(
+            plugins=[
+                models.AgentPlugin(
+                    marketplace='tools',
+                    plugin='ops',
+                    sha='b' * 40,
+                    server_settings=off | stale,
+                ),
+                models.AgentPlugin(
+                    marketplace='tools', plugin='fmt', server_settings=off
+                ),
+            ]
+        )
+        merged = platform.merge(config, settings)
+        self.assertEqual(
+            [(p.plugin, p.sha, p.server_settings) for p in merged.plugins],
+            [
+                ('ops', SHA, off | stale),
+                ('lint', SHA, {}),
+                ('fmt', None, off),
+            ],
+        )
+
 
 class ModelUpstreamTests(unittest.TestCase):
     def test_http_base_url_needs_the_flag(self) -> None:
@@ -1327,6 +1387,188 @@ class PinTests(unittest.TestCase):
             with self.subTest(requested=requested):
                 with self.assertRaises(ValueError):
                     platform.pin_plugins(requested, [], catalog)
+
+
+class PinServerSettingsTests(unittest.TestCase):
+    def setUp(self) -> None:
+        catalog = _marketplace(ops='plugins/ops')
+        catalog['plugins'] = [
+            {
+                'name': 'ops',
+                'path': 'plugins/ops',
+                'mcp_servers': [
+                    {'name': 'grafana', 'type': 'http', 'url': 'https://g'},
+                    {'name': 'tempo'},
+                ],
+            }
+        ]
+        self.catalog = {'tools': catalog}
+
+    @staticmethod
+    def off(*names: str) -> dict[str, models.ServerSetting]:
+        return {name: models.ServerSetting(enabled=False) for name in names}
+
+    def test_a_new_pin_saves_the_servers_and_known_settings(self) -> None:
+        (plugin,) = platform.pin_plugins(
+            [
+                models.AgentPlugin(
+                    marketplace='tools',
+                    plugin='ops',
+                    server_settings=self.off('grafana', 'gone'),
+                )
+            ],
+            [],
+            self.catalog,
+        )
+        self.assertEqual(plugin.sha, SHA)
+        self.assertEqual(
+            plugin.mcp_servers,
+            [
+                models.CatalogServer(
+                    name='grafana', type='http', url='https://g'
+                ),
+                models.CatalogServer(name='tempo'),
+            ],
+        )
+        self.assertEqual(plugin.server_settings, self.off('grafana'))
+
+    def test_a_legacy_catalog_entry_saves_server_names(self) -> None:
+        catalog = _marketplace()
+        catalog['plugins'] = [
+            {'name': 'ops', 'path': 'plugins/ops', 'mcp_servers': ['grafana']}
+        ]
+        (plugin,) = platform.pin_plugins(
+            [
+                models.AgentPlugin(
+                    marketplace='tools',
+                    plugin='ops',
+                    server_settings=self.off('grafana', 'tempo'),
+                )
+            ],
+            [],
+            {'tools': catalog},
+        )
+        self.assertEqual(
+            plugin.mcp_servers, [models.CatalogServer(name='grafana')]
+        )
+        self.assertEqual(plugin.server_settings, self.off('grafana'))
+
+    def test_a_kept_pin_takes_the_requested_settings(self) -> None:
+        old = models.AgentPlugin(
+            marketplace='tools',
+            plugin='ops',
+            sha='b' * 40,
+            mcp_servers=[models.CatalogServer(name='loki')],
+            server_settings=self.off('loki'),
+        )
+        (kept,) = platform.pin_plugins(
+            [
+                models.AgentPlugin(
+                    marketplace='tools',
+                    plugin='ops',
+                    sha='b' * 40,
+                    server_settings=self.off('tempo'),
+                )
+            ],
+            [old],
+            self.catalog,
+        )
+        self.assertEqual(
+            kept, old.model_copy(update={'server_settings': self.off('tempo')})
+        )
+
+    def test_a_default_plugin_gets_the_default_pin(self) -> None:
+        default = models.AgentPlugin(
+            marketplace='tools',
+            plugin='ops',
+            url='https://github.com/acme/tools',
+            sha='c' * 40,
+            path='plugins/ops',
+            mcp_servers=[models.CatalogServer(name='loki')],
+        )
+        (plugin,) = platform.pin_plugins(
+            [
+                models.AgentPlugin(
+                    marketplace='tools',
+                    plugin='ops',
+                    server_settings=self.off('loki', 'grafana'),
+                )
+            ],
+            [],
+            {},
+            [default],
+        )
+        self.assertEqual(
+            plugin,
+            default.model_copy(update={'server_settings': self.off('loki')}),
+        )
+
+    def test_a_default_pin_wins_over_a_kept_pin(self) -> None:
+        old = models.AgentPlugin(
+            marketplace='tools', plugin='ops', url='u', sha='b' * 40
+        )
+        default = models.AgentPlugin(
+            marketplace='tools', plugin='ops', url='u', sha='c' * 40
+        )
+        (plugin,) = platform.pin_plugins(
+            [
+                models.AgentPlugin(
+                    marketplace='tools', plugin='ops', sha='b' * 40
+                )
+            ],
+            [old],
+            self.catalog,
+            [default],
+        )
+        self.assertEqual(plugin, default)
+
+    def test_an_external_pin_saves_the_servers(self) -> None:
+        catalog = _marketplace()
+        catalog['plugins'] = [
+            {
+                'name': 'remote',
+                'path': None,
+                'repository_url': 'https://github.com/acme/remote.git',
+                'repository_sha': 'b' * 40,
+                'mcp_servers': [{'name': 'grafana'}],
+            }
+        ]
+        (plugin,) = platform.pin_plugins(
+            [
+                models.AgentPlugin(
+                    marketplace='tools',
+                    plugin='remote',
+                    server_settings=self.off('grafana', 'gone'),
+                )
+            ],
+            [],
+            {'tools': catalog},
+        )
+        self.assertEqual(
+            (plugin.path, plugin.mcp_servers, plugin.server_settings),
+            ('.', [models.CatalogServer(name='grafana')], self.off('grafana')),
+        )
+
+    def test_a_default_pin_with_no_saved_servers_keeps_settings(
+        self,
+    ) -> None:
+        default = models.AgentPlugin(
+            marketplace='tools', plugin='ops', url='u', sha='c' * 40
+        )
+        (plugin,) = platform.pin_plugins(
+            [
+                models.AgentPlugin(
+                    marketplace='tools',
+                    plugin='ops',
+                    server_settings=self.off('anything'),
+                )
+            ],
+            [],
+            {},
+            [default],
+        )
+        self.assertEqual(plugin.sha, 'c' * 40)
+        self.assertEqual(plugin.server_settings, self.off('anything'))
 
 
 class RenderedPromptTests(unittest.IsolatedAsyncioTestCase):

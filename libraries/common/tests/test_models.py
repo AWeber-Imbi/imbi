@@ -793,6 +793,33 @@ class AgentModelTestCase(unittest.TestCase):
                 created_by='admin@example.com',
             )
 
+    def test_plugin_keeps_only_changed_server_settings(self) -> None:
+        plugin = models.AgentPlugin.model_validate(
+            {
+                'marketplace': 'tools',
+                'plugin': 'ops',
+                'server_settings': {
+                    'grafana': {'enabled': False},
+                    'tempo': {'enabled': True},
+                    'loki': {},
+                },
+            }
+        )
+        self.assertEqual(
+            plugin.server_settings,
+            {'grafana': models.ServerSetting(enabled=False)},
+        )
+
+    def test_plugin_with_a_default_setting_equals_one_without(self) -> None:
+        self.assertEqual(
+            models.AgentPlugin(
+                marketplace='tools',
+                plugin='ops',
+                server_settings={'tempo': models.ServerSetting()},
+            ),
+            models.AgentPlugin(marketplace='tools', plugin='ops'),
+        )
+
 
 class DocumentTemplateModelTestCase(unittest.TestCase):
     """Test cases for DocumentTemplate model."""
@@ -1231,6 +1258,7 @@ class OperationLogTestCase(unittest.TestCase):
             'is_deleted',
             'plugin_slug',
             'external_run_id',
+            'organization_id',
         ]
         self.assertEqual(keys, expected)
 

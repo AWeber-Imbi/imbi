@@ -24,6 +24,7 @@ import { UserIdentity } from '@/components/ui/user-identity'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll'
 import { useEnvironments } from '@/hooks/useOrgResources'
+import { projectPath } from '@/lib/project-path'
 import type { OperationsLogRecord, Project } from '@/types'
 
 const PAGE_SIZE = 20
@@ -75,6 +76,7 @@ export function RecentDeploymentsWidget() {
     initialPageParam: undefined,
     queryFn: ({ pageParam, signal }) =>
       listOperationsLog(
+        orgSlug,
         {
           cursor: pageParam,
           filters: {
@@ -179,7 +181,7 @@ function DeploymentRow({
   } = deploymentStatus(d)
   const performer = d.performed_by ?? d.recorded_by
   const to = project
-    ? `/projects/${project.id}`
+    ? projectPath(project)
     : `/operations-log?entry=${encodeURIComponent(d.id)}`
 
   return (

@@ -1,8 +1,11 @@
 """Operations log CRUD endpoints.
 
-Writes and the non-project-scoped reads are on the top-level
-``operations_log_router``. The project-scoped collection GET lives on
-``operations_log_project_router``, which is mounted under
+The create and the plugin templates are on the top-level
+``operations_log_router``. The reads, updates, and deletes are on
+``operations_log_org_router``, mounted under
+``/organizations/{org_slug}``, and see only the rows whose
+``organization_id`` is that organization. The project-scoped list is on
+``operations_log_project_router``, mounted under
 ``/organizations/{org_slug}/projects/{project_id}``.
 
 All reads use ``FINAL`` plus ``WHERE is_deleted = 0`` so that the
@@ -24,7 +27,8 @@ import fastapi.responses
 import nanoid
 import pydantic
 
-from imbi.api.auth import agent_api, permissions
+from imbi.api.auth import agent_api, organizations, permissions
+from imbi.api.endpoints._helpers import lookup_project_organization_id
 from imbi.api.endpoints._pagination import (
     build_link_header,
     decode_cursor,
@@ -41,6 +45,10 @@ LOGGER = logging.getLogger(__name__)
 operations_log_router = fastapi.APIRouter(
     prefix='/operations-log', tags=['Operations Log']
 )
+operations_log_org_router = fastapi.APIRouter(
+    tags=['Operations Log'],
+    dependencies=[fastapi.Depends(organizations.member_org_id)],
+)
 operations_log_project_router = fastapi.APIRouter(tags=['Operations Log'])
 
 READONLY_PATHS: frozenset[str] = frozenset(
@@ -52,6 +60,7 @@ READONLY_PATHS: frozenset[str] = frozenset(
         '/recorded_by',
         '/row_version',
         '/is_deleted',
+        '/organization_id',
     ]
 )
 
@@ -278,11 +287,12 @@ async def create_operation_log(
             permissions.require_permission('operations_log:create'),
         ),
     ],
-    db: typing.Annotated[
-        graph.Graph | None, fastapi.Depends(agent_api.graph_for)
-    ],
+    db: graph.Pool,
 ) -> dict[str, typing.Any]:
-    """Create a new operations log entry."""
+    """Create a new operations log entry.
+
+    The entry belongs to the organization that owns its project.
+    """
     # An agent writes only for a project of its own organization.
     await agent_api.require_own_project(db, auth, data.get('project_id'))
     payload = dict(data)
@@ -293,6 +303,7 @@ async def create_operation_log(
         '_row_version',
         'row_version',
         'is_deleted',
+        'organization_id',
     ):
         payload.pop(server_field, None)
 
@@ -316,6 +327,14 @@ async def create_operation_log(
     if entry.entry_type == AGENT_TASK_ENTRY_TYPE:
         raise _agent_task_entry()
 
+    entry.organization_id = await lookup_project_organization_id(
+        db, entry.project_id
+    )
+    if not entry.organization_id:
+        raise fastapi.HTTPException(
+            status_code=404, detail='Project not found'
+        )
+
     if entry.performed_by is None:
         entry.performed_by = entry.recorded_by
 
@@ -326,16 +345,27 @@ async def create_operation_log(
 
 _SINGLE_ENTRY_SQL: typing.Final[str] = (
     'SELECT * FROM operations_log FINAL '
-    'WHERE id = {id:String} AND is_deleted = 0 LIMIT 1'
+    'WHERE id = {id:String} AND organization_id = {org_id:String} '
+    'AND is_deleted = 0 LIMIT 1'
 )
 
 
-async def _fetch_current(
-    entry_id: str,
-) -> dict[str, typing.Any] | None:
-    """Fetch the current (non-deleted) row for an entry id."""
-    rows = await clickhouse.query(_SINGLE_ENTRY_SQL, {'id': entry_id})
-    return rows[0] if rows else None
+async def _fetch_current(entry_id: str, org_id: str) -> dict[str, typing.Any]:
+    """Fetch the current (non-deleted) row of an entry of ``org_id``.
+
+    Raises:
+        404: No such entry in the organization.
+
+    """
+    rows = await clickhouse.query(
+        _SINGLE_ENTRY_SQL, {'id': entry_id, 'org_id': org_id}
+    )
+    if not rows:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Operations log entry {entry_id!r} not found',
+        )
+    return rows[0]
 
 
 _row_version_last: int = 0
@@ -352,15 +382,20 @@ def next_row_version(current_version: int) -> int:
     strictly-increasing versions; the result is also kept greater than
     ``current_version`` to remain safe against any older/current values
     already in ClickHouse.
+
+    The result is at least ``current_version + 2``. The organization
+    backfill writes ``current_version + 1``, so a write that read the
+    same row always gets a higher version than the backfill and wins.
     """
     global _row_version_last
     now_ms = int(datetime.datetime.now(datetime.UTC).timestamp() * 1000)
-    candidate = max(now_ms, _row_version_last + 1, current_version + 1)
+    candidate = max(now_ms, _row_version_last + 1, current_version + 2)
     _row_version_last = candidate
     return candidate
 
 
 _FILTER_FIELDS: tuple[str, ...] = (
+    'organization_id',
     'project_id',
     'project_slug',
     'environment_slug',
@@ -566,12 +601,13 @@ async def list_plugin_ops_log_templates(
     )
 
 
-@operations_log_router.get(
+@operations_log_org_router.get(
     '/',
     response_model=OperationLogListResponse,
 )
 async def list_operation_logs(
     request: fastapi.Request,
+    org_id: organizations.MemberOrgId,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -589,11 +625,13 @@ async def list_operation_logs(
     since: str | None = None,
     until: str | None = None,
 ) -> fastapi.Response:
-    """List operations log entries (newest first, keyset paginated)."""
+    """List the operations log entries of the organization (newest
+    first, keyset paginated)."""
     return await _list_impl(
         request=request,
         limit=limit,
         cursor=cursor,
+        forced_filters={'organization_id': org_id},
         query_filters={
             'project_id': project_id,
             'project_slug': project_slug,
@@ -648,12 +686,13 @@ async def list_project_operation_logs(
     )
 
 
-@operations_log_router.get(
+@operations_log_org_router.get(
     '/{entry_id}',
     response_model=OperationLogResponse,
 )
 async def get_operation_log(
     entry_id: str,
+    org_id: organizations.MemberOrgId,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -661,22 +700,17 @@ async def get_operation_log(
         ),
     ],
 ) -> dict[str, typing.Any]:
-    """Get a single operations log entry."""
-    row = await _fetch_current(entry_id)
-    if row is None:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=f'Operations log entry {entry_id!r} not found',
-        )
-    return _row_to_response(row)
+    """Get a single operations log entry of the organization."""
+    return _row_to_response(await _fetch_current(entry_id, org_id))
 
 
-@operations_log_router.patch(
+@operations_log_org_router.patch(
     '/{entry_id}',
     response_model=OperationLogResponse,
 )
 async def patch_operation_log(
     entry_id: str,
+    org_id: organizations.MemberOrgId,
     operations: list[json_patch.PatchOperation],
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -685,13 +719,9 @@ async def patch_operation_log(
         ),
     ],
 ) -> dict[str, typing.Any]:
-    """Apply a JSON Patch to an operations log entry."""
-    current = await _fetch_current(entry_id)
-    if current is None:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=f'Operations log entry {entry_id!r} not found',
-        )
+    """Apply a JSON Patch to an operations log entry of the
+    organization."""
+    current = await _fetch_current(entry_id, org_id)
 
     target = dict(current)
     target['row_version'] = target.pop('_row_version')
@@ -719,6 +749,7 @@ async def patch_operation_log(
     entry.recorded_at = current['recorded_at']
     entry.recorded_by = current['recorded_by']
     entry.project_id = current['project_id']
+    entry.organization_id = org_id
     entry.row_version = next_row_version(int(current['_row_version']))
     entry.is_deleted = False
 
@@ -727,9 +758,10 @@ async def patch_operation_log(
     return _row_to_response(row)
 
 
-@operations_log_router.delete('/{entry_id}', status_code=204)
+@operations_log_org_router.delete('/{entry_id}', status_code=204)
 async def delete_operation_log(
     entry_id: str,
+    org_id: organizations.MemberOrgId,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -737,13 +769,9 @@ async def delete_operation_log(
         ),
     ],
 ) -> fastapi.Response:
-    """Soft-delete an operations log entry (tombstone insert)."""
-    current = await _fetch_current(entry_id)
-    if current is None:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=f'Operations log entry {entry_id!r} not found',
-        )
+    """Soft-delete an operations log entry of the organization
+    (tombstone insert)."""
+    current = await _fetch_current(entry_id, org_id)
 
     tombstone = dict(current)
     tombstone['_row_version'] = next_row_version(int(current['_row_version']))

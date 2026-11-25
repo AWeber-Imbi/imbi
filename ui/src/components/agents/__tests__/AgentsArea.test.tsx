@@ -4,7 +4,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '@/api/client'
 import * as endpoints from '@/api/endpoints'
-import { fireEvent, render, renderHook, screen, waitFor } from '@/test/utils'
+import {
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+  within,
+} from '@/test/utils'
 
 import { AgentsArea } from '../AgentsArea'
 import { useAgentsNav } from '../agentsNav'

@@ -30,6 +30,7 @@ import type { PluginOpsLogTemplateMap } from '@/hooks/usePluginOpsLogTemplates'
 import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import { parseServerTs, toDateOnlyIso } from '@/lib/formatDate'
 import { formatFieldKey } from '@/lib/project-field-formatting'
+import { projectPath } from '@/lib/project-path'
 import type {
   Agent,
   Environment,
@@ -92,13 +93,14 @@ export function ProjectActivityLog({ orgSlug, projectId, projectSlug }: Props) {
   })
 
   const { data: opsPage, isPending: opsPending } = useQuery({
-    enabled: Boolean(projectSlug),
+    enabled: Boolean(orgSlug) && Boolean(projectSlug),
     queryFn: ({ signal }) =>
       listOperationsLog(
+        orgSlug,
         { filters: { project_slug: projectSlug }, limit: MAX_ROWS },
         signal,
       ),
-    queryKey: ['opsLog', projectSlug],
+    queryKey: ['opsLog', orgSlug, projectSlug],
     staleTime: 30_000,
   })
 
@@ -194,7 +196,10 @@ export function ProjectActivityLog({ orgSlug, projectId, projectSlug }: Props) {
                       integrationMap={integrationMap}
                       item={item}
                       key={`event-${item.data.id}-${i}`}
-                      projectId={projectId}
+                      projectBase={projectPath({
+                        id: projectId,
+                        slug: projectSlug,
+                      })}
                     />
                   ) : (
                     <OpsEntry
@@ -253,11 +258,14 @@ function asStr(value: unknown): string {
 
 /** Deep-link to a comment's document, focusing the thread via ?thread=. */
 // fallow-ignore-next-line complexity
-function commentHref(projectId: string, payload: unknown): string | undefined {
+function commentHref(
+  projectBase: string,
+  payload: unknown,
+): string | undefined {
   const p: DocumentCommentPayload = isPlainObject(payload) ? payload : {}
   const documentId = typeof p.document_id === 'string' ? p.document_id : ''
   if (!documentId) return undefined
-  const base = `/projects/${encodeURIComponent(projectId)}/documents/${encodeURIComponent(documentId)}`
+  const base = `${projectBase}/documents/${encodeURIComponent(documentId)}`
   return typeof p.thread_id === 'string' && p.thread_id
     ? `${base}?thread=${encodeURIComponent(p.thread_id)}`
     : base
@@ -435,13 +443,13 @@ function EventEntry({
   displayNames,
   integrationMap,
   item,
-  projectId,
+  projectBase,
 }: {
   agentMap: Map<string, Agent>
   displayNames: Map<string, string>
   integrationMap: Map<string, Integration>
   item: ActivityItem & { kind: 'event' }
-  projectId: string
+  projectBase: string
 }) {
   const entry = item.data
   const integration = entry.integration
@@ -461,7 +469,7 @@ function EventEntry({
     : undefined
   const { body, href } = renderEventBody(
     entry,
-    projectId,
+    projectBase,
     integrationLabel,
     hasActor,
   )
@@ -660,7 +668,7 @@ function renderDocumentCommentBody(payload: unknown): React.ReactNode {
 // fallow-ignore-next-line complexity
 function renderEventBody(
   entry: EventRecord,
-  projectId: string,
+  projectBase: string,
   integrationLabel: string,
   hasActor: boolean,
 ): { body: React.ReactNode; href?: string } {
@@ -673,7 +681,7 @@ function renderEventBody(
   if (entry.type === 'document-comment') {
     return {
       body: renderDocumentCommentBody(entry.payload),
-      href: commentHref(projectId, entry.payload),
+      href: commentHref(projectBase, entry.payload),
     }
   }
   if (entry.type === 'webhook') {

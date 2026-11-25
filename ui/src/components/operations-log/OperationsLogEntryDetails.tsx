@@ -19,6 +19,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { UserIdentity } from '@/components/ui/user-identity'
+import { useOrganization } from '@/contexts/OrganizationContext'
 import { parseServerTs } from '@/lib/formatDate'
 import type { OperationsLogRecord } from '@/types'
 
@@ -42,10 +43,13 @@ interface Props {
 // optional section.
 // fallow-ignore-next-line complexity
 export function OperationsLogEntryDetails({ entry }: Props) {
+  const { selectedOrganization } = useOrganization()
+  const orgSlug = selectedOrganization?.slug || ''
   const { data } = useQuery({
+    enabled: Boolean(orgSlug),
     initialData: entry,
-    queryFn: ({ signal }) => getOperationsLogEntry(entry.id, signal),
-    queryKey: ['operationsLog', 'entry', entry.id],
+    queryFn: ({ signal }) => getOperationsLogEntry(orgSlug, entry.id, signal),
+    queryKey: ['operationsLog', 'entry', orgSlug, entry.id],
     staleTime: 30_000,
   })
 
