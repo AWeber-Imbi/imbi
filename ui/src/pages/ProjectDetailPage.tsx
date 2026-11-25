@@ -10,7 +10,7 @@ import { ProjectDetail } from '@/components/ProjectDetail'
 import { Sk } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { usePageTitle } from '@/hooks/usePageTitle'
-import { parseProjectPath, projectPath } from '@/lib/project-path'
+import { parseProjectPath, projectPath, urlSlug } from '@/lib/project-path'
 
 export function ProjectDetailPage() {
   const { hash, pathname, search } = useLocation()
@@ -38,7 +38,7 @@ export function ProjectDetailPage() {
   // runs as an effect so ProjectDetail stays mounted (and keeps its state)
   // when a slug edit changes the cached project.
   const canonical = project && projectPath(project, ...rest)
-  const needsRedirect = !!project && slug !== project.slug
+  const needsRedirect = !!project && slug !== urlSlug(project.slug)
   useEffect(() => {
     if (needsRedirect && canonical) {
       navigate({ hash, pathname: canonical, search }, { replace: true })

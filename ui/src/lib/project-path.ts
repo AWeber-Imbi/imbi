@@ -9,10 +9,20 @@ export function projectPath(
 ): string {
   return [
     '/projects',
-    encodeURIComponent(project.slug),
+    encodeURIComponent(urlSlug(project.slug)),
     project.id,
     ...rest,
   ].join('/')
+}
+
+/**
+ * The slug as it appears in the URL. Browsers resolve ``.`` and ``..`` (also
+ * when encoded as ``%2E``) as dot segments, and an empty segment is dropped,
+ * so these slugs become ``-``. The ID identifies the project, so the
+ * placeholder loses nothing.
+ */
+export function urlSlug(slug: string): string {
+  return /^\.{0,2}$/.test(slug) ? '-' : slug
 }
 
 // Project IDs are 21-character nanoids. No tab slug is that long, so the

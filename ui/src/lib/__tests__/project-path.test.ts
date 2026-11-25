@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { parseProjectPath, projectPath } from '@/lib/project-path'
+import { parseProjectPath, projectPath, urlSlug } from '@/lib/project-path'
 
 const ID = 'cEsK1fmn03v323upxC0TG'
 
@@ -18,6 +18,26 @@ describe('projectPath', () => {
     expect(projectPath({ id: ID, slug: 'a/b#c?d' })).toBe(
       `/projects/a%2Fb%23c%3Fd/${ID}`,
     )
+  })
+})
+
+describe('urlSlug', () => {
+  it.each(['', '.', '..'])(
+    'keeps the %j slug inside the project route',
+    (slug) => {
+      const path = projectPath({ id: ID, slug }, 'settings')
+      expect(new URL(path, 'https://imbi.test').pathname).toBe(path)
+      expect(parseProjectPath(path)).toEqual({
+        projectId: ID,
+        rest: ['settings'],
+        slug: urlSlug(slug),
+      })
+    },
+  )
+
+  it('keeps other slugs', () => {
+    expect(urlSlug('...')).toBe('...')
+    expect(urlSlug('aweber-ui')).toBe('aweber-ui')
   })
 })
 
