@@ -1,4 +1,4 @@
-"""Block Kit builders for the Home tab, with the Slack length limits.
+"""Block Kit builders with the Slack length limits.
 
 Each builder returns a plain ``dict``. A text that is too long is cut
 with an ellipsis, so a long title from Imbi cannot make Slack refuse
