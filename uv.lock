@@ -26,6 +26,7 @@ members = [
     "imbi-plugin-aws",
     "imbi-plugin-github",
     "imbi-plugin-google",
+    "imbi-plugin-grafana",
     "imbi-plugin-logzio",
     "imbi-plugin-oidc",
     "imbi-plugin-openai",
@@ -1300,6 +1301,7 @@ dependencies = [
     { name = "imbi-plugin-aws" },
     { name = "imbi-plugin-github" },
     { name = "imbi-plugin-google" },
+    { name = "imbi-plugin-grafana" },
     { name = "imbi-plugin-logzio" },
     { name = "imbi-plugin-oidc" },
     { name = "imbi-plugin-openai" },
@@ -1358,6 +1360,7 @@ requires-dist = [
     { name = "imbi-plugin-aws", editable = "plugins/aws" },
     { name = "imbi-plugin-github", editable = "plugins/github" },
     { name = "imbi-plugin-google", editable = "plugins/google" },
+    { name = "imbi-plugin-grafana", editable = "plugins/grafana" },
     { name = "imbi-plugin-logzio", editable = "plugins/logzio" },
     { name = "imbi-plugin-oidc", editable = "plugins/oidc" },
     { name = "imbi-plugin-openai", editable = "plugins/openai" },
@@ -1775,6 +1778,21 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
+    { name = "imbi-common", editable = "libraries/common" },
+    { name = "pydantic", specifier = ">=2" },
+]
+
+[[package]]
+name = "imbi-plugin-grafana"
+version = "2.62.1"
+source = { editable = "plugins/grafana" }
+dependencies = [
+    { name = "imbi-common" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
     { name = "imbi-common", editable = "libraries/common" },
     { name = "pydantic", specifier = ">=2" },
 ]

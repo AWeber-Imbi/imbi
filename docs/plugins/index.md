@@ -8,6 +8,7 @@ how to configure an integration of it, and what its Doctor checks.
 | [AWS](aws.md) | `aws` | IAM Identity Center sign-in, CloudWatch Logs search, and SSM Parameter Store configuration |
 | [GitHub](github.md) | `github` | Identity, deployments, repository lifecycle, commit and pull request sync, and repository Doctor checks |
 | [Google](google.md) | `google` | Sign in with a Google or Google Workspace account |
+| [Grafana](grafana.md) | `grafana` | Links each project to its labelled alert rules, receives Grafana Alerting webhook deliveries, and records them as events |
 | [Logz.io](logzio.md) | `logzio` | Log search on the project **Logs** tab |
 | [OIDC](oidc.md) | `oidc` | Sign in with any OpenID Connect provider |
 | [PagerDuty](pagerduty.md) | `pagerduty` | One PagerDuty service for each project, incidents, escalation policy, and service dependency sync |

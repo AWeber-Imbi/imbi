@@ -5,8 +5,8 @@
 # Versions here are lockstep by design: the meta-package, every app,
 # libraries/common, every plugin, the UI package, and the egress proxy
 # (proxy/Cargo.toml and its Cargo.lock) all carry the same version, and
-# cross-member dependencies are exact pins on it. That is 21
-# `version =` lines plus 37 `imbi-*==<version>` pins plus ui/package.json --
+# cross-member dependencies are exact pins on it. That is 22
+# `version =` lines plus 38 `imbi-*==<version>` pins plus ui/package.json --
 # too many to edit by hand without drift.
 #
 # Usage:
@@ -224,7 +224,7 @@ case "${1-}" in
   *)
     # Anchored, and one-or-more digits per component: a `case` glob cannot
     # express either, so `[0-9]*.[0-9]*.[0-9]*` happily accepted `1.2.3.4`
-    # and `1x.2.3` and let bump() rewrite all 21 pyprojects before `npm
+    # and `1x.2.3` and let bump() rewrite all 22 pyprojects before `npm
     # version` or `uv lock` rejected the value.
     if ! [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
       die "not a semantic version: $1"

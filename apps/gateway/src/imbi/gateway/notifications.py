@@ -56,6 +56,7 @@ _SENSITIVE_HEADERS = frozenset(
         'x-sonar-webhook-hmac-sha256',
         'sentry-hook-signature',
         'webhook-signature',
+        'x-grafana-alerting-signature',
     }
 )
 
