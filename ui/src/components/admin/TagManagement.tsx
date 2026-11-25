@@ -66,15 +66,16 @@ export function TagManagement() {
 
   const onSuccess = () => {
     queryClient.invalidateQueries({ queryKey: tagsKey })
-    // Cached agents and documents hold tag slugs and names. Refresh them,
-    // so that the editors do not show or send a merged or deleted tag.
+    // Cached agents and documents hold tag slugs and names. Reset them:
+    // this removes the cached data, so that an editor cannot seed its
+    // draft from a stale record before the refetch completes.
     for (const key of [
       queryKeys.agents(orgSlug),
       ['orgDocuments', orgSlug],
       ['projectDocuments', orgSlug],
       ['userDocuments', orgSlug],
     ]) {
-      queryClient.invalidateQueries({ queryKey: key })
+      queryClient.resetQueries({ queryKey: key })
     }
     setEditing(null)
     setMerging(null)

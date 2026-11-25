@@ -1,6 +1,8 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as endpoints from '@/api/endpoints'
+import { queryKeys } from '@/lib/queryKeys'
 import { fireEvent, render, screen, waitFor, within } from '@/test/utils'
 import type { Tag } from '@/types'
 
@@ -84,6 +86,38 @@ describe('TagManagement', () => {
       ),
     )
     await waitFor(() => expect(endpoints.listTags).toHaveBeenCalledTimes(2))
+  })
+
+  it('drops cached agents and documents after a merge', async () => {
+    vi.mocked(endpoints.mergeTag).mockResolvedValue(tag('runbook', 9, 4))
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    queryClient.setQueryData(queryKeys.agents('acme'), [{ slug: 'a' }])
+    queryClient.setQueryData(['orgDocuments', 'acme'], [{ id: 'd' }])
+    render(
+      <QueryClientProvider client={queryClient}>
+        <TagManagement />
+      </QueryClientProvider>,
+    )
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Merge Experiment' }),
+    )
+    fireEvent.keyDown(screen.getByRole('combobox', { name: 'Merge into' }), {
+      key: 'ArrowDown',
+    })
+    fireEvent.click(
+      await screen.findByRole('option', { name: 'Runbook (runbook)' }),
+    )
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Merge into "Runbook"' }),
+    )
+    await waitFor(() =>
+      expect(
+        queryClient.getQueryData(queryKeys.agents('acme')),
+      ).toBeUndefined(),
+    )
+    expect(queryClient.getQueryData(['orgDocuments', 'acme'])).toBeUndefined()
   })
 
   it('patches only the changed fields', async () => {
