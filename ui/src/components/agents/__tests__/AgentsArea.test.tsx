@@ -28,6 +28,7 @@ vi.mock('@/api/endpoints', () => ({
   listEnvironments: vi.fn(),
   listTags: vi.fn(),
   listTeams: vi.fn(),
+  listTickets: vi.fn(),
   listWorkflows: vi.fn(),
   listWorkflowStepTypes: vi.fn(),
   patchAgent: vi.fn(),
@@ -197,7 +198,39 @@ describe('AgentsArea', () => {
       await screen.findByText('$340.00 of $400.00', { exact: false }),
     ).toBeInTheDocument()
     expect(screen.getByText('30m')).toBeInTheDocument()
-    expect(screen.getByText('You fix bugs.')).toBeInTheDocument()
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'System prompt' }))
+    expect(await screen.findByText('You fix bugs.')).toBeInTheDocument()
+  })
+
+  it('lists the tickets of the agent on the History tab', async () => {
+    vi.mocked(endpoints.listTickets).mockResolvedValue([
+      {
+        closed_at: '2026-11-20T10:09:12Z',
+        cost_total: '0.19',
+        id: 't-1',
+        origin: { kind: 'schedule' },
+        outcome: 'done_acted',
+        run_started_at: '2026-11-20T10:00:00Z',
+        short_id: 'TKT-42',
+        status: 'closed',
+        title: 'Fix the flaky test',
+      },
+    ] as unknown as Awaited<ReturnType<typeof endpoints.listTickets>>)
+    renderAt('/agents/manage/mender')
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'History' }))
+    const link = await screen.findByRole('link', { name: 'TKT-42' })
+    expect(link).toHaveAttribute('href', '/tickets/acme/TKT-42')
+    expect(endpoints.listTickets).toHaveBeenCalledWith(
+      'acme',
+      { agent_id: ['agt-1'], limit: 100 },
+      expect.anything(),
+    )
+    const row = link.closest('tr') as HTMLElement
+    expect(within(row).getByText('Fix the flaky test')).toBeInTheDocument()
+    expect(within(row).getByText('Completed')).toBeInTheDocument()
+    expect(within(row).getByText('9m 12s')).toBeInTheDocument()
+    expect(within(row).getByText('$0.19')).toBeInTheDocument()
+    expect(within(row).getByText('Schedule')).toBeInTheDocument()
   })
 
   it('shows runs, cost, and the cap warning on the detail page', async () => {

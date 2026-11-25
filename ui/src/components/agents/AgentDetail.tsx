@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Bot } from 'lucide-react'
@@ -9,6 +9,15 @@ import { listAgentMarketplaces } from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { MarkdownPreview } from '@/components/ui/markdown-editor/MarkdownPreview'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { useIcon } from '@/lib/icons'
 import { queryKeys } from '@/lib/queryKeys'
@@ -19,6 +28,7 @@ import type {
   AgentSettings,
   AgentSubagentRef,
   AgentUsage,
+  TicketListItem,
 } from '@/types'
 
 import { formatDuration, formatMoney, wordCount } from './agentDraft'
@@ -28,7 +38,7 @@ import {
   useAgentUsage,
   usePromptResolution,
 } from './agentQueries'
-import { agentsPath } from './agentsNav'
+import { agentsPath, ticketsPath } from './agentsNav'
 import { catalogTools, serverOf } from './agentTools'
 import {
   capStatus,
@@ -39,10 +49,31 @@ import {
   sumTotals,
 } from './agentUsage'
 import { RunTaskButton } from './RunTaskButton'
+import {
+  formatCost,
+  formatElapsed,
+  statusLabel,
+  statusVariant,
+  TRIGGERS,
+} from './taskEvents'
+import { useTickets } from './taskQueries'
 import { UsageBars } from './UsageBars'
 
 // The design's runs line: the Dusk label swatch.
 const RUNS_COLOR = 'var(--color-entity-project)'
+
+// ponytail: one page of the newest tickets; add paging when an agent
+// needs more history than this.
+const HISTORY_LIMIT = 100
+
+/** From the run start to the close, or to now while the ticket is open. */
+const runDuration = (t: TicketListItem) =>
+  t.run_started_at
+    ? formatElapsed(
+        (t.closed_at ? Date.parse(t.closed_at) : Date.now()) -
+          Date.parse(t.run_started_at),
+      )
+    : '—'
 
 const plural = (count: number, noun: string) =>
   `${count} ${noun}${count === 1 ? '' : 's'}`
@@ -178,56 +209,67 @@ export function AgentDetail({ agent }: { agent: Agent }) {
         </div>
       </div>
 
-      <div className="border-border bg-card rounded-lg border">
-        <dl className="grid grid-cols-3 gap-x-8 gap-y-5 p-6">
-          {rows.map((row) => (
-            <div className="flex flex-col gap-1" key={row.name}>
-              <dt className="text-overline text-tertiary uppercase">
-                {row.name}
-              </dt>
-              <dd className={row.mono ? 'font-mono text-sm' : 'text-sm'}>
-                {row.value}
-              </dd>
+      <Tabs defaultValue="overview">
+        <TabsList className="mb-6">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="prompt">System prompt</TabsTrigger>
+          <TabsTrigger value="history">History</TabsTrigger>
+        </TabsList>
+
+        <TabsContent className="flex flex-col gap-6" value="overview">
+          <div className="border-border bg-card rounded-lg border">
+            <dl className="grid grid-cols-3 gap-x-8 gap-y-5 p-6">
+              {rows.map((row) => (
+                <div className="flex flex-col gap-1" key={row.name}>
+                  <dt className="text-overline text-tertiary uppercase">
+                    {row.name}
+                  </dt>
+                  <dd className={row.mono ? 'font-mono text-sm' : 'text-sm'}>
+                    {row.value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+
+          {usage && <CostOverTime usage={usage} />}
+
+          <div className="grid grid-cols-2 items-start gap-6">
+            <ToolAccessCard agent={agent} />
+            <SubagentsCard agent={agent} />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="prompt">
+          <div className="border-border bg-card rounded-lg border">
+            <div className="border-border flex items-center justify-between border-b px-6 py-4">
+              <h3 className="text-card-title">System prompt</h3>
+              {system && (
+                <span className="text-tertiary font-mono text-sm tabular-nums">
+                  {wordCount(system).toLocaleString()} words
+                </span>
+              )}
             </div>
-          ))}
-        </dl>
-      </div>
-
-      {usage && <CostOverTime usage={usage} />}
-
-      <ToolAccessCard agent={agent} />
-
-      <div className="grid grid-cols-2 gap-6">
-        <SubagentsCard agent={agent} />
-        <div className="border-border bg-card rounded-lg border">
-          <div className="border-border flex items-center justify-between border-b px-6 py-4">
-            <h3 className="text-card-title">System prompt</h3>
-            {system && (
-              <span className="text-tertiary font-mono text-sm tabular-nums">
-                {wordCount(system).toLocaleString()} words
-              </span>
-            )}
+            <div aria-label="System prompt" className="px-6 py-4" role="region">
+              {prompt.isLoading ? (
+                <p className="text-tertiary text-sm">Loading…</p>
+              ) : system ? (
+                <MarkdownPreview value={system} />
+              ) : (
+                <p className="text-tertiary text-sm">
+                  {prompt.isError
+                    ? 'Could not load the system prompt.'
+                    : 'No system prompt yet.'}
+                </p>
+              )}
+            </div>
           </div>
-          <div
-            aria-label="System prompt"
-            className="max-h-65 overflow-y-auto px-6 py-4"
-            role="region"
-            tabIndex={0}
-          >
-            {prompt.isLoading ? (
-              <p className="text-tertiary text-sm">Loading…</p>
-            ) : system ? (
-              <MarkdownPreview value={system} />
-            ) : (
-              <p className="text-tertiary text-sm">
-                {prompt.isError
-                  ? 'Could not load the system prompt.'
-                  : 'No system prompt yet.'}
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
+        </TabsContent>
+
+        <TabsContent value="history">
+          <HistoryCard agent={agent} />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
@@ -297,6 +339,70 @@ function CostOverTime({ usage }: { usage: AgentUsage }) {
             </span>
           </div>
         </>
+      )}
+    </div>
+  )
+}
+
+/** The tickets that this agent worked on, newest first. */
+function HistoryCard({ agent }: { agent: Agent }) {
+  const orgSlug = agent.organization.slug
+  const params = { agent_id: [agent.id], limit: HISTORY_LIMIT }
+  const tickets = useTickets(orgSlug, params)
+  const rows = tickets.data ?? []
+  const message = tickets.isLoading
+    ? 'Loading…'
+    : tickets.isError
+      ? 'Could not load the history.'
+      : rows.length === 0
+        ? 'This agent has not worked on a ticket yet.'
+        : null
+  return (
+    <div className="border-border bg-card overflow-hidden rounded-lg border">
+      {message ? (
+        <p className="text-tertiary px-6 py-5 text-sm">{message}</p>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow className="text-overline uppercase">
+              <TableHead className="px-6">Ticket</TableHead>
+              <TableHead>Title</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Duration</TableHead>
+              <TableHead className="text-right">Cost</TableHead>
+              <TableHead className="px-6">Trigger</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((t) => (
+              <TableRow key={t.id}>
+                <TableCell className="px-6 font-mono whitespace-nowrap">
+                  <Link
+                    className="text-action hover:underline"
+                    to={ticketsPath(orgSlug, t.short_id)}
+                  >
+                    {t.short_id}
+                  </Link>
+                </TableCell>
+                <TableCell className="max-w-0 truncate" title={t.title}>
+                  {t.title}
+                </TableCell>
+                <TableCell>
+                  <Badge variant={statusVariant(t)}>{statusLabel(t)}</Badge>
+                </TableCell>
+                <TableCell className="text-right font-mono tabular-nums">
+                  {runDuration(t)}
+                </TableCell>
+                <TableCell className="text-right font-mono tabular-nums">
+                  {formatCost(Number(t.cost_total))}
+                </TableCell>
+                <TableCell className="text-secondary px-6 whitespace-nowrap">
+                  {TRIGGERS[t.origin.kind].label}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       )}
     </div>
   )
