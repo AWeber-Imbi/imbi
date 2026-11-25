@@ -79,6 +79,8 @@ def full_sections(n: int) -> dict[str, typing.Any]:
                     'expires_at': ts(-23),
                     'short_id': f'T-{400 + i}',
                     'ticket_title': 'Upgrade pydantic',
+                    'agent_slug': 'reviewbee' if i % 2 else None,
+                    'agent_name': 'reviewbee' if i % 2 else None,
                 }
                 for i in r
             ],
@@ -440,6 +442,32 @@ class BlocksTests(helpers.TestCase):
         self.assertEqual(
             10, len(blocks.section('s', fields=['f'] * 12)['fields'])
         )
+
+
+class AgentNameTests(helpers.TestCase):
+    def test_request_names_the_agent(self) -> None:
+        view = render.render(
+            USER, prefs.Prefs(), gathered(full_sections(2)), NOW, TZ
+        )
+        lines = outline(view)
+        self.assertTrue(
+            any('*reviewbee is waiting on you* · ' in line for line in lines)
+        )
+        # A request without an agent name keeps the plain text.
+        self.assertTrue(
+            any(
+                ':large_orange_circle: *Waiting on you* · ' in line
+                for line in lines
+            )
+        )
+
+    def test_agent_name_is_escaped(self) -> None:
+        data = full_sections(2)
+        data['needs_attention']['requests'][1]['agent_name'] = '<!channel>'
+        view = render.render(USER, prefs.Prefs(), gathered(data), NOW, TZ)
+        text = json.dumps(view, ensure_ascii=False)
+        self.assertIn('&lt;!channel&gt; is waiting on you', text)
+        self.assertNotIn('<!channel>', text)
 
 
 class InjectionTests(helpers.TestCase):

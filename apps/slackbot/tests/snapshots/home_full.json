@@ -12,7 +12,7 @@
     "section: :large_orange_circle: *Incident acknowledged on <https://imbi.example/projects/p1|imbi-api>* · high urgency\n“Elevated 5xx” · just now [button:home:incident:open]",
     "section: :large_orange_circle: *Waiting on you* · <https://imbi.example/tickets/acme/T-402|T-402> Upgrade pydantic\n“Approve the shim?” · asked 3h ago · expires in 23h",
     "actions: Reply(primary), Hand off()",
-    "section: :large_orange_circle: *Waiting on you* · <https://imbi.example/tickets/acme/T-401|T-401> Upgrade pydantic\n“Approve the shim?” · asked 2h ago · expires in 23h",
+    "section: :large_orange_circle: *reviewbee is waiting on you* · <https://imbi.example/tickets/acme/T-401|T-401> Upgrade pydantic\n“Approve the shim?” · asked 2h ago · expires in 23h",
     "actions: Approve(primary), Reject(danger), Hand off()",
     "context: +10 more · <https://imbi.example/tickets/waiting|View all 15 in Imbi>",
     "divider: ",
@@ -283,7 +283,7 @@
         "type": "section",
         "text": {
           "type": "mrkdwn",
-          "text": ":large_orange_circle: *Waiting on you* · <https://imbi.example/tickets/acme/T-401|T-401> Upgrade pydantic\n“Approve the shim?” · asked 2h ago · expires in 23h"
+          "text": ":large_orange_circle: *reviewbee is waiting on you* · <https://imbi.example/tickets/acme/T-401|T-401> Upgrade pydantic\n“Approve the shim?” · asked 2h ago · expires in 23h"
         }
       },
       {

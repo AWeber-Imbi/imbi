@@ -225,8 +225,14 @@ def _attention_item(
             if expires_at
             else ''
         )
+        agent = row.get('agent_name')
+        who = (
+            f'{b.escape(agent)} is waiting on you'
+            if agent
+            else 'Waiting on you'
+        )
         text = (
-            f':large_orange_circle: *Waiting on you* · '
+            f':large_orange_circle: *{who}* · '
             f'{links.a(ticket, row["short_id"])} '
             f'{b.escape(row["ticket_title"])}\n“{b.escape(row["title"])}” · '
             f'asked {ago(row["opened_at"], now)}{expires}'
