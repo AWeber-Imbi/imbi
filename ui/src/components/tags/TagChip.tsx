@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import { LabelChip } from '@/components/ui/label-chip'
+import { cn } from '@/lib/utils'
 
 /** The fields of an org tag that a chip shows. */
 export interface ChipTag {
@@ -12,14 +13,19 @@ export interface ChipTag {
 /** A tag as a label chip in the tag color, or neutral with no color. */
 export function TagChip({
   children,
+  size = 'md',
   tag,
 }: {
   children?: ReactNode
+  size?: 'md' | 'sm'
   tag: ChipTag
 }) {
   return (
     <LabelChip
-      className={tag.color ? undefined : 'border-tertiary text-secondary'}
+      className={cn(
+        size === 'sm' && 'px-1.5 py-0 text-[10.5px]',
+        !tag.color && 'border-tertiary text-secondary',
+      )}
       hex={tag.color ?? ''}
     >
       {tag.name}

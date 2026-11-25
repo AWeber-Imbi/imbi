@@ -332,6 +332,9 @@ second user gets the tag that exists.
 **Admin > &lt;Org&gt; Admin > Tags** shows each tag with its color, its
 slug, and the number of documents and agents that use it.
 
+Documents, agents, and workflows show a tag in its color. A tag with no
+color shows as a neutral chip.
+
 - **Edit** changes the name, the description, and the color.
 - **Merge** moves all documents and agents of a tag to another tag, then
   deletes the first tag. Use it for two tags with the same meaning, for

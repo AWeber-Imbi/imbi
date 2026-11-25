@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, FilePlus2, Plus, StickyNote } from 'lucide-react'
 
 import { listDocumentTemplates } from '@/api/endpoints'
+import { TagChip } from '@/components/tags/TagChip'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -16,7 +17,6 @@ import { cn } from '@/lib/utils'
 import type { DocumentTemplate } from '@/types'
 
 import { filterTemplatesByProjectType } from './documentsHelpers'
-import { DocumentTagChip } from './DocumentTagChip'
 
 interface Props {
   className?: string
@@ -146,9 +146,7 @@ function TemplateMenuItem({
           </div>
         )}
       </div>
-      {!!template.tags?.length && (
-        <DocumentTagChip size="sm" tag={template.tags[0]} />
-      )}
+      {!!template.tags?.length && <TagChip size="sm" tag={template.tags[0]} />}
     </DropdownMenuItem>
   )
 }

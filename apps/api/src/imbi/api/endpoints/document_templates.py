@@ -37,6 +37,7 @@ _TEMPLATE_READONLY_PATHS: frozenset[str] = frozenset(
 class TagRef(pydantic.BaseModel):
     name: str
     slug: str
+    color: str | None = None
 
 
 class OrganizationRef(pydantic.BaseModel):
@@ -108,7 +109,7 @@ class DocumentTemplateResponse(pydantic.BaseModel):
 _TAGS_TAIL: typing.LiteralString = """
     OPTIONAL MATCH (nt)-[:TAGGED_WITH]->(tag:Tag)
     WITH nt, o, collect(CASE WHEN tag IS NOT NULL
-                              THEN tag{{.name, .slug}}
+                              THEN tag{{.name, .slug, .color}}
                               END) AS raw_tags
     WITH nt, o, [t IN raw_tags WHERE t IS NOT NULL] AS tags
     RETURN nt, o, tags
@@ -121,7 +122,7 @@ def _parse_template_row(
     template: dict[str, typing.Any] = graph.parse_agtype(record['nt'])
     org: dict[str, typing.Any] = graph.parse_agtype(record['o'])
     raw_tags: list[typing.Any] = graph.parse_agtype(record['tags']) or []
-    tags: list[dict[str, str]] = []
+    tags: list[dict[str, str | None]] = []
     for t in raw_tags:
         if not isinstance(t, dict):
             continue
@@ -130,7 +131,11 @@ def _parse_template_row(
         if not slug:
             continue
         tags.append(
-            {'name': str(entry.get('name', '')), 'slug': str(slug)},
+            {
+                'name': str(entry.get('name', '')),
+                'slug': str(slug),
+                'color': entry.get('color'),
+            },
         )
     template['organization'] = {
         'name': str(org.get('name', '')),

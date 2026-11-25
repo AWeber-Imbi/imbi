@@ -1,17 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CornerDownLeft, Plus, Tag as TagIcon, X } from 'lucide-react'
-import { toast } from 'sonner'
 
-import { createOrFindTag, listTags } from '@/api/endpoints'
+import { TagChip } from '@/components/tags/TagChip'
+import { useOrgTags } from '@/components/tags/useOrgTags'
 import { Keystroke } from '@/components/ui/keystroke'
-import { extractApiErrorDetail } from '@/lib/apiError'
-import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
 import type { Tag, TagRef } from '@/types'
-
-import { DocumentTagChip } from './DocumentTagChip'
 
 interface Props {
   onChange: (tags: TagRef[]) => void
@@ -40,29 +35,14 @@ export function TagCombobox({
   const [activeIdx, setActiveIdx] = useState(0)
   const rootRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const qc = useQueryClient()
-
-  const tagsKey = queryKeys.tags(orgSlug)
-  const { data: allTags = [] } = useQuery({
-    enabled: !!orgSlug,
-    queryFn: ({ signal }) => listTags(orgSlug, signal),
-    queryKey: tagsKey,
-  })
-
-  const createMutation = useMutation({
-    mutationFn: (name: string) => createOrFindTag(orgSlug, { name }),
-    onError: (err) => {
-      toast.error(`Create tag failed: ${extractApiErrorDetail(err)}`)
-    },
-    onSuccess: (tag) => {
-      qc.invalidateQueries({ queryKey: tagsKey })
-      if (!selectedSlugs.has(tag.slug)) {
-        onChange([...selected, { name: tag.name, slug: tag.slug }])
-      }
+  const { create: createMutation, tags: allTags } = useOrgTags(
+    orgSlug,
+    (tag) => {
+      if (!selectedSlugs.has(tag.slug)) onChange([...selected, chip(tag)])
       setQuery('')
       setActiveIdx(0)
     },
-  })
+  )
 
   const selectedSlugs = useMemo(
     () => new Set(selected.map((t) => t.slug)),
@@ -104,7 +84,7 @@ export function TagCombobox({
   }, [open])
 
   const addExisting = (tag: Tag | TagRef) => {
-    onChange([...selected, { name: tag.name, slug: tag.slug }])
+    onChange([...selected, chip(tag)])
     setQuery('')
     setActiveIdx(0)
   }
@@ -125,7 +105,7 @@ export function TagCombobox({
       if (activeIdx < matches.length) {
         addExisting(matches[activeIdx])
       } else if (canCreate && !createMutation.isPending) {
-        createMutation.mutate(query.trim())
+        createMutation.mutate({ name: query.trim() })
       }
     } else if (e.key === 'Backspace' && query === '' && selected.length > 0) {
       removeTag(selected[selected.length - 1].slug)
@@ -169,7 +149,7 @@ export function TagCombobox({
             key={t.slug}
             onClick={(e) => e.stopPropagation()}
           >
-            <DocumentTagChip size="sm" tag={t} />
+            <TagChip size="sm" tag={t} />
             <button
               aria-label={`Remove tag ${t.name}`}
               className="text-tertiary hover:text-primary rounded border-0 bg-transparent p-0"
@@ -223,7 +203,7 @@ export function TagCombobox({
                     onMouseEnter={() => setActiveIdx(i)}
                     type="button"
                   >
-                    <DocumentTagChip size="sm" tag={t} />
+                    <TagChip size="sm" tag={t} />
                     <span className="text-tertiary ml-auto text-[11px]">
                       {isActive && (
                         <CornerDownLeft className="text-tertiary size-3" />
@@ -248,7 +228,7 @@ export function TagCombobox({
                 onMouseDown={(e) => {
                   e.preventDefault()
                   if (!createMutation.isPending)
-                    createMutation.mutate(query.trim())
+                    createMutation.mutate({ name: query.trim() })
                 }}
                 onMouseEnter={() => setActiveIdx(matches.length)}
                 type="button"
@@ -271,4 +251,9 @@ export function TagCombobox({
       )}
     </div>
   )
+}
+
+/** A selected tag keeps its color, so its chip shows it at once. */
+function chip(tag: Tag | TagRef): TagRef {
+  return { color: tag.color, name: tag.name, slug: tag.slug }
 }

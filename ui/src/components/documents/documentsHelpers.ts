@@ -1,19 +1,5 @@
-import { LABEL_SWATCHES } from '@/lib/chip-colors'
 import { parseServerTs } from '@/lib/formatDate'
 import type { Document, DocumentTemplate, TagRef } from '@/types'
-
-/**
- * Deterministic color for a tag slug. Stable hash keeps each tag on the same
- * swatch across renders without requiring color in the API schema.
- */
-export function colorForTag(slug: string): string {
-  let hash = 0
-  for (let i = 0; i < slug.length; i++) {
-    hash = (hash * 31 + slug.charCodeAt(i)) | 0
-  }
-  const idx = Math.abs(hash) % LABEL_SWATCHES.length
-  return LABEL_SWATCHES[idx].hex
-}
 
 const TITLE_MAX = 120
 const EXCERPT_MAX = 240

@@ -70,9 +70,13 @@ export function DocumentsPinboardNew({
   )
   const [tags, setTags] = useState<TagRef[]>(
     initialDocument
-      ? initialDocument.tags.map((t) => ({ name: t.name, slug: t.slug }))
+      ? initialDocument.tags.map((t) => ({
+          color: t.color,
+          name: t.name,
+          slug: t.slug,
+        }))
       : seed?.tags
-        ? seed.tags.map((t) => ({ name: t.name, slug: t.slug }))
+        ? seed.tags.map((t) => ({ color: t.color, name: t.name, slug: t.slug }))
         : [],
   )
   const titleRef = useRef<HTMLInputElement>(null)

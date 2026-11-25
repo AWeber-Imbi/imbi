@@ -165,7 +165,11 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             [
                 self._project_row(
                     tags=[
-                        {'name': 'Runbook', 'slug': 'runbook'},
+                        {
+                            'name': 'Runbook',
+                            'slug': 'runbook',
+                            'color': '#3B82F6',
+                        },
                         {'name': 'Alert', 'slug': 'alert'},
                     ],
                 )
@@ -183,8 +187,8 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
                 },
             )
         self.assertEqual(response.status_code, 201)
-        tags = {t['slug'] for t in response.json()['tags']}
-        self.assertEqual(tags, {'runbook', 'alert'})
+        tags = {t['slug']: t['color'] for t in response.json()['tags']}
+        self.assertEqual(tags, {'runbook': '#3B82F6', 'alert': None})
         attach_call = self.mock_db.execute.await_args_list[2]
         self.assertEqual(
             attach_call.args[1]['tag_slugs'], ['runbook', 'alert']

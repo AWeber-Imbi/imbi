@@ -7,8 +7,6 @@ import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import type { TagRef } from '@/types'
 
-import { colorForTag } from './documentsHelpers'
-
 interface Props {
   active: ReadonlySet<string>
   counts: Record<string, number>
@@ -141,7 +139,7 @@ function TagButton({
   onClick: () => void
   tag: TagRef
 }) {
-  const hex = colorForTag(tag.slug)
+  const hex = tag.color
   return (
     <button
       className={cn(
@@ -153,13 +151,15 @@ function TagButton({
     >
       <span
         aria-hidden
-        className="shrink-0 rounded-sm"
-        style={{
-          backgroundColor: `${hex}55`,
-          border: `0.5px solid ${hex}`,
-          height: 10,
-          width: 10,
-        }}
+        className={cn(
+          'size-2.5 shrink-0 rounded-sm',
+          !hex && 'border-tertiary border-[0.5px]',
+        )}
+        style={
+          hex
+            ? { backgroundColor: `${hex}55`, border: `0.5px solid ${hex}` }
+            : undefined
+        }
       />
       <span
         className={cn(

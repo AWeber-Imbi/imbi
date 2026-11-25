@@ -65,6 +65,7 @@ _DOCUMENT_READONLY_PATHS: frozenset[str] = frozenset(
 class TagRef(pydantic.BaseModel):
     name: str
     slug: str
+    color: str | None = None
 
 
 class AttachmentRef(pydantic.BaseModel):
@@ -134,7 +135,7 @@ def _parse_document_row(
     ptype_names = _str_list(graph.parse_agtype(record['ptype_names']))
     author: dict[str, typing.Any] | None = graph.parse_agtype(record['author'])
     raw_tags: list[typing.Any] = graph.parse_agtype(record['tags']) or []
-    tags: list[dict[str, str]] = []
+    tags: list[dict[str, str | None]] = []
     for t in raw_tags:
         if not isinstance(t, dict):
             continue
@@ -143,7 +144,11 @@ def _parse_document_row(
         if not slug:
             continue
         tags.append(
-            {'name': str(entry.get('name', '')), 'slug': str(slug)},
+            {
+                'name': str(entry.get('name', '')),
+                'slug': str(slug),
+                'color': entry.get('color'),
+            },
         )
 
     attached: dict[str, typing.Any] | None = None
@@ -215,7 +220,7 @@ _ENRICH_TAIL: typing.LiteralString = """
     OPTIONAL MATCH (n)-[:TAGGED_WITH]->(tag:Tag)
     WITH n, p, team, pt, u, ptype_names,
          collect(CASE WHEN tag IS NOT NULL
-                      THEN tag{{.name, .slug}}
+                      THEN tag{{.name, .slug, .color}}
                       END) AS raw_tags
     WITH n, p, team, pt, u, ptype_names,
          [t IN raw_tags WHERE t IS NOT NULL] AS tags
