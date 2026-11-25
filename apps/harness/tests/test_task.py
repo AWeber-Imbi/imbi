@@ -3855,6 +3855,26 @@ class PluginRelayTestCase(TaskTestCase):
             {'server': 'plugin:ops:logs'},
         )
 
+    async def test_a_stale_mapping_is_not_resolved(self) -> None:
+        self.call.return_value = {'material': 'logs-secret-value'}
+        subject = self.load(
+            secrets={
+                'TOKEN': self.REFERENCE,
+                'REMOVED': 'secret://production/logs/old',
+            }
+        )
+        await self.start(subject)
+        self.assertEqual(
+            [
+                call.args[1]['reference']
+                for call in self.client.create_resolution.call_args_list
+            ],
+            [self.REFERENCE],
+        )
+        (server,) = subject.plugin_relays
+        assert isinstance(server.auth, task.outbound.Headers)
+        self.assertEqual(server.auth.values(), {'TOKEN': 'logs-secret-value'})
+
     async def test_a_server_that_fails_a_check_is_a_warning(self) -> None:
         cases = {
             'no longer at https://logs.example.com': {

@@ -882,6 +882,17 @@ def _headers(config: Body) -> dict[str, str]:
     }
 
 
+def _used_variables(config: Body) -> set[str]:
+    """The name of each ``${VAR}`` and ``${VAR:-default}`` in a server's
+    header values. A secret mapped to another variable is stale: the
+    pinned server no longer uses it."""
+    return {
+        match.partition(':-')[0]
+        for value in _headers(config).values()
+        for match in _VARIABLE.findall(value)
+    }
+
+
 def _relative(value: typing.Any) -> pathlib.PurePosixPath:
     """A plugin path in a marketplace: relative, with no ``..``."""
     path = pathlib.PurePosixPath(str(value or '.'))
@@ -1775,12 +1786,18 @@ class TaskRun:
     async def _header_secrets(
         self, relayed: _Relayed
     ) -> dict[str, credential.Refresher] | None:
-        """The secret of each header variable that the agent maps, from
-        ``mcp_header`` resolutions; ``None`` with a task warning when
-        Imbi refuses one. A variable with no secret and no default gets
-        a task warning too."""
+        """The secret of each header variable of the server that the agent
+        maps, from ``mcp_header`` resolutions; ``None`` with a task
+        warning when Imbi refuses one. A mapping for a variable that the
+        server does not use is not resolved. A variable with no secret
+        and no default gets a task warning too."""
         what = relayed.describe()
-        mapped = _secrets(relayed.setting)
+        used = _used_variables(relayed.config)
+        mapped = {
+            name: reference
+            for name, reference in _secrets(relayed.setting).items()
+            if name in used
+        }
         by_reference = {
             reference: credential.Refresher(
                 functools.partial(
