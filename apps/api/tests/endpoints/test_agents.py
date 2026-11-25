@@ -223,7 +223,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
             [{'id': 'agent-1'}],
             [{'attached': 1}],
             [{'n': 1}],
-            [self._row(tags=['red'])],
+            [{**self._row(tags=['red']), 'created_by': 'dev@example.com'}],
         ]
         response = self.client.post(
             BASE + '/',
@@ -248,7 +248,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         )
         self.assertEqual(body['organization']['slug'], 'engineering')
         self.assertEqual(body['updated_by'], 'dev@example.com')
-        self.assertEqual(body['created_by'], 'author@example.com')
+        self.assertEqual(body['created_by'], 'dev@example.com')
         self.assertIsNotNone(body['last_version_at'])
         self.assertEqual(body['settings']['response_sla'], '24h')
         self.assertNotIn('model', body)
@@ -579,11 +579,16 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         )
 
     def test_get(self) -> None:
-        self.mock_db.execute.return_value = [self._row(tags=['b', 'a'])]
+        self.mock_db.execute.return_value = [
+            self._row(tags=['b', 'a'], latest=2)
+        ]
         response = self.client.get(BASE + '/triage')
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual([t['slug'] for t in body['tags']], ['a', 'b'])
+        # Version 1 and the latest version have different writers.
+        self.assertEqual(body['created_by'], 'author@example.com')
+        self.assertEqual(body['updated_by'], 'dev@example.com')
         self.assertEqual(
             body['prompt_ref'], 'agents/engineering.triage@stable'
         )
