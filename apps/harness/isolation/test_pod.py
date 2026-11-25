@@ -1512,9 +1512,15 @@ class PluginRelayTests(unittest.TestCase):
             for line in transcript_of(self.task).splitlines()
             if '"subtype": "init"' in line
         )
-        names = [server['name'] for server in init['data']['mcp_servers']]
-        self.assertIn('plugin:greeter:greet', names)
+        statuses = {
+            server['name']: server['status']
+            for server in init['data']['mcp_servers']
+        }
+        self.assertEqual(statuses.get('plugin:greeter:greet'), 'connected')
         self.assertIn(self.tool, init['data']['tools'])
+
+    def test_the_cli_never_called_the_server_itself(self) -> None:
+        self.assertEqual(fake_api('GET', '/test/plugin-mcp-refused'), [])
 
     def test_the_model_gets_the_plugin_tool_name(self) -> None:
         requests = fake_api(

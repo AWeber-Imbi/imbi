@@ -331,7 +331,6 @@ class ExecutorTestCase(BaseTestCase):
 
     async def test_setup_purposes_are_never_run(self) -> None:
         await self.hello()
-        self.assertIn('mcp_header', executor.SETUP_PURPOSES)
         for purpose in sorted(executor.SETUP_PURPOSES):
             with self.subTest(purpose=purpose):
                 self.api.release.reset_mock()

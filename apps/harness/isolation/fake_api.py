@@ -107,6 +107,9 @@ MCP_CALLS: list[Row] = []
 #: calls to the greeter plugin's MCP server.
 HEADER_TOKENS: dict[str, str] = {}
 PLUGIN_MCP_CALLS: list[Row] = []
+#: The requests to the greeter plugin's MCP server without a token of
+#: an mcp_header resolution, such as the CLI's own.
+PLUGIN_MCP_REFUSED: list[Row] = []
 PLUGIN_MCP_TOOLS = [
     {
         'name': 'hello',
@@ -708,6 +711,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return self._json(200, MCP_CALLS)
                 if url.path == '/test/plugin-mcp-calls':
                     return self._json(200, PLUGIN_MCP_CALLS)
+                if url.path == '/test/plugin-mcp-refused':
+                    return self._json(200, PLUGIN_MCP_REFUSED)
                 if url.path == '/test/model-key':
                     return self._json(200, {'key': MODEL_KEY})
                 if url.path == '/test/egress-applied':
@@ -1051,6 +1056,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             task = next(
                 (t for t in TASKS.values() if t['id'] == task_id), None
             )
+            if task is None:
+                PLUGIN_MCP_REFUSED.append({'at': time.time()})
 
         def text(params: Row) -> str:
             name = (params.get('arguments') or {}).get('name')
