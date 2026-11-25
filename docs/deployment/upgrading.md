@@ -74,7 +74,7 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
-## Unreleased
+## 2.62.0
 
 1. **Before you deploy**, make sure that every imbi-api pod runs 2.59.0
    or later. This release drops the columns `tickets.tickets.close_id`
@@ -149,6 +149,12 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    `patternProperties`. Imbi refuses to save that pair, and a field
    that evaluates `unevaluatedProperties` refuses each value with `422`.
    Remove or replace the pair before you change the blueprint's schema.
+7. To show the Slack App Home tab, deploy imbi-api before
+   imbi-slackbot, because the tab reads new imbi-api routes. Then add
+   `features.app_home` and the `app_home_opened` event from
+   [Slack App Setup](../slackbot/slack-app-manifest.md#home-tab) to the
+   Slack app, or reinstall the app from the new manifest. Until you do
+   this, Slack shows no Home tab.
 
 ## 2.61.0
 
