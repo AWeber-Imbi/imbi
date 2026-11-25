@@ -1425,12 +1425,53 @@ class ClaudeSettings(_ClaudeModel):
         return document
 
 
+class CatalogServer(pydantic.BaseModel):
+    """One MCP server of a plugin.
+
+    ``headers`` maps each header name to the ``${VAR}`` names that its
+    value uses. A plugin author can commit a literal token in a header
+    or a URL, so no header value is stored, and ``url`` has no user
+    information, query, or fragment. ``url`` keeps the path, so a token
+    in the path is stored.
+    """
+
+    name: str
+    type: str = 'stdio'
+    url: str | None = None
+    headers: dict[str, list[str]] = {}
+
+
+def _server_names(value: object) -> object:
+    """Read a server list that the marketplace sync wrote before it
+    stored servers: names only."""
+    if not isinstance(value, list):
+        return value
+    return [
+        {'name': item} if isinstance(item, str) else item
+        for item in typing.cast('list[object]', value)
+    ]
+
+
+CatalogServers = typing.Annotated[
+    list[CatalogServer], pydantic.BeforeValidator(_server_names)
+]
+
+
+class ServerSetting(pydantic.BaseModel):
+    """An agent's setting for one MCP server of a plugin."""
+
+    enabled: bool = True
+
+
 class AgentPlugin(pydantic.BaseModel):
     """A plugin from a registered marketplace (ADR 0022).
 
-    The caller sets ``marketplace`` and ``plugin``. Imbi sets ``url``,
-    ``sha``, and ``path`` when it writes a version, from the synced
-    catalog, so the version pins the plugin.
+    The caller sets ``marketplace``, ``plugin``, and
+    ``server_settings``. Imbi sets ``url``, ``sha``, ``path``, and
+    ``mcp_servers`` when it writes a version, from the synced catalog,
+    so the version pins the plugin and its servers. A pin made before
+    Imbi saved the servers has none. ``server_settings`` keeps only the
+    settings that differ from the default.
     """
 
     #: The slug of the marketplace in the organization.
@@ -1443,6 +1484,20 @@ class AgentPlugin(pydantic.BaseModel):
     sha: str | None = None
     #: The plugin directory, relative to the root of ``url``.
     path: str | None = None
+    mcp_servers: CatalogServers = []
+    server_settings: dict[str, ServerSetting] = {}
+
+    @pydantic.field_validator('server_settings')
+    @classmethod
+    def _drop_defaults(
+        cls, value: dict[str, ServerSetting]
+    ) -> dict[str, ServerSetting]:
+        default = ServerSetting()
+        return {
+            name: setting
+            for name, setting in value.items()
+            if setting != default
+        }
 
 
 class AgentSettings(pydantic.BaseModel):
