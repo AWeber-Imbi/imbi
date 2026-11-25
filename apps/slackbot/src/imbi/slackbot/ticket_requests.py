@@ -9,6 +9,10 @@ fails, it posts the form to ``slack_channel``. When the request is still
 open after the agent's response SLA, the imbi-api sweeper adds the
 entry again with ``escalation`` set, and the form goes to the channel.
 
+The ids of the posted messages are kept in Valkey. When a person
+resolves the request, in the UI or in Slack, imbi-api adds an entry with
+``resolved`` set, and each message changes to show the decision.
+
 A submission resolves the request through imbi-api as the Slack user
 who answered. The API checks ``ticket:resolve`` and records the
 ``slack`` channel, the same as for an answer in the UI.
@@ -31,7 +35,7 @@ from slack_sdk import errors
 from slackwright import forms, render
 
 from imbi.common import valkey
-from imbi.slackbot import identity, links
+from imbi.slackbot import blocks, identity, links
 
 SlackClient = typing.Any
 type Entry = dict[str, typing.Any]
@@ -63,6 +67,26 @@ _CLAIM_IDLE_MS = 60_000
 _PAGE_SIZE = 200
 #: Seconds before a channel name that was not found is looked up again.
 _MISS_TTL = 900
+#: Seconds that the ids of the messages of a request are kept.
+_MESSAGES_TTL = 30 * 86400
+#: The most times that a message of a resolved request is updated.
+_CLOSE_TRIES = 5
+#: Slack errors that mean the message cannot be updated again.
+_GONE = frozenset(
+    {
+        'cant_update_message',
+        'channel_not_found',
+        'is_archived',
+        'message_not_found',
+        'not_in_channel',
+    }
+)
+
+
+class _Retry(Exception):
+    """Some messages of a resolved request were not updated. Do not ack
+    the entry, so that it is claimed again after ``_CLAIM_IDLE_MS``."""
+
 
 #: Channel ids by name. ponytail: a found channel never expires; a
 #: renamed channel needs a restart.
@@ -98,7 +122,14 @@ async def consume(slack: SlackClient, runtime: forms.Runtime) -> None:
             for message_id, fields in messages:
                 try:
                     raw = fields.get(b'request') or fields.get('request')
-                    await post(slack, runtime, orjson.loads(raw))
+                    value = orjson.loads(raw)
+                    if value.get('resolved'):
+                        await close(slack, value)
+                    else:
+                        await post(slack, runtime, value)
+                except _Retry as err:
+                    LOGGER.warning('Will update %s again: %s', message_id, err)
+                    continue
                 except Exception:
                     LOGGER.exception('Could not post %s', message_id)
                 # ponytail: a failed post is not tried again. The request
@@ -172,6 +203,71 @@ async def post(
             entry['short_id'],
             response.get('error'),
         )
+
+
+async def close(slack: SlackClient, entry: Entry) -> None:
+    """Replace each message of a resolved request with the decision.
+
+    A message that fails for a temporary reason is kept, and
+    :class:`_Retry` is raised after the other messages are updated.
+    A message is dropped after ``_CLOSE_TRIES`` failures, or when Slack
+    says that it cannot be updated. A Valkey failure also raises
+    :class:`_Retry`, and no message is lost.
+
+    """
+    client: typing.Any = valkey.get_client()
+    key = _messages_key(entry['request_id'])
+    short_id = entry['short_id']
+    try:
+        # Before the read, so that a post that keeps its message after
+        # the read closes it (see _remember()).
+        await client.set(
+            _resolved_key(entry['request_id']),
+            orjson.dumps(entry),
+            ex=_MESSAGES_TTL,
+        )
+        records = await client.lrange(key, 0, -1)
+    except Exception as err:
+        raise _Retry(f'cannot read the messages of {short_id}') from err
+    kept: list[bytes] = []
+    for raw in records:
+        message = orjson.loads(raw)
+        try:
+            await slack.chat_update(
+                channel=message['channel'],
+                ts=message['ts'],
+                blocks=_resolved_blocks(
+                    entry,
+                    message['summary'],
+                    answer=message['channel'].startswith('D'),
+                ),
+                text=f'{entry["short_id"]} {entry["status"]}',
+            )
+        except Exception as err:
+            LOGGER.exception(
+                'Could not update %s in %s', message['ts'], message['channel']
+            )
+            response: typing.Any = getattr(err, 'response', None)
+            gone = isinstance(err, errors.SlackApiError) and (
+                response.get('error') in _GONE
+            )
+            tries = message.get('tries', 0) + 1
+            if not gone and tries < _CLOSE_TRIES:
+                kept.append(orjson.dumps(message | {'tries': tries}))
+    # Append the kept messages, then trim the messages that were read
+    # from the head. A failed append changes nothing, and a failed trim
+    # only updates some messages again. A message that _remember()
+    # appends during the updates stays, and is updated on the retry.
+    try:
+        if kept:
+            await client.rpush(key, *kept)
+            await client.expire(key, _MESSAGES_TTL)
+        await client.ltrim(key, len(records), -1)
+        left = await client.llen(key)
+    except Exception as err:
+        raise _Retry(f'cannot keep the messages of {short_id}') from err
+    if left:
+        raise _Retry(f'{left} message(s) of {short_id}')
 
 
 async def answer(slack: SlackClient, submission: forms.Submission) -> bool:
@@ -327,7 +423,7 @@ async def _post_form(
         )
         await render.post_markdown(slack, channel, None, text)
         return
-    await runtime.post(
+    record = await runtime.post(
         slack,
         spec,
         channel_id=channel,
@@ -335,6 +431,77 @@ async def _post_form(
         requester='',
         metadata={METADATA_KEY: entry},
     )
+    resolved = await _remember(entry, channel, record.message_ts)
+    if resolved:
+        # The request was resolved during the post, and close() can
+        # have read the messages before this one was kept.
+        try:
+            await close(slack, resolved)
+        except _Retry as err:
+            LOGGER.warning('Could not close %s: %s', entry['short_id'], err)
+
+
+async def _remember(
+    entry: Entry, channel: str, ts: str | None
+) -> Entry | None:
+    """Keep the id of a form message, to change it when the request is
+    resolved. Best effort: when it fails, the form stays open.
+
+    Return the resolved entry when the request is already resolved.
+    close() sets it before it reads the messages, so close() sees this
+    message, or this function sees the resolved entry, or both.
+
+    """
+    summary = blocks.cut(
+        render.neutralize_broadcasts(_question(entry, 'asked')), _MAX_INTRO
+    )
+    key = _messages_key(entry['request_id'])
+    value = {'channel': channel, 'ts': ts, 'summary': summary}
+    try:
+        client: typing.Any = valkey.get_client()
+        await client.rpush(key, orjson.dumps(value))
+        await client.expire(key, _MESSAGES_TTL)
+        resolved = await client.get(_resolved_key(entry['request_id']))
+    except Exception:
+        LOGGER.exception('Could not keep the message of %s', entry['short_id'])
+        return None
+    return orjson.loads(resolved) if resolved else None
+
+
+def _messages_key(request_id: str) -> str:
+    return f'{valkey.TICKET_REQUESTS_STREAM}:messages:{request_id}'
+
+
+def _resolved_key(request_id: str) -> str:
+    return f'{valkey.TICKET_REQUESTS_STREAM}:resolved:{request_id}'
+
+
+def _resolved_blocks(
+    entry: Entry, summary: str, *, answer: bool
+) -> list[Entry]:
+    """Return the blocks of a resolved request. The answer and the name
+    are plain text, so they make no links, formatting, or mentions.
+
+    ``answer`` adds the answer. Only a direct message shows it: an
+    answer in the UI can be for the person on the ticket only.
+    """
+    status = entry['status']
+    header = blocks.plain(f'{entry["short_id"]} {status}')
+    resolved: list[Entry] = [
+        {'type': 'header', 'text': header},
+        {'type': 'markdown', 'text': summary},
+    ]
+    if answer and entry.get('answer'):
+        text = blocks.plain(entry['answer'], blocks.SECTION_TEXT)
+        resolved.append({'type': 'section', 'text': text})
+    by = f'{status.capitalize()} by {entry["resolved_by"]}'
+    resolved.append(
+        {
+            'type': 'context',
+            'elements': [blocks.plain(by, blocks.CONTEXT_TEXT)],
+        }
+    )
+    return resolved
 
 
 async def _channel_id(slack: SlackClient, name: str) -> str | None:
@@ -380,10 +547,15 @@ def _heading(entry: Entry) -> str:
     return f'**{ticket}** · {title}'
 
 
-def _intro(entry: Entry, options: list[str]) -> str:
+def _question(entry: Entry, verb: str) -> str:
+    """Return the ticket heading and the question of the agent."""
     asker = entry.get('agent_name') or 'The agent'
+    return f'{_heading(entry)}\n\n{asker} {verb}: **{entry["title"]}**'
+
+
+def _intro(entry: Entry, options: list[str]) -> str:
     verb = 'asks for approval' if entry['kind'] == 'approval' else 'asks'
-    parts = [_heading(entry), f'{asker} {verb}: **{entry["title"]}**']
+    parts = [_question(entry, verb)]
     if entry.get('why'):
         parts.append(entry['why'])
     if entry.get('artifacts'):
