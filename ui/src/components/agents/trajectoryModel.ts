@@ -1,5 +1,6 @@
 import type { TicketEvent } from '@/types'
 
+import { usageAgents } from './subagentRuns'
 import { isCreated } from './taskEvents'
 import { systemText } from './taskText'
 import { isError, timeline, type TimelineEntry } from './taskTimeline'
@@ -51,6 +52,8 @@ export interface TrajectoryRecord {
   seqs: number[]
   startedAt: null | number
   step: null | number
+  /** For an Agent call: the subagent's run. */
+  subagent?: TrajectorySubagent
   text: string
   tool: null | TrajectoryTool
   turn: number
@@ -71,6 +74,7 @@ export interface TrajectoryRequest {
 
 export type TrajectoryRow =
   | { fold: Fold; id: string; kind: 'summary'; text: string }
+  | { id: string; kind: 'batch'; runs: TrajectoryRecord[] }
   | { kind: 'record'; record: TrajectoryRecord }
 
 export interface TrajectorySpan {
@@ -78,6 +82,22 @@ export interface TrajectorySpan {
   id: string
   lane: 0 | 1 | 2
   start: number
+}
+
+export interface TrajectorySubagent {
+  answer: string
+  description: string
+  errors: number
+  steps: number
+  type: string
+  usage: {
+    cacheRead: number
+    cacheWrite: number
+    cost: number
+    input: number
+    output: number
+    requests: number
+  }
 }
 
 export interface TrajectorySubrequest {
@@ -279,6 +299,8 @@ export function buildTrajectory(
       usage,
     }
   })
+  for (const record of records)
+    if (isAgentCall(record)) record.subagent = subagentOf(record, records)
   return { records, requests, subrequests, turns: turnsOf(records) }
 }
 
@@ -316,11 +338,19 @@ export function formatDuration(ms: number): string {
   return `${(ms / 1000).toFixed(1)} s`
 }
 
+export function isAgentCall(record: TrajectoryRecord): boolean {
+  return (
+    record.kind === 'tool' &&
+    (record.tool?.tool === 'Agent' || record.tool?.tool === 'Task')
+  )
+}
+
 /** How long after the record row above each record started, in ms; none for the first row, a row after a fold, or a row next to one with no start. */
 export function pausesOf(rows: TrajectoryRow[]): Map<string, number> {
   const pauses = new Map<string, number>()
   let prev: null | number = null
   for (const row of rows) {
+    if (row.kind === 'batch') continue
     if (row.kind === 'summary') {
       prev = null
       continue
@@ -387,6 +417,7 @@ export function rowsOf(
     records.filter((r) => r.kind === 'assistant').map((r) => [r.request, r.id]),
   )
   const rows: TrajectoryRow[] = []
+  const batches = batchesOf(records)
   for (const record of records) {
     const turn = turns.find((t) => t.number === record.turn)
     if (turn && folds.turns.has(turn.number)) {
@@ -406,6 +437,9 @@ export function rowsOf(
       if (owner && folds.calls.has(owner)) continue
       if (record.parent && folds.subcalls.has(record.parent)) continue
     }
+    const batch = batches.get(record.id)
+    if (batch)
+      rows.push({ id: `batch:${record.id}`, kind: 'batch', runs: batch })
     rows.push({ kind: 'record', record })
     if (record.kind === 'assistant' && folds.calls.has(record.id))
       rows.push({
@@ -485,6 +519,39 @@ export function spansOf(
 
 function at(e: TicketEvent): number {
   return Date.parse(e.at)
+}
+
+/**
+ * Agent calls of one request whose runs overlap, by the first one's id.
+ * Anything other than an Agent call or its subtools ends a batch.
+ */
+function batchesOf(
+  records: TrajectoryRecord[],
+): Map<string, TrajectoryRecord[]> {
+  const out = new Map<string, TrajectoryRecord[]>()
+  let batch: TrajectoryRecord[] = []
+  let until = -Infinity
+  const endBatch = () => {
+    if (batch.length > 1) out.set(batch[0].id, batch)
+    batch = []
+    until = -Infinity
+  }
+  for (const record of records) {
+    if (record.kind === 'subtool') continue
+    if (!isAgentCall(record) || record.startedAt === null) {
+      endBatch()
+      continue
+    }
+    if (
+      batch.length &&
+      (record.startedAt >= until || record.request !== batch[0].request)
+    )
+      endBatch()
+    batch.push(record)
+    until = Math.max(until, record.endedAt ?? Infinity)
+  }
+  endBatch()
+  return out
 }
 
 function calls(n: number): string {
@@ -599,35 +666,16 @@ function searchText(record: TrajectoryRecord): string {
   return parts.join(' ').toLowerCase()
 }
 
-/**
- * Take out the usage reports of subagents. A report's `message_id`
- * joins it to the events of the same model reply, and their
- * `parent_call_id` names the Agent call. A report with no
- * `message_id`, or none that joins, stays in `main`.
- */
+/** Take out the usage reports of subagents; the rest stay in `main`. */
 function splitUsage(events: TicketEvent[]): {
   main: TicketEvent[]
   sub: { agent: string; usage: TicketEvent }[]
 } {
-  const agentOf = new Map<string, string>()
-  for (const e of events) {
-    const id = e.payload.message_id
-    const parent = e.payload.parent_call_id
-    if (
-      e.type !== 'usage.reported' &&
-      typeof id === 'string' &&
-      typeof parent === 'string'
-    )
-      agentOf.set(id, parent)
-  }
+  const agents = usageAgents(events)
   const main: TicketEvent[] = []
   const sub: { agent: string; usage: TicketEvent }[] = []
   for (const e of events) {
-    const id = e.payload.message_id
-    const agent =
-      e.type === 'usage.reported' && typeof id === 'string'
-        ? agentOf.get(id)
-        : undefined
+    const agent = agents.get(e)
     if (agent) sub.push({ agent, usage: e })
     else main.push(e)
   }
@@ -645,6 +693,43 @@ function subcalls(entry: TimelineEntry): TimelineEntry[] {
   }
   walk(entry)
   return out.sort((a, b) => a.seq - b.seq)
+}
+
+const HAND_BACK = /^\s*\[Subagent hand-back\][\s\S]*?The report follows:\s*/
+
+function subagentOf(
+  record: TrajectoryRecord,
+  records: TrajectoryRecord[],
+): TrajectorySubagent {
+  const args = isRecord(record.tool?.arguments) ? record.tool.arguments : {}
+  const text = (v: unknown) => (typeof v === 'string' ? v : '')
+  const children = records.filter((r) => r.parent === record.id)
+  const usage = {
+    cacheRead: 0,
+    cacheWrite: 0,
+    cost: 0,
+    input: 0,
+    output: 0,
+    requests: 0,
+  }
+  for (const e of record.events) {
+    if (e.type !== 'usage.reported') continue
+    const p = e.payload
+    usage.input += Number(p.tokens_in ?? 0)
+    usage.output += Number(p.tokens_out ?? 0)
+    usage.cacheRead += Number(p.cache_read_tokens ?? 0)
+    usage.cacheWrite += Number(p.cache_write_tokens ?? 0)
+    usage.cost += Number(p.cost ?? 0)
+    usage.requests += 1
+  }
+  return {
+    answer: resultText(record.tool?.resultValue).replace(HAND_BACK, '').trim(),
+    description: text(args.description),
+    errors: children.filter((r) => r.error).length,
+    steps: children.length,
+    type: text(args.subagent_type),
+    usage,
+  }
 }
 
 function summary(records: TrajectoryRecord[]): string {
