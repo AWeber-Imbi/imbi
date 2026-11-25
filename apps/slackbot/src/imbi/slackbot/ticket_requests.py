@@ -212,7 +212,7 @@ async def close(slack: SlackClient, entry: Entry) -> None:
     :class:`_Retry` is raised after the other messages are updated.
     A message is dropped after ``_CLOSE_TRIES`` failures, or when Slack
     says that it cannot be updated. A Valkey failure also raises
-    :class:`_Retry`, and the kept messages do not change.
+    :class:`_Retry`, and no message is lost.
 
     """
     client: typing.Any = valkey.get_client()
@@ -247,24 +247,20 @@ async def close(slack: SlackClient, entry: Entry) -> None:
             tries = message.get('tries', 0) + 1
             if not gone and tries < _CLOSE_TRIES:
                 kept.append(orjson.dumps(message | {'tries': tries}))
-    # Write the kept messages to a different key, then rename it over
-    # the old key. EXEC does not roll back, so a failed RPUSH must not
-    # come after a DEL of the old messages.
+    # Append the kept messages, then trim the messages that were read
+    # from the head. A failed append changes nothing, and a failed trim
+    # only updates some messages again. A message that _remember()
+    # appends during the updates stays, and is updated on the retry.
     try:
-        if not kept:
-            await client.delete(key)
-        else:
-            temp = f'{key}:next'
-            async with client.pipeline(transaction=True) as pipe:
-                pipe.delete(temp)
-                pipe.rpush(temp, *kept)
-                pipe.expire(temp, _MESSAGES_TTL)
-                pipe.rename(temp, key)
-                await pipe.execute()
+        if kept:
+            await client.rpush(key, *kept)
+            await client.expire(key, _MESSAGES_TTL)
+        await client.ltrim(key, len(records), -1)
+        left = await client.llen(key)
     except Exception as err:
         raise _Retry(f'cannot keep the messages of {short_id}') from err
-    if kept:
-        raise _Retry(f'{len(kept)} message(s) of {short_id}')
+    if left:
+        raise _Retry(f'{left} message(s) of {short_id}')
 
 
 async def answer(slack: SlackClient, submission: forms.Submission) -> bool:

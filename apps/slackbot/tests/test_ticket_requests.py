@@ -84,30 +84,15 @@ class FakeValkey:
     async def delete(self, key):
         self.lists.pop(key, None)
 
-    async def rename(self, src, dst):
-        self.lists[dst] = self.lists.pop(src)
+    async def ltrim(self, key, start, end):
+        rest = self.lists.get(key, [])[start:]
+        if rest:
+            self.lists[key] = rest
+        else:
+            self.lists.pop(key, None)
 
-    def pipeline(self, transaction=True):
-        return FakePipeline(self)
-
-
-class FakePipeline:
-    def __init__(self, valkey: FakeValkey) -> None:
-        self.valkey = valkey
-        self.calls: list[tuple[str, tuple[typing.Any, ...]]] = []
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *_exc):
-        return None
-
-    def __getattr__(self, name):
-        return lambda *args: self.calls.append((name, args))
-
-    async def execute(self):
-        for name, args in self.calls:
-            await getattr(self.valkey, name)(*args)
+    async def llen(self, key):
+        return len(self.lists.get(key, []))
 
 
 def entry(**overrides: typing.Any) -> dict[str, typing.Any]:
@@ -476,7 +461,6 @@ class CloseTests(FlowTestCase):
         key = ticket_requests._messages_key('r-1')
         record = orjson.dumps({'channel': 'C500', 'ts': 't', 'summary': ''})
         await self.valkey.rpush(key, record)
-        # RPUSH fails during EXEC, after the commands before it ran.
         with (
             mock.patch.object(
                 self.valkey, 'rpush', side_effect=ConnectionError
@@ -485,6 +469,26 @@ class CloseTests(FlowTestCase):
         ):
             await ticket_requests.close(self.slack, RESOLVED)
         self.assertEqual([record], self.valkey.lists[key])
+
+    async def test_message_added_during_close_is_kept(self) -> None:
+        key = ticket_requests._messages_key('r-1')
+        late = orjson.dumps({'channel': 'C3', 'ts': 't', 'summary': ''})
+        await self.valkey.rpush(
+            key, orjson.dumps({'channel': 'C2', 'ts': 't', 'summary': ''})
+        )
+        update = self.slack.chat_update
+
+        async def chat_update(**kw):
+            # A post of the same request remembers its message now.
+            await self.valkey.rpush(key, late)
+            return await update(**kw)
+
+        with (
+            mock.patch.object(self.slack, 'chat_update', chat_update),
+            self.assertRaises(ticket_requests._Retry),
+        ):
+            await ticket_requests.close(self.slack, RESOLVED)
+        self.assertEqual([late], self.valkey.lists[key])
 
     async def test_failed_read_is_tried_again(self) -> None:
         with (
