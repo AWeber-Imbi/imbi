@@ -684,7 +684,7 @@ def _instruction_file(
 def _extra_ca() -> dict[str, str]:
     """Trust the chart's ``extraCaCerts`` in the CLI, for MCP servers
     behind a private CA."""
-    path = os.environ.get('IMBI_HARNESS_EXTRA_CA')
+    path = outbound.extra_ca()
     return {'NODE_EXTRA_CA_CERTS': path} if path else {}
 
 

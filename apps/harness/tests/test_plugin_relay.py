@@ -1,4 +1,6 @@
-"""The plugin MCP relay against real MCP servers on loopback over TLS.
+"""The plugin MCP relay against real MCP servers on loopback over TLS,
+with a certificate of a private CA in the chart's ``extraCaCerts``
+bundle.
 
 The servers stand in for a plugin's MCP server: they record the
 ``Authorization`` header and the ``initialize`` request of each
@@ -216,7 +218,9 @@ class _ServerTestCase(unittest.IsolatedAsyncioTestCase):
         INITIALIZED.clear()
         CALLS.clear()
         DROP.clear()
-        environment = mock.patch.dict(os.environ, {'SSL_CERT_FILE': self.cert})
+        environment = mock.patch.dict(
+            os.environ, {'IMBI_HARNESS_EXTRA_CA': self.cert}
+        )
         environment.start()
         self.addCleanup(environment.stop)
         self.stop = False
@@ -277,6 +281,16 @@ class StartTestCase(_ServerTestCase):
         self.assertNotIn('is_error', result)
         self.assertIn('found a', result['content'][0]['text'])
         self.assertEqual(set(SEEN), {f'Bearer {TOKEN}'})
+
+    async def test_a_certificate_of_an_unknown_ca_is_refused(self) -> None:
+        relayed = self.server_for()
+        with (
+            mock.patch.dict(os.environ, {'IMBI_HARNESS_EXTRA_CA': ''}),
+            self.assertRaises(plugin_relay.Unavailable) as ctx,
+        ):
+            await relayed.start()
+        self.assertEqual(ctx.exception.reason, 'ConnectError')
+        self.assertEqual(SEEN, [])
 
     async def test_unreachable_server(self) -> None:
         relayed = plugin_relay.Server(

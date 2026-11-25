@@ -1499,7 +1499,7 @@ def main() -> None:
 
 def _serve_tls() -> None:
     """The same routes over TLS on port 8443, with the test certificate
-    that the runner trusts through ``SSL_CERT_FILE``."""
+    that the runner trusts as its ``extraCaCerts`` bundle."""
     context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     context.load_cert_chain(os.environ['TLS_CERT'], os.environ['TLS_KEY'])
     server = http.server.ThreadingHTTPServer(

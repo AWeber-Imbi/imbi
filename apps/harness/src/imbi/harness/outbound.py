@@ -5,7 +5,9 @@ plugin MCP relay (ADR 0031).
 The runner, not the CLI, calls a relayed plugin MCP server, with the
 header secrets of the agent's entry. Each connection:
 
-- uses HTTPS, with the certificate checked against the server's host;
+- uses HTTPS, with the certificate checked against the server's host,
+  with the default trust store and the chart's ``extraCaCerts`` bundle,
+  the bundle that the CLI trusts too;
 - goes only to the origin of the agent's entry. A redirect is followed,
   but a request to another origin is refused before it is sent, so a
   credential goes to its origin only;
@@ -15,6 +17,7 @@ header secrets of the agent's entry. Each connection:
 
 import asyncio
 import ipaddress
+import os
 import re
 import typing
 import urllib.parse
@@ -22,6 +25,7 @@ import urllib.parse
 import httpx
 
 if typing.TYPE_CHECKING:
+    import ssl
     from collections import abc
 
     from imbi.harness import credential
@@ -132,6 +136,20 @@ def bypasses(host: str, no_proxy: str) -> bool:
     )
 
 
+def extra_ca() -> str | None:
+    """The path of the chart's ``extraCaCerts`` bundle, if it has one:
+    the private CAs of MCP servers."""
+    return os.environ.get('IMBI_HARNESS_EXTRA_CA') or None
+
+
+def ssl_context() -> ssl.SSLContext:
+    """The default trust store, with the :func:`extra_ca` bundle."""
+    context = httpx.create_ssl_context()
+    if path := extra_ca():
+        context.load_verify_locations(cafile=path)
+    return context
+
+
 class Transport(httpx.AsyncBaseTransport):
     """HTTPS to the origin of ``url`` only, through the egress proxy of
     ``proxy_env`` unless its ``NO_PROXY`` names the host."""
@@ -142,7 +160,9 @@ class Transport(httpx.AsyncBaseTransport):
         proxy = proxy_env.get('HTTPS_PROXY')
         if bypasses(checked.host, proxy_env.get('NO_PROXY', '')):
             proxy = None
-        self.inner = httpx.AsyncHTTPTransport(proxy=proxy or None)
+        self.inner = httpx.AsyncHTTPTransport(
+            verify=ssl_context(), proxy=proxy or None
+        )
 
     async def handle_async_request(
         self, request: httpx.Request

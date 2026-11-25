@@ -144,9 +144,9 @@ items:
           env:
             - {name: IMBI_API_URL, value: "http://harness-fake-api:8080"}
             - {name: IMBI_HARNESS_MCP_URL, value: "http://harness-fake-api:8080/mcp"}
-            # Test only: the runner's HTTP client trusts the fake API's
-            # certificate, for the relayed plugin MCP server.
-            - {name: SSL_CERT_FILE, value: /etc/fake-api-ca/ca.crt}
+            # The chart's extraCaCerts bundle: the fake API's certificate,
+            # for the relayed plugin MCP server (ADR 0031).
+            - {name: IMBI_HARNESS_EXTRA_CA, value: /etc/imbi-harness/ca/ca.crt}
           securityContext: &privilege
             runAsUser: 0
             runAsNonRoot: false
@@ -161,7 +161,7 @@ items:
             - {name: runner-credentials, mountPath: /run/creds}
             - {name: plugins, mountPath: /run/plugins}
             - {name: tmp, mountPath: /tmp}
-            - {name: fake-api-ca, mountPath: /etc/fake-api-ca, readOnly: true}
+            - {name: extra-ca, mountPath: /etc/imbi-harness/ca, readOnly: true}
             - {name: pool, mountPath: /var/run/secrets/imbi/pool, readOnly: true}
             - name: service-account-token
               mountPath: /var/run/secrets/kubernetes.io/serviceaccount
@@ -194,7 +194,7 @@ items:
         # Owned by uid 0, mode 0400: only the processes' uid 0 reads them.
         - name: pool
           secret: {secretName: harness-pool, defaultMode: 0400}
-        - name: fake-api-ca
+        - name: extra-ca
           secret:
             secretName: harness-fake-api-tls
             items: [{key: tls.crt, path: ca.crt}]

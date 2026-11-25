@@ -259,7 +259,9 @@ the render fails.
 Use this when MCP servers use certificates from a private CA. The CLI gets
 the bundle as `NODE_EXTRA_CA_CERTS`, so plugin MCP servers can verify their
 certificates. Without it, these servers fail with "self-signed certificate
-in certificate chain".
+in certificate chain". The runner trusts the bundle too, with the default
+trust store, when it connects itself to a plugin MCP server that an agent
+gives secrets.
 
 ```bash
 kubectl create configmap private-ca -n imbi-runners \
@@ -267,11 +269,6 @@ kubectl create configmap private-ca -n imbi-runners \
 helm upgrade general helm/imbi-harness -n imbi-runners --reuse-values \
   --set extraCaCerts.configMap=private-ca
 ```
-
-!!! note
-    The bundle applies to the CLI only. The runner connects itself to a
-    plugin MCP server that an agent gives secrets, and that connection
-    does not use the bundle.
 
 ### KEDA (`pool.mode: scaledJob` only)
 
