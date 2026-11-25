@@ -175,6 +175,9 @@ export function originLabel(run: {
   if (run.origin_kind === 'human') {
     return `Manual run by ${String(run.origin.user ?? run.origin_id)}`
   }
+  if (run.origin_kind === 'service_account') {
+    return `Manual run by ${run.origin_id}`
+  }
   if (run.origin_kind === 'schedule') return 'Scheduled run'
   if (run.origin_kind === 'webhook') return 'Webhook run'
   return run.origin_kind

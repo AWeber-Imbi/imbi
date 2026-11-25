@@ -759,10 +759,19 @@ class OriginTestCase(TriggerTestCase):
         )
         self.assertEqual(response.status_code, 403, response.text)
 
-    async def test_other_service_account_is_refused(self) -> None:
+    async def test_other_service_account_cannot_start_a_schedule(
+        self,
+    ) -> None:
+        # Another service account starts only a manual trigger.
         self._as('imbi-workflows')
         response = await self.client.post(
             f'{self.url}/runs', json={'trigger': 'tick'}
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        response = await self.client.post(
+            f'{self.url}/runs',
+            json={'trigger': 'tick'},
+            headers={'X-Imbi-Scheduled-Task': 'task-1'},
         )
         self.assertEqual(response.status_code, 403, response.text)
         self.assertEqual(await self._run_count(), 0)

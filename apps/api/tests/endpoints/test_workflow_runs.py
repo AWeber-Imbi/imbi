@@ -230,13 +230,17 @@ class WorkflowRunTestCase(support.SharedAppAsyncTestCase):
         activate: bool = True,
         name: str = 'Deploy guard',
         settings: dict[str, typing.Any] | None = None,
+        who: str | None = None,
     ) -> str:
+        graph_ = _graph(self.team, self.project)
+        if who is not None:
+            graph_['nodes'][0]['params']['who'] = who
         response = await self.client.post(
             self.base + '/',
             json={
                 'name': name,
                 'owner_team_slug': self.team,
-                'graph': _graph(self.team, self.project),
+                'graph': graph_,
                 'settings': settings or {},
             },
         )
@@ -445,6 +449,43 @@ class ManualRunTestCase(WorkflowRunTestCase):
             )
         with self.assertRaises(workflows.NotActive):
             await create
+
+    async def test_service_account_starts_a_manual_trigger(self) -> None:
+        open_url = await self._workflow(name='Open', who='anyone')
+        team_url = await self._workflow()
+
+        account = permissions.AuthContext(
+            service_account=models.ServiceAccount(
+                slug='deploy-bot', display_name='Deploy bot'
+            ),
+            auth_method='client_credentials',
+            permissions=set(PERMISSIONS),
+        )
+        overrides = self.test_app.dependency_overrides
+        overrides[permissions.get_current_user] = lambda: account
+        overrides[organizations.member_org_id] = lambda: self.org
+        body = {'inputs': {'version': '1'}}
+
+        response = await self.client.post(f'{open_url}/runs', json=body)
+        self.assertEqual(response.status_code, 202, response.text)
+        run = response.json()
+        self.assertEqual(run['origin_kind'], 'service_account')
+        self.assertEqual(run['origin_id'], 'deploy-bot')
+        self.assertEqual(run['trigger_node_id'], 'start')
+
+        # A service account is not a member of the owner team.
+        response = await self.client.post(f'{team_url}/runs', json=body)
+        self.assertEqual(response.status_code, 403, response.text)
+
+        response = await self.client.post(
+            f'{open_url}/runs',
+            json=body,
+            headers={'X-Imbi-Scheduled-Task': 'task-1'},
+        )
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'origin_forbidden'
+        )
 
     async def test_empty_concurrency_key_input_is_422(self) -> None:
         url = await self._workflow(

@@ -54,6 +54,7 @@ const SEGMENTS: {
 const WINDOWS = [1, 7, 30]
 const TRIGGERS = [
   ['human', 'Manual'],
+  ['service_account', 'Service account'],
   ['schedule', 'Schedule'],
   ['webhook', 'Webhook'],
 ]

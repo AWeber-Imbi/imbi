@@ -409,6 +409,13 @@ async def _check_who(
     )
 
 
+#: The origin kinds that start a manual trigger. A service account is
+#: not a member of a team, so its trigger's ``who`` must be ``anyone``.
+_MANUAL_ORIGINS = frozenset(
+    {tickets.HUMAN_ORIGIN, tickets.SERVICE_ACCOUNT_ORIGIN}
+)
+
+
 def _check_inputs(
     trigger: wf.Node, inputs: dict[str, str | int | float | bool]
 ) -> None:
@@ -969,7 +976,9 @@ async def start_run(
 ) -> workflows.Row:
     """Start a run of the active version.
 
-    A person starts a manual trigger. The scheduler starts a schedule
+    A person, or a service account other than the scheduler and the
+    gateway (see :func:`tickets.task_origin`), starts a manual trigger. Its run
+    always starts, as a person's run does. The scheduler starts a schedule
     trigger, and the gateway a webhook trigger, with the origin in
     headers (see :func:`tickets.task_origin`). The idempotency key
     is the ``Idempotency-Key`` header (the scheduler sends its run id),
@@ -985,9 +994,9 @@ async def start_run(
 
     Raises:
         403: The trigger's ``who`` does not include the caller, a person
-            names an origin, the caller is a service account other than
-            the scheduler or the gateway, or the scheduler task is not
-            the one that the trigger's binding records.
+            or a service account names an origin that it cannot name, or
+            the scheduler task is not the one that the trigger's binding
+            records.
         404: No such workflow.
         409: The workflow is not active, or its active version has no
             such schedule or webhook trigger.
@@ -996,7 +1005,9 @@ async def start_run(
             ``Idempotency-Key``.
 
     """
-    origin = tickets.task_origin(auth, scheduled_task, webhook, delivery)
+    origin = tickets.task_origin(
+        auth, scheduled_task, webhook, delivery, service_accounts=True
+    )
     workflow = await _workflow(store, org_id, slug)
     if workflow['status'] != 'active' or workflow['active_version'] is None:
         raise fastapi.HTTPException(
@@ -1006,7 +1017,8 @@ async def start_run(
         store, org_id, slug, workflow['active_version']
     )
     project_id: str | None = None
-    if origin.kind == tickets.HUMAN_ORIGIN:
+    manual = origin.kind in _MANUAL_ORIGINS
+    if manual:
         trigger = _manual_trigger(wf_graph, data.trigger)
         await _check_who(db, trigger, workflow, auth)
         _check_inputs(trigger, data.inputs)
@@ -1050,7 +1062,7 @@ async def start_run(
         raise fastapi.HTTPException(
             status_code=422,
             detail=['The input that the concurrency key uses is empty']
-            if origin.kind == tickets.HUMAN_ORIGIN
+            if manual
             else {'error': str(e)},
         ) from e
     try:
@@ -1069,7 +1081,7 @@ async def start_run(
                 activated_by=workflow['activated_by'],
                 dedupe_key=validation.dedupe_key(settings, payload),
                 dedupe_window_seconds=settings.dedupe_window_seconds,
-                skip_duplicate=origin.kind != tickets.HUMAN_ORIGIN,
+                skip_duplicate=not manual,
                 project_id=project_id,
             )
         )
