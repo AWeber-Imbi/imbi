@@ -38,6 +38,7 @@ from imbi.slackbot import (
     settings,
     system_prompt,
     ticket_requests,
+    unfurl,
 )
 
 # slack_sdk's AsyncWebClient is only loosely typed; treat it as Any
@@ -387,6 +388,7 @@ def _build_app(bot_token: str) -> AsyncApp:
             event, client, bot_user_id=_bot_user_id or '', bot_id=_bot_id
         )
 
+    app.event('link_shared')(unfurl.handle)  # pyright: ignore[reportUnknownMemberType]
     create_ticket.register(app)
     home.register(app)
     return app

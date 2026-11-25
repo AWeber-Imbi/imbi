@@ -15,8 +15,8 @@ import httpx
 from slack_sdk import errors
 
 from apps.slackbot.tests import helpers
-from imbi.slackbot import create_ticket, home, identity
-from imbi.slackbot.home import blocks, prefs, render, sources
+from imbi.slackbot import blocks, create_ticket, home, identity
+from imbi.slackbot.home import prefs, render, sources
 
 NOW = datetime.datetime(2026, 11, 24, 19, 1, tzinfo=datetime.UTC)
 TZ = zoneinfo.ZoneInfo('America/New_York')

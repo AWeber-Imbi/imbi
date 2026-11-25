@@ -15,8 +15,8 @@ import typing
 import urllib.parse
 import zoneinfo
 
+from imbi.slackbot import blocks as b
 from imbi.slackbot import identity
-from imbi.slackbot.home import blocks as b
 from imbi.slackbot.home import prefs as p
 from imbi.slackbot.home import sources
 

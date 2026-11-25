@@ -128,6 +128,12 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    slug as their name and the channels that open requests already
    store. The `channels:read` and `groups:read` scopes of 2.61.0 are
    still necessary for the channel posts.
+5. To show previews of Imbi ticket and project links in Slack, add the
+   `links:read`, `links:write`, and `mpim:read` scopes, the `link_shared`
+   event, and `unfurl_domains` (the host of `IMBI_UI_URL`) to the Slack
+   app, then reinstall the app to the workspace. The
+   [Slack app manifest](../slackbot/slack-app-manifest.md) has all of
+   them. Until you do this, Slack shows no previews.
 
 ## 2.61.0
 
