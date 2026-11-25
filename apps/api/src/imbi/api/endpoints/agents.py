@@ -36,6 +36,7 @@ import pydantic
 import slugify
 
 from imbi.api import agent_tools, harness, secret_broker, teams, workflows
+from imbi.api import tags as org_tags
 from imbi.api.auth import autonomous, organizations, permissions
 from imbi.api.endpoints import prompts
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
@@ -353,13 +354,6 @@ _ATTACH_TEAM_QUERY: typing.LiteralString = """
 MATCH (a:Agent {{id: {id}}}), (t:Team {{id: {team_id}}})
 CREATE (a)-[:OWNED_BY]->(t)
 RETURN t.id AS team_id
-"""
-
-_TAGS_FOUND_QUERY: typing.LiteralString = """
-MATCH (o:Organization {{slug: {org_slug}}})
-UNWIND {slugs} AS tag_slug
-OPTIONAL MATCH (t:Tag {{slug: tag_slug}})-[:BELONGS_TO]->(o)
-RETURN tag_slug, t IS NOT NULL AS found
 """
 
 _ENVIRONMENTS_FOUND_QUERY: typing.LiteralString = """
@@ -843,26 +837,6 @@ async def _check_model_teams(
     )
 
 
-async def _validate_tag_slugs(
-    db: graph.Pool, org_slug: str, tag_slugs: list[str]
-) -> None:
-    """Raise 422 when a tag slug is not in the org."""
-    if not tag_slugs:
-        return
-    records = await db.execute(
-        _TAGS_FOUND_QUERY,
-        {'org_slug': org_slug, 'slugs': tag_slugs},
-        ['tag_slug', 'found'],
-    )
-    missing = [
-        graph.parse_agtype(r['tag_slug'])
-        for r in records
-        if not graph.parse_agtype(r['found'])
-    ]
-    if missing:
-        raise _unprocessable(f'Tag slug(s) not found: {sorted(missing)!r}')
-
-
 def _check_builtin_tools(tools: AgentTools) -> None:
     """Raise 422 for a ``builtin.*`` key that is not an opt-in tool.
 
@@ -1195,7 +1169,7 @@ async def _apply(
         ):
             await _check_model_teams(db, org_id, target, team_id)
         if target.tags != current.tags:
-            await _validate_tag_slugs(db, org_slug, target.tags)
+            await org_tags.require_ids(db, org_slug, target.tags)
         if target.tools != current.tools:
             await _validate_tools(db, org_slug, target.tools)
         if target.subagents != current.subagents:
@@ -1345,7 +1319,7 @@ async def create_agent(
     )
     team_id = await _team_id(db, org_id, data.team)
     await _check_model_teams(db, org_id, snapshot, team_id)
-    await _validate_tag_slugs(db, org_slug, snapshot.tags)
+    await org_tags.require_ids(db, org_slug, snapshot.tags)
     await _validate_tools(db, org_slug, snapshot.tools)
     await _validate_subagents(db, org_slug, snapshot.subagents)
     await _assert_slug_free(db, org_slug, data.slug)

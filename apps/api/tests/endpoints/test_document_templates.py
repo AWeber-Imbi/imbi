@@ -199,8 +199,8 @@ class DocumentTemplateEndpointsTestCase(support.SharedAppTestCase):
         }
         self.mock_db.execute.side_effect = [
             [
-                {'tag_slug': 'adr', 'found': True},
-                {'tag_slug': 'architecture', 'found': True},
+                {'slug': 'adr', 'id': 'adr'},
+                {'slug': 'architecture', 'id': 'architecture'},
             ],
             [],
             [
@@ -231,8 +231,7 @@ class DocumentTemplateEndpointsTestCase(support.SharedAppTestCase):
 
     def test_create_unknown_tag_returns_422(self) -> None:
         self.mock_db.execute.return_value = [
-            {'tag_slug': 'adr', 'found': True},
-            {'tag_slug': 'ghost', 'found': False},
+            {'slug': 'adr', 'id': 'adr'},
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype', side_effect=lambda x: x
@@ -387,7 +386,7 @@ class DocumentTemplateEndpointsTestCase(support.SharedAppTestCase):
         # fetch_existing, validate_tags, set, detach, attach, fetch fresh
         self.mock_db.execute.side_effect = [
             [self._template_row()],
-            [{'tag_slug': 'incident', 'found': True}],
+            [{'slug': 'incident', 'id': 'incident'}],
             [{'slug': 'adr'}],
             [{'removed': 0}],
             [{'attached': 1}],

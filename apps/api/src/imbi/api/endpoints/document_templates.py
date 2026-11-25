@@ -13,6 +13,7 @@ import typing
 import fastapi
 import pydantic
 
+from imbi.api import tags as org_tags
 from imbi.api.auth import permissions
 from imbi.api.endpoints._helpers import fetch_or_404
 from imbi.api.graph_sql import props_template, set_clause
@@ -145,34 +146,6 @@ def _parse_template_row(
     return template
 
 
-async def _validate_tag_slugs(
-    db: graph.Pool, org_slug: str, tag_slugs: list[str]
-) -> None:
-    if not tag_slugs:
-        return
-    query: typing.LiteralString = """
-    MATCH (o:Organization {{slug: {org_slug}}})
-    UNWIND {slugs} AS tag_slug
-    OPTIONAL MATCH (t:Tag {{slug: tag_slug}})-[:BELONGS_TO]->(o)
-    RETURN tag_slug, t IS NOT NULL AS found
-    """
-    records = await db.execute(
-        query,
-        {'org_slug': org_slug, 'slugs': tag_slugs},
-        columns=['tag_slug', 'found'],
-    )
-    missing = [
-        graph.parse_agtype(r['tag_slug'])
-        for r in records
-        if not graph.parse_agtype(r['found'])
-    ]
-    if missing:
-        raise fastapi.HTTPException(
-            status_code=422,
-            detail=f'Tag slug(s) not found: {sorted(missing)!r}',
-        )
-
-
 async def _attach_tags(
     db: graph.Pool,
     org_slug: str,
@@ -257,7 +230,7 @@ async def create_document_template(
 ) -> dict[str, typing.Any]:
     """Create a document template scoped to ``org_slug``."""
     tag_slugs = list(dict.fromkeys(data.tags))
-    await _validate_tag_slugs(db, org_slug, tag_slugs)
+    await org_tags.require_ids(db, org_slug, tag_slugs)
 
     # Slugs are unique per-org, not globally — enforce in app code.
     duplicate_query: typing.LiteralString = """
@@ -498,7 +471,7 @@ async def update_document_template(
     tag_slugs: list[str] | None = None
     if 'tags' in incoming:
         tag_slugs = list(dict.fromkeys(incoming.pop('tags') or []))
-        await _validate_tag_slugs(db, org_slug, tag_slugs)
+        await org_tags.require_ids(db, org_slug, tag_slugs)
 
     merged: dict[str, typing.Any] = {
         'name': existing.get('name'),
@@ -581,7 +554,7 @@ async def patch_document_template(
                 touched.add(head)
     if 'tags' in touched:
         tag_slugs = list(dict.fromkeys(patched.get('tags') or []))
-        await _validate_tag_slugs(db, org_slug, tag_slugs)
+        await org_tags.require_ids(db, org_slug, tag_slugs)
     patched.pop('tags', None)
     patched['id'] = existing.get('id', patched.get('slug', slug))
 

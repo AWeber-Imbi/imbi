@@ -22,6 +22,7 @@ import fastapi.responses
 import nanoid
 import pydantic
 
+from imbi.api import tags as org_tags
 from imbi.api.auth import permissions
 from imbi.api.endpoints import _document_history, _search_index
 from imbi.api.endpoints._helpers import fetch_or_404
@@ -293,41 +294,6 @@ async def _detach_all_tags(
     await db.execute(query, {'document_id': document_id}, columns=['removed'])
 
 
-async def _find_missing_tag_slugs(
-    db: graph.Pool, org_slug: str, tag_slugs: list[str]
-) -> list[str]:
-    """Return the subset of ``tag_slugs`` that do not exist in the org."""
-    if not tag_slugs:
-        return []
-    query: typing.LiteralString = """
-    MATCH (o:Organization {{slug: {org_slug}}})
-    UNWIND {slugs} AS tag_slug
-    OPTIONAL MATCH (t:Tag {{slug: tag_slug}})-[:BELONGS_TO]->(o)
-    RETURN tag_slug, t IS NOT NULL AS found
-    """
-    records = await db.execute(
-        query,
-        {'org_slug': org_slug, 'slugs': tag_slugs},
-        columns=['tag_slug', 'found'],
-    )
-    return [
-        str(graph.parse_agtype(r['tag_slug']))
-        for r in records
-        if not graph.parse_agtype(r['found'])
-    ]
-
-
-async def _validate_tag_slugs(
-    db: graph.Pool, org_slug: str, tag_slugs: list[str]
-) -> None:
-    missing = await _find_missing_tag_slugs(db, org_slug, tag_slugs)
-    if missing:
-        raise fastapi.HTTPException(
-            status_code=422,
-            detail=f'Tag slug(s) not found: {sorted(missing)!r}',
-        )
-
-
 async def filter_existing_tag_slugs(
     db: graph.Pool, org_slug: str, tag_slugs: list[str]
 ) -> list[str]:
@@ -337,8 +303,8 @@ async def filter_existing_tag_slugs(
     deleted since it was taken — the restore should proceed without
     them rather than fail.
     """
-    missing = set(await _find_missing_tag_slugs(db, org_slug, tag_slugs))
-    return [t for t in tag_slugs if t not in missing]
+    found = await org_tags.ids_by_slug(db, org_slug, tag_slugs)
+    return [t for t in tag_slugs if t in found]
 
 
 _DOCUMENT_CREATE_FRAGMENT: typing.LiteralString = """
@@ -372,7 +338,7 @@ async def _create_document_impl(
 ) -> dict[str, typing.Any]:
     """Create a document attached to the vertex bound as ``target``."""
     tag_slugs = list(dict.fromkeys(data.tags))
-    await _validate_tag_slugs(db, org_slug, tag_slugs)
+    await org_tags.require_ids(db, org_slug, tag_slugs)
 
     now = datetime.datetime.now(datetime.UTC)
     document_id = nanoid.generate()
@@ -932,7 +898,7 @@ async def patch_document_impl(
         else [t['slug'] for t in existing.get('tags', [])]
     )
     if replace_tags:
-        await _validate_tag_slugs(db, org_slug, new_tags)
+        await org_tags.require_ids(db, org_slug, new_tags)
     new_is_pinned = _resolve_patched_field(
         'is_pinned',
         touched,

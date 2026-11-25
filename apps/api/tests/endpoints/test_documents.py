@@ -157,8 +157,8 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
         # Calls: validate_tags, create_document, attach_tags, fetch_document
         self.mock_db.execute.side_effect = [
             [
-                {'tag_slug': 'runbook', 'found': True},
-                {'tag_slug': 'alert', 'found': True},
+                {'slug': 'runbook', 'id': 'runbook'},
+                {'slug': 'alert', 'id': 'alert'},
             ],
             [{'id': 'document-1', 'version': 2}],
             [{'attached': 2}],
@@ -192,8 +192,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
 
     def test_create_unknown_tag_returns_422(self) -> None:
         self.mock_db.execute.return_value = [
-            {'tag_slug': 'runbook', 'found': True},
-            {'tag_slug': 'ghost', 'found': False},
+            {'slug': 'runbook', 'id': 'runbook'},
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype', side_effect=lambda x: x
@@ -554,7 +553,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
         # fetch-existing, validate, SET, detach, attach, fetch-final
         self.mock_db.execute.side_effect = [
             [self._project_row()],
-            [{'tag_slug': 'runbook', 'found': True}],
+            [{'slug': 'runbook', 'id': 'runbook'}],
             [{'id': 'document-1', 'version': 2}],
             [{'removed': 0}],
             [{'attached': 1}],
