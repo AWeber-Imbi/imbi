@@ -200,7 +200,9 @@ describe('PackageUsageReport search', () => {
         [expect.stringContaining('beta'), expect.stringContaining('alpha')],
       ),
     )
-    expect(input).not.toHaveAttribute('aria-activedescendant')
+    await waitFor(() =>
+      expect(input).not.toHaveAttribute('aria-activedescendant'),
+    )
     for (const el of screen.getAllByRole('option')) {
       expect(el).toHaveAttribute('aria-selected', 'false')
     }
