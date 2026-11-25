@@ -61,23 +61,23 @@ class ListPendingDeployTests(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(patcher.stop)
 
     async def test_no_projects_skips_clickhouse(self) -> None:
-        rows = await pull_requests._list_pending_deploy(
+        rows, total = await pull_requests._list_pending_deploy(
             project_ids=[],
             environment_slugs=['production'],
             author='gmr',
             since=self.since,
         )
-        self.assertEqual([], rows)
+        self.assertEqual(([], 0), (rows, total))
         self.query.assert_not_awaited()
 
     async def test_no_terminal_environment_skips_clickhouse(self) -> None:
-        rows = await pull_requests._list_pending_deploy(
+        rows, total = await pull_requests._list_pending_deploy(
             project_ids=['p1'],
             environment_slugs=[],
             author='gmr',
             since=self.since,
         )
-        self.assertEqual([], rows)
+        self.assertEqual(([], 0), (rows, total))
         self.query.assert_not_awaited()
 
     async def test_query_scopes_projects_environments_and_author(
@@ -145,30 +145,58 @@ class ListPendingDeployTests(unittest.IsolatedAsyncioTestCase):
         # ClickHouse hands back naive datetimes; the endpoint stamps UTC.
         merged = datetime.datetime(2026, 8, 2, 12, 0)  # noqa: DTZ001
         deployed = datetime.datetime(2026, 8, 1, 9, 30)  # noqa: DTZ001
-        self.query.return_value = [
-            {
-                'project_id': 'p1',
-                'pr_id': 'PR_1',
-                'pr_number': 7,
-                'title': 'Ship it',
-                'url': 'https://example.test/pr/7',
-                'author': 'gmr',
-                'merged_at': merged,
-                'additions': 3,
-                'deletions': 1,
-                'last_deployed_at': deployed,
-                'last_deployed_environment': 'production',
-            }
+        self.query.side_effect = [
+            [{'total': 1}],
+            [
+                {
+                    'project_id': 'p1',
+                    'pr_id': 'PR_1',
+                    'pr_number': 7,
+                    'title': 'Ship it',
+                    'url': 'https://example.test/pr/7',
+                    'author': 'gmr',
+                    'merged_at': merged,
+                    'additions': 3,
+                    'deletions': 1,
+                    'last_deployed_at': deployed,
+                    'last_deployed_environment': 'production',
+                }
+            ],
         ]
-        rows = await pull_requests._list_pending_deploy(
+        rows, total = await pull_requests._list_pending_deploy(
             project_ids=['p1'],
             environment_slugs=['production'],
             author='gmr',
             since=self.since,
         )
         self.assertEqual(1, len(rows))
+        self.assertEqual(1, total)
         self.assertEqual(datetime.UTC, rows[0].merged_at.tzinfo)
         self.assertEqual(datetime.UTC, rows[0].last_deployed_at.tzinfo)
         self.assertEqual(7, rows[0].pr_number)
         self.assertEqual('production', rows[0].last_deployed_environment)
         self.assertIsNone(rows[0].last_deployed_environment_name)
+
+    async def test_count_and_page_share_the_filters(self) -> None:
+        self.query.side_effect = [[{'total': 7}], []]
+        rows, total = await pull_requests._list_pending_deploy(
+            project_ids=['p1'],
+            environment_slugs=['production'],
+            author='gmr',
+            since=self.since,
+            limit=5,
+            offset=5,
+        )
+        self.assertEqual(([], 7), (rows, total))
+        (count_sql, count_params), (data_sql, data_params) = (
+            c.args for c in self.query.await_args_list
+        )
+        self.assertIn('SELECT count() AS total', count_sql)
+        self.assertNotIn('LIMIT', count_sql)
+        for sql in (count_sql, data_sql):
+            self.assertIn('pr.author = {author:String}', sql)
+            self.assertIn('d.last_deployed_at <= pr.merged_at', sql)
+        self.assertIn('LIMIT {limit:UInt32} OFFSET {offset:UInt32}', data_sql)
+        self.assertEqual(5, data_params['limit'])
+        self.assertEqual(5, data_params['offset'])
+        self.assertIs(count_params, data_params)

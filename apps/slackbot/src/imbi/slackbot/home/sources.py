@@ -463,7 +463,8 @@ class Sources:
             'prs': [
                 {**pr, 'project': names.get(pr['project_id'], '')}
                 for pr in prs
-            ]
+            ],
+            'total': pending.get('total', len(prs)),
         }
 
     async def _section_release_drift(self) -> Row:

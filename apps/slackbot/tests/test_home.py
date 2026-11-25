@@ -448,6 +448,24 @@ class BlockBudgetTests(helpers.TestCase):
             json.dumps(view, ensure_ascii=False),
         )
 
+    def test_merged_not_deployed_uses_the_api_total(self) -> None:
+        sections = full_sections(3)
+        sections['merged_not_deployed']['total'] = 250
+        view = render.render(
+            USER,
+            prefs.Prefs(max_items=2),
+            gathered(sections),
+            NOW,
+            TZ,
+        )
+        text = json.dumps(view, ensure_ascii=False)
+        self.assertIn('Merged, not deployed (250)', text)
+        self.assertIn(
+            '+248 more · <https://imbi.example/reports/merged-not-deployed'
+            '?author=@me|View all 250 in Imbi>',
+            text,
+        )
+
 
 class BlocksTests(helpers.TestCase):
     def test_limits(self) -> None:

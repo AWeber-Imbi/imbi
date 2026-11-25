@@ -1,15 +1,17 @@
 import { useSearchParams } from 'react-router-dom'
 
-import { useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery } from '@tanstack/react-query'
+import type { InfiniteData } from '@tanstack/react-query'
 
 import { getOrgPendingDeployPullRequests } from '@/api/endpoints'
 import { PendingDeployList } from '@/components/dashboard/widgets/PendingDeployList'
+import { Button } from '@/components/ui/button'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useProjectsSlimMap } from '@/hooks/useProjectsSlimMap'
+import type { PendingDeployResponse } from '@/types'
 
 const MINE = '@me'
-// The API returns at most this many rows (PENDING_DEPLOY_LIMIT).
-const PENDING_DEPLOY_LIMIT = 200
+const PAGE_SIZE = 200
 
 /**
  * Merged pull requests not yet deployed to a terminal environment.
@@ -21,15 +23,38 @@ export function MergedNotDeployedReport() {
   const [searchParams, setSearchParams] = useSearchParams()
   const author = searchParams.get('author') ?? undefined
 
-  const { data, isError, isLoading } = useQuery({
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isError,
+    isFetchingNextPage,
+    isLoading,
+  } = useInfiniteQuery<
+    PendingDeployResponse,
+    Error,
+    InfiniteData<PendingDeployResponse>,
+    readonly unknown[],
+    number
+  >({
     enabled: !!orgSlug,
-    queryFn: ({ signal }) =>
-      getOrgPendingDeployPullRequests(orgSlug, { author }, signal),
+    getNextPageParam: (lastPage, _pages, lastPageParam) => {
+      const nextOffset = lastPageParam + lastPage.data.length
+      return nextOffset < (lastPage.total ?? 0) ? nextOffset : undefined
+    },
+    initialPageParam: 0,
+    queryFn: ({ pageParam, signal }) =>
+      getOrgPendingDeployPullRequests(
+        orgSlug,
+        { author, limit: PAGE_SIZE, offset: pageParam },
+        signal,
+      ),
     queryKey: ['pending-deploy-report', orgSlug, author],
     staleTime: 60_000,
   })
   const { projectsById } = useProjectsSlimMap(orgSlug)
-  const prs = data?.data ?? []
+  const prs = data?.pages.flatMap((p) => p.data) ?? []
+  const first = data?.pages[0]
 
   const setMine = (mine: boolean) =>
     setSearchParams(mine ? { author: MINE } : {}, { replace: true })
@@ -52,13 +77,15 @@ export function MergedNotDeployedReport() {
           </button>
         ))}
         {!isLoading && !isError && (
-          <span className="text-tertiary ml-auto text-xs">{prs.length}</span>
+          <span className="text-tertiary ml-auto text-xs">
+            {first?.total ?? prs.length}
+          </span>
         )}
       </div>
       <div className="p-4">
         <PendingDeployList
           emptyMessage={
-            data?.github_identity_missing
+            first?.github_identity_missing
               ? 'No GitHub identity connected.'
               : 'Every merged pull request has reached a terminal environment.'
           }
@@ -68,11 +95,17 @@ export function MergedNotDeployedReport() {
           prs={prs}
           showAuthor={author !== MINE}
         />
-        {prs.length >= PENDING_DEPLOY_LIMIT && (
-          <p className="text-tertiary mt-3 text-xs">
-            Showing the oldest {PENDING_DEPLOY_LIMIT}. Deploy or filter to see
-            more.
-          </p>
+        {hasNextPage && (
+          <div className="mt-3 flex justify-center">
+            <Button
+              disabled={isFetchingNextPage}
+              onClick={() => void fetchNextPage()}
+              size="sm"
+              variant="outline"
+            >
+              Load more
+            </Button>
+          </div>
         )}
       </div>
     </div>

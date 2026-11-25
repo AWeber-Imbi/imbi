@@ -422,13 +422,14 @@ def _merged_not_deployed(
         )
         for pr in data['prs']
     ]
+    total = data.get('total', len(items))
     return Part(
-        count=len(items),
+        count=total,
         groups=[(None, items)],
         subtitle='Your PRs merged in the last 90 days that are not yet in '
         'production',
         summary=_names(sorted({pr['project'] for pr in data['prs']})),
-        more=(len(items), '/reports/merged-not-deployed?author=@me'),
+        more=(total, '/reports/merged-not-deployed?author=@me'),
     )
 
 

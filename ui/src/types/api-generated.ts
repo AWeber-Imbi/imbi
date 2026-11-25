@@ -8976,7 +8976,8 @@ export interface paths {
          *     login (``@me``: the login of the caller; when the caller has none,
          *     the list is empty and ``github_identity_missing`` is true) and
          *     ``bots`` to authors named with GitHub's ``[bot]`` suffix.  Rows are
-         *     ordered oldest merge first.
+         *     ordered oldest merge first and paged with ``limit`` and ``offset``;
+         *     ``total`` is the number of rows on all pages.
          */
         get: operations["list_pending_deploy_pull_requests_api_organizations__org_slug__pull_requests_pending_deploy_get"];
         put?: never;
@@ -18271,6 +18272,11 @@ export interface components {
             environments: string[];
             /** Data */
             data: components["schemas"]["PendingDeployPullRequest"][];
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
             /**
              * Github Identity Missing
              * @default false
@@ -38793,6 +38799,8 @@ export interface operations {
                 author?: string | null;
                 days?: number;
                 bots?: boolean;
+                limit?: number;
+                offset?: number;
             };
             header?: never;
             path: {

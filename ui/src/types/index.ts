@@ -414,6 +414,7 @@ export interface PendingDeployResponse {
   environments: string[]
   github_identity_missing?: boolean
   since: string
+  total?: number
 }
 export interface PresenceScoringPolicy extends ScoringPolicyBase {
   attribute_name: string
