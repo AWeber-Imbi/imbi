@@ -586,6 +586,7 @@ The **Conversation** view shows the ticket as turns. A turn starts with a person
 - The work of a turn folds under one line, such as **Worked for 37s**. Click the line to open or close it.
 - Inside a turn, the work is grouped by kind, such as "ran 3 commands" or "read 2 files". A group with a failed or denied call is red.
 - Each tool call shows the tool, a summary of its input, and its duration. Open a call to see its input and output. Bash calls show the command and output in a terminal pane, and Edit and Write calls show a diff.
+- **Open in trajectory**, under an open call, opens the Trajectory view at that call.
 - The work of a subagent shows under the call that started it.
 - An open request shows where the agent asked it, with its buttons.
 - **Compact**, **Standard**, and **Verbose** set how much work shows open. The browser remembers the choice.
@@ -601,7 +602,7 @@ The **Trajectory** view shows every event of the ticket as one row: a person's i
 - The fold buttons fold or unfold the turns, the tool calls, and the subagent calls. A greyed-out button has nothing to fold, and its tooltip says why. The browser remembers which fold buttons are on, and folds the new rows of a running ticket the same way.
 - Click a row to open the inspector. Its tabs depend on the row: a tool call has **Summary**, **Payload**, **Result**, and **Timing**, and most rows have **Raw**, which shows the raw event. The selected row, or the row of the selected request, is tinted and outlined.
 - **Show in conversation**, at the bottom of the inspector, opens the Conversation view at the turn that holds the event.
-- A link that ends in `#e` and an event number opens the trajectory at that event.
+- A link that ends in `#e` and an event number opens the trajectory at that event, with its row in the middle of the list. Clicking a row inside the view selects it and leaves the list where it is.
 
 #### Statistics
 
