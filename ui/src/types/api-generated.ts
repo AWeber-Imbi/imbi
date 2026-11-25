@@ -22277,10 +22277,13 @@ export interface components {
          * ServerSetting
          * @description An agent's setting for one MCP server of a plugin (ADR 0031).
          *
-         *     A server with ``secrets`` is relayed by the runner, which sends the
-         *     credentials only to ``origin``. The write endpoint checks the
-         *     secrets and the origin, not a validator, so a stored version still
-         *     loads.
+         *     ``secrets`` maps each header variable of the server to the
+         *     ``secret://`` reference that fills it. ``origin`` is the origin of
+         *     the server URL that the person saw when they picked the secrets,
+         *     such as ``https://api.example.com``. A server with ``secrets`` is
+         *     relayed by the runner, which sends the credentials only to
+         *     ``origin``. The write endpoint checks the secrets and the origin,
+         *     not a validator, so a stored version still loads.
          */
         ServerSetting: {
             /**

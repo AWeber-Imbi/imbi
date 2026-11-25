@@ -1460,18 +1460,17 @@ CatalogServers = typing.Annotated[
 class ServerSetting(pydantic.BaseModel):
     """An agent's setting for one MCP server of a plugin (ADR 0031).
 
-    A server with ``secrets`` is relayed by the runner, which sends the
-    credentials only to ``origin``. The write endpoint checks the
-    secrets and the origin, not a validator, so a stored version still
-    loads.
+    ``secrets`` maps each header variable of the server to the
+    ``secret://`` reference that fills it. ``origin`` is the origin of
+    the server URL that the person saw when they picked the secrets,
+    such as ``https://api.example.com``. A server with ``secrets`` is
+    relayed by the runner, which sends the credentials only to
+    ``origin``. The write endpoint checks the secrets and the origin,
+    not a validator, so a stored version still loads.
     """
 
     enabled: bool = True
-    #: Each header variable of the server, and the ``secret://``
-    #: reference that fills it.
     secrets: dict[str, str] = {}
-    #: The origin of the server URL that the person saw when they
-    #: picked ``secrets``, such as ``https://api.example.com``.
     origin: str | None = None
 
     def is_default(self) -> bool:

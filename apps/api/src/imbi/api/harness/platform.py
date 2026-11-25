@@ -302,7 +302,8 @@ def merge(
     Each value is the stricter of the two. An agent plugin from a
     marketplace that ``config`` does not allow is left out. A default
     plugin wins over an agent plugin with the same name, and takes the
-    agent plugin's ``server_settings``. The agent's model key replaces
+    agent plugin's ``server_settings``, less those that its pin does
+    not list (:func:`pin_plugins`). The agent's model key replaces
     the key of the organization's model upstream.
 
     ``claude_settings`` is the exception: each path that the agent sets
@@ -332,8 +333,9 @@ def merge(
     plugins = [
         plugin.model_copy(
             update={
-                'server_settings': overrides.get(
-                    (plugin.marketplace, plugin.plugin), {}
+                'server_settings': _for_pin(
+                    overrides.get((plugin.marketplace, plugin.plugin), {}),
+                    plugin,
                 )
             }
         )
@@ -432,11 +434,7 @@ def pin_plugins(
         existing = pinned.get(key)
         if default is not None:
             pin = default
-            settings = (
-                _listed(plugin.server_settings, default.mcp_servers)
-                if default.mcp_servers
-                else plugin.server_settings
-            )
+            settings = _for_pin(plugin.server_settings, default)
         elif (
             existing is not None
             and plugin.sha is not None
@@ -449,6 +447,14 @@ def pin_plugins(
             settings = _listed(plugin.server_settings, pin.mcp_servers)
         out.append(pin.model_copy(update={'server_settings': settings}))
     return out
+
+
+def _for_pin(
+    settings: dict[str, models.ServerSetting], pin: models.AgentPlugin
+) -> dict[str, models.ServerSetting]:
+    """The ``settings`` that a default ``pin`` can take: all of them
+    when the pin saved no servers."""
+    return _listed(settings, pin.mcp_servers) if pin.mcp_servers else settings
 
 
 def _listed(
