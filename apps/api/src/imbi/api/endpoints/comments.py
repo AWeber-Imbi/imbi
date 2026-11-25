@@ -898,19 +898,7 @@ _ATTENTION_QUERY: typing.LiteralString = """
                 THEN 'owner' ELSE 'mention' END AS reason
 """
 
-_ATTENTION_COLUMNS: list[str] = [
-    'document_id',
-    'document_title',
-    'project_id',
-    'thread_id',
-    'anchor_text',
-    'comment_id',
-    'author_email',
-    'author_name',
-    'body',
-    'created_at',
-    'reason',
-]
+_ATTENTION_COLUMNS: list[str] = list(AttentionComment.model_fields)
 
 attention_router = fastapi.APIRouter(tags=['Comments'])
 
