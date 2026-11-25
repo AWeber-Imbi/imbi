@@ -141,6 +141,7 @@ These services also keep relational schemas in the same database:
 | `workflow_runtime` | imbi-api | Workflow runs and their steps |
 | `secrets` | imbi-api | Secrets broker providers, bindings, and resolutions. No secret material ([ADR 0022](../api/adr/0022-agent-harness-and-secrets-broker.md)) |
 | `harness` | imbi-api | Runner pools and dispatch |
+| `preferences` | imbi-api | Per-user UI preferences (`/users/me/preferences/{namespace}`), for example the Slack App Home layout |
 | `scheduler` | imbi-scheduler | Task definitions and trigger state. `IMBI_SCHEDULER_SCHEMA` sets the name |
 
 ### ClickHouse

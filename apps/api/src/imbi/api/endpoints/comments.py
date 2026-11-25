@@ -836,6 +836,111 @@ async def acknowledge_comment(
     return _parse_comment(records[0]['c'])
 
 
+class AttentionComment(pydantic.BaseModel):
+    document_id: str
+    document_title: str
+    project_id: str | None = None
+    thread_id: str
+    anchor_text: str | None = None
+    comment_id: str
+    author_email: str
+    author_name: str | None = None
+    body: str
+    created_at: datetime.datetime
+    reason: typing.Literal['owner', 'mention']
+
+
+class AttentionCommentListResponse(pydantic.BaseModel):
+    data: list[AttentionComment]
+
+
+# Open threads in the org on a document that the caller created, or with
+# a comment that mentions the caller. For each thread, find the newest
+# comment by another author (max() and match-back, because AGE loses an
+# ORDER BY in WITH), break a created_at tie on the highest id, and keep
+# the row only if the caller did not reply after it and did not
+# acknowledge it. A caller reply with the same created_at counts as
+# after it only when its id is higher (the same tie-break).
+_ATTENTION_QUERY: typing.LiteralString = """
+    MATCH (o:Organization {{slug: {org_slug}}})
+    MATCH (t:CommentThread)-[:ON_DOCUMENT]->(d:Document)
+    WHERE coalesce(t.resolved, false) = false
+    OPTIONAL MATCH (d)-[:ATTACHED_TO]->(p:Project)
+          -[:OWNED_BY]->(:Team)-[:BELONGS_TO]->(o)
+    OPTIONAL MATCH (d)-[:ATTACHED_TO]->(pt:ProjectType)-[:BELONGS_TO]->(o)
+    OPTIONAL MATCH (d)-[:ATTACHED_TO]->(u:User)-[:MEMBER_OF]->(o)
+          <-[:BELONGS_TO]-(d)
+    WITH t, d, p, pt, u
+    WHERE p IS NOT NULL OR pt IS NOT NULL OR u IS NOT NULL
+    WITH DISTINCT t, d, p
+    MATCH (c:Comment)-[:IN_THREAD]->(t)
+    WITH t, d, p,
+         max(CASE WHEN c.author <> {principal}
+                  THEN c.created_at END) AS newest_at,
+         max(CASE WHEN c.author = {principal}
+                  THEN c.created_at END) AS mine_at,
+         count(CASE WHEN {principal} IN c.mentions
+                    THEN 1 END) AS mention_count
+    WHERE newest_at IS NOT NULL
+      AND (mine_at IS NULL OR mine_at <= newest_at)
+      AND (d.created_by = {principal} OR mention_count > 0)
+    MATCH (n:Comment)-[:IN_THREAD]->(t)
+    WHERE n.created_at = newest_at
+    WITH t, d, p, mention_count,
+         max(CASE WHEN n.author <> {principal} THEN n.id END) AS newest_id,
+         max(CASE WHEN n.author = {principal} THEN n.id END) AS mine_id
+    WHERE mine_id IS NULL OR mine_id < newest_id
+    MATCH (n:Comment {{id: newest_id}})-[:IN_THREAD]->(t)
+    WHERE NOT {principal} IN coalesce(n.acknowledged_by, [])
+    OPTIONAL MATCH (a:User {{email: n.author}})
+    RETURN d.id AS document_id, d.title AS document_title,
+           p.id AS project_id, t.id AS thread_id,
+           t.anchor_quote AS anchor_text, n.id AS comment_id,
+           n.author AS author_email, a.display_name AS author_name,
+           n.body AS body, n.created_at AS created_at,
+           CASE WHEN d.created_by = {principal}
+                THEN 'owner' ELSE 'mention' END AS reason
+"""
+
+_ATTENTION_COLUMNS: list[str] = list(AttentionComment.model_fields)
+
+attention_router = fastapi.APIRouter(tags=['Comments'])
+
+
+@attention_router.get(
+    '/attention', response_model=AttentionCommentListResponse
+)
+async def list_attention_comments(
+    org_slug: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('document:read')),
+    ],
+    limit: typing.Annotated[int, fastapi.Query(ge=1, le=100)] = 20,
+) -> dict[str, typing.Any]:
+    """List open threads that wait on the caller, newest first.
+
+    A thread waits on the caller when the caller created its document
+    or a comment in it mentions the caller, and the caller did not
+    reply after or acknowledge the newest comment by another author.
+    """
+    records = await db.execute(
+        _ATTENTION_QUERY,
+        {'org_slug': org_slug, 'principal': auth.principal_name},
+        columns=_ATTENTION_COLUMNS,
+    )
+    rows = [
+        {k: graph.parse_agtype(r[k]) for k in _ATTENTION_COLUMNS}
+        for r in records
+    ]
+    for row in rows:
+        row['document_title'] = row['document_title'] or ''
+        row['anchor_text'] = row['anchor_text'] or None
+    rows.sort(key=lambda row: row['created_at'], reverse=True)
+    return {'data': rows[:limit]}
+
+
 @comments_router.delete('/{thread_id}/comments/{comment_id}', status_code=204)
 async def delete_comment(
     org_slug: str,

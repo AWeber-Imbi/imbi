@@ -53,6 +53,7 @@ ALLOWED_ROUTES: frozenset[str] = frozenset(
         'GET /organizations/{org_slug}/agents/{slug}',
         'GET /organizations/{org_slug}/agents/{slug}/versions',
         'GET /organizations/{org_slug}/agents/{slug}/versions/{n}',
+        'GET /organizations/{org_slug}/comments/attention',
         'GET /organizations/{org_slug}/component-releases/{component_release_id}/advisories',
         'GET /organizations/{org_slug}/components/',
         'GET /organizations/{org_slug}/components/{component_id}/usage',
@@ -382,5 +383,7 @@ REFUSED_ROUTES: frozenset[str] = frozenset(
         'GET /prompts/{namespace}/{slug}/versions',
         'GET /prompts/{namespace}/{slug}/versions/{n}',
         'POST /organizations/{org_slug}/component-releases/{component_release_id}/notes',
+        # Personal UI preferences of a human user: a service account gets 403.
+        'GET /users/me/preferences/{namespace}',
     }
 )

@@ -1,6 +1,7 @@
 """Tests for user CRUD endpoints"""
 
 import datetime
+import typing
 import unittest
 from unittest import mock
 
@@ -52,6 +53,16 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
             self.mock_db
+        )
+
+        # The user delete: Cypher goes to mock_db.execute.
+        async def locked_with_connection(
+            _key: str, work: typing.Any
+        ) -> typing.Any:
+            return await work(self.mock_db.execute, mock.AsyncMock())
+
+        self.mock_db.locked_with_connection.side_effect = (
+            locked_with_connection
         )
 
         self.client = testclient.TestClient(self.test_app)

@@ -10,7 +10,7 @@ from imbi.api import tickets
 class WaitingTests(test_agent_tasks.AgentTaskTestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
-        await self.make_agent()
+        self.agent_id = await self.make_agent()
         self.agent = tickets.Actor('agent', 'triage', 'harness')
 
     async def waiting(self) -> dict[str, typing.Any]:
@@ -21,7 +21,11 @@ class WaitingTests(test_agent_tasks.AgentTaskTestCase):
         return response.json()
 
     async def request(
-        self, short_id: str, title: str, **kwargs: typing.Any
+        self,
+        short_id: str,
+        title: str,
+        actor: tickets.Actor | None = None,
+        **kwargs: typing.Any,
     ) -> None:
         values: dict[str, typing.Any] = {
             'kind': 'feedback',
@@ -37,7 +41,7 @@ class WaitingTests(test_agent_tasks.AgentTaskTestCase):
             self.org,
             short_id,
             tickets.NewRequest(**{**values, **kwargs}),
-            self.agent,
+            actor or self.agent,
         )
 
     async def test_three_lists(self) -> None:
@@ -129,4 +133,52 @@ class WaitingTests(test_agent_tasks.AgentTaskTestCase):
         self.assertEqual(
             await self.waiting(),
             {'count': 0, 'requests': [], 'assigned': [], 'held': []},
+        )
+
+    async def test_assigned_carries_due_date_and_rank(self) -> None:
+        response = await self.client.post(
+            self.url(),
+            json={
+                'assignee_kind': 'person',
+                'assignee': self.email,
+                'title': 'Rotate',
+                'description': 'Rotate the key.',
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        short_id = response.json()['short_id']
+        body = await self.waiting()
+        self.assertEqual(body['assigned'][0]['due_date'], None)
+        self.assertEqual(body['assigned'][0]['backlog_rank'], None)
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                "UPDATE tickets.tickets SET due_date = '2026-12-01',"
+                ' backlog_rank = 2.5'
+                ' WHERE organization_id = %s AND short_id = %s',
+                (self.org, short_id),
+            )
+        body = await self.waiting()
+        self.assertEqual(body['assigned'][0]['due_date'], '2026-12-01')
+        self.assertEqual(body['assigned'][0]['backlog_rank'], 2.5)
+
+    async def test_request_carries_the_agent_that_opened_it(self) -> None:
+        await self.create_task()
+        await self.request(
+            'T-1',
+            'From the agent',
+            tickets.Actor('agent', self.agent_id, 'harness'),
+        )
+        await self.request(
+            'T-1', 'From the system', tickets.Actor('system', 'imbi', 'api')
+        )
+        body = await self.waiting()
+        self.assertEqual(
+            [
+                (r['title'], r['agent_slug'], r['agent_name'])
+                for r in body['requests']
+            ],
+            [
+                ('From the agent', 'triage', 'Triage Bot'),
+                ('From the system', None, None),
+            ],
         )

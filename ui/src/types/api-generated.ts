@@ -4936,6 +4936,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/comments/attention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Attention Comments
+         * @description List open threads that wait on the caller, newest first.
+         *
+         *     A thread waits on the caller when the caller created its document
+         *     or a comment in it mentions the caller, and the caller did not
+         *     reply after or acknowledge the newest comment by another author.
+         */
+        get: operations["list_attention_comments_api_organizations__org_slug__comments_attention_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/document-templates/": {
         parameters: {
             query?: never;
@@ -5348,7 +5372,8 @@ export interface paths {
          *     outcome that does not release them. ``count`` is the number of
          *     items. Without ``lists`` (the navigation badge, which polls), only
          *     ``count`` is sent and the lists are empty. A caller that is not a
-         *     person has none.
+         *     person has none. A request has ``agent_slug`` and ``agent_name``
+         *     of the agent that opened it, or ``None`` when no agent opened it.
          *
          *     Raises:
          *         403: The caller is not a member of the org.
@@ -8917,7 +8942,12 @@ export interface paths {
          *     The set of projects is resolved from the graph so results are
          *     scoped to the calling user's org.  Optional ``state`` filter
          *     accepts ``open`` or ``closed``.  Optional ``author`` filter
-         *     accepts a GitHub login.  Results are ordered newest first.
+         *     accepts a GitHub login.  Optional ``reviewer`` filter accepts a
+         *     GitHub login and keeps the open PRs with a pending review request
+         *     for that login.  ``author`` and ``reviewer`` also accept ``@me``,
+         *     the GitHub login of the caller; when the caller has none, the list
+         *     is empty and ``github_identity_missing`` is true.  Results are
+         *     ordered newest first.
          */
         get: operations["list_org_pull_requests_api_organizations__org_slug__pull_requests__get"];
         put?: never;
@@ -8943,8 +8973,10 @@ export interface paths {
          *     environment of a promotion pipeline (production, typically)
          *     started at or before the merge.  Only PRs merged in the last
          *     ``days`` days are considered; ``author`` narrows to one GitHub
-         *     login and ``bots`` to authors named with GitHub's ``[bot]``
-         *     suffix.  Rows are ordered oldest merge first.
+         *     login (``@me``: the login of the caller; when the caller has none,
+         *     the list is empty and ``github_identity_missing`` is true) and
+         *     ``bots`` to authors named with GitHub's ``[bot]`` suffix.  Rows are
+         *     ordered oldest merge first.
          */
         get: operations["list_pending_deploy_pull_requests_api_organizations__org_slug__pull_requests_pending_deploy_get"];
         put?: never;
@@ -10703,6 +10735,49 @@ export interface paths {
          *             path or leaves the display name empty.
          */
         patch: operations["patch_current_user_api_users_me_patch"];
+        trace?: never;
+    };
+    "/api/users/me/preferences/{namespace}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Current User Preferences
+         * @description Return the caller's stored preferences in ``namespace``.
+         *
+         *     The section ``order`` holds every key: the keys that are not
+         *     stored are added at the end. Requires a human user;
+         *     service-account tokens receive HTTP 403.
+         *
+         *     Raises:
+         *         fastapi.HTTPException: HTTP 404 when no preferences are
+         *             stored. The caller then uses the defaults.
+         */
+        get: operations["get_current_user_preferences_api_users_me_preferences__namespace__get"];
+        /**
+         * Put Current User Preferences
+         * @description Replace the caller's preferences in ``namespace``.
+         *
+         *     ``version`` must be the stored version, or 0 when no preferences
+         *     are stored. Each write adds 1 to the version. This is personal UI
+         *     state, so no operations log entry is written. Requires a human
+         *     user; service-account tokens receive HTTP 403.
+         *
+         *     Raises:
+         *         fastapi.HTTPException: HTTP 409 when ``version`` is not the
+         *             stored version. Read again and apply the change again.
+         *         fastapi.HTTPException: HTTP 404 when the user was deleted
+         *             before the first write.
+         */
+        put: operations["put_current_user_preferences_api_users_me_preferences__namespace__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/users/{email}": {
@@ -13000,6 +13075,42 @@ export interface components {
              * @default []
              */
             project_types: string[];
+        };
+        /** AttentionComment */
+        AttentionComment: {
+            /** Document Id */
+            document_id: string;
+            /** Document Title */
+            document_title: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** Thread Id */
+            thread_id: string;
+            /** Anchor Text */
+            anchor_text?: string | null;
+            /** Comment Id */
+            comment_id: string;
+            /** Author Email */
+            author_email: string;
+            /** Author Name */
+            author_name?: string | null;
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "owner" | "mention";
+        };
+        /** AttentionCommentListResponse */
+        AttentionCommentListResponse: {
+            /** Data */
+            data: components["schemas"]["AttentionComment"][];
         };
         /** AttentionRun */
         AttentionRun: {
@@ -17577,6 +17688,12 @@ export interface components {
             /** Project Count */
             project_count: number;
         };
+        /**
+         * Namespace
+         * @description The preference namespaces. Each has a model of its value.
+         * @enum {string}
+         */
+        Namespace: "slack_home";
         /** Node */
         Node: {
             /** Id */
@@ -18146,6 +18263,11 @@ export interface components {
             environments: string[];
             /** Data */
             data: components["schemas"]["PendingDeployPullRequest"][];
+            /**
+             * Github Identity Missing
+             * @default false
+             */
+            github_identity_missing: boolean;
         };
         /**
          * Permission
@@ -19703,6 +19825,11 @@ export interface components {
             project_count: number;
             /** Total */
             total: number;
+            /**
+             * Github Identity Missing
+             * @default false
+             */
+            github_identity_missing: boolean;
         };
         /**
          * PullRequestResponse
@@ -22240,6 +22367,62 @@ export interface components {
              */
             deployment_run_id?: string | null;
         };
+        /**
+         * SlackHomePreferences
+         * @description The layout of the Slack App Home tab of one user.
+         */
+        SlackHomePreferences: {
+            /** Org Slug */
+            org_slug?: string | null;
+            /** Order */
+            order?: ("needs_attention" | "my_tickets" | "pull_requests" | "merged_not_deployed" | "release_drift" | "my_projects" | "agent_activity" | "document_comments")[];
+            /** Sections */
+            sections?: {
+                [key: string]: components["schemas"]["SlackHomeSection"];
+            };
+            /**
+             * Hide Empty
+             * @default true
+             */
+            hide_empty: boolean;
+            /**
+             * Max Items
+             * @default 5
+             * @enum {integer}
+             */
+            max_items: 5 | 10;
+            /**
+             * Count Expanded Only
+             * @default false
+             */
+            count_expanded_only: boolean;
+        };
+        /** SlackHomePreferencesResponse */
+        SlackHomePreferencesResponse: {
+            value: components["schemas"]["SlackHomePreferences"];
+            /** Version */
+            version: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** SlackHomePreferencesWrite */
+        SlackHomePreferencesWrite: {
+            value: components["schemas"]["SlackHomePreferences"];
+            /** Version */
+            version: number;
+        };
+        /** SlackHomeSection */
+        SlackHomeSection: {
+            /**
+             * Display
+             * @default expanded
+             * @enum {string}
+             */
+            display: "expanded" | "collapsed" | "hidden";
+        };
         /** SlackResult */
         SlackResult: {
             /** Channel */
@@ -23441,6 +23624,10 @@ export interface components {
             short_id: string;
             /** Ticket Title */
             ticket_title: string;
+            /** Agent Slug */
+            agent_slug?: string | null;
+            /** Agent Name */
+            agent_name?: string | null;
         };
         /**
          * WaitingTicket
@@ -23474,6 +23661,10 @@ export interface components {
             agent_id?: string | null;
             /** Owner */
             owner: string;
+            /** Due Date */
+            due_date?: string | null;
+            /** Backlog Rank */
+            backlog_rank?: number | null;
             /**
              * Created At
              * Format: date-time
@@ -32533,6 +32724,39 @@ export interface operations {
             };
         };
     };
+    list_attention_comments_api_organizations__org_slug__comments_attention_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttentionCommentListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_document_templates_api_organizations__org_slug__document_templates__get: {
         parameters: {
             query?: {
@@ -38523,6 +38747,7 @@ export interface operations {
             query?: {
                 state?: string | null;
                 author?: string | null;
+                reviewer?: string | null;
                 limit?: number;
                 offset?: number;
             };
@@ -41460,6 +41685,72 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_current_user_preferences_api_users_me_preferences__namespace__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: components["schemas"]["Namespace"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SlackHomePreferencesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_current_user_preferences_api_users_me_preferences__namespace__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: components["schemas"]["Namespace"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SlackHomePreferencesWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SlackHomePreferencesResponse"];
+                };
             };
             /** @description Validation Error */
             422: {

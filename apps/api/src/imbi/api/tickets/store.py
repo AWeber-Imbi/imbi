@@ -227,9 +227,18 @@ _WAITING_HELD: typing.LiteralString = (
 
 #: The lists of :meth:`TicketStore.waiting`, oldest first.
 _WAITING_LISTS: dict[str, typing.LiteralString] = {
-    'requests': 'SELECT r.*, t.short_id, t.title AS ticket_title'
-    + _WAITING_REQUESTS
-    + ' ORDER BY r.opened_at, r.id',
+    # The agent that opened a request, from its ``request.opened``
+    # event; ``NULL`` when another kind of actor opened it.
+    'requests': (
+        'SELECT r.*, t.short_id, t.title AS ticket_title,'  # noqa: S608
+        ' (SELECT e.actor_id FROM tickets.events AS e'
+        " WHERE e.ticket_id = t.id AND e.type = 'request.opened'"
+        " AND e.actor_kind = 'agent'"
+        " AND e.payload->>'request_id' = r.id::text LIMIT 1)"
+        ' AS request_agent_id'
+        + _WAITING_REQUESTS
+        + ' ORDER BY r.opened_at, r.id'
+    ),
     'assigned': 'SELECT t.*'
     + _WAITING_ASSIGNED
     + ' ORDER BY t.created_at, t.id',

@@ -338,6 +338,143 @@ class ListOrgPullRequestsTestCase(_PullRequestsTestBase):
         self.assertIn('state = {state:String} AND NOT draft', data_sql)
 
 
+def _identities(*rows: dict[str, typing.Any]) -> typing.Any:
+    """Patch the identity connections of the caller."""
+    return mock.patch(
+        'imbi.api.endpoints.pull_requests.identity_repository.list_for_user',
+        new=mock.AsyncMock(return_value=list(rows)),
+    )
+
+
+GITHUB_IDENTITY: dict[str, typing.Any] = {
+    'plugin': 'github',
+    'status': 'active',
+    'metadata': {'login': 'alice-gh'},
+}
+
+
+class GithubLoginTestCase(unittest.IsolatedAsyncioTestCase):
+    """``github_login`` reads the login of a GitHub connection."""
+
+    def _auth(self) -> typing.Any:
+        return mock.Mock(user=mock.Mock(id='u1'))
+
+    async def test_login_of_active_github_connection(self) -> None:
+        other = {'plugin': 'sentry', 'status': 'active', 'metadata': {}}
+        with _identities(other, GITHUB_IDENTITY):
+            login = await pull_requests.github_login(mock.Mock(), self._auth())
+        self.assertEqual(login, 'alice-gh')
+
+    async def test_none_without_an_active_github_connection(self) -> None:
+        rows = (
+            {**GITHUB_IDENTITY, 'status': 'revoked'},
+            {**GITHUB_IDENTITY, 'plugin': 'github-enterprise-cloud'},
+            {**GITHUB_IDENTITY, 'metadata': {}},
+        )
+        with _identities(*rows):
+            login = await pull_requests.github_login(mock.Mock(), self._auth())
+        self.assertIsNone(login)
+
+    async def test_none_for_a_service_account(self) -> None:
+        login = await pull_requests.github_login(
+            mock.Mock(), mock.Mock(user=None)
+        )
+        self.assertIsNone(login)
+
+
+class MeFiltersTestCase(_PullRequestsTestBase):
+    """``@me`` on ``author`` and ``reviewer`` (Slack App Home)."""
+
+    def _list(self, query: str) -> tuple[typing.Any, mock.AsyncMock]:
+        self.mock_db.execute.return_value = [{'id': PROJECT_ID}]
+        ch = mock.AsyncMock(
+            side_effect=[[{'total': 1, 'project_count': 1}], [_pr_row()]]
+        )
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch(
+                'imbi.api.endpoints.pull_requests.clickhouse.query', new=ch
+            ),
+        ):
+            response = self.client.get(
+                f'/organizations/{ORG}/pull-requests/{query}'
+            )
+        return response, ch
+
+    def test_author_me_resolves_to_login(self) -> None:
+        with _identities(GITHUB_IDENTITY):
+            response, ch = self._list('?author=@me')
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()['github_identity_missing'])
+        self.assertEqual(ch.call_args.args[1]['author'], 'alice-gh')
+
+    def test_me_without_identity_is_empty_with_flag(self) -> None:
+        for query in ('?author=@me', '?state=open&reviewer=@me'):
+            with self.subTest(query=query), _identities():
+                response, ch = self._list(query)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(
+                    response.json(),
+                    {
+                        'data': [],
+                        'project_count': 0,
+                        'total': 0,
+                        'github_identity_missing': True,
+                    },
+                )
+                ch.assert_not_awaited()
+
+    def test_me_without_identity_validates_pagination(self) -> None:
+        for query in ('?author=@me&limit=0', '?author=@me&offset=-1'):
+            with self.subTest(query=query), _identities():
+                response, ch = self._list(query)
+                self.assertEqual(response.status_code, 400)
+                ch.assert_not_awaited()
+
+    def test_reviewer_filter_is_in_the_query_before_the_limit(self) -> None:
+        with _identities(GITHUB_IDENTITY):
+            response, ch = self._list('?reviewer=@me')
+        self.assertEqual(response.status_code, 200)
+        count_sql, data_sql = (c.args[0] for c in ch.call_args_list)
+        clause = 'has(requested_reviewers, {reviewer:String})'
+        self.assertIn(clause, count_sql)
+        self.assertLess(data_sql.index(clause), data_sql.index('LIMIT'))
+        self.assertIn("state = 'open' AND pr_id IN", data_sql)
+        self.assertEqual(ch.call_args.args[1]['reviewer'], 'alice-gh')
+
+    def test_reviewer_login_needs_no_identity(self) -> None:
+        with _identities() as list_for_user:
+            response, ch = self._list('?reviewer=bob')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(ch.call_args.args[1]['reviewer'], 'bob')
+        list_for_user.assert_not_awaited()
+
+    def test_pending_deploy_author_me(self) -> None:
+        self.mock_db.execute.return_value = []
+        url = f'/organizations/{ORG}/pull-requests/pending-deploy?author=@me'
+        pending = mock.AsyncMock(return_value=[])
+        with (
+            mock.patch.object(pull_requests, '_list_pending_deploy', pending),
+            _identities(GITHUB_IDENTITY),
+        ):
+            response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()['github_identity_missing'])
+        self.assertEqual(pending.call_args.kwargs['author'], 'alice-gh')
+        with (
+            mock.patch.object(pull_requests, '_list_pending_deploy', pending),
+            _identities(),
+        ):
+            response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertTrue(body['github_identity_missing'])
+        self.assertEqual(body['data'], [])
+        pending.assert_awaited_once()
+
+
 class PullRequestActivityTestCase(_PullRequestsTestBase):
     """GET /organizations/{org}/pull-requests/activity"""
 

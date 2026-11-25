@@ -23,6 +23,7 @@ import fastapi
 import pydantic
 
 from imbi.api.auth import permissions
+from imbi.api.identity import repository as identity_repository
 from imbi.common import clickhouse, environments, graph
 
 LOGGER = logging.getLogger(__name__)
@@ -32,6 +33,15 @@ pull_requests_project_router = fastapi.APIRouter(tags=['Pull Requests'])
 
 DEFAULT_LIMIT: int = 50
 MAX_LIMIT: int = 500
+
+#: The ``author`` or ``reviewer`` value that means the GitHub login of
+#: the caller.
+ME = '@me'
+
+#: The slug of the plugin of the GitHub identity connections. The
+#: GitHub package has one plugin; a flavor (``github.com``, GHEC, GHES)
+#: is an option of its Integration, not a plugin slug.
+GITHUB_PLUGIN_SLUG = 'github'
 
 _TIMESTAMP_FIELDS: frozenset[str] = frozenset(
     {
@@ -88,6 +98,8 @@ class PullRequestListResponse(pydantic.BaseModel):
     data: list[PullRequestResponse]
     project_count: int
     total: int
+    #: ``@me`` was asked for and the caller has no GitHub identity.
+    github_identity_missing: bool = False
 
 
 # Default look-back window on ``merged_at`` for the pending-deploy view.
@@ -123,6 +135,9 @@ class PendingDeployResponse(pydantic.BaseModel):
     # environment of every promotion pipeline.
     environments: list[str]
     data: list[PendingDeployPullRequest]
+    #: ``author=@me`` was asked for and the caller has no GitHub
+    #: identity.
+    github_identity_missing: bool = False
 
 
 # Default look-back window for the activity report when ``since`` is absent.
@@ -191,19 +206,43 @@ async def _fetch_org_project_ids(
     ]
 
 
-async def _list_prs(
-    *,
-    project_ids: list[str],
-    state: str | None = None,
-    author: str | None = None,
-    limit: int = DEFAULT_LIMIT,
-    offset: int = 0,
-    include_drafts: bool = False,
-) -> PullRequestListResponse:
-    """Run the ClickHouse query and return a paginated response.
+async def github_login(
+    db: graph.Graph, auth: permissions.AuthContext
+) -> str | None:
+    """Return the GitHub login of the caller, or ``None``.
 
-    Draft PRs are excluded unless ``include_drafts`` is set.
+    The login comes from the metadata of the active identity connection
+    of the caller to a ``github`` Integration. The ``subject`` of that
+    connection is the numeric GitHub user id, not the login, so
+    :meth:`permissions.AuthContext.identity_for` cannot supply it.
     """
+    if auth.user is None:
+        return None
+    for row in await identity_repository.list_for_user(db, auth.user.id):
+        if row.get('plugin') != GITHUB_PLUGIN_SLUG:
+            continue
+        login = row['metadata'].get('login')
+        if row.get('status') == 'active' and login:
+            return str(login)
+    return None
+
+
+async def _resolve_me(
+    db: graph.Graph, auth: permissions.AuthContext, *values: str | None
+) -> tuple[list[str | None], bool]:
+    """Replace each ``@me`` in ``values`` with the login of the caller.
+
+    Returns the values and ``True`` when ``@me`` is used and the caller
+    has no GitHub login.
+    """
+    if ME not in values:
+        return list(values), False
+    login = await github_login(db, auth)
+    return [login if v == ME else v for v in values], login is None
+
+
+def _check_pagination(limit: int, offset: int) -> None:
+    """Raise 400 when ``limit`` or ``offset`` is out of range."""
     if limit < 1 or limit > MAX_LIMIT:
         raise fastapi.HTTPException(
             status_code=400,
@@ -214,6 +253,23 @@ async def _list_prs(
             status_code=400,
             detail='offset must be >= 0',
         )
+
+
+async def _list_prs(
+    *,
+    project_ids: list[str],
+    state: str | None = None,
+    author: str | None = None,
+    reviewer: str | None = None,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
+    include_drafts: bool = False,
+) -> PullRequestListResponse:
+    """Run the ClickHouse query and return a paginated response.
+
+    Draft PRs are excluded unless ``include_drafts`` is set.
+    """
+    _check_pagination(limit, offset)
     if not project_ids:
         return PullRequestListResponse(data=[], project_count=0, total=0)
 
@@ -227,6 +283,16 @@ async def _list_prs(
     if author is not None:
         clauses.append('author = {author:String}')
         params['author'] = author
+
+    if reviewer is not None:
+        # A pending review request only matters on an open PR.
+        clauses.append(
+            "state = 'open' AND pr_id IN (SELECT pr_id"
+            ' FROM pull_request_review_requests FINAL'
+            ' WHERE project_id IN (SELECT project_id FROM project_ids)'
+            ' AND has(requested_reviewers, {reviewer:String}))'
+        )
+        params['reviewer'] = reviewer
 
     if not include_drafts:
         clauses.append('NOT draft')
@@ -455,6 +521,7 @@ async def list_org_pull_requests(
     ],
     state: str | None = None,
     author: str | None = None,
+    reviewer: str | None = None,
     limit: int = DEFAULT_LIMIT,
     offset: int = 0,
 ) -> PullRequestListResponse:
@@ -463,13 +530,25 @@ async def list_org_pull_requests(
     The set of projects is resolved from the graph so results are
     scoped to the calling user's org.  Optional ``state`` filter
     accepts ``open`` or ``closed``.  Optional ``author`` filter
-    accepts a GitHub login.  Results are ordered newest first.
+    accepts a GitHub login.  Optional ``reviewer`` filter accepts a
+    GitHub login and keeps the open PRs with a pending review request
+    for that login.  ``author`` and ``reviewer`` also accept ``@me``,
+    the GitHub login of the caller; when the caller has none, the list
+    is empty and ``github_identity_missing`` is true.  Results are
+    ordered newest first.
     """
+    (author, reviewer), missing = await _resolve_me(db, auth, author, reviewer)
+    if missing:
+        _check_pagination(limit, offset)
+        return PullRequestListResponse(
+            data=[], project_count=0, total=0, github_identity_missing=True
+        )
     project_ids = await _fetch_org_project_ids(db, org_slug)
     return await _list_prs(
         project_ids=project_ids,
         state=state,
         author=author,
+        reviewer=reviewer,
         limit=limit,
         offset=offset,
     )
@@ -598,8 +677,10 @@ async def list_pending_deploy_pull_requests(
     environment of a promotion pipeline (production, typically)
     started at or before the merge.  Only PRs merged in the last
     ``days`` days are considered; ``author`` narrows to one GitHub
-    login and ``bots`` to authors named with GitHub's ``[bot]``
-    suffix.  Rows are ordered oldest merge first.
+    login (``@me``: the login of the caller; when the caller has none,
+    the list is empty and ``github_identity_missing`` is true) and
+    ``bots`` to authors named with GitHub's ``[bot]`` suffix.  Rows are
+    ordered oldest merge first.
     """
     if days < 1 or days > MAX_PENDING_DEPLOY_DAYS:
         raise fastapi.HTTPException(
@@ -607,6 +688,14 @@ async def list_pending_deploy_pull_requests(
             detail=f'days must be 1..{MAX_PENDING_DEPLOY_DAYS}',
         )
     since = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=days)
+    (author,), missing = await _resolve_me(db, auth, author)
+    if missing:
+        return PendingDeployResponse(
+            since=since,
+            environments=[],
+            data=[],
+            github_identity_missing=True,
+        )
     project_ids = await _fetch_org_project_ids(db, org_slug)
     slugs = await _fetch_terminal_environment_slugs(db)
     data = await _list_pending_deploy(
