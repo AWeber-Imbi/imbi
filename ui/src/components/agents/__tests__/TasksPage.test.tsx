@@ -1592,6 +1592,22 @@ describe('Tasks', () => {
     expect(screen.getByLabelText('Reply')).toHaveValue('Second.')
   })
 
+  it.each(['conversation', 'input'])(
+    'shows a skeleton, not an empty state, while the log loads (%s)',
+    async (tab) => {
+      vi.mocked(endpoints.listTicketEvents).mockReturnValue(
+        new Promise(() => {}),
+      )
+      renderAt(`/tickets/acme/T-3/${tab}`)
+      expect(
+        await screen.findByRole('status', { name: 'Loading the task log' }),
+      ).toHaveAttribute('aria-busy', 'true')
+      expect(
+        screen.queryByText('This ticket has not asked for input.'),
+      ).not.toBeInTheDocument()
+    },
+  )
+
   it('keeps a pending reply pending across Activity views', async () => {
     let finish: (task: typeof BLOCKED) => void = () => undefined
     vi.mocked(endpoints.replyTicket).mockReturnValue(
