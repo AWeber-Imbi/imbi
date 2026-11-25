@@ -2367,6 +2367,35 @@ class AgentMembershipTests(support.SharedAppAsyncTestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()['organization']['slug'], self.org)
 
+    async def test_created_by_is_first_version_writer(self) -> None:
+        response = await self.client.post(
+            self.url(),
+            json={'name': 'Triage', 'slug': 'triage', 'team': self.team},
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        response = await self.client.patch(
+            self.url('triage'),
+            json=[{'op': 'replace', 'path': '/name', 'value': 'Triage 2'}],
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        # Give version 1 a different writer than version 2.
+        await self.graph.execute(
+            """
+            MATCH (v:AgentVersion {{n: 1}})-[:VERSION_OF]->(a:Agent)
+                  -[:BELONGS_TO]->(:Organization {{slug: {org}}})
+            SET v.created_by = 'author@example.com'
+            RETURN v.n AS n
+            """,
+            {'org': self.org},
+            ['n'],
+        )
+        response = await self.client.get(self.url('triage'))
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body['version'], 2)
+        self.assertEqual(body['created_by'], 'author@example.com')
+        self.assertEqual(body['updated_by'], self.email)
+
     async def test_unknown_organization_is_not_found(self) -> None:
         response = await self.client.get(self.url(org='no-such-org'))
         self.assertEqual(response.status_code, 404, response.text)
