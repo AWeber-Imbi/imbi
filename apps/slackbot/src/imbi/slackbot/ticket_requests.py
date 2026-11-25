@@ -51,6 +51,8 @@ _MAX_INTRO = 2000
 _CHANNEL_ID = re.compile(r'^[CG][A-Z0-9]+$')
 #: Slack errors that mean the bot cannot post to the channel.
 _NO_CHANNEL = frozenset({'channel_not_found', 'is_archived', 'not_in_channel'})
+# Slack can send the message and then return one of these errors.
+_AMBIGUOUS = frozenset({'internal_error', 'fatal_error'})
 
 #: Less than the socket timeout of the Valkey client (5 seconds), so an
 #: empty poll returns before the socket times out.
@@ -130,14 +132,17 @@ async def post(
         # An entry from an earlier imbi-api has ``owner``, not
         # ``recipient``.
         recipient = entry.get('recipient') or entry['owner']
-        # A SlackApiError is a definite rejection, so the channel post
-        # cannot duplicate the message. Other errors, such as a timeout,
-        # are raised: Slack can have sent the message.
+        # Most SlackApiErrors are a definite rejection, so the channel
+        # post cannot duplicate the message. The ambiguous errors and
+        # other errors, such as a timeout, are raised: Slack can have
+        # sent the message.
         try:
             direct = await _direct_channel(slack, recipient)
             await _post_form(slack, runtime, entry, direct)
         except errors.SlackApiError as err:
             response: typing.Any = err.response
+            if response.get('error') in _AMBIGUOUS:
+                raise
             LOGGER.info(
                 'Cannot message %s (%s); posting %s to the channel',
                 recipient,
