@@ -628,7 +628,13 @@ function TabBody({
     ? trajectory.records.find((r) => r.id === record.parent)
     : undefined
   if (tab === 'Usage' && record.subagent)
-    return <UsageGroup title="This subagent" usage={record.subagent.usage} />
+    return (
+      <UsageGroup
+        cost={record.subagent.usage.cost}
+        title="This subagent"
+        usage={record.subagent.usage}
+      />
+    )
   if (tab === 'Payload') return <Payload value={record.tool?.arguments ?? {}} />
   if (tab === 'Result')
     return (
@@ -771,7 +777,15 @@ function totals(reports: (null | TicketEvent)[]): UsageTotals {
   return sum
 }
 
-function UsageGroup({ title, usage }: { title: string; usage: UsageTotals }) {
+function UsageGroup({
+  cost,
+  title,
+  usage,
+}: {
+  cost?: number
+  title: string
+  usage: UsageTotals
+}) {
   const tok = (n: number) => `${n.toLocaleString('en-US')} tok`
   return (
     <div className="pt-2">
@@ -792,6 +806,7 @@ function UsageGroup({ title, usage }: { title: string; usage: UsageTotals }) {
           {tok(usage.input)}
         </Field>
         <Field label="Output">{tok(usage.output)}</Field>
+        {cost !== undefined && <Field label="Cost">${cost.toFixed(4)}</Field>}
       </dl>
     </div>
   )

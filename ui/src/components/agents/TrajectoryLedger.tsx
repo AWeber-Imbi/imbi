@@ -424,6 +424,7 @@ function BatchRow({
       data-batch
       data-index={index}
       ref={measure}
+      tabIndex={-1}
     >
       <td className="hairline-b relative h-7 border-(--tj-border-1) pr-1 pl-9 whitespace-nowrap @max-[620px]/tj:pr-0 @max-[620px]/tj:pl-7">
         <span className="flex items-center justify-end gap-2">
@@ -500,8 +501,10 @@ function Content({ record }: { record: TrajectoryRecord }) {
 }
 
 function contentText(record: TrajectoryRecord): string {
-  if (record.subagent)
-    return `${record.subagent.description} ${record.subagent.type}`
+  if (record.subagent) {
+    const { answer, description, type } = record.subagent
+    return `${description} ${type} ${preview(answer)}`
+  }
   if (record.tool) {
     const { args, name, result } = record.tool
     return `${name} ${args} → ${result || 'No output'}`

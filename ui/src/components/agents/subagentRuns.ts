@@ -50,6 +50,43 @@ export function isSubagent(entry: TimelineEntry): boolean {
   return e.type === 'tool.called' && isAgentTool(e.payload.tool)
 }
 
+/**
+ * Splits items, kept in display order, into groups whose spans overlap.
+ * Overlap is found by start time, so the display order cannot split a
+ * group; groups that interleave in display order are merged to stay
+ * contiguous.
+ */
+export function overlapGroups<T>(
+  items: readonly T[],
+  span: (item: T) => readonly [number, number],
+): T[][] {
+  const order = items
+    .map((_, i) => i)
+    .sort((a, b) => span(items[a])[0] - span(items[b])[0])
+  const group: number[] = []
+  let id = -1
+  let until = -Infinity
+  for (const i of order) {
+    const [start, end] = span(items[i])
+    if (start >= until) id += 1
+    group[i] = id
+    until = Math.max(until, end)
+  }
+  const last = new Map<number, number>()
+  group.forEach((g, i) => last.set(g, i))
+  const out: T[][] = []
+  let from = 0
+  let reach = 0
+  for (let i = 0; i < items.length; i += 1) {
+    reach = Math.max(reach, last.get(group[i])!)
+    if (i === reach) {
+      out.push(items.slice(from, i + 1))
+      from = i + 1
+    }
+  }
+  return out
+}
+
 /** Wall time from the first start to the last end, and the summed run time. */
 export function spanOf(runs: SubagentRun[]): { wall: number; work: number } {
   const start = Math.min(...runs.map((r) => r.start))
@@ -93,7 +130,7 @@ export function subagentRun(
     entry,
     errors: calls.filter(isError).length,
     kind: text(args.subagent_type),
-    prompt: text(args.prompt),
+    prompt: typeof p.arguments === 'string' ? p.arguments : text(args.prompt),
     result: answerOf(p.result),
     running: !entry.event && live,
     start,
@@ -190,25 +227,24 @@ export function workSlots(
   live: boolean,
 ): WorkSlot[] {
   const out: WorkSlot[] = []
-  let batch: SubagentRun[] = []
-  let until = -Infinity
+  let runs: SubagentRun[] = []
   const flush = () => {
-    if (batch.length > 1) out.push({ kind: 'parallel', runs: batch })
-    else if (batch.length) out.push({ entry: batch[0].entry, kind: 'entry' })
-    batch = []
-    until = -Infinity
+    for (const group of overlapGroups(runs, (r) => [r.start, r.end]))
+      out.push(
+        group.length > 1
+          ? { kind: 'parallel', runs: group }
+          : { entry: group[0].entry, kind: 'entry' },
+      )
+    runs = []
   }
   for (const entry of entries) {
     if (entry.event?.type === 'usage.reported') continue
-    if (!isSubagent(entry)) {
-      flush()
-      out.push({ entry, kind: 'entry' })
+    if (isSubagent(entry)) {
+      runs.push(subagentRun(entry, usage, live))
       continue
     }
-    const run = subagentRun(entry, usage, live)
-    if (batch.length && run.start >= until) flush()
-    batch.push(run)
-    until = Math.max(until, run.end)
+    flush()
+    out.push({ entry, kind: 'entry' })
   }
   flush()
   return out

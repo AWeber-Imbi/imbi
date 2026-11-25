@@ -388,6 +388,23 @@ describe('ConversationTab', () => {
     expect(screen.getByText('Found it.')).toBeInTheDocument()
   })
 
+  it('shows the prompt of a subagent called with string arguments', async () => {
+    const user = userEvent.setup()
+    renderTab('closed', [
+      LOG[0],
+      event(4, 'tool.called', {
+        arguments: 'Find the auth bug',
+        call_id: 'task-1',
+        result: 'Found it.',
+        tool: 'Agent',
+      }),
+      event(5, 'turn', { body: 'fixed' }),
+    ])
+    await user.click(screen.getByRole('radio', { name: 'Verbose' }))
+    await user.click(screen.getByRole('button', { name: /^Subagent/ }))
+    expect(screen.getByText('Find the auth bug')).toBeInTheDocument()
+  })
+
   it('groups subagents that ran at once under one parallel header', async () => {
     const user = userEvent.setup()
     const agent = (seq: number, id: string, description: string) =>

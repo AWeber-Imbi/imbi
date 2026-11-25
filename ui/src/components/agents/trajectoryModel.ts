@@ -2,6 +2,7 @@ import type { TicketEvent } from '@/types'
 
 import {
   isAgentTool,
+  overlapGroups,
   stripHandBack,
   type SubagentUsage,
   usageAgents,
@@ -525,28 +526,22 @@ function batchesOf(
   records: TrajectoryRecord[],
 ): Map<string, TrajectoryRecord[]> {
   const out = new Map<string, TrajectoryRecord[]>()
-  let batch: TrajectoryRecord[] = []
-  let until = -Infinity
-  const endBatch = () => {
-    if (batch.length > 1) out.set(batch[0].id, batch)
-    batch = []
-    until = -Infinity
+  let pending: TrajectoryRecord[] = []
+  const flush = () => {
+    const span = (r: TrajectoryRecord) =>
+      [r.startedAt!, r.endedAt ?? Infinity] as const
+    for (const group of overlapGroups(pending, span))
+      if (group.length > 1) out.set(group[0].id, group)
+    pending = []
   }
   for (const record of records) {
     if (record.kind === 'subtool') continue
-    if (!isAgentCall(record) || record.startedAt === null) {
-      endBatch()
-      continue
-    }
-    if (
-      batch.length &&
-      (record.startedAt >= until || record.request !== batch[0].request)
-    )
-      endBatch()
-    batch.push(record)
-    until = Math.max(until, record.endedAt ?? Infinity)
+    const agent = isAgentCall(record) && record.startedAt !== null
+    if (!agent || (pending.length && record.request !== pending[0].request))
+      flush()
+    if (agent) pending.push(record)
   }
-  endBatch()
+  flush()
   return out
 }
 

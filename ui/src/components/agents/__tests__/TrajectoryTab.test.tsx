@@ -1210,6 +1210,39 @@ describe('TrajectoryTab inspector', () => {
     expect(group('Session cumulative')).toHaveTextContent('321 tok')
   })
 
+  it('shows the cost of a subagent in its Usage tab', async () => {
+    renderTab('closed', [
+      event(1, 'task.created', { title: 'T' }),
+      event(2, 'usage.reported', { message_id: 'm1', tokens_in: 1 }),
+      event(3, 'usage.reported', {
+        cost: 0.02,
+        message_id: 's1',
+        tokens_in: 20,
+      }),
+      event(
+        4,
+        'tool.called',
+        { call_id: 'r1', message_id: 's1', parent_call_id: 'c1', tool: 'Read' },
+        { actor_kind: 'subagent' },
+      ),
+      event(5, 'tool.called', {
+        arguments: {},
+        call_id: 'c1',
+        message_id: 'm1',
+        tool: 'Agent',
+      }),
+    ])
+    await userEvent.click(
+      rows().find((r) => r.getAttribute('data-record') === 'call:c1')!,
+    )
+    await userEvent.click(
+      within(inspector()).getByRole('tab', { name: 'Usage' }),
+    )
+    expect(
+      within(inspector()).getByText('This subagent').parentElement,
+    ).toHaveTextContent('$0.0200')
+  })
+
   it('previews a person in full, with their Markdown', async () => {
     const long = `**Bold** ${'word '.repeat(150)}the end`
     renderTab('closed', [
@@ -1555,6 +1588,27 @@ describe('TrajectoryTab with many rows', () => {
     await new Promise(requestAnimationFrame)
     expect(scrollTo).not.toHaveBeenCalled()
     expect(ledger().scrollTop).toBe(1800)
+  })
+
+  it('moves focus through a batch row with the arrow keys', async () => {
+    const agent = (seq: number, id: string) =>
+      event(seq, 'tool.called', {
+        call_id: id,
+        duration_ms: 3000,
+        message_id: 'm1',
+        tool: 'Agent',
+      })
+    renderTab('closed', [
+      event(1, 'task.created', { title: 'T' }),
+      event(2, 'usage.reported', { message_id: 'm1' }),
+      event(3, 'turn', { body: 'Two', kind: 'text', message_id: 'm1' }),
+      agent(4, 'c1'),
+      agent(5, 'c2'),
+    ])
+    const batch = rows().findIndex((r) => r.hasAttribute('data-batch'))
+    rows()[batch - 1].focus()
+    await userEvent.keyboard('{ArrowDown}{ArrowDown}')
+    expect(document.activeElement).toHaveAttribute('data-record', 'call:c1')
   })
 
   it('moves focus with the arrow keys, Home and End past the rows in view', async () => {
