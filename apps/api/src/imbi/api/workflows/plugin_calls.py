@@ -74,18 +74,26 @@ class PluginCallStore:
         error: str | None = None,
     ) -> None:
         """Close a ``running`` call: ``done`` with ``result``, else
-        ``failed`` with ``error``."""
+        ``failed`` with ``error``.
+
+        ``done`` also replaces ``outcome_unknown``: a repeat can mark the
+        call stale while its finish waits for the database, and the
+        result must stay available by its idempotency key.
+        """
+        status = 'failed' if error else 'done'
         async with self._pool.connection() as conn:
             await conn.execute(
                 'UPDATE workflow_runtime.plugin_step_calls'
                 ' SET status = %s, result = %s, error = %s,'
                 ' finished_at = NOW()'
-                " WHERE id = %s AND status = 'running'",
+                " WHERE id = %s AND (status = 'running'"
+                " OR (status = 'outcome_unknown' AND %s = 'done'))",
                 (
-                    'failed' if error else 'done',
+                    status,
                     None if result is None else pg_json.Jsonb(result),
                     error,
                     call_id,
+                    status,
                 ),
             )
 

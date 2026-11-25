@@ -3477,7 +3477,8 @@ class PluginStepTestCase(EngineTestCase):
         self.assertEqual(
             body['call']['idempotency_key'], f'{run_id}:gather:1:0'
         )
-        self.assertLessEqual(body['time_limit_seconds'], 60)
+        # 90% of the 300 second step limit; imbi-api applies its own.
+        self.assertLessEqual(body['time_limit_seconds'], 270)
 
     async def test_gate_takes_the_named_port(self) -> None:
         self.answers = [self._result(output={'value': 3}, port='Failed')]
@@ -3488,7 +3489,6 @@ class PluginStepTestCase(EngineTestCase):
         self.assertEqual(run['steps']['passed']['status'], 'skipped')
         body = json.loads(self.calls[0].content)
         self.assertEqual(body['project_id'], 'proj-1')
-        self.assertEqual(body['call']['project_id'], 'proj-1')
 
     async def test_unknown_port_fails(self) -> None:
         self.answers = [self._result(output={'value': 3}, port='Maybe')]

@@ -46,9 +46,6 @@ from .documents import (
 )
 from .environments import environments_router
 from .events import events_project_router
-from .integration_workflow_step_choices import (
-    integration_workflow_step_choices_router,
-)
 from .integration_workflow_steps import integration_workflow_steps_router
 from .integrations import integrations_router
 from .link_definitions import link_definitions_router
@@ -140,10 +137,6 @@ organizations_router.include_router(
 )
 organizations_router.include_router(
     integrations_router,
-    prefix='/{org_slug}/integrations',
-)
-organizations_router.include_router(
-    integration_workflow_step_choices_router,
     prefix='/{org_slug}/integrations',
 )
 organizations_router.include_router(

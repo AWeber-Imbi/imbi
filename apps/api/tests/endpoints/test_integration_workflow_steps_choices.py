@@ -10,9 +10,10 @@ from fastapi import testclient
 from apps.api.tests import support
 from imbi.api import models
 from imbi.api.auth import organizations, permissions
-from imbi.api.endpoints import integration_workflow_step_choices as module
+from imbi.api.endpoints import integration_workflow_steps as module
 from imbi.common import graph
 from imbi.common.plugins import base
+from imbi.common.plugins import registry as plugin_registry
 from libraries.common.tests.test_plugins.fixtures import step_plugin
 
 URL = (
@@ -54,8 +55,8 @@ class ChoicesTestCase(support.SharedAppTestCase):
         overrides[permissions.get_current_user] = lambda: self.auth
         overrides[organizations.member_org_id] = lambda: 'org-id'
         self.db = mock.AsyncMock(spec=graph.Graph)
-        self.db.execute.return_value = [{'integration': _integration()}]
         overrides[graph._inject_graph] = lambda: self.db
+        self.integration = _integration()
         self.choices = mock.AsyncMock(
             return_value=[base.Choice(value='prom', label='Prometheus')]
         )
@@ -80,7 +81,12 @@ class ChoicesTestCase(support.SharedAppTestCase):
         )
         for patcher in (
             mock.patch.object(
-                module.integration_workflow_steps.plugin_registry,
+                module.assignments,
+                'org_integrations',
+                mock.AsyncMock(side_effect=lambda *_: {'i': self.integration}),
+            ),
+            mock.patch.object(
+                plugin_registry,
                 'get_plugin',
                 return_value=support.registry_entry(manifest),
             ),
@@ -88,7 +94,7 @@ class ChoicesTestCase(support.SharedAppTestCase):
                 module.lifecycle, 'is_plugin_enabled', return_value=True
             ),
             mock.patch.object(
-                module.credentials,
+                module.common_plugins,
                 'decrypt_integration_credentials',
                 return_value={'token': 'secret'},
             ),
@@ -136,18 +142,14 @@ class ChoicesTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_integration_not_found(self) -> None:
-        self.db.execute.return_value = []
+        self.integration = _integration(slug='other')
         self.assertEqual(self._post().status_code, 404)
 
     def test_capability_off(self) -> None:
-        self.db.execute.return_value = [
-            {
-                'integration': _integration(
-                    capabilities={'workflow-steps': {'enabled': False}}
-                )
-            }
-        ]
-        self.assertEqual(self._post().status_code, 404)
+        self.integration = _integration(
+            capabilities={'workflow-steps': {'enabled': False}}
+        )
+        self.assertEqual(self._post().status_code, 409)
 
     def test_plugin_error(self) -> None:
         self.choices.side_effect = RuntimeError('boom')
@@ -165,7 +167,7 @@ class ChoicesTestCase(support.SharedAppTestCase):
             return []
 
         self.choices.side_effect = slow
-        with mock.patch.object(module, 'TIME_LIMIT_SECONDS', 0.01):
+        with mock.patch.object(module, 'CHOICES_TIMEOUT', 0.01):
             response = self._post()
         self.assertEqual(response.status_code, 502)
         self.assertEqual(

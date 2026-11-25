@@ -95,8 +95,9 @@ LLM_CALL_TIMEOUT = 190.0
 #: Seconds before the engine asks again for the answer of an LLM Call
 #: step that imbi-api still runs.
 LLM_CALL_POLL_SECONDS = 15
-#: The longest call of a plugin step that imbi-api makes (ADR 0032).
-PLUGIN_STEP_TIMEOUT = 60.0
+#: Seconds before the engine asks again for the answer of a plugin step
+#: call that imbi-api still runs (ADR 0032).
+PLUGIN_CALL_POLL_SECONDS = 15
 
 
 class StepError(Exception):
@@ -713,7 +714,8 @@ class Executors:
         )
         poll = int(call.state.get('poll', 0))
         key = f'{call.run_id}:{call.node.id}:{attempt}:{poll}'
-        limit = min(PLUGIN_STEP_TIMEOUT, (call.time_limit or math.inf) * 0.9)
+        # imbi-api also limits each call to its own maximum.
+        limit = call.time_limit * 0.9 if call.time_limit else None
         try:
             found = await self.api.request(
                 'POST',
@@ -736,7 +738,6 @@ class Executors:
                         attempt=call.attempt,
                         idempotency_key=key,
                         state=call.state.get('poll_state', {}),
-                        project_id=project_id,
                     ).model_dump(mode='json'),
                     'time_limit_seconds': limit,
                 },
@@ -748,7 +749,7 @@ class Executors:
             # imbi-api still runs the call with this key: ask again.
             return Outcome(
                 resume_at=_now()
-                + datetime.timedelta(seconds=LLM_CALL_POLL_SECONDS),
+                + datetime.timedelta(seconds=PLUGIN_CALL_POLL_SECONDS),
                 state=call.state,
             )
         result = base.StepResult.model_validate(found)

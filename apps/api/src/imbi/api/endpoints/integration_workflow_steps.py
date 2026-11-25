@@ -22,8 +22,8 @@ from imbi.api.endpoints import _helpers
 from imbi.api.plugins import assignments, lifecycle
 from imbi.common import graph
 from imbi.common import plugins as common_plugins
-from imbi.common.plugins import base, errors
-from imbi.common.plugins import registry as plugin_registry
+from imbi.common.plugins import base
+from imbi.common.workflows import registry as workflow_steps
 
 LOGGER = logging.getLogger(__name__)
 
@@ -86,44 +86,82 @@ def _repeat(row: dict[str, typing.Any]) -> base.StepResult:
             raise _call_error('outcome_unknown')
 
 
-async def _integration(
-    db: graph.Graph, org_slug: str, slug: str
-) -> dict[str, typing.Any]:
-    integrations = await assignments.org_integrations(db, org_slug)
-    found = next(
-        (i for i in integrations.values() if i.get('slug') == slug), None
-    )
-    if found is None:
-        raise fastapi.HTTPException(
-            status_code=404, detail=f'Integration {slug!r} not found'
-        )
-    return found
-
-
-def step_descriptor(
-    plugin_slug: str, step_type: str
-) -> base.WorkflowStepDescriptor:
-    """Return the step ``<plugin>.<name>`` of the Integration plugin.
+async def load_step(
+    db: graph.Graph, org_slug: str, integration_slug: str, step_type: str
+) -> tuple[dict[str, typing.Any], base.WorkflowStepDescriptor]:
+    """Return the Integration and the step ``<plugin>.<name>`` of its
+    plugin, for the run and the choices endpoints.
 
     The type names its plugin, so a node of one plugin cannot run a step
     of the same name with an Integration of another plugin.
+
+    Raises:
+        404: No such active Integration, or its plugin has no such step.
+        409: The plugin or its ``workflow-steps`` capability is off.
+
     """
-    owner, _, name = step_type.partition('.')
-    try:
-        entry = plugin_registry.get_plugin(plugin_slug)
-    except errors.PluginNotFoundError:
-        entry = None
-    capability = entry.manifest.get_capability(CAPABILITY) if entry else None
-    if capability is not None and owner == plugin_slug:
-        handler = typing.cast(
-            'type[base.WorkflowStepsCapability]', capability.handler
+    # ponytail: loads every Integration of the org (inactive ones
+    # excluded) to find one; a single-slug query if orgs get large.
+    integrations = await assignments.org_integrations(db, org_slug)
+    integration = next(
+        (
+            i
+            for i in integrations.values()
+            if i.get('slug') == integration_slug
+        ),
+        None,
+    )
+    if integration is None:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Integration {integration_slug!r} not found',
         )
-        for descriptor in handler.steps():
-            if descriptor.name == name:
-                return descriptor
-    raise fastapi.HTTPException(
-        status_code=404,
-        detail=f'Plugin {plugin_slug!r} has no workflow step {step_type!r}',
+    plugin_slug = str(integration['plugin'])
+    step = workflow_steps.get(step_type)
+    if step is None or step.plugin != plugin_slug or step.descriptor is None:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Plugin {plugin_slug!r} has no workflow step '
+            f'{step_type!r}',
+        )
+    if not (
+        assignments.capability_enabled(integration, CAPABILITY)
+        and await lifecycle.is_plugin_enabled(db, plugin_slug)
+    ):
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=(
+                f'The {CAPABILITY} capability of {integration_slug!r} '
+                'is not enabled'
+            ),
+        )
+    return integration, step.descriptor
+
+
+def plugin_args(
+    integration: dict[str, typing.Any],
+    org_slug: str,
+    project_id: str = '',
+    project_slug: str = '',
+    team_slug: str | None = None,
+) -> tuple[base.PluginContext, dict[str, str]]:
+    """Return the context and the decrypted credentials of a call."""
+    options: dict[str, typing.Any] = (
+        assignments.capability_state(integration, CAPABILITY).get('options')
+        or {}
+    )
+    ctx = base.PluginContext(
+        project_id=project_id,
+        project_slug=project_slug,
+        org_slug=org_slug,
+        team_slug=team_slug,
+        integration_slug=str(integration['slug']),
+        integration_options=integration.get('options') or {},
+        capability_options=options,
+        assignment_options=options,
+    )
+    return ctx, common_plugins.decrypt_integration_credentials(
+        integration.get('encrypted_credentials') or {}
     )
 
 
@@ -198,31 +236,14 @@ async def run_workflow_step(
         raise fastapi.HTTPException(
             status_code=413, detail='The request is larger than 1 MiB'
         )
-    integration = await _integration(db, org_slug, integration_slug)
-    plugin_slug = str(integration['plugin'])
-    descriptor = step_descriptor(plugin_slug, step_type)
-    if not (
-        assignments.capability_enabled(integration, CAPABILITY)
-        and await lifecycle.is_plugin_enabled(db, plugin_slug)
-    ):
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=(
-                f'The {CAPABILITY} capability of {integration_slug!r} '
-                'is not enabled'
-            ),
-        )
+    integration, descriptor = await load_step(
+        db, org_slug, integration_slug, step_type
+    )
     project_slug, team_slug = '', None
     if data.project_id is not None:
-        if not await db.execute(
-            org_auth.PROJECT_IN_ORG_QUERY,
-            {'project_id': data.project_id, 'org_slug': org_slug},
-            ['id'],
-        ):
-            raise fastapi.HTTPException(
-                status_code=404,
-                detail=f'Project {data.project_id!r} not found',
-            )
+        await org_auth.member_project_org_id(
+            org_slug, data.project_id, db, org_id
+        )
         project_slug, team_slug = await _helpers.lookup_project_slugs(
             db, data.project_id
         )
@@ -250,37 +271,101 @@ async def run_workflow_step(
     )
     if not new:
         return _repeat(row)
-    ctx = base.PluginContext(
-        project_id=data.project_id or '',
-        project_slug=project_slug,
-        org_slug=org_slug,
-        team_slug=team_slug,
-        integration_slug=integration_slug,
-        integration_options=integration.get('options') or {},
-        capability_options=assignments.capability_state(
-            integration, CAPABILITY
-        ).get('options')
-        or {},
-    )
-    credentials = common_plugins.decrypt_integration_credentials(
-        integration.get('encrypted_credentials') or {}
+    ctx, credentials = plugin_args(
+        integration, org_slug, data.project_id or '', project_slug, team_slug
     )
     limit = min(CALL_TIMEOUT, data.time_limit_seconds or CALL_TIMEOUT)
     try:
-        try:
-            async with asyncio.timeout(limit):
-                answer = await descriptor.callable(
-                    ctx, credentials, params, data.call
-                )
-        except TimeoutError:
-            raise _call_error('plugin_timeout') from None
-        except Exception:
-            LOGGER.exception('Plugin step %s failed', step_type)
-            raise _call_error('plugin_error') from None
+        async with asyncio.timeout(limit):
+            answer = await descriptor.callable(
+                ctx, credentials, params, data.call
+            )
         result = _result(descriptor, answer)
     except fastapi.HTTPException as e:
-        detail = typing.cast('dict[str, typing.Any]', e.detail)
-        await calls.finish(row['id'], error=str(detail['error']))
+        detail = typing.cast('dict[str, str]', e.detail)
+        await calls.finish(row['id'], error=detail['error'])
         raise
+    except TimeoutError:
+        await calls.finish(row['id'], error='plugin_timeout')
+        raise _call_error('plugin_timeout') from None
+    except Exception:
+        LOGGER.exception('Plugin step %s failed', step_type)
+        await calls.finish(row['id'], error='plugin_error')
+        raise _call_error('plugin_error') from None
     await calls.finish(row['id'], result=result.model_dump(mode='json'))
     return result
+
+
+#: The most choices that a choices call returns.
+MAX_CHOICES = 1000
+#: Seconds that a choices call may take at most.
+CHOICES_TIMEOUT = 10
+
+_CHOICES = pydantic.TypeAdapter(list[base.Choice])
+
+
+class ChoicesRequest(pydantic.BaseModel):
+    """The field to load and the params that the editor has so far."""
+
+    field: str
+    params: dict[str, typing.Any] = {}
+
+
+@integration_workflow_steps_router.post(
+    '/{step_type}/choices',
+    dependencies=[
+        fastapi.Depends(permissions.require_permission('integration:read'))
+    ],
+)
+async def list_choices(
+    org_slug: str,
+    integration_slug: str,
+    step_type: str,
+    data: ChoicesRequest,
+    db: graph.Pool,
+    _: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('workflow:write')),
+    ],
+) -> list[base.Choice]:
+    """Return at most 1000 choices for a field of a plugin step.
+
+    The workflow builder calls this to fill a field that has
+    ``x-imbi-choices``. ``params`` are the values typed so far.
+
+    Raises:
+        400: The field does not have choices.
+        404: No such Integration, or its plugin has no such step.
+        409: The plugin or its ``workflow-steps`` capability is off.
+        502: The plugin failed (``plugin_error``) or did not answer in
+            10 seconds (``plugin_timeout``).
+
+    """
+    integration, descriptor = await load_step(
+        db, org_slug, integration_slug, step_type
+    )
+    if (
+        descriptor.choices is None
+        or data.field not in descriptor.choice_fields
+    ):
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=f'Field {data.field!r} does not have choices',
+        )
+    ctx, credentials = plugin_args(integration, org_slug)
+    try:
+        async with asyncio.timeout(CHOICES_TIMEOUT):
+            result = await descriptor.choices(
+                ctx, credentials, data.field, data.params
+            )
+        choices = _CHOICES.validate_python(result)
+    except TimeoutError:
+        raise fastapi.HTTPException(
+            status_code=502, detail={'error': 'plugin_timeout'}
+        ) from None
+    except Exception:  # The plugin can raise anything.
+        LOGGER.exception('Choices of %s failed', step_type)
+        raise fastapi.HTTPException(
+            status_code=502, detail={'error': 'plugin_error'}
+        ) from None
+    return choices[:MAX_CHOICES]

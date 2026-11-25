@@ -2401,7 +2401,6 @@ class StepCall(pydantic.BaseModel):
     #: The ``state`` of the :class:`StepResult` of the last poll, else
     #: empty.
     state: dict[str, typing.Any] = {}
-    project_id: str | None = None
 
 
 class StepResult(pydantic.BaseModel):
@@ -2444,9 +2443,6 @@ WorkflowChoicesCallable = collections.abc.Callable[
 #: The ``json_schema_extra`` key that marks a params field whose choices
 #: the descriptor's ``choices`` callable gives.
 CHOICES_KEY = 'x-imbi-choices'
-#: The ``json_schema_extra`` key that names the fields a choices field
-#: depends on.
-DEPENDS_ON_KEY = 'x-imbi-depends-on'
 
 
 class WorkflowStepDescriptor(pydantic.BaseModel):

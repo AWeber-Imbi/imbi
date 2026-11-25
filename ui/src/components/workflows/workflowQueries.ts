@@ -145,14 +145,13 @@ export function useStepChoices(
         { field, params },
         signal,
       ),
-    queryKey: [
-      'workflow-step-choices',
+    queryKey: queryKeys.workflowStepChoices(
       orgSlug,
       integration,
       step,
       field,
       params,
-    ],
+    ),
     retry: false,
     select: (rows) => rows.map((c) => ({ label: c.label, value: c.value })),
     staleTime: 60_000,

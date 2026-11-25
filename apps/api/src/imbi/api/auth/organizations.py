@@ -147,7 +147,7 @@ async def check_member(
 #: The id of the organization in the path, for a caller that is a member.
 MemberOrgId = typing.Annotated[str, fastapi.Depends(member_org_id)]
 
-PROJECT_IN_ORG_QUERY: typing.LiteralString = """
+_PROJECT_IN_ORG_QUERY: typing.LiteralString = """
 MATCH (p:Project {{id: {project_id}}})
       -[:OWNED_BY]->(:Team)
       -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
@@ -177,7 +177,7 @@ async def member_project_org_id(
 
     """
     if not await db.execute(
-        PROJECT_IN_ORG_QUERY,
+        _PROJECT_IN_ORG_QUERY,
         {'project_id': project_id, 'org_slug': org_slug},
         ['id'],
     ):

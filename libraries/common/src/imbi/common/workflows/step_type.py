@@ -7,6 +7,8 @@ from collections import abc
 
 import pydantic
 
+from imbi.common.plugins import base
+
 Category = typing.Literal['trigger', 'logic', 'action']
 
 
@@ -51,6 +53,8 @@ class StepType:
     icon: str | None = None
     #: Seconds between the polls of a plugin step that polls.
     poll_seconds: int | None = None
+    #: The declaration of a plugin step, for imbi-api to run it.
+    descriptor: base.WorkflowStepDescriptor | None = None
 
     def ports_for(self, params: dict[str, typing.Any]) -> list[str]:
         """Return the output ports of a node of this type.

@@ -3911,32 +3911,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/organizations/{org_slug}/integrations/{integration_slug}/workflow-steps/{step_type}/choices": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * List Choices
-         * @description Return at most 1000 choices for a field of a plugin step.
-         *
-         *     Raises:
-         *         400: The field does not have choices.
-         *         404: Integration or step not found, or workflow steps are off.
-         *         502: The plugin failed (``plugin_error``) or did not answer in
-         *             10 seconds (``plugin_timeout``).
-         */
-        post: operations["list_choices_api_organizations__org_slug__integrations__integration_slug__workflow_steps__step_type__choices_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/organizations/{org_slug}/integrations/{integration_slug}/workflow-steps/{step_type}/run": {
         parameters: {
             query?: never;
@@ -3970,6 +3944,36 @@ export interface paths {
          *         504: The plugin did not answer in time.
          */
         post: operations["run_workflow_step_api_organizations__org_slug__integrations__integration_slug__workflow_steps__step_type__run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/integrations/{integration_slug}/workflow-steps/{step_type}/choices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * List Choices
+         * @description Return at most 1000 choices for a field of a plugin step.
+         *
+         *     The workflow builder calls this to fill a field that has
+         *     ``x-imbi-choices``. ``params`` are the values typed so far.
+         *
+         *     Raises:
+         *         400: The field does not have choices.
+         *         404: No such Integration, or its plugin has no such step.
+         *         409: The plugin or its ``workflow-steps`` capability is off.
+         *         502: The plugin failed (``plugin_error``) or did not answer in
+         *             10 seconds (``plugin_timeout``).
+         */
+        post: operations["list_choices_api_organizations__org_slug__integrations__integration_slug__workflow_steps__step_type__choices_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -22715,8 +22719,6 @@ export interface components {
             state: {
                 [key: string]: unknown;
             };
-            /** Project Id */
-            project_id?: string | null;
         };
         /**
          * StepResult
@@ -30612,43 +30614,6 @@ export interface operations {
             };
         };
     };
-    list_choices_api_organizations__org_slug__integrations__integration_slug__workflow_steps__step_type__choices_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                integration_slug: string;
-                step_type: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ChoicesRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Choice"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     run_workflow_step_api_organizations__org_slug__integrations__integration_slug__workflow_steps__step_type__run_post: {
         parameters: {
             query?: never;
@@ -30675,6 +30640,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StepResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_choices_api_organizations__org_slug__integrations__integration_slug__workflow_steps__step_type__choices_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                integration_slug: string;
+                step_type: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChoicesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Choice"][];
                 };
             };
             /** @description Validation Error */

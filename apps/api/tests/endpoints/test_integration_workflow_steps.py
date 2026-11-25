@@ -22,6 +22,7 @@ from imbi.api.plugins import assignments, lifecycle
 from imbi.common import graph
 from imbi.common.plugins import base, errors
 from imbi.common.plugins import registry as plugin_registry
+from imbi.common.workflows import registry as workflow_steps
 from libraries.common.tests.test_plugins.fixtures import step_plugin
 
 PERMISSION = 'integration:workflow-step:run'
@@ -155,6 +156,9 @@ class RunStepTestCase(support.SharedAppAsyncTestCase):
         patcher = mock.patch.object(step_plugin, name, handler)
         patcher.start()
         self.addCleanup(patcher.stop)
+        # The registry resolves the callables once for each plugin.
+        workflow_steps._plugin_types.cache_clear()
+        self.addCleanup(workflow_steps._plugin_types.cache_clear)
         return handler
 
     def _error(self, response: httpx.Response) -> typing.Any:
