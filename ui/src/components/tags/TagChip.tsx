@@ -2,14 +2,15 @@ import type { ReactNode } from 'react'
 
 import { LabelChip } from '@/components/ui/label-chip'
 
-interface ChipTag {
+/** The fields of an org tag that a chip shows. */
+export interface ChipTag {
   color?: null | string
   name: string
   slug: string
 }
 
 /** A tag as a label chip in the tag color, or neutral with no color. */
-export function AgentTagChip({
+export function TagChip({
   children,
   tag,
 }: {
@@ -27,12 +28,12 @@ export function AgentTagChip({
   )
 }
 
-export function AgentTags({ tags }: { tags: ChipTag[] }) {
+export function TagChips({ tags }: { tags: ChipTag[] }) {
   if (tags.length === 0) return <span className="text-tertiary text-sm">—</span>
   return (
     <div className="flex flex-wrap gap-1.5">
       {tags.map((t) => (
-        <AgentTagChip key={t.slug} tag={t} />
+        <TagChip key={t.slug} tag={t} />
       ))}
     </div>
   )

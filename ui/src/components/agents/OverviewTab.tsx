@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { listTeams } from '@/api/endpoints'
+import { TagPicker } from '@/components/tags/TagPicker'
 import { Combobox } from '@/components/ui/combobox'
 import { IconPicker } from '@/components/ui/icon-picker'
 import { IconUpload } from '@/components/ui/icon-upload'
@@ -14,7 +15,6 @@ import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
 import { queryKeys } from '@/lib/queryKeys'
 
 import type { AgentDraft } from './agentDraft'
-import { AgentTagPicker } from './AgentTagPicker'
 
 interface OverviewTabProps {
   draft: AgentDraft
@@ -143,7 +143,7 @@ export function OverviewTab({
           />
         </Field>
         <Field label="Tags">
-          <AgentTagPicker
+          <TagPicker
             onChange={(tags) => onChange({ tags })}
             orgSlug={orgSlug}
             value={draft.tags}

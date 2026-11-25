@@ -5,7 +5,7 @@ import { GitMerge, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { deleteTag, listTags, mergeTag, patchTag } from '@/api/endpoints'
-import { AgentTagChip } from '@/components/agents/AgentTagChip'
+import { TagChip } from '@/components/tags/TagChip'
 import { AdminTable } from '@/components/ui/admin-table'
 import { Button } from '@/components/ui/button'
 import {
@@ -150,7 +150,7 @@ export function TagManagement() {
           {
             header: 'Tag',
             key: 'name',
-            render: (t) => <AgentTagChip tag={t} />,
+            render: (t) => <TagChip tag={t} />,
           },
           {
             header: 'Slug',
