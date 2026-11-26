@@ -161,9 +161,10 @@ The runner has these parts:
   and the tool policy apply to them. The relay keeps one session for
   each server. When the server drops it, the failed call returns an
   error and is not sent again, and the next call opens a new session.
-  Each call has the time limit, stop, and size limit of the Imbi relay.
-  The relay removes each secret value from a result, and the result and
-  the tool descriptions reach the model in `<untrusted>` tags. A server
+  Each call has the time limit and stop of the Imbi relay. The tool
+  descriptions, schemas, and results reach the model as the server sent
+  them, as from a server that the CLI connects to itself, with each
+  secret value removed. A server
   that fails a check, whose secret Imbi refuses, or that does not
   answer is left out with a task warning, and the CLI does not get it
   either.

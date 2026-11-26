@@ -157,10 +157,10 @@ Every call goes through the `PreToolUse` hook. The model's `Bash`
 cannot reach the relay, because the CLI talks to the relay over the SDK
 control channel and not over a socket.
 
-The relay forwards tools only, with the safeguards of the Imbi relay,
-the relay for Imbi's own MCP server. Each call has a timeout, a limit
-on result size, and ends when the task stops. The relay removes each
-secret value from a result, in case the server echoes a request header.
+The relay forwards tools only. Each call has the timeout of the Imbi
+relay, the relay for Imbi's own MCP server, and ends when the task
+stops. The relay removes each secret value from the tool descriptions,
+schemas, and results, in case the server echoes a request header.
 
 The relay does not forward resources or prompts. The model cannot read
 MCP resources today: `ListMcpResourcesTool` and `ReadMcpResourceTool`
@@ -169,13 +169,19 @@ denies a built-in tool that is not on the list. An MCP prompt runs only
 when a person types it, and no person types in an agent task. The relay
 can forward resources later, together with those two tools.
 
-Each result goes to the model in `<untrusted>` tags. The harness puts
-text from outside Imbi in these tags, and the task prompt tells the
-model that their content is data and not instructions. A relayed
-result comes from a third-party server, and the relay has it in hand,
-so the relay wraps it, as the Imbi relay wraps its results. The CLI
-passes the results of a server that it connects to itself straight to
-the model, and the harness does not change them.
+A relayed server looks to the model like the same server that the CLI
+connects to itself. Its tool descriptions, schemas, and results reach
+the model as the server sent them, with each secret value removed. The
+relay does not put them in `<untrusted>` tags, as the Imbi relay does
+with its results, and does not cut a result at a size limit of its
+own: the CLI applies its MCP output limit to an in-process server too.
+The relay passes the server's content blocks to the SDK bridge, which
+passes text and images, turns a resource or resource link into text,
+and drops audio and binary resources. The model gets a result's
+`content` only, as from a server that the CLI connects to: a result
+with only structured content has no output. An image whose data holds
+a secret value becomes a text notice, because redacted data is not an
+image.
 
 The relay keeps one session per server for the life of the task. If
 the server drops the session, the relay opens a new one but does not
@@ -208,6 +214,10 @@ checked with Claude Agent SDK 0.2.164 and Claude Code 2.1.292:
   only the server of the first plugin.
 - The `init` message reports an `http` plugin server as `pending`. The
   status changes later.
+- The CLI applies `MAX_MCP_OUTPUT_TOKENS` (25,000 tokens by default) to
+  the results of an in-process server as to those of any other MCP
+  server. A larger result is saved to a file and the model gets a
+  preview, or, when it has an image, is cut.
 
 ## Consequences
 
@@ -226,8 +236,9 @@ checked with Claude Agent SDK 0.2.164 and Claude Code 2.1.292:
 - An agent can turn off any server of a plugin, including a default
   plugin, and keep the plugin's skills, hooks, and commands.
 - A person can see every server of a plugin before enabling it.
-- Results of relayed servers reach the model in `<untrusted>` tags.
-  Results of a plugin server that the CLI connects to itself do not.
+- The tool descriptions and results of a relayed server reach the
+  model as the server sent them, with secret values removed, like those
+  of a plugin server that the CLI connects to itself.
 - A revoked grant does not stop a running task that uses a static
   secret. A credential with an expiry works until its next refresh,
   which is denied.

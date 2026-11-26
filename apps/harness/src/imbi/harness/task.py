@@ -1786,7 +1786,7 @@ class TaskRun:
             relayed.config,
             outbound.Headers(_headers(relayed.config), secrets),
             proxy_env=self.proxy_env,
-            scrub=self.redactor.text,
+            redactor=self.redactor,
             stopped=lambda: self.stopped,
             notice=self.recorder.notice,
         )

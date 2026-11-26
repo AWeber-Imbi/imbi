@@ -1,9 +1,9 @@
 """The safeguards of text and MCP tool calls from outside Imbi (plan
 P7 and section 6.7), shared by the Imbi relay and the plugin relay.
 
-Each relayed call has a time limit, ends when the task stops, and has
-a size limit. Its result goes to the model inside ``<untrusted>``
-tags.
+Each relayed call has a time limit and ends when the task stops. A
+result of the Imbi relay also has a size limit and goes to the model
+inside ``<untrusted>`` tags (:func:`reply`).
 """
 
 import asyncio
@@ -22,7 +22,8 @@ if typing.TYPE_CHECKING:
     from collections import abc
 
 CALL_TIMEOUT = 120.0
-#: The most result text, in characters, that the model gets.
+#: The most result text, in characters, that the model gets from the
+#: Imbi relay.
 RESULT_LIMIT = 256 * 1024
 #: The CLI's limit on an MCP tool name.
 TOOL_NAME = re.compile(r'[A-Za-z0-9_-]{1,64}')
