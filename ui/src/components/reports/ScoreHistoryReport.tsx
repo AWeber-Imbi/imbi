@@ -255,9 +255,10 @@ function GlobalEventFeed({
   }
   const head = 'text-overline text-tertiary uppercase'
   return (
-    <div>
+    <div aria-label="Score change events" role="table">
       <div
         className="border-tertiary grid items-center gap-3 border-b px-3 py-2"
+        role="row"
         style={FEED_GRID}
       >
         <SortHeader as="div" className={head} column="when" sort={sort}>
@@ -291,10 +292,11 @@ function GlobalEventFeed({
           <div
             className="border-tertiary duration-fast hover:bg-secondary grid items-center gap-3 border-b px-3 py-3 transition-colors last:border-0"
             key={i}
+            role="row"
             style={FEED_GRID}
           >
             {/* Timestamp */}
-            <div>
+            <div role="cell">
               <div className="text-primary text-xs font-medium">
                 {fmtRel(e.timestamp)}
               </div>
@@ -304,7 +306,7 @@ function GlobalEventFeed({
             </div>
 
             {/* Project + reason */}
-            <div className="min-w-0">
+            <div className="min-w-0" role="cell">
               <div className="mb-1 flex flex-wrap items-center gap-1.5">
                 <ReasonChip reason={reason} />
                 <span className="text-primary max-w-50 truncate text-[12px] font-medium">
@@ -315,7 +317,10 @@ function GlobalEventFeed({
             </div>
 
             {/* Score */}
-            <div className="flex items-center justify-end gap-1.5 font-mono tabular-nums">
+            <div
+              className="flex items-center justify-end gap-1.5 font-mono tabular-nums"
+              role="cell"
+            >
               {e.previous_score != null && (
                 <span className="text-tertiary text-xs">
                   {Math.round(e.previous_score)}
@@ -327,7 +332,7 @@ function GlobalEventFeed({
               </span>
             </div>
             {/* Delta */}
-            <div className="flex items-center justify-end">
+            <div className="flex items-center justify-end" role="cell">
               {delta != null && <DeltaBadge delta={delta} />}
             </div>
           </div>

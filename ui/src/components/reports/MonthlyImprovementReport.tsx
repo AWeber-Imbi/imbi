@@ -168,10 +168,15 @@ export function MonthlyImprovementReport() {
       </div>
 
       {/* Table */}
-      <div className="border-tertiary bg-primary overflow-hidden rounded-lg border">
+      <div
+        aria-label="Monthly improvement by team"
+        className="border-tertiary bg-primary overflow-hidden rounded-lg border"
+        role="table"
+      >
         {/* Table header */}
         <div
           className="border-tertiary bg-secondary grid border-b"
+          role="row"
           style={COL_GRID}
         >
           <SortHeader
@@ -216,18 +221,22 @@ export function MonthlyImprovementReport() {
               <div
                 className={`border-tertiary hover:bg-secondary grid items-center transition-colors last:border-0 ${i === sorted.length - 1 ? 'border-0' : 'border-b'}`}
                 key={row.key}
+                role="row"
                 style={COL_GRID}
               >
-                <div className="text-primary px-5 py-3.5 text-[13px]">
+                <div
+                  className="text-primary px-5 py-3.5 text-[13px]"
+                  role="cell"
+                >
                   <span className="text-tertiary mr-2 tabular-nums">
                     {i + 1}.
                   </span>
                   {row.name}
                 </div>
-                <div className="px-5 py-3.5 text-right">
+                <div className="px-5 py-3.5 text-right" role="cell">
                   <ImprovementPill value={row.improvement} />
                 </div>
-                <div className="px-5 py-3.5 text-right">
+                <div className="px-5 py-3.5 text-right" role="cell">
                   {row.current_avg_score != null ? (
                     <ScorePill score={row.current_avg_score} />
                   ) : (
@@ -242,15 +251,19 @@ export function MonthlyImprovementReport() {
             {/* Org-wide summary row */}
             <div
               className="border-tertiary bg-secondary grid items-center border-t"
+              role="row"
               style={COL_GRID}
             >
-              <div className="text-primary px-5 py-4 text-[13px] font-medium tracking-wide uppercase">
+              <div
+                className="text-primary px-5 py-4 text-[13px] font-medium tracking-wide uppercase"
+                role="cell"
+              >
                 {orgName} wide
               </div>
-              <div className="px-5 py-4 text-right">
+              <div className="px-5 py-4 text-right" role="cell">
                 <ImprovementPill value={orgWide.improvement} />
               </div>
-              <div className="px-5 py-4 text-right">
+              <div className="px-5 py-4 text-right" role="cell">
                 {orgWide.avg_score != null ? (
                   <ScorePill score={orgWide.avg_score} />
                 ) : (

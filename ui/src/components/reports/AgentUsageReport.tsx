@@ -330,7 +330,7 @@ function UsageTable({
   const accessors = {
     agent: (r: UsageRow) => nameOf(r.agent_id),
     cache: (r: UsageRow) => cacheHit(r),
-    cost: (r: UsageRow) => r.cost,
+    cost: (r: UsageRow) => Number(r.cost),
     tasks: (r: UsageRow) => r.tasks,
     tokensIn: (r: UsageRow) => inputTokens(r),
     tokensOut: (r: UsageRow) => r.tokens_out,

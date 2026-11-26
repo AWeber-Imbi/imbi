@@ -66,9 +66,6 @@ export function DocumentReadershipReport() {
     staleTime: 60_000,
   })
 
-  // Server order (by mode) until a header is clicked.
-  const { sorted, ...sort } = useSort(data ?? [], ACCESSORS)
-
   const active = MODES.find((m) => m.id === mode) ?? MODES[0]
   // 'never-read' rows have no reads by definition, so the read columns
   // would be a column of zeroes.
@@ -101,68 +98,83 @@ export function DocumentReadershipReport() {
               : 'No documents match this view yet.'}
           </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="border-tertiary text-tertiary border-b text-left">
-              <tr>
-                <SortHeader
-                  className="px-4 py-2 font-normal"
-                  column="title"
-                  sort={sort}
-                >
-                  Document
-                </SortHeader>
-                <SortHeader
-                  className="px-4 py-2 font-normal"
-                  column="lastRead"
-                  sort={sort}
-                >
-                  Last read
-                </SortHeader>
-                {showCounts && (
-                  <>
-                    <SortHeader
-                      className="px-4 py-2 text-right font-normal"
-                      column="readers"
-                      sort={sort}
-                    >
-                      Readers
-                    </SortHeader>
-                    <SortHeader
-                      className="px-4 py-2 text-right font-normal"
-                      column="views"
-                      sort={sort}
-                    >
-                      Views
-                    </SortHeader>
-                  </>
-                )}
-              </tr>
-            </thead>
-            <tbody className="text-secondary">
-              {sorted.map((row) => (
-                <tr className="border-tertiary border-b" key={row.document_id}>
-                  <td className="truncate px-4 py-2">
-                    {row.title || row.document_id}
-                  </td>
-                  <td className="px-4 py-2">
-                    {row.last_read_at ? relativeShort(row.last_read_at) : '—'}
-                  </td>
-                  {showCounts && (
-                    <>
-                      <td className="px-4 py-2 text-right tabular-nums">
-                        {row.readers}
-                      </td>
-                      <td className="px-4 py-2 text-right tabular-nums">
-                        {row.views}
-                      </td>
-                    </>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          // Keyed by mode so a new mode drops the column sort.
+          <ReadershipTable key={mode} rows={data} showCounts={showCounts} />
         )}
       </div>
     </div>
+  )
+}
+
+/** Server order (by mode) until a header is clicked. */
+function ReadershipTable({
+  rows,
+  showCounts,
+}: {
+  rows: DocumentReadSummary[]
+  showCounts: boolean
+}) {
+  const { sorted, ...sort } = useSort(rows, ACCESSORS)
+  return (
+    <table className="w-full text-sm">
+      <thead className="border-tertiary text-tertiary border-b text-left">
+        <tr>
+          <SortHeader
+            className="px-4 py-2 font-normal"
+            column="title"
+            sort={sort}
+          >
+            Document
+          </SortHeader>
+          <SortHeader
+            className="px-4 py-2 font-normal"
+            column="lastRead"
+            sort={sort}
+          >
+            Last read
+          </SortHeader>
+          {showCounts && (
+            <>
+              <SortHeader
+                className="px-4 py-2 text-right font-normal"
+                column="readers"
+                sort={sort}
+              >
+                Readers
+              </SortHeader>
+              <SortHeader
+                className="px-4 py-2 text-right font-normal"
+                column="views"
+                sort={sort}
+              >
+                Views
+              </SortHeader>
+            </>
+          )}
+        </tr>
+      </thead>
+      <tbody className="text-secondary">
+        {sorted.map((row) => (
+          <tr className="border-tertiary border-b" key={row.document_id}>
+            <td className="truncate px-4 py-2">
+              {row.title || row.document_id}
+            </td>
+            <td className="px-4 py-2">
+              {row.last_read_at ? relativeShort(row.last_read_at) : '—'}
+            </td>
+            {showCounts && (
+              <>
+                <td className="px-4 py-2 text-right tabular-nums">
+                  {row.readers}
+                </td>
+                <td className="px-4 py-2 text-right tabular-nums">
+                  {row.views}
+                </td>
+              </>
+            )}
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }
