@@ -305,7 +305,7 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
                     {'key': 'start', 'title': 'Start', 'type': 'Manual run'},
                     {'key': 'ship', 'title': 'Ship', 'type': 'Deploy'},
                 ],
-                'connections': ['start -> ship'],
+                'connections': ['start:0 -> ship'],
             },
         )
         # Not seeded in the test graph: the packaged prompt.

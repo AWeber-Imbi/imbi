@@ -745,15 +745,17 @@ def _outline(
             'title': node['title'],
             'type': step.label if step else node['type'],
         }
-        # An agent step, or a trigger that filters on an agent.
-        if agent_id := node.get('params', {}).get('agent_id'):
+        # An agent step, or a trigger that filters on an agent. A
+        # value that is not a string is a validation issue, not an agent.
+        agent_id = node.get('params', {}).get('agent_id')
+        if isinstance(agent_id, str) and agent_id:
             outline['agent'] = agent_id
         steps.append(outline)
     return {
         'name': name,
         'steps': steps,
         'connections': [
-            f'{keys.get(e["source"])} -> {keys.get(e["target"])}'
+            f'{keys.get(e["source"])}:{e["port"]} -> {keys.get(e["target"])}'
             for e in wf_graph.get('edges', [])
         ],
     }
@@ -803,6 +805,8 @@ async def _describe(
         _Description(description=current),
         auth,
     )
+    if result.degraded:
+        return current
     text = ' '.join(result.data.description.split())
     return text[:MAX_DESCRIPTION_LENGTH] or current
 
@@ -978,7 +982,9 @@ async def save_workflow(
     """Save a new version. The active version does not change.
 
     A model writes the description again when the name, the steps, or
-    the connections change.
+    the connections change, or when the description is empty. The
+    description does not change when no model answers or the workflow
+    has no steps.
 
     The version is stored with its validation issues.
 

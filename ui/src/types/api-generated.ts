@@ -6710,7 +6710,9 @@ export interface paths {
          * @description Save a new version. The active version does not change.
          *
          *     A model writes the description again when the name, the steps, or
-         *     the connections change.
+         *     the connections change, or when the description is empty. The
+         *     description does not change when no model answers or the workflow
+         *     has no steps.
          *
          *     The version is stored with its validation issues.
          *
