@@ -35,11 +35,6 @@ LOGGER = logging.getLogger(__name__)
 _TICKET = re.compile(r'^/tickets/(?P<org>[^/]+)/(?P<short_id>[A-Za-z]+-\d+)')
 _PROJECT = re.compile(r'^/projects/(?P<project_id>[^/]+)')
 
-#: Slack fetches the image itself, so it must be on a public host.
-LOGO_URL = (
-    'https://raw.githubusercontent.com/AWeber-Imbi/imbi/main/'
-    'ui/public/icons/pwa-192x192.png'
-)
 #: The prefix of the card buttons' ``action_id``.  The buttons open a
 #: URL; Slack still sends ``block_actions``, which the bot only acks.
 ACTION_PREFIX = 'unfurl_'
@@ -288,8 +283,9 @@ def _entity(
                 'title': {'text': title},
                 'display_type': display_type,
                 'display_id': display_id,
+                # No product_icon: Slack shows the app icon, and a
+                # product_icon adds a second logo with the app badge.
                 'product_name': 'Imbi',
-                'product_icon': {'url': LOGO_URL, 'alt_text': 'Imbi'},
             },
             **payload,
             'actions': {'primary_actions': buttons},

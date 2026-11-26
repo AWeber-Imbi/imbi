@@ -132,7 +132,6 @@ class TicketEntityTests(SettingsTestCase):
                 'display_type': 'Bug',
                 'display_id': 'T-12',
                 'product_name': 'Imbi',
-                'product_icon': {'url': unfurl.LOGO_URL, 'alt_text': 'Imbi'},
             },
             payload['attributes'],
         )
