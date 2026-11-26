@@ -620,14 +620,7 @@ async def execute_deployment_state_check(
     reader; skipped means it matches.
     """
     del client
-    if await deployments.deployment_state_is_current(db, project_id):
-        return _skip(ctx, 'deployment-state-check', 'Stored state is current.')
-    ctx.log.record(
-        'succeeded',
-        'deployment-state-check',
-        'Stored deployment state differs from the reader.',
-    )
-    return 'succeeded'
+    return await _deployment_state(db, project_id, ctx=ctx, dry_run=True)
 
 
 async def execute_deployment_state_backfill(
@@ -643,15 +636,29 @@ async def execute_deployment_state_backfill(
     stored state was already current.
     """
     del client
-    if await deployments.deployment_state_is_current(db, project_id):
-        return _skip(
-            ctx, 'deployment-state-backfill', 'Stored state is current.'
-        )
-    await deployments.refresh_deployment_state(db, project_id)
+    return await _deployment_state(db, project_id, ctx=ctx, dry_run=False)
+
+
+async def _deployment_state(
+    db: graph.Graph,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
+    dry_run: bool,
+) -> ExecuteOutcome:
+    action = (
+        'deployment-state-check' if dry_run else 'deployment-state-backfill'
+    )
+    if not await deployments.sync_deployment_state(
+        db, project_id, dry_run=dry_run
+    ):
+        return _skip(ctx, action, 'Stored state is current.')
     ctx.log.record(
         'succeeded',
-        'deployment-state-backfill',
-        'Stored the current and latest deployment of each environment.',
+        action,
+        'Stored deployment state differs from the reader.'
+        if dry_run
+        else 'Stored the current and latest deployment of each environment.',
     )
     return 'succeeded'
 

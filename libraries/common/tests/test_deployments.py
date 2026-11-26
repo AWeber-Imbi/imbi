@@ -1105,10 +1105,9 @@ class DeploymentStateTests(DeploymentNodeTestCase):
             {ENV: {'current': first.id, 'latest': second.id}},
             await self.stored(),
         )
-        self.assertTrue(
-            await deployments.deployment_state_is_current(
-                self.graph, PROJECT_ID
-            )
+        # Nothing changed since the last write, so nothing to store.
+        self.assertFalse(
+            await deployments.sync_deployment_state(self.graph, PROJECT_ID)
         )
 
     async def test_moved_deployment_leaves_its_old_environment(self) -> None:
@@ -1151,8 +1150,9 @@ class DeploymentStateTests(DeploymentNodeTestCase):
             await self.stored(),
         )
 
-    async def test_is_current_detects_a_write_without_refresh(self) -> None:
-        await self.upsert(status='success', external_run_id='1')
+    async def test_sync_detects_a_write_without_refresh(self) -> None:
+        written = await self.upsert(status='success', external_run_id='1')
+        assert written is not None
         await self.graph.execute(
             'MATCH (p:Project)<-[:BELONGS_TO]-(d:Deployment)'
             " WHERE p.id = {project_id} SET d.status = 'failed'"
@@ -1160,16 +1160,23 @@ class DeploymentStateTests(DeploymentNodeTestCase):
             {'project_id': PROJECT_ID},
             ['id'],
         )
-        self.assertFalse(
-            await deployments.deployment_state_is_current(
-                self.graph, PROJECT_ID
+        before = await self.stored()
+        # A dry run reports the difference and writes nothing.
+        self.assertTrue(
+            await deployments.sync_deployment_state(
+                self.graph, PROJECT_ID, dry_run=True
             )
         )
-        await deployments.refresh_deployment_state(self.graph, PROJECT_ID)
+        self.assertEqual(before, await self.stored())
         self.assertTrue(
-            await deployments.deployment_state_is_current(
-                self.graph, PROJECT_ID
-            )
+            await deployments.sync_deployment_state(self.graph, PROJECT_ID)
+        )
+        self.assertEqual(
+            {ENV: {'current': None, 'latest': written.id}},
+            await self.stored(),
+        )
+        self.assertFalse(
+            await deployments.sync_deployment_state(self.graph, PROJECT_ID)
         )
 
 

@@ -642,15 +642,11 @@ def _reader_params(project_ids: abc.Sequence[str]) -> dict[str, typing.Any]:
 
 
 def _combine_states(
-    latest_rows: list[dict[str, typing.Any]],
-    current_rows: list[dict[str, typing.Any]],
-    orphan_rows: list[dict[str, typing.Any]],
+    *rows: list[dict[str, typing.Any]],
 ) -> list[EnvironmentReleaseState]:
-    """Combine the three reads into one state per environment."""
-    latest, current, orphans = (
-        _by_environment(rows)
-        for rows in (latest_rows, current_rows, orphan_rows)
-    )
+    """Combine the rows of :data:`_READER_QUERIES`, in that order, into
+    one state per environment."""
+    latest, current, orphans = (_by_environment(r) for r in rows)
     out: list[EnvironmentReleaseState] = []
     for key in latest.keys() | orphans.keys():
         serving = current.get(key)
@@ -689,76 +685,74 @@ RETURN p.id AS id
 """
 
 
-async def refresh_deployment_state(db: graph.Graph, project_id: str) -> None:
+async def sync_deployment_state(
+    db: graph.Graph, project_id: str, *, dry_run: bool = False
+) -> bool:
     """Store the answer of :func:`current_and_latest_by_project` for
-    *project_id* on the project.
+    *project_id* on the project, and return whether it changed.
 
     ``Project.deployment_state`` is JSON text:
     ``{env_slug: {"current": id | null, "latest": id}}``, the ids of the
     two attempts the reader picks for each environment.  A reader can
     then fetch those nodes by id rather than scan every ``Deployment``
-    of the project (issue #998).
+    of the project (issue #998).  The keys only group the ids: a reader
+    takes each environment from the node's ``TARGETS`` edge, because an
+    environment delete or slug change does not rewrite the keys.
 
-    Call it after each write that can change the reader's answer.  The
-    read and the write occur in one transaction under a lock on the
-    project, so refreshes of one project occur one at a time and the
-    last one reads every write committed before it.
+    The read, the comparison with the stored state, and the write occur
+    in one transaction under a lock on the project, so calls for one
+    project occur one at a time and the last one reads every write
+    committed before it.  Nothing is written when the state is
+    unchanged, or with *dry_run*.
+    """
 
-    A failure is logged, not raised: the write that called this has
+    async def work(execute: graph.CypherExecute) -> bool:
+        rows = await execute(
+            'MATCH (p:Project) WHERE p.id = {project_id}'
+            ' RETURN p.deployment_state AS state',
+            {'project_id': project_id},
+            ['state'],
+        )
+        params = _reader_params([project_id])
+        state = {
+            str(entry.environment.get('slug') or ''): {
+                'current': entry.current.id if entry.current else None,
+                'latest': entry.latest.id,
+            }
+            for entry in _combine_states(
+                *[
+                    await execute(query, params, _READER_COLUMNS)
+                    for query in _READER_QUERIES
+                ]
+            )
+        }
+        if rows and _decode(rows[0]['state']) == state:
+            return False
+        if not dry_run:
+            await execute(
+                _SET_STATE_QUERY,
+                {'project_id': project_id, 'state': json.dumps(state)},
+                ['id'],
+            )
+        return True
+
+    return await db.locked(f'deployment-state:{project_id}', work)
+
+
+async def refresh_deployment_state(db: graph.Graph, project_id: str) -> None:
+    """:func:`sync_deployment_state` for the writers.
+
+    Call it after each write that can change the reader's answer.  A
+    failure is logged, not raised: the write that called this has
     already committed, and a stale state must not turn that write into
     an error.
     """
-
-    async def work(execute: graph.CypherExecute) -> None:
-        state = await _compute_state(execute, project_id)
-        await execute(
-            _SET_STATE_QUERY,
-            {'project_id': project_id, 'state': json.dumps(state)},
-            ['id'],
-        )
-
     try:
-        await db.locked(f'deployment-state:{project_id}', work)
+        await sync_deployment_state(db, project_id)
     except Exception:
         LOGGER.exception(
             'Could not refresh the deployment state of project %s', project_id
         )
-
-
-type DeploymentState = dict[str, dict[str, str | None]]
-
-
-async def _compute_state(
-    execute: graph.CypherExecute, project_id: str
-) -> DeploymentState:
-    """Run the reader for one project and keep the ids it picks."""
-    params = _reader_params([project_id])
-    rows = [
-        await execute(query, params, _READER_COLUMNS)
-        for query in _READER_QUERIES
-    ]
-    return {
-        str(entry.environment.get('slug') or ''): {
-            'current': entry.current.id if entry.current else None,
-            'latest': entry.latest.id,
-        }
-        for entry in _combine_states(*rows)
-    }
-
-
-async def deployment_state_is_current(
-    db: graph.Graph, project_id: str
-) -> bool:
-    """Does the stored ``Project.deployment_state`` match the reader?"""
-    rows = await db.execute(
-        'MATCH (p:Project) WHERE p.id = {project_id}'
-        ' RETURN p.deployment_state AS state',
-        {'project_id': project_id},
-        ['state'],
-    )
-    raw = graph.parse_agtype(rows[0]['state']) if rows else None
-    stored = json.loads(raw) if isinstance(raw, str) else None
-    return stored == await _compute_state(db.execute, project_id)
 
 
 def started_at(deployment: ProjectDeployment) -> datetime.datetime:
