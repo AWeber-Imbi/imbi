@@ -946,6 +946,50 @@ describe('Tasks', () => {
     await waitFor(() => expect(window.location.search).toBe('?state=closed'))
   })
 
+  it('clears the filters on Back to the first entry without them', async () => {
+    renderAt('/tickets')
+    await screen.findByText('Busy')
+    act(() => {
+      window.history.pushState(
+        { idx: 1, key: 'next' },
+        '',
+        '/tickets?state=closed',
+      )
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
+    await waitFor(() =>
+      expect(screen.queryByText('Busy')).not.toBeInTheDocument(),
+    )
+    act(() => {
+      window.history.pushState({ idx: 0 }, '', '/tickets')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
+    expect(await screen.findByText('Busy')).toBeInTheDocument()
+    expect(window.location.search).toBe('')
+  })
+
+  it('clears the filters when session storage cannot save them', async () => {
+    const full = {
+      getItem: () => '?state=closed',
+      setItem: vi.fn(() => {
+        throw new Error('QuotaExceededError')
+      }),
+    } as unknown as Storage
+    const spy = vi.spyOn(window, 'sessionStorage', 'get').mockReturnValue(full)
+    try {
+      renderAt('/tickets?state=closed')
+      await screen.findByText('Old work')
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Remove the State filter' }),
+      )
+      expect(await screen.findByText('Busy')).toBeInTheDocument()
+      expect(window.location.search).toBe('')
+      expect(full.setItem).toHaveBeenCalled()
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('keeps the filters when a task opens', async () => {
     renderAt('/tickets?state=blocked')
     fireEvent.click(await screen.findByText('Apply the fix'))
