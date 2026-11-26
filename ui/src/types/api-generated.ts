@@ -24188,6 +24188,8 @@ export interface components {
              * @default []
              */
             agent_ids: string[];
+            /** Created By */
+            created_by: string;
             /**
              * Created At
              * Format: date-time
