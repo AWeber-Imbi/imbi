@@ -66,7 +66,7 @@ import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { useTeams } from '@/hooks/useOrgResources'
 import { queryKeys } from '@/lib/queryKeys'
-import { storage } from '@/lib/storage'
+import { session, storage } from '@/lib/storage'
 import { cn } from '@/lib/utils'
 import type {
   TaskHighlight,
@@ -123,6 +123,9 @@ const SHORT_ID = /^T-\d+$/
 
 /** The schema params of any ticket: only its `filterable` is read. */
 const ANY_TICKET = { label: [], priority: 'normal', type: 'task' }
+
+/** The inbox search text, kept for the browser tab as the filters are. */
+const STORED_TEXT = 'imbi.tickets.search'
 
 /**
  * Tickets: the inbox in a resizable pane and the ticket in the URL
@@ -417,7 +420,12 @@ function TaskInbox({
   orgSlug: string
   selected?: string
 }) {
-  const [text, setText] = useState('')
+  const [text, setText] = useStoredState<string>(
+    STORED_TEXT,
+    '',
+    (raw) => (typeof raw === 'string' ? raw : undefined),
+    session,
+  )
   const [filters, setFilters] = useTaskFilters()
   const [creating, setCreating] = useState(false)
   const [collapsed, setCollapsed] = useStoredState<InboxGroupId[]>(

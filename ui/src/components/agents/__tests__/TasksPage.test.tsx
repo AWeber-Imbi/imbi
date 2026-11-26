@@ -1,4 +1,4 @@
-import { Route, Routes } from 'react-router-dom'
+import { Link, Route, Routes } from 'react-router-dom'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -181,6 +181,7 @@ function serve(tasks: TicketListItem[]) {
 describe('Tasks', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    window.sessionStorage.clear()
     vi.stubGlobal(
       'IntersectionObserver',
       class {
@@ -760,6 +761,34 @@ describe('Tasks', () => {
     await screen.findByText('Waiting longest')
     expect(screen.getByText('Apply the fix')).toBeInTheDocument()
     expect(screen.queryByText('Busy')).not.toBeInTheDocument()
+  })
+
+  it('keeps the filters and search text after a visit to another page', async () => {
+    window.history.pushState({}, '', '/tickets?state=closed')
+    render(
+      <>
+        <Link to="/elsewhere">Away</Link>
+        <Link to="/tickets">Back to tickets</Link>
+        <Routes>
+          <Route
+            element={<TasksPage />}
+            path="/tickets/:slug?/:action?/:tab?"
+          />
+          <Route element={<p>Elsewhere</p>} path="/elsewhere" />
+        </Routes>
+      </>,
+    )
+    await screen.findByText('Old work')
+    fireEvent.change(screen.getByLabelText('Filter tickets'), {
+      target: { value: 'billing' },
+    })
+    fireEvent.click(screen.getByRole('link', { name: 'Away' }))
+    await screen.findByText('Elsewhere')
+    fireEvent.click(screen.getByRole('link', { name: 'Back to tickets' }))
+    expect(await screen.findByLabelText('Filter tickets')).toHaveValue(
+      'billing',
+    )
+    await waitFor(() => expect(window.location.search).toBe('?state=closed'))
   })
 
   it('reads the filters from the address', async () => {

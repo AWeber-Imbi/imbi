@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 
 import { useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 
+import { session } from '@/lib/storage'
 import type { TicketStatus } from '@/types'
 
 /** The assignee value of "my tasks": the API's `mine`. */
@@ -102,24 +103,27 @@ export function toggleFieldValue(values: string[], value: string): string[] {
 
 const KEYS = ['agent', 'assignee', 'filter', 'label', 'state', 'team']
 
+const STORED_FILTERS = 'imbi.tickets.filters'
+
 /**
  * The inbox filters, which live in the address, so a link, Back, and
  * Forward all change them. A link or a tab in the task pane goes to a
- * path with no filter query; that keeps the last filters and puts them
+ * path with no filter query; that keeps the last filters (in session
+ * storage, so a link from another page keeps them too) and puts them
  * back in the address. Back or Forward to such a path clears them.
  */
 export function useTaskFilters() {
   const { hash, pathname, search, state } = useLocation()
   const navigate = useNavigate()
   const navigation = useNavigationType()
-  const last = useRef(readFilters(search))
   const inAddress = hasFilters(search) || navigation === 'POP'
   const filters = useMemo(
-    () => (inAddress ? readFilters(search) : last.current),
+    () =>
+      readFilters(inAddress ? search : (session.getItem(STORED_FILTERS) ?? '')),
     [inAddress, search],
   )
   useEffect(() => {
-    last.current = filters
+    session.setItem(STORED_FILTERS, writeFilters('', filters))
   }, [filters])
   const go = useCallback(
     (next: TaskFilters) =>
@@ -134,7 +138,7 @@ export function useTaskFilters() {
   }, [filters, go, inAddress])
   const setFilters = useCallback(
     (next: TaskFilters) => {
-      last.current = next
+      session.setItem(STORED_FILTERS, writeFilters('', next))
       go(next)
     },
     [go],
