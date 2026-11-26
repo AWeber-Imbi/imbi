@@ -715,6 +715,7 @@ export function WorkflowEditor({
                 onChange={change}
                 orgSlug={orgSlug}
                 readOnly={readOnly}
+                workflow={current}
               />
             )}
           </Panel>
