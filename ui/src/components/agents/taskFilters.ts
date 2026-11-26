@@ -1,11 +1,6 @@
-import { useCallback, useContext, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 
-import {
-  UNSAFE_NavigationContext as NavigationContext,
-  useLocation,
-  useNavigate,
-  useNavigationType,
-} from 'react-router-dom'
+import { useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 
 import { session } from '@/lib/storage'
 import type { TicketStatus } from '@/types'
@@ -111,52 +106,31 @@ const KEYS = ['agent', 'assignee', 'filter', 'label', 'state', 'team']
 const STORED_FILTERS = 'imbi.tickets.filters'
 
 /**
- * The state of the filters for one router (one page load): the last
- * filters, and whether the router went past its first entry.
- */
-interface FilterMemory {
-  filters: string
-  navigated: boolean
-}
-
-const memories = new WeakMap<object, FilterMemory>()
-
-/**
  * The inbox filters, which live in the address, so a link, Back, and
- * Forward all change them. A link or a tab in the task pane goes to a
- * path with no filter query; that keeps the last filters (in session
- * storage, so a link from another page keeps them too) and puts them
- * back in the address. Back or Forward to such a path clears them. A
- * direct visit is also a POP, so it keeps the last filters only while
- * the router has not left its first entry (key `default`). The last
- * filters also stay in memory, so they apply when storage is blocked.
+ * Forward all change them. A link, a tab in the task pane, or a page
+ * load goes to a path with no filter query; that keeps the last filters
+ * (in session storage, so a link from another page or a reload keeps
+ * them too) and puts them back in the address. Back or Forward to such
+ * a path clears them. A page load is also a POP, but its location key
+ * is `default`.
  */
 export function useTaskFilters() {
   const { hash, key, pathname, search, state } = useLocation()
   const navigate = useNavigate()
   const navigation = useNavigationType()
-  const { navigator } = useContext(NavigationContext)
-  let memory = memories.get(navigator)
-  if (!memory) {
-    memory = {
-      filters: session.getItem(STORED_FILTERS) ?? '',
-      navigated: false,
-    }
-    memories.set(navigator, memory)
-  }
-  if (key !== 'default') memory.navigated = true
+  // ponytail: Back to the first entry of the page load also has key
+  // `default`, so it keeps the last filters instead of clearing them.
   const inAddress =
-    hasFilters(search) || (navigation === 'POP' && memory.navigated)
+    hasFilters(search) || (navigation === 'POP' && key !== 'default')
   const filters = useMemo(
-    () => readFilters(inAddress ? search : memory.filters),
-    [inAddress, memory, search],
+    () =>
+      readFilters(inAddress ? search : (session.getItem(STORED_FILTERS) ?? '')),
+    [inAddress, search],
   )
   const remember = useCallback(
-    (next: TaskFilters) => {
-      memory.filters = writeFilters('', next)
-      session.setItem(STORED_FILTERS, memory.filters)
-    },
-    [memory],
+    (next: TaskFilters) =>
+      session.setItem(STORED_FILTERS, writeFilters('', next)),
+    [],
   )
   useEffect(() => remember(filters), [filters, remember])
   const go = useCallback(
