@@ -110,13 +110,16 @@ const STORED_FILTERS = 'imbi.tickets.filters'
  * Forward all change them. A link or a tab in the task pane goes to a
  * path with no filter query; that keeps the last filters (in session
  * storage, so a link from another page keeps them too) and puts them
- * back in the address. Back or Forward to such a path clears them.
+ * back in the address. Back or Forward to such a path clears them. A
+ * direct visit is also a POP, but its entry has no router key
+ * (`default`), so it keeps the last filters as a link does.
  */
 export function useTaskFilters() {
-  const { hash, pathname, search, state } = useLocation()
+  const { hash, key, pathname, search, state } = useLocation()
   const navigate = useNavigate()
   const navigation = useNavigationType()
-  const inAddress = hasFilters(search) || navigation === 'POP'
+  const inAddress =
+    hasFilters(search) || (navigation === 'POP' && key !== 'default')
   const filters = useMemo(
     () =>
       readFilters(inAddress ? search : (session.getItem(STORED_FILTERS) ?? '')),

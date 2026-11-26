@@ -931,11 +931,19 @@ describe('Tasks', () => {
     renderAt('/tickets?state=closed')
     await screen.findByText('Old work')
     act(() => {
-      window.history.pushState({}, '', '/tickets')
+      window.history.pushState({ idx: 1, key: 'back' }, '', '/tickets')
       window.dispatchEvent(new PopStateEvent('popstate'))
     })
     expect(await screen.findByText('Busy')).toBeInTheDocument()
     expect(window.location.search).toBe('')
+  })
+
+  it('keeps the last filters on a direct visit with no filter query', async () => {
+    window.sessionStorage.setItem('imbi.tickets.filters', '?state=closed')
+    renderAt('/tickets')
+    await screen.findByText('Old work')
+    expect(screen.queryByText('Busy')).not.toBeInTheDocument()
+    await waitFor(() => expect(window.location.search).toBe('?state=closed'))
   })
 
   it('keeps the filters when a task opens', async () => {
