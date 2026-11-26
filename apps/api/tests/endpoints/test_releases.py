@@ -1174,6 +1174,16 @@ class PatchReleaseTestCase(_ReleasesTestBase):
 class DeploymentEdgeTestCase(_ReleasesTestBase):
     """POST / GET deployment edges."""
 
+    def setUp(self) -> None:
+        super().setUp()
+        # These tests queue exact ``db.execute`` results; the deployment
+        # state refresh is covered in libraries/common.
+        refresh = mock.patch.object(
+            deployment_nodes, 'refresh_deployment_state', mock.AsyncMock()
+        )
+        refresh.start()
+        self.addCleanup(refresh.stop)
+
     def _env(self, slug: str = 'production') -> dict[str, typing.Any]:
         return {'slug': slug, 'name': slug.title()}
 
@@ -1629,6 +1639,16 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
 
 class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
     """Direct coverage for ``append_deployment_event`` dedupe semantics."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        # These tests queue exact ``db.execute`` results; the deployment
+        # state refresh is covered in libraries/common.
+        refresh = mock.patch.object(
+            deployment_nodes, 'refresh_deployment_state', mock.AsyncMock()
+        )
+        refresh.start()
+        self.addCleanup(refresh.stop)
 
     def _call(
         self,

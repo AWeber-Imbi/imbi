@@ -1302,6 +1302,69 @@ class ActivityLoggingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual('Retired', _rows(ctx)[0].detail['label'])
 
 
+class ExecuteDeploymentStateTests(unittest.IsolatedAsyncioTestCase):
+    """The deployment-state check/backfill pair (issue #998)."""
+
+    async def _run(
+        self, execute: typing.Any, *, current: bool
+    ) -> tuple[str, log.MaintenanceContext, mock.AsyncMock]:
+        ctx = _ctx()
+        refresh = mock.AsyncMock()
+        with (
+            mock.patch(
+                'imbi.common.deployments.deployment_state_is_current',
+                mock.AsyncMock(return_value=current),
+            ),
+            mock.patch(
+                'imbi.common.deployments.refresh_deployment_state', refresh
+            ),
+        ):
+            outcome = await execute(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
+            )
+        return outcome, ctx, refresh
+
+    async def test_check_skips_a_current_state(self) -> None:
+        outcome, ctx, refresh = await self._run(
+            operations.execute_deployment_state_check, current=True
+        )
+        self.assertEqual('skipped', outcome)
+        self.assertEqual(
+            [('deployment-state-check', 'skipped')], _actions(ctx)
+        )
+        refresh.assert_not_awaited()
+
+    async def test_check_reports_a_stale_state_and_writes_nothing(
+        self,
+    ) -> None:
+        outcome, ctx, refresh = await self._run(
+            operations.execute_deployment_state_check, current=False
+        )
+        self.assertEqual('succeeded', outcome)
+        self.assertEqual(
+            [('deployment-state-check', 'succeeded')], _actions(ctx)
+        )
+        refresh.assert_not_awaited()
+
+    async def test_backfill_skips_a_current_state(self) -> None:
+        outcome, _ctx_, refresh = await self._run(
+            operations.execute_deployment_state_backfill, current=True
+        )
+        self.assertEqual('skipped', outcome)
+        refresh.assert_not_awaited()
+
+    async def test_backfill_refreshes_a_stale_state(self) -> None:
+        outcome, ctx, refresh = await self._run(
+            operations.execute_deployment_state_backfill, current=False
+        )
+        self.assertEqual('succeeded', outcome)
+        self.assertEqual(
+            [('deployment-state-backfill', 'succeeded')], _actions(ctx)
+        )
+        refresh.assert_awaited_once()
+        self.assertEqual('p1', refresh.await_args.args[1])
+
+
 class ExecuteCommitPushedAtRepairTests(unittest.IsolatedAsyncioTestCase):
     """The re-stamped ``pushed_at`` check/repair pair."""
 

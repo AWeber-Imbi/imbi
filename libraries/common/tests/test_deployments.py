@@ -9,6 +9,7 @@ connection would not exercise.
 
 import asyncio
 import datetime
+import json
 import typing
 import unittest
 
@@ -1075,6 +1076,101 @@ class OriginTests(DeploymentNodeTestCase):
             self.graph, project_id=PROJECT_ID, cutoff=NOW
         )
         self.assertEqual('promote', stuck[0].origin)
+
+
+class DeploymentStateTests(DeploymentNodeTestCase):
+    """``Project.deployment_state`` follows every write (issue #998)."""
+
+    async def stored(self) -> dict[str, typing.Any] | None:
+        rows = await self.graph.execute(
+            'MATCH (p:Project) WHERE p.id = {project_id}'
+            ' RETURN p.deployment_state AS state',
+            {'project_id': PROJECT_ID},
+            ['state'],
+        )
+        raw = graph.parse_agtype(rows[0]['state'])
+        return json.loads(raw) if isinstance(raw, str) else None
+
+    async def test_upsert_stores_current_and_latest(self) -> None:
+        first = await self.upsert(
+            status='success', external_run_id='1', timestamp=NOW
+        )
+        second = await self.upsert(
+            status='failed',
+            external_run_id='2',
+            timestamp=NOW + datetime.timedelta(hours=1),
+        )
+        assert first is not None and second is not None
+        self.assertEqual(
+            {ENV: {'current': first.id, 'latest': second.id}},
+            await self.stored(),
+        )
+        self.assertTrue(
+            await deployments.deployment_state_is_current(
+                self.graph, PROJECT_ID
+            )
+        )
+
+    async def test_moved_deployment_leaves_its_old_environment(self) -> None:
+        await self.graph.execute(
+            """
+            MATCH (o:Organization {{slug: {org}}})
+            MERGE (e:Environment {{slug: {env}}})
+            MERGE (e)-[:BELONGS_TO]->(o)
+            RETURN e.slug AS slug
+            """,
+            {'org': ORG, 'env': OTHER_ENV},
+            ['slug'],
+        )
+        await self.upsert(status='success', external_run_id='1')
+        moved = await self.upsert(
+            status='success', external_run_id='1', env_slug=OTHER_ENV
+        )
+        assert moved is not None
+        self.assertEqual(
+            {OTHER_ENV: {'current': moved.id, 'latest': moved.id}},
+            await self.stored(),
+        )
+
+    async def test_close_in_flight_refreshes(self) -> None:
+        started = await self.upsert(status='in_progress', external_run_id='1')
+        assert started is not None
+        self.assertEqual(
+            {ENV: {'current': None, 'latest': started.id}},
+            await self.stored(),
+        )
+        await deployments.close_in_flight(
+            self.graph,
+            project_id=PROJECT_ID,
+            release_id=RELEASE_ID,
+            env_slug=ENV,
+            status='success',
+        )
+        self.assertEqual(
+            {ENV: {'current': started.id, 'latest': started.id}},
+            await self.stored(),
+        )
+
+    async def test_is_current_detects_a_write_without_refresh(self) -> None:
+        await self.upsert(status='success', external_run_id='1')
+        await self.graph.execute(
+            'MATCH (p:Project)<-[:BELONGS_TO]-(d:Deployment)'
+            " WHERE p.id = {project_id} SET d.status = 'failed'"
+            ' RETURN d.id AS id',
+            {'project_id': PROJECT_ID},
+            ['id'],
+        )
+        self.assertFalse(
+            await deployments.deployment_state_is_current(
+                self.graph, PROJECT_ID
+            )
+        )
+        await deployments.refresh_deployment_state(self.graph, PROJECT_ID)
+        self.assertTrue(
+            await deployments.deployment_state_is_current(
+                self.graph, PROJECT_ID
+            )
+        )
 
 
 class FieldsTests(DeploymentNodeTestCase):

@@ -27,6 +27,8 @@ MaintenanceSlug = typing.Literal[
     'deployment-resync',
     'deployment-sweep',
     'deployment-status-repair',
+    'deployment-state-check',
+    'deployment-state-backfill',
     'commit-pushed-at-check',
     'commit-pushed-at-repair',
     'opslog-backfill',
@@ -188,6 +190,34 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             pause_key=None,
             enumerate=operations.enumerate_all_projects,
             execute=operations.execute_deployment_status_repair,
+        ),
+        OperationDefinition(
+            slug='deployment-state-check',
+            label='Report Stale Deployment State (dry run)',
+            description=(
+                'Count the projects whose stored deployment state -- the '
+                'current and latest deployment of each environment, '
+                'which the projects list reads -- differs from what the '
+                'Deployment nodes say now. Changes nothing. Succeeded '
+                'means the project differs.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_all_projects,
+            execute=operations.execute_deployment_state_check,
+        ),
+        OperationDefinition(
+            slug='deployment-state-backfill',
+            label='Backfill Deployment State',
+            description=(
+                'Store the current and latest deployment of each '
+                'environment on every project whose stored state is '
+                'missing or stale. Every deployment write keeps the state '
+                'current after this has run once. Reads only the graph, '
+                'so it makes no API calls. Safe to re-run.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_all_projects,
+            execute=operations.execute_deployment_state_backfill,
         ),
         OperationDefinition(
             slug='commit-pushed-at-check',

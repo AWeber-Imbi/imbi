@@ -288,6 +288,9 @@ async def upsert_deployment(
     if not rows:
         return None
     node_id = str(graph.parse_agtype(rows[0]['id']))
+    # Also on a noop: ``unchanged`` does not compare the environment, so
+    # a replay can still move the deployment to another one.
+    await refresh_deployment_state(db, project_id)
     if graph.parse_agtype(rows[0]['prior_created']) is None:
         return UpsertResult(node_id, 'created')
     if graph.parse_agtype(rows[0]['unchanged']):
@@ -345,6 +348,8 @@ class ProjectDeployment(typing.NamedTuple):
     #: attempt closed late, e.g. by the stuck-deployment sweep, has a new
     #: timestamp but an old start.
     started_at: datetime.datetime | None = None
+    #: The node's ``id``.
+    id: str | None = None
 
 
 _BY_PROJECT_QUERY: typing.Final[typing.LiteralString] = """
@@ -608,18 +613,43 @@ async def current_and_latest_by_project(
     """
     if not project_ids:
         return []
-    params: dict[str, typing.Any] = {
+    params = _reader_params(project_ids)
+    return _combine_states(
+        *await asyncio.gather(
+            *(
+                db.execute(query, params, _READER_COLUMNS)
+                for query in _READER_QUERIES
+            )
+        )
+    )
+
+
+_READER_COLUMNS: typing.Final = ['project_id', 'env', 'release', 'deployment']
+#: The three reads of :func:`current_and_latest_by_project`, in the
+#: order :func:`_combine_states` takes their rows.
+_READER_QUERIES: typing.Final = (
+    _released_query('any'),
+    _released_query('success'),
+    _IN_FLIGHT_UNRELEASED_QUERY,
+)
+
+
+def _reader_params(project_ids: abc.Sequence[str]) -> dict[str, typing.Any]:
+    return {
         'project_ids': list(project_ids),
         'in_flight': list(IN_FLIGHT_STATUSES),
     }
-    columns = ['project_id', 'env', 'release', 'deployment']
+
+
+def _combine_states(
+    latest_rows: list[dict[str, typing.Any]],
+    current_rows: list[dict[str, typing.Any]],
+    orphan_rows: list[dict[str, typing.Any]],
+) -> list[EnvironmentReleaseState]:
+    """Combine the three reads into one state per environment."""
     latest, current, orphans = (
         _by_environment(rows)
-        for rows in await asyncio.gather(
-            db.execute(_released_query('any'), params, columns),
-            db.execute(_released_query('success'), params, columns),
-            db.execute(_IN_FLIGHT_UNRELEASED_QUERY, params, columns),
-        )
+        for rows in (latest_rows, current_rows, orphan_rows)
     )
     out: list[EnvironmentReleaseState] = []
     for key in latest.keys() | orphans.keys():
@@ -650,6 +680,85 @@ async def current_and_latest_by_project(
             )
         )
     return out
+
+
+_SET_STATE_QUERY: typing.Final[typing.LiteralString] = """
+MATCH (p:Project) WHERE p.id = {project_id}
+SET p.deployment_state = {state}
+RETURN p.id AS id
+"""
+
+
+async def refresh_deployment_state(db: graph.Graph, project_id: str) -> None:
+    """Store the answer of :func:`current_and_latest_by_project` for
+    *project_id* on the project.
+
+    ``Project.deployment_state`` is JSON text:
+    ``{env_slug: {"current": id | null, "latest": id}}``, the ids of the
+    two attempts the reader picks for each environment.  A reader can
+    then fetch those nodes by id rather than scan every ``Deployment``
+    of the project (issue #998).
+
+    Call it after each write that can change the reader's answer.  The
+    read and the write occur in one transaction under a lock on the
+    project, so refreshes of one project occur one at a time and the
+    last one reads every write committed before it.
+
+    A failure is logged, not raised: the write that called this has
+    already committed, and a stale state must not turn that write into
+    an error.
+    """
+
+    async def work(execute: graph.CypherExecute) -> None:
+        state = await _compute_state(execute, project_id)
+        await execute(
+            _SET_STATE_QUERY,
+            {'project_id': project_id, 'state': json.dumps(state)},
+            ['id'],
+        )
+
+    try:
+        await db.locked(f'deployment-state:{project_id}', work)
+    except Exception:
+        LOGGER.exception(
+            'Could not refresh the deployment state of project %s', project_id
+        )
+
+
+type DeploymentState = dict[str, dict[str, str | None]]
+
+
+async def _compute_state(
+    execute: graph.CypherExecute, project_id: str
+) -> DeploymentState:
+    """Run the reader for one project and keep the ids it picks."""
+    params = _reader_params([project_id])
+    rows = [
+        await execute(query, params, _READER_COLUMNS)
+        for query in _READER_QUERIES
+    ]
+    return {
+        str(entry.environment.get('slug') or ''): {
+            'current': entry.current.id if entry.current else None,
+            'latest': entry.latest.id,
+        }
+        for entry in _combine_states(*rows)
+    }
+
+
+async def deployment_state_is_current(
+    db: graph.Graph, project_id: str
+) -> bool:
+    """Does the stored ``Project.deployment_state`` match the reader?"""
+    rows = await db.execute(
+        'MATCH (p:Project) WHERE p.id = {project_id}'
+        ' RETURN p.deployment_state AS state',
+        {'project_id': project_id},
+        ['state'],
+    )
+    raw = graph.parse_agtype(rows[0]['state']) if rows else None
+    stored = json.loads(raw) if isinstance(raw, str) else None
+    return stored == await _compute_state(db.execute, project_id)
 
 
 def started_at(deployment: ProjectDeployment) -> datetime.datetime:
@@ -821,6 +930,7 @@ def _to_project_deployments(
                 typing.cast('dict[str, typing.Any] | None', release),
                 event,
                 started,
+                str(props['id']) if props.get('id') else None,
             )
         )
     return out
@@ -914,6 +1024,8 @@ async def close_in_flight(
         },
         ['id'],
     )
+    if rows:
+        await refresh_deployment_state(db, project_id)
     return [str(graph.parse_agtype(row['id'])) for row in rows]
 
 
@@ -1048,6 +1160,8 @@ async def attach_release(
         },
         ['id'],
     )
+    if rows:
+        await refresh_deployment_state(db, project_id)
     return bool(rows)
 
 

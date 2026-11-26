@@ -29,7 +29,7 @@ from imbi.api import cves
 from imbi.api.auth import permissions, principals
 from imbi.api.maintenance import log
 from imbi.api.scoring import queue as score_queue
-from imbi.common import clickhouse, graph, iggy
+from imbi.common import clickhouse, deployments, graph, iggy
 from imbi.common import models as common_models
 from imbi.common.plugins.errors import PluginRateLimited
 
@@ -603,6 +603,55 @@ async def _commit_pushed_at_repair(
         repaired=summary.repaired,
         largest_shift_seconds=summary.largest_shift_seconds,
         dry_run=dry_run,
+    )
+    return 'succeeded'
+
+
+async def execute_deployment_state_check(
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
+) -> ExecuteOutcome:
+    """Report a project whose stored deployment state is stale.
+
+    Writes nothing.  Succeeded means the stored state differs from the
+    reader; skipped means it matches.
+    """
+    del client
+    if await deployments.deployment_state_is_current(db, project_id):
+        return _skip(ctx, 'deployment-state-check', 'Stored state is current.')
+    ctx.log.record(
+        'succeeded',
+        'deployment-state-check',
+        'Stored deployment state differs from the reader.',
+    )
+    return 'succeeded'
+
+
+async def execute_deployment_state_backfill(
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
+) -> ExecuteOutcome:
+    """Store the reader's answer on a project whose state is stale.
+
+    Reads only the graph, so it costs no API calls.  Skipped means the
+    stored state was already current.
+    """
+    del client
+    if await deployments.deployment_state_is_current(db, project_id):
+        return _skip(
+            ctx, 'deployment-state-backfill', 'Stored state is current.'
+        )
+    await deployments.refresh_deployment_state(db, project_id)
+    ctx.log.record(
+        'succeeded',
+        'deployment-state-backfill',
+        'Stored the current and latest deployment of each environment.',
     )
     return 'succeeded'
 

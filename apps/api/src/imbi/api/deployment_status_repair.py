@@ -42,7 +42,7 @@ import datetime
 import logging
 import typing
 
-from imbi.common import graph
+from imbi.common import deployments, graph
 
 LOGGER = logging.getLogger(__name__)
 
@@ -175,4 +175,6 @@ async def repair_project(
                 node_id,
                 project_id,
             )
+    if repaired:
+        await deployments.refresh_deployment_state(db, project_id)
     return RepairSummary(examined, repaired, unrepairable)
