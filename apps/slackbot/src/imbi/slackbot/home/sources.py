@@ -13,7 +13,6 @@ lock per key makes sure that only one pod fills a key at a time.
 from __future__ import annotations
 
 import asyncio
-import collections
 import contextvars
 import dataclasses
 import logging
@@ -49,7 +48,6 @@ NOTICE_TTL = 300
 INCIDENTS_TTL = 60
 ADVISORIES_TTL = 600
 DRIFT_TTL = 300
-TREND_TTL = 3600
 #: A shared cache holds data that the API returned to another user. A
 #: source reads it only when the user has the permission of its route.
 _SHARED_CACHE_PERMISSIONS = frozenset(
@@ -59,7 +57,6 @@ _SHARED_CACHE_PERMISSIONS = frozenset(
 SECTION_CACHES: dict[str, tuple[str, ...]] = {
     'needs_attention': ('incidents', 'advisories'),
     'release_drift': ('drift',),
-    'my_projects': ('incidents', 'advisories', 'trend'),
 }
 
 
@@ -405,24 +402,6 @@ class Sources:
         found = await _fan_out(one(p) for p in projects)
         return [d for d in found if d]
 
-    async def _trends(self) -> dict[str, Row]:
-        """The 7-day score trend of each team project, by id."""
-        if 'project:read' not in self.permissions:
-            return {}
-        projects: list[Row] = await self.get('team_projects')
-
-        async def one(project: Row) -> Row:
-            path = f'{self.base}/projects/{project["id"]}/score/trend'
-            trend: Row = await cached(
-                self._key('trend', project['id']),
-                TREND_TTL,
-                lambda: _json_or(self.client, path, {}, days=7),
-            )
-            return trend
-
-        found = await _fan_out(one(p) for p in projects)
-        return {p['id']: t for p, t in zip(projects, found, strict=True)}
-
     async def _agent_tickets(self) -> list[Row]:
         """The user's agent tickets that run, are paused, or wait."""
         groups = ('running', 'paused', 'queued')
@@ -516,39 +495,6 @@ class Sources:
     async def _section_release_drift(self) -> Row:
         drift: list[Row] = await self.get('drift')
         return {'projects': drift}
-
-    async def _section_my_projects(self) -> Row:
-        projects, trends, incidents, advisories = await asyncio.gather(
-            self.get('team_projects'),
-            self.optional('trends', {}),
-            self.optional('incidents', []),
-            self.optional('advisories', []),
-        )
-        open_incidents = collections.Counter(
-            i['project_id'] for i in incidents
-        )
-        severities: dict[str, collections.Counter[str]] = (
-            collections.defaultdict(collections.Counter)
-        )
-        for row in advisories:
-            for advisory in row['advisories']:
-                severity = (advisory.get('severity') or '').lower()
-                severities[row['project_id']][severity] += 1
-        return {
-            'projects': [
-                {
-                    'id': p['id'],
-                    'name': p['name'],
-                    'team': p['team']['name'],
-                    'score': p.get('score'),
-                    'delta': dig(trends, p['id'], 'delta'),
-                    'incidents': open_incidents[p['id']],
-                    'critical': severities[p['id']]['critical'],
-                    'high': severities[p['id']]['high'],
-                }
-                for p in projects
-            ]
-        }
 
     async def _section_agent_activity(self) -> Row:
         tickets, agents = await asyncio.gather(

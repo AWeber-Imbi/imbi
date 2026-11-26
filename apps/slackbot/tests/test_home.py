@@ -171,21 +171,6 @@ def full_sections(n: int) -> dict[str, typing.Any]:
                 for i in r
             ]
         },
-        'my_projects': {
-            'projects': [
-                {
-                    'id': f'p{i}',
-                    'name': f'proj-{i}',
-                    'team': 'Platform',
-                    'score': 90 - i,
-                    'delta': -4 if i == 1 else 2,
-                    'incidents': 1 if i == 0 else 0,
-                    'critical': 0,
-                    'high': 0,
-                }
-                for i in r
-            ]
-        },
         'agent_activity': {
             'tickets': [
                 {
@@ -294,7 +279,6 @@ class RenderSnapshotTests(helpers.TestCase):
             },
             'merged_not_deployed': {'prs': []},
             'release_drift': {'projects': []},
-            'my_projects': {'projects': []},
             'agent_activity': {'tickets': []},
             'document_comments': {'comments': []},
         }
@@ -333,7 +317,7 @@ class RenderSnapshotTests(helpers.TestCase):
         )
         self.check('collapsed', view)
         # Header (4) + 2 blocks per section + footer.
-        self.assertEqual(4 + 2 * 8 + 1, len(view['blocks']))
+        self.assertEqual(4 + 2 * 7 + 1, len(view['blocks']))
         self.assertTrue(
             all(
                 b['accessory']['action_id'].endswith(':expand')
@@ -353,7 +337,7 @@ class RenderSnapshotTests(helpers.TestCase):
             '[button:home:release_drift:retry]',
             lines,
         )
-        self.assertTrue(any('My projects' in line for line in lines))
+        self.assertTrue(any('Agent activity' in line for line in lines))
 
     def test_multi_org_user(self) -> None:
         other = {'slug': 'beta', 'name': 'Beta'}
@@ -430,8 +414,11 @@ class BlockBudgetTests(helpers.TestCase):
         # Needs attention keeps its 10 items; the last sections lose
         # theirs and say how many more there are.
         self.assertIn('+40 more', ''.join(lines[first : first + 25]))
+        # Each section has 10 items and max_items is 10, so any
+        # "+N more" in the last section comes from the cut.
         self.assertTrue(
-            any('+10 more' in line for line in lines[-6:]), lines[-6:]
+            any(re.search(r'\+\d+ more', line) for line in lines[-6:]),
+            lines[-6:],
         )
 
     def test_merged_not_deployed_links_to_the_report(self) -> None:
@@ -599,6 +586,21 @@ class InjectionTests(helpers.TestCase):
 
 
 class CustomizeTests(helpers.TestCase):
+    def test_removed_section_in_stored_value(self) -> None:
+        # The API still stores the removed my_projects section.
+        stored = prefs.parse(
+            {
+                'value': {
+                    'order': ['my_projects', 'release_drift'],
+                    'sections': {'my_projects': {'display': 'hidden'}},
+                },
+                'version': 1,
+            }
+        )
+        self.assertNotIn('my_projects', stored.order)
+        self.assertEqual('release_drift', stored.order[0])
+        self.assertEqual({}, stored.sections)
+
     def test_modal_and_submission(self) -> None:
         view = render.customize_view(prefs.Prefs())
         pinned = next(
@@ -614,7 +616,7 @@ class CustomizeTests(helpers.TestCase):
         render.apply_customize(
             current,
             {
-                'section:my_projects': {
+                'section:agent_activity': {
                     'display': {'selected_option': {'value': 'hidden'}}
                 },
                 'section:needs_attention': {
@@ -625,7 +627,7 @@ class CustomizeTests(helpers.TestCase):
                 },
             },
         )
-        self.assertEqual('hidden', current.display('my_projects'))
+        self.assertEqual('hidden', current.display('agent_activity'))
         # Needs attention cannot be hidden.
         self.assertEqual('expanded', current.display('needs_attention'))
         self.assertEqual(10, current.max_items)
@@ -790,7 +792,6 @@ class FakeApi:
                 {'latest_tag': self.drift_tag, 'suggested_tag': '1.1.0'},
             ),
             (r'/blockers$', []),
-            (r'/score/trend$', {'current': 80, 'delta': -5}),
             (r'/tickets/$', []),
             (r'/agents/$', []),
             (r'/comments/attention$', {'data': []}),
@@ -937,7 +938,6 @@ class HomeFlowTests(helpers.TestCase):
         self.assertIn('Critical advisory', text)
         self.assertIn('CVE-1', text)
         self.assertNotIn('CVE-2', text)
-        self.assertIn('Score 80 ▼5', text)
         # A second render in 30 s reads the per-user cache.
         count = len(self.api.requests)
         await home.refresh(self.slack, 'U1')
@@ -1101,7 +1101,7 @@ class HomeFlowTests(helpers.TestCase):
                 'home:my_tickets:menu', selected_option={'value': 'hide'}
             ),
             self.action(
-                'home:my_projects:menu', selected_option={'value': 'up'}
+                'home:agent_activity:menu', selected_option={'value': 'up'}
             ),
             self.action('home:release_drift:expand'),
         ):
@@ -1113,7 +1113,7 @@ class HomeFlowTests(helpers.TestCase):
         )
         order = stored['order']
         self.assertLess(
-            order.index('my_projects'), order.index('release_drift')
+            order.index('agent_activity'), order.index('release_drift')
         )
         self.assertEqual(3, self.api.version)
 
