@@ -118,7 +118,7 @@ def _block(block: types.ContentBlock, redactor: redact.Redactor) -> Body:
     an image."""
     dumped = block.model_dump(mode='json', exclude_none=True)
     scrubbed: Body = redactor.payload(dumped)
-    if dumped['type'] == 'image' and scrubbed != dumped:
+    if dumped['type'] == 'image' and scrubbed['data'] != dumped['data']:
         return _text('The image held a secret value and was removed.')
     return scrubbed
 

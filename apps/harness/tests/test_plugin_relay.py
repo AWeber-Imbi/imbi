@@ -191,6 +191,20 @@ def _short_circuit(path: str, message: Body | None) -> bytes | None:
                 ]
             },
         )
+    if method == 'tools/call' and name == 'tagged_picture':
+        return _reply(
+            ident,
+            result={
+                'content': [
+                    {
+                        'type': 'image',
+                        'data': PICTURE,
+                        'mimeType': 'image/png',
+                        '_meta': {'token': TOKEN},
+                    }
+                ]
+            },
+        )
     if method == 'tools/call' and name == 'owner':
         return _reply(
             ident,
@@ -669,6 +683,24 @@ class CallTestCase(_ServerTestCase):
         notice = 'The image held a secret value and was removed.'
         self.assertEqual(
             result, {'content': [{'type': 'text', 'text': notice}]}
+        )
+
+    async def test_an_image_with_a_secret_in_its_metadata_is_kept(
+        self,
+    ) -> None:
+        result = await self.relayed.call('tagged_picture', {})
+        self.assertEqual(
+            result,
+            {
+                'content': [
+                    {
+                        'type': 'image',
+                        'data': PICTURE,
+                        'mimeType': 'image/png',
+                        'meta': {'token': '[REDACTED]'},
+                    }
+                ]
+            },
         )
 
     async def test_structured_content_alone_is_scrubbed_json_text(
