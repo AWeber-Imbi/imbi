@@ -205,6 +205,26 @@ def _short_circuit(path: str, message: Body | None) -> bytes | None:
                 ]
             },
         )
+    if method == 'tools/call' and name == 'resources':
+        return _reply(
+            ident,
+            result={
+                'content': [
+                    {
+                        'type': 'text',
+                        'text': 'see',
+                        'resource': f'urn:{TOKEN}',
+                    },
+                    {
+                        'type': 'resource',
+                        'resource': {
+                            'uri': 'file:///notes',
+                            'text': f'notes {TOKEN}',
+                        },
+                    },
+                ]
+            },
+        )
     if method == 'tools/call' and name == 'owner':
         return _reply(
             ident,
@@ -738,6 +758,30 @@ class CallTestCase(_ServerTestCase):
         self.assertEqual(
             result['content'][1],
             {'type': 'image', 'data': PICTURE, 'mimeType': 'image/png'},
+        )
+
+    async def test_only_an_embedded_resource_keeps_its_field_names(
+        self,
+    ) -> None:
+        result = await self.relayed.call('resources', {})
+        self.assertEqual(
+            result,
+            {
+                'content': [
+                    {
+                        'type': 'text',
+                        'text': 'see',
+                        'resource': 'urn:[REDACTED]',
+                    },
+                    {
+                        'type': 'resource',
+                        'resource': {
+                            'uri': 'file:///notes',
+                            'text': 'notes [REDACTED]',
+                        },
+                    },
+                ]
+            },
         )
 
     async def test_structured_content_alone_gives_empty_content(

@@ -131,7 +131,7 @@ def _fields(fields: Body, redactor: redact.Redactor) -> Body:
         name: value
         if name == 'type'
         else _fields(value, redactor)
-        if name == 'resource'
+        if name == 'resource' and fields.get('type') == 'resource'
         else redactor.payload(value)
         for name, value in fields.items()
     }
