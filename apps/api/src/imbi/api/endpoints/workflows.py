@@ -101,6 +101,8 @@ class WorkflowSummary(pydantic.BaseModel):
     active_trigger_types: list[str]
     #: The agents that the agent steps of the latest version use.
     agent_ids: list[str] = []
+    #: The email of the user that made the workflow.
+    created_by: str
     created_at: datetime.datetime
     updated_at: datetime.datetime
     #: From ClickHouse ``workflow_runs``. ``None`` when ClickHouse is

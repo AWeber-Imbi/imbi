@@ -5,7 +5,9 @@ import { Link } from 'react-router-dom'
 
 import { Bot } from 'lucide-react'
 
+import { useServiceAccountAgents } from '@/hooks/useServiceAccountAgents'
 import { swatchForName } from '@/lib/chip-colors'
+import { type IconComponent, useIcon } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 
 import { useGravatarUrl } from './gravatar'
@@ -72,7 +74,9 @@ export function isBotActor(value: null | string | undefined): boolean {
  * (deploy attribution, ops-log rows, currently-running footers, activity
  * feeds). Resolves the display name from `displayName`/`displayNames`/`email`/
  * `actor`, then renders an avatar: a photo when one loads, a bot glyph for
- * automation actors, otherwise initials on a name-hashed tint.
+ * automation actors, otherwise initials on a name-hashed tint. A principal
+ * that is not an email and matches an agent (by its service account slug)
+ * shows the agent's name and icon, with no profile link.
  */
 // fallow-ignore-next-line complexity
 export function UserIdentity({
@@ -90,9 +94,18 @@ export function UserIdentity({
   title,
 }: UserIdentityProps) {
   const s = SIZES[size]
-  const name = resolveName(displayName, displayNames, email, actor)
-  const isBot = kind != null ? kind === 'bot' : isBotActor(actor ?? name)
-  const profileEmail = !isBot && linkToProfile && email ? email : null
+  const principal = email ?? actor
+  const agents = useServiceAccountAgents(
+    !!principal && !principal.includes('@'),
+  )
+  const agent = principal ? agents.get(principal) : undefined
+  const AgentIcon = useIcon(agent?.icon, Bot)
+  const name =
+    agent?.name ?? resolveName(displayName, displayNames, email, actor)
+  const isBot =
+    agent != null || (kind != null ? kind === 'bot' : isBotActor(actor ?? name))
+  const profileEmail =
+    !isBot && linkToProfile && email?.includes('@') ? email : null
   // Request at 2× for retina; `d=404` makes a missing Gravatar error out so
   // the <img> onError handler falls back to the initials chip.
   const gravatarUrl = useGravatarUrl(email ?? '', s.av * 2, '404')
@@ -105,6 +118,7 @@ export function UserIdentity({
       <IdentityAvatar
         av={s.av}
         candidateImage={candidateImage}
+        icon={AgentIcon}
         isBot={isBot}
         name={name}
       />
@@ -160,11 +174,14 @@ function darken(hex: string, f: number): string {
 function IdentityAvatar({
   av,
   candidateImage,
+  icon: Icon,
   isBot,
   name,
 }: {
   av: number
   candidateImage: null | string
+  /** The bot glyph: the agent's icon, or the Bot fallback. */
+  icon: IconComponent
   isBot: boolean
   name: null | string
 }) {
@@ -189,7 +206,7 @@ function IdentityAvatar({
       style={style}
     >
       {isBot ? (
-        <Bot size={Math.round(av * 0.58)} />
+        <Icon size={Math.round(av * 0.58)} />
       ) : showImage ? (
         <img
           alt={name ?? ''}

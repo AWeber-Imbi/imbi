@@ -87,6 +87,11 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
   )
 }
 
+/** The organization context, or `null` outside an OrganizationProvider. */
+export function useOptionalOrganization() {
+  return useContext(OrganizationContext)
+}
+
 export function useOrganization() {
   const context = useContext(OrganizationContext)
   if (!context) {

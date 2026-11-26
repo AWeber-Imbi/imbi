@@ -1,18 +1,25 @@
-import { type ReactNode, useMemo, useState } from 'react'
+import { useState } from 'react'
 
 import { useNavigate } from 'react-router-dom'
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Bot, ChevronDown, ChevronsUpDown, ChevronUp } from 'lucide-react'
+import { Bot } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { patchAgent } from '@/api/endpoints'
 import { AdminSection } from '@/components/admin/AdminSection'
 import { TagChips } from '@/components/tags/TagChip'
 import { AdminTable } from '@/components/ui/admin-table'
-import { FilterPopover } from '@/components/ui/filter-popover'
 import { Switch } from '@/components/ui/switch'
+import {
+  headerWithFilter as header,
+  useTableFacets,
+  useTableSort,
+} from '@/components/ui/table-controls'
+import { UserIdentity } from '@/components/ui/user-identity'
 import { useHasPermission } from '@/hooks/useHasPermission'
+import { useServiceAccountAgents } from '@/hooks/useServiceAccountAgents'
+import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { useIcon } from '@/lib/icons'
 import { queryKeys } from '@/lib/queryKeys'
@@ -30,8 +37,9 @@ interface AgentListProps {
   orgSlug: string
 }
 
-type FacetKey = 'status' | 'tag' | 'team'
-type SortKey = 'name' | 'tags' | 'team' | UsageKey
+const FACET_KEYS = ['author', 'status', 'tag', 'team'] as const
+type FacetKey = (typeof FACET_KEYS)[number]
+type SortKey = 'author' | 'name' | 'tags' | 'team' | UsageKey
 type Usage = { cost: number; runs: number }
 // One accessor per usage column, shared by the cell and the sort.
 const USAGE_METRICS = {
@@ -46,14 +54,15 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
   const canCreate = useHasPermission('agent:create', orgSlug)
   const canWrite = useHasPermission('agent:write', orgSlug)
   const [search, setSearch] = useState('')
-  const [facets, setFacets] = useState<Record<FacetKey, string[]>>({
-    status: [],
-    tag: [],
-    team: [],
-  })
-  const [sort, setSort] = useState<null | { dir: -1 | 1; key: SortKey }>(null)
   const toggleEnabled = useToggleEnabled(orgSlug)
   const { data: usage } = useAgentUsage(orgSlug)
+  const { displayNames } = useUserDisplayNames()
+  const serviceAccounts = useServiceAccountAgents()
+  const nameOf = (principal: string) =>
+    serviceAccounts.get(principal)?.name ??
+    displayNames.get(principal) ??
+    principal
+  const authorName = (a: Agent) => (a.created_by ? nameOf(a.created_by) : '')
   const usageOf = (a: Agent) => {
     if (!usage) return null
     const row = usage.agents.find((u) => u.agent_id === a.id)
@@ -61,6 +70,7 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
   }
   const sortValue = (a: Agent, key: SortKey): number | string => {
     if (key === 'name') return a.name
+    if (key === 'author') return authorName(a)
     if (key === 'team') return a.team?.name ?? ''
     if (key === 'tags')
       return a.tags
@@ -70,37 +80,8 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
     const u = usageOf(a)
     return (u && USAGE_METRICS[key][0](u)) ?? 0
   }
-  const sortButton = (key: SortKey, text: string) => {
-    const active = sort?.key === key
-    const Icon = !active
-      ? ChevronsUpDown
-      : sort.dir === 1
-        ? ChevronUp
-        : ChevronDown
-    return (
-      <button
-        className="hover:text-primary inline-flex items-center gap-1"
-        onClick={() =>
-          setSort((s) =>
-            s?.key === key
-              ? { dir: s.dir === 1 ? -1 : 1, key }
-              : { dir: 1, key },
-          )
-        }
-        type="button"
-      >
-        {text}
-        {active && (
-          <span className="sr-only">
-            , sorted {sort.dir === 1 ? 'ascending' : 'descending'}
-          </span>
-        )}
-        <Icon
-          className={`size-3.5 shrink-0 ${active ? '' : 'text-tertiary/50'}`}
-        />
-      </button>
-    )
-  }
+  const { sortButton, sorted } = useTableSort(sortValue)
+  const { facet, matches } = useTableFacets(FACET_KEYS, facetValues, agents)
   const usageColumn = (key: UsageKey, header: string) => ({
     cellAlign: 'right' as const,
     header: sortButton(key, header),
@@ -118,63 +99,24 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
     },
   })
 
-  const rows = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    const has = (key: FacetKey, value: string) =>
-      facets[key].length === 0 || facets[key].includes(value)
-    return agents.filter(
-      (a) =>
-        (!q ||
-          [a.name, a.description ?? '', a.team?.name ?? '']
-            .concat(a.tags.map((t) => t.name))
-            .join(' ')
-            .toLowerCase()
-            .includes(q)) &&
-        has('team', a.team?.slug ?? '') &&
-        (facets.tag.length === 0 ||
-          a.tags.some((t) => facets.tag.includes(t.slug))) &&
-        has('status', a.enabled ? 'enabled' : 'disabled'),
-    )
-  }, [agents, facets, search])
-
-  const sorted = sort
-    ? [...rows].sort((a, b) => {
-        const x = sortValue(a, sort.key)
-        const y = sortValue(b, sort.key)
-        return (
-          sort.dir *
-          (typeof x === 'string' ? x.localeCompare(String(y)) : x - Number(y))
-        )
-      })
-    : rows
-
-  const facet = (
-    key: FacetKey,
-    label: string,
-    options: { label: string; slug: string }[],
-  ) => (
-    <FilterPopover
-      activeFilters={new Set(facets[key])}
-      label={label}
-      onClear={() => setFacets({ ...facets, [key]: [] })}
-      onToggle={(slug) =>
-        setFacets({
-          ...facets,
-          [key]: facets[key].includes(slug)
-            ? facets[key].filter((s) => s !== slug)
-            : [...facets[key], slug],
-        })
-      }
-      options={options.map((o) => ({
-        ...o,
-        count: agents.filter((a) => facetValues(a, key).includes(o.slug))
-          .length,
-      }))}
-    />
+  const q = search.trim().toLowerCase()
+  const rows = agents.filter(
+    (a) =>
+      (!q ||
+        [a.name, a.description ?? '', a.team?.name ?? '', authorName(a)]
+          .concat(a.tags.map((t) => t.name))
+          .join(' ')
+          .toLowerCase()
+          .includes(q)) &&
+      matches(a),
   )
 
-  const teams = uniqueBySlug(agents.flatMap((a) => (a.team ? [a.team] : [])))
-  const tags = uniqueBySlug(agents.flatMap((a) => a.tags))
+  const teamNames = Object.fromEntries(
+    agents.flatMap((a) => (a.team ? [[a.team.slug, a.team.name]] : [])),
+  )
+  const tagNames = Object.fromEntries(
+    agents.flatMap((a) => a.tags.map((t) => [t.slug, t.name])),
+  )
 
   return (
     <AdminSection
@@ -186,7 +128,7 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
       }
       onSearchChange={setSearch}
       search={search}
-      searchPlaceholder="Search agents, teams, tags…"
+      searchPlaceholder="Search agents, teams, authors, tags…"
     >
       <AdminTable
         columns={[
@@ -198,11 +140,7 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
           {
             header: header(
               sortButton('team', 'Owner team'),
-              facet(
-                'team',
-                'Owner team',
-                teams.map((t) => ({ label: t.name, slug: t.slug })),
-              ),
+              facet('team', 'Owner team', (s) => teamNames[s]),
             ),
             key: 'team',
             render: (a) => (
@@ -211,17 +149,32 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
               </span>
             ),
           },
+          {
+            header: header(
+              sortButton('author', 'Author'),
+              facet('author', 'Author', nameOf),
+            ),
+            // The profile link stacks above the row link.
+            interactive: true,
+            key: 'author',
+            render: (a) =>
+              a.created_by ? (
+                <UserIdentity
+                  displayNames={displayNames}
+                  email={a.created_by}
+                  size="small"
+                />
+              ) : (
+                <span className="text-tertiary text-sm">—</span>
+              ),
+          },
           usageColumn('runs', 'Runs 30d'),
           usageColumn('cost', 'Cost 30d'),
           usageColumn('avg', 'Avg / run'),
           {
             header: header(
               sortButton('tags', 'Tags'),
-              facet(
-                'tag',
-                'Tags',
-                tags.map((t) => ({ label: t.name, slug: t.slug })),
-              ),
+              facet('tag', 'Tags', (s) => tagNames[s]),
             ),
             key: 'tags',
             render: (a) => <TagChips tags={a.tags} />,
@@ -229,10 +182,9 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
           {
             header: header(
               'Status',
-              facet('status', 'Status', [
-                { label: 'Enabled', slug: 'enabled' },
-                { label: 'Disabled', slug: 'disabled' },
-              ]),
+              facet('status', 'Status', (s) =>
+                s === 'enabled' ? 'Enabled' : 'Disabled',
+              ),
             ),
             interactive: true,
             key: 'status',
@@ -269,7 +221,7 @@ export function AgentList({ agents, error, loading, orgSlug }: AgentListProps) {
         getRowKey={(a) => a.slug}
         getRowLabel={(a) => a.name}
         loading={loading}
-        rows={sorted}
+        rows={sorted(rows)}
       />
     </AdminSection>
   )
@@ -295,26 +247,10 @@ function AgentNameCell({ agent }: { agent: Agent }) {
 }
 
 function facetValues(agent: Agent, key: FacetKey): string[] {
+  if (key === 'author') return agent.created_by ? [agent.created_by] : []
   if (key === 'team') return agent.team ? [agent.team.slug] : []
   if (key === 'tag') return agent.tags.map((t) => t.slug)
   return [agent.enabled ? 'enabled' : 'disabled']
-}
-
-function header(text: ReactNode, control: ReactNode) {
-  return (
-    <span className="flex items-center gap-1">
-      {text}
-      {control}
-    </span>
-  )
-}
-
-function uniqueBySlug<T extends { name: string; slug: string }>(
-  items: T[],
-): T[] {
-  const seen = new Map<string, T>()
-  for (const item of items) if (!seen.has(item.slug)) seen.set(item.slug, item)
-  return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name))
 }
 
 /** PATCH `enabled` with an optimistic list update; roll back on error. */

@@ -46,6 +46,7 @@ const setSelectedOrganization = vi.hoisted(() => vi.fn())
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/contexts/OrganizationContext', () => ({
+  useOptionalOrganization: () => null,
   useOrganization: () => ({
     organizations: ORGS,
     selectedOrganization: ORGS[0],
