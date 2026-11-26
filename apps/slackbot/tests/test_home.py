@@ -924,6 +924,13 @@ class HomeFlowTests(helpers.TestCase):
             )
         paths = {r.url.path for r in self.api.requests}
         self.assertIn('/api/organizations/acme/workflow-runs/attention', paths)
+        listed = next(
+            r
+            for r in self.api.requests
+            if r.url.path == '/api/organizations/acme/projects/'
+        )
+        self.assertEqual(['platform'], listed.url.params.get_list('team'))
+        self.assertEqual('false', listed.url.params['releases'])
         drift = '/api/organizations/acme/projects/{}/deployments/release-drift'
         self.assertIn(drift.format('p1'), paths)
         # A project the list does not mark drifted costs no drift call,
@@ -996,6 +1003,33 @@ class HomeFlowTests(helpers.TestCase):
             mock.patch.object(sources.Sources, '_drift', drift),
         ):
             self.assertEqual('ok', await src.get('drift'))
+
+    async def test_merged_not_deployed_names_from_the_rows(self) -> None:
+        asyncio = __import__('asyncio')
+        src = sources.Sources(mock.Mock(), 'acme', 'a@x', [], set())
+        pending = asyncio.get_running_loop().create_future()
+        pending.set_result(
+            {
+                'data': [
+                    {'project_id': 'p1', 'project_name': 'imbi-api'},
+                    {'project_id': 'p2'},
+                ],
+                'total': 2,
+            }
+        )
+        src._tasks['pending'] = pending
+        data = await src.section('merged_not_deployed')
+        self.assertEqual(
+            ['imbi-api', ''], [pr['project'] for pr in data['prs']]
+        )
+        # No read of the projects list for the names.
+        self.assertNotIn('projects', src._tasks)
+
+    async def test_no_teams_reads_no_projects(self) -> None:
+        client = mock.Mock()
+        src = sources.Sources(client, 'acme', 'a@x', [], set())
+        self.assertEqual([], await src.get('projects'))
+        client.get.assert_not_called()
 
     async def test_cancelled_waiter_keeps_shared_source(self) -> None:
         asyncio = __import__('asyncio')
