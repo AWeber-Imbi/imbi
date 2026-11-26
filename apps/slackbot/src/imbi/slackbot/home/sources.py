@@ -33,9 +33,6 @@ type Row = dict[str, typing.Any]
 #: Seconds that one source can take. The time that a source waits for
 #: another source does not count.
 TIMEOUT = 4.0
-#: The slim list of every project of the org takes 3 to 4 s in
-#: production.
-_TIMEOUTS = {'projects': 8.0}
 #: The timeout of the source that runs in this task.
 _timer: contextvars.ContextVar[asyncio.Timeout | None] = (
     contextvars.ContextVar('home_source_timer', default=None)
@@ -215,7 +212,7 @@ class Sources:
         source: abc.Callable[[], abc.Awaitable[Json]] = getattr(
             self, f'_{name}'
         )
-        async with asyncio.timeout(_TIMEOUTS.get(name, TIMEOUT)) as timer:
+        async with asyncio.timeout(TIMEOUT) as timer:
             _timer.set(timer)
             return await source()
 
@@ -236,9 +233,20 @@ class Sources:
     # ----- sources -------------------------------------------------
 
     async def _projects(self) -> list[Row]:
-        """``GET /projects?slim=true``: every project of the org."""
+        """``GET /projects?slim=true``: the projects of the user's teams.
+
+        The Home reads only the release summary, so it skips the current
+        releases, the slowest part of the list.
+
+        """
+        if not self.teams:
+            return []
         rows: list[Row] = await _json(
-            self.client, f'{self.base}/projects/', slim='true'
+            self.client,
+            f'{self.base}/projects/',
+            slim='true',
+            releases='false',
+            team=self.teams,
         )
         return rows
 
@@ -479,15 +487,11 @@ class Sources:
         }
 
     async def _section_merged_not_deployed(self) -> Row:
-        pending, projects = await asyncio.gather(
-            self.get('pending'), self.optional('projects', [])
-        )
-        names = {p['id']: p['name'] for p in projects}
+        pending: Row = await self.get('pending')
         prs: list[Row] = pending.get('data') or []
         return {
             'prs': [
-                {**pr, 'project': names.get(pr['project_id'], '')}
-                for pr in prs
+                {**pr, 'project': pr.get('project_name') or ''} for pr in prs
             ],
             'total': pending.get('total', len(prs)),
         }

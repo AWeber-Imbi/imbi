@@ -3435,6 +3435,11 @@ export interface paths {
          *     is only meaningful alongside ``integration_slug`` and is
          *     rejected on its own. An unknown integration slug simply matches nothing.
          *
+         *     ``team`` (repeatable) restricts the listing to projects of those
+         *     teams. ``releases=false`` skips the current releases and the
+         *     environment drift, for a caller that reads only the release
+         *     summary.
+         *
          *     ``slim=true`` returns a stripped payload tailored to the
          *     projects-list UI: only the fields the list view reads (id, name,
          *     score, team slug+name, project_type slug+name+deployable,
@@ -18445,6 +18450,8 @@ export interface components {
         PendingDeployPullRequest: {
             /** Project Id */
             project_id: string;
+            /** Project Name */
+            project_name?: string | null;
             /** Pr Id */
             pr_id: string;
             /** Pr Number */
@@ -29865,6 +29872,10 @@ export interface operations {
                 identifier?: string | null;
                 /** @description Restrict results to the project with this id, so a project page reads the same list-only fields (e.g. ``drift_ranges``) as the projects list. */
                 project_id?: string | null;
+                /** @description Restrict results to projects owned by the team with this slug (repeatable; a project of any of the teams matches). */
+                team?: string[] | null;
+                /** @description Read the current release and latest deployment of each environment. ``false`` skips that read: ``current_releases`` and ``latest_deployments`` are then empty. With ``slim=true``, ``drift_ranges`` and ``drift_pairs`` are also empty, and ``release_summary`` and ``release_drifted`` are still set. */
+                releases?: boolean;
                 /** @description Filter projects by blueprint attribute, as ``field:op[:value]`` (repeatable; combined with AND). Operators: eq, ne, in, not_in (comma-separated values), exists, not_exists. ne/not_in exclude projects where the attribute is unset. Valid fields and enum values per project type come from the project-type listing with ``include_schema=true``. Example: framework:ne:http-service-lib */
                 filter?: string[] | null;
             };

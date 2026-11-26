@@ -2061,6 +2061,18 @@ async def _resolve_release_display_names(
             env_map[slug] = info.model_copy(update={'performed_by': name})
 
 
+def _list_where_clause(
+    include_archived: bool, by_team: bool
+) -> typing.LiteralString:
+    """The ``WHERE`` of the projects-list match: archived and team."""
+    conditions: list[typing.LiteralString] = []
+    if not include_archived:
+        conditions.append('coalesce(p.archived, false) = false')
+    if by_team:
+        conditions.append('owner.slug IN {teams}')
+    return 'WHERE ' + ' AND '.join(conditions) if conditions else ''
+
+
 def _build_attribute_filter(
     filters: list[str],
     whitelist: dict[str, blueprint_attributes.FilterableAttribute],
@@ -2143,6 +2155,32 @@ async def list_projects(
             ),
         ),
     ] = None,
+    team: typing.Annotated[
+        list[str] | None,
+        fastapi.Query(
+            description=(
+                'Restrict results to projects owned by the team with this '
+                'slug (repeatable; a project of any of the teams matches).'
+            ),
+        ),
+    ] = None,
+    # ponytail: interim for issue #998. When DEPLOYED_IN holds the
+    # reader result (docs plan, phase 3), current releases are cheap;
+    # then deprecate releases=false.
+    include_releases: typing.Annotated[
+        bool,
+        fastapi.Query(
+            alias='releases',
+            description=(
+                'Read the current release and latest deployment of each '
+                'environment. ``false`` skips that read: '
+                '``current_releases`` and ``latest_deployments`` are then '
+                'empty. With ``slim=true``, ``drift_ranges`` and '
+                '``drift_pairs`` are also empty, and ``release_summary`` '
+                'and ``release_drifted`` are still set.'
+            ),
+        ),
+    ] = True,
     filters: typing.Annotated[
         list[str] | None,
         fastapi.Query(
@@ -2175,6 +2213,11 @@ async def list_projects(
     project(s) whose edge carries that external identifier. ``identifier``
     is only meaningful alongside ``integration_slug`` and is
     rejected on its own. An unknown integration slug simply matches nothing.
+
+    ``team`` (repeatable) restricts the listing to projects of those
+    teams. ``releases=false`` skips the current releases and the
+    environment drift, for a caller that reads only the release
+    summary.
 
     ``slim=true`` returns a stripped payload tailored to the
     projects-list UI: only the fields the list view reads (id, name,
@@ -2218,9 +2261,7 @@ async def list_projects(
         if project_type
         else ''
     )
-    archived_filter: typing.LiteralString = (
-        '' if include_archived else 'WHERE coalesce(p.archived, false) = false'
-    )
+    where_clause = _list_where_clause(include_archived, bool(team))
     return_fragment: typing.LiteralString = (
         _SLIM_RETURN_FRAGMENT if slim else _RETURN_FRAGMENT
     )
@@ -2240,10 +2281,10 @@ async def list_projects(
         """
     MATCH """
         + project_pattern
-        + """-[:OWNED_BY]->(:Team)
+        + """-[:OWNED_BY]->(owner:Team)
           -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
     """
-        + archived_filter
+        + where_clause
         + """
     WITH DISTINCT p, o
     """
@@ -2266,6 +2307,7 @@ async def list_projects(
             'integration_slug': integration_slug,
             'identifier': identifier,
             'project_id': project_id,
+            'teams': team or [],
             **attr_params,
         },
         columns,
@@ -2315,7 +2357,9 @@ async def list_projects(
         deployment_ids,
     ) = await asyncio.gather(
         _fetch_pr_counts(project_ids, viewer=viewer),
-        _fetch_current_releases(db, project_ids),
+        _fetch_current_releases(db, project_ids)
+        if include_releases
+        else asyncio.sleep(0, CurrentReleaseState({}, {})),
         _fetch_release_summaries(releasable_ids),
         # Only ``ProjectListItem`` carries ``has_deployment_plugin``.
         _deployment_plugin_projects(db, org_slug, project_ids)

@@ -494,6 +494,7 @@ class MeFiltersTestCase(_PullRequestsTestBase):
             for n, slug in enumerate(['production', None])
         ]
         envs = mock.AsyncMock(return_value={'production': 'Production'})
+        projects = mock.AsyncMock(return_value={'p1': 'Proj One'})
         with (
             mock.patch.object(
                 pull_requests,
@@ -503,6 +504,7 @@ class MeFiltersTestCase(_PullRequestsTestBase):
             mock.patch.object(
                 pull_requests, '_fetch_terminal_environments', envs
             ),
+            mock.patch.object(pull_requests, '_fetch_org_projects', projects),
         ):
             response = self.client.get(
                 f'/organizations/{ORG}/pull-requests/pending-deploy'
@@ -512,6 +514,7 @@ class MeFiltersTestCase(_PullRequestsTestBase):
         self.assertEqual(['production'], body['environments'])
         self.assertEqual(2, body['total'])
         first, second = body['data']
+        self.assertEqual('Proj One', first['project_name'])
         self.assertEqual('production', first['last_deployed_environment'])
         self.assertEqual('Production', first['last_deployed_environment_name'])
         self.assertIsNone(second['last_deployed_environment'])
