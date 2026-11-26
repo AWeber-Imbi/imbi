@@ -101,7 +101,7 @@ const AGENTS_NAV: AgentsNavItem[] = [
     icon: Workflow,
     id: 'workflows',
     label: 'Workflows',
-    note: 'Multi-step runs built from agents',
+    note: 'Multi-step runs that can invoke agents',
   },
 ]
 
