@@ -714,18 +714,27 @@ async def sync_deployment_state(
             ['state'],
         )
         params = _reader_params([project_id])
-        state = {
-            str(entry.environment.get('slug') or ''): {
+        state: dict[str, dict[str, str | None]] = {}
+        for entry in _combine_states(
+            *[
+                await execute(query, params, _READER_COLUMNS)
+                for query in _READER_QUERIES
+            ]
+        ):
+            slug = str(entry.environment.get('slug') or '')
+            # A null id cannot identify the attempt, so refuse to store
+            # it rather than store a state that a reader cannot use.
+            if entry.latest.id is None or (
+                entry.current is not None and entry.current.id is None
+            ):
+                raise ValueError(
+                    f'A deployment of project {project_id} in environment '
+                    f'{slug!r} has no id'
+                )
+            state[slug] = {
                 'current': entry.current.id if entry.current else None,
                 'latest': entry.latest.id,
             }
-            for entry in _combine_states(
-                *[
-                    await execute(query, params, _READER_COLUMNS)
-                    for query in _READER_QUERIES
-                ]
-            )
-        }
         if rows and _decode(rows[0]['state']) == state:
             return False
         if not dry_run:

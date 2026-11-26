@@ -12,6 +12,7 @@ import datetime
 import json
 import typing
 import unittest
+from unittest import mock
 
 import dotenv
 
@@ -1178,6 +1179,26 @@ class DeploymentStateTests(DeploymentNodeTestCase):
         self.assertFalse(
             await deployments.sync_deployment_state(self.graph, PROJECT_ID)
         )
+
+    async def test_sync_refuses_a_deployment_without_an_id(self) -> None:
+        await self.upsert(status='success', external_run_id='1')
+        before = await self.stored()
+        combine = deployments._combine_states
+
+        def without_ids(
+            *rows: list[dict[str, typing.Any]],
+        ) -> list[deployments.EnvironmentReleaseState]:
+            return [
+                entry._replace(latest=entry.latest._replace(id=None))
+                for entry in combine(*rows)
+            ]
+
+        with (
+            mock.patch.object(deployments, '_combine_states', without_ids),
+            self.assertRaisesRegex(ValueError, PROJECT_ID),
+        ):
+            await deployments.sync_deployment_state(self.graph, PROJECT_ID)
+        self.assertEqual(before, await self.stored())
 
 
 class FieldsTests(DeploymentNodeTestCase):

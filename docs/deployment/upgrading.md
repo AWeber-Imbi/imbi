@@ -82,8 +82,10 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    deployment write keeps that state current. The operation writes it
    for the deployments recorded before the upgrade. Run **Report Stale
    Deployment State** (`deployment-state-check`) afterwards: it must
-   report no project. imbi-api creates a unique index on `Deployment.id`
-   at start.
+   report no project. A deployment write that cannot refresh the state
+   logs the failure and leaves the state stale; run the check and the
+   backfill again to repair it. imbi-api creates a unique index on
+   `Deployment.id` at start.
 
 ## 2.64.0
 
