@@ -8,7 +8,7 @@ const VARIANT = {
   paused: 'neutral',
 } as const
 
-const LABEL: Record<WorkflowStatus, string> = {
+export const LABEL: Record<WorkflowStatus, string> = {
   active: 'Active',
   draft: 'Draft',
   paused: 'Paused',

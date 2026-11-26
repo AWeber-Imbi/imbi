@@ -11968,6 +11968,8 @@ export interface components {
             last_version_at?: string | null;
             /** Created By */
             created_by?: string | null;
+            /** Service Account Slug */
+            service_account_slug?: string | null;
             organization: components["schemas"]["OrganizationRef"];
         };
         /**
@@ -24180,6 +24182,8 @@ export interface components {
              * @default []
              */
             agent_ids: string[];
+            /** Created By */
+            created_by: string;
             /**
              * Created At
              * Format: date-time
@@ -24298,6 +24302,8 @@ export interface components {
              * @default []
              */
             agent_ids: string[];
+            /** Created By */
+            created_by: string;
             /**
              * Created At
              * Format: date-time

@@ -272,6 +272,9 @@ class AgentResponse(pydantic.BaseModel):
     last_version_at: datetime.datetime | None = None
     #: The principal that wrote the first version.
     created_by: str | None = None
+    #: The slug of the service account the agent acts as. ``None``
+    #: when the agent has no service account yet.
+    service_account_slug: str | None = None
     organization: OrganizationRef
 
 
@@ -287,7 +290,9 @@ class AgentVersionResponse(pydantic.BaseModel):
 
 #: Every agent query ends with this tail. The newest version is found
 #: with ``max()`` and then matched back, because Apache AGE loses an
-#: ``ORDER BY`` in a ``WITH`` before an aggregation.
+#: ``ORDER BY`` in a ``WITH`` before an aggregation. The service
+#: account is found the same way, in the order of
+#: ``_SERVICE_ACCOUNT_QUERY``.
 _AGENT_TAIL: typing.LiteralString = """
     OPTIONAL MATCH (v:AgentVersion)-[:VERSION_OF]->(a)
     WITH a, o, max(v.n) AS latest
@@ -300,10 +305,19 @@ _AGENT_TAIL: typing.LiteralString = """
          collect(CASE WHEN tag IS NOT NULL
                       THEN tag{{.name, .slug, .color}}
                       END) AS raw_tags
+    OPTIONAL MATCH (a)-[:ACTS_AS]->(sa:ServiceAccount)
+    WITH a, o, t, lv, fv, latest, raw_tags, min(sa.created_at) AS sa_at
+    OPTIONAL MATCH (a)-[:ACTS_AS]->(sa:ServiceAccount)
+    WHERE sa.created_at = sa_at
+    WITH a, o, t, lv, fv, latest, raw_tags, min(sa.id) AS sa_id
+    OPTIONAL MATCH (a)-[:ACTS_AS]->(sa:ServiceAccount)
+    WHERE sa.id = sa_id
+    WITH a, o, t, lv, fv, latest, raw_tags, sa.slug AS sa_slug
     RETURN a, o, t, raw_tags AS tags, latest,
            lv.created_by AS updated_by,
            lv.created_at AS last_version_at,
-           fv.created_by AS created_by
+           fv.created_by AS created_by,
+           sa_slug AS service_account_slug
 """
 
 _COLUMNS = [
@@ -315,6 +329,7 @@ _COLUMNS = [
     'updated_by',
     'last_version_at',
     'created_by',
+    'service_account_slug',
 ]
 
 _GET_QUERY: typing.LiteralString = (
@@ -660,6 +675,9 @@ def _parse_row(record: dict[str, typing.Any]) -> dict[str, typing.Any]:
         'updated_by': graph.parse_agtype(record['updated_by']),
         'last_version_at': graph.parse_agtype(record['last_version_at']),
         'created_by': graph.parse_agtype(record['created_by']),
+        'service_account_slug': graph.parse_agtype(
+            record['service_account_slug']
+        ),
         'organization': {
             'name': str(org.get('name', '')),
             'slug': str(org.get('slug', '')),

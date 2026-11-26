@@ -27,6 +27,7 @@ vi.mock('@/api/endpoints', () => ({
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/contexts/OrganizationContext', () => ({
+  useOptionalOrganization: () => null,
   useOrganization: () => ({ selectedOrganization: { slug: 'acme' } }),
 }))
 

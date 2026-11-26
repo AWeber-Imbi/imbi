@@ -1,9 +1,28 @@
-import { fireEvent } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { fireEvent, waitFor } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 
 import { render, screen } from '@/test/utils'
 
 import { UserIdentity } from '../user-identity'
+
+// fallow-ignore-next-line unresolved-import
+vi.mock('@/contexts/OrganizationContext', () => ({
+  useOptionalOrganization: () => ({ selectedOrganization: { slug: 'acme' } }),
+}))
+
+// fallow-ignore-next-line unresolved-import
+vi.mock('@/api/endpoints', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/endpoints')>()),
+  listAgents: vi.fn(async () => [
+    {
+      icon: null,
+      id: 'a1',
+      name: 'Security Reviewer',
+      service_account_slug: 'security-reviewer-x1',
+      slug: 'security-reviewer',
+    },
+  ]),
+}))
 
 describe('UserIdentity name resolution', () => {
   it('prefers an explicit displayName over everything', () => {
@@ -182,5 +201,32 @@ describe('UserIdentity profile linking', () => {
       <UserIdentity displayName="Jane Doe" email="jane@example.com" hideName />,
     )
     expect(screen.queryByText('Jane Doe')).toBeNull()
+  })
+})
+
+describe('UserIdentity service accounts', () => {
+  it('shows the agent name of a service account, with no profile link', async () => {
+    render(<UserIdentity email="security-reviewer-x1" size="small" />)
+    expect(await screen.findByText('Security Reviewer')).toBeInTheDocument()
+    expect(screen.queryByRole('link')).toBeNull()
+  })
+
+  it('keeps an explicit displayName for a service account', async () => {
+    const { container } = render(
+      <UserIdentity
+        displayName="Audit Author"
+        email="security-reviewer-x1"
+        size="small"
+      />,
+    )
+    await waitFor(() => expect(container.querySelector('svg')).not.toBeNull())
+    expect(screen.getByText('Audit Author')).toBeInTheDocument()
+    expect(screen.queryByText('Security Reviewer')).toBeNull()
+  })
+
+  it('does not link a principal that is not an email', () => {
+    render(<UserIdentity email="some-service" size="small" />)
+    expect(screen.getByText('some-service')).toBeInTheDocument()
+    expect(screen.queryByRole('link')).toBeNull()
   })
 })

@@ -222,6 +222,7 @@ export function workflow(overrides: Partial<Workflow> = {}): Workflow {
     agent_ids: [],
     bindings: [],
     created_at: '2026-10-12T00:00:00Z',
+    created_by: 'gavin@example.com',
     description: 'Ships and checks a deploy.',
     latest_version: 2,
     name: 'Deploy guard',

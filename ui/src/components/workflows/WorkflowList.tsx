@@ -11,8 +11,16 @@ import { agentsPath } from '@/components/agents/agentsNav'
 import { TagChips } from '@/components/tags/TagChip'
 import { AdminTable } from '@/components/ui/admin-table'
 import { RelativeTime } from '@/components/ui/RelativeTime'
+import {
+  headerWithFilter as header,
+  useTableFacets,
+  useTableSort,
+} from '@/components/ui/table-controls'
+import { UserIdentity } from '@/components/ui/user-identity'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useHasPermission } from '@/hooks/useHasPermission'
+import { useServiceAccountAgents } from '@/hooks/useServiceAccountAgents'
+import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { cn } from '@/lib/utils'
 
@@ -24,9 +32,25 @@ import {
 } from './runs'
 import { StartRunDialog } from './StartRunDialog'
 import { stepIcon } from './stepStyle'
-import type { RunStatus, StepType, WorkflowSummary } from './types'
+import type {
+  RunStatus,
+  StepType,
+  WorkflowStatus,
+  WorkflowSummary,
+} from './types'
 import { workflowVersionQuery } from './workflowQueries'
-import { StatusBadge } from './WorkflowStatusBadge'
+import { LABEL as STATUS_LABEL, StatusBadge } from './WorkflowStatusBadge'
+
+const FACET_KEYS = [
+  'author',
+  'last',
+  'status',
+  'tag',
+  'team',
+  'trigger',
+] as const
+type FacetKey = (typeof FACET_KEYS)[number]
+type SortKey = 'failed' | 'name' | 'runs' | 'tags' | Exclude<FacetKey, 'tag'>
 
 const OUTCOME_TONE: Record<string, string> = {
   danger: 'text-danger',
@@ -127,23 +151,57 @@ export function WorkflowList({
     () => Object.fromEntries(stepTypes.map((t) => [t.type, t.label])),
     [stepTypes],
   )
-
-  const rows = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return workflows
-    return workflows.filter((w) =>
-      [
-        w.name,
-        w.description,
-        w.owner_team_name,
-        w.owner_team_slug,
-        ...w.tags.map((t) => t.name),
-      ]
+  const { displayNames } = useUserDisplayNames()
+  const serviceAccounts = useServiceAccountAgents()
+  const nameOf = (principal: string) =>
+    serviceAccounts.get(principal)?.name ??
+    displayNames.get(principal) ??
+    principal
+  const authorName = (w: WorkflowSummary) => nameOf(w.created_by)
+  const sortValue = (w: WorkflowSummary, key: SortKey): number | string => {
+    if (key === 'name') return w.name
+    if (key === 'author') return authorName(w)
+    if (key === 'team') return w.owner_team_name ?? ''
+    if (key === 'tags')
+      return w.tags
+        .map((t) => t.name)
+        .sort()
         .join(' ')
-        .toLowerCase()
-        .includes(q),
-    )
-  }, [search, workflows])
+    if (key === 'trigger')
+      return triggers(w)
+        .map((t) => labels[t] ?? t)
+        .join(', ')
+    if (key === 'last') return w.last_run_at ? Date.parse(w.last_run_at) : 0
+    if (key === 'runs') return w.runs_30d ?? 0
+    if (key === 'failed') return failures?.[w.slug]?.failed ?? 0
+    return STATUS_LABEL[w.status]
+  }
+  const { sortButton, sorted } = useTableSort(sortValue)
+  const { facet, matches } = useTableFacets(FACET_KEYS, facetValues, workflows)
+
+  const q = search.trim().toLowerCase()
+  const rows = workflows.filter(
+    (w) =>
+      (!q ||
+        [
+          w.name,
+          w.description,
+          w.owner_team_name,
+          w.owner_team_slug,
+          authorName(w),
+          ...w.tags.map((t) => t.name),
+        ]
+          .join(' ')
+          .toLowerCase()
+          .includes(q)) &&
+      matches(w),
+  )
+  const teamNames = Object.fromEntries(
+    workflows.map((w) => [w.owner_team_slug ?? '', w.owner_team_name ?? '']),
+  )
+  const tagNames = Object.fromEntries(
+    workflows.flatMap((w) => w.tags.map((t) => [t.slug, t.name])),
+  )
 
   return (
     <AdminSection
@@ -160,7 +218,7 @@ export function WorkflowList({
       <AdminTable
         columns={[
           {
-            header: 'Name',
+            header: sortButton('name', 'Name'),
             key: 'name',
             render: (w) => (
               <div className="flex min-w-0 flex-col">
@@ -174,19 +232,44 @@ export function WorkflowList({
             ),
           },
           {
-            header: 'Owner team',
+            header: header(
+              sortButton('team', 'Owner team'),
+              facet('team', 'Owner team', (s) => teamNames[s]),
+            ),
             key: 'team',
             render: (w) => (
               <span className="text-sm">{w.owner_team_name ?? '—'}</span>
             ),
           },
           {
-            header: 'Tags',
+            header: header(
+              sortButton('author', 'Author'),
+              facet('author', 'Author', nameOf),
+            ),
+            // The profile link stacks above the row link.
+            interactive: true,
+            key: 'author',
+            render: (w) => (
+              <UserIdentity
+                displayNames={displayNames}
+                email={w.created_by}
+                size="small"
+              />
+            ),
+          },
+          {
+            header: header(
+              sortButton('tags', 'Tags'),
+              facet('tag', 'Tags', (s) => tagNames[s]),
+            ),
             key: 'tags',
             render: (w) => <TagChips tags={w.tags} />,
           },
           {
-            header: 'Trigger',
+            header: header(
+              sortButton('trigger', 'Trigger'),
+              facet('trigger', 'Trigger', (s) => labels[s] ?? s),
+            ),
             // Only a Run button stacks above the row link.
             interactive: runnable,
             key: 'trigger',
@@ -195,22 +278,25 @@ export function WorkflowList({
                 labels={labels}
                 onRun={runnable(w) ? () => void onRun(w) : undefined}
                 pending={fetching || start.isPending}
-                types={
-                  w.active_version === null
-                    ? w.trigger_types
-                    : w.active_trigger_types
-                }
+                types={triggers(w)}
               />
             ),
           },
           {
-            header: 'Last run',
+            header: header(
+              sortButton('last', 'Last run'),
+              facet(
+                'last',
+                'Last run',
+                (s) => STATUS[s as RunStatus]?.label ?? s,
+              ),
+            ),
             key: 'last',
             render: (w) => <LastRun workflow={w} />,
           },
           {
             cellAlign: 'right',
-            header: 'Runs 30d',
+            header: sortButton('runs', 'Runs 30d'),
             headerAlign: 'right',
             key: 'runs',
             render: (w) => (
@@ -218,7 +304,7 @@ export function WorkflowList({
             ),
           },
           {
-            header: 'Failed 7d',
+            header: sortButton('failed', 'Failed 7d'),
             interactive: true,
             key: 'failed',
             render: (w) =>
@@ -231,7 +317,14 @@ export function WorkflowList({
               ),
           },
           {
-            header: 'Status',
+            header: header(
+              sortButton('status', 'Status'),
+              facet(
+                'status',
+                'Status',
+                (s) => STATUS_LABEL[s as WorkflowStatus],
+              ),
+            ),
             key: 'status',
             render: (w) => <StatusBadge status={w.status} />,
           },
@@ -239,13 +332,13 @@ export function WorkflowList({
         emptyMessage={
           workflows.length === 0
             ? 'No workflows yet.'
-            : 'No workflows match that search.'
+            : 'No workflows match those filters.'
         }
         getRowHref={(w) => agentsPath('workflows', w.slug)}
         getRowKey={(w) => w.slug}
         getRowLabel={(w) => w.name}
         loading={loading}
-        rows={rows}
+        rows={sorted(rows)}
       />
       {asking && (
         <StartRunDialog
@@ -260,6 +353,15 @@ export function WorkflowList({
       )}
     </AdminSection>
   )
+}
+
+function facetValues(w: WorkflowSummary, key: FacetKey): string[] {
+  if (key === 'author') return [w.created_by]
+  if (key === 'last') return w.last_run_status ? [w.last_run_status] : []
+  if (key === 'status') return [w.status]
+  if (key === 'tag') return w.tags.map((t) => t.slug)
+  if (key === 'team') return w.owner_team_slug ? [w.owner_team_slug] : []
+  return triggers(w)
 }
 
 function FailedCell({
@@ -333,7 +435,7 @@ function TriggerCell({
   const Wrap = onRun ? 'button' : 'div'
   return (
     <Wrap
-      className="flex min-w-0 items-center gap-2 enabled:cursor-pointer enabled:hover:underline disabled:cursor-wait"
+      className="flex min-w-0 items-center gap-2 enabled:cursor-pointer hover:enabled:underline disabled:cursor-wait"
       {...(onRun && {
         disabled: pending,
         onClick: onRun,
@@ -349,4 +451,9 @@ function TriggerCell({
       </span>
     </Wrap>
   )
+}
+
+/** The triggers a run starts from: the active version's, else the latest's. */
+function triggers(w: WorkflowSummary): string[] {
+  return w.active_version === null ? w.trigger_types : w.active_trigger_types
 }
