@@ -767,52 +767,6 @@ async def lookup_ops_log_performed_by(
     return result
 
 
-async def _apply_deployment_nodes(
-    db: graph.Graph,
-    project_ids: list[str],
-    current: dict[
-        tuple[str, str],
-        tuple[str | None, str | None, datetime.datetime, str | None],
-    ],
-) -> dict[tuple[str, str], LatestDeployment]:
-    """Fill ``current`` from the ``Deployment`` nodes; return latest attempts.
-
-    The shared reader answers with two attempts per environment: the
-    newest *successful* one is the current release, written into
-    ``current`` as ``(tag, committish, timestamp, performed_by)``, and
-    the newest attempt of any status becomes the returned
-    ``LatestDeployment`` when it is a different attempt.
-
-    Failures are swallowed for the same reason as in
-    :func:`_fetch_current_releases`: release data is best-effort.
-    """
-    try:
-        rows = await deployment_nodes.current_and_latest_by_project(
-            db, project_ids
-        )
-    except Exception:  # noqa: BLE001
-        LOGGER.warning(
-            'Failed to fetch deployment nodes for projects', exc_info=True
-        )
-        return {}
-    latest_deployments: dict[tuple[str, str], LatestDeployment] = {}
-    for entry in rows:
-        key = (entry.project_id, str(entry.environment.get('slug') or ''))
-        if entry.current is not None and entry.current.release is not None:
-            current[key] = (
-                entry.current.release.get('tag') or None,
-                entry.current.release.get('committish') or None,
-                entry.current.event.timestamp,
-                entry.current.event.performed_by,
-            )
-        # The reader hands back the same node as both attempts when the
-        # newest one is the one serving traffic, so the two compare
-        # equal and there is nothing extra to report.
-        if entry.latest.release is not None and entry.latest != entry.current:
-            latest_deployments[key] = LatestDeployment.from_node(entry.latest)
-    return latest_deployments
-
-
 class CurrentReleaseState(typing.NamedTuple):
     """Per-project current releases and latest attempts, by env slug."""
 
@@ -827,9 +781,12 @@ async def _fetch_current_releases(
     """Return the current release and latest attempt per environment.
 
     Both keyed ``{project_id: {env_slug: ...}}``.  ``Deployment`` nodes
-    are read through ``current_and_latest_by_project`` -- the same reader
-    the project-detail ``/releases/current`` endpoint uses -- so both
-    views agree on which attempt is current.
+    are read through ``current_and_latest_by_project``, the reader the
+    project-detail ``/releases/current`` endpoint also uses, so both
+    views agree on which attempt is current.  The reader answers with
+    two attempts per environment: the newest *successful* one is the
+    current release, and the newest attempt of any status is returned
+    as the latest when it is a different attempt.
 
     The legacy ``DEPLOYED_TO`` deployment arrays are not read.  In
     production they decided no current release (issue #998), and reading
@@ -846,45 +803,49 @@ async def _fetch_current_releases(
     """
     if not project_ids:
         return CurrentReleaseState({}, {})
-    latest: dict[
-        tuple[str, str],
-        tuple[str | None, str | None, datetime.datetime, str | None],
-    ] = {}
-    latest_deployments = await _apply_deployment_nodes(db, project_ids, latest)
-
-    # Backfill performed_by from operations_log for events whose
-    # AGE edge left it null (in-product deploy/promote path).
-    enrich_targets = [
-        (pid, env_slug, tag, committish)
-        for (pid, env_slug), (
-            tag,
-            committish,
-            _ts,
-            performed_by,
-        ) in latest.items()
-        if performed_by is None
-    ]
-    performed_by_by_key = await lookup_ops_log_performed_by(enrich_targets)
-    if performed_by_by_key:
-        for key, (tag, committish, ts, performed_by) in list(latest.items()):
-            if performed_by is not None:
-                continue
-            looked_up = performed_by_by_key.get(key)
-            if looked_up:
-                latest[key] = (tag, committish, ts, looked_up)
-
-    current: dict[str, dict[str, ReleaseInfo]] = {}
-    for (pid, env_slug), (tag, committish, ts, performed_by) in latest.items():
-        current.setdefault(pid, {})[env_slug] = ReleaseInfo(
-            tag=tag,
-            committish=committish,
-            performed_by=performed_by,
-            deployed_at=ts,
+    try:
+        states = await deployment_nodes.current_and_latest_by_project(
+            db, project_ids
         )
-    in_flight: dict[str, dict[str, LatestDeployment]] = {}
-    for (pid, env_slug), entry in latest_deployments.items():
-        in_flight.setdefault(pid, {})[env_slug] = entry
-    return CurrentReleaseState(current, in_flight)
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'Failed to fetch deployment nodes for projects', exc_info=True
+        )
+        return CurrentReleaseState({}, {})
+    current: dict[str, dict[str, ReleaseInfo]] = {}
+    latest: dict[str, dict[str, LatestDeployment]] = {}
+    for state in states:
+        env_slug = str(state.environment.get('slug') or '')
+        serving = state.current
+        if serving is not None and serving.release is not None:
+            current.setdefault(state.project_id, {})[env_slug] = ReleaseInfo(
+                tag=serving.release.get('tag') or None,
+                committish=serving.release.get('committish') or None,
+                performed_by=serving.event.performed_by,
+                deployed_at=serving.event.timestamp,
+            )
+        # The reader hands back the same node as both attempts when the
+        # newest one is the one serving traffic, so the two compare
+        # equal and there is nothing extra to report.
+        if state.latest.release is not None and state.latest != serving:
+            latest.setdefault(state.project_id, {})[env_slug] = (
+                LatestDeployment.from_node(state.latest)
+            )
+
+    # Backfill performed_by from operations_log where the node left it
+    # null (in-product deploy/promote path).
+    missing = [
+        (pid, env_slug, info.tag, info.committish)
+        for pid, by_env in current.items()
+        for env_slug, info in by_env.items()
+        if info.performed_by is None
+    ]
+    found = await lookup_ops_log_performed_by(missing)
+    for (pid, env_slug), performed_by in found.items():
+        current[pid][env_slug] = current[pid][env_slug].model_copy(
+            update={'performed_by': performed_by}
+        )
+    return CurrentReleaseState(current, latest)
 
 
 def _ch_time(value: datetime.datetime) -> str:

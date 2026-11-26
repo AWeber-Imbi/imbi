@@ -2392,16 +2392,27 @@ class SharedCurrentReaderTestCase(_ReleasesTestBase):
                 )
             ),
         )
-        with mock.patch(
-            'imbi.common.deployments.current_and_latest_by_project',
-            mock.AsyncMock(return_value=[state]),
+        ch = mock.MagicMock()
+        ch.query = mock.AsyncMock(return_value=[])
+        with (
+            mock.patch(
+                'imbi.common.deployments.current_and_latest_by_project',
+                mock.AsyncMock(return_value=[state]),
+            ),
+            mock.patch(
+                'imbi.api.endpoints.projects.ch_client.Clickhouse.'
+                'get_instance',
+                return_value=ch,
+            ),
         ):
-            latest = asyncio.run(
-                projects._apply_deployment_nodes(
-                    mock.AsyncMock(), [PROJECT_ID], {}
+            listed = asyncio.run(
+                projects._fetch_current_releases(
+                    mock.AsyncMock(), [PROJECT_ID]
                 )
             )
-        self.assertEqual('failed', latest[(PROJECT_ID, 'production')].status)
+        self.assertEqual(
+            'failed', listed.latest[PROJECT_ID]['production'].status
+        )
 
     def test_latest_is_omitted_when_it_is_the_current_release(self) -> None:
         """The newest attempt succeeded, so there is nothing extra."""
