@@ -65,7 +65,6 @@ const COPY_BODY = {
 
 function draft(params: Record<string, unknown> = {}): WorkflowDraft {
   return {
-    description: '',
     graph: {
       edges: [],
       nodes: [

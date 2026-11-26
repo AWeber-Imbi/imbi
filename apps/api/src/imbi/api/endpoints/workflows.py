@@ -20,6 +20,7 @@ import asyncio
 import dataclasses
 import datetime
 import functools
+import json
 import logging
 import re
 import typing
@@ -35,9 +36,13 @@ from imbi.api import teams, workflows
 from imbi.api.auth import autonomous, organizations, permissions
 from imbi.api.endpoints import prompts
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
+from imbi.api.llm import prompted
+from imbi.api.llm.dependencies import InjectAnthropicClient
 from imbi.common import graph, lifespan
 from imbi.common.auth import permissions as common_permissions
+from imbi.common.llm import AnthropicClient
 from imbi.common.prompts import resolve as prompt_resolve
+from imbi.common.prompts import system as system_prompts
 from imbi.common.workflows import graph as wf
 from imbi.common.workflows import (
     history,
@@ -132,8 +137,9 @@ class Workflow(WorkflowSummary):
 
 
 class WorkflowSave(pydantic.BaseModel):
+    """A workflow save. A model writes the description."""
+
     name: str = pydantic.Field(min_length=1)
-    description: str = ''
     owner_team_slug: str = pydantic.Field(min_length=1)
     tags: list[str] = pydantic.Field(
         default=[], description='Tag slugs. Must already exist in the org.'
@@ -694,7 +700,7 @@ async def _definition(
     )
     return workflows.Definition(
         name=data.name,
-        description=data.description,
+        description='',
         owner_team_id=owner_team_id,
         tag_ids=list(tag_ids.values()),
         graph=data.graph.model_dump(mode='json'),
@@ -702,6 +708,103 @@ async def _definition(
         validation=result.model_dump(mode='json'),
         author=auth.principal_name,
     )
+
+
+#: The longest description that is stored.
+MAX_DESCRIPTION_LENGTH = 300
+
+_AGENT_NAMES_QUERY: typing.LiteralString = """
+MATCH (a:Agent)-[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+WHERE a.id IN {ids}
+RETURN a.id AS id, a.name AS name
+"""
+
+
+class _Description(pydantic.BaseModel):
+    description: str
+
+
+def _outline(
+    name: str, wf_graph: dict[str, typing.Any]
+) -> dict[str, typing.Any]:
+    """Return the parts of a workflow that its description reads.
+
+    The layout and the step params are not in it (a step keeps its
+    agent), so a save that only moves steps keeps the description.
+    """
+    keys = {n['id']: n['key'] for n in wf_graph.get('nodes', [])}
+    steps: list[dict[str, typing.Any]] = []
+    for node in wf_graph.get('nodes', []):
+        step = registry.get(node['type'])
+        outline = {
+            'key': node['key'],
+            'title': node['title'],
+            'type': step.label if step else node['type'],
+        }
+        # An agent step, or a trigger that filters on an agent. A
+        # value that is not a string is a validation issue, not an agent.
+        agent_id = node.get('params', {}).get('agent_id')
+        if isinstance(agent_id, str) and agent_id:
+            outline['agent'] = agent_id
+        steps.append(outline)
+    return {
+        'name': name,
+        'steps': steps,
+        'connections': [
+            f'{keys.get(e["source"])}:{e["port"]} -> {keys.get(e["target"])}'
+            for e in wf_graph.get('edges', [])
+        ],
+    }
+
+
+async def _describe(
+    db: graph.Graph,
+    anthropic: AnthropicClient,
+    org_slug: str,
+    outline: dict[str, typing.Any],
+    current: str,
+    auth: permissions.AuthContext,
+) -> str:
+    """Write a description of the workflow with the
+    ``imbi-api/workflow-description`` prompt. Agent ids are sent as agent
+    names. ``current`` is kept when the workflow has no steps or no model
+    answers.
+    """
+    if not outline['steps'] or not anthropic.available:
+        return current
+    ids = [s['agent'] for s in outline['steps'] if s.get('agent')]
+    names: dict[str, str] = {}
+    if ids:
+        rows = await db.execute(
+            _AGENT_NAMES_QUERY,
+            {'org_slug': org_slug, 'ids': ids},
+            ['id', 'name'],
+        )
+        names = {
+            graph.parse_agtype(r['id']): graph.parse_agtype(r['name'])
+            for r in rows
+        }
+    sent = {
+        **outline,
+        'steps': [
+            {**s, 'agent': names.get(s['agent'], s['agent'])}
+            if 'agent' in s
+            else s
+            for s in outline['steps']
+        ],
+    }
+    result = await prompted.complete(
+        db,
+        anthropic,
+        system_prompts.WORKFLOW_DESCRIPTION,
+        json.dumps(sent),
+        _Description(description=current),
+        auth,
+    )
+    if result.degraded:
+        return current
+    text = ' '.join(result.data.description.split())
+    return text[:MAX_DESCRIPTION_LENGTH] or current
 
 
 # --- Endpoints ---------------------------------------------------------
@@ -779,6 +882,7 @@ async def create_workflow(
     data: WorkflowCreate,
     db: graph.Pool,
     store: workflows.Store,
+    anthropic: InjectAnthropicClient,
     auth: CreateAuth,
 ) -> dict[str, typing.Any]:
     """Make a workflow in ``draft`` with its version 1.
@@ -826,6 +930,17 @@ async def create_workflow(
     await _check_llm_call(
         db, org_slug, slug, data.graph, auth, definition.owner_team_id
     )
+    definition = dataclasses.replace(
+        definition,
+        description=await _describe(
+            db,
+            anthropic,
+            org_slug,
+            _outline(definition.name, definition.graph),
+            '',
+            auth,
+        ),
+    )
     with conflict_on_unique_violation(f'Workflow {slug!r} already exists'):
         await store.create(
             org_id,
@@ -857,9 +972,15 @@ async def save_workflow(
     data: WorkflowSave,
     db: graph.Pool,
     store: workflows.Store,
+    anthropic: InjectAnthropicClient,
     auth: WriteAuth,
 ) -> dict[str, typing.Any]:
     """Save a new version. The active version does not change.
+
+    A model writes the description again when the name, the steps, or
+    the connections change, or when the description is empty. The
+    description does not change when no model answers or the workflow
+    has no steps.
 
     The version is stored with its validation issues.
 
@@ -908,6 +1029,15 @@ async def save_workflow(
     await _check_llm_call(
         db, org_slug, slug, data.graph, auth, definition.owner_team_id
     )
+    outline = _outline(definition.name, definition.graph)
+    description = current['description']
+    if not description or outline != _outline(
+        current['name'], current['graph']
+    ):
+        description = await _describe(
+            db, anthropic, org_slug, outline, description, auth
+        )
+    definition = dataclasses.replace(definition, description=description)
 
     # The archive runs under the row lock of the save: a second save
     # waits, so an older key set cannot archive a prompt of a newer

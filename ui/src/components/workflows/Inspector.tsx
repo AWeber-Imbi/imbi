@@ -5,7 +5,6 @@ import { Copy, Trash2 } from 'lucide-react'
 import { TagPicker } from '@/components/tags/TagPicker'
 import { FormField } from '@/components/ui/form-field'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 
 import { KEY_PATTERN, portsOf, type StepTypes } from './graph'
@@ -314,14 +313,6 @@ export function SettingsPanel({
         disabled={readOnly}
       >
         <IssueList issues={issues} />
-        <FormField htmlFor="workflow-description" label="Description">
-          <Textarea
-            id="workflow-description"
-            onChange={(e) => onChange({ description: e.target.value })}
-            rows={3}
-            value={draft.description}
-          />
-        </FormField>
         <FormField htmlFor="workflow-team" label="Owner team" required>
           <SelectField
             id="workflow-team"

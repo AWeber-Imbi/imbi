@@ -50,6 +50,7 @@ from imbi.api.endpoints._pagination import (
     decode_cursor,
     encode_cursor,
 )
+from imbi.api.llm import prompted
 from imbi.api.llm.dependencies import InjectAnthropicClient
 from imbi.api.tickets import custom_fields
 from imbi.api.tickets.store import (
@@ -2260,21 +2261,11 @@ async def count_waiting_agent_tasks(
     return found
 
 
-#: The CMS reference of the ticket subject prompt.
-SUBJECT_PROMPT = f'{system_prompts.TICKET_SUBJECT.ref}@stable'
-
 #: The longest subject, as the UI cuts a subject from a description.
 MAX_SUBJECT_LENGTH = 96
 
 #: The characters of a description that the model reads.
 SUBJECT_INPUT_LENGTH = 8000
-
-#: The reply format, added after the prompt in code, so that an edit of
-#: the prompt in the CMS cannot break the parse.
-_SUBJECT_FORMAT = (
-    '\n\nReply with only a JSON object with one key, "subject", whose '
-    'value is the subject. No other text, no markdown fences.'
-)
 
 _LINK = re.compile(r'https?://\S+')
 
@@ -2319,20 +2310,13 @@ async def suggest_ticket_subject(
     fallback = TicketSubject(subject=subject_from(description))
     if not anthropic.available:
         return {'subject': fallback.subject, 'degraded': True}
-    prompt = await system_prompts.load_system_prompt(
+    result = await prompted.complete(
         db,
-        SUBJECT_PROMPT,
-        {},
+        anthropic,
         system_prompts.TICKET_SUBJECT,
-        email=auth.user.email if auth.user else None,
-    )
-    result = await anthropic.complete_json(
         description,
-        schema=TicketSubject,
-        fallback=fallback,
-        max_tokens=prompt.max_tokens or 200,
-        model=prompt.model_id,
-        system=prompt.text + _SUBJECT_FORMAT,
+        fallback,
+        auth,
     )
     subject = _first_line(result.data.subject)
     return {

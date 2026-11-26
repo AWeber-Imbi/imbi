@@ -58,6 +58,23 @@ def _use_given_permissions(case: unittest.TestCase) -> None:
     case.addCleanup(patcher.stop)
 
 
+def use_anthropic(
+    test_app: fastapi.FastAPI, client: typing.Any = None
+) -> None:
+    """Give the app ``client`` as its Anthropic client, by default a
+    disabled one. The test client runs no lifespan, so a route that asks
+    for the client fails without it. The override lasts for the test."""
+    from imbi.api.llm import dependencies
+    from imbi.common.llm import AnthropicClient
+
+    if client is None:
+        client = mock.MagicMock(spec=AnthropicClient)
+        client.available = False
+    test_app.dependency_overrides[dependencies._get_anthropic_client] = (
+        lambda: client
+    )
+
+
 @functools.cache
 def shared_app() -> fastapi.FastAPI:
     """Return a process-wide :class:`fastapi.FastAPI` instance."""
@@ -134,6 +151,7 @@ class SharedAppTestCase(unittest.TestCase):
     ) -> unittest.result.TestResult | None:
         self.addCleanup(_reset, self, self.test_app)
         _use_given_permissions(self)
+        use_anthropic(self.test_app)
         return super().run(result)
 
 
@@ -152,6 +170,7 @@ class SharedAppAsyncTestCase(unittest.IsolatedAsyncioTestCase):
     ) -> unittest.result.TestResult | None:
         self.addCleanup(_reset, self, self.test_app)
         _use_given_permissions(self)
+        use_anthropic(self.test_app)
         return super().run(result)
 
 

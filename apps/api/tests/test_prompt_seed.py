@@ -27,6 +27,9 @@ class SeedDefaultPromptsTestCase(unittest.IsolatedAsyncioTestCase):
                 seed.SeedResult('imbi-assistant/system', created=True),
                 seed.SeedResult('imbi-slackbot/system', created=False),
                 seed.SeedResult('imbi-api/ticket-subject', created=False),
+                seed.SeedResult(
+                    'imbi-api/workflow-description', created=False
+                ),
             ],
         )
         insert.assert_awaited_once()

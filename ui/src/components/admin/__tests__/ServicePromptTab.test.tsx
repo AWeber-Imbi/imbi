@@ -56,6 +56,35 @@ describe('ServicePromptTab', () => {
     )
   })
 
+  it('edits another prompt of a service', async () => {
+    const endpoints = await import('@/api/endpoints')
+    const { ServicePromptTab } = await import('../ServicePromptTab')
+    render(
+      <ServicePromptTab
+        label="Workflow description"
+        note="Every organization uses this prompt."
+        service="imbi-api"
+        slug="workflow-description"
+      />,
+    )
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          'The workflow description prompt is not in the CMS yet',
+        ),
+      ).toBeInTheDocument(),
+    )
+    expect(
+      screen.getByText('Every organization uses this prompt.'),
+    ).toBeInTheDocument()
+    expect(endpoints.getPrompt).toHaveBeenCalledWith(
+      'imbi-api',
+      'workflow-description',
+      expect.anything(),
+    )
+  })
+
   it('creates the prompt with locked, prefilled fields', async () => {
     const endpoints = await import('@/api/endpoints')
     vi.mocked(endpoints.createPrompt).mockResolvedValue(

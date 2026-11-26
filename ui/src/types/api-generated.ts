@@ -6709,6 +6709,11 @@ export interface paths {
          * Save Workflow
          * @description Save a new version. The active version does not change.
          *
+         *     A model writes the description again when the name, the steps, or
+         *     the connections change, or when the description is empty. The
+         *     description does not change when no model answers or the workflow
+         *     has no steps.
+         *
          *     The version is stored with its validation issues.
          *
          *     Only an admin or a member of the current owner team can change the
@@ -24220,11 +24225,6 @@ export interface components {
         WorkflowCreate: {
             /** Name */
             name: string;
-            /**
-             * Description
-             * @default
-             */
-            description: string;
             /** Owner Team Slug */
             owner_team_slug: string;
             /**
@@ -24241,15 +24241,13 @@ export interface components {
              */
             slug?: string | null;
         };
-        /** WorkflowSave */
+        /**
+         * WorkflowSave
+         * @description A workflow save. A model writes the description.
+         */
         WorkflowSave: {
             /** Name */
             name: string;
-            /**
-             * Description
-             * @default
-             */
-            description: string;
             /** Owner Team Slug */
             owner_team_slug: string;
             /**

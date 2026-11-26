@@ -12,6 +12,7 @@ import {
   putAgentPlatformConfig,
   syncAgentMarketplace,
 } from '@/api/endpoints'
+import { ServicePromptTab } from '@/components/admin/ServicePromptTab'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -122,6 +123,24 @@ export function PlatformPage() {
           stored={config.data}
         />
       )}
+      <Card className="flex flex-col gap-4 p-5">
+        <div className="text-[15px] font-medium">Workflow descriptions</div>
+        <ServicePromptTab
+          label="Workflow description"
+          note={
+            <>
+              When a save changes the name, steps, or connections of a workflow,
+              imbi-api writes its description with the version that
+              imbi-api/workflow-description@stable points at and the model of
+              that version. Without the prompt, it uses its built-in prompt and
+              its default Anthropic model. Every organization uses this prompt.
+              Run imbi-api setup-prompts to create a missing prompt.
+            </>
+          }
+          service="imbi-api"
+          slug="workflow-description"
+        />
+      </Card>
     </div>
   )
 }

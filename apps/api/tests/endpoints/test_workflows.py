@@ -11,6 +11,7 @@ import uuid
 from unittest import mock
 
 import httpx
+import orjson
 
 from apps.api.tests import support
 from imbi.api import models, workflows
@@ -18,6 +19,8 @@ from imbi.api.auth import permissions
 from imbi.api.endpoints import prompts
 from imbi.api.endpoints import workflows as workflows_endpoints
 from imbi.common import graph
+from imbi.common.llm import AnthropicClient, CompletionResult
+from imbi.common.prompts import system as system_prompts
 from imbi.common.workflows import graph as wf
 from imbi.common.workflows import script_runner
 
@@ -256,6 +259,116 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
             f'{self.base}/deploy-guard/versions/9'
         )
         self.assertEqual(response.status_code, 404)
+
+    def _model(self, text: str, degraded: bool = False) -> mock.MagicMock:
+        """Answer each description call with ``text``."""
+        client = mock.MagicMock(spec=AnthropicClient)
+        client.available = True
+        client.complete_json = mock.AsyncMock(
+            return_value=CompletionResult(
+                data=workflows_endpoints._Description(description=text),
+                degraded=degraded,
+            )
+        )
+        support.use_anthropic(self.test_app, client)
+        return client
+
+    async def _save_graph(self, graph_body: dict[str, typing.Any]) -> str:
+        response = await self.client.put(
+            f'{self.base}/deploy-guard',
+            json={
+                'name': 'Deploy guard',
+                'owner_team_slug': self.team,
+                'graph': graph_body,
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        return typing.cast(str, response.json()['description'])
+
+    async def test_description(self) -> None:
+        model = self._model('Deploys a project to staging.')
+        # No steps: no model call.
+        response = await self._create()
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(response.json()['description'], '')
+        model.complete_json.assert_not_awaited()
+
+        self.assertEqual(
+            await self._save_graph(DEPLOY_GRAPH),
+            'Deploys a project to staging.',
+        )
+        call = model.complete_json.call_args
+        self.assertEqual(
+            orjson.loads(call.args[0]),
+            {
+                'name': 'Deploy guard',
+                'steps': [
+                    {'key': 'start', 'title': 'Start', 'type': 'Manual run'},
+                    {'key': 'ship', 'title': 'Ship', 'type': 'Deploy'},
+                ],
+                'connections': ['start:0 -> ship'],
+            },
+        )
+        # Not seeded in the test graph: the packaged prompt.
+        self.assertTrue(
+            call.kwargs['system'].startswith(
+                system_prompts.WORKFLOW_DESCRIPTION.text()
+            )
+        )
+
+        # Moving a step keeps the description without a model call.
+        model.complete_json.reset_mock()
+        moved = orjson.loads(orjson.dumps(DEPLOY_GRAPH))
+        moved['nodes'][1]['position'] = {'x': 200, 'y': 40}
+        self.assertEqual(
+            await self._save_graph(moved), 'Deploys a project to staging.'
+        )
+        model.complete_json.assert_not_awaited()
+
+        # No answer: the description is kept.
+        model = self._model('', degraded=True)
+        moved['nodes'][1]['title'] = 'Ship it'
+        self.assertEqual(
+            await self._save_graph(moved), 'Deploys a project to staging.'
+        )
+        model.complete_json.assert_awaited_once()
+
+    async def test_description_names_agents(self) -> None:
+        model = self._model('Runs Fixer.')
+        agent = f'agent-{uuid.uuid4().hex[:8]}'
+        await self.graph.execute(
+            """
+            MATCH (o:Organization {{id: {org}}})
+            CREATE (a:Agent {{id: {agent}, slug: {agent}, name: 'Fixer'}})
+            CREATE (a)-[:BELONGS_TO]->(o)
+            RETURN a.id AS id
+            """,
+            {'org': self.org, 'agent': agent},
+            ['id'],
+        )
+        self.addAsyncCleanup(
+            self.graph.execute,
+            'MATCH (a:Agent {{id: {id}}}) DETACH DELETE a RETURN 1 AS ok',
+            {'id': agent},
+            ['ok'],
+        )
+        response = await self._create(
+            graph={
+                'nodes': [
+                    _node('start', 'manual'),
+                    _node(
+                        'fix',
+                        'agent',
+                        {'agent_id': agent, 'instruction': 'Fix it.'},
+                    ),
+                ],
+                'edges': [{'source': 'start', 'port': 0, 'target': 'fix'}],
+            }
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(response.json()['description'], 'Runs Fixer.')
+        sent = orjson.loads(model.complete_json.call_args.args[0])
+        self.assertEqual(sent['steps'][1]['agent'], 'Fixer')
 
     async def test_save_at_graph_byte_limit(self) -> None:
         response = await self._create()
