@@ -160,7 +160,9 @@ A binding gives one AWS secret a reference in Imbi.
    runner uses (see [Purposes](#purposes)).
 8. Optional: in **Allowed delivery targets**, list the environment variable
    names that may receive the value, for example `GRAFANA_TOKEN`. The list
-   also limits the JSON members that go into their own variables.
+   also limits the JSON members that go into their own variables. It does
+   not apply to `file_descriptor` delivery, so one binding can serve both
+   a command and the runner.
 9. Optional: select **Grantable by agent owners**. A user without
    `secret_binding:write` can then grant this binding to an agent of a
    team that the user is in. Leave it clear for production credentials.

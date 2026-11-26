@@ -250,8 +250,9 @@ class SecretBindingCreate(pydantic.BaseModel):
     allowed_delivery_modes: list[DeliveryMode] = pydantic.Field(min_length=1)
     allowed_delivery_targets: list[DeliveryTarget] = pydantic.Field(
         default=[],
-        description='When not empty, the only targets allowed. The '
-        'denylist of unsafe environment names still applies.',
+        description='When not empty, the only targets allowed. It does '
+        'not limit file_descriptor delivery. The denylist of unsafe '
+        'environment names still applies.',
     )
     max_ttl_seconds: Ttl = 900
     enabled: bool = True
