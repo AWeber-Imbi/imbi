@@ -685,46 +685,6 @@ async def _resolve_display_names(
     }
 
 
-def _latest_deployment_event(
-    raw: typing.Any,
-) -> tuple[datetime.datetime, str | None] | None:
-    """Return ``(timestamp, performed_by)`` of the latest event, or ``None``.
-
-    The ``deployments`` edge property is a JSON-encoded list of
-    ``DeploymentEvent``-shaped objects.  ``_fetch_current_releases``
-    only needs the most recent ``(timestamp, performed_by)`` per
-    ``(project, environment)`` pair, so we parse straight off the dicts
-    and skip the per-entry Pydantic validation that
-    ``_parse_deployment_events`` used to pay for.
-    """
-    if not raw:
-        return None
-    data = json.loads(raw) if isinstance(raw, str) else raw
-    if not isinstance(data, list):
-        return None
-    latest_ts: datetime.datetime | None = None
-    latest_by: str | None = None
-    for entry in data:  # type: ignore[reportUnknownVariableType]
-        if not isinstance(entry, dict):
-            continue
-        ts = entry.get('timestamp')  # type: ignore[reportUnknownMemberType]
-        if not isinstance(ts, str):
-            continue
-        try:
-            parsed = datetime.datetime.fromisoformat(ts)
-        except ValueError:
-            continue
-        if latest_ts is None or parsed > latest_ts:
-            latest_ts = parsed
-            performed_by = entry.get(  # type: ignore[reportUnknownMemberType]
-                'performed_by'
-            )
-            latest_by = performed_by if isinstance(performed_by, str) else None
-    if latest_ts is None:
-        return None
-    return latest_ts, latest_by
-
-
 def ops_log_version_candidates(
     tag: str | None, committish: str | None
 ) -> list[str]:
@@ -815,17 +775,16 @@ async def _apply_deployment_nodes(
         tuple[str | None, str | None, datetime.datetime, str | None],
     ],
 ) -> dict[tuple[str, str], LatestDeployment]:
-    """Union the ``Deployment`` nodes over the legacy array entries.
+    """Fill ``current`` from the ``Deployment`` nodes; return latest attempts.
 
-    The array stopped growing at the node cutover, so anything deployed
-    since is only a node.  The shared reader answers with two attempts
-    per environment: only the newest *successful* one may displace a
-    legacy array entry as the current release, and the newest attempt of
-    any status becomes the returned ``LatestDeployment`` when it is a
-    different attempt.
+    The shared reader answers with two attempts per environment: the
+    newest *successful* one is the current release, written into
+    ``current`` as ``(tag, committish, timestamp, performed_by)``, and
+    the newest attempt of any status becomes the returned
+    ``LatestDeployment`` when it is a different attempt.
 
-    Failures are swallowed for the same reason the query in
-    :func:`_fetch_current_releases` is: release data is best-effort.
+    Failures are swallowed for the same reason as in
+    :func:`_fetch_current_releases`: release data is best-effort.
     """
     try:
         rows = await deployment_nodes.current_and_latest_by_project(
@@ -839,35 +798,17 @@ async def _apply_deployment_nodes(
     latest_deployments: dict[tuple[str, str], LatestDeployment] = {}
     for entry in rows:
         key = (entry.project_id, str(entry.environment.get('slug') or ''))
-        legacy = current.get(key)
         if entry.current is not None and entry.current.release is not None:
-            if legacy is None or deployment_nodes.as_utc(
-                entry.current.event.timestamp
-            ) > deployment_nodes.as_utc(legacy[2]):
-                legacy = None
-                current[key] = (
-                    entry.current.release.get('tag') or None,
-                    entry.current.release.get('committish') or None,
-                    entry.current.event.timestamp,
-                    entry.current.event.performed_by,
-                )
+            current[key] = (
+                entry.current.release.get('tag') or None,
+                entry.current.release.get('committish') or None,
+                entry.current.event.timestamp,
+                entry.current.event.performed_by,
+            )
         # The reader hands back the same node as both attempts when the
         # newest one is the one serving traffic, so the two compare
         # equal and there is nothing extra to report.
         if entry.latest.release is not None and entry.latest != entry.current:
-            # And it has to be newer than a legacy array entry that won
-            # as current.  The pill means "something happened here after
-            # the release that is serving"; against a newer legacy entry
-            # an unguarded write made that sentence false.  Compare when
-            # the attempt *started*: one closed late (e.g. a stuck
-            # rollout swept to failed) is not newer than a release that
-            # went out after it began.  When a node won, the reader has
-            # already compared start times, and the serving node's
-            # timestamp is its last status change, not its start.
-            if legacy is not None and deployment_nodes.started_at(
-                entry.latest
-            ) <= deployment_nodes.as_utc(legacy[2]):
-                continue
             latest_deployments[key] = LatestDeployment.from_node(entry.latest)
     return latest_deployments
 
@@ -886,79 +827,29 @@ async def _fetch_current_releases(
     """Return the current release and latest attempt per environment.
 
     Both keyed ``{project_id: {env_slug: ...}}``.  ``Deployment`` nodes
-    are read through ``current_and_latest_by_project`` — the same reader
-    the project-detail ``/releases/current`` endpoint uses — so both
+    are read through ``current_and_latest_by_project`` -- the same reader
+    the project-detail ``/releases/current`` endpoint uses -- so both
     views agree on which attempt is current.
 
-    The legacy ``DEPLOYED_TO`` array is still the only record of
-    anything deployed before the node cutover, so it is read here as
-    well: for each project we walk every
-    ``(p)-[:HAS_RELEASE]->(r:Release)-[d:DEPLOYED_TO]->(e:Environment)``
-    edge and pick the release whose latest ``DeploymentEvent`` has the
-    most recent ``timestamp`` per environment.  Those entries carry no
-    per-attempt identity to group by, so they cannot be status-filtered
-    the way the nodes are; a node only ever displaces one.
+    The legacy ``DEPLOYED_TO`` deployment arrays are not read.  In
+    production they decided no current release (issue #998), and reading
+    them cost about 500 ms on every list.
 
-    ``performed_by`` on each ``DeploymentEvent`` is populated for
-    resync-sourced events but is intentionally null for in-product
-    deploy/promote actions (which capture the operator on the
-    ``operations_log`` audit row instead).  For those rows we look
-    up the deployer in ``operations_log`` keyed on
-    ``(project_id, environment_slug, version)`` — where ``version``
-    is ``tag if tag else committish``, matching the audit writer.
+    ``performed_by`` is null for in-product deploy/promote actions
+    (which capture the operator on the ``operations_log`` audit row
+    instead).  For those rows we look up the deployer in
+    ``operations_log`` keyed on ``(project_id, environment_slug,
+    version)`` -- where ``version`` is ``tag if tag else committish``,
+    matching the audit writer.
 
-    Errors are swallowed — release data is best-effort.
+    Errors are swallowed -- release data is best-effort.
     """
     if not project_ids:
         return CurrentReleaseState({}, {})
-    query: typing.LiteralString = """
-    MATCH (p:Project)-[:HAS_RELEASE]->(r:Release)
-                    -[d:DEPLOYED_TO]->(e:Environment)
-    WHERE p.id IN {project_ids}
-    RETURN p.id AS project_id,
-           e.slug AS env_slug,
-           r.tag AS tag,
-           r.committish AS committish,
-           d.deployments AS deployments
-    """
-    try:
-        rows = await db.execute(
-            query,
-            {'project_ids': project_ids},
-            ['project_id', 'env_slug', 'tag', 'committish', 'deployments'],
-        )
-    except Exception:  # noqa: BLE001
-        LOGGER.warning(
-            'Failed to fetch current releases for projects', exc_info=True
-        )
-        return CurrentReleaseState({}, {})
-
-    # For each (project_id, env_slug), keep the (release, event) pair
-    # with the latest event timestamp.
     latest: dict[
         tuple[str, str],
         tuple[str | None, str | None, datetime.datetime, str | None],
     ] = {}
-    for row in rows:
-        pid = graph.parse_agtype(row.get('project_id'))
-        env_slug = graph.parse_agtype(row.get('env_slug'))
-        if not isinstance(pid, str) or not isinstance(env_slug, str):
-            continue
-        latest_event = _latest_deployment_event(
-            graph.parse_agtype(row.get('deployments'))
-        )
-        if latest_event is None:
-            continue
-        event_ts, performed_by = latest_event
-        tag_val = graph.parse_agtype(row.get('tag'))
-        committish_val = graph.parse_agtype(row.get('committish'))
-        tag = str(tag_val) if tag_val else None
-        committish = str(committish_val) if committish_val else None
-        key = (pid, env_slug)
-        existing = latest.get(key)
-        if existing is None or event_ts > existing[2]:
-            latest[key] = (tag, committish, event_ts, performed_by)
-
     latest_deployments = await _apply_deployment_nodes(db, project_ids, latest)
 
     # Backfill performed_by from operations_log for events whose

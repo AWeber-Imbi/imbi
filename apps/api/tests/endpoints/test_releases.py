@@ -2327,10 +2327,8 @@ class SharedCurrentReaderTestCase(_ReleasesTestBase):
         ]
         ch = mock.MagicMock()
         ch.query = mock.AsyncMock(return_value=[])
-        # The projects list reads the same nodes; its own legacy
-        # ``DEPLOYED_TO`` query has nothing to add here.
-        legacy_db = mock.AsyncMock()
-        legacy_db.execute.return_value = []
+        # The projects list reads the same nodes through the reader.
+        list_db = mock.AsyncMock()
         with (
             mock.patch(
                 'imbi.common.deployments.current_and_latest_by_project',
@@ -2348,7 +2346,7 @@ class SharedCurrentReaderTestCase(_ReleasesTestBase):
         ):
             response = self.client.get(self._url('/current'))
             listed = asyncio.run(
-                projects._fetch_current_releases(legacy_db, [PROJECT_ID])
+                projects._fetch_current_releases(list_db, [PROJECT_ID])
             )
         self.assertEqual(response.status_code, 200, response.text)
         detail = response.json()[0]
