@@ -122,7 +122,9 @@ team.
 You do not write the description. When a save changes the name, the
 steps, or the connections, a model writes one sentence that says what the
 workflow does and names the agents that it uses. The workflows list shows
-it. The prompt is `imbi-api/workflow-description` in the
+it, and shows all of it when you hold the pointer over a row. The settings
+panel shows it as read-only text, and shows the author below the owner
+team. The prompt is `imbi-api/workflow-description` in the
 [prompt CMS](prompts.md). Edit it, and choose its model, on
 **Agents > Platform**. Without a model, imbi-api uses its default
 Anthropic model. Run `imbi-api setup-prompts` once to seed the prompt on
