@@ -2321,9 +2321,9 @@ async def list_projects(
             alias='releases',
             description=(
                 'Read the current release and latest deployment of each '
-                'environment. ``false`` skips that read: '
-                '``current_releases``, ``latest_deployments``, '
-                '``drift_ranges`` and ``drift_pairs`` are then empty. '
+                'environment. With ``slim=true``, ``false`` skips that '
+                'read: ``current_releases``, ``latest_deployments``, '
+                '``drift_ranges`` and ``drift_pairs`` are then empty; '
                 '``release_summary`` and ``release_drifted`` are still set.'
             ),
         ),
