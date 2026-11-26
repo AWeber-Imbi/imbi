@@ -11,6 +11,8 @@ a built-in fallback is used so the system prompt always has URL guidance.
 from __future__ import annotations
 
 import logging
+import typing
+import urllib.parse
 
 import httpx
 
@@ -95,3 +97,16 @@ def ticket_url(org: str, short_id: str) -> str | None:
     """Return the UI link of a ticket; ``None`` without ``IMBI_UI_URL``."""
     ui_url = settings.get_slackbot_settings().ui_url
     return f'{ui_url}/tickets/{org}/{short_id}' if ui_url else None
+
+
+def project_path(project: dict[str, typing.Any]) -> str:
+    """``/projects/<slug>/<id>``, as ``projectPath`` in the UI builds it.
+
+    The slug is encoded to stay in one path segment.  Browsers drop an
+    empty segment and resolve ``.`` and ``..``, so these slugs become
+    ``-``.
+
+    """
+    slug = project.get('slug') or ''
+    slug = '-' if slug in ('', '.', '..') else urllib.parse.quote(slug, '')
+    return f'/projects/{slug}/{project["id"]}'

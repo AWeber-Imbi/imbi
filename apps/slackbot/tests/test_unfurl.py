@@ -6,7 +6,7 @@ from unittest import mock
 from slack_sdk import errors
 
 from apps.slackbot.tests import helpers, test_create_ticket
-from imbi.slackbot import identity, settings, unfurl
+from imbi.slackbot import identity, links, settings, unfurl
 
 USER = identity.ImbiUser('ada@example.com', 'Ada')
 UI = 'https://imbi.example.com'
@@ -70,6 +70,16 @@ class ParseTests(SettingsTestCase):
             unfurl.Project('p1'), unfurl.parse(f'{PROJECT_URL}/logs')
         )
 
+    def test_project_slug_form(self) -> None:
+        project_id = 'V1StGXR8_Z5jdHi6B-myT'
+        for url in (
+            f'{UI}/projects/admin/{project_id}',
+            f'{UI}/projects/admin/{project_id}/deployments',
+            f'{UI}/projects/{project_id}/logs',
+        ):
+            with self.subTest(url=url):
+                self.assertEqual(unfurl.Project(project_id), unfurl.parse(url))
+
     def test_not_imbi(self) -> None:
         for url in (
             'https://other.example.com/projects/p1',
@@ -106,7 +116,7 @@ class EntityRefTests(SettingsTestCase):
                 PROJECT_URL,
                 f'{PROJECT_URL}/logs',
                 {'id': 'p1', 'type': 'project'},
-                PROJECT_URL,
+                f'{UI}/projects/admin/p1',
             ),
         }
         for name, (build, first, second, ref, canonical) in cases.items():
@@ -132,7 +142,6 @@ class TicketEntityTests(SettingsTestCase):
                 'display_type': 'Bug',
                 'display_id': 'T-12',
                 'product_name': 'Imbi',
-                'product_icon': {'url': unfurl.LOGO_URL, 'alt_text': 'Imbi'},
             },
             payload['attributes'],
         )
@@ -208,9 +217,21 @@ class ProjectEntityTests(SettingsTestCase):
         self.assertEqual(1795539600, fields['deployed']['value'])
         buttons = entity['entity_payload']['actions']['primary_actions']
         self.assertEqual(
-            [PROJECT_URL, f'{UI}/projects/p1/deployments'],
+            [PROJECT_URL, f'{UI}/projects/admin/p1/deployments'],
             [b['url'] for b in buttons],
         )
+
+    def test_project_path_slug(self) -> None:
+        for slug, expected in (
+            ('admin', '/projects/admin/p1'),
+            ('a/b?c', '/projects/a%2Fb%3Fc/p1'),
+            ('..', '/projects/-/p1'),
+            ('', '/projects/-/p1'),
+        ):
+            with self.subTest(slug=slug):
+                self.assertEqual(
+                    expected, links.project_path({'id': 'p1', 'slug': slug})
+                )
 
     def test_minimal_project(self) -> None:
         entity = unfurl.project_entity(

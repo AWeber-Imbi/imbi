@@ -23,7 +23,7 @@ import httpx
 from slack_sdk import errors
 
 from imbi.common import api, environments
-from imbi.slackbot import identity, settings
+from imbi.slackbot import identity, links, settings
 from imbi.slackbot.home import render
 
 SlackClient = typing.Any
@@ -33,13 +33,14 @@ Json = typing.Any
 LOGGER = logging.getLogger(__name__)
 
 _TICKET = re.compile(r'^/tickets/(?P<org>[^/]+)/(?P<short_id>[A-Za-z]+-\d+)')
-_PROJECT = re.compile(r'^/projects/(?P<project_id>[^/]+)')
-
-#: Slack fetches the image itself, so it must be on a public host.
-LOGO_URL = (
-    'https://raw.githubusercontent.com/AWeber-Imbi/imbi/main/'
-    'ui/public/icons/pwa-192x192.png'
+#: ``/projects/<slug>/<id>/...`` or the legacy ``/projects/<id>/...``.
+#: Project IDs are 21-character nanoids and no tab name has that length,
+#: so a 21-character second segment means the slug form (as in the UI's
+#: ``parseProjectPath``).
+_PROJECT = re.compile(
+    r'^/projects/(?:[^/]+/(?=[\w-]{21}(?:/|$)))?(?P<project_id>[^/]+)'
 )
+
 #: The prefix of the card buttons' ``action_id``.  The buttons open a
 #: URL; Slack still sends ``block_actions``, which the bot only acks.
 ACTION_PREFIX = 'unfurl_'
@@ -136,15 +137,16 @@ def project_entity(project: Json, url: str) -> Json:
             }
         )
     fields.extend(_current_release(project))
-    ui_url = settings.get_slackbot_settings().ui_url
+    canonical = settings.get_slackbot_settings().ui_url + links.project_path(
+        project
+    )
     buttons = [_button('Open in Imbi', url, primary=True)]
     if project.get('has_deployment_plugin'):
-        deployments = f'{ui_url}/projects/{project["id"]}/deployments'
-        buttons.append(_button('Deployments', deployments))
+        buttons.append(_button('Deployments', f'{canonical}/deployments'))
     return _entity(
         url,
         {'id': project['id'], 'type': 'project'},
-        f'{ui_url}/projects/{project["id"]}',
+        canonical,
         'slack#/entities/item',
         {'custom_fields': [f for f in fields if f]},
         title=project.get('name') or '',
@@ -288,8 +290,9 @@ def _entity(
                 'title': {'text': title},
                 'display_type': display_type,
                 'display_id': display_id,
+                # No product_icon: Slack shows the app icon, and a
+                # product_icon adds a second logo with the app badge.
                 'product_name': 'Imbi',
-                'product_icon': {'url': LOGO_URL, 'alt_text': 'Imbi'},
             },
             **payload,
             'actions': {'primary_actions': buttons},

@@ -83,7 +83,8 @@ the bot posted before this release do not change.
 ## Link previews
 
 When you post a link to an Imbi ticket
-(`/tickets/{org}/{short_id}`) or project (`/projects/{id}`), the bot adds a
+(`/tickets/{org}/{short_id}`) or project (`/projects/{slug}/{id}`, or the
+older `/projects/{id}`), the bot adds a
 preview card: a Slack Work Object. A ticket card shows the title, the type
 and ID, the status, the priority, and the assignee. A project card shows
 the name, the slug, the description, the team, the project types, the
