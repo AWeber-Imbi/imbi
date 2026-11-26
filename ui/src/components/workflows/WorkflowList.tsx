@@ -337,6 +337,7 @@ export function WorkflowList({
         getRowHref={(w) => agentsPath('workflows', w.slug)}
         getRowKey={(w) => w.slug}
         getRowLabel={(w) => w.name}
+        getRowTooltip={(w) => w.description}
         loading={loading}
         rows={sorted(rows)}
       />

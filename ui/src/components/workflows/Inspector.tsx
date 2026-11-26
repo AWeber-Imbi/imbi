@@ -5,6 +5,8 @@ import { Copy, Trash2 } from 'lucide-react'
 import { TagPicker } from '@/components/tags/TagPicker'
 import { FormField } from '@/components/ui/form-field'
 import { Input } from '@/components/ui/input'
+import { UserIdentity } from '@/components/ui/user-identity'
+import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import { cn } from '@/lib/utils'
 
 import { KEY_PATTERN, portsOf, type StepTypes } from './graph'
@@ -25,6 +27,7 @@ import { ScriptPreview } from './ScriptPreview'
 import { CATEGORY_TILE, stepIcon } from './stepStyle'
 import type {
   ValidationIssue,
+  Workflow,
   WorkflowDraft,
   WorkflowGraph,
   WorkflowNode,
@@ -289,14 +292,18 @@ export function SettingsPanel({
   onChange,
   orgSlug,
   readOnly,
+  workflow,
 }: {
   draft: WorkflowDraft
   issues: ValidationIssue[]
   onChange: (patch: Partial<WorkflowDraft>) => void
   orgSlug: string
   readOnly: boolean
+  /** The saved workflow; undefined until a new workflow is saved. */
+  workflow: null | undefined | Workflow
 }) {
   const teams = useSourceOptions(orgSlug, 'team')
+  const { displayNames } = useUserDisplayNames()
   const settings = draft.settings
   const setSettings = (patch: Partial<WorkflowWrite['settings']>) =>
     onChange({ settings: { ...settings, ...patch } })
@@ -313,6 +320,12 @@ export function SettingsPanel({
         disabled={readOnly}
       >
         <IssueList issues={issues} />
+        {workflow?.description && (
+          // A model writes the description on save.
+          <FormField label="Description">
+            <p className="text-secondary text-sm">{workflow.description}</p>
+          </FormField>
+        )}
         <FormField htmlFor="workflow-team" label="Owner team" required>
           <SelectField
             id="workflow-team"
@@ -321,6 +334,15 @@ export function SettingsPanel({
             value={draft.owner_team_slug}
           />
         </FormField>
+        {workflow && (
+          <FormField label="Author">
+            <UserIdentity
+              displayNames={displayNames}
+              email={workflow.created_by}
+              size="small"
+            />
+          </FormField>
+        )}
         <FormField label="Tags">
           <TagPicker
             onChange={(tags) => onChange({ tags })}

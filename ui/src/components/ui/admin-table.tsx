@@ -82,6 +82,8 @@ interface AdminTableProps<T> {
   getRowHref?: (row: T) => string | undefined
   getRowKey: (row: T) => string
   getRowLabel?: (row: T) => string
+  /** Text shown in a tooltip when the pointer is over a linked row. */
+  getRowTooltip?: (row: T) => string | undefined
   isDeleting?: boolean
   isRowClickable?: (row: T) => boolean
   /** Render footprint-matched skeleton rows instead of data while loading. */
@@ -139,6 +141,7 @@ interface AdminTableRowProps<T> {
   getDeleteLabel?: (row: T) => string
   getRowHref?: (row: T) => string | undefined
   getRowLabel?: (row: T) => string
+  getRowTooltip?: (row: T) => string | undefined
   isDeleting: boolean
   isRowClickable?: (row: T) => boolean
   onDelete?: (row: T) => void
@@ -161,6 +164,7 @@ export function AdminTable<T>({
   getRowHref,
   getRowKey,
   getRowLabel,
+  getRowTooltip,
   isDeleting = false,
   isRowClickable,
   loading = false,
@@ -323,83 +327,87 @@ export function AdminTable<T>({
 
       <Card>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {columns.map((col) => (
-                  <TableHead
-                    className={HEADER_ALIGN[col.headerAlign ?? 'left']}
-                    key={col.key}
-                  >
-                    {col.header}
-                  </TableHead>
-                ))}
-                {showActions && (
-                  <TableHead className="text-right">Actions</TableHead>
-                )}
-              </TableRow>
-            </TableHeader>
-            <TableBody aria-busy={loading || undefined}>
-              {loading ? (
-                Array.from({ length: skeletonRows }).map((_, i) => (
-                  <TableRow key={`skeleton-${i}`}>
-                    {columns.map((col) => (
-                      <TableCell
-                        className={CELL_ALIGN[col.cellAlign ?? 'left']}
-                        key={col.key}
-                      >
-                        <div
-                          className={cn(
-                            'flex',
-                            CELL_JUSTIFY[col.cellAlign ?? 'left'],
-                          )}
-                        >
-                          <Sk
-                            line
-                            w={SKELETON_WIDTH[col.cellAlign ?? 'left']}
-                          />
-                        </div>
-                      </TableCell>
-                    ))}
-                    {showActions && (
-                      <TableCell className="text-right">
-                        <div className="flex justify-end">
-                          <Sk h={20} r={4} w={20} />
-                        </div>
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))
-              ) : rows.length === 0 ? (
+          {/* One provider, so moving between rows skips the delay. */}
+          <TooltipProvider delayDuration={400}>
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell
-                    className="text-muted-foreground py-12 text-center"
-                    colSpan={columns.length + (showActions ? 1 : 0)}
-                  >
-                    {emptyMessage}
-                  </TableCell>
+                  {columns.map((col) => (
+                    <TableHead
+                      className={HEADER_ALIGN[col.headerAlign ?? 'left']}
+                      key={col.key}
+                    >
+                      {col.header}
+                    </TableHead>
+                  ))}
+                  {showActions && (
+                    <TableHead className="text-right">Actions</TableHead>
+                  )}
                 </TableRow>
-              ) : (
-                rows.map((row) => (
-                  <AdminTableRow
-                    actions={actions}
-                    canDelete={canDelete}
-                    columns={columns}
-                    getDeleteLabel={getDeleteLabel}
-                    getRowHref={getRowHref}
-                    getRowLabel={getRowLabel}
-                    isDeleting={isDeleting}
-                    isRowClickable={isRowClickable}
-                    key={getRowKey(row)}
-                    onDelete={onDelete}
-                    onDeleteClick={handleDeleteClick}
-                    row={row}
-                    showActions={showActions}
-                  />
-                ))
-              )}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody aria-busy={loading || undefined}>
+                {loading ? (
+                  Array.from({ length: skeletonRows }).map((_, i) => (
+                    <TableRow key={`skeleton-${i}`}>
+                      {columns.map((col) => (
+                        <TableCell
+                          className={CELL_ALIGN[col.cellAlign ?? 'left']}
+                          key={col.key}
+                        >
+                          <div
+                            className={cn(
+                              'flex',
+                              CELL_JUSTIFY[col.cellAlign ?? 'left'],
+                            )}
+                          >
+                            <Sk
+                              line
+                              w={SKELETON_WIDTH[col.cellAlign ?? 'left']}
+                            />
+                          </div>
+                        </TableCell>
+                      ))}
+                      {showActions && (
+                        <TableCell className="text-right">
+                          <div className="flex justify-end">
+                            <Sk h={20} r={4} w={20} />
+                          </div>
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  ))
+                ) : rows.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      className="text-muted-foreground py-12 text-center"
+                      colSpan={columns.length + (showActions ? 1 : 0)}
+                    >
+                      {emptyMessage}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  rows.map((row) => (
+                    <AdminTableRow
+                      actions={actions}
+                      canDelete={canDelete}
+                      columns={columns}
+                      getDeleteLabel={getDeleteLabel}
+                      getRowHref={getRowHref}
+                      getRowLabel={getRowLabel}
+                      getRowTooltip={getRowTooltip}
+                      isDeleting={isDeleting}
+                      isRowClickable={isRowClickable}
+                      key={getRowKey(row)}
+                      onDelete={onDelete}
+                      onDeleteClick={handleDeleteClick}
+                      row={row}
+                      showActions={showActions}
+                    />
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TooltipProvider>
         </CardContent>
       </Card>
     </>
@@ -462,6 +470,7 @@ function AdminTableRow<T>({
   getDeleteLabel,
   getRowHref,
   getRowLabel,
+  getRowTooltip,
   isDeleting,
   isRowClickable,
   onDelete,
@@ -473,6 +482,14 @@ function AdminTableRow<T>({
   const deleteCheck = canDelete ? canDelete(row) : { allowed: true }
   const clickable = isRowClickable ? isRowClickable(row) : true
   const href = getRowHref && clickable ? getRowHref(row) : undefined
+  const tooltip = href ? getRowTooltip?.(row) : undefined
+  const rowLink = href && (
+    <Link
+      aria-label={label ? `Open ${label}` : 'Open item'}
+      className="focus-visible:ring-ring absolute inset-0 rounded-sm focus-visible:ring-2 focus-visible:outline-none"
+      to={href}
+    />
+  )
 
   return (
     <TableRow className={cn(href && 'relative cursor-pointer')}>
@@ -486,13 +503,19 @@ function AdminTableRow<T>({
           )}
           key={col.key}
         >
-          {href && colIndex === 0 && (
-            <Link
-              aria-label={label ? `Open ${label}` : 'Open item'}
-              className="focus-visible:ring-ring absolute inset-0 rounded-sm focus-visible:ring-2 focus-visible:outline-none"
-              to={href}
-            />
-          )}
+          {colIndex === 0 &&
+            (tooltip ? (
+              // The link overlay covers the row, so the tooltip shows on
+              // a hover anywhere on the row except an interactive cell.
+              <Tooltip>
+                <TooltipTrigger asChild>{rowLink}</TooltipTrigger>
+                <TooltipContent align="start" className="max-w-md">
+                  {tooltip}
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              rowLink
+            ))}
           {col.render(row)}
         </TableCell>
       ))}
