@@ -118,21 +118,9 @@ def _block(block: types.ContentBlock, redactor: redact.Redactor) -> Body:
     an image."""
     dumped = block.model_dump(mode='json', exclude_none=True)
     scrubbed: Body = redactor.payload(dumped)
-    if dumped['type'] == 'image' and scrubbed['data'] != dumped['data']:
+    if dumped['type'] == 'image' and scrubbed.get('data') != dumped['data']:
         return _text('The image held a secret value and was removed.')
     return scrubbed
-
-
-def _content(
-    result: types.CallToolResult, redactor: redact.Redactor
-) -> list[Body]:
-    """The content blocks of ``result`` for the SDK's in-process server,
-    which takes text, image and resource blocks. A result with only
-    structured content gives it as JSON text."""
-    content = [_block(block, redactor) for block in result.content]
-    if not content and result.structuredContent is not None:
-        content = [_text(redactor.text(json.dumps(result.structuredContent)))]
-    return content
 
 
 def _text(text: str) -> Body:
@@ -440,7 +428,9 @@ class Server:
             ]
         else:
             status = 'error' if result.isError else 'ok'
-            content = _content(result, self.redactor)
+            content = [
+                _block(block, self.redactor) for block in result.content
+            ]
         self.audits.add(
             name,
             args,

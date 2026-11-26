@@ -703,14 +703,21 @@ class CallTestCase(_ServerTestCase):
             },
         )
 
-    async def test_structured_content_alone_is_scrubbed_json_text(
+    async def test_an_image_whose_data_key_is_a_secret_is_removed(
+        self,
+    ) -> None:
+        self.redactor.add('data')
+        result = await self.relayed.call('tagged_picture', {})
+        notice = 'The image held a secret value and was removed.'
+        self.assertEqual(
+            result, {'content': [{'type': 'text', 'text': notice}]}
+        )
+
+    async def test_structured_content_alone_gives_empty_content(
         self,
     ) -> None:
         result = await self.relayed.call('owner', {})
-        self.assertEqual(
-            result,
-            {'content': [{'type': 'text', 'text': '{"owner": "[REDACTED]"}'}]},
-        )
+        self.assertEqual(result, {'content': []})
 
     async def test_call_is_audited(self) -> None:
         result = await self.relayed.call('lookup', {'name': 'a'})

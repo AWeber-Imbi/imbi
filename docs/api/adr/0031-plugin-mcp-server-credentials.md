@@ -177,8 +177,9 @@ with its results, and does not cut a result at a size limit of its
 own: the CLI applies its MCP output limit to an in-process server too.
 The relay passes the server's content blocks to the SDK bridge, which
 passes text and images, turns a resource or resource link into text,
-and drops audio and binary resources. A result with only structured
-content reaches the model as its JSON text. An image whose data holds
+and drops audio and binary resources. The model gets a result's
+`content` only, as from a server that the CLI connects to: a result
+with only structured content has no output. An image whose data holds
 a secret value becomes a text notice, because redacted data is not an
 image.
 
