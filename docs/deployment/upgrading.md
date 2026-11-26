@@ -74,6 +74,14 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
+## Unreleased
+
+1. After you deploy imbi-api, run **Purge Agent Task Entries from
+   Operations Log** (`opslog-agent-task-purge`) one time. Tickets no
+   longer write Agent Task entries to the operations log. The operation
+   deletes the entries that earlier releases wrote. Until you run it,
+   the old entries still show in the log.
+
 ## 2.63.0
 
 1. Deploy the runner (imbi-harness) image with imbi-api, or right after
