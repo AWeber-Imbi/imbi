@@ -84,10 +84,12 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2. Run `imbi-api setup-prompts`. It adds the
    `imbi-api/workflow-description` prompt to the prompt CMS. A model now
    writes the description of a workflow when a save changes its name,
-   steps, or connections, or when the description is empty; edit the prompt and choose its model on
-   **Agents > Platform**. Without the prompt, imbi-api uses the packaged
-   prompt and its default Anthropic model. With no Anthropic key, a save
-   keeps the description that the workflow had. The workflow create and
+   steps, or connections, or when the description is empty; edit the
+   prompt and choose its model on **Agents > Platform**. Without the
+   prompt, imbi-api uses the packaged prompt and its default Anthropic
+   model. A workflow with no steps makes no model call, and a save keeps
+   the description that the workflow had when no model answers (no
+   Anthropic key, an error, or an empty reply). The workflow create and
    save API no longer take `description`; a sent value is ignored.
 
 ## 2.63.0
