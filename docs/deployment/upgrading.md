@@ -74,6 +74,17 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
+## Unreleased
+
+1. Run `imbi-api setup-prompts`. It adds the
+   `imbi-api/workflow-description` prompt to the prompt CMS. A model now
+   writes the description of a workflow when a save changes its name,
+   steps, or connections; edit the prompt and choose its model on
+   **Agents > Platform**. Without the prompt, imbi-api uses the packaged
+   prompt and its default Anthropic model. With no Anthropic key, a save
+   keeps the description that the workflow had. The workflow create and
+   save API no longer take `description`; a sent value is ignored.
+
 ## 2.63.0
 
 1. Deploy the runner (imbi-harness) image with imbi-api, or right after
