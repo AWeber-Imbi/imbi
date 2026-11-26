@@ -101,7 +101,8 @@ export function UserIdentity({
   const agent = principal ? agents.get(principal) : undefined
   const AgentIcon = useIcon(agent?.icon, Bot)
   const name =
-    agent?.name ?? resolveName(displayName, displayNames, email, actor)
+    (displayName || agent?.name) ??
+    resolveName(displayName, displayNames, email, actor)
   const isBot =
     agent != null || (kind != null ? kind === 'bot' : isBotActor(actor ?? name))
   const profileEmail =

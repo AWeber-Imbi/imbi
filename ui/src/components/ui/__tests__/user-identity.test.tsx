@@ -1,4 +1,4 @@
-import { fireEvent } from '@testing-library/react'
+import { fireEvent, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { render, screen } from '@/test/utils'
@@ -209,6 +209,19 @@ describe('UserIdentity service accounts', () => {
     render(<UserIdentity email="security-reviewer-x1" size="small" />)
     expect(await screen.findByText('Security Reviewer')).toBeInTheDocument()
     expect(screen.queryByRole('link')).toBeNull()
+  })
+
+  it('keeps an explicit displayName for a service account', async () => {
+    const { container } = render(
+      <UserIdentity
+        displayName="Audit Author"
+        email="security-reviewer-x1"
+        size="small"
+      />,
+    )
+    await waitFor(() => expect(container.querySelector('svg')).not.toBeNull())
+    expect(screen.getByText('Audit Author')).toBeInTheDocument()
+    expect(screen.queryByText('Security Reviewer')).toBeNull()
   })
 
   it('does not link a principal that is not an email', () => {

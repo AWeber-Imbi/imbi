@@ -2025,6 +2025,36 @@ class ServiceAccountTests(AgentTaskTestCase):
         (account,) = await self.service_accounts(agent_id)
         self.assertEqual(set(ids), {account['id']})
 
+    async def test_agent_shows_its_first_service_account(self) -> None:
+        # A rename race can give an agent two accounts. The agent shows
+        # the account it acts as, the first made, not the lowest slug.
+        agent = await self.create_agent('triage')
+        await self.graph.execute(
+            """
+            MATCH (a:Agent {{id: {id}}})
+            CREATE (a)-[:ACTS_AS]->(:ServiceAccount {{
+                id: {sa_id}, slug: {slug},
+                created_at: '2000-01-01T00:00:00+00:00'}})
+            """,
+            {'id': agent['id'], 'sa_id': f'old-{self.org}', 'slug': 'zz-old'},
+            [],
+        )
+        self.addAsyncCleanup(
+            self.graph.execute,
+            'MATCH (s:ServiceAccount {{id: {id}}}) DETACH DELETE s'
+            ' RETURN 1 AS ok',
+            {'id': f'old-{self.org}'},
+            ['ok'],
+        )
+        (record,) = await self.graph.execute(
+            agents._GET_QUERY,
+            {'slug': 'triage', 'org_slug': self.org},
+            agents._COLUMNS,
+        )
+        self.assertEqual(
+            graph.parse_agtype(record['service_account_slug']), 'zz-old'
+        )
+
     async def test_task_keeps_service_account_of_agent(self) -> None:
         agent = await self.create_agent('triage')
         (account,) = await self.service_accounts(agent['id'])
