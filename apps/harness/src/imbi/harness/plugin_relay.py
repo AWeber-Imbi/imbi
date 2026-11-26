@@ -117,10 +117,24 @@ def _block(block: types.ContentBlock, redactor: redact.Redactor) -> Body:
     held one is a text notice instead, since its redacted data is not
     an image."""
     dumped = block.model_dump(mode='json', exclude_none=True)
-    scrubbed: Body = redactor.payload(dumped)
-    if dumped['type'] == 'image' and scrubbed.get('data') != dumped['data']:
+    scrubbed = _fields(dumped, redactor)
+    if dumped['type'] == 'image' and scrubbed['data'] != dumped['data']:
         return _text('The image held a secret value and was removed.')
     return scrubbed
+
+
+def _fields(fields: Body, redactor: redact.Redactor) -> Body:
+    """``fields`` of a content block with each secret value removed
+    from their values. The field names, the ``type``, and the fields
+    of an embedded resource stay, so the SDK still reads the block."""
+    return {
+        name: value
+        if name == 'type'
+        else _fields(value, redactor)
+        if name == 'resource'
+        else redactor.payload(value)
+        for name, value in fields.items()
+    }
 
 
 def _text(text: str) -> Body:
