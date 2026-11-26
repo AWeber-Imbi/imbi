@@ -34,12 +34,6 @@ _TEMPLATE_READONLY_PATHS: frozenset[str] = frozenset(
 )
 
 
-class TagRef(pydantic.BaseModel):
-    name: str
-    slug: str
-    color: str | None = None
-
-
 class OrganizationRef(pydantic.BaseModel):
     name: str
     slug: str
@@ -98,7 +92,7 @@ class DocumentTemplateResponse(pydantic.BaseModel):
     title: str | None = None
     content: str = ''
     type: DocumentTemplateType = 'project'
-    tags: list[TagRef] = []
+    tags: list[org_tags.TagRef] = []
     project_type_slugs: list[str] = []
     sort_order: int = 0
     created_at: datetime.datetime
@@ -121,22 +115,7 @@ def _parse_template_row(
 ) -> dict[str, typing.Any]:
     template: dict[str, typing.Any] = graph.parse_agtype(record['nt'])
     org: dict[str, typing.Any] = graph.parse_agtype(record['o'])
-    raw_tags: list[typing.Any] = graph.parse_agtype(record['tags']) or []
-    tags: list[dict[str, str | None]] = []
-    for t in raw_tags:
-        if not isinstance(t, dict):
-            continue
-        entry = typing.cast(dict[str, typing.Any], t)
-        slug = entry.get('slug')
-        if not slug:
-            continue
-        tags.append(
-            {
-                'name': str(entry.get('name', '')),
-                'slug': str(slug),
-                'color': entry.get('color'),
-            },
-        )
+    tags = org_tags.parse_refs(graph.parse_agtype(record['tags']))
     template['organization'] = {
         'name': str(org.get('name', '')),
         'slug': str(org.get('slug', '')),

@@ -118,3 +118,22 @@ class TagsTestCase(unittest.IsolatedAsyncioTestCase):
             self.graph, tags.replace_statements(node, params, self.org, [])
         )
         self.assertEqual(await self._tag_slugs(), [])
+
+
+class ParseRefsTestCase(unittest.TestCase):
+    def test_parse_refs(self) -> None:
+        self.assertEqual(tags.parse_refs(None), [])
+        self.assertEqual(
+            tags.parse_refs(
+                [
+                    {'name': 'Ops', 'slug': 'ops', 'color': '#3B82F6'},
+                    {'name': 'No slug'},
+                    'not a map',
+                    {'slug': 'bare'},
+                ]
+            ),
+            [
+                {'name': 'Ops', 'slug': 'ops', 'color': '#3B82F6'},
+                {'name': '', 'slug': 'bare', 'color': None},
+            ],
+        )

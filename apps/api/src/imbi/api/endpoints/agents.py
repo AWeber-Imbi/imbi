@@ -119,17 +119,11 @@ PromptRef = typing.Annotated[
 # --- Schemas -----------------------------------------------------------
 
 
-# The ``Agent`` prefix keeps these schema names unique in the OpenAPI
-# document. Other endpoints have a different ``TeamRef`` and ``TagRef``.
+# The ``Agent`` prefix keeps this schema name unique in the OpenAPI
+# document. Other endpoints have a different ``TeamRef``.
 class AgentTeamRef(pydantic.BaseModel):
     name: str
     slug: str
-
-
-class AgentTagRef(pydantic.BaseModel):
-    name: str
-    slug: str
-    color: str | None = None
 
 
 class OrganizationRef(pydantic.BaseModel):
@@ -258,7 +252,7 @@ class AgentResponse(pydantic.BaseModel):
     description: str | None = None
     icon: str | None = None
     team: AgentTeamRef | None = None
-    tags: list[AgentTagRef] = []
+    tags: list[org_tags.TagRef] = []
     enabled: bool = True
     slack_channel: str | None = None
     prompt_ref: str | None = None
@@ -642,21 +636,7 @@ def _parse_row(record: dict[str, typing.Any]) -> dict[str, typing.Any]:
     agent = _props(record['a']) or {}
     org = _props(record['o']) or {}
     team = _props(record['t'])
-    raw_tags: list[typing.Any] = graph.parse_agtype(record['tags']) or []
-    tags: list[dict[str, typing.Any]] = []
-    for raw in raw_tags:
-        if not isinstance(raw, dict):
-            continue
-        entry = typing.cast('dict[str, typing.Any]', raw)
-        if not entry.get('slug'):
-            continue
-        tags.append(
-            {
-                'name': str(entry.get('name', '')),
-                'slug': str(entry['slug']),
-                'color': entry.get('color'),
-            }
-        )
+    tags = org_tags.parse_refs(graph.parse_agtype(record['tags']))
     tags.sort(key=lambda t: str(t['slug']))
     latest = graph.parse_agtype(record['latest'])
     return {
