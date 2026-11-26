@@ -1929,6 +1929,78 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         query = self.mock_db.execute.call_args.args[0]
         self.assertNotIn('coalesce(p.archived, false)', query)
 
+    def test_list_by_team(self) -> None:
+        """``team`` (repeatable) filters on the owning team's slug."""
+        self.mock_db.execute.return_value = []
+
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            self.client.get(
+                '/organizations/engineering/projects/?team=a&team=b',
+            )
+
+        query, params = self.mock_db.execute.call_args.args[:2]
+        self.assertIn(
+            'WHERE coalesce(p.archived, false) = false'
+            ' AND owner.slug IN {teams}',
+            query,
+        )
+        self.assertEqual(['a', 'b'], params['teams'])
+
+    def test_list_by_team_with_archived(self) -> None:
+        self.mock_db.execute.return_value = []
+
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            self.client.get(
+                '/organizations/engineering/projects/'
+                '?team=a&include_archived=true',
+            )
+
+        query = self.mock_db.execute.call_args.args[0]
+        self.assertIn('WHERE owner.slug IN {teams}', query)
+
+    def test_list_releases_false_skips_current_releases(self) -> None:
+        """``releases=false`` skips the slow current-releases read."""
+        from imbi.api.endpoints import projects as endpoint
+
+        self.mock_db.execute.return_value = [
+            {
+                'project': {
+                    'id': PROJECT_ID,
+                    'name': 'My API',
+                    'slug': 'my-api',
+                    'archived': False,
+                    'team': {'name': 'Platform', 'slug': 'platform'},
+                    'project_types': [],
+                    'environments': [],
+                },
+            },
+        ]
+        current = mock.AsyncMock(
+            return_value=endpoint.CurrentReleaseState({}, {})
+        )
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch.object(endpoint, '_fetch_current_releases', current),
+        ):
+            skipped = self.client.get(
+                '/organizations/engineering/projects/?slim=true&releases=false'
+            )
+            current.assert_not_awaited()
+            self.client.get('/organizations/engineering/projects/?slim=true')
+            current.assert_awaited_once()
+
+        self.assertEqual(skipped.status_code, 200, skipped.text)
+        self.assertEqual({}, skipped.json()[0]['current_releases'])
+
     # -- EXISTS_IN service filtering -----------------------------------
 
     def test_list_by_service_returns_matching_projects(self) -> None:

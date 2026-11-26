@@ -114,6 +114,7 @@ class PendingDeployPullRequest(pydantic.BaseModel):
     """A merged pull request not yet deployed to a terminal environment."""
 
     project_id: str
+    project_name: str | None = None
     pr_id: str
     pr_number: int
     title: str
@@ -189,11 +190,12 @@ def _row_to_response(row: dict[str, typing.Any]) -> dict[str, typing.Any]:
     return out
 
 
-async def _fetch_org_project_ids(
+async def _fetch_org_projects(
     db: graph.Pool,
     org_slug: str,
-) -> list[str]:
-    """Return the IDs of the projects of the org that are not archived.
+) -> dict[str, str]:
+    """Return the name of each project of the org that is not archived,
+    by id.
 
     Org-wide PR views should not count PRs nobody will act on.
     """
@@ -201,14 +203,16 @@ async def _fetch_org_project_ids(
     MATCH (p:Project)-[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
     WHERE coalesce(p.archived, false) = false
-    RETURN p.id AS id
+    RETURN p.id AS id, p.name AS name
     """
-    records = await db.execute(query, {'org_slug': org_slug}, ['id'])
-    return [
-        graph.parse_agtype(r['id'])
+    records = await db.execute(query, {'org_slug': org_slug}, ['id', 'name'])
+    return {
+        str(graph.parse_agtype(r['id'])): str(
+            graph.parse_agtype(r.get('name')) or ''
+        )
         for r in records
         if graph.parse_agtype(r['id'])
-    ]
+    }
 
 
 async def github_login(
@@ -548,7 +552,7 @@ async def list_org_pull_requests(
         return PullRequestListResponse(
             data=[], project_count=0, total=0, github_identity_missing=True
         )
-    project_ids = await _fetch_org_project_ids(db, org_slug)
+    project_ids = list(await _fetch_org_projects(db, org_slug))
     return await _list_prs(
         project_ids=project_ids,
         state=state,
@@ -724,11 +728,11 @@ async def list_pending_deploy_pull_requests(
             data=[],
             github_identity_missing=True,
         )
-    project_ids = await _fetch_org_project_ids(db, org_slug)
+    projects = await _fetch_org_projects(db, org_slug)
     envs = await _fetch_terminal_environments(db)
     slugs = list(envs)
     data, total = await _list_pending_deploy(
-        project_ids=project_ids,
+        project_ids=list(projects),
         environment_slugs=slugs,
         author=author,
         since=since,
@@ -737,6 +741,7 @@ async def list_pending_deploy_pull_requests(
         offset=offset,
     )
     for row in data:
+        row.project_name = projects.get(row.project_id)
         if row.last_deployed_environment:
             row.last_deployed_environment_name = envs.get(
                 row.last_deployed_environment
@@ -896,7 +901,7 @@ async def pull_request_activity(
     then created, descending.
     """
     since_dt = _parse_since(since)
-    project_ids = await _fetch_org_project_ids(db, org_slug)
+    project_ids = list(await _fetch_org_projects(db, org_slug))
     counts = await _fetch_pr_activity(project_ids, since_dt)
     login_users = await _fetch_login_users(db)
     rows: list[PRActivityRow] = []
