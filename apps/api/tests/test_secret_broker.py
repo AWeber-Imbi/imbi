@@ -518,6 +518,48 @@ class CreateResolutionTestCase(secret_support.SecretCase):
             request=self.request(delivery_target='LD_PRELOAD'),
         )
 
+    async def _pin_target_with_both_modes(self) -> None:
+        await self.store.update(
+            'bindings',
+            self.org,
+            self.binding['id'],
+            {
+                'allowed_delivery_modes': ['environment', 'file_descriptor'],
+                'allowed_delivery_targets': ['LOGZIO_API_TOKEN'],
+            },
+        )
+        await self.add_grant(
+            [self.binding['id']],
+            purposes=['mcp_header'],
+            delivery_modes=['file_descriptor'],
+        )
+
+    async def test_target_list_does_not_limit_a_file_descriptor(
+        self,
+    ) -> None:
+        await self._pin_target_with_both_modes()
+        created = await self.broker.create_resolution(
+            self.context(),
+            self.request(
+                purpose='mcp_header',
+                delivery_mode='file_descriptor',
+                delivery_target='3',
+            ),
+        )
+        result = await self.broker.materialize(
+            self.executor(),
+            self.materialize_request(created.handle, purpose='mcp_header'),
+        )
+        self.assertEqual(result.material, MATERIAL)
+
+    async def test_target_list_still_limits_the_environment(self) -> None:
+        await self._pin_target_with_both_modes()
+        error = await self._denied(
+            'delivery_mode_not_allowed',
+            request=self.request(delivery_target='GH_TOKEN'),
+        )
+        self.assertEqual(error.reason, 'target_not_allowed')
+
     async def test_setup_purposes_need_a_file_descriptor(self) -> None:
         for purpose in (
             'marketplace_fetch',

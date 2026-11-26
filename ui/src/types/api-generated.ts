@@ -21896,7 +21896,7 @@ export interface components {
             allowed_delivery_modes: ("file_descriptor" | "stdin" | "file" | "environment")[];
             /**
              * Allowed Delivery Targets
-             * @description When not empty, the only targets allowed. The denylist of unsafe environment names still applies.
+             * @description When not empty, the only targets allowed. It does not limit file_descriptor delivery. The denylist of unsafe environment names still applies.
              * @default []
              */
             allowed_delivery_targets: string[];

@@ -430,10 +430,15 @@ _GRANT_MATCH = (
 )
 
 
-def _target_allowed(binding: Row, target: str | None) -> bool:
-    """A binding with a target list allows only those targets."""
+def _target_allowed(binding: Row, mode: str, target: str | None) -> bool:
+    """A binding's target list limits every mode but file_descriptor."""
     targets: list[str] = binding['allowed_delivery_targets']
-    return target is None or not targets or target in targets
+    return (
+        mode == 'file_descriptor'
+        or target is None
+        or not targets
+        or target in targets
+    )
 
 
 def required_capability(credential_class: str) -> providers.Capability:
@@ -592,7 +597,7 @@ async def evaluate(
     )
     if delivery_mode not in binding['allowed_delivery_modes']:
         raise providers.BrokerError('delivery_mode_not_allowed')
-    if not _target_allowed(binding, delivery_target):
+    if not _target_allowed(binding, delivery_mode, delivery_target):
         raise providers.BrokerError(
             'delivery_mode_not_allowed', 'target_not_allowed'
         )
@@ -1091,7 +1096,9 @@ class Broker:
             binding['reference'] != reference.binding
             or binding['provider_id'] != row['provider_id']
             or row['delivery_mode'] not in binding['allowed_delivery_modes']
-            or not _target_allowed(binding, row['delivery_target'])
+            or not _target_allowed(
+                binding, row['delivery_mode'], row['delivery_target']
+            )
         ):
             raise providers.BrokerError(
                 'secret_access_denied', 'binding_changed'

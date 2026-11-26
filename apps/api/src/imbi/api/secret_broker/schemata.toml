@@ -52,7 +52,8 @@ locator = "JSONB NOT NULL DEFAULT '{}'"
 allowed_fields = "TEXT[] NOT NULL DEFAULT '{}'"
 allowed_delivery_modes = "TEXT[] NOT NULL DEFAULT '{}'"
 # When not empty, the only delivery targets (environment names, file
-# names, descriptors) a resolution may use. The denylist still applies.
+# names) a resolution may use. File descriptors are not limited. The
+# denylist still applies.
 allowed_delivery_targets = "TEXT[] NOT NULL DEFAULT '{}'"
 max_ttl_seconds = "INTEGER NOT NULL"
 enabled = "BOOLEAN NOT NULL DEFAULT TRUE"
