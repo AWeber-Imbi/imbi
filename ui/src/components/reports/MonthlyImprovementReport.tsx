@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Sk } from '@/components/ui/skeleton'
+import { SortHeader, useSort } from '@/components/ui/sortable'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { Team } from '@/types'
 
@@ -41,6 +42,12 @@ interface MonthOption {
 
 interface TeamRow extends MonthlyImprovementRow {
   name: string
+}
+
+const ACCESSORS = {
+  improvement: (r: TeamRow) => r.improvement,
+  name: (r: TeamRow) => r.name,
+  score: (r: TeamRow) => r.current_avg_score,
 }
 
 export function MonthlyImprovementReport() {
@@ -104,17 +111,10 @@ export function MonthlyImprovementReport() {
     }))
   }, [rawRows, teams])
 
-  // Sort: descending improvement, nulls last
-  const sorted = useMemo(
-    () =>
-      [...rows].sort((a, b) => {
-        if (a.improvement == null && b.improvement == null) return 0
-        if (a.improvement == null) return 1
-        if (b.improvement == null) return -1
-        return b.improvement - a.improvement
-      }),
-    [rows],
-  )
+  const { sorted, ...sort } = useSort(rows, ACCESSORS, {
+    dir: 'desc',
+    key: 'improvement',
+  })
 
   // Org-wide aggregates (project_count-weighted)
   const orgWide = useMemo(() => {
@@ -174,15 +174,30 @@ export function MonthlyImprovementReport() {
           className="border-tertiary bg-secondary grid border-b"
           style={COL_GRID}
         >
-          <div className="text-primary px-5 py-3 text-[13px] font-medium">
+          <SortHeader
+            as="div"
+            className="text-primary px-5 py-3 text-[13px] font-medium"
+            column="name"
+            sort={sort}
+          >
             Team
-          </div>
-          <div className="text-primary px-5 py-3 text-right text-[13px] font-medium">
+          </SortHeader>
+          <SortHeader
+            as="div"
+            className="text-primary px-5 py-3 text-right text-[13px] font-medium"
+            column="improvement"
+            sort={sort}
+          >
             Monthly improvement
-          </div>
-          <div className="text-primary px-5 py-3 text-right text-[13px] font-medium">
+          </SortHeader>
+          <SortHeader
+            as="div"
+            className="text-primary px-5 py-3 text-right text-[13px] font-medium"
+            column="score"
+            sort={sort}
+          >
             Stack health score
-          </div>
+          </SortHeader>
         </div>
 
         {isLoading ? (

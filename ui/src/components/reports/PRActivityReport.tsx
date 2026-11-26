@@ -7,6 +7,7 @@ import { getPRActivity } from '@/api/endpoints'
 import type { PRActivityResponse, PRActivityRow } from '@/api/endpoints'
 import { DatePicker } from '@/components/ui/date-picker'
 import { Sk } from '@/components/ui/skeleton'
+import { SortHeader, useSort } from '@/components/ui/sortable'
 import { UserIdentity } from '@/components/ui/user-identity'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { downloadCsv } from '@/lib/csv'
@@ -29,8 +30,13 @@ const COUNT_COLUMNS: CountColumn[] = [
   { key: 'created', label: 'Created', pick: (r) => r.created, tone: 'warning' },
   { key: 'open', label: 'Open', pick: (r) => r.open, tone: 'info' },
   { key: 'closed', label: 'Closed', pick: (r) => r.closed, tone: 'danger' },
-  { key: 'merged', label: 'Merged ↓', pick: (r) => r.merged, tone: 'warning' },
+  { key: 'merged', label: 'Merged', pick: (r) => r.merged, tone: 'warning' },
 ]
+
+const ACTIVITY_SORT: Record<string, (row: PRActivityRow) => number | string> = {
+  member: (r) => r.display_name ?? r.login,
+  ...Object.fromEntries(COUNT_COLUMNS.map((c) => [c.key, c.pick])),
+}
 
 const TONE_BACKGROUNDS: Record<CountTone, string> = {
   danger: 'var(--background-color-danger)',
@@ -103,6 +109,7 @@ function ActivityRowsSkeleton() {
 }
 
 function ActivityTable({ rows }: { rows: PRActivityRow[] }) {
+  const sort = useSort(rows, ACTIVITY_SORT, { dir: 'desc', key: 'merged' })
   const maxes = COUNT_COLUMNS.map((col) =>
     rows.reduce((m, r) => Math.max(m, col.pick(r)), 0),
   )
@@ -113,21 +120,27 @@ function ActivityTable({ rows }: { rows: PRActivityRow[] }) {
     <table className="w-full text-sm">
       <thead>
         <tr className="border-tertiary border-b">
-          <th className="text-overline text-tertiary px-[18px] py-2.5 text-left font-normal tracking-wide uppercase">
+          <SortHeader
+            className="text-overline text-tertiary px-[18px] py-2.5 text-left font-normal tracking-wide uppercase"
+            column="member"
+            sort={sort}
+          >
             Member
-          </th>
+          </SortHeader>
           {COUNT_COLUMNS.map((col, c) => (
-            <th
+            <SortHeader
               className={`text-overline text-tertiary w-32 ${countCellX(c)} py-2.5 text-right font-normal tracking-wide uppercase`}
+              column={col.key}
               key={col.key}
+              sort={sort}
             >
               {col.label}
-            </th>
+            </SortHeader>
           ))}
         </tr>
       </thead>
       <tbody>
-        {rows.map((row, i) => (
+        {sort.sorted.map((row, i) => (
           <tr
             className={`border-tertiary hover:bg-secondary transition-colors ${
               i === rows.length - 1 ? 'border-0' : 'border-b'
@@ -271,12 +284,7 @@ function defaultSince(): string {
 function exportCsv(rows: PRActivityRow[], appliedSince: string) {
   downloadCsv(
     `pr-activity-${appliedSince}.csv`,
-    [
-      'Member',
-      'Login',
-      'Email',
-      ...COUNT_COLUMNS.map((c) => c.label.replace(' ↓', '')),
-    ],
+    ['Member', 'Login', 'Email', ...COUNT_COLUMNS.map((c) => c.label)],
     rows.map((r) => [
       r.display_name ?? r.login,
       r.login,

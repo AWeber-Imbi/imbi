@@ -27,12 +27,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { SortHeader, useSort } from '@/components/ui/sortable'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { LABEL_SWATCHES } from '@/lib/chip-colors'
 import type { Agent, AgentUsage, AgentUsageTotals } from '@/types'
 
 const ALL = 'all'
+
+type UsageRow = AgentUsage['agents'][number]
 const RANGES = ['7', '30', '90']
 const swatch = (name: string) =>
   LABEL_SWATCHES.find((s) => s.name === name)?.hex ?? ''
@@ -322,6 +325,17 @@ function UsageTable({
   const total = sumTotals(usage.agents)
   const cell = 'px-5 py-2.5 text-right font-mono text-sm tabular-nums'
   const head = 'text-overline text-tertiary px-5 py-2.5 text-right uppercase'
+  // ponytail: accessors close over nameOf (new each render), so the sort
+  // reruns every render; fine for a per-agent table.
+  const accessors = {
+    agent: (r: UsageRow) => nameOf(r.agent_id),
+    cache: (r: UsageRow) => cacheHit(r),
+    cost: (r: UsageRow) => r.cost,
+    tasks: (r: UsageRow) => r.tasks,
+    tokensIn: (r: UsageRow) => inputTokens(r),
+    tokensOut: (r: UsageRow) => r.tokens_out,
+  }
+  const { sorted, ...sort } = useSort(usage.agents, accessors)
 
   return (
     <div className="border-border bg-card overflow-hidden rounded-lg border">
@@ -334,16 +348,32 @@ function UsageTable({
       <table className="w-full border-collapse">
         <thead>
           <tr className="border-border border-b">
-            <th className={`${head} text-left`}>Agent</th>
-            <th className={head}>Tickets</th>
-            <th className={head}>Tokens in</th>
-            <th className={head}>Tokens out</th>
-            <th className={head}>Cache hit</th>
-            <th className={head}>Cost</th>
+            <SortHeader
+              className={`${head} text-left`}
+              column="agent"
+              sort={sort}
+            >
+              Agent
+            </SortHeader>
+            <SortHeader className={head} column="tasks" sort={sort}>
+              Tickets
+            </SortHeader>
+            <SortHeader className={head} column="tokensIn" sort={sort}>
+              Tokens in
+            </SortHeader>
+            <SortHeader className={head} column="tokensOut" sort={sort}>
+              Tokens out
+            </SortHeader>
+            <SortHeader className={head} column="cache" sort={sort}>
+              Cache hit
+            </SortHeader>
+            <SortHeader className={head} column="cost" sort={sort}>
+              Cost
+            </SortHeader>
           </tr>
         </thead>
         <tbody>
-          {usage.agents.map((row) => {
+          {sorted.map((row) => {
             const key = keyOf(row.agent_id) ?? row.agent_id
             return (
               <tr

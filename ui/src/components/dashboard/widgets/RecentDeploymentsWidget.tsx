@@ -182,7 +182,7 @@ function DeploymentRow({
   const performer = d.performed_by ?? d.recorded_by
   const to = project
     ? projectPath(project)
-    : `/operations-log?entry=${encodeURIComponent(d.id)}`
+    : `/reports/operations-log?entry=${encodeURIComponent(d.id)}`
 
   return (
     <Link

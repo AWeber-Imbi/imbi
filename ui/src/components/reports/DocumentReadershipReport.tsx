@@ -8,7 +8,9 @@ import {
   SegmentedControl,
   SegmentedControlItem,
 } from '@/components/ui/segmented-control'
+import { SortHeader, useSort } from '@/components/ui/sortable'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import type { DocumentReadSummary } from '@/types'
 
 type Mode = 'least-read' | 'most-read' | 'never-read' | 'stale'
 
@@ -35,6 +37,14 @@ const MODES: { description: string; id: Mode; label: string }[] = [
   },
 ]
 
+const ACCESSORS = {
+  lastRead: (r: DocumentReadSummary) =>
+    r.last_read_at ? new Date(r.last_read_at) : null,
+  readers: (r: DocumentReadSummary) => r.readers,
+  title: (r: DocumentReadSummary) => r.title || r.document_id,
+  views: (r: DocumentReadSummary) => r.views,
+}
+
 /**
  * Org-wide document readership.
  *
@@ -55,6 +65,9 @@ export function DocumentReadershipReport() {
     queryKey: ['orgDocumentAnalytics', orgSlug, mode],
     staleTime: 60_000,
   })
+
+  // Server order (by mode) until a header is clicked.
+  const { sorted, ...sort } = useSort(data ?? [], ACCESSORS)
 
   const active = MODES.find((m) => m.id === mode) ?? MODES[0]
   // 'never-read' rows have no reads by definition, so the read columns
@@ -91,20 +104,42 @@ export function DocumentReadershipReport() {
           <table className="w-full text-sm">
             <thead className="border-tertiary text-tertiary border-b text-left">
               <tr>
-                <th className="px-4 py-2 font-normal">Document</th>
-                <th className="px-4 py-2 font-normal">Last read</th>
+                <SortHeader
+                  className="px-4 py-2 font-normal"
+                  column="title"
+                  sort={sort}
+                >
+                  Document
+                </SortHeader>
+                <SortHeader
+                  className="px-4 py-2 font-normal"
+                  column="lastRead"
+                  sort={sort}
+                >
+                  Last read
+                </SortHeader>
                 {showCounts && (
                   <>
-                    <th className="px-4 py-2 text-right font-normal">
+                    <SortHeader
+                      className="px-4 py-2 text-right font-normal"
+                      column="readers"
+                      sort={sort}
+                    >
                       Readers
-                    </th>
-                    <th className="px-4 py-2 text-right font-normal">Views</th>
+                    </SortHeader>
+                    <SortHeader
+                      className="px-4 py-2 text-right font-normal"
+                      column="views"
+                      sort={sort}
+                    >
+                      Views
+                    </SortHeader>
                   </>
                 )}
               </tr>
             </thead>
             <tbody className="text-secondary">
-              {data.map((row) => (
+              {sorted.map((row) => (
                 <tr className="border-tertiary border-b" key={row.document_id}>
                   <td className="truncate px-4 py-2">
                     {row.title || row.document_id}

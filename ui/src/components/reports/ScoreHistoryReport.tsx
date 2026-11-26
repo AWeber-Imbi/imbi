@@ -19,9 +19,22 @@ import {
   TeamScoreSeries,
 } from '@/api/endpoints'
 import { Sk } from '@/components/ui/skeleton'
+import { SortHeader, useSort } from '@/components/ui/sortable'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { parseServerTs, toDateOnlyIso } from '@/lib/formatDate'
 import { Team } from '@/types'
+
+const FEED_GRID = { gridTemplateColumns: '80px 1fr auto 72px' }
+
+const scoreDelta = (e: GlobalScoreEvent) =>
+  e.previous_score != null ? e.score - e.previous_score : null
+
+const EVENT_ACCESSORS = {
+  delta: scoreDelta,
+  project: (e: GlobalScoreEvent) => e.project_name,
+  score: (e: GlobalScoreEvent) => e.score,
+  when: (e: GlobalScoreEvent) => parseServerTs(e.timestamp),
+}
 
 interface ChartSeries {
   color: string
@@ -130,7 +143,8 @@ export function ScoreHistoryReport() {
             Change events
           </div>
           <div className="text-tertiary mt-0.5 text-xs">
-            Recent score recomputations across all projects, newest first.
+            Recent score recomputations across all projects. Newest first by
+            default.
           </div>
         </div>
         <div>
@@ -152,7 +166,7 @@ function ChangeEventsSkeleton() {
         <div
           className="border-tertiary grid items-center gap-3 border-b px-3 py-3 last:border-0"
           key={i}
-          style={{ gridTemplateColumns: '80px 1fr auto 72px' }}
+          style={FEED_GRID}
         >
           <div className="space-y-1">
             <Sk line w={48} />
@@ -231,6 +245,7 @@ function GlobalEventFeed({
   events: GlobalScoreEvent[]
   teamBySlug: Map<string, Team>
 }) {
+  const { sorted, ...sort } = useSort(events, EVENT_ACCESSORS)
   if (events.length === 0) {
     return (
       <div className="text-tertiary py-10 text-center text-sm">
@@ -238,18 +253,45 @@ function GlobalEventFeed({
       </div>
     )
   }
+  const head = 'text-overline text-tertiary uppercase'
   return (
     <div>
-      {events.map((e, i) => {
+      <div
+        className="border-tertiary grid items-center gap-3 border-b px-3 py-2"
+        style={FEED_GRID}
+      >
+        <SortHeader as="div" className={head} column="when" sort={sort}>
+          When
+        </SortHeader>
+        <SortHeader as="div" className={head} column="project" sort={sort}>
+          Project
+        </SortHeader>
+        <SortHeader
+          as="div"
+          className={`${head} text-right`}
+          column="score"
+          sort={sort}
+        >
+          Score
+        </SortHeader>
+        <SortHeader
+          as="div"
+          className={`${head} text-right`}
+          column="delta"
+          sort={sort}
+        >
+          Delta
+        </SortHeader>
+      </div>
+      {sorted.map((e, i) => {
         const reason = e.change_reason ?? ''
-        const delta =
-          e.previous_score != null ? e.score - e.previous_score : null
+        const delta = scoreDelta(e)
         const teamName = teamBySlug.get(e.team_key)?.name ?? e.team_key
         return (
           <div
             className="border-tertiary duration-fast hover:bg-secondary grid items-center gap-3 border-b px-3 py-3 transition-colors last:border-0"
             key={i}
-            style={{ gridTemplateColumns: '80px 1fr auto 72px' }}
+            style={FEED_GRID}
           >
             {/* Timestamp */}
             <div>
