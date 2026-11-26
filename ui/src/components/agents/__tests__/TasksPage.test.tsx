@@ -1,4 +1,4 @@
-import { Route, Routes } from 'react-router-dom'
+import { Link, Route, Routes } from 'react-router-dom'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -46,6 +46,7 @@ const setSelectedOrganization = vi.hoisted(() => vi.fn())
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/contexts/OrganizationContext', () => ({
+  useOptionalOrganization: () => null,
   useOrganization: () => ({
     organizations: ORGS,
     selectedOrganization: ORGS[0],
@@ -181,6 +182,7 @@ function serve(tasks: TicketListItem[]) {
 describe('Tasks', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    window.sessionStorage.clear()
     vi.stubGlobal(
       'IntersectionObserver',
       class {
@@ -762,6 +764,34 @@ describe('Tasks', () => {
     expect(screen.queryByText('Busy')).not.toBeInTheDocument()
   })
 
+  it('keeps the filters and search text after a visit to another page', async () => {
+    window.history.pushState({}, '', '/tickets?state=closed')
+    render(
+      <>
+        <Link to="/elsewhere">Away</Link>
+        <Link to="/tickets">Back to tickets</Link>
+        <Routes>
+          <Route
+            element={<TasksPage />}
+            path="/tickets/:slug?/:action?/:tab?"
+          />
+          <Route element={<p>Elsewhere</p>} path="/elsewhere" />
+        </Routes>
+      </>,
+    )
+    await screen.findByText('Old work')
+    fireEvent.change(screen.getByLabelText('Filter tickets'), {
+      target: { value: 'billing' },
+    })
+    fireEvent.click(screen.getByRole('link', { name: 'Away' }))
+    await screen.findByText('Elsewhere')
+    fireEvent.click(screen.getByRole('link', { name: 'Back to tickets' }))
+    expect(await screen.findByLabelText('Filter tickets')).toHaveValue(
+      'billing',
+    )
+    await waitFor(() => expect(window.location.search).toBe('?state=closed'))
+  })
+
   it('reads the filters from the address', async () => {
     renderAt('/tickets?state=closed')
     await screen.findByText('Old work')
@@ -902,11 +932,19 @@ describe('Tasks', () => {
     renderAt('/tickets?state=closed')
     await screen.findByText('Old work')
     act(() => {
-      window.history.pushState({}, '', '/tickets')
+      window.history.pushState({ idx: 1, key: 'back' }, '', '/tickets')
       window.dispatchEvent(new PopStateEvent('popstate'))
     })
     expect(await screen.findByText('Busy')).toBeInTheDocument()
     expect(window.location.search).toBe('')
+  })
+
+  it('keeps the last filters on a direct visit with no filter query', async () => {
+    window.sessionStorage.setItem('imbi.tickets.filters', '?state=closed')
+    renderAt('/tickets')
+    await screen.findByText('Old work')
+    expect(screen.queryByText('Busy')).not.toBeInTheDocument()
+    await waitFor(() => expect(window.location.search).toBe('?state=closed'))
   })
 
   it('keeps the filters when a task opens', async () => {

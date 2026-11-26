@@ -113,7 +113,6 @@ you in Imbi, for one organization:
 | Pull requests | Open pull requests that wait on your review, and your open pull requests. You must connect GitHub in Imbi (*Settings*). |
 | Merged, not deployed | Your pull requests merged in the last 90 days that are not in production. |
 | Release drift | Projects of your teams with commits since the latest tag. |
-| My projects | Score, incidents, and advisories of the projects of your teams. |
 | Agent activity | Your agent tickets that run, are paused, or are queued. |
 | Document comments | Comments that mention you, or are on your documents, that you did not acknowledge. |
 

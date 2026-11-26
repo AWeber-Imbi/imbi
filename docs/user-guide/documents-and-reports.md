@@ -153,23 +153,26 @@ API. You always see your own reading history.
 
 ## Reports
 
-Click **Reports** in the top bar. The left side lists the reports. Each
-report has its own URL, `/reports/<id>`. `/reports` opens **Monthly
-Improvement**.
+Click **Reports** in the top bar. The left side lists the reports in
+alphabetical order. Each report has its own URL, `/reports/<id>`.
+`/reports` opens **Monthly Improvement**. Click a column header of a
+report table to sort the rows by that column. Click it again to reverse
+the order.
 
 | Report | URL id | What it shows |
 |---|---|---|
+| Agent Usage | `agent-usage` | The tokens and spend of the agents, by day and by agent. See [Agents](../admin/agents.md#usage) |
+| Document Readership | `document-readership` | Documents in the order that you select: **Most read**, **Stale**, **Least read**, or **Never read** |
+| Merged, Not Deployed | `merged-not-deployed` | Pull requests merged in the last 90 days that are not deployed to a terminal environment. Add `?author=@me` to show only your pull requests, or click **Mine** |
 | Monthly Improvement | `monthly-improvement` | For each team, the change in score during the month that you select in **Month**, and the stack health score |
 | Open Pull Requests | `open-pull-requests` | The open pull requests of the organization. See [Pull requests and dependencies](pull-requests-and-dependencies.md#pull-request-reports) |
-| Merged, Not Deployed | `merged-not-deployed` | Pull requests merged in the last 90 days that are not deployed to a terminal environment. Add `?author=@me` to show only your pull requests, or click **Mine** |
-| PR Activity | `pr-activity` | Pull requests created, open, closed, and merged for each author, since a date. See [Pull requests and dependencies](pull-requests-and-dependencies.md#pull-request-reports) |
+| Operations Log | `operations-log` | The operations log of all projects of the organization. See [Operations log and scoring](operations-log-and-scoring.md) |
 | Package Usage | `package-usage` | Every project and environment that runs one package, by version. See [Package reports](pull-requests-and-dependencies.md#package-reports) |
+| PR Activity | `pr-activity` | Pull requests created, open, closed, and merged for each author, since a date. See [Pull requests and dependencies](pull-requests-and-dependencies.md#pull-request-reports) |
 | Problem Packages | `problem-packages` | Projects that run a deprecated or forbidden version, or one with a known advisory. See [Package reports](pull-requests-and-dependencies.md#package-reports) |
 | Projects Graph | `projects-graph` | The dependency relationships between the projects of the organization |
 | Score History | `score-history` | The average score of each team over **30d**, **90d**, **1y** (default), or **All**, and the **Change events** list of recent score changes |
-| Document Readership | `document-readership` | Documents in the order that you select: **Most read**, **Stale**, **Least read**, or **Never read** |
 | Team KPI | `team-kpi` | The average score of each team, with its best project and when it was last scored |
-| Agent Usage | `agent-usage` | The tokens and spend of the agents, by day and by agent. See [Agents](../admin/agents.md#usage) |
 
 Notes on some reports:
 

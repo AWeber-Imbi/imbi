@@ -31,6 +31,7 @@ MaintenanceSlug = typing.Literal[
     'commit-pushed-at-repair',
     'opslog-backfill',
     'opslog-organization-backfill',
+    'opslog-agent-task-purge',
     'orphan-release-check',
     'orphan-release-purge',
     'commit-sync',
@@ -251,6 +252,20 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             pause_key=None,
             enumerate=operations.enumerate_projects_with_archived,
             execute=operations.execute_opslog_organization_backfill,
+        ),
+        OperationDefinition(
+            slug='opslog-agent-task-purge',
+            label='Purge Agent Task Entries from Operations Log',
+            description=(
+                'Delete every Agent Task entry from the operations log. '
+                'Earlier releases wrote one for each resolved or closed '
+                'ticket of a project; tickets do not write them now. Run '
+                'it one time after the upgrade.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_opslog_agent_task_purge,
+            execute=operations.execute_opslog_agent_task_purge,
+            items_are_projects=False,
         ),
         OperationDefinition(
             slug='orphan-release-check',

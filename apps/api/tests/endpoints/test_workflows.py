@@ -247,6 +247,7 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
         self.assertEqual(
             [w['slug'] for w in response.json()], ['deploy-guard']
         )
+        self.assertEqual(response.json()[0]['created_by'], self.email)
 
         response = await self.client.get(f'{self.base}/deploy-guard/versions')
         self.assertEqual([v['version'] for v in response.json()], [2, 1])

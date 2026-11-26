@@ -18,6 +18,7 @@ const auth = vi.hoisted(() => ({
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/contexts/OrganizationContext', () => ({
+  useOptionalOrganization: () => null,
   useOrganization: () => ({
     organizations: [{ name: 'Acme', slug: 'acme' }],
     selectedOrganization: { name: 'Acme', slug: 'acme' },

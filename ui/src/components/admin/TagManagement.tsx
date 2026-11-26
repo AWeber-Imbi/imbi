@@ -4,8 +4,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { GitMerge, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { deleteTag, listTags, mergeTag, patchTag } from '@/api/endpoints'
+import { deleteTag, mergeTag, patchTag } from '@/api/endpoints'
 import { TagChip } from '@/components/tags/TagChip'
+import { orgTagsQuery } from '@/components/tags/useOrgTags'
 import { AdminTable } from '@/components/ui/admin-table'
 import { Button } from '@/components/ui/button'
 import {
@@ -53,19 +54,11 @@ export function TagManagement() {
   const [editing, setEditing] = useState<null | Tag>(null)
   const [merging, setMerging] = useState<null | Tag>(null)
 
-  const tagsKey = queryKeys.tags(orgSlug)
-  const {
-    data: tags = [],
-    error,
-    isLoading,
-  } = useQuery({
-    enabled: !!orgSlug,
-    queryFn: ({ signal }) => listTags(orgSlug, signal),
-    queryKey: tagsKey,
-  })
+  const query = orgTagsQuery(orgSlug)
+  const { data: tags = [], error, isLoading } = useQuery(query)
 
   const onSuccess = () => {
-    queryClient.invalidateQueries({ queryKey: tagsKey })
+    queryClient.invalidateQueries({ queryKey: query.queryKey })
     // Cached agents and documents hold tag slugs and names. Reset them:
     // this removes the cached data, so that an editor cannot seed its
     // draft from a stale record before the refetch completes.

@@ -874,19 +874,25 @@ class OrganizationScopeTests(support.SharedAppAsyncTestCase):
         self.enterContext(support.sink_to_clickhouse())
 
     async def _insert(
-        self, entry_id: str, org_id: str, *, is_deleted: int = 0
+        self,
+        entry_id: str,
+        org_id: str,
+        *,
+        is_deleted: int = 0,
+        entry_type: str = 'Deployed',
     ) -> None:
         await imbi_clickhouse.command(
             'INSERT INTO imbi.operations_log (id, occurred_at, recorded_at,'
             ' recorded_by, project_id, project_slug, environment_slug,'
             ' entry_type, description, is_deleted, organization_id) VALUES'
             " ({id:String}, now64(3), now64(3), 'test', {pid:String}, 'p',"
-            " 'prod', 'Deployed', 'd', {deleted:UInt8}, {org:String})",
+            " 'prod', {type:String}, 'd', {deleted:UInt8}, {org:String})",
             {
                 'id': entry_id,
                 'pid': self.project,
                 'deleted': is_deleted,
                 'org': org_id,
+                'type': entry_type,
             },
         )
 
@@ -913,6 +919,33 @@ class OrganizationScopeTests(support.SharedAppAsyncTestCase):
         response = await self.client.get(f'{ORG_LOG}/theirs')
         self.assertEqual(response.status_code, 200)
         self.assertEqual('d', response.json()['description'])
+
+    async def test_agent_task_purge_deletes_only_agent_task_rows(
+        self,
+    ) -> None:
+        await self._insert('deploy', self.org_a)
+        await self._insert('ticket', self.org_a, entry_type='Agent Task')
+        self.assertEqual({'deploy', 'ticket'}, await self._listed())
+        ctx = maintenance_log.MaintenanceContext(
+            run_id='run1',
+            attempt_id='attempt1',
+            item_id='agent-task-rows',
+            project_id='agent-task-rows',
+            project_slug='',
+            log=maintenance_log.ItemLog(
+                'slug', 'run1', 'attempt1', 'agent-task-rows', ''
+            ),
+        )
+        outcome = await operations.execute_opslog_agent_task_purge(
+            mock.AsyncMock(), mock.AsyncMock(), 'agent-task-rows', ctx=ctx
+        )
+        self.assertEqual('succeeded', outcome)
+        self.assertEqual({'deploy'}, await self._listed())
+        # A second run has nothing left to do.
+        outcome = await operations.execute_opslog_agent_task_purge(
+            mock.AsyncMock(), mock.AsyncMock(), 'agent-task-rows', ctx=ctx
+        )
+        self.assertEqual('skipped', outcome)
 
     async def test_backfill_shows_old_rows_in_the_organization(self) -> None:
         await self._insert('old', '')

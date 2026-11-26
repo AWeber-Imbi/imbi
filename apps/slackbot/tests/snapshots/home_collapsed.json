@@ -14,13 +14,11 @@
     "divider: ",
     "section: *▸ Release drift (2)*  Collapsed · 1 blocked · proj-1, proj-0 [button:home:release_drift:expand]",
     "divider: ",
-    "section: *▸ My projects (2)*  Collapsed · 2 need a look [button:home:my_projects:expand]",
-    "divider: ",
     "section: *▸ Agent activity (2)*  Collapsed · T-500, T-501 [button:home:agent_activity:expand]",
     "divider: ",
     "section: *▸ Document comments (2)*  Collapsed · ADR 0028 [button:home:document_comments:expand]",
     "divider: ",
-    "context: 8 sections collapsed · 0 hidden · Customize Home · Imbi refreshes this tab when you open it"
+    "context: 7 sections collapsed · 0 hidden · Customize Home · Imbi refreshes this tab when you open it"
   ],
   "view": {
     "type": "home",
@@ -205,26 +203,6 @@
         "type": "section",
         "text": {
           "type": "mrkdwn",
-          "text": "*▸ My projects (2)*  Collapsed · 2 need a look"
-        },
-        "block_id": "home:my_projects:header",
-        "accessory": {
-          "type": "button",
-          "action_id": "home:my_projects:expand",
-          "text": {
-            "type": "plain_text",
-            "text": "Expand",
-            "emoji": true
-          }
-        }
-      },
-      {
-        "type": "divider"
-      },
-      {
-        "type": "section",
-        "text": {
-          "type": "mrkdwn",
           "text": "*▸ Agent activity (2)*  Collapsed · T-500, T-501"
         },
         "block_id": "home:agent_activity:header",
@@ -266,7 +244,7 @@
         "elements": [
           {
             "type": "mrkdwn",
-            "text": "8 sections collapsed · 0 hidden · Customize Home · Imbi refreshes this tab when you open it"
+            "text": "7 sections collapsed · 0 hidden · Customize Home · Imbi refreshes this tab when you open it"
           }
         ]
       }

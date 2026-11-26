@@ -59,8 +59,6 @@ class Part:
     empty: list[Block] | None = None
     #: Show the section also when it is empty.
     always: bool = False
-    #: ``section`` fields in place of item blocks (My projects).
-    fields: list[str] | None = None
 
 
 class _Links:
@@ -473,53 +471,6 @@ def _release_drift(data: Row, links: _Links, now: datetime.datetime) -> Part:
     )
 
 
-def _my_projects(data: Row, links: _Links, _now: datetime.datetime) -> Part:
-    def needs_look(r: Row) -> bool:
-        delta = r.get('delta')
-        return bool(
-            r['incidents']
-            or r['critical']
-            or r['high']
-            or (delta is not None and delta <= -3)
-        )
-
-    rows = sorted(
-        data['projects'],
-        key=lambda r: (
-            not needs_look(r),
-            r['score'] if r.get('score') is not None else 101,
-        ),
-    )
-    fields: list[str] = []
-    for r in rows:
-        score = (
-            'No score' if r.get('score') is None else f'Score {r["score"]:.0f}'
-        )
-        delta = r.get('delta')
-        if delta:
-            score += f' {"▲" if delta > 0 else "▼"}{abs(delta):.0f}'
-        cves = _plural(r['critical'], 'critical CVE')
-        if r['high']:
-            cves += f' · {_plural(r["high"], "high CVE")}'
-        fields.append(
-            f'*{links.a(f"/projects/{r['id']}", r["name"])}*\n{score} · '
-            f'{_plural(r["incidents"], "incident")} · {cves}'
-        )
-    look = sum(needs_look(r) for r in rows)
-    need = 'needs' if look == 1 else 'need'
-    teams = sorted({r['team'] for r in rows})
-    scorecard = links.a('/reports/team-kpi', 'Team scorecard')
-    return Part(
-        count=len(rows),
-        groups=[],
-        fields=fields,
-        subtitle=f'{_names(teams)} · {_plural(len(rows), "project")} · '
-        f'{look} {need} a look · {scorecard}',
-        summary=f'{look} {need} a look',
-        more=(len(rows), '/projects'),
-    )
-
-
 def _agent_activity(data: Row, links: _Links, now: datetime.datetime) -> Part:
     groups = ('running', 'paused', 'queued')
     rows = sorted(data['tickets'], key=lambda t: groups.index(t['group']))
@@ -604,7 +555,6 @@ _PARTS: dict[str, typing.Callable[[Row, _Links, datetime.datetime], Part]] = {
     'pull_requests': _pull_requests,
     'merged_not_deployed': _merged_not_deployed,
     'release_drift': _release_drift,
-    'my_projects': _my_projects,
     'agent_activity': _agent_activity,
     'document_comments': _document_comments,
 }
@@ -644,16 +594,12 @@ def _menu(key: p.SectionKey, visible: list[p.SectionKey]) -> Block:
 
 
 def _shown(part: Part, limit: int) -> int:
-    if part.fields is not None:
-        return min(limit, len(part.fields))
     return sum(min(limit, len(items)) for _, items in part.groups)
 
 
 def _longest(part: Part) -> int:
     """Return the item count of the longest group (the limit at which
     a cut shows one item less)."""
-    if part.fields is not None:
-        return len(part.fields)
     return max((len(items) for _, items in part.groups), default=0)
 
 
@@ -701,15 +647,11 @@ def _section(
         out.append(b.context(part.subtitle))
     if not part.count and not any(items for _, items in part.groups):
         out.extend(part.empty or [b.context('Nothing here.')])
-    if part.fields is not None:
-        if part.fields[:limit]:
-            out.append(b.section(None, fields=part.fields[:limit]))
-    else:
-        for heading, items in part.groups:
-            if heading and items:
-                out.append(b.section(f'*{heading}*'))
-            for item in items[:limit]:
-                out.extend(item)
+    for heading, items in part.groups:
+        if heading and items:
+            out.append(b.section(f'*{heading}*'))
+        for item in items[:limit]:
+            out.extend(item)
     if part.more:
         total, path = part.more
         hidden = total - _shown(part, limit)

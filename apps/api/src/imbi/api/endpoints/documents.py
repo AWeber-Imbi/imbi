@@ -62,12 +62,6 @@ _DOCUMENT_READONLY_PATHS: frozenset[str] = frozenset(
 )
 
 
-class TagRef(pydantic.BaseModel):
-    name: str
-    slug: str
-    color: str | None = None
-
-
 class AttachmentRef(pydantic.BaseModel):
     """The vertex a document hangs off of.
 
@@ -98,7 +92,7 @@ class DocumentResponse(pydantic.BaseModel):
     comment_count: int = 0
     like_count: int = 0
     liked_by_me: bool = False
-    tags: list[TagRef] = []
+    tags: list[org_tags.TagRef] = []
     version: int = 1
 
 
@@ -134,22 +128,7 @@ def _parse_document_row(
     user: dict[str, typing.Any] | None = graph.parse_agtype(record['u'])
     ptype_names = _str_list(graph.parse_agtype(record['ptype_names']))
     author: dict[str, typing.Any] | None = graph.parse_agtype(record['author'])
-    raw_tags: list[typing.Any] = graph.parse_agtype(record['tags']) or []
-    tags: list[dict[str, str | None]] = []
-    for t in raw_tags:
-        if not isinstance(t, dict):
-            continue
-        entry = typing.cast(dict[str, typing.Any], t)
-        slug = entry.get('slug')
-        if not slug:
-            continue
-        tags.append(
-            {
-                'name': str(entry.get('name', '')),
-                'slug': str(slug),
-                'color': entry.get('color'),
-            },
-        )
+    tags = org_tags.parse_refs(graph.parse_agtype(record['tags']))
 
     attached: dict[str, typing.Any] | None = None
     if project:

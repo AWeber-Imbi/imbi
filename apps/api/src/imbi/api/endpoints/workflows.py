@@ -79,12 +79,6 @@ class WorkflowVersion(pydantic.BaseModel):
     created_at: datetime.datetime
 
 
-class WorkflowTag(pydantic.BaseModel):
-    name: str
-    slug: str
-    color: str | None = None
-
-
 class WorkflowSummary(pydantic.BaseModel):
     slug: str
     name: str
@@ -96,7 +90,7 @@ class WorkflowSummary(pydantic.BaseModel):
         description='None when the owner team was deleted.'
     )
     #: The org tags that label the workflow. A deleted tag is left out.
-    tags: list[WorkflowTag] = []
+    tags: list[org_tags.TagRef] = []
     status: Status
     latest_version: int
     active_version: int | None
@@ -106,6 +100,8 @@ class WorkflowSummary(pydantic.BaseModel):
     active_trigger_types: list[str]
     #: The agents that the agent steps of the latest version use.
     agent_ids: list[str] = []
+    #: The email of the user that made the workflow.
+    created_by: str
     created_at: datetime.datetime
     updated_at: datetime.datetime
     #: From ClickHouse ``workflow_runs``. ``None`` when ClickHouse is

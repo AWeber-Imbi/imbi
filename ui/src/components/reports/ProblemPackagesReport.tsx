@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { FilterPopover } from '@/components/ui/filter-popover'
 import { Sk } from '@/components/ui/skeleton'
+import { SortHeader, useSort } from '@/components/ui/sortable'
 import { StatCard } from '@/components/ui/stat-card'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAuth } from '@/hooks/useAuth'
@@ -151,6 +152,50 @@ function EmptyState() {
   )
 }
 
+const FINDING_SORT = {
+  advisories: (r) => (r.advisories ?? []).length,
+  environments: (r) => (r.environments ?? []).length,
+  notes: (r) => r.note_count,
+  package: (r) => r.purl_name,
+  project: (r) => r.project_name,
+  status: (r) => r.status,
+  team: (r) => r.team,
+  version: (r) => r.version,
+} satisfies Record<
+  string,
+  (row: ProblemPackageRow) => null | number | string | undefined
+>
+
+type FindingKey = keyof typeof FINDING_SORT
+
+const FINDING_COLUMNS: { className: string; key: FindingKey; label: string }[] =
+  [
+    {
+      className: 'px-[18px] py-2 font-medium',
+      key: 'project',
+      label: 'Project',
+    },
+    { className: 'px-4 py-2 font-medium', key: 'team', label: 'Team' },
+    { className: 'px-4 py-2 font-medium', key: 'package', label: 'Package' },
+    { className: 'px-4 py-2 font-medium', key: 'version', label: 'Version' },
+    { className: 'px-4 py-2 font-medium', key: 'status', label: 'Status' },
+    {
+      className: 'px-4 py-2 font-medium',
+      key: 'advisories',
+      label: 'Advisories',
+    },
+    {
+      className: 'px-4 py-2 font-medium',
+      key: 'environments',
+      label: 'Environments',
+    },
+    {
+      className: 'px-[18px] py-2 text-right font-medium',
+      key: 'notes',
+      label: 'Notes',
+    },
+  ]
+
 // fallow-ignore-next-line complexity
 function FindingRow({
   canWrite,
@@ -267,23 +312,26 @@ function FindingsTable({
   rows: ProblemPackageRow[]
 }) {
   const { isExpanded, toggle } = useExpandedKeys()
+  const sort = useSort(rows, FINDING_SORT)
   if (rows.length === 0) return <EmptyState />
   return (
     <table className="w-full">
       <thead>
         <tr className="text-tertiary text-overline text-left tracking-wide uppercase">
-          <th className="px-[18px] py-2 font-medium">Project</th>
-          <th className="px-4 py-2 font-medium">Team</th>
-          <th className="px-4 py-2 font-medium">Package</th>
-          <th className="px-4 py-2 font-medium">Version</th>
-          <th className="px-4 py-2 font-medium">Status</th>
-          <th className="px-4 py-2 font-medium">Advisories</th>
-          <th className="px-4 py-2 font-medium">Environments</th>
-          <th className="px-[18px] py-2 text-right font-medium">Notes</th>
+          {FINDING_COLUMNS.map((c) => (
+            <SortHeader
+              className={c.className}
+              column={c.key}
+              key={c.key}
+              sort={sort}
+            >
+              {c.label}
+            </SortHeader>
+          ))}
         </tr>
       </thead>
       <tbody>
-        {rows.map((row) => {
+        {sort.sorted.map((row) => {
           // Row identity, not array index: a filter change re-indexes
           // the list and would otherwise leave a different finding
           // showing as expanded.

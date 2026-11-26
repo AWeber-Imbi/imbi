@@ -11933,7 +11933,7 @@ export interface components {
              * Tags
              * @default []
              */
-            tags: components["schemas"]["AgentTagRef"][];
+            tags: components["schemas"]["TagRef"][];
             /**
              * Enabled
              * @default true
@@ -11973,6 +11973,8 @@ export interface components {
             last_version_at?: string | null;
             /** Created By */
             created_by?: string | null;
+            /** Service Account Slug */
+            service_account_slug?: string | null;
             organization: components["schemas"]["OrganizationRef"];
         };
         /**
@@ -12179,15 +12181,6 @@ export interface components {
              * @default
              */
             instructions: string;
-        };
-        /** AgentTagRef */
-        AgentTagRef: {
-            /** Name */
-            name: string;
-            /** Slug */
-            slug: string;
-            /** Color */
-            color?: string | null;
         };
         /**
          * AgentTaskCounts
@@ -23037,7 +23030,10 @@ export interface components {
             /** Target */
             target: string;
         };
-        /** TagRef */
+        /**
+         * TagRef
+         * @description An org tag as a response shows it.
+         */
         TagRef: {
             /** Name */
             name: string;
@@ -24172,7 +24168,7 @@ export interface components {
              * Tags
              * @default []
              */
-            tags: components["schemas"]["WorkflowTag"][];
+            tags: components["schemas"]["TagRef"][];
             /**
              * Status
              * @enum {string}
@@ -24191,6 +24187,8 @@ export interface components {
              * @default []
              */
             agent_ids: string[];
+            /** Created By */
+            created_by: string;
             /**
              * Created At
              * Format: date-time
@@ -24283,7 +24281,7 @@ export interface components {
              * Tags
              * @default []
              */
-            tags: components["schemas"]["WorkflowTag"][];
+            tags: components["schemas"]["TagRef"][];
             /**
              * Status
              * @enum {string}
@@ -24302,6 +24300,8 @@ export interface components {
              * @default []
              */
             agent_ids: string[];
+            /** Created By */
+            created_by: string;
             /**
              * Created At
              * Format: date-time
@@ -24318,15 +24318,6 @@ export interface components {
             last_run_at?: string | null;
             /** Last Run Status */
             last_run_status?: string | null;
-        };
-        /** WorkflowTag */
-        WorkflowTag: {
-            /** Name */
-            name: string;
-            /** Slug */
-            slug: string;
-            /** Color */
-            color?: string | null;
         };
         /** WorkflowValidate */
         WorkflowValidate: {

@@ -105,12 +105,6 @@ export function Navigation({ currentView }: NavigationProps) {
         label: 'Documents',
         path: '/documents',
       },
-      {
-        icon: Activity,
-        id: 'operations',
-        label: 'Operations Log',
-        path: '/operations-log',
-      },
       { icon: BarChart3, id: 'reports', label: 'Reports', path: '/reports' },
     ]
 

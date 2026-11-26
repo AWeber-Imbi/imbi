@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 
 import { useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 
+import { session } from '@/lib/storage'
 import type { TicketStatus } from '@/types'
 
 /** The assignee value of "my tasks": the API's `mine`. */
@@ -102,25 +103,36 @@ export function toggleFieldValue(values: string[], value: string): string[] {
 
 const KEYS = ['agent', 'assignee', 'filter', 'label', 'state', 'team']
 
+const STORED_FILTERS = 'imbi.tickets.filters'
+
 /**
  * The inbox filters, which live in the address, so a link, Back, and
- * Forward all change them. A link or a tab in the task pane goes to a
- * path with no filter query; that keeps the last filters and puts them
- * back in the address. Back or Forward to such a path clears them.
+ * Forward all change them. A link, a tab in the task pane, or a page
+ * load goes to a path with no filter query; that keeps the last filters
+ * (in session storage, so a link from another page or a reload keeps
+ * them too) and puts them back in the address. Back or Forward to such
+ * a path clears them. A page load is also a POP, but its location key
+ * is `default`.
  */
 export function useTaskFilters() {
-  const { hash, pathname, search, state } = useLocation()
+  const { hash, key, pathname, search, state } = useLocation()
   const navigate = useNavigate()
   const navigation = useNavigationType()
-  const last = useRef(readFilters(search))
-  const inAddress = hasFilters(search) || navigation === 'POP'
+  // ponytail: Back to the first entry of the page load also has key
+  // `default`, so it keeps the last filters instead of clearing them.
+  const inAddress =
+    hasFilters(search) || (navigation === 'POP' && key !== 'default')
   const filters = useMemo(
-    () => (inAddress ? readFilters(search) : last.current),
+    () =>
+      readFilters(inAddress ? search : (session.getItem(STORED_FILTERS) ?? '')),
     [inAddress, search],
   )
-  useEffect(() => {
-    last.current = filters
-  }, [filters])
+  const remember = useCallback(
+    (next: TaskFilters) =>
+      session.setItem(STORED_FILTERS, writeFilters('', next)),
+    [],
+  )
+  useEffect(() => remember(filters), [filters, remember])
   const go = useCallback(
     (next: TaskFilters) =>
       navigate(
@@ -134,10 +146,10 @@ export function useTaskFilters() {
   }, [filters, go, inAddress])
   const setFilters = useCallback(
     (next: TaskFilters) => {
-      last.current = next
+      remember(next)
       go(next)
     },
-    [go],
+    [go, remember],
   )
   return [filters, setFilters] as const
 }

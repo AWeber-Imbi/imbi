@@ -76,10 +76,15 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 
 ## Unreleased
 
-1. Run `imbi-api setup-prompts`. It adds the
+1. After you deploy imbi-api, run **Purge Agent Task Entries from
+   Operations Log** (`opslog-agent-task-purge`) one time. Tickets no
+   longer write Agent Task entries to the operations log. The operation
+   deletes the entries that earlier releases wrote. Until you run it,
+   the old entries still show in the log.
+2. Run `imbi-api setup-prompts`. It adds the
    `imbi-api/workflow-description` prompt to the prompt CMS. A model now
    writes the description of a workflow when a save changes its name,
-   steps, or connections; edit the prompt and choose its model on
+   steps, or connections, or when the description is empty; edit the prompt and choose its model on
    **Agents > Platform**. Without the prompt, imbi-api uses the packaged
    prompt and its default Anthropic model. With no Anthropic key, a save
    keeps the description that the workflow had. The workflow create and

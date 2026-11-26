@@ -19,7 +19,9 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { UserIdentity } from '@/components/ui/user-identity'
 import { useHasPermission } from '@/hooks/useHasPermission'
+import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import { useIcon } from '@/lib/icons'
 import { queryKeys } from '@/lib/queryKeys'
 import type {
@@ -90,6 +92,7 @@ export function AgentDetail({ agent }: { agent: Agent }) {
   const { data: usage } = useAgentUsage(agent.organization.slug, {
     agent_id: agent.id,
   })
+  const { displayNames } = useUserDisplayNames()
 
   const model = prompt.isLoading
     ? '…'
@@ -99,7 +102,18 @@ export function AgentDetail({ agent }: { agent: Agent }) {
 
   const rows: { mono?: boolean; name: string; value: ReactNode }[] = [
     { name: 'Owner team', value: agent.team?.name ?? '—' },
-    { name: 'Author', value: agent.created_by || '—' },
+    {
+      name: 'Author',
+      value: agent.created_by ? (
+        <UserIdentity
+          displayNames={displayNames}
+          email={agent.created_by}
+          size="small"
+        />
+      ) : (
+        '—'
+      ),
+    },
     { mono: true, name: 'Model', value: model },
     { name: 'Slack channel', value: agent.slack_channel || '—' },
     {

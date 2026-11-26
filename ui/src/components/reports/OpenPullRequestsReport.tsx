@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Sk } from '@/components/ui/skeleton'
+import { SortHeader, type SortState, useSort } from '@/components/ui/sortable'
 import {
   Tooltip,
   TooltipContent,
@@ -122,22 +123,42 @@ const COLUMN_ALIGN: Record<'center' | 'left' | 'right', string> = {
   right: 'text-right',
 }
 
+const PR_SORT = {
+  author: (pr) => pr.author,
+  diff: (pr) => pr.additions + pr.deletions,
+  files: (pr) => pr.changed_files,
+  number: (pr) => pr.pr_number,
+  opened: (pr) => Date.parse(pr.created_at),
+  project: (pr) => pr.project_name,
+  project_type: (pr) => pr.project_types[0]?.slug,
+  reviewers: (pr) => (pr.reviewers ?? []).length,
+  team: (pr) => pr.team_slug,
+  title: (pr) => pr.title,
+  updated: (pr) => Date.parse(pr.updated_at),
+} satisfies Record<
+  string,
+  (pr: EnrichedPR) => null | number | string | undefined
+>
+
+type PrSortKey = keyof typeof PR_SORT
+
 const COLUMNS: {
   align: 'center' | 'left' | 'right'
+  key: PrSortKey
   label: string
   width?: string
 }[] = [
-  { align: 'left', label: 'Team', width: 'w-20' },
-  { align: 'left', label: 'Project Type', width: 'w-32' },
-  { align: 'left', label: 'Project', width: 'w-44' },
-  { align: 'left', label: '#', width: 'w-16' },
-  { align: 'left', label: 'Title' },
-  { align: 'center', label: 'Author', width: 'w-10' },
-  { align: 'left', label: 'Reviewers', width: 'w-36' },
-  { align: 'center', label: 'Files', width: 'w-14' },
-  { align: 'center', label: 'Diff', width: 'w-36' },
-  { align: 'right', label: 'Opened', width: 'w-20' },
-  { align: 'right', label: 'Updated', width: 'w-20' },
+  { align: 'left', key: 'team', label: 'Team', width: 'w-20' },
+  { align: 'left', key: 'project_type', label: 'Project Type', width: 'w-32' },
+  { align: 'left', key: 'project', label: 'Project', width: 'w-44' },
+  { align: 'left', key: 'number', label: '#', width: 'w-16' },
+  { align: 'left', key: 'title', label: 'Title' },
+  { align: 'center', key: 'author', label: 'Author', width: 'w-10' },
+  { align: 'left', key: 'reviewers', label: 'Reviewers', width: 'w-36' },
+  { align: 'center', key: 'files', label: 'Files', width: 'w-14' },
+  { align: 'center', key: 'diff', label: 'Diff', width: 'w-36' },
+  { align: 'right', key: 'opened', label: 'Opened', width: 'w-20' },
+  { align: 'right', key: 'updated', label: 'Updated', width: 'w-20' },
 ]
 
 export function OpenPullRequestsReport() {
@@ -154,6 +175,7 @@ export function OpenPullRequestsReport() {
     filters.projectTypeFilter,
     filters.search,
   )
+  const sort = useSort(filtered, PR_SORT, { dir: 'desc', key: 'updated' })
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -166,9 +188,10 @@ export function OpenPullRequestsReport() {
         <ReportTable
           data={data}
           displayNames={displayNames}
-          filtered={filtered}
+          filtered={sort.sorted}
           loginToEmail={loginToEmail}
           onOpenProject={(id) => navigate(`/projects/${id}`)}
+          sort={sort}
         />
       </div>
     </TooltipProvider>
@@ -233,10 +256,6 @@ function enrichPullRequests(
       team_slug: p.team.slug,
     })
   }
-  out.sort(
-    (a, b) =>
-      new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
-  )
   return out
 }
 
@@ -524,18 +543,20 @@ function ReportTable({
   filtered,
   loginToEmail,
   onOpenProject,
+  sort,
 }: {
   data: ReportData
   displayNames: Map<string, string>
   filtered: EnrichedPR[]
   loginToEmail: Map<string, string>
   onOpenProject: (id: string) => void
+  sort: SortState<PrSortKey>
 }) {
   const showSkeleton = data.isLoading && data.enriched.length === 0
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
-        <ReportTableHead />
+        <ReportTableHead sort={sort} />
         <tbody>
           <ReportTableBody
             displayNames={displayNames}
@@ -583,17 +604,19 @@ function ReportTableBody({
   )
 }
 
-function ReportTableHead() {
+function ReportTableHead({ sort }: { sort: SortState<PrSortKey> }) {
   return (
     <thead>
       <tr className="border-tertiary border-b">
         {COLUMNS.map((c) => (
-          <th
+          <SortHeader
             className={`text-tertiary px-4 py-2 text-xs font-medium tracking-wide uppercase ${COLUMN_ALIGN[c.align]} ${c.width ?? ''}`}
-            key={c.label}
+            column={c.key}
+            key={c.key}
+            sort={sort}
           >
             {c.label}
-          </th>
+          </SortHeader>
         ))}
       </tr>
     </thead>
