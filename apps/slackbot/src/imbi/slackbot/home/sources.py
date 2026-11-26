@@ -33,10 +33,6 @@ type Row = dict[str, typing.Any]
 #: Seconds that one source can take. The time that a source waits for
 #: another source does not count.
 TIMEOUT = 4.0
-#: The slim projects list took 3 to 4 s in production for a whole org.
-#: ``team`` and ``releases=false`` make it fast; an API older than
-#: those parameters ignores them.
-_TIMEOUTS = {'projects': 8.0}
 #: The timeout of the source that runs in this task.
 _timer: contextvars.ContextVar[asyncio.Timeout | None] = (
     contextvars.ContextVar('home_source_timer', default=None)
@@ -216,7 +212,7 @@ class Sources:
         source: abc.Callable[[], abc.Awaitable[Json]] = getattr(
             self, f'_{name}'
         )
-        async with asyncio.timeout(_TIMEOUTS.get(name, TIMEOUT)) as timer:
+        async with asyncio.timeout(TIMEOUT) as timer:
             _timer.set(timer)
             return await source()
 

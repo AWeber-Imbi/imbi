@@ -998,7 +998,6 @@ class HomeFlowTests(helpers.TestCase):
         src = sources.Sources(mock.Mock(), 'acme', 'a@x', [], set())
         with (
             mock.patch.object(sources, 'TIMEOUT', 0.2),
-            mock.patch.object(sources, '_TIMEOUTS', {}),
             mock.patch.object(sources.Sources, '_projects', projects),
             mock.patch.object(sources.Sources, '_drift', drift),
         ):

@@ -2312,17 +2312,19 @@ async def list_projects(
             ),
         ),
     ] = None,
+    # ponytail: interim for issue #998. When DEPLOYED_IN holds the
+    # reader result (docs plan, phase 3), current releases are cheap;
+    # then deprecate releases=false.
     include_releases: typing.Annotated[
         bool,
         fastapi.Query(
             alias='releases',
             description=(
                 'Read the current release and latest deployment of each '
-                'environment. ``false`` skips that read, the slowest part '
-                'of the list: ``current_releases``, '
-                '``latest_deployments``, ``drift_ranges`` and '
-                '``drift_pairs`` are then empty. ``release_summary`` and '
-                '``release_drifted`` are still set.'
+                'environment. ``false`` skips that read: '
+                '``current_releases``, ``latest_deployments``, '
+                '``drift_ranges`` and ``drift_pairs`` are then empty. '
+                '``release_summary`` and ``release_drifted`` are still set.'
             ),
         ),
     ] = True,

@@ -14,6 +14,7 @@ Two routers are provided:
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import json
 import logging
@@ -193,7 +194,7 @@ def _row_to_response(row: dict[str, typing.Any]) -> dict[str, typing.Any]:
 async def _fetch_org_projects(
     db: graph.Pool,
     org_slug: str,
-) -> dict[str, str]:
+) -> dict[str, str | None]:
     """Return the name of each project of the org that is not archived,
     by id.
 
@@ -207,9 +208,7 @@ async def _fetch_org_projects(
     """
     records = await db.execute(query, {'org_slug': org_slug}, ['id', 'name'])
     return {
-        str(graph.parse_agtype(r['id'])): str(
-            graph.parse_agtype(r.get('name')) or ''
-        )
+        str(graph.parse_agtype(r['id'])): graph.parse_agtype(r.get('name'))
         for r in records
         if graph.parse_agtype(r['id'])
     }
@@ -728,8 +727,9 @@ async def list_pending_deploy_pull_requests(
             data=[],
             github_identity_missing=True,
         )
-    projects = await _fetch_org_projects(db, org_slug)
-    envs = await _fetch_terminal_environments(db)
+    projects, envs = await asyncio.gather(
+        _fetch_org_projects(db, org_slug), _fetch_terminal_environments(db)
+    )
     slugs = list(envs)
     data, total = await _list_pending_deploy(
         project_ids=list(projects),
