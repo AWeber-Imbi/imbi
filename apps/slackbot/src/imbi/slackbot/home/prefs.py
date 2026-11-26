@@ -20,7 +20,6 @@ SectionKey = typing.Literal[
     'pull_requests',
     'merged_not_deployed',
     'release_drift',
-    'my_projects',
     'agent_activity',
     'document_comments',
 ]
@@ -34,7 +33,6 @@ TITLES: dict[SectionKey, str] = {
     'pull_requests': 'Pull requests',
     'merged_not_deployed': 'Merged, not deployed',
     'release_drift': 'Release drift',
-    'my_projects': 'My projects',
     'agent_activity': 'Agent activity',
     'document_comments': 'Document comments',
 }

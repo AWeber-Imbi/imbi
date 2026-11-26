@@ -30,10 +30,6 @@
     "section: *Release drift (1)* [overflow:home:release_drift:menu]",
     "section: <https://imbi.example/projects/p0/deployments|proj-0> · 1 commit since `2.0.0`\n:red_circle: 1 open blocker [button:home:release:blocker]",
     "divider: ",
-    "section: *My projects (1)* [overflow:home:my_projects:menu]",
-    "context: Platform · 1 project · 1 needs a look · <https://imbi.example/reports/team-kpi|Team scorecard>",
-    "section: *<https://imbi.example/projects/p0|proj-0>*\nScore 90 ▲2 · 1 incident · 0 critical CVEs",
-    "divider: ",
     "section: *Agent activity (1)* [overflow:home:agent_activity:menu]",
     "context: Agent tickets you own",
     "section: <https://imbi.example/tickets/acme/T-500|T-500> workerbee · Bump fastapi\n:large_green_circle: Running · updated 30 min ago · $6.85 so far [button:home:agent:pause]",
@@ -649,81 +645,6 @@
           },
           "url": "https://imbi.example/projects/p0/deployments"
         }
-      },
-      {
-        "type": "divider"
-      },
-      {
-        "type": "section",
-        "text": {
-          "type": "mrkdwn",
-          "text": "*My projects (1)*"
-        },
-        "block_id": "home:my_projects:header",
-        "accessory": {
-          "type": "overflow",
-          "action_id": "home:my_projects:menu",
-          "options": [
-            {
-              "text": {
-                "type": "plain_text",
-                "text": "Collapse",
-                "emoji": true
-              },
-              "value": "collapse"
-            },
-            {
-              "text": {
-                "type": "plain_text",
-                "text": "Hide from Home",
-                "emoji": true
-              },
-              "value": "hide"
-            },
-            {
-              "text": {
-                "type": "plain_text",
-                "text": "Move up",
-                "emoji": true
-              },
-              "value": "up"
-            },
-            {
-              "text": {
-                "type": "plain_text",
-                "text": "Move down",
-                "emoji": true
-              },
-              "value": "down"
-            },
-            {
-              "text": {
-                "type": "plain_text",
-                "text": "Customize Home",
-                "emoji": true
-              },
-              "value": "customize"
-            }
-          ]
-        }
-      },
-      {
-        "type": "context",
-        "elements": [
-          {
-            "type": "mrkdwn",
-            "text": "Platform · 1 project · 1 needs a look · <https://imbi.example/reports/team-kpi|Team scorecard>"
-          }
-        ]
-      },
-      {
-        "type": "section",
-        "fields": [
-          {
-            "type": "mrkdwn",
-            "text": "*<https://imbi.example/projects/p0|proj-0>*\nScore 90 ▲2 · 1 incident · 0 critical CVEs"
-          }
-        ]
       },
       {
         "type": "divider"

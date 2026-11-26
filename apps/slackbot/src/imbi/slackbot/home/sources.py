@@ -13,7 +13,7 @@ lock per key makes sure that only one pod fills a key at a time.
 from __future__ import annotations
 
 import asyncio
-import collections
+import contextvars
 import dataclasses
 import logging
 import typing
@@ -30,8 +30,16 @@ LOGGER = logging.getLogger(__name__)
 type Json = typing.Any
 type Row = dict[str, typing.Any]
 
-#: Seconds that one source can take.
+#: Seconds that one source can take. The time that a source waits for
+#: another source does not count.
 TIMEOUT = 4.0
+#: The slim list of every project of the org takes 3 to 4 s in
+#: production.
+_TIMEOUTS = {'projects': 8.0}
+#: The timeout of the source that runs in this task.
+_timer: contextvars.ContextVar[asyncio.Timeout | None] = (
+    contextvars.ContextVar('home_source_timer', default=None)
+)
 #: The most projects of the user's teams that a fan-out reads (PRD §10).
 MAX_PROJECTS = 25
 LOCK_SECONDS = 5
@@ -40,7 +48,6 @@ NOTICE_TTL = 300
 INCIDENTS_TTL = 60
 ADVISORIES_TTL = 600
 DRIFT_TTL = 300
-TREND_TTL = 3600
 #: A shared cache holds data that the API returned to another user. A
 #: source reads it only when the user has the permission of its route.
 _SHARED_CACHE_PERMISSIONS = frozenset(
@@ -50,7 +57,6 @@ _SHARED_CACHE_PERMISSIONS = frozenset(
 SECTION_CACHES: dict[str, tuple[str, ...]] = {
     'needs_attention': ('incidents', 'advisories'),
     'release_drift': ('drift',),
-    'my_projects': ('incidents', 'advisories', 'trend'),
 }
 
 
@@ -158,6 +164,22 @@ async def _fan_out[T](aws: abc.Iterable[abc.Awaitable[T]]) -> list[T]:
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
+async def _paused(waited: abc.Awaitable[Json]) -> Json:
+    """Await ``waited`` with the timeout of the calling source stopped,
+    so a source that reads a slow source first does not time out."""
+    timer = _timer.get()
+    when = timer.when() if timer else None
+    if timer is None or when is None:
+        return await waited
+    loop = asyncio.get_running_loop()
+    start = loop.time()
+    timer.reschedule(None)
+    try:
+        return await waited
+    finally:
+        timer.reschedule(when + loop.time() - start)
+
+
 class Sources:
     """The sources of one render, each started one time."""
 
@@ -177,7 +199,7 @@ class Sources:
         self.base = f'/organizations/{org}'
         self._tasks: dict[str, asyncio.Future[Json]] = {}
 
-    def get(self, name: str) -> asyncio.Future[Json]:
+    def get(self, name: str) -> abc.Awaitable[Json]:
         """Return the task of the source ``name``, started on first use.
 
         The task is shielded: when one waiter is cancelled (for example
@@ -186,13 +208,16 @@ class Sources:
 
         """
         if name not in self._tasks:
-            source: abc.Callable[[], abc.Awaitable[Json]] = getattr(
-                self, f'_{name}'
-            )
-            self._tasks[name] = asyncio.ensure_future(
-                asyncio.wait_for(source(), TIMEOUT)
-            )
-        return asyncio.shield(self._tasks[name])
+            self._tasks[name] = asyncio.ensure_future(self._run(name))
+        return _paused(asyncio.shield(self._tasks[name]))
+
+    async def _run(self, name: str) -> Json:
+        source: abc.Callable[[], abc.Awaitable[Json]] = getattr(
+            self, f'_{name}'
+        )
+        async with asyncio.timeout(_TIMEOUTS.get(name, TIMEOUT)) as timer:
+            _timer.set(timer)
+            return await source()
 
     async def optional(self, name: str, default: Json) -> Json:
         """Return the source, or ``default`` when it failed."""
@@ -377,24 +402,6 @@ class Sources:
         found = await _fan_out(one(p) for p in projects)
         return [d for d in found if d]
 
-    async def _trends(self) -> dict[str, Row]:
-        """The 7-day score trend of each team project, by id."""
-        if 'project:read' not in self.permissions:
-            return {}
-        projects: list[Row] = await self.get('team_projects')
-
-        async def one(project: Row) -> Row:
-            path = f'{self.base}/projects/{project["id"]}/score/trend'
-            trend: Row = await cached(
-                self._key('trend', project['id']),
-                TREND_TTL,
-                lambda: _json_or(self.client, path, {}, days=7),
-            )
-            return trend
-
-        found = await _fan_out(one(p) for p in projects)
-        return {p['id']: t for p, t in zip(projects, found, strict=True)}
-
     async def _agent_tickets(self) -> list[Row]:
         """The user's agent tickets that run, are paused, or wait."""
         groups = ('running', 'paused', 'queued')
@@ -488,39 +495,6 @@ class Sources:
     async def _section_release_drift(self) -> Row:
         drift: list[Row] = await self.get('drift')
         return {'projects': drift}
-
-    async def _section_my_projects(self) -> Row:
-        projects, trends, incidents, advisories = await asyncio.gather(
-            self.get('team_projects'),
-            self.optional('trends', {}),
-            self.optional('incidents', []),
-            self.optional('advisories', []),
-        )
-        open_incidents = collections.Counter(
-            i['project_id'] for i in incidents
-        )
-        severities: dict[str, collections.Counter[str]] = (
-            collections.defaultdict(collections.Counter)
-        )
-        for row in advisories:
-            for advisory in row['advisories']:
-                severity = (advisory.get('severity') or '').lower()
-                severities[row['project_id']][severity] += 1
-        return {
-            'projects': [
-                {
-                    'id': p['id'],
-                    'name': p['name'],
-                    'team': p['team']['name'],
-                    'score': p.get('score'),
-                    'delta': dig(trends, p['id'], 'delta'),
-                    'incidents': open_incidents[p['id']],
-                    'critical': severities[p['id']]['critical'],
-                    'high': severities[p['id']]['high'],
-                }
-                for p in projects
-            ]
-        }
 
     async def _section_agent_activity(self) -> Row:
         tickets, agents = await asyncio.gather(
