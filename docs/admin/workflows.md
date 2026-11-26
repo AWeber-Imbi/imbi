@@ -106,7 +106,6 @@ Click empty canvas to see the workflow settings.
 
 | Field | Values | Default |
 |---|---|---|
-| **Description** | Free text | Empty |
 | **Owner team** | A team in the organization | None. Required |
 | **Tags** | Organization tags. They only classify the workflow. You can make a tag with a color from this field. The workflows list shows them, with the owner team | None |
 | **Concurrency** | **Unlimited**, **One run at a time**, **One run per key** | **Unlimited** |
@@ -119,6 +118,16 @@ Click empty canvas to see the workflow settings.
 Only an admin or a member of the owner team can make a workflow for that
 team. Only an admin or a member of the current owner team can change the owner
 team.
+
+You do not write the description. When a save changes the name, the
+steps, or the connections, a model writes one sentence that says what the
+workflow does and names the agents that it uses. The workflows list shows
+it. The prompt is `imbi-api/workflow-description` in the
+[prompt CMS](prompts.md). Edit it, and choose its model, on
+**Agents > Platform**. Without a model, imbi-api uses its default
+Anthropic model. Run `imbi-api setup-prompts` once to seed the prompt on
+an install made before it existed. When no model answers, the save keeps
+the description that the workflow had.
 
 ## Step types
 

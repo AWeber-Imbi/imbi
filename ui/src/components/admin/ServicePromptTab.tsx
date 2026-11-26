@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { FileCode2, Info } from 'lucide-react'
@@ -13,17 +13,24 @@ import { extractApiErrorDetail } from '@/lib/apiError'
 import { queryKeys } from '@/lib/queryKeys'
 import type { PromptCreate } from '@/types'
 
-const SLUG = 'system'
-
 interface ServicePromptTabProps {
   /** Display name, for example "Assistant" or "Slackbot". */
   label: string
+  /** Replaces the note about how the service picks its system prompt. */
+  note?: ReactNode
   /** The service, which is also the prompt namespace. */
-  service: 'imbi-assistant' | 'imbi-slackbot'
+  service: 'imbi-api' | 'imbi-assistant' | 'imbi-slackbot'
+  slug?: string
 }
 
-/** A service's system prompt, edited in place through the CMS. */
-export function ServicePromptTab({ label, service }: ServicePromptTabProps) {
+/** A prompt of a service, by default its system prompt, edited in
+ * place through the CMS. */
+export function ServicePromptTab({
+  label,
+  note,
+  service,
+  slug = 'system',
+}: ServicePromptTabProps) {
   const noun = label.toLowerCase()
   const queryClient = useQueryClient()
   const canCreate = useHasPermission('prompt:create')
@@ -47,12 +54,16 @@ export function ServicePromptTab({ label, service }: ServicePromptTabProps) {
         style={{ borderWidth: '0.5px' }}
       >
         <Info className="size-3.5 flex-none" />
-        Without a system-prompt override, {service} uses the version that its
-        configured prompt reference points at (default{' '}
-        {`${service}/${SLUG}@stable`}). If that label does not exist, it uses
-        the version that the default label of this prompt points at. If neither
-        label exists, it uses its built-in prompt. Run imbi-api setup-prompts to
-        create a missing prompt.
+        {note ?? (
+          <>
+            Without a system-prompt override, {service} uses the version that
+            its configured prompt reference points at (default{' '}
+            {`${service}/${slug}@stable`}). If that label does not exist, it
+            uses the version that the default label of this prompt points at. If
+            neither label exists, it uses its built-in prompt. Run imbi-api
+            setup-prompts to create a missing prompt.
+          </>
+        )}
       </div>
       <PromptEditor
         emptyState={
@@ -65,8 +76,8 @@ export function ServicePromptTab({ label, service }: ServicePromptTabProps) {
                 The {noun} prompt is not in the CMS yet
               </div>
               <p className="text-secondary mt-1 text-sm">
-                Create {service}/{SLUG} to version the {noun}&apos;s system
-                prompt, model, and parameters.
+                Create {service}/{slug} to version the {noun} prompt, model, and
+                parameters.
               </p>
               {canCreate && (
                 <Button
@@ -81,14 +92,14 @@ export function ServicePromptTab({ label, service }: ServicePromptTabProps) {
           </div>
         }
         namespace={service}
-        slug={SLUG}
+        slug={slug}
       />
       {creating && (
         <NewPromptDialog
           defaults={{
-            name: `${label} system prompt`,
+            name: slug === 'system' ? `${label} system prompt` : label,
             namespace: service,
-            slug: SLUG,
+            slug,
             type: 'core_system',
           }}
           locked

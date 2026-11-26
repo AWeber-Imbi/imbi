@@ -130,7 +130,6 @@ export function WorkflowEditor({
   const canDelete =
     useHasPermission('workflow:delete', orgSlug) || (hasWrite && inTeam)
   const [draft, setDraft] = useState<WorkflowDraft>(() => ({
-    description: workflow?.description ?? '',
     graph: workflow?.version.graph ?? { edges: [], nodes: [] },
     name: workflow?.name ?? 'Untitled workflow',
     owner_team_slug: workflow?.owner_team_slug ?? '',
@@ -261,13 +260,9 @@ export function WorkflowEditor({
     // A retry after a failed save of a new workflow updates it.
     mutationFn: () => {
       const saving = revision.current
-      return saveWorkflow(
-        orgSlug,
-        slug,
-        { ...draft, description: draft.description.trim() },
-        prompts,
-        stored,
-      ).then((result) => ({ ...result, saving }))
+      return saveWorkflow(orgSlug, slug, draft, prompts, stored).then(
+        (result) => ({ ...result, saving }),
+      )
     },
     onError: (error) =>
       toast.error(
@@ -277,7 +272,6 @@ export function WorkflowEditor({
       const clean = saving === revision.current
       setDraft((d) => ({
         ...d,
-        description: clean ? saved.description : d.description,
         graph: pinNodes(d.graph, pins),
       }))
       stored(saved)

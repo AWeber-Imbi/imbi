@@ -95,10 +95,20 @@ TICKET_SUBJECT = DefaultPrompt(
     variables=(),
 )
 
+WORKFLOW_DESCRIPTION = DefaultPrompt(
+    namespace='imbi-api',
+    slug='workflow-description',
+    name='Workflow description',
+    description='Writes the description of a workflow when it is saved.',
+    template='imbi-api-workflow-description.md',
+    variables=(),
+)
+
 DEFAULT_PROMPTS: tuple[DefaultPrompt, ...] = (
     ASSISTANT,
     SLACKBOT,
     TICKET_SUBJECT,
+    WORKFLOW_DESCRIPTION,
 )
 
 
