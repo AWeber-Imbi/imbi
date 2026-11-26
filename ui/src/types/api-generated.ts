@@ -29874,7 +29874,7 @@ export interface operations {
                 project_id?: string | null;
                 /** @description Restrict results to projects owned by the team with this slug (repeatable; a project of any of the teams matches). */
                 team?: string[] | null;
-                /** @description Read the current release and latest deployment of each environment. With ``slim=true``, ``false`` skips that read: ``current_releases``, ``latest_deployments``, ``drift_ranges`` and ``drift_pairs`` are then empty; ``release_summary`` and ``release_drifted`` are still set. */
+                /** @description Read the current release and latest deployment of each environment. ``false`` skips that read: ``current_releases`` and ``latest_deployments`` are then empty. With ``slim=true``, ``drift_ranges`` and ``drift_pairs`` are also empty, and ``release_summary`` and ``release_drifted`` are still set. */
                 releases?: boolean;
                 /** @description Filter projects by blueprint attribute, as ``field:op[:value]`` (repeatable; combined with AND). Operators: eq, ne, in, not_in (comma-separated values), exists, not_exists. ne/not_in exclude projects where the attribute is unset. Valid fields and enum values per project type come from the project-type listing with ``include_schema=true``. Example: framework:ne:http-service-lib */
                 filter?: string[] | null;
