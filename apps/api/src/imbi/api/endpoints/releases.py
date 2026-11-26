@@ -532,10 +532,9 @@ def _predates_serving_legacy(
     legacy_event: models.DeploymentEvent | None,
     serving_event: models.DeploymentEvent | None,
 ) -> bool:
-    """Same guard as the projects list: when a legacy array entry still
-    wins, an attempt that started at or before it is not newer than what
-    the environment serves.  When a node won, the reader has already
-    compared start times."""
+    """When a legacy array entry still wins, an attempt that started at
+    or before it is not newer than what the environment serves.  When a
+    node won, the reader has already compared start times."""
     return (
         legacy_event is not None
         and serving_event is legacy_event

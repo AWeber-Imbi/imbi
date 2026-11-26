@@ -2327,10 +2327,8 @@ class SharedCurrentReaderTestCase(_ReleasesTestBase):
         ]
         ch = mock.MagicMock()
         ch.query = mock.AsyncMock(return_value=[])
-        # The projects list reads the same nodes; its own legacy
-        # ``DEPLOYED_TO`` query has nothing to add here.
-        legacy_db = mock.AsyncMock()
-        legacy_db.execute.return_value = []
+        # The projects list reads the same nodes through the reader.
+        list_db = mock.AsyncMock()
         with (
             mock.patch(
                 'imbi.common.deployments.current_and_latest_by_project',
@@ -2348,7 +2346,7 @@ class SharedCurrentReaderTestCase(_ReleasesTestBase):
         ):
             response = self.client.get(self._url('/current'))
             listed = asyncio.run(
-                projects._fetch_current_releases(legacy_db, [PROJECT_ID])
+                projects._fetch_current_releases(list_db, [PROJECT_ID])
             )
         self.assertEqual(response.status_code, 200, response.text)
         detail = response.json()[0]
@@ -2394,16 +2392,27 @@ class SharedCurrentReaderTestCase(_ReleasesTestBase):
                 )
             ),
         )
-        with mock.patch(
-            'imbi.common.deployments.current_and_latest_by_project',
-            mock.AsyncMock(return_value=[state]),
+        ch = mock.MagicMock()
+        ch.query = mock.AsyncMock(return_value=[])
+        with (
+            mock.patch(
+                'imbi.common.deployments.current_and_latest_by_project',
+                mock.AsyncMock(return_value=[state]),
+            ),
+            mock.patch(
+                'imbi.api.endpoints.projects.ch_client.Clickhouse.'
+                'get_instance',
+                return_value=ch,
+            ),
         ):
-            latest = asyncio.run(
-                projects._apply_deployment_nodes(
-                    mock.AsyncMock(), [PROJECT_ID], {}
+            listed = asyncio.run(
+                projects._fetch_current_releases(
+                    mock.AsyncMock(), [PROJECT_ID]
                 )
             )
-        self.assertEqual('failed', latest[(PROJECT_ID, 'production')].status)
+        self.assertEqual(
+            'failed', listed.latest[PROJECT_ID]['production'].status
+        )
 
     def test_latest_is_omitted_when_it_is_the_current_release(self) -> None:
         """The newest attempt succeeded, so there is nothing extra."""
