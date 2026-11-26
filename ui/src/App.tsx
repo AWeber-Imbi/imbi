@@ -13,6 +13,7 @@ import { OrganizationProvider } from './contexts/OrganizationContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { useAuth } from './hooks/useAuth'
 import { useVersionCheck } from './hooks/useVersionCheck'
+import { LegacyOperationsLogRedirect } from './pages/LegacyOperationsLogRedirect'
 import { LegacyTasksRedirect } from './pages/LegacyTasksRedirect'
 
 const DashboardPage = lazy(() =>
@@ -24,11 +25,6 @@ const ProjectsPage = lazy(() =>
 const ProjectDetailPage = lazy(() =>
   import('./pages/ProjectDetailPage').then((m) => ({
     default: m.ProjectDetailPage,
-  })),
-)
-const OperationsLogPage = lazy(() =>
-  import('./pages/OperationsLogPage').then((m) => ({
-    default: m.OperationsLogPage,
   })),
 )
 const DocumentsIndexPage = lazy(() =>
@@ -132,11 +128,7 @@ function App() {
                   path="/projects/*"
                 />
                 <Route
-                  element={
-                    <ProtectedRoute>
-                      <OperationsLogPage />
-                    </ProtectedRoute>
-                  }
+                  element={<LegacyOperationsLogRedirect />}
                   path="/operations-log"
                 />
                 <Route
@@ -220,7 +212,7 @@ function App() {
                   path="/users/:email/:tab?/:subId?/:subAction?"
                 />
                 <Route
-                  element={<Navigate replace to="/operations-log" />}
+                  element={<LegacyOperationsLogRedirect />}
                   path="/opslog"
                 />
                 <Route

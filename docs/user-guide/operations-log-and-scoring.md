@@ -8,8 +8,9 @@ entries automatically. You can also add an entry by hand.
 
 You can open the log in two places:
 
-- **Operations Log** in the top bar shows the log for all projects of the
-  organization (`/operations-log`).
+- **Reports > Operations Log** shows the log for all projects of the
+  organization (`/reports/operations-log`). The old `/operations-log`
+  URL goes there.
 - The **Operations Log** tab of a project shows the log for that project
   only.
 
@@ -32,7 +33,7 @@ See [Roles and permissions](../admin/roles-and-permissions.md).
 |---|---|
 | Deployed | Imbi, for each deploy, promote, release, and publish. People can also add it |
 | Configured | Imbi, when you set or delete a value on the **Configuration** tab. People can also add it |
-| Agent Task | Imbi only, when a [ticket](../admin/tickets.md) of a project is resolved or gets an outcome |
+| Agent Task | No longer written. Imbi wrote it for a resolved or closed [ticket](../admin/tickets.md) in earlier releases. The `opslog-agent-task-purge` [maintenance operation](../admin/maintenance.md) deletes these entries |
 | Decommissioned, Migrated, Provisioned, Restarted, Rolled Back, Scaled, Upgraded | People |
 
 You cannot add an **Agent Task** entry by hand.
@@ -126,7 +127,7 @@ In notes on a project page, `#123` becomes a link to issue or pull request
 123 of the project's GitHub repository. Imbi finds the repository from the
 GitHub integration of the project, or from its `github-repository` link.
 The preview in the **New Ops Log Entry** dialog also makes these links. On
-the global **Operations Log** page, `#123` stays plain text.
+the **Reports > Operations Log** page, `#123` stays plain text.
 
 The description is plain text. It is not Markdown.
 

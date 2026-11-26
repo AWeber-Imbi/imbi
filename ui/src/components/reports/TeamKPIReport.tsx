@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useQuery } from '@tanstack/react-query'
 import { RefreshCw } from 'lucide-react'
 
 import { getScoreRollup, listTeams, ScoreRollupRow } from '@/api/endpoints'
 import { Sk } from '@/components/ui/skeleton'
+import { SortHeader, useSort } from '@/components/ui/sortable'
 import { StatCard } from '@/components/ui/stat-card'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { parseServerTs } from '@/lib/formatDate'
@@ -17,6 +18,14 @@ interface BarChartProps {
 interface TeamRow extends ScoreRollupRow {
   name: string
   project_count?: number
+}
+
+const TEAM_SORT = {
+  avg: (r: TeamRow) => r.avg_score,
+  best: (r: TeamRow) => r.latest_score,
+  last: (r: TeamRow) =>
+    r.last_updated ? parseServerTs(r.last_updated).getTime() : null,
+  team: (r: TeamRow) => r.name,
 }
 
 export function TeamKPIReport() {
@@ -55,7 +64,7 @@ export function TeamKPIReport() {
     void refetchTeams()
   }
 
-  const rows: TeamRow[] = (() => {
+  const rows: TeamRow[] = useMemo(() => {
     if (!rollup) return []
     const teamBySlug = new Map<string, Team>(
       (teams ?? []).map((t) => [t.slug, t]),
@@ -64,9 +73,13 @@ export function TeamKPIReport() {
       ...r,
       name: teamBySlug.get(r.key)?.name ?? r.key,
     }))
-  })()
+  }, [rollup, teams])
 
-  const sorted = [...rows].sort((a, b) => b.avg_score - a.avg_score)
+  const { sorted, ...sort } = useSort(rows, TEAM_SORT, {
+    dir: 'desc',
+    key: 'avg',
+  })
+  const top = rows.length > 0 ? Math.max(...rows.map((r) => r.avg_score)) : null
 
   const avgOfAvgs =
     rows.length > 0
@@ -92,14 +105,8 @@ export function TeamKPIReport() {
         />
         <StatCard
           label="Top team score"
-          value={
-            isLoading || hasError || sorted.length === 0
-              ? '—'
-              : fmtScore(sorted[0].avg_score)
-          }
-          valueColor={
-            sorted.length > 0 ? scoreColor(sorted[0].avg_score) : undefined
-          }
+          value={isLoading || hasError || top == null ? '—' : fmtScore(top)}
+          valueColor={top != null ? scoreColor(top) : undefined}
         />
       </div>
 
@@ -163,18 +170,34 @@ export function TeamKPIReport() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-tertiary border-b">
-                <th className="text-overline text-tertiary px-[18px] py-2.5 text-left font-normal tracking-wide uppercase">
+                <SortHeader
+                  className="text-overline text-tertiary px-[18px] py-2.5 text-left font-normal tracking-wide uppercase"
+                  column="team"
+                  sort={sort}
+                >
                   Team
-                </th>
-                <th className="text-overline text-tertiary px-4 py-2.5 text-right font-normal tracking-wide uppercase">
+                </SortHeader>
+                <SortHeader
+                  className="text-overline text-tertiary px-4 py-2.5 text-right font-normal tracking-wide uppercase"
+                  column="avg"
+                  sort={sort}
+                >
                   Avg score
-                </th>
-                <th className="text-overline text-tertiary px-4 py-2.5 text-right font-normal tracking-wide uppercase">
+                </SortHeader>
+                <SortHeader
+                  className="text-overline text-tertiary px-4 py-2.5 text-right font-normal tracking-wide uppercase"
+                  column="best"
+                  sort={sort}
+                >
                   Best project
-                </th>
-                <th className="text-overline text-tertiary px-[18px] py-2.5 text-right font-normal tracking-wide uppercase">
+                </SortHeader>
+                <SortHeader
+                  className="text-overline text-tertiary px-[18px] py-2.5 text-right font-normal tracking-wide uppercase"
+                  column="last"
+                  sort={sort}
+                >
                   Last scored
-                </th>
+                </SortHeader>
               </tr>
             </thead>
             <tbody>

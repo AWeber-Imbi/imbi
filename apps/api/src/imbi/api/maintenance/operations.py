@@ -979,6 +979,51 @@ async def execute_opslog_organization_backfill(
     return 'succeeded'
 
 
+#: The live rows that ticket events wrote before that projection was
+#: removed. Tickets do not write to the Operations Log now.
+_OPSLOG_AGENT_TASK_SQL: typing.LiteralString = (
+    'SELECT * FROM operations_log FINAL'
+    " WHERE entry_type = 'Agent Task' AND is_deleted = 0"
+)
+
+
+async def enumerate_opslog_agent_task_purge(db: graph.Graph) -> list[str]:
+    """One item per run: the purge of every Agent Task row."""
+    return ['agent-task-rows']
+
+
+async def execute_opslog_agent_task_purge(
+    db: graph.Graph,
+    client: valkey.Valkey,
+    item_id: str,
+    *,
+    ctx: log.MaintenanceContext,
+) -> ExecuteOutcome:
+    """Delete the ``Agent Task`` rows from the operations log.
+
+    Each row goes back as a tombstone with a bumped ``_row_version``, so
+    the ``ReplacingMergeTree`` replaces it and every read, which filters
+    on ``is_deleted = 0``, stops showing it.
+    """
+    action = 'opslog-agent-task-purge'
+    rows = await clickhouse.client.Clickhouse.get_instance().query(
+        _OPSLOG_AGENT_TASK_SQL
+    )
+    if not rows:
+        return _skip(ctx, action, 'No Agent Task entries are left.')
+    for row in rows:
+        row['is_deleted'] = 1
+        row['_row_version'] = int(row['_row_version']) + 1
+    await iggy.publish_rows('operations_log', 'maintenance', rows)
+    ctx.log.record(
+        'succeeded',
+        action,
+        f'Deleted {len(rows)} Agent Task entry(ies).',
+        deleted=len(rows),
+    )
+    return 'succeeded'
+
+
 async def _orphan_release_check(
     db: graph.Graph,
     project_id: str,

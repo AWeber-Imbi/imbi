@@ -8,7 +8,9 @@ import {
   SegmentedControl,
   SegmentedControlItem,
 } from '@/components/ui/segmented-control'
+import { SortHeader, useSort } from '@/components/ui/sortable'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import type { DocumentReadSummary } from '@/types'
 
 type Mode = 'least-read' | 'most-read' | 'never-read' | 'stale'
 
@@ -34,6 +36,14 @@ const MODES: { description: string; id: Mode; label: string }[] = [
     label: 'Never read',
   },
 ]
+
+const ACCESSORS = {
+  lastRead: (r: DocumentReadSummary) =>
+    r.last_read_at ? new Date(r.last_read_at) : null,
+  readers: (r: DocumentReadSummary) => r.readers,
+  title: (r: DocumentReadSummary) => r.title || r.document_id,
+  views: (r: DocumentReadSummary) => r.views,
+}
 
 /**
  * Org-wide document readership.
@@ -88,46 +98,83 @@ export function DocumentReadershipReport() {
               : 'No documents match this view yet.'}
           </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="border-tertiary text-tertiary border-b text-left">
-              <tr>
-                <th className="px-4 py-2 font-normal">Document</th>
-                <th className="px-4 py-2 font-normal">Last read</th>
-                {showCounts && (
-                  <>
-                    <th className="px-4 py-2 text-right font-normal">
-                      Readers
-                    </th>
-                    <th className="px-4 py-2 text-right font-normal">Views</th>
-                  </>
-                )}
-              </tr>
-            </thead>
-            <tbody className="text-secondary">
-              {data.map((row) => (
-                <tr className="border-tertiary border-b" key={row.document_id}>
-                  <td className="truncate px-4 py-2">
-                    {row.title || row.document_id}
-                  </td>
-                  <td className="px-4 py-2">
-                    {row.last_read_at ? relativeShort(row.last_read_at) : '—'}
-                  </td>
-                  {showCounts && (
-                    <>
-                      <td className="px-4 py-2 text-right tabular-nums">
-                        {row.readers}
-                      </td>
-                      <td className="px-4 py-2 text-right tabular-nums">
-                        {row.views}
-                      </td>
-                    </>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          // Keyed by mode so a new mode drops the column sort.
+          <ReadershipTable key={mode} rows={data} showCounts={showCounts} />
         )}
       </div>
     </div>
+  )
+}
+
+/** Server order (by mode) until a header is clicked. */
+function ReadershipTable({
+  rows,
+  showCounts,
+}: {
+  rows: DocumentReadSummary[]
+  showCounts: boolean
+}) {
+  const { sorted, ...sort } = useSort(rows, ACCESSORS)
+  return (
+    <table className="w-full text-sm">
+      <thead className="border-tertiary text-tertiary border-b text-left">
+        <tr>
+          <SortHeader
+            className="px-4 py-2 font-normal"
+            column="title"
+            sort={sort}
+          >
+            Document
+          </SortHeader>
+          <SortHeader
+            className="px-4 py-2 font-normal"
+            column="lastRead"
+            sort={sort}
+          >
+            Last read
+          </SortHeader>
+          {showCounts && (
+            <>
+              <SortHeader
+                className="px-4 py-2 text-right font-normal"
+                column="readers"
+                sort={sort}
+              >
+                Readers
+              </SortHeader>
+              <SortHeader
+                className="px-4 py-2 text-right font-normal"
+                column="views"
+                sort={sort}
+              >
+                Views
+              </SortHeader>
+            </>
+          )}
+        </tr>
+      </thead>
+      <tbody className="text-secondary">
+        {sorted.map((row) => (
+          <tr className="border-tertiary border-b" key={row.document_id}>
+            <td className="truncate px-4 py-2">
+              {row.title || row.document_id}
+            </td>
+            <td className="px-4 py-2">
+              {row.last_read_at ? relativeShort(row.last_read_at) : '—'}
+            </td>
+            {showCounts && (
+              <>
+                <td className="px-4 py-2 text-right tabular-nums">
+                  {row.readers}
+                </td>
+                <td className="px-4 py-2 text-right tabular-nums">
+                  {row.views}
+                </td>
+              </>
+            )}
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }

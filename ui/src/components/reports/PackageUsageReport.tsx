@@ -21,6 +21,7 @@ import { EnvironmentChips } from '@/components/packages/EnvironmentChips'
 import { useComponentGovernance } from '@/components/packages/useComponentGovernance'
 import { FilterPopover } from '@/components/ui/filter-popover'
 import { Sk } from '@/components/ui/skeleton'
+import { SortHeader, useSort } from '@/components/ui/sortable'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAuth } from '@/hooks/useAuth'
 import { useExpandedKeys } from '@/hooks/useExpandedKeys'
@@ -895,6 +896,54 @@ function VersionRow({
   )
 }
 
+const VERSION_SORT = {
+  advisories: (v) => (v.advisories ?? []).length,
+  environments: (v) => (v.environments ?? []).length,
+  project_count: (v) => v.project_count,
+  projects: (v) => (v.projects ?? [])[0]?.name,
+  status: (v) => v.effective_status,
+  version: (v) => v.version,
+} satisfies Record<
+  string,
+  (v: ComponentUsageVersion) => null | number | string | undefined
+>
+
+type VersionKey = keyof typeof VERSION_SORT
+
+const VERSION_COLUMNS: { className: string; key: VersionKey; label: string }[] =
+  [
+    {
+      className: 'w-37.5 px-[18px] py-2.5 font-medium',
+      key: 'version',
+      label: 'Version',
+    },
+    {
+      className: 'px-4 py-2.5 font-medium',
+      key: 'projects',
+      label: 'Projects deployed',
+    },
+    {
+      className: 'w-50 px-4 py-2.5 font-medium',
+      key: 'status',
+      label: 'Status',
+    },
+    {
+      className: 'w-37.5 px-4 py-2.5 font-medium',
+      key: 'advisories',
+      label: 'Advisories',
+    },
+    {
+      className: 'w-55 px-4 py-2.5 font-medium',
+      key: 'environments',
+      label: 'Environments',
+    },
+    {
+      className: 'w-18.5 px-4 py-2.5 text-right font-medium',
+      key: 'project_count',
+      label: 'Projects',
+    },
+  ]
+
 function VersionTable({
   canWrite,
   filtered,
@@ -911,6 +960,8 @@ function VersionTable({
   versions: ComponentUsageVersion[]
 }) {
   const { isExpanded, toggle } = useExpandedKeys()
+  // No initial key: the server sends versions newest-first.
+  const sort = useSort(versions, VERSION_SORT)
   if (versions.length === 0) {
     // With no facet selected the payload passes through untouched, so
     // an empty table means the package has no ingested deployments --
@@ -936,19 +987,21 @@ function VersionTable({
       <table className="w-full min-w-260">
         <thead>
           <tr className="bg-secondary text-overline text-secondary text-left tracking-wide uppercase">
-            <th className="w-37.5 px-[18px] py-2.5 font-medium">Version</th>
-            <th className="px-4 py-2.5 font-medium">Projects deployed</th>
-            <th className="w-50 px-4 py-2.5 font-medium">Status</th>
-            <th className="w-37.5 px-4 py-2.5 font-medium">Advisories</th>
-            <th className="w-55 px-4 py-2.5 font-medium">Environments</th>
-            <th className="w-18.5 px-4 py-2.5 text-right font-medium">
-              Projects
-            </th>
+            {VERSION_COLUMNS.map((c) => (
+              <SortHeader
+                className={c.className}
+                column={c.key}
+                key={c.key}
+                sort={sort}
+              >
+                {c.label}
+              </SortHeader>
+            ))}
             <th className="w-11 px-[18px] py-2.5" />
           </tr>
         </thead>
         <tbody>
-          {versions.map((version) => (
+          {sort.sorted.map((version) => (
             <VersionRow
               canWrite={canWrite}
               expanded={isExpanded(version.id)}

@@ -24,6 +24,7 @@ import { DocumentReadershipReport } from '@/components/reports/DocumentReadershi
 import { MergedNotDeployedReport } from '@/components/reports/MergedNotDeployedReport'
 import { MonthlyImprovementReport } from '@/components/reports/MonthlyImprovementReport'
 import { OpenPullRequestsReport } from '@/components/reports/OpenPullRequestsReport'
+import { OperationsLogReport } from '@/components/reports/OperationsLogReport'
 import { PackageUsageReport } from '@/components/reports/PackageUsageReport'
 import { PRActivityReport } from '@/components/reports/PRActivityReport'
 import { ProblemPackagesReport } from '@/components/reports/ProblemPackagesReport'
@@ -45,6 +46,14 @@ interface Report {
 }
 
 const REPORTS: Report[] = [
+  {
+    component: OperationsLogReport,
+    description: 'Deployments, changes, and incidents',
+    icon: Activity,
+    id: 'operations-log',
+    label: 'Operations Log',
+    subtitle: 'Operational events across the org',
+  },
   {
     component: MonthlyImprovementReport,
     description: 'Month-over-month score delta',
@@ -137,9 +146,9 @@ const REPORTS: Report[] = [
     label: 'Agent Usage',
     subtitle: 'Token use and cost of the agents, by day and by agent',
   },
-]
+].sort((a, b) => a.label.localeCompare(b.label))
 
-const DEFAULT_REPORT = REPORTS[0].id
+const DEFAULT_REPORT = 'monthly-improvement'
 const VALID_IDS = new Set(REPORTS.map((r) => r.id))
 
 // fallow-ignore-next-line complexity

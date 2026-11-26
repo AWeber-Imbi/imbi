@@ -6,10 +6,8 @@ ClickHouse that ``root:services`` boots.
 straight into its table, as the Iggy sink would.
 """
 
-import datetime
 import decimal
 import typing
-import unittest
 import uuid
 from unittest import mock
 
@@ -19,7 +17,7 @@ from apps.api.tests.endpoints import (
     test_agent_tasks,
 )
 from imbi.api import tickets
-from imbi.api.tickets import log, sweeper
+from imbi.api.tickets import sweeper
 from imbi.common import clickhouse, iggy
 from imbi.common.clickhouse import client
 from scripts import ticket_client
@@ -368,103 +366,6 @@ class ReferenceClientTests(
         )
 
 
-class OpsLogTests(test_agent_task_harness.HarnessTestCase, ClickHouseTestCase):
-    """Resolutions and outcomes of project tasks go to the Operations Log."""
-
-    async def resolve_and_close(self, short_id: str) -> list[str]:
-        """Approve a request and close the task; return the event ids."""
-        response = await self.post(
-            'requests',
-            {
-                'kind': 'approval',
-                'title': 'Merge the secret fix',
-                'artifact_digests': ['sha256:ab'],
-            },
-            short_id,
-        )
-        request_id = response.json()['request']['id']
-        response = await self.as_user(
-            'POST',
-            f'{short_id}/requests/{request_id}/resolve',
-            json={'status': 'approved', 'artifact_digests': ['sha256:ab']},
-        )
-        self.assertEqual(response.status_code, 201, response.text)
-        await self.post('outcome', {'outcome': 'done_acted'}, short_id)
-        task = await self.task_row(short_id)
-        return [
-            str(e['event_id'])
-            for e in await self.postgres_events(str(task['id']))
-            if e['type'] in ('request.resolved', 'outcome.set')
-        ]
-
-    async def opslog(self, ids: list[str]) -> list[dict[str, typing.Any]]:
-        return await clickhouse.query(
-            'SELECT * FROM imbi.operations_log FINAL'
-            ' WHERE id IN {ids:Array(String)} ORDER BY occurred_at',
-            {'ids': ids},
-        )
-
-    async def test_project_task_rows(self) -> None:
-        self.act_as_user()
-        response = await self.create_task(project_ids=[self.project_id])
-        self.act_as(self.account)
-        ids = [
-            str(uuid.uuid5(uuid.UUID(event_id), self.project_id))
-            for event_id in await self.resolve_and_close('T-2')
-        ]
-        rows = await self.opslog(ids)
-        self.assertEqual(
-            [
-                (
-                    row['id'],
-                    row['entry_type'],
-                    row['description'],
-                    row['performed_by'],
-                    row['project_id'],
-                    row['project_slug'],
-                )
-                for row in rows
-            ],
-            [
-                (
-                    ids[0],
-                    'Agent Task',
-                    'T-2: approval request approved',
-                    self.email,
-                    self.project_id,
-                    self.project_id,
-                ),
-                (
-                    ids[1],
-                    'Agent Task',
-                    'T-2 closed: done_acted',
-                    response.json()['agent_id'],
-                    self.project_id,
-                    self.project_id,
-                ),
-            ],
-        )
-        for row in rows:
-            self.assertIsNotNone(row['completed_at'])
-
-        # A republish by the sweep collapses on the id.
-        task = await self.task_row('T-2')
-        await tickets.log.publish(
-            task, await self.postgres_events(str(task['id']))
-        )
-        self.assertEqual(len(await self.opslog(ids)), 2)
-
-    async def test_task_without_project_has_no_rows(self) -> None:
-        with mock.patch.object(
-            iggy, 'publish_rows', wraps=iggy.publish_rows
-        ) as publish:
-            ids = await self.resolve_and_close('T-1')
-        self.assertEqual(len(ids), 2)
-        streams = [call.args[0] for call in publish.call_args_list]
-        self.assertIn(log.EVENTS_STREAM, streams)
-        self.assertNotIn(log.OPSLOG_STREAM, streams)
-
-
 class StaleSessionTests(
     test_agent_task_harness.HarnessTestCase, ClickHouseTestCase
 ):
@@ -523,33 +424,3 @@ class StaleSessionTests(
         # The stale session no longer counts toward the limit.
         response = await self.post('sessions', {'session_key': 'c'}, 'T-3')
         self.assertEqual(response.status_code, 201, response.text)
-
-
-class OpsLogRowsTests(unittest.TestCase):
-    def test_one_row_for_each_project(self) -> None:
-        event_id = uuid.uuid4()
-        task = {
-            'short_id': 'T-1',
-            'organization_id': 'org-1',
-            'projects': [
-                {'project_id': 'p1', 'project_slug': 'one'},
-                {'project_id': 'p2', 'project_slug': 'two'},
-            ],
-        }
-        event = {
-            'event_id': event_id,
-            'type': 'outcome.set',
-            'payload': {'outcome': 'done_acted'},
-            'actor_id': 'agent',
-            'at': datetime.datetime.now(datetime.UTC),
-        }
-        rows = log.opslog_rows(task, event)
-        self.assertEqual(
-            [(r['id'], r['project_id'], r['project_slug']) for r in rows],
-            [
-                (str(uuid.uuid5(event_id, 'p1')), 'p1', 'one'),
-                (str(uuid.uuid5(event_id, 'p2')), 'p2', 'two'),
-            ],
-        )
-        self.assertEqual({r['organization_id'] for r in rows}, {'org-1'})
-        self.assertEqual(log.opslog_rows({**task, 'projects': []}, event), [])
