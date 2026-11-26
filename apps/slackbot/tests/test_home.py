@@ -974,6 +974,29 @@ class HomeFlowTests(helpers.TestCase):
             await home.refresh(self.slack, 'U1')
         self.assertIn('Could not load Document comments', self.text())
 
+    async def test_timeout_excludes_the_source_read_first(self) -> None:
+        # Production: the projects list took 3 s of the 4 s, so the
+        # incidents and drift fan-outs timed out (2.63.0).
+        asyncio = __import__('asyncio')
+
+        async def projects(_self: sources.Sources) -> list[str]:
+            await asyncio.sleep(0.15)
+            return []
+
+        async def drift(self: sources.Sources) -> str:
+            await self.get('team_projects')
+            await asyncio.sleep(0.15)
+            return 'ok'
+
+        src = sources.Sources(mock.Mock(), 'acme', 'a@x', [], set())
+        with (
+            mock.patch.object(sources, 'TIMEOUT', 0.2),
+            mock.patch.object(sources, '_TIMEOUTS', {}),
+            mock.patch.object(sources.Sources, '_projects', projects),
+            mock.patch.object(sources.Sources, '_drift', drift),
+        ):
+            self.assertEqual('ok', await src.get('drift'))
+
     async def test_cancelled_waiter_keeps_shared_source(self) -> None:
         asyncio = __import__('asyncio')
 

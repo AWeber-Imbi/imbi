@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import collections
+import contextvars
 import dataclasses
 import logging
 import typing
@@ -30,8 +31,16 @@ LOGGER = logging.getLogger(__name__)
 type Json = typing.Any
 type Row = dict[str, typing.Any]
 
-#: Seconds that one source can take.
+#: Seconds that one source can take. The time that a source waits for
+#: another source does not count.
 TIMEOUT = 4.0
+#: The slim list of every project of the org takes 3 to 4 s in
+#: production.
+_TIMEOUTS = {'projects': 8.0}
+#: The timeout of the source that runs in this task.
+_timer: contextvars.ContextVar[asyncio.Timeout | None] = (
+    contextvars.ContextVar('home_source_timer', default=None)
+)
 #: The most projects of the user's teams that a fan-out reads (PRD §10).
 MAX_PROJECTS = 25
 LOCK_SECONDS = 5
@@ -158,6 +167,22 @@ async def _fan_out[T](aws: abc.Iterable[abc.Awaitable[T]]) -> list[T]:
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
+async def _paused(waited: abc.Awaitable[Json]) -> Json:
+    """Await ``waited`` with the timeout of the calling source stopped,
+    so a source that reads a slow source first does not time out."""
+    timer = _timer.get()
+    when = timer.when() if timer else None
+    if timer is None or when is None:
+        return await waited
+    loop = asyncio.get_running_loop()
+    start = loop.time()
+    timer.reschedule(None)
+    try:
+        return await waited
+    finally:
+        timer.reschedule(when + loop.time() - start)
+
+
 class Sources:
     """The sources of one render, each started one time."""
 
@@ -177,7 +202,7 @@ class Sources:
         self.base = f'/organizations/{org}'
         self._tasks: dict[str, asyncio.Future[Json]] = {}
 
-    def get(self, name: str) -> asyncio.Future[Json]:
+    def get(self, name: str) -> abc.Awaitable[Json]:
         """Return the task of the source ``name``, started on first use.
 
         The task is shielded: when one waiter is cancelled (for example
@@ -186,13 +211,16 @@ class Sources:
 
         """
         if name not in self._tasks:
-            source: abc.Callable[[], abc.Awaitable[Json]] = getattr(
-                self, f'_{name}'
-            )
-            self._tasks[name] = asyncio.ensure_future(
-                asyncio.wait_for(source(), TIMEOUT)
-            )
-        return asyncio.shield(self._tasks[name])
+            self._tasks[name] = asyncio.ensure_future(self._run(name))
+        return _paused(asyncio.shield(self._tasks[name]))
+
+    async def _run(self, name: str) -> Json:
+        source: abc.Callable[[], abc.Awaitable[Json]] = getattr(
+            self, f'_{name}'
+        )
+        async with asyncio.timeout(_TIMEOUTS.get(name, TIMEOUT)) as timer:
+            _timer.set(timer)
+            return await source()
 
     async def optional(self, name: str, default: Json) -> Json:
         """Return the source, or ``default`` when it failed."""
