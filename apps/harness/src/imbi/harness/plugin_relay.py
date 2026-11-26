@@ -11,10 +11,11 @@ policy, and the ``PreToolUse`` hook treat them as the plugin's tools.
 Each server keeps one MCP session for the life of the task. When the
 server drops it, the call that fails returns an error and is not sent
 again, because the state of the old session is gone; the next call
-opens a new session. Each call has the safeguards of the Imbi relay
-(:mod:`imbi.harness.safeguards`); a result has each secret value
-removed, and a result and a tool description reach the model as
-untrusted text.
+opens a new session. Each call has the time limit and the stop of the
+Imbi relay (:mod:`imbi.harness.safeguards`). The tool descriptions,
+schemas and results reach the model as the server sent them, as they
+would from a server that the CLI connects to, with each secret value
+removed.
 """
 
 import asyncio
@@ -37,7 +38,7 @@ from mcp.client import sse, streamable_http
 from mcp.shared import exceptions as mcp_exceptions
 from mcp.shared import message
 
-from imbi.harness import outbound, safeguards
+from imbi.harness import outbound, redact, safeguards
 
 if typing.TYPE_CHECKING:
     from collections import abc
@@ -52,18 +53,7 @@ CLOSE_TIMEOUT = 10.0
 TYPES = frozenset({'http', 'sse'})
 _NOT_NAME = re.compile(r'[^A-Za-z0-9_-]')
 _SESSION_TERMINATED = 32600
-_LITERALS = frozenset({'const', 'default', 'enum', 'examples'})
-_NAMED_SCHEMAS = frozenset(
-    {
-        '$defs',
-        'definitions',
-        'dependentSchemas',
-        'patternProperties',
-        'properties',
-    }
-)
 type Body = dict[str, typing.Any]
-type _Part = typing.Literal['schema', 'names', 'data']
 type _Write = memory.MemoryObjectSendStream[message.SessionMessage]
 
 
@@ -122,43 +112,31 @@ def _lost(error: BaseException) -> bool:
     )
 
 
-def _part(key: str, part: _Part) -> _Part:
-    """What the value under ``key`` of a ``part`` object is."""
-    if part == 'names':
-        return 'schema'
-    if part == 'data' or key in _LITERALS:
-        return 'data'
-    return 'names' if key in _NAMED_SCHEMAS else 'schema'
+def _block(block: types.ContentBlock, redactor: redact.Redactor) -> Body:
+    """``block`` with each secret value removed. An image whose data
+    held one is a text notice instead, since its redacted data is not
+    an image."""
+    dumped = block.model_dump(mode='json', exclude_none=True)
+    scrubbed: Body = redactor.payload(dumped)
+    if dumped['type'] == 'image' and scrubbed != dumped:
+        return _text('The image held a secret value and was removed.')
+    return scrubbed
 
 
-def _scrubbed(
-    value: typing.Any,
-    scrub: abc.Callable[[str], str],
-    source: str,
-    part: _Part = 'schema',
-) -> typing.Any:
-    """``value`` with each string of a JSON schema, keys included,
-    scrubbed and its untrusted tags escaped, and each ``description``
-    keyword text in an untrusted block from ``source``. Literal data,
-    such as an ``enum`` value, keeps its ``description`` keys as
-    data."""
-    if isinstance(value, str):
-        return safeguards.escape(scrub(value))
-    if isinstance(value, dict):
-        return {
-            _scrubbed(key, scrub, source, 'data'): (
-                safeguards.untrusted(scrub(item), source)
-                if part == 'schema'
-                and key == 'description'
-                and isinstance(item, str)
-                else _scrubbed(item, scrub, source, _part(key, part))
-            )
-            for key, item in typing.cast('Body', value).items()
-        }
-    if isinstance(value, list):
-        items: list[typing.Any] = value  # pyright: ignore[reportUnknownVariableType]
-        return [_scrubbed(item, scrub, source, part) for item in items]
-    return value
+def _content(
+    result: types.CallToolResult, redactor: redact.Redactor
+) -> list[Body]:
+    """The content blocks of ``result`` for the SDK's in-process server,
+    which takes text, image and resource blocks. A result with only
+    structured content gives it as JSON text."""
+    content = [_block(block, redactor) for block in result.content]
+    if not content and result.structuredContent is not None:
+        content = [_text(redactor.text(json.dumps(result.structuredContent)))]
+    return content
+
+
+def _text(text: str) -> Body:
+    return {'type': 'text', 'text': text}
 
 
 def _schema(schema: Body) -> Body:
@@ -252,7 +230,7 @@ class Server:
             with :func:`problem`.
         auth: Fills the server's headers.
         proxy_env: The egress proxy environment of the CLI.
-        scrub: Removes each secret value from a text.
+        redactor: Removes each secret value.
         stopped: Whether the task stopped.
         notice: Gives the task a warning.
 
@@ -266,7 +244,7 @@ class Server:
         auth: httpx.Auth,
         *,
         proxy_env: abc.Mapping[str, str],
-        scrub: abc.Callable[[str], str],
+        redactor: redact.Redactor,
         stopped: abc.Callable[[], bool],
         notice: abc.Callable[[str], None],
     ) -> None:
@@ -276,7 +254,7 @@ class Server:
         self.sse = config['type'] == 'sse'
         self.auth = auth
         self.proxy_env = proxy_env
-        self.scrub = scrub
+        self.redactor = redactor
         self.stopped = stopped
         self.notice = notice
         self.tools: dict[str, _Tool] = {}
@@ -383,15 +361,10 @@ class Server:
             if not safeguards.TOOL_NAME.fullmatch(tool.name):
                 continue
             hints = tool.annotations
-            source = f'mcp:{self.name}'
             self.tools[tool.name] = _Tool(
                 name=tool.name,
-                description=safeguards.untrusted(
-                    self.scrub(tool.description or tool.name), source
-                ),
-                schema=_scrubbed(
-                    _schema(tool.inputSchema), self.scrub, source
-                ),
+                description=self.redactor.text(tool.description or tool.name),
+                schema=self.redactor.payload(_schema(tool.inputSchema)),
                 read_only=bool(hints and hints.readOnlyHint),
             )
         return sorted(self.tools)
@@ -445,7 +418,7 @@ class Server:
 
     async def call(self, name: str, args: Body) -> Body:
         """Relay one call; return the tool result for the model. Every
-        failure is a scrubbed, untrusted, audited error result."""
+        failure is a scrubbed, audited error result."""
         started = time.monotonic()
         status = 'error'
         try:
@@ -453,19 +426,21 @@ class Server:
                 self._call(name, args), self.stopped
             )
         except Unavailable:
-            text = f'The MCP server {self.name} is not available'
+            content = [_text(f'The MCP server {self.name} is not available')]
         except TimeoutError:
-            status, text = 'timeout', 'The MCP call timed out'
+            status, content = 'timeout', [_text('The MCP call timed out')]
         except safeguards.Stopped:
-            status, text = 'stopped', 'The task stopped'
+            status, content = 'stopped', [_text('The task stopped')]
         except Exception as error:  # noqa: BLE001 - the model gets an error
             LOGGER.warning(
                 'MCP call to %s failed: %s', self.name, type(error).__name__
             )
-            text = self.scrub(f'The MCP call failed: {error}')
+            content = [
+                _text(self.redactor.text(f'The MCP call failed: {error}'))
+            ]
         else:
             status = 'error' if result.isError else 'ok'
-            text = self.scrub(safeguards.text(result))
+            content = _content(result, self.redactor)
         self.audits.add(
             name,
             args,
@@ -475,10 +450,13 @@ class Server:
                 'status': status,
                 'latency_ms': int((time.monotonic() - started) * 1000),
                 'bytes_in': len(json.dumps(args)),
-                'bytes_out': len(text),
+                'bytes_out': len(json.dumps(content)),
             },
         )
-        return safeguards.reply(text, f'mcp:{self.name}', ok=status == 'ok')
+        reply: Body = {'content': content}
+        if status != 'ok':
+            reply['is_error'] = True
+        return reply
 
     async def _call(self, name: str, arguments: Body) -> types.CallToolResult:
         """One call in the open session. When the session no longer
