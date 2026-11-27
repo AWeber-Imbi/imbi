@@ -62,14 +62,12 @@ class PromptSkills(provider.SkillCatalogProvider):
         super().__init__()
         self._client = client
         self._path = f'{prefix}/prompts'
-        # Keyed by prompt id and updated_at, not slug: a recreated prompt
-        # reuses a slug, and the version fetch goes by slug, so a rename
-        # between the list and the fetch can return another prompt's
-        # body. A rename sets a new updated_at, so that body is cached
-        # under a key that no later list gives. The list call checks each
-        # caller's access; this cache only saves the version fetch.
-        self._bodies: cache.LRUCache[tuple[str, str | None, int], str] = (
-            cache.LRUCache(CACHE_ENTRIES)
+        # Keyed by prompt id: a body is cached only after the API says
+        # that it belongs to that prompt, and a version never changes.
+        # The list call checks each caller's access; this cache only
+        # saves the version fetch.
+        self._bodies: cache.LRUCache[tuple[str, int], str] = cache.LRUCache(
+            CACHE_ENTRIES
         )
 
     async def load_skills(self) -> list[fastmcp.skills.Skill]:
@@ -101,14 +99,19 @@ class PromptSkills(provider.SkillCatalogProvider):
         """The skill of one prompt, or ``None`` when it is not valid."""
         slug = prompt['slug']
         try:
-            key = (prompt['id'], prompt.get('updated_at'), version)
+            key = (prompt['id'], version)
             system = self._bodies.get(key)
             if system is None:
                 response = await self._client.get(
                     f'{self._path}/{NAMESPACE}/{slug}/versions/{version}'
                 )
                 response.raise_for_status()
-                system = response.json()['system']
+                body = response.json()
+                if body['prompt_id'] != prompt['id']:
+                    # The slug moved to another prompt after the list.
+                    LOGGER.info('Skill %s changed; skipped', slug)
+                    return None
+                system = body['system']
                 self._bodies.set(key, system)
             description = (
                 ' '.join((prompt.get('description') or '').split())

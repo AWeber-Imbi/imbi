@@ -20015,6 +20015,8 @@ export interface components {
             };
             /** Id */
             id: string;
+            /** Prompt Id */
+            prompt_id: string;
             /** Ref */
             ref: string;
             /** N */

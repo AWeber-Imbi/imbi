@@ -13,7 +13,6 @@ type Body = dict[str, typing.Any]
 def _prompt(slug: str, labels: dict[str, int], **fields: typing.Any) -> Body:
     return {
         'id': f'id-{slug}',
-        'updated_at': '2026-11-27T00:00:00Z',
         'slug': slug,
         'name': slug.title(),
         'description': f'Use {slug}\n  when asked.',
@@ -37,6 +36,7 @@ PROMPTS = [
 class PromptSkillsTestCase(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.status = 200
+        self.owners: dict[str, str] = {}
         self.requests: list[httpx2.Request] = []
         client = httpx2.AsyncClient(
             base_url='http://api', transport=httpx2.MockTransport(self._api)
@@ -55,7 +55,10 @@ class PromptSkillsTestCase(unittest.IsolatedAsyncioTestCase):
             assert request.url.params['namespace'] == skills.NAMESPACE
             return httpx2.Response(self.status, json=PROMPTS)
         *_, slug, _versions, n = request.url.path.split('/')
-        return httpx2.Response(200, json={'system': f'# {slug} v{n}\n'})
+        owner = self.owners.get(slug, f'id-{slug}')
+        return httpx2.Response(
+            200, json={'prompt_id': owner, 'system': f'# {slug} v{n}\n'}
+        )
 
     async def test_promoted_prompts_are_skills(self) -> None:
         async with self._client() as client:
@@ -87,3 +90,16 @@ class PromptSkillsTestCase(unittest.IsolatedAsyncioTestCase):
         self.status = 403
         async with self._client() as client:
             self.assertEqual(await client.list_skills(), [])
+
+    async def test_a_slug_that_moved_to_another_prompt_is_skipped(
+        self,
+    ) -> None:
+        # review was renamed and another prompt took its slug between
+        # the list call and the version fetch.
+        self.owners['review'] = 'id-other'
+        async with self._client() as client:
+            listed = await client.list_skills()
+            self.owners.clear()
+            again = await client.list_skills()
+        self.assertNotIn('review', [s.frontmatter.name for s in listed])
+        self.assertIn('review', [s.frontmatter.name for s in again])

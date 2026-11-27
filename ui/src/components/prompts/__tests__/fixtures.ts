@@ -35,6 +35,7 @@ export const version = (n: number): PromptVersion => ({
   model_id: null,
   n,
   params: { max_tokens: 4096, stop_sequences: [], temperature: 1 },
+  prompt_id: 'prm-1',
   questions: {},
   ref: `mender/core@${n}`,
   state: '',

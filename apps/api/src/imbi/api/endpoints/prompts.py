@@ -171,6 +171,8 @@ class PromptVersionResponse(PromptVersionContent):
     """One immutable version."""
 
     id: str
+    #: The prompt that owns this version.
+    prompt_id: str
     ref: str
     n: int
     summary: str | None = None
@@ -539,6 +541,7 @@ def _version_response(
 ) -> PromptVersionResponse:
     return PromptVersionResponse(
         id=version.id,
+        prompt_id=prompt.id,
         ref=f'{prompt.namespace}/{prompt.slug}@{version.n}',
         n=version.n,
         summary=version.summary,
