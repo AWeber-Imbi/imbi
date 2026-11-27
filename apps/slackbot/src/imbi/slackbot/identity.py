@@ -243,11 +243,13 @@ def mint_token(user: ImbiUser) -> str:
     does at login. The API loads the user's permissions fresh from the
     graph on each request keyed by this subject. The ``channel`` claim
     makes the API record ``slack`` as the channel of what the user does
-    through the bot (H3).
+    through the bot (H3). The ``org_slug`` claim makes the API refuse
+    the token in every other organization (#1027).
 
     """
     return core.create_access_token(
-        user.email, extra_claims={'channel': 'slack'}
+        user.email,
+        extra_claims={'channel': 'slack', 'org_slug': user.org_slug},
     )
 
 

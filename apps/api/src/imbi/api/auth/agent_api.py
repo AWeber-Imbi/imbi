@@ -27,9 +27,15 @@ route and refuses it:
   organization parameter must be in :data:`GLOBAL_SAFE`, with the
   reason that it gives no data of another organization.
 
-Only an agent API token request reads the database (the project
-check); other requests pay nothing. A renamed organization refuses the
-token until the next heartbeat renews it.
+A user token with an ``org_slug`` claim (imbi-slackbot mints one per
+Slack workspace organization, #1027) gets the same organization and
+project checks, on every route: a route with no organization in its
+path must be in :data:`GLOBAL_SAFE`. The other route rules apply only
+to agent API tokens; the user's own permissions still apply.
+
+Only these two token kinds read the database (the project check);
+other requests pay nothing. A renamed organization refuses the token
+until a new one is minted.
 
 The check uses the endpoint that the router matched, not the URL, so
 an encoded path cannot slip past it.
@@ -152,11 +158,25 @@ def index(app: fastapi.FastAPI, prefix: str) -> None:
     app.state.agent_api_routes = route_keys(app, prefix)
 
 
-def _forbidden(message: str) -> fastapi.HTTPException:
+def _forbidden(
+    message: str, error: str = 'agent_api_forbidden'
+) -> fastapi.HTTPException:
     return fastapi.HTTPException(
-        status_code=403,
-        detail={'error': 'agent_api_forbidden', 'message': message},
+        status_code=403, detail={'error': error, 'message': message}
     )
+
+
+def _user_token_org(token: str) -> str | None:
+    """The ``org_slug`` claim of a valid user access token, if any. An
+    invalid token (or an ``ik_`` API key) gives ``None``: the
+    authentication decides."""
+    try:
+        claims = core.verify_token(token)
+    except jwt.InvalidTokenError:
+        return None
+    if claims.get('type') != 'access':
+        return None
+    return claims.get('org_slug') or None
 
 
 def _bearer(request: fastapi.Request) -> str | None:
@@ -193,56 +213,57 @@ async def require_own_project(
     auth: permissions.AuthContext,
     project_id: str | None,
 ) -> None:
-    """For an agent API token: ``project_id`` must name a project of
-    the token's organization. For a handler whose project is in the
-    body. Other callers pass.
+    """For an agent API token, or a user token of one organization:
+    ``project_id`` must name a project of the token's organization.
+    For a handler whose project is in the body. Other callers pass.
 
     Raises:
-        403: An agent entry without a project.
+        403: An entry without a project.
         404: The project is not in the token's organization.
 
     """
-    if auth.auth_method != 'agent_api':
+    if not auth.organization_slug:
         return
     if not project_id:
-        raise _forbidden('An agent API token needs a project here')
-    await _project_in(
-        db,
-        _PROJECT_IN_ORG_ID,
-        {'project_id': project_id, 'org_id': str(auth.organization_id)},
+        raise _forbidden(
+            'This token needs a project here',
+            'agent_api_forbidden'
+            if auth.auth_method == 'agent_api'
+            else 'organization_forbidden',
+        )
+    # An agent API token carries the organization ID: use it, so that a
+    # slug that another organization takes after a rename does not
+    # match. A user token carries only the slug.
+    if auth.organization_id:
+        await _project_in(
+            db,
+            _PROJECT_IN_ORG_ID,
+            {'project_id': project_id, 'org_id': auth.organization_id},
+        )
+    else:
+        await _project_in(
+            db,
+            _PROJECT_IN_ORG,
+            {'project_id': project_id, 'org_slug': auth.organization_slug},
+        )
+
+
+def _org_scoped(key: str | None) -> bool:
+    """Whether the route names the organization in its path."""
+    return key is not None and (
+        '{org_slug}' in key or ' /organizations/{slug}' in key
     )
 
 
-async def guard(
+async def _require_org(
     request: fastapi.Request,
-    db: typing.Annotated[graph.Graph | None, fastapi.Depends(graph_for)],
+    db: graph.Graph | None,
+    module: str,
+    org_slug: str,
+    error: str,
 ) -> None:
-    """Refuse an agent API token where it must not work.
-
-    Raises:
-        401: The token is not valid or has expired.
-        403: ``agent_api_forbidden``: a refused route, or another
-            organization.
-        404: The path's project is not in the token's organization.
-
-    """
-    token = _bearer(request)
-    if not token or not core.is_agent_api_token(token):
-        return
-    endpoint = request.scope.get('endpoint')
-    module = str(getattr(endpoint, '__module__', ''))
-    keys: dict[tuple[typing.Any, str], str] = getattr(
-        request.app.state, 'agent_api_routes', {}
-    )
-    key = keys.get((endpoint, request.method))
-    if refused(module, request.method, key) or key not in ALLOWED_ROUTES:
-        raise _forbidden('An agent API token cannot use this route')
-    try:
-        claims = core.verify_agent_api_token(token)
-    except jwt.InvalidTokenError as err:
-        raise fastapi.HTTPException(
-            status_code=401, detail='Invalid token'
-        ) from err
+    """The path and ``org`` query organization must be ``org_slug``,
+    and a path project must be in it."""
     params = request.path_params
     for slug in (
         params.get('org_slug'),
@@ -251,14 +272,63 @@ async def guard(
         else None,
         request.query_params.get('org'),
     ):
-        if slug is not None and slug != claims['org_slug']:
-            raise _forbidden(f'The token is not for organization {slug!r}')
+        if slug is not None and slug != org_slug:
+            raise _forbidden(
+                f'The token is not for organization {slug!r}', error
+            )
     if 'project_id' in params:
         await _project_in(
             db,
             _PROJECT_IN_ORG,
-            {
-                'project_id': str(params['project_id']),
-                'org_slug': str(claims['org_slug']),
-            },
+            {'project_id': str(params['project_id']), 'org_slug': org_slug},
         )
+
+
+async def guard(
+    request: fastapi.Request,
+    db: typing.Annotated[graph.Graph | None, fastapi.Depends(graph_for)],
+) -> None:
+    """Refuse an agent API token where it must not work, and a user
+    token of one organization outside that organization.
+
+    Raises:
+        401: The agent API token is not valid or has expired.
+        403: ``agent_api_forbidden``: a refused route, or another
+            organization. ``organization_forbidden``: a user token of
+            one organization on another organization, or on a route
+            with no organization that is not in :data:`GLOBAL_SAFE`.
+        404: The path's project is not in the token's organization.
+
+    """
+    token = _bearer(request)
+    if not token:
+        return
+    endpoint = request.scope.get('endpoint')
+    module = str(getattr(endpoint, '__module__', ''))
+    keys: dict[tuple[typing.Any, str], str] = getattr(
+        request.app.state, 'agent_api_routes', {}
+    )
+    key = keys.get((endpoint, request.method))
+    org_slug: str | None
+    if core.is_agent_api_token(token):
+        error = 'agent_api_forbidden'
+        if refused(module, request.method, key) or key not in ALLOWED_ROUTES:
+            raise _forbidden('An agent API token cannot use this route')
+        try:
+            org_slug = str(core.verify_agent_api_token(token)['org_slug'])
+        except jwt.InvalidTokenError as err:
+            raise fastapi.HTTPException(
+                status_code=401, detail='Invalid token'
+            ) from err
+    else:
+        error = 'organization_forbidden'
+        org_slug = _user_token_org(token)
+        if org_slug is None:
+            return
+    # The tests keep every allowed agent route that has no organization
+    # in GLOBAL_SAFE, so this refuses only user tokens.
+    if not _org_scoped(key) and key not in GLOBAL_SAFE:
+        raise _forbidden(
+            f'This token works only in organization {org_slug!r}', error
+        )
+    await _require_org(request, db, module, org_slug, error)

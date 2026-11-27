@@ -663,6 +663,22 @@ class GetCurrentUserCookieFallbackTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIs(result, self.ctx)
         self.assertEqual(mock_auth.await_args.args[1], 'cookie-token')
 
+    async def test_org_scoped_cookie_token_raises_401(self) -> None:
+        """A cookie token with an organization claim is refused."""
+        request = self._request(
+            {permissions.ACCESS_COOKIE_NAME: 'cookie-token'}
+        )
+        ctx = permissions.AuthContext(auth_method='jwt', organization_slug='a')
+        with mock.patch.object(
+            permissions, '_authenticate_token', new=mock.AsyncMock()
+        ) as mock_auth:
+            mock_auth.return_value = ctx
+            with self.assertRaises(fastapi.HTTPException) as exc:
+                await permissions.get_current_user_cookie_fallback(
+                    mock.AsyncMock(), request, None
+                )
+        self.assertEqual(exc.exception.status_code, 401)
+
     async def test_missing_header_and_cookie_raises_401(self) -> None:
         """Neither a header nor a cookie yields a 401."""
         request = self._request({})

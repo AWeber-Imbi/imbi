@@ -18,6 +18,7 @@ from imbi.api.auth import agent_api
 from imbi.api.endpoints import harness as harness_api
 from imbi.api.harness import store as harness_store
 from imbi.api.harness import tokens
+from imbi.common.auth import core
 from imbi.common.auth import permissions as common_permissions
 
 
@@ -71,11 +72,24 @@ class AgentApiTestCase(test_harness.RunnerTestCase):
             **kw,
         )
 
+    #: The ``error`` of a refusal.
+    refused_error = 'agent_api_forbidden'
+
     def assert_refused(self, response: httpx.Response) -> None:
         self.assertEqual(response.status_code, 403, response.text)
         self.assertEqual(
-            response.json()['detail']['error'], 'agent_api_forbidden'
+            response.json()['detail']['error'], self.refused_error
         )
+
+    async def grant(self, *names: str, role: str | None = None) -> None:
+        for name in names:
+            await self.graph.execute(
+                'MERGE (p:Permission {{name: {name}}})'
+                ' WITH p MATCH (r:Role {{slug: {role}}})'
+                ' CREATE (r)-[:GRANTS]->(p) RETURN 1 AS ok',
+                {'role': role or self.role, 'name': name},
+                ['ok'],
+            )
 
 
 class ClaimTests(AgentApiTestCase):
@@ -211,16 +225,6 @@ class RouteTests(AgentApiTestCase):
             with self.subTest(path=path):
                 response = await self.call('GET', path)
                 self.assertEqual(response.status_code, 404, response.text)
-
-    async def grant(self, *names: str) -> None:
-        for name in names:
-            await self.graph.execute(
-                'MERGE (p:Permission {{name: {name}}})'
-                ' WITH p MATCH (r:Role {{slug: {role}}})'
-                ' CREATE (r)-[:GRANTS]->(p) RETURN 1 AS ok',
-                {'role': self.role, 'name': name},
-                ['ok'],
-            )
 
     async def test_environment_of_another_organization(self) -> None:
         """A plugin puts the environment into its own query: only an
@@ -382,6 +386,91 @@ class RouteTests(AgentApiTestCase):
                 'GET', f'/organizations/{self.org}/projects/'
             )
         self.assertEqual(response.status_code, 401, response.text)
+
+
+class OrganizationTokenTests(AgentApiTestCase):
+    """A user token with an ``org_slug`` claim, as imbi-slackbot mints
+    (#1027): the user's own routes, only in that organization. The
+    user is a member of ``org`` and ``other_org``."""
+
+    other_project = RouteTests.other_project
+    refused_error = 'organization_forbidden'
+
+    def user_token(self, org_slug: str | None) -> str:
+        claims = {'channel': 'slack'}
+        if org_slug:
+            claims['org_slug'] = org_slug
+        return core.create_access_token(self.email, extra_claims=claims)
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        self.api_token = self.user_token(self.org)
+        self.user_role = f'slack-{self.org}'
+        await self.grant_role(
+            self.user_role,
+            'organization:read',
+            '(:User {{email: {email}}})',
+            email=self.email,
+        )
+        self.addAsyncCleanup(
+            self.graph.execute,
+            'MATCH (r:Role {{slug: {role}}}) DETACH DELETE r RETURN 1 AS ok',
+            {'role': self.user_role},
+            ['ok'],
+        )
+
+    async def test_own_organization(self) -> None:
+        response = await self.call('GET', f'/organizations/{self.org}')
+        self.assertEqual(response.status_code, 200, response.text)
+        response = await self.call('GET', '/users/me')
+        self.assertEqual(response.status_code, 200, response.text)
+
+    async def test_other_organization(self) -> None:
+        self.assert_refused(
+            await self.call('GET', f'/organizations/{self.other_org}')
+        )
+        self.assert_refused(
+            await self.call(
+                'GET', f'/organizations/{self.other_org}/projects/'
+            )
+        )
+        self.assert_refused(
+            await self.call(
+                'GET', '/scores/rollup', params={'org': self.other_org}
+            )
+        )
+
+    async def test_routes_without_an_organization(self) -> None:
+        for path in ('/users/', '/organizations/', '/events/e1'):
+            with self.subTest(path=path):
+                self.assert_refused(await self.call('GET', path))
+
+    async def test_project_of_another_organization(self) -> None:
+        other = await self.other_project()
+        response = await self.call(
+            'GET', f'/organizations/{self.org}/projects/{other}/events/'
+        )
+        self.assertEqual(response.status_code, 404, response.text)
+
+    async def test_operations_log_entry_of_another_project(self) -> None:
+        await self.grant('operations_log:create', role=self.user_role)
+        other = await self.other_project()
+        response = await self.call(
+            'POST', '/operations-log/', json={'project_id': other}
+        )
+        self.assertEqual(response.status_code, 404, response.text)
+        self.assert_refused(
+            await self.call('POST', '/operations-log/', json={})
+        )
+
+    async def test_token_without_the_claim(self) -> None:
+        """A login token works in every organization of the user."""
+        response = await self.call(
+            'GET',
+            f'/organizations/{self.other_org}',
+            token=self.user_token(None),
+        )
+        self.assertEqual(response.status_code, 200, response.text)
 
 
 class OtherOrganizationMemberTests(test_harness.RunnerTestCase):

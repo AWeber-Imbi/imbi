@@ -106,6 +106,10 @@ class AuthContext(pydantic.BaseModel):
     #: ``channel`` claim. Only a holder of the JWT secret can set it:
     #: imbi-slackbot sets ``slack``. ``None`` for every other token.
     channel: typing.Literal['slack'] | None = None
+    #: For an agent API token, or a user token with an ``org_slug``
+    #: claim (imbi-slackbot sets it): the slug of the only organization
+    #: that the token works in. ``None`` for every other token.
+    organization_slug: str | None = None
     #: On a route of one organization, only the permissions of the
     #: principal's role in that organization (see
     #: ``imbi.api.auth.organizations.check_member``); elsewhere, the
@@ -513,6 +517,7 @@ async def authenticate_jwt(
         session_id=jti,
         auth_method='jwt',
         channel='slack' if claims.get('channel') == 'slack' else None,
+        organization_slug=claims.get('org_slug') or None,
         permissions=perms,
         identities=identities,
     )
@@ -902,6 +907,7 @@ async def authenticate_agent_api(
         session_id=str(claims['jti']),
         auth_method='agent_api',
         organization_id=str(claims['org']),
+        organization_slug=str(claims['org_slug']),
         permissions=await load_principal_permissions(
             db, 'ServiceAccount', 'slug', str(claims['sub'])
         ),
@@ -969,6 +975,14 @@ async def get_current_user_cookie_fallback(
             headers={'WWW-Authenticate': 'Bearer'},
         )
     ctx = await _authenticate_token(db, token, auth_settings())
+    if not credentials and ctx.organization_slug:
+        # agent_api.guard reads only the header, so a token that works
+        # in only one organization must come as a header.
+        raise fastapi.HTTPException(
+            status_code=401,
+            detail='Missing authentication credentials',
+            headers={'WWW-Authenticate': 'Bearer'},
+        )
     return await narrow_to_accountable(
         db, ctx, request.headers.get(SCHEDULED_TASK_ACCOUNTABLE)
     )

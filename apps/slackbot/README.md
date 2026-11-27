@@ -16,8 +16,11 @@ the bot or DMs it, the bot:
 1. **Resolves the Slack user to an Imbi user.** It looks up the Slack user's
    email (`users.info`), finds the matching active Imbi `User` in the graph, and
    mints a short-lived per-user JWT access token signed with the shared
-   `IMBI_AUTH_JWT_SECRET` — exactly the token the Imbi API issues at login. The
-   resolution is cached with a TTL. Users with no matching Imbi account get a
+   `IMBI_AUTH_JWT_SECRET` — the token the Imbi API issues at login, plus an
+   `org_slug` claim for the organization of the Slack workspace. The API refuses
+   the token in other organizations, and on routes with no organization that
+   are not in `GLOBAL_SAFE` (`imbi/api/auth/agent_api.py`). The resolution is
+   cached with a TTL. Users with no matching Imbi account get a
    friendly explanation instead.
 2. **Reconstructs the thread context** from Slack (`conversations.replies`) so
    follow-up questions in a thread keep their history. Nothing is persisted
