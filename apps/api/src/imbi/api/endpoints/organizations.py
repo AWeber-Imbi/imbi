@@ -738,6 +738,12 @@ async def _persist_organization(
     )
     counts = count_records[0] if count_records else {}
     org_dict = org.model_dump()
+    if keep_team_id:
+        # The stored value, which can differ from the caller's read.
+        stored = graph.parse_agtype(records[0]['n'])
+        if isinstance(stored, dict):
+            node = typing.cast('dict[str, typing.Any]', stored)
+            org_dict['slack_team_id'] = node.get('slack_team_id')
     org_dict['relationships'] = build_relationships(
         request.app.url_path_for('get_organization', slug=org.slug),
         {
