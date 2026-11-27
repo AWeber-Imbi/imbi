@@ -19,6 +19,8 @@ import urllib.parse
 import anthropic
 import httpx
 
+from imbi.common.llm import drivers
+
 LOGGER = logging.getLogger(__name__)
 
 __all__ = ['DiscoveredModel', 'DiscoveryError', 'list_models']
@@ -209,6 +211,10 @@ async def _list_bedrock(
     """
     if not region:
         raise DiscoveryError("Driver 'bedrock' has no region configured")
+    try:
+        drivers.check_location('bedrock', region, None)
+    except ValueError as exc:
+        raise DiscoveryError(str(exc)) from None
     payload = await _get_json(
         f'https://bedrock.{region}.amazonaws.com/foundation-models'
         '?byOutputModality=TEXT&byInferenceType=ON_DEMAND',

@@ -258,6 +258,20 @@ class CreateProviderTestCase(AIProviderTestBase):
         )
         self.assertNotIn('api_key', persisted)
 
+    def test_create_rejects_a_bad_vertex_location(self) -> None:
+        """A Vertex region and project ID go into the URL."""
+        for field, value in (
+            ('region', 'us-central1.evil.example'),
+            ('project_id', 'p/../x'),
+        ):
+            with self.subTest(field=field):
+                self.route()
+                response = self.client.post(
+                    BASE + '/',
+                    json={'name': 'V', 'driver': 'vertex', field: value},
+                )
+                self.assertEqual(response.status_code, 422)
+
     def test_create_without_key_reports_none(self) -> None:
         """A provider with no key and no IAM support has no auth."""
         self.route((CREATE, [{'p': provider_props()}]))
@@ -468,6 +482,22 @@ class PatchProviderTestCase(AIProviderTestBase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['name'], 'Claude')
         self.assertEqual(router.params_for(UPDATE)['name'], 'Claude')
+
+    def test_patch_rejects_a_region_that_changes_the_host(self) -> None:
+        """A region is part of a host name, so its shape is checked."""
+        self.route((GET_PROVIDER, [{'p': provider_props(driver='bedrock')}]))
+        response = self.client.patch(
+            f'{BASE}/prv-1',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/region',
+                    'value': 'evil.example/x#',
+                }
+            ],
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn('not a valid AWS region', response.json()['detail'])
 
     def test_patch_preserves_credentials(self) -> None:
         """An unrelated patch leaves the stored key untouched."""

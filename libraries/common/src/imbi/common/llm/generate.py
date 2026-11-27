@@ -44,6 +44,7 @@ import httpx
 import jsonschema
 
 from imbi.common import models
+from imbi.common.llm import drivers
 from imbi.common.llm.discovery import OAUTH_BETA
 from imbi.common.workflows.registry import agent
 
@@ -574,6 +575,16 @@ async def _openai(
     )
 
 
+def _check_location(request: Request) -> None:
+    """Refuse a stored region or project ID that is not safe in a URL."""
+    try:
+        drivers.check_location(
+            request.driver, request.region, request.project_id
+        )
+    except ValueError:
+        raise GenerateError('provider_misconfigured') from None
+
+
 # --- bedrock -------------------------------------------------------------
 
 
@@ -582,6 +593,7 @@ async def _bedrock(
     schema: dict[str, typing.Any] | None,
     transport: httpx.AsyncBaseTransport | None,
 ) -> _Answer:
+    _check_location(request)
     base = request.base_url or (
         request.region
         and f'https://bedrock-runtime.{request.region}.amazonaws.com'
@@ -658,6 +670,8 @@ def _vertex_url(request: Request) -> str:
     host = 'aiplatform.googleapis.com'
     path = f'/publishers/google/models/{model}:generateContent'
     if request.project_id:
+        # Express mode does not use the region, so only check it here.
+        _check_location(request)
         region = request.region or 'global'
         if region != 'global':
             host = f'{region}-{host}'

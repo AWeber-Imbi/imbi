@@ -490,6 +490,24 @@ class ListModelsTestCase(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual(found, [])
 
+    async def test_bedrock_bad_region(self) -> None:
+        """A region that changes the host is refused before the call."""
+        with self.assertRaises(discovery.DiscoveryError) as ctx:
+            await discovery.list_models(
+                'bedrock', 'k', None, region='evil.example/x#'
+            )
+        self.assertIn('not a valid AWS region', str(ctx.exception))
+
+    def test_check_location_accepts_real_values(self) -> None:
+        """Real regions and project IDs pass."""
+        for driver, region, project in (
+            ('bedrock', 'us-east-1', None),
+            ('bedrock', 'us-gov-west-1', None),
+            ('vertex', 'global', 'my-project-123'),
+            ('vertex', 'europe-west4', None),
+        ):
+            drivers.check_location(driver, region, project)
+
     async def test_bedrock_without_a_region(self) -> None:
         """There is no control plane endpoint without a region."""
         with self.assertRaises(discovery.DiscoveryError):

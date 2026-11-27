@@ -32,7 +32,7 @@ from imbi.api.llm import tokens
 from imbi.api.secret_broker import store
 from imbi.common import models
 from imbi.common.auth.encryption import decrypt_config_value
-from imbi.common.llm import generate
+from imbi.common.llm import drivers, generate
 from imbi.common.plugins.identity import IdentityError
 
 
@@ -74,6 +74,10 @@ def _aws_session() -> typing.Any:
 
 async def sigv4(region: str | None) -> SigV4:
     """Return a signer with the AWS credentials of this process."""
+    try:
+        drivers.check_location('bedrock', region, None)
+    except ValueError:
+        raise generate.GenerateError('provider_misconfigured') from None
 
     def frozen() -> object:
         # The credential chain can read files and call the instance

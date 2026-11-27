@@ -404,12 +404,17 @@ async def _assert_driver_serves_models(
 def _build(payload: dict[str, typing.Any]) -> models.AIProvider:
     """Validate provider properties into a node or raise 422."""
     try:
-        return models.AIProvider(**payload)
+        node = models.AIProvider(**payload)
     except pydantic.ValidationError as e:
         raise fastapi.HTTPException(
             status_code=422,
             detail=f'Validation error: {e.errors()}',
         ) from e
+    try:
+        drivers.check_location(node.driver, node.region, node.project_id)
+    except ValueError as e:
+        raise fastapi.HTTPException(status_code=422, detail=str(e)) from e
+    return node
 
 
 #: A hint is only stored for keys long enough that four trailing
