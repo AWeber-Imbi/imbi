@@ -163,7 +163,7 @@ the order.
 |---|---|---|
 | Agent Usage | `agent-usage` | The tokens and spend of the agents, by day and by agent. See [Agents](../admin/agents.md#usage) |
 | Document Readership | `document-readership` | Documents in the order that you select: **Most read**, **Stale**, **Least read**, or **Never read** |
-| Merged, Not Deployed | `merged-not-deployed` | Pull requests merged in the last 90 days that are not deployed to a terminal environment. Add `?author=@me` to show only your pull requests, or click **Mine** |
+| Merged, Not Deployed | `merged-not-deployed` | Pull requests merged in the last 90 days that are not deployed to a terminal environment. Add `?author=@me` to show only your pull requests, or click **Mine**. Projects with no terminal deploy in the last 90 days are hidden; click **Show stale projects** or add `?stale=show` to show them. The Slack Home section and the dashboard widgets hide them too |
 | Monthly Improvement | `monthly-improvement` | For each team, the change in score during the month that you select in **Month**, and the stack health score |
 | Open Pull Requests | `open-pull-requests` | The open pull requests of the organization. See [Pull requests and dependencies](pull-requests-and-dependencies.md#pull-request-reports) |
 | Operations Log | `operations-log` | The operations log of all projects of the organization. See [Operations log and scoring](operations-log-and-scoring.md) |

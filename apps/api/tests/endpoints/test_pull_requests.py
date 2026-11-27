@@ -546,6 +546,27 @@ class MeFiltersTestCase(_PullRequestsTestBase):
         self.assertEqual(pending.call_args.kwargs['limit'], 200)
         self.assertEqual(pending.call_args.kwargs['offset'], 200)
 
+    def test_pending_deploy_include_stale(self) -> None:
+        self.mock_db.execute.return_value = []
+        envs = mock.AsyncMock(return_value={'production': 'Production'})
+        deploys = mock.AsyncMock(return_value=[])
+        for query, hidden in (('', True), ('?include_stale=true', False)):
+            with (
+                self.subTest(query=query),
+                mock.patch.object(
+                    pull_requests, '_fetch_terminal_environments', envs
+                ),
+                mock.patch.object(
+                    pull_requests, '_last_terminal_deploys', deploys
+                ),
+            ):
+                response = self.client.get(
+                    f'/organizations/{ORG}/pull-requests/pending-deploy{query}'
+                )
+                self.assertEqual(response.status_code, 200)
+                active_since = deploys.call_args.args[3]
+                self.assertEqual(hidden, active_since is not None)
+
     def test_pending_deploy_validates_pagination(self) -> None:
         for query in ('?limit=0', '?limit=501', '?offset=-1'):
             with self.subTest(query=query):

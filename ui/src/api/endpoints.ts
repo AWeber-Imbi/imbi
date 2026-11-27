@@ -3615,6 +3615,7 @@ export const getOrgPendingDeployPullRequests = (
     author?: string
     bots?: boolean
     days?: number
+    include_stale?: boolean
     limit?: number
     offset?: number
   },

@@ -64,7 +64,7 @@ describe('MergedNotDeployedReport', () => {
     )
     expect(spy).toHaveBeenCalledWith(
       'acme',
-      { author: '@me', limit: 200, offset: 0 },
+      { author: '@me', include_stale: false, limit: 200, offset: 0 },
       expect.anything(),
     )
     expect(screen.getByRole('button', { name: 'Mine' })).toHaveAttribute(
@@ -81,7 +81,7 @@ describe('MergedNotDeployedReport', () => {
     )
     expect(spy).toHaveBeenCalledWith(
       'acme',
-      { author: undefined, limit: 200, offset: 0 },
+      { author: undefined, include_stale: false, limit: 200, offset: 0 },
       expect.anything(),
     )
     expect(screen.getByText('gmr')).toBeInTheDocument()
@@ -90,7 +90,39 @@ describe('MergedNotDeployedReport', () => {
     await waitFor(() =>
       expect(spy).toHaveBeenCalledWith(
         'acme',
-        { author: '@me', limit: 200, offset: 0 },
+        { author: '@me', include_stale: false, limit: 200, offset: 0 },
+        expect.anything(),
+      ),
+    )
+  })
+
+  it('hides stale projects by default and shows them on toggle', async () => {
+    renderAt('/reports/merged-not-deployed')
+
+    await screen.findByText('Add the widget')
+    const toggle = screen.getByRole('button', { name: 'Show stale projects' })
+    expect(toggle).toHaveAttribute('aria-pressed', 'false')
+
+    fireEvent.click(toggle)
+    await waitFor(() =>
+      expect(spy).toHaveBeenLastCalledWith(
+        'acme',
+        { author: undefined, include_stale: true, limit: 200, offset: 0 },
+        expect.anything(),
+      ),
+    )
+    expect(toggle).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('keeps stale=show when switching to mine', async () => {
+    renderAt('/reports/merged-not-deployed?stale=show')
+
+    await screen.findByText('Add the widget')
+    fireEvent.click(screen.getByRole('button', { name: 'Mine' }))
+    await waitFor(() =>
+      expect(spy).toHaveBeenLastCalledWith(
+        'acme',
+        { author: '@me', include_stale: true, limit: 200, offset: 0 },
         expect.anything(),
       ),
     )
@@ -121,7 +153,7 @@ describe('MergedNotDeployedReport', () => {
     await screen.findByText('Pull request 2')
     expect(spy).toHaveBeenCalledWith(
       'acme',
-      { author: undefined, limit: 200, offset: 0 },
+      { author: undefined, include_stale: false, limit: 200, offset: 0 },
       expect.anything(),
     )
     expect(screen.getByText('3')).toBeInTheDocument()
@@ -130,7 +162,7 @@ describe('MergedNotDeployedReport', () => {
     await screen.findByText('Pull request 3')
     expect(spy).toHaveBeenLastCalledWith(
       'acme',
-      { author: undefined, limit: 200, offset: 2 },
+      { author: undefined, include_stale: false, limit: 200, offset: 2 },
       expect.anything(),
     )
     expect(screen.getByText('Pull request 1')).toBeInTheDocument()

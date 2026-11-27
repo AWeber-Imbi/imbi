@@ -605,6 +605,7 @@ async def _last_terminal_deploys(
     db: graph.Pool,
     project_ids: list[str],
     environment_slugs: list[str],
+    active_since: datetime.datetime | None = None,
 ) -> list[tuple[str, str, str]]:
     """When each project last started a deploy to a terminal environment,
     read from the ``Deployment`` nodes through the state stored on each
@@ -612,7 +613,8 @@ async def _last_terminal_deploys(
 
     Returns ``(project_id, started_at, environment_slug)`` rows for the
     ``project_ids`` external table, ``started_at`` as UTC text.
-    Projects with no terminal deploy are left out.
+    Projects with no terminal deploy are left out, and so are projects
+    whose last one started before ``active_since`` when it is given.
     """
     if not environment_slugs:
         return []
@@ -640,6 +642,8 @@ async def _last_terminal_deploys(
             str(deployment.environment['slug']),
         )
         for project_id, deployment in latest.items()
+        if active_since is None
+        or deployment_nodes.started_at(deployment) >= active_since
     ]
 
 
@@ -737,6 +741,7 @@ async def list_pending_deploy_pull_requests(
     author: str | None = None,
     days: int = DEFAULT_PENDING_DEPLOY_DAYS,
     bots: bool = False,
+    include_stale: bool = False,
     limit: int = PENDING_DEPLOY_LIMIT,
     offset: int = 0,
 ) -> PendingDeployResponse:
@@ -748,7 +753,11 @@ async def list_pending_deploy_pull_requests(
     ``days`` days are considered; ``author`` narrows to one GitHub
     login (``@me``: the login of the caller; when the caller has none,
     the list is empty and ``github_identity_missing`` is true) and
-    ``bots`` to authors named with GitHub's ``[bot]`` suffix.  Rows are
+    ``bots`` to authors named with GitHub's ``[bot]`` suffix.
+    Projects whose last terminal deploy started before the ``days``
+    window no longer deploy through Imbi, so their merges would stay
+    pending until they age out; they are left out unless
+    ``include_stale`` is true.  Rows are
     ordered oldest merge first and paged with ``limit`` and ``offset``;
     ``total`` is the number of rows on all pages.
     """
@@ -772,7 +781,9 @@ async def list_pending_deploy_pull_requests(
     )
     slugs = list(envs)
     data, total = await _list_pending_deploy(
-        deployed=await _last_terminal_deploys(db, list(projects), slugs),
+        deployed=await _last_terminal_deploys(
+            db, list(projects), slugs, None if include_stale else since
+        ),
         author=author,
         since=since,
         bots=bots,
