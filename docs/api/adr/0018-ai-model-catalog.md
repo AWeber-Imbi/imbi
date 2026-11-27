@@ -122,7 +122,8 @@ It is referenced against unreferenced.
 The field is stored and shown, and nothing enforces it. Imbi has no spend
 tracking yet. The field help text in the model dialog says so directly. The
 alternative was to omit the field until enforcement ships, which would lose
-the number an admin already knows.
+the number an admin already knows. (Superseded: see the amendment "the spend
+cap is enforced".)
 
 Costs are stored as `Decimal | None` in USD per one million tokens. `None`
 means unknown or contract pricing. `0` means self-hosted.
@@ -252,7 +253,7 @@ its own copy of a model.
 - Vertex discovery with service account credentials. They need
   `google-auth`, which is not a dependency. Bedrock application inference
   profiles are not listed.
-- Spend tracking against `monthly_spend_cap`, and pricing history.
+- Pricing history.
 - A capability set on models, such as `tool_use`, `vision`, and
   `structured_output`, replacing the coarse `kind` field.
 - Runtime SSRF controls on outbound calls to custom base URLs.
@@ -318,6 +319,46 @@ The consumers today:
   consumers do not read the defaults yet. Their prompts are global, so the
   model comes from the catalogs of the organizations of the user. Without a
   user, there is no catalog model and the configured model is used.
+
+## Amendment: the spend cap is enforced
+
+Date: 2026-11-27
+
+### How spend is counted
+
+The spend of an AIModel is the sum of the cost of its calls in the current
+calendar month (UTC):
+
+- `ai_runtime.ai_model_calls.cost_usd`, for prompt runs, by `started_at`.
+- `tickets.budget_ledger.cost`, for agent usage reports, by `recorded_at`.
+
+Both tables have a nullable `ai_model_id` column, the AIModel node id. Imbi
+writes it on every new row. Rows from before the column are null and are not
+counted. A row with an unknown cost adds nothing. Because the AIModel node is
+per organization, the spend and the cap are per organization per model.
+`imbi.common.llm.resolve.month_spend` does the sum. Both schemas are in the
+graph database, so every service that has the graph can read the spend.
+
+Agent usage pricing finds the model in the catalog of the organization of
+the task by slug, then by provider model id, and records the AIModel id of
+the prices. The harness design (ADR 0022) pins the model on the task, which
+removes the slug or model id match.
+
+### Enforcement
+
+The resolver checks the cap after the access check. When the spend is at or
+over `monthly_spend_cap`, it raises `ModelUnusable` with reason `spend_cap`.
+Every consumer of the resolver refuses the call with the error it uses for
+the other reasons. A usage report that takes the spend of its model to the
+cap closes the agent task with `exceeded_ceiling` (reason `spend_cap`), like
+the task budget (reason `budget`).
+
+The check does not reserve the cost of a call before the call. Calls in
+progress, and usage reports of other tasks that are not committed, are not
+counted, so concurrent calls can go over the cap by their cost. A reservation
+was not built: the overshoot is small for the call rates of today.
+
+`AgentSettings.monthly_cost_cap` stays advisory.
 
 ## References
 

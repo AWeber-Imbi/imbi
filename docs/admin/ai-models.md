@@ -190,18 +190,15 @@ two steps.
 | Default top_p | Between 0 and 1. Generative models only. |
 | Structured output | The model can return JSON that matches a schema. See [Structured output](#structured-output). |
 | Forced tool choice | Shown when **Structured output** is on. The model accepts a forced tool choice. See [Forced tool choice](#forced-tool-choice). |
-| Monthly spend cap | USD per month. |
+| Monthly spend cap | USD per calendar month (UTC). See [Spend cap](#spend-cap). |
 | Allowed teams | See [Team access](#team-access). |
 | Enable immediately | Makes the model selectable as soon as it is created. |
 
 Every field in step 2 is optional. Leave a cost empty when the price is
 unknown or set by contract. Enter `0` for a self-hosted model.
 
-!!! warning
-    **Monthly spend cap is advisory.** Imbi does not block calls at the cap.
-    The field records the number for a human to act on. Agent usage uses the
-    model prices to calculate cost. See
-    [Reports > Agent Usage](agents.md#usage).
+Agent usage uses the model prices to calculate cost. See
+[Reports > Agent Usage](agents.md#usage).
 
 Two rules apply within the catalog. A model's display name must produce a slug
 that is unique in the catalog. A model identifier must be unique within
@@ -403,7 +400,8 @@ whose prompt or workflow step names no model uses the default. The order is:
 4. The model in the environment of the service.
 
 The first level that names a model wins. When that model is disabled, its
-provider is disabled, or the caller may not use it, the call fails. Imbi does
+provider is disabled, the caller may not use it, or it is at its
+[spend cap](#spend-cap), the call fails. Imbi does
 not try the next level. The environment model applies only when no level
 names a model.
 
@@ -427,6 +425,32 @@ The API routes are `GET` and `PUT`
 `/organizations/{org_slug}/teams/{slug}/default-ai-model` (`team:read`,
 `team:update`). The body is `{"slug": "<model slug>"}`, or
 `{"slug": null}` to clear the default.
+
+## Spend cap
+
+The spend of a model is the cost of its calls in the current calendar month
+(UTC). Imbi adds the cost of each prompt run and of each agent usage report
+of the model. A call with an unknown cost adds nothing. The AI Models page
+shows the spend and the cap on each model row. The text is red when the spend
+is at or over the cap.
+
+When the spend of a model is at or over its **Monthly spend cap**, Imbi
+refuses new calls to the model. It does not use another model in its place.
+
+- A prompt run returns `422`.
+- A Model decision step fails with `model_unavailable`.
+- The assistant returns `422`, and the Slack bot replies with an error.
+- An agent task closes with `exceeded_ceiling` (reason `spend_cap`) at the
+  usage report that takes the spend to the cap.
+
+Calls that are in progress are not counted until they end, so concurrent
+calls can go over the cap by their cost. The spend starts again at zero on
+the first day of each month (UTC). To use the model again in the same month,
+increase the cap or clear it.
+
+The spend counts only the calls made after the upgrade that added it. The
+agent setting **Monthly cost cap** is different: it is per agent, and it is
+advisory.
 
 ## Enable and disable
 
