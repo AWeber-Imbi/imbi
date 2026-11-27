@@ -257,6 +257,11 @@ export function useCurrentConversationSync(poll: boolean) {
       abortController?.abort()
       abortController = null
       resetConversation()
+      // A fresh cached answer for this organization does not fetch
+      // again, and only a fetch restores its conversation.
+      void queryClient.invalidateQueries({
+        queryKey: [...CURRENT_KEY, orgSlug],
+      })
     }
     syncedOrg = orgSlug
   }, [orgSlug])

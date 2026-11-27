@@ -184,15 +184,17 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    Organization** (`mcp-server-org-backfill`) and **Put Assistant
    Conversations in an Organization** (`conversation-org-backfill`) one
    time each. Until then, no organization shows the older servers and
-   conversations. Then restart imbi-assistant and imbi-slackbot, so they
-   load the MCP servers that the backfill linked. A turn that runs before
-   the backfill keeps an empty MCP server list until the restart.
+   conversations.
     - When the install has one organization, each MCP server goes to
       it. Otherwise imbi-api logs each server and moves none: create
       them again in the correct organization (**Admin > &lt;Org&gt;
       Admin > MCP Servers**).
     - Each conversation goes to the organization of its owner, or the
       first by slug when the owner is in more than one.
+    - After the backfill, and after you create the servers again in an
+      install with more than one organization, restart imbi-assistant
+      and imbi-slackbot. An organization loads its MCP servers at its
+      first turn and keeps that list until a restart.
 6. Run `imbi-api setup-permissions`. It adds `mcp_server:credential` and
    gives it to the `imbi-assistant` and `imbi-slackbot` roles. An MCP
    server can now take its secret from a secret binding (see

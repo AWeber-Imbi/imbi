@@ -147,6 +147,19 @@ CredentialResolver = typing.Callable[
 _credential_resolver: CredentialResolver | None = None
 
 
+def _destination(
+    server: common_models.MCPServer,
+) -> tuple[str, str | None, str, bool]:
+    """Where a connection sends a secret, and how: imbi-api gives the
+    secret only when these are the saved values."""
+    return (
+        str(server.url),
+        str(server.oauth_token_url) if server.oauth_token_url else None,
+        server.auth_type,
+        server.verify_ssl,
+    )
+
+
 def set_credential_resolver(resolver: CredentialResolver | None) -> None:
     """Set how a connection gets the secrets of a server's references."""
     global _credential_resolver
@@ -174,15 +187,14 @@ def install_credential_resolver(api_url: str, api_token: str) -> None:
         ) as client:
             # The URLs this connection uses: imbi-api refuses the secret
             # when they are not the saved ones.
+            url, token_url, auth_type, verify_ssl = _destination(server)
             response = await client.post(
                 f'/mcp-servers/{server.id}/credentials',
                 json={
-                    'url': str(server.url),
-                    'oauth_token_url': (
-                        str(server.oauth_token_url)
-                        if server.oauth_token_url
-                        else None
-                    ),
+                    'url': url,
+                    'oauth_token_url': token_url,
+                    'auth_type': auth_type,
+                    'verify_ssl': verify_ssl,
                 },
             )
         response.raise_for_status()
@@ -560,7 +572,15 @@ class ExternalMCPManager:
             except Exception:
                 LOGGER.exception('Failed to read the enabled MCP servers')
             else:
-                enabled = {s.slug for s in servers}
+                # A server whose destination or TLS check changed after
+                # it connected stops: its open session still uses the old
+                # values. It comes back at the next reinitialize.
+                enabled = {
+                    s.slug
+                    for s in servers
+                    if s.slug not in self._servers
+                    or _destination(s) == _destination(self._servers[s.slug])
+                }
                 failed = False
         self._read_failed.set(failed)
         if seq == self._sync_seq:

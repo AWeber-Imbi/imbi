@@ -572,7 +572,11 @@ class SecretEndpointTestCase(
             },
         )
         path = f'/mcp-servers/{server}/credentials'
-        dest = {'url': 'https://mcp.test/'}
+        dest = {
+            'url': 'https://mcp.test/',
+            'auth_type': 'static',
+            'verify_ssl': True,
+        }
         self.permissions.add('mcp_server:credential')
         # A user cannot read the value, even with the permission.
         response = await self.client.post(path, json=dest)
@@ -610,9 +614,18 @@ class SecretEndpointTestCase(
         self.assertEqual(response.headers['cache-control'], 'no-store')
         # A connection that uses other URLs than the saved ones.
         response = await self.client.post(
-            path, json={'url': 'https://moved.test/'}
+            path, json={**dest, 'url': 'https://moved.test/'}
         )
         self.assertEqual(response.status_code, 409, response.text)
+        # A connection that does not check TLS, after the saved server
+        # turned the check on.
+        response = await self.client.post(
+            path, json={**dest, 'verify_ssl': False}
+        )
+        self.assertEqual(response.status_code, 409, response.text)
+        # A caller that leaves out the TLS check is refused.
+        response = await self.client.post(path, json={'url': dest['url']})
+        self.assertEqual(response.status_code, 422, response.text)
         # The binding no longer lists the server.
         await self.store.update(
             'bindings',

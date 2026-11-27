@@ -758,10 +758,13 @@ async def _with_resolved_refs(
 
 
 class MCPServerDestination(pydantic.BaseModel):
-    """The URLs that the caller's connection to the server uses."""
+    """The URLs, auth type, and TLS check of the caller's connection."""
 
     url: str
     oauth_token_url: str | None = None
+    # Required, so that a caller that leaves them out cannot pass.
+    auth_type: str
+    verify_ssl: bool
 
 
 class MCPServerCredentials(pydantic.BaseModel):
@@ -801,8 +804,8 @@ async def get_mcp_server_credentials(
         403: The caller is not imbi-assistant or imbi-slackbot, or a
             binding does not list the server.
         404: No such server.
-        409: The caller's URLs are not the saved URLs of the server, for
-            example from a connection made before a URL change.
+        409: The caller's URLs, auth type, or TLS check are not the saved
+            ones, for example from a connection made before a change.
         503: The secret provider failed.
 
     """
@@ -826,13 +829,16 @@ async def get_mcp_server_credentials(
     saved_token_url = (
         str(node.oauth_token_url) if node.oauth_token_url else None
     )
-    if (destination.url, destination.oauth_token_url) != (
-        str(node.url),
-        saved_token_url,
-    ):
+    if (
+        destination.url,
+        destination.oauth_token_url,
+        destination.auth_type,
+        destination.verify_ssl,
+    ) != (str(node.url), saved_token_url, node.auth_type, node.verify_ssl):
         raise fastapi.HTTPException(
             status_code=409,
-            detail='The connection URLs are not the saved URLs of the server',
+            detail='The connection is not the saved configuration of the '
+            'server',
         )
     values = await _credentials(service, node, auth.principal_name)
     response.headers.update(broker.NO_STORE_HEADERS)

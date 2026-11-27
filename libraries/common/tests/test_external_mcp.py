@@ -153,6 +153,8 @@ class BuildAuthTestCase(unittest.IsolatedAsyncioTestCase):
             json={
                 'url': 'https://mcp.example.com/mcp',
                 'oauth_token_url': 'https://auth.example.com/token',
+                'auth_type': 'oauth_client_credentials',
+                'verify_ssl': True,
             },
         )
 
@@ -840,6 +842,18 @@ class SyncEnabledTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             await manager.sync_enabled(mock.AsyncMock())
         self.assertEqual(['mcp_on_t', 'mcp_off_t'], manager.get_tool_names())
+
+    async def test_changed_tls_check_stops_the_server(self) -> None:
+        """The open session keeps its old TLS check, so it must stop."""
+        manager = self._manager()
+        manager._servers['off'] = _make_server(slug='off', verify_ssl=False)
+        with mock.patch.object(
+            external_mcp,
+            'get_enabled_mcp_servers',
+            return_value=[_make_server(slug='on'), _make_server(slug='off')],
+        ):
+            await manager.sync_enabled(mock.AsyncMock())
+        self.assertEqual(['mcp_on_t'], manager.get_tool_names())
 
     async def test_no_graph_disables_all(self) -> None:
         manager = self._manager()

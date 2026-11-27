@@ -2314,10 +2314,11 @@ export interface paths {
          *     Only a service account (imbi-assistant, imbi-slackbot) can call it.
          *
          *     Raises:
-         *         403: The caller is a user, or a binding does not list the server.
+         *         403: The caller is not imbi-assistant or imbi-slackbot, or a
+         *             binding does not list the server.
          *         404: No such server.
-         *         409: The caller's URLs are not the saved URLs of the server, for
-         *             example from a connection made before a URL change.
+         *         409: The caller's URLs, auth type, or TLS check are not the saved
+         *             ones, for example from a connection made before a change.
          *         503: The secret provider failed.
          */
         post: operations["get_mcp_server_credentials_api_mcp_servers__id__credentials_post"];
@@ -9535,6 +9536,8 @@ export interface paths {
          *
          *     Raises:
          *         400: Invalid patch, read-only path, or validation error.
+         *         403: The caller is not an install admin and the patch changes
+         *             ``slack_team_id``.
          *         404: Organization not found.
          *         409: Slug rename conflicts with existing organization.
          *         422: Patch test operation failed.
@@ -10525,6 +10528,10 @@ export interface paths {
         /**
          * Create Service Account
          * @description Create a new service account.
+         *
+         *     The slugs of the internal services are reserved: only setup makes
+         *     those accounts, and routes such as the MCP server credentials trust
+         *     them by slug.
          */
         post: operations["create_service_account_api_service_accounts_post"];
         delete?: never;
@@ -17363,13 +17370,17 @@ export interface components {
         };
         /**
          * MCPServerDestination
-         * @description The URLs that the caller's connection to the server uses.
+         * @description The URLs, auth type, and TLS check of the caller's connection.
          */
         MCPServerDestination: {
             /** Url */
             url: string;
             /** Oauth Token Url */
             oauth_token_url?: string | null;
+            /** Auth Type */
+            auth_type: string;
+            /** Verify Ssl */
+            verify_ssl: boolean;
         };
         /**
          * MCPServerResponse

@@ -196,6 +196,34 @@ describe('useCurrentConversationSync', () => {
     }
   })
 
+  it('restores the conversation when switching back within the stale time', async () => {
+    vi.mocked(assistant.getCurrentConversation).mockResolvedValue(
+      stored('c-1', 't1'),
+    )
+    vi.mocked(assistant.getConversation).mockResolvedValue(stored('c-1', 't1'))
+    const { rerender } = renderHook(() => useCurrentConversationSync(false), {
+      wrapper: syncWrapper,
+    })
+    await waitFor(() =>
+      expect(useAssistantStore.getState().currentConversationId).toBe('c-1'),
+    )
+
+    org.slug = 'other'
+    try {
+      rerender()
+      await waitFor(() =>
+        expect(useAssistantStore.getState().currentConversationId).toBeNull(),
+      )
+    } finally {
+      org.slug = 'acme'
+    }
+    // Back to the first organization: its cached answer is still fresh.
+    rerender()
+    await waitFor(() =>
+      expect(useAssistantStore.getState().currentConversationId).toBe('c-1'),
+    )
+  })
+
   it('follows new turns and a new conversation from another browser', async () => {
     vi.mocked(assistant.getCurrentConversation).mockResolvedValue(
       stored('c-1', 't1'),
