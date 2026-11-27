@@ -257,11 +257,12 @@ Anthropic, OpenAI, OpenAI-compatible, AWS Bedrock, and Google Vertex AI
 providers can report their own model lists. Use this instead of typing model
 identifiers by hand.
 
-AWS Bedrock lists the foundation models of the provider's region that give
-text output and support on-demand inference. A model that you can call only
-through an inference profile does not show. Add it by its profile ID. Without
-a stored key, Imbi signs the call with the runtime IAM role, which needs
-`bedrock:ListFoundationModels`.
+AWS Bedrock lists the active text models of the provider's region. A model
+with on-demand inference shows by its model ID. A model that you can call only
+through a system inference profile, such as current Claude models, shows by
+its profile ID (for example `us.anthropic.claude-...`). Without a stored key,
+Imbi signs the calls with the runtime IAM role, which needs
+`bedrock:ListFoundationModels` and `bedrock:ListInferenceProfiles`.
 
 Google Vertex AI lists the Gemini publisher models with the stored key. The
 express mode API reference does not include this method, so Google can refuse

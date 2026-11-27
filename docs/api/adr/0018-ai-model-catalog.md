@@ -137,7 +137,10 @@ credential and returns the models it reports. It writes nothing.
 `openai_compatible` call `GET {base_url}/models` over httpx. `bedrock` calls
 `ListFoundationModels` on `bedrock.{region}.amazonaws.com` over httpx, with
 the stored key as a bearer token or SigV4 from the runtime IAM role, and keeps
-models with text output and on-demand inference. `vertex` calls the
+active text models with on-demand inference. It also calls
+`ListInferenceProfiles` for system-defined profiles and keeps the active
+profiles of text models by profile ID, because current Claude models are
+available only through a profile. `vertex` calls the
 `v1beta1` `publishers/google/models` list with the express key and keeps the
 Gemini models. The express mode API reference does not include that method,
 so a 401 or 403 for `vertex` is a 422 that tells the admin to add models by
@@ -242,8 +245,8 @@ its own copy of a model.
   model is a hard configuration error.
 - `Organization -[:USES_DEFAULT_MODEL]-> AIModel`, and the per-team equivalent.
 - Vertex discovery with service account credentials. They need
-  `google-auth`, which is not a dependency. Bedrock inference profiles are not
-  listed either.
+  `google-auth`, which is not a dependency. Bedrock application inference
+  profiles are not listed.
 - Spend tracking against `monthly_spend_cap`, and pricing history.
 - A capability set on models, such as `tool_use`, `vision`, and
   `structured_output`, replacing the coarse `kind` field.

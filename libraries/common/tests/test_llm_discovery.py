@@ -435,44 +435,80 @@ class ListModelsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn('add the models by id', str(ctx.exception))
         self.assertNotIn('gk', str(ctx.exception))
 
-    async def test_bedrock_keeps_on_demand_text_models(self) -> None:
-        """The key is a bearer token, and other models are dropped."""
+    async def test_bedrock_lists_models_and_profiles(self) -> None:
+        """On-demand text models and active system profiles are kept."""
+        arn = 'arn:aws:bedrock:us-west-2::foundation-model/'
+        text = {'outputModalities': ['TEXT']}
+        models = {
+            'modelSummaries': [
+                {
+                    'modelId': 'amazon.nova-pro-v1:0',
+                    'modelName': 'Nova Pro',
+                    'inferenceTypesSupported': ['ON_DEMAND'],
+                    **text,
+                },
+                {
+                    'modelId': 'anthropic.claude-x',
+                    'inferenceTypesSupported': ['INFERENCE_PROFILE'],
+                    **text,
+                },
+                {
+                    'modelId': 'amazon.titan-embed',
+                    'inferenceTypesSupported': ['ON_DEMAND'],
+                    'outputModalities': ['EMBEDDING'],
+                },
+                {
+                    'modelId': 'amazon.old',
+                    'inferenceTypesSupported': ['ON_DEMAND'],
+                    'modelLifecycle': {'status': 'LEGACY'},
+                    **text,
+                },
+            ]
+        }
+
+        def profile(
+            profile_id: str, model: str, status: str = 'ACTIVE'
+        ) -> dict[str, typing.Any]:
+            return {
+                'inferenceProfileId': profile_id,
+                'inferenceProfileName': profile_id.upper(),
+                'status': status,
+                'models': [{'modelArn': arn + model}],
+            }
+
+        pages = {
+            '': {
+                'inferenceProfileSummaries': [
+                    profile('us.anthropic.claude-x', 'anthropic.claude-x'),
+                    profile('us.amazon.titan-embed', 'amazon.titan-embed'),
+                ],
+                'nextToken': 'p2',
+            },
+            'p2': {
+                'inferenceProfileSummaries': [
+                    profile('eu.anthropic.claude-x', 'anthropic.claude-x'),
+                    profile('us.amazon.old', 'amazon.old'),
+                    profile('us.anthropic.claude-x', 'anthropic.claude-x'),
+                ],
+            },
+        }
+        calls: list[str] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
             self.assertEqual(request.headers['authorization'], 'Bearer bk')
             self.assertEqual(
                 request.url.host, 'bedrock.us-east-1.amazonaws.com'
             )
-            self.assertEqual(request.url.path, '/foundation-models')
-            self.assertEqual(
-                request.url.params['byInferenceType'], 'ON_DEMAND'
-            )
-            text = {
-                'outputModalities': ['TEXT'],
-                'inferenceTypesSupported': ['ON_DEMAND'],
-            }
-            return httpx.Response(
-                200,
-                json={
-                    'modelSummaries': [
-                        {
-                            'modelId': 'amazon.nova-pro-v1:0',
-                            **text,
-                            'modelName': 'Nova Pro',
-                        },
-                        {
-                            'modelId': 'anthropic.claude-x',
-                            **text,
-                            'inferenceTypesSupported': ['INFERENCE_PROFILE'],
-                        },
-                        {
-                            'modelId': 'amazon.titan-embed',
-                            **text,
-                            'outputModalities': ['EMBEDDING'],
-                        },
-                    ]
-                },
-            )
+            calls.append(request.url.path)
+            if request.url.path == '/foundation-models':
+                self.assertEqual(
+                    request.url.params['byOutputModality'], 'TEXT'
+                )
+                return httpx.Response(200, json=models)
+            self.assertEqual(request.url.path, '/inference-profiles')
+            self.assertEqual(request.url.params['type'], 'SYSTEM_DEFINED')
+            token = request.url.params.get('nextToken', '')
+            return httpx.Response(200, json=pages[token])
 
         with _transport(handler):
             found = await discovery.list_models(
@@ -480,8 +516,38 @@ class ListModelsTestCase(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual(
             [(m.model_id, m.display_name) for m in found],
-            [('amazon.nova-pro-v1:0', 'Nova Pro')],
+            [
+                ('amazon.nova-pro-v1:0', 'Nova Pro'),
+                ('us.anthropic.claude-x', 'US.ANTHROPIC.CLAUDE-X'),
+                ('eu.anthropic.claude-x', 'EU.ANTHROPIC.CLAUDE-X'),
+            ],
         )
+        self.assertEqual(
+            calls,
+            [
+                '/foundation-models',
+                '/inference-profiles',
+                '/inference-profiles',
+            ],
+        )
+
+    async def test_bedrock_stops_on_a_repeated_token(self) -> None:
+        """A repeated profile page token does not loop."""
+        calls: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request.url.path)
+            if request.url.path == '/foundation-models':
+                return httpx.Response(200, json={'modelSummaries': []})
+            return httpx.Response(
+                200, json={'inferenceProfileSummaries': [], 'nextToken': 't'}
+            )
+
+        with _transport(handler):
+            await discovery.list_models(
+                'bedrock', 'bk', None, region='us-east-1'
+            )
+        self.assertEqual(calls.count('/inference-profiles'), 2)
 
     async def test_bedrock_without_a_key_uses_the_signer(self) -> None:
         """With no key, ``auth`` signs the request."""

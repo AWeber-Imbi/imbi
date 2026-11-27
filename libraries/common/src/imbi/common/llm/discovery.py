@@ -202,12 +202,15 @@ async def _list_openai(api_key: str, base_url: str) -> list[DiscoveredModel]:
 async def _list_bedrock(
     api_key: str, region: str | None, auth: httpx.Auth | None
 ) -> list[DiscoveredModel]:
-    """List Bedrock foundation models (``ListFoundationModels``).
+    """List Bedrock foundation models and system inference profiles.
 
     The control plane is ``bedrock.{region}``, not the runtime endpoint
-    in ``base_url``. Only models with text output and on-demand
-    inference are kept: a model that needs an inference profile cannot
-    be called by its own id. A ``LEGACY`` model is dropped too.
+    in ``base_url``. Only active models with text output are kept. A
+    model with on-demand inference is listed by its own id. Most current
+    models (Claude among them) are available only through a system
+    inference profile such as ``us.anthropic.claude-...``, which
+    Converse accepts as ``modelId``. A profile is kept when it is active
+    and all its models give text output.
     """
     if not region:
         raise DiscoveryError("Driver 'bedrock' has no region configured")
@@ -215,32 +218,76 @@ async def _list_bedrock(
         drivers.check_location('bedrock', region, None)
     except ValueError as exc:
         raise DiscoveryError(str(exc)) from None
+    base = f'https://bedrock.{region}.amazonaws.com'
+    headers = {'Authorization': f'Bearer {api_key}'} if api_key else {}
     payload = await _get_json(
-        f'https://bedrock.{region}.amazonaws.com/foundation-models'
-        '?byOutputModality=TEXT&byInferenceType=ON_DEMAND',
-        {'Authorization': f'Bearer {api_key}'} if api_key else {},
+        f'{base}/foundation-models?byOutputModality=TEXT',
+        headers,
         'bedrock',
         auth,
     )
     found: list[DiscoveredModel] = []
+    text_models: set[str] = set()
     for item in _entries(payload, 'modelSummaries'):
         model_id = item.get('modelId')
         if (
             not isinstance(model_id, str)
             or not model_id
             or 'TEXT' not in (item.get('outputModalities') or ())
-            or 'ON_DEMAND' not in (item.get('inferenceTypesSupported') or ())
             or (item.get('modelLifecycle') or {}).get('status', 'ACTIVE')
             != 'ACTIVE'
         ):
             continue
-        found.append(
-            DiscoveredModel(
-                model_id=model_id,
-                display_name=str(item.get('modelName') or model_id),
+        text_models.add(model_id)
+        if 'ON_DEMAND' in (item.get('inferenceTypesSupported') or ()):
+            found.append(
+                DiscoveredModel(
+                    model_id=model_id,
+                    display_name=str(item.get('modelName') or model_id),
+                )
             )
+    known = {model.model_id for model in found}
+    token = ''
+    seen: set[str] = set()
+    for _page in range(MAX_MODELS // 100 + 1):
+        query = '?type=SYSTEM_DEFINED&maxResults=1000'
+        if token:
+            query += f'&nextToken={token}'
+        payload = await _get_json(
+            f'{base}/inference-profiles{query}', headers, 'bedrock', auth
         )
-    return found
+        for item in _entries(payload, 'inferenceProfileSummaries'):
+            profile_id = item.get('inferenceProfileId')
+            models = [
+                str(m.get('modelArn') or '').rpartition('/')[2]
+                for m in _entries(item, 'models')
+            ]
+            if (
+                not isinstance(profile_id, str)
+                or not profile_id
+                or profile_id in known
+                or item.get('status') != 'ACTIVE'
+                or not models
+                or not text_models.issuperset(models)
+            ):
+                continue
+            known.add(profile_id)
+            found.append(
+                DiscoveredModel(
+                    model_id=profile_id,
+                    display_name=str(
+                        item.get('inferenceProfileName') or profile_id
+                    ),
+                )
+            )
+        page = typing.cast(
+            'dict[str, object]', payload if isinstance(payload, dict) else {}
+        )
+        token = urllib.parse.quote(str(page.get('nextToken') or ''), safe='')
+        if not token or token in seen or len(found) >= MAX_MODELS:
+            break
+        seen.add(token)
+    return found[:MAX_MODELS]
 
 
 async def _list_vertex(
