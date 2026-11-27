@@ -126,17 +126,21 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
         The consumer group has the name of the stream. The output shows
         the two offsets: the stored offset is the offset of the consumer
         group, and the current offset is the offset of the last message of
-        partition 0. The **Iggy topics** card on the admin overview and
-        the `imbi_iggy_topic_current_offset` metric also show the current
-        offset.
+        partition 0. Use these CLI offsets for the comparison. Do not use
+        the **Iggy topics** card or the `imbi_iggy_topic_current_offset`
+        metric: imbi-api samples them every 30 seconds and is stopped, so
+        they can show an old current offset.
 
         The same offsets do not prove that the rows are in ClickHouse.
         When an insert fails, the sink can store the new offset without
         the rows (see the warning in
         [Read a stream again](operations.md#read-a-stream-again-replay)).
         Before you continue, examine the iggy-connect log for failed
-        inserts, and replay a stream that has one. A replay reads the
-        stream again from the start, so after a replay, do the offset
+        inserts. If a stream has one, replay it. A replay restarts
+        iggy-connect, and iggy-connect gets its sink configuration from
+        imbi-api when it starts. Thus start the publishers again, do the
+        replay, and then go back to step 1. A
+        replay reads the stream again from the start, so do the offset
         check and the log check again. Continue only when the offsets are
         the same and the log shows no new failed inserts.
     3. Back up the Iggy data directory. Keep the backup until you have
