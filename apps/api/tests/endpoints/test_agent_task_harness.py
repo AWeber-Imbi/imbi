@@ -1497,6 +1497,47 @@ class UsageTests(HarnessTestCase):
         self.assertEqual(response.status_code, 201, response.text)
         self.assertIsNone(response.json()['cost'])
 
+    async def pin(self, ai_model_id: str, ai_provider_id: str) -> None:
+        async with self.store._pool.connection() as conn:
+            await conn.execute(
+                'UPDATE tickets.tickets SET ai_model_id = %s,'
+                ' ai_provider_id = %s WHERE id = %s',
+                (ai_model_id, ai_provider_id, uuid.UUID(self.task['id'])),
+            )
+
+    async def test_a_pinned_task_is_priced_from_its_provider(self) -> None:
+        # Two providers serve the same provider model id at other prices.
+        # Without the pin, the slug order would choose 'a-cheap'.
+        cheap = await self.make_provider('cheap')
+        pinned = await self.make_provider('pinned')
+        await self.make_model(
+            'a-cheap',
+            'claude-shared',
+            provider=cheap,
+            output_cost_per_million='1',
+        )
+        ai_model_id = await self.make_model(
+            'b-pinned', 'claude-shared', provider=pinned
+        )
+        await self.pin(ai_model_id, pinned)
+        response = await self.report('u-1', model_id='claude-shared')
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(
+            decimal.Decimal(response.json()['cost']), decimal.Decimal('0.021')
+        )
+        (row,) = await self.ledger()
+        self.assertEqual(row['ai_model_id'], ai_model_id)
+
+    async def test_a_pinned_task_does_not_price_other_providers(
+        self,
+    ) -> None:
+        other = await self.make_provider('other')
+        await self.pin('gone', await self.make_provider('pinned'))
+        await self.make_model('elsewhere', 'claude-elsewhere', provider=other)
+        response = await self.report('u-1', model_id='claude-elsewhere')
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertIsNone(response.json()['cost'])
+
     async def test_message_id_goes_on_the_event_only(self) -> None:
         response = await self.report('u-1', message_id='msg_01abc')
         self.assertEqual(response.status_code, 201, response.text)

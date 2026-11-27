@@ -399,6 +399,20 @@ RETURN m.id AS id, m.slug AS slug,
        m.cache_write_1h_cost_per_million AS cache_write_1h_cost_per_million
 """
 
+#: The models of the AI provider that the claim pinned on the task.
+_PROVIDER_PRICES_QUERY: typing.LiteralString = """
+MATCH (m:AIModel)-[:SERVED_BY]->(:AIProvider {{id: {provider_id}}})
+      -[:BELONGS_TO]->(:Organization {{id: {org_id}}})
+WHERE m.slug = {model} OR m.model_id = {model}
+RETURN m.id AS id, m.slug AS slug,
+       m.monthly_spend_cap AS monthly_spend_cap,
+       m.input_cost_per_million AS input_cost_per_million,
+       m.output_cost_per_million AS output_cost_per_million,
+       m.cache_read_cost_per_million AS cache_read_cost_per_million,
+       m.cache_write_cost_per_million AS cache_write_cost_per_million,
+       m.cache_write_1h_cost_per_million AS cache_write_1h_cost_per_million
+"""
+
 _PRICE_COLUMNS = (
     'input_cost_per_million',
     'output_cost_per_million',
@@ -501,21 +515,24 @@ def _decimal(value: typing.Any) -> decimal.Decimal | None:
 
 
 async def _model_prices(
-    db: graph.Graph, org_id: str, model: str
+    db: graph.Graph, org_id: str, model: str, task: dict[str, typing.Any]
 ) -> _Priced | None:
     """Return the AIModel id, the monthly spend cap, and the prices of a
-    model in the catalog of the organization; ``None`` when it is
-    unknown.
+    model; ``None`` when it is unknown.
 
-    A slug match wins. When only provider model ids match, the model
-    with the first slug gives the prices. When more than one model has
-    the provider model id, the report does not tell which model made the
-    call, so no AIModel id and no spend cap are returned: the spend is
-    not charged to a model that possibly did not make it.
+    A task that a claim pinned (ADR 0022 amendment) reads only the
+    models of its AI provider, and its pinned model wins. A task with no
+    pin reads the catalog of the organization. Then a slug match wins.
+    When only provider model ids match, the model with the first slug
+    gives the prices. When more than one model has the provider model
+    id, the report does not tell which model made the call, so no
+    AIModel id and no spend cap are returned: the spend is not charged
+    to a model that possibly did not make it.
     """
+    provider_id = task.get('ai_provider_id')
     records = await db.execute(
-        _MODEL_PRICES_QUERY,
-        {'model': model, 'org_id': org_id},
+        _MODEL_PRICES_QUERY if provider_id is None else _PROVIDER_PRICES_QUERY,
+        {'model': model, 'org_id': org_id, 'provider_id': provider_id},
         ['id', 'slug', 'monthly_spend_cap', *_PRICE_COLUMNS],
     )
     rows = [
@@ -524,9 +541,12 @@ async def _model_prices(
     ]
     if not rows:
         return None
-    slug_match = next((r for r in rows if r['slug'] == model), None)
-    row = slug_match or min(rows, key=lambda r: str(r['slug']))
-    if slug_match is None and len(rows) > 1:
+    match = next(
+        (r for r in rows if r['id'] == task.get('ai_model_id')),
+        next((r for r in rows if r['slug'] == model), None),
+    )
+    row = match or min(rows, key=lambda r: str(r['slug']))
+    if match is None and len(rows) > 1:
         LOGGER.warning(
             'Usage for %r matches %d AI models; not charged to a model',
             model,
@@ -946,7 +966,7 @@ async def report_agent_task_usage(
 
     """
     ai_model_id, spend_cap, prices = await _model_prices(
-        db, org_id, data.model_id
+        db, org_id, data.model_id, task
     ) or (None, None, None)
     try:
         row, ledger, created = await store.report_usage(
