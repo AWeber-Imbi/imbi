@@ -114,6 +114,21 @@ describe('MergedNotDeployedReport', () => {
     expect(toggle).toHaveAttribute('aria-pressed', 'true')
   })
 
+  it('names the hidden stale projects in the empty state', async () => {
+    spy.mockResolvedValue({
+      data: [],
+      environments: ['production'],
+      since: '2026-06-18T00:00:00Z',
+    })
+    renderAt('/reports/merged-not-deployed')
+
+    await screen.findByText(/Stale projects are hidden/)
+    fireEvent.click(screen.getByRole('button', { name: 'Show stale projects' }))
+    await screen.findByText(
+      'Every merged pull request has reached a terminal environment.',
+    )
+  })
+
   it('keeps stale=show when switching to mine', async () => {
     renderAt('/reports/merged-not-deployed?stale=show')
 

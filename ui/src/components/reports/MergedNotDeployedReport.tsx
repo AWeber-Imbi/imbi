@@ -116,7 +116,9 @@ export function MergedNotDeployedReport() {
           emptyMessage={
             first?.github_identity_missing
               ? 'No GitHub identity connected.'
-              : 'Every merged pull request has reached a terminal environment.'
+              : showStale
+                ? 'Every merged pull request has reached a terminal environment.'
+                : 'No recent pull requests are waiting. Stale projects are hidden; select Show stale projects to include them.'
           }
           isError={initialError}
           isLoading={isLoading}
