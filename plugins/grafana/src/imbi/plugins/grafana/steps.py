@@ -293,13 +293,11 @@ async def request(
     path: str,
     body: dict[str, typing.Any] | None = None,
 ) -> object:
-    base_url = str(ctx.integration_options.get('service_url') or '').rstrip(
-        '/'
-    )
-    if not base_url:
-        raise errors.PluginCredentialsMissing(
-            'The Grafana service_url is not set'
-        )
+    try:
+        base_url = links.base_url(ctx)
+        org = links.org_id(ctx)
+    except links.GrafanaConfigError as exc:
+        raise errors.PluginCredentialsMissing(str(exc)) from exc
     token = credentials.get('api_token', '').strip()
     if not token:
         raise errors.PluginCredentialsMissing('api_token is required')
@@ -309,7 +307,12 @@ async def request(
                 method,
                 f'{base_url}{path}',
                 json=body,
-                headers={'Authorization': f'Bearer {token}'},
+                # Grafana rejects the token when it belongs to another
+                # organization, so a wrong org_id fails here.
+                headers={
+                    'Authorization': f'Bearer {token}',
+                    'X-Grafana-Org-Id': str(org),
+                },
             )
     except httpx.TimeoutException as exc:
         raise errors.PluginTimeoutError('Grafana request timed out') from exc

@@ -35,6 +35,17 @@ def base_url(ctx: PluginContext) -> str:
     return value.rstrip('/')
 
 
+def org_id(ctx: PluginContext) -> int:
+    """The Grafana organization ID from the ``org_id`` option, or raise."""
+    value = str(ctx.integration_options.get('org_id') or '').strip()
+    if not value.isdigit() or int(value) == 0:
+        raise GrafanaConfigError(
+            'The integration option `org_id` must be the Grafana '
+            'organization ID.'
+        )
+    return int(value)
+
+
 def label(ctx: PluginContext) -> str:
     """The alert rule label that holds the project identifier."""
     return str(ctx.integration_options.get('label') or DEFAULT_LABEL)
@@ -84,16 +95,18 @@ def canonical_url(base: str, name: str, value: str) -> str:
     return base + rules_path(name, value)
 
 
-def dashboard_url(base: str, name: str, value: str) -> str:
-    """The alert rules list, searched by the label.
+def dashboard_url(base: str, org: int, name: str, value: str) -> str:
+    """The alert rules list in the organization, searched by the label.
 
     A filter with whitespace is quoted, as the Grafana search does.
+    ``orgId`` opens the list in the correct organization for a user who
+    is a member of more than one.
     """
     term = f'{name}={value}'
     if any(c.isspace() for c in term):
         term = f'"{term}"'
     return f'{base}/alerting/list?' + urllib.parse.urlencode(
-        {'search': f'label:{term}'}
+        {'orgId': org, 'search': f'label:{term}'}
     )
 
 
@@ -110,7 +123,9 @@ def writeback(ctx: PluginContext, value: str) -> ServiceWriteback:
     return ServiceWriteback(
         identifier=value,
         canonical_url=canonical_url(base, name, value),
-        dashboard_links={link_key(ctx): dashboard_url(base, name, value)},
+        dashboard_links={
+            link_key(ctx): dashboard_url(base, org_id(ctx), name, value)
+        },
     )
 
 

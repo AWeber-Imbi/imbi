@@ -84,6 +84,17 @@ class GrafanaPlugin(plugins.Plugin):
                 required=True,
             ),
             plugins.PluginOption(
+                name='org_id',
+                label='Grafana organization ID',
+                description=(
+                    'The ID of the Grafana organization, for example 1. '
+                    'The service account token must belong to it. The '
+                    'project links open in it.'
+                ),
+                type='integer',
+                required=True,
+            ),
+            plugins.PluginOption(
                 name='label',
                 label='Project label',
                 description=(

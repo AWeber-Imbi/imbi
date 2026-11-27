@@ -26,6 +26,7 @@ other capabilities use no credential.
 | Option | Required | Default | What it is |
 |---|---|---|---|
 | Grafana URL (`service_url`) | Yes | | Base URL of Grafana, for example `https://grafana.example.com`. Used for the alert rules link of each project |
+| Grafana organization ID (`org_id`) | Yes | | The ID of the Grafana organization, for example `1`. The service account token must belong to it. The project links open in it, and each Grafana request sends it in `X-Grafana-Org-Id` |
 | Project label (`label`) | No | `service` | The alert rule label that names the project |
 
 | Credential | Required | What it is |
@@ -40,7 +41,7 @@ identifier, which is `{slug}-{id}` (for example `webform-V1StGXR8_Z5jdHi6B-myT`;
 slugs are not unique) unless an edge already exists
 with another value. The lifecycle capability writes that identifier to
 the project's `EXISTS_IN` edge and sets a project link to the alert
-rules list searched by `label:<label>=<identifier>`. The key of the
+rules list in the organization, searched by `label:<label>=<identifier>`. The key of the
 link is the integration slug, so a project with two Grafana
 integrations has one link for each. The
 gateway matches the identifier against the value that the webhook's

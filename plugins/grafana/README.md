@@ -25,8 +25,10 @@ exposing one Integration (`grafana`) with four capabilities:
   for example `sum(rate(http_requests_total{service="$project"}[5m]))`.
   The metric label name can differ from the alert rule label.
 
-Options: `service_url` (the Grafana URL, required) and `label` (the
-alert rule label that names the project, default `service`).
+Options: `service_url` (the Grafana URL, required), `org_id` (the
+Grafana organization ID, required; the token must belong to it), and
+`label` (the alert rule label that names the project, default
+`service`).
 
 The Imbi host discovers the package by scanning `imbi.plugins.*` and
 reads the module-level `PLUGIN` attribute; there are no entry points.
