@@ -386,6 +386,29 @@ class ShadowStateReadTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn('differs for 1 environments', logs.output[0])
         self.assertIn('p1/prod', logs.output[0])
 
+    async def test_logs_every_differing_environment(self) -> None:
+        states = [
+            _PROD._replace(
+                environment={'slug': f'env-{n:02d}', 'name': 'e'},
+            )
+            for n in range(11)
+        ]
+        with (
+            mock.patch(
+                'imbi.common.deployments.current_and_latest_from_state',
+                mock.AsyncMock(return_value=[]),
+            ),
+            mock.patch(
+                'imbi.common.deployments.current_and_latest_by_project',
+                mock.AsyncMock(return_value=states),
+            ),
+            self.assertLogs(projects.LOGGER, 'WARNING') as logs,
+        ):
+            projects._shadow_state_read(mock.AsyncMock(), ['p1'], states)
+            await asyncio.gather(*projects._SHADOW_TASKS)
+        for n in range(11):
+            self.assertIn(f'p1/env-{n:02d}', logs.output[0])
+
     async def test_a_difference_gone_on_reread_is_a_match(self) -> None:
         # A deployment written between the two reads.
         self.assertEqual(1, await self._run([], 'match', reread=[_PROD]))

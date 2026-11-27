@@ -860,7 +860,7 @@ def _shadow_state_read(
             LOGGER.warning(
                 'Deployment state shadow read differs for %d environments: %s',
                 len(found),
-                ', '.join(found[:10]),
+                ', '.join(found),
             )
 
     task = asyncio.create_task(run())
