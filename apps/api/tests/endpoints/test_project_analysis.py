@@ -331,6 +331,28 @@ class ProjectAnalysisTestCase(unittest.TestCase):
         # Sort puts fail first, then warn, then pass.
         self.assertEqual(['fail', 'warn', 'pass'], statuses)
 
+    def test_run_returns_503_when_exists_in_lookup_fails(self) -> None:
+        # A failed lookup is not a plugin failure: no report is stored,
+        # so the previous report stays, and the caller can retry.
+        self.mocks['lookup_project_exists_in'].side_effect = RuntimeError
+        with (
+            mock.patch(
+                f'{_MODULE}.resolve_all_capabilities',
+                return_value=[_resolved('p1', _PassPlugin)],
+            ),
+            mock.patch(f'{_MODULE}._persist_report') as persist,
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                resp = client.post(
+                    '/organizations/acme/projects/proj-1/analysis/run'
+                )
+        self.assertEqual(503, resp.status_code, resp.text)
+        self.assertEqual(
+            {'error': 'project_lookup_failed', 'retry': True},
+            resp.json()['detail'],
+        )
+        persist.assert_not_called()
+
     def test_run_captures_plugin_exception_as_fail_result(self) -> None:
         with mock.patch(
             f'{_MODULE}.resolve_all_capabilities',
@@ -509,6 +531,27 @@ class ProjectAnalysisTestCase(unittest.TestCase):
         result = resp.json()['result']
         self.assertEqual('failed', result['status'])
         self.assertEqual('refused', result['message'])
+
+    def test_remediate_returns_503_when_exists_in_lookup_fails(self) -> None:
+        self.mocks['lookup_project_exists_in'].side_effect = RuntimeError
+        with mock.patch(
+            f'{_MODULE}.resolve_all_capabilities',
+            return_value=[_resolved('p1', _RemediablePlugin)],
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                resp = client.post(
+                    '/organizations/acme/projects/proj-1/analysis/remediate',
+                    json={
+                        'plugin_id': 'p1',
+                        'finding_slug': 'fix-plugin:drift',
+                        'remediation_id': 'fix-it',
+                    },
+                )
+        self.assertEqual(503, resp.status_code, resp.text)
+        self.assertEqual(
+            'project_lookup_failed', resp.json()['detail']['error']
+        )
+        self.mocks['persist_service_writeback'].assert_not_called()
 
     def test_remediate_unknown_plugin_returns_404(self) -> None:
         with mock.patch(

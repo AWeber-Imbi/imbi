@@ -101,6 +101,19 @@ class AnalysisReport(pydantic.BaseModel):
     results: list[AnalysisResult]
 
 
+class ProjectLookupFailed(fastapi.HTTPException):
+    """A project lookup that a plugin needs failed; try again later.
+
+    Not a plugin failure, so it is not stored in the report.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=503,
+            detail={'error': 'project_lookup_failed', 'retry': True},
+        )
+
+
 def _handler(resolved: ResolvedCapability) -> AnalysisCapability:
     """Instantiate and type-narrow an analysis plugin handler."""
     return typing.cast('AnalysisCapability', resolved.capability_cls())
@@ -115,7 +128,11 @@ async def _build_context(
     project_slug, team_slug = await lookup_project_slugs(db, project_id)
     project_links = await lookup_project_links(db, project_id)
     project_type_slugs = await lookup_project_type_slugs(db, project_id)
-    service_connections = await lookup_project_exists_in(db, project_id)
+    try:
+        service_connections = await lookup_project_exists_in(db, project_id)
+    except Exception as exc:
+        LOGGER.exception('EXISTS_IN lookup for project %s failed', project_id)
+        raise ProjectLookupFailed from exc
     dependencies = await lookup_project_dependencies(db, project_id)
     project_facts = await fetch_project_props(db, project_id)
     return PluginContext(
@@ -222,6 +239,8 @@ async def _run_one(
         items: list[AnalysisResultItem] = await call_with_timeout(
             handler.analyze(ctx, credentials)
         )
+    except ProjectLookupFailed:
+        raise
     except Exception:
         # The traceback (and any URLs / query fragments / credentials
         # the plugin might have embedded in the exception message) is
