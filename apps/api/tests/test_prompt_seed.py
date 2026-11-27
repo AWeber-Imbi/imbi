@@ -30,6 +30,7 @@ class SeedDefaultPromptsTestCase(unittest.IsolatedAsyncioTestCase):
                 seed.SeedResult(
                     'imbi-api/workflow-description', created=False
                 ),
+                seed.SeedResult('imbi-api/agent-description', created=False),
             ],
         )
         insert.assert_awaited_once()

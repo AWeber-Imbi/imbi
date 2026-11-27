@@ -19,7 +19,10 @@ from apps.api.tests.endpoints import test_prompts
 from imbi.api import harness, models, secret_broker, workflows
 from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import agents
+from imbi.api.llm import prompted
 from imbi.common import graph
+from imbi.common import models as common_models
+from imbi.common.llm import AnthropicClient, CompletionResult
 
 BASE = '/organizations/engineering/agents'
 
@@ -2443,3 +2446,159 @@ class EnsureServiceAccountTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(fastapi.HTTPException) as ctx:
             await agents.ensure_service_account(db, 'agent-1', 'Triage')
         self.assertEqual(ctx.exception.status_code, 409)
+
+
+class DescribeTests(unittest.IsolatedAsyncioTestCase):
+    """Tests for :func:`agents._describe`."""
+
+    def setUp(self) -> None:
+        self.db = mock.AsyncMock()
+        self.anthropic = mock.MagicMock(spec=AnthropicClient)
+        self.anthropic.available = True
+        self.auth = mock.MagicMock()
+        self.current = agents.AgentSnapshot(
+            name='Triage',
+            slug='triage',
+            description='Sorts new tickets.',
+            team='ops',
+            prompt_ref='agents/engineering.triage@stable',
+            prompt_version=2,
+        )
+        prompt = mock.MagicMock()
+        patchers = [
+            mock.patch.object(
+                agents.prompt_resolve,
+                'fetch_prompt',
+                mock.AsyncMock(return_value=(prompt, 2)),
+            ),
+            mock.patch.object(
+                agents.prompt_resolve,
+                'fetch_version',
+                mock.AsyncMock(
+                    return_value=mock.MagicMock(system='Sort tickets.')
+                ),
+            ),
+            mock.patch.object(
+                agents,
+                '_find_subagents',
+                mock.AsyncMock(return_value={'a-2': {'name': 'Fixer'}}),
+            ),
+        ]
+        for patcher in patchers:
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        patcher = mock.patch.object(agents.prompted, 'complete')
+        self.complete = patcher.start()
+        self.addCleanup(patcher.stop)
+        self.answer('Sorts tickets with Fixer.')
+
+    def answer(self, text: str, degraded: bool = False) -> None:
+        self.complete.return_value = CompletionResult(
+            data=prompted.Description(description=text), degraded=degraded
+        )
+
+    async def describe(
+        self, target: agents.AgentSnapshot, current: typing.Any = None
+    ) -> str | None:
+        return await agents._describe(
+            self.db, self.anthropic, 'engineering', target, current, self.auth
+        )
+
+    async def test_unchanged_keeps_description(self) -> None:
+        # A change to a field that the description does not read.
+        target = self.current.model_copy(update={'icon': 'bot'})
+        self.assertEqual(
+            await self.describe(target, self.current), 'Sorts new tickets.'
+        )
+        self.complete.assert_not_awaited()
+
+    async def test_change_writes_description(self) -> None:
+        target = self.current.model_copy(
+            update={
+                'description': 'Sent by the client.',
+                'prompt_version': 3,
+                'tools': {
+                    'imbi.list_projects': common_models.AgentToolConfig()
+                },
+                'subagents': [
+                    common_models.AgentSubagent(
+                        agent_id='a-2', instructions='Fix.'
+                    ),
+                    common_models.AgentSubagent(agent_id='gone'),
+                ],
+            }
+        )
+        self.assertEqual(
+            await self.describe(target, self.current),
+            'Sorts tickets with Fixer.',
+        )
+        sent = json.loads(self.complete.call_args.args[3])
+        self.assertEqual(
+            sent,
+            {
+                'name': 'Triage',
+                'system_prompt': 'Sort tickets.',
+                'tools': ['imbi.list_projects'],
+                'subagents': [{'name': 'Fixer', 'instructions': 'Fix.'}],
+            },
+        )
+
+    async def test_empty_description_is_filled(self) -> None:
+        current = self.current.model_copy(update={'description': None})
+        self.assertEqual(
+            await self.describe(current, current), 'Sorts tickets with Fixer.'
+        )
+
+    async def test_no_answer_keeps_description(self) -> None:
+        self.answer('', degraded=True)
+        target = self.current.model_copy(update={'name': 'Sorter'})
+        self.assertEqual(
+            await self.describe(target, self.current), 'Sorts new tickets.'
+        )
+        self.anthropic.available = False
+        self.assertEqual(
+            await self.describe(target, self.current), 'Sorts new tickets.'
+        )
+
+    async def test_create_ignores_sent_description(self) -> None:
+        self.anthropic.available = False
+        target = self.current.model_copy(update={'description': 'Sent.'})
+        self.assertIsNone(await self.describe(target))
+
+    async def test_nothing_to_describe(self) -> None:
+        target = agents.AgentSnapshot(name='Empty', slug='empty', team='ops')
+        self.assertIsNone(await self.describe(target))
+        self.complete.assert_not_awaited()
+
+    async def test_apply_fills_empty_description(self) -> None:
+        existing = {
+            'id': 'agent-1',
+            'name': 'Triage',
+            'slug': 'triage',
+            'team': {'slug': 'ops'},
+            'prompt_ref': 'agents/engineering.triage@stable',
+            'prompt_version': 2,
+            'enabled': True,
+            '_latest': 2,
+        }
+        with (
+            mock.patch.object(agents, '_execute') as execute,
+            mock.patch.object(agents, '_fetch_agent') as fetch,
+        ):
+            await agents._apply(
+                self.db,
+                'org-1',
+                'engineering',
+                existing,
+                agents._snapshot_of(existing),
+                True,
+                None,
+                self.auth,
+                anthropic=self.anthropic,
+            )
+        fetch.assert_awaited_once()
+        _db, _org, _slug, _statements, n, target, _current = (
+            execute.await_args.args
+        )
+        self.assertEqual(n, 3)
+        self.assertEqual(target.description, 'Sorts tickets with Fixer.')

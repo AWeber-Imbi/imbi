@@ -141,6 +141,24 @@ export function PlatformPage() {
           slug="workflow-description"
         />
       </Card>
+      <Card className="flex flex-col gap-4 p-5">
+        <div className="text-[15px] font-medium">Agent descriptions</div>
+        <ServicePromptTab
+          label="Agent description"
+          note={
+            <>
+              When a save changes the name, system prompt, tools, or subagents
+              of an agent, imbi-api writes its description with the version that
+              imbi-api/agent-description@stable points at and the model of that
+              version. Without the prompt, it uses its built-in prompt and its
+              default Anthropic model. Every organization uses this prompt. Run
+              imbi-api setup-prompts to create a missing prompt.
+            </>
+          }
+          service="imbi-api"
+          slug="agent-description"
+        />
+      </Card>
     </div>
   )
 }

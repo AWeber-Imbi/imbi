@@ -111,7 +111,6 @@ export async function saveAgent({
   }
 
   const document = {
-    description: draft.description.trim() || null,
     icon: draft.icon || null,
     name: draft.name.trim(),
     prompt_ref: promptRef,

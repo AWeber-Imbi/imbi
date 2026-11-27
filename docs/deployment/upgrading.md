@@ -98,6 +98,16 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    (`opslog-agent-task-purge`), run it on 2.65.0. The operations log no
    longer accepts the `Agent Task` entry type. A retained `Agent Task`
    entry makes the operations log fail to load.
+3. Run `imbi-api setup-prompts`. It adds the `imbi-api/agent-description`
+   prompt to the prompt CMS. A model now writes the description of an
+   agent when a save changes its name, system prompt, tools, or
+   subagents, or when the description is empty; edit the prompt and
+   choose its model on **Agents > Platform**. Without the prompt,
+   imbi-api uses the packaged prompt and its default Anthropic model. A
+   save keeps the description that the agent had when no model answers
+   (no Anthropic key, an error, or an empty reply). The agent create,
+   update, and patch API no longer take `description`; a sent value is
+   ignored.
 
 ## 2.65.0
 
