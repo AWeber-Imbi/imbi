@@ -180,3 +180,4 @@ class IdentityTestCase(helpers.TestCase):
         self.assertEqual('a@example.com', claims['sub'])
         self.assertEqual('access', claims['type'])
         self.assertEqual('slack', claims['channel'])
+        self.assertEqual('acme', claims['org_slug'])
