@@ -4,11 +4,17 @@ The **AI Models** section holds the catalog of AI models Imbi may call. The cata
 configured endpoint, with its own credential. A **model** is one model that
 provider serves.
 
-The catalog is global. Every organization in the deployment shares the same
-providers, credentials, and models. Use [Team access](#team-access) to limit a
-model to some teams.
+Each organization has its own catalog. A provider, its credential, and its
+models belong to one organization, and only that organization can see or use
+them. A slug is unique in the organization, so two organizations can each have
+a model `default-chat`. Use [Team access](#team-access) to limit a model to
+some teams of the organization.
 
-Open the section at **Agents > Settings > AI Models**.
+Open the section at **Admin > &lt;Org&gt; Admin > AI Models**. The API routes
+are under `/organizations/{org_slug}/ai-providers` and
+`/organizations/{org_slug}/ai-models`. You must be a member of the
+organization, and the `ai_model:*` permissions of your role in that
+organization apply. A provider or model of another organization gives `404`.
 
 !!! note
     The assistant and the Slack bot use a catalog model when their prompt
@@ -133,7 +139,8 @@ You need `ai_model:credentials`, membership of the organization, and
 
 imbi-api, the assistant, and the Slack bot can use an Anthropic provider
 with workload identity instead of `ANTHROPIC_API_KEY`. Set these
-variables on imbi-api to the id of the provider:
+variables on imbi-api to the provider, as `<org-slug>/<provider-slug>`
+(for example `acme/anthropic`):
 
 | Variable | Service |
 |---|---|
@@ -297,21 +304,23 @@ Imbi finds a model in the file by its model identifier. For the Anthropic and
 OpenAI drivers, Imbi also tries `<driver>/<model identifier>`. The dialog
 lists the models that have no match. Set their prices by hand.
 
-The sync needs `ai_model:update`. The API routes are
-`POST /ai-models/price-sync/preview` and `POST /ai-models/price-sync/apply`.
+The sync needs `ai_model:update`. It changes only the models of the
+organization. The API routes are
+`POST /organizations/{org_slug}/ai-models/price-sync/preview` and
+`POST /organizations/{org_slug}/ai-models/price-sync/apply`.
 
 ## Team access
 
 A model is available either to every team or to named teams.
 
-- **All teams** makes the model available to every team in every
+- **All teams** makes the model available to every team of the
   organization. This is the default.
 - **Selecting one or more teams** restricts the model to those teams.
 
 Select the **All teams** chip to return to access for every team. The team
-picker lists the teams of the organization you have selected. A
-restricted model must name at least one team. Imbi rejects an empty team list
-with `422`.
+picker lists the teams of the organization. A team of another organization
+gives `422`. A restricted model must name at least one team. Imbi rejects an
+empty team list with `422`.
 
 A prompt run (generative or decision) checks the teams of a restricted
 model. A user must be a member of an allowed team. An LLM Call step of a workflow runs for the
@@ -343,7 +352,14 @@ team of the agent:
 
 A model id is allowed for a user or a team when one enabled catalog model with
 that model id is not restricted, or a restricted one includes the user or the
-team.
+team. Prompt runs, workflows, agents, and agent tasks read only the catalog of
+their organization.
+
+Global prompts (such as the prompts of the assistant and the Slack bot) name a
+model by slug. When you save a version of a global prompt, the slug must be a
+model of some organization. A prompt run uses the model with that slug in the
+organization of the run. The assistant and the Slack bot have no organization,
+so they read the catalogs of the organizations of the user.
 
 The assistant and the Slack bot use the model of their system prompt only when
 the user may use its model id. Other users get the configured model
@@ -373,7 +389,7 @@ then click **Delete model**.
 
 To delete a provider, click the edit icon on the provider row, then click
 **Delete provider**. The button is disabled while the provider still serves
-models. The API (`DELETE /ai-providers/{id}`) returns `409` for the same
+models. The API (`DELETE /organizations/{org_slug}/ai-providers/{id}`) returns `409` for the same
 condition. Delete the models first, or move them to another provider. There
 is no cascade, so a provider cannot take its models with it.
 

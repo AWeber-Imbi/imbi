@@ -408,12 +408,13 @@ DESCRIPTIONS: dict[str, str] = {
     'runtime',
     'IMBI_PLUGINS_INSTALL_TIMEOUT': 'Timeout of one plugin install in seconds',
     'IMBI_PLUGINS_INDEX_URL': 'Package index for plugin installs',
-    'IMBI_AI_PROVIDER_API': 'Id of the Anthropic AI provider (workload '
-    'identity) of the imbi-api client. Empty: `ANTHROPIC_API_KEY`.',
-    'IMBI_AI_PROVIDER_ASSISTANT': 'Id of the AI provider whose token '
-    'imbi-assistant gets',
-    'IMBI_AI_PROVIDER_SLACKBOT': 'Id of the AI provider whose token '
-    'imbi-slackbot gets',
+    'IMBI_AI_PROVIDER_API': 'The Anthropic AI provider (workload '
+    'identity) of the imbi-api client, as `<org-slug>/<provider-slug>`. '
+    'Empty: `ANTHROPIC_API_KEY`.',
+    'IMBI_AI_PROVIDER_ASSISTANT': 'The AI provider whose token '
+    'imbi-assistant gets, as `<org-slug>/<provider-slug>`',
+    'IMBI_AI_PROVIDER_SLACKBOT': 'The AI provider whose token '
+    'imbi-slackbot gets, as `<org-slug>/<provider-slug>`',
     'IMBI_HARNESS_EGRESS_PROXY_SECRET': 'HS256 key that signs the proxy '
     'token of a runner claim. The egress proxy has the same key. Unset: no '
     'claim gets a proxy token, so host name egress destinations do not '

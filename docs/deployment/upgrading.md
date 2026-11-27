@@ -108,6 +108,19 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    (`opslog-agent-task-purge`), run it on 2.65.0. The operations log no
    longer accepts the `Agent Task` entry type. A retained `Agent Task`
    entry makes the operations log fail to load.
+4. **Before you deploy**, change `IMBI_AI_PROVIDER_API`,
+   `IMBI_AI_PROVIDER_ASSISTANT`, and `IMBI_AI_PROVIDER_SLACKBOT` (if you
+   set them) from a provider id to `<org-slug>/<provider-slug>`, for
+   example `acme/anthropic`. The AI model catalog is now per organization
+   (ADR 0018). When imbi-api starts, it copies each provider and model to
+   every organization, with new ids, and deletes the global ones. The old
+   ids then do not exist. The slugs do not change. A copy of a restricted
+   model keeps only the teams of its organization: in an organization
+   where no team was allowed, nobody can use the copy until you allow a
+   team or delete it. The AI Models page is now at
+   **Admin > &lt;Org&gt; Admin > AI Models**. If the startup log shows
+   `Failed to move the AI catalog into organizations`, start imbi-api
+   again: the copy is one transaction.
 4. Run `imbi-api setup-permissions`. It adds
    `admin:maintenance:deployment-sweep` and gives it to the
    `imbi-scheduler` role. imbi-scheduler now creates the

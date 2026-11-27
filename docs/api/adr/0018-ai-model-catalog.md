@@ -194,6 +194,38 @@ installed. Four characters of a key are not enough to use it.
 - Providers can be edited and deleted through the API only. The admin UI
   creates providers, manages their credentials, and manages their models.
 
+## Amendment: the catalog becomes per organization (2026-11-27)
+
+The first implementation did not follow this ADR. `AIProvider` and `AIModel`
+were global, with no `BELONGS_TO` edge, slugs unique across the installation,
+and routes at `/ai-providers` and `/ai-models`. The code now follows the
+decision above:
+
+- Each `AIProvider` and `AIModel` has a `BELONGS_TO` edge to one organization
+  and an `org_id` property. The `(org_id, slug)` unique index makes the slug
+  unique in the organization. The global slug indexes are dropped.
+- The routes are under `/organizations/{org_slug}/ai-providers` and
+  `/organizations/{org_slug}/ai-models`. The caller must be a member, and the
+  `ai_model:*` permissions of the caller's role in that organization apply.
+- Every consumer reads only the catalog of its organization: prompt runs,
+  workflow steps, agent saves, task claims, and usage prices. The assistant
+  and the Slack bot have no organization, so they read the catalogs of the
+  organizations of the user. A global prompt names a model by slug, and a run
+  uses the model with that slug in the organization of the run.
+- `IMBI_AI_PROVIDER_<SERVICE>` names a provider as
+  `<org-slug>/<provider-slug>`, not by id.
+
+Migration: at start, imbi-api copies each global provider (with its encrypted
+key, hint, workload identity, and timestamps) and each global model to every
+organization, as new nodes with new ids. A copy of a model keeps the
+`ALLOWED_FOR` edges only to the teams of its organization. Then imbi-api
+deletes the global nodes. Slugs do not change. The copy runs in one
+transaction under an advisory lock, and does nothing when no global node is
+left. With no organization, the global nodes stay.
+
+The spend cap is per organization per model, because each organization has
+its own copy of a model.
+
 ## Follow-ups
 
 - A resolver in `imbi.common.llm` that the harness, assistant, and Slack bot
