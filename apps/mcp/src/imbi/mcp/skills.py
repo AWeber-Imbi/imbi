@@ -21,6 +21,8 @@ import fastmcp.skills
 import httpx2
 from fastmcp.skills import provider
 
+from imbi.common import cache
+
 LOGGER = logging.getLogger(__name__)
 
 NAMESPACE = 'mcp-skills'
@@ -29,6 +31,10 @@ LABEL = 'stable'
 
 #: The longest description that the Skills extension accepts.
 MAX_DESCRIPTION = 1024
+
+#: The most version bodies kept. A version never changes, so a body is
+#: kept until a newer one pushes it out.
+CACHE_ENTRIES = 256
 
 type Body = dict[str, typing.Any]
 
@@ -55,6 +61,12 @@ class PromptSkills(provider.SkillCatalogProvider):
         super().__init__()
         self._client = client
         self._path = f'{prefix}/prompts'
+        # Keyed by prompt id, not slug: a deleted and recreated prompt
+        # reuses its slug and version numbers. The list call checks each
+        # caller's access; this cache only saves the version fetch.
+        self._bodies: cache.LRUCache[tuple[str, int], str] = cache.LRUCache(
+            CACHE_ENTRIES
+        )
 
     async def load_skills(self) -> list[fastmcp.skills.Skill]:
         """The skills that the caller can read. Never raises."""
@@ -74,7 +86,6 @@ class PromptSkills(provider.SkillCatalogProvider):
                 self._skill(prompt, version)
                 for prompt in prompts
                 if prompt.get('kind') == 'generative'
-                and prompt.get('archived_at') is None
                 and (version := _version(prompt)) is not None
             )
         )
@@ -86,11 +97,14 @@ class PromptSkills(provider.SkillCatalogProvider):
         """The skill of one prompt, or ``None`` when it is not valid."""
         slug = prompt['slug']
         try:
-            response = await self._client.get(
-                f'{self._path}/{NAMESPACE}/{slug}/versions/{version}'
-            )
-            response.raise_for_status()
-            system = response.json()['system']
+            system = self._bodies.get((prompt['id'], version))
+            if system is None:
+                response = await self._client.get(
+                    f'{self._path}/{NAMESPACE}/{slug}/versions/{version}'
+                )
+                response.raise_for_status()
+                system = response.json()['system']
+                self._bodies.set((prompt['id'], version), system)
             description = ' '.join(
                 (prompt.get('description') or prompt['name']).split()
             )

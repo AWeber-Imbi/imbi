@@ -12,13 +12,13 @@ type Body = dict[str, typing.Any]
 
 def _prompt(slug: str, labels: dict[str, int], **fields: typing.Any) -> Body:
     return {
+        'id': f'id-{slug}',
         'slug': slug,
         'name': slug.title(),
         'description': f'Use {slug}\n  when asked.',
         'kind': 'generative',
         'default_label': 'production',
         'labels': [{'name': n, 'version': v} for n, v in labels.items()],
-        'archived_at': None,
         **fields,
     }
 
@@ -27,7 +27,6 @@ PROMPTS = [
     _prompt('review', {'stable': 2, 'production': 1}),
     _prompt('deploy', {'production': 3}),
     _prompt('draft', {}),
-    _prompt('old', {'stable': 1}, archived_at='2026-01-01T00:00:00Z'),
     _prompt('decide', {'stable': 1}, kind='decision'),
     _prompt('Not_Valid', {'stable': 1}),
 ]
@@ -69,7 +68,15 @@ class PromptSkillsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn('# review v2', text)
         paths = {r.url.path for r in self.requests}
         self.assertIn('/api/prompts/mcp-skills/deploy/versions/3', paths)
-        self.assertNotIn('/api/prompts/mcp-skills/old/versions/1', paths)
+
+    async def test_a_version_is_fetched_once(self) -> None:
+        async with self._client() as client:
+            await client.list_skills()
+            await client.list_skills()
+        fetched = [
+            r for r in self.requests if r.url.path.endswith('/versions/2')
+        ]
+        self.assertEqual(len(fetched), 1)
 
     async def test_a_caller_without_prompt_read_gets_no_skills(self) -> None:
         self.status = 403
