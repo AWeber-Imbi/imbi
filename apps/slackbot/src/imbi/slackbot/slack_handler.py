@@ -249,8 +249,12 @@ async def _process(
         token = identity.mint_token(user)
         manager = mcp.get_manager()
         tools = manager.get_tools() or None
-        external = external_mcp.get_manager()
         db = identity.get_graph()
+        external = (
+            await external_mcp.get_manager(db, user.org_id)
+            if db is not None
+            else external_mcp.ExternalMCPManager(user.org_id)
+        )
         _, skill_list = await asyncio.gather(
             external.sync_enabled(db), skills.list_skills(db)
         )
@@ -285,6 +289,7 @@ async def _process(
             on_status=reporter.update,
             temperature=prompt.temperature,
             idempotency_prefix=f'slack:{channel}:{turn_id or ts}',
+            external=external,
             tracking=client.tracking(
                 user.email, f'slack:{channel}:{thread_ts}'
             ),

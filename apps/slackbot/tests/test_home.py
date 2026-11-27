@@ -21,7 +21,11 @@ from imbi.slackbot.home import prefs, render, sources
 NOW = datetime.datetime(2026, 11, 24, 19, 1, tzinfo=datetime.UTC)
 TZ = zoneinfo.ZoneInfo('America/New_York')
 USER = identity.ImbiUser(
-    'ada@example.com', 'Ada Lovelace', tz='UTC', org_slug='acme'
+    'ada@example.com',
+    'Ada Lovelace',
+    tz='UTC',
+    org_slug='acme',
+    org_id='org-1',
 )
 SNAPSHOTS = pathlib.Path(__file__).parent / 'snapshots'
 ORG = {'slug': 'acme', 'name': 'Acme'}

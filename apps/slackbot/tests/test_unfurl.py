@@ -8,7 +8,9 @@ from slack_sdk import errors
 from apps.slackbot.tests import helpers, test_create_ticket
 from imbi.slackbot import identity, links, settings, unfurl
 
-USER = identity.ImbiUser('ada@example.com', 'Ada', org_slug='acme')
+USER = identity.ImbiUser(
+    'ada@example.com', 'Ada', org_slug='acme', org_id='org-1'
+)
 UI = 'https://imbi.example.com'
 TICKET_URL = f'{UI}/tickets/acme/T-12/activity'
 PROJECT_URL = f'{UI}/projects/p1'

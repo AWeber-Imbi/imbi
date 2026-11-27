@@ -896,15 +896,14 @@ class SendMessageEndpointTestCase(
     def setUp(self) -> None:
         self._original_client = client._client
         self._original_manager = mcp._manager
-        self._original_ext = external_mcp._manager
         mcp._manager = _make_mock_mcp_manager()
-        external_mcp._manager = _make_mock_external_manager()
+        external_mcp._managers['org-1'] = _make_mock_external_manager()
         settings._assistant_settings = None
 
     def tearDown(self) -> None:
         client._client = self._original_client
         mcp._manager = self._original_manager
-        external_mcp._manager = self._original_ext
+        external_mcp._managers.clear()
         settings._assistant_settings = None
 
     async def test_send_message_assistant_unavailable(
@@ -1118,15 +1117,14 @@ class StreamResponseTestCase(
     def setUp(self) -> None:
         self._original_client = client._client
         self._original_manager = mcp._manager
-        self._original_ext = external_mcp._manager
         mcp._manager = _make_mock_mcp_manager()
-        external_mcp._manager = _make_mock_external_manager()
+        external_mcp._managers['org-1'] = _make_mock_external_manager()
         settings._assistant_settings = None
 
     def tearDown(self) -> None:
         client._client = self._original_client
         mcp._manager = self._original_manager
-        external_mcp._manager = self._original_ext
+        external_mcp._managers.clear()
         settings._assistant_settings = None
 
     @staticmethod
@@ -1414,12 +1412,11 @@ class BuildToolsAndSystemTestCase(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self) -> None:
         self._original_manager = mcp._manager
-        self._original_ext = external_mcp._manager
         settings._assistant_settings = None
 
     def tearDown(self) -> None:
         mcp._manager = self._original_manager
-        external_mcp._manager = self._original_ext
+        external_mcp._managers.clear()
         settings._assistant_settings = None
 
     async def test_external_tools_included(self) -> None:
@@ -1434,31 +1431,50 @@ class BuildToolsAndSystemTestCase(unittest.IsolatedAsyncioTestCase):
         ]
         ext_manager.get_tool_names.return_value = ['mcp_svc_thing']
         mcp._manager = mcp_manager
-        external_mcp._manager = ext_manager
+        external_mcp._managers['org-1'] = ext_manager
         missing = mock.AsyncMock(side_effect=resolve.PromptNotFound('x'))
         with (
             mock.patch.dict('os.environ', {}, clear=True),
             mock.patch.object(resolve, 'resolve', missing),
         ):
             tools, system = await endpoints._build_tools_and_system(
-                mock.AsyncMock(), mcp_manager, _make_auth_context()
+                mock.AsyncMock(), mcp_manager, _make_auth_context(), 'org-1'
             )
         assert tools is not None
         names = [t['name'] for t in tools]
         self.assertIn('mcp_svc_thing', names)
         self.assertIn('mcp_svc_thing', system.text)
 
+    async def test_uses_the_manager_of_the_conversations_org(self) -> None:
+        mcp_manager = _make_mock_mcp_manager()
+        mcp._manager = mcp_manager
+        get_manager = mock.AsyncMock(
+            return_value=_make_mock_external_manager()
+        )
+        db = mock.AsyncMock()
+        missing = mock.AsyncMock(side_effect=resolve.PromptNotFound('x'))
+        with (
+            mock.patch.dict('os.environ', {}, clear=True),
+            mock.patch.object(resolve, 'resolve', missing),
+            mock.patch.object(
+                endpoints.external_mcp, 'get_manager', get_manager
+            ),
+        ):
+            await endpoints._build_tools_and_system(
+                db, mcp_manager, _make_auth_context(), 'org-2'
+            )
+        get_manager.assert_awaited_once_with(db, 'org-2')
+
 
 class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):
     """_dispatch_tool_uses routes to the external manager."""
 
     def setUp(self) -> None:
-        self._original_ext = external_mcp._manager
-        external_mcp._manager = _make_mock_external_manager()
+        external_mcp._managers['org-1'] = _make_mock_external_manager()
         settings._assistant_settings = None
 
     def tearDown(self) -> None:
-        external_mcp._manager = self._original_ext
+        external_mcp._managers.clear()
         settings._assistant_settings = None
 
     async def test_external_tool_routed(self) -> None:
@@ -1480,6 +1496,7 @@ class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):
             auth_token=None,
             rebuild={},
             db=mock.MagicMock(),
+            org_id='org-1',
         ):
             chunks.append(chunk)
         ext_manager.execute_tool.assert_awaited_once_with(
@@ -1507,6 +1524,7 @@ class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):
             auth_token='tok',
             rebuild={},
             db=mock.MagicMock(),
+            org_id='org-1',
         ):
             pass
         mcp_manager.execute_tool.assert_awaited_once_with(
@@ -1537,6 +1555,7 @@ class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):
                 auth_token=None,
                 rebuild=rebuild,
                 db=mock.MagicMock(),
+                org_id='org-1',
             ):
                 pass
         mcp_manager.reinitialize.assert_awaited_once()
@@ -1577,6 +1596,7 @@ class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):
             auth_token=None,
             rebuild=rebuild,
             db=mock.MagicMock(),
+            org_id='org-1',
         ):
             pass
         self.assertNotIn('tools', rebuild)
@@ -1611,6 +1631,7 @@ class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):
             auth_token=None,
             rebuild=rebuild,
             db=mock.MagicMock(),
+            org_id='org-1',
         ):
             chunks.append(chunk)
         # The stream continues with a tool_result rather than aborting.
@@ -1653,6 +1674,7 @@ class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):
             auth_token=None,
             rebuild=rebuild,
             db=mock.MagicMock(),
+            org_id='org-1',
         ):
             pass
         self.assertIn('tools', rebuild)
@@ -1689,6 +1711,7 @@ class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):
             auth_token=None,
             rebuild={},
             db=mock.MagicMock(),
+            org_id='org-1',
         ):
             pass
         self.assertEqual(len(tool_results), 1)
@@ -1714,6 +1737,7 @@ class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):
             auth_token=None,
             rebuild={},
             db=mock.MagicMock(),
+            org_id='org-1',
         ):
             pass
         self.assertEqual(len(tool_results), 1)
@@ -1736,6 +1760,7 @@ class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):
             auth_token=None,
             rebuild={},
             db=mock.MagicMock(),
+            org_id='org-1',
         ):
             pass
         self.assertEqual(len(tool_results), 1)
@@ -1760,6 +1785,7 @@ class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):
             auth_token=None,
             rebuild={},
             db=mock.MagicMock(),
+            org_id='org-1',
         ):
             chunks.append(chunk)
         self.assertTrue(any('event: client_action' in c for c in chunks))

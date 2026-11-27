@@ -194,8 +194,9 @@ The bot also has the tools of each enabled MCP server at
 **Admin > &lt;Org&gt; Admin > MCP Servers**, the same as the
 assistant. See
 [Assistant and MCP Servers](../admin/assistant-and-mcp-servers.md). These
-calls use the credentials of the server, not your token. The bot reads the
-servers at startup. A server that you disable stops at the next message.
+calls use the credentials of the server, not your token. The bot uses only
+the servers of the workspace's organization, and connects to them at the
+first message. A server that you disable stops at the next message.
 After you add a server or change its settings, restart imbi-slackbot.
 
 The bot also has Slack tools from

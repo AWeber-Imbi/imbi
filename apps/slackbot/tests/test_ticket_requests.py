@@ -623,7 +623,7 @@ class AnswerTests(helpers.TestCase):
                 super().__init__(**kw)
                 self._transport = transport
 
-        user = identity.ImbiUser('ada@example.com', 'Ada', 'acme')
+        user = identity.ImbiUser('ada@example.com', 'Ada', 'acme', 'org-1')
         with (
             mock.patch.object(ticket_requests.identity.api, 'Imbi', Client),
             mock.patch.object(

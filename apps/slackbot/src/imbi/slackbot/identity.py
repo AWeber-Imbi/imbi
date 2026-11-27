@@ -42,7 +42,7 @@ LOGGER = logging.getLogger(__name__)
 _USER_QUERY = """
 MATCH (u:User {{email: {email}}})
 OPTIONAL MATCH (u)-[:MEMBER_OF]->(o:Organization {{slack_team_id: {team_id}}})
-RETURN u, o.slug AS slug
+RETURN u, o.slug AS slug, o.id AS org_id
 """
 _WORKSPACE_ORG_QUERY = """
 MATCH (o:Organization {{slack_team_id: {team_id}}})
@@ -58,6 +58,8 @@ class ImbiUser:
     display_name: str
     #: The slug of the organization of the Slack workspace.
     org_slug: str
+    #: The id of that organization.
+    org_id: str
     is_admin: bool = False
     #: The IANA time zone of the Slack user (``users.info`` ``tz``).
     tz: str | None = None
@@ -128,7 +130,9 @@ async def _load_imbi_user(email: str) -> ImbiUser | None:
     if _graph is None:
         raise RuntimeError('Graph connection not initialized')
     records = await _graph.execute(
-        _USER_QUERY, {'email': email, 'team_id': _team_id or ''}, ['u', 'slug']
+        _USER_QUERY,
+        {'email': email, 'team_id': _team_id or ''},
+        ['u', 'slug', 'org_id'],
     )
     if not records:
         return None
@@ -139,7 +143,8 @@ async def _load_imbi_user(email: str) -> ImbiUser | None:
     if not data.get('is_active', True):
         return None
     org_slug = graph.parse_agtype(records[0]['slug'])
-    if not org_slug:
+    org_id = graph.parse_agtype(records[0]['org_id'])
+    if not org_slug or not org_id:
         LOGGER.info(
             '%s is not a member of the organization of Slack workspace %s',
             email,
@@ -151,6 +156,7 @@ async def _load_imbi_user(email: str) -> ImbiUser | None:
         display_name=str(data.get('display_name') or email),
         is_admin=bool(data.get('is_admin', False)),
         org_slug=str(org_slug),
+        org_id=str(org_id),
     )
 
 

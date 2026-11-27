@@ -10,7 +10,9 @@ from apps.slackbot.tests import helpers
 from imbi.slackbot import create_ticket as ct
 from imbi.slackbot import identity
 
-USER = identity.ImbiUser('ada@example.com', 'Ada', org_slug='acme')
+USER = identity.ImbiUser(
+    'ada@example.com', 'Ada', org_slug='acme', org_id='org-1'
+)
 
 SECTIONS = [
     {

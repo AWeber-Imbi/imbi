@@ -160,6 +160,7 @@ async def run_turn(
     idempotency_prefix: str | None = None,
     tracking: dict[str, typing.Any] | None = None,
     toolkit: slackwright.Toolkit | None = None,
+    external: external_mcp.ExternalMCPManager,
 ) -> str:
     """Run one user turn through Claude and the tool loop.
 
@@ -184,6 +185,7 @@ async def run_turn(
             replaced, so a redelivered event makes no second task.
         tracking: PostHog AI observability keyword arguments from
             :func:`client.tracking`, added to every model call.
+        external: The external MCP manager of the user's organization.
         toolkit: Optional slackwright toolkit for the current thread. Its
             tools are added to ``tools``, and calls to them run in the
             toolkit instead of the MCP manager.
@@ -194,7 +196,6 @@ async def run_turn(
     """
     api_client = client.get_client()
     manager = mcp.get_manager()
-    external = external_mcp.get_manager()
     accumulated: list[str] = []
     # Work on a copy so appending assistant/tool-result turns does not
     # mutate the caller-supplied list.

@@ -5,6 +5,11 @@ opens a streamable-HTTP MCP session per enabled server, discovers
 their tools, and exposes them in Anthropic tool format for the
 Claude integrations of the assistant and the Slack bot.
 
+An MCP server belongs to one organization. Each organization has its
+own :class:`ExternalMCPManager`, made on the first turn in that
+organization (:func:`get_manager`), so a turn sees only the servers of
+its own organization.
+
 This is additive to each service's ``mcp`` module (which builds tools
 from the Imbi OpenAPI spec); the two managers run side by side.
 
@@ -52,13 +57,14 @@ _RECONNECT_DELAY = 60.0
 
 async def get_enabled_mcp_servers(
     db: graph.Graph,
+    org_id: str,
 ) -> list[common_models.MCPServer]:
-    """Return all enabled external MCP server nodes."""
+    """Return the enabled external MCP server nodes of an organization."""
     query = """
-    MATCH (s:MCPServer {{enabled: true}})
+    MATCH (s:MCPServer {{enabled: true, org_id: {org_id}}})
     RETURN s
     """
-    records = await db.execute(query, {}, ['s'])
+    records = await db.execute(query, {'org_id': org_id}, ['s'])
     servers: list[common_models.MCPServer] = []
     for record in records:
         data = graph.parse_agtype(record['s'])
@@ -191,12 +197,13 @@ def _mcp_tool_to_anthropic(
 
 
 class ExternalMCPManager:
-    """Manages streamable-HTTP connections to external MCP servers
-    and exposes their tools to a Claude integration.
+    """Manages streamable-HTTP connections to the external MCP servers
+    of one organization and exposes their tools to a Claude integration.
 
     """
 
-    def __init__(self) -> None:
+    def __init__(self, org_id: str) -> None:
+        self._org_id = org_id
         self._tasks: list[asyncio.Task[None]] = []
         self._sessions: dict[str, mcp.ClientSession] = {}
         # server slug -> task that holds the latest session open
@@ -210,7 +217,7 @@ class ExternalMCPManager:
         self._reconnect_after: dict[str, float] = {}
         # server slug -> lock that serializes reconnects to that server
         self._reconnect_locks: dict[str, asyncio.Lock] = {}
-        # slugs of connected servers that an admin disabled since startup
+        # slugs of connected servers that an admin disabled since connecting
         self._disabled: set[str] = set()
         # number of the newest sync_enabled read, so a slow, older read
         # cannot replace the result of a newer one
@@ -225,22 +232,25 @@ class ExternalMCPManager:
         self._initialized = False
 
     async def initialize(self, db: graph.Graph) -> None:
-        """Connect to every enabled MCP server and discover tools.
+        """Connect to every enabled MCP server of the organization and
+        discover tools.
 
         Per-server connect failures are logged and skipped so a single
-        bad server cannot prevent startup.
+        bad server cannot stop the others.
 
         Args:
             db: Open graph connection used to read MCPServer nodes.
 
         """
-        servers = await get_enabled_mcp_servers(db)
-        # Connect in parallel, so startup waits for the slowest server,
+        servers = await get_enabled_mcp_servers(db, self._org_id)
+        # Connect in parallel, so the first turn waits for the slowest server,
         # not for the sum of all the timeouts.
         await asyncio.gather(*(self._connect_server(s) for s in servers))
         self._initialized = True
         LOGGER.info(
-            'External MCP initialization complete: %d servers, %d tools',
+            'External MCP initialization complete for organization %s: '
+            '%d servers, %d tools',
+            self._org_id,
             len(self._sessions),
             len(self._tools),
         )
@@ -459,7 +469,7 @@ class ExternalMCPManager:
             LOGGER.error('No graph to read the enabled MCP servers')
         else:
             try:
-                servers = await get_enabled_mcp_servers(db)
+                servers = await get_enabled_mcp_servers(db, self._org_id)
             except Exception:
                 LOGGER.exception('Failed to read the enabled MCP servers')
             else:
@@ -613,83 +623,74 @@ class ExternalMCPManager:
         return self._initialized
 
 
-# --- Module-level singleton ---
+# --- Module-level managers, one for each organization ---
 
-_manager: ExternalMCPManager | None = None
-
-
-async def initialize(db: graph.Graph) -> None:
-    """Initialize the module-level external MCP manager."""
-    global _manager
-    if _manager is not None:
-        await _manager.aclose()
-    _manager = ExternalMCPManager()
-    try:
-        await _manager.initialize(db)
-    except Exception:
-        LOGGER.exception('Failed to initialize external MCP servers')
-        _manager = ExternalMCPManager()
+# ponytail: a manager stays open for the life of the process, also for
+# an idle organization; evict idle managers if the number of
+# organizations grows large.
+_managers: dict[str, ExternalMCPManager] = {}
+_locks: dict[str, asyncio.Lock] = {}
 
 
-@contextlib.asynccontextmanager
-async def lifespan() -> collections.abc.AsyncGenerator[None]:
-    """Connect to the configured servers for the life of the app.
+async def get_manager(db: graph.Graph, org_id: str) -> ExternalMCPManager:
+    """Return the manager of an organization, connecting it first when
+    this is the organization's first turn.
 
-    Must run after :func:`imbi.common.graph.graph_lifespan`. A failure
-    to read the servers is logged and leaves an empty manager, so it
-    does not stop the service.
+    A failure to read the servers gives an empty manager that is not
+    kept, so the next turn tries again.
 
     """
-    global _manager
-    db = graph.Graph()
-    # The outer finally also closes the manager when startup is
-    # cancelled, for example during db.close().
-    try:
+    manager = _managers.get(org_id)
+    if manager is not None:
+        return manager
+    async with _locks.setdefault(org_id, asyncio.Lock()):
+        manager = _managers.get(org_id)
+        if manager is not None:
+            return manager
+        manager = ExternalMCPManager(org_id)
         try:
-            await db.open()
-            try:
-                await initialize(db)
-            finally:
-                await db.close()
+            await manager.initialize(db)
         except Exception:
-            LOGGER.exception('Failed to initialize external MCP servers')
-            # An empty manager, so that request handling can still get one.
-            _manager = _manager or ExternalMCPManager()
-        yield
-    finally:
-        await aclose()
+            LOGGER.exception(
+                'Failed to initialize the MCP servers of organization %s',
+                org_id,
+            )
+            await manager.aclose()
+            return ExternalMCPManager(org_id)
+        _managers[org_id] = manager
+        return manager
 
 
-async def reinitialize(db: graph.Graph) -> tuple[bool, int]:
-    """Rebuild connections from the current graph state.
+async def reinitialize(db: graph.Graph, org_id: str) -> tuple[bool, int]:
+    """Rebuild the connections of an organization from the graph.
 
     Returns:
         Tuple of (success, tool_count).
 
     """
-    await initialize(db)
-    manager = get_manager()
+    async with _locks.setdefault(org_id, asyncio.Lock()):
+        old = _managers.pop(org_id, None)
+    if old is not None:
+        await old.aclose()
+    manager = await get_manager(db, org_id)
     return manager.is_initialized, len(manager.get_tools())
 
 
+@contextlib.asynccontextmanager
+async def lifespan() -> collections.abc.AsyncGenerator[None]:
+    """Close the connections of every organization at shutdown. The
+    connections themselves open on each organization's first turn."""
+    try:
+        yield
+    finally:
+        await aclose()
+
+
 async def aclose() -> None:
-    """Close the module-level external MCP manager."""
-    global _manager
-    if _manager is not None:
-        await _manager.aclose()
-        _manager = None
-
-
-def get_manager() -> ExternalMCPManager:
-    """Get the external MCP manager singleton.
-
-    Returns:
-        The initialized ExternalMCPManager.
-
-    Raises:
-        RuntimeError: If not yet initialized.
-
-    """
-    if _manager is None:
-        raise RuntimeError('External MCP manager not initialized')
-    return _manager
+    """Close the managers of every organization."""
+    managers = list(_managers.values())
+    _managers.clear()
+    _locks.clear()
+    await asyncio.gather(
+        *(m.aclose() for m in managers), return_exceptions=True
+    )

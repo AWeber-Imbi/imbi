@@ -34,7 +34,7 @@ class FakeGraph:
 
 def _user_records(slug: str | None = 'acme', **fields) -> list:
     """A user row; ``slug`` is the workspace org when a member."""
-    return [{'u': fields, 'slug': slug}]
+    return [{'u': fields, 'slug': slug, 'org_id': slug and 'org-1'}]
 
 
 class IdentityTestCase(helpers.TestCase):
@@ -72,6 +72,7 @@ class IdentityTestCase(helpers.TestCase):
         self.assertEqual('Ada', user.display_name)
         self.assertTrue(user.is_admin)
         self.assertEqual('acme', user.org_slug)
+        self.assertEqual('org-1', user.org_id)
 
     async def test_resolve_needs_the_workspace_org(self) -> None:
         # Not a member of the organization with the workspace's team id
@@ -165,7 +166,10 @@ class IdentityTestCase(helpers.TestCase):
     def test_mint_token(self) -> None:
         token = identity.mint_token(
             identity.ImbiUser(
-                email='a@example.com', display_name='A', org_slug='acme'
+                email='a@example.com',
+                display_name='A',
+                org_slug='acme',
+                org_id='org-1',
             )
         )
         claims = core.verify_token(token)

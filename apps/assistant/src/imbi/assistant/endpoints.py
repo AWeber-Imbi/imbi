@@ -454,11 +454,13 @@ async def _build_tools_and_system(
     db: graph.Graph,
     mcp_manager: mcp.MCPManager,
     auth_ctx: auth.AuthContext,
+    org_id: str,
 ) -> tuple[list[dict[str, typing.Any]] | None, prompt_system.SystemPrompt]:
     """Build the Anthropic tool payload and system prompt from
-    the current MCP, server, and client tool sets.
+    the current MCP, server, and client tool sets. The external MCP
+    tools are those of the conversation's organization.
     """
-    ext_manager = external_mcp.get_manager()
+    ext_manager = await external_mcp.get_manager(db, org_id)
     await ext_manager.sync_enabled(db)
     all_tools = (
         mcp_manager.get_tools()
@@ -577,6 +579,7 @@ async def _run_server_tool(
     auth_ctx: auth.AuthContext,
     rebuild: dict[str, typing.Any],
     db: graph.Graph,
+    org_id: str,
 ) -> collections.abc.AsyncIterator[str]:
     """Handle the refresh-all-tool-sources server tool.
 
@@ -604,7 +607,9 @@ async def _run_server_tool(
     external_count: int
     external_error: str | None = None
     try:
-        external_success, external_count = await external_mcp.reinitialize(db)
+        external_success, external_count = await external_mcp.reinitialize(
+            db, org_id
+        )
     except Exception as exc:
         LOGGER.exception('External MCP refresh failed')
         external_success, external_count = False, 0
@@ -614,7 +619,7 @@ async def _run_server_tool(
     # cleanly.
     if openapi_success or external_success:
         tools, prompt = await _build_tools_and_system(
-            db, mcp_manager, auth_ctx
+            db, mcp_manager, auth_ctx, org_id
         )
         rebuild['tools'], rebuild['system'] = tools, prompt.text
     payload: dict[str, typing.Any] = {
@@ -667,6 +672,7 @@ async def _dispatch_tool_uses(
     auth_token: str | None,
     rebuild: dict[str, typing.Any],
     db: graph.Graph,
+    org_id: str,
 ) -> collections.abc.AsyncIterator[str]:
     """Dispatch each tool_use block to the owning handler.
 
@@ -677,13 +683,13 @@ async def _dispatch_tool_uses(
     for tb in tool_use_blocks:
         if mcp.is_server_tool(tb['name']):
             async for chunk in _run_server_tool(
-                mcp_manager, tb, tool_results, auth_ctx, rebuild, db
+                mcp_manager, tb, tool_results, auth_ctx, rebuild, db, org_id
             ):
                 yield chunk
-            # external_mcp.reinitialize() replaces the module singleton,
-            # so re-read it before routing any later tool_use blocks in
-            # this same dispatch.
-            ext_manager = external_mcp.get_manager()
+            # external_mcp.reinitialize() replaces the organization's
+            # manager, so re-read it before routing any later tool_use
+            # blocks in this same dispatch.
+            ext_manager = await external_mcp.get_manager(db, org_id)
         elif client_tools.is_client_tool(tb['name']):
             yield _client_tool_event(tb, tool_results)
         elif ext_manager.has_tool(tb['name']):
@@ -764,8 +770,8 @@ async def _stream_response(
 
     for _round in range(max_rounds):
         # Re-read each round in case a prior refresh replaced the
-        # external MCP singleton.
-        ext_manager = external_mcp.get_manager()
+        # organization's external MCP manager.
+        ext_manager = await external_mcp.get_manager(db, org_id)
         state = {
             'text': '',
             'stop_reason': None,
@@ -821,6 +827,7 @@ async def _stream_response(
             auth_token,
             rebuild,
             db,
+            org_id,
         ):
             yield chunk
         if 'tools' in rebuild:
@@ -953,7 +960,9 @@ async def send_message(
     ]
 
     mcp_manager = mcp.get_manager()
-    tools, prompt = await _build_tools_and_system(db, mcp_manager, auth_ctx)
+    tools, prompt = await _build_tools_and_system(
+        db, mcp_manager, auth_ctx, org_id
+    )
 
     is_first_exchange = len(all_msgs) <= 2
     auth_token = credentials.credentials if credentials else None

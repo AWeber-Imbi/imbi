@@ -76,17 +76,12 @@ class CollectTests(helpers.TestCase):
 class RunTurnTests(helpers.TestCase):
     def setUp(self) -> None:
         super().setUp()
-        self.external = external_mcp.ExternalMCPManager()
+        self.external = external_mcp.ExternalMCPManager('org-1')
 
     def _patch(self, client: FakeClient, manager: FakeManager):
         return (
             mock.patch.object(agent.client, 'get_client', return_value=client),
             mock.patch.object(agent.mcp, 'get_manager', return_value=manager),
-            mock.patch.object(
-                agent.external_mcp,
-                'get_manager',
-                return_value=self.external,
-            ),
         )
 
     async def _run(self, client, manager, **overrides):
@@ -102,6 +97,7 @@ class RunTurnTests(helpers.TestCase):
                 'model': 'm',
                 'max_tokens': 100,
                 'max_rounds': 5,
+                'external': self.external,
             }
             kwargs.update(overrides)
             return await agent.run_turn(**kwargs)
@@ -146,6 +142,7 @@ class RunTurnTests(helpers.TestCase):
                 model='m',
                 max_tokens=100,
                 max_rounds=5,
+                external=self.external,
             )
         finally:
             for patch in patches:
@@ -279,6 +276,7 @@ class RunTurnTests(helpers.TestCase):
             'model': 'm',
             'max_tokens': 100,
             'max_rounds': 5,
+            'external': self.external,
         }
         kwargs.update(overrides)
         patches = self._patch(client, manager)
