@@ -172,6 +172,10 @@ def _short_circuit(path: str, message: Body | None) -> bytes | None:
         return _paged(typing.cast('Body', message))
     if method == 'tools/list' and 'invalid list' in BEHAVIOR:
         return _reply(ident, result={'tools': [{'name': 5}]})
+    if method == 'tools/list' and 'empty schema' in BEHAVIOR:
+        return _reply(
+            ident, result={'tools': [{'name': 'e', 'inputSchema': {}}]}
+        )
     if method == 'tools/call' and name == 'structured':
         return _reply(
             ident,
@@ -537,6 +541,12 @@ class StartTestCase(_ServerTestCase):
         self.assertEqual(
             tool.input_schema, {'type': 'object', 'properties': {}}
         )
+
+    async def test_an_empty_schema_fails_the_listing(self) -> None:
+        # mcp 2 requires inputSchema.type, so the SDK refuses the page.
+        BEHAVIOR.add('empty schema')
+        with self.assertRaises(plugin_relay.Unavailable):
+            await self.server_for().start()
 
     async def test_schema_keys_are_scrubbed(self) -> None:
         BEHAVIOR.add('paged')

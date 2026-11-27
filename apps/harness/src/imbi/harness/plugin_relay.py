@@ -213,14 +213,15 @@ class _Held:
             return False
         if not self.ready.done():
             return True
-        # ponytail: reads the SDK wrapper's private anyio stream; a
-        # failed send replaces the session anyway (see _lost).
-        write = self.ready.result()[1]
-        inner = typing.cast(
-            'memory.MemoryObjectSendStream[typing.Any]',
-            getattr(write, '_inner', write),
+        # ponytail: reads the SDK wrapper's private anyio stream. Without
+        # it, the next send fails and _lost replaces the session.
+        inner = getattr(self.ready.result()[1], '_inner', None)
+        if inner is None:
+            return True
+        stream = typing.cast(
+            'memory.MemoryObjectSendStream[typing.Any]', inner
         )
-        return inner.statistics().open_send_streams > 0
+        return stream.statistics().open_send_streams > 0
 
     async def close(self) -> None:
         """Close the session; cancel it when the server does not answer
@@ -281,14 +282,13 @@ class Server:
         timeout: httpx2.Timeout | None = None,
         auth: httpx2.Auth | None = None,
     ) -> httpx2.AsyncClient:
-        """An HTTP client to the server's origin only. It follows a
-        redirect, but :class:`outbound.Transport` refuses another
-        origin."""
+        """An HTTP client to the server's origin only. The SDK follows
+        a redirect only on the same origin, and :class:`outbound.Transport`
+        refuses another origin too."""
         del headers, auth
         return httpx2.AsyncClient(
             transport=outbound.Transport(self.url, self.proxy_env),
             auth=self.auth,
-            follow_redirects=True,
             timeout=timeout
             or httpx2.Timeout(safeguards.CALL_TIMEOUT + 10, connect=10),
         )

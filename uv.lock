@@ -1774,7 +1774,6 @@ version = "2.65.0"
 source = { editable = "apps/mcp" }
 dependencies = [
     { name = "fastmcp" },
-    { name = "httpx" },
     { name = "httpx2" },
     { name = "imbi-common", extra = ["mcp"] },
     { name = "pydantic" },
@@ -1785,7 +1784,6 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "fastmcp", specifier = ">=4.2.3" },
-    { name = "httpx", specifier = ">=0.28.1" },
     { name = "httpx2", specifier = ">=2.16.2" },
     { name = "imbi-common", extras = ["mcp"], editable = "libraries/common" },
     { name = "pydantic", specifier = "~=2.12" },

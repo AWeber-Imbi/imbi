@@ -119,11 +119,11 @@ class Relay:
     async def _session(
         self,
     ) -> abc.AsyncGenerator[mcp_session.ClientSession]:
-        # No redirects: the token goes to the configured origin only.
+        # The SDK follows a redirect only on the same origin, so the
+        # token goes to the configured origin only.
         async with (
             httpx2.AsyncClient(
                 auth=self.auth,
-                follow_redirects=False,
                 # Past the call deadline, so that the deadline decides.
                 timeout=httpx2.Timeout(
                     safeguards.CALL_TIMEOUT + 10, connect=10
