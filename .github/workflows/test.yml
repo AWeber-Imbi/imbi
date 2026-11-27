@@ -23,7 +23,7 @@ jobs:
     name: "CI"
     runs-on: "ubuntu-latest"
     steps:
-      - uses: "actions/checkout@v4"
+      - uses: "actions/checkout@v7"
         with:
           fetch-depth: 0
           filter: "blob:none"
@@ -34,7 +34,7 @@ jobs:
       # unmanaged the `uv venv` env-setup step races ahead of that install
       # and fails with "uv: command not found" on fresh runners. Provision
       # uv on PATH first so it is available before `moon ci` runs any task.
-      - uses: "astral-sh/setup-uv@v5"
+      - uses: "astral-sh/setup-uv@v9.0.0"
         with:
           # 0.13.5+: no eMudhra root in uv's bundled CA store.
           version: "0.13.5"
@@ -57,7 +57,7 @@ jobs:
       harness: ${{ steps.diff.outputs.harness }}
       proxy: ${{ steps.diff.outputs.proxy }}
     steps:
-      - uses: "actions/checkout@v4"
+      - uses: "actions/checkout@v7"
         with:
           fetch-depth: 0
           filter: "blob:none"
@@ -101,7 +101,7 @@ jobs:
     name: "Versions"
     runs-on: "ubuntu-latest"
     steps:
-      - uses: "actions/checkout@v4"
+      - uses: "actions/checkout@v7"
         with:
           persist-credentials: false
       - run: "scripts/bump-version.sh --check"
@@ -115,11 +115,11 @@ jobs:
     if: needs.changes.outputs.image == 'true'
     runs-on: "ubuntu-latest"
     steps:
-      - uses: "actions/checkout@v4"
+      - uses: "actions/checkout@v7"
         with:
           persist-credentials: false
-      - uses: "docker/setup-buildx-action@v3"
-      - uses: "docker/build-push-action@v6"
+      - uses: "docker/setup-buildx-action@v4"
+      - uses: "docker/build-push-action@v7"
         with:
           context: .
           file: ./container/Dockerfile
@@ -140,7 +140,7 @@ jobs:
     if: needs.changes.outputs.harness == 'true'
     runs-on: "ubuntu-latest"
     steps:
-      - uses: "actions/checkout@v4"
+      - uses: "actions/checkout@v7"
         with:
           persist-credentials: false
       - uses: "helm/kind-action@v1"
@@ -170,7 +170,7 @@ jobs:
     if: needs.changes.outputs.proxy == 'true'
     runs-on: "ubuntu-latest"
     steps:
-      - uses: "actions/checkout@v4"
+      - uses: "actions/checkout@v7"
         with:
           persist-credentials: false
       # rust-toolchain.toml pins the version.
@@ -198,7 +198,7 @@ jobs:
     needs: "proxy"
     runs-on: "ubuntu-latest"
     steps:
-      - uses: "actions/checkout@v4"
+      - uses: "actions/checkout@v7"
         with:
           persist-credentials: false
       - run: "rustup toolchain install nightly --profile minimal"
