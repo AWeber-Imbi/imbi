@@ -76,9 +76,11 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 
 ## Unreleased
 
-1. **Before you upgrade from a release older than 2.64.0**, upgrade to
-   2.65.0 first and do the steps of each release up to 2.65.0. This
-   release removes these maintenance operations:
+1. **Before you upgrade from a release older than 2.65.0**, upgrade to
+   2.65.0 first. Do the steps of each release up to 2.65.0 in the order
+   that the upgrade procedure gives, including the steps that you must
+   do before you deploy. This release removes these maintenance
+   operations:
     - **Repair Deployments Mislabelled Rolled Back**
       (`deployment-status-repair`, 2.28.0)
     - **Report Re-stamped Commit Push Times (dry run)** and **Repair
@@ -90,7 +92,11 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
       (`opslog-agent-task-purge`, 2.64.0)
 
     The operations log also no longer accepts the `Agent Task` entry
-    type, so run the purge before you upgrade. The
+    type. If you did not run **Purge Agent Task Entries from Operations
+    Log** on 2.64.0 or 2.65.0, run it on 2.65.0 before you upgrade. A
+    retained `Agent Task` entry makes
+    `GET /organizations/{org_slug}/operations-log/{entry_id}` fail for
+    that entry. The
     `imbi.api.backfill_embeddings` script is removed: use **Reindex
     Search** (`search-reindex`).
 
