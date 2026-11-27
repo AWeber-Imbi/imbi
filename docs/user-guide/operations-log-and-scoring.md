@@ -33,10 +33,7 @@ See [Roles and permissions](../admin/roles-and-permissions.md).
 |---|---|
 | Deployed | Imbi, for each deploy, promote, release, and publish. People can also add it |
 | Configured | Imbi, when you set or delete a value on the **Configuration** tab. People can also add it |
-| Agent Task | No longer written. Imbi wrote it for a resolved or closed [ticket](../admin/tickets.md) in earlier releases. The `opslog-agent-task-purge` [maintenance operation](../admin/maintenance.md) deletes these entries |
 | Decommissioned, Migrated, Provisioned, Restarted, Rolled Back, Scaled, Upgraded | People |
-
-You cannot add an **Agent Task** entry by hand.
 
 A **Deployed** entry that Imbi writes has the version (the tag, or the
 commit), the environment, and a link to the CI run. While the deployment

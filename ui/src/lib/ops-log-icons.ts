@@ -1,7 +1,6 @@
 import {
   ArrowRightLeft,
   ArrowUp,
-  Bot,
   type LucideIcon,
   PackagePlus,
   Rocket,
@@ -15,7 +14,6 @@ import {
 import type { OperationsLogEntryType } from '@/types'
 
 export const ENTRY_TYPE_ICONS: Record<OperationsLogEntryType, LucideIcon> = {
-  'Agent Task': Bot,
   Configured: SlidersHorizontal,
   Decommissioned: Trash2,
   Deployed: Rocket,

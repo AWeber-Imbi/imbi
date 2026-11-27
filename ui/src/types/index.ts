@@ -710,7 +710,6 @@ interface ScoringPolicyCreateBase {
 }
 
 export const OPERATIONS_LOG_ENTRY_TYPES = [
-  'Agent Task',
   'Configured',
   'Decommissioned',
   'Deployed',

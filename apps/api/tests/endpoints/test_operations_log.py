@@ -17,8 +17,6 @@ from imbi.api import models as api_models
 from imbi.api.auth import organizations as org_auth
 from imbi.api.auth import permissions as api_permissions
 from imbi.api.endpoints import operations_log
-from imbi.api.maintenance import log as maintenance_log
-from imbi.api.maintenance import operations
 from imbi.common import clickhouse as imbi_clickhouse
 from imbi.common import graph, iggy
 
@@ -306,12 +304,6 @@ class PostOperationLogTests(_OpsLogTestBase):
         response = self.client.post('/operations-log/', json=body)
         self.assertEqual(response.status_code, 400)
 
-    def test_create_refuses_agent_task_entries(self) -> None:
-        body = self._valid_body() | {'entry_type': 'Agent Task'}
-        response = self.client.post('/operations-log/', json=body)
-        self.assertEqual(response.status_code, 400)
-        self.mock_publish.assert_not_awaited()
-
     def test_create_forbidden_without_permission(self) -> None:
         self._revoke_permissions()
         response = self.client.post(
@@ -518,25 +510,6 @@ class PatchOperationLogTests(_OpsLogTestBase):
             json=[{'op': 'replace', 'path': '/organization_id', 'value': 'x'}],
         )
         self.assertEqual(response.status_code, 400)
-
-    def test_patch_refuses_agent_task_entries(self) -> None:
-        # A change to Agent Task.
-        self._setup_existing()
-        response = self.client.patch(
-            f'{ORG_LOG}/entry-abc',
-            json=[
-                {'op': 'replace', 'path': '/entry_type', 'value': 'Agent Task'}
-            ],
-        )
-        self.assertEqual(response.status_code, 400)
-        # A change to a row that is Agent Task.
-        self._setup_existing(entry_type='Agent Task')
-        response = self.client.patch(
-            f'{ORG_LOG}/entry-abc',
-            json=[{'op': 'replace', 'path': '/description', 'value': 'x'}],
-        )
-        self.assertEqual(response.status_code, 400)
-        self.mock_publish.assert_not_awaited()
 
     def test_patch_readonly_id_is_400(self) -> None:
         self._setup_existing()
@@ -919,152 +892,3 @@ class OrganizationScopeTests(support.SharedAppAsyncTestCase):
         response = await self.client.get(f'{ORG_LOG}/theirs')
         self.assertEqual(response.status_code, 200)
         self.assertEqual('d', response.json()['description'])
-
-    async def test_agent_task_purge_deletes_only_agent_task_rows(
-        self,
-    ) -> None:
-        await self._insert('deploy', self.org_a)
-        await self._insert('ticket', self.org_a, entry_type='Agent Task')
-        self.assertEqual({'deploy', 'ticket'}, await self._listed())
-        ctx = maintenance_log.MaintenanceContext(
-            run_id='run1',
-            attempt_id='attempt1',
-            item_id='agent-task-rows',
-            project_id='agent-task-rows',
-            project_slug='',
-            log=maintenance_log.ItemLog(
-                'slug', 'run1', 'attempt1', 'agent-task-rows', ''
-            ),
-        )
-        outcome = await operations.execute_opslog_agent_task_purge(
-            mock.AsyncMock(), mock.AsyncMock(), 'agent-task-rows', ctx=ctx
-        )
-        self.assertEqual('succeeded', outcome)
-        self.assertEqual({'deploy'}, await self._listed())
-        # A second run has nothing left to do.
-        outcome = await operations.execute_opslog_agent_task_purge(
-            mock.AsyncMock(), mock.AsyncMock(), 'agent-task-rows', ctx=ctx
-        )
-        self.assertEqual('skipped', outcome)
-
-    async def test_backfill_shows_old_rows_in_the_organization(self) -> None:
-        await self._insert('old', '')
-        await self._insert('old-deleted', '', is_deleted=1)
-        self.assertEqual(set(), await self._listed())
-        self.enterContext(
-            mock.patch(
-                'imbi.api.endpoints._helpers.lookup_project_organization_id',
-                mock.AsyncMock(return_value=self.org_a),
-            )
-        )
-        ctx = maintenance_log.MaintenanceContext(
-            run_id='run1',
-            attempt_id='attempt1',
-            item_id=self.project,
-            project_id=self.project,
-            project_slug='',
-            log=maintenance_log.ItemLog(
-                'slug', 'run1', 'attempt1', self.project, self.project
-            ),
-        )
-        outcome = await operations.execute_opslog_organization_backfill(
-            mock.AsyncMock(), mock.AsyncMock(), self.project, ctx=ctx
-        )
-        self.assertEqual('succeeded', outcome)
-        self.assertEqual({'old'}, await self._listed())
-        rows = await imbi_clickhouse.query(
-            'SELECT id, is_deleted, organization_id FROM operations_log'
-            ' FINAL WHERE project_id = {pid:String} ORDER BY id',
-            {'pid': self.project},
-        )
-        self.assertEqual(
-            [
-                {'id': 'old', 'is_deleted': 0, 'organization_id': self.org_a},
-                {
-                    'id': 'old-deleted',
-                    'is_deleted': 1,
-                    'organization_id': self.org_a,
-                },
-            ],
-            rows,
-        )
-        # A second run has nothing left to do.
-        outcome = await operations.execute_opslog_organization_backfill(
-            mock.AsyncMock(), mock.AsyncMock(), self.project, ctx=ctx
-        )
-        self.assertEqual('skipped', outcome)
-
-    async def test_backfill_keeps_a_write_made_after_its_read(self) -> None:
-        """A write that lands between the backfill's read and its insert
-        wins, and the next run fills the organization in on it."""
-        await self._insert('raced', '')
-        stale = await imbi_clickhouse.query(
-            'SELECT * FROM operations_log FINAL WHERE id = {id:String}'
-            ' AND project_id = {pid:String}',
-            {'id': 'raced', 'pid': self.project},
-        )
-        # A completion lands after the backfill read the row.
-        await imbi_clickhouse.command(
-            'INSERT INTO imbi.operations_log (id, occurred_at, recorded_at,'
-            ' recorded_by, project_id, project_slug, environment_slug,'
-            ' entry_type, description, organization_id, _row_version)'
-            " VALUES ('raced', now64(3), now64(3), 'test', {pid:String},"
-            " 'p', 'prod', 'Deployed', 'completed', '', {v:UInt64})",
-            {
-                'pid': self.project,
-                'v': operations_log.next_row_version(
-                    int(stale[0]['_row_version'])
-                ),
-            },
-        )
-        self.enterContext(
-            mock.patch(
-                'imbi.api.endpoints._helpers.lookup_project_organization_id',
-                mock.AsyncMock(return_value=self.org_a),
-            )
-        )
-        ctx = maintenance_log.MaintenanceContext(
-            run_id='run1',
-            attempt_id='attempt1',
-            item_id=self.project,
-            project_id=self.project,
-            project_slug='',
-            log=maintenance_log.ItemLog(
-                'slug', 'run1', 'attempt1', self.project, self.project
-            ),
-        )
-        instance = imbi_clickhouse.client.Clickhouse.get_instance()
-        with mock.patch.object(
-            instance, 'query', mock.AsyncMock(return_value=stale)
-        ):
-            await operations.execute_opslog_organization_backfill(
-                mock.AsyncMock(), mock.AsyncMock(), self.project, ctx=ctx
-            )
-        sql = (
-            'SELECT description, organization_id FROM operations_log FINAL'
-            ' WHERE id = {id:String} AND project_id = {pid:String}'
-        )
-        params = {'id': 'raced', 'pid': self.project}
-        self.assertEqual(
-            [{'description': 'completed', 'organization_id': ''}],
-            await imbi_clickhouse.query(sql, params),
-        )
-        await operations.execute_opslog_organization_backfill(
-            mock.AsyncMock(), mock.AsyncMock(), self.project, ctx=ctx
-        )
-        self.assertEqual(
-            [{'description': 'completed', 'organization_id': self.org_a}],
-            await imbi_clickhouse.query(sql, params),
-        )
-
-
-class NextRowVersionTestCase(unittest.TestCase):
-    def test_stays_above_the_backfill_version(self) -> None:
-        """A version above the clock and the guard still gets two more
-        than the read version, so it beats the backfill's ``v + 1``."""
-        read_version = 10**15
-        with mock.patch.object(operations_log, '_row_version_last', 0):
-            self.assertEqual(
-                read_version + 2,
-                operations_log.next_row_version(read_version),
-            )

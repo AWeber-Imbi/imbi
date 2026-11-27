@@ -21,8 +21,8 @@ describe('OperationsLogStreamRow', () => {
   it('shows the agent mark and name for an agent performer', () => {
     const agent = { icon: null, id: AGENT_ID, name: 'Dependency Bot' } as Agent
     const entry = {
-      description: 'T-2741 closed: cancelled_by_human',
-      entry_type: 'Agent Task',
+      description: 'Deployed 1.2.3',
+      entry_type: 'Deployed',
       environment_slug: '',
       id: 'op-1',
       occurred_at: '2026-11-23T18:00:00Z',

@@ -38,8 +38,8 @@ describe('ProjectActivityLog', () => {
     vi.mocked(endpoints.listOperationsLog).mockResolvedValue({
       entries: [
         {
-          description: 'T-2741 closed: cancelled_by_human',
-          entry_type: 'Agent Task',
+          description: 'Deployed 1.2.3',
+          entry_type: 'Deployed',
           environment_slug: '',
           id: 'op-1',
           occurred_at: new Date().toISOString(),

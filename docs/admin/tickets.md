@@ -815,15 +815,3 @@ $0.
 
 The monthly cost cap of an agent is different. It only gives warnings. See
 [Usage](agents.md#usage).
-
-## Operations Log
-
-A ticket with a project writes rows to the Operations Log, with the entry
-type **Agent Task**:
-
-- One row when a person resolves a request, for example
-  `T-42: approval request approved`.
-- One row when the ticket closes, for example `T-42 closed: done_acted`.
-
-A row has no request or reply text. A ticket with no project writes no rows.
-You cannot add or change an **Agent Task** row with the Operations Log API.

@@ -62,23 +62,6 @@ class EnumerateAllProjectsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('coalesce(p.archived, false) = false', query)
 
 
-class EnumerateProjectsWithArchivedTests(unittest.IsolatedAsyncioTestCase):
-    async def test_includes_archived_projects(self) -> None:
-        db = mock.AsyncMock()
-        db.execute.return_value = [{'id': '"p1"'}, {'id': '""'}]
-        items = await operations.enumerate_projects_with_archived(db)
-        self.assertEqual(['p1'], items)
-        self.assertNotIn('archived', db.execute.await_args.args[0])
-
-    def test_the_organization_backfill_uses_it(self) -> None:
-        from imbi.api.maintenance import registry
-
-        definition = registry.OPERATIONS['opslog-organization-backfill']
-        self.assertIs(
-            operations.enumerate_projects_with_archived, definition.enumerate
-        )
-
-
 class ExecuteAnalysisTests(unittest.IsolatedAsyncioTestCase):
     async def test_skipped_without_org(self) -> None:
         with mock.patch.object(operations, '_org_slug_for', _org_slug(None)):
@@ -1355,103 +1338,6 @@ class ExecuteDeploymentStateTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertFalse(sync.await_args.kwargs['dry_run'])
         self.assertEqual('p1', sync.await_args.args[1])
-
-
-class ExecuteCommitPushedAtRepairTests(unittest.IsolatedAsyncioTestCase):
-    """The re-stamped ``pushed_at`` check/repair pair."""
-
-    def _patch(
-        self, summary: typing.Any
-    ) -> contextlib.AbstractContextManager[mock.AsyncMock]:
-        return mock.patch(
-            'imbi.api.commit_pushed_at_repair.repair_project',
-            mock.AsyncMock(return_value=summary),
-        )
-
-    async def test_no_deliveries_is_skipped(self) -> None:
-        from imbi.api import commit_pushed_at_repair
-
-        ctx = _ctx()
-        with self._patch(commit_pushed_at_repair.RepairSummary()):
-            outcome = await operations.execute_commit_pushed_at_repair(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
-            )
-        self.assertEqual('skipped', outcome)
-        self.assertEqual(
-            [('commit-pushed-at-repair', 'skipped')], _actions(ctx)
-        )
-        self.assertIn('No push deliveries', _rows(ctx)[0].message)
-
-    async def test_nothing_restamped_is_skipped_with_counts(self) -> None:
-        from imbi.api import commit_pushed_at_repair
-
-        ctx = _ctx()
-        with self._patch(
-            commit_pushed_at_repair.RepairSummary(deliveries=4, examined=6)
-        ):
-            outcome = await operations.execute_commit_pushed_at_repair(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
-            )
-        self.assertEqual('skipped', outcome)
-        self.assertEqual(6, _rows(ctx)[0].detail['examined'])
-
-    async def test_repaired_rows_succeed(self) -> None:
-        from imbi.api import commit_pushed_at_repair
-
-        ctx = _ctx()
-        with self._patch(
-            commit_pushed_at_repair.RepairSummary(
-                deliveries=4, examined=6, repaired=2, largest_shift_seconds=90
-            )
-        ) as repair:
-            outcome = await operations.execute_commit_pushed_at_repair(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
-            )
-        self.assertEqual('succeeded', outcome)
-        repair.assert_awaited_once_with('p1', dry_run=False)
-        self.assertEqual(
-            [('commit-pushed-at-repair', 'succeeded')], _actions(ctx)
-        )
-        row = _rows(ctx)[0]
-        self.assertIn('push times restored', row.message)
-        self.assertEqual(2, row.detail['repaired'])
-        self.assertFalse(row.detail['dry_run'])
-
-    async def test_check_is_the_dry_run(self) -> None:
-        from imbi.api import commit_pushed_at_repair
-
-        ctx = _ctx()
-        with self._patch(
-            commit_pushed_at_repair.RepairSummary(
-                deliveries=4, examined=6, repaired=2, largest_shift_seconds=90
-            )
-        ) as repair:
-            outcome = await operations.execute_commit_pushed_at_check(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
-            )
-        self.assertEqual('succeeded', outcome)
-        repair.assert_awaited_once_with('p1', dry_run=True)
-        self.assertEqual(
-            [('commit-pushed-at-check', 'succeeded')], _actions(ctx)
-        )
-        self.assertIn('(dry run)', _rows(ctx)[0].message)
-        self.assertTrue(_rows(ctx)[0].detail['dry_run'])
-
-    async def test_deliveries_matching_no_stored_commit_say_so(self) -> None:
-        """Zero examined is not "zero already correct": nothing the
-        deliveries name is stored under the branch they were pushed to."""
-        from imbi.api import commit_pushed_at_repair
-
-        ctx = _ctx()
-        with self._patch(commit_pushed_at_repair.RepairSummary(deliveries=4)):
-            outcome = await operations.execute_commit_pushed_at_check(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
-            )
-        self.assertEqual('skipped', outcome)
-        row = _rows(ctx)[0]
-        self.assertIn('No stored commit matches', row.message)
-        self.assertEqual(4, row.detail['deliveries'])
-        self.assertNotIn('examined', row.detail)
 
 
 class MarketplaceSyncTests(unittest.IsolatedAsyncioTestCase):

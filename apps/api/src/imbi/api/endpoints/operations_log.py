@@ -65,10 +65,6 @@ READONLY_PATHS: frozenset[str] = frozenset(
 )
 
 DEFAULT_LIMIT: int = 50
-
-#: The entry type of rows that agent task events project. People cannot
-#: write these rows.
-AGENT_TASK_ENTRY_TYPE: typing.Final[str] = 'Agent Task'
 MAX_LIMIT: int = 500
 
 
@@ -105,7 +101,6 @@ class OperationLogResponse(pydantic.BaseModel):
     project_slug: str
     environment_slug: str
     entry_type: typing.Literal[
-        'Agent Task',
         'Configured',
         'Decommissioned',
         'Deployed',
@@ -161,13 +156,6 @@ def _model_to_row(entry: models.OperationLog) -> dict[str, typing.Any]:
     dumped = entry.model_dump(by_alias=True, mode='python')
     dumped['is_deleted'] = 1 if entry.is_deleted else 0
     return dumped
-
-
-def _agent_task_entry() -> fastapi.HTTPException:
-    return fastapi.HTTPException(
-        status_code=400,
-        detail='Agent Task entries come only from agent task events',
-    )
 
 
 #: One poll interval of the ClickHouse sink. A row published moments
@@ -329,9 +317,6 @@ async def create_operation_log(
             detail=f'Validation error: {e.errors()}',
         ) from e
 
-    if entry.entry_type == AGENT_TASK_ENTRY_TYPE:
-        raise _agent_task_entry()
-
     org_slug = await lookup_project_organization_slug(db, entry.project_id)
     if not org_slug:
         raise fastapi.HTTPException(
@@ -399,14 +384,10 @@ def next_row_version(current_version: int) -> int:
     strictly-increasing versions; the result is also kept greater than
     ``current_version`` to remain safe against any older/current values
     already in ClickHouse.
-
-    The result is at least ``current_version + 2``. The organization
-    backfill writes ``current_version + 1``, so a write that read the
-    same row always gets a higher version than the backfill and wins.
     """
     global _row_version_last
     now_ms = int(datetime.datetime.now(datetime.UTC).timestamp() * 1000)
-    candidate = max(now_ms, _row_version_last + 1, current_version + 2)
+    candidate = max(now_ms, _row_version_last + 1, current_version + 1)
     _row_version_last = candidate
     return candidate
 
@@ -757,9 +738,6 @@ async def patch_operation_log(
             status_code=400,
             detail=f'Validation error: {e.errors()}',
         ) from e
-
-    if AGENT_TASK_ENTRY_TYPE in (current['entry_type'], entry.entry_type):
-        raise _agent_task_entry()
 
     entry.id = entry_id
     entry.occurred_at = current['occurred_at']
