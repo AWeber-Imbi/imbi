@@ -97,8 +97,7 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    **Purge Agent Task Entries from Operations Log**
    (`opslog-agent-task-purge`), run it on 2.65.0. The operations log no
    longer accepts the `Agent Task` entry type. A retained `Agent Task`
-   entry makes `GET /organizations/{org_slug}/operations-log/{entry_id}`
-   fail for that entry.
+   entry makes the operations log fail to load.
 
 ## 2.65.0
 
