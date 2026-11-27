@@ -23,6 +23,7 @@ is the first page that the Admin menu opens.
 | `admin:maintenance:cve-sync` | Start the cve-sync maintenance operation | `admin`, `imbi-scheduler` |
 | `admin:maintenance:ai-model-calls-prune` | Start the ai-model-calls-prune maintenance operation | `admin`, `imbi-scheduler` |
 | `admin:maintenance:plugin-step-calls-prune` | Start the plugin-step-calls-prune maintenance operation | `admin`, `imbi-scheduler` |
+| `admin:maintenance:deployment-sweep` | Start the deployment-sweep maintenance operation | `admin`, `imbi-scheduler` |
 | `admin:dashboard:read` | View the admin system-health dashboard | `admin` |
 
 <!-- END GENERATED -->
@@ -51,7 +52,7 @@ The page has two tabs: **Operations** and **Activity**.
 | **Apply Sync Fixes** | `sync-fixes` | Run the Project Doctor analysis for every project, then apply only the fixes a plugin marks safe to sweep -- e.g. repointing a PagerDuty escalation policy or syncing PagerDuty service dependencies. Never creates or deletes a remote resource. Projects with no such findings are skipped. |
 | **Recompute Scores** | `rescore` | Enqueue a score recomputation for every project; the scoring workers process the queue. Completion means all projects were enqueued. |
 | **Sync Deployments** | `deployment-resync` | Backfill recent remote deployments for every project with a deployment integration; projects without one are skipped. |
-| **Close Out Stuck Deployments** | `deployment-sweep` | Ask the remote what happened to every deployment still running after 30 minutes, and record the answer. Deployments nothing can resolve for a week are marked failed; a deployment recorded before its release was known is attached to it. Also backfills release drift verdicts from git notes for releases without an existing verdict. Projects without a deployment integration are skipped. Safe to re-run. Imbi does not run it on a schedule. |
+| **Close Out Stuck Deployments** | `deployment-sweep` | Ask the remote what happened to every deployment still running after 30 minutes, and record the answer. Deployments nothing can resolve for a week are marked failed; a deployment recorded before its release was known is attached to it. Also backfills release drift verdicts from git notes for releases without an existing verdict. Projects without a deployment integration are skipped. Safe to re-run. The scheduler runs this every 6 hours. |
 | **Report Stale Deployment State (dry run)** | `deployment-state-check` | Count the projects whose stored deployment state -- the current and latest deployment of each environment -- differs from what the Deployment nodes say now. Changes nothing. Succeeded means the project differs. |
 | **Backfill Deployment State** | `deployment-state-backfill` | Store the current and latest deployment of each environment on every project whose stored state is missing or stale. Every deployment write keeps the state current after this has run once. A deployment write that cannot refresh the state logs the failure and leaves the state stale; run Report Stale Deployment State and this again to repair it. Reads only the graph, so it makes no API calls. Safe to re-run. |
 | **Backfill Deployments to Operations Log** | `opslog-backfill` | Ensure the operations log has Deployed entries for every attributed deployment event on each release, so deployer attribution resolves for deployments recorded outside Imbi. Also fills the release committish in on existing entries that predate it, so release trains group across every environment. |
@@ -68,11 +69,10 @@ The page has two tabs: **Operations** and **Activity**.
 <!-- END GENERATED -->
 
 The descriptions come from the code. Imbi runs only **Sync Agent
-Marketplaces**, **Sync CVE Catalog**, **Prune AI Model Calls**, and
-**Prune Plugin Step Calls** on a schedule, as system jobs (see
-[Scheduled jobs](scheduled-jobs.md)). It runs no other operation
-on a schedule, **Close Out Stuck Deployments** included. Deployments stay
-`pending` until an administrator runs it or schedules it. See
+Marketplaces**, **Sync CVE Catalog**, **Prune AI Model Calls**,
+**Prune Plugin Step Calls**, and **Close Out Stuck Deployments** on a
+schedule, as system jobs (see [Scheduled jobs](scheduled-jobs.md)). It
+runs no other operation on a schedule. To run one now, see
 [Run an operation](#run-an-operation).
 
 The **Report ... (dry run)** operations change nothing. Run them before
@@ -116,8 +116,9 @@ The API endpoint is `POST /maintenance/operations/{slug}/run`. The
 caller needs `admin:maintenance:manage`, or `admin:maintenance:<slug>`
 for that one operation. The `imbi-scheduler` role has only
 `admin:maintenance:marketplace-sync`, `admin:maintenance:cve-sync`,
-`admin:maintenance:ai-model-calls-prune`, and
-`admin:maintenance:plugin-step-calls-prune`, for its system jobs. To run
+`admin:maintenance:ai-model-calls-prune`,
+`admin:maintenance:plugin-step-calls-prune`, and
+`admin:maintenance:deployment-sweep`, for its system jobs. To run
 another operation on a schedule, an administrator makes a scheduled job
 that calls this endpoint: a scheduled job runs with the permissions of
 the person accountable for it, so the job works only when that person

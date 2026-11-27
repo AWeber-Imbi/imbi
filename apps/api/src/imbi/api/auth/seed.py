@@ -653,6 +653,12 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'maintenance:plugin-step-calls-prune',
         'Start the plugin-step-calls-prune maintenance operation',
     ),
+    (
+        'admin:maintenance:deployment-sweep',
+        'admin',
+        'maintenance:deployment-sweep',
+        'Start the deployment-sweep maintenance operation',
+    ),
     # Project plugin access
     (
         'project:configuration:read',
@@ -1052,11 +1058,13 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             # who can make a task that runs as this account could then
             # start any operation, including the purges.
             'admin:maintenance:marketplace-sync',
-            # The cve-sync, ai-model-calls-prune, and
-            # plugin-step-calls-prune system tasks, for the same reason.
+            # The cve-sync, ai-model-calls-prune,
+            # plugin-step-calls-prune, and deployment-sweep system
+            # tasks, for the same reason.
             'admin:maintenance:cve-sync',
             'admin:maintenance:ai-model-calls-prune',
             'admin:maintenance:plugin-step-calls-prune',
+            'admin:maintenance:deployment-sweep',
             'agent:read',
             # An `api` task can start agent work with a `schedule`
             # origin (ADR 0020).

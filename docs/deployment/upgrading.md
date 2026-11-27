@@ -98,6 +98,12 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    (`opslog-agent-task-purge`), run it on 2.65.0. The operations log no
    longer accepts the `Agent Task` entry type. A retained `Agent Task`
    entry makes the operations log fail to load.
+3. Run `imbi-api setup-permissions`. It adds
+   `admin:maintenance:deployment-sweep` and gives it to the
+   `imbi-scheduler` role. imbi-scheduler now creates the
+   `deployment-sweep` system task, which runs **Close Out Stuck
+   Deployments** every 6 hours. Until you run the command, the task
+   fails with a 403.
 
 ## 2.65.0
 

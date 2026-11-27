@@ -79,6 +79,21 @@ SYSTEM_TASKS: tuple[dict[str, typing.Any], ...] = (
             'path': '/maintenance/operations/plugin-step-calls-prune/run',
         },
     },
+    {
+        'slug': 'deployment-sweep',
+        'name': 'Close out stuck deployments',
+        'description': (
+            'Starts the deployment-sweep maintenance operation, which asks '
+            'the remote about each deployment still running after 30 '
+            'minutes and backfills drift verdicts from git notes.'
+        ),
+        'trigger': {'kind': 'interval', 'hours': 6},
+        'target': {
+            'kind': 'api',
+            'method': 'POST',
+            'path': '/maintenance/operations/deployment-sweep/run',
+        },
+    },
 )
 
 

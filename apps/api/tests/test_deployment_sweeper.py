@@ -13,6 +13,7 @@ import httpx
 from imbi.api import deployment_sweeper
 from imbi.common import deployments
 from imbi.common.plugins import base as plugin_base
+from imbi.common.plugins import errors as plugin_errors
 
 NOW = datetime.datetime(2026, 8, 18, 12, tzinfo=datetime.UTC)
 
@@ -157,6 +158,16 @@ class SweeperTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(
             kwargs['note'].startswith(deployment_sweeper.EXPIRED_NOTE)
         )
+
+    async def test_rate_limit_propagates_without_expiring(self) -> None:
+        self.stuck.return_value = [
+            _stuck(created_at=NOW - datetime.timedelta(days=8))
+        ]
+        self.poll.side_effect = plugin_errors.PluginRateLimited(0.0)
+        with self.assertRaises(plugin_errors.PluginRateLimited):
+            await self._sweep()
+        self.append.assert_not_awaited()
+        self.upsert.assert_not_awaited()
 
     async def test_vanished_remote_run_expires(self) -> None:
         """The dominant stuck class: dispatched, never updated, gone.
