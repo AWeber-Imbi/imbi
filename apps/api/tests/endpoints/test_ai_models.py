@@ -705,6 +705,20 @@ class DeleteModelTestCase(AIModelTestBase):
         response = self.client.delete(f'{BASE}/mdl-1')
         self.assertEqual(response.status_code, 204)
 
+    def test_default_model_is_409(self) -> None:
+        """A default model of an organization or a team stays."""
+        router = self.route(
+            (
+                ai_models._DEFAULT_OF_QUERY,
+                [{'slug': 'platform'}, {'slug': 'acme'}],
+            ),
+            (DELETE, [{'m': model_props()}]),
+        )
+        response = self.client.delete(f'{BASE}/mdl-1')
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('acme, platform', response.json()['detail'])
+        self.assertFalse(any(DELETE in q for q, _ in router.calls))
+
 
 class ImportModelsTestCase(AIModelTestBase):
     """``POST /ai-providers/{id}/import-models``."""

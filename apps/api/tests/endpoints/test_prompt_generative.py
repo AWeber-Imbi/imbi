@@ -9,43 +9,30 @@ from unittest import mock
 
 import httpx
 
+from apps.api.tests.endpoints import test_ai_models as model_tests
 from apps.api.tests.endpoints import test_ai_providers as provider_tests
 from apps.api.tests.endpoints import test_prompts as base
-from imbi.api.endpoints import ai_providers, prompts
+from imbi.api.endpoints import prompts
 from imbi.api.llm import generate as model_generate
 from imbi.common import models
 from imbi.common.auth import permissions as common_permissions
 from imbi.common.llm import generate
+from imbi.common.llm import resolve as llm_resolve
 from imbi.common.prompts import resolve as prompt_resolve
 
 RUN_URL = f'/organizations/{base.ORG}/prompts/run'
 CALL_ID = uuid.UUID('00000000-0000-0000-0000-000000000001')
-MODEL_ROW = {
-    'model_id': 'claude-opus-5',
-    'enabled': True,
-    'model_type': 'generative',
-    'provider_id': 'prv-1',
-    'structured': True,
-    'input_cost': '3',
-    'output_cost': '15',
-}
+MODEL_ROW = model_tests.model_props(
+    model_type='generative', supports_structured_output=True
+)
 FIELDS = [{'name': 'severity', 'type': 'string', 'required': True}]
 WF_PROMPT = f'{base.ORG}.deploy.summary'
 
 
-#: The organization of the run, as the provider row returns it.
-ORG_ROW = {'id': 'org-1', 'name': 'Acme', 'slug': base.ORG}
-
-
-def provider_row(**overrides: typing.Any) -> list[dict[str, typing.Any]]:
-    return [
-        {
-            'p': provider_tests.provider_props(
-                credentials_encrypted='ciphertext', **overrides
-            ),
-            'o': ORG_ROW,
-        }
-    ]
+def provider_row(**overrides: typing.Any) -> dict[str, typing.Any]:
+    return provider_tests.provider_props(
+        credentials_encrypted='ciphertext', **overrides
+    )
 
 
 class GenerativeRunTestCase(base.PromptTestBase):
@@ -86,6 +73,7 @@ class GenerativeRunTestCase(base.PromptTestBase):
     def route_run(
         self,
         version: dict[str, typing.Any] | None = None,
+        provider: dict[str, typing.Any] | None = None,
         **model: typing.Any,
     ) -> base.Router:
         return self.route(
@@ -104,8 +92,15 @@ class GenerativeRunTestCase(base.PromptTestBase):
                     **(version or {}),
                 ),
             ),
-            (prompts._RUN_MODEL_QUERY, [{**MODEL_ROW, **model}]),
-            (ai_providers._GET_QUERY, provider_row()),
+            (
+                llm_resolve.EXPLICIT_QUERY,
+                [
+                    {
+                        'm': {**MODEL_ROW, **model},
+                        'p': provider_row(**(provider or {})),
+                    }
+                ],
+            ),
         )
 
     def run_ref(self, **body: typing.Any) -> httpx.Response:
@@ -121,14 +116,9 @@ class GenerativeRunTestCase(base.PromptTestBase):
         )
 
     def test_runs_a_saved_version(self) -> None:
-        router = self.route_run()
+        self.route_run()
         response = self.run_ref()
         self.assertEqual(response.status_code, 200, response.text)
-        # The model and its provider come from the catalog of the org.
-        run_model = router.params_for(prompts._RUN_MODEL_QUERY)
-        self.assertEqual(run_model['org_id'], 'org-1')
-        get_provider = router.params_for(ai_providers._GET_QUERY)
-        self.assertEqual(get_provider['org_id'], 'org-1')
         data = response.json()
         self.assertEqual(data['ref'], 'mender/core@1')
         self.assertEqual(data['n'], 1)
@@ -150,7 +140,7 @@ class GenerativeRunTestCase(base.PromptTestBase):
         self.assertEqual(finished.kwargs['provider_request_id'], 'req-1')
 
     def test_structured_fields_need_the_flag(self) -> None:
-        self.route_run(structured=False)
+        self.route_run(supports_structured_output=False)
         response = self.run_ref(output_fields=FIELDS)
         self.assertEqual(response.status_code, 422)
         self.assertEqual(
@@ -179,7 +169,9 @@ class GenerativeRunTestCase(base.PromptTestBase):
             },
             None,
         )
-        self.route_run(input_cost='2', cache_read_cost='1')
+        self.route_run(
+            input_cost_per_million='2', cache_read_cost_per_million='1'
+        )
         response = self.run_ref()
         self.assertEqual(response.status_code, 200, response.text)
         # 1024 at $2/M plus 1024 at $1/M, not 2048 at $2/M.
@@ -298,7 +290,7 @@ class GenerativeRunTestCase(base.PromptTestBase):
         self.assertTrue(sent.forced_tool_choice)
 
     def test_forced_tool_choice_flag_reaches_the_adapter(self) -> None:
-        self.route_run(forced_tool_choice=False)
+        self.route_run(supports_forced_tool_choice=False)
         response = self.run_ref(output_fields=FIELDS)
         self.assertEqual(response.status_code, 200, response.text)
         sent: generate.Request = self.generate.await_args.args[0]
@@ -578,14 +570,7 @@ class GenerativeRunTestCase(base.PromptTestBase):
 
         self.decrypt.return_value = None
         self._patch(model_generate, 'sigv4', slow)
-        self.route_run()
-        self.mock_db.execute.side_effect.rules.insert(
-            0,
-            (
-                ai_providers._GET_QUERY,
-                provider_row(driver='bedrock', region='us-east-1'),
-            ),
-        )
+        self.route_run(provider={'driver': 'bedrock', 'region': 'us-east-1'})
         with mock.patch.object(prompts, 'CALL_DEADLINE', 0.01):
             response = self.run_ref()
         # No request was sent: the retry is safe.
@@ -629,10 +614,7 @@ class GenerativeRunTestCase(base.PromptTestBase):
 
     def test_vertex_needs_a_key(self) -> None:
         self.decrypt.return_value = None
-        self.route_run()
-        self.mock_db.execute.side_effect.rules.insert(
-            0, (ai_providers._GET_QUERY, provider_row(driver='vertex'))
-        )
+        self.route_run(provider={'driver': 'vertex'})
         response = self.run_ref()
         self.assertEqual(response.status_code, 409)
         self.assertEqual(
@@ -646,14 +628,7 @@ class GenerativeRunTestCase(base.PromptTestBase):
         self._patch(
             model_generate, 'sigv4', mock.AsyncMock(return_value=signer)
         )
-        self.route_run()
-        self.mock_db.execute.side_effect.rules.insert(
-            0,
-            (
-                ai_providers._GET_QUERY,
-                provider_row(driver='bedrock', region='us-east-1'),
-            ),
-        )
+        self.route_run(provider={'driver': 'bedrock', 'region': 'us-east-1'})
         self.assertEqual(self.run_ref().status_code, 200)
         sent: generate.Request = self.generate.await_args.args[0]
         self.assertIs(sent.auth, signer)

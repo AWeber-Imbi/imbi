@@ -8,7 +8,9 @@ through the same sandbox (:mod:`.rendering`).
 
 A failure in the CMS path (no such prompt, a render error, a graph
 error) is logged and the packaged template is used, so a broken or
-missing prompt never fails a turn.
+missing prompt never fails a turn. A version that names a model the
+consumer cannot use is a configuration error: it raises
+:class:`~imbi.common.llm.resolve.ModelUnusable`.
 """
 
 import collections.abc
@@ -19,6 +21,7 @@ import logging
 import typing
 
 from imbi.common import graph, models
+from imbi.common.llm import resolve as llm_resolve
 from imbi.common.prompts import rendering, resolve
 
 LOGGER = logging.getLogger(__name__)
@@ -140,8 +143,9 @@ class SystemPrompt:
     source: Source
     #: ``namespace/slug@n`` when the text came from the CMS.
     ref: str | None = None
-    #: Set only when the version names an enabled catalog model that a
-    #: supported (Anthropic) provider serves, and that the user may use.
+    #: Set when the version names a model. The model is an enabled
+    #: catalog model that an enabled Anthropic provider serves, and that
+    #: the user may use.
     model_id: str | None = None
     max_tokens: int | None = None
     temperature: float | None = None
@@ -186,72 +190,59 @@ async def _fallback(
 async def _model_id(
     db: graph.Graph,
     version: models.PromptVersion,
-    ref: str,
     email: str | None,
     org_ids: resolve.OrgIds | None = None,
 ) -> str | None:
-    """Return the version's model id when the consumer can call it.
+    """Return the version's model id, or ``None`` when the version names
+    no model (the consumer then uses its configured model).
 
-    The AI model catalog is per organization, and these prompts are
-    global, so the model comes from the catalogs of ``org_ids``, or of
-    the organizations of the user when ``org_ids`` is ``None``. Without
-    a user, there is no catalog model.
+    Raises:
+        llm_resolve.ModelUnusable: The model is missing, disabled, served
+            by a disabled provider or by a driver other than Anthropic,
+            or is restricted to teams that do not include the user
+            (#788).
 
-    A ``restricted`` model is used only for a member of one of its
-    teams (#788). Other users get the configured model.
     """
     if version.model is None:
         return None
+    # The catalog is per organization and these prompts are global, so
+    # the model comes from the catalogs of ``org_ids``, or of the
+    # organizations of the user when ``org_ids`` is ``None``. Without a
+    # user, there is no catalog model.
     if email is None:
-        org_ids = []
-    elif org_ids is None:
+        return None
+    if org_ids is None:
         org_ids = await resolve.member_org_ids(db, email)
-    info = await resolve.model_info(db, version.model, org_ids=org_ids)
-    if info is None or not info.enabled:
-        LOGGER.warning(
-            'Prompt %s names AI model %r, which is missing or disabled; '
-            'using the configured model',
-            ref,
-            version.model,
+    resolved = await llm_resolve.resolve_model(
+        db,
+        org_ids,
+        model=version.model,
+        email=email,
+    )
+    model = typing.cast('models.AIModel', resolved.model)
+    if model.provider.driver != _SUPPORTED_DRIVER:
+        raise llm_resolve.ModelUnusable(
+            'unsupported_driver',
+            model.slug,
+            f'AI model {model.slug!r} is served by driver '
+            f'{model.provider.driver!r}; only {_SUPPORTED_DRIVER!r} is '
+            'supported here',
         )
-        return None
-    if info.driver != _SUPPORTED_DRIVER:
-        LOGGER.warning(
-            'Prompt %s names AI model %r, served by driver %r; only %r '
-            'is supported here, so the configured model is used',
-            ref,
-            version.model,
-            info.driver,
-            _SUPPORTED_DRIVER,
+    model_id = version.model_id or model.model_id
+    # The stored id can differ from the catalog row of the slug after a
+    # catalog edit, so the check is on the id that is sent.
+    if model_id != model.model_id and not (
+        email is not None
+        and await resolve.member_may_use_model_id(
+            db, model_id, email, org_ids=[model.organization.id]
         )
-        return None
-    # The slug names the model: a run uses the id of the slug in the
-    # catalog, not the id stored with a global prompt (ADR 0018).
-    model_id = info.model_id
-    if info.access_scope != 'restricted':
-        return model_id
-    try:
-        allowed = email is not None and await resolve.member_may_use_model_id(
-            db, model_id, email, org_ids=org_ids
+    ):
+        raise llm_resolve.ModelUnusable(
+            'not_allowed',
+            model.slug,
+            f'The model id {model_id!r} is not in the catalog or is '
+            'restricted to teams that do not include the user',
         )
-    except Exception:  # noqa: BLE001 - keep the rendered CMS prompt
-        LOGGER.warning(
-            'Failed to check the access to AI model %r of %s; using the '
-            'configured model',
-            model_id,
-            ref,
-            exc_info=True,
-        )
-        return None
-    if not allowed:
-        LOGGER.info(
-            'Prompt %s names AI model %r, which is not in the catalog or '
-            'is restricted to teams that do not include the user; using '
-            'the configured model',
-            ref,
-            model_id,
-        )
-        return None
     return model_id
 
 
@@ -266,15 +257,22 @@ async def load_model_id(
     for the user ``email``. ``org_ids`` limits the catalog to those
     organizations (default: all the organizations of the user).
 
-    ``None`` when the prompt is missing, names no model, or names one
-    that is disabled or served by an unsupported driver. Errors are
-    logged, never raised.
+    ``None`` when the prompt is missing or names no model. Errors other
+    than :class:`~imbi.common.llm.resolve.ModelUnusable` are logged,
+    never raised.
+
+    Raises:
+        llm_resolve.ModelUnusable: The version names a model that the
+            consumer cannot use.
+
     """
     try:
         _prompt, version, _label = await resolve.resolve(db, ref)
-        return await _model_id(db, version, ref, email, org_ids)
+        return await _model_id(db, version, email, org_ids)
     except resolve.PromptError:
         return None
+    except llm_resolve.ModelUnusable:
+        raise
     except Exception:  # noqa: BLE001 - creating a conversation must not fail
         LOGGER.warning('Failed to read the model of %s', ref, exc_info=True)
         return None
@@ -302,6 +300,10 @@ async def load_system_prompt(
         override: An operator-supplied template that replaces both.
         email: The user of the turn, for a ``restricted`` model.
 
+    Raises:
+        llm_resolve.ModelUnusable: The CMS version names a model that the
+            consumer cannot use.
+
     """
     if override:
         try:
@@ -327,7 +329,11 @@ async def load_system_prompt(
             if name in version.variable_schema
         }
         rendered = await rendering.render(version, declared, {})
-        model_id = await _model_id(db, version, ref, email)
+        model_id = await _model_id(db, version, email)
+    except llm_resolve.ModelUnusable:
+        # A configuration error, not a CMS failure: no other model is
+        # used in its place (ADR 0018).
+        raise
     except resolve.PromptError as e:
         LOGGER.info('Using the packaged prompt for %s: %s', ref, e)
         return await _fallback(default, variables)

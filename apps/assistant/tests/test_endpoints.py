@@ -19,6 +19,7 @@ from imbi.assistant import (
     settings,
 )
 from imbi.common import external_mcp
+from imbi.common.llm import resolve as llm_resolve
 from imbi.common.prompts import resolve
 from imbi.common.prompts import system as prompt_system
 
@@ -546,6 +547,35 @@ class CreateConversationEndpointTestCase(
             org_id='org-1',
             model='claude-opus-5-5',
         )
+
+    @mock.patch(
+        'imbi.assistant.age_ops.create_conversation',
+    )
+    async def test_create_conversation_refuses_an_unusable_prompt_model(
+        self,
+        mock_create: mock.AsyncMock,
+    ) -> None:
+        # No other model is used in its place (ADR 0018).
+        client._client = mock.MagicMock()
+        for reason, status in (('disabled', 422), ('not_allowed', 403)):
+            error = llm_resolve.ModelUnusable(reason, 'opus', 'no')
+            with (
+                self.subTest(reason=reason),
+                mock.patch.dict('os.environ', {}, clear=True),
+                mock.patch.object(
+                    prompt_system,
+                    'load_model_id',
+                    mock.AsyncMock(side_effect=error),
+                ),
+                self.assertRaises(fastapi.HTTPException) as raised,
+            ):
+                await endpoints.create_conversation(
+                    db=mock.AsyncMock(),
+                    auth_ctx=_make_auth_context(is_admin=True),
+                    body=None,
+                )
+            self.assertEqual(raised.exception.status_code, status)
+        mock_create.assert_not_called()
 
     @mock.patch(
         'imbi.assistant.age_ops.create_conversation',

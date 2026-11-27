@@ -260,6 +260,14 @@ DELETE r
 """
 
 
+#: The organizations and teams whose default model is the model.
+_DEFAULT_OF_QUERY: typing.LiteralString = """
+MATCH (s)-[:USES_DEFAULT_MODEL]->(:AIModel {{id: {id}}})
+      -[:BELONGS_TO]->(:Organization {{id: {org_id}}})
+RETURN s.slug AS slug
+"""
+
+
 def _to_response(
     node: models.AIModel,
     provider_id: str,
@@ -843,9 +851,23 @@ async def delete_ai_model(
 
     Raises:
         404: No such model.
+        409: The model is the default model of an organization or a
+            team.
 
     """
     _ = auth
+    records = await db.execute(
+        _DEFAULT_OF_QUERY, {'id': id, 'org_id': org_id}, ['slug']
+    )
+    if records:
+        names = sorted(str(graph.parse_agtype(r['slug'])) for r in records)
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=(
+                f'AI model {id!r} is the default model of '
+                f'{", ".join(names)}; choose another default first'
+            ),
+        )
     query: typing.LiteralString = """
     MATCH (m:AIModel {{id: {id}}})
           -[:BELONGS_TO]->(:Organization {{id: {org_id}}})

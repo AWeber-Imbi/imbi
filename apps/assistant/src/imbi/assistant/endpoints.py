@@ -21,6 +21,7 @@ from imbi.assistant import (
     system_prompt,
 )
 from imbi.common import external_mcp, graph
+from imbi.common.llm import resolve as llm_resolve
 from imbi.common.prompts import resolve
 from imbi.common.prompts import system as prompt_system
 
@@ -112,6 +113,13 @@ async def _check_model(
         )
 
 
+def _unusable(error: llm_resolve.ModelUnusable) -> fastapi.HTTPException:
+    """The HTTP error for a prompt version model that cannot be used."""
+    if error.reason == 'not_allowed':
+        return resolve.ModelNotAllowed(error.message)
+    return fastapi.HTTPException(status_code=422, detail=error.message)
+
+
 # --- Conversation CRUD ---
 
 
@@ -133,15 +141,18 @@ async def create_conversation(
     if model is None:
         # A new conversation takes the model of the prompt version when
         # it names one the assistant can call.
-        model = (
-            await prompt_system.load_model_id(
-                db,
-                assistant_settings.prompt_ref,
-                auth_ctx.require_user.email,
-                org_ids=[org_id],
+        try:
+            model = (
+                await prompt_system.load_model_id(
+                    db,
+                    assistant_settings.prompt_ref,
+                    auth_ctx.require_user.email,
+                    org_ids=[org_id],
+                )
+                or assistant_settings.model
             )
-            or assistant_settings.model
-        )
+        except llm_resolve.ModelUnusable as e:
+            raise _unusable(e) from e
     await _check_model(db, auth_ctx, org_id, model, assistant_settings.model)
     conv = await age_ops.create_conversation(
         db,
@@ -972,9 +983,12 @@ async def send_message(
     ]
 
     mcp_manager = mcp.get_manager()
-    tools, prompt = await _build_tools_and_system(
-        db, mcp_manager, auth_ctx, org_id
-    )
+    try:
+        tools, prompt = await _build_tools_and_system(
+            db, mcp_manager, auth_ctx, org_id
+        )
+    except llm_resolve.ModelUnusable as e:
+        raise _unusable(e) from e
 
     is_first_exchange = len(all_msgs) <= 2
     auth_token = credentials.credentials if credentials else None

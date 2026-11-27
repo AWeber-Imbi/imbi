@@ -1647,6 +1647,63 @@ class BranchTestCase(EngineTestCase):
         )
 
 
+class ModelDecisionTestCase(EngineTestCase):
+    async def _decide(self) -> dict[str, typing.Any]:
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'manual'),
+                _node(
+                    'decide',
+                    'model_decision',
+                    {
+                        'model_id': self.model,
+                        'prompt': 'Which?',
+                        'branches': ['a', 'b'],
+                    },
+                ),
+            ],
+            [_edge('start', 'decide')],
+        )
+        run_id = await self._start(workflow_id)
+        with mock.patch(
+            'imbi.common.llm.typesafe.decide',
+            mock.AsyncMock(return_value=_decision('a')),
+        ):
+            return await self._drive(run_id)
+
+    async def test_restricted_model_needs_the_owner_team(self) -> None:
+        await self.graph.execute(
+            """
+            MATCH (m:AIModel {{id: {model}}})
+            SET m.access_scope = 'restricted'
+            """,
+            {'model': self.model},
+        )
+        run = await self._decide()
+        self.assertEqual(run['status'], 'failed', run)
+        self.assertEqual(run['steps']['decide']['error'], 'model_unavailable')
+        await self.graph.execute(
+            """
+            MATCH (m:AIModel {{id: {model}}}), (t:Team {{id: {team}}})
+            CREATE (m)-[:ALLOWED_FOR]->(t)
+            """,
+            {'model': self.model, 'team': self.team},
+        )
+        run = await self._decide()
+        self.assertEqual(run['status'], 'succeeded', run)
+
+    async def test_disabled_provider_is_unavailable(self) -> None:
+        await self.graph.execute(
+            """
+            MATCH (p:AIProvider {{id: {provider}}})
+            SET p.enabled = false
+            """,
+            {'provider': self.provider},
+        )
+        run = await self._decide()
+        self.assertEqual(run['steps']['decide']['error'], 'model_unavailable')
+
+
 class ConditionTestCase(EngineTestCase):
     async def _check(
         self, conditions: list[dict[str, typing.Any]], match: str = 'all'
