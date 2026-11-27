@@ -22,9 +22,8 @@ Release exists.
 
 Runs as the ``deployment-sweep`` maintenance operation, so it is
 operator-triggerable from the Maintenance page and recorded like every
-other global run.  Nothing schedules it: an imbi-scheduler task runs as
-the scheduler's own account, and its role lacks
-``admin:maintenance:manage``.
+other global run.  The imbi-scheduler also runs it every six hours,
+under the ``admin:maintenance:deployment-sweep`` permission.
 """
 
 from __future__ import annotations
@@ -36,6 +35,7 @@ import typing
 import fastapi
 
 from imbi.common import deployments, graph
+from imbi.common.plugins import errors as plugin_errors
 
 LOGGER = logging.getLogger(__name__)
 
@@ -327,6 +327,11 @@ async def sweep_project(
             )
             expired += await _expire_unpollable(db, item, release_id, now, exc)
             continue
+        except plugin_errors.PluginRateLimited:
+            # Let the maintenance worker pause and requeue the project.
+            # A rate limit is not a poll failure: it must not expire a
+            # deployment or move on to the next row.
+            raise
         except Exception as exc:
             LOGGER.exception(
                 'sweeper could not poll run %s for project %s',

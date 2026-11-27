@@ -52,6 +52,9 @@ class TerminalEnvironmentSlugsTests(unittest.TestCase):
         self.assertEqual([], pull_requests.terminal_environment_slugs([]))
 
 
+_DEPLOYED = [('p1', '2026-06-01 00:00:00.000', 'production')]
+
+
 class ListPendingDeployTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.since = datetime.datetime(2026, 6, 1, tzinfo=datetime.UTC)
@@ -60,22 +63,9 @@ class ListPendingDeployTests(unittest.IsolatedAsyncioTestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    async def test_no_projects_skips_clickhouse(self) -> None:
+    async def test_no_deployed_projects_skips_clickhouse(self) -> None:
         rows, total = await pull_requests._list_pending_deploy(
-            project_ids=[],
-            environment_slugs=['production'],
-            author='gmr',
-            since=self.since,
-        )
-        self.assertEqual(([], 0), (rows, total))
-        self.query.assert_not_awaited()
-
-    async def test_no_terminal_environment_skips_clickhouse(self) -> None:
-        rows, total = await pull_requests._list_pending_deploy(
-            project_ids=['p1'],
-            environment_slugs=[],
-            author='gmr',
-            since=self.since,
+            deployed=[], author='gmr', since=self.since
         )
         self.assertEqual(([], 0), (rows, total))
         self.query.assert_not_awaited()
@@ -83,34 +73,33 @@ class ListPendingDeployTests(unittest.IsolatedAsyncioTestCase):
     async def test_query_scopes_projects_environments_and_author(
         self,
     ) -> None:
+        deployed = [
+            ('p1', '2026-06-01 00:00:00.000', 'production'),
+            ('p2', '2026-06-02 00:00:00.000', 'infrastructure'),
+        ]
         await pull_requests._list_pending_deploy(
-            project_ids=['p1', 'p2'],
-            environment_slugs=['production'],
+            deployed=deployed,
             author='gmr',
             since=self.since,
         )
         sql, params = self.query.await_args.args
-        self.assertIn("entry_type = 'Deployed'", sql)
-        self.assertIn('environment_slug IN {environments:Array(String)}', sql)
+        self.assertIn('INNER JOIN project_ids AS d', sql)
         self.assertIn('d.last_deployed_at <= pr.merged_at', sql)
-        self.assertIn('argMax(environment_slug, occurred_at)', sql)
         self.assertIn('pr.merged_at >= {since:DateTime64(3)}', sql)
         self.assertIn('pr.author = {author:String}', sql)
         self.assertIn('NOT pr.draft', sql)
         self.assertIn(
             'project_id IN (SELECT project_id FROM project_ids)', sql
         )
-        self.assertEqual(
-            ['p1', 'p2'], self.query.await_args.kwargs['project_ids']
-        )
-        self.assertEqual(['production'], params['environments'])
+        kwargs = self.query.await_args.kwargs
+        self.assertEqual(deployed, kwargs['project_ids'])
+        self.assertEqual(pull_requests._DEPLOYED_COLUMNS, kwargs['columns'])
         self.assertEqual('gmr', params['author'])
         self.assertEqual(self.since, params['since'])
 
     async def test_author_is_optional(self) -> None:
         await pull_requests._list_pending_deploy(
-            project_ids=['p1'],
-            environment_slugs=['production'],
+            deployed=_DEPLOYED,
             author=None,
             since=self.since,
         )
@@ -120,8 +109,7 @@ class ListPendingDeployTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_bots_filter_matches_the_github_bot_suffix(self) -> None:
         await pull_requests._list_pending_deploy(
-            project_ids=['p1'],
-            environment_slugs=['production'],
+            deployed=_DEPLOYED,
             author=None,
             since=self.since,
             bots=True,
@@ -133,8 +121,7 @@ class ListPendingDeployTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_bots_filter_is_off_by_default(self) -> None:
         await pull_requests._list_pending_deploy(
-            project_ids=['p1'],
-            environment_slugs=['production'],
+            deployed=_DEPLOYED,
             author='gmr',
             since=self.since,
         )
@@ -164,8 +151,7 @@ class ListPendingDeployTests(unittest.IsolatedAsyncioTestCase):
             ],
         ]
         rows, total = await pull_requests._list_pending_deploy(
-            project_ids=['p1'],
-            environment_slugs=['production'],
+            deployed=_DEPLOYED,
             author='gmr',
             since=self.since,
         )
@@ -180,8 +166,7 @@ class ListPendingDeployTests(unittest.IsolatedAsyncioTestCase):
     async def test_count_and_page_share_the_filters(self) -> None:
         self.query.side_effect = [[{'total': 7}], []]
         rows, total = await pull_requests._list_pending_deploy(
-            project_ids=['p1'],
-            environment_slugs=['production'],
+            deployed=_DEPLOYED,
             author='gmr',
             since=self.since,
             limit=5,
@@ -200,3 +185,47 @@ class ListPendingDeployTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(5, data_params['limit'])
         self.assertEqual(5, data_params['offset'])
         self.assertIs(count_params, data_params)
+
+
+def _state(
+    project_id: str, slug: str, started: datetime.datetime
+) -> mock.Mock:
+    env = {'slug': slug}
+    return mock.Mock(
+        project_id=project_id,
+        environment=env,
+        latest=mock.Mock(environment=env, started_at=started),
+    )
+
+
+class LastTerminalDeploysTests(unittest.IsolatedAsyncioTestCase):
+    async def test_newest_terminal_attempt_per_project(self) -> None:
+        early = datetime.datetime(2026, 11, 1, 9, 0, tzinfo=datetime.UTC)
+        late = datetime.datetime(2026, 11, 2, 10, 30, 1, 5000, datetime.UTC)
+        states = [
+            _state('p1', 'infrastructure', late),
+            _state('p1', 'production', early),
+            # A newer deploy to a non-terminal environment is ignored.
+            _state('p2', 'staging', late),
+            _state('p2', 'production', early),
+            _state('p3', 'testing', late),
+        ]
+        with mock.patch.object(
+            pull_requests.deployment_nodes,
+            'current_and_latest_from_state',
+            mock.AsyncMock(return_value=states),
+        ):
+            rows = await pull_requests._last_terminal_deploys(
+                mock.Mock(),
+                ['p1', 'p2', 'p3'],
+                ['production', 'infrastructure'],
+            )
+        self.assertEqual(
+            sorted(
+                [
+                    ('p1', '2026-11-02 10:30:01.005', 'infrastructure'),
+                    ('p2', '2026-11-01 09:00:00.000', 'production'),
+                ]
+            ),
+            sorted(rows),
+        )
