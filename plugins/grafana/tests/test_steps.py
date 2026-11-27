@@ -19,7 +19,7 @@ CTX = base.PluginContext(
     project_id='',
     project_slug='',
     org_slug='org',
-    integration_options={'service_url': f'{URL}/'},
+    integration_options={'service_url': f'{URL}/', 'org_id': 3},
 )
 CALL = base.StepCall(
     run_id='r', workflow_slug='w', node_id='n', attempt=1, idempotency_key='k'
@@ -118,6 +118,7 @@ async def test_gather_metrics() -> None:
 
     request = route.calls.last.request
     assert request.headers['Authorization'] == 'Bearer glsa_token'
+    assert request.headers['X-Grafana-Org-Id'] == '3'
     body = json.loads(request.content)
     assert body['from'] == 'now-1h'
     assert body['to'] == 'now'
@@ -297,6 +298,9 @@ async def test_missing_config() -> None:
     ctx = CTX.model_copy(update={'integration_options': {}})
     with pytest.raises(errors.PluginCredentialsMissing):
         await steps.datasources(ctx, CREDS, 'datasource', {})
+    ctx = CTX.model_copy(update={'integration_options': {'service_url': URL}})
+    with pytest.raises(errors.PluginCredentialsMissing):
+        await steps.datasources(ctx, CREDS, 'datasource', {})
 
 
 def _project_ctx(*, connected: bool) -> base.PluginContext:
@@ -305,7 +309,7 @@ def _project_ctx(*, connected: bool) -> base.PluginContext:
         project_slug='demo',
         org_slug='org',
         integration_slug='grafana',
-        integration_options={'service_url': URL},
+        integration_options={'service_url': URL, 'org_id': 3},
         service_connections=[
             base.ServiceConnection(
                 integration_slug='grafana', identifier='old-p1'

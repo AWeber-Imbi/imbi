@@ -201,6 +201,13 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    [A binding for MCP servers](../admin/secrets.md#a-binding-for-mcp-servers)).
    To use one, set `IMBI_ASSISTANT_API_TOKEN` and `IMBI_SLACKBOT_API_TOKEN`
    to API keys of those service accounts.
+7. **After you deploy**, set **Grafana organization ID** (`org_id`) on
+   each Grafana Integration. The option is now required. Until you set
+   it, the Grafana lifecycle, doctor, and workflow steps fail with a
+   configuration error. Then run **Sync lifecycle** on each Grafana Integration:
+   the project links now open the alert rules list in that
+   organization (`orgId=<org_id>`), and the doctor reports an old link
+   until it is written again.
 
 ## 2.65.0
 

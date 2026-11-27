@@ -15,7 +15,7 @@ _RULES = (
     '%3A%22service%22%2C%22value%22%3A%22demo-p1%22%2C%22isRegex%22%3Afalse'
     '%2C%22isEqual%22%3Atrue%7D'
 )
-_LIST = f'{_BASE}/alerting/list?search=label%3Aservice%3Ddemo-p1'
+_LIST = f'{_BASE}/alerting/list?orgId=1&search=label%3Aservice%3Ddemo-p1'
 
 
 def _ctx(
@@ -33,7 +33,9 @@ def _ctx(
         org_slug='org',
         integration_slug='grafana',
         integration_options=(
-            {'service_url': _BASE + '/'} if options is None else options
+            {'service_url': _BASE + '/', 'org_id': 1}
+            if options is None
+            else options
         ),
         service_connections=[
             ServiceConnection(
@@ -51,7 +53,11 @@ def _ctx(
             links_
             if links_ is not None
             else (
-                {'grafana': links.dashboard_url(_BASE, 'service', identifier)}
+                {
+                    'grafana': links.dashboard_url(
+                        _BASE, 1, 'service', identifier
+                    )
+                }
                 if connected
                 else {}
             )
@@ -68,7 +74,8 @@ class ManifestTestCase(unittest.TestCase):
         self.assertFalse(manifest.credentials[0].required)
         self.assertFalse(manifest.shareable_service_identifier)
         self.assertEqual(
-            ['service_url', 'label'], [o.name for o in manifest.options]
+            ['service_url', 'org_id', 'label'],
+            [o.name for o in manifest.options],
         )
         self.assertEqual(
             ['lifecycle', 'webhook-actions', 'analysis', 'workflow-steps'],
@@ -119,16 +126,16 @@ class LinksTestCase(unittest.TestCase):
         self.assertEqual({'grafana': _LIST}, wb.dashboard_links)
 
     def test_custom_label(self) -> None:
-        ctx = _ctx(options={'service_url': _BASE, 'label': 'app'})
+        ctx = _ctx(options={'service_url': _BASE, 'org_id': 1, 'label': 'app'})
         wb = links.writeback(ctx, 'demo-p1')
         self.assertIn('%22name%22%3A%22app%22', wb.canonical_url)
         self.assertIn('label%3Aapp%3Ddemo-p1', wb.dashboard_links['grafana'])
 
     def test_whitespace_identifier_is_quoted(self) -> None:
         self.assertEqual(
-            f'{_BASE}/alerting/list?search='
+            f'{_BASE}/alerting/list?orgId=1&search='
             'label%3A%22service%3Dcheckout+api%22',
-            links.dashboard_url(_BASE, 'service', 'checkout api'),
+            links.dashboard_url(_BASE, 1, 'service', 'checkout api'),
         )
 
     def test_missing_url_raises(self) -> None:
@@ -137,15 +144,27 @@ class LinksTestCase(unittest.TestCase):
         with self.assertRaises(links.GrafanaConfigError):
             links.base_url(_ctx(options={'service_url': 'grafana.local'}))
 
+    def test_org_id(self) -> None:
+        self.assertEqual(2, links.org_id(_ctx(options={'org_id': '2'})))
+        self.assertEqual(
+            2**63 - 1, links.org_id(_ctx(options={'org_id': 2**63 - 1}))
+        )
+        for value in (None, '', '0', 'main', -1, '²', str(2**63), '9' * 5000):
+            with self.assertRaises(links.GrafanaConfigError):
+                links.org_id(_ctx(options={'org_id': value}))
+
     def test_two_integrations_keep_their_own_links(self) -> None:
         eu_base = 'https://grafana-eu.example.com'
-        eu_list = links.dashboard_url(eu_base, 'service', 'demo-p1')
+        eu_list = links.dashboard_url(eu_base, 2, 'service', 'demo-p1')
         both = {'grafana': _LIST, 'grafana-eu': eu_list}
         us = _ctx(connected=True, links_=both)
         eu = us.model_copy(
             update={
                 'integration_slug': 'grafana-eu',
-                'integration_options': {'service_url': eu_base},
+                'integration_options': {
+                    'service_url': eu_base,
+                    'org_id': 2,
+                },
                 'service_connections': [
                     ServiceConnection(
                         integration_slug='grafana-eu',
