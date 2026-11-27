@@ -214,14 +214,37 @@ class ConsumerModel(typing.NamedTuple):
     provider: models.AIProvider
 
 
-async def default_model(db: graph.Graph, email: str) -> ConsumerModel | None:
+#: The id of the organization ``org`` when the user is a member of it.
+MEMBER_ORG_QUERY: typing.LiteralString = """
+MATCH (:User {{email: {email}}})-[:MEMBER_OF]->(o:Organization {{slug: {org}}})
+RETURN o.id AS id
+"""
+
+
+async def _org_ids(
+    db: graph.Graph, email: str, org_slug: str | None
+) -> list[str]:
+    """The organizations of a call for the user ``email``: ``org_slug``
+    (such as the organization of a Slack workspace) when it is set, else
+    each organization of the user."""
+    if org_slug is None:
+        return await resolve.member_org_ids(db, email)
+    records = await db.execute(
+        MEMBER_ORG_QUERY, {'email': email, 'org': org_slug}, ['id']
+    )
+    return [str(graph.parse_agtype(r['id'])) for r in records]
+
+
+async def default_model(
+    db: graph.Graph, email: str, *, org_slug: str | None = None
+) -> ConsumerModel | None:
     """Return the default model for the user ``email``,
     for a consumer whose prompt version names no model.
 
-    The default applies when the user is a member of one organization:
-    the team default needs a team and these consumers have none, so the
-    organization default is used. ``None``: no default, and the consumer
-    uses its configured model.
+    The default applies for a call in one organization: ``org_slug``, or
+    the only organization of the user. The team default needs a team and
+    these consumers have none, so the organization default is used.
+    ``None``: no default, and the consumer uses its configured model.
 
     Raises:
         llm_resolve.ModelUnusable: The default model cannot be used, or
@@ -229,7 +252,7 @@ async def default_model(db: graph.Graph, email: str) -> ConsumerModel | None:
 
     """
     resolved = await llm_resolve.resolve_model(
-        db, await resolve.member_org_ids(db, email), email=email
+        db, await _org_ids(db, email, org_slug), email=email
     )
     if resolved.model is None:
         return None
@@ -241,6 +264,7 @@ async def _model(
     db: graph.Graph,
     version: models.PromptVersion,
     email: str | None,
+    org_slug: str | None = None,
 ) -> ConsumerModel | None:
     """Return the version's model, or ``None`` when the version names no
     model (the consumer then uses the default or its configured model).
@@ -261,7 +285,7 @@ async def _model(
         return None
     resolved = await llm_resolve.resolve_model(
         db,
-        await resolve.member_org_ids(db, email),
+        await _org_ids(db, email, org_slug),
         model=version.model,
         email=email,
     )
@@ -319,6 +343,7 @@ async def load_system_prompt(
     *,
     override: str | None = None,
     email: str | None = None,
+    org_slug: str | None = None,
 ) -> SystemPrompt:
     """Return the consumer's system prompt.
 
@@ -332,6 +357,8 @@ async def load_system_prompt(
         default: The packaged prompt used when the CMS cannot answer.
         override: An operator-supplied template that replaces both.
         email: The user of the turn, for a ``restricted`` model.
+        org_slug: The organization of the turn, such as the organization
+            of a Slack workspace. ``None``: each organization of the user.
 
     Raises:
         llm_resolve.ModelUnusable: The CMS version names a model that the
@@ -362,7 +389,7 @@ async def load_system_prompt(
             if name in version.variable_schema
         }
         rendered = await rendering.render(version, declared, {})
-        model = await _model(db, version, email)
+        model = await _model(db, version, email, org_slug)
     except llm_resolve.ModelUnusable:
         # A configuration error, not a CMS failure: no other model is
         # used in its place (ADR 0018).

@@ -281,7 +281,11 @@ async def _process(
         # organization, else the configured model (ADR 0018).
         model, provider = prompt.model_id, prompt.provider
         if model is None and db is not None:
-            default = await system.default_model(db, user.email)
+            default = await system.default_model(
+                db,
+                user.email,
+                org_slug=system_prompt.workspace_org(user),
+            )
             if default is not None:
                 model, provider = default
         api_client = (

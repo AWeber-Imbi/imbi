@@ -311,6 +311,31 @@ class DefaultModelIdTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(found.model_id, 'claude-chat')
         self.assertIs(found.provider, resolved.model.provider)
 
+    async def test_one_named_organization(self) -> None:
+        # The Slack bot names the organization of its workspace, so only
+        # that catalog is read.
+        db = mock.AsyncMock()
+        db.execute.return_value = [{'id': 'org-2'}]
+        with (
+            mock.patch.object(
+                resolve.graph, 'parse_agtype', side_effect=lambda v: v
+            ),
+            mock.patch.object(
+                llm_resolve,
+                'resolve_model',
+                mock.AsyncMock(return_value=llm_resolve.ResolvedModel('env')),
+            ) as resolver,
+        ):
+            await system.default_model(db, 'dev@example.com', org_slug='acme')
+        db.execute.assert_awaited_once_with(
+            system.MEMBER_ORG_QUERY,
+            {'email': 'dev@example.com', 'org': 'acme'},
+            ['id'],
+        )
+        resolver.assert_awaited_once_with(
+            mock.ANY, ['org-2'], email='dev@example.com'
+        )
+
     async def test_no_default_is_none(self) -> None:
         resolved = llm_resolve.ResolvedModel(source='env')
         self.assertIsNone(await self.default(resolved))

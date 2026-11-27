@@ -497,6 +497,11 @@ class HandleEventTests(helpers.TestCase):
                 slack_handler.system,
                 'default_model',
                 new=mock.AsyncMock(**kwargs),
+            ) as default_model,
+            mock.patch.object(
+                slack_handler.system_prompt,
+                'workspace_org',
+                return_value='acme',
             ),
             mock.patch.object(
                 slack_handler.identity,
@@ -506,6 +511,11 @@ class HandleEventTests(helpers.TestCase):
             mock.patch.object(slack_handler.agent, 'run_turn', new=run_turn),
         ):
             await slack_handler.handle_event(event, client, bot_user_id='BOT')
+        if prompt_model is None:
+            # Only the organization of the Slack workspace (#1027).
+            default_model.assert_awaited_once_with(
+                mock.ANY, 'ada@example.com', org_slug='acme'
+            )
         return run_turn, client
 
     async def test_model_order(self) -> None:

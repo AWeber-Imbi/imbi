@@ -61,6 +61,15 @@ def _variables(
     }
 
 
+def workspace_org(user: identity.ImbiUser) -> str | None:
+    """The organization of the Slack workspace, which the model of a turn
+    must belong to (#1027). ``None`` before the user carries it: each
+    organization of the user."""
+    # ImbiUser.org_slug comes with #1042; read it directly once this
+    # branch is on top of it.
+    return getattr(user, 'org_slug', None)
+
+
 async def build_system_prompt(
     user: identity.ImbiUser,
     tool_names: list[str],
@@ -86,6 +95,7 @@ async def build_system_prompt(
         system.SLACKBOT,
         override=slackbot_settings.system_prompt,
         email=user.email,
+        org_slug=workspace_org(user),
     )
     return dataclasses.replace(
         prompt, text=prompt.text + skills.catalog(skill_list)

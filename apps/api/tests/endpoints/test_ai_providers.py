@@ -1222,9 +1222,6 @@ class ServiceTokenTestCase(AIProviderTestBase):
 
     def test_a_named_provider_of_the_user(self) -> None:
         # A catalog provider, not the provider of the service (ADR 0018).
-        self.auth_context.service_account = models.ServiceAccount(
-            slug='imbi-slackbot', display_name='Imbi Slackbot'
-        )
         self.route_for([ORG_ID])
         response = self.post_for()
         self.assertEqual(response.status_code, 200, response.text)
@@ -1236,6 +1233,28 @@ class ServiceTokenTestCase(AIProviderTestBase):
         self.assertEqual(
             router.params_for(prompt_resolve.MEMBER_ORGS_QUERY),
             {'email': 'ada@example.com'},
+        )
+
+    def test_the_slackbot_needs_the_organization_of_a_workspace(
+        self,
+    ) -> None:
+        # The slackbot works in its Slack workspace's organization only
+        # (#1027), so a provider of another organization of the user is
+        # refused.
+        self.auth_context.service_account = models.ServiceAccount(
+            slug='imbi-slackbot', display_name='Imbi Slackbot'
+        )
+        self.route_for([ORG_ID])
+        self.assertEqual(self.post_for().status_code, 403)
+        self.mock_db.execute.side_effect.rules.insert(
+            0, (ai_providers._SLACK_ORG_QUERY, [{'id': ORG_ID}])
+        )
+        self.assertEqual(self.post_for().status_code, 200)
+        self.assertEqual(
+            self.mock_db.execute.side_effect.params_for(
+                ai_providers._SLACK_ORG_QUERY
+            ),
+            {'org_id': ORG_ID},
         )
 
     def test_a_provider_of_another_organization_is_403(self) -> None:

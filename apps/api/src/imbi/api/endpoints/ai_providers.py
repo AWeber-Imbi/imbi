@@ -1006,8 +1006,9 @@ async def service_token(
     user. Not in the OpenAPI document, so it is not an MCP tool.
 
     Raises:
-        403: The provider is not in an organization of ``user``, or is
-            not an ``anthropic`` provider.
+        403: The provider is not in an organization of ``user``, is not
+            an ``anthropic`` provider, or for the slackbot, is not in the
+            organization of a Slack workspace.
         404: The caller is not a service with an AI Provider, or the
             provider does not exist.
         422: ``provider`` without ``user``.
@@ -1047,6 +1048,17 @@ async def service_token(
     return ServiceToken(token=token.token, expires_at=token.expires_at)
 
 
+#: The service account of imbi-slackbot.
+SLACKBOT_ACCOUNT = 'imbi-slackbot'
+
+#: The organization ``org_id`` when a Slack workspace is linked to it.
+_SLACK_ORG_QUERY: typing.LiteralString = """
+MATCH (o:Organization {{id: {org_id}}})
+WHERE o.slack_team_id IS NOT NULL
+RETURN o.id AS id
+"""
+
+
 async def _user_provider(
     db: graph.Graph,
     auth: permissions.AuthContext,
@@ -1075,6 +1087,18 @@ async def _user_provider(
         raise fastapi.HTTPException(
             status_code=403,
             detail=f'AI provider {ref!r} is not an anthropic provider',
+        )
+    if auth.service_account.slug == SLACKBOT_ACCOUNT and not (
+        await db.execute(
+            _SLACK_ORG_QUERY, {'org_id': node.organization.id}, ['id']
+        )
+    ):
+        # The slackbot works in the organization of its Slack workspace
+        # only, as its user tokens do (#1027).
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail=f'AI provider {ref!r} is not in the organization of a '
+            'Slack workspace',
         )
     return node
 

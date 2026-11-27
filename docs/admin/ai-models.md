@@ -166,7 +166,8 @@ the credential of the provider of that model, in this order:
    token of that provider, for the user of the call. This needs
    `IMBI_ASSISTANT_API_TOKEN` or `IMBI_SLACKBOT_API_TOKEN`. imbi-api gives
    the token only when the provider is an Anthropic provider in an
-   organization of that user (else `403`).
+   organization of that user (else `403`). For the Slack bot, that
+   organization must also be the organization of a Slack workspace.
 2. Else `ANTHROPIC_API_KEY` of the service, sent to the base URL of the
    provider.
 3. Else the call fails (`provider_credentials_unavailable`): the assistant

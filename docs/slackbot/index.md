@@ -233,8 +233,8 @@ label at that version.
   example `{{ display_name }}`.
 - The model, the max tokens, and the temperature of the prompt version
   apply. When the version names no model, the default model of the
-  organization applies when the user is a member of one organization, else
-  `IMBI_SLACKBOT_MODEL`. When that model cannot be used, the bot replies
+  organization of the Slack workspace applies, else `IMBI_SLACKBOT_MODEL`.
+  The bot reads only the AI models of the workspace's organization. When that model cannot be used, the bot replies
   with an error and does not use another model. A catalog model uses the
   credential of its provider (see
   [Imbi services](../admin/ai-models.md#imbi-services)).
