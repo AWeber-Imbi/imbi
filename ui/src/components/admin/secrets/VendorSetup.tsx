@@ -39,10 +39,11 @@ export function VendorSetup({ orgId, orgSlug, roleArn }: Props) {
       (ok) => ok || toast.error('Could not copy to the clipboard'),
     )
   const agentsQuery = useAgentList(orgSlug)
-  // AI Providers are global; a caller without read access sees none.
+  // The AI Providers of the organization; a caller without read access
+  // sees none.
   const providersQuery = useQuery({
-    queryFn: ({ signal }) => listAIProviders(signal),
-    queryKey: ['ai-providers'],
+    queryFn: ({ signal }) => listAIProviders(orgSlug, signal),
+    queryKey: ['ai-providers', orgSlug],
     retry: false,
   })
   const exchangersQuery = useQuery({

@@ -1,9 +1,8 @@
 import { type ReactNode, useEffect } from 'react'
 
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { AgentRunners } from '@/components/admin/AgentRunners'
-import { AIModelsManagement } from '@/components/admin/AIModelsManagement'
 import { EgressDestinationManagement } from '@/components/admin/EgressDestinationManagement'
 import { SecretsManagement } from '@/components/admin/secrets/SecretsManagement'
 import { WorkflowsManagement } from '@/components/workflows/WorkflowsManagement'
@@ -16,11 +15,6 @@ import { PlatformPage } from './PlatformPage'
 // The page of each section. The Record type makes a missing section a
 // compile error.
 const PAGES: Record<AgentsSection, ReactNode> = {
-  'ai-models': (
-    <div className="p-8">
-      <AIModelsManagement />
-    </div>
-  ),
   dashboard: <DashboardPage />,
   egress: (
     <div className="p-8">
@@ -47,7 +41,12 @@ const PAGES: Record<AgentsSection, ReactNode> = {
  * is the navigation between the sections.
  */
 export function AgentsArea() {
-  const { section } = useParams<{ section?: string }>()
+  const { action, section, slug } = useParams<{
+    action?: string
+    section?: string
+    slug?: string
+  }>()
+  const { search } = useLocation()
   const navigate = useNavigate()
   const items = useAgentsNav()
   // A page the user cannot open is the same as an unknown page.
@@ -60,10 +59,22 @@ export function AgentsArea() {
     if (section === 'usage') {
       // The Usage page moved to the reports. Old links open it there.
       navigate('/reports/agent-usage', { replace: true })
+    } else if (section === 'ai-models') {
+      // The AI Models page moved back to Admin. Old links open it there.
+      const rest = [slug, action].filter((p): p is string => !!p)
+      navigate(
+        {
+          pathname: ['/admin/ai-models', ...rest.map(encodeURIComponent)].join(
+            '/',
+          ),
+          search,
+        },
+        { replace: true },
+      )
     } else if (!visible) {
       navigate(agentsPath('dashboard'), { replace: true })
     }
-  }, [section, visible, navigate])
+  }, [action, section, slug, search, visible, navigate])
 
   return PAGES[current]
 }

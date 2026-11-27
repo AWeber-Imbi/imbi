@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { useOrganization } from '@/contexts/OrganizationContext'
 import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
 import type { AIModel } from '@/types'
@@ -83,9 +84,11 @@ const PARAMS: { control: ParamControl; key: ParamKey; label: string }[] = [
  * version in the prompt CMS, not on the agent.
  */
 export function ModelTab({ errors, onChange, value }: ModelTabProps) {
+  const orgSlug = useOrganization().selectedOrganization?.slug ?? ''
   const { data: catalog = [] } = useQuery({
-    queryFn: ({ signal }) => listAIModels(signal),
-    queryKey: queryKeys.aiModels(),
+    enabled: !!orgSlug,
+    queryFn: ({ signal }) => listAIModels(orgSlug, signal),
+    queryKey: queryKeys.aiModels(orgSlug),
   })
   const models = useMemo(
     () =>

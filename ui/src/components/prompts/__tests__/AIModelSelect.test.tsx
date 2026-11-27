@@ -4,6 +4,12 @@ import { fireEvent, render, screen, waitFor } from '@/test/utils'
 import type { AIModel } from '@/types'
 
 // fallow-ignore-next-line unresolved-import
+vi.mock('@/contexts/OrganizationContext', () => ({
+  useOrganization: () => ({
+    selectedOrganization: { id: 'org-1', name: 'Acme', slug: 'acme' },
+  }),
+}))
+
 vi.mock('@/api/endpoints', () => ({
   listAIModels: vi.fn(),
 }))

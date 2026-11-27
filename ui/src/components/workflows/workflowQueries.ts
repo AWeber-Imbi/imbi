@@ -53,8 +53,8 @@ export function useSourceOptions(
 ) {
   const models = useQuery({
     enabled: source === 'model',
-    queryFn: ({ signal }) => listAIModels(signal),
-    queryKey: queryKeys.aiModels(),
+    queryFn: ({ signal }) => listAIModels(orgSlug, signal),
+    queryKey: queryKeys.aiModels(orgSlug),
     // Model decisions take decision models only (ADR 0021).
     select: (rows) =>
       rows

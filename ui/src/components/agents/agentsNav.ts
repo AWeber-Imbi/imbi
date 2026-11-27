@@ -5,7 +5,6 @@ import {
   type LucideIcon,
   Server,
   SlidersHorizontal,
-  Sparkles,
   Waypoints,
   Workflow,
 } from 'lucide-react'
@@ -30,7 +29,6 @@ export interface AgentsNavItem {
 }
 
 export type AgentsSection =
-  | 'ai-models'
   | 'dashboard'
   | 'egress'
   | 'manage'
@@ -56,14 +54,6 @@ const AGENTS_NAV: AgentsNavItem[] = [
     id: 'manage',
     label: 'Agents',
     note: 'Define and configure agents',
-  },
-  {
-    adminOnly: true,
-    group: 'Settings',
-    icon: Sparkles,
-    id: 'ai-models',
-    label: 'AI Models',
-    note: 'LLM providers and the model catalog, shared by every organization',
   },
   {
     adminOnly: true,

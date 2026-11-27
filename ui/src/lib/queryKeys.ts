@@ -19,7 +19,7 @@ export const queryKeys = {
     ['agentUsage', orgSlug, params] as const,
   agentVersions: (orgSlug: string, slug: string) =>
     ['agentVersions', orgSlug, slug] as const,
-  aiModels: () => ['ai-models'] as const,
+  aiModels: (orgSlug: string) => ['ai-models', orgSlug] as const,
   anchorEdges: (
     kind: string,
     orgSlug: string,

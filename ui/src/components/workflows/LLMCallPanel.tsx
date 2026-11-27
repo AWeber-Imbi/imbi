@@ -64,8 +64,8 @@ export function LLMCallPanel({
   const ref = pinnedRef(node)
   const loaded = usePromptResolution(prompt ? null : ref)
   const models = useQuery({
-    queryFn: ({ signal }) => listAIModels(signal),
-    queryKey: queryKeys.aiModels(),
+    queryFn: ({ signal }) => listAIModels(orgSlug, signal),
+    queryKey: queryKeys.aiModels(orgSlug),
   })
   if (!prompt && ref && loaded.isLoading) {
     return <p className="text-tertiary text-sm">Loading the prompt…</p>
