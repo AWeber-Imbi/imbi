@@ -1,15 +1,14 @@
 # Assistant and MCP Servers
 
-**Admin > Global Admin > Assistant** configures the AI assistant
-(imbi-assistant) and the external MCP servers. The **Admin** item shows
-only for platform administrators. The page has two tabs:
+Two admin pages configure the AI assistant (imbi-assistant):
 
-| Tab | What it configures |
-|---|---|
-| **MCP Servers** | The external MCP servers. The assistant and the Slack bot use their tools |
-| **Prompt** | The system prompt, the model, and the model parameters of the assistant |
+| Page | What it configures | Scope |
+|---|---|---|
+| **Admin > Global Admin > Assistant** | The system prompt, the model, and the model parameters of the assistant | Every organization |
+| **Admin > &lt;Org&gt; Admin > MCP Servers** | The external MCP servers. The assistant and the Slack bot use their tools | One organization |
 
-These settings are global. They apply to every organization.
+An MCP server belongs to one organization. Its slug is unique in that
+organization. Only the members of the organization see it.
 
 ## Permissions
 
@@ -24,12 +23,13 @@ These settings are global. They apply to every organization.
 
 <!-- END GENERATED -->
 
-`mcp_server:update` also lets you test a server. The **Prompt** tab uses
-the prompt permissions. See [Prompts](prompts.md).
+The API checks these permissions in the organization of the server.
+`mcp_server:update` also lets you test a server. The **Assistant** page
+uses the prompt permissions. See [Prompts](prompts.md).
 
 ## The assistant prompt
 
-The **Prompt** tab edits the prompt `imbi-assistant/system` in the
+The **Assistant** page edits the prompt `imbi-assistant/system` in the
 [prompt CMS](prompts.md). The prompt holds the system prompt, the model,
 and the model parameters.
 
@@ -41,7 +41,7 @@ imbi-assistant reads the prompt from the reference in
    prompt.
 3. If neither label exists, the assistant uses its built-in prompt.
 
-If the prompt does not exist, the tab shows **Create assistant prompt**
+If the prompt does not exist, the page shows **Create assistant prompt**
 (needs `prompt:create`). You can also run `imbi-api setup-prompts`. For
 versions, labels, the environment override, and the model settings, see
 [Prompts](prompts.md).
@@ -63,8 +63,9 @@ not use these servers. See
 
 ### Add an MCP server
 
-1. Open **Admin > Global Admin > Assistant**.
-2. On the **MCP Servers** tab, click **Add MCP Server**.
+1. Select the organization, then open
+   **Admin > &lt;Org&gt; Admin > MCP Servers**.
+2. Click **Add MCP Server**.
 3. Enter the fields in the tables below.
 4. Optional: click **Test connection**.
 5. Click **Create Server**.
@@ -112,6 +113,15 @@ Each server has a status: `unknown`, `healthy`, `degraded`, or
 tools, and saves the status, the latency, the tool count, and the error.
 The **With issues** filter shows the servers that are `degraded` or
 `unreachable`.
+
+### Servers made before organizations
+
+Before servers belonged to an organization, they were global. When
+imbi-api starts and the install has one organization, it moves each of
+these servers to that organization. When the install has more than one
+organization, imbi-api does not move them and logs a warning for each.
+No organization shows such a server. Create it again in the correct
+organization.
 
 ## MCP servers and agents
 

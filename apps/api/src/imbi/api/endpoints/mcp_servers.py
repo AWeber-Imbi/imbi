@@ -1,6 +1,9 @@
-"""Admin CRUD endpoints for MCPServer global configuration.
+"""Admin CRUD endpoints for the MCPServer nodes of an organization.
 
-``MCPServer`` is global config — it has no organization edge. Secrets
+An ``MCPServer`` ``BELONGS_TO`` one organization, and ``org_id`` holds a
+copy of the organization id, so ``(org_id, slug)`` can carry a unique
+index. Each route is under ``/organizations/{org_slug}/mcp-servers``
+and reads only the servers of that organization. Secrets
 (``static_value`` and ``oauth_client_secret``) are accepted as plaintext
 request fields, encrypted via :mod:`imbi.common.auth.encryption`, and
 persisted only as ciphertext in the ``*_encrypted`` model fields.
@@ -16,7 +19,7 @@ import fastapi
 import pydantic
 
 from imbi.api import mcp_test
-from imbi.api.auth import permissions
+from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.graph_sql import props_template, set_clause
 from imbi.common import graph, models
@@ -24,10 +27,7 @@ from imbi.common.auth.encryption import encrypt_config_value
 
 LOGGER = logging.getLogger(__name__)
 
-mcp_servers_router = fastapi.APIRouter(
-    prefix='/mcp-servers',
-    tags=['MCP Servers'],
-)
+mcp_servers_router = fastapi.APIRouter(tags=['MCP Servers'])
 
 AuthType = typing.Literal['none', 'static', 'oauth_client_credentials']
 
@@ -193,6 +193,7 @@ def _to_response(node: models.MCPServer) -> MCPServerResponse:
     '/', response_model=MCPServerResponse, status_code=201
 )
 async def create_mcp_server(
+    org_id: organizations.MemberOrgId,
     data: MCPServerCreate,
     db: graph.Pool,
     auth: typing.Annotated[
@@ -203,7 +204,8 @@ async def create_mcp_server(
     """Create a new MCP server.
 
     Parameters:
-        data: MCP server data; ``slug`` must be unique. ``static_value``
+        data: MCP server data; ``slug`` must be unique in the
+            organization. ``static_value``
             and ``oauth_client_secret`` are plaintext and are encrypted
             before persistence.
 
@@ -211,7 +213,7 @@ async def create_mcp_server(
         The created MCP server, without any secret values.
 
     Raises:
-        409: If an MCP server with the same slug already exists.
+        409: If an MCP server of the organization has the same slug.
 
     """
     try:
@@ -236,6 +238,7 @@ async def create_mcp_server(
                 data.oauth_client_secret
             ),
             oauth_scope=data.oauth_scope,
+            org_id=org_id,
         )
     except pydantic.ValidationError as e:
         raise fastapi.HTTPException(
@@ -247,7 +250,11 @@ async def create_mcp_server(
     node.created_at = now
     node.updated_at = now
     props = node.model_dump(mode='json')
-    query = f'CREATE (n:MCPServer {props_template(props)}) RETURN n'
+    query = (
+        'MATCH (o:Organization {{id: {org_id}}})'
+        f' CREATE (n:MCPServer {props_template(props)})-[:BELONGS_TO]->(o)'
+        ' RETURN n'
+    )
     with conflict_on_unique_violation(
         f'MCP server with slug {node.slug!r} already exists',
     ):
@@ -262,6 +269,7 @@ async def create_mcp_server(
 
 @mcp_servers_router.get('/', response_model=list[MCPServerResponse])
 async def list_mcp_servers(
+    org_id: organizations.MemberOrgId,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -275,12 +283,15 @@ async def list_mcp_servers(
 
     """
     _ = auth
-    nodes = await db.match(models.MCPServer, order_by='name')
+    nodes = await db.match(
+        models.MCPServer, {'org_id': org_id}, order_by='name'
+    )
     return [_to_response(node) for node in nodes]
 
 
 @mcp_servers_router.get('/{id}', response_model=MCPServerResponse)
 async def get_mcp_server(
+    org_id: organizations.MemberOrgId,
     id: str,
     db: graph.Pool,
     auth: typing.Annotated[
@@ -301,12 +312,13 @@ async def get_mcp_server(
 
     """
     _ = auth
-    node = await _fetch(db, id)
+    node = await _fetch(db, org_id, id)
     return _to_response(node)
 
 
 @mcp_servers_router.patch('/{id}', response_model=MCPServerResponse)
 async def update_mcp_server(
+    org_id: organizations.MemberOrgId,
     id: str,
     data: MCPServerUpdate,
     db: graph.Pool,
@@ -334,7 +346,7 @@ async def update_mcp_server(
         409: If the new slug collides with another MCP server.
 
     """
-    existing = await _fetch(db, id)
+    existing = await _fetch(db, org_id, id)
     set_fields = data.model_dump(exclude_unset=True)
 
     updates: dict[str, typing.Any] = {}
@@ -399,6 +411,7 @@ async def update_mcp_server(
 
 @mcp_servers_router.delete('/{id}', status_code=204)
 async def delete_mcp_server(
+    org_id: organizations.MemberOrgId,
     id: str,
     db: graph.Pool,
     auth: typing.Annotated[
@@ -417,9 +430,10 @@ async def delete_mcp_server(
     """
     _ = auth
     query: typing.LiteralString = (
-        'MATCH (n:MCPServer {{id: {id}}}) DETACH DELETE n RETURN n'
+        'MATCH (n:MCPServer {{id: {id}, org_id: {org_id}}})'
+        ' DETACH DELETE n RETURN n'
     )
-    records = await db.execute(query, {'id': id})
+    records = await db.execute(query, {'id': id, 'org_id': org_id})
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
@@ -429,6 +443,7 @@ async def delete_mcp_server(
 
 @mcp_servers_router.post('/{id}/test', response_model=MCPServerTestResult)
 async def test_mcp_server(
+    org_id: organizations.MemberOrgId,
     id: str,
     db: graph.Pool,
     auth: typing.Annotated[
@@ -454,7 +469,7 @@ async def test_mcp_server(
 
     """
     _ = auth
-    node = await _fetch(db, id)
+    node = await _fetch(db, org_id, id)
     result = await mcp_test.test_connection(node)
     now = datetime.datetime.now(datetime.UTC)
     node.status = result.status
@@ -474,7 +489,11 @@ async def test_mcp_server(
     )
 
 
-@mcp_servers_router.post('/test', response_model=MCPServerTestResult)
+@mcp_servers_router.post(
+    '/test',
+    response_model=MCPServerTestResult,
+    dependencies=[fastapi.Depends(organizations.member_org_id)],
+)
 async def test_mcp_server_config(
     data: MCPServerTestConfig,
     auth: typing.Annotated[
@@ -538,6 +557,7 @@ async def test_mcp_server_config(
 
 @mcp_servers_router.post('/{id}/status', response_model=MCPServerResponse)
 async def report_mcp_server_status(
+    org_id: organizations.MemberOrgId,
     id: str,
     data: MCPServerStatusReport,
     db: graph.Pool,
@@ -565,7 +585,7 @@ async def report_mcp_server_status(
 
     """
     _ = auth
-    node = await _fetch(db, id)
+    node = await _fetch(db, org_id, id)
     node.status = data.status
     node.last_error = data.error
     node.last_tested_at = datetime.datetime.now(datetime.UTC)
@@ -607,9 +627,9 @@ def _parse_node(raw: typing.Any) -> models.MCPServer:
         return models.MCPServer.model_construct(**props)
 
 
-async def _fetch(db: graph.Graph, id: str) -> models.MCPServer:
-    """Fetch a single MCP server by id or raise 404."""
-    results = await db.match(models.MCPServer, {'id': id})
+async def _fetch(db: graph.Graph, org_id: str, id: str) -> models.MCPServer:
+    """Fetch an MCP server of the organization by id or raise 404."""
+    results = await db.match(models.MCPServer, {'id': id, 'org_id': org_id})
     if not results:
         raise fastapi.HTTPException(
             status_code=404,

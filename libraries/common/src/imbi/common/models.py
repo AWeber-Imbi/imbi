@@ -770,9 +770,15 @@ class MCPServer(Node):
     ``IMBI_CONFIG_ENCRYPTION_KEY``). Plaintext secrets must never be
     assigned to these fields; encryption and decryption happen in the
     repository/consumer layer, never on the model.
+
+    A server ``BELONGS_TO`` one organization. ``org_id`` is a copy of
+    the organization id, so ``(org_id, slug)`` can carry a unique index.
+    ``None`` only on a server stored before servers had an organization
+    and not linked yet (see ``imbi.api.mcp_server_orgs``).
     """
 
     url: pydantic.HttpUrl
+    org_id: str | None = None
     enabled: bool = True
     tool_prefix: str | None = None
     timeout: int = 30

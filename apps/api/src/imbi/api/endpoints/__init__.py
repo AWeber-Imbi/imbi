@@ -22,7 +22,6 @@ from .harness import harness_router
 from .iggy_connectors import iggy_connectors_router
 from .local_auth import local_auth_router
 from .maintenance import maintenance_router
-from .mcp_servers import mcp_servers_router
 from .mfa import mfa_router
 from .oauth_metadata import oauth_metadata_router
 from .operations_log import operations_log_router
@@ -61,7 +60,6 @@ prefixed_routers: list[fastapi.APIRouter] = [
     iggy_connectors_router,
     local_auth_router,
     maintenance_router,
-    mcp_servers_router,
     me_identities_router,
     mfa_router,
     operations_log_router,

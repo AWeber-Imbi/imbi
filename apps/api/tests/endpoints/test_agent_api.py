@@ -295,7 +295,7 @@ class RouteTests(AgentApiTestCase):
             'secret grants': ('GET', f'{org}/secret-grants/'),
             'harness pools': ('GET', '/harness/pools'),
             'harness task routes': ('POST', f'{org}/tickets/T-1/sessions'),
-            'mcp servers': ('GET', '/mcp-servers/'),
+            'mcp servers': ('GET', f'{org}/mcp-servers/'),
             'user writes': ('PATCH', '/users/someone@example.com'),
             'agent writes': ('POST', f'{org}/agents/'),
             'own approval': (

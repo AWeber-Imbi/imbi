@@ -49,6 +49,7 @@ from .events import events_project_router
 from .integration_workflow_steps import integration_workflow_steps_router
 from .integrations import integrations_router
 from .link_definitions import link_definitions_router
+from .mcp_servers import mcp_servers_router
 from .operations_log import (
     operations_log_org_router,
     operations_log_project_router,
@@ -243,6 +244,10 @@ organizations_router.include_router(
 organizations_router.include_router(
     agents_router,
     prefix='/{org_slug}/agents',
+)
+organizations_router.include_router(
+    mcp_servers_router,
+    prefix='/{org_slug}/mcp-servers',
 )
 # ADR 0028: tickets at /tickets, with ticket operation ids.
 organizations_router.include_router(

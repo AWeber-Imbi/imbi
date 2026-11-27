@@ -12,6 +12,7 @@ from collections import abc
 
 from imbi.api import (
     iggy_metrics,
+    mcp_server_orgs,
     openapi,
     secret_broker,
     settings,
@@ -51,6 +52,10 @@ async def _on_graph_startup(db: graph.Graph) -> None:
         await plugin_lifecycle.startup_load_plugins(db)
     except Exception:
         LOGGER.exception('Failed to load plugins')
+    try:
+        await mcp_server_orgs.backfill(db)
+    except Exception:
+        LOGGER.exception('Failed to link MCP servers to organizations')
 
 
 graph.set_on_startup(_on_graph_startup)

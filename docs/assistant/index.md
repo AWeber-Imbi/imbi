@@ -22,7 +22,7 @@ The tools come from four sources:
 | imbi-api | One tool for each operation in the imbi-api OpenAPI spec. The auth, MFA, status, and thumbnail routes, and the operations that imbi-api marks as not for AI, are not tools |
 | The assistant | `refresh_openapi_spec`: reads the spec again and reconnects to the MCP servers |
 | The browser | `navigate_to` opens a page of the UI. `refresh_data` reloads the data on the page. The UI runs these tools, not the server |
-| MCP servers | The tools of each enabled MCP server at **Admin > Global Admin > Assistant > MCP Servers** |
+| MCP servers | The tools of each enabled MCP server at **Admin > &lt;Org&gt; Admin > MCP Servers** |
 
 The assistant calls imbi-api with the token of the person who sent the
 message. So imbi-api applies that person's permissions to each tool call.

@@ -181,7 +181,7 @@ one message. A tool result longer than `IMBI_SLACKBOT_MAX_TOOL_RESULT_CHARS`
 is replaced with an error.
 
 The bot also has the tools of each enabled MCP server at
-**Admin > Global Admin > Assistant > MCP Servers**, the same as the
+**Admin > &lt;Org&gt; Admin > MCP Servers**, the same as the
 assistant. See
 [Assistant and MCP Servers](../admin/assistant-and-mcp-servers.md). These
 calls use the credentials of the server, not your token. The bot reads the

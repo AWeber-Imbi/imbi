@@ -65,6 +65,7 @@ export const queryKeys = {
   integrations: (orgSlug: string) => ['integrations', orgSlug] as const,
   // Global (org-less) login providers managed on the Auth Providers screen.
   loginProviders: () => ['login-providers'] as const,
+  mcpServers: (orgSlug?: string) => ['mcp-servers', orgSlug] as const,
   organizationMembers: (orgSlug: string) =>
     ['organizationMembers', orgSlug] as const,
   pluginEdgesByOrg: (pluginSlug: string, relType: string, orgSlug: string) =>

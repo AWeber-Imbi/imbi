@@ -2298,204 +2298,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/mcp-servers/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Mcp Servers
-         * @description List all MCP servers ordered by name.
-         *
-         *     Returns:
-         *         Every MCP server, without any secret values.
-         */
-        get: operations["list_mcp_servers_api_mcp_servers__get"];
-        put?: never;
-        /**
-         * Create Mcp Server
-         * @description Create a new MCP server.
-         *
-         *     Parameters:
-         *         data: MCP server data; ``slug`` must be unique. ``static_value``
-         *             and ``oauth_client_secret`` are plaintext and are encrypted
-         *             before persistence.
-         *
-         *     Returns:
-         *         The created MCP server, without any secret values.
-         *
-         *     Raises:
-         *         409: If an MCP server with the same slug already exists.
-         */
-        post: operations["create_mcp_server_api_mcp_servers__post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/mcp-servers/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Mcp Server
-         * @description Get an MCP server by id.
-         *
-         *     Parameters:
-         *         id: The MCP server id.
-         *
-         *     Returns:
-         *         The MCP server, without any secret values.
-         *
-         *     Raises:
-         *         404: If no MCP server with the given id exists.
-         */
-        get: operations["get_mcp_server_api_mcp_servers__id__get"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete Mcp Server
-         * @description Delete an MCP server by id.
-         *
-         *     Parameters:
-         *         id: The id of the MCP server to delete.
-         *
-         *     Raises:
-         *         404: If no MCP server with the given id exists.
-         */
-        delete: operations["delete_mcp_server_api_mcp_servers__id__delete"];
-        options?: never;
-        head?: never;
-        /**
-         * Update Mcp Server
-         * @description Partially update an MCP server.
-         *
-         *     Omitted fields are left unchanged. For the secret fields
-         *     (``static_value``/``oauth_client_secret``): an omitted field leaves
-         *     the stored ciphertext unchanged; an explicit ``null``/empty value
-         *     clears it; a new value re-encrypts it.
-         *
-         *     Parameters:
-         *         id: The MCP server id.
-         *         data: Fields to update.
-         *
-         *     Returns:
-         *         The updated MCP server, without any secret values.
-         *
-         *     Raises:
-         *         404: If no MCP server with the given id exists.
-         *         409: If the new slug collides with another MCP server.
-         */
-        patch: operations["update_mcp_server_api_mcp_servers__id__patch"];
-        trace?: never;
-    };
-    "/api/mcp-servers/{id}/test": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Test Mcp Server
-         * @description Test connectivity to a saved MCP server and persist the result.
-         *
-         *     Opens a streamable-HTTP session using the server's stored
-         *     configuration and secrets, lists its tools, and records the outcome
-         *     (``status``, ``last_tested_at``, latency, tool count, and any error)
-         *     on the node.
-         *
-         *     Parameters:
-         *         id: The MCP server id.
-         *
-         *     Returns:
-         *         The test result, including discovered tool names.
-         *
-         *     Raises:
-         *         404: If no MCP server with the given id exists.
-         */
-        post: operations["test_mcp_server_api_mcp_servers__id__test_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/mcp-servers/test": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Test Mcp Server Config
-         * @description Test an unsaved MCP server configuration without persisting it.
-         *
-         *     Used by the create form's "Test connection" action, where secrets are
-         *     supplied as plaintext in the request and no record exists yet.
-         *
-         *     Parameters:
-         *         data: The candidate configuration; secrets are plaintext.
-         *
-         *     Returns:
-         *         The test result, including discovered tool names.
-         *
-         *     Raises:
-         *         400: If the configuration is invalid for its ``auth_type``.
-         */
-        post: operations["test_mcp_server_config_api_mcp_servers_test_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/mcp-servers/{id}/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Report Mcp Server Status
-         * @description Record a runtime health observation for an MCP server.
-         *
-         *     For external callers (for example a monitor) that observe the
-         *     server's health outside a manual test. No Imbi service calls this
-         *     endpoint. Updates ``status``, ``last_error``, and
-         *     ``last_tested_at``; leaves configuration untouched.
-         *
-         *     Parameters:
-         *         id: The MCP server id.
-         *         data: The observed status and optional error message.
-         *
-         *     Returns:
-         *         The updated MCP server, without any secret values.
-         *
-         *     Raises:
-         *         404: If no MCP server with the given id exists.
-         */
-        post: operations["report_mcp_server_status_api_mcp_servers__id__status_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/me/identities": {
         parameters: {
             query?: never;
@@ -5341,6 +5143,205 @@ export interface paths {
          *         422: The snapshot team or a snapshot tag no longer exists.
          */
         post: operations["restore_agent_version_api_organizations__org_slug__agents__slug__versions__n__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/mcp-servers/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Mcp Servers
+         * @description List all MCP servers ordered by name.
+         *
+         *     Returns:
+         *         Every MCP server, without any secret values.
+         */
+        get: operations["list_mcp_servers_api_organizations__org_slug__mcp_servers__get"];
+        put?: never;
+        /**
+         * Create Mcp Server
+         * @description Create a new MCP server.
+         *
+         *     Parameters:
+         *         data: MCP server data; ``slug`` must be unique in the
+         *             organization. ``static_value``
+         *             and ``oauth_client_secret`` are plaintext and are encrypted
+         *             before persistence.
+         *
+         *     Returns:
+         *         The created MCP server, without any secret values.
+         *
+         *     Raises:
+         *         409: If an MCP server of the organization has the same slug.
+         */
+        post: operations["create_mcp_server_api_organizations__org_slug__mcp_servers__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/mcp-servers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Mcp Server
+         * @description Get an MCP server by id.
+         *
+         *     Parameters:
+         *         id: The MCP server id.
+         *
+         *     Returns:
+         *         The MCP server, without any secret values.
+         *
+         *     Raises:
+         *         404: If no MCP server with the given id exists.
+         */
+        get: operations["get_mcp_server_api_organizations__org_slug__mcp_servers__id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Mcp Server
+         * @description Delete an MCP server by id.
+         *
+         *     Parameters:
+         *         id: The id of the MCP server to delete.
+         *
+         *     Raises:
+         *         404: If no MCP server with the given id exists.
+         */
+        delete: operations["delete_mcp_server_api_organizations__org_slug__mcp_servers__id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Mcp Server
+         * @description Partially update an MCP server.
+         *
+         *     Omitted fields are left unchanged. For the secret fields
+         *     (``static_value``/``oauth_client_secret``): an omitted field leaves
+         *     the stored ciphertext unchanged; an explicit ``null``/empty value
+         *     clears it; a new value re-encrypts it.
+         *
+         *     Parameters:
+         *         id: The MCP server id.
+         *         data: Fields to update.
+         *
+         *     Returns:
+         *         The updated MCP server, without any secret values.
+         *
+         *     Raises:
+         *         404: If no MCP server with the given id exists.
+         *         409: If the new slug collides with another MCP server.
+         */
+        patch: operations["update_mcp_server_api_organizations__org_slug__mcp_servers__id__patch"];
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/mcp-servers/{id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Mcp Server
+         * @description Test connectivity to a saved MCP server and persist the result.
+         *
+         *     Opens a streamable-HTTP session using the server's stored
+         *     configuration and secrets, lists its tools, and records the outcome
+         *     (``status``, ``last_tested_at``, latency, tool count, and any error)
+         *     on the node.
+         *
+         *     Parameters:
+         *         id: The MCP server id.
+         *
+         *     Returns:
+         *         The test result, including discovered tool names.
+         *
+         *     Raises:
+         *         404: If no MCP server with the given id exists.
+         */
+        post: operations["test_mcp_server_api_organizations__org_slug__mcp_servers__id__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/mcp-servers/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Mcp Server Config
+         * @description Test an unsaved MCP server configuration without persisting it.
+         *
+         *     Used by the create form's "Test connection" action, where secrets are
+         *     supplied as plaintext in the request and no record exists yet.
+         *
+         *     Parameters:
+         *         data: The candidate configuration; secrets are plaintext.
+         *
+         *     Returns:
+         *         The test result, including discovered tool names.
+         *
+         *     Raises:
+         *         400: If the configuration is invalid for its ``auth_type``.
+         */
+        post: operations["test_mcp_server_config_api_organizations__org_slug__mcp_servers_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/mcp-servers/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Mcp Server Status
+         * @description Record a runtime health observation for an MCP server.
+         *
+         *     For external callers (for example a monitor) that observe the
+         *     server's health outside a manual test. No Imbi service calls this
+         *     endpoint. Updates ``status``, ``last_error``, and
+         *     ``last_tested_at``; leaves configuration untouched.
+         *
+         *     Parameters:
+         *         id: The MCP server id.
+         *         data: The observed status and optional error message.
+         *
+         *     Returns:
+         *         The updated MCP server, without any secret values.
+         *
+         *     Raises:
+         *         404: If no MCP server with the given id exists.
+         */
+        post: operations["report_mcp_server_status_api_organizations__org_slug__mcp_servers__id__status_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -28317,253 +28318,6 @@ export interface operations {
             };
         };
     };
-    list_mcp_servers_api_mcp_servers__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MCPServerResponse"][];
-                };
-            };
-        };
-    };
-    create_mcp_server_api_mcp_servers__post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MCPServerCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MCPServerResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_mcp_server_api_mcp_servers__id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MCPServerResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_mcp_server_api_mcp_servers__id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_mcp_server_api_mcp_servers__id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MCPServerUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MCPServerResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    test_mcp_server_api_mcp_servers__id__test_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MCPServerTestResult"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    test_mcp_server_config_api_mcp_servers_test_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MCPServerTestConfig"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MCPServerTestResult"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    report_mcp_server_status_api_mcp_servers__id__status_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MCPServerStatusReport"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MCPServerResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_my_identities_api_me_identities_get: {
         parameters: {
             query?: never;
@@ -33810,6 +33564,273 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_mcp_servers_api_organizations__org_slug__mcp_servers__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPServerResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_mcp_server_api_organizations__org_slug__mcp_servers__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MCPServerCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPServerResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_mcp_server_api_organizations__org_slug__mcp_servers__id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPServerResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_mcp_server_api_organizations__org_slug__mcp_servers__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_mcp_server_api_organizations__org_slug__mcp_servers__id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MCPServerUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPServerResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_mcp_server_api_organizations__org_slug__mcp_servers__id__test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPServerTestResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_mcp_server_config_api_organizations__org_slug__mcp_servers_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MCPServerTestConfig"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPServerTestResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_mcp_server_status_api_organizations__org_slug__mcp_servers__id__status_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MCPServerStatusReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPServerResponse"];
                 };
             };
             /** @description Validation Error */

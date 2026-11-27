@@ -18,6 +18,8 @@ import {
 } from '@/components/ui/segmented-control'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { useOrganization } from '@/contexts/OrganizationContext'
+import { queryKeys } from '@/lib/queryKeys'
 import { slugify } from '@/lib/utils'
 import type {
   MCPServer,
@@ -79,6 +81,7 @@ export function McpServerForm({
 }: McpServerFormProps) {
   const isEditing = !!server
   const queryClient = useQueryClient()
+  const orgSlug = useOrganization().selectedOrganization?.slug
   const [s, setS] = useState<FormState>(() => initialState(server))
   const [errors, setErrors] = useState<Record<string, string>>({})
   // Tool names discovered by the last connection test, offered as a
@@ -110,12 +113,15 @@ export function McpServerForm({
   }
 
   const runTest = async () => {
+    if (!orgSlug) throw new Error('Select an organization first')
     if (isEditing && server) {
-      const result = await testMcpServer(server.id)
-      await queryClient.invalidateQueries({ queryKey: ['mcp-servers'] })
+      const result = await testMcpServer(orgSlug, server.id)
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.mcpServers(orgSlug),
+      })
       return result
     }
-    return testMcpServerConfig(buildCreate(s) as MCPServerTestConfig)
+    return testMcpServerConfig(orgSlug, buildCreate(s) as MCPServerTestConfig)
   }
 
   const prefix = s.toolPrefix.trim() || s.slug.trim() || '…'
