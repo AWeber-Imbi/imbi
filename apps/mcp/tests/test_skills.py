@@ -13,6 +13,7 @@ type Body = dict[str, typing.Any]
 def _prompt(slug: str, labels: dict[str, int], **fields: typing.Any) -> Body:
     return {
         'id': f'id-{slug}',
+        'updated_at': '2026-11-27T00:00:00Z',
         'slug': slug,
         'name': slug.title(),
         'description': f'Use {slug}\n  when asked.',

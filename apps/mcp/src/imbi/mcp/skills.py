@@ -62,11 +62,14 @@ class PromptSkills(provider.SkillCatalogProvider):
         super().__init__()
         self._client = client
         self._path = f'{prefix}/prompts'
-        # Keyed by prompt id, not slug: a deleted and recreated prompt
-        # reuses its slug and version numbers. The list call checks each
+        # Keyed by prompt id and updated_at, not slug: a recreated prompt
+        # reuses a slug, and the version fetch goes by slug, so a rename
+        # between the list and the fetch can return another prompt's
+        # body. A rename sets a new updated_at, so that body is cached
+        # under a key that no later list gives. The list call checks each
         # caller's access; this cache only saves the version fetch.
-        self._bodies: cache.LRUCache[tuple[str, int], str] = cache.LRUCache(
-            CACHE_ENTRIES
+        self._bodies: cache.LRUCache[tuple[str, str | None, int], str] = (
+            cache.LRUCache(CACHE_ENTRIES)
         )
 
     async def load_skills(self) -> list[fastmcp.skills.Skill]:
@@ -98,14 +101,15 @@ class PromptSkills(provider.SkillCatalogProvider):
         """The skill of one prompt, or ``None`` when it is not valid."""
         slug = prompt['slug']
         try:
-            system = self._bodies.get((prompt['id'], version))
+            key = (prompt['id'], prompt.get('updated_at'), version)
+            system = self._bodies.get(key)
             if system is None:
                 response = await self._client.get(
                     f'{self._path}/{NAMESPACE}/{slug}/versions/{version}'
                 )
                 response.raise_for_status()
                 system = response.json()['system']
-                self._bodies.set((prompt['id'], version), system)
+                self._bodies.set(key, system)
             description = (
                 ' '.join((prompt.get('description') or '').split())
                 or prompt['name']
