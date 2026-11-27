@@ -9,13 +9,13 @@ import { FormHeader } from '@/components/admin/form-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Input } from '@/components/ui/input'
+import { KeyValueEditor } from '@/components/ui/key-value-editor'
 import { Label } from '@/components/ui/label'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import {
   SegmentedControl,
   SegmentedControlItem,
 } from '@/components/ui/segmented-control'
-import { KeyValueEditor } from '@/components/ui/key-value-editor'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { slugify } from '@/lib/utils'
