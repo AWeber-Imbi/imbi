@@ -229,3 +229,27 @@ class LastTerminalDeploysTests(unittest.IsolatedAsyncioTestCase):
             ),
             sorted(rows),
         )
+
+    async def test_active_since_drops_projects_that_stopped_deploying(
+        self,
+    ) -> None:
+        old = datetime.datetime(2023, 3, 7, tzinfo=datetime.UTC)
+        new = datetime.datetime(2026, 11, 2, tzinfo=datetime.UTC)
+        states = [
+            _state('p1', 'production', old),
+            _state('p2', 'production', new),
+        ]
+        with mock.patch.object(
+            pull_requests.deployment_nodes,
+            'current_and_latest_from_state',
+            mock.AsyncMock(return_value=states),
+        ):
+            rows = await pull_requests._last_terminal_deploys(
+                mock.Mock(),
+                ['p1', 'p2'],
+                ['production'],
+                datetime.datetime(2026, 8, 29, tzinfo=datetime.UTC),
+            )
+        self.assertEqual(
+            [('p2', '2026-11-02 00:00:00.000', 'production')], rows
+        )

@@ -9107,7 +9107,11 @@ export interface paths {
          *     ``days`` days are considered; ``author`` narrows to one GitHub
          *     login (``@me``: the login of the caller; when the caller has none,
          *     the list is empty and ``github_identity_missing`` is true) and
-         *     ``bots`` to authors named with GitHub's ``[bot]`` suffix.  Rows are
+         *     ``bots`` to authors named with GitHub's ``[bot]`` suffix.
+         *     Projects whose last terminal deploy started before the ``days``
+         *     window no longer deploy through Imbi, so their merges would stay
+         *     pending until they age out; they are left out unless
+         *     ``include_stale`` is true.  Rows are
          *     ordered oldest merge first and paged with ``limit`` and ``offset``;
          *     ``total`` is the number of rows on all pages.
          */
@@ -39296,6 +39300,7 @@ export interface operations {
                 author?: string | null;
                 days?: number;
                 bots?: boolean;
+                include_stale?: boolean;
                 limit?: number;
                 offset?: number;
             };

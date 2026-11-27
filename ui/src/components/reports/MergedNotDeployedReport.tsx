@@ -16,12 +16,15 @@ const PAGE_SIZE = 200
 /**
  * Merged pull requests not yet deployed to a terminal environment.
  * ``?author=@me`` (the Slack Home link) shows only the caller's PRs.
+ * Projects with no terminal deploy in the window are hidden unless
+ * ``?stale=show``.
  */
 export function MergedNotDeployedReport() {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug ?? ''
   const [searchParams, setSearchParams] = useSearchParams()
   const author = searchParams.get('author') ?? undefined
+  const showStale = searchParams.get('stale') === 'show'
 
   const {
     data,
@@ -47,10 +50,15 @@ export function MergedNotDeployedReport() {
     queryFn: ({ pageParam, signal }) =>
       getOrgPendingDeployPullRequests(
         orgSlug,
-        { author, limit: PAGE_SIZE, offset: pageParam },
+        {
+          author,
+          include_stale: showStale,
+          limit: PAGE_SIZE,
+          offset: pageParam,
+        },
         signal,
       ),
-    queryKey: ['pending-deploy-report', orgSlug, author],
+    queryKey: ['pending-deploy-report', orgSlug, author, showStale],
     staleTime: 60_000,
   })
   const { projectsById } = useProjectsSlimMap(orgSlug)
@@ -60,8 +68,16 @@ export function MergedNotDeployedReport() {
   // replaces the list with the error state.
   const initialError = isError && !data
 
-  const setMine = (mine: boolean) =>
-    setSearchParams(mine ? { author: MINE } : {}, { replace: true })
+  const setParam = (key: string, value: null | string) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        if (value === null) next.delete(key)
+        else next.set(key, value)
+        return next
+      },
+      { replace: true },
+    )
 
   return (
     <div className="border-tertiary bg-primary overflow-hidden rounded-lg border">
@@ -74,14 +90,23 @@ export function MergedNotDeployedReport() {
             aria-pressed={(author === MINE) === o.mine}
             className="text-tertiary hover:text-primary aria-pressed:text-primary aria-pressed:border-action border-b-2 border-transparent pb-0.5 text-xs transition-colors"
             key={o.label}
-            onClick={() => setMine(o.mine)}
+            onClick={() => setParam('author', o.mine ? MINE : null)}
             type="button"
           >
             {o.label}
           </button>
         ))}
+        <button
+          aria-pressed={showStale}
+          className="text-tertiary hover:text-primary aria-pressed:text-primary ml-auto text-xs transition-colors"
+          onClick={() => setParam('stale', showStale ? null : 'show')}
+          title="Show projects with no terminal deploy in the last 90 days"
+          type="button"
+        >
+          Show stale projects
+        </button>
         {!isLoading && !initialError && (
-          <span className="text-tertiary ml-auto text-xs">
+          <span className="text-tertiary text-xs">
             {first?.total ?? prs.length}
           </span>
         )}
@@ -91,7 +116,9 @@ export function MergedNotDeployedReport() {
           emptyMessage={
             first?.github_identity_missing
               ? 'No GitHub identity connected.'
-              : 'Every merged pull request has reached a terminal environment.'
+              : showStale
+                ? 'Every merged pull request has reached a terminal environment.'
+                : 'No recent pull requests are waiting. Stale projects are hidden; select Show stale projects to include them.'
           }
           isError={initialError}
           isLoading={isLoading}
