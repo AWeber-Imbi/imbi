@@ -22,9 +22,13 @@ def _variables(
     """Build the template variables for the resolved Slack user."""
     if tool_names:
         tools_list = ', '.join(tool_names)
+        # The tools reach every organization of the user; this Slack
+        # workspace belongs to one.
         tools_section = (
             f'Available tools: {tools_list}. '
-            'Use them to look up real data when answering questions.'
+            'Use them to look up real data when answering questions. '
+            f'Work only in the organization `{user.org_slug}`: use it as '
+            'the org_slug of every tool call.'
         )
     else:
         tools_section = (

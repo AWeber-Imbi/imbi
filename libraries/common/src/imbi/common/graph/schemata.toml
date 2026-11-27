@@ -326,6 +326,12 @@ vlabel = "LinkDefinition"
 attributes = ["slug"]
 unique = true
 
+# One organization per Slack workspace.
+[[vlabel_indexes]]
+vlabel = "Organization"
+attributes = ["slack_team_id"]
+unique = true
+
 # ``MCPServer`` slugs are unique per organization, like ``Agent`` slugs.
 # The global unique slug index is in ``retired_indexes``.
 [[vlabel_indexes]]

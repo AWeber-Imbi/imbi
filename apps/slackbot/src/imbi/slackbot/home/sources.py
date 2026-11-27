@@ -69,7 +69,6 @@ class Gathered:
     """What :func:`imbi.slackbot.home.render.render` shows."""
 
     org: Row | None
-    orgs: list[Row]
     teams: list[str]
     sections: dict[str, Json | Failure]
     ui_url: str = ''
@@ -545,9 +544,11 @@ def _critical(rows: list[Row]) -> list[Row]:
 async def gather(
     client: httpx.AsyncClient,
     email: str,
+    org_slug: str,
     stored: prefs_.Prefs | None,
 ) -> tuple[Gathered, prefs_.Prefs]:
-    """Read the user, the preferences, and the visible sections.
+    """Read the user, the preferences, and the visible sections of
+    ``org_slug``, the organization of the Slack workspace.
 
     ``stored`` skips the read of the preferences when the caller
     has them already (after a write).
@@ -558,13 +559,13 @@ async def gather(
         _json(client, '/users/me'), _prefs(client, stored)
     )
     orgs: list[Row] = me.get('organizations') or []
-    orgs.sort(key=lambda m: str(m['organization_name']).lower())
     org: Row | None = next(
-        (m for m in orgs if m['organization_slug'] == preferences.org_slug),
-        orgs[0] if orgs else None,
+        (m for m in orgs if m['organization_slug'] == org_slug), None
     )
+    # identity resolves only members of the workspace's organization;
+    # a membership removed since then shows the no-organization view.
     if org is None:
-        return Gathered(None, [], [], {}), preferences
+        return Gathered(None, [], {}), preferences
     slug: str = org['organization_slug']
     all_teams: list[Row] = me.get('teams') or []
     my_teams = [t for t in all_teams if t.get('organization_slug') == slug]
@@ -612,13 +613,6 @@ async def gather(
     return (
         Gathered(
             org={'slug': slug, 'name': org['organization_name']},
-            orgs=[
-                {
-                    'slug': o['organization_slug'],
-                    'name': o['organization_name'],
-                }
-                for o in orgs
-            ],
             teams=[t['team_name'] for t in my_teams],
             sections=sections,
             notice=notice.decode() if notice else None,

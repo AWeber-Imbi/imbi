@@ -427,6 +427,7 @@ async def initialize() -> None:
     auth = await _app.client.auth_test()  # pyright: ignore[reportUnknownMemberType]
     _bot_user_id = str(auth['user_id'])  # pyright: ignore[reportUnknownArgumentType]
     _bot_id = str(auth.get('bot_id') or '')  # pyright: ignore[reportUnknownArgumentType, reportUnknownMemberType]
+    identity.set_team_id(auth.get('team_id') or None)  # pyright: ignore[reportUnknownArgumentType, reportUnknownMemberType]
     LOGGER.info('Connected to Slack as bot user %s', _bot_user_id)
 
     _handler = AsyncSocketModeHandler(_app, slackbot_settings.slack_app_token)
@@ -455,4 +456,5 @@ async def aclose() -> None:
     _form_store = None
     _bot_user_id = None
     _bot_id = ''
+    identity.set_team_id(None)
     identity.clear_cache()

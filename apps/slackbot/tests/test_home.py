@@ -20,7 +20,9 @@ from imbi.slackbot.home import prefs, render, sources
 
 NOW = datetime.datetime(2026, 11, 24, 19, 1, tzinfo=datetime.UTC)
 TZ = zoneinfo.ZoneInfo('America/New_York')
-USER = identity.ImbiUser('ada@example.com', 'Ada Lovelace', tz='UTC')
+USER = identity.ImbiUser(
+    'ada@example.com', 'Ada Lovelace', tz='UTC', org_slug='acme'
+)
 SNAPSHOTS = pathlib.Path(__file__).parent / 'snapshots'
 ORG = {'slug': 'acme', 'name': 'Acme'}
 
@@ -211,7 +213,6 @@ def gathered(
 ) -> sources.Gathered:
     return sources.Gathered(
         org=ORG,
-        orgs=[ORG],
         teams=['Platform'],
         sections=sections,
         ui_url='https://imbi.example',
@@ -339,18 +340,8 @@ class RenderSnapshotTests(helpers.TestCase):
         )
         self.assertTrue(any('Agent activity' in line for line in lines))
 
-    def test_multi_org_user(self) -> None:
-        other = {'slug': 'beta', 'name': 'Beta'}
-        g = gathered(full_sections(1))
-        g.orgs = [ORG, other]
-        view = render.render(USER, prefs.Prefs(), g, NOW, TZ)
-        self.check('multi_org', view)
-        select = view['blocks'][0]['accessory']
-        self.assertEqual('home:header:org', select['action_id'])
-        self.assertEqual('acme', select['initial_option']['value'])
-
     def test_no_org(self) -> None:
-        g = sources.Gathered(None, [], [], {})
+        g = sources.Gathered(None, [], {})
         view = render.render(USER, prefs.Prefs(), g, NOW, TZ)
         self.assertEqual(1, len(view['blocks']))
 
@@ -1193,15 +1184,6 @@ class HomeFlowTests(helpers.TestCase):
         self.assertEqual(
             1, sum(k.startswith('home:acme:drift:') for k in self.valkey.data)
         )
-
-    async def test_org_select(self) -> None:
-        await home.handle_action(
-            self.slack,
-            self.action('home:header:org', selected_option={'value': 'beta'}),
-        )
-        self.assertEqual('beta', self.puts()[0]['value']['org_slug'])
-        # Not a member of beta: the bot shows acme.
-        self.assertIn('Acme', self.text())
 
     async def test_customize_opens_the_modal(self) -> None:
         await home.handle_action(

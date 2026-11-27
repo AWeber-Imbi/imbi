@@ -679,19 +679,10 @@ def _header(
         out.append(b.context(f':warning: {b.escape(gathered.notice)}'))
     first = (user.display_name or user.email).split()[0]
     org = gathered.org or {}
-    accessory = None
-    if len(gathered.orgs) > 1:
-        accessory = b.static_select(
-            'home:header:org',
-            [(o['name'], o['slug']) for o in gathered.orgs],
-            org.get('slug'),
-            'Organization',
-        )
     out.append(
         b.section(
             f'*{_greeting(now, tz)}, {b.escape(first)}*',
             block_id='home:header',
-            accessory=accessory,
         )
     )
     out.append(
@@ -705,7 +696,6 @@ def _header(
         b.button(
             'New ticket',
             'home:header:new_ticket',
-            value=links.org,
             style='primary',
         ),
         # The slack:// link is built from the ids in the Slack payload,

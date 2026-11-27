@@ -623,7 +623,7 @@ class AnswerTests(helpers.TestCase):
                 super().__init__(**kw)
                 self._transport = transport
 
-        user = identity.ImbiUser('ada@example.com', 'Ada')
+        user = identity.ImbiUser('ada@example.com', 'Ada', 'acme')
         with (
             mock.patch.object(ticket_requests.identity.api, 'Imbi', Client),
             mock.patch.object(
@@ -746,6 +746,11 @@ class ConsumeTests(FlowTestCase):
             mock.patch.object(
                 ticket_requests.valkey, 'get_client', return_value=client
             ),
+            mock.patch.object(
+                ticket_requests.identity,
+                'workspace_org_slug',
+                mock.AsyncMock(return_value='aweber'),
+            ),
             self.assertRaises(asyncio.CancelledError),
         ):
             await ticket_requests.consume(self.slack, self.runtime)
@@ -770,10 +775,40 @@ class ConsumeTests(FlowTestCase):
                 ticket_requests.valkey, 'get_client', return_value=client
             ),
             mock.patch.object(ticket_requests, 'close', close),
+            # A resolved entry has no org_slug; a linked workspace must
+            # still close its forms.
+            mock.patch.object(
+                ticket_requests.identity,
+                'workspace_org_slug',
+                mock.AsyncMock(return_value='aweber'),
+            ),
             self.assertRaises(asyncio.CancelledError),
         ):
             await ticket_requests.consume(self.slack, self.runtime)
         close.assert_awaited_once_with(self.slack, RESOLVED)
+        self.assertEqual([], self.slack.posts)
+        client.xack.assert_awaited_once()
+
+    async def test_request_of_another_org_is_skipped(self) -> None:
+        client = mock.AsyncMock()
+        client.xautoclaim.return_value = ['0-0', [], []]
+        message = (b'1-0', {b'request': orjson.dumps(entry())})
+        client.xreadgroup.side_effect = [
+            [[b'imbi:ticket-requests', [message]]],
+            asyncio.CancelledError(),
+        ]
+        with (
+            mock.patch.object(
+                ticket_requests.valkey, 'get_client', return_value=client
+            ),
+            mock.patch.object(
+                ticket_requests.identity,
+                'workspace_org_slug',
+                mock.AsyncMock(return_value='other'),
+            ),
+            self.assertRaises(asyncio.CancelledError),
+        ):
+            await ticket_requests.consume(self.slack, self.runtime)
         self.assertEqual([], self.slack.posts)
         client.xack.assert_awaited_once()
 

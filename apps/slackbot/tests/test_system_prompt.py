@@ -25,20 +25,22 @@ class SystemPromptTests(helpers.TestCase):
         return (await system_prompt.build_system_prompt(user, tools)).text
 
     async def test_with_tools(self) -> None:
-        user = identity.ImbiUser('ada@example.com', 'Ada Lovelace')
+        user = identity.ImbiUser('ada@example.com', 'Ada Lovelace', 'acme')
         prompt = await self.build(user, ['list', 'get'])
         self.assertIn('Ada Lovelace', prompt)
         self.assertIn('ada@example.com', prompt)
         self.assertIn('list, get', prompt)
         self.assertNotIn('[Admin]', prompt)
+        # The tools reach every org of the user; the workspace has one.
+        self.assertIn('Work only in the organization `acme`', prompt)
 
     async def test_without_tools(self) -> None:
-        user = identity.ImbiUser('ada@example.com', 'Ada')
+        user = identity.ImbiUser('ada@example.com', 'Ada', 'acme')
         prompt = await self.build(user, [])
         self.assertIn('NO tools', prompt)
 
     async def test_skills_follow_the_prompt(self) -> None:
-        user = identity.ImbiUser('ada@example.com', 'Ada')
+        user = identity.ImbiUser('ada@example.com', 'Ada', 'acme')
         skill = models.Prompt(
             name='Triage', slug='triage', namespace='imbi-skills'
         )
@@ -47,19 +49,19 @@ class SystemPromptTests(helpers.TestCase):
         self.assertIn('- **triage**: Triage', result.text)
 
     async def test_no_skills_still_explains_how_to_create_one(self) -> None:
-        user = identity.ImbiUser('ada@example.com', 'Ada')
+        user = identity.ImbiUser('ada@example.com', 'Ada', 'acme')
         result = await system_prompt.build_system_prompt(user, [])
         self.assertIn('There are no skills yet.', result.text)
         self.assertIn('`imbi-skills` namespace', result.text)
 
     async def test_task_link_has_the_org(self) -> None:
-        user = identity.ImbiUser('ada@example.com', 'Ada')
+        user = identity.ImbiUser('ada@example.com', 'Ada', 'acme')
         prompt = await self.build(user, ['list'])
         self.assertIn('`/tickets/{org_slug}/{short_id}`', prompt)
         self.assertNotIn('/agents/tasks/', prompt)
 
     async def test_admin_flag(self) -> None:
-        user = identity.ImbiUser('a@example.com', 'A', is_admin=True)
+        user = identity.ImbiUser('a@example.com', 'A', 'acme', is_admin=True)
         prompt = await self.build(user, ['list'])
         self.assertIn('[Admin]', prompt)
 
@@ -67,7 +69,7 @@ class SystemPromptTests(helpers.TestCase):
         with self.override_environment(
             IMBI_SLACKBOT_SYSTEM_PROMPT='Custom for {{ display_name }}',
         ):
-            user = identity.ImbiUser('a@example.com', 'Ada')
+            user = identity.ImbiUser('a@example.com', 'Ada', 'acme')
             prompt = await self.build(user, ['list'])
         self.assertTrue(prompt.startswith('Custom for Ada\n\n## Skills'))
 
@@ -76,7 +78,7 @@ class SystemPromptTests(helpers.TestCase):
         with self.override_environment(
             IMBI_SLACKBOT_SYSTEM_PROMPT='Example JSON: {"k": "v"}',
         ):
-            user = identity.ImbiUser('a@example.com', 'Ada')
+            user = identity.ImbiUser('a@example.com', 'Ada', 'acme')
             prompt = await self.build(user, ['list'])
         self.assertTrue(prompt.startswith('Example JSON: {"k": "v"}\n\n'))
 
@@ -84,7 +86,7 @@ class SystemPromptTests(helpers.TestCase):
         with self.override_environment(
             IMBI_SLACKBOT_SYSTEM_PROMPT='Broken {{ display_name',
         ):
-            user = identity.ImbiUser('a@example.com', 'Ada')
+            user = identity.ImbiUser('a@example.com', 'Ada', 'acme')
             prompt = await self.build(user, ['list'])
         self.assertIn('a@example.com', prompt)
         self.assertNotIn('Broken', prompt)
@@ -94,7 +96,7 @@ class SystemPromptTests(helpers.TestCase):
             IMBI_UI_URL='https://imbi.example.com',
             IMBI_SLACKBOT_SYSTEM_PROMPT='{{ links_section }}',
         ):
-            user = identity.ImbiUser('a@example.com', 'Ada')
+            user = identity.ImbiUser('a@example.com', 'Ada', 'acme')
             prompt = await self.build(user, ['list'])
         self.assertIn('https://imbi.example.com', prompt)
 
@@ -105,7 +107,7 @@ class SystemPromptTests(helpers.TestCase):
             mock.patch.object(resolve, 'resolve', found),
         ):
             result = await system_prompt.build_system_prompt(
-                identity.ImbiUser('a@example.com', 'Ada'), []
+                identity.ImbiUser('a@example.com', 'Ada', 'acme'), []
             )
         self.assertEqual(result.source, 'fallback')
         self.assertEqual(
@@ -120,6 +122,6 @@ class SystemPromptTests(helpers.TestCase):
             new=mock.AsyncMock(return_value=loaded),
         ) as load:
             await system_prompt.build_system_prompt(
-                identity.ImbiUser('a@example.com', 'Ada'), []
+                identity.ImbiUser('a@example.com', 'Ada', 'acme'), []
             )
         self.assertEqual(load.await_args.kwargs['email'], 'a@example.com')

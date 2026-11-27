@@ -18297,6 +18297,8 @@ export interface components {
              * @enum {string}
              */
             document_analytics_identities: "enabled" | "authors_only" | "disabled";
+            /** Slack Team Id */
+            slack_team_id?: string | null;
         };
         /** OrganizationMember */
         OrganizationMember: {
@@ -22667,8 +22669,6 @@ export interface components {
          * @description The layout of the Slack App Home tab of one user.
          */
         SlackHomePreferences: {
-            /** Org Slug */
-            org_slug?: string | null;
             /** Order */
             order?: ("needs_attention" | "my_tickets" | "pull_requests" | "merged_not_deployed" | "release_drift" | "my_projects" | "agent_activity" | "document_comments")[];
             /** Sections */
@@ -24859,6 +24859,11 @@ export interface components {
              * @enum {string}
              */
             document_analytics_identities: "enabled" | "authors_only" | "disabled";
+            /**
+             * Slack Team Id
+             * @default null
+             */
+            slack_team_id: string | null;
         };
         /** OrganizationResponse */
         OrganizationBlueprintResponse: {
@@ -24899,6 +24904,11 @@ export interface components {
              * @enum {string}
              */
             document_analytics_identities: "enabled" | "authors_only" | "disabled";
+            /**
+             * Slack Team Id
+             * @default null
+             */
+            slack_team_id: string | null;
             /**
              * Relationships
              * @default null

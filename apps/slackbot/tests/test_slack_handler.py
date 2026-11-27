@@ -318,7 +318,7 @@ class HandleEventTests(helpers.TestCase):
         super().tearDown()
 
     async def test_happy_path_renders_answer(self) -> None:
-        user = identity.ImbiUser('ada@example.com', 'Ada')
+        user = identity.ImbiUser('ada@example.com', 'Ada', 'acme')
         event = {'channel': 'C', 'ts': '1', 'user': 'U1', 'text': '<@BOT> hi'}
         client = FakeSlackClient(replies=[])
         with (
@@ -346,7 +346,7 @@ class HandleEventTests(helpers.TestCase):
 
     async def _submit_form(self, answerer: str):
         """Submit form F1, which U1 asked for, as ``answerer``."""
-        user = identity.ImbiUser('ada@example.com', 'Ada')
+        user = identity.ImbiUser('ada@example.com', 'Ada', 'acme')
         client = FakeSlackClient(
             replies=[{'user': 'U1', 'ts': '1', 'text': '<@BOT> plan it'}]
         )
@@ -409,7 +409,7 @@ class HandleEventTests(helpers.TestCase):
         self.assertEqual('1', client.posts[-1]['thread_ts'])
 
     async def test_answer_cannot_broadcast(self) -> None:
-        user = identity.ImbiUser('ada@example.com', 'Ada')
+        user = identity.ImbiUser('ada@example.com', 'Ada', 'acme')
         event = {'channel': 'C', 'ts': '1', 'user': 'U1', 'text': '<@BOT> hi'}
         client = FakeSlackClient(replies=[])
         with (
@@ -430,7 +430,7 @@ class HandleEventTests(helpers.TestCase):
         )
 
     async def test_prompt_settings_reach_run_turn(self) -> None:
-        user = identity.ImbiUser('ada@example.com', 'Ada')
+        user = identity.ImbiUser('ada@example.com', 'Ada', 'acme')
         event = {'channel': 'C', 'ts': '1', 'user': 'U1', 'text': '<@BOT> hi'}
         prompt = prompt_system.SystemPrompt(
             text='cms text',
@@ -463,7 +463,7 @@ class HandleEventTests(helpers.TestCase):
         self.assertEqual(kwargs['temperature'], 0.3)
 
     async def test_skills_reach_prompt_and_tools(self) -> None:
-        user = identity.ImbiUser('ada@example.com', 'Ada')
+        user = identity.ImbiUser('ada@example.com', 'Ada', 'acme')
         event = {'channel': 'C', 'ts': '1', 'user': 'U1', 'text': '<@BOT> hi'}
         skill = models.Prompt(
             name='Triage', slug='triage', namespace='imbi-skills'
@@ -493,7 +493,7 @@ class HandleEventTests(helpers.TestCase):
         self.assertIn('skill_invoke', [tool['name'] for tool in tools])
 
     async def test_run_turn_failure_posts_fallback(self) -> None:
-        user = identity.ImbiUser('ada@example.com', 'Ada')
+        user = identity.ImbiUser('ada@example.com', 'Ada', 'acme')
         event = {'channel': 'C', 'ts': '1', 'user': 'U1', 'text': '<@BOT> hi'}
         client = FakeSlackClient(replies=[])
         with (
@@ -517,7 +517,7 @@ class HandleEventTests(helpers.TestCase):
         self.assertIn(('remove', mock.ANY), client.reactions)
 
     async def test_progress_updates_disabled(self) -> None:
-        user = identity.ImbiUser('ada@example.com', 'Ada')
+        user = identity.ImbiUser('ada@example.com', 'Ada', 'acme')
         event = {'channel': 'C', 'ts': '1', 'user': 'U1', 'text': '<@BOT> hi'}
         client = FakeSlackClient(replies=[])
         with (
@@ -551,7 +551,7 @@ class HandleEventTests(helpers.TestCase):
         self.assertIn('match your Slack account', client.posts[-1]['text'])
 
     async def test_empty_messages(self) -> None:
-        user = identity.ImbiUser('ada@example.com', 'Ada')
+        user = identity.ImbiUser('ada@example.com', 'Ada', 'acme')
         event = {'channel': 'C', 'ts': '1', 'user': 'U1', 'text': '<@BOT>'}
         # Thread holds only a bot message -> drops to empty history. It
         # has the event's ts, so the event is not added again.
@@ -572,7 +572,7 @@ class HandleEventTests(helpers.TestCase):
         self.assertEqual([], client.posts)
 
     async def test_mention_creates_one_task_per_delivery(self) -> None:
-        user = identity.ImbiUser('ada@example.com', 'Ada')
+        user = identity.ImbiUser('ada@example.com', 'Ada', 'acme')
         event = {
             'channel': 'C1',
             'ts': '1.5',

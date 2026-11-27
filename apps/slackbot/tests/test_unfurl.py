@@ -8,7 +8,7 @@ from slack_sdk import errors
 from apps.slackbot.tests import helpers, test_create_ticket
 from imbi.slackbot import identity, links, settings, unfurl
 
-USER = identity.ImbiUser('ada@example.com', 'Ada')
+USER = identity.ImbiUser('ada@example.com', 'Ada', org_slug='acme')
 UI = 'https://imbi.example.com'
 TICKET_URL = f'{UI}/tickets/acme/T-12/activity'
 PROJECT_URL = f'{UI}/projects/p1'
@@ -342,10 +342,8 @@ class HandleTests(SettingsTestCase, test_create_ticket.ApiTestCase):
         self.assertEqual(('C1', '1.2'), (kwargs['channel'], kwargs['ts']))
         self.assertNotIn('unfurl_id', kwargs)
 
-    async def test_project_in_second_org(self) -> None:
-        self.ok('/organizations/', [{'slug': 'one'}, {'slug': 'two'}])
-        self.ok('/organizations/one/projects/', [])
-        self.ok('/organizations/two/projects/', [PROJECT])
+    async def test_project_in_the_workspace_org(self) -> None:
+        self.ok('/organizations/acme/projects/', [PROJECT])
         with self.api():
             await unfurl.handle(self.event(PROJECT_URL), self.slack)
         entities = self.slack.chat_unfurl.await_args.kwargs['metadata']
@@ -357,9 +355,17 @@ class HandleTests(SettingsTestCase, test_create_ticket.ApiTestCase):
             dict(self.calls[-1].url.params),
         )
 
+    async def test_ticket_of_another_org_is_skipped(self) -> None:
+        self.ok('/organizations/beta/tickets/T-12', TICKET)
+        with self.api():
+            await unfurl.handle(
+                self.event(TICKET_URL.replace('/acme/', '/beta/')), self.slack
+            )
+        self.slack.chat_unfurl.assert_not_awaited()
+        self.assertEqual([], self.calls)
+
     async def test_unreadable_link_is_skipped(self) -> None:
         self.ok('/organizations/acme/tickets/T-12', TICKET)
-        self.ok('/organizations/', [{'slug': 'acme'}])
         with self.api():
             await unfurl.handle(
                 self.event(TICKET_URL, PROJECT_URL), self.slack

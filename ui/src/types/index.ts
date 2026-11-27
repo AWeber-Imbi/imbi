@@ -1453,6 +1453,7 @@ export interface OrganizationCreate {
   description?: null | string
   icon?: null | string
   name: string
+  slack_team_id?: null | string
   slug: string
 }
 

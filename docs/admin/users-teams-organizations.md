@@ -34,6 +34,21 @@ menu, show the data of the organization that you select.
 
 `imbi-api setup` creates the first organization, with the slug `default`.
 
+### Link a Slack workspace
+
+The [Slack bot](../slackbot/index.md) serves one Slack workspace, and
+that workspace belongs to one organization.
+
+1. Find the team ID of the workspace (it starts with `T`, for example
+   `T012AB3CD`). In Slack, it is in the URL of the workspace in a
+   browser, after `/client/`.
+2. Open **Admin > Global Admin > Organizations** and edit the
+   organization.
+3. Enter the ID in **Slack team ID**, then save.
+
+Two organizations cannot have the same team ID. When no organization has
+the team ID of the bot's workspace, the bot answers no one.
+
 ### Membership
 
 A membership connects a user to an organization. Each membership has one

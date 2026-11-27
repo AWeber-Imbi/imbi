@@ -173,6 +173,20 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    (no Anthropic key, an error, or an empty reply). The agent create,
    update, and patch API no longer take `description`; a sent value is
    ignored.
+6. **Before you deploy imbi-slackbot**, link its Slack workspace to an
+   organization: enter the workspace's team ID in **Slack team ID** of
+   the organization (see
+   [Link a Slack workspace](../admin/users-teams-organizations.md#link-a-slack-workspace)).
+   The bot now serves only the members of that organization. Until an
+   organization has the team ID, the bot answers no one.
+7. MCP servers and assistant conversations now belong to an
+   organization. imbi-api moves them at startup:
+    - When the install has one organization, each MCP server goes to
+      it. Otherwise imbi-api logs each server and moves none: create
+      them again in the correct organization (**Admin > &lt;Org&gt;
+      Admin > MCP Servers**).
+    - Each conversation goes to the organization of its owner, or the
+      first by slug when the owner is in more than one.
 
 ## 2.65.0
 

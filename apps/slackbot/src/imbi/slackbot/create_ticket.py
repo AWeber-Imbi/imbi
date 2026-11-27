@@ -3,11 +3,12 @@
 The modal has the fields of the dialog. It reads its choices from
 imbi-api and creates the ticket through imbi-api as the Slack user who
 ran the command, so the API checks the permissions of that user and
-records the ``slack`` channel.
+records the ``slack`` channel. The ticket is in the organization of
+the Slack workspace (see :mod:`imbi.slackbot.identity`).
 
 Slack sends the values of a modal only on a dispatched action and on
-submit. Each change that alters the form (organization, assignee kind,
-type, priority, labels, prerequisites, roles) builds the view again
+submit. Each change that alters the form (assignee kind, type, priority,
+labels, prerequisites, roles) builds the view again
 from the current values. The custom fields come from the ticket schema
 of the organization, type, priority, and labels, the same as in the UI.
 
@@ -41,9 +42,7 @@ COMMAND = '/create-ticket'
 CALLBACK_ID = 'ct:form'
 
 # Each input uses the id as its action id. The block id is the same,
-# except after a change of organization (see ``_block_id``) and for the
-# gating input (see ``form_view``).
-ORG = 'ct:org'
+# except for the gating input (see ``form_view``).
 SUBJECT = 'ct:subject'
 DESCRIPTION = 'ct:description'
 KIND = 'ct:kind'
@@ -64,13 +63,10 @@ PARENT = 'ct:parent'
 REQUIRES = 'ct:requires'
 GATING = 'ct:gating'
 FIELD = 'ct:field:'
-#: The inputs whose values do not name things of an organization.
-_STABLE = frozenset({ORG, SUBJECT, DESCRIPTION, KIND, TYPE, PRIORITY, DUE})
-
 #: The actions that build the view again. An input with one of these
 #: ids dispatches its changes.
 DISPATCH = re.compile(
-    r'^ct:(org|kind|type|priority|labels|requires|role-add|role-remove)$'
+    r'^ct:(kind|type|priority|labels|requires|role-add|role-remove)$'
 )
 #: The selects that search imbi-api as the person types.
 SEARCH = re.compile(
@@ -105,7 +101,6 @@ _NO_USER = (
     'There is no Imbi user with your Slack email. Ask an Imbi '
     'administrator to make sure that your account exists and is active.'
 )
-_NO_ORG = 'You are not a member of an Imbi organization.'
 _UNAVAILABLE = 'Imbi is not available. Try again.'
 _PLACEHOLDER = (
     'The outcome you want. Paste a Sentry issue, pull request, or Slack '
@@ -141,10 +136,9 @@ async def open_form(
     trigger_id: str,
     user_id: str,
     text: str = '',
-    org: str | None = None,
 ) -> None:
-    """Open the modal for ``user_id``, on ``org`` when the user is a
-    member of it, else on the first organization of the user."""
+    """Open the modal for ``user_id``, in the organization of the
+    Slack workspace."""
     # A trigger id expires after 3 seconds, so the modal opens before
     # the calls to imbi-api.
     opened = await client.views_open(
@@ -158,21 +152,16 @@ async def open_form(
             return
         me = await _get(user, '/users/me')
         memberships: list[Json] = me.get('organizations') or []
-        orgs = [
-            [
-                m['organization_slug'],
-                m['organization_name'],
-                bool(me.get('is_admin'))
-                or 'ticket:manage' in (m.get('permissions') or ()),
-            ]
+        granted = {
+            p
             for m in memberships
-        ]
-        if not orgs:
-            await _show(client, view_id, message_view(_NO_ORG))
-            return
+            if m['organization_slug'] == user.org_slug
+            for p in typing.cast('list[str]', m.get('permissions') or [])
+        }
         meta: Json = {
-            'org': org if any(o[0] == org for o in orgs) else orgs[0][0],
-            'orgs': orgs,
+            'org': user.org_slug,
+            # Picking another owner needs ticket:manage.
+            'manage': bool(me.get('is_admin')) or 'ticket:manage' in granted,
             'me': [user.email, user.display_name],
             'roles': 0,
             'extra': {},
@@ -196,16 +185,7 @@ async def on_action(ack: typing.Any, body: Json, client: SlackClient) -> None:
     values = read_values(view)
     values[GATING] = gating(view, values)
     action = body['actions'][0]['action_id']
-    if action == ORG:
-        meta['org'] = _value(values, ORG) or meta['org']
-        meta['extra'] = {}
-        meta['gen'] = meta.get('gen', 0) + 1
-        # The other fields name things of the old organization.
-        values = {
-            k: values.get(k)
-            for k in (SUBJECT, DESCRIPTION, KIND, TYPE, PRIORITY, DUE)
-        }
-    elif action == ROLE_ADD:
+    if action == ROLE_ADD:
         meta['roles'] = min(meta['roles'] + 1, MAX_ROLES)
     elif action == ROLE_REMOVE:
         meta['roles'] = max(meta['roles'] - 1, 0)
@@ -256,8 +236,7 @@ async def on_submit(ack: typing.Any, body: Json, client: SlackClient) -> None:
     values[GATING] = gating(view, values)
     problems = check(meta, values)
     if problems:
-        errors = {_block_id(meta, k): v for k, v in problems.items()}
-        await ack(response_action='errors', errors=errors)
+        await ack(response_action='errors', errors=problems)
         return
     # The subject can need the model, which takes longer than the 3
     # seconds that Slack waits for an answer.
@@ -382,11 +361,6 @@ def _refused(
 def check(meta: Json, values: Json) -> dict[str, str]:
     """Return the errors that need no call to imbi-api, by block id."""
     problems: dict[str, str] = {}
-    # A submit before the view of the new organization: the other
-    # selections still name things of the old organization.
-    org = _value(values, ORG)
-    if org and org != meta['org']:
-        problems[ORG] = 'Wait for the form to update, then submit again.'
     due = values.get(DUE)
     today = datetime.datetime.now(datetime.UTC).date()
     if due and datetime.date.fromisoformat(due) < today:
@@ -589,23 +563,13 @@ def form_view(
         hint: str | None = None,
     ) -> Json:
         return _field(
-            meta, values, problems, block_id, label, element, optional, hint
+            values, problems, block_id, label, element, optional, hint
         )
 
     blocks: list[Json] = []
     if notice:
         blocks.append(
             {'type': 'section', 'text': _md(f':warning: {_escape(notice)}')}
-        )
-    if len(meta['orgs']) > 1:
-        org_options = [_option(name, slug) for slug, name, _ in meta['orgs']]
-        values[ORG] = _pick(org_options, None, meta['org'])
-        blocks.append(
-            field(
-                ORG,
-                'Organization',
-                {'type': 'static_select', 'options': org_options},
-            )
         )
     kinds = [_option('Agent', 'agent'), _option('Person', 'person')]
     values[KIND] = _pick(kinds, values.get(KIND), 'agent')
@@ -732,7 +696,6 @@ def form_view(
 
 
 def _field(
-    meta: Json,
     values: Json,
     problems: dict[str, str],
     action_id: str,
@@ -748,7 +711,7 @@ def _field(
         element[_slot(element['type'])[1]] = value
     block: Json = {
         'type': 'input',
-        'block_id': _block_id(meta, action_id),
+        'block_id': action_id,
         'label': _text(label),
         'optional': optional,
         'element': element,
@@ -762,23 +725,13 @@ def _field(
     return block
 
 
-def _block_id(meta: Json, action_id: str) -> str:
-    """Return the block id of an input. Slack keeps the value of an
-    input whose block id does not change, so each change of organization
-    gives new block ids to the inputs of the organization."""
-    gen = meta.get('gen', 0)
-    if not gen or action_id in _STABLE:
-        return action_id
-    return f'{action_id}@{gen}'
-
-
 def _owner_block(
     meta: Json, values: Json, field: abc.Callable[..., Json]
 ) -> Json:
     """Return the owner select, or a note when the user cannot pick
     another owner."""
     email, display_name = meta['me']
-    if not next(m for s, _, m in meta['orgs'] if s == meta['org']):
+    if not meta['manage']:
         return {
             'type': 'context',
             'elements': [
@@ -815,7 +768,6 @@ def _role_blocks(
     for i in range(meta['roles']):
         blocks += [
             _field(
-                meta,
                 values,
                 problems,
                 ROLE_NAME + str(i),
@@ -828,7 +780,6 @@ def _role_blocks(
                 optional=True,
             ),
             _field(
-                meta,
                 values,
                 problems,
                 ROLE_PERSON + str(i),

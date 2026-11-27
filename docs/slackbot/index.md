@@ -98,6 +98,7 @@ commits for a releasable project. The drift uses the same rule as the
 with a deployment plugin also has a **Deployments** button.
 
 The bot reads the item as you, so the card shows only what you can read.
+Only links of the organization of the Slack workspace get a card.
 Everyone in the channel sees the card. The bot makes no card in a Slack
 Connect channel, or when you have no Imbi account or cannot read the item.
 See [Slack App Setup](slack-app-manifest.md#link-previews) for the setup.
@@ -105,7 +106,7 @@ See [Slack App Setup](slack-app-manifest.md#link-previews) for the setup.
 ## Home tab
 
 Open the Imbi app in Slack and select **Home**. The tab shows what waits on
-you in Imbi, for one organization:
+you in Imbi, in the organization of the Slack workspace:
 
 | Section | What it shows |
 |---|---|
@@ -136,8 +137,6 @@ item in Imbi or GitHub. To act on an item, use Imbi.
     - Hide sections with nothing in them (on by default).
     - Show at most 5 items per section (when off, 10).
     - Count only expanded sections in the header.
-- When you are a member of more than one organization, select the
-  organization in the header.
 
 Imbi stores the layout in your Imbi profile, so it is the same on each
 device.
@@ -151,15 +150,26 @@ the app from the new manifest.
 
 ## How the bot knows who you are
 
+The Slack workspace of the bot belongs to one Imbi organization: the one
+whose **Slack team ID** is the workspace's ID. See
+[Link a Slack workspace](../admin/users-teams-organizations.md#link-a-slack-workspace).
+
 1. The bot reads the email of your Slack profile (`users.info`).
 2. It finds the active Imbi user with that email.
-3. It makes a short-lived Imbi access token for that user, signed with
+3. It checks that the user is a member of the organization of the
+   workspace.
+4. It makes a short-lived Imbi access token for that user, signed with
    `IMBI_AUTH_JWT_SECRET`, as imbi-api does at login.
-4. It calls imbi-api with that token. So each tool call has your
+5. It calls imbi-api with that token. So each tool call has your
    permissions, and imbi-api records `slack` as the channel.
 
-When no active Imbi user has your email, the bot tells you so and does
-nothing else. Ask an Imbi admin to make or activate your account.
+Everything the bot does for you is in the organization of the workspace:
+`/create-ticket`, the Home tab, link previews, and ticket requests.
+
+When no active Imbi user has your email, the user is not a member of the
+organization, or no organization has the workspace's ID, the bot tells you
+so and does nothing else. Ask an Imbi admin to fix your account or the
+link.
 
 The bot keeps each result, also "no user", for
 `IMBI_SLACKBOT_IDENTITY_CACHE_TTL` seconds (default `900`). A new or

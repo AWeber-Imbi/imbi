@@ -626,6 +626,7 @@ async def _persist_organization(
             ' n.description = {description},'
             ' n.icon = {icon},'
             ' n.tag_formats = {tag_formats},'
+            ' n.slack_team_id = {slack_team_id},'
             ' n.updated_at = {updated_at},'
             ' n.previous_slugs = {previous_slugs}'
             ' RETURN n'
@@ -638,6 +639,7 @@ async def _persist_organization(
             ' n.description = {description},'
             ' n.icon = {icon},'
             ' n.tag_formats = {tag_formats},'
+            ' n.slack_team_id = {slack_team_id},'
             ' n.updated_at = {updated_at}'
             ' RETURN n'
         )
@@ -649,6 +651,7 @@ async def _persist_organization(
         'description': props.get('description'),
         'icon': props.get('icon'),
         'tag_formats': props.get('tag_formats', []),
+        'slack_team_id': props.get('slack_team_id'),
         'updated_at': props['updated_at'],
         'org_id': org_id,
     }
@@ -674,7 +677,8 @@ async def _persist_organization(
         return renamed
 
     with conflict_on_unique_violation(
-        f'Organization with slug {org.slug!r} already exists',
+        f'Another organization has the slug {org.slug!r} or the Slack '
+        f'team id {org.slack_team_id!r}',
     ):
         if previous_slugs is None:
             records = await db.execute(update_query, params)

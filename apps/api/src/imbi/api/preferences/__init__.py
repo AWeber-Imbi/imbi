@@ -54,7 +54,6 @@ class SlackHomeSection(pydantic.BaseModel):
 class SlackHomePreferences(pydantic.BaseModel):
     """The layout of the Slack App Home tab of one user."""
 
-    org_slug: str | None = None
     order: list[SectionKey] = pydantic.Field(
         default_factory=lambda: list(DEFAULT_ORDER)
     )

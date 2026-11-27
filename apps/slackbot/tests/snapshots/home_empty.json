@@ -44,7 +44,6 @@
               "text": "New ticket",
               "emoji": true
             },
-            "value": "acme",
             "style": "primary"
           },
           {

@@ -569,6 +569,12 @@ class Organization(Node):
     tag_formats: list[TagFormat] = []
 
     document_analytics_identities: DocumentAnalyticsIdentities = 'authors_only'
+    #: The team id of the Slack workspace of the organization (for
+    #: example ``T012AB3CD``). imbi-slackbot serves only the members of
+    #: the organization whose id is the id of its workspace.
+    slack_team_id: str | None = pydantic.Field(
+        default=None, pattern=r'^[A-Z0-9]+$'
+    )
 
 
 BelongsToOrganization = typing.Annotated[
