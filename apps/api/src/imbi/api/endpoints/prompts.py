@@ -47,7 +47,7 @@ from imbi.common.auth import permissions as common_permissions
 from imbi.common.auth.encryption import decrypt_config_value
 from imbi.common.graph import cypher as graph_cypher
 from imbi.common.llm import drivers, generate, typesafe
-from imbi.common.prompts import rendering, skills
+from imbi.common.prompts import namespaces, rendering
 from imbi.common.prompts import resolve as prompt_resolve
 from imbi.common.workflows.registry import agent, llm_call
 
@@ -171,6 +171,8 @@ class PromptVersionResponse(PromptVersionContent):
     """One immutable version."""
 
     id: str
+    #: The prompt that owns this version.
+    prompt_id: str
     ref: str
     n: int
     summary: str | None = None
@@ -539,6 +541,7 @@ def _version_response(
 ) -> PromptVersionResponse:
     return PromptVersionResponse(
         id=version.id,
+        prompt_id=prompt.id,
         ref=f'{prompt.namespace}/{prompt.slug}@{version.n}',
         n=version.n,
         summary=version.summary,
@@ -2008,7 +2011,7 @@ async def patch_prompt(
         raise _unprocessable(f'Slug {updated.slug!r} is not valid')
     can_promote = auth.is_admin or 'prompt:promote' in auth.permissions
     if (
-        namespace == skills.NAMESPACE
+        namespace in namespaces.SKILL_NAMESPACES
         and (updated.name, updated.description)
         != (prompt.name, prompt.description)
         and not can_promote
@@ -2030,7 +2033,7 @@ async def patch_prompt(
         await _assert_ref_free(db, updated.namespace, updated.slug, prompt.id)
     updated.updated_at = _now()
     written = set(_PATCHABLE_FIELDS)
-    if namespace == skills.NAMESPACE and not can_promote:
+    if namespace in namespaces.SKILL_NAMESPACES and not can_promote:
         # Do not write back a stale skill name or description over a
         # concurrent change by a promoter.
         written -= {'name', 'description'}

@@ -21,6 +21,10 @@ Route mapping rules control what gets exposed:
 The caller's `Authorization` header is forwarded to the API so that
 requests run with the caller's permissions.
 
+The server also serves the prompts of the `mcp-skills` namespace in the
+prompt CMS as skills (MCP Skills extension). See
+[MCP skills](../../docs/admin/prompts.md#mcp-skills).
+
 ## Authentication
 
 Two modes, which can be used together:

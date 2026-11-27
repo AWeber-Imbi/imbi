@@ -677,6 +677,7 @@ class PatchPromptTestCase(PromptTestBase):
         for namespace, granted, status in (
             (skills.NAMESPACE, ('prompt:update',), 403),
             (skills.NAMESPACE, ('prompt:update', 'prompt:promote'), 200),
+            ('mcp-skills', ('prompt:update',), 403),
             ('mender', ('prompt:update',), 200),
         ):
             with self.subTest(namespace=namespace, granted=granted):
