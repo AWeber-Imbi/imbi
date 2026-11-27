@@ -53,10 +53,16 @@ kubectl --context "$CONTEXT" apply -f "$HERE/clusternetworkpolicy-crd.yaml"
 kubectl --context "$CONTEXT" wait --for=condition=Established \
   crd/clusternetworkpolicies.networking.k8s.aws --timeout=60s
 
-docker build --load -f "$ROOT/apps/harness/Dockerfile" --target isolation \
+# The kind nodes run on the Docker daemon, so build for its platform, not
+# for the client platform (darwin on macOS). DOCKER_DEFAULT_PLATFORM, when
+# set, overrides this, as it did for plain docker build.
+PLATFORM=${DOCKER_DEFAULT_PLATFORM:-$(docker version -f '{{.Server.Os}}/{{.Server.Arch}}')}
+docker buildx build --load --platform="$PLATFORM" \
+  -f "$ROOT/apps/harness/Dockerfile" --target isolation \
   -t "$IMAGE" "$ROOT"
 "$KIND" load docker-image "$IMAGE" --name "$CLUSTER"
-docker build --load -t "$PROXY_IMAGE" "$ROOT/proxy"
+docker buildx build --load --platform="$PLATFORM" -t "$PROXY_IMAGE" \
+  "$ROOT/proxy"
 "$KIND" load docker-image "$PROXY_IMAGE" --name "$CLUSTER"
 
 kubectl --context "$CONTEXT" delete namespace "$NAMESPACE" \
