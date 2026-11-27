@@ -778,6 +778,9 @@ class MCPServer(Node):
     timeout: int = 30
     verify_ssl: bool = True
     ignored_tools: list[str] = []
+    #: Extra HTTP headers sent on every request. Values are stored and
+    #: returned as plaintext; put secrets in the auth fields instead.
+    extra_headers: dict[str, str] = {}
     auth_type: typing.Literal['none', 'static', 'oauth_client_credentials'] = (
         'none'
     )
@@ -798,12 +801,29 @@ class MCPServer(Node):
     tools_discovered: int | None = pydantic.Field(default=None, ge=0)
     last_error: str | None = None
 
-    @pydantic.field_validator('ignored_tools', mode='before')
+    @pydantic.field_validator('ignored_tools', 'extra_headers', mode='before')
     @classmethod
-    def _parse_json_list(cls, value: object) -> object:
-        if isinstance(value, str):
-            return json.loads(value)
-        return value
+    def _parse_json_fields(cls, value: object) -> object:
+        return _parse_json(value)
+
+    def request_headers(
+        self, auth_headers: dict[str, str] | None
+    ) -> dict[str, str]:
+        """Merge the extra headers with the auth headers.
+
+        The auth header wins over an extra header with the same name.
+        Header names are case-insensitive, so the match ignores case.
+        """
+        auth_headers = auth_headers or {}
+        auth_names = {name.lower() for name in auth_headers}
+        return {
+            **{
+                name: value
+                for name, value in self.extra_headers.items()
+                if name.lower() not in auth_names
+            },
+            **auth_headers,
+        }
 
     @pydantic.model_validator(mode='after')
     def _validate_auth_fields(self) -> typing.Self:

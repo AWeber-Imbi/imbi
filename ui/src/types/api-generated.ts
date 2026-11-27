@@ -17293,6 +17293,10 @@ export interface components {
             verify_ssl: boolean;
             /** Ignored Tools */
             ignored_tools?: string[];
+            /** Extra Headers */
+            extra_headers?: {
+                [key: string]: string;
+            };
             /**
              * Auth Type
              * @default none
@@ -17354,6 +17358,10 @@ export interface components {
             verify_ssl: boolean;
             /** Ignored Tools */
             ignored_tools?: string[];
+            /** Extra Headers */
+            extra_headers?: {
+                [key: string]: string;
+            };
             /**
              * Auth Type
              * @default none
@@ -17456,6 +17464,10 @@ export interface components {
             verify_ssl: boolean;
             /** Ignored Tools */
             ignored_tools?: string[];
+            /** Extra Headers */
+            extra_headers?: {
+                [key: string]: string;
+            };
             /**
              * Auth Type
              * @default none
@@ -17531,6 +17543,10 @@ export interface components {
             verify_ssl?: boolean | null;
             /** Ignored Tools */
             ignored_tools?: string[] | null;
+            /** Extra Headers */
+            extra_headers?: {
+                [key: string]: string;
+            } | null;
             /** Auth Type */
             auth_type?: ("none" | "static" | "oauth_client_credentials") | null;
             /** Static Header */

@@ -9,6 +9,7 @@ import { FormHeader } from '@/components/admin/form-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Input } from '@/components/ui/input'
+import { KeyValueEditor } from '@/components/ui/key-value-editor'
 import { Label } from '@/components/ui/label'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import {
@@ -38,6 +39,7 @@ interface FormState {
   authType: MCPServerAuthType
   description: string
   enabled: boolean
+  extraHeaders: Record<string, string>
   icon: string
   ignoredTools: string[]
   name: string
@@ -265,6 +267,19 @@ export function McpServerForm({
               </span>
             </label>
           </Field>
+          <Field
+            help="Sent on every request. Values are stored and shown in plain text, so put secrets in Authentication."
+            label="Extra headers"
+          >
+            <KeyValueEditor
+              keyPlaceholder="X-Header-Name"
+              onChange={(v) =>
+                set({ extraHeaders: v as Record<string, string> })
+              }
+              value={s.extraHeaders}
+              valuePlaceholder="value"
+            />
+          </Field>
         </CardContent>
       </Card>
 
@@ -457,6 +472,7 @@ function baseFields(s: FormState) {
     auth_type: s.authType,
     description: s.description.trim() || null,
     enabled: s.enabled,
+    extra_headers: s.extraHeaders,
     icon: s.icon.trim() || null,
     ignored_tools: s.ignoredTools,
     oauth_client_id:
@@ -557,6 +573,7 @@ function initialState(server: MCPServer | null): FormState {
     authType: server?.auth_type ?? 'none',
     description: server?.description ?? '',
     enabled: server?.enabled ?? true,
+    extraHeaders: server?.extra_headers ?? {},
     icon: server?.icon ?? '',
     ignoredTools: server?.ignored_tools ?? [],
     name: server?.name ?? '',

@@ -305,7 +305,8 @@ class ExternalMCPManager:
         server: common_models.MCPServer,
     ) -> mcp.ClientSession:
         """Open and initialize a streamable-HTTP session."""
-        headers, http_auth = _build_auth(server)
+        auth_headers, http_auth = _build_auth(server)
+        headers = server.request_headers(auth_headers)
         timeout = httpx2.Timeout(float(server.timeout))
         if server.verify_ssl:
             http_client = create_mcp_http_client(headers, timeout, http_auth)

@@ -254,6 +254,24 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['name'], 'Renamed')
 
+    def test_patch_extra_headers_persisted_and_returned(self) -> None:
+        """Extra headers are stored and returned as plaintext."""
+        headers = {'X-Tenant': 'acme'}
+        self.mock_db.match.return_value = [self._model()]
+        self.mock_db.execute.return_value = [
+            {'n': self._server_props(extra_headers=headers)}
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.patch(
+                '/mcp-servers/srv-1', json={'extra_headers': headers}
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['extra_headers'], headers)
+        persisted = self.mock_db.execute.call_args.args[1]
+        self.assertEqual(persisted['extra_headers'], headers)
+
     def test_patch_secret_omitted_keeps_ciphertext(self) -> None:
         """Omitting a secret leaves the stored ciphertext untouched."""
         self.mock_db.match.return_value = [
