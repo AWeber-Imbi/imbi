@@ -258,6 +258,21 @@ class RunStepTestCase(support.SharedAppAsyncTestCase):
         self.assertEqual(ctx.project_id, self.project)
         self.assertEqual(ctx.service_connections, edges)
 
+    async def test_failed_project_lookup_is_retried(self) -> None:
+        handler = self._plugin()
+        with mock.patch.object(
+            _helpers,
+            'lookup_project_slugs',
+            mock.AsyncMock(return_value=('', None)),
+        ):
+            response = await self._run(project_id=self.project)
+        self.assertEqual(response.status_code, 503, response.text)
+        self.assertEqual(
+            response.json()['detail'],
+            {'error': 'project_lookup_failed', 'retry': True},
+        )
+        handler.assert_not_awaited()
+
     async def test_invalid_params(self) -> None:
         handler = self._plugin()
         response = await self._run(params={'query': 'up'})

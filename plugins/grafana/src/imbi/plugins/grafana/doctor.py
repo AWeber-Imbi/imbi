@@ -134,7 +134,11 @@ class GrafanaDoctor(AnalysisCapability):
                 + urllib.parse.urlencode({'type': 'dash-db', 'tag': tag}),
             )
             count = _count_rules(rules, name, value)
-            found = len(typing.cast('list[object]', dashboards))
+            found = (
+                len(typing.cast('list[object]', dashboards))
+                if isinstance(dashboards, list)
+                else None
+            )
         except errors.PluginAuthenticationFailed as exc:
             return [_item('api-token', 'Grafana token', 'fail', str(exc))]
         except Exception as exc:  # noqa: BLE001 - report, do not fail the run
@@ -164,6 +168,13 @@ class GrafanaDoctor(AnalysisCapability):
                 'rules.',
             ),
             _item(
+                'dashboards',
+                'Grafana dashboards',
+                'warn',
+                'Grafana returned an invalid search response.',
+            )
+            if found is None
+            else _item(
                 'dashboards',
                 'Grafana dashboards',
                 'pass' if found else 'warn',

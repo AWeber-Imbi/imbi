@@ -52,6 +52,7 @@ CALL_ERRORS: dict[str, tuple[int, bool]] = {
     'plugin_error': (502, True),
     'plugin_timeout': (504, True),
     'plugin_result_invalid': (502, False),
+    'project_lookup_failed': (503, True),
 }
 
 
@@ -238,6 +239,7 @@ async def run_workflow_step(
         422: The params are not valid, or a project-scoped step has no
             ``project_id``.
         502: The plugin failed or returned a result that is not valid.
+        503: The project lookup failed (``project_lookup_failed``).
         504: The plugin did not answer in time.
 
     """
@@ -258,6 +260,9 @@ async def run_workflow_step(
             _helpers.lookup_project_exists_in(db, data.project_id),
         )
         project_slug, team_slug = slugs
+        if not project_slug:
+            # The project exists (checked above), so the lookup failed.
+            raise _call_error('project_lookup_failed')
     elif descriptor.project_scoped:
         raise fastapi.HTTPException(
             status_code=422, detail='The step needs a project_id'

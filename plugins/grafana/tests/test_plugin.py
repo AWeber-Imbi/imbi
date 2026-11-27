@@ -412,6 +412,19 @@ class LiveDoctorTestCase(unittest.IsolatedAsyncioTestCase):
         items = await self._analyze()
         self.assertEqual('warn', items['api-token'].status)
 
+    @respx.mock
+    async def test_search_that_is_not_a_list_warns(self) -> None:
+        respx.get(_RULES).mock(
+            return_value=httpx.Response(200, json=_rules({'service': 'x'}))
+        )
+        respx.get(_SEARCH).mock(
+            return_value=httpx.Response(200, json={'message': 'unexpected'})
+        )
+        items = await self._analyze()
+        self.assertEqual('pass', items['api-token'].status)
+        self.assertEqual('warn', items['dashboards'].status)
+        self.assertIn('invalid search', items['dashboards'].description)
+
     async def test_no_token_skips(self) -> None:
         items = await doctor.GrafanaDoctor().analyze(
             _ctx(connected=True), {'api_token': ' '}
