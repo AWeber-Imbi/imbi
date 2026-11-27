@@ -1,4 +1,4 @@
-"""Tests for the global AI model catalog endpoints."""
+"""Tests for the AI model catalog endpoints of an organization."""
 
 import decimal
 import typing
@@ -10,8 +10,8 @@ from apps.api.tests.endpoints import test_ai_providers as provider_tests
 from imbi.api.endpoints import ai_models, ai_providers
 from imbi.common.llm import discovery
 
-BASE = '/ai-models'
-IMPORT_BASE = '/ai-providers'
+BASE = f'/organizations/{provider_tests.ORG}/ai-models'
+IMPORT_BASE = f'/organizations/{provider_tests.ORG}/ai-providers'
 
 # Matched by exact template where a substring rule would be shadowed by
 # the write queries that embed the same ``MATCH``.
@@ -984,3 +984,78 @@ class ModelPermissionTestCase(AIModelTestBase):
         self.auth_context.permissions = {'ai_model:read'}
         self.route()
         self.assertEqual(self.client.get(BASE + '/').status_code, 200)
+
+
+class OrgScopeTestCase(AIModelTestBase):
+    """Each read and check is in the organization of the path."""
+
+    ORG_ID = provider_tests.ORG_ID
+
+    def test_create_is_in_the_org(self) -> None:
+        router = self.route(
+            (GET_PROVIDER, [{'p': provider_tests.provider_props()}]),
+            (TEAM, [{'t': team_props()}]),
+            (CREATE, [{'m': model_props(access_scope='restricted')}]),
+        )
+        response = self.client.post(
+            BASE + '/',
+            json={
+                'provider_id': 'prv-1',
+                'name': 'Default Chat',
+                'model_id': 'claude-opus-5',
+                'access_scope': 'restricted',
+                'allowed_team_ids': ['tm-1'],
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(
+            router.params_for(GET_PROVIDER), {'id': 'prv-1', 'org_id': 'org-1'}
+        )
+        self.assertEqual(
+            router.params_for(SLUG_TAKEN),
+            {'slug': 'default-chat', 'org_id': self.ORG_ID},
+        )
+        self.assertEqual(
+            router.params_for(TEAM), {'team_id': 'tm-1', 'org_id': self.ORG_ID}
+        )
+        self.assertEqual(router.params_for(CREATE)['org_id'], self.ORG_ID)
+        create = next(q for q, _ in router.calls if CREATE in q)
+        self.assertIn('CREATE (m)-[:BELONGS_TO]->(o)', create)
+
+    def test_a_provider_of_another_org_is_404(self) -> None:
+        self.route()
+        response = self.client.post(
+            BASE + '/',
+            json={'provider_id': 'prv-9', 'name': 'X', 'model_id': 'x'},
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_a_team_of_another_org_is_422(self) -> None:
+        self.route((GET_PROVIDER, [{'p': provider_tests.provider_props()}]))
+        response = self.client.post(
+            BASE + '/',
+            json={
+                'provider_id': 'prv-1',
+                'name': 'X',
+                'model_id': 'x',
+                'access_scope': 'restricted',
+                'allowed_team_ids': ['tm-9'],
+            },
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_reads_are_in_the_org(self) -> None:
+        router = self.route()
+        self.assertEqual(self.client.get(BASE + '/').json(), [])
+        self.assertEqual(
+            router.params_for(LIST_MODELS), {'org_id': self.ORG_ID}
+        )
+        self.assertEqual(self.client.get(f'{BASE}/mdl-9').status_code, 404)
+        self.assertEqual(
+            router.params_for(GET_MODEL),
+            {'id': 'mdl-9', 'org_id': self.ORG_ID},
+        )
+        self.assertEqual(self.client.delete(f'{BASE}/mdl-9').status_code, 404)
+        self.assertEqual(
+            router.params_for(DELETE), {'id': 'mdl-9', 'org_id': self.ORG_ID}
+        )

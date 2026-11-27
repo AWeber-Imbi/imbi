@@ -92,10 +92,16 @@ def _require_assistant() -> None:
 async def _check_model(
     db: graph.Graph, auth_ctx: AuthDep, model: str, default: str
 ) -> None:
-    """Raise 403 when a non-admin user may not use ``model`` (#788)."""
+    """Raise 403 when a non-admin user may not use ``model`` (#788).
+
+    The catalogs of the organizations of the user apply.
+    """
     user = auth_ctx.require_user
-    if not user.is_admin and not await resolve.member_may_use_model_id(
-        db, model, user.email, default
+    if user.is_admin:
+        return
+    org_ids = await resolve.member_org_ids(db, user.email)
+    if not await resolve.member_may_use_model_id(
+        db, model, user.email, default, org_ids=org_ids
     ):
         raise resolve.ModelNotAllowed(
             f'The model {model!r} is not in the catalog or is restricted '

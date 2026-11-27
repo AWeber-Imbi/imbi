@@ -349,14 +349,20 @@ MATCH (v:PromptVersion)-[:VERSION_OF]->(:Prompt {{id: {prompt_id}}})
 RETURN v
 """
 
+#: A model of the organization ``org`` (a slug). A global prompt
+#: (``org`` null) can name a model of any organization: it runs in the
+#: organization of the run, which must have a model with that slug.
 _MODEL_QUERY: typing.LiteralString = """
-MATCH (m:AIModel {{slug: {slug}}})
+MATCH (m:AIModel {{slug: {slug}}})-[:BELONGS_TO]->(o:Organization)
+WHERE {org} IS NULL OR o.slug = {org}
 RETURN m.model_id AS model_id, m.enabled AS enabled,
        m.model_type AS model_type
 """
 
 _RUN_MODEL_QUERY: typing.LiteralString = """
-MATCH (m:AIModel {{slug: {slug}}})-[:SERVED_BY]->(p:AIProvider)
+MATCH (m:AIModel {{slug: {slug}}})
+      -[:BELONGS_TO]->(:Organization {{id: {org_id}}})
+MATCH (m)-[:SERVED_BY]->(p:AIProvider)
 RETURN m.model_id AS model_id, m.enabled AS enabled,
        m.model_type AS model_type, m.kind AS kind, p.id AS provider_id,
        m.access_scope AS access_scope,
@@ -636,17 +642,21 @@ def _check_templates(content: PromptVersionContent) -> None:
 
 
 async def _model_id_for(
-    db: graph.Graph, model: str | None, kind: models.PromptKind
+    db: graph.Graph,
+    model: str | None,
+    kind: models.PromptKind,
+    org: str | None,
 ) -> str | None:
     """Return the catalog ``model_id`` for a model slug, or raise 422.
 
+    ``org`` is the organization of the prompt (:func:`_prompt_org`).
     The model's type must match the prompt's kind.
     """
     if model is None:
         return None
     records = await db.execute(
         _MODEL_QUERY,
-        {'slug': model},
+        {'slug': model, 'org': org},
         ['model_id', 'enabled', 'model_type'],
     )
     if not records:
@@ -1248,7 +1258,9 @@ async def insert_prompt(
     _check_kind(data.kind, data.version)
     _check_tools(data.namespace, data.version)
     _check_templates(data.version)
-    model_id = await _model_id_for(db, data.version.model, data.kind)
+    model_id = await _model_id_for(
+        db, data.version.model, data.kind, _prompt_org(data.namespace, slug)
+    )
     await _assert_ref_free(db, data.namespace, slug)
 
     now = _now()
@@ -1562,7 +1574,7 @@ async def _check_model_teams(
         row = await store.get(org_id, slug)
         team_id = row['owner_team_id'] if row is not None else None
     await prompt_resolve.check_model_teams(
-        db, model, message, email=email, team_id=team_id
+        db, model, message, org_ids=[org_id], email=email, team_id=team_id
     )
 
 
@@ -1649,7 +1661,7 @@ async def run_prompt(
         raise _unprocessable(f'Choose a {prompt.kind} model to run the prompt')
     records = await db.execute(
         _RUN_MODEL_QUERY,
-        {'slug': version.model},
+        {'slug': version.model, 'org_id': org_id},
         _RUN_MODEL_COLUMNS,
     )
     if not records:
@@ -1664,7 +1676,7 @@ async def run_prompt(
             db, workflow_store, auth, org_id, prompt, version.model
         )
     provider = await ai_providers.fetch_provider(
-        db, str(record['provider_id'])
+        db, org_id, str(record['provider_id'])
     )
     if not provider.enabled:
         raise _unprocessable(f'AI provider {provider.slug!r} is disabled')
@@ -2230,7 +2242,9 @@ async def create_prompt_version(
                 )
             response.status_code = 200
             return _version_response(newest, prompt)
-    model_id = await _model_id_for(db, data.model, prompt.kind)
+    model_id = await _model_id_for(
+        db, data.model, prompt.kind, _prompt_org(prompt.namespace, prompt.slug)
+    )
     version, props = _version_props(
         prompt, latest + 1, data, model_id, auth.principal_name
     )

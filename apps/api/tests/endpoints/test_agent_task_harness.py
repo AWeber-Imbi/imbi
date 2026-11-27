@@ -108,10 +108,17 @@ class HarnessTestCase(test_agent_tasks.AgentTaskTestCase):
         return task
 
     async def make_model(
-        self, slug: str, model_id: str, **prices: typing.Any
+        self,
+        slug: str,
+        model_id: str,
+        org: str | None = None,
+        **prices: typing.Any,
     ) -> None:
+        """Add a model to the catalog of ``org`` (default: the task's)."""
+        org = org or self.org
         props: dict[str, typing.Any] = {
-            'id': slug,
+            'id': f'{org}-{slug}',
+            'org_id': org,
             'slug': slug,
             'name': slug,
             'model_id': model_id,
@@ -122,14 +129,16 @@ class HarnessTestCase(test_agent_tasks.AgentTaskTestCase):
         }
         props.update(prices)
         await self.graph.execute(
-            f'CREATE (m:AIModel {props_template(props)}) RETURN m.id AS id',
+            'MATCH (o:Organization {{id: {org_id}}})'
+            f' CREATE (m:AIModel {props_template(props)})'
+            ' CREATE (m)-[:BELONGS_TO]->(o) RETURN m.id AS id',
             props,
             ['id'],
         )
         self.addAsyncCleanup(
             self.graph.execute,
             'MATCH (m:AIModel {{id: {id}}}) DETACH DELETE m RETURN 1 AS ok',
-            {'id': slug},
+            {'id': props['id']},
             ['ok'],
         )
 
@@ -1311,6 +1320,12 @@ class UsageTests(HarnessTestCase):
             cache_write_tokens=None,
         )
         self.assertEqual(response.json()['input_cost_per_million'], '3.000000')
+
+    async def test_a_model_of_another_org_has_no_price(self) -> None:
+        await self.make_model('other-only', 'other-only-id', self.other_org)
+        response = await self.report('u-1', model_id='other-only')
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertIsNone(response.json()['cost'])
 
     async def test_message_id_goes_on_the_event_only(self) -> None:
         response = await self.report('u-1', message_id='msg_01abc')

@@ -33,12 +33,17 @@ FIELDS = [{'name': 'severity', 'type': 'string', 'required': True}]
 WF_PROMPT = f'{base.ORG}.deploy.summary'
 
 
+#: The organization of the run, as the provider row returns it.
+ORG_ROW = {'id': 'org-1', 'name': 'Acme', 'slug': base.ORG}
+
+
 def provider_row(**overrides: typing.Any) -> list[dict[str, typing.Any]]:
     return [
         {
             'p': provider_tests.provider_props(
                 credentials_encrypted='ciphertext', **overrides
-            )
+            ),
+            'o': ORG_ROW,
         }
     ]
 
@@ -116,9 +121,14 @@ class GenerativeRunTestCase(base.PromptTestBase):
         )
 
     def test_runs_a_saved_version(self) -> None:
-        self.route_run()
+        router = self.route_run()
         response = self.run_ref()
         self.assertEqual(response.status_code, 200, response.text)
+        # The model and its provider come from the catalog of the org.
+        run_model = router.params_for(prompts._RUN_MODEL_QUERY)
+        self.assertEqual(run_model['org_id'], 'org-1')
+        get_provider = router.params_for(ai_providers._GET_QUERY)
+        self.assertEqual(get_provider['org_id'], 'org-1')
         data = response.json()
         self.assertEqual(data['ref'], 'mender/core@1')
         self.assertEqual(data['n'], 1)

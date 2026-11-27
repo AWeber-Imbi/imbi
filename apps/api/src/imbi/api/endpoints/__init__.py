@@ -7,8 +7,10 @@ from . import (
 )
 from .admin import admin_router
 from .admin_plugins import admin_plugins_router
-from .ai_models import ai_models_router, ai_provider_imports_router
-from .ai_providers import ai_provider_drivers_router, ai_providers_router
+from .ai_providers import (
+    ai_provider_drivers_router,
+    ai_provider_tokens_router,
+)
 from .api_keys import api_keys_router
 from .auth import auth_router
 from .auth_providers import auth_providers_router
@@ -44,10 +46,8 @@ from .users import users_router
 prefixed_routers: list[fastapi.APIRouter] = [
     admin_plugins_router,
     admin_router,
-    ai_models_router,
     ai_provider_drivers_router,
-    ai_provider_imports_router,
-    ai_providers_router,
+    ai_provider_tokens_router,
     api_keys_router,
     auth_providers_router,
     auth_router,

@@ -1,4 +1,4 @@
-"""Tests for the global AI provider endpoints."""
+"""Tests for the AI provider endpoints of an organization."""
 
 import datetime
 import json
@@ -18,9 +18,10 @@ from imbi.common import graph
 from imbi.common.llm import discovery
 from imbi.common.llm import tokens as common_tokens
 
-#: Organization slug for tests that still need one (prompt render).
 ORG = 'acme'
-BASE = '/ai-providers'
+#: The id that the mocked membership check gives ``ORG``.
+ORG_ID = 'org-1'
+BASE = f'/organizations/{ORG}/ai-providers'
 #: The real lookup, kept before a test patches it.
 CHECK_MEMBER = organizations.check_member
 
@@ -54,7 +55,7 @@ class QueryRouter:
         self.calls.append((query, dict(params or {})))
         for needle, result in self.rules:
             if needle in query:
-                return result
+                return _with_org(result)
         return []
 
     def params_for(self, needle: str) -> dict[str, typing.Any]:
@@ -63,6 +64,27 @@ class QueryRouter:
             if needle in query:
                 return params
         raise AssertionError(f'no query matched {needle!r}')
+
+
+def org_props(**overrides: typing.Any) -> dict[str, typing.Any]:
+    """Return a default Organization vertex property dict."""
+    return {'id': ORG_ID, 'name': 'Acme', 'slug': ORG, **overrides}
+
+
+def _with_org(result: typing.Any) -> typing.Any:
+    """Give each provider or model row the organization row ``o``.
+
+    The catalog queries return the organization with the node; a test
+    that sets ``o`` itself keeps it.
+    """
+    if not isinstance(result, list):
+        return result
+    return [
+        {'o': org_props(), **row}
+        if isinstance(row, dict) and ('p' in row or 'm' in row)
+        else row
+        for row in typing.cast('list[typing.Any]', result)
+    ]
 
 
 # The read queries are matched by their exact template, because the
@@ -74,6 +96,8 @@ SLUG_TAKEN = ai_providers._SLUG_TAKEN_QUERY
 COUNTS = ai_providers._COUNTS_QUERY
 CONFIGURED = ai_providers._CONFIGURED_QUERY
 MODEL_TYPES = ai_providers._MODEL_TYPES_QUERY
+ORG_QUERY = ai_providers._ORG_QUERY
+SERVICE_PROVIDER = ai_providers._SERVICE_QUERY
 CREATE = 'CREATE (p:AIProvider'
 UPDATE = 'SET p.'
 DELETE = 'DETACH DELETE p'
@@ -130,6 +154,11 @@ class AIProviderTestBase(support.SharedAppTestCase):
         self.test_app.dependency_overrides[permissions.get_current_user] = (
             mock_get_current_user
         )
+        # Membership and the per-org permissions are tested in
+        # OrgScopeTestCase; here the caller is a member of ``ORG``.
+        self.test_app.dependency_overrides[organizations.member_org_id] = (
+            lambda: ORG_ID
+        )
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
             self.mock_db
@@ -149,8 +178,11 @@ class AIProviderTestBase(support.SharedAppTestCase):
         self.addCleanup(cache.stop)
 
     def route(self, *rules: tuple[str, typing.Any]) -> QueryRouter:
-        """Install a :class:`QueryRouter` as the mocked ``execute``."""
-        router = QueryRouter(*rules)
+        """Install a :class:`QueryRouter` as the mocked ``execute``.
+
+        The organization lookup of a create is answered last.
+        """
+        router = QueryRouter(*rules, (ORG_QUERY, [{'o': org_props()}]))
         self.mock_db.execute.side_effect = router
         return router
 
@@ -354,7 +386,7 @@ class CreateProviderTestCase(AIProviderTestBase):
         The pre-check cannot see a concurrent create; the unique graph
         index can, and its violation must map to 409, not 500.
         """
-        router = QueryRouter()
+        router = QueryRouter((ORG_QUERY, [{'o': org_props()}]))
 
         def execute(
             query: str,
@@ -1029,25 +1061,29 @@ class ServiceTokenTestCase(AIProviderTestBase):
         configured = mock.patch.object(
             settings,
             'get_ai_providers',
-            return_value=settings.AIProviders(assistant='prv-1'),
+            return_value=settings.AIProviders(assistant='acme/anthropic'),
         )
         configured.start()
         self.addCleanup(configured.stop)
         self.mock_store.identity_source.return_value = SOURCE
 
     def post(self, failed: str | None = None) -> typing.Any:
-        return self.client.post(f'{BASE}/token', json={'failed': failed})
+        return self.client.post('/ai-providers/token', json={'failed': failed})
 
     def test_returns_the_token_of_the_provider(self) -> None:
         router = self.route(
-            (GET_PROVIDER, [{'p': provider_props(workload_identity=WIF)}])
+            (SERVICE_PROVIDER, [{'p': provider_props(workload_identity=WIF)}])
         )
         response = self.post()
         self.assertEqual(response.status_code, 200, response.text)
         body = response.json()
         self.assertTrue(body['token'])
         self.assertIn('expires_at', body)
-        self.assertEqual(router.params_for(GET_PROVIDER)['id'], 'prv-1')
+        # The setting names the provider by organization and slug.
+        self.assertEqual(
+            router.params_for(SERVICE_PROVIDER),
+            {'org': 'acme', 'slug': 'anthropic'},
+        )
         # Cached: a second call mints nothing.
         self.assertEqual(self.post().json()['token'], body['token'])
         self.assertEqual(len(self.exchanger.seen), 1)
@@ -1057,7 +1093,9 @@ class ServiceTokenTestCase(AIProviderTestBase):
         self.assertEqual(len(self.exchanger.seen), 2)
 
     def test_not_in_the_openapi_document(self) -> None:
-        self.assertNotIn(f'{BASE}/token', self.test_app.openapi()['paths'])
+        paths = self.test_app.openapi()['paths']
+        self.assertNotIn('/ai-providers/token', paths)
+        self.assertNotIn(f'{BASE}/token', paths)
 
     def test_a_caller_without_a_provider_is_404(self) -> None:
         for slug in ('imbi-slackbot', 'imbi-gateway'):
@@ -1076,13 +1114,89 @@ class ServiceTokenTestCase(AIProviderTestBase):
         self.auth_context.permissions = set()
         self.assertEqual(self.post().status_code, 403)
 
+    def test_an_unknown_provider_is_404(self) -> None:
+        self.route()
+        self.assertEqual(self.post().status_code, 404)
+
     def test_a_provider_without_workload_identity_is_409(self) -> None:
-        self.route((GET_PROVIDER, [{'p': provider_props()}]))
+        self.route((SERVICE_PROVIDER, [{'p': provider_props()}]))
         self.assertEqual(self.post().status_code, 409)
 
     def test_no_identity_source_is_502(self) -> None:
         self.route(
-            (GET_PROVIDER, [{'p': provider_props(workload_identity=WIF)}])
+            (SERVICE_PROVIDER, [{'p': provider_props(workload_identity=WIF)}])
         )
         self.mock_store.identity_source.return_value = None
         self.assertEqual(self.post().status_code, 502)
+
+
+class OrgScopeTestCase(AIProviderTestBase):
+    """The providers of one organization, with the caller's role there."""
+
+    is_admin = False
+
+    def setUp(self) -> None:
+        super().setUp()
+        del self.test_app.dependency_overrides[organizations.member_org_id]
+        self.auth_context.permissions = {'ai_model:read'}
+        # The permissions of the caller's role in each organization.
+        grants = mock.patch.object(
+            organizations,
+            'org_permissions',
+            new=mock.AsyncMock(
+                side_effect=lambda _db, _auth, org_slug: (
+                    {'ai_model:read'} if org_slug == ORG else set()
+                )
+            ),
+        )
+        grants.start()
+        self.addCleanup(grants.stop)
+
+    def member(self, org_id: str, member: bool = True) -> QueryRouter:
+        return self.route(
+            (
+                'OPTIONAL MATCH (u:User',
+                [{'id': org_id, 'member': member}],
+            ),
+            (LIST_PROVIDERS, [{'p': provider_props()}]),
+        )
+
+    def test_reads_use_the_role_in_that_org(self) -> None:
+        router = self.member(ORG_ID)
+        response = self.client.get(BASE + '/')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(router.params_for(LIST_PROVIDERS), {'org_id': ORG_ID})
+        # A member of ``other`` without the permission there.
+        self.member('org-2')
+        response = self.client.get('/organizations/other/ai-providers/')
+        self.assertEqual(response.status_code, 403)
+
+    def test_a_non_member_is_refused(self) -> None:
+        self.member(ORG_ID, member=False)
+        self.assertEqual(self.client.get(BASE + '/').status_code, 403)
+
+    def test_a_provider_of_another_org_is_404(self) -> None:
+        router = self.member(ORG_ID)
+        response = self.client.get(f'{BASE}/prv-9')
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(
+            router.params_for(GET_PROVIDER), {'id': 'prv-9', 'org_id': ORG_ID}
+        )
+
+
+class OrgSlugTestCase(AIProviderTestBase):
+    """A slug is unique in the organization only."""
+
+    def test_the_slug_check_and_create_are_in_the_org(self) -> None:
+        router = self.route((CREATE, [{'p': provider_props()}]))
+        response = self.client.post(
+            BASE + '/', json={'name': 'Anthropic', 'driver': 'anthropic'}
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(
+            router.params_for(SLUG_TAKEN),
+            {'slug': 'anthropic', 'org_id': ORG_ID},
+        )
+        create = next(q for q, _ in router.calls if CREATE in q)
+        self.assertIn('CREATE (p)-[:BELONGS_TO]->(o)', create)
+        self.assertEqual(router.params_for(CREATE)['org_id'], ORG_ID)

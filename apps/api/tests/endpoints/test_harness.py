@@ -535,9 +535,11 @@ class FailedClaimTests(RunnerTestCase):
             ) as check,
         ):
             self.assertIsNone(await self.claim(runner))
-        # The id that the runner sends is checked. The test agent has
-        # no owner team.
-        check.assert_awaited_once_with(mock.ANY, 'claude-opus-5', '')
+        # The id that the runner sends is checked in the catalog of the
+        # organization of the task. The test agent has no owner team.
+        check.assert_awaited_once_with(
+            mock.ANY, 'claude-opus-5', '', org_ids=[mock.ANY]
+        )
         await self.assert_model_not_allowed(runner)
 
     async def test_model_id_missing_from_the_catalog_is_closed(self) -> None:

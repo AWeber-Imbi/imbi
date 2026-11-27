@@ -11,6 +11,7 @@ import logging
 from collections import abc
 
 from imbi.api import (
+    ai_catalog_orgs,
     iggy_metrics,
     openapi,
     secret_broker,
@@ -40,7 +41,8 @@ _graph: graph.Graph | None = None
 
 
 async def _on_graph_startup(db: graph.Graph) -> None:
-    """Refresh blueprint models and load plugins after the graph pool opens."""
+    """Refresh blueprint models, load plugins, and move a global AI
+    catalog into the organizations after the graph pool opens."""
     global _graph
     _graph = db
     try:
@@ -51,6 +53,10 @@ async def _on_graph_startup(db: graph.Graph) -> None:
         await plugin_lifecycle.startup_load_plugins(db)
     except Exception:
         LOGGER.exception('Failed to load plugins')
+    try:
+        await ai_catalog_orgs.migrate(db)
+    except Exception:
+        LOGGER.exception('Failed to move the AI catalog into organizations')
 
 
 graph.set_on_startup(_on_graph_startup)
@@ -132,14 +138,14 @@ async def anthropic_hook() -> abc.AsyncGenerator[AnthropicClient]:
     endpoints that depend on this still resolve but their completions
     return ``degraded=True`` with a fallback payload.
     """
-    provider_id = settings.get_ai_providers().api
-    if provider_id:
+    provider_ref = settings.get_ai_providers().api
+    if provider_ref:
         anthropic_settings = AnthropicSettings()
         client = AnthropicClient(
             anthropic_settings,
             client=llm_tokens.bearer_client(
                 tokens.ProviderToken(
-                    provider_id, lambda: _graph, secret_broker.get_store
+                    provider_ref, lambda: _graph, secret_broker.get_store
                 ),
                 timeout=anthropic_settings.timeout,
                 max_retries=anthropic_settings.max_retries,

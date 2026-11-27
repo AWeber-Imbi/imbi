@@ -386,10 +386,9 @@ MATCH (a:Agent {{id: {id}}})
 RETURN a.settings AS settings
 """
 
-#: A model by catalog slug or by provider model id. The AI model catalog
-#: is global, so the organization does not narrow the match.
+#: A model of the organization by catalog slug or by provider model id.
 _MODEL_PRICES_QUERY: typing.LiteralString = """
-MATCH (m:AIModel)
+MATCH (m:AIModel)-[:BELONGS_TO]->(:Organization {{id: {org_id}}})
 WHERE m.slug = {model} OR m.model_id = {model}
 RETURN m.slug AS slug,
        m.input_cost_per_million AS input_cost_per_million,
@@ -492,15 +491,18 @@ def _parse_settings(raw: typing.Any) -> models.AgentSettings:
 
 
 async def _model_prices(
-    db: graph.Graph, model: str
+    db: graph.Graph, org_id: str, model: str
 ) -> dict[str, decimal.Decimal | None] | None:
-    """Return the catalog prices of a model; ``None`` when it is unknown.
+    """Return the prices of a model in the catalog of the organization;
+    ``None`` when it is unknown.
 
     A slug match wins. When only provider model ids match, the model
     with the first slug is used.
     """
     records = await db.execute(
-        _MODEL_PRICES_QUERY, {'model': model}, ['slug', *_PRICE_COLUMNS]
+        _MODEL_PRICES_QUERY,
+        {'model': model, 'org_id': org_id},
+        ['slug', *_PRICE_COLUMNS],
     )
     rows = [
         {key: graph.parse_agtype(value) for key, value in record.items()}
@@ -919,7 +921,7 @@ async def report_agent_task_usage(
         409: ``task_closed`` or ``session_closed``.
 
     """
-    prices = await _model_prices(db, data.model_id)
+    prices = await _model_prices(db, org_id, data.model_id)
     try:
         row, ledger, created = await store.report_usage(
             org_id,

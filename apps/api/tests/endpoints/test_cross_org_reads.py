@@ -144,6 +144,8 @@ class PromptTests(CrossOrgTestCase):
 
 
 class AIModelTests(CrossOrgTestCase):
+    """The AI catalog is per organization (ADR 0018)."""
+
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
         self.permissions |= {'ai_model:read', 'ai_model:update'}
@@ -155,54 +157,82 @@ class AIModelTests(CrossOrgTestCase):
             id=self.foreign_team,
             org=self.foreign_org,
         )
-        self.provider = f'prv-{self.org}'
+        self.model = await self.catalog(self.org)
+
+    async def catalog(self, org: str) -> str:
+        """Add a provider and a restricted model (same slugs in every
+        org) to ``org``; return the model id."""
+        provider, model = f'prv-{org}', f'mdl-{org}'
         await self.node(
-            'CREATE (p:AIProvider {{id: {id}, name: {id}, slug: {id},'
-            ' driver: "anthropic", enabled: true}}) RETURN 1 AS ok',
-            id=self.provider,
+            'MATCH (o:Organization {{slug: {org}}})'
+            ' CREATE (p:AIProvider {{id: {id}, name: "Anthropic",'
+            ' slug: "anthropic", driver: "anthropic", enabled: true,'
+            ' org_id: o.id}})-[:BELONGS_TO]->(o) RETURN 1 AS ok',
+            id=provider,
+            org=org,
         )
-        self.model = f'mdl-{self.org}'
         await self.node(
-            'MATCH (p:AIProvider {{id: {provider}}}),'
-            ' (a:Team {{id: {own}}}), (b:Team {{id: {foreign}}})'
-            ' CREATE (m:AIModel {{id: {id}, name: {id}, slug: {id},'
-            ' model_id: "claude-x", access_scope: "restricted"}})'
-            '-[:SERVED_BY]->(p)'
-            ' CREATE (m)-[:ALLOWED_FOR]->(a) CREATE (m)-[:ALLOWED_FOR]->(b)'
+            'MATCH (o:Organization {{slug: {org}}}),'
+            ' (p:AIProvider {{id: {provider}}}), (t:Team {{id: {team}}})'
+            ' CREATE (m:AIModel {{id: {id}, name: "Chat", slug: "chat",'
+            ' model_id: "claude-x", access_scope: "restricted",'
+            ' org_id: o.id}})-[:SERVED_BY]->(p)'
+            ' CREATE (m)-[:BELONGS_TO]->(o) CREATE (m)-[:ALLOWED_FOR]->(t)'
             ' RETURN 1 AS ok',
-            id=self.model,
-            provider=self.provider,
-            own=self.team_id,
-            foreign=self.foreign_team,
+            id=model,
+            org=org,
+            provider=provider,
+            team=self.team_id,
         )
+        return model
 
-    async def teams(self) -> set[str]:
-        response = await self.get(f'/ai-models/{self.model}')
-        self.assertEqual(response.status_code, 200, response.text)
-        return {t['id'] for t in response.json()['allowed_teams']}
-
-    async def test_teams_of_member_organizations_only(self) -> None:
-        self.assertEqual(await self.teams(), {self.team_id})
-        listed = await self.get('/ai-models/')
-        (model,) = [m for m in listed.json() if m['id'] == self.model]
+    async def test_a_model_is_found_only_in_its_organization(self) -> None:
+        own = await self.get(
+            f'/organizations/{self.org}/ai-models/{self.model}'
+        )
+        self.assertEqual(own.status_code, 200, own.text)
         self.assertEqual(
-            {t['id'] for t in model['allowed_teams']}, {self.team_id}
+            {t['id'] for t in own.json()['allowed_teams']}, {self.team_id}
         )
-        self.user.is_admin = True
-        self.assertEqual(await self.teams(), {self.team_id, self.foreign_team})
+        # The user is a member of other_org too: still not found there.
+        other = await self.get(
+            f'/organizations/{self.other_org}/ai-models/{self.model}'
+        )
+        self.assertEqual(other.status_code, 404, other.text)
+        listed = await self.get(f'/organizations/{self.other_org}/ai-models/')
+        self.assertEqual(listed.status_code, 200, listed.text)
+        self.assertNotIn(self.model, {m['id'] for m in listed.json()})
+        patched = await self.client.patch(
+            f'/organizations/{self.other_org}/ai-models/{self.model}',
+            json=[{'op': 'replace', 'path': '/name', 'value': 'Taken'}],
+        )
+        self.assertEqual(patched.status_code, 404, patched.text)
+        foreign = await self.get(
+            f'/organizations/{self.foreign_org}/ai-models/'
+        )
+        self.assertEqual(foreign.status_code, 403, foreign.text)
 
-    async def test_a_patch_keeps_the_hidden_teams(self) -> None:
+    async def test_the_same_slug_in_two_organizations(self) -> None:
+        other = await self.catalog(self.other_org)
+        for org, model in ((self.org, self.model), (self.other_org, other)):
+            listed = await self.get(f'/organizations/{org}/ai-models/')
+            self.assertEqual(
+                [m['id'] for m in listed.json() if m['slug'] == 'chat'],
+                [model],
+            )
+
+    async def test_a_team_of_another_organization_is_refused(self) -> None:
         response = await self.client.patch(
-            f'/ai-models/{self.model}',
-            json=[{'op': 'replace', 'path': '/name', 'value': 'Renamed'}],
+            f'/organizations/{self.org}/ai-models/{self.model}',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/allowed_team_ids',
+                    'value': [self.foreign_team],
+                }
+            ],
         )
-        self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual(
-            {t['id'] for t in response.json()['allowed_teams']},
-            {self.team_id},
-        )
-        self.user.is_admin = True
-        self.assertEqual(await self.teams(), {self.team_id, self.foreign_team})
+        self.assertEqual(response.status_code, 422, response.text)
 
 
 class PluginEdgeTargetTests(CrossOrgTestCase):

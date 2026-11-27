@@ -38,27 +38,45 @@ MATCH (v:PromptVersion {{prompt_id: {prompt_id}, n: {n}}})
 RETURN v
 """
 
+#: The AI model catalog is per organization. Each catalog query reads
+#: only the organizations in ``org_ids``: the organization of the
+#: caller, or for a consumer with no organization (the assistant, the
+#: Slack bot) each organization of the user (:func:`member_org_ids`).
 MODEL_DRIVER_QUERY: typing.LiteralString = """
-MATCH (m:AIModel {{slug: {slug}}})-[:SERVED_BY]->(p:AIProvider)
+MATCH (m:AIModel {{slug: {slug}}})-[:BELONGS_TO]->(o:Organization)
+WHERE o.id IN {org_ids}
+MATCH (m)-[:SERVED_BY]->(p:AIProvider)
 RETURN m.model_id AS model_id, m.enabled AS enabled, p.driver AS driver,
        m.access_scope AS access_scope
 """
 
 ALLOWED_MEMBER_QUERY: typing.LiteralString = """
-MATCH (:AIModel {{slug: {slug}}})-[:ALLOWED_FOR]->(t:Team)
-      <-[:MEMBER_OF]-(:User {{email: {email}}})
+MATCH (m:AIModel {{slug: {slug}}})-[:BELONGS_TO]->(o:Organization)
+WHERE o.id IN {org_ids}
+MATCH (m)-[:ALLOWED_FOR]->(t:Team)<-[:MEMBER_OF]-(:User {{email: {email}}})
 RETURN t.id AS id
 """
 
 MODEL_ID_SCOPES_QUERY: typing.LiteralString = """
-MATCH (m:AIModel {{model_id: {model_id}}})
+MATCH (m:AIModel {{model_id: {model_id}}})-[:BELONGS_TO]->(o:Organization)
+WHERE o.id IN {org_ids}
 RETURN m.slug AS slug, m.access_scope AS access_scope, m.enabled AS enabled
 """
 
 ALLOWED_TEAM_QUERY: typing.LiteralString = """
-MATCH (:AIModel {{slug: {slug}}})-[:ALLOWED_FOR]->(t:Team {{id: {team}}})
+MATCH (m:AIModel {{slug: {slug}}})-[:BELONGS_TO]->(o:Organization)
+WHERE o.id IN {org_ids}
+MATCH (m)-[:ALLOWED_FOR]->(t:Team {{id: {team}}})
 RETURN t.id AS id
 """
+
+MEMBER_ORGS_QUERY: typing.LiteralString = """
+MATCH (:User {{email: {email}}})-[:MEMBER_OF]->(o:Organization)
+RETURN o.id AS id
+"""
+
+#: The organization ids of one catalog lookup.
+OrgIds = collections.abc.Sequence[str]
 
 
 class PromptError(Exception):
@@ -201,11 +219,19 @@ class ModelInfo(typing.NamedTuple):
     access_scope: str | None = None
 
 
-async def model_info(db: graph.Graph, slug: str) -> ModelInfo | None:
+async def member_org_ids(db: graph.Graph, email: str) -> list[str]:
+    """Return the ids of the organizations of the user ``email``."""
+    records = await db.execute(MEMBER_ORGS_QUERY, {'email': email}, ['id'])
+    return [str(graph.parse_agtype(record['id'])) for record in records]
+
+
+async def model_info(
+    db: graph.Graph, slug: str, *, org_ids: OrgIds
+) -> ModelInfo | None:
     """Return the catalog model ``slug`` and its provider's driver."""
     records = await db.execute(
         MODEL_DRIVER_QUERY,
-        {'slug': slug},
+        {'slug': slug, 'org_ids': list(org_ids)},
         ['model_id', 'enabled', 'driver', 'access_scope'],
     )
     if not records:
@@ -219,15 +245,22 @@ async def model_info(db: graph.Graph, slug: str) -> ModelInfo | None:
     )
 
 
-async def member_allowed(db: graph.Graph, slug: str, email: str) -> bool:
+async def member_allowed(
+    db: graph.Graph, slug: str, email: str, *, org_ids: OrgIds
+) -> bool:
     """Whether the user ``email`` is a member of a team that a
     ``restricted`` model allows."""
-    params = {'slug': slug, 'email': email}
+    params = {'slug': slug, 'email': email, 'org_ids': list(org_ids)}
     return bool(await db.execute(ALLOWED_MEMBER_QUERY, params, ['id']))
 
 
 async def member_may_use_model_id(
-    db: graph.Graph, model_id: str, email: str, default: str | None = None
+    db: graph.Graph,
+    model_id: str,
+    email: str,
+    default: str | None = None,
+    *,
+    org_ids: OrgIds,
 ) -> bool:
     """Whether the user ``email`` may use the provider model id
     ``model_id``.
@@ -238,18 +271,26 @@ async def member_may_use_model_id(
     configured default model, which need not be in the catalog).
     """
     return await _may_use_model_id(
-        db, model_id, default, lambda slug: member_allowed(db, slug, email)
+        db,
+        model_id,
+        default,
+        org_ids,
+        lambda slug: member_allowed(db, slug, email, org_ids=org_ids),
     )
 
 
 async def team_may_use_model_id(
-    db: graph.Graph, model_id: str, team_id: str
+    db: graph.Graph, model_id: str, team_id: str, *, org_ids: OrgIds
 ) -> bool:
     """Whether the team ``team_id`` may use the provider model id
     ``model_id``: the rule of :func:`member_may_use_model_id`, with no
     default."""
     return await _may_use_model_id(
-        db, model_id, None, lambda slug: team_allowed(db, slug, team_id)
+        db,
+        model_id,
+        None,
+        org_ids,
+        lambda slug: team_allowed(db, slug, team_id, org_ids=org_ids),
     )
 
 
@@ -257,11 +298,12 @@ async def _may_use_model_id(
     db: graph.Graph,
     model_id: str,
     default: str | None,
+    org_ids: OrgIds,
     allowed: collections.abc.Callable[[str], collections.abc.Awaitable[bool]],
 ) -> bool:
     records = await db.execute(
         MODEL_ID_SCOPES_QUERY,
-        {'model_id': model_id},
+        {'model_id': model_id, 'org_ids': list(org_ids)},
         ['slug', 'access_scope', 'enabled'],
     )
     rows = [{k: graph.parse_agtype(v) for k, v in r.items()} for r in records]
@@ -276,9 +318,11 @@ async def _may_use_model_id(
     return False
 
 
-async def team_allowed(db: graph.Graph, slug: str, team_id: str) -> bool:
+async def team_allowed(
+    db: graph.Graph, slug: str, team_id: str, *, org_ids: OrgIds
+) -> bool:
     """Whether a ``restricted`` model allows the team ``team_id``."""
-    params = {'slug': slug, 'team': team_id}
+    params = {'slug': slug, 'team': team_id, 'org_ids': list(org_ids)}
     return bool(await db.execute(ALLOWED_TEAM_QUERY, params, ['id']))
 
 
@@ -287,6 +331,7 @@ async def check_model_teams(
     slug: str,
     message: str,
     *,
+    org_ids: OrgIds,
     email: str | None = None,
     team_id: str | None = None,
 ) -> None:
@@ -300,7 +345,11 @@ async def check_model_teams(
     """
     if email is None and team_id is None:
         raise ModelNotAllowed(message)
-    if email is not None and not await member_allowed(db, slug, email):
+    if email is not None and not await member_allowed(
+        db, slug, email, org_ids=org_ids
+    ):
         raise ModelNotAllowed(message)
-    if team_id is not None and not await team_allowed(db, slug, team_id):
+    if team_id is not None and not await team_allowed(
+        db, slug, team_id, org_ids=org_ids
+    ):
         raise ModelNotAllowed(message)

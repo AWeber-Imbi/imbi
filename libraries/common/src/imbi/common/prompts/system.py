@@ -191,12 +191,17 @@ async def _model_id(
 ) -> str | None:
     """Return the version's model id when the consumer can call it.
 
+    The AI model catalog is per organization, and these prompts are
+    global, so the model comes from the catalogs of the organizations
+    of the user. Without a user, there is no catalog model.
+
     A ``restricted`` model is used only for a member of one of its
     teams (#788). Other users get the configured model.
     """
     if version.model is None:
         return None
-    info = await resolve.model_info(db, version.model)
+    org_ids = [] if email is None else await resolve.member_org_ids(db, email)
+    info = await resolve.model_info(db, version.model, org_ids=org_ids)
     if info is None or not info.enabled:
         LOGGER.warning(
             'Prompt %s names AI model %r, which is missing or disabled; '
@@ -222,7 +227,7 @@ async def _model_id(
         return model_id
     try:
         allowed = email is not None and await resolve.member_may_use_model_id(
-            db, model_id, email
+            db, model_id, email, org_ids=org_ids
         )
     except Exception:  # noqa: BLE001 - keep the rendered CMS prompt
         LOGGER.warning(

@@ -1,14 +1,16 @@
-"""Global CRUD for the AI model catalog.
+"""CRUD for the AI model catalog of an organization.
 
 An :class:`imbi.common.models.AIModel` names one model Imbi may call
 and the :class:`~imbi.common.models.AIProvider` that serves it. The
-catalog is global, like the providers. ``slug`` is a stable alias so
-agent configuration can say ``default-chat``; ``model_id`` is what
-actually goes on the wire.
+catalog is per organization, like the providers, and is served under
+``/organizations/{org_slug}/ai-models``. A model or provider of another
+organization is not found (404), and only teams of the organization
+can be allowed. ``slug`` is a stable alias so agent configuration can
+say ``default-chat``; ``model_id`` is what actually goes on the wire.
 
-``slug`` is unique by a graph index; the endpoint also checks it first
-for a clear 409 message. ``model_id`` is unique within its provider,
-which only the endpoint enforces.
+``slug`` is unique in the organization by a graph index; the endpoint
+also checks it first for a clear 409 message. ``model_id`` is unique
+within its provider, which only the endpoint enforces.
 """
 
 import datetime
@@ -20,12 +22,9 @@ import fastapi
 import pydantic
 import slugify
 
-from imbi.api.auth import permissions
+from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import ai_providers
-from imbi.api.endpoints._helpers import (
-    caller_team_ids,
-    conflict_on_unique_violation,
-)
+from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.graph_sql import props_template, set_clause
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
@@ -33,13 +32,19 @@ from imbi.common.llm import discovery, drivers, prices
 
 LOGGER = logging.getLogger(__name__)
 
-ai_models_router = fastapi.APIRouter(prefix='/ai-models', tags=['AI Models'])
+ai_models_router = fastapi.APIRouter(
+    tags=['AI Models'],
+    dependencies=[fastapi.Depends(organizations.member_org_id)],
+)
 
-#: Shares the ``/ai-providers`` prefix with ``ai_providers_router``: the
+#: Shares the ``ai-providers`` prefix with ``ai_providers_router``: the
 #: route is addressed by provider, but its whole job is creating models.
 ai_provider_imports_router = fastapi.APIRouter(
-    prefix='/ai-providers', tags=['AI Models']
+    tags=['AI Models'],
+    dependencies=[fastapi.Depends(organizations.member_org_id)],
 )
+
+OrgId = organizations.MemberOrgId
 
 #: Model fields an admin may set through create / patch. ``provider_id``
 #: and ``allowed_team_ids`` are edges rather than properties and are
@@ -198,19 +203,22 @@ class ImportResult(pydantic.BaseModel):
 
 
 _LIST_QUERY: typing.LiteralString = """
-MATCH (m:AIModel)-[:SERVED_BY]->(p:AIProvider)
+MATCH (m:AIModel)-[:BELONGS_TO]->(o:Organization {{id: {org_id}}})
+MATCH (m)-[:SERVED_BY]->(p:AIProvider)
 OPTIONAL MATCH (m)-[:ALLOWED_FOR]->(t:Team)
-RETURN m, p, t
+RETURN m, p, o, t
 """
 
 _GET_QUERY: typing.LiteralString = """
-MATCH (m:AIModel {{id: {id}}})-[:SERVED_BY]->(p:AIProvider)
+MATCH (m:AIModel {{id: {id}}})-[:BELONGS_TO]->(o:Organization {{id: {org_id}}})
+MATCH (m)-[:SERVED_BY]->(p:AIProvider)
 OPTIONAL MATCH (m)-[:ALLOWED_FOR]->(t:Team)
-RETURN m, p, t
+RETURN m, p, o, t
 """
 
 _SLUG_TAKEN_QUERY: typing.LiteralString = """
 MATCH (m:AIModel {{slug: {slug}}})
+      -[:BELONGS_TO]->(:Organization {{id: {org_id}}})
 RETURN m.id AS id
 """
 
@@ -222,6 +230,7 @@ RETURN m.id AS id
 
 _TEAM_QUERY: typing.LiteralString = """
 MATCH (t:Team {{id: {team_id}}})
+      -[:BELONGS_TO]->(:Organization {{id: {org_id}}})
 RETURN t
 """
 
@@ -297,13 +306,21 @@ def _to_response(
 def parse_model(
     props: dict[str, typing.Any],
     provider_props: dict[str, typing.Any],
+    org_props: dict[str, typing.Any],
 ) -> models.AIModel:
     """Build an ``AIModel`` from the properties of one graph row.
 
-    The provider edge is a relationship, not a property, so it is
-    reconstructed from the provider vertex the row was matched through.
+    The provider and organization edges are relationships, not
+    properties, so they are reconstructed from the vertices the row was
+    matched through. The provider is in the organization of the model.
     """
-    return models.AIModel.model_validate({**props, 'provider': provider_props})
+    return models.AIModel.model_validate(
+        {
+            **props,
+            'organization': org_props,
+            'provider': {**provider_props, 'organization': org_props},
+        }
+    )
 
 
 def _props(raw: typing.Any) -> dict[str, typing.Any] | None:
@@ -333,7 +350,7 @@ def _team_ref(raw: typing.Any) -> TeamRef | None:
 def _rows_to_responses(
     records: list[dict[str, typing.Any]],
 ) -> list[AIModelResponse]:
-    """Fold ``(m, p, t)`` rows into one response per model.
+    """Fold ``(m, p, o, t)`` rows into one response per model.
 
     The team edge is an ``OPTIONAL MATCH``, so a model allowed for three
     teams arrives as three rows, and one allowed for none arrives as a
@@ -346,9 +363,10 @@ def _rows_to_responses(
     for record in records:
         props = _props(record.get('m'))
         provider_props = _props(record.get('p'))
-        if props is None or provider_props is None:
+        org_props = _props(record.get('o'))
+        if props is None or provider_props is None or org_props is None:
             continue
-        node = parse_model(props, provider_props)
+        node = parse_model(props, provider_props, org_props)
         if node.id not in nodes:
             order.append(node.id)
             nodes[node.id] = node
@@ -371,42 +389,11 @@ def _rows_to_responses(
     ]
 
 
-async def _visible_teams(
-    db: graph.Graph, auth: permissions.AuthContext
-) -> set[str] | None:
-    """The ids of the teams that the caller may see: the teams of its
-    organizations, or ``None`` (all) for a platform admin. A model is
-    global, but its teams are data of their organizations (#414)."""
-    return None if auth.is_admin else await caller_team_ids(db, auth)
-
-
-def _only_visible(
-    response: AIModelResponse, visible: set[str] | None
-) -> AIModelResponse:
-    if visible is None:
-        return response
-    return response.model_copy(
-        update={
-            'allowed_teams': [
-                team for team in response.allowed_teams if team.id in visible
-            ]
-        }
-    )
-
-
-def _check_visible(team_ids: list[str], visible: set[str] | None) -> None:
-    """A caller sets only teams of its own organizations."""
-    if visible is not None and (hidden := set(team_ids) - visible):
-        raise fastapi.HTTPException(
-            status_code=422,
-            detail=f'Team {sorted(hidden)[0]!r} does not exist',
-        )
-
-
 async def _resolve_teams(
-    db: graph.Graph, team_ids: list[str]
+    db: graph.Graph, org_id: str, team_ids: list[str]
 ) -> list[TeamRef]:
-    """Resolve team ids to references, rejecting any that do not exist.
+    """Resolve team ids to references, rejecting any that do not exist
+    in the organization.
 
     Raises:
         fastapi.HTTPException: 422 when a team is unknown.
@@ -414,7 +401,9 @@ async def _resolve_teams(
     """
     refs: list[TeamRef] = []
     for team_id in dict.fromkeys(team_ids):
-        records = await db.execute(_TEAM_QUERY, {'team_id': team_id}, ['t'])
+        records = await db.execute(
+            _TEAM_QUERY, {'team_id': team_id, 'org_id': org_id}, ['t']
+        )
         team = _team_ref(records[0]['t']) if records else None
         if team is None:
             raise fastapi.HTTPException(
@@ -472,10 +461,12 @@ async def _replace_team_edges(
 
 
 async def _assert_slug_free(
-    db: graph.Graph, slug: str, exclude_id: str | None = None
+    db: graph.Graph, org_id: str, slug: str, exclude_id: str | None = None
 ) -> None:
-    """Raise 409 when ``slug`` is taken by another model."""
-    records = await db.execute(_SLUG_TAKEN_QUERY, {'slug': slug}, ['id'])
+    """Raise 409 when another model of the org has ``slug``."""
+    records = await db.execute(
+        _SLUG_TAKEN_QUERY, {'slug': slug, 'org_id': org_id}, ['id']
+    )
     for record in records:
         found = graph.parse_agtype(record['id'])
         if found and str(found) != exclude_id:
@@ -522,7 +513,12 @@ def _build(
     if payload.get('model_type') is None:
         payload = {**payload, 'model_type': supported[0]}
     try:
-        node = models.AIModel(provider=provider, **payload)
+        node = models.AIModel(
+            provider=provider,
+            organization=provider.organization,
+            org_id=provider.organization.id,
+            **payload,
+        )
     except pydantic.ValidationError as e:
         raise fastapi.HTTPException(
             status_code=422,
@@ -560,11 +556,15 @@ async def _insert(
     now = datetime.datetime.now(datetime.UTC)
     node.created_at = now
     node.updated_at = now
-    props = node.model_dump(mode='json', exclude={'provider', 'allowed_teams'})
+    props = node.model_dump(
+        mode='json', exclude={'provider', 'allowed_teams', 'organization'}
+    )
     query = (
         f'MATCH (p:AIProvider {{{{id: {{provider_id}}}}}})'
+        f'-[:BELONGS_TO]->(o:Organization)'
         f' CREATE (m:AIModel {props_template(props)})'
         f' CREATE (m)-[:SERVED_BY]->(p)'
+        f' CREATE (m)-[:BELONGS_TO]->(o)'
         f' RETURN m'
     )
     with conflict_on_unique_violation(
@@ -593,7 +593,11 @@ async def _insert(
     # ``openai_compatible`` provider must carry a ``base_url``), so a
     # partial dict fails validation and 500s the create.
     return _to_response(
-        parse_model(stored, provider.model_dump(mode='json')),
+        parse_model(
+            stored,
+            provider.model_dump(mode='json'),
+            provider.organization.model_dump(mode='json'),
+        ),
         provider.id,
         provider.name,
         teams,
@@ -602,28 +606,29 @@ async def _insert(
 
 @ai_models_router.get('/', response_model=list[AIModelResponse])
 async def list_ai_models(
+    org_id: OrgId,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('ai_model:read')),
     ],
 ) -> list[AIModelResponse]:
-    """List the model catalog, ordered by name.
+    """List the model catalog of the organization, ordered by name.
 
     Returns:
         Every configured model with its provider and allowed teams.
 
     """
-    records = await db.execute(_LIST_QUERY, {}, ['m', 'p', 't'])
-    visible = await _visible_teams(db, auth)
-    return sorted(
-        (_only_visible(r, visible) for r in _rows_to_responses(records)),
-        key=lambda r: r.name.lower(),
+    _ = auth
+    records = await db.execute(
+        _LIST_QUERY, {'org_id': org_id}, ['m', 'p', 'o', 't']
     )
+    return sorted(_rows_to_responses(records), key=lambda r: r.name.lower())
 
 
 @ai_models_router.post('/', response_model=AIModelResponse, status_code=201)
 async def create_ai_model(
+    org_id: OrgId,
     data: AIModelCreate,
     db: graph.Pool,
     auth: typing.Annotated[
@@ -645,17 +650,16 @@ async def create_ai_model(
         The created model.
 
     Raises:
-        404: The provider does not exist.
+        404: The provider does not exist in the organization.
         409: The slug is taken, or the provider already serves this
             ``model_id``.
-        422: A team does not exist, or ``restricted`` was requested with
-            no teams.
+        422: A team does not exist in the organization, or
+            ``restricted`` was requested with no teams.
 
     """
-    visible = await _visible_teams(db, auth)
-    _check_visible(data.allowed_team_ids, visible)
-    provider = await ai_providers.fetch_provider(db, data.provider_id)
-    teams = await _resolve_teams(db, data.allowed_team_ids)
+    _ = auth
+    provider = await ai_providers.fetch_provider(db, org_id, data.provider_id)
+    teams = await _resolve_teams(db, org_id, data.allowed_team_ids)
     _validate_access(data.access_scope, teams)
     teams = _teams_for_scope(data.access_scope, teams)
 
@@ -665,13 +669,14 @@ async def create_ai_model(
     payload['slug'] = data.slug or slugify.slugify(data.name)
     node = _build(payload, provider)
 
-    await _assert_slug_free(db, node.slug)
+    await _assert_slug_free(db, org_id, node.slug)
     await _assert_model_id_free(db, provider.id, node.model_id)
-    return _only_visible(await _insert(db, node, provider, teams), visible)
+    return await _insert(db, node, provider, teams)
 
 
 @ai_models_router.get('/{id}', response_model=AIModelResponse)
 async def get_ai_model(
+    org_id: OrgId,
     id: str,
     db: graph.Pool,
     auth: typing.Annotated[
@@ -691,14 +696,17 @@ async def get_ai_model(
         404: No such model.
 
     """
-    return _only_visible(
-        await _fetch_response(db, id), await _visible_teams(db, auth)
+    _ = auth
+    return await _fetch_response(db, org_id, id)
+
+
+async def _fetch_response(
+    db: graph.Graph, org_id: str, id: str
+) -> AIModelResponse:
+    """Read one model of the organization or raise 404."""
+    records = await db.execute(
+        _GET_QUERY, {'id': id, 'org_id': org_id}, ['m', 'p', 'o', 't']
     )
-
-
-async def _fetch_response(db: graph.Graph, id: str) -> AIModelResponse:
-    """Read one model or raise 404."""
-    records = await db.execute(_GET_QUERY, {'id': id}, ['m', 'p', 't'])
     responses = _rows_to_responses(records)
     if not responses:
         raise fastapi.HTTPException(
@@ -719,7 +727,13 @@ async def _persist(db: graph.Graph, node: models.AIModel) -> None:
     node.updated_at = datetime.datetime.now(datetime.UTC)
     props = node.model_dump(
         mode='json',
-        exclude={'provider', 'allowed_teams', 'id', 'created_at'},
+        exclude={
+            'provider',
+            'allowed_teams',
+            'organization',
+            'id',
+            'created_at',
+        },
     )
     set_stmt = set_clause('m', props)
     query = f'MATCH (m:AIModel {{{{id: {{id}}}}}}) {set_stmt} RETURN m'
@@ -736,6 +750,7 @@ async def _persist(db: graph.Graph, node: models.AIModel) -> None:
 
 @ai_models_router.patch('/{id}', response_model=AIModelResponse)
 async def patch_ai_model(
+    org_id: OrgId,
     id: str,
     operations: list[json_patch.PatchOperation],
     db: graph.Pool,
@@ -760,26 +775,27 @@ async def patch_ai_model(
 
     Raises:
         400: Invalid patch or a read-only path.
-        404: No such model, or no such new provider.
+        404: No such model or new provider in the organization.
         409: The new slug or ``model_id`` collides.
-        422: A team does not exist, ``restricted`` was left
-            with no teams, or the patched values are invalid.
+        422: A team does not exist in the organization, ``restricted``
+            was left with no teams, or the patched values are invalid.
 
     """
-    visible = await _visible_teams(db, auth)
-    current_response = await _fetch_response(db, id)
+    _ = auth
+    current_response = await _fetch_response(db, org_id, id)
     document: dict[str, typing.Any] = current_response.model_dump(
         mode='json',
         include={*_PATCHABLE_FIELDS, 'provider_id'},
     )
-    shown = _only_visible(current_response, visible).allowed_teams
-    document['allowed_team_ids'] = [team.id for team in shown]
+    document['allowed_team_ids'] = [
+        team.id for team in current_response.allowed_teams
+    ]
     patched = json_patch.apply_patch(document, operations, _READONLY_PATHS)
 
     provider_id = str(
         patched.get('provider_id') or current_response.provider_id
     )
-    provider = await ai_providers.fetch_provider(db, provider_id)
+    provider = await ai_providers.fetch_provider(db, org_id, provider_id)
     try:
         team_ids = _TEAM_IDS.validate_python(
             patched.get('allowed_team_ids') or []
@@ -789,13 +805,7 @@ async def patch_ai_model(
             status_code=422,
             detail=f'allowed_team_ids must be a list of ids: {e.errors()}',
         ) from e
-    _check_visible(team_ids, visible)
-    # The caller does not see the teams of other organizations, so a
-    # patch keeps them.
-    team_ids += [
-        team.id for team in current_response.allowed_teams if team not in shown
-    ]
-    teams = await _resolve_teams(db, team_ids)
+    teams = await _resolve_teams(db, org_id, team_ids)
     node = _build(
         {k: v for k, v in patched.items() if k in _PATCHABLE_FIELDS},
         provider,
@@ -806,7 +816,7 @@ async def patch_ai_model(
     node.created_at = current_response.created_at or node.created_at
 
     if node.slug != current_response.slug:
-        await _assert_slug_free(db, node.slug, exclude_id=id)
+        await _assert_slug_free(db, org_id, node.slug, exclude_id=id)
     if (
         node.model_id != current_response.model_id
         or provider.id != current_response.provider_id
@@ -821,13 +831,12 @@ async def patch_ai_model(
         await db.execute(_LINK_PROVIDER_QUERY, params, ['id'])
         await db.execute(_UNLINK_OTHER_PROVIDERS_QUERY, params, [])
     await _replace_team_edges(db, id, teams)
-    return _only_visible(
-        _to_response(node, provider.id, provider.name, teams), visible
-    )
+    return _to_response(node, provider.id, provider.name, teams)
 
 
 @ai_models_router.delete('/{id}', status_code=204)
 async def delete_ai_model(
+    org_id: OrgId,
     id: str,
     db: graph.Pool,
     auth: typing.Annotated[
@@ -847,10 +856,11 @@ async def delete_ai_model(
     _ = auth
     query: typing.LiteralString = """
     MATCH (m:AIModel {{id: {id}}})
+          -[:BELONGS_TO]->(:Organization {{id: {org_id}}})
     DETACH DELETE m
     RETURN m
     """
-    records = await db.execute(query, {'id': id})
+    records = await db.execute(query, {'id': id, 'org_id': org_id})
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
@@ -862,6 +872,7 @@ async def delete_ai_model(
     '/{id}/import-models', response_model=ImportResult, status_code=201
 )
 async def import_ai_models(
+    org_id: OrgId,
     id: str,
     data: ImportModelsRequest,
     response: fastapi.Response,
@@ -892,18 +903,18 @@ async def import_ai_models(
         The models created, and the ``model_id`` values skipped.
 
     Raises:
-        404: No such provider.
+        404: No such provider in the organization.
 
     """
     _ = auth
-    provider = await ai_providers.fetch_provider(db, id)
+    provider = await ai_providers.fetch_provider(db, org_id, id)
     try:
         table = await prices.fetch()
     except discovery.DiscoveryError as exc:
         LOGGER.warning('Importing AI models without LiteLLM prices: %s', exc)
         table = {}
     existing = await _existing_model_ids(db, provider.id)
-    taken = await _taken_slugs(db)
+    taken = await _taken_slugs(db, org_id)
 
     created: list[AIModelResponse] = []
     skipped: list[str] = []
@@ -950,7 +961,7 @@ RETURN m.model_id AS model_id
 """
 
 _TAKEN_SLUGS_QUERY: typing.LiteralString = """
-MATCH (m:AIModel)
+MATCH (m:AIModel)-[:BELONGS_TO]->(:Organization {{id: {org_id}}})
 RETURN m.slug AS slug
 """
 
@@ -969,9 +980,11 @@ async def _existing_model_ids(db: graph.Graph, provider_id: str) -> set[str]:
     }
 
 
-async def _taken_slugs(db: graph.Graph) -> set[str]:
-    """Return every model slug already in use."""
-    records = await db.execute(_TAKEN_SLUGS_QUERY, {}, ['slug'])
+async def _taken_slugs(db: graph.Graph, org_id: str) -> set[str]:
+    """Return every model slug already in use in the organization."""
+    records = await db.execute(
+        _TAKEN_SLUGS_QUERY, {'org_id': org_id}, ['slug']
+    )
     return {
         str(value)
         for value in (graph.parse_agtype(record['slug']) for record in records)
@@ -1031,8 +1044,9 @@ class PriceSyncApplyResult(pydantic.BaseModel):
 
 
 _PRICE_SYNC_QUERY: typing.LiteralString = """
-MATCH (m:AIModel)-[:SERVED_BY]->(p:AIProvider)
-RETURN m, p
+MATCH (m:AIModel)-[:BELONGS_TO]->(o:Organization {{id: {org_id}}})
+MATCH (m)-[:SERVED_BY]->(p:AIProvider)
+RETURN m, p, o
 """
 
 
@@ -1045,19 +1059,22 @@ async def _fetch_prices() -> dict[str, prices.Prices]:
 
 
 async def _price_rows(
-    db: graph.Graph,
+    db: graph.Graph, org_id: str
 ) -> list[tuple[models.AIModel, tuple[str, prices.Prices] | None]]:
-    """Pair every catalog model with its LiteLLM match, if any."""
+    """Pair every model of the org with its LiteLLM match, if any."""
     table = await _fetch_prices()
     rows: list[tuple[models.AIModel, tuple[str, prices.Prices] | None]] = []
-    for record in await db.execute(_PRICE_SYNC_QUERY, {}, ['m', 'p']):
-        props, provider_props = (
+    for record in await db.execute(
+        _PRICE_SYNC_QUERY, {'org_id': org_id}, ['m', 'p', 'o']
+    ):
+        props, provider_props, org_props = (
             _props(record.get('m')),
             _props(record.get('p')),
+            _props(record.get('o')),
         )
-        if props is None or provider_props is None:
+        if props is None or provider_props is None or org_props is None:
             continue
-        node = parse_model(props, provider_props)
+        node = parse_model(props, provider_props, org_props)
         rows.append(
             (node, prices.lookup(table, node.model_id, node.provider.driver))
         )
@@ -1070,6 +1087,7 @@ def _current_prices(node: models.AIModel) -> prices.Prices:
 
 @ai_models_router.post('/price-sync/preview', response_model=PriceSyncPreview)
 async def preview_price_sync(
+    org_id: OrgId,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -1088,7 +1106,7 @@ async def preview_price_sync(
     """
     _ = auth
     preview = PriceSyncPreview(models=[], up_to_date=0, unmatched=[])
-    for node, match in await _price_rows(db):
+    for node, match in await _price_rows(db, org_id):
         if match is None:
             preview.unmatched.append(node.name)
             continue
@@ -1119,6 +1137,7 @@ async def preview_price_sync(
     '/price-sync/apply', response_model=PriceSyncApplyResult
 )
 async def apply_price_sync(
+    org_id: OrgId,
     data: PriceSyncApplyRequest,
     db: graph.Pool,
     auth: typing.Annotated[
@@ -1139,7 +1158,7 @@ async def apply_price_sync(
     _ = auth
     overwrite = {item.id: item.overwrite for item in data.models}
     result = PriceSyncApplyResult(updated=[], skipped=[])
-    for node, match in await _price_rows(db):
+    for node, match in await _price_rows(db, org_id):
         if node.id not in overwrite:
             continue
         changes = (
@@ -1151,7 +1170,9 @@ async def apply_price_sync(
         )
         if not changes:
             continue
-        payload = node.model_dump(exclude={'provider', 'allowed_teams'})
+        payload = node.model_dump(
+            exclude={'provider', 'allowed_teams', 'organization', 'org_id'}
+        )
         await _persist(db, _build({**payload, **changes}, node.provider))
         LOGGER.info(
             'Synced LiteLLM prices for AI model %s: %s',

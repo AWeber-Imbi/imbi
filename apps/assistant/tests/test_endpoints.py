@@ -479,7 +479,8 @@ class CreateConversationEndpointTestCase(
             (default, [], [], False, False),
         ):
             db = mock.AsyncMock()
-            db.execute.side_effect = [scopes, allowed_rows]
+            # The organizations of the user come first.
+            db.execute.side_effect = [[{'id': 'org-1'}], scopes, allowed_rows]
             with (
                 self.subTest(model=model, scopes=scopes, allowed=allowed_rows),
                 mock.patch.dict('os.environ', {}, clear=True),
@@ -505,8 +506,8 @@ class CreateConversationEndpointTestCase(
                     mock_create.assert_called_once()
                 if not is_admin:
                     self.assertEqual(
-                        db.execute.await_args_list[0].args[1],
-                        {'model_id': model},
+                        db.execute.await_args_list[1].args[1],
+                        {'model_id': model, 'org_ids': ['org-1']},
                     )
 
     @mock.patch(
@@ -1076,6 +1077,7 @@ class SendMessageEndpointTestCase(
             mock_get_conv.return_value.model,
             'test@example.com',
             mock.ANY,
+            org_ids=mock.ANY,
         )
         mock_add.assert_not_called()
 

@@ -897,7 +897,7 @@ async def _check_model_teams(
     version = await _prompt_version(db, snapshot)
     if version is None or version.model is None:
         return
-    info = await prompt_resolve.model_info(db, version.model)
+    info = await prompt_resolve.model_info(db, version.model, org_ids=[org_id])
     if info is None or info.access_scope != 'restricted':
         return
     await prompt_resolve.check_model_teams(
@@ -905,6 +905,7 @@ async def _check_model_teams(
         version.model,
         f'The model {version.model!r} is restricted to teams that do not '
         f'include {snapshot.team!r}',
+        org_ids=[org_id],
         team_id=team_id or await _team_id(db, org_id, snapshot.team),
     )
 

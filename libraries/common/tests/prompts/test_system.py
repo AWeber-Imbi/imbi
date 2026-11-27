@@ -199,11 +199,20 @@ class LoadSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
                     'member_may_use_model_id',
                     mock.AsyncMock(return_value=allowed),
                 ) as check,
+                mock.patch.object(
+                    resolve,
+                    'member_org_ids',
+                    mock.AsyncMock(return_value=['org-1']),
+                ),
             ):
                 result = await self.load(email='dev@example.com')
                 self.assertEqual(result.model_id, expected)
+                # A global prompt reads the catalogs of the user's orgs.
                 check.assert_awaited_once_with(
-                    mock.ANY, 'claude-opus-old', 'dev@example.com'
+                    mock.ANY,
+                    'claude-opus-old',
+                    'dev@example.com',
+                    org_ids=['org-1'],
                 )
 
     async def test_access_check_error_keeps_the_cms_prompt(self) -> None:

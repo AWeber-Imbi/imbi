@@ -300,7 +300,8 @@ class InternalServices(pydantic_settings.BaseSettings):
 class AIProviders(pydantic_settings.BaseSettings):
     """The AI Provider of each Imbi service (WIF plan 4.6).
 
-    The UUID of an Anthropic AI Provider that uses workload identity.
+    An Anthropic AI Provider that uses workload identity, as
+    ``<org-slug>/<provider-slug>``: providers belong to an organization.
     ``api`` is the client of imbi-api itself. imbi-api gives the token
     of ``assistant`` or ``slackbot`` only to the service account of that
     service (``POST /ai-providers/token``). Empty: the service uses
