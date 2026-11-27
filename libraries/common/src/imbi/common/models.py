@@ -812,8 +812,18 @@ class MCPServer(Node):
         """Merge the extra headers with the auth headers.
 
         The auth header wins over an extra header with the same name.
+        Header names are case-insensitive, so the match ignores case.
         """
-        return {**self.extra_headers, **(auth_headers or {})}
+        auth_headers = auth_headers or {}
+        auth_names = {name.lower() for name in auth_headers}
+        return {
+            **{
+                name: value
+                for name, value in self.extra_headers.items()
+                if name.lower() not in auth_names
+            },
+            **auth_headers,
+        }
 
     @pydantic.model_validator(mode='after')
     def _validate_auth_fields(self) -> typing.Self:

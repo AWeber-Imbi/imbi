@@ -484,7 +484,7 @@ class OpenSessionTestCase(unittest.IsolatedAsyncioTestCase):
         mock_decrypt.return_value = 'secret-token'
         await self._run(
             _make_server(
-                extra_headers={'X-Tenant': 'acme', 'X-API-Key': 'stale'},
+                extra_headers={'X-Tenant': 'acme', 'x-api-key': 'stale'},
                 auth_type='static',
                 static_header='X-API-Key',
                 static_value_encrypted='ciphertext',
