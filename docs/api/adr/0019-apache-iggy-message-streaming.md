@@ -222,7 +222,7 @@ release cadence:
 imbi-api implements the provider contract: one sink per ClickHouse-bound
 stream in `TOPICS`, rendered with `schema = "json"`,
 `insert_format = "json_each_row"`, `batch_length = 1000`,
-`poll_interval = "250ms"`, a consumer group named after the table, and a
+`max_wait = "250ms"`, a consumer group named after the table, and a
 `plugin_config` whose ClickHouse URL, database and credentials come from
 the api's own `settings.Clickhouse`. The endpoint is protected by a
 static api key the runtime sends in a request header, because the
