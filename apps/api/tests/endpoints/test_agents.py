@@ -1053,7 +1053,8 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         )
         set_params = self._batch()[1].params
         self.assertEqual(set_params['slack_channel'], '#ops')
-        self.assertTrue(set_params['enabled'])
+        # The restore does not change enabled, so it does not write it.
+        self.assertNotIn('enabled', set_params)
 
     def test_restore_same_config_writes_nothing(self) -> None:
         self.mock_db.execute.side_effect = [

@@ -1274,7 +1274,11 @@ async def _apply(
 
     agent_id = str(existing['id'])
     ids = {'id': agent_id}
-    props: dict[str, typing.Any] = {'enabled': enabled, 'updated_at': _now()}
+    props: dict[str, typing.Any] = {'updated_at': _now()}
+    # Write enabled only when this save changes it, so a save that
+    # waits on the model does not undo a concurrent enable or disable.
+    if enabled_changed:
+        props['enabled'] = enabled
     statements: list[graph_cypher.Statement] = []
     if label_move is not None:
         statements.append(label_move)
