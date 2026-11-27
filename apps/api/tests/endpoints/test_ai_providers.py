@@ -18,6 +18,7 @@ from imbi.common import graph
 from imbi.common import models as common_models
 from imbi.common.llm import discovery, generate
 from imbi.common.llm import tokens as common_tokens
+from imbi.common.prompts import resolve as prompt_resolve
 
 ORG = 'acme'
 #: The id that the mocked membership check gives ``ORG``.
@@ -1200,6 +1201,69 @@ class ServiceTokenTestCase(AIProviderTestBase):
         )
         self.mock_store.identity_source.return_value = None
         self.assertEqual(self.post().status_code, 502)
+
+    def post_for(self, user: str | None = 'ada@example.com') -> typing.Any:
+        return self.client.post(
+            '/ai-providers/token',
+            json={'provider': 'acme/claude', 'user': user},
+        )
+
+    def route_for(self, member_of: list[str], **provider: typing.Any) -> None:
+        self.route(
+            (
+                SERVICE_PROVIDER,
+                [{'p': provider_props(workload_identity=WIF, **provider)}],
+            ),
+            (
+                prompt_resolve.MEMBER_ORGS_QUERY,
+                [{'id': org} for org in member_of],
+            ),
+        )
+
+    def test_a_named_provider_of_the_user(self) -> None:
+        # A catalog provider, not the provider of the service (ADR 0018).
+        self.auth_context.service_account = models.ServiceAccount(
+            slug='imbi-slackbot', display_name='Imbi Slackbot'
+        )
+        self.route_for([ORG_ID])
+        response = self.post_for()
+        self.assertEqual(response.status_code, 200, response.text)
+        router = self.mock_db.execute.side_effect
+        self.assertEqual(
+            router.params_for(SERVICE_PROVIDER),
+            {'org': 'acme', 'slug': 'claude'},
+        )
+        self.assertEqual(
+            router.params_for(prompt_resolve.MEMBER_ORGS_QUERY),
+            {'email': 'ada@example.com'},
+        )
+
+    def test_a_provider_of_another_organization_is_403(self) -> None:
+        self.route_for(['org-other'])
+        self.assertEqual(self.post_for().status_code, 403)
+        self.assertEqual(self.exchanger.seen, [])
+
+    def test_a_named_provider_must_be_anthropic(self) -> None:
+        self.route_for([ORG_ID], driver='openai')
+        self.assertEqual(self.post_for().status_code, 403)
+
+    def test_a_named_provider_needs_the_user(self) -> None:
+        self.route_for([ORG_ID])
+        self.assertEqual(self.post_for(user=None).status_code, 422)
+
+    def test_a_named_provider_needs_a_service(self) -> None:
+        self.auth_context = permissions.AuthContext(
+            user=self.user, auth_method='jwt'
+        )
+        self.route_for([ORG_ID])
+        self.assertEqual(self.post_for().status_code, 404)
+
+    def test_a_named_provider_without_workload_identity_is_409(self) -> None:
+        self.route(
+            (SERVICE_PROVIDER, [{'p': provider_props()}]),
+            (prompt_resolve.MEMBER_ORGS_QUERY, [{'id': ORG_ID}]),
+        )
+        self.assertEqual(self.post_for().status_code, 409)
 
 
 class OrgScopeTestCase(AIProviderTestBase):

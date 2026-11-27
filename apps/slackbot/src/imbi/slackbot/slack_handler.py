@@ -28,7 +28,7 @@ from slack_sdk.http_retry import builtin_async_handlers
 from slackwright import forms, inflight, ingest, render, stores
 
 from imbi.common import external_mcp, valkey
-from imbi.common.prompts import skills
+from imbi.common.prompts import skills, system
 from imbi.slackbot import (
     agent,
     client,
@@ -277,12 +277,25 @@ async def _process(
             ],
             skill_list,
         )
+        # The prompt version model, else the default model of the user's
+        # organization, else the configured model (ADR 0018).
+        model, provider = prompt.model_id, prompt.provider
+        if model is None and db is not None:
+            default = await system.default_model(db, user.email)
+            if default is not None:
+                model, provider = default
+        api_client = (
+            None
+            if provider is None
+            else client.client_for(provider, user.email)
+        )
         answer = await agent.run_turn(
             messages=convo,
             system=prompt.text,
             tools=tools,
             auth_token=token,
-            model=prompt.model_id or slackbot_settings.model,
+            model=model or slackbot_settings.model,
+            api_client=api_client,
             max_tokens=prompt.max_tokens or slackbot_settings.max_tokens,
             max_rounds=slackbot_settings.max_tool_rounds,
             max_tool_result_chars=slackbot_settings.max_tool_result_chars,

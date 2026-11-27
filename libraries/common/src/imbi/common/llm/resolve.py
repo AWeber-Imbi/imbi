@@ -26,7 +26,9 @@ from imbi.common import graph, models
 from imbi.common.prompts import resolve as prompt_resolve
 
 #: ``unsupported_driver`` is for a consumer that can call only some
-#: drivers; :func:`resolve_model` does not raise it.
+#: drivers, and ``provider_credentials_unavailable`` for a consumer that
+#: has no credential for the provider; :func:`resolve_model` raises
+#: neither.
 Reason = typing.Literal[
     'not_found',
     'disabled',
@@ -34,6 +36,7 @@ Reason = typing.Literal[
     'not_allowed',
     'spend_cap',
     'unsupported_driver',
+    'provider_credentials_unavailable',
 ]
 Source = typing.Literal['explicit', 'team', 'org', 'env']
 

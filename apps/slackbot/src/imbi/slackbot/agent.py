@@ -161,6 +161,7 @@ async def run_turn(
     tracking: dict[str, typing.Any] | None = None,
     toolkit: slackwright.Toolkit | None = None,
     external: external_mcp.ExternalMCPManager,
+    api_client: anthropic.AsyncAnthropic | None = None,
 ) -> str:
     """Run one user turn through Claude and the tool loop.
 
@@ -189,12 +190,14 @@ async def run_turn(
         toolkit: Optional slackwright toolkit for the current thread. Its
             tools are added to ``tools``, and calls to them run in the
             toolkit instead of the MCP manager.
+        api_client: The client of the provider of ``model``; the client
+            of the service when ``None``.
 
     Returns:
         The assistant's final text (concatenated across rounds).
 
     """
-    api_client = client.get_client()
+    api_client = api_client or client.get_client()
     manager = mcp.get_manager()
     accumulated: list[str] = []
     # Work on a copy so appending assistant/tool-result turns does not

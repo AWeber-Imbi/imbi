@@ -21,6 +21,7 @@ from imbi.assistant import (
     system_prompt,
 )
 from imbi.common import external_mcp, graph
+from imbi.common.llm import clients as llm_clients
 from imbi.common.llm import resolve as llm_resolve
 from imbi.common.prompts import resolve
 from imbi.common.prompts import system as prompt_system
@@ -137,28 +138,31 @@ async def create_conversation(
     """Create a new conversation."""
     _require_assistant()
     assistant_settings = settings.get_assistant_settings()
+    email = auth_ctx.require_user.email
     model = body.model if body and body.model else None
+    provider: str | None = None
     if model is None:
-        # A new conversation takes the model of the prompt version when
-        # it names one the assistant can call.
+        # A new conversation takes the model of the prompt version, else
+        # the default model of the user's organization, else the
+        # configured model (ADR 0018). A catalog model keeps its
+        # provider, whose credential each turn uses.
         try:
-            model = (
-                await prompt_system.load_model_id(
-                    db,
-                    assistant_settings.prompt_ref,
-                    auth_ctx.require_user.email,
-                    org_ids=[org_id],
-                )
-                or assistant_settings.model
-            )
+            chosen = await prompt_system.load_model(
+                db, assistant_settings.prompt_ref, email
+            ) or await prompt_system.default_model(db, email)
+            if chosen is not None:
+                client.client_for(chosen.provider, email)
+                provider = llm_clients.provider_ref(chosen.provider)
         except llm_resolve.ModelUnusable as e:
             raise _unusable(e) from e
+        model = chosen.model_id if chosen else assistant_settings.model
     await _check_model(db, auth_ctx, org_id, model, assistant_settings.model)
     conv = await age_ops.create_conversation(
         db,
-        user_email=auth_ctx.require_user.email,
+        user_email=email,
         org_id=org_id,
         model=model,
+        provider=provider,
     )
     return models.conversation_to_response(conv)
 
@@ -773,9 +777,12 @@ async def _stream_response(
     tools: list[dict[str, typing.Any]] | None = None,
     auth_token: str | None = None,
     temperature: float | None = None,
+    api_client: anthropic.AsyncAnthropic | None = None,
 ) -> collections.abc.AsyncIterator[str]:
-    """Stream an SSE response from the Anthropic API."""
-    api_client = client.get_client()
+    """Stream an SSE response from the Anthropic API. ``api_client`` is
+    the client of the provider of the conversation; the client of the
+    service when ``None``."""
+    api_client = api_client or client.get_client()
     tracking = client.tracking(auth_ctx.require_user.email, conversation_id)
     assistant_settings = settings.get_assistant_settings()
     max_rounds = assistant_settings.max_tool_rounds
@@ -966,9 +973,20 @@ async def send_message(
             ),
         )
     # The allowed teams can change after the conversation starts.
-    await _check_model(
-        db, auth_ctx, org_id, conv.model, assistant_settings.model
-    )
+    await _check_model(db, auth_ctx, org_id, conv.model, assistant_settings.model)
+    # Each turn reads the provider again, so a disabled provider or a
+    # removed credential stops the conversation (ADR 0018).
+    try:
+        api_client = (
+            None
+            if conv.provider is None
+            else client.client_for(
+                await llm_clients.fetch_provider(db, conv.provider),
+                auth_ctx.require_user.email,
+            )
+        )
+    except llm_resolve.ModelUnusable as e:
+        raise _unusable(e) from e
 
     await age_ops.add_message(
         db,
@@ -1011,6 +1029,7 @@ async def send_message(
             tools=tools,
             auth_token=auth_token,
             temperature=temperature,
+            api_client=api_client,
         ),
         media_type='text/event-stream',
         headers={

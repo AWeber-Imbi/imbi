@@ -147,6 +147,8 @@ class SystemPrompt:
     #: catalog model that an enabled Anthropic provider serves, and that
     #: the user may use.
     model_id: str | None = None
+    #: The catalog provider of ``model_id``.
+    provider: models.AIProvider | None = None
     max_tokens: int | None = None
     temperature: float | None = None
 
@@ -187,14 +189,61 @@ async def _fallback(
     return SystemPrompt(text=text, source='fallback')
 
 
-async def _model_id(
+def _supported(model: models.AIModel) -> models.AIModel:
+    """Return ``model`` when an Anthropic provider serves it.
+
+    Raises:
+        llm_resolve.ModelUnusable: ``unsupported_driver``.
+
+    """
+    if model.provider.driver != _SUPPORTED_DRIVER:
+        raise llm_resolve.ModelUnusable(
+            'unsupported_driver',
+            model.slug,
+            f'AI model {model.slug!r} is served by driver '
+            f'{model.provider.driver!r}; only {_SUPPORTED_DRIVER!r} is '
+            'supported here',
+        )
+    return model
+
+
+class ConsumerModel(typing.NamedTuple):
+    """A model id that a consumer sends, and its catalog provider."""
+
+    model_id: str
+    provider: models.AIProvider
+
+
+async def default_model(db: graph.Graph, email: str) -> ConsumerModel | None:
+    """Return the default model for the user ``email``,
+    for a consumer whose prompt version names no model.
+
+    The default applies when the user is a member of one organization:
+    the team default needs a team and these consumers have none, so the
+    organization default is used. ``None``: no default, and the consumer
+    uses its configured model.
+
+    Raises:
+        llm_resolve.ModelUnusable: The default model cannot be used, or
+            a driver other than Anthropic serves it.
+
+    """
+    resolved = await llm_resolve.resolve_model(
+        db, await resolve.member_org_ids(db, email), email=email
+    )
+    if resolved.model is None:
+        return None
+    model = _supported(resolved.model)
+    return ConsumerModel(model.model_id, model.provider)
+
+
+async def _model(
     db: graph.Graph,
     version: models.PromptVersion,
     email: str | None,
-    org_ids: resolve.OrgIds | None = None,
-) -> str | None:
-    """Return the version's model id, or ``None`` when the version names
-    no model (the consumer then uses its configured model).
+) -> ConsumerModel | None:
+    """Return the version's model, or ``None`` when the version names no
+    model (the consumer then uses the default or its configured model).
 
     Raises:
         llm_resolve.ModelUnusable: The model is missing, disabled, served
@@ -206,28 +255,17 @@ async def _model_id(
     if version.model is None:
         return None
     # The catalog is per organization and these prompts are global, so
-    # the model comes from the catalogs of ``org_ids``, or of the
-    # organizations of the user when ``org_ids`` is ``None``. Without a
-    # user, there is no catalog model.
+    # the model comes from the catalogs of the organizations of the
+    # user. Without a user, there is no catalog model.
     if email is None:
         return None
-    if org_ids is None:
-        org_ids = await resolve.member_org_ids(db, email)
     resolved = await llm_resolve.resolve_model(
         db,
-        org_ids,
+        await resolve.member_org_ids(db, email),
         model=version.model,
         email=email,
     )
-    model = typing.cast('models.AIModel', resolved.model)
-    if model.provider.driver != _SUPPORTED_DRIVER:
-        raise llm_resolve.ModelUnusable(
-            'unsupported_driver',
-            model.slug,
-            f'AI model {model.slug!r} is served by driver '
-            f'{model.provider.driver!r}; only {_SUPPORTED_DRIVER!r} is '
-            'supported here',
-        )
+    model = _supported(typing.cast('models.AIModel', resolved.model))
     model_id = version.model_id or model.model_id
     # The stored id can differ from the catalog row of the slug after a
     # catalog edit, so the check is on the id that is sent.
@@ -243,19 +281,14 @@ async def _model_id(
             f'The model id {model_id!r} is not in the catalog or is '
             'restricted to teams that do not include the user',
         )
-    return model_id
+    return ConsumerModel(model_id, model.provider)
 
 
-async def load_model_id(
-    db: graph.Graph,
-    ref: str,
-    email: str | None = None,
-    *,
-    org_ids: resolve.OrgIds | None = None,
-) -> str | None:
-    """Return the model id of ``ref``'s version, when a consumer can call it
-    for the user ``email``. ``org_ids`` limits the catalog to those
-    organizations (default: all the organizations of the user).
+async def load_model(
+    db: graph.Graph, ref: str, email: str | None = None
+) -> ConsumerModel | None:
+    """Return the model of ``ref``'s version, when a consumer can call it
+    for the user ``email``.
 
     ``None`` when the prompt is missing or names no model. Errors other
     than :class:`~imbi.common.llm.resolve.ModelUnusable` are logged,
@@ -268,7 +301,7 @@ async def load_model_id(
     """
     try:
         _prompt, version, _label = await resolve.resolve(db, ref)
-        return await _model_id(db, version, email, org_ids)
+        return await _model(db, version, email)
     except resolve.PromptError:
         return None
     except llm_resolve.ModelUnusable:
@@ -329,7 +362,7 @@ async def load_system_prompt(
             if name in version.variable_schema
         }
         rendered = await rendering.render(version, declared, {})
-        model_id = await _model_id(db, version, email)
+        model = await _model(db, version, email)
     except llm_resolve.ModelUnusable:
         # A configuration error, not a CMS failure: no other model is
         # used in its place (ADR 0018).
@@ -349,7 +382,8 @@ async def load_system_prompt(
         text=rendered.system,
         source='cms',
         ref=f'{prompt.namespace}/{prompt.slug}@{version.n}',
-        model_id=model_id,
+        model_id=None if model is None else model.model_id,
+        provider=None if model is None else model.provider,
         max_tokens=version.params.max_tokens,
         temperature=version.params.temperature,
     )

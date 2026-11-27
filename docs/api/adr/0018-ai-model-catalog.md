@@ -316,9 +316,18 @@ The consumers today:
   that a driver other than `anthropic` serves (`unsupported_driver`), is an
   error. The assistant returns `403` or `422`, the Slack bot replies with an
   error, and an API helper returns its fallback marked `degraded`. These
-  consumers do not read the defaults yet. Their prompts are global, so the
-  model comes from the catalogs of the organizations of the user. Without a
-  user, there is no catalog model and the configured model is used.
+  consumers have no organization and no team. Their prompts are global, so
+  the model of a prompt version comes from the catalogs of the
+  organizations of the user. When the version names no model, the
+  assistant and the Slack bot use the organization default when the user is
+  a member of one organization. Without a user, there is no catalog model
+  and the configured model is used. They call a catalog model with the
+  credential of its provider: a workload identity token from
+  `POST /ai-providers/token` with `{provider, user}` (imbi-api checks that
+  the provider is an Anthropic provider in an organization of the user),
+  else the `ANTHROPIC_API_KEY` of the service with the base URL of the
+  provider, else `provider_credentials_unavailable`. A stored provider key
+  does not leave imbi-api.
 
 ## Amendment: the spend cap is enforced
 

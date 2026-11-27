@@ -24,6 +24,9 @@ class Conversation(pydantic.BaseModel):
     created_at: datetime.datetime
     updated_at: datetime.datetime
     model: str
+    #: ``<org-slug>/<provider-slug>`` of a catalog model; ``None`` for the
+    #: configured model, which uses the client of the service.
+    provider: str | None = None
     is_archived: bool = False
 
 

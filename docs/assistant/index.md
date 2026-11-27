@@ -56,9 +56,21 @@ A conversation has a model. A new conversation uses the first of these that
 is set:
 
 1. The model in the request.
-2. The model of the prompt version, when the assistant can call it and the
-   user may use it (see [AI Models](../admin/ai-models.md)).
-3. `IMBI_ASSISTANT_MODEL`.
+2. The model of the prompt version (see [AI Models](../admin/ai-models.md)).
+3. The default model of the organization, when the user is a member of one
+   organization.
+4. `IMBI_ASSISTANT_MODEL`.
+
+A catalog model (2 or 3) uses the credential of its provider: a workload
+identity token from imbi-api, else `ANTHROPIC_API_KEY` (see
+[Imbi services](../admin/ai-models.md#imbi-services)).
+`IMBI_ASSISTANT_MODEL` uses the credential of the assistant.
+
+The first of these that names a model wins. When the model of the prompt
+version or the default model cannot be used (it is disabled, its provider is
+disabled, the user may not use it, or a provider other than Anthropic serves
+it), the request fails with `403` (`model_not_allowed`) or `422`. The
+assistant does not use the next model.
 
 The assistant checks the selected model id against the enabled catalog
 entries with that id. One unrestricted entry, or one restricted entry whose

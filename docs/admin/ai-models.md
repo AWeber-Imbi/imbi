@@ -157,8 +157,22 @@ the API key of that account; see
 the API key set, the service ignores `ANTHROPIC_API_KEY`. Without it, the
 service uses `ANTHROPIC_API_KEY` as before.
 
-imbi-api gives a service only the token of its own provider. The request
-names no provider.
+These variables set the credential of the configured model of the service
+(`IMBI_ASSISTANT_MODEL`, `IMBI_SLACKBOT_MODEL`). When the model comes from
+the catalog (a prompt version model or a default model), the service uses
+the credential of the provider of that model, in this order:
+
+1. The provider has a workload identity: the service asks imbi-api for a
+   token of that provider, for the user of the call. This needs
+   `IMBI_ASSISTANT_API_TOKEN` or `IMBI_SLACKBOT_API_TOKEN`. imbi-api gives
+   the token only when the provider is an Anthropic provider in an
+   organization of that user (else `403`).
+2. Else `ANTHROPIC_API_KEY` of the service, sent to the base URL of the
+   provider.
+3. Else the call fails (`provider_credentials_unavailable`): the assistant
+   returns `422`, and the Slack bot replies with an error.
+
+A stored provider key never leaves imbi-api.
 
 ## Add a model manually
 
@@ -374,10 +388,11 @@ so they read the catalogs of the organizations of the user.
 
 The assistant and the Slack bot use the model of their system prompt when the
 prompt version names one. When the version names no model, they use the
-configured model (`IMBI_ASSISTANT_MODEL` or `IMBI_SLACKBOT_MODEL`). When the
-version names a model that the user cannot use, Imbi does not use another
-model: the assistant returns `403` (`model_not_allowed`) or `422`, and the
-Slack bot replies with an error. Only an Anthropic model can be the model of
+default model of the organization when the user is a member of one
+organization, else the configured model (`IMBI_ASSISTANT_MODEL` or
+`IMBI_SLACKBOT_MODEL`). When the selected model cannot be used, Imbi does not
+use another model: the assistant returns `403` (`model_not_allowed`) or `422`,
+and the Slack bot replies with an error. Only an Anthropic model can be the model of
 these system prompts. The assistant selects the
 model when a conversation starts, and checks the selected model, also when it
 is `IMBI_ASSISTANT_MODEL`. A non-admin gets `403` (`model_not_allowed`) when no
@@ -410,14 +425,18 @@ top of the AI Models page. To set the team default, open the team in
 **Teams** and select a model in **Default model**. Select **No model** to
 clear a default.
 
-A default model must be a generative model of the organization. A team default must be a model
-that the team may use (see [Team access](#team-access)). Imbi rejects other
-models with `422`.
+A default model must be a generative model of the organization. A team
+default must be a model that the team may use (see
+[Team access](#team-access)). Imbi rejects other models with `422`.
 
-Today a generative prompt run uses the defaults. A prompt run of a workflow
-step uses the default of the owner team of the workflow, then the
-organization default. A decision prompt and a Model decision step must name
-their model.
+A generative prompt run uses the defaults. A prompt run of a workflow step
+uses the default of the owner team of the workflow, then the organization
+default. The assistant and the Slack bot use the organization default when
+the user is a member of one organization; they have no team. A decision
+prompt and a Model decision step must name their model.
+
+The assistant and the Slack bot call a catalog model with the credential of
+its provider (see [Imbi services](#imbi-services)).
 
 The API routes are `GET` and `PUT`
 `/organizations/{org_slug}/default-ai-model` (`ai_model:read`,

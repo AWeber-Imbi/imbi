@@ -19,6 +19,7 @@ from imbi.assistant import (
     settings,
 )
 from imbi.common import external_mcp
+from imbi.common import models as common_models
 from imbi.common.llm import resolve as llm_resolve
 from imbi.common.prompts import resolve
 from imbi.common.prompts import system as prompt_system
@@ -30,6 +31,20 @@ def _make_user() -> auth.User:
         email='test@example.com',
         display_name='Test User',
         is_admin=False,
+    )
+
+
+def _consumer_model(model_id: str) -> prompt_system.ConsumerModel:
+    """A catalog model of the provider ``acme/anthropic``."""
+    org = common_models.Organization(id='org-1', name='Acme', slug='acme')
+    return prompt_system.ConsumerModel(
+        model_id,
+        common_models.AIProvider(
+            name='Anthropic',
+            slug='anthropic',
+            driver='anthropic',
+            organization=org,
+        ),
     )
 
 
@@ -429,7 +444,12 @@ class CreateConversationEndpointTestCase(
             mock.patch.dict('os.environ', {}, clear=True),
             mock.patch.object(
                 prompt_system,
-                'load_model_id',
+                'load_model',
+                mock.AsyncMock(return_value=None),
+            ),
+            mock.patch.object(
+                prompt_system,
+                'default_model',
                 mock.AsyncMock(return_value=None),
             ),
         ):
@@ -442,6 +462,7 @@ class CreateConversationEndpointTestCase(
             user_email='test@example.com',
             org_id='org-1',
             model='claude-sonnet-4-6',
+            provider=None,
         )
 
     @mock.patch(
@@ -525,9 +546,12 @@ class CreateConversationEndpointTestCase(
             mock.patch.dict('os.environ', {}, clear=True),
             mock.patch.object(
                 prompt_system,
-                'load_model_id',
-                mock.AsyncMock(return_value='claude-opus-5-5'),
+                'load_model',
+                mock.AsyncMock(
+                    return_value=_consumer_model('claude-opus-5-5')
+                ),
             ) as load,
+            mock.patch.object(client, 'client_for') as client_for,
         ):
             await endpoints.create_conversation(
                 org_id='org-1',
@@ -546,7 +570,55 @@ class CreateConversationEndpointTestCase(
             user_email='test@example.com',
             org_id='org-1',
             model='claude-opus-5-5',
+            provider='acme/anthropic',
         )
+        # The credential of the provider is checked when it starts.
+        client_for.assert_called_once()
+
+    @mock.patch(
+        'imbi.assistant.age_ops.create_conversation',
+    )
+    async def test_create_conversation_model_order(
+        self,
+        mock_create: mock.AsyncMock,
+    ) -> None:
+        # The prompt version, then the organization default, then the
+        # configured model (ADR 0018).
+        client._client = mock.MagicMock()
+        mock_create.return_value = _make_conversation()
+        prompt, default_ = (
+            _consumer_model('claude-opus-5-5'),
+            _consumer_model('claude-org'),
+        )
+        for prompt_model, default, expected, provider in (
+            (prompt, default_, 'claude-opus-5-5', 'acme/anthropic'),
+            (None, default_, 'claude-org', 'acme/anthropic'),
+            (None, None, 'claude-sonnet-4-6', None),
+        ):
+            mock_create.reset_mock()
+            with (
+                self.subTest(expected=expected),
+                mock.patch.dict('os.environ', {}, clear=True),
+                mock.patch.object(client, 'client_for'),
+                mock.patch.object(
+                    prompt_system,
+                    'load_model',
+                    mock.AsyncMock(return_value=prompt_model),
+                ),
+                mock.patch.object(
+                    prompt_system,
+                    'default_model',
+                    mock.AsyncMock(return_value=default),
+                ),
+            ):
+                await endpoints.create_conversation(
+                    db=mock.AsyncMock(),
+                    auth_ctx=_make_auth_context(is_admin=True),
+                    body=None,
+                )
+            kwargs = mock_create.call_args.kwargs
+            self.assertEqual(kwargs['model'], expected)
+            self.assertEqual(kwargs['provider'], provider)
 
     @mock.patch(
         'imbi.assistant.age_ops.create_conversation',
@@ -568,7 +640,7 @@ class CreateConversationEndpointTestCase(
                 mock.patch.dict('os.environ', {}, clear=True),
                 mock.patch.object(
                     prompt_system,
-                    'load_model_id',
+                    'load_model',
                     mock.AsyncMock(side_effect=error),
                 ),
                 self.assertRaises(fastapi.HTTPException) as raised,
@@ -606,6 +678,7 @@ class CreateConversationEndpointTestCase(
             user_email='test@example.com',
             org_id='org-1',
             model='claude-opus-4-20250514',
+            provider=None,
         )
 
 
@@ -1078,6 +1151,49 @@ class SendMessageEndpointTestCase(
         )
         self.assertIsInstance(result, responses.StreamingResponse)
         self.assertEqual(result.media_type, 'text/event-stream')
+
+    @mock.patch.dict('os.environ', {}, clear=True)
+    @mock.patch('imbi.assistant.age_ops.add_message')
+    @mock.patch('imbi.assistant.age_ops.count_messages')
+    @mock.patch('imbi.assistant.age_ops.get_conversation')
+    async def test_send_message_uses_the_provider_of_the_conversation(
+        self,
+        mock_get_conv: mock.AsyncMock,
+        mock_count: mock.AsyncMock,
+        mock_add: mock.AsyncMock,
+    ) -> None:
+        client._client = mock.MagicMock()
+        conv = _make_conversation()
+        conv.provider = 'acme/anthropic'
+        mock_get_conv.return_value = conv
+        mock_count.return_value = 0
+        provider = _consumer_model('x').provider
+        error = llm_resolve.ModelUnusable(
+            'provider_credentials_unavailable', 'acme/anthropic', 'no'
+        )
+        with (
+            mock.patch.object(
+                endpoints.llm_clients,
+                'fetch_provider',
+                mock.AsyncMock(return_value=provider),
+            ) as fetch,
+            mock.patch.object(
+                client, 'client_for', mock.Mock(side_effect=error)
+            ) as client_for,
+            self.assertRaises(fastapi.HTTPException) as ctx,
+        ):
+            await endpoints.send_message(
+                conversation_id='conv-123',
+                body=models.SendMessageRequest(content='Hello'),
+                db=mock.AsyncMock(),
+                auth_ctx=_make_auth_context(is_admin=True),
+                credentials=None,
+            )
+        # No credential for the provider: no other client is used.
+        self.assertEqual(ctx.exception.status_code, 422)
+        fetch.assert_awaited_once_with(mock.ANY, 'acme/anthropic')
+        client_for.assert_called_once_with(provider, 'test@example.com')
+        mock_add.assert_not_awaited()
 
     @mock.patch.dict('os.environ', {}, clear=True)
     @mock.patch('imbi.assistant.age_ops.add_message')

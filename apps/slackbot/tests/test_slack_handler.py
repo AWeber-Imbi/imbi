@@ -6,6 +6,7 @@ from slackwright import forms, inflight
 
 from apps.slackbot.tests import helpers
 from imbi.common import external_mcp, models
+from imbi.common.llm import resolve as llm_resolve
 from imbi.common.prompts import system as prompt_system
 from imbi.slackbot import identity, settings, slack_handler
 
@@ -463,6 +464,90 @@ class HandleEventTests(helpers.TestCase):
         self.assertEqual(kwargs['model'], 'claude-opus-5-5')
         self.assertEqual(kwargs['max_tokens'], 2048)
         self.assertEqual(kwargs['temperature'], 0.3)
+
+    async def _model_for(
+        self, prompt_model: str | None, default: object
+    ) -> tuple[mock.AsyncMock, FakeSlackClient]:
+        """Run a turn with ``prompt_model`` from the prompt version and
+        ``default`` from :func:`prompt_system.default_model`."""
+        user = identity.ImbiUser('ada@example.com', 'Ada')
+        event = {'channel': 'C', 'ts': '1', 'user': 'U1', 'text': '<@BOT> hi'}
+        prompt = prompt_system.SystemPrompt(
+            text='cms text', source='cms', model_id=prompt_model
+        )
+        kwargs: dict[str, object] = (
+            {'side_effect': default}
+            if isinstance(default, BaseException)
+            else {'return_value': default}
+        )
+        run_turn = mock.AsyncMock(return_value='ok')
+        client = FakeSlackClient(replies=[])
+        with (
+            mock.patch.object(
+                slack_handler.identity,
+                'resolve',
+                new=mock.AsyncMock(return_value=user),
+            ),
+            mock.patch.object(
+                slack_handler.system_prompt,
+                'build_system_prompt',
+                new=mock.AsyncMock(return_value=prompt),
+            ),
+            mock.patch.object(
+                slack_handler.system,
+                'default_model',
+                new=mock.AsyncMock(**kwargs),
+            ),
+            mock.patch.object(
+                slack_handler.identity,
+                'get_graph',
+                return_value=mock.AsyncMock(),
+            ),
+            mock.patch.object(slack_handler.agent, 'run_turn', new=run_turn),
+        ):
+            await slack_handler.handle_event(event, client, bot_user_id='BOT')
+        return run_turn, client
+
+    async def test_model_order(self) -> None:
+        # The prompt version, then the organization default, then the
+        # configured model (ADR 0018).
+        configured = settings.get_slackbot_settings().model
+        org = models.Organization(id='org-1', name='Acme', slug='acme')
+        provider = models.AIProvider(
+            name='A', slug='a', driver='anthropic', organization=org
+        )
+        default = prompt_system.ConsumerModel('claude-org', provider)
+        sentinel = mock.Mock()
+        for prompt_model, found, expected, api_client in (
+            ('claude-opus-5-5', default, 'claude-opus-5-5', None),
+            (None, default, 'claude-org', sentinel),
+            (None, None, configured, None),
+        ):
+            with (
+                self.subTest(expected=expected),
+                mock.patch.object(
+                    slack_handler.client,
+                    'client_for',
+                    mock.Mock(return_value=sentinel),
+                ) as client_for,
+            ):
+                run_turn, _ = await self._model_for(prompt_model, found)
+                kwargs = run_turn.await_args.kwargs
+                self.assertEqual(kwargs['model'], expected)
+                # A catalog model uses the client of its provider.
+                self.assertIs(kwargs['api_client'], api_client)
+                if api_client is sentinel:
+                    client_for.assert_called_once_with(
+                        provider, 'ada@example.com'
+                    )
+
+    async def test_unusable_default_is_an_error(self) -> None:
+        error = llm_resolve.ModelUnusable('unsupported_driver', 'gpt', 'no')
+        run_turn, client = await self._model_for(None, error)
+        run_turn.assert_not_awaited()
+        self.assertEqual(
+            client.posts[-1]['markdown_text'], slack_handler._ERROR_MESSAGE
+        )
 
     async def test_skills_reach_prompt_and_tools(self) -> None:
         user = identity.ImbiUser('ada@example.com', 'Ada', 'acme', 'org-1')

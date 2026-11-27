@@ -180,6 +180,9 @@ class LoadSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             result = await self.load(email='dev@example.com')
         self.assertEqual(result.model_id, 'claude-opus-5-5')
+        # The provider comes with the model, for its credential.
+        assert resolved.model is not None
+        self.assertIs(result.provider, resolved.model.provider)
         resolver.assert_awaited_once_with(
             mock.ANY, ['org-1'], model='default-chat', email='dev@example.com'
         )
@@ -214,12 +217,12 @@ class LoadSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
             ):
                 await self.load(email='dev@example.com')
             with (
-                self.subTest(reason=reason, loader='load_model_id'),
+                self.subTest(reason=reason, loader='load_model'),
                 self.patch_resolve(found),
                 self.patch_model(error),
                 self.assertRaises(llm_resolve.ModelUnusable),
             ):
-                await system.load_model_id(
+                await system.load_model(
                     mock.AsyncMock(), REF, 'dev@example.com'
                 )
 
@@ -274,6 +277,53 @@ class LoadSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
         with self.assertLogs(system.LOGGER, 'ERROR'):
             result = await self.load(override='Old {email} {{ oops')
         self.assertEqual(result.source, 'fallback')
+
+
+class DefaultModelIdTestCase(unittest.IsolatedAsyncioTestCase):
+    async def default(self, result: object) -> str | None:
+        kwargs: dict[str, typing.Any] = (
+            {'side_effect': result}
+            if isinstance(result, BaseException)
+            else {'return_value': result}
+        )
+        with (
+            mock.patch.object(
+                resolve,
+                'member_org_ids',
+                mock.AsyncMock(return_value=['org-1']),
+            ),
+            mock.patch.object(
+                llm_resolve, 'resolve_model', mock.AsyncMock(**kwargs)
+            ) as resolver,
+        ):
+            found = await system.default_model(
+                mock.AsyncMock(), 'dev@example.com'
+            )
+        resolver.assert_awaited_once_with(
+            mock.ANY, ['org-1'], email='dev@example.com'
+        )
+        return found
+
+    async def test_organization_default(self) -> None:
+        resolved = _model('chat', 'claude-chat')
+        found = await self.default(resolved)
+        assert found is not None and resolved.model is not None
+        self.assertEqual(found.model_id, 'claude-chat')
+        self.assertIs(found.provider, resolved.model.provider)
+
+    async def test_no_default_is_none(self) -> None:
+        resolved = llm_resolve.ResolvedModel(source='env')
+        self.assertIsNone(await self.default(resolved))
+
+    async def test_other_driver_is_an_error(self) -> None:
+        with self.assertRaises(llm_resolve.ModelUnusable) as raised:
+            await self.default(_model('gpt', 'gpt-5', 'openai'))
+        self.assertEqual(raised.exception.reason, 'unsupported_driver')
+
+    async def test_unusable_default_is_an_error(self) -> None:
+        error = llm_resolve.ModelUnusable('disabled', 'chat', 'no')
+        with self.assertRaises(llm_resolve.ModelUnusable):
+            await self.default(error)
 
 
 class UnlabelledPromptTestCase(unittest.IsolatedAsyncioTestCase):

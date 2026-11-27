@@ -6,11 +6,13 @@ import typing
 import anthropic
 
 from imbi.assistant import settings
-from imbi.common.llm import observability, tokens
+from imbi.common import models
+from imbi.common.llm import clients, observability, tokens
 
 LOGGER = logging.getLogger(__name__)
 
 _client: anthropic.AsyncAnthropic | None = None
+_providers: clients.ProviderClients | None = None
 _observed = False
 
 
@@ -33,12 +35,9 @@ async def initialize() -> None:
     configured.
 
     """
-    global _client, _observed
+    global _client, _observed, _providers
 
-    if _client is not None:
-        existing_client = _client
-        _client = None
-        await existing_client.close()
+    await aclose()
 
     assistant_settings = settings.get_assistant_settings()
 
@@ -48,6 +47,12 @@ async def initialize() -> None:
 
     client_class = observability.client_class()
     _observed = client_class is not anthropic.AsyncAnthropic
+    _providers = clients.ProviderClients(
+        api_url=assistant_settings.api_base_url,
+        api_token=assistant_settings.api_token,
+        api_key=assistant_settings.api_key,
+        client_class=client_class,
+    )
 
     if assistant_settings.api_token:
         _client = tokens.bearer_client(
@@ -73,8 +78,11 @@ async def initialize() -> None:
 
 
 async def aclose() -> None:
-    """Close the AsyncAnthropic client."""
-    global _client
+    """Close the AsyncAnthropic clients."""
+    global _client, _providers
+    if _providers is not None:
+        await _providers.aclose()
+        _providers = None
     if _client is not None:
         await _client.close()
         _client = None
@@ -98,6 +106,23 @@ def get_client() -> anthropic.AsyncAnthropic:
             'and IMBI_ASSISTANT_API_TOKEN or ANTHROPIC_API_KEY is set.'
         )
     return _client
+
+
+def client_for(
+    provider: models.AIProvider, user: str
+) -> anthropic.AsyncAnthropic:
+    """Return the client of a catalog ``provider``, for a call for
+    ``user``.
+
+    Raises:
+        imbi.common.llm.resolve.ModelUnusable: No credential for the
+            provider (``provider_credentials_unavailable``).
+        RuntimeError: The client is not initialized.
+
+    """
+    if _providers is None:
+        return get_client()
+    return _providers.get(provider, user)
 
 
 def is_available() -> bool:
