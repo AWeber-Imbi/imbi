@@ -28,14 +28,14 @@ LOGGER = logging.getLogger(__name__)
 DEFAULT_HOST = 'https://us.i.posthog.com'
 
 #: Event properties never sent: the client IP address, and the MCP tool
-#: arguments, results, error text, and intent, which can hold project
-#: data or secrets.
+#: arguments, results, and error text, which can hold project data or
+#: secrets. The agent-written ``$mcp_intent`` is kept; the SDK redacts
+#: personal data in it.
 _DROPPED_PROPERTIES = (
     '$ip',
     '$mcp_parameters',
     '$mcp_response',
     '$mcp_error_message',
-    '$mcp_intent',
 )
 
 #: A path segment that holds an email, such as ``/users/{email}``.

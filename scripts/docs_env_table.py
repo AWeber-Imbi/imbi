@@ -303,7 +303,8 @@ DESCRIPTIONS: dict[str, str] = {
     'POSTHOG_ERROR_TRACKING': '`false` stops sending exceptions to PostHog. '
     'Default: `true`.',
     'POSTHOG_MCP_ANALYTICS': '`true` sends a `$mcp_tool_call` event for '
-    'each MCP tool call, without arguments or results',
+    'each MCP tool call, with the agent intent but without arguments or '
+    'results',
     'POSTHOG_AI_OBSERVABILITY': '`true` sends a `$ai_generation` event for '
     'each assistant and Slack bot LLM call',
     'POSTHOG_AI_PRIVACY_MODE': '`false` puts prompt and output text in AI '

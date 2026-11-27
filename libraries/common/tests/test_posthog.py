@@ -135,12 +135,15 @@ class PostHogTestCase(unittest.TestCase):
                 '$mcp_parameters': {'token': 'secret'},
                 '$mcp_response': 'secret',
                 '$mcp_error_message': 'secret',
-                '$mcp_intent': 'secret',
+                '$mcp_intent': 'List the team projects',
             },
         }
         self.assertEqual(
             posthog._scrub(message)['properties'],
-            {'$mcp_tool_name': 'list_projects'},
+            {
+                '$mcp_tool_name': 'list_projects',
+                '$mcp_intent': 'List the team projects',
+            },
         )
 
     def test_scrub_redacts_emails_in_paths(self) -> None:

@@ -422,14 +422,15 @@ class PostHogInstrumentTestCase(unittest.TestCase):
 
     @mock.patch('posthog.mcp.instrument')
     @mock.patch('imbi.common.posthog.init', return_value=True)
-    def test_on_keeps_tool_schemas(
+    def test_on_captures_intent(
         self, _init: mock.MagicMock, instrument: mock.MagicMock
     ) -> None:
         env = {'POSTHOG_API_KEY': 'k', 'POSTHOG_MCP_ANALYTICS': 'true'}
         with mock.patch.dict('os.environ', env, clear=True):
             server._instrument(self._server())
         options = instrument.call_args.kwargs['options']
-        self.assertFalse(options.context)
+        self.assertTrue(options.context.description)
+        self.assertTrue(options.report_missing)
         self.assertFalse(options.capture_model)
         self.assertFalse(options.enable_conversation_id)
 
