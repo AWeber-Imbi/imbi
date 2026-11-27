@@ -14,7 +14,7 @@ import typing
 
 import fastmcp
 import fastmcp.server.dependencies
-import httpx
+import httpx2
 
 from imbi.assistant import settings
 from imbi.common.mcp import exclude_non_ai_tools, excluded_route_maps
@@ -45,7 +45,7 @@ REFRESH_TOOL: dict[str, typing.Any] = {
 AUTH_META_KEY = 'imbi_authorization'
 
 
-async def _apply_caller_auth(request: httpx.Request) -> None:
+async def _apply_caller_auth(request: httpx2.Request) -> None:
     """Set the Authorization header from the calling tool's request meta.
 
     Runs as an httpx request hook inside the in-process MCP server, where
@@ -59,8 +59,7 @@ async def _apply_caller_auth(request: httpx.Request) -> None:
         ctx = fastmcp.server.dependencies.get_context().request_context
     except RuntimeError:
         return
-    extra = (ctx.meta.model_extra or {}) if ctx and ctx.meta else {}
-    value = extra.get(AUTH_META_KEY)
+    value = (ctx.meta or {}).get(AUTH_META_KEY) if ctx else None
     if isinstance(value, str) and value:
         request.headers['authorization'] = value
 
@@ -78,9 +77,7 @@ def _mcp_tool_to_anthropic(
         ``input_schema`` keys.
 
     """
-    schema: dict[str, typing.Any] = (
-        tool.inputSchema if hasattr(tool, 'inputSchema') else {}
-    )
+    schema: dict[str, typing.Any] = getattr(tool, 'input_schema', {})
     return {
         'name': tool.name,
         'description': tool.description or '',
@@ -99,7 +96,7 @@ class MCPManager:
         self._server: fastmcp.FastMCP | None = None
         self._client: fastmcp.Client[typing.Any] | None = None
         self._tools: list[dict[str, typing.Any]] = []
-        self._http_client: httpx.AsyncClient | None = None
+        self._http_client: httpx2.AsyncClient | None = None
         self._initialized = False
 
     async def initialize(self) -> None:
@@ -113,12 +110,12 @@ class MCPManager:
         spec_url = f'{api_url.rstrip("/")}/openapi.json'
         LOGGER.info('Fetching OpenAPI spec from %s', spec_url)
 
-        async with httpx.AsyncClient(timeout=30) as tmp:
+        async with httpx2.AsyncClient(timeout=30) as tmp:
             response = await tmp.get(spec_url)
             response.raise_for_status()
             spec = response.json()
 
-        self._http_client = httpx.AsyncClient(
+        self._http_client = httpx2.AsyncClient(
             base_url=api_url,
             timeout=30,
             event_hooks={'request': [_apply_caller_auth]},

@@ -21,7 +21,7 @@ import re
 import time
 import typing
 
-import httpx
+import httpx2
 import mcp
 import pydantic
 from mcp import types as mcp_types
@@ -69,7 +69,7 @@ async def get_enabled_mcp_servers(
     return servers
 
 
-class OAuthClientCredentialsAuth(httpx.Auth):
+class OAuthClientCredentialsAuth(httpx2.Auth):
     """httpx Auth that fetches and caches OAuth client-credentials tokens.
 
     Transparently refreshes the access token shortly before it
@@ -106,8 +106,8 @@ class OAuthClientCredentialsAuth(httpx.Auth):
         }
         if self._scope:
             data['scope'] = self._scope
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(_OAUTH_TOKEN_TIMEOUT)
+        async with httpx2.AsyncClient(
+            timeout=httpx2.Timeout(_OAUTH_TOKEN_TIMEOUT)
         ) as client:
             response = await client.post(self._token_url, data=data)
             response.raise_for_status()
@@ -123,8 +123,8 @@ class OAuthClientCredentialsAuth(httpx.Auth):
 
     async def async_auth_flow(
         self,
-        request: httpx.Request,
-    ) -> collections.abc.AsyncGenerator[httpx.Request, httpx.Response]:
+        request: httpx2.Request,
+    ) -> collections.abc.AsyncGenerator[httpx2.Request, httpx2.Response]:
         async with self._lock:
             if self._is_expired():
                 await self._fetch_token()
@@ -134,13 +134,13 @@ class OAuthClientCredentialsAuth(httpx.Auth):
 
 def _build_auth(
     server: common_models.MCPServer,
-) -> tuple[dict[str, str] | None, httpx.Auth | None]:
+) -> tuple[dict[str, str] | None, httpx2.Auth | None]:
     """Build the headers and httpx auth for a server.
 
     Decrypts any ``*_encrypted`` secrets at connect time.
 
     Returns:
-        Tuple of (static headers or None, httpx.Auth or None).
+        Tuple of (static headers or None, httpx2.Auth or None).
 
     """
     if server.auth_type == 'static':
@@ -186,7 +186,7 @@ def _mcp_tool_to_anthropic(
     return {
         'name': registered_name,
         'description': tool.description or '',
-        'input_schema': tool.inputSchema or {},
+        'input_schema': tool.input_schema or {},
     }
 
 
@@ -306,7 +306,7 @@ class ExternalMCPManager:
     ) -> mcp.ClientSession:
         """Open and initialize a streamable-HTTP session."""
         headers, http_auth = _build_auth(server)
-        timeout = httpx.Timeout(float(server.timeout))
+        timeout = httpx2.Timeout(float(server.timeout))
         if server.verify_ssl:
             http_client = create_mcp_http_client(headers, timeout, http_auth)
         else:
@@ -314,12 +314,12 @@ class ExternalMCPManager:
                 'SSL verification disabled for MCP server %r',
                 server.slug,
             )
-            http_client = httpx.AsyncClient(
+            http_client = httpx2.AsyncClient(
                 headers=headers,
                 timeout=timeout,
                 auth=http_auth,
                 follow_redirects=True,
-                verify=False,  # noqa: S501
+                verify=False,
             )
 
         self._tasks = [task for task in self._tasks if not task.done()]
@@ -340,7 +340,7 @@ class ExternalMCPManager:
     async def _run_session(
         self,
         server: common_models.MCPServer,
-        http_client: httpx.AsyncClient,
+        http_client: httpx2.AsyncClient,
         ready: asyncio.Future[mcp.ClientSession],
     ) -> None:
         """Hold one server's client contexts open in a dedicated task.
@@ -357,7 +357,7 @@ class ExternalMCPManager:
                 streamable_http.streamable_http_client(
                     str(server.url),
                     http_client=http_client,
-                ) as (read_stream, write_stream, _),
+                ) as (read_stream, write_stream),
                 mcp.ClientSession(read_stream, write_stream) as session,
             ):
                 await session.initialize()
@@ -532,7 +532,7 @@ class ExternalMCPManager:
                 if text is not None:
                     parts.append(text)
             body = '\n'.join(parts) if parts else '{}'
-            if result.isError:
+            if result.is_error:
                 LOGGER.warning(
                     'External MCP tool returned error: %s: %s',
                     tool_name,

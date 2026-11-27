@@ -57,7 +57,7 @@ import typing
 
 import fastmcp.server.middleware
 import fastmcp.tools
-import httpx
+import httpx2
 from fastmcp.server.dependencies import get_http_headers, get_http_request
 from fastmcp.server.providers.openapi import MCPType, RouteMap
 from mcp import types as mcp_types
@@ -213,8 +213,8 @@ def annotate(route: HTTPRoute, component: FastMCPComponent) -> None:
     if isinstance(component, fastmcp.tools.Tool):
         method = route.method.upper()
         component.annotations = mcp_types.ToolAnnotations(
-            readOnlyHint=method in {'GET', 'HEAD'},
-            destructiveHint=method == 'DELETE',
+            read_only_hint=method in {'GET', 'HEAD'},
+            destructive_hint=method == 'DELETE',
         )
 
 
@@ -301,7 +301,7 @@ class PermissionFilterMiddleware(fastmcp.server.middleware.Middleware):
 
     def __init__(
         self,
-        client: httpx.AsyncClient,
+        client: httpx2.AsyncClient,
         spec: collections.abc.Mapping[str, typing.Any],
     ) -> None:
         """Store the API client used to resolve the caller's profile.
@@ -343,13 +343,13 @@ class PermissionFilterMiddleware(fastmcp.server.middleware.Middleware):
             return cached
         try:
             response = await self._client.get(self._profile_path)
-            if response.status_code == httpx.codes.FORBIDDEN:
+            if response.status_code == httpx2.codes.FORBIDDEN:
                 # A service account (an agent, harness plan P7) has no
                 # profile; this route gives its permissions.
                 response = await self._client.get(self._permissions_path)
             response.raise_for_status()
             profile = response.json()
-        except (httpx.HTTPError, ValueError):
+        except (httpx2.HTTPError, ValueError):
             LOGGER.warning(
                 'Could not resolve caller permissions; '
                 'returning the unfiltered tool list',

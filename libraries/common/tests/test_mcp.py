@@ -10,7 +10,7 @@ import unittest
 import unittest.mock
 
 import fastmcp
-import httpx
+import httpx2
 import starlette.middleware
 from fastmcp.server.providers.openapi import MCPType
 from fastmcp.utilities.openapi import HTTPRoute
@@ -168,7 +168,7 @@ class FromOpenapiExclusionTests(unittest.IsolatedAsyncioTestCase):
     async def _tool_names(self, prefix: str = '') -> set[str]:
         """Build a server from the policy and list its tools."""
         spec = _spec(prefix)
-        client = httpx.AsyncClient(base_url='http://localhost:8000')
+        client = httpx2.AsyncClient(base_url='http://localhost:8000')
         try:
             server = fastmcp.FastMCP.from_openapi(
                 openapi_spec=spec,
@@ -250,7 +250,7 @@ class PermissionFilterMiddlewareTests(unittest.IsolatedAsyncioTestCase):
 
     async def _tool_names(
         self,
-        handler: typing.Callable[[httpx.Request], httpx.Response],
+        handler: typing.Callable[[httpx2.Request], httpx2.Response],
         prefix: str = '',
     ) -> set[str]:
         """Build a filtered server and list its tools.
@@ -260,9 +260,9 @@ class PermissionFilterMiddlewareTests(unittest.IsolatedAsyncioTestCase):
         path prefix.
         """
         spec = _permission_spec(prefix)
-        client = httpx.AsyncClient(
+        client = httpx2.AsyncClient(
             base_url='http://localhost:8000',
-            transport=httpx.MockTransport(handler),
+            transport=httpx2.MockTransport(handler),
         )
         try:
             server = fastmcp.FastMCP.from_openapi(
@@ -282,9 +282,9 @@ class PermissionFilterMiddlewareTests(unittest.IsolatedAsyncioTestCase):
     @staticmethod
     def _profile(
         *, is_admin: bool, permissions: list[str]
-    ) -> typing.Callable[[httpx.Request], httpx.Response]:
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(
+    ) -> typing.Callable[[httpx2.Request], httpx2.Response]:
+        def handler(request: httpx2.Request) -> httpx2.Response:
+            return httpx2.Response(
                 200,
                 json={'is_admin': is_admin, 'permissions': permissions},
             )
@@ -307,9 +307,9 @@ class PermissionFilterMiddlewareTests(unittest.IsolatedAsyncioTestCase):
         """
         requested: list[str] = []
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request: httpx2.Request) -> httpx2.Response:
             requested.append(request.url.path)
-            return httpx.Response(
+            return httpx2.Response(
                 200, json={'is_admin': False, 'permissions': ['project:read']}
             )
 
@@ -323,11 +323,11 @@ class PermissionFilterMiddlewareTests(unittest.IsolatedAsyncioTestCase):
         permissions route filters its tools (harness plan P7)."""
         requested: list[str] = []
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request: httpx2.Request) -> httpx2.Response:
             requested.append(request.url.path)
             if request.url.path == '/api/users/me':
-                return httpx.Response(403)
-            return httpx.Response(
+                return httpx2.Response(403)
+            return httpx2.Response(
                 200, json={'is_admin': False, 'permissions': ['project:read']}
             )
 
@@ -357,8 +357,8 @@ class PermissionFilterMiddlewareTests(unittest.IsolatedAsyncioTestCase):
     async def test_fails_open_on_profile_error(self) -> None:
         """A failed lookup returns the unfiltered list, not an empty one."""
 
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(500)
+        def handler(request: httpx2.Request) -> httpx2.Response:
+            return httpx2.Response(500)
 
         with self.assertLogs('imbi.common.mcp', level='WARNING'):
             names = await self._tool_names(handler)
@@ -370,8 +370,8 @@ class PermissionFilterMiddlewareTests(unittest.IsolatedAsyncioTestCase):
     async def test_fails_open_on_transport_error(self) -> None:
         """A connection failure also fails open."""
 
-        def handler(request: httpx.Request) -> httpx.Response:
-            raise httpx.ConnectError('boom')
+        def handler(request: httpx2.Request) -> httpx2.Response:
+            raise httpx2.ConnectError('boom')
 
         with self.assertLogs('imbi.common.mcp', level='WARNING'):
             names = await self._tool_names(handler)
@@ -380,8 +380,8 @@ class PermissionFilterMiddlewareTests(unittest.IsolatedAsyncioTestCase):
     async def test_fails_open_on_non_object_profile(self) -> None:
         """Well-formed JSON that is not an object also fails open."""
 
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=['not', 'a', 'profile'])
+        def handler(request: httpx2.Request) -> httpx2.Response:
+            return httpx2.Response(200, json=['not', 'a', 'profile'])
 
         with self.assertLogs('imbi.common.mcp', level='WARNING'):
             names = await self._tool_names(handler)
@@ -394,15 +394,15 @@ class PermissionCacheTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.calls: list[str] = []
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request: httpx2.Request) -> httpx2.Response:
             self.calls.append(request.headers.get('authorization', ''))
-            return httpx.Response(
+            return httpx2.Response(
                 200, json={'is_admin': False, 'permissions': ['project:read']}
             )
 
-        self.client = httpx.AsyncClient(
+        self.client = httpx2.AsyncClient(
             base_url='http://localhost:8000',
-            transport=httpx.MockTransport(handler),
+            transport=httpx2.MockTransport(handler),
         )
         self.middleware = mcp.PermissionFilterMiddleware(
             self.client, _permission_spec()
@@ -466,7 +466,7 @@ class RequiredPermissionsTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_reads_permissions_recorded_on_meta(self) -> None:
         """``copy_permissions_to_meta`` makes permissions readable."""
-        client = httpx.AsyncClient(base_url='http://localhost:8000')
+        client = httpx2.AsyncClient(base_url='http://localhost:8000')
         try:
             server = fastmcp.FastMCP.from_openapi(
                 openapi_spec=_permission_spec(),
@@ -491,7 +491,7 @@ class RequiredPermissionsTests(unittest.IsolatedAsyncioTestCase):
         this guards the coupling that reading a private ``_route``
         attribute previously created.
         """
-        client = httpx.AsyncClient(base_url='http://localhost:8000')
+        client = httpx2.AsyncClient(base_url='http://localhost:8000')
         try:
             server = fastmcp.FastMCP.from_openapi(
                 openapi_spec=_permission_spec(),
@@ -513,7 +513,7 @@ class RequiredPermissionsTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_annotate_marks_reads(self) -> None:
         """``annotate`` marks a GET tool read only, a POST tool not."""
-        client = httpx.AsyncClient(base_url='http://localhost:8000')
+        client = httpx2.AsyncClient(base_url='http://localhost:8000')
         try:
             server = fastmcp.FastMCP.from_openapi(
                 openapi_spec=_permission_spec(),
@@ -522,7 +522,7 @@ class RequiredPermissionsTests(unittest.IsolatedAsyncioTestCase):
                 mcp_component_fn=mcp.annotate,
             )
             found = {
-                tool.name: tool.annotations and tool.annotations.readOnlyHint
+                tool.name: tool.annotations and tool.annotations.read_only_hint
                 for tool in await server.list_tools()
             }
         finally:
@@ -634,8 +634,8 @@ class RememberApiKeyOwnerTestCase(unittest.IsolatedAsyncioTestCase):
         """PermissionFilterMiddleware's own lookup populates the label."""
         spec = _permission_spec()
 
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(
+        def handler(request: httpx2.Request) -> httpx2.Response:
+            return httpx2.Response(
                 200,
                 json={
                     'email': 'gavinr@aweber.com',
@@ -644,9 +644,9 @@ class RememberApiKeyOwnerTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
 
-        client = httpx.AsyncClient(
+        client = httpx2.AsyncClient(
             base_url='http://localhost:8000',
-            transport=httpx.MockTransport(handler),
+            transport=httpx2.MockTransport(handler),
         )
         try:
             server = fastmcp.FastMCP.from_openapi(
@@ -698,8 +698,8 @@ class AccessLogContextMiddlewareTestCase(unittest.IsolatedAsyncioTestCase):
         }
         with self.assertLogs('imbi.common.access', level='INFO') as logs:
             async with app.router.lifespan_context(app):
-                transport = httpx.ASGITransport(app=app)
-                async with httpx.AsyncClient(
+                transport = httpx2.ASGITransport(app=app)
+                async with httpx2.AsyncClient(
                     transport=transport, base_url='http://mcp'
                 ) as client:
                     response = await client.post(

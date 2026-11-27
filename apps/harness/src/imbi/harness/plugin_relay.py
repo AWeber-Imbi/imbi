@@ -21,7 +21,6 @@ removed.
 import asyncio
 import contextlib
 import dataclasses
-import datetime
 import json
 import logging
 import re
@@ -30,18 +29,18 @@ import typing
 
 import anyio
 import claude_agent_sdk as sdk
-import httpx
-from anyio.streams import memory
+import httpx2
 from mcp import types
 from mcp.client import session as mcp_session
 from mcp.client import sse, streamable_http
 from mcp.shared import exceptions as mcp_exceptions
-from mcp.shared import message
 
 from imbi.harness import outbound, redact, safeguards
 
 if typing.TYPE_CHECKING:
     from collections import abc
+
+    from anyio.streams import memory
 
 LOGGER = logging.getLogger(__name__)
 
@@ -52,9 +51,11 @@ CLOSE_TIMEOUT = 10.0
 #: The server types that the relay can connect to.
 TYPES = frozenset({'http', 'sse'})
 _NOT_NAME = re.compile(r'[^A-Za-z0-9_-]')
-_SESSION_TERMINATED = 32600
+_SESSION_TERMINATED = 'Session terminated'
 type Body = dict[str, typing.Any]
-type _Write = memory.MemoryObjectSendStream[message.SessionMessage]
+#: The write side of a session: ``mcp.shared._context_streams`` wraps
+#: an anyio memory stream, and the SDK exports no public type for it.
+type _Write = typing.Any
 
 
 def cli_name(plugin: str, server: str) -> str:
@@ -96,11 +97,13 @@ def _lost(error: BaseException) -> bool:
     """Whether ``error`` means that the session no longer works: the
     transport failed, or the server ended the session. Any other error
     belongs to one call."""
-    if isinstance(error, mcp_exceptions.McpError):
-        return error.error.code in {
-            types.CONNECTION_CLOSED,
-            _SESSION_TERMINATED,
-        }
+    if isinstance(error, mcp_exceptions.MCPError):
+        # The SDK ends a session with INVALID_REQUEST, the same code as
+        # a server's own error, so the message tells them apart.
+        return error.code == types.CONNECTION_CLOSED or (
+            error.code == types.INVALID_REQUEST
+            and error.message == _SESSION_TERMINATED
+        )
     return isinstance(
         error,
         (
@@ -116,7 +119,7 @@ def _block(block: types.ContentBlock, redactor: redact.Redactor) -> Body:
     """``block`` with each secret value removed. An image whose data
     held one is a text notice instead, since its redacted data is not
     an image."""
-    dumped = block.model_dump(mode='json', exclude_none=True)
+    dumped = block.model_dump(mode='json', by_alias=True, exclude_none=True)
     scrubbed = _fields(dumped, redactor)
     if dumped['type'] == 'image' and scrubbed['data'] != dumped['data']:
         return _text('The image held a secret value and was removed.')
@@ -210,8 +213,14 @@ class _Held:
             return False
         if not self.ready.done():
             return True
+        # ponytail: reads the SDK wrapper's private anyio stream; a
+        # failed send replaces the session anyway (see _lost).
         write = self.ready.result()[1]
-        return write.statistics().open_send_streams > 0
+        inner = typing.cast(
+            'memory.MemoryObjectSendStream[typing.Any]',
+            getattr(write, '_inner', write),
+        )
+        return inner.statistics().open_send_streams > 0
 
     async def close(self) -> None:
         """Close the session; cancel it when the server does not answer
@@ -243,7 +252,7 @@ class Server:
         plugin: str,
         name: str,
         config: Body,
-        auth: httpx.Auth,
+        auth: httpx2.Auth,
         *,
         proxy_env: abc.Mapping[str, str],
         redactor: redact.Redactor,
@@ -269,19 +278,19 @@ class Server:
     def _client(
         self,
         headers: dict[str, str] | None = None,
-        timeout: httpx.Timeout | None = None,
-        auth: httpx.Auth | None = None,
-    ) -> httpx.AsyncClient:
+        timeout: httpx2.Timeout | None = None,
+        auth: httpx2.Auth | None = None,
+    ) -> httpx2.AsyncClient:
         """An HTTP client to the server's origin only. It follows a
         redirect, but :class:`outbound.Transport` refuses another
         origin."""
         del headers, auth
-        return httpx.AsyncClient(
+        return httpx2.AsyncClient(
             transport=outbound.Transport(self.url, self.proxy_env),
             auth=self.auth,
             follow_redirects=True,
             timeout=timeout
-            or httpx.Timeout(safeguards.CALL_TIMEOUT + 10, connect=10),
+            or httpx2.Timeout(safeguards.CALL_TIMEOUT + 10, connect=10),
         )
 
     @contextlib.asynccontextmanager
@@ -297,7 +306,7 @@ class Server:
                 )
             else:
                 client = await stack.enter_async_context(self._client())
-                read, write, _ = await stack.enter_async_context(
+                read, write = await stack.enter_async_context(
                     streamable_http.streamable_http_client(
                         self.url, http_client=client
                     )
@@ -366,8 +375,8 @@ class Server:
             self.tools[tool.name] = _Tool(
                 name=tool.name,
                 description=self.redactor.text(tool.description or tool.name),
-                schema=self.redactor.payload(_schema(tool.inputSchema)),
-                read_only=bool(hints and hints.readOnlyHint),
+                schema=self.redactor.payload(_schema(tool.input_schema)),
+                read_only=bool(hints and hints.read_only_hint),
             )
         return sorted(self.tools)
 
@@ -380,7 +389,7 @@ class Server:
                 params=types.PaginatedRequestParams(cursor=cursor)
             )
             tools.extend(page.tools)
-            if not (cursor := page.nextCursor):
+            if not (cursor := page.next_cursor):
                 return tools
 
     async def close(self) -> None:
@@ -400,7 +409,7 @@ class Server:
 
     def sdk_tools(self) -> list[sdk.SdkMcpTool[typing.Any]]:
         def make(tool: _Tool) -> sdk.SdkMcpTool[typing.Any]:
-            hints = types.ToolAnnotations(readOnlyHint=True)
+            hints = types.ToolAnnotations(read_only_hint=True)
 
             @sdk.tool(
                 tool.name,
@@ -441,7 +450,7 @@ class Server:
                 _text(self.redactor.text(f'The MCP call failed: {error}'))
             ]
         else:
-            status = 'error' if result.isError else 'ok'
+            status = 'error' if result.is_error else 'ok'
             content = [
                 _block(block, self.redactor) for block in result.content
             ]
@@ -476,9 +485,7 @@ class Server:
             return await held.session.call_tool(
                 name,
                 arguments,
-                read_timeout_seconds=datetime.timedelta(
-                    seconds=safeguards.CALL_TIMEOUT + 10
-                ),
+                read_timeout_seconds=safeguards.CALL_TIMEOUT + 10,
             )
         except Exception as error:
             if not _lost(error):

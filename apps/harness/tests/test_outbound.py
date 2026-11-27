@@ -9,7 +9,7 @@ import typing
 import unittest
 from unittest import mock
 
-import httpx
+import httpx2
 
 from imbi.harness import credential, outbound, proxy
 
@@ -134,11 +134,13 @@ class ProxyRouteTestCase(unittest.IsolatedAsyncioTestCase):
         transport = outbound.Transport(
             url, {'HTTPS_PROXY': self.proxy, 'NO_PROXY': no_proxy}
         )
-        async with httpx.AsyncClient(transport=transport, timeout=2) as client:
+        async with httpx2.AsyncClient(
+            transport=transport, timeout=2
+        ) as client:
             await client.post(url)
 
     async def test_through_the_proxy(self) -> None:
-        with self.assertRaises(httpx.ProxyError):
+        with self.assertRaises(httpx2.ProxyError):
             await self.post('10.0.0.0/8')
         head = self.heads[0].decode()
         self.assertTrue(
@@ -150,7 +152,7 @@ class ProxyRouteTestCase(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_no_proxy_goes_direct(self) -> None:
-        with self.assertRaises((httpx.ConnectError, httpx.ConnectTimeout)):
+        with self.assertRaises((httpx2.ConnectError, httpx2.ConnectTimeout)):
             await self.post('127.0.0.0/8')
         self.assertEqual(self.heads, [])
 
@@ -181,16 +183,16 @@ class HeadersTestCase(unittest.IsolatedAsyncioTestCase):
         auth: outbound.Headers,
         statuses: list[int],
         on_request: typing.Callable[[], None] = lambda: None,
-    ) -> tuple[httpx.Response, list[httpx.Headers]]:
-        seen: list[httpx.Headers] = []
+    ) -> tuple[httpx2.Response, list[httpx2.Headers]]:
+        seen: list[httpx2.Headers] = []
 
-        def network(request: httpx.Request) -> httpx.Response:
-            seen.append(httpx.Headers(request.headers))
+        def network(request: httpx2.Request) -> httpx2.Response:
+            seen.append(httpx2.Headers(request.headers))
             on_request()
-            return httpx.Response(statuses[len(seen) - 1])
+            return httpx2.Response(statuses[len(seen) - 1])
 
-        async with httpx.AsyncClient(
-            transport=httpx.MockTransport(network), auth=auth
+        async with httpx2.AsyncClient(
+            transport=httpx2.MockTransport(network), auth=auth
         ) as client:
             response = await client.post('https://mcp.example.com/mcp')
         return response, seen

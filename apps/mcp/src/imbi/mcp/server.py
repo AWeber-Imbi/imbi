@@ -18,7 +18,7 @@ import logging
 import typing
 
 import fastmcp
-import httpx
+import httpx2
 import jwt
 from fastmcp.server.auth.auth import (
     AccessToken,
@@ -51,7 +51,7 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-async def _inject_auth(request: httpx.Request) -> None:
+async def _inject_auth(request: httpx2.Request) -> None:
     """Forward the MCP caller's Authorization header to the API."""
     headers = get_http_headers(include={'authorization'})
     auth = headers.get('authorization')
@@ -197,11 +197,11 @@ def create_server(
     """
     spec_url = f'{api_url.rstrip("/")}/openapi.json'
     logger.info('Fetching OpenAPI spec from %s', spec_url)
-    response = httpx.get(spec_url, timeout=30)
+    response = httpx2.get(spec_url, timeout=30)
     response.raise_for_status()
     spec = response.json()
 
-    client = httpx.AsyncClient(
+    client = httpx2.AsyncClient(
         base_url=api_url,
         timeout=30,
         event_hooks={'request': [_inject_auth]},

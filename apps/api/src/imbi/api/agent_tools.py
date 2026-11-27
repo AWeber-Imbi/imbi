@@ -28,7 +28,7 @@ import typing
 
 import fastapi
 import fastmcp
-import httpx
+import httpx2
 import pydantic
 from mcp import types as mcp_types
 from valkey import asyncio as valkey
@@ -216,13 +216,13 @@ def capability(annotations: mcp_types.ToolAnnotations | None) -> Capability:
     ``write``. A tool without the two hints gives ``unknown``.
     """
     if annotations is None or (
-        annotations.readOnlyHint is None
-        and annotations.destructiveHint is None
+        annotations.read_only_hint is None
+        and annotations.destructive_hint is None
     ):
         return 'unknown'
-    if annotations.readOnlyHint:
+    if annotations.read_only_hint:
         return 'read'
-    if annotations.destructiveHint:
+    if annotations.destructive_hint:
         return 'destructive'
     return 'write'
 
@@ -261,11 +261,11 @@ def _error_code(err: BaseException) -> ErrorCode:
     pending: list[BaseException] = [err]
     while pending:
         item = pending.pop()
-        if isinstance(item, httpx.HTTPStatusError) and (
+        if isinstance(item, httpx2.HTTPStatusError) and (
             item.response.status_code in {401, 403}
         ):
             return 'auth_failed'
-        if isinstance(item, TimeoutError | httpx.TimeoutException):
+        if isinstance(item, TimeoutError | httpx2.TimeoutException):
             return 'timeout'
         if isinstance(item, BaseExceptionGroup):
             group = typing.cast('BaseExceptionGroup[BaseException]', item)
@@ -276,7 +276,7 @@ def _error_code(err: BaseException) -> ErrorCode:
 
 
 def _imbi_server(
-    spec: dict[str, typing.Any], client: httpx.AsyncClient
+    spec: dict[str, typing.Any], client: httpx2.AsyncClient
 ) -> fastmcp.FastMCP[typing.Any]:
     """Make the Imbi tools as imbi-mcp and imbi-assistant do."""
     return fastmcp.FastMCP.from_openapi(
@@ -296,7 +296,7 @@ async def build_catalog(spec: dict[str, typing.Any]) -> AgentToolCatalog:
     )
     try:
         # The client is not used: no tool is called.
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             # The parse of a large document blocks, so do it in a
             # thread.
             server = await asyncio.to_thread(_imbi_server, spec, client)

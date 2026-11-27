@@ -19,13 +19,14 @@ import asyncio
 import ipaddress
 import os
 import re
+import ssl
 import typing
 import urllib.parse
 
-import httpx
+import certifi
+import httpx2
 
 if typing.TYPE_CHECKING:
-    import ssl
     from collections import abc
 
     from imbi.harness import credential
@@ -80,7 +81,7 @@ def proxy_token(env: abc.Mapping[str, str]) -> str | None:
     return urllib.parse.urlsplit(env.get('HTTPS_PROXY', '')).password
 
 
-class Refused(httpx.TransportError):
+class Refused(httpx2.TransportError):
     """An outbound check refused the request. ``reason`` is a safe
     code."""
 
@@ -89,7 +90,7 @@ class Refused(httpx.TransportError):
         self.reason = reason
 
 
-def check_url(url: str) -> httpx.URL:
+def check_url(url: str) -> httpx2.URL:
     """The URL, when it is an HTTPS URL with a host and no user info.
 
     Raises:
@@ -97,8 +98,8 @@ def check_url(url: str) -> httpx.URL:
 
     """
     try:
-        parsed = httpx.URL(url)
-    except (httpx.InvalidURL, TypeError) as error:
+        parsed = httpx2.URL(url)
+    except (httpx2.InvalidURL, TypeError) as error:
         raise Refused('url_not_valid') from error
     if parsed.scheme != 'https':
         raise Refused('url_not_https')
@@ -107,7 +108,7 @@ def check_url(url: str) -> httpx.URL:
     return parsed
 
 
-def origin(url: httpx.URL) -> tuple[str, str, int | None]:
+def origin(url: httpx2.URL) -> tuple[str, str, int | None]:
     """The scheme, host, and port of ``url``; ``None`` for the scheme's
     default port."""
     return url.scheme, url.host, url.port
@@ -143,14 +144,17 @@ def extra_ca() -> str | None:
 
 
 def ssl_context() -> ssl.SSLContext:
-    """The default trust store, with the :func:`extra_ca` bundle."""
-    context = httpx.create_ssl_context()
+    """The certifi trust store, with the :func:`extra_ca` bundle.
+
+    httpx2 trusts the platform store instead; certifi keeps the trust
+    that the relays had on httpx, on each platform."""
+    context = ssl.create_default_context(cafile=certifi.where())
     if path := extra_ca():
         context.load_verify_locations(cafile=path)
     return context
 
 
-class Transport(httpx.AsyncBaseTransport):
+class Transport(httpx2.AsyncBaseTransport):
     """HTTPS to the origin of ``url`` only, through the egress proxy of
     ``proxy_env`` unless its ``NO_PROXY`` names the host."""
 
@@ -160,13 +164,13 @@ class Transport(httpx.AsyncBaseTransport):
         proxy = proxy_env.get('HTTPS_PROXY')
         if bypasses(checked.host, proxy_env.get('NO_PROXY', '')):
             proxy = None
-        self.inner = httpx.AsyncHTTPTransport(
+        self.inner = httpx2.AsyncHTTPTransport(
             verify=ssl_context(), proxy=proxy or None
         )
 
     async def handle_async_request(
-        self, request: httpx.Request
-    ) -> httpx.Response:
+        self, request: httpx2.Request
+    ) -> httpx2.Response:
         if origin(request.url) != self.origin:
             raise Refused('cross_origin_request')
         return await self.inner.handle_async_request(request)
@@ -191,7 +195,7 @@ def fill(template: str, values: abc.Mapping[str, str]) -> str:
     return VARIABLE.sub(value, template)
 
 
-class Headers(httpx.Auth):
+class Headers(httpx2.Auth):
     """The headers of a plugin MCP server, filled from the current
     secret values on each request, so a renewed secret applies to an
     open session. After a ``401`` the secrets that were sent are renewed
@@ -219,7 +223,7 @@ class Headers(httpx.Auth):
             for name, secret in self.secrets.items()
         }
 
-    def _fill(self, request: httpx.Request, values: dict[str, str]) -> None:
+    def _fill(self, request: httpx2.Request, values: dict[str, str]) -> None:
         """Raises:
         Refused: ``header_value_not_valid``, before the HTTP client
             can put the value in an error message.
@@ -232,12 +236,12 @@ class Headers(httpx.Auth):
             request.headers[name] = value
 
     async def async_auth_flow(
-        self, request: httpx.Request
-    ) -> abc.AsyncGenerator[httpx.Request, httpx.Response]:
+        self, request: httpx2.Request
+    ) -> abc.AsyncGenerator[httpx2.Request, httpx2.Response]:
         sent = self.values()
         self._fill(request, sent)
         response = yield request
-        if response.status_code != int(httpx.codes.UNAUTHORIZED):
+        if response.status_code != int(httpx2.codes.UNAUTHORIZED):
             return
         await asyncio.gather(
             *(

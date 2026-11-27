@@ -19,7 +19,7 @@ import logging
 import time
 import typing
 
-import httpx
+import httpx2
 import mcp
 from mcp import types as mcp_types
 from mcp.client import streamable_http
@@ -52,7 +52,7 @@ class ConnectionTestResult:
     error: str | None = None
 
 
-class OAuthClientCredentialsAuth(httpx.Auth):
+class OAuthClientCredentialsAuth(httpx2.Auth):
     """httpx Auth that fetches an OAuth client-credentials token.
 
     Unlike the assistant's long-lived variant, this is used for a single
@@ -84,8 +84,8 @@ class OAuthClientCredentialsAuth(httpx.Auth):
         }
         if self._scope:
             data['scope'] = self._scope
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(self._timeout_s),
+        async with httpx2.AsyncClient(
+            timeout=httpx2.Timeout(self._timeout_s),
             verify=self._verify_ssl,
         ) as client:
             response = await client.post(self._token_url, data=data)
@@ -94,8 +94,8 @@ class OAuthClientCredentialsAuth(httpx.Auth):
 
     async def async_auth_flow(
         self,
-        request: httpx.Request,
-    ) -> collections.abc.AsyncGenerator[httpx.Request, httpx.Response]:
+        request: httpx2.Request,
+    ) -> collections.abc.AsyncGenerator[httpx2.Request, httpx2.Response]:
         token = await self._fetch_token()
         request.headers['Authorization'] = f'Bearer {token}'
         yield request
@@ -103,11 +103,11 @@ class OAuthClientCredentialsAuth(httpx.Auth):
 
 def _build_auth(
     server: models.MCPServer,
-) -> tuple[dict[str, str] | None, httpx.Auth | None]:
+) -> tuple[dict[str, str] | None, httpx2.Auth | None]:
     """Resolve request headers and httpx auth, decrypting any secrets.
 
     Returns:
-        Tuple of (static headers or None, httpx.Auth or None).
+        Tuple of (static headers or None, httpx2.Auth or None).
 
     Raises:
         ValueError: If the server's auth configuration is incomplete.
@@ -158,15 +158,15 @@ async def list_tools(
     headers, http_auth = _build_auth(server)
     if server.verify_ssl:
         http_client = create_mcp_http_client(
-            headers, httpx.Timeout(timeout_s), http_auth
+            headers, httpx2.Timeout(timeout_s), http_auth
         )
     else:
-        http_client = httpx.AsyncClient(
+        http_client = httpx2.AsyncClient(
             headers=headers,
-            timeout=httpx.Timeout(timeout_s),
+            timeout=httpx2.Timeout(timeout_s),
             auth=http_auth,
             follow_redirects=True,
-            verify=False,  # noqa: S501 - opt-in for in-cluster endpoints
+            verify=False,  # opt-in for in-cluster endpoints
         )
     async with contextlib.AsyncExitStack() as stack:
         streams = await stack.enter_async_context(

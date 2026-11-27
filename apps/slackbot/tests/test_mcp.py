@@ -2,7 +2,7 @@ import asyncio
 from unittest import mock
 
 import fastmcp
-import httpx
+import httpx2
 from fastmcp.exceptions import ToolError
 
 from apps.slackbot.tests import helpers
@@ -39,7 +39,7 @@ class FakeResponse:
 class ConversionTests(helpers.TestCase):
     def test_tool_with_schema(self) -> None:
         tool = mock.Mock(
-            name='t', description='d', inputSchema={'type': 'object'}
+            name='t', description='d', input_schema={'type': 'object'}
         )
         tool.name = 'list'
         result = mcp._mcp_tool_to_anthropic(tool)
@@ -72,7 +72,7 @@ class ManagerTests(helpers.TestCase):
 
     async def test_execute_success(self) -> None:
         manager = mcp.MCPManager()
-        manager._http_client = httpx.AsyncClient()
+        manager._http_client = httpx2.AsyncClient()
         block = mock.Mock()
         block.text = 'hello'
         result = mock.Mock(content=[block], is_error=False)
@@ -88,7 +88,7 @@ class ManagerTests(helpers.TestCase):
 
     async def test_execute_tool_reports_error_result(self) -> None:
         manager = mcp.MCPManager()
-        manager._http_client = httpx.AsyncClient()
+        manager._http_client = httpx2.AsyncClient()
         block = mock.Mock()
         block.text = 'bad'
         result = mock.Mock(content=[block], is_error=True)
@@ -112,7 +112,7 @@ class ManagerTests(helpers.TestCase):
             raise ToolError('HTTP error 400: Bad Request')
 
         manager = mcp.MCPManager()
-        manager._http_client = httpx.AsyncClient()
+        manager._http_client = httpx2.AsyncClient()
         manager._client = fastmcp.Client(server)
         try:
             async with manager._client:
@@ -128,7 +128,7 @@ class ManagerTests(helpers.TestCase):
         # their auth-header set/clear; the lock guarantees each call_tool
         # sees only its own bearer token.
         manager = mcp.MCPManager()
-        manager._http_client = httpx.AsyncClient()
+        manager._http_client = httpx2.AsyncClient()
         release = asyncio.Event()
         seen: list[str | None] = []
 
@@ -176,7 +176,7 @@ class ManagerTests(helpers.TestCase):
             IMBI_INTERNAL_API_URL='http://127.0.0.1:9',
         ):
             with mock.patch.object(
-                httpx.AsyncClient, 'get', return_value=FakeResponse()
+                httpx2.AsyncClient, 'get', return_value=FakeResponse()
             ):
                 manager = mcp.MCPManager()
                 await manager.initialize()
