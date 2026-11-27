@@ -764,6 +764,116 @@ async def refresh_deployment_state(db: graph.Graph, project_id: str) -> None:
         )
 
 
+_STATE_QUERY: typing.Final[typing.LiteralString] = """
+MATCH (p:Project) WHERE p.id IN {project_ids}
+RETURN p.id AS project_id, p.deployment_state AS state
+"""
+
+#: ``WHERE d.id IN`` and not ``{id: ...}``: only the ``WHERE`` form uses
+#: the index on ``Deployment.id``.  A deployment with no ``Release`` is
+#: an in-flight orphan; its release holds what the node recorded, as in
+#: :data:`_IN_FLIGHT_UNRELEASED_QUERY`.
+_BY_ID_QUERY: typing.Final[typing.LiteralString] = """
+MATCH (d:Deployment) WHERE d.id IN {ids}
+MATCH (p:Project)<-[:BELONGS_TO]-(d)-[:TARGETS]->(e:Environment)
+OPTIONAL MATCH (r:Release)-[:HAS_DEPLOYMENT]->(d)
+RETURN p.id AS project_id,
+       e{{.slug, .name, .sort_order}} AS env,
+       CASE WHEN r IS NULL
+            THEN {{tag: d.release_tag, committish: d.release_committish}}
+            ELSE r{{.*}} END AS release,
+       d AS deployment
+"""
+
+
+async def current_and_latest_from_state(
+    db: graph.Graph,
+    project_ids: abc.Sequence[str],
+) -> list[EnvironmentReleaseState]:
+    """:func:`current_and_latest_by_project`, from the stored state.
+
+    Reads the ids that :func:`sync_deployment_state` stored on each
+    project, then those nodes by id, instead of every ``Deployment`` of
+    the projects (issue #998).  Each environment comes from the node's
+    ``TARGETS`` edge, not from the stored key, so a deleted or renamed
+    environment cannot show.  A project with no stored state -- no
+    deployments, or not yet backfilled -- is answered by
+    :func:`current_and_latest_by_project`.
+    """
+    if not project_ids:
+        return []
+    stored: dict[str, dict[str, dict[str, str | None]]] = {}
+    for row in await db.execute(
+        _STATE_QUERY,
+        {'project_ids': list(project_ids)},
+        ['project_id', 'state'],
+    ):
+        project_id = graph.parse_agtype(row['project_id'])
+        state = _decode(row['state'])
+        if isinstance(project_id, str) and state:
+            stored[project_id] = state
+    ids = sorted(
+        {
+            node_id
+            for state in stored.values()
+            for pair in state.values()
+            for node_id in pair.values()
+            if node_id
+        }
+    )
+    nodes = {
+        node.id: node
+        for node in _to_project_deployments(
+            await db.execute(_BY_ID_QUERY, {'ids': ids}, _READER_COLUMNS)
+            if ids
+            else []
+        )
+    }
+    out: list[EnvironmentReleaseState] = []
+    for project_id, state in stored.items():
+        for pair in state.values():
+            latest = nodes.get(pair.get('latest'))
+            if latest is None or latest.project_id != project_id:
+                continue
+            current_id = pair.get('current')
+            current = nodes.get(current_id) if current_id else None
+            out.append(
+                EnvironmentReleaseState(
+                    project_id, latest.environment, current, latest
+                )
+            )
+    missing = [pid for pid in project_ids if pid not in stored]
+    if missing:
+        out.extend(await current_and_latest_by_project(db, missing))
+    return out
+
+
+def state_differences(
+    old: abc.Iterable[EnvironmentReleaseState],
+    new: abc.Iterable[EnvironmentReleaseState],
+) -> list[str]:
+    """Name each ``project/environment`` whose two answers differ in
+    the current or latest attempt."""
+
+    def ids(
+        states: abc.Iterable[EnvironmentReleaseState],
+    ) -> dict[tuple[str, str], tuple[str | None, str | None]]:
+        return {
+            (s.project_id, str(s.environment.get('slug') or '')): (
+                s.current.id if s.current else None,
+                s.latest.id,
+            )
+            for s in states
+        }
+
+    a, b = ids(old), ids(new)
+    return sorted(
+        f'{pid}/{env}'
+        for pid, env in a.keys() | b.keys()
+        if a.get((pid, env)) != b.get((pid, env))
+    )
+
+
 def started_at(deployment: ProjectDeployment) -> datetime.datetime:
     """When *deployment* started, or its last change if that is unknown."""
     return as_utc(deployment.started_at or deployment.event.timestamp)

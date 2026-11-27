@@ -9,6 +9,7 @@ import collections.abc
 import datetime
 import json
 import logging
+import time
 import typing
 
 import fastapi
@@ -774,6 +775,58 @@ class CurrentReleaseState(typing.NamedTuple):
     latest: dict[str, dict[str, LatestDeployment]]
 
 
+#: Background shadow reads, held so the event loop does not drop them.
+_SHADOW_TASKS: set[asyncio.Task[None]] = set()
+
+
+def _shadow_state_read(
+    db: graph.Graph,
+    project_ids: list[str],
+    states: list[deployment_nodes.EnvironmentReleaseState],
+) -> None:
+    """Compare the stored deployment state with the reader, after the
+    response, and log each difference.
+
+    ponytail: shadow mode for issue #998 phase 3.  After one week with
+    no difference logged, the list reads the stored state and this
+    goes.
+    """
+
+    async def run() -> None:
+        started = time.monotonic()
+        try:
+            stored = await deployment_nodes.current_and_latest_from_state(
+                db, project_ids
+            )
+        except Exception:  # noqa: BLE001
+            LOGGER.warning(
+                'Deployment state shadow read failed', exc_info=True
+            )
+            return
+        elapsed = time.monotonic() - started
+        differences = deployment_nodes.state_differences(states, stored)
+        if differences:
+            LOGGER.warning(
+                'Deployment state shadow read differs for %d of %d '
+                'environments (%.0f ms): %s',
+                len(differences),
+                len(states),
+                elapsed * 1000,
+                ', '.join(differences[:10]),
+            )
+        else:
+            LOGGER.info(
+                'Deployment state shadow read matches %d environments '
+                '(%.0f ms)',
+                len(states),
+                elapsed * 1000,
+            )
+
+    task = asyncio.create_task(run())
+    _SHADOW_TASKS.add(task)
+    task.add_done_callback(_SHADOW_TASKS.discard)
+
+
 async def _fetch_current_releases(
     db: graph.Graph,
     project_ids: list[str],
@@ -812,6 +865,7 @@ async def _fetch_current_releases(
             'Failed to fetch deployment nodes for projects', exc_info=True
         )
         return CurrentReleaseState({}, {})
+    _shadow_state_read(db, project_ids, states)
     current: dict[str, dict[str, ReleaseInfo]] = {}
     latest: dict[str, dict[str, LatestDeployment]] = {}
     for state in states:

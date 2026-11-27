@@ -5,6 +5,7 @@ Covers the private helpers added in the release-committish work:
 ``_fetch_current_releases`` and ``lookup_ops_log_performed_by``.
 """
 
+import asyncio
 import datetime
 import unittest
 from unittest import mock
@@ -336,3 +337,47 @@ class LookupOpsLogPerformedByTestCase(unittest.IsolatedAsyncioTestCase):
                 [('p1', 'prod', '1.0.0', None)]
             )
         self.assertEqual(result, {})
+
+
+class ShadowStateReadTestCase(unittest.IsolatedAsyncioTestCase):
+    """The phase-3 shadow read logs differences after the response."""
+
+    async def _run(
+        self, stored: list[deployment_nodes.EnvironmentReleaseState]
+    ) -> list[str]:
+        states = [
+            _state(
+                env_slug='prod',
+                tag='1.0.0',
+                committish='abcdef0',
+                timestamp=datetime.datetime(2026, 4, 1, tzinfo=datetime.UTC),
+            )
+        ]
+        with (
+            mock.patch(
+                'imbi.common.deployments.current_and_latest_from_state',
+                mock.AsyncMock(return_value=stored),
+            ),
+            self.assertLogs(projects.LOGGER, 'INFO') as logs,
+        ):
+            projects._shadow_state_read(mock.AsyncMock(), ['p1'], states)
+            await asyncio.gather(*projects._SHADOW_TASKS)
+        return logs.output
+
+    async def test_logs_a_difference(self) -> None:
+        output = await self._run([])
+        self.assertEqual(1, len(output))
+        self.assertIn('WARNING', output[0])
+        self.assertIn('differs for 1 of 1', output[0])
+        self.assertIn('p1/prod', output[0])
+
+    async def test_logs_a_match(self) -> None:
+        state = _state(
+            env_slug='prod',
+            tag='1.0.0',
+            committish='abcdef0',
+            timestamp=datetime.datetime(2026, 4, 1, tzinfo=datetime.UTC),
+        )
+        output = await self._run([state])
+        self.assertIn('INFO', output[0])
+        self.assertIn('matches 1 environments', output[0])
