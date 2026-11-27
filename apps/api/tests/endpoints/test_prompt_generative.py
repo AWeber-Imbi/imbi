@@ -577,7 +577,7 @@ class GenerativeRunTestCase(base.PromptTestBase):
             await asyncio.sleep(1)
 
         self.decrypt.return_value = None
-        self._patch(model_generate, '_sigv4', slow)
+        self._patch(model_generate, 'sigv4', slow)
         self.route_run()
         self.mock_db.execute.side_effect.rules.insert(
             0,
@@ -644,7 +644,7 @@ class GenerativeRunTestCase(base.PromptTestBase):
         self.decrypt.return_value = None
         signer = mock.Mock(spec=httpx.Auth)
         self._patch(
-            model_generate, '_sigv4', mock.AsyncMock(return_value=signer)
+            model_generate, 'sigv4', mock.AsyncMock(return_value=signer)
         )
         self.route_run()
         self.mock_db.execute.side_effect.rules.insert(
@@ -674,7 +674,7 @@ class SigV4TestCase(base.PromptTestBase):
             ),
             self.assertRaises(generate.GenerateError) as ctx,
         ):
-            asyncio.run(model_generate._sigv4('us-east-1'))
+            asyncio.run(model_generate.sigv4('us-east-1'))
         self.assertEqual(ctx.exception.code, 'credentials_unavailable')
         self.assertTrue(ctx.exception.retry)
 
@@ -696,6 +696,19 @@ class SigV4TestCase(base.PromptTestBase):
             r'^AWS4-HMAC-SHA256 Credential=AKID/\d{8}/us-east-1/bedrock/',
         )
         self.assertIn('X-Amz-Date', signed.headers)
+
+    def test_signs_a_get_without_content_type(self) -> None:
+        from botocore import credentials
+
+        auth = model_generate.SigV4(
+            credentials.ReadOnlyCredentials('AKID', 'secret', None),
+            'us-east-1',
+        )
+        request = httpx.Request(
+            'GET', 'https://bedrock.us-east-1.amazonaws.com/foundation-models'
+        )
+        signed = next(auth.auth_flow(request))
+        self.assertIn('Credential=AKID/', signed.headers['Authorization'])
 
 
 class DispatchTestCase(unittest.IsolatedAsyncioTestCase):

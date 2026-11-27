@@ -359,7 +359,82 @@ class ListModelsTestCase(unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_unsupported_driver(self) -> None:
-        """Bedrock discovery is not implemented yet."""
+        """Vertex discovery is not implemented."""
+        with self.assertRaises(discovery.DiscoveryError):
+            await discovery.list_models('vertex', 'k', None)
+
+    async def test_bedrock_keeps_on_demand_text_models(self) -> None:
+        """The key is a bearer token, and other models are dropped."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.headers['authorization'], 'Bearer bk')
+            self.assertEqual(
+                request.url.host, 'bedrock.us-east-1.amazonaws.com'
+            )
+            self.assertEqual(request.url.path, '/foundation-models')
+            self.assertEqual(
+                request.url.params['byInferenceType'], 'ON_DEMAND'
+            )
+            text = {
+                'outputModalities': ['TEXT'],
+                'inferenceTypesSupported': ['ON_DEMAND'],
+            }
+            return httpx.Response(
+                200,
+                json={
+                    'modelSummaries': [
+                        {
+                            'modelId': 'amazon.nova-pro-v1:0',
+                            **text,
+                            'modelName': 'Nova Pro',
+                        },
+                        {
+                            'modelId': 'anthropic.claude-x',
+                            **text,
+                            'inferenceTypesSupported': ['INFERENCE_PROFILE'],
+                        },
+                        {
+                            'modelId': 'amazon.titan-embed',
+                            **text,
+                            'outputModalities': ['EMBEDDING'],
+                        },
+                    ]
+                },
+            )
+
+        with _transport(handler):
+            found = await discovery.list_models(
+                'bedrock', 'bk', None, region='us-east-1'
+            )
+        self.assertEqual(
+            [(m.model_id, m.display_name) for m in found],
+            [('amazon.nova-pro-v1:0', 'Nova Pro')],
+        )
+
+    async def test_bedrock_without_a_key_uses_the_signer(self) -> None:
+        """With no key, ``auth`` signs the request."""
+
+        class Signer(httpx.Auth):
+            def auth_flow(
+                self, request: httpx.Request
+            ) -> typing.Generator[httpx.Request, httpx.Response]:
+                request.headers['Authorization'] = 'AWS4-HMAC-SHA256 x'
+                yield request
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(
+                request.headers['authorization'], 'AWS4-HMAC-SHA256 x'
+            )
+            return httpx.Response(200, json={'modelSummaries': []})
+
+        with _transport(handler):
+            found = await discovery.list_models(
+                'bedrock', '', None, region='eu-west-1', auth=Signer()
+            )
+        self.assertEqual(found, [])
+
+    async def test_bedrock_without_a_region(self) -> None:
+        """There is no control plane endpoint without a region."""
         with self.assertRaises(discovery.DiscoveryError):
             await discovery.list_models('bedrock', 'k', None)
 

@@ -31,7 +31,7 @@ built in. You cannot add one from the UI.
 | Anthropic | Optional. Defaults to `https://api.anthropic.com` | API key | Yes |
 | OpenAI | Optional. Defaults to `https://api.openai.com/v1` | API key | Yes |
 | OpenAI-compatible | **Required** | API key | Yes |
-| AWS Bedrock | Not used | API key, or the runtime IAM role | No |
+| AWS Bedrock | Not used | API key, or the runtime IAM role | Yes |
 | Google Vertex AI | Not used | API key, or the runtime IAM role | No |
 | TypeSafe | Optional. Defaults to `https://api.typesafe.ai/v1` | API key | No |
 
@@ -253,10 +253,19 @@ switch is on by default. Other drivers do not use it.
 
 ## Discover and import models
 
-Anthropic, OpenAI, and OpenAI-compatible providers can report their own model
-lists. Use this instead of typing model identifiers by hand.
+Anthropic, OpenAI, OpenAI-compatible, and AWS Bedrock providers can report
+their own model lists. Use this instead of typing model identifiers by hand.
 
-1. Set a credential on the provider.
+AWS Bedrock lists the foundation models of the provider's region that give
+text output and support on-demand inference. A model that you can call only
+through an inference profile does not show. Add it by its profile ID. Without
+a stored key, Imbi signs the call with the runtime IAM role, which needs
+`bedrock:ListFoundationModels`.
+
+Google Vertex AI does not support discovery. The express mode API does not
+include a list-models method, so add Gemini models by ID.
+
+1. Set a credential on the provider (AWS Bedrock can use the IAM role).
 2. Click the refresh icon on the provider row. You can also expand the
    provider and click **Import from** that provider.
 3. Wait for the list. Imbi calls the provider with its stored key.

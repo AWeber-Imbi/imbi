@@ -85,6 +85,7 @@ DRIVERS: tuple[DriverInfo, ...] = (
             'API key or the runtime IAM role.'
         ),
         supports_iam=True,
+        supports_discovery=True,
         icon='Cloud',
     ),
     DriverInfo(

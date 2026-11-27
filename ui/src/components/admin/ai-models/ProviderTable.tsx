@@ -150,13 +150,12 @@ export function ProviderTable({
                 const customBaseUrl = row.provider?.base_url ?? null
                 const baseUrl =
                   customBaseUrl ?? row.driver?.default_base_url ?? null
-                // Discovery needs a configured provider, a stored key
-                // or workload identity, and a driver whose list-models
-                // API Imbi can call.
+                // Discovery needs a configured provider, a credential
+                // (a stored key, workload identity, or the IAM role),
+                // and a driver whose list-models API Imbi can call.
                 const canDiscover =
                   !!row.provider &&
-                  (row.provider.has_credentials ||
-                    row.provider.auth_kind === 'workload_identity') &&
+                  row.provider.auth_kind !== 'none' &&
                   (row.driver?.supports_discovery ?? false)
                 return (
                   <Fragment key={row.key}>

@@ -53,7 +53,12 @@ class SigV4(httpx.Auth):
             method=request.method,
             url=str(request.url),
             data=request.content,
-            headers={'Content-Type': request.headers['Content-Type']},
+            # A GET (model discovery) has no Content-Type.
+            headers={
+                k: v
+                for k, v in request.headers.items()
+                if k.lower() == 'content-type'
+            },
         )
         self._signer.add_auth(signed)
         request.headers.update(dict(signed.headers.items()))
@@ -67,7 +72,7 @@ def _aws_session() -> typing.Any:
     return aws.get_session()
 
 
-async def _sigv4(region: str | None) -> SigV4:
+async def sigv4(region: str | None) -> SigV4:
     """Return a signer with the AWS credentials of this process."""
 
     def frozen() -> object:
@@ -146,7 +151,7 @@ async def call(
                 ) from None
             raise generate.GenerateError('credentials_failed') from None
     if provider.driver == 'bedrock':
-        auth = await _sigv4(provider.region)
+        auth = await sigv4(provider.region)
         return await send(dataclasses.replace(request, auth=auth))
     if provider.driver == 'vertex':
         raise generate.GenerateError('provider_misconfigured')

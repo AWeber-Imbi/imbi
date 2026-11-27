@@ -59,7 +59,13 @@ class DiscoveredModel:
 
 
 async def list_models(
-    driver: str, api_key: str, base_url: str | None, *, bearer: bool = False
+    driver: str,
+    api_key: str,
+    base_url: str | None,
+    *,
+    bearer: bool = False,
+    region: str | None = None,
+    auth: httpx.Auth | None = None,
 ) -> list[DiscoveredModel]:
     """Return the models ``driver`` reports for ``api_key``.
 
@@ -69,6 +75,9 @@ async def list_models(
         base_url: Endpoint to call, already resolved against the
             driver's default.
         bearer: ``api_key`` is a workload identity access token.
+        region: Bedrock only: the AWS region to list.
+        auth: Bedrock only: signs the request when ``api_key`` is
+            empty (SigV4 with the AWS credentials of the process).
 
     Returns:
         The provider's models, in the order the provider returned them.
@@ -86,6 +95,8 @@ async def list_models(
                 f'Driver {driver!r} has no endpoint configured'
             )
         return await _list_openai(api_key, base_url)
+    if driver == 'bedrock':
+        return await _list_bedrock(api_key, region, auth)
     raise DiscoveryError(f'Driver {driver!r} does not support discovery')
 
 
@@ -183,6 +194,44 @@ async def _list_openai(api_key: str, base_url: str) -> list[DiscoveredModel]:
     return found
 
 
+async def _list_bedrock(
+    api_key: str, region: str | None, auth: httpx.Auth | None
+) -> list[DiscoveredModel]:
+    """List Bedrock foundation models (``ListFoundationModels``).
+
+    The control plane is ``bedrock.{region}``, not the runtime endpoint
+    in ``base_url``. Only models with text output and on-demand
+    inference are kept: a model that needs an inference profile cannot
+    be called by its own id.
+    """
+    if not region:
+        raise DiscoveryError("Driver 'bedrock' has no region configured")
+    payload = await _get_json(
+        f'https://bedrock.{region}.amazonaws.com/foundation-models'
+        '?byOutputModality=TEXT&byInferenceType=ON_DEMAND',
+        {'Authorization': f'Bearer {api_key}'} if api_key else {},
+        'bedrock',
+        auth,
+    )
+    found: list[DiscoveredModel] = []
+    for item in _entries(payload, 'modelSummaries'):
+        model_id = item.get('modelId')
+        if (
+            not isinstance(model_id, str)
+            or not model_id
+            or 'TEXT' not in (item.get('outputModalities') or ())
+            or 'ON_DEMAND' not in (item.get('inferenceTypesSupported') or ())
+        ):
+            continue
+        found.append(
+            DiscoveredModel(
+                model_id=model_id,
+                display_name=str(item.get('modelName') or model_id),
+            )
+        )
+    return found
+
+
 def _entries(payload: object, key: str) -> list[dict[str, typing.Any]]:
     """Return the list of objects under ``key`` in a provider payload."""
     if not isinstance(payload, dict):
@@ -213,7 +262,12 @@ def _parse_timestamp(value: object) -> datetime.datetime | None:
         return None
 
 
-async def _get_json(url: str, headers: dict[str, str], driver: str) -> object:
+async def _get_json(
+    url: str,
+    headers: dict[str, str],
+    driver: str,
+    auth: httpx.Auth | None = None,
+) -> object:
     """GET ``url`` and return the decoded JSON body.
 
     Raises:
@@ -225,7 +279,9 @@ async def _get_json(url: str, headers: dict[str, str], driver: str) -> object:
     """
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-            response = await client.get(url, headers=headers)
+            response = await client.get(
+                url, headers=headers, auth=auth or httpx.USE_CLIENT_DEFAULT
+            )
     except httpx.HTTPError as exc:
         LOGGER.warning(
             'Model discovery transport failure for %s: %s',

@@ -15,7 +15,7 @@ from imbi.api.endpoints import ai_providers
 from imbi.api.llm import tokens
 from imbi.api.secret_broker import identity
 from imbi.common import graph
-from imbi.common.llm import discovery
+from imbi.common.llm import discovery, generate
 from imbi.common.llm import tokens as common_tokens
 
 ORG = 'acme'
@@ -209,7 +209,8 @@ class DriverCatalogTestCase(AIProviderTestBase):
         by_slug = {entry['slug']: entry for entry in data}
         self.assertTrue(by_slug['openai_compatible']['requires_base_url'])
         self.assertTrue(by_slug['bedrock']['supports_iam'])
-        self.assertFalse(by_slug['bedrock']['supports_discovery'])
+        self.assertTrue(by_slug['bedrock']['supports_discovery'])
+        self.assertFalse(by_slug['vertex']['supports_discovery'])
         self.assertEqual(by_slug['anthropic']['model_types'], ['generative'])
         self.assertEqual(by_slug['typesafe']['model_types'], ['decision'])
         self.assertFalse(by_slug['typesafe']['supports_discovery'])
@@ -693,14 +694,14 @@ class DiscoveryTestCase(AIProviderTestBase):
         self.assertEqual(response.status_code, 409)
 
     def test_rejects_driver_without_discovery(self) -> None:
-        """Bedrock has no list-models support in this iteration."""
+        """Vertex has no list-models support."""
         self.route(
             (
                 GET_PROVIDER,
                 [
                     {
                         'p': provider_props(
-                            driver='bedrock',
+                            driver='vertex',
                             credentials_encrypted='enc:key',
                         )
                     }
@@ -709,6 +710,52 @@ class DiscoveryTestCase(AIProviderTestBase):
         )
         response = self.client.post(f'{BASE}/prv-1/discover')
         self.assertEqual(response.status_code, 422)
+
+    def test_bedrock_without_a_key_signs_with_sigv4(self) -> None:
+        """Bedrock with no key uses the AWS credentials of the process."""
+        self.route(
+            (
+                GET_PROVIDER,
+                [{'p': provider_props(driver='bedrock', region='us-east-1')}],
+            ),
+            (CONFIGURED, []),
+        )
+        signer = object()
+        with (
+            mock.patch(
+                'imbi.api.llm.generate.sigv4',
+                new_callable=mock.AsyncMock,
+                return_value=signer,
+            ) as sigv4,
+            mock.patch(
+                'imbi.common.llm.discovery.list_models',
+                new_callable=mock.AsyncMock,
+                return_value=[],
+            ) as list_models,
+        ):
+            response = self.client.post(f'{BASE}/prv-1/discover')
+        self.assertEqual(response.status_code, 200)
+        sigv4.assert_awaited_once_with('us-east-1')
+        list_models.assert_awaited_once_with(
+            'bedrock', '', None, region='us-east-1', auth=signer
+        )
+
+    def test_bedrock_without_aws_credentials_is_502(self) -> None:
+        """No key and no AWS credentials is a clear failure."""
+        self.route(
+            (
+                GET_PROVIDER,
+                [{'p': provider_props(driver='bedrock', region='us-east-1')}],
+            )
+        )
+        with mock.patch(
+            'imbi.api.llm.generate.sigv4',
+            new_callable=mock.AsyncMock,
+            side_effect=generate.GenerateError('provider_misconfigured'),
+        ):
+            response = self.client.post(f'{BASE}/prv-1/discover')
+        self.assertEqual(response.status_code, 502)
+        self.assertIn('provider_misconfigured', response.json()['detail'])
 
     def test_provider_failure_is_502_without_the_key(self) -> None:
         """A failing call surfaces a sanitized message."""

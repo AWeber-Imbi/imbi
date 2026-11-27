@@ -41,6 +41,7 @@ from imbi.api import secret_broker, settings
 from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.graph_sql import props_template, set_clause
+from imbi.api.llm import generate as llm_generate
 from imbi.api.llm import tokens
 from imbi.api.secret_broker import identity
 from imbi.common import graph, models
@@ -49,7 +50,7 @@ from imbi.common.auth.encryption import (
     decrypt_config_value,
     encrypt_config_value,
 )
-from imbi.common.llm import discovery, drivers
+from imbi.common.llm import discovery, drivers, generate
 from imbi.common.plugins import identity as plugin_identity
 
 LOGGER = logging.getLogger(__name__)
@@ -794,7 +795,8 @@ async def discover_ai_provider_models(
 
     Raises:
         404: No such provider.
-        409: The provider has no stored credentials.
+        409: The provider has no stored credentials (Bedrock uses the
+            AWS credentials of the process instead).
         422: The driver does not support discovery.
         502: The provider rejected or failed the call, or no workload
             identity token could be minted.
@@ -813,8 +815,12 @@ async def discover_ai_provider_models(
         if node.workload_identity is not None:
             found = await _discover_with_token(secrets, node, base_url)
         else:
-            api_key = decrypt_config_value(node.credentials_encrypted)
-            if not api_key:
+            api_key = decrypt_config_value(node.credentials_encrypted) or ''
+            signer = None
+            if not api_key and node.driver == 'bedrock':
+                # No key: sign with the AWS credentials of the process.
+                signer = await llm_generate.sigv4(node.region)
+            elif not api_key:
                 raise fastapi.HTTPException(
                     status_code=409,
                     detail=(
@@ -822,9 +828,16 @@ async def discover_ai_provider_models(
                         f'discover models with'
                     ),
                 )
-            found = await discovery.list_models(node.driver, api_key, base_url)
+            found = await discovery.list_models(
+                node.driver, api_key, base_url, region=node.region, auth=signer
+            )
     except discovery.DiscoveryError as exc:
         raise fastapi.HTTPException(status_code=502, detail=str(exc)) from exc
+    except generate.GenerateError as exc:
+        raise fastapi.HTTPException(
+            status_code=502,
+            detail=f'Could not sign the bedrock request ({exc.code})',
+        ) from None
     except plugin_identity.IdentityError as exc:
         raise fastapi.HTTPException(
             status_code=502,
@@ -859,7 +872,7 @@ async def _discover_with_token(
         secrets,
         node,
         lambda token: discovery.list_models(
-            node.driver, token, base_url, bearer=True
+            node.driver, token, base_url, bearer=True, region=node.region
         ),
         lambda exc: (
             isinstance(exc, discovery.DiscoveryError)
