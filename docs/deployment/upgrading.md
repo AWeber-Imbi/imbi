@@ -96,7 +96,12 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
     imbi-api no longer gives an id to organizations and users that have
     none, or links old user documents to an organization, at startup.
     imbi-api 2.65.0 does both when it starts, so start it one time
-    before you upgrade.
+    before you upgrade. Then examine its startup log for
+    `Failed to give ids to organizations and users` and
+    `Failed to link user documents to organizations`. If one of these
+    messages shows, start 2.65.0 again: the two backfills do not change
+    a record that they updated before. A user document that no rule
+    can link to an organization stays unlinked after each start.
 2. **Before you upgrade from 2.64.0 or 2.65.0**, if you did not run
    **Purge Agent Task Entries from Operations Log**
    (`opslog-agent-task-purge`), run it on 2.65.0. The operations log no
