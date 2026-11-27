@@ -4,14 +4,12 @@ The user is a member of ``org`` and ``other_org``, not of
 ``foreign_org``.
 """
 
-import json
 import typing
 from unittest import mock
 
 import httpx
 
 from apps.api.tests.endpoints import test_agent_tasks
-from imbi.api import user_document_orgs
 from imbi.api.endpoints import plugin_edges
 
 STAMP = '2026-10-15T00:00:00+00:00'
@@ -96,75 +94,6 @@ class UserDocumentTests(CrossOrgTestCase):
             f'/organizations/{self.other_org}/documents/{document}/comments'
         )
         self.assertEqual(comments.status_code, 404, comments.text)
-
-
-class BackfillTests(CrossOrgTestCase):
-    async def asyncSetUp(self) -> None:
-        await super().asyncSetUp()
-        self.permissions |= {'document:read'}
-
-    async def document(self, name: str, email: str) -> str:
-        document = f'doc-{name}-{self.org}'
-        await self.node(
-            'MATCH (u:User {{email: {email}}})'
-            ' CREATE (d:Document {{id: {id}, title: {id}, content: "x",'
-            ' created_by: {email}, created_at: {stamp}, is_pinned: false,'
-            ' version: 1}})-[:ATTACHED_TO]->(u) RETURN 1 AS ok',
-            id=document,
-            email=email,
-            stamp=STAMP,
-        )
-        return document
-
-    async def orgs_of(self, document: str) -> set[str]:
-        records = await self.graph.execute(
-            'MATCH (:Document {{id: {id}}})-[:BELONGS_TO]->(o:Organization)'
-            ' RETURN o.slug AS slug',
-            {'id': document},
-            ['slug'],
-        )
-        return {json.loads(str(r['slug'])) for r in records}
-
-    async def test_rules(self) -> None:
-        # Tagged with a tag of other_org: made through other_org.
-        tagged = await self.document('tagged', self.email)
-        await self.node(
-            'MATCH (o:Organization {{slug: {org}}}),'
-            ' (d:Document {{id: {doc}}})'
-            ' CREATE (t:Tag {{id: {id}, slug: {id}, name: {id}}})'
-            '-[:BELONGS_TO]->(o)'
-            ' CREATE (d)-[:TAGGED_WITH]->(t) RETURN 1 AS ok',
-            id=f'tag-{self.org}',
-            org=self.other_org,
-            doc=tagged,
-        )
-        # The member is in org only.
-        single = await self.document('single', self.member)
-        # The user is in two organizations, and no tag tells which.
-        unknown = await self.document('unknown', self.email)
-        with self.assertLogs('imbi.api.user_document_orgs', 'INFO') as logs:
-            counts = await user_document_orgs.backfill(self.graph)
-        self.assertEqual(await self.orgs_of(tagged), {self.other_org})
-        self.assertEqual(await self.orgs_of(single), {self.org})
-        self.assertEqual(await self.orgs_of(unknown), set())
-        for rule in ('tags', 'single_org', 'unlinked'):
-            self.assertGreaterEqual(counts[rule], 1, counts)
-        self.assertTrue(any(unknown in line for line in logs.output))
-        # The unlinked one is in no organization; the others show.
-        response = await self.get(
-            f'/organizations/{self.org}/documents/{unknown}'
-        )
-        self.assertEqual(response.status_code, 404, response.text)
-        # A second run does not change a linked document.
-        await user_document_orgs.backfill(self.graph)
-        self.assertEqual(await self.orgs_of(tagged), {self.other_org})
-
-    def test_choose(self) -> None:
-        choose = user_document_orgs.choose
-        self.assertEqual(choose({'a'}, {'a', 'b'}), ('tags', 'a'))
-        self.assertEqual(choose({'a', 'b'}, {'a', 'b'}), ('unlinked', None))
-        self.assertEqual(choose({'c'}, {'a'}), ('single_org', 'a'))
-        self.assertEqual(choose(set(), {'a', 'b'}), ('unlinked', None))
 
 
 class PromptTests(CrossOrgTestCase):

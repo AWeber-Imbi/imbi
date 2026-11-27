@@ -490,12 +490,15 @@ async def _create_admin_user(
         'is_service_account': user.is_service_account,
         'created_at': user.created_at.isoformat(),
     }
+    # coalesce() keeps the id of a user that exists.
     query: typing.LiteralString = (
         'MERGE (n:User {{email: {email}}}) '
         + set_clause('n', fields)
-        + ' RETURN n'
+        + ', n.id = coalesce(n.id, {id}) RETURN n'
     )
-    records = await db.execute(query, {'email': user.email, **fields})
+    records = await db.execute(
+        query, {'email': user.email, 'id': user.id, **fields}
+    )
     if not records:
         raise RuntimeError('Failed to create user')
 
