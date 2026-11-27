@@ -109,6 +109,25 @@ must point `stable` at it before the bot uses it. The name and
 description go into every user's system prompt, so a change to the name
 or description of a skill needs `prompt:promote`.
 
+## MCP skills
+
+The Imbi MCP server gives the prompts in the `mcp-skills` namespace to
+MCP clients as skills (the MCP Skills extension). In Claude Code, a
+skill shows as `/<server>:<slug>`.
+
+1. Open **Admin > Prompts** and create a prompt in the namespace
+   `mcp-skills`. The slug is the skill name: lowercase letters, digits,
+   and single hyphens, 64 characters at most.
+2. Write a description that tells the model when to use the skill.
+3. Write the instructions in the system template.
+4. Point the `stable` label (or the default label) at the version.
+
+The system template becomes `SKILL.md` as written. The server does not
+render it, so do not use variables. The server reads the prompts with
+the caller's token on each request, so a caller without `prompt:read`
+gets no skills. Archived prompts, decision prompts, and prompts with no
+label on a version are not served.
+
 ## Decision prompts
 
 A prompt has a kind, chosen when it is created and fixed after that:

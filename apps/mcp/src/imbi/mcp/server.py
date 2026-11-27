@@ -39,7 +39,9 @@ from imbi.common.mcp import (
     copy_permissions_to_meta,
     exclude_non_ai_tools,
     excluded_route_maps,
+    mount_prefix,
 )
+from imbi.mcp import skills
 
 if typing.TYPE_CHECKING:
     from collections import abc
@@ -241,6 +243,11 @@ def create_server(
     # principal making the request rather than a fixed identity. The
     # spec supplies the API's mount prefix, which ``base_url`` lacks.
     mcp.add_middleware(PermissionFilterMiddleware(client, spec))
+
+    # The prompts of the mcp-skills namespace, as MCP skills. The
+    # client sends the caller's token, so each caller gets the skills
+    # it can read.
+    mcp.add_provider(skills.PromptSkills(client, mount_prefix(spec)))
 
     # Every tool call is a ``POST /mcp``; this names the tool in the
     # access log line so the log distinguishes them.
