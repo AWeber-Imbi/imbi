@@ -74,6 +74,19 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
+## 2.65.0
+
+1. After you deploy imbi-api, run **Backfill Deployment State**
+   (`deployment-state-backfill`) one time. Each project now stores the
+   current and latest deployment of each environment, and every
+   deployment write keeps that state current. The operation writes it
+   for the deployments recorded before the upgrade. Run **Report Stale
+   Deployment State** (`deployment-state-check`) afterwards: it must
+   report no project. A deployment write that cannot refresh the state
+   logs the failure and leaves the state stale; run the check and the
+   backfill again to repair it. imbi-api creates a unique index on
+   `Deployment.id` at start.
+
 ## 2.64.0
 
 1. After you deploy imbi-api, run **Purge Agent Task Entries from

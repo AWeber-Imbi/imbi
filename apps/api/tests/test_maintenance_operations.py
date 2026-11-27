@@ -1302,6 +1302,61 @@ class ActivityLoggingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual('Retired', _rows(ctx)[0].detail['label'])
 
 
+class ExecuteDeploymentStateTests(unittest.IsolatedAsyncioTestCase):
+    """The deployment-state check/backfill pair (issue #998)."""
+
+    async def _run(
+        self, execute: typing.Any, *, current: bool
+    ) -> tuple[str, log.MaintenanceContext, mock.AsyncMock]:
+        ctx = _ctx()
+        sync = mock.AsyncMock(return_value=not current)
+        with mock.patch('imbi.common.deployments.sync_deployment_state', sync):
+            outcome = await execute(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
+            )
+        return outcome, ctx, sync
+
+    async def test_check_skips_a_current_state(self) -> None:
+        outcome, ctx, sync = await self._run(
+            operations.execute_deployment_state_check, current=True
+        )
+        self.assertEqual('skipped', outcome)
+        self.assertEqual(
+            [('deployment-state-check', 'skipped')], _actions(ctx)
+        )
+        self.assertTrue(sync.await_args.kwargs['dry_run'])
+
+    async def test_check_reports_a_stale_state(self) -> None:
+        outcome, ctx, sync = await self._run(
+            operations.execute_deployment_state_check, current=False
+        )
+        self.assertEqual('succeeded', outcome)
+        self.assertEqual(
+            [('deployment-state-check', 'succeeded')], _actions(ctx)
+        )
+        self.assertTrue(sync.await_args.kwargs['dry_run'])
+
+    async def test_backfill_skips_a_current_state(self) -> None:
+        outcome, ctx, _sync = await self._run(
+            operations.execute_deployment_state_backfill, current=True
+        )
+        self.assertEqual('skipped', outcome)
+        self.assertEqual(
+            [('deployment-state-backfill', 'skipped')], _actions(ctx)
+        )
+
+    async def test_backfill_writes_a_stale_state(self) -> None:
+        outcome, ctx, sync = await self._run(
+            operations.execute_deployment_state_backfill, current=False
+        )
+        self.assertEqual('succeeded', outcome)
+        self.assertEqual(
+            [('deployment-state-backfill', 'succeeded')], _actions(ctx)
+        )
+        self.assertFalse(sync.await_args.kwargs['dry_run'])
+        self.assertEqual('p1', sync.await_args.args[1])
+
+
 class ExecuteCommitPushedAtRepairTests(unittest.IsolatedAsyncioTestCase):
     """The re-stamped ``pushed_at`` check/repair pair."""
 

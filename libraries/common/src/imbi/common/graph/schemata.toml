@@ -359,6 +359,14 @@ attributes = ["external_run_id"]
 vlabel = "Deployment"
 attributes = ["status"]
 
+# Project.deployment_state stores the ids of the current and latest
+# deployment per environment; the projects list reads those nodes by
+# ``WHERE d.id IN [...]`` (issue #998).
+[[vlabel_indexes]]
+vlabel = "Deployment"
+attributes = ["id"]
+unique = true
+
 [[vlabel_indexes]]
 vlabel = "Permission"
 attributes = ["name"]

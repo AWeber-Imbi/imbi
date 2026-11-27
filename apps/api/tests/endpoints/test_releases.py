@@ -106,6 +106,13 @@ class _ReleasesTestBase(support.SharedAppTestCase):
         # ``locked`` runs its work on the mocked ``execute``, so the
         # query sequence of a create is the same with or without it.
         support.lock_on_execute(self.mock_db)
+        # Tests queue exact ``db.execute`` results; the deployment state
+        # refresh is covered in libraries/common.
+        refresh = mock.patch.object(
+            deployment_nodes, 'refresh_deployment_state', mock.AsyncMock()
+        )
+        refresh.start()
+        self.addCleanup(refresh.stop)
         # The background search-index task re-reads the release it just
         # wrote, so give every test a node for that lookup to return.
         self.persisted_release = models.Release.model_construct(

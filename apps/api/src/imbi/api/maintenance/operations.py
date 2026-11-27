@@ -29,7 +29,7 @@ from imbi.api import cves
 from imbi.api.auth import permissions, principals
 from imbi.api.maintenance import log
 from imbi.api.scoring import queue as score_queue
-from imbi.common import clickhouse, graph, iggy
+from imbi.common import clickhouse, deployments, graph, iggy
 from imbi.common import models as common_models
 from imbi.common.plugins.errors import PluginRateLimited
 
@@ -603,6 +603,62 @@ async def _commit_pushed_at_repair(
         repaired=summary.repaired,
         largest_shift_seconds=summary.largest_shift_seconds,
         dry_run=dry_run,
+    )
+    return 'succeeded'
+
+
+async def execute_deployment_state_check(
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
+) -> ExecuteOutcome:
+    """Report a project whose stored deployment state is stale.
+
+    Writes nothing.  Succeeded means the stored state differs from the
+    reader; skipped means it matches.
+    """
+    del client
+    return await _deployment_state(db, project_id, ctx=ctx, dry_run=True)
+
+
+async def execute_deployment_state_backfill(
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
+) -> ExecuteOutcome:
+    """Store the reader's answer on a project whose state is stale.
+
+    Reads only the graph, so it costs no API calls.  Skipped means the
+    stored state was already current.
+    """
+    del client
+    return await _deployment_state(db, project_id, ctx=ctx, dry_run=False)
+
+
+async def _deployment_state(
+    db: graph.Graph,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
+    dry_run: bool,
+) -> ExecuteOutcome:
+    action = (
+        'deployment-state-check' if dry_run else 'deployment-state-backfill'
+    )
+    if not await deployments.sync_deployment_state(
+        db, project_id, dry_run=dry_run
+    ):
+        return _skip(ctx, action, 'Stored state is current.')
+    ctx.log.record(
+        'succeeded',
+        action,
+        'Stored deployment state differs from the reader.'
+        if dry_run
+        else 'Stored the current and latest deployment of each environment.',
     )
     return 'succeeded'
 
