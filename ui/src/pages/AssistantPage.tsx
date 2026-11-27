@@ -36,9 +36,19 @@ export function AssistantPage() {
   const title = conversations.find((c) => c.id === currentId)?.title
   usePageTitle(title || 'Assistant')
 
+  // A routed conversation belongs to the organization it opened in.
+  const openedOrgRef = useRef(orgSlug)
   useEffect(() => {
     setLoadError(false)
-    if (!conversationId || !orgSlug) return
+    if (!orgSlug) return
+    const switched = !!openedOrgRef.current && openedOrgRef.current !== orgSlug
+    openedOrgRef.current = orgSlug
+    if (switched) {
+      // Do not open the previous organization's conversation in this one.
+      if (conversationId) navigate('/assistant', { replace: true })
+      return
+    }
+    if (!conversationId) return
     // A later conversation replaces this load; ignore its failure.
     let replaced = false
     openAssistantConversation(orgSlug, conversationId).catch(() => {
@@ -47,7 +57,7 @@ export function AssistantPage() {
     return () => {
       replaced = true
     }
-  }, [conversationId, orgSlug])
+  }, [conversationId, navigate, orgSlug])
 
   // A first message creates the conversation; put its id in the URL.
   // Reads the param through a ref so that opening another conversation

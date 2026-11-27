@@ -28,10 +28,12 @@ vi.mock('@/api/assistant', () => ({
   setCurrentConversation: vi.fn(),
 }))
 
+const org = vi.hoisted(() => ({ slug: 'acme' }))
+
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/contexts/OrganizationContext', () => ({
   useOrganization: () => ({
-    selectedOrganization: { name: 'Acme', slug: 'acme' },
+    selectedOrganization: { name: org.slug, slug: org.slug },
   }),
 }))
 
@@ -164,6 +166,34 @@ describe('useCurrentConversationSync', () => {
       expect(useAssistantStore.getState().messages).toHaveLength(1),
     )
     expect(useAssistantStore.getState().currentConversationId).toBe('c-1')
+  })
+
+  it('clears the conversation of the previous organization', async () => {
+    vi.mocked(assistant.getCurrentConversation).mockResolvedValue(
+      stored('c-1', 't1'),
+    )
+    vi.mocked(assistant.getConversation).mockResolvedValue(stored('c-1', 't1'))
+    const { rerender } = renderHook(() => useCurrentConversationSync(false), {
+      wrapper: syncWrapper,
+    })
+    await waitFor(() =>
+      expect(useAssistantStore.getState().currentConversationId).toBe('c-1'),
+    )
+
+    // The other organization has no current conversation yet.
+    vi.mocked(assistant.getCurrentConversation).mockReturnValue(
+      new Promise(() => {}),
+    )
+    org.slug = 'other'
+    try {
+      rerender()
+      await waitFor(() =>
+        expect(useAssistantStore.getState().currentConversationId).toBeNull(),
+      )
+      expect(useAssistantStore.getState().messages).toHaveLength(0)
+    } finally {
+      org.slug = 'acme'
+    }
   })
 
   it('follows new turns and a new conversation from another browser', async () => {

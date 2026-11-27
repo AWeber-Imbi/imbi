@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 
 import { useNavigate } from 'react-router-dom'
 
@@ -249,6 +249,17 @@ export function useCurrentConversationSync(poll: boolean) {
   // Each organization has its own current conversation; a switch of
   // organization fetches it and opens it, or starts a new one.
   const orgSlug = useOrganization().selectedOrganization?.slug
+  useEffect(() => {
+    if (!orgSlug) return
+    // The conversation of the previous organization stays in it: stop
+    // its stream and clear it before the new organization's loads.
+    if (syncedOrg && syncedOrg !== orgSlug) {
+      abortController?.abort()
+      abortController = null
+      resetConversation()
+    }
+    syncedOrg = orgSlug
+  }, [orgSlug])
   useQuery({
     enabled: !!orgSlug,
     // Follow here, not in an effect: the panel remounts on every page,
@@ -274,6 +285,9 @@ export function useCurrentConversationSync(poll: boolean) {
 }
 
 const CURRENT_KEY = ['assistant-current-conversation']
+
+// The organization whose conversation the store holds.
+let syncedOrg: string | undefined
 
 // updated_at of the stored conversation the store last loaded; a newer
 // value means another browser added a turn or renamed it.
