@@ -490,10 +490,9 @@ async def test_mcp_server(
         404: If no MCP server with the given id exists.
 
     """
-    _ = auth
     node = await _fetch(db, org_id, id)
     result = await mcp_test.test_connection(
-        await _with_resolved_refs(service, node)
+        await _with_resolved_refs(service, node, auth.principal_name)
     )
     now = datetime.datetime.now(datetime.UTC)
     node.status = result.status
@@ -736,13 +735,13 @@ async def _credentials(
 
 
 async def _with_resolved_refs(
-    service: broker.Broker, node: models.MCPServer
+    service: broker.Broker, node: models.MCPServer, actor: str
 ) -> models.MCPServer:
     """Return a copy of ``node`` with the values of its references in
     the encrypted fields, for a connection test."""
     if not (node.static_value_ref or node.oauth_client_secret_ref):
         return node
-    values = await _credentials(service, node, 'system')
+    values = await _credentials(service, node, actor)
     update: dict[str, typing.Any] = {}
     if node.static_value_ref:
         update['static_value_encrypted'] = encrypt_config_value(
@@ -755,6 +754,13 @@ async def _with_resolved_refs(
         )
         update['oauth_client_secret_ref'] = None
     return node.model_copy(update=update)
+
+
+class MCPServerDestination(pydantic.BaseModel):
+    """The URLs that the caller's connection to the server uses."""
+
+    url: str
+    oauth_token_url: str | None = None
 
 
 class MCPServerCredentials(pydantic.BaseModel):
@@ -775,6 +781,7 @@ mcp_server_credentials_router = fastapi.APIRouter(tags=['MCP Servers'])
 )
 async def get_mcp_server_credentials(
     id: str,
+    destination: MCPServerDestination,
     response: fastapi.Response,
     db: graph.Pool,
     service: secret_broker.Broker,
@@ -792,6 +799,8 @@ async def get_mcp_server_credentials(
     Raises:
         403: The caller is a user, or a binding does not list the server.
         404: No such server.
+        409: The caller's URLs are not the saved URLs of the server, for
+            example from a connection made before a URL change.
         503: The secret provider failed.
 
     """
@@ -804,7 +813,19 @@ async def get_mcp_server_credentials(
         raise fastapi.HTTPException(
             status_code=404, detail=f'MCP server with id {id!r} not found'
         )
-    values = await _credentials(service, results[0], auth.principal_name)
+    node = results[0]
+    saved_token_url = (
+        str(node.oauth_token_url) if node.oauth_token_url else None
+    )
+    if (destination.url, destination.oauth_token_url) != (
+        str(node.url),
+        saved_token_url,
+    ):
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail='The connection URLs are not the saved URLs of the server',
+        )
+    values = await _credentials(service, node, auth.principal_name)
     response.headers.update(broker.NO_STORE_HEADERS)
     return MCPServerCredentials(**values)
 

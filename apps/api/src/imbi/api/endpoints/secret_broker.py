@@ -234,9 +234,10 @@ class ProviderKeyUsage(pydantic.BaseModel):
 class McpServerUsage(pydantic.BaseModel):
     """The MCP servers of the organization that may use the binding as
     their credential. The assistant and the Slack bot get the value
-    through imbi-api; no grant gives it to a task. A save stores each
-    server's current URL and token URL; when either changes, the server
-    cannot use the binding until a binding writer saves it again."""
+    through imbi-api; no grant gives it to a task. Adding a server
+    stores its current URL and token URL, and a later save keeps them.
+    When either changes, the server cannot use the binding until a
+    binding writer removes it from the list and adds it again."""
 
     model_config = pydantic.ConfigDict(extra='forbid')
 
@@ -849,12 +850,18 @@ async def _mcp_usage(
     org_id: str,
     usage: McpServerUsage | None,
     credential_class: str,
+    stored: dict[str, typing.Any] | None = None,
 ) -> dict[str, typing.Any] | None:
     """The stored form of the MCP server list of a binding: each server
     with its current URL and token URL, which the broker then requires
     (:func:`broker.mcp_usage_entry`). Each server must be in the
     organization, and the credential must not be dynamic (an MCP
-    connection keeps its credential)."""
+    connection keeps its credential).
+
+    A server that ``stored`` (the list before the change) has keeps its
+    pin: a save does not approve a moved server. To approve the new URL,
+    remove the server from the binding, save, add it again, and save.
+    """
     if usage is None:
         return None
     if credential_class == 'dynamic':
@@ -883,7 +890,10 @@ async def _mcp_usage(
         raise _invalid(
             'MCP servers not in the organization: ' + ', '.join(missing)
         )
-    return {'servers': [found[i] for i in ids]}
+    pinned = {
+        entry['id']: entry for entry in (stored or {}).get('servers', [])
+    }
+    return {'servers': [pinned.get(i, found[i]) for i in ids]}
 
 
 async def _check_consumers(
@@ -1040,7 +1050,11 @@ async def update_binding(
     if 'mcp_server_usage' in data.model_fields_set:
         # An explicit null clears the list.
         changes['mcp_server_usage'] = await _mcp_usage(
-            db, org_id, data.mcp_server_usage, credential_class
+            db,
+            org_id,
+            data.mcp_server_usage,
+            credential_class,
+            current['mcp_server_usage'],
         )
     elif current['mcp_server_usage'] and credential_class == 'dynamic':
         raise _invalid('A binding for MCP servers cannot be dynamic')

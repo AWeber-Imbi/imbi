@@ -236,6 +236,17 @@ export function BindingDialog({
       if (!form.grantable) delete body.grantable
       return onSubmit({ ...body, provider_id: form.provider_id, reference })
     }
+    // The saved list holds each server with its pinned URLs, so compare
+    // the ids only. An unchanged list is not sent: the API keeps the pins.
+    const savedIds = (
+      (original.mcp_server_usage as null | { servers?: { id: string }[] })
+        ?.servers ?? []
+    )
+      .map((server) => server.id)
+      .sort()
+    const mcpUsage = body.mcp_server_usage as null | { servers: string[] }
+    if ((mcpUsage?.servers ?? []).join() === savedIds.join())
+      delete body.mcp_server_usage
     const changed = changedFields(body, original)
     if (!Object.keys(changed).length) return onClose()
     onSubmit(changed)

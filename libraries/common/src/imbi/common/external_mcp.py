@@ -172,8 +172,18 @@ def install_credential_resolver(api_url: str, api_token: str) -> None:
         async with api.Imbi(
             base_url=api_url, token=api_token, timeout=float(server.timeout)
         ) as client:
+            # The URLs this connection uses: imbi-api refuses the secret
+            # when they are not the saved ones.
             response = await client.post(
-                f'/mcp-servers/{server.id}/credentials'
+                f'/mcp-servers/{server.id}/credentials',
+                json={
+                    'url': str(server.url),
+                    'oauth_token_url': (
+                        str(server.oauth_token_url)
+                        if server.oauth_token_url
+                        else None
+                    ),
+                },
             )
         response.raise_for_status()
         return typing.cast('dict[str, str | None]', response.json())
@@ -727,6 +737,9 @@ async def get_manager(db: graph.Graph, org_id: str) -> ExternalMCPManager:
         manager = ExternalMCPManager(org_id)
         try:
             await manager.initialize(db)
+        except asyncio.CancelledError:
+            await manager.aclose()
+            raise
         except Exception:
             LOGGER.exception(
                 'Failed to initialize the MCP servers of organization %s',

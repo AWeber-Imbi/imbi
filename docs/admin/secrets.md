@@ -183,11 +183,18 @@ or its client secret from a binding. The binding must list the server:
 3. On the MCP server, select the binding as the source of the secret.
 
 The binding keeps the URL, the token URL, the auth type, and the
-**Verify SSL** setting that each listed server had when the binding was
-saved. Imbi sends the secret only to that place, in that way. After
-someone changes one of them on a server, the server cannot get the
-secret until a user with `secret_binding:write` opens the binding and
-saves it again.
+**Verify SSL** setting that each listed server had when it was added to
+the binding. Imbi sends the secret only to that place, in that way. A
+save of the binding does not change these values for a server that stays
+in the list. After someone changes one of them on a server, the server
+cannot get the secret until a user with `secret_binding:write` approves
+the change:
+
+1. Open the binding, clear the server in **MCP servers**, and save.
+2. Open the binding again, select the server, and save.
+
+A grant cannot give a binding for MCP servers to an agent task, and the
+**MCP servers** list of a binding that a grant uses does not change.
 
 A dynamic binding cannot serve an MCP server. imbi-api gives the value
 only to the imbi-assistant and imbi-slackbot service accounts

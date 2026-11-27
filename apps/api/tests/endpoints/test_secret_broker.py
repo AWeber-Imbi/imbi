@@ -460,6 +460,92 @@ class SecretEndpointTestCase(
         self.assertEqual(response.status_code, 200, response.text)
         self.assertIsNone(response.json()['mcp_server_usage'])
 
+    async def test_mcp_server_pins_are_kept(self) -> None:
+        """A save keeps the pin of a listed server; only removing the
+        server and adding it again pins its new URL."""
+        server = f'srv-{self.org}'
+        await self.mcp_server(server)
+        response = await self._post(
+            '/secret-bindings/',
+            {
+                'reference': 'secret://production/mcp/token',
+                'provider_id': str(self.provider['id']),
+                'credential_class': 'static',
+                'locator': {'key': 'plain'},
+                'allowed_delivery_modes': ['stdin'],
+                'mcp_server_usage': {'servers': [server]},
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        url = self.base + f'/secret-bindings/{response.json()["id"]}'
+        await self.graph.execute(
+            'MATCH (s:MCPServer {{id: {id}}})'
+            ' SET s.url = "https://moved.test" RETURN s.id AS id',
+            {'id': server},
+            ['id'],
+        )
+
+        def pinned(response: typing.Any) -> str:
+            self.assertEqual(response.status_code, 200, response.text)
+            return response.json()['mcp_server_usage']['servers'][0]['url']
+
+        for change in (
+            {'description': 'changed'},
+            {'mcp_server_usage': {'servers': [server]}},
+        ):
+            with self.subTest(change=change):
+                response = await self.client.patch(url, json=change)
+                self.assertEqual(pinned(response), 'https://mcp.test/')
+        response = await self.client.patch(
+            url, json={'mcp_server_usage': None}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        response = await self.client.patch(
+            url, json={'mcp_server_usage': {'servers': [server]}}
+        )
+        self.assertEqual(pinned(response), 'https://moved.test/')
+
+    async def test_mcp_usage_and_grants_exclude_each_other(self) -> None:
+        """A grant cannot name a binding for MCP servers, and the server
+        list of a granted binding does not change."""
+        server = f'srv-{self.org}'
+        await self.mcp_server(server)
+        response = await self._post(
+            '/secret-bindings/',
+            {
+                'reference': 'secret://production/mcp/token',
+                'provider_id': str(self.provider['id']),
+                'credential_class': 'static',
+                'locator': {'key': 'plain'},
+                'allowed_delivery_modes': ['stdin'],
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        binding_id = response.json()['id']
+        url = self.base + f'/secret-bindings/{binding_id}'
+        grant = {
+            'agent_ids': ['agent-x'],
+            'binding_ids': [binding_id],
+            'purposes': ['checkout'],
+            'delivery_modes': ['stdin'],
+        }
+        response = await self._post('/secret-grants/', grant)
+        self.assertEqual(response.status_code, 201, response.text)
+        grant_url = self.base + f'/secret-grants/{response.json()["id"]}'
+        response = await self.client.patch(
+            url, json={'mcp_server_usage': {'servers': [server]}}
+        )
+        self.assertEqual(response.status_code, 409, response.text)
+        response = await self.client.delete(grant_url)
+        self.assertEqual(response.status_code, 204, response.text)
+        response = await self.client.patch(
+            url, json={'mcp_server_usage': {'servers': [server]}}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        response = await self._post('/secret-grants/', grant)
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn('MCP servers', response.text)
+
     async def test_mcp_server_credentials(self) -> None:
         """A service account gets the value of a listed server; a user,
         or a server that the binding does not list, gets nothing."""
@@ -486,9 +572,10 @@ class SecretEndpointTestCase(
             },
         )
         path = f'/mcp-servers/{server}/credentials'
+        dest = {'url': 'https://mcp.test/'}
         self.permissions.add('mcp_server:credential')
         # A user cannot read the value, even with the permission.
-        response = await self.client.post(path)
+        response = await self.client.post(path, json=dest)
         self.assertEqual(response.status_code, 403, response.text)
 
         account = permissions.AuthContext(
@@ -504,7 +591,7 @@ class SecretEndpointTestCase(
 
         overrides = self.test_app.dependency_overrides
         overrides[permissions.get_current_user] = service
-        response = await self.client.post(path)
+        response = await self.client.post(path, json=dest)
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(
             response.json(),
@@ -514,6 +601,11 @@ class SecretEndpointTestCase(
             },
         )
         self.assertEqual(response.headers['cache-control'], 'no-store')
+        # A connection that uses other URLs than the saved ones.
+        response = await self.client.post(
+            path, json={'url': 'https://moved.test/'}
+        )
+        self.assertEqual(response.status_code, 409, response.text)
         # The binding no longer lists the server.
         await self.store.update(
             'bindings',
@@ -521,10 +613,10 @@ class SecretEndpointTestCase(
             (await self.store.binding_by_reference(self.org, reference))['id'],
             {'mcp_server_usage': {'servers': []}},
         )
-        response = await self.client.post(path)
+        response = await self.client.post(path, json=dest)
         self.assertEqual(response.status_code, 403, response.text)
         account.permissions = set()
-        response = await self.client.post(path)
+        response = await self.client.post(path, json=dest)
         self.assertEqual(response.status_code, 403, response.text)
 
     async def test_locator_check(self) -> None:

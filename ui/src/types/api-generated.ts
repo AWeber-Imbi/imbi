@@ -2316,6 +2316,8 @@ export interface paths {
          *     Raises:
          *         403: The caller is a user, or a binding does not list the server.
          *         404: No such server.
+         *         409: The caller's URLs are not the saved URLs of the server, for
+         *             example from a connection made before a URL change.
          *         503: The secret provider failed.
          */
         post: operations["get_mcp_server_credentials_api_mcp_servers__id__credentials_post"];
@@ -17360,6 +17362,16 @@ export interface components {
             oauth_client_secret?: string | null;
         };
         /**
+         * MCPServerDestination
+         * @description The URLs that the caller's connection to the server uses.
+         */
+        MCPServerDestination: {
+            /** Url */
+            url: string;
+            /** Oauth Token Url */
+            oauth_token_url?: string | null;
+        };
+        /**
          * MCPServerResponse
          * @description Response model for an MCP server.
          *
@@ -17899,9 +17911,10 @@ export interface components {
          * McpServerUsage
          * @description The MCP servers of the organization that may use the binding as
          *     their credential. The assistant and the Slack bot get the value
-         *     through imbi-api; no grant gives it to a task. A save stores each
-         *     server's current URL and token URL; when either changes, the server
-         *     cannot use the binding until a binding writer saves it again.
+         *     through imbi-api; no grant gives it to a task. Adding a server
+         *     stores its current URL and token URL, and a later save keeps them.
+         *     When either changes, the server cannot use the binding until a
+         *     binding writer removes it from the list and adds it again.
          */
         McpServerUsage: {
             /**
@@ -28412,7 +28425,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MCPServerDestination"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

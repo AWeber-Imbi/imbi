@@ -2,8 +2,10 @@
 
 import dataclasses
 
+import orjson
+
 from apps.api.tests import secret_support
-from imbi.api.secret_broker import broker, providers
+from imbi.api.secret_broker import broker, providers, store
 
 REFERENCE = 'secret://production/mcp/token'
 SERVER = broker.McpServerTarget(
@@ -108,3 +110,51 @@ class McpCredentialTestCase(secret_support.SecretCase):
         ]
         self.assertIn('mcp_server_not_listed', {e.reason for e in denied})
         self.assertTrue(all(e.actor == 'svc' for e in denied))
+
+    async def test_disabled_provider_records_a_denial(self) -> None:
+        await self.store.update(
+            'providers', self.org, self.provider['id'], {'enabled': False}
+        )
+        self.assertEqual(await self.refused(), 'secret_provider_disabled')
+        event = next(
+            e
+            for e in await self.audit_events()
+            if e.type == 'secret_resolution_denied'
+        )
+        self.assertEqual(event.actor, 'svc')
+        self.assertEqual(event.purpose, broker.MCP_PURPOSE)
+        self.assertEqual(event.binding_id, str(self.mcp_binding['id']))
+
+    async def test_a_field_list_limits_the_value(self) -> None:
+        await self.store.update(
+            'bindings',
+            self.org,
+            self.mcp_binding['id'],
+            {'locator': {'key': 'json'}, 'allowed_fields': ['token']},
+        )
+        material = await self.broker.mcp_credential(
+            self.org, REFERENCE, SERVER, actor='svc'
+        )
+        self.assertEqual(
+            orjson.loads(material.value), {'token': secret_support.MATERIAL}
+        )
+
+    async def test_cannot_be_granted_to_a_task(self) -> None:
+        with self.assertRaises(store.ProviderKeyBinding):
+            await self.store.update(
+                'grants',
+                self.org,
+                self.grant['id'],
+                {'binding_ids': [self.mcp_binding['id']]},
+            )
+        # A grant from before the store refused this still gets nothing.
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE secrets.grants SET binding_ids = %s WHERE id = %s',
+                ([self.mcp_binding['id']], self.grant['id']),
+            )
+        with self.assertRaises(providers.BrokerError) as ctx:
+            await self.broker.create_resolution(
+                self.context(), self.request(reference=REFERENCE)
+            )
+        self.assertEqual(ctx.exception.reason, 'mcp_server_binding')

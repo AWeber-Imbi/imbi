@@ -521,10 +521,15 @@ def filter_fields(
 
 
 def _refuse_provider_key(binding: Row) -> None:
-    """A provider key is for imbi-api only: no grant gives it to a task."""
+    """A provider key, and the credential of an MCP server, are for
+    imbi-api only: no grant gives them to a task."""
     if binding['provider_key_usage']:
         raise providers.BrokerError(
             'secret_access_denied', 'provider_key_binding'
+        )
+    if binding['mcp_server_usage']:
+        raise providers.BrokerError(
+            'secret_access_denied', 'mcp_server_binding'
         )
 
 
@@ -1800,14 +1805,19 @@ class Broker:
                 denied.model_copy(update={'reason': err.reason or err.code})
             )
             raise
-        return await self._resolve_for_imbi(
+        material = await self._resolve_for_imbi(
             organization_id,
             binding,
             parsed,
             purpose=MCP_PURPOSE,
             reason='mcp_server',
             actor=actor,
+            denied=denied,
         )
+        # As a task resolution: a binding with a field list gives only
+        # those fields.
+        filter_fields(material, binding, parsed.field)
+        return material
 
     async def _resolve_for_imbi(
         self,
@@ -1819,24 +1829,35 @@ class Broker:
         reason: str,
         actor: str,
         task_id: uuid.UUID | None = None,
+        denied: audit.Event | None = None,
     ) -> providers.Material:
         """Resolve a binding that only imbi-api reads (a provider key,
-        an MCP server credential), with its audit event.
+        an MCP server credential), with its audit event. With
+        ``denied``, a disabled provider records that denial event.
 
         Raises:
             BrokerError: The provider is disabled or failed.
 
         """
-        async with self._pool.connection() as conn:
-            provider = _check_provider(
-                await _fetch_one(
-                    conn,
-                    'SELECT * FROM secrets.providers'
-                    ' WHERE id = %s AND organization_id = %s',
-                    (binding['provider_id'], organization_id),
-                ),
-                binding,
-            )
+        try:
+            async with self._pool.connection() as conn:
+                provider = _check_provider(
+                    await _fetch_one(
+                        conn,
+                        'SELECT * FROM secrets.providers'
+                        ' WHERE id = %s AND organization_id = %s',
+                        (binding['provider_id'], organization_id),
+                    ),
+                    binding,
+                )
+        except providers.BrokerError as err:
+            if denied is not None:
+                await self._record_event(
+                    denied.model_copy(
+                        update={'reason': err.reason or err.code}
+                    )
+                )
+            raise
         event = audit.Event(
             organization_id=organization_id,
             type='secret_materialized',

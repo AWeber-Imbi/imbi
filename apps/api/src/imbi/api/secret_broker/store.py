@@ -52,8 +52,8 @@ class NotGrantable(ValueError):
 
 
 class ProviderKeyBinding(ValueError):
-    """A grant names a provider key binding. The broker never gives
-    such a binding to a task."""
+    """A grant names a provider key binding or a binding for MCP
+    servers. The broker never gives such a binding to a task."""
 
 
 def _value(value: typing.Any) -> typing.Any:
@@ -334,10 +334,11 @@ class SecretStore:
                 await _check_provider(
                     cur, organization_id, changes['provider_id']
                 )
-            if table == 'bindings' and 'provider_key_usage' in changes:
-                await _check_mark_change(
-                    cur, organization_id, row_id, changes['provider_key_usage']
-                )
+            for column in ('provider_key_usage', 'mcp_server_usage'):
+                if table == 'bindings' and column in changes:
+                    await _check_mark_change(
+                        cur, organization_id, row_id, column, changes[column]
+                    )
             query = sql.SQL(
                 'UPDATE {table} SET {sets}updated_at = NOW()'
                 ' WHERE organization_id = %s AND id = %s{guard}{kept}'
@@ -783,10 +784,11 @@ async def _lock_bindings(
     require_grantable: bool = False,
 ) -> None:
     """Lock the bindings of a grant; each must be in the organization,
-    must not be a provider key binding, and with ``require_grantable``
-    must be ``grantable``."""
+    must not be a provider key binding or a binding for MCP servers,
+    and with ``require_grantable`` must be ``grantable``."""
     await cur.execute(
-        'SELECT provider_key_usage, grantable FROM secrets.bindings'
+        'SELECT provider_key_usage, mcp_server_usage, grantable'
+        ' FROM secrets.bindings'
         ' WHERE organization_id = %s AND id = ANY(%s) FOR SHARE',
         (organization_id, binding_ids),
     )
@@ -797,6 +799,10 @@ async def _lock_bindings(
         raise ProviderKeyBinding(
             'A provider key binding cannot be granted to a task'
         )
+    if any(row['mcp_server_usage'] for row in found):
+        raise ProviderKeyBinding(
+            'A binding for MCP servers cannot be granted to a task'
+        )
     if require_grantable and not all(row['grantable'] for row in found):
         raise NotGrantable('A binding is not grantable by you')
 
@@ -805,24 +811,28 @@ async def _check_mark_change(
     cur: psycopg.AsyncCursor[Row],
     organization_id: str,
     binding_id: uuid.UUID,
+    column: str,
     usage: Row | None,
 ) -> None:
-    """The provider key mark of a granted binding does not change. A
-    cleared mark gives the private key to the tasks of the grant, and a
-    new mark makes the grant useless. A null that stays null is no
-    change. The row lock waits for a grant write that holds the binding.
+    """The provider key mark, or the MCP server list, of a granted
+    binding does not change. A cleared mark gives the secret to the
+    tasks of the grant, and a new mark makes the grant useless. A null
+    that stays null is no change. The row lock waits for a grant write
+    that holds the binding.
     """
     await cur.execute(
-        'SELECT provider_key_usage FROM secrets.bindings'
-        ' WHERE organization_id = %s AND id = %s FOR UPDATE',
+        sql.SQL(
+            'SELECT {column} FROM secrets.bindings'
+            ' WHERE organization_id = %s AND id = %s FOR UPDATE'
+        ).format(column=sql.Identifier(column)),
         (organization_id, binding_id),
     )
     row = await cur.fetchone()
-    if not row or not (row['provider_key_usage'] or usage):
+    if not row or not (row[column] or usage):
         return
     await cur.execute(_GRANTED, (binding_id,))
     if await cur.fetchone() is not None:
         raise InUse(
             'A grant uses the binding; remove it from the grant before '
-            'changing the provider key mark'
+            'changing the provider key mark or the MCP servers'
         )

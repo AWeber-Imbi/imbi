@@ -130,6 +130,32 @@ class BuildAuthTestCase(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(external_mcp.set_credential_resolver, None)
         self.assertIsNotNone(external_mcp._credential_resolver)
 
+    async def test_resolver_sends_the_connection_urls(self) -> None:
+        server = _make_server(
+            id='srv-1',
+            auth_type='oauth_client_credentials',
+            oauth_token_url='https://auth.example.com/token',
+            oauth_client_id='client-id',
+            oauth_client_secret_ref='secret://production/mcp/token',
+        )
+        response = mock.MagicMock()
+        response.json.return_value = {'oauth_client_secret': 's'}
+        client = mock.AsyncMock()
+        client.post.return_value = response
+        client.__aenter__.return_value = client
+        with mock.patch.object(external_mcp.api, 'Imbi', return_value=client):
+            external_mcp.install_credential_resolver('http://api', 'ik_x')
+            self.addCleanup(external_mcp.set_credential_resolver, None)
+            assert external_mcp._credential_resolver is not None
+            await external_mcp._credential_resolver(server)
+        client.post.assert_awaited_once_with(
+            '/mcp-servers/srv-1/credentials',
+            json={
+                'url': 'https://mcp.example.com/mcp',
+                'oauth_token_url': 'https://auth.example.com/token',
+            },
+        )
+
     async def test_ref_without_resolver_connects_without_secret(self) -> None:
         server = _make_server(
             auth_type='static',
@@ -674,6 +700,24 @@ class ModuleLevelTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             manager = await external_mcp.get_manager(db, 'org-1')
         self.assertFalse(manager.is_initialized)
+        self.assertNotIn('org-1', external_mcp._managers)
+
+    async def test_cancelled_initialize_closes_the_manager(self) -> None:
+        db = mock.AsyncMock()
+        aclose = mock.AsyncMock()
+        with (
+            mock.patch.object(
+                external_mcp.ExternalMCPManager,
+                'initialize',
+                side_effect=asyncio.CancelledError,
+            ),
+            mock.patch.object(
+                external_mcp.ExternalMCPManager, 'aclose', aclose
+            ),
+            self.assertRaises(asyncio.CancelledError),
+        ):
+            await external_mcp.get_manager(db, 'org-1')
+        aclose.assert_awaited_once()
         self.assertNotIn('org-1', external_mcp._managers)
 
     async def test_reinitialize_replaces_only_that_organization(self) -> None:
