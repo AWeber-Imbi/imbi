@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils'
 const NONE = '__none__'
 
 interface AIModelSelectProps {
+  ariaLabel?: string
   className?: string
   disabled?: boolean
   /** Only models of this type are offered. A prompt's kind sets it. */
@@ -27,6 +28,7 @@ interface AIModelSelectProps {
  * prompt a decision model.
  */
 export function AIModelSelect({
+  ariaLabel = 'Model',
   className,
   disabled = false,
   modelType = 'generative',
@@ -44,7 +46,7 @@ export function AIModelSelect({
       value={value ?? NONE}
     >
       <SelectTrigger
-        aria-label="Model"
+        aria-label={ariaLabel}
         className={cn('h-8 font-mono text-xs', className)}
       >
         <SelectValue placeholder="Select a model" />

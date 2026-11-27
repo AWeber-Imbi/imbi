@@ -2742,6 +2742,8 @@ export interface paths {
          *
          *     Raises:
          *         404: No such model.
+         *         409: The model is the default model of an organization or a
+         *             team.
          */
         delete: operations["delete_ai_model_api_organizations__org_slug__ai_models__id__delete"];
         options?: never;
@@ -2820,6 +2822,70 @@ export interface paths {
          *         502: The LiteLLM price file could not be downloaded.
          */
         post: operations["apply_price_sync_api_organizations__org_slug__ai_models_price_sync_apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/default-ai-model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Organization Default Ai Model
+         * @description Get the default model of the organization.
+         *
+         *     Raises:
+         *         404: No such organization.
+         */
+        get: operations["get_organization_default_ai_model_api_organizations__org_slug__default_ai_model_get"];
+        /**
+         * Set Organization Default Ai Model
+         * @description Set the default model of the organization. A ``null`` slug
+         *     clears it.
+         *
+         *     Raises:
+         *         404: No such organization.
+         *         422: No such model, or a decision model.
+         */
+        put: operations["set_organization_default_ai_model_api_organizations__org_slug__default_ai_model_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/teams/{slug}/default-ai-model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Team Default Ai Model
+         * @description Get the default model of a team.
+         *
+         *     Raises:
+         *         404: No such team.
+         */
+        get: operations["get_team_default_ai_model_api_organizations__org_slug__teams__slug__default_ai_model_get"];
+        /**
+         * Set Team Default Ai Model
+         * @description Set the default model of a team. A ``null`` slug clears it.
+         *
+         *     Raises:
+         *         404: No such team.
+         *         422: No such model, a decision model, or a ``restricted`` model
+         *             that does not allow the team.
+         */
+        put: operations["set_team_default_ai_model_api_organizations__org_slug__teams__slug__default_ai_model_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -15010,6 +15076,15 @@ export interface components {
             total_bytes?: number | null;
             /** Detail */
             detail?: string | null;
+        };
+        /**
+         * DefaultAIModel
+         * @description The default model of an organization or a team. ``None`` is no
+         *     default.
+         */
+        DefaultAIModel: {
+            /** Slug */
+            slug?: string | null;
         };
         /**
          * DefaultLabelUpdate
@@ -29140,6 +29215,140 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PriceSyncApplyResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_organization_default_ai_model_api_organizations__org_slug__default_ai_model_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DefaultAIModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_organization_default_ai_model_api_organizations__org_slug__default_ai_model_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DefaultAIModel"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DefaultAIModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_team_default_ai_model_api_organizations__org_slug__teams__slug__default_ai_model_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DefaultAIModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_team_default_ai_model_api_organizations__org_slug__teams__slug__default_ai_model_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DefaultAIModel"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DefaultAIModel"];
                 };
             };
             /** @description Validation Error */

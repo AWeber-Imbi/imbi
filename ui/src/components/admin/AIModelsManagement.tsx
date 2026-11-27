@@ -47,6 +47,7 @@ import type {
 import { AdminSection } from './AdminSection'
 import { CredentialsDialog } from './ai-models/CredentialsDialog'
 import { decimalToNumber } from './ai-models/decimal'
+import { DefaultModelSelect } from './ai-models/DefaultModelSelect'
 import { DiscoverModelsDialog } from './ai-models/DiscoverModelsDialog'
 import { ModelDialog, type ModelFormValues } from './ai-models/ModelDialog'
 import { PriceSyncDialog } from './ai-models/PriceSyncDialog'
@@ -340,6 +341,15 @@ export function AIModelsManagement() {
         selectable in prompts, assistants and automations; disabling it hides it
         everywhere without deleting its configuration.
       </p>
+
+      {orgSlug && (
+        <div className="flex items-center gap-3">
+          <span className="text-secondary text-sm">
+            Default model for {selectedOrganization?.name ?? orgSlug}
+          </span>
+          <DefaultModelSelect className="w-72" orgSlug={orgSlug} />
+        </div>
+      )}
 
       {(missingModel || missingProvider) && (
         <Alert variant="warning">

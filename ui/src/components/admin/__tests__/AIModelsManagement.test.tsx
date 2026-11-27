@@ -13,12 +13,14 @@ vi.mock('@/api/endpoints', () => ({
   deleteAIProvider: vi.fn(),
   deleteAIProviderCredentials: vi.fn(),
   discoverAIModels: vi.fn(),
+  getDefaultAIModel: vi.fn(),
   importAIModels: vi.fn(),
   listAIModels: vi.fn(),
   listAIProviderDrivers: vi.fn(),
   listAIProviders: vi.fn(),
   listTeams: vi.fn(),
   setAIProviderCredentials: vi.fn(),
+  setDefaultAIModel: vi.fn(),
   updateAIModel: vi.fn(),
   updateAIProvider: vi.fn(),
 }))
@@ -149,6 +151,10 @@ describe('AIModelsManagement', () => {
     vi.mocked(endpoints.listAIProviders).mockResolvedValue([provider])
     vi.mocked(endpoints.listAIModels).mockResolvedValue([model])
     vi.mocked(endpoints.listTeams).mockResolvedValue([team])
+    vi.mocked(endpoints.getDefaultAIModel).mockResolvedValue({ slug: null })
+    vi.mocked(endpoints.setDefaultAIModel).mockResolvedValue({
+      slug: 'claude-fable-5-1',
+    })
     vi.mocked(endpoints.createAIModel).mockResolvedValue(model)
     vi.mocked(endpoints.updateAIModel).mockResolvedValue(model)
     vi.mocked(endpoints.updateAIProvider).mockResolvedValue(provider)
@@ -186,6 +192,35 @@ describe('AIModelsManagement', () => {
       created: [],
       skipped: [],
     })
+  })
+
+  it('sets the organization default model', async () => {
+    const endpoints = await import('@/api/endpoints')
+    await mountAt('/admin/ai-models')
+
+    const select = await screen.findByRole('combobox', {
+      name: 'Default model',
+    })
+    await waitFor(() =>
+      expect(endpoints.getDefaultAIModel).toHaveBeenCalledWith(
+        'acme',
+        undefined,
+        expect.anything(),
+      ),
+    )
+    fireEvent.click(select)
+    fireEvent.click(
+      await screen.findByRole('option', { name: /claude-fable-5-1/ }),
+    )
+
+    await waitFor(() =>
+      expect(endpoints.setDefaultAIModel).toHaveBeenCalledWith(
+        'acme',
+        'claude-fable-5-1',
+        undefined,
+      ),
+    )
+    await waitFor(() => expect(select).toHaveTextContent('claude-fable-5-1'))
   })
 
   it('renders configured providers and unconfigured drivers as ghost rows', async () => {

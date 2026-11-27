@@ -944,6 +944,8 @@ export type DashboardStatus = Schemas['DashboardStatus']
 
 export type DatastoreStatus = Schemas['DatastoreStatus']
 
+export type DefaultAIModel = Schemas['DefaultAIModel']
+
 export type DeploymentAction = 'deploy' | 'redeploy'
 
 export interface DeploymentCommit {
