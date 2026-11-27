@@ -91,14 +91,14 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
     - **Purge Agent Task Entries from Operations Log**
       (`opslog-agent-task-purge`, 2.64.0)
 
-    The operations log also no longer accepts the `Agent Task` entry
-    type. If you did not run **Purge Agent Task Entries from Operations
-    Log** on 2.64.0 or 2.65.0, run it on 2.65.0 before you upgrade. A
-    retained `Agent Task` entry makes
-    `GET /organizations/{org_slug}/operations-log/{entry_id}` fail for
-    that entry. The
-    `imbi.api.backfill_embeddings` script is removed: use **Reindex
+    The `imbi.api.backfill_embeddings` script is removed: use **Reindex
     Search** (`search-reindex`).
+2. **Before you upgrade from 2.64.0 or 2.65.0**, if you did not run
+   **Purge Agent Task Entries from Operations Log**
+   (`opslog-agent-task-purge`), run it on 2.65.0. The operations log no
+   longer accepts the `Agent Task` entry type. A retained `Agent Task`
+   entry makes `GET /organizations/{org_slug}/operations-log/{entry_id}`
+   fail for that entry.
 
 ## 2.65.0
 
