@@ -797,36 +797,59 @@ class OrganizationDeleteRelationalTestCase(support.SharedAppAsyncTestCase):
         await self.graph.close()
 
     async def test_org_admin_patch_keeps_stored_slack_team_id(self) -> None:
-        """A patch by an org admin keeps the stored team id, in both the
-        plain and the rename update, and returns it."""
-        team = 'T' + uuid.uuid4().hex[:10].upper()
-        await self.graph.execute(
-            'MATCH (o:Organization {{id: {org}}})'
-            ' SET o.slack_team_id = {team} RETURN o.id AS id',
-            {'org': self.org, 'team': team},
-            ['id'],
-        )
+        """An org admin's patch keeps the stored team id, in both the plain
+        and the rename update, and returns it. An install admin changes
+        the id after the patch reads the organization (a stale read)."""
+
+        def team_id() -> str:
+            return 'T' + uuid.uuid4().hex[:10].upper()
+
+        async def set_team(team: str) -> None:
+            await self.graph.execute(
+                'MATCH (o:Organization {{id: {org}}})'
+                ' SET o.slack_team_id = {team} RETURN o.id AS id',
+                {'org': self.org, 'team': team},
+                ['id'],
+            )
+
+        await set_team(team_id())
+        real_match = self.graph.match
+        stored: list[str] = []
+
+        async def match_then_change(*args: typing.Any, **kwargs: typing.Any):
+            result = await real_match(*args, **kwargs)
+            stored.append(team_id())
+            await set_team(stored[-1])
+            return result
+
         self.admin.is_admin = False
-        response = await self.client.patch(
-            f'/organizations/{self.org}',
-            json=[{'op': 'replace', 'path': '/name', 'value': 'Renamed'}],
-        )
-        self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual(response.json()['slack_team_id'], team)
-        new_slug = f'{self.org}-x'
-        response = await self.client.patch(
-            f'/organizations/{self.org}',
-            json=[{'op': 'replace', 'path': '/slug', 'value': new_slug}],
-        )
-        self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual(response.json()['slack_team_id'], team)
-        rows = await self.graph.execute(
-            'MATCH (o:Organization {{id: {org}}})'
-            ' RETURN o.slack_team_id AS team',
-            {'org': self.org},
-            ['team'],
-        )
-        self.assertEqual(graph.parse_agtype(rows[0]['team']), team)
+        for patch in (
+            [{'op': 'replace', 'path': '/name', 'value': 'Renamed'}],
+            [{'op': 'replace', 'path': '/slug', 'value': f'{self.org}-x'}],
+        ):
+            slug = (await real_match(models.Organization, {'id': self.org}))[
+                0
+            ].slug
+            with (
+                self.subTest(patch=patch),
+                mock.patch.object(
+                    self.graph, 'match', side_effect=match_then_change
+                ),
+            ):
+                response = await self.client.patch(
+                    f'/organizations/{slug}', json=patch
+                )
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertEqual(response.json()['slack_team_id'], stored[-1])
+                rows = await self.graph.execute(
+                    'MATCH (o:Organization {{id: {org}}})'
+                    ' RETURN o.slack_team_id AS team',
+                    {'org': self.org},
+                    ['team'],
+                )
+                self.assertEqual(
+                    graph.parse_agtype(rows[0]['team']), stored[-1]
+                )
 
     async def _count(self, table: str) -> int:
         async with self.pool.connection() as conn:
