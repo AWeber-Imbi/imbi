@@ -8,7 +8,7 @@ import fastapi
 import pydantic
 
 from imbi.api import harness, models
-from imbi.api.auth import permissions
+from imbi.api.auth import internal_services, permissions
 from imbi.api.endpoints import _helpers
 from imbi.common import graph
 from imbi.common import patch as json_patch
@@ -35,7 +35,17 @@ async def create_service_account(
         ),
     ],
 ) -> models.ServiceAccountResponse:
-    """Create a new service account."""
+    """Create a new service account.
+
+    The slugs of the internal services are reserved: only setup makes
+    those accounts, and routes such as the MCP server credentials trust
+    them by slug.
+    """
+    if sa_create.slug in {s.slug for s in internal_services.INTERNAL_SERVICES}:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=f'Service account slug {sa_create.slug!r} is reserved',
+        )
     sa = models.ServiceAccount(
         slug=sa_create.slug,
         display_name=sa_create.display_name,

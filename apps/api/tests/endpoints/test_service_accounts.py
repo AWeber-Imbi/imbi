@@ -129,6 +129,20 @@ class ServiceAccountsEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 409)
         self.assertIn('already exists', response.json()['detail'])
 
+    def test_create_service_account_reserved_slug(self) -> None:
+        """The slug of an internal service cannot be taken."""
+        response = self.client.post(
+            '/service-accounts',
+            json={
+                'slug': 'imbi-assistant',
+                'display_name': 'Not The Assistant',
+                'organization_slug': 'acme-corp',
+                'role_slug': 'admin',
+            },
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+        self.mock_db.create.assert_not_called()
+
     def test_list_service_accounts(self) -> None:
         """Test listing service accounts returns list."""
         mock_accounts = [
