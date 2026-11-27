@@ -30,6 +30,7 @@ from imbi.api.graph_sql import props_template, set_clause
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
 from imbi.common.llm import discovery, drivers, prices
+from imbi.common.llm import resolve as llm_resolve
 
 LOGGER = logging.getLogger(__name__)
 
@@ -173,6 +174,9 @@ class AIModelResponse(pydantic.BaseModel):
     default_temperature: float | None = None
     default_top_p: float | None = None
     monthly_spend_cap: decimal.Decimal | None = None
+    #: USD spent this calendar month (UTC) by prompt runs and agent
+    #: tasks. Only the list sets it.
+    month_to_date_spend: decimal.Decimal | None = None
     supports_structured_output: bool = False
     supports_forced_tool_choice: bool = True
     created_at: datetime.datetime | None = None
@@ -604,6 +608,9 @@ async def _insert(
     )
 
 
+ZERO = decimal.Decimal(0)
+
+
 @ai_models_router.get('/', response_model=list[AIModelResponse])
 async def list_ai_models(
     org_id: OrgId,
@@ -616,14 +623,22 @@ async def list_ai_models(
     """List the model catalog of the organization, ordered by name.
 
     Returns:
-        Every configured model with its provider and allowed teams.
+        Every configured model with its provider, allowed teams, and
+        month-to-date spend.
 
     """
     _ = auth
     records = await db.execute(
         _LIST_QUERY, {'org_id': org_id}, ['m', 'p', 'o', 't']
     )
-    return sorted(_rows_to_responses(records), key=lambda r: r.name.lower())
+    responses = _rows_to_responses(records)
+    async with db.pool.connection() as conn:
+        spend = await llm_resolve.month_spend(conn, [r.id for r in responses])
+    for response in responses:
+        response.month_to_date_spend = spend.get(
+            response.id, decimal.Decimal(0)
+        )
+    return sorted(responses, key=lambda r: r.name.lower())
 
 
 @ai_models_router.post('/', response_model=AIModelResponse, status_code=201)

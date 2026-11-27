@@ -88,9 +88,8 @@ type NumericKey =
   | 'monthly_spend_cap'
   | 'output_cost_per_million'
 
-// Advisory until spend enforcement ships — see the plan's decision 8.
 const CAP_HELP =
-  'Advisory until spend enforcement ships; Imbi does not yet block calls at the cap.'
+  'USD per calendar month (UTC). At the cap, Imbi refuses new calls to the model.'
 
 const NUMERIC_KEYS: NumericKey[] = [
   'cache_read_cost_per_million',

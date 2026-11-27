@@ -10,6 +10,7 @@ from apps.api.tests.endpoints import test_ai_providers as provider_tests
 from imbi.api import teams as org_teams
 from imbi.api.endpoints import ai_models, ai_providers
 from imbi.common.llm import discovery
+from imbi.common.llm import resolve as llm_resolve
 
 BASE = f'/organizations/{provider_tests.ORG}/ai-models'
 IMPORT_BASE = f'/organizations/{provider_tests.ORG}/ai-providers'
@@ -94,6 +95,15 @@ class AIModelTestBase(provider_tests.AIProviderTestBase):
         patcher = mock.patch('imbi.common.llm.prices.fetch', self.fetch_prices)
         patcher.start()
         self.addCleanup(patcher.stop)
+        self.mock_db.pool = mock.MagicMock()
+        self.month_spend = mock.AsyncMock(
+            return_value={'mdl-1': decimal.Decimal('1.5')}
+        )
+        patcher = mock.patch.object(
+            llm_resolve, 'month_spend', self.month_spend
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
 
 class ReadModelTestCase(AIModelTestBase):
@@ -128,6 +138,8 @@ class ReadModelTestCase(AIModelTestBase):
         )
         self.assertEqual(data[0]['provider_id'], 'prv-1')
         self.assertEqual(data[0]['provider_name'], 'Anthropic')
+        self.assertEqual(data[0]['month_to_date_spend'], '1.5')
+        self.month_spend.assert_awaited_once_with(mock.ANY, ['mdl-1'])
 
     def test_list_handles_a_model_with_no_teams(self) -> None:
         """A null ``t`` from the OPTIONAL MATCH yields an empty list."""

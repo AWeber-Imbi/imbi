@@ -104,6 +104,7 @@ const model: AIModel = {
   max_output_tokens: 8192,
   model_id: 'claude-fable-5-1',
   model_type: 'generative',
+  month_to_date_spend: '12.5',
   monthly_spend_cap: 4000,
   name: 'Claude Fable 5.1',
   output_cost_per_million: 15,
@@ -257,7 +258,7 @@ describe('AIModelsManagement', () => {
     )
     expect(screen.getByText('claude-fable-5-1')).toBeInTheDocument()
     expect(screen.getByText('All teams')).toBeInTheDocument()
-    expect(screen.getByText('$4,000/mo')).toBeInTheDocument()
+    expect(screen.getByText('$12.50 / $4,000/mo')).toBeInTheDocument()
     expect(screen.getByText('Generative')).toBeInTheDocument()
   })
 

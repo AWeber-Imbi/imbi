@@ -2677,7 +2677,8 @@ export interface paths {
          * @description List the model catalog of the organization, ordered by name.
          *
          *     Returns:
-         *         Every configured model with its provider and allowed teams.
+         *         Every configured model with its provider, allowed teams, and
+         *         month-to-date spend.
          */
         get: operations["list_ai_models_api_organizations__org_slug__ai_models__get"];
         put?: never;
@@ -6656,8 +6657,10 @@ export interface paths {
          *     prices it used. A report with no token counts is unmeasured, and an
          *     unknown model has no cost; both are still recorded. When the cost
          *     total passes the budget, the task closes with ``exceeded_ceiling``
-         *     (reason ``budget``). A repeat with the same ``idempotency_key``
-         *     returns the first report with status 200.
+         *     (reason ``budget``). When the month-to-date spend of the model
+         *     reaches its monthly spend cap, the task closes with
+         *     ``exceeded_ceiling`` (reason ``spend_cap``). A repeat with the same
+         *     ``idempotency_key`` returns the first report with status 200.
          *
          *     Raises:
          *         403: The caller is not the service account of the task's agent.
@@ -11445,6 +11448,8 @@ export interface components {
             default_top_p?: number | null;
             /** Monthly Spend Cap */
             monthly_spend_cap?: string | null;
+            /** Month To Date Spend */
+            month_to_date_spend?: string | null;
             /**
              * Supports Structured Output
              * @default false
