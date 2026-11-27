@@ -1227,7 +1227,6 @@ class StateReaderTests(DeploymentNodeTestCase):
             timestamp=NOW + datetime.timedelta(hours=1),
         )
         old, new = await self.both()
-        self.assertEqual([], deployments.state_differences(old, new))
         self.assertEqual(old, new)
 
     async def test_in_flight_orphan_keeps_its_recorded_release(self) -> None:

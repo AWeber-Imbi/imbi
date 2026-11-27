@@ -708,10 +708,9 @@ async def sync_deployment_state(
 
     async def work(execute: graph.CypherExecute) -> bool:
         rows = await execute(
-            'MATCH (p:Project) WHERE p.id = {project_id}'
-            ' RETURN p.deployment_state AS state',
-            {'project_id': project_id},
-            ['state'],
+            _STATE_QUERY,
+            {'project_ids': [project_id]},
+            ['project_id', 'state'],
         )
         params = _reader_params([project_id])
         state: dict[str, dict[str, str | None]] = {}
@@ -731,10 +730,7 @@ async def sync_deployment_state(
                     f'A deployment of project {project_id} in environment '
                     f'{slug!r} has no id'
                 )
-            state[slug] = {
-                'current': entry.current.id if entry.current else None,
-                'latest': entry.latest.id,
-            }
+            state[slug] = state_ids(entry)
         if rows and _decode(rows[0]['state']) == state:
             return False
         if not dry_run:
@@ -812,7 +808,7 @@ async def current_and_latest_from_state(
         state = _decode(row['state'])
         if isinstance(project_id, str) and state:
             stored[project_id] = state
-    ids = sorted(
+    ids = list(
         {
             node_id
             for state in stored.values()
@@ -821,57 +817,39 @@ async def current_and_latest_from_state(
             if node_id
         }
     )
-    nodes = {
-        node.id: node
-        for node in _to_project_deployments(
-            await db.execute(_BY_ID_QUERY, {'ids': ids}, _READER_COLUMNS)
-            if ids
-            else []
-        )
-    }
+    missing = [pid for pid in project_ids if pid not in stored]
+    rows: list[dict[str, typing.Any]]
+    fallback: list[EnvironmentReleaseState]
+    rows, fallback = await asyncio.gather(
+        db.execute(_BY_ID_QUERY, {'ids': ids}, _READER_COLUMNS)
+        if ids
+        else asyncio.sleep(0, []),
+        current_and_latest_by_project(db, missing),
+    )
+    nodes = {node.id: node for node in _to_project_deployments(rows)}
     out: list[EnvironmentReleaseState] = []
     for project_id, state in stored.items():
         for pair in state.values():
             latest = nodes.get(pair.get('latest'))
-            if latest is None or latest.project_id != project_id:
-                continue
-            current_id = pair.get('current')
-            current = nodes.get(current_id) if current_id else None
-            out.append(
-                EnvironmentReleaseState(
-                    project_id, latest.environment, current, latest
+            if latest is not None:
+                out.append(
+                    EnvironmentReleaseState(
+                        project_id,
+                        latest.environment,
+                        nodes.get(pair.get('current')),
+                        latest,
+                    )
                 )
-            )
-    missing = [pid for pid in project_ids if pid not in stored]
-    if missing:
-        out.extend(await current_and_latest_by_project(db, missing))
-    return out
+    return out + fallback
 
 
-def state_differences(
-    old: abc.Iterable[EnvironmentReleaseState],
-    new: abc.Iterable[EnvironmentReleaseState],
-) -> list[str]:
-    """Name each ``project/environment`` whose two answers differ in
-    the current or latest attempt."""
-
-    def ids(
-        states: abc.Iterable[EnvironmentReleaseState],
-    ) -> dict[tuple[str, str], tuple[str | None, str | None]]:
-        return {
-            (s.project_id, str(s.environment.get('slug') or '')): (
-                s.current.id if s.current else None,
-                s.latest.id,
-            )
-            for s in states
-        }
-
-    a, b = ids(old), ids(new)
-    return sorted(
-        f'{pid}/{env}'
-        for pid, env in a.keys() | b.keys()
-        if a.get((pid, env)) != b.get((pid, env))
-    )
+def state_ids(entry: EnvironmentReleaseState) -> dict[str, str | None]:
+    """The ids of the current and latest attempt of one environment,
+    as :func:`sync_deployment_state` stores them."""
+    return {
+        'current': entry.current.id if entry.current else None,
+        'latest': entry.latest.id,
+    }
 
 
 def started_at(deployment: ProjectDeployment) -> datetime.datetime:

@@ -14,6 +14,7 @@ import typing
 
 import fastapi
 import nanoid
+import prometheus_client
 import psycopg
 import pydantic
 
@@ -777,6 +778,14 @@ class CurrentReleaseState(typing.NamedTuple):
 
 #: Background shadow reads, held so the event loop does not drop them.
 _SHADOW_TASKS: set[asyncio.Task[None]] = set()
+#: At most one shadow read a minute, so it adds little graph load.
+_SHADOW_INTERVAL = 60.0
+_shadow_last = 0.0
+_SHADOW_READS = prometheus_client.Counter(
+    'imbi_deployment_state_shadow_reads',
+    'Projects-list shadow reads of the stored deployment state, by result',
+    ['result'],
+)
 
 
 def _shadow_state_read(
@@ -784,42 +793,56 @@ def _shadow_state_read(
     project_ids: list[str],
     states: list[deployment_nodes.EnvironmentReleaseState],
 ) -> None:
-    """Compare the stored deployment state with the reader, after the
-    response, and log each difference.
+    """Compare the stored deployment state with the reader in a
+    background task, at most once a minute, and count the result in
+    ``imbi_deployment_state_shadow_reads_total{result=match|differ|error}``.
+    A difference also logs a WARNING that names the environments.
 
     ponytail: shadow mode for issue #998 phase 3.  After one week with
-    no difference logged, the list reads the stored state and this
+    no ``differ`` or ``error``, the list reads the stored state and this
     goes.
     """
+    global _shadow_last
+    now = time.monotonic()
+    if _SHADOW_TASKS or now - _shadow_last < _SHADOW_INTERVAL:
+        return
+    _shadow_last = now
+
+    def ids(
+        found: list[deployment_nodes.EnvironmentReleaseState],
+    ) -> dict[str, dict[str, str | None]]:
+        return {
+            f'{s.project_id}/{s.environment.get("slug") or ""}': (
+                deployment_nodes.state_ids(s)
+            )
+            for s in found
+        }
 
     async def run() -> None:
-        started = time.monotonic()
         try:
             stored = await deployment_nodes.current_and_latest_from_state(
                 db, project_ids
             )
         except Exception:  # noqa: BLE001
+            _SHADOW_READS.labels('error').inc()
             LOGGER.warning(
                 'Deployment state shadow read failed', exc_info=True
             )
             return
-        elapsed = time.monotonic() - started
-        differences = deployment_nodes.state_differences(states, stored)
+        old, new = ids(states), ids(stored)
+        differences = sorted(
+            key
+            for key in old.keys() | new.keys()
+            if old.get(key) != new.get(key)
+        )
+        _SHADOW_READS.labels('differ' if differences else 'match').inc()
         if differences:
             LOGGER.warning(
                 'Deployment state shadow read differs for %d of %d '
-                'environments (%.0f ms): %s',
+                'environments: %s',
                 len(differences),
-                len(states),
-                elapsed * 1000,
+                len(old),
                 ', '.join(differences[:10]),
-            )
-        else:
-            LOGGER.info(
-                'Deployment state shadow read matches %d environments '
-                '(%.0f ms)',
-                len(states),
-                elapsed * 1000,
             )
 
     task = asyncio.create_task(run())

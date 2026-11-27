@@ -339,45 +339,48 @@ class LookupOpsLogPerformedByTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, {})
 
 
+_PROD = _state(
+    env_slug='prod',
+    tag='1.0.0',
+    committish='abcdef0',
+    timestamp=datetime.datetime(2026, 4, 1, tzinfo=datetime.UTC),
+)
+
+
 class ShadowStateReadTestCase(unittest.IsolatedAsyncioTestCase):
-    """The phase-3 shadow read logs differences after the response."""
+    """The phase-3 shadow read counts and logs differences."""
+
+    def setUp(self) -> None:
+        patcher = mock.patch.object(projects, '_shadow_last', 0.0)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _count(self, result: str) -> float:
+        return projects._SHADOW_READS.labels(result)._value.get()
 
     async def _run(
-        self, stored: list[deployment_nodes.EnvironmentReleaseState]
-    ) -> list[str]:
-        states = [
-            _state(
-                env_slug='prod',
-                tag='1.0.0',
-                committish='abcdef0',
-                timestamp=datetime.datetime(2026, 4, 1, tzinfo=datetime.UTC),
-            )
-        ]
-        with (
-            mock.patch(
-                'imbi.common.deployments.current_and_latest_from_state',
-                mock.AsyncMock(return_value=stored),
-            ),
-            self.assertLogs(projects.LOGGER, 'INFO') as logs,
+        self,
+        stored: list[deployment_nodes.EnvironmentReleaseState],
+        result: str,
+    ) -> float:
+        before = self._count(result)
+        with mock.patch(
+            'imbi.common.deployments.current_and_latest_from_state',
+            mock.AsyncMock(return_value=stored),
         ):
-            projects._shadow_state_read(mock.AsyncMock(), ['p1'], states)
+            projects._shadow_state_read(mock.AsyncMock(), ['p1'], [_PROD])
             await asyncio.gather(*projects._SHADOW_TASKS)
-        return logs.output
+        return self._count(result) - before
 
-    async def test_logs_a_difference(self) -> None:
-        output = await self._run([])
-        self.assertEqual(1, len(output))
-        self.assertIn('WARNING', output[0])
-        self.assertIn('differs for 1 of 1', output[0])
-        self.assertIn('p1/prod', output[0])
+    async def test_counts_and_logs_a_difference(self) -> None:
+        with self.assertLogs(projects.LOGGER, 'WARNING') as logs:
+            self.assertEqual(1, await self._run([], 'differ'))
+        self.assertIn('differs for 1 of 1', logs.output[0])
+        self.assertIn('p1/prod', logs.output[0])
 
-    async def test_logs_a_match(self) -> None:
-        state = _state(
-            env_slug='prod',
-            tag='1.0.0',
-            committish='abcdef0',
-            timestamp=datetime.datetime(2026, 4, 1, tzinfo=datetime.UTC),
-        )
-        output = await self._run([state])
-        self.assertIn('INFO', output[0])
-        self.assertIn('matches 1 environments', output[0])
+    async def test_counts_a_match(self) -> None:
+        self.assertEqual(1, await self._run([_PROD], 'match'))
+
+    async def test_runs_at_most_once_a_minute(self) -> None:
+        self.assertEqual(1, await self._run([_PROD], 'match'))
+        self.assertEqual(0, await self._run([_PROD], 'match'))
