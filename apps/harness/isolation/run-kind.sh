@@ -54,8 +54,9 @@ kubectl --context "$CONTEXT" wait --for=condition=Established \
   crd/clusternetworkpolicies.networking.k8s.aws --timeout=60s
 
 # The kind nodes run on the Docker daemon, so build for its platform, not
-# for the client platform (darwin on macOS).
-PLATFORM=$(docker version -f '{{.Server.Os}}/{{.Server.Arch}}')
+# for the client platform (darwin on macOS). DOCKER_DEFAULT_PLATFORM, when
+# set, overrides this, as it did for plain docker build.
+PLATFORM=${DOCKER_DEFAULT_PLATFORM:-$(docker version -f '{{.Server.Os}}/{{.Server.Arch}}')}
 docker buildx build --load --platform="$PLATFORM" \
   -f "$ROOT/apps/harness/Dockerfile" --target isolation \
   -t "$IMAGE" "$ROOT"
