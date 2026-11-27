@@ -4,7 +4,8 @@ Date: 2026-09-04
 
 ## Status
 
-Accepted
+Accepted. Amended on 2026-11-27: model resolution and default models (see
+[Amendment: model resolution](#amendment-model-resolution)).
 
 This ADR records how Imbi stores the LLM providers and models an organization
 may call, and how it protects the credentials those providers need.
@@ -246,11 +247,8 @@ its own copy of a model.
 
 ## Follow-ups
 
-- A resolver in `imbi.common.llm` that the harness, assistant, and Slack bot
-  call. Resolution order is agent override, then team default, then
-  organization default, then the environment fallback. A disabled provider or
-  model is a hard configuration error.
-- `Organization -[:USES_DEFAULT_MODEL]-> AIModel`, and the per-team equivalent.
+- The harness, the assistant, and the Slack bot on the resolver (see the
+  amendment).
 - Vertex discovery with service account credentials. They need
   `google-auth`, which is not a dependency. Bedrock application inference
   profiles are not listed.
@@ -259,6 +257,64 @@ its own copy of a model.
   `structured_output`, replacing the coarse `kind` field.
 - Runtime SSRF controls on outbound calls to custom base URLs.
 - Team deletion must remove or block on `ALLOWED_FOR` edges.
+
+## Amendment: model resolution
+
+Date: 2026-11-27
+
+### Default model edges
+
+`Organization -[:USES_DEFAULT_MODEL]-> AIModel` and
+`Team -[:USES_DEFAULT_MODEL]-> AIModel` name the default model of an
+organization and of a team. Each source node has at most one edge. The
+endpoint replaces the edge in one transaction under an advisory lock on the
+source node.
+
+- A default model must be a generative model.
+- A team default must be a model that the team may use: an `organization`
+  scope model, or a `restricted` model with an `ALLOWED_FOR` edge to the team.
+- `DELETE /ai-models/{id}` returns `409` while the model is a default.
+- `GET`/`PUT /organizations/{org_slug}/default-ai-model` needs
+  `ai_model:read`/`ai_model:update`. `GET`/`PUT
+  /organizations/{org_slug}/teams/{slug}/default-ai-model` needs
+  `team:read`/`team:update`. No new permission is added.
+
+### Resolution order
+
+`imbi.common.llm.resolve.resolve_model` finds the model of a call:
+
+1. The explicit model (the prompt version, the prompt run, or the workflow
+   step), by id or slug.
+2. The default of the team of the call. The team must belong to the
+   organization of the call.
+3. The default of the organization.
+4. The environment model of the service.
+
+The first level that names a model wins. When that model is missing, is
+disabled, has a disabled provider, or does not allow the caller, the resolver
+raises `ModelUnusable` with the reason `not_found`, `disabled`,
+`provider_disabled`, or `not_allowed`. It does not try the next level. This
+replaces the soft fallback to the environment model in
+`imbi.common.prompts.system`. The environment model applies only when no
+level names a model.
+
+A `restricted` model must allow the user of the call (through a team), the
+team of the call, or both when both are known. With neither, the model is
+refused. An admin can use every model.
+
+The consumers today:
+
+- A prompt run: `403` (`model_not_allowed`) or `422`, as before. A
+  generative run uses the team and organization defaults; the team is the
+  owner team of the workflow for a workflow step prompt.
+- A workflow Model decision step: the step fails with `model_unavailable`.
+  The model must allow the owner team of the workflow.
+- The system prompts of the assistant, the Slack bot, and the API helpers
+  (ticket subject, descriptions): a version model that cannot be used, or one
+  that a driver other than `anthropic` serves (`unsupported_driver`), is an
+  error. The assistant returns `403` or `422`, the Slack bot replies with an
+  error, and an API helper returns its fallback marked `degraded`. These
+  consumers do not read the defaults yet.
 
 ## References
 

@@ -375,9 +375,13 @@ model of some organization. A prompt run uses the model with that slug in the
 organization of the run. The assistant and the Slack bot have no organization,
 so they read the catalogs of the organizations of the user.
 
-The assistant and the Slack bot use the model of their system prompt only when
-the user may use its model id. Other users get the configured model
-(`IMBI_ASSISTANT_MODEL` or `IMBI_SLACKBOT_MODEL`). The assistant selects the
+The assistant and the Slack bot use the model of their system prompt when the
+prompt version names one. When the version names no model, they use the
+configured model (`IMBI_ASSISTANT_MODEL` or `IMBI_SLACKBOT_MODEL`). When the
+version names a model that the user cannot use, Imbi does not use another
+model: the assistant returns `403` (`model_not_allowed`) or `422`, and the
+Slack bot replies with an error. Only an Anthropic model can be the model of
+these system prompts. The assistant selects the
 model when a conversation starts, and checks the selected model, also when it
 is `IMBI_ASSISTANT_MODEL`. A non-admin gets `403` (`model_not_allowed`) when no
 enabled catalog model allows the model id. `IMBI_ASSISTANT_MODEL` is allowed
@@ -387,6 +391,42 @@ change. Admins can use every model.
 
 Deleting a team does not update the models that name it. Review restricted
 models after you delete a team.
+
+## Default models
+
+An organization and each of its teams can have one default model. A call
+whose prompt or workflow step names no model uses the default. The order is:
+
+1. The model of the prompt version, the prompt run, or the workflow step.
+2. The default model of the team of the call.
+3. The default model of the organization.
+4. The model in the environment of the service.
+
+The first level that names a model wins. When that model is disabled, its
+provider is disabled, or the caller may not use it, the call fails. Imbi does
+not try the next level. The environment model applies only when no level
+names a model.
+
+To set the organization default, select a model in **Default model** at the
+top of the AI Models page. To set the team default, open the team in
+**Teams** and select a model in **Default model**. Select **No model** to
+clear a default.
+
+A default model must be a generative model. A team default must be a model
+that the team may use (see [Team access](#team-access)). Imbi rejects other
+models with `422`.
+
+Today a generative prompt run uses the defaults. A prompt run of a workflow
+step uses the default of the owner team of the workflow, then the
+organization default. A decision prompt and a Model decision step must name
+their model.
+
+The API routes are `GET` and `PUT`
+`/organizations/{org_slug}/default-ai-model` (`ai_model:read`,
+`ai_model:update`) and `GET` and `PUT`
+`/organizations/{org_slug}/teams/{slug}/default-ai-model` (`team:read`,
+`team:update`). The body is `{"slug": "<model slug>"}`, or
+`{"slug": null}` to clear the default.
 
 ## Enable and disable
 
@@ -406,6 +446,10 @@ To delete a provider, click the edit icon on the provider row, then click
 models. The API (`DELETE /organizations/{org_slug}/ai-providers/{id}`) returns `409` for the same
 condition. Delete the models first, or move them to another provider. There
 is no cascade, so a provider cannot take its models with it.
+
+A model that is the default model of an organization or a team cannot be
+deleted. `DELETE /ai-models/{id}` returns `409` and names the organizations
+and teams. Select another default first.
 
 ## Permissions
 
