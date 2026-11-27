@@ -53,10 +53,10 @@ kubectl --context "$CONTEXT" apply -f "$HERE/clusternetworkpolicy-crd.yaml"
 kubectl --context "$CONTEXT" wait --for=condition=Established \
   crd/clusternetworkpolicies.networking.k8s.aws --timeout=60s
 
-docker build -f "$ROOT/apps/harness/Dockerfile" --target isolation \
+docker build --load -f "$ROOT/apps/harness/Dockerfile" --target isolation \
   -t "$IMAGE" "$ROOT"
 "$KIND" load docker-image "$IMAGE" --name "$CLUSTER"
-docker build -t "$PROXY_IMAGE" "$ROOT/proxy"
+docker build --load -t "$PROXY_IMAGE" "$ROOT/proxy"
 "$KIND" load docker-image "$PROXY_IMAGE" --name "$CLUSTER"
 
 kubectl --context "$CONTEXT" delete namespace "$NAMESPACE" \
