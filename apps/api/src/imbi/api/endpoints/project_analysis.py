@@ -739,11 +739,25 @@ async def remediate_project_finding(
         fastapi.Depends(permissions.require_permission('project:write')),
     ],
 ) -> RemediateResponse:
-    """Apply one finding's fix, then return the refreshed report."""
+    """Apply one finding's fix, then return the refreshed report.
+
+    If the refresh cannot look up the project, the result is returned
+    with the previous report. With no previous report, the 503 stays.
+    """
     result = await _remediate_one(
         db, org_slug, project_id, body.plugin_id, body.remediation_id, auth
     )
-    report = await run_and_persist(db, org_slug, project_id, auth)
+    try:
+        report = await run_and_persist(db, org_slug, project_id, auth)
+    except ProjectLookupFailed:
+        previous = await _fetch_report(db, project_id)
+        if previous is None:
+            raise
+        LOGGER.warning(
+            'Analysis refresh after remediate failed for project %s',
+            project_id,
+        )
+        report = previous
     return RemediateResponse(result=result, report=report)
 
 

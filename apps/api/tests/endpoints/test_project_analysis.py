@@ -764,6 +764,53 @@ class ProjectAnalysisTestCase(unittest.TestCase):
         self.assertEqual('failed', body['outcomes'][0]['result']['status'])
         self.assertEqual('r1', body['report']['id'])
 
+    def _remediate_with_failed_refresh(
+        self, previous: typing.Any
+    ) -> typing.Any:
+        from imbi.api.endpoints.project_analysis import ProjectLookupFailed
+
+        with (
+            mock.patch(
+                f'{_MODULE}.remediate_blueprint',
+                return_value=RemediationResult(status='fixed', message='ok'),
+            ),
+            mock.patch(
+                f'{_MODULE}.run_and_persist',
+                side_effect=ProjectLookupFailed(),
+            ),
+            mock.patch(f'{_MODULE}._fetch_report', return_value=previous),
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                return client.post(
+                    '/organizations/acme/projects/proj-1/analysis/remediate',
+                    json={
+                        'plugin_id': 'built-in',
+                        'finding_slug': 'x',
+                        'remediation_id': 'set-default:foo',
+                    },
+                )
+
+    def test_remediate_keeps_result_when_refresh_fails(self) -> None:
+        # The fix is applied, so a failed refresh must not report a 503.
+        from imbi.api.endpoints.project_analysis import AnalysisReport
+
+        previous = AnalysisReport(
+            id='r1',
+            project_id='proj-1',
+            created_at=datetime.datetime.now(datetime.UTC),
+            overall_status='warn',
+            results=[],
+        )
+        resp = self._remediate_with_failed_refresh(previous)
+        self.assertEqual(200, resp.status_code, resp.text)
+        body = resp.json()
+        self.assertEqual('fixed', body['result']['status'])
+        self.assertEqual('r1', body['report']['id'])
+
+    def test_remediate_refresh_fails_without_previous_report(self) -> None:
+        resp = self._remediate_with_failed_refresh(None)
+        self.assertEqual(503, resp.status_code, resp.text)
+
 
 class RemediateAllSweepableTestCase(unittest.IsolatedAsyncioTestCase):
     """``sweepable_only`` applies only offers marked sweepable."""
