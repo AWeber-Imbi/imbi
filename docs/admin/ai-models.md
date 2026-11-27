@@ -32,7 +32,7 @@ built in. You cannot add one from the UI.
 | OpenAI | Optional. Defaults to `https://api.openai.com/v1` | API key | Yes |
 | OpenAI-compatible | **Required** | API key | Yes |
 | AWS Bedrock | Not used | API key, or the runtime IAM role | Yes |
-| Google Vertex AI | Not used | API key, or the runtime IAM role | No |
+| Google Vertex AI | Not used | API key, or the runtime IAM role | Yes, if the key is allowed |
 | TypeSafe | Optional. Defaults to `https://api.typesafe.ai/v1` | API key | No |
 
 Use **OpenAI-compatible** for any endpoint that implements the OpenAI
@@ -253,8 +253,9 @@ switch is on by default. Other drivers do not use it.
 
 ## Discover and import models
 
-Anthropic, OpenAI, OpenAI-compatible, and AWS Bedrock providers can report
-their own model lists. Use this instead of typing model identifiers by hand.
+Anthropic, OpenAI, OpenAI-compatible, AWS Bedrock, and Google Vertex AI
+providers can report their own model lists. Use this instead of typing model
+identifiers by hand.
 
 AWS Bedrock lists the foundation models of the provider's region that give
 text output and support on-demand inference. A model that you can call only
@@ -262,8 +263,10 @@ through an inference profile does not show. Add it by its profile ID. Without
 a stored key, Imbi signs the call with the runtime IAM role, which needs
 `bedrock:ListFoundationModels`.
 
-Google Vertex AI does not support discovery. The express mode API does not
-include a list-models method, so add Gemini models by ID.
+Google Vertex AI lists the Gemini publisher models with the stored key. The
+express mode API reference does not include this method, so Google can refuse
+it for an express mode key. Imbi then reports a 422 that tells you to add the
+Gemini models by ID. Vertex discovery needs a stored key.
 
 1. Set a credential on the provider (AWS Bedrock can use the IAM role).
 2. Click the refresh icon on the provider row. You can also expand the

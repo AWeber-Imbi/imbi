@@ -797,7 +797,8 @@ async def discover_ai_provider_models(
         404: No such provider.
         409: The provider has no stored credentials (Bedrock uses the
             AWS credentials of the process instead).
-        422: The driver does not support discovery.
+        422: The driver does not support discovery, or Vertex refused
+            to list models for the key.
         502: The provider rejected or failed the call, or no workload
             identity token could be minted.
 
@@ -832,7 +833,11 @@ async def discover_ai_provider_models(
                 node.driver, api_key, base_url, region=node.region, auth=signer
             )
     except discovery.DiscoveryError as exc:
-        raise fastapi.HTTPException(status_code=502, detail=str(exc)) from exc
+        # Vertex: an express key can be refused the list call (422).
+        refused = node.driver == 'vertex' and exc.status in (401, 403)
+        raise fastapi.HTTPException(
+            status_code=422 if refused else 502, detail=str(exc)
+        ) from exc
     except generate.GenerateError as exc:
         raise fastapi.HTTPException(
             status_code=502,

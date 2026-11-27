@@ -359,9 +359,66 @@ class ListModelsTestCase(unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_unsupported_driver(self) -> None:
-        """Vertex discovery is not implemented."""
+        """TypeSafe has no list-models API."""
         with self.assertRaises(discovery.DiscoveryError):
-            await discovery.list_models('vertex', 'k', None)
+            await discovery.list_models('typesafe', 'k', None)
+
+    async def test_vertex_pages_and_keeps_gemini(self) -> None:
+        """The express key is sent, and every page is read."""
+        seen: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.headers['x-goog-api-key'], 'gk')
+            self.assertEqual(
+                request.url.path, '/v1beta1/publishers/google/models'
+            )
+            token = request.url.params['pageToken']
+            seen.append(token)
+            if not token:
+                return httpx.Response(
+                    200,
+                    json={
+                        'publisherModels': [
+                            {
+                                'name': (
+                                    'publishers/google/models/gemini-2.5-pro'
+                                )
+                            },
+                            {'name': 'publishers/google/models/imagen-4'},
+                        ],
+                        'nextPageToken': 'p2',
+                    },
+                )
+            return httpx.Response(
+                200,
+                json={
+                    'publisherModels': [
+                        {'name': 'publishers/google/models/gemini-3-flash'}
+                    ]
+                },
+            )
+
+        with _transport(handler):
+            found = await discovery.list_models('vertex', 'gk', None)
+        self.assertEqual(seen, ['', 'p2'])
+        self.assertEqual(
+            [m.model_id for m in found], ['gemini-2.5-pro', 'gemini-3-flash']
+        )
+
+    async def test_vertex_refused_key_says_add_by_id(self) -> None:
+        """A 403 for an express key tells the admin what to do."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(403, json={'error': 'gk'})
+
+        with (
+            _transport(handler),
+            self.assertRaises(discovery.DiscoveryError) as ctx,
+        ):
+            await discovery.list_models('vertex', 'gk', None)
+        self.assertEqual(ctx.exception.status, 403)
+        self.assertIn('add the models by id', str(ctx.exception))
+        self.assertNotIn('gk', str(ctx.exception))
 
     async def test_bedrock_keeps_on_demand_text_models(self) -> None:
         """The key is a bearer token, and other models are dropped."""

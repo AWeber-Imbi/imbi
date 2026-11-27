@@ -14,6 +14,7 @@ import dataclasses
 import datetime
 import logging
 import typing
+import urllib.parse
 
 import anthropic
 import httpx
@@ -97,6 +98,8 @@ async def list_models(
         return await _list_openai(api_key, base_url)
     if driver == 'bedrock':
         return await _list_bedrock(api_key, region, auth)
+    if driver == 'vertex':
+        return await _list_vertex(api_key, base_url, bearer=bearer)
     raise DiscoveryError(f'Driver {driver!r} does not support discovery')
 
 
@@ -202,7 +205,7 @@ async def _list_bedrock(
     The control plane is ``bedrock.{region}``, not the runtime endpoint
     in ``base_url``. Only models with text output and on-demand
     inference are kept: a model that needs an inference profile cannot
-    be called by its own id.
+    be called by its own id. A ``LEGACY`` model is dropped too.
     """
     if not region:
         raise DiscoveryError("Driver 'bedrock' has no region configured")
@@ -221,6 +224,8 @@ async def _list_bedrock(
             or not model_id
             or 'TEXT' not in (item.get('outputModalities') or ())
             or 'ON_DEMAND' not in (item.get('inferenceTypesSupported') or ())
+            or (item.get('modelLifecycle') or {}).get('status', 'ACTIVE')
+            != 'ACTIVE'
         ):
             continue
         found.append(
@@ -230,6 +235,54 @@ async def _list_bedrock(
             )
         )
     return found
+
+
+async def _list_vertex(
+    api_key: str, base_url: str | None, *, bearer: bool = False
+) -> list[DiscoveredModel]:
+    """List Gemini models (``publishers.models.list``, ``v1beta1``).
+
+    The express mode API reference does not include this method, so an
+    express key can be refused. A 401 or 403 then gives a message that
+    tells the admin to add the models by id.
+    """
+    url = (
+        f'{(base_url or "https://aiplatform.googleapis.com").rstrip("/")}'
+        '/v1beta1/publishers/google/models'
+    )
+    headers = (
+        {'Authorization': f'Bearer {api_key}'}
+        if bearer
+        else {'x-goog-api-key': api_key}
+    )
+    found: list[DiscoveredModel] = []
+    token = ''
+    while len(found) < MAX_MODELS:
+        try:
+            payload = await _get_json(
+                f'{url}?pageSize=100&pageToken={token}', headers, 'vertex'
+            )
+        except DiscoveryError as exc:
+            if exc.status in (401, 403):
+                raise DiscoveryError(
+                    f'The vertex endpoint returned HTTP {exc.status}. An '
+                    'express mode API key may not be allowed to list '
+                    'models: add the models by id',
+                    exc.status,
+                ) from exc
+            raise
+        for item in _entries(payload, 'publisherModels'):
+            model_id = str(item.get('name') or '').rpartition('/')[2]
+            # Generation calls Gemini only (generateContent).
+            if model_id.startswith('gemini'):
+                found.append(DiscoveredModel(model_id, model_id))
+        page = typing.cast(
+            'dict[str, object]', payload if isinstance(payload, dict) else {}
+        )
+        token = urllib.parse.quote(str(page.get('nextPageToken') or ''))
+        if not token:
+            break
+    return found[:MAX_MODELS]
 
 
 def _entries(payload: object, key: str) -> list[dict[str, typing.Any]]:

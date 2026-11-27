@@ -93,6 +93,7 @@ DRIVERS: tuple[DriverInfo, ...] = (
         name='Google Vertex AI',
         description='Models served through Google Cloud Vertex AI.',
         supports_iam=True,
+        supports_discovery=True,
         icon='Cloud',
     ),
     DriverInfo(

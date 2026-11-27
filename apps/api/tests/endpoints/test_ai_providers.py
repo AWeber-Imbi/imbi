@@ -210,7 +210,7 @@ class DriverCatalogTestCase(AIProviderTestBase):
         self.assertTrue(by_slug['openai_compatible']['requires_base_url'])
         self.assertTrue(by_slug['bedrock']['supports_iam'])
         self.assertTrue(by_slug['bedrock']['supports_discovery'])
-        self.assertFalse(by_slug['vertex']['supports_discovery'])
+        self.assertTrue(by_slug['vertex']['supports_discovery'])
         self.assertEqual(by_slug['anthropic']['model_types'], ['generative'])
         self.assertEqual(by_slug['typesafe']['model_types'], ['decision'])
         self.assertFalse(by_slug['typesafe']['supports_discovery'])
@@ -694,14 +694,14 @@ class DiscoveryTestCase(AIProviderTestBase):
         self.assertEqual(response.status_code, 409)
 
     def test_rejects_driver_without_discovery(self) -> None:
-        """Vertex has no list-models support."""
+        """TypeSafe has no list-models support."""
         self.route(
             (
                 GET_PROVIDER,
                 [
                     {
                         'p': provider_props(
-                            driver='vertex',
+                            driver='typesafe',
                             credentials_encrypted='enc:key',
                         )
                     }
@@ -739,6 +739,34 @@ class DiscoveryTestCase(AIProviderTestBase):
         list_models.assert_awaited_once_with(
             'bedrock', '', None, region='us-east-1', auth=signer
         )
+
+    def test_vertex_refused_key_is_422(self) -> None:
+        """An express key that may not list models is a 422."""
+        self.route(
+            (
+                GET_PROVIDER,
+                [
+                    {
+                        'p': provider_props(
+                            driver='vertex', credentials_encrypted='enc:key'
+                        )
+                    }
+                ],
+            )
+        )
+        with (
+            mock.patch(
+                'imbi.api.endpoints.ai_providers.decrypt_config_value',
+                return_value='gk',
+            ),
+            mock.patch(
+                'imbi.common.llm.discovery.list_models',
+                new_callable=mock.AsyncMock,
+                side_effect=discovery.DiscoveryError('refused', 403),
+            ),
+        ):
+            response = self.client.post(f'{BASE}/prv-1/discover')
+        self.assertEqual(response.status_code, 422)
 
     def test_bedrock_without_aws_credentials_is_502(self) -> None:
         """No key and no AWS credentials is a clear failure."""

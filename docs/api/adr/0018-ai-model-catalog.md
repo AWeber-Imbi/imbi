@@ -137,9 +137,11 @@ credential and returns the models it reports. It writes nothing.
 `openai_compatible` call `GET {base_url}/models` over httpx. `bedrock` calls
 `ListFoundationModels` on `bedrock.{region}.amazonaws.com` over httpx, with
 the stored key as a bearer token or SigV4 from the runtime IAM role, and keeps
-models with text output and on-demand inference. `vertex` is not supported,
-because the express mode API has no list-models method. `supports_discovery`
-on the driver lets the UI hide the action.
+models with text output and on-demand inference. `vertex` calls the
+`v1beta1` `publishers/google/models` list with the express key and keeps the
+Gemini models. The express mode API reference does not include that method,
+so a 401 or 403 for `vertex` is a 422 that tells the admin to add models by
+ID. `supports_discovery` on the driver lets the UI hide the action.
 
 Discovery doubles as the connection test for a stored key. Every failure is
 normalized to a message that names the driver and the transport error or HTTP
@@ -239,9 +241,9 @@ its own copy of a model.
   organization default, then the environment fallback. A disabled provider or
   model is a hard configuration error.
 - `Organization -[:USES_DEFAULT_MODEL]-> AIModel`, and the per-team equivalent.
-- Discovery for `vertex`. The express mode API has no list-models method, and
-  service account credentials need `google-auth`, which is not a dependency.
-  Bedrock inference profiles are not listed either.
+- Vertex discovery with service account credentials. They need
+  `google-auth`, which is not a dependency. Bedrock inference profiles are not
+  listed either.
 - Spend tracking against `monthly_spend_cap`, and pricing history.
 - A capability set on models, such as `tool_use`, `vision`, and
   `structured_output`, replacing the coarse `kind` field.
