@@ -22,7 +22,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Sk } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
-import type { ProjectRelationship } from '@/types'
+import type { Project, ProjectRelationship } from '@/types'
+
+// A project offered in the list: either from the project list, or a
+// dependency taken from the relationships (which carry no project_types).
+type Candidate = ProjectRelationship['project'] & {
+  project_types?: Project['project_types']
+}
 
 interface EditRelationshipsDialogProps {
   isOpen: boolean
@@ -93,12 +99,21 @@ export function EditRelationshipsDialog({
     queryKey: ['projects', orgSlug],
   })
 
-  // All projects except the current one, sorted alphabetically
+  // All projects except the current one, sorted alphabetically. The project
+  // list hides archived projects, so existing dependencies are merged in from
+  // the relationships; that keeps archived ones removable.
   const candidates = useMemo(() => {
-    return allProjects
+    const byId = new Map<string, Candidate>()
+    for (const p of allProjects) byId.set(p.id, p)
+    for (const r of relationships) {
+      if (r.direction === 'outbound' && !byId.has(r.project.id)) {
+        byId.set(r.project.id, r.project)
+      }
+    }
+    return [...byId.values()]
       .filter((p) => p.id !== projectId)
       .sort((a, b) => a.name.localeCompare(b.name))
-  }, [allProjects, projectId])
+  }, [allProjects, projectId, relationships])
 
   // Filtered by search
   const filtered = useMemo(() => {
