@@ -58,11 +58,22 @@ To copy an agent, open it and click **Duplicate**.
 | Field | What to enter |
 |---|---|
 | Agent name | Required. Imbi makes the slug from the name |
-| Description | One sentence. The task inbox and the workflow picker show it |
 | Icon | An icon, or an image that you upload (500 KB maximum) |
 | Slack channel | A channel name, for example `#cs-escalations`. Imbi stores it. In this release, nothing uses it |
 | Owner team | Required. The team that owns the agent |
 | Tags | Organization tags. They only classify the agent and have no effect on runner selection. You can make a tag with a color from this field |
+
+You do not write the description. When a save changes the name, the
+system prompt, the tools, or the subagents, a model writes one sentence
+that says what the agent does and names its subagents. The task inbox,
+the agent list, and the workflow picker show it. The prompt is
+`imbi-api/agent-description` in the [prompt CMS](prompts.md). Edit it,
+and choose its model, on **Agents > Platform**. Without a model,
+imbi-api uses its default Anthropic model. When no model answers, or the
+agent has no system prompt, tools, or subagents, the save keeps the
+description that the agent had. An agent with an empty description gets
+one on its next save, if a model answers and the agent has a system
+prompt, tools, or subagents.
 
 ### System prompt and model
 

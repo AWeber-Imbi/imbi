@@ -20,7 +20,6 @@ import asyncio
 import dataclasses
 import datetime
 import functools
-import json
 import logging
 import re
 import typing
@@ -710,18 +709,11 @@ async def _definition(
     )
 
 
-#: The longest description that is stored.
-MAX_DESCRIPTION_LENGTH = 300
-
 _AGENT_NAMES_QUERY: typing.LiteralString = """
 MATCH (a:Agent)-[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
 WHERE a.id IN {ids}
 RETURN a.id AS id, a.name AS name
 """
-
-
-class _Description(pydantic.BaseModel):
-    description: str
 
 
 def _outline(
@@ -793,18 +785,9 @@ async def _describe(
             for s in outline['steps']
         ],
     }
-    result = await prompted.complete(
-        db,
-        anthropic,
-        system_prompts.WORKFLOW_DESCRIPTION,
-        json.dumps(sent),
-        _Description(description=current),
-        auth,
+    return await prompted.describe(
+        db, anthropic, system_prompts.WORKFLOW_DESCRIPTION, sent, current, auth
     )
-    if result.degraded:
-        return current
-    text = ' '.join(result.data.description.split())
-    return text[:MAX_DESCRIPTION_LENGTH] or current
 
 
 # --- Endpoints ---------------------------------------------------------

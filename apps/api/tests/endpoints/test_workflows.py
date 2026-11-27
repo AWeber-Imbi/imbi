@@ -18,6 +18,7 @@ from imbi.api import models, workflows
 from imbi.api.auth import permissions
 from imbi.api.endpoints import prompts
 from imbi.api.endpoints import workflows as workflows_endpoints
+from imbi.api.llm import prompted
 from imbi.common import graph
 from imbi.common.llm import AnthropicClient, CompletionResult
 from imbi.common.prompts import system as system_prompts
@@ -266,7 +267,7 @@ class WorkflowTestCase(support.SharedAppAsyncTestCase):
         client.available = True
         client.complete_json = mock.AsyncMock(
             return_value=CompletionResult(
-                data=workflows_endpoints._Description(description=text),
+                data=prompted.Description(description=text),
                 degraded=degraded,
             )
         )

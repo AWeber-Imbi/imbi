@@ -1,5 +1,8 @@
 """One JSON answer from a model, with a prompt that Imbi ships."""
 
+import json
+import typing
+
 import pydantic
 
 from imbi.api.auth import permissions
@@ -45,3 +48,38 @@ async def complete[T: pydantic.BaseModel](
             'markdown fences.'
         ),
     )
+
+
+#: The longest description that :func:`describe` returns.
+MAX_DESCRIPTION_LENGTH = 300
+
+
+class Description(pydantic.BaseModel):
+    description: str
+
+
+async def describe(
+    db: graph.Graph,
+    anthropic: AnthropicClient,
+    default: system_prompts.DefaultPrompt,
+    sent: dict[str, typing.Any],
+    current: str,
+    auth: permissions.AuthContext,
+) -> str:
+    """Write one description of ``sent`` with ``default`` (see
+    :func:`complete`). Whitespace is collapsed and the text is cut to
+    :data:`MAX_DESCRIPTION_LENGTH`. ``current`` is returned when no
+    model answers or the answer is empty.
+    """
+    result = await complete(
+        db,
+        anthropic,
+        default,
+        json.dumps(sent),
+        Description(description=current),
+        auth,
+    )
+    if result.degraded:
+        return current
+    text = ' '.join(result.data.description.split())
+    return text[:MAX_DESCRIPTION_LENGTH] or current

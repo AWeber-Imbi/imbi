@@ -367,7 +367,7 @@ class AgentFieldTests(PlatformTestCase):
         # A change that keeps the plugin keeps its pin.
         response = await self.client.patch(
             self.org_url('agents/builder'),
-            json=[{'op': 'replace', 'path': '/description', 'value': 'x'}],
+            json=[{'op': 'replace', 'path': '/name', 'value': 'x'}],
         )
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()['version'], 2)

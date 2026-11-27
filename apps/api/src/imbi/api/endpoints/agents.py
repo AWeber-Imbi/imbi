@@ -24,6 +24,7 @@ Every route needs the caller to be a member of the organization
 an organization: see :mod:`imbi.api.auth.organizations`.
 """
 
+import asyncio
 import datetime
 import json
 import logging
@@ -42,11 +43,15 @@ from imbi.api.endpoints import prompts
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.graph_sql import props_template, set_clause
 from imbi.api.harness import platform
+from imbi.api.llm import prompted
+from imbi.api.llm.dependencies import InjectAnthropicClient
 from imbi.api.scoring import OptionalValkeyClient
 from imbi.common import graph, models, relational
 from imbi.common import patch as json_patch
 from imbi.common.graph import cypher as graph_cypher
+from imbi.common.llm import AnthropicClient
 from imbi.common.prompts import resolve as prompt_resolve
+from imbi.common.prompts import system as system_prompts
 
 LOGGER = logging.getLogger(__name__)
 
@@ -157,11 +162,14 @@ class AgentSnapshot(pydantic.BaseModel):
 
 
 class AgentWrite(pydantic.BaseModel):
-    """The full agent document that a create or a JSON Patch gives."""
+    """The full agent document that a create or a JSON Patch gives.
+
+    A model writes the description (see :func:`_describe`), so a
+    sent description is ignored.
+    """
 
     name: str = pydantic.Field(min_length=1)
     slug: str = pydantic.Field(min_length=1)
-    description: str | None = None
     icon: pydantic.HttpUrl | str | None = None
     team: str = pydantic.Field(
         min_length=1, description='Slug of the owner team in the org.'
@@ -219,7 +227,6 @@ class AgentUpdate(pydantic.BaseModel):
 
     name: str | None = pydantic.Field(default=None, min_length=1)
     slug: str | None = pydantic.Field(default=None, min_length=1)
-    description: str | None = None
     icon: pydantic.HttpUrl | str | None = None
     team: str | None = pydantic.Field(default=None, min_length=1)
     tags: list[str] | None = None
@@ -734,7 +741,6 @@ def _snapshot_from(data: AgentWrite) -> AgentSnapshot:
     return AgentSnapshot(
         name=data.name,
         slug=data.slug,
-        description=data.description,
         icon=None if data.icon is None else str(data.icon),
         team=data.team,
         tags=sorted(dict.fromkeys(data.tags)),
@@ -755,6 +761,89 @@ def _current_document(agent: dict[str, typing.Any]) -> dict[str, typing.Any]:
         'enabled': bool(agent.get('enabled', True)),
         'version_summary': None,
     }
+
+
+def _description_inputs(snapshot: AgentSnapshot) -> tuple[typing.Any, ...]:
+    """Return the parts of the configuration that the description
+    reads: the name, the system prompt, the tools, and the subagents.
+    """
+    return (
+        snapshot.name,
+        snapshot.prompt_ref,
+        snapshot.prompt_version,
+        sorted(snapshot.tools),
+        snapshot.subagents,
+    )
+
+
+async def _prompt_version(
+    db: graph.Pool, snapshot: AgentSnapshot
+) -> models.PromptVersion | None:
+    """Return the prompt version that the agent uses: ``prompt_version``
+    of the prompt that ``prompt_ref`` names, or the version of its
+    label when the agent has no ``prompt_version``. ``None`` when the
+    agent has no prompt or it is not found.
+    """
+    if snapshot.prompt_ref is None:
+        return None
+    ref = snapshot.prompt_ref
+    if snapshot.prompt_version is not None:
+        ref = f'{ref.partition("@")[0]}@{snapshot.prompt_version}'
+    try:
+        _prompt, version, _label = await prompt_resolve.resolve(db, ref)
+    except prompt_resolve.PromptError:
+        return None
+    return version
+
+
+async def _describe(
+    db: graph.Pool,
+    anthropic: AnthropicClient,
+    org_slug: str,
+    target: AgentSnapshot,
+    current: AgentSnapshot | None,
+    auth: permissions.AuthContext,
+) -> str | None:
+    """Return the description of ``target``, that a model writes with
+    the ``imbi-api/agent-description`` prompt.
+
+    The model writes it when the name, the system prompt, the tools, or
+    the subagents change, or when the description is empty. Otherwise,
+    and when no model answers or the agent has no system prompt, tools,
+    or subagents, the description of ``current`` is kept. Subagent ids
+    are sent as agent names.
+    """
+    kept = current.description if current else None
+    if not anthropic.available:
+        return kept
+    if kept and _description_inputs(target) == _description_inputs(
+        typing.cast('AgentSnapshot', current)
+    ):
+        return kept
+    version, found = await asyncio.gather(
+        _prompt_version(db, target),
+        _find_subagents(db, org_slug, [s.agent_id for s in target.subagents]),
+    )
+    system = version.system if version else ''
+    if not (system or target.tools or target.subagents):
+        return kept
+    sent = {
+        'name': target.name,
+        'system_prompt': system,
+        'tools': sorted(target.tools),
+        'subagents': [
+            {
+                'name': str(found[s.agent_id].get('name', '')),
+                'instructions': s.instructions,
+            }
+            for s in target.subagents
+            if s.agent_id in found
+        ],
+    }
+    text = await prompted.describe(
+        db, anthropic, system_prompts.AGENT_DESCRIPTION, sent, kept or '', auth
+    )
+    return text or kept
 
 
 def _slug_taken_detail(slug: str) -> str:
@@ -803,14 +892,10 @@ async def _check_model_teams(
         prompt_resolve.ModelNotAllowed: 403 ``model_not_allowed``.
 
     """
-    if snapshot.prompt_ref is None or snapshot.prompt_version is None:
+    if snapshot.prompt_version is None:
         return
-    ref = f'{snapshot.prompt_ref.partition("@")[0]}@{snapshot.prompt_version}'
-    try:
-        _prompt, version, _label = await prompt_resolve.resolve(db, ref)
-    except prompt_resolve.PromptError:
-        return
-    if version.model is None:
+    version = await _prompt_version(db, snapshot)
+    if version is None or version.model is None:
         return
     info = await prompt_resolve.model_info(db, version.model)
     if info is None or info.access_scope != 'restricted':
@@ -1109,6 +1194,45 @@ async def _check_team_move(
         )
 
 
+async def _check_target(
+    db: graph.Pool,
+    auth: permissions.AuthContext,
+    org_id: str,
+    org_slug: str,
+    agent_id: str,
+    target: AgentSnapshot,
+    current: AgentSnapshot,
+) -> str | None:
+    """Check the fields of ``target`` that differ from ``current``.
+
+    Returns:
+        The id of the new owner team, or ``None`` when the team does
+        not change.
+
+    """
+    team_id: str | None = None
+    if target.slug != current.slug:
+        await _assert_slug_free(db, org_slug, target.slug)
+    if target.prompt_ref != current.prompt_ref:
+        _check_prompt_scope(org_slug, target.prompt_ref)
+    if target.team != current.team:
+        await _check_team_move(db, auth, org_id, agent_id)
+        team_id = await _team_id(db, org_id, target.team)
+    if (target.team, target.prompt_ref, target.prompt_version) != (
+        current.team,
+        current.prompt_ref,
+        current.prompt_version,
+    ):
+        await _check_model_teams(db, org_id, target, team_id)
+    if target.tags != current.tags:
+        await org_tags.require_ids(db, org_slug, target.tags)
+    if target.tools != current.tools:
+        await _validate_tools(db, org_slug, target.tools)
+    if target.subagents != current.subagents:
+        await _validate_subagents(db, org_slug, target.subagents)
+    return team_id
+
+
 async def _apply(
     db: graph.Pool,
     org_id: str,
@@ -1119,17 +1243,29 @@ async def _apply(
     summary: str | None,
     auth: permissions.AuthContext,
     label_move: graph_cypher.Statement | None = None,
+    anthropic: AnthropicClient | None = None,
 ) -> dict[str, typing.Any]:
     """Write ``target`` and ``enabled`` over the stored agent.
 
     A new version is written only when the snapshot changes. All the
     writes, and ``label_move`` when it is given, run in one
     transaction.
+
+    With ``anthropic``, the description of ``target`` is ignored and a
+    model writes it after the checks (see :func:`_describe`). Without
+    it (a restore), the description of ``target`` is written.
     """
     current = _snapshot_of(existing)
+    if anthropic is not None:
+        target = target.model_copy(update={'description': current.description})
     config_changed = target != current
     enabled_changed = enabled != bool(existing.get('enabled', True))
-    if not config_changed and not enabled_changed:
+    fill = (
+        anthropic is not None
+        and anthropic.available
+        and not current.description
+    )
+    if not config_changed and not enabled_changed and not fill:
         if label_move is not None:
             await _execute(
                 db, org_id, org_slug, [label_move], None, target, current
@@ -1138,32 +1274,36 @@ async def _apply(
 
     agent_id = str(existing['id'])
     ids = {'id': agent_id}
-    props: dict[str, typing.Any] = {'enabled': enabled, 'updated_at': _now()}
+    props: dict[str, typing.Any] = {'updated_at': _now()}
+    # Write enabled only when this save changes it, so a save that
+    # waits on the model does not undo a concurrent enable or disable.
+    if enabled_changed:
+        props['enabled'] = enabled
     statements: list[graph_cypher.Statement] = []
     if label_move is not None:
         statements.append(label_move)
     n: int | None = None
+    team_id: str | None = None
     if config_changed:
-        if target.slug != current.slug:
-            await _assert_slug_free(db, org_slug, target.slug)
-        if target.prompt_ref != current.prompt_ref:
-            _check_prompt_scope(org_slug, target.prompt_ref)
-        team_id: str | None = None
-        if target.team != current.team:
-            await _check_team_move(db, auth, org_id, agent_id)
-            team_id = await _team_id(db, org_id, target.team)
-        if (target.team, target.prompt_ref, target.prompt_version) != (
-            current.team,
-            current.prompt_ref,
-            current.prompt_version,
-        ):
-            await _check_model_teams(db, org_id, target, team_id)
-        if target.tags != current.tags:
-            await org_tags.require_ids(db, org_slug, target.tags)
-        if target.tools != current.tools:
-            await _validate_tools(db, org_slug, target.tools)
-        if target.subagents != current.subagents:
-            await _validate_subagents(db, org_slug, target.subagents)
+        team_id = await _check_target(
+            db, auth, org_id, org_slug, agent_id, target, current
+        )
+    if anthropic is not None:
+        target = target.model_copy(
+            update={
+                'description': await _describe(
+                    db, anthropic, org_slug, target, current, auth
+                )
+            }
+        )
+        config_changed = target != current
+    if not config_changed and not enabled_changed:
+        if label_move is not None:
+            await _execute(
+                db, org_id, org_slug, [label_move], None, target, current
+            )
+        return existing
+    if config_changed:
         n = int(existing['_latest']) + 1
         # The version is written first. Its unique index stops a
         # concurrent save before that save changes the agent.
@@ -1281,12 +1421,14 @@ async def create_agent(
     data: AgentCreate,
     db: graph.Pool,
     store: harness.Store,
+    anthropic: InjectAnthropicClient,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('agent:create')),
     ],
 ) -> dict[str, typing.Any]:
-    """Create an agent in ``org_slug`` and write its version 1.
+    """Create an agent in ``org_slug`` and write its version 1. A model
+    writes the description (see :func:`_describe`).
 
     Raises:
         404: No such organization.
@@ -1309,6 +1451,9 @@ async def create_agent(
     await _validate_tools(db, org_slug, snapshot.tools)
     await _validate_subagents(db, org_slug, snapshot.subagents)
     await _assert_slug_free(db, org_slug, data.slug)
+    snapshot.description = await _describe(
+        db, anthropic, org_slug, snapshot, None, auth
+    )
 
     now = _now()
     agent_id = nanoid.generate()
@@ -1488,6 +1633,7 @@ async def update_agent(
     data: AgentUpdate,
     db: graph.Pool,
     store: harness.Store,
+    anthropic: InjectAnthropicClient,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('agent:write')),
@@ -1495,7 +1641,8 @@ async def update_agent(
 ) -> dict[str, typing.Any]:
     """Update an agent (whole-or-partial replace).
 
-    Fields that are not in the body keep their values.
+    Fields that are not in the body keep their values. A model writes
+    the description (see :func:`_describe`).
     """
     existing = await _fetch_agent(db, org_slug, slug)
     document = _current_document(existing)
@@ -1517,6 +1664,7 @@ async def update_agent(
         merged.enabled,
         merged.version_summary,
         auth,
+        anthropic=anthropic,
     )
 
 
@@ -1528,6 +1676,7 @@ async def patch_agent(
     operations: list[json_patch.PatchOperation],
     db: graph.Pool,
     store: harness.Store,
+    anthropic: InjectAnthropicClient,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('agent:write')),
@@ -1536,7 +1685,9 @@ async def patch_agent(
     """Partially update an agent with JSON Patch (RFC 6902).
 
     ``/team`` is a team slug and ``/tags`` a list of tag slugs. Add
-    ``/version_summary`` to put a note on the version.
+    ``/version_summary`` to put a note on the version. A model writes
+    the description (see :func:`_describe`); a ``/description``
+    operation is ignored.
     """
     existing = await _fetch_agent(db, org_slug, slug)
     patched = json_patch.apply_patch(
@@ -1562,6 +1713,7 @@ async def patch_agent(
         merged.enabled,
         merged.version_summary,
         auth,
+        anthropic=anthropic,
     )
 
 

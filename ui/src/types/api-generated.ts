@@ -5163,7 +5163,8 @@ export interface paths {
         put?: never;
         /**
          * Create Agent
-         * @description Create an agent in ``org_slug`` and write its version 1.
+         * @description Create an agent in ``org_slug`` and write its version 1. A model
+         *     writes the description (see :func:`_describe`).
          *
          *     Raises:
          *         404: No such organization.
@@ -5227,7 +5228,8 @@ export interface paths {
          * Update Agent
          * @description Update an agent (whole-or-partial replace).
          *
-         *     Fields that are not in the body keep their values.
+         *     Fields that are not in the body keep their values. A model writes
+         *     the description (see :func:`_describe`).
          */
         put: operations["update_agent_api_organizations__org_slug__agents__slug__put"];
         post?: never;
@@ -5253,7 +5255,9 @@ export interface paths {
          * @description Partially update an agent with JSON Patch (RFC 6902).
          *
          *     ``/team`` is a team slug and ``/tags`` a list of tag slugs. Add
-         *     ``/version_summary`` to put a note on the version.
+         *     ``/version_summary`` to put a note on the version. A model writes
+         *     the description (see :func:`_describe`); a ``/description``
+         *     operation is ignored.
          */
         patch: operations["patch_agent_api_organizations__org_slug__agents__slug__patch"];
         trace?: never;
@@ -11772,8 +11776,6 @@ export interface components {
             name: string;
             /** Slug */
             slug: string;
-            /** Description */
-            description?: string | null;
             /** Icon */
             icon?: string | null;
             /**
@@ -12948,8 +12950,6 @@ export interface components {
             name?: string | null;
             /** Slug */
             slug?: string | null;
-            /** Description */
-            description?: string | null;
             /** Icon */
             icon?: string | null;
             /** Team */
