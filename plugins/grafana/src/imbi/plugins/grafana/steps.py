@@ -3,9 +3,15 @@
 The steps query a Prometheus data source through the Grafana data
 source query API (``POST /api/ds/query``). The Grafana URL comes from
 the Integration ``service_url`` option only, never from the step params.
+
+A query can use ``$project``. When the workflow gives the step a
+project, the plugin replaces it with the project's Grafana identifier
+(the ``EXISTS_IN`` edge value, ``{slug}-{id}`` by default), for example
+``rate(http_requests_total{service="$project"}[5m])``.
 """
 
 import math
+import re
 import time
 import typing
 import urllib.parse
@@ -14,6 +20,7 @@ import httpx
 import pydantic
 
 from imbi.common.plugins import base, errors
+from imbi.plugins.grafana import links
 
 #: The maximum number of series that ``gather_metrics`` returns.
 MAX_SERIES = 50
@@ -25,6 +32,9 @@ MAX_BYTES = 1000 * 1024
 
 _TIMEOUT = 30.0
 
+#: The query variable for the project identifier.
+_PROJECT = re.compile(r'\$project\b')
+
 
 def _datasource_field() -> typing.Any:
     return pydantic.Field(
@@ -35,7 +45,10 @@ def _datasource_field() -> typing.Any:
 
 class GatherMetricsParams(pydantic.BaseModel):
     datasource: str = _datasource_field()
-    expr: str = pydantic.Field(min_length=1, description='A PromQL query.')
+    expr: str = pydantic.Field(
+        min_length=1,
+        description='A PromQL query. $project is the project identifier.',
+    )
     start: str = pydantic.Field(
         default='now-1h', description='Epoch ms or a time like now-1h.'
     )
@@ -71,7 +84,10 @@ class ThresholdParams(pydantic.BaseModel):
     datasource: str = _datasource_field()
     expr: str = pydantic.Field(
         min_length=1,
-        description='A PromQL query that gives one value, e.g. sum(...).',
+        description=(
+            'A PromQL query that gives one value, e.g. sum(...). '
+            '$project is the project identifier.'
+        ),
     )
     operator: typing.Literal['lt', 'lte', 'gt', 'gte']
     threshold: pydantic.FiniteFloat
@@ -170,7 +186,7 @@ async def datasources(
     params: dict[str, typing.Any],
 ) -> list[base.Choice]:
     """List the Prometheus data sources of the Grafana organization."""
-    data = await _request(ctx, credentials, 'GET', '/api/datasources')
+    data = await request(ctx, credentials, 'GET', '/api/datasources')
     items = typing.cast('list[dict[str, typing.Any]]', data)
     return [
         base.Choice(value=str(item['uid']), label=str(item['name']))
@@ -197,9 +213,10 @@ async def _query(
     start: str,
     end: str,
 ) -> list[Series]:
+    query = {**query, 'expr': _expand(ctx, query['expr'])}
     # The picker lists only Prometheus data sources; a rendered or saved
     # UID can name another type, so check it before the query.
-    found = await _request(
+    found = await request(
         ctx,
         credentials,
         'GET',
@@ -216,11 +233,23 @@ async def _query(
         'from': start,
         'to': end,
     }
-    data = await _request(ctx, credentials, 'POST', '/api/ds/query', body)
+    data = await request(ctx, credentials, 'POST', '/api/ds/query', body)
     result = typing.cast('dict[str, typing.Any]', data)['results']['A']
     if result.get('error'):
         raise ValueError(f'Grafana query failed: {result["error"]}')
     return [s for f in result.get('frames', []) for s in _frame_series(f)]
+
+
+def _expand(ctx: base.PluginContext, expr: str) -> str:
+    """Replace ``$project`` with the project's Grafana identifier."""
+    if not _PROJECT.search(expr):
+        return expr
+    if not ctx.project_id:
+        raise ValueError(
+            'The query uses $project, but the step has no project_id'
+        )
+    value = links.identifier(ctx)
+    return _PROJECT.sub(lambda _: value, expr)
 
 
 def _frame_series(frame: dict[str, typing.Any]) -> list[Series]:
@@ -257,7 +286,7 @@ def _finite(value: typing.Any) -> float | None:
     return number if math.isfinite(number) else None
 
 
-async def _request(
+async def request(
     ctx: base.PluginContext,
     credentials: dict[str, str],
     method: str,

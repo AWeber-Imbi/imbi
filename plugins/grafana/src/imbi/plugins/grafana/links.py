@@ -1,9 +1,9 @@
 """Shared helpers: integration options, the edge, and its URLs.
 
-The plugin has no Grafana credentials, so the project's relationship
-with Grafana is a convention: the ``EXISTS_IN`` edge identifier is the
-value that the alert rules carry in one label (``service`` by default),
-and the gateway's Identifier Selector reads that label from a delivery.
+The project's relationship with Grafana is a convention: the
+``EXISTS_IN`` edge identifier is the value that the alert rules carry
+in one label (``service`` by default), and the gateway's Identifier
+Selector reads that label from a delivery.
 """
 
 from __future__ import annotations
@@ -64,8 +64,8 @@ def identifier(ctx: PluginContext) -> str:
     return conn.identifier if conn else default_identifier(ctx)
 
 
-def canonical_url(base: str, name: str, value: str) -> str:
-    """The Grafana rules API, filtered to the rules with the label.
+def rules_path(name: str, value: str) -> str:
+    """The Grafana rules API path, filtered to the rules with the label.
 
     ``rule_matcher`` filters the rules; ``matcher`` filters only the
     alert instances of each rule.
@@ -74,9 +74,14 @@ def canonical_url(base: str, name: str, value: str) -> str:
         {'name': name, 'value': value, 'isRegex': False, 'isEqual': True},
         separators=(',', ':'),
     )
-    return f'{base}/api/prometheus/grafana/api/v1/rules?' + (
+    return '/api/prometheus/grafana/api/v1/rules?' + (
         urllib.parse.urlencode({'rule_matcher': matcher})
     )
+
+
+def canonical_url(base: str, name: str, value: str) -> str:
+    """The Grafana rules API URL, filtered to the rules with the label."""
+    return base + rules_path(name, value)
 
 
 def dashboard_url(base: str, name: str, value: str) -> str:

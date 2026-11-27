@@ -103,7 +103,8 @@ class GrafanaPlugin(plugins.Plugin):
                 label='Service Account Token',
                 description=(
                     'A Grafana service account token with the Viewer '
-                    'role. Only the workflow steps use it.'
+                    'role. The workflow steps and the live doctor checks '
+                    'use it.'
                 ),
                 required=False,
             ),
@@ -139,7 +140,8 @@ class GrafanaPlugin(plugins.Plugin):
                 description=(
                     'Check that the project is linked to Grafana with the '
                     'identifier its alert rules carry, with a one-click '
-                    'repair.'
+                    'repair. With the token, also check that alert rules '
+                    'and dashboards carry the identifier.'
                 ),
                 handler=GrafanaDoctor,
             ),
@@ -148,7 +150,8 @@ class GrafanaPlugin(plugins.Plugin):
                 label='Workflow steps',
                 description=(
                     'Workflow steps that read Prometheus metrics: gather '
-                    'metrics, and a metric threshold gate.'
+                    'metrics, and a metric threshold gate. A query can use '
+                    '$project for the project identifier.'
                 ),
                 project_scoped=False,
                 handler=GrafanaSteps,
