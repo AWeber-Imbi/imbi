@@ -760,7 +760,9 @@ async def remediate_all_for_project(
     Returns ``None`` when the project has no persisted report (nothing to
     remediate). Each finding is remediated independently; a failure on one
     is captured in its outcome rather than aborting the rest. Analysis is
-    re-run once at the end so the returned report reflects every fix.
+    re-run once at the end so the returned report reflects every fix. If
+    that re-run cannot look up the project, the outcomes are returned with
+    the previous report.
 
     Shared by the per-project endpoint and the ``remediate`` maintenance
     sweep, so both apply findings identically.  ``sweepable_only``
@@ -816,8 +818,16 @@ async def remediate_all_for_project(
         )
     if sweepable_only and not outcomes:
         return RemediateAllResponse(outcomes=outcomes, report=report)
-    fresh = await run_and_persist(db, org_slug, project_id, auth)
-    return RemediateAllResponse(outcomes=outcomes, report=fresh)
+    try:
+        report = await run_and_persist(db, org_slug, project_id, auth)
+    except ProjectLookupFailed:
+        # Keep the outcomes of the fixes already applied. The returned
+        # report is the previous one, because analysis cannot run now.
+        LOGGER.warning(
+            'Analysis refresh after remediate-all failed for project %s',
+            project_id,
+        )
+    return RemediateAllResponse(outcomes=outcomes, report=report)
 
 
 @project_analysis_router.post(

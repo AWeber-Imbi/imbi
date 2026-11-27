@@ -720,6 +720,50 @@ class ProjectAnalysisTestCase(unittest.TestCase):
         self.assertEqual(1, len(body['outcomes']))
         self.assertEqual('failed', body['outcomes'][0]['result']['status'])
 
+    def test_remediate_all_keeps_outcomes_when_exists_in_fails(self) -> None:
+        # A persistent EXISTS_IN failure also fails the closing refresh.
+        # The outcomes must still be returned, with the previous report.
+        from imbi.api.endpoints.project_analysis import (
+            AnalysisReport,
+            AnalysisResult,
+        )
+
+        self.mocks['lookup_project_exists_in'].side_effect = RuntimeError
+        report = AnalysisReport(
+            id='r1',
+            project_id='proj-1',
+            created_at=datetime.datetime.now(datetime.UTC),
+            overall_status='warn',
+            results=[
+                AnalysisResult(
+                    slug='fix-plugin:drift',
+                    title='t',
+                    description='d',
+                    status='warn',
+                    plugin_slug='fix-plugin',
+                    plugin_id='p1',
+                    remediation=RemediationOffer(id='fix-it', label='Fix'),
+                ),
+            ],
+        )
+        with (
+            mock.patch(f'{_MODULE}._fetch_report', return_value=report),
+            mock.patch(
+                f'{_MODULE}.resolve_all_capabilities',
+                return_value=[_resolved('p1', _RemediablePlugin)],
+            ),
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                resp = client.post(
+                    '/organizations/acme/projects/proj-1/analysis'
+                    '/remediate-all'
+                )
+        self.assertEqual(200, resp.status_code, resp.text)
+        body = resp.json()
+        self.assertEqual(1, len(body['outcomes']))
+        self.assertEqual('failed', body['outcomes'][0]['result']['status'])
+        self.assertEqual('r1', body['report']['id'])
+
 
 class RemediateAllSweepableTestCase(unittest.IsolatedAsyncioTestCase):
     """``sweepable_only`` applies only offers marked sweepable."""
