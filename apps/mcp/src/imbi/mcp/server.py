@@ -129,16 +129,14 @@ def _mcp_identity(*_args: typing.Any) -> typing.Any:
 
 
 def _instrument(server: fastmcp.FastMCP) -> None:
-    """Send ``$mcp_tool_call`` events when MCP analytics is on.
-
-    Tool schemas stay as the API defines them: no injected ``context``
-    or model arguments, and no conversation ids. The shared PostHog
-    scrubber removes tool arguments, results, and error text.
+    """Send MCP analytics events, with the agent intent and missing
+    capabilities. See ``docs/deployment/operations.md``.
     """
     if not (posthog.mcp_analytics() and posthog.init()):
         return
     # Optional dependency: import only when the switch is on.
     from posthog.mcp import (  # noqa: PLC0415
+        MCPAnalyticsContextOptions,
         MCPAnalyticsOptions,
         instrument,
     )
@@ -146,7 +144,14 @@ def _instrument(server: fastmcp.FastMCP) -> None:
     instrument(
         server,
         options=MCPAnalyticsOptions(
-            context=False,
+            # Short: the description is in every tool of tools/list.
+            context=MCPAnalyticsContextOptions(
+                description=(
+                    'Why you call this tool, in one short sentence. '
+                    'No names, emails, or IDs.'
+                )
+            ),
+            report_missing=True,
             capture_model=False,
             enable_conversation_id=False,
             enable_exception_autocapture=False,

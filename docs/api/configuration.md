@@ -186,7 +186,7 @@ unset.
 | `POSTHOG_AI_PRIVACY_MODE` | str | none | `false` puts prompt and output text in AI events. Default: `true`. |
 | `SERVICE` | str | `unknown` | Server name sent to Sentry, and the `service` property of PostHog events |
 | `POSTHOG_ERROR_TRACKING` | str | none | `false` stops sending exceptions to PostHog. Default: `true`. |
-| `POSTHOG_MCP_ANALYTICS` | str | none | `true` sends a `$mcp_tool_call` event for each MCP tool call, without arguments or results |
+| `POSTHOG_MCP_ANALYTICS` | str | none | `true` sends a `$mcp_tool_call` event for each MCP tool call, with the agent intent but without arguments or results |
 | `POSTHOG_AI_OBSERVABILITY` | str | none | `true` sends a `$ai_generation` event for each assistant and Slack bot LLM call |
 | `POSTHOG_API_KEY` | str | none | PostHog project key. Unset: PostHog is off. |
 | `IMBI_PROMPT_RENDER_INPROCESS` | str | `''` | `true` renders in the service process. For debugging only: it removes the isolation. |

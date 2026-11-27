@@ -135,13 +135,52 @@ class PostHogTestCase(unittest.TestCase):
                 '$mcp_parameters': {'token': 'secret'},
                 '$mcp_response': 'secret',
                 '$mcp_error_message': 'secret',
-                '$mcp_intent': 'secret',
+                '$mcp_intent': 'List the team projects',
             },
         }
         self.assertEqual(
             posthog._scrub(message)['properties'],
-            {'$mcp_tool_name': 'list_projects'},
+            {
+                '$mcp_tool_name': 'list_projects',
+                '$mcp_intent': 'List the team projects',
+            },
         )
+
+    def test_scrub_redacts_credentials_and_numbers_in_intent(self) -> None:
+        cases = {
+            'Call with Authorization: Basic dXNlcjpwYXNz now': (
+                'Call with Authorization: Basic [redacted] now'
+            ),
+            'Retry with Authorization: basic dXNlcjpwdw== now': (
+                'Retry with Authorization: basic [redacted] now'
+            ),
+            'Retry with authorization: BaSiC dXNlcjpwdw== now': (
+                'Retry with authorization: BaSiC [redacted] now'
+            ),
+            'Use bearer abc.def for the call': (
+                'Use bearer [redacted] for the call'
+            ),
+            'Retry with api_key=s3cr3t and password: hunter2': (
+                'Retry with api_key=[redacted] and password: [redacted]'
+            ),
+            'Retry with {"password": "hunter 2"}': (
+                'Retry with {"password": [redacted]}'
+            ),
+            'Use password="hunter 2" now': 'Use password=[redacted] now',
+            'Look up the owner of 4155550123': (
+                'Look up the owner of [number]'
+            ),
+            'Find basic facts about project 42': (
+                'Find basic facts about project 42'
+            ),
+        }
+        for intent, expected in cases.items():
+            message = {'properties': {'$mcp_intent': intent}}
+            self.assertEqual(
+                posthog._scrub(message)['properties']['$mcp_intent'],
+                expected,
+                intent,
+            )
 
     def test_scrub_redacts_emails_in_paths(self) -> None:
         message = {
