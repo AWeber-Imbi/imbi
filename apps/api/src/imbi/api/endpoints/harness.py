@@ -58,6 +58,7 @@ from imbi.api.secret_broker import store as secret_store
 from imbi.api.tickets import custom_fields
 from imbi.api.tickets import store as ticket_store
 from imbi.common import graph, models
+from imbi.common.llm import resolve as llm_resolve
 from imbi.common.prompts import rendering
 from imbi.common.prompts import resolve as prompt_resolve
 
@@ -222,6 +223,19 @@ class BundlePrompt(pydantic.BaseModel):
     )
 
 
+class BundleModel(pydantic.BaseModel):
+    """The catalog model of a task, resolved at claim (ADR 0022
+    amendment)."""
+
+    #: ``AIModel.slug``.
+    slug: str
+    #: The provider model id that the runner sends.
+    model_id: str
+    #: The level that named the model: ``explicit`` (the prompt
+    #: version), ``team``, or ``org``.
+    source: llm_resolve.Source
+
+
 class BundleRepository(pydantic.BaseModel):
     """A repository of the task's project."""
 
@@ -255,6 +269,8 @@ class IdentityBundle(pydantic.BaseModel):
     #: no prompt, or when it did not render (see ``prompt_error``).
     prompt: BundlePrompt | None = None
     prompt_error: str | None = None
+    #: The model of the task. ``None`` only from an older imbi-api.
+    model: BundleModel | None = None
     #: The organization configuration version that the task pinned.
     #: ``None``: the organization had none, so the defaults apply.
     platform_config_version: int | None = None
@@ -773,30 +789,17 @@ async def _identity(
             )
     settings = _settings(bundle.snapshot.get('settings'))
     prompt, prompt_error = await _rendered_prompt(db, task, bundle, org_slug)
-    if prompt is not None and prompt.model is not None:
-        # A global prompt stores the id of the slug in the first
-        # organization that has it. The run uses the model with that slug
-        # in the organization of the task. Without one, the run fails:
-        # the stored id can match a different model of that
-        # organization.
-        info = await prompt_resolve.model_info(
-            db, prompt.model, org_ids=[task['organization_id']]
-        )
-        if info is None or not info.enabled:
-            raise prompt_resolve.ModelNotAllowed(
-                f'The organization has no enabled model {prompt.model!r}'
-            )
-        prompt = prompt.model_copy(update={'model_id': info.model_id})
-    # The runner sends prompt.model_id. Without one it uses its own
-    # configured model, which is not checked (like IMBI_ASSISTANT_MODEL).
-    if prompt is not None and prompt.model_id is not None:
-        await _check_model_teams(
-            db, task['organization_id'], task['agent_id'], prompt.model_id
-        )
+    source, model = await _task_model(db, task, prompt)
+    await store.pin_model(task['id'], model.id, model.provider.id)
+    if prompt is not None:
+        prompt = prompt.model_copy(update={'model_id': model.model_id})
     return bundle.model_copy(
         update={
             'prompt': prompt,
             'prompt_error': prompt_error,
+            'model': BundleModel(
+                slug=model.slug, model_id=model.model_id, source=source
+            ),
             'platform_config_version': version,
             'config': platform.merge(
                 config, settings, bundle.snapshot.get('tools') or {}
@@ -827,29 +830,54 @@ class _NoServiceAccount(LookupError):
     """The service account of a claimed task is gone."""
 
 
-async def _check_model_teams(
-    db: graph.Graph, org_id: str, agent_id: str, model_id: str
-) -> None:
-    """Refuse the provider model id ``model_id`` when the owner team of
-    the agent may not use it now (#788): no enabled model in the catalog
-    of the organization has the id, or each one is restricted to other
-    teams. The agent save
-    checks this too, but the catalog and the prompt label can change
-    after the save.
+#: The drivers that the runner's model proxy can call: the Anthropic
+#: Messages protocol, from Anthropic or a gateway (ADR 0022 amendment).
+HARNESS_DRIVERS = frozenset({'anthropic', 'openai_compatible'})
+
+
+async def _task_model(
+    db: graph.Graph,
+    task: dict[str, typing.Any],
+    prompt: BundlePrompt | None,
+) -> tuple[llm_resolve.Source, models.AIModel]:
+    """Resolve the model of a task: the prompt version, then the default
+    of the agent's owner team, then the default of the organization.
+    There is no environment level: it has no provider key.
 
     Raises:
-        prompt_resolve.ModelNotAllowed: The owner team may not use
-            ``model_id``.
+        llm_resolve.ModelUnusable: The first level that names a model
+            names one that cannot be used, its driver is not in
+            :data:`HARNESS_DRIVERS`, or no level names a model
+            (``not_configured``).
 
     """
-    records = await db.execute(_AGENT_TEAM_QUERY, {'id': agent_id}, ['id'])
-    team_id = str(graph.parse_agtype(records[0]['id'])) if records else ''
-    if not await prompt_resolve.team_may_use_model_id(
-        db, model_id, team_id, org_ids=[org_id]
-    ):
-        raise prompt_resolve.ModelNotAllowed(
-            f'The owner team may not use the model {model_id!r}'
+    records = await db.execute(
+        _AGENT_TEAM_QUERY, {'id': task['agent_id']}, ['id']
+    )
+    team_id = str(graph.parse_agtype(records[0]['id'])) if records else None
+    resolved = await llm_resolve.resolve_model(
+        db,
+        [task['organization_id']],
+        model=prompt.model if prompt is not None else None,
+        team_id=team_id,
+    )
+    model = resolved.model
+    if model is None:
+        raise llm_resolve.ModelUnusable(
+            'not_configured',
+            '',
+            'No AI model: set a model on the prompt version, or a default '
+            'model for the team or the organization',
         )
+    if model.provider.driver not in HARNESS_DRIVERS:
+        raise llm_resolve.ModelUnusable(
+            'unsupported_driver',
+            model.slug,
+            f'AI model {model.slug!r} is served by driver '
+            f'{model.provider.driver!r}; agents need anthropic or '
+            'openai_compatible',
+        )
+    return resolved.source, model
 
 
 class _EgressTokenTooLarge(ValueError):
@@ -878,8 +906,8 @@ async def _deliver(
     with ``unhandled_no_actor`` and ``None`` is returned: the caller
     claims again. So does a task whose proxy token is too large
     (``exceeded_ceiling``, ``egress_token_too_large``), and a task whose
-    agent's owner team may not use its restricted model
-    (``failed_external``, ``model_not_allowed``). Any other error
+    model cannot be used (``failed_external``, ``model_<reason>``, see
+    :func:`_task_model`). Any other error
     undoes the claim and is raised again, so the runner is not left
     busy with a chain that it does not know.
     """
@@ -895,8 +923,8 @@ async def _deliver(
         outcome, reason = 'unhandled_no_actor', 'service_account_missing'
     except _EgressTokenTooLarge:
         outcome, reason = 'exceeded_ceiling', 'egress_token_too_large'
-    except prompt_resolve.ModelNotAllowed:
-        outcome, reason = 'failed_external', 'model_not_allowed'
+    except llm_resolve.ModelUnusable as err:
+        outcome, reason = 'failed_external', f'model_{err.reason}'
     except BaseException:
         await store.release_claim(runner['id'], task, chain, pinned=pinned)
         raise

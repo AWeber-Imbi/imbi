@@ -62,6 +62,24 @@ class RunnerTestCase(test_agent_task_harness.HarnessTestCase):
         )
         self.addAsyncCleanup(self._cleanup_harness)
         self.pool_name = await self.make_pool(self.pool_labels, [self.org])
+        # A claim resolves the model of the task; without one it closes
+        # the task (ADR 0022 amendment).
+        self.provider_id = await self.make_provider('anthropic')
+        self.default_model = await self.make_model(
+            'default', 'claude-test-default', provider=self.provider_id
+        )
+        await self.set_org_default(self.default_model)
+
+    async def make_default_model(self, org: str) -> None:
+        """Give ``org`` a default model, so that its tasks can be
+        claimed."""
+        provider = await self.make_provider('anthropic', org=org)
+        await self.set_org_default(
+            await self.make_model(
+                'default', 'claude-test-default', org, provider=provider
+            ),
+            org,
+        )
 
     async def _cleanup_harness(self) -> None:
         async with self.pool.connection() as conn:
@@ -373,6 +391,76 @@ class ClaimTests(RunnerTestCase):
         self.assertEqual(claim['bundle']['prompt_ref'], 'ops/triage@prod')
         self.assertEqual(claim['bundle']['prompt_version'], 7)
 
+    async def test_claim_pins_the_org_default_model(self) -> None:
+        claim = await self.claim(await self.register())
+        assert claim is not None
+        self.assertEqual(
+            claim['bundle']['model'],
+            {
+                'slug': 'default',
+                'model_id': 'claude-test-default',
+                'source': 'org',
+            },
+        )
+        task = await self.task_row()
+        self.assertEqual(task['ai_model_id'], self.default_model)
+        self.assertEqual(task['ai_provider_id'], self.provider_id)
+
+    async def test_prompt_model_wins_and_sets_the_prompt_model_id(
+        self,
+    ) -> None:
+        explicit = await self.make_model(
+            'explicit', 'claude-explicit', provider=self.provider_id
+        )
+        prompt = harness_api.BundlePrompt(
+            ref='agents/triage@1', system='', model='explicit', model_id='old'
+        )
+        with mock.patch.object(
+            harness_api,
+            '_rendered_prompt',
+            mock.AsyncMock(return_value=(prompt, None)),
+        ):
+            claim = await self.claim(await self.register())
+        assert claim is not None
+        self.assertEqual(claim['bundle']['model']['source'], 'explicit')
+        self.assertEqual(
+            claim['bundle']['model']['model_id'], 'claude-explicit'
+        )
+        self.assertEqual(
+            claim['bundle']['prompt']['model_id'], 'claude-explicit'
+        )
+        self.assertEqual((await self.task_row())['ai_model_id'], explicit)
+
+    async def test_team_default_wins_over_the_org_default(self) -> None:
+        team_model = await self.make_model(
+            'team', 'claude-team', provider=self.provider_id
+        )
+        team = f'team-{uuid.uuid4().hex[:8]}'
+        await self.graph.execute(
+            'MATCH (o:Organization {{id: {org}}}), (a:Agent {{id: {agent}}}),'
+            ' (m:AIModel {{id: {model}}})'
+            ' CREATE (t:Team {{id: {team}, slug: {team}, name: {team}}})'
+            ' CREATE (t)-[:BELONGS_TO]->(o) CREATE (a)-[:OWNED_BY]->(t)'
+            ' CREATE (t)-[:USES_DEFAULT_MODEL]->(m) RETURN t.id AS id',
+            {
+                'org': self.org,
+                'agent': self.agent_id,
+                'model': team_model,
+                'team': team,
+            },
+            ['id'],
+        )
+        self.addAsyncCleanup(
+            self.graph.execute,
+            'MATCH (t:Team {{id: {id}}}) DETACH DELETE t RETURN 1 AS ok',
+            {'id': team},
+            ['ok'],
+        )
+        claim = await self.claim(await self.register())
+        assert claim is not None
+        self.assertEqual(claim['bundle']['model']['source'], 'team')
+        self.assertEqual((await self.task_row())['ai_model_id'], team_model)
+
     async def test_bundle_has_the_subagent_slugs(self) -> None:
         helper_id = await self.make_agent('helper', name='Helper')
         await self.make_version(
@@ -505,9 +593,9 @@ class FailedClaimTests(RunnerTestCase):
         assert chain is not None
         self.assertEqual(chain['state'], 'done')
 
-    def patch_prompt(self, model_id: str) -> typing.Any:
+    def patch_prompt(self, model: str) -> typing.Any:
         prompt = harness_api.BundlePrompt(
-            ref='agents/triage@1', system='', model='opus', model_id=model_id
+            ref='agents/triage@1', system='', model=model, model_id='stale'
         )
         return mock.patch.object(
             harness_api,
@@ -515,116 +603,97 @@ class FailedClaimTests(RunnerTestCase):
             mock.AsyncMock(return_value=(prompt, None)),
         )
 
-    async def assert_model_not_allowed(
-        self, runner: dict[str, typing.Any]
+    async def assert_closed(
+        self, runner: dict[str, typing.Any], reason: str
     ) -> None:
         task = await self.task_row()
         self.assertEqual(task['status'], 'closed')
         self.assertEqual(task['outcome'], 'failed_external')
-        self.assertEqual(task['outcome_reason'], 'model_not_allowed')
+        self.assertEqual(task['outcome_reason'], reason)
         self.assertEqual((await self.runner_row(runner))['state'], 'idle')
 
     async def test_restricted_model_of_another_team_is_closed(self) -> None:
+        await self.make_model(
+            'restricted',
+            'claude-restricted',
+            provider=self.provider_id,
+            access_scope='restricted',
+        )
         runner = await self.register()
-        info = harness_api.prompt_resolve.ModelInfo(
-            model_id='claude-opus-5', enabled=True, driver='anthropic'
-        )
-        with (
-            self.patch_prompt('claude-opus-5'),
-            mock.patch.object(
-                harness_api.prompt_resolve,
-                'model_info',
-                mock.AsyncMock(return_value=info),
-            ),
-            mock.patch.object(
-                harness_api.prompt_resolve,
-                'team_may_use_model_id',
-                mock.AsyncMock(return_value=False),
-            ) as check,
-        ):
+        # The test agent has no owner team.
+        with self.patch_prompt('restricted'):
             self.assertIsNone(await self.claim(runner))
-        # The id that the runner sends is checked in the catalog of the
-        # organization of the task. The test agent has no owner team.
-        check.assert_awaited_once_with(
-            mock.ANY, 'claude-opus-5', '', org_ids=[mock.ANY]
-        )
-        await self.assert_model_not_allowed(runner)
+        await self.assert_closed(runner, 'model_not_allowed')
 
     async def test_model_slug_resolves_in_the_task_organization(
         self,
     ) -> None:
-        runner = await self.register()
-        info = harness_api.prompt_resolve.ModelInfo(
-            model_id='claude-opus-org', enabled=True, driver='anthropic'
+        # A global prompt names a slug that more than one organization
+        # has. The run uses the model of the task organization.
+        other = await self.make_provider('anthropic', org=self.other_org)
+        await self.make_model(
+            'shared', 'claude-other-org', self.other_org, provider=other
         )
-        with (
-            self.patch_prompt('claude-opus-other-org'),
-            mock.patch.object(
-                harness_api.prompt_resolve,
-                'model_info',
-                mock.AsyncMock(return_value=info),
-            ),
-            mock.patch.object(
-                harness_api.prompt_resolve,
-                'team_may_use_model_id',
-                mock.AsyncMock(return_value=True),
-            ) as check,
-        ):
+        await self.make_model(
+            'shared', 'claude-org', provider=self.provider_id
+        )
+        runner = await self.register()
+        with self.patch_prompt('shared'):
             claim = await self.claim(runner)
         assert claim is not None
-        self.assertEqual(
-            claim['bundle']['prompt']['model_id'], 'claude-opus-org'
-        )
-        check.assert_awaited_once_with(
-            mock.ANY, 'claude-opus-org', '', org_ids=[mock.ANY]
-        )
+        self.assertEqual(claim['bundle']['prompt']['model_id'], 'claude-org')
 
-    async def test_model_slug_missing_from_the_catalog_is_closed(
-        self,
-    ) -> None:
-        # The task organization has no 'opus' model. The stored id is not
-        # used, even when another model of the organization has it.
+    async def test_model_missing_from_the_catalog_is_closed(self) -> None:
         runner = await self.register()
-        with (
-            self.patch_prompt('claude-renamed-away'),
-            mock.patch.object(
-                harness_api.prompt_resolve,
-                'team_may_use_model_id',
-                mock.AsyncMock(return_value=True),
-            ) as check,
-        ):
+        with self.patch_prompt('renamed-away'):
             self.assertIsNone(await self.claim(runner))
-        check.assert_not_awaited()
-        await self.assert_model_not_allowed(runner)
+        await self.assert_closed(runner, 'model_not_found')
 
-    async def test_disabled_model_slug_is_closed(self) -> None:
-        # A disabled model is refused, also when an enabled model of the
-        # organization has the same provider model id.
-        runner = await self.register()
-        info = harness_api.prompt_resolve.ModelInfo(
-            model_id='claude-opus-5', enabled=False, driver='anthropic'
+    async def test_disabled_prompt_model_does_not_fall_through(self) -> None:
+        await self.make_model(
+            'off', 'claude-off', provider=self.provider_id, enabled=False
         )
-        with (
-            self.patch_prompt('claude-opus-5'),
-            mock.patch.object(
-                harness_api.prompt_resolve,
-                'model_info',
-                mock.AsyncMock(return_value=info),
-            ),
-            mock.patch.object(
-                harness_api.prompt_resolve,
-                'team_may_use_model_id',
-                mock.AsyncMock(return_value=True),
-            ) as check,
-        ):
+        runner = await self.register()
+        with self.patch_prompt('off'):
             self.assertIsNone(await self.claim(runner))
-        check.assert_not_awaited()
-        await self.assert_model_not_allowed(runner)
+        await self.assert_closed(runner, 'model_disabled')
+
+    async def test_no_model_is_closed(self) -> None:
+        await self.set_org_default(None)
+        runner = await self.register()
+        self.assertIsNone(await self.claim(runner))
+        await self.assert_closed(runner, 'model_not_configured')
+
+    async def test_unsupported_driver_is_closed(self) -> None:
+        bedrock = await self.make_provider('bedrock', 'bedrock')
+        model = await self.make_model(
+            'on-bedrock', 'anthropic.claude', provider=bedrock
+        )
+        await self.set_org_default(model)
+        runner = await self.register()
+        self.assertIsNone(await self.claim(runner))
+        await self.assert_closed(runner, 'model_unsupported_driver')
+
+    async def test_model_over_its_spend_cap_is_closed(self) -> None:
+        with mock.patch.object(
+            harness_api.llm_resolve,
+            'month_spend',
+            mock.AsyncMock(return_value={self.default_model: 5}),
+        ):
+            await self.graph.execute(
+                'MATCH (m:AIModel {{id: {id}}}) SET m.monthly_spend_cap = 5'
+                ' RETURN m.id AS id',
+                {'id': self.default_model},
+                ['id'],
+            )
+            runner = await self.register()
+            self.assertIsNone(await self.claim(runner))
+        await self.assert_closed(runner, 'model_spend_cap')
 
     async def test_failed_outcome_write_releases_the_claim(self) -> None:
         runner = await self.register()
         with (
-            self.patch_prompt('claude-renamed-away'),
+            self.patch_prompt('renamed-away'),
             mock.patch.object(
                 harness_api.tickets.TicketStore,
                 'set_outcome',
@@ -2097,6 +2166,7 @@ class PoolApiTests(RunnerTestCase):
         own = await self.register(shared)
         self.assertIsNotNone(await self.claim(own))  # T-1 of org
         await self.make_agent(org=self.other_org)
+        await self.make_default_model(self.other_org)
         self.act_as_user()
         response = await self.create_task(org=self.other_org)
         self.assertEqual(response.status_code, 201, response.text)

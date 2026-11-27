@@ -113,9 +113,12 @@ class HarnessTestCase(test_agent_tasks.AgentTaskTestCase):
         slug: str,
         model_id: str,
         org: str | None = None,
+        *,
+        provider: str | None = None,
         **prices: typing.Any,
-    ) -> None:
-        """Add a model to the catalog of ``org`` (default: the task's)."""
+    ) -> str:
+        """Add a model to the catalog of ``org`` (default: the task's);
+        return its id. ``provider`` is the id of its AI provider."""
         org = org or self.org
         props: dict[str, typing.Any] = {
             'id': f'{org}-{slug}',
@@ -142,6 +145,69 @@ class HarnessTestCase(test_agent_tasks.AgentTaskTestCase):
             {'id': props['id']},
             ['ok'],
         )
+        if provider is not None:
+            await self.graph.execute(
+                'MATCH (m:AIModel {{id: {id}}}), (p:AIProvider {{id: {p}}})'
+                ' CREATE (m)-[:SERVED_BY]->(p) RETURN m.id AS id',
+                {'id': props['id'], 'p': provider},
+                ['id'],
+            )
+        return str(props['id'])
+
+    async def make_provider(
+        self,
+        slug: str,
+        driver: str = 'anthropic',
+        org: str | None = None,
+        **props: typing.Any,
+    ) -> str:
+        """Add an AI provider to the catalog of ``org`` (default: the
+        task's); return its id."""
+        org = org or self.org
+        values: dict[str, typing.Any] = {
+            'id': f'{org}-{slug}',
+            'org_id': org,
+            'slug': slug,
+            'name': slug,
+            'driver': driver,
+            'enabled': True,
+            **props,
+        }
+        await self.graph.execute(
+            'MATCH (o:Organization {{id: {org_id}}})'
+            f' CREATE (p:AIProvider {props_template(values)})'
+            ' CREATE (p)-[:BELONGS_TO]->(o) RETURN p.id AS id',
+            values,
+            ['id'],
+        )
+        self.addAsyncCleanup(
+            self.graph.execute,
+            'MATCH (p:AIProvider {{id: {id}}}) DETACH DELETE p RETURN 1 AS ok',
+            {'id': values['id']},
+            ['ok'],
+        )
+        return str(values['id'])
+
+    async def set_org_default(
+        self, model: str | None, org: str | None = None
+    ) -> None:
+        """Make ``model`` the default model of ``org`` (default: the
+        task's); ``None`` removes the default."""
+        org = org or self.org
+        await self.graph.execute(
+            'MATCH (o:Organization {{id: {org}}})-[d:USES_DEFAULT_MODEL]->()'
+            ' DELETE d RETURN 1 AS ok',
+            {'org': org},
+            ['ok'],
+        )
+        if model is not None:
+            await self.graph.execute(
+                'MATCH (o:Organization {{id: {org}}}),'
+                ' (m:AIModel {{id: {model}}})'
+                ' CREATE (o)-[:USES_DEFAULT_MODEL]->(m) RETURN 1 AS ok',
+                {'org': org, 'model': model},
+                ['ok'],
+            )
 
 
 class AccessTests(HarnessTestCase):

@@ -563,6 +563,17 @@ class HarnessStore:
                 (runner_id,),
             )
 
+    async def pin_model(
+        self, task_id: uuid.UUID, ai_model_id: str, ai_provider_id: str
+    ) -> None:
+        """Record the AI model and provider that a claim resolved for a
+        task. Usage prices and the model key use them."""
+        await self._execute(
+            'UPDATE tickets.tickets SET ai_model_id = %s,'
+            ' ai_provider_id = %s WHERE id = %s',
+            (ai_model_id, ai_provider_id, task_id),
+        )
+
     async def finish(self, runner: Row) -> Row | None:
         """End the work of a runner; return its chain, if it had one.
 

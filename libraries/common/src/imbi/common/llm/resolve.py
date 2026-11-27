@@ -27,8 +27,11 @@ import psycopg
 from imbi.common import graph, models
 from imbi.common.prompts import resolve as prompt_resolve
 
-#: ``provider_credentials_unavailable`` is for a consumer that has no
-#: credential for the provider; :func:`resolve_model` does not raise it.
+#: ``unsupported_driver`` is for a consumer that can call only some
+#: drivers, ``provider_credentials_unavailable`` for a consumer that has
+#: no credential for the provider, and ``not_configured`` for a consumer
+#: with no environment level (the agent harness); :func:`resolve_model`
+#: raises none of them.
 Reason = typing.Literal[
     'not_found',
     'disabled',
@@ -37,6 +40,7 @@ Reason = typing.Literal[
     'spend_cap',
     'unsupported_driver',
     'provider_credentials_unavailable',
+    'not_configured',
 ]
 Source = typing.Literal['explicit', 'team', 'org', 'env']
 
