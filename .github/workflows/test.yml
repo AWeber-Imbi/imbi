@@ -160,7 +160,7 @@ jobs:
       # setgid file (P5a). The kind run below reuses these layers.
       - name: "Check the runtime image has no setuid or setgid files"
         run: |
-          docker build --load -f apps/harness/Dockerfile --target runtime \
+          docker buildx build --load -f apps/harness/Dockerfile --target runtime \
             -t imbi-harness:runtime .
           found=$(docker run --rm --entrypoint find imbi-harness:runtime \
             / -xdev -perm /6000 -type f)
