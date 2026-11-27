@@ -380,7 +380,12 @@ token types that only the harness routes accept.
 
 ## Amendment: the model comes from the AI catalog (2026-11-27)
 
-Status of this amendment: Proposed.
+Status of this amendment: Accepted (Gavin, 2026-11-27). The owner decided:
+
+- The key of the task's provider needs no `model_inference` grant.
+- The harness has no environment level.
+- This change does not support Bedrock or Vertex. A follow-up issue tracks
+  them.
 
 The organization's `model_upstream` (`kind`, `base_url`,
 `allow_insecure_http`, `key_ref`) and the agent's `model_key_ref` are a
@@ -427,7 +432,7 @@ credentials in its own environment. The model's `Bash` can read that
 environment, and the calls do not go through the proxy, so the task budget
 and the usage reports stop. Support needs a proxy that signs (SigV4, or a
 Google access token) and reads Bedrock and Vertex responses. That is a
-separate decision.
+separate decision, tracked in a follow-up issue.
 
 An `openai_compatible` provider that does not accept Anthropic Messages
 requests fails at the first model call, not at claim. imbi-api cannot know
