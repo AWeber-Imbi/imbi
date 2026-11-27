@@ -18129,7 +18129,7 @@ export interface components {
              * Entry Type
              * @enum {string}
              */
-            entry_type: "Agent Task" | "Configured" | "Decommissioned" | "Deployed" | "Migrated" | "Provisioned" | "Restarted" | "Rolled Back" | "Scaled" | "Upgraded";
+            entry_type: "Configured" | "Decommissioned" | "Deployed" | "Migrated" | "Provisioned" | "Restarted" | "Rolled Back" | "Scaled" | "Upgraded";
             /** Description */
             description: string;
             /** Link */

@@ -9,7 +9,7 @@ import datetime
 import unittest
 import uuid
 
-from imbi.api import commit_pushed_at_repair, drift
+from imbi.api import drift
 from imbi.api.endpoints import project_deployments, projects
 from imbi.api.tickets import log
 from imbi.common import clickhouse
@@ -219,16 +219,6 @@ class OtherCallersTestCase(unittest.IsolatedAsyncioTestCase):
         await self._insert_commit(sha, '2026-08-01 00:00:00')
         result = await commits._stored_pushed_at(self.pid, [*self.shas, sha])
         self.assertEqual({sha: _at(1)}, result)
-
-    async def test_repair_commits_lookup(self) -> None:
-        sha = 'f' * 40
-        await self._insert_commit(sha, '2026-08-01 00:00:00')
-        rows = await clickhouse.query(
-            commit_pushed_at_repair._COMMITS_SQL,
-            {'project_id': self.pid},
-            tables={'shas': [*self.shas, sha]},
-        )
-        self.assertEqual([sha], [row['sha'] for row in rows])
 
 
 def _at(day: int) -> datetime.datetime:

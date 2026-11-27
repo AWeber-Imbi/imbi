@@ -94,18 +94,6 @@ async def enumerate_all_projects(db: graph.Graph) -> list[str]:
     return [v for r in rows if (v := graph.parse_agtype(r['id']))]
 
 
-_PROJECT_IDS_QUERY: typing.LiteralString = (
-    'MATCH (p:Project) RETURN p.id AS id'
-)
-
-
-async def enumerate_projects_with_archived(db: graph.Graph) -> list[str]:
-    """Every project id, archived ones too. For a data migration: the
-    rows of an archived project need it the same as the others."""
-    rows = await db.execute(_PROJECT_IDS_QUERY, {}, ['id'])
-    return [v for r in rows if (v := graph.parse_agtype(r['id']))]
-
-
 async def _org_slug_for(db: graph.Graph, project_id: str) -> str | None:
     from imbi.api.endpoints._helpers import lookup_project_organization_slug
 
@@ -514,99 +502,6 @@ async def execute_deployment_sweep(
     return 'succeeded'
 
 
-async def execute_deployment_status_repair(
-    db: graph.Graph,
-    client: valkey.Valkey,
-    project_id: str,
-    *,
-    ctx: log.MaintenanceContext,
-) -> ExecuteOutcome:
-    """Put back the ``success`` resync overwrote with ``rolled_back``.
-
-    Reads each mislabelled node's own ``history`` rather than the
-    remote, so it costs no API calls and cannot be rate-limited.
-    Skipped means the project has no ``rolled_back`` deployments.
-    """
-    from imbi.api import deployment_status_repair
-
-    summary = await deployment_status_repair.repair_project(db, project_id)
-    if not summary.examined:
-        return _skip(
-            ctx,
-            'deployment-status-repair',
-            'No deployments marked rolled back.',
-        )
-    if not summary.repaired:
-        # Everything examined lacked a recoverable ``success``.  Report
-        # it rather than claiming a repair: these nodes stay wrong and
-        # an operator should know the count is not shrinking.
-        return _skip(
-            ctx,
-            'deployment-status-repair',
-            f'{summary.unrepairable} rolled-back deployment(s) record no '
-            f'prior success to restore.',
-            examined=summary.examined,
-            unrepairable=summary.unrepairable,
-        )
-    ctx.log.record(
-        'succeeded',
-        'deployment-status-repair',
-        f'Restored {summary.repaired} deployment(s) to success; '
-        f'{summary.unrepairable} had no prior success recorded.',
-        examined=summary.examined,
-        repaired=summary.repaired,
-        unrepairable=summary.unrepairable,
-    )
-    return 'succeeded'
-
-
-async def _commit_pushed_at_repair(
-    project_id: str, *, ctx: log.MaintenanceContext, dry_run: bool
-) -> ExecuteOutcome:
-    from imbi.api import commit_pushed_at_repair
-
-    action = 'commit-pushed-at-check' if dry_run else 'commit-pushed-at-repair'
-    summary = await commit_pushed_at_repair.repair_project(
-        project_id, dry_run=dry_run
-    )
-    if not summary.deliveries:
-        return _skip(ctx, action, 'No push deliveries on record.')
-    if not summary.examined:
-        # Deliveries exist but name no commit stored under the branch
-        # they were pushed to -- the sync tracks another branch, or has
-        # not caught up.  Nothing here for the repair to judge.
-        return _skip(
-            ctx,
-            action,
-            'No stored commit matches a push delivery to its branch.',
-            deliveries=summary.deliveries,
-        )
-    if not summary.repaired:
-        # Every commit a delivery accounts for already carries its push
-        # time.  Distinguish this from "no deliveries" so an operator can
-        # tell a repaired project from one the repair cannot reach.
-        return _skip(
-            ctx,
-            action,
-            f'{summary.examined} commit(s) already carry their push time.',
-            deliveries=summary.deliveries,
-            examined=summary.examined,
-        )
-    ctx.log.record(
-        'succeeded',
-        action,
-        f'{summary.repaired} of {summary.examined} commit(s) re-stamped '
-        f'after their push, by up to {summary.largest_shift_seconds}s'
-        + (' (dry run).' if dry_run else '; push times restored.'),
-        deliveries=summary.deliveries,
-        examined=summary.examined,
-        repaired=summary.repaired,
-        largest_shift_seconds=summary.largest_shift_seconds,
-        dry_run=dry_run,
-    )
-    return 'succeeded'
-
-
 async def execute_deployment_state_check(
     db: graph.Graph,
     client: valkey.Valkey,
@@ -661,38 +556,6 @@ async def _deployment_state(
         else 'Stored the current and latest deployment of each environment.',
     )
     return 'succeeded'
-
-
-async def execute_commit_pushed_at_check(
-    db: graph.Graph,
-    client: valkey.Valkey,
-    project_id: str,
-    *,
-    ctx: log.MaintenanceContext,
-) -> ExecuteOutcome:
-    """Report commits whose ``pushed_at`` a re-sync overwrote.
-
-    Writes nothing.  See :mod:`imbi.api.commit_pushed_at_repair`.
-    """
-    del db, client
-    return await _commit_pushed_at_repair(project_id, ctx=ctx, dry_run=True)
-
-
-async def execute_commit_pushed_at_repair(
-    db: graph.Graph,
-    client: valkey.Valkey,
-    project_id: str,
-    *,
-    ctx: log.MaintenanceContext,
-) -> ExecuteOutcome:
-    """Restore the push time of commits a re-sync overwrote.
-
-    Reads only ClickHouse -- the push deliveries in ``events`` and the
-    ``commits`` rows -- so it costs no API calls and cannot be
-    rate-limited.  Skipped means nothing needed restoring.
-    """
-    del db, client
-    return await _commit_pushed_at_repair(project_id, ctx=ctx, dry_run=False)
 
 
 async def execute_rescore(
@@ -975,107 +838,6 @@ async def execute_opslog_backfill(
         f'{len(repairs)}.',
         written=len(pending),
         repaired=len(repairs),
-    )
-    return 'succeeded'
-
-
-#: The rows of a project written before ``organization_id`` existed.
-#: No ``is_deleted`` filter: a tombstone is the latest version of its
-#: row, so it goes back with the organization and stays deleted.
-_OPSLOG_WITHOUT_ORG_SQL: typing.LiteralString = (
-    'SELECT * FROM operations_log FINAL'
-    ' WHERE project_id = {project_id:String}'
-    " AND organization_id = ''"
-)
-
-
-async def execute_opslog_organization_backfill(
-    db: graph.Graph,
-    client: valkey.Valkey,
-    project_id: str,
-    *,
-    ctx: log.MaintenanceContext,
-) -> ExecuteOutcome:
-    """Fill ``organization_id`` in on the project's ``operations_log``
-    rows that have none, from the organization that owns the project.
-
-    The org-scoped routes read only the rows of their organization, so a
-    row without one is not shown. Each row goes back with a bumped
-    ``_row_version``, so the ``ReplacingMergeTree`` replaces it.
-
-    The new version is the read version plus one, the lowest version
-    that replaces the row. A concurrent write (a completion, a patch, a
-    delete) gets its version from :func:`next_row_version`, which is
-    at least the read version plus two, so it wins over this row and is
-    not lost. That write can keep an empty
-    ``organization_id``; the next run fills it in, so run the operation
-    again until it writes nothing.
-    """
-    from imbi.api.endpoints._helpers import lookup_project_organization_id
-
-    action = 'opslog-organization-backfill'
-    org_id = await lookup_project_organization_id(db, project_id)
-    if not org_id:
-        return _skip(ctx, action, _NO_ORG)
-    rows = await clickhouse.client.Clickhouse.get_instance().query(
-        _OPSLOG_WITHOUT_ORG_SQL, {'project_id': project_id}
-    )
-    if not rows:
-        return _skip(ctx, action, 'Every entry already has its organization.')
-    for row in rows:
-        row['organization_id'] = org_id
-        row['_row_version'] = int(row['_row_version']) + 1
-    await iggy.publish_rows('operations_log', 'maintenance', rows)
-    ctx.log.record(
-        'succeeded',
-        action,
-        f'Filled the organization in on {len(rows)} entry(ies).',
-        written=len(rows),
-    )
-    return 'succeeded'
-
-
-#: The live rows that ticket events wrote before that projection was
-#: removed. Tickets do not write to the Operations Log now.
-_OPSLOG_AGENT_TASK_SQL: typing.LiteralString = (
-    'SELECT * FROM operations_log FINAL'
-    " WHERE entry_type = 'Agent Task' AND is_deleted = 0"
-)
-
-
-async def enumerate_opslog_agent_task_purge(db: graph.Graph) -> list[str]:
-    """One item per run: the purge of every Agent Task row."""
-    return ['agent-task-rows']
-
-
-async def execute_opslog_agent_task_purge(
-    db: graph.Graph,
-    client: valkey.Valkey,
-    item_id: str,
-    *,
-    ctx: log.MaintenanceContext,
-) -> ExecuteOutcome:
-    """Delete the ``Agent Task`` rows from the operations log.
-
-    Each row goes back as a tombstone with a bumped ``_row_version``, so
-    the ``ReplacingMergeTree`` replaces it and every read, which filters
-    on ``is_deleted = 0``, stops showing it.
-    """
-    action = 'opslog-agent-task-purge'
-    rows = await clickhouse.client.Clickhouse.get_instance().query(
-        _OPSLOG_AGENT_TASK_SQL
-    )
-    if not rows:
-        return _skip(ctx, action, 'No Agent Task entries are left.')
-    for row in rows:
-        row['is_deleted'] = 1
-        row['_row_version'] = int(row['_row_version']) + 1
-    await iggy.publish_rows('operations_log', 'maintenance', rows)
-    ctx.log.record(
-        'succeeded',
-        action,
-        f'Deleted {len(rows)} Agent Task entry(ies).',
-        deleted=len(rows),
     )
     return 'succeeded'
 

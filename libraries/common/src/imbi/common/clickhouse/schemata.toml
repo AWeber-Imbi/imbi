@@ -63,8 +63,7 @@ ORDER BY (project_id, id);
 enabled = true
 
 # Adds `organization_id` to an `operations_log` made before the column.
-# The org-scoped routes filter on it. The `opslog-organization-backfill`
-# maintenance operation fills it in on the rows written before.
+# The org-scoped routes filter on it.
 [operations_log_organization_id]
 query = """
 ALTER TABLE imbi.operations_log {on_cluster}

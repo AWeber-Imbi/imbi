@@ -2482,7 +2482,6 @@ class Embedding(pydantic.BaseModel):
 
 
 _OPSLOG_ENTRY_TYPES = typing.Literal[
-    'Agent Task',
     'Configured',
     'Decommissioned',
     'Deployed',

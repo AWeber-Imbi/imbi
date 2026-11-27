@@ -26,14 +26,9 @@ MaintenanceSlug = typing.Literal[
     'rescore',
     'deployment-resync',
     'deployment-sweep',
-    'deployment-status-repair',
     'deployment-state-check',
     'deployment-state-backfill',
-    'commit-pushed-at-check',
-    'commit-pushed-at-repair',
     'opslog-backfill',
-    'opslog-organization-backfill',
-    'opslog-agent-task-purge',
     'orphan-release-check',
     'orphan-release-purge',
     'commit-sync',
@@ -171,27 +166,6 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             execute=operations.execute_deployment_sweep,
         ),
         OperationDefinition(
-            slug='deployment-status-repair',
-            label='Repair Deployments Mislabelled Rolled Back',
-            description=(
-                'Restore deployments that resync marked rolled back over '
-                'a success. GitHub writes an inactive status on a '
-                'deployment when a later one supersedes it, and resync '
-                "read that as the outcome -- so most of a project's "
-                'deployment history could end up claiming a rollback that '
-                "never happened. Reads each node's own recorded history "
-                'rather than the remote, so it makes no API calls and '
-                'cannot be rate-limited. A node whose history holds no '
-                'earlier success is left alone: there is nothing to '
-                'restore. Does not change deployment timestamps, so it '
-                'cannot move which release an environment reports. Safe '
-                'to re-run.'
-            ),
-            pause_key=None,
-            enumerate=operations.enumerate_all_projects,
-            execute=operations.execute_deployment_status_repair,
-        ),
-        OperationDefinition(
             slug='deployment-state-check',
             label='Report Stale Deployment State (dry run)',
             description=(
@@ -222,39 +196,6 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             execute=operations.execute_deployment_state_backfill,
         ),
         OperationDefinition(
-            slug='commit-pushed-at-check',
-            label='Report Re-stamped Commit Push Times (dry run)',
-            description=(
-                'Count the commits whose recorded push time a later '
-                're-sync overwrote -- the full backfill stamping a whole '
-                'history with one instant, or a completed workflow run '
-                're-syncing its head commit -- without changing anything. '
-                'Compares each commit against the push delivery that '
-                'first carried it to its branch. Run this before Repair '
-                'to see the scope.'
-            ),
-            pause_key=None,
-            enumerate=operations.enumerate_all_projects,
-            execute=operations.execute_commit_pushed_at_check,
-        ),
-        OperationDefinition(
-            slug='commit-pushed-at-repair',
-            label='Repair Re-stamped Commit Push Times',
-            description=(
-                'Restore the push time of every commit a later re-sync '
-                'overwrote, from the push delivery that first carried it '
-                'to its branch. Push order is what the recent-commits '
-                'feed and the release ranges sliced from it sort on, so '
-                'a re-stamped commit shows up in the wrong release. '
-                'Commits with no push delivery on record are left alone. '
-                'Reads only ClickHouse, so it makes no API calls and '
-                'cannot be rate-limited. Safe to re-run.'
-            ),
-            pause_key=None,
-            enumerate=operations.enumerate_all_projects,
-            execute=operations.execute_commit_pushed_at_repair,
-        ),
-        OperationDefinition(
             slug='opslog-backfill',
             label='Backfill Deployments to Operations Log',
             description=(
@@ -268,36 +209,6 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             pause_key=None,
             enumerate=operations.enumerate_all_projects,
             execute=operations.execute_opslog_backfill,
-        ),
-        OperationDefinition(
-            slug='opslog-organization-backfill',
-            label='Backfill Organizations to Operations Log',
-            description=(
-                'Fill the owning organization in on every operations log '
-                'entry written before entries recorded it. The '
-                'organization operations log shows only the entries of '
-                'its organization, so an entry without one is not shown. '
-                'Deleted entries stay deleted. Includes archived projects. '
-                'Run it again until it writes nothing: an entry that '
-                'changes during a run is filled in on the next run.'
-            ),
-            pause_key=None,
-            enumerate=operations.enumerate_projects_with_archived,
-            execute=operations.execute_opslog_organization_backfill,
-        ),
-        OperationDefinition(
-            slug='opslog-agent-task-purge',
-            label='Purge Agent Task Entries from Operations Log',
-            description=(
-                'Delete every Agent Task entry from the operations log. '
-                'Earlier releases wrote one for each resolved or closed '
-                'ticket of a project; tickets do not write them now. Run '
-                'it one time after the upgrade.'
-            ),
-            pause_key=None,
-            enumerate=operations.enumerate_opslog_agent_task_purge,
-            execute=operations.execute_opslog_agent_task_purge,
-            items_are_projects=False,
         ),
         OperationDefinition(
             slug='orphan-release-check',

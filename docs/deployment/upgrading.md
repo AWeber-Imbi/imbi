@@ -74,6 +74,31 @@ To restart iggy-connect:
 These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 2.30.0, 2.29.0 to 2.29.4, 2.27.0, 2.26.1, 2.21.0, 2.21.1.
 
+## Unreleased
+
+1. **Before you upgrade from a release older than 2.65.0**, upgrade to
+   2.65.0 first. Do the steps of each release up to 2.65.0 in the order
+   that the upgrade procedure gives, including the steps that you must
+   do before you deploy. This release removes these maintenance
+   operations:
+    - **Repair Deployments Mislabelled Rolled Back**
+      (`deployment-status-repair`, 2.28.0)
+    - **Report Re-stamped Commit Push Times (dry run)** and **Repair
+      Re-stamped Commit Push Times** (`commit-pushed-at-check`,
+      `commit-pushed-at-repair`, 2.33.0)
+    - **Backfill Organizations to Operations Log**
+      (`opslog-organization-backfill`, 2.63.0)
+    - **Purge Agent Task Entries from Operations Log**
+      (`opslog-agent-task-purge`, 2.64.0)
+
+    The `imbi.api.backfill_embeddings` script is removed: use **Reindex
+    Search** (`search-reindex`).
+2. **Before you upgrade from 2.64.0 or 2.65.0**, if you did not run
+   **Purge Agent Task Entries from Operations Log**
+   (`opslog-agent-task-purge`), run it on 2.65.0. The operations log no
+   longer accepts the `Agent Task` entry type. A retained `Agent Task`
+   entry makes the operations log fail to load.
+
 ## 2.65.0
 
 1. After you deploy imbi-api, run **Backfill Deployment State**

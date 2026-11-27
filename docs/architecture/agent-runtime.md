@@ -252,7 +252,6 @@ closed task:
   makes the change writes a `trigger_outbox` row when the organization
   has an active `ticket_state_changed` trigger, and the sweep retries
   until the runs start and the row is deleted.
-- The outcome goes to the [Operations Log](../admin/tickets.md#operations-log).
 - A workflow `agent` step that waits on the task continues.
 - The task inbox shows the result. See
   [Outcomes](../admin/tickets.md#outcomes).
