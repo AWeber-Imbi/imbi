@@ -457,7 +457,10 @@ memory, and audited in `secret_audit_events`. Only the source changes.
   of imbi-api. The proxy already renews an expiring token and retries once
   after a `401`.
 - The audit events and the task events are as before. `provider_id` holds
-  the AIProvider id, and the reason is `ai_provider`.
+  the AIProvider id, and the reference is `secret://imbi/model`.
+- An agent no longer has its own model key. A per-agent workload identity
+  binding does not give the model key; the workload identity of the
+  AIProvider, which is per organization, does.
 
 The decrypted key goes only where the `model_upstream` key went: imbi-api,
 the executor, and the runner memory.

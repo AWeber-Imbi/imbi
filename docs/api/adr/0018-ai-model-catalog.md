@@ -361,10 +361,11 @@ per organization, the spend and the cap are per organization per model.
 `imbi.common.llm.resolve.month_spend` does the sum. Both schemas are in the
 graph database, so every service that has the graph can read the spend.
 
-Agent usage pricing finds the model in the catalog of the organization of
-the task by slug, then by provider model id, and records the AIModel id of
-the prices. The harness design (ADR 0022) pins the model on the task, which
-removes the slug or model id match.
+Agent usage pricing records the AIModel id of the prices. A claim pins the
+AIModel and the AIProvider on the task (ADR 0022 amendment), and the usage of
+a pinned task is priced from the models of that provider only, with the
+pinned model first. A task with no pin finds the model in the catalog of its
+organization by slug, then by provider model id.
 
 ### Enforcement
 

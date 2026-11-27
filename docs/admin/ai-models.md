@@ -371,18 +371,17 @@ An agent uses the model of its prompt version. The model must allow the owner
 team of the agent:
 
 - An agent save that changes the team or the prompt fails with `403`
-  (`model_not_allowed`) when the team is not allowed. An agent without a
-  pinned prompt version is not checked, because its tasks use the model of the
-  runner.
-- When a runner claims a task, Imbi checks the model id that the runner gets,
-  because the catalog and the prompt label can change after the save. The task
-  fails this check when no enabled catalog model has that model id, or every
-  enabled catalog model with that model id is restricted to teams that do not
-  include the owner team. A task that fails this check closes with
-  `failed_external` (`model_not_allowed`) and does not run.
-- A task without a prompt model uses the model of the runner
-  (`IMBI_HARNESS_MODEL`, or the default of the agent CLI). The operator sets
-  this model, so Imbi does not check it.
+  (`model_not_allowed`) when the team is not allowed.
+- When a runner claims a task, Imbi resolves the model again, because the
+  catalog and the prompt label can change after the save: the model of the
+  prompt version, then the default of the owner team, then the default of the
+  organization. There is no environment level. The provider must use the
+  `anthropic` or `openai_compatible` driver. A task whose model cannot be
+  used closes with `failed_external` (`model_<reason>`, for example
+  `model_not_allowed` or `model_spend_cap`) and does not run. The runner gets
+  the key of the model's provider, and the usage of the task is priced from
+  the models of that provider. See
+  [Agent runners](../deployment/agent-runners.md#5-configure-the-model).
 
 A model id is allowed for a user or a team when one enabled catalog model with
 that model id is not restricted, or a restricted one includes the user or the

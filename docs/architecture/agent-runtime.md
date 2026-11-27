@@ -50,9 +50,9 @@ agent version records the prompt version. The model comes from the
 [AI model catalog](../admin/ai-models.md). The catalog also gives the
 prices that Imbi uses to calculate the cost.
 
-Each organization has one **base configuration**: the model upstream and
-its key reference, the permission mode, the sandbox, the allowed and
-denied tools, the hooks, and the plugin marketplaces. An agent can only
+Each organization has one **base configuration**: the permission mode,
+the sandbox, the allowed and denied tools, the hooks, and the plugin
+marketplaces. An agent can only
 make it stricter.
 
 ## 2. Task creation

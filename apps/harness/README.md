@@ -22,8 +22,9 @@ A runner process runs one chain. For its root task it:
    descriptor of git's credential helper (`git-credential-fd`); each project
    repository gets, for its host only, a push helper that reads `GH_TOKEN`
    from a `run_with_secret` command (`git-credential-env`),
-3. gets the model key through a `model_inference` resolution, which the
-   executor materializes and releases; it gets a new vendor access token
+3. gets the model key through a `model_inference` resolution of
+   `secret://imbi/model` (the key of the AI provider that the claim
+   pinned), which the executor materializes and releases; it gets a new vendor access token
    (workload identity federation) before the old one expires,
 4. starts a loopback model proxy for the task (Anthropic or LiteLLM), which
    reports usage after each call and refuses calls when the budget is spent,

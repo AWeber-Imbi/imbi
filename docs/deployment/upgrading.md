@@ -245,6 +245,29 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    the project links now open the alert rules list in that
    organization (`orgId=<org_id>`), and the doctor reports an old link
    until it is written again.
+8. **Before you deploy**, give each organization that runs agents a
+   model in the AI catalog (ADR 0022 amendment). The agent harness no
+   longer uses `model_upstream` of the platform configuration or the
+   **Model key** of an agent; imbi-api ignores both. A claim now
+   resolves the model of a task: the model of the agent's prompt
+   version, then the default of the owner team, then the default of the
+   organization. In each organization:
+    1. In **Admin > &lt;Org&gt; Admin > AI Models**, have an enabled
+       provider with the driver `anthropic`, or `openai_compatible` for a
+       gateway such as LiteLLM, with a key or a workload identity. The
+       old model key is in a secret provider, so copy it into the AI
+       provider yourself.
+    2. Set the default model of the organization.
+    3. The provider URL must use `https://`. An in-cluster gateway on
+       `http://` no longer works for agents.
+
+   Without a model, each task closes with `model_not_configured` when a
+   runner claims it. A task needs no `model_inference` grant for the
+   model key: you can remove those grants. Deploy the agent-runner image
+   of this release first, then imbi-api; an older runner works with the
+   new imbi-api, but uses `IMBI_HARNESS_MODEL` for a task whose agent
+   has no prompt. `IMBI_HARNESS_MODEL` stays only as the fallback of a
+   runner that talks to an older imbi-api.
 
 ## 2.65.0
 
@@ -1152,7 +1175,7 @@ uses `http://`, its tasks fail with `model_upstream_insecure` after the
 upgrade. In each such organization, change the URL to `https://`. For a
 protected in-cluster upstream only, turn on **Allow http://** instead. Then
 click **Save version**. See
-[Agent runners](agent-runners.md#5-configure-the-model-key).
+[Agent runners](agent-runners.md#5-configure-the-model).
 
 The **Opened** and **Reviewers** columns of the Open Pull Requests report
 need these steps:
