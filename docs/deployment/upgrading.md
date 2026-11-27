@@ -135,7 +135,10 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
         the rows (see the warning in
         [Read a stream again](operations.md#read-a-stream-again-replay)).
         Before you continue, examine the iggy-connect log for failed
-        inserts, and replay a stream that has one.
+        inserts, and replay a stream that has one. A replay reads the
+        stream again from the start, so after a replay, do the offset
+        check and the log check again. Continue only when the offsets are
+        the same and the log shows no new failed inserts.
     3. Back up the Iggy data directory. Keep the backup until you have
        validated that the rows are in ClickHouse.
     4. Stop iggy-connect and the Iggy server, and delete the Iggy data
