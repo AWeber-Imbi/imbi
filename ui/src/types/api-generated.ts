@@ -7062,8 +7062,9 @@ export interface paths {
          *         409: The step is not a running slack step, or
          *             ``outcome_unknown``: a call with the key did not finish.
          *         422: ``invalid_channel``: the channel is not a Slack channel id,
-         *             or ``ticket_not_found``: the ticket is not a task of the
-         *             organization.
+         *             or ``invalid_thread_ts``: the thread is not a Slack message
+         *             timestamp, or ``ticket_not_found``: the ticket is not a
+         *             task of the organization.
          *         502: ``slack_unreachable``: the call to Slack failed, and Slack
          *             may have posted the message.
          *         503: ``slack_not_configured``: imbi-api has no bot token.

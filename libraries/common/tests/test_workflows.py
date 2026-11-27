@@ -559,6 +559,30 @@ class RegistryTestCase(unittest.TestCase):
                 {'channel': 'C0123456789', 'text': 'x', 'ticket': '12'},
                 {'invalid_param'},
             ),
+            (
+                {
+                    'channel': 'C0123456789',
+                    'text': 'x',
+                    'thread_ts': '1700000000.000100',
+                },
+                set(),
+            ),
+            (
+                {
+                    'channel': 'C0123456789',
+                    'text': 'x',
+                    'thread_ts': '{{ trigger.thread_ts }}',
+                },
+                set(),
+            ),
+            (
+                {
+                    'channel': 'C0123456789',
+                    'text': 'x',
+                    'thread_ts': 'p1700000000000100',
+                },
+                {'invalid_param'},
+            ),
         ):
             issues = _check(
                 [_node('start', 'manual'), _node('tell', 'slack', params)],

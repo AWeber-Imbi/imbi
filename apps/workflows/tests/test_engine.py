@@ -1445,6 +1445,98 @@ class CrashTestCase(EngineTestCase):
         self.assertEqual(run['steps']['tell']['error'], 'invalid_params')
         self.assertEqual(self.api.slacks, [])
 
+    async def _slack_reply_workflow(
+        self, start: dict[str, typing.Any], thread_ts: str
+    ) -> uuid.UUID:
+        return await self._workflow(
+            [
+                start,
+                _node(
+                    'reply',
+                    'slack',
+                    {
+                        'channel': 'C0123456789',
+                        'text': 'Done',
+                        'thread_ts': thread_ts,
+                    },
+                ),
+            ],
+            [_edge('start', 'reply')],
+            {'on_failure': 'none'},
+        )
+
+    async def test_slack_thread_ts_from_an_earlier_step(self) -> None:
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'manual'),
+                _node(
+                    'tell',
+                    'slack',
+                    {'channel': 'C0123456789', 'text': 'Hello'},
+                ),
+                _node(
+                    'reply',
+                    'slack',
+                    {
+                        'channel': 'C0123456789',
+                        'text': 'Done',
+                        'thread_ts': '{{ tell.ts }}',
+                    },
+                ),
+            ],
+            [_edge('start', 'tell'), _edge('tell', 'reply')],
+            {'on_failure': 'none'},
+        )
+        run = await self._drive(await self._start(workflow_id))
+        self.assertEqual(run['status'], 'succeeded', run)
+        self.assertEqual(
+            run['steps']['reply']['input']['thread_ts'], '1700000000.000100'
+        )
+        self.assertEqual(len(self.api.slacks), 2)
+
+    async def test_slack_thread_ts_with_no_value_fails(self) -> None:
+        """A reply does not become a new message in the channel."""
+        workflow_id = await self._slack_reply_workflow(
+            _node('start', 'webhook', {'webhook_id': 'wh-1'}),
+            '{{ trigger.payload.thread_ts }}',
+        )
+        # The run as the run endpoint writes it for a gateway delivery.
+        row, _ = await self.runs.create(
+            workflows.NewRun(
+                organization_id=self.org,
+                workflow_id=workflow_id,
+                version=1,
+                trigger_node_id='start',
+                origin_kind='webhook',
+                origin_id='wh-1',
+                origin={'kind': 'webhook', 'webhook_id': 'wh-1'},
+                idempotency_key='d-1',
+                payload={'payload': {'thread_ts': None}},
+                concurrency_key=None,
+                activated_by=self.email,
+            )
+        )
+        run = await self._drive(row['id'])
+        self.assertEqual(run['status'], 'failed')
+        self.assertEqual(run['steps']['reply']['error'], 'invalid_params')
+        self.assertEqual(self.api.slacks, [])
+
+    async def test_slack_rendered_thread_ts_is_checked(self) -> None:
+        workflow_id = await self._slack_reply_workflow(
+            _node(
+                'start',
+                'manual',
+                {'inputs': [{'name': 'thread_ts', 'type': 'string'}]},
+            ),
+            '{{ trigger.thread_ts }}',
+        )
+        run = await self._drive(
+            await self._start(workflow_id, {'thread_ts': 'yesterday'})
+        )
+        self.assertEqual(run['status'], 'failed')
+        self.assertEqual(run['steps']['reply']['error'], 'invalid_params')
+        self.assertEqual(self.api.slacks, [])
+
     async def test_unknown_outcome_fails_without_retry(self) -> None:
         workflow_id = await self._workflow(
             [
