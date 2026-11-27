@@ -16,7 +16,9 @@ from imbi.common import patch as json_patch
 LOGGER = logging.getLogger(__name__)
 
 service_accounts_router = fastapi.APIRouter(
-    prefix='/service-accounts', tags=['Service Accounts']
+    prefix='/service-accounts',
+    tags=['Service Accounts'],
+    dependencies=[fastapi.Depends(_helpers.guard_internal_service_accounts)],
 )
 
 

@@ -14,6 +14,7 @@ import fastapi
 
 from imbi.api import models, settings
 from imbi.api.auth import permissions
+from imbi.api.endpoints import _helpers
 from imbi.api.endpoints._credentials import (
     compute_expires_at,
     create_service_account_owned_node,
@@ -26,6 +27,7 @@ LOGGER = logging.getLogger(__name__)
 client_credentials_router = fastapi.APIRouter(
     prefix='/service-accounts/{slug}/client-credentials',
     tags=['Client Credentials'],
+    dependencies=[fastapi.Depends(_helpers.guard_internal_service_accounts)],
 )
 
 
