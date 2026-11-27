@@ -22,10 +22,11 @@ import httpx2
 from fastmcp.skills import provider
 
 from imbi.common import cache
+from imbi.common.prompts import namespaces
 
 LOGGER = logging.getLogger(__name__)
 
-NAMESPACE = 'mcp-skills'
+NAMESPACE = namespaces.MCP_SKILLS
 
 LABEL = 'stable'
 

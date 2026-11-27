@@ -128,6 +128,9 @@ the caller's token on each request, so a caller without `prompt:read`
 gets no skills. Archived prompts, decision prompts, and prompts with no
 label on a version are not served.
 
+The name and description of a skill reach every MCP user's model, so
+changing them needs `prompt:promote`, as in `imbi-skills`.
+
 ## Decision prompts
 
 A prompt has a kind, chosen when it is created and fixed after that:
