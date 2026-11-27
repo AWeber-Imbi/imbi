@@ -85,11 +85,18 @@ def _version(
 def _model(
     slug: str, model_id: str, driver: str = 'anthropic'
 ) -> llm_resolve.ResolvedModel:
-    provider = models.AIProvider(name='P', slug='p', driver=driver)
+    org = models.Organization(id='org-1', name='O', slug='o')
+    provider = models.AIProvider(
+        name='P', slug='p', driver=driver, organization=org
+    )
     return llm_resolve.ResolvedModel(
         source='explicit',
         model=models.AIModel(
-            name=slug, slug=slug, model_id=model_id, provider=provider
+            name=slug,
+            slug=slug,
+            model_id=model_id,
+            provider=provider,
+            organization=org,
         ),
     )
 
@@ -99,7 +106,15 @@ REF = 'imbi-assistant/system@stable'
 
 
 class LoadSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        patcher = mock.patch.object(
+            resolve, 'member_org_ids', mock.AsyncMock(return_value=['org-1'])
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     async def load(self, **kwargs: typing.Any) -> system.SystemPrompt:
+        kwargs.setdefault('email', 'dev@example.com')
         return await system.load_system_prompt(
             mock.AsyncMock(), REF, VARIABLES, system.ASSISTANT, **kwargs
         )
@@ -166,8 +181,15 @@ class LoadSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
             result = await self.load(email='dev@example.com')
         self.assertEqual(result.model_id, 'claude-opus-5-5')
         resolver.assert_awaited_once_with(
-            mock.ANY, None, model='default-chat', email='dev@example.com'
+            mock.ANY, ['org-1'], model='default-chat', email='dev@example.com'
         )
+
+    async def test_no_user_has_no_catalog_model(self) -> None:
+        found = _version(model='default-chat', model_id='claude-opus-5-5')
+        with self.patch_resolve(found), self.patch_model(None) as resolver:
+            result = await self.load(email=None)
+        self.assertIsNone(result.model_id)
+        resolver.assert_not_awaited()
 
     async def test_other_driver_is_an_error(self) -> None:
         found = _version(model='gpt', model_id='gpt-5')
@@ -197,7 +219,9 @@ class LoadSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
                 self.patch_model(error),
                 self.assertRaises(llm_resolve.ModelUnusable),
             ):
-                await system.load_model_id(mock.AsyncMock(), REF)
+                await system.load_model_id(
+                    mock.AsyncMock(), REF, 'dev@example.com'
+                )
 
     async def test_stale_model_id_is_checked(self) -> None:
         # A catalog edit moved the slug to a new id; the version keeps
@@ -222,7 +246,10 @@ class LoadSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
                     with self.assertRaises(llm_resolve.ModelUnusable):
                         await self.load(email='dev@example.com')
                 check.assert_awaited_once_with(
-                    mock.ANY, 'claude-opus-old', 'dev@example.com'
+                    mock.ANY,
+                    'claude-opus-old',
+                    'dev@example.com',
+                    org_ids=['org-1'],
                 )
 
     async def test_graph_error_in_the_model_check_falls_back(self) -> None:

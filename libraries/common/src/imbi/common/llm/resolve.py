@@ -32,12 +32,12 @@ Source = typing.Literal['explicit', 'team', 'org', 'env']
 
 #: The model by id or by slug, in the organizations ``org_ids``. The
 #: same slug can be in more than one organization; the rows are in
-#: organization slug order (:func:`prompt_resolve.first_enabled`).
+#: organization slug order, and the first enabled one is used.
 EXPLICIT_QUERY: typing.LiteralString = """
 MATCH (m:AIModel)-[:BELONGS_TO]->(o:Organization)
 WHERE o.id IN {org_ids} AND (m.id = {model} OR m.slug = {model})
 OPTIONAL MATCH (m)-[:SERVED_BY]->(p:AIProvider)
-RETURN m, p, o, m.enabled AS enabled
+RETURN m, p, o
 ORDER BY o.slug
 """
 
@@ -45,14 +45,14 @@ TEAM_DEFAULT_QUERY: typing.LiteralString = """
 MATCH (o:Organization {{id: {org}}})<-[:BELONGS_TO]-(:Team {{id: {team}}})
       -[:USES_DEFAULT_MODEL]->(m:AIModel)-[:BELONGS_TO]->(o)
 OPTIONAL MATCH (m)-[:SERVED_BY]->(p:AIProvider)
-RETURN m, p, o, m.enabled AS enabled
+RETURN m, p, o
 """
 
 ORG_DEFAULT_QUERY: typing.LiteralString = """
 MATCH (o:Organization {{id: {org}}})-[:USES_DEFAULT_MODEL]->(m:AIModel)
       -[:BELONGS_TO]->(o)
 OPTIONAL MATCH (m)-[:SERVED_BY]->(p:AIProvider)
-RETURN m, p, o, m.enabled AS enabled
+RETURN m, p, o
 """
 
 
@@ -117,7 +117,7 @@ async def resolve_model(
             levels.append(('team', TEAM_DEFAULT_QUERY, params))
         levels.append(('org', ORG_DEFAULT_QUERY, {'org': org_ids[0]}))
     for source, query, params in levels:
-        records = await db.execute(query, params, ['m', 'p', 'o', 'enabled'])
+        records = await db.execute(query, params, ['m', 'p', 'o'])
         if not records:
             if source == 'explicit':
                 raise ModelUnusable(
@@ -126,7 +126,15 @@ async def resolve_model(
                     f'AI model {model!r} is not in the catalog',
                 )
             continue
-        record = prompt_resolve.first_enabled(records)
+        record = next(
+            (
+                r
+                for r in records
+                if (prompt_resolve.vertex_props(r['m']) or {}).get('enabled')
+                is not False
+            ),
+            records[0],
+        )
         found = _parse(record, str(model))
         await _check(db, found, team_id, email, admin=admin)
         return ResolvedModel(source=source, model=found)

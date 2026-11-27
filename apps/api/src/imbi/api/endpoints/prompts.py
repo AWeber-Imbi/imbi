@@ -349,10 +349,15 @@ MATCH (v:PromptVersion)-[:VERSION_OF]->(:Prompt {{id: {prompt_id}}})
 RETURN v
 """
 
+#: A model of the organization ``org`` (a slug). A global prompt
+#: (``org`` null) can name a model of any organization: it runs in the
+#: organization of the run, which must have a model with that slug.
 _MODEL_QUERY: typing.LiteralString = """
-MATCH (m:AIModel {{slug: {slug}}})
+MATCH (m:AIModel {{slug: {slug}}})-[:BELONGS_TO]->(o:Organization)
+WHERE {org} IS NULL OR o.slug = {org}
 RETURN m.model_id AS model_id, m.enabled AS enabled,
        m.model_type AS model_type
+ORDER BY o.slug
 """
 
 _DELETE_VERSIONS_QUERY: typing.LiteralString = """
@@ -609,33 +614,38 @@ def _check_templates(content: PromptVersionContent) -> None:
 
 
 async def _model_id_for(
-    db: graph.Graph, model: str | None, kind: models.PromptKind
+    db: graph.Graph,
+    model: str | None,
+    kind: models.PromptKind,
+    org: str | None,
 ) -> str | None:
     """Return the catalog ``model_id`` for a model slug, or raise 422.
 
+    ``org`` is the organization of the prompt (:func:`_prompt_org`).
     The model's type must match the prompt's kind.
     """
     if model is None:
         return None
     records = await db.execute(
         _MODEL_QUERY,
-        {'slug': model},
+        {'slug': model, 'org': org},
         ['model_id', 'enabled', 'model_type'],
     )
     if not records:
         raise _unprocessable(f'AI model {model!r} is not in the catalog')
-    if graph.parse_agtype(records[0]['enabled']) is False:
+    record = prompt_resolve.first_enabled(records)
+    if graph.parse_agtype(record['enabled']) is False:
         raise _unprocessable(f'AI model {model!r} is disabled')
 
     # A missing value predates model_type, when every model was
     # generative.
-    model_type = graph.parse_agtype(records[0].get('model_type'))
+    model_type = graph.parse_agtype(record.get('model_type'))
     if (model_type or 'generative') != kind:
         raise _unprocessable(
             f'AI model {model!r} is a {model_type} model; '
             f'a {kind} prompt needs a {kind} model'
         )
-    return str(graph.parse_agtype(records[0]['model_id']))
+    return str(graph.parse_agtype(record['model_id']))
 
 
 #: The namespace of the prompts of workflow steps:
@@ -1222,7 +1232,9 @@ async def insert_prompt(
     _check_kind(data.kind, data.version)
     _check_tools(data.namespace, data.version)
     _check_templates(data.version)
-    model_id = await _model_id_for(db, data.version.model, data.kind)
+    model_id = await _model_id_for(
+        db, data.version.model, data.kind, _prompt_org(data.namespace, slug)
+    )
     await _assert_ref_free(db, data.namespace, slug)
 
     now = _now()
@@ -2204,7 +2216,9 @@ async def create_prompt_version(
                 )
             response.status_code = 200
             return _version_response(newest, prompt)
-    model_id = await _model_id_for(db, data.model, prompt.kind)
+    model_id = await _model_id_for(
+        db, data.model, prompt.kind, _prompt_org(prompt.namespace, prompt.slug)
+    )
     version, props = _version_props(
         prompt, latest + 1, data, model_id, auth.principal_name
     )

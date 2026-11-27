@@ -121,7 +121,7 @@ class DefaultModelTestCase(model_tests.AIModelTestBase):
         self.assertEqual(response.status_code, 422, response.text)
         self.assertEqual(
             router.params_for(ai_model_defaults._DEFAULT_CANDIDATE_QUERY),
-            {'slug': 'opus', 'team_id': 'tm-1'},
+            {'slug': 'opus', 'org_id': 'org-1', 'team_id': 'tm-1'},
         )
         router = self.route(
             team,

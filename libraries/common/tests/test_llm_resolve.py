@@ -15,8 +15,9 @@ dotenv.load_dotenv()
 class ResolveModelTestCase(unittest.IsolatedAsyncioTestCase):
     """Two organizations with one team each. The member is in team A.
 
-    Models: ``chat`` (everyone), ``locked`` (team A only), ``off``
-    (disabled), and ``q`` (its provider is disabled).
+    Models of organization A: ``chat`` (everyone), ``locked`` (team A
+    only), and ``off`` (disabled). Of organization B: ``q`` (its provider
+    is disabled).
     """
 
     async def asyncSetUp(self) -> None:
@@ -73,6 +74,12 @@ class ResolveModelTestCase(unittest.IsolatedAsyncioTestCase):
             CREATE (off)-[:SERVED_BY]->(p)
             CREATE (q)-[:SERVED_BY]->(qp)
             CREATE (locked)-[:ALLOWED_FOR]->(ta)
+            CREATE (p)-[:BELONGS_TO]->(a)
+            CREATE (chat)-[:BELONGS_TO]->(a)
+            CREATE (locked)-[:BELONGS_TO]->(a)
+            CREATE (off)-[:BELONGS_TO]->(a)
+            CREATE (qp)-[:BELONGS_TO]->(b)
+            CREATE (q)-[:BELONGS_TO]->(b)
             RETURN a.id AS id
             """,
             {
@@ -120,9 +127,10 @@ class ResolveModelTestCase(unittest.IsolatedAsyncioTestCase):
         for key in ('model', 'team_id'):
             if key in kwargs:
                 kwargs[key] = self.ids[kwargs[key]]
-        return await resolve.resolve_model(
-            self.graph, self.ids[org] if org else None, **kwargs
-        )
+        org_ids = [
+            self.ids[o] for o in (org if isinstance(org, list) else [org])
+        ]
+        return await resolve.resolve_model(self.graph, org_ids, **kwargs)
 
     async def assert_unusable(self, reason: str, **kwargs: typing.Any) -> None:
         with self.assertRaises(resolve.ModelUnusable) as raised:
@@ -136,16 +144,19 @@ class ResolveModelTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(found.model.model_id, 'claude-chat')
         self.assertEqual(found.model.provider.driver, 'anthropic')
         self.assertEqual(found.provider, found.model.provider)
-        # Without an organization, only the explicit model is read.
-        found = await self.resolve(org=None, model='chat')
+        # A consumer with no organization reads each organization of
+        # the user.
+        found = await self.resolve(org=['org-b', 'org-a'], model='chat')
         self.assertEqual(found.source, 'explicit')
+        # A model of another organization is not found.
+        await self.assert_unusable('not_found', org='org-b', model='chat')
 
     async def test_explicit_errors(self) -> None:
         with self.assertRaises(resolve.ModelUnusable) as raised:
-            await resolve.resolve_model(self.graph, None, model='no-such')
+            await resolve.resolve_model(self.graph, [], model='no-such')
         self.assertEqual(raised.exception.reason, 'not_found')
         await self.assert_unusable('disabled', model='off')
-        await self.assert_unusable('provider_disabled', model='q')
+        await self.assert_unusable('provider_disabled', org='org-b', model='q')
 
     async def test_restricted_access(self) -> None:
         ok: list[dict[str, typing.Any]] = [
@@ -190,11 +201,12 @@ class ResolveModelTestCase(unittest.IsolatedAsyncioTestCase):
         await self.assert_unusable('disabled', team_id='team-a')
         await self.set_default('Organization', 'org-b', 'q')
         await self.assert_unusable('provider_disabled', org='org-b')
-        # The team default does not allow the team.
-        await self.set_default('Team', 'team-b', 'locked')
-        await self.assert_unusable(
-            'not_allowed', org='org-b', team_id='team-b'
-        )
+
+    async def test_restricted_default_needs_an_allowed_user(self) -> None:
+        await self.set_default('Organization', 'org-a', 'locked')
+        await self.assert_unusable('not_allowed', email=self.other)
+        found = await self.resolve(email=self.member)
+        self.assertEqual(found.source, 'org')
 
     async def test_defaults_are_scoped_to_the_organization(self) -> None:
         await self.set_default('Organization', 'org-a', 'chat')

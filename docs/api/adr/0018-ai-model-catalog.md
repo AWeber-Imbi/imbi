@@ -270,10 +270,11 @@ organization and of a team. Each source node has at most one edge. The
 endpoint replaces the edge in one transaction under an advisory lock on the
 source node.
 
-- A default model must be a generative model.
+- A default model must be a generative model of the organization.
 - A team default must be a model that the team may use: an `organization`
   scope model, or a `restricted` model with an `ALLOWED_FOR` edge to the team.
-- `DELETE /ai-models/{id}` returns `409` while the model is a default.
+- `DELETE /organizations/{org_slug}/ai-models/{id}` returns `409` while the
+  model is a default.
 - `GET`/`PUT /organizations/{org_slug}/default-ai-model` needs
   `ai_model:read`/`ai_model:update`. `GET`/`PUT
   /organizations/{org_slug}/teams/{slug}/default-ai-model` needs
@@ -284,7 +285,7 @@ source node.
 `imbi.common.llm.resolve.resolve_model` finds the model of a call:
 
 1. The explicit model (the prompt version, the prompt run, or the workflow
-   step), by id or slug.
+   step), by id or slug, in the catalog of the organization of the call.
 2. The default of the team of the call. The team must belong to the
    organization of the call.
 3. The default of the organization.
@@ -314,7 +315,9 @@ The consumers today:
   that a driver other than `anthropic` serves (`unsupported_driver`), is an
   error. The assistant returns `403` or `422`, the Slack bot replies with an
   error, and an API helper returns its fallback marked `degraded`. These
-  consumers do not read the defaults yet.
+  consumers do not read the defaults yet. Their prompts are global, so the
+  model comes from the catalogs of the organizations of the user. Without a
+  user, there is no catalog model and the configured model is used.
 
 ## References
 

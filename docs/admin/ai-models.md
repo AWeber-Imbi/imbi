@@ -412,7 +412,7 @@ top of the AI Models page. To set the team default, open the team in
 **Teams** and select a model in **Default model**. Select **No model** to
 clear a default.
 
-A default model must be a generative model. A team default must be a model
+A default model must be a generative model of the organization. A team default must be a model
 that the team may use (see [Team access](#team-access)). Imbi rejects other
 models with `422`.
 
@@ -448,8 +448,8 @@ condition. Delete the models first, or move them to another provider. There
 is no cascade, so a provider cannot take its models with it.
 
 A model that is the default model of an organization or a team cannot be
-deleted. `DELETE /ai-models/{id}` returns `409` and names the organizations
-and teams. Select another default first.
+deleted. `DELETE /organizations/{org_slug}/ai-models/{id}` returns `409` and
+names the organizations and teams. Select another default first.
 
 ## Permissions
 
