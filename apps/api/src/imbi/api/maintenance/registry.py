@@ -15,6 +15,7 @@ from collections import abc
 from valkey import asyncio as valkey
 
 from imbi.api.commit_sync import queue as commit_sync_queue
+from imbi.api.deployment_sync import queue as deployment_sync_queue
 from imbi.api.maintenance import log, operations
 from imbi.api.pr_sync import queue as pr_sync_queue
 from imbi.common import graph
@@ -161,7 +162,9 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
                 'integration are skipped. Safe to re-run. The scheduler '
                 'runs this every 6 hours.'
             ),
-            pause_key=None,
+            # Its calls go through the deployment capability, the same
+            # integration the deployment-sync consumers call.
+            pause_key=deployment_sync_queue.PAUSE_KEY,
             enumerate=operations.enumerate_all_projects,
             execute=operations.execute_deployment_sweep,
         ),
