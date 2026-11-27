@@ -26,6 +26,7 @@ import pydantic
 from imbi.api.auth import permissions
 from imbi.api.identity import repository as identity_repository
 from imbi.common import clickhouse, environments, graph
+from imbi.common import deployments as deployment_nodes
 
 LOGGER = logging.getLogger(__name__)
 
@@ -600,10 +601,60 @@ async def _fetch_terminal_environments(db: graph.Pool) -> dict[str, str]:
     return {slug: names[slug] for slug in terminal_environment_slugs(envs)}
 
 
-async def _list_pending_deploy(
-    *,
+async def _last_terminal_deploys(
+    db: graph.Pool,
     project_ids: list[str],
     environment_slugs: list[str],
+) -> list[tuple[str, str, str]]:
+    """When each project last started a deploy to a terminal environment,
+    read from the ``Deployment`` nodes through the state stored on each
+    project.
+
+    Returns ``(project_id, started_at, environment_slug)`` rows for the
+    ``project_ids`` external table, ``started_at`` as UTC text.
+    Projects with no terminal deploy are left out.
+    """
+    if not environment_slugs:
+        return []
+    states = await deployment_nodes.current_and_latest_from_state(
+        db, project_ids
+    )
+    # Oldest first, so the newest attempt of each project is kept.
+    latest = {
+        s.project_id: s.latest
+        for s in sorted(
+            (
+                s
+                for s in states
+                if s.environment.get('slug') in environment_slugs
+            ),
+            key=lambda s: deployment_nodes.started_at(s.latest),
+        )
+    }
+    return [
+        (
+            project_id,
+            deployment_nodes.started_at(deployment).strftime(
+                '%Y-%m-%d %H:%M:%S.%f'
+            )[:-3],
+            str(deployment.environment['slug']),
+        )
+        for project_id, deployment in latest.items()
+    ]
+
+
+#: Columns of the ``project_ids`` external table that
+#: :func:`_last_terminal_deploys` fills.
+_DEPLOYED_COLUMNS: typing.Final = (
+    'project_id String',
+    "last_deployed_at DateTime64(3, 'UTC')",
+    'last_deployed_environment String',
+)
+
+
+async def _list_pending_deploy(
+    *,
+    deployed: list[tuple[str, str, str]],
     author: str | None,
     since: datetime.datetime,
     bots: bool = False,
@@ -612,21 +663,19 @@ async def _list_pending_deploy(
 ) -> tuple[list[PendingDeployPullRequest], int]:
     """Merged PRs whose project has not deployed to a terminal env since.
 
+    ``deployed`` holds the rows of :func:`_last_terminal_deploys`.  A
+    deploy that started before the merge cannot contain it, whichever
+    way it finished.  Projects with no terminal deploy (a library, say)
+    never appear -- there is nothing to deploy them to.
+
     ``bots`` keeps only PRs opened by GitHub Apps and bot accounts,
     which GitHub names with a ``[bot]`` suffix (``dependabot[bot]``).
 
-    A project's deploy time is the ``occurred_at`` of its ``Deployed``
-    operations-log row, which is written when the deploy starts: a
-    deploy that started before the merge cannot contain it, whichever
-    way it finished.  Projects with no terminal deploy on record (a
-    library, say) never appear -- there is nothing to deploy them to.
-
     Returns one page of rows and the number of rows on all pages.
     """
-    if not project_ids or not environment_slugs:
+    if not deployed:
         return [], 0
     params: dict[str, typing.Any] = {
-        'environments': environment_slugs,
         'since': since,
         'limit': limit,
         'offset': offset,
@@ -639,33 +688,16 @@ async def _list_pending_deploy(
         # GitHub names Apps and bot accounts with a trailing ``[bot]``;
         # anchor the suffix so ``user[bot]archive`` is not a bot.
         author_clause += " AND pr.author LIKE '%[bot]'"
-    cte = (
-        'WITH deployed AS ('
-        ' SELECT project_id, max(occurred_at) AS last_deployed_at,'
-        " nullIf(argMax(environment_slug, occurred_at), '')"
-        ' AS last_deployed_environment'
-        ' FROM operations_log FINAL'
-        " WHERE entry_type = 'Deployed' AND is_deleted = 0"
-        ' AND environment_slug IN {environments:Array(String)}'
-        ' AND project_id IN (SELECT project_id FROM project_ids)'
-        ' GROUP BY project_id)'
-    )
     body = (
         ' FROM pull_requests AS pr FINAL'  # noqa: S608
-        ' INNER JOIN deployed AS d ON d.project_id = pr.project_id'
+        ' INNER JOIN project_ids AS d ON d.project_id = pr.project_id'
         ' WHERE pr.project_id IN (SELECT project_id FROM project_ids)'
         ' AND pr.merged AND NOT pr.draft'
         ' AND pr.merged_at >= {since:DateTime64(3)}'
         ' AND d.last_deployed_at <= pr.merged_at' + author_clause
     )
-    count_rows = await clickhouse.query(
-        cte + ' SELECT count() AS total' + body,
-        params,
-        project_ids=project_ids,
-    )
-    total = int(count_rows[0]['total']) if count_rows else 0
     sql = (
-        cte + ' SELECT pr.project_id AS project_id, pr.pr_id AS pr_id,'
+        'SELECT pr.project_id AS project_id, pr.pr_id AS pr_id,'
         ' pr.pr_number AS pr_number, pr.title AS title, pr.url AS url,'
         ' pr.author AS author, pr.merged_at AS merged_at,'
         ' pr.additions AS additions, pr.deletions AS deletions,'
@@ -675,7 +707,15 @@ async def _list_pending_deploy(
         + ' ORDER BY pr.merged_at ASC, pr.pr_id ASC'
         ' LIMIT {limit:UInt32} OFFSET {offset:UInt32}'
     )
-    rows = await clickhouse.query(sql, params, project_ids=project_ids)
+    count_rows, rows = await asyncio.gather(
+        *(
+            clickhouse.query(
+                query, params, project_ids=deployed, columns=_DEPLOYED_COLUMNS
+            )
+            for query in ('SELECT count() AS total' + body, sql)
+        )
+    )
+    total = int(count_rows[0]['total']) if count_rows else 0
     return [
         PendingDeployPullRequest.model_validate(_row_to_response(row))
         for row in rows
@@ -732,8 +772,7 @@ async def list_pending_deploy_pull_requests(
     )
     slugs = list(envs)
     data, total = await _list_pending_deploy(
-        project_ids=list(projects),
-        environment_slugs=slugs,
+        deployed=await _last_terminal_deploys(db, list(projects), slugs),
         author=author,
         since=since,
         bots=bots,
