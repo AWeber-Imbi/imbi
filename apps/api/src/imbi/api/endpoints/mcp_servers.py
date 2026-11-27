@@ -722,6 +722,8 @@ async def _credentials(
         id=node.id,
         url=str(node.url),
         token_url=str(node.oauth_token_url) if node.oauth_token_url else None,
+        auth_type=node.auth_type,
+        verify_ssl=node.verify_ssl,
     )
     try:
         material = await service.mcp_credential(

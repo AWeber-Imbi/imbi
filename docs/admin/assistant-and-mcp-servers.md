@@ -113,9 +113,10 @@ binding must also list the server (see
 imbi-assistant and imbi-slackbot must have their API tokens
 (`IMBI_ASSISTANT_API_TOKEN`, `IMBI_SLACKBOT_API_TOKEN`). They get the
 value from imbi-api each time they connect. **Test connection** works
-only for a saved server that uses a binding. After you change the URL or
-the token URL of such a server, a user with `secret_binding:write` must
-save the binding again before the server can get the secret.
+only for a saved server that uses a binding. After you change the URL,
+the token URL, the auth type, or **Verify SSL** of such a server, a user
+with `secret_binding:write` must save the binding again before the
+server can get the secret.
 
 **Ignored tools**
 

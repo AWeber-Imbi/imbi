@@ -839,7 +839,8 @@ def _key_usage(
 _MCP_SERVERS_IN_ORG: typing.LiteralString = """
 MATCH (s:MCPServer)
 WHERE s.org_id = {org_id} AND s.id IN {ids}
-RETURN s.id AS id, s.url AS url, s.oauth_token_url AS token_url
+RETURN s.id AS id, s.url AS url, s.oauth_token_url AS token_url,
+       s.auth_type AS auth_type, s.verify_ssl AS verify_ssl
 """
 
 
@@ -859,11 +860,11 @@ async def _mcp_usage(
     if credential_class == 'dynamic':
         raise _invalid('A binding for MCP servers cannot be dynamic')
     ids = sorted(set(usage.servers))
-    found: dict[str, dict[str, str | None]] = {}
+    found: dict[str, dict[str, typing.Any]] = {}
     for r in await db.execute(
         _MCP_SERVERS_IN_ORG,
         {'org_id': org_id, 'ids': ids},
-        ['id', 'url', 'token_url'],
+        ['id', 'url', 'token_url', 'auth_type', 'verify_ssl'],
     ):
         token_url = graph.parse_agtype(r['token_url'])
         # The same form as the MCPServer model gives the broker.
@@ -873,6 +874,8 @@ async def _mcp_usage(
             token_url=(
                 str(pydantic.HttpUrl(str(token_url))) if token_url else None
             ),
+            auth_type=str(graph.parse_agtype(r['auth_type']) or 'none'),
+            verify_ssl=graph.parse_agtype(r['verify_ssl']) is not False,
         )
         found[target.id] = broker.mcp_usage_entry(target)
     missing = [i for i in ids if i not in found]

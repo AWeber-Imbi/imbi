@@ -438,7 +438,7 @@ class SecretEndpointTestCase(
         )
         self.assertEqual(response.status_code, 201, response.text)
         binding = response.json()
-        # The binding pins the server's current URL and token URL.
+        # The binding pins the server's URLs, auth type, and TLS check.
         self.assertEqual(
             binding['mcp_server_usage'],
             {
@@ -447,6 +447,8 @@ class SecretEndpointTestCase(
                         'id': server,
                         'url': 'https://mcp.test/',
                         'token_url': None,
+                        'auth_type': 'none',
+                        'verify_ssl': True,
                     }
                 ]
             },
@@ -477,6 +479,8 @@ class SecretEndpointTestCase(
                         'id': server,
                         'url': 'https://mcp.test/',
                         'token_url': None,
+                        'auth_type': 'static',
+                        'verify_ssl': True,
                     }
                 ]
             },

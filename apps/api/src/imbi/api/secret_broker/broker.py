@@ -767,16 +767,21 @@ def _new_handle() -> str:
 
 @dataclasses.dataclass(frozen=True)
 class McpServerTarget:
-    """Where an MCP server sends its credential: the binding pins it."""
+    """Where and how an MCP server sends its credential: the binding
+    pins it. A change of the auth type moves the secret to another
+    destination (a header to ``url`` or a token request to
+    ``token_url``), and ``verify_ssl`` off lets a third party read it."""
 
     id: str
     url: str
     token_url: str | None = None
+    auth_type: str = 'none'
+    verify_ssl: bool = True
 
 
-def mcp_usage_entry(server: McpServerTarget) -> dict[str, str | None]:
+def mcp_usage_entry(server: McpServerTarget) -> dict[str, typing.Any]:
     """The stored form of a server in ``mcp_server_usage.servers``."""
-    return {'id': server.id, 'url': server.url, 'token_url': server.token_url}
+    return dataclasses.asdict(server)
 
 
 def _check_mcp_usage(binding: Row, server: McpServerTarget) -> None:

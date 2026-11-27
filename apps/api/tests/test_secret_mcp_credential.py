@@ -1,5 +1,7 @@
 """Tests for the credential of an MCP server from a secret binding."""
 
+import dataclasses
+
 from apps.api.tests import secret_support
 from imbi.api.secret_broker import broker, providers
 
@@ -50,7 +52,10 @@ class McpCredentialTestCase(secret_support.SecretCase):
             url=SERVER.url,
             token_url='https://attacker.example/token',
         )
-        for server in (moved_url, moved_token):
+        # The same place, but a secret that goes elsewhere or in the clear.
+        other_use = dataclasses.replace(SERVER, auth_type='static')
+        no_tls = dataclasses.replace(SERVER, verify_ssl=False)
+        for server in (moved_url, moved_token, other_use, no_tls):
             with self.subTest(server=server):
                 self.assertEqual(
                     await self.refused(server=server), 'mcp_server_moved'
