@@ -582,7 +582,7 @@ Errors:
 | `slack_failed: <code>` | Slack refused the message with another [error code](https://docs.slack.dev/reference/methods/chat.postMessage#errors) |
 | `slack_ratelimited` | Slack rate-limited the post after every retry |
 | `outcome_unknown` | The call to Slack failed, Slack answered with a 5xx, or Slack answered `internal_error`, `fatal_error`, `request_timeout`, or `service_unavailable`. Slack may have posted the message. See [unknown outcome](#calls-with-an-unknown-outcome) |
-| `invalid_params`, `invalid_channel`, `invalid_thread_ts` | The rendered channel is not a channel ID, the rendered ticket is not a short id, or the rendered `thread_ts` is not a message timestamp |
+| `invalid_params`, `invalid_channel`, `invalid_thread_ts` | The rendered channel is not a channel ID, the rendered ticket is not a short id, or the `thread_ts` reference has no value or is not a message timestamp |
 | `ticket_not_found` | The organization has no task with this short id |
 
 When Slack refuses a message, it posts nothing, and Imbi does not retry
@@ -607,8 +607,15 @@ with a `ticket` needs `ticket:read` to activate.
 With `thread_ts`, the message is a reply in the thread of the message
 that has this timestamp. To reply to the message of an earlier Slack
 step, use its `ts` output, such as `{{ tell.ts }}`. Use the timestamp of
-the first message of a thread, not the timestamp of a reply. A reference
-with no value is empty, and the step posts the message to the channel.
+the first message of a thread, not the timestamp of a reply.
+
+When the reference has no value, the step fails with `invalid_params`
+and posts nothing, so a reply does not become a new message in the
+channel. A missing value, `null`, and an empty string are all no value.
+This occurs, for example, after an operator marked the earlier Slack
+step done, because that step then has no `ts`. To post to the channel
+when there is no thread, put a [Condition](#condition) step with
+`is_empty` before the step.
 
 **Output:** `channel`, `ts` (the message timestamp), and `permalink` (a
 link to the message, or empty when Slack did not return one).

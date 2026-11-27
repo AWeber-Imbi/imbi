@@ -511,7 +511,11 @@ class Executors:
         return Outcome(output={'recipients': sent['recipients']})
 
     async def _slack(self, call: Call) -> Outcome:
-        _params(slack.Params, call)
+        params = _params(slack.Params, call)
+        if call.node.params.get('thread_ts') and params.thread_ts is None:
+            # The reference has no value. A reply must not become a new
+            # message in the channel.
+            raise StepError('invalid_params', retry=False)
         org = await self.org_slug(call.organization_id)
         try:
             posted = await self.api.request(

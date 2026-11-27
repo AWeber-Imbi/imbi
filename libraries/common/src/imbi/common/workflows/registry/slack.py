@@ -23,9 +23,9 @@ TICKET = rf'^(?:T-[0-9]+|{graph.REFERENCE})$'
 #: The timestamp of a Slack message, which is its id in the channel.
 MESSAGE_TS = re.compile(r'^[0-9]{10}\.[0-9]{6}$')
 
-#: A message timestamp, or one plain reference. A rendered reference
-#: that is not a message timestamp fails the step with
-#: ``invalid_params``.
+#: A message timestamp, or one plain reference. A reference that has
+#: no value, or whose value is not a message timestamp, fails the step
+#: with ``invalid_params``.
 _THREAD_TS = rf'^(?:[0-9]{{10}}\.[0-9]{{6}}|{graph.REFERENCE})$'
 
 

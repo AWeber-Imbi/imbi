@@ -1266,8 +1266,7 @@ class EngineSlackTestCase(WorkflowRunTestCase):
             unfurl_links=False,
         )
 
-    async def test_empty_thread_ts_posts_to_the_channel(self) -> None:
-        """The engine stores ``None`` for a reference with no value."""
+    async def test_null_thread_ts_posts_to_the_channel(self) -> None:
         response = await self._post_with_thread_ts(None)
         self.assertEqual(response.status_code, 200, response.text)
         self.slack.chat_postMessage.assert_awaited_once_with(
