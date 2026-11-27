@@ -151,6 +151,12 @@ class PostHogTestCase(unittest.TestCase):
             'Call with Authorization: Basic dXNlcjpwYXNz now': (
                 'Call with Authorization: Basic [redacted] now'
             ),
+            'Retry with Authorization: basic dXNlcjpwdw== now': (
+                'Retry with Authorization: basic [redacted] now'
+            ),
+            'Retry with authorization: BaSiC dXNlcjpwdw== now': (
+                'Retry with authorization: BaSiC [redacted] now'
+            ),
             'Use bearer abc.def for the call': (
                 'Use bearer [redacted] for the call'
             ),

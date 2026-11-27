@@ -45,7 +45,10 @@ _EMAIL_SEGMENT = re.compile(r'[^/?#]*(?:@|%40)[^/?#]*', re.IGNORECASE)
 #: and bare phone numbers or IDs. A credential key can be quoted, as in
 #: JSON, and a quoted value is redacted completely.
 _INTENT_REDACTIONS = (
-    (re.compile(r'\b((?i:bearer)|Basic)\s+\S+'), r'\1 [redacted]'),
+    (
+        re.compile(r'\b((?i:bearer|authorization\s*:\s*basic)|Basic)\s+\S+'),
+        r'\1 [redacted]',
+    ),
     (
         re.compile(
             r'\b([\w-]*(?:password|passwd|secret|token|api[_-]?key)\w*'
