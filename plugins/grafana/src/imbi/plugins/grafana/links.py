@@ -38,7 +38,11 @@ def base_url(ctx: PluginContext) -> str:
 def org_id(ctx: PluginContext) -> int:
     """The Grafana organization ID from the ``org_id`` option, or raise."""
     value = str(ctx.integration_options.get('org_id') or '').strip()
-    if not value.isdigit() or int(value) == 0:
+    # Grafana reads the ID as an int64. ``isdigit`` alone accepts
+    # characters such as '²' that ``int`` cannot parse.
+    if not (value.isascii() and value.isdigit()) or not (
+        0 < int(value) < 2**63
+    ):
         raise GrafanaConfigError(
             'The integration option `org_id` must be the Grafana '
             'organization ID.'

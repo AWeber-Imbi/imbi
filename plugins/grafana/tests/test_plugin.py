@@ -146,7 +146,10 @@ class LinksTestCase(unittest.TestCase):
 
     def test_org_id(self) -> None:
         self.assertEqual(2, links.org_id(_ctx(options={'org_id': '2'})))
-        for value in (None, '', '0', 'main', -1):
+        self.assertEqual(
+            2**63 - 1, links.org_id(_ctx(options={'org_id': 2**63 - 1}))
+        )
+        for value in (None, '', '0', 'main', -1, '²', str(2**63)):
             with self.assertRaises(links.GrafanaConfigError):
                 links.org_id(_ctx(options={'org_id': value}))
 
