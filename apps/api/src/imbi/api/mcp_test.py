@@ -155,7 +155,8 @@ async def list_tools(
     """
     if timeout_s is None:
         timeout_s = float(server.timeout)
-    headers, http_auth = _build_auth(server)
+    auth_headers, http_auth = _build_auth(server)
+    headers = server.request_headers(auth_headers)
     if server.verify_ssl:
         http_client = create_mcp_http_client(
             headers, httpx2.Timeout(timeout_s), http_auth

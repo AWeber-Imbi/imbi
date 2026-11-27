@@ -476,6 +476,29 @@ class OpenSessionTestCase(unittest.IsolatedAsyncioTestCase):
         await self._run(_make_server(verify_ssl=True))
         mock_factory.assert_called_once()
 
+    @mock.patch('imbi.common.external_mcp.decrypt_config_value')
+    @mock.patch('imbi.common.external_mcp.create_mcp_http_client')
+    async def test_extra_headers_sent_auth_header_wins(
+        self, mock_factory: mock.MagicMock, mock_decrypt: mock.MagicMock
+    ) -> None:
+        mock_decrypt.return_value = 'secret-token'
+        await self._run(
+            _make_server(
+                extra_headers={'X-Tenant': 'acme', 'X-API-Key': 'stale'},
+                auth_type='static',
+                static_header='X-API-Key',
+                static_value_encrypted='ciphertext',
+            )
+        )
+        self.assertEqual(
+            mock_factory.call_args.args[0],
+            {'X-Tenant': 'acme', 'X-API-Key': 'secret-token'},
+        )
+
+    def test_extra_headers_parse_from_json_string(self) -> None:
+        server = _make_server(extra_headers='{"X-Tenant": "acme"}')
+        self.assertEqual(server.extra_headers, {'X-Tenant': 'acme'})
+
     @mock.patch('imbi.common.external_mcp.httpx2.AsyncClient')
     async def test_no_verify_ssl(self, mock_client: mock.MagicMock) -> None:
         await self._run(_make_server(verify_ssl=False))

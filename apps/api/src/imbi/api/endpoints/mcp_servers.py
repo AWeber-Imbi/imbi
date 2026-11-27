@@ -49,6 +49,7 @@ class MCPServerCreate(pydantic.BaseModel):
     timeout: int = 30
     verify_ssl: bool = True
     ignored_tools: list[str] = pydantic.Field(default_factory=list)
+    extra_headers: dict[str, str] = pydantic.Field(default_factory=dict)
     auth_type: AuthType = 'none'
     static_header: str | None = None
     static_value: str | None = None
@@ -77,6 +78,7 @@ class MCPServerUpdate(pydantic.BaseModel):
     timeout: int | None = None
     verify_ssl: bool | None = None
     ignored_tools: list[str] | None = None
+    extra_headers: dict[str, str] | None = None
     auth_type: AuthType | None = None
     static_header: str | None = None
     static_value: str | None = None
@@ -104,6 +106,7 @@ class MCPServerResponse(pydantic.BaseModel):
     timeout: int = 30
     verify_ssl: bool = True
     ignored_tools: list[str] = pydantic.Field(default_factory=list)
+    extra_headers: dict[str, str] = pydantic.Field(default_factory=dict)
     auth_type: AuthType = 'none'
     static_header: str | None = None
     has_static_value: bool = False
@@ -166,6 +169,7 @@ def _to_response(node: models.MCPServer) -> MCPServerResponse:
         timeout=node.timeout,
         verify_ssl=node.verify_ssl,
         ignored_tools=node.ignored_tools,
+        extra_headers=node.extra_headers,
         auth_type=node.auth_type,
         static_header=node.static_header,
         has_static_value=node.static_value_encrypted is not None,
@@ -222,6 +226,7 @@ async def create_mcp_server(
             timeout=data.timeout,
             verify_ssl=data.verify_ssl,
             ignored_tools=data.ignored_tools,
+            extra_headers=data.extra_headers,
             auth_type=data.auth_type,
             static_header=data.static_header,
             static_value_encrypted=encrypt_config_value(data.static_value),
@@ -344,6 +349,7 @@ async def update_mcp_server(
         'timeout',
         'verify_ssl',
         'ignored_tools',
+        'extra_headers',
         'auth_type',
         'static_header',
         'oauth_token_url',
@@ -502,6 +508,7 @@ async def test_mcp_server_config(
             timeout=data.timeout,
             verify_ssl=data.verify_ssl,
             ignored_tools=data.ignored_tools,
+            extra_headers=data.extra_headers,
             auth_type=data.auth_type,
             static_header=data.static_header,
             static_value_encrypted=encrypt_config_value(data.static_value),

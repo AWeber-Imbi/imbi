@@ -1365,11 +1365,12 @@ export interface LogResultResponse {
   total: null | number
 }
 
-// `ignored_tools` is restored to required: the API declares it with
-// `default_factory=list`, which Pydantic does not emit as a schema `default`,
-// so the generated type calls it optional even though every response carries
-// it.
+// `ignored_tools` and `extra_headers` are restored to required: the API
+// declares them with `default_factory`, which Pydantic does not emit as a
+// schema `default`, so the generated type calls them optional even though
+// every response carries them.
 export type MCPServer = Schemas['MCPServerResponse'] & {
+  extra_headers: Record<string, string>
   ignored_tools: string[]
 }
 
@@ -1385,6 +1386,7 @@ export interface MCPServerCreate {
   auth_type?: MCPServerAuthType
   description?: null | string
   enabled?: boolean
+  extra_headers?: Record<string, string>
   icon?: null | string
   ignored_tools?: string[]
   name: string
