@@ -815,6 +815,9 @@ class OrganizationScopeTests(support.SharedAppAsyncTestCase):
     organization."""
 
     async def asyncSetUp(self) -> None:
+        # Do not rely on an earlier test on this xdist worker to create
+        # imbi.operations_log.
+        await imbi_clickhouse.setup_schema()
         suffix = uuid.uuid4().hex
         self.org_a = f'org-a-{suffix}'
         self.org_b = f'org-b-{suffix}'
