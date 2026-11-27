@@ -79,7 +79,6 @@ export interface SettingsDraft {
   maxConcurrentTasks: string
   /** The `secret://` reference of the agent's model key. Empty is the
    * organization's key. */
-  modelKeyRef: string
   monthlyCostCap: string
   /** Plugins from the allowed marketplaces. The API pins each one. */
   plugins: AgentPlugin[]
@@ -201,7 +200,6 @@ export function draftFromAgent(
         settings.max_concurrent_tasks == null
           ? ''
           : String(settings.max_concurrent_tasks),
-      modelKeyRef: settings.model_key_ref ?? '',
       monthlyCostCap:
         settings.monthly_cost_cap == null
           ? ''
@@ -251,7 +249,6 @@ export function emptyDraft(): AgentDraft {
       githubAppBinding: '',
       kept: {},
       maxConcurrentTasks: '',
-      modelKeyRef: '',
       monthlyCostCap: '',
       plugins: [],
       requiredLabels: '',
@@ -482,7 +479,6 @@ export function settingsFromDraft(draft: SettingsDraft): AgentSettings {
     max_concurrent_tasks: draft.maxConcurrentTasks.trim()
       ? Number(draft.maxConcurrentTasks)
       : null,
-    model_key_ref: draft.modelKeyRef || null,
     monthly_cost_cap: cap,
     plugins: draft.plugins,
     required_labels: parseLabels(draft.requiredLabels),

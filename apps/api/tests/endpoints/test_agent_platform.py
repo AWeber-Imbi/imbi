@@ -201,20 +201,9 @@ class ConfigTests(PlatformTestCase):
         )
         self.assertEqual(response.status_code, 403, response.text)
 
-    async def test_refuses_unknown_marketplaces_and_bad_refs(self) -> None:
+    async def test_refuses_unknown_marketplaces(self) -> None:
         response = await self.put_config(allowed_marketplaces=['nope'])
         self.assertEqual(response.status_code, 422, response.text)
-        response = await self.put_config(
-            model_upstream={'kind': 'litellm', 'key_ref': 'not a ref'}
-        )
-        self.assertEqual(response.status_code, 422, response.text)
-        insecure = {'kind': 'litellm', 'base_url': 'http://llm:4000'}
-        response = await self.put_config(model_upstream=insecure)
-        self.assertEqual(response.status_code, 422, response.text)
-        response = await self.put_config(
-            model_upstream={**insecure, 'allow_insecure_http': True}
-        )
-        self.assertEqual(response.status_code, 200, response.text)
 
     async def test_default_plugins_are_pinned(self) -> None:
         await self.add_marketplace()
@@ -623,7 +612,16 @@ class BundleTests(PlatformTestCase):
         self.assertEqual(bundle['config']['permission_mode'], 'default')
         self.assertEqual(bundle['config']['plugins'], [])
         self.assertEqual(bundle['repositories'], [])
-        self.assertNotIn('secret', str(bundle['config']['model_upstream']))
+        # From the AI provider of the task, not the configuration.
+        self.assertEqual(
+            bundle['config']['model_upstream'],
+            {
+                'kind': 'anthropic',
+                'base_url': 'https://api.anthropic.com',
+                'allow_insecure_http': False,
+                'key_ref': 'secret://imbi/model',
+            },
+        )
 
     async def test_bundle_of_a_pinned_version_does_not_change(self) -> None:
         await self.add_marketplace()

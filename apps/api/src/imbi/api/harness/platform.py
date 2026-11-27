@@ -20,51 +20,44 @@ import urllib.parse
 import pydantic
 
 from imbi.api.harness import store as harness_store
-from imbi.api.secret_broker import broker, providers
+from imbi.api.secret_broker import broker, model_key, providers
 from imbi.common import models
+from imbi.common.llm import drivers
 
 
 class ModelUpstream(pydantic.BaseModel):
-    """Where the runner's model proxy sends model calls."""
+    """Where the runner's model proxy sends model calls. imbi-api derives
+    it from the AI provider of the task (ADR 0022 amendment)."""
 
     kind: typing.Literal['anthropic', 'litellm'] = 'anthropic'
     #: The upstream base URL. ``None`` is the Anthropic API.
-    base_url: pydantic.HttpUrl | None = None
-    #: Accept an ``http://`` base URL. The proxy sends the model key to
-    #: the upstream, so use this only for a protected in-cluster
-    #: upstream, for example a LiteLLM gateway in the same cluster.
+    base_url: str | None = None
+    #: Always false: the runner does not send the key without TLS.
     allow_insecure_http: bool = False
     #: The ``secret://`` reference of the upstream key.
     key_ref: str | None = None
 
-    @pydantic.field_validator('key_ref')
-    @classmethod
-    def _check_key_ref(cls, value: str | None) -> str | None:
-        if value is not None:
-            check_reference(value)
-        return value
 
-    def insecure(self) -> bool:
-        """Return true when the proxy would send the key without TLS
-        and ``allow_insecure_http`` does not permit it.
-
-        The write endpoint checks this, not a validator: a validator
-        also runs when a stored version is read, and an older version
-        with an ``http://`` URL must still load.
-        """
-        return (
-            self.base_url is not None
-            and self.base_url.scheme != 'https'
-            and not self.allow_insecure_http
-        )
+def upstream(provider: models.AIProvider) -> ModelUpstream:
+    """Return the model upstream of an AI provider: the Anthropic
+    Messages API of an ``anthropic`` provider, or a gateway that speaks
+    it (``openai_compatible``, with a bearer key, at the root of its
+    URL)."""
+    base_url = drivers.resolve_base_url(provider.driver, provider.base_url)
+    if provider.driver != 'anthropic' and base_url is not None:
+        # An OpenAI style base URL ends in /v1; the proxy adds
+        # /v1/messages itself.
+        base_url = base_url.removesuffix('/v1')
+    return ModelUpstream(
+        kind='anthropic' if provider.driver == 'anthropic' else 'litellm',
+        base_url=base_url,
+        key_ref=model_key.REFERENCE,
+    )
 
 
 class AgentPlatformConfig(pydantic.BaseModel):
     """The base agent configuration of an organization."""
 
-    model_upstream: ModelUpstream = pydantic.Field(
-        default_factory=ModelUpstream
-    )
     #: Slugs of registered marketplaces. Agents select plugins from
     #: these only.
     allowed_marketplaces: list[str] = []
@@ -137,7 +130,8 @@ class SecretReference(pydantic.BaseModel):
 class MergedConfig(pydantic.BaseModel):
     """The configuration that a runner applies to one task."""
 
-    model_upstream: ModelUpstream
+    #: ``None`` only from :func:`merge`: the claim sets it.
+    model_upstream: ModelUpstream | None = None
     plugins: list[models.AgentPlugin]
     #: The organization's built-in tools, less the opt-in tools that
     #: the agent did not turn on.
@@ -354,11 +348,6 @@ def merge(
         del agent[path]
     paths = config.claude_settings.paths() | agent
     claude = models.ClaudeSettings.document(paths)
-    upstream = config.model_upstream
-    if settings.model_key_ref is not None:
-        upstream = upstream.model_copy(
-            update={'key_ref': settings.model_key_ref}
-        )
     denied = sorted({*config.denied_tools, *settings.denied_tools})
     builtin = models.opt_in_builtin_tools(tools, config.allowed_tools, denied)
     # allowed_tools keeps the opt-in tools that the agent turned on, so a
@@ -370,7 +359,6 @@ def merge(
         for name in tool.names
     }
     return MergedConfig(
-        model_upstream=upstream,
         plugins=plugins,
         allowed_tools=(
             None

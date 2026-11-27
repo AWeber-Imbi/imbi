@@ -6421,8 +6421,7 @@ export interface paths {
          *         422: An allowed marketplace is not registered, a default
          *             plugin is not in an allowed marketplace's catalog or has
          *             ``server_settings`` (an MCP server turned off or given
-         *             secrets), or the model upstream URL is ``http://`` without
-         *             ``allow_insecure_http``.
+         *             secrets).
          */
         put: operations["put_agent_platform_config_api_organizations__org_slug__agent_platform_config__put"];
         post?: never;
@@ -11946,7 +11945,6 @@ export interface components {
          * @description The base agent configuration of an organization.
          */
         AgentPlatformConfig: {
-            model_upstream?: components["schemas"]["ModelUpstream"];
             /**
              * Allowed Marketplaces
              * @default []
@@ -12150,8 +12148,6 @@ export interface components {
             plugins: components["schemas"]["AgentPlugin"][];
             /** Github App Binding */
             github_app_binding?: string | null;
-            /** Model Key Ref */
-            model_key_ref?: string | null;
             /**
              * Secrets
              * @default []
@@ -12204,8 +12200,6 @@ export interface components {
             plugins: components["schemas"]["AgentPlugin"][];
             /** Github App Binding */
             github_app_binding?: string | null;
-            /** Model Key Ref */
-            model_key_ref?: string | null;
             /**
              * Secrets
              * @default []
@@ -13857,6 +13851,22 @@ export interface components {
             code_verifier?: string | null;
             /** Refresh Token */
             refresh_token?: string | null;
+        };
+        /**
+         * BundleModel
+         * @description The catalog model of a task, resolved at claim (ADR 0022
+         *     amendment).
+         */
+        BundleModel: {
+            /** Slug */
+            slug: string;
+            /** Model Id */
+            model_id: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "explicit" | "team" | "org" | "env";
         };
         /**
          * BundlePrompt
@@ -16549,6 +16559,7 @@ export interface components {
             prompt?: components["schemas"]["BundlePrompt"] | null;
             /** Prompt Error */
             prompt_error?: string | null;
+            model?: components["schemas"]["BundleModel"] | null;
             /** Platform Config Version */
             platform_config_version?: number | null;
             config?: components["schemas"]["MergedConfig"] | null;
@@ -18030,7 +18041,7 @@ export interface components {
          * @description The configuration that a runner applies to one task.
          */
         MergedConfig: {
-            model_upstream: components["schemas"]["ModelUpstream"];
+            model_upstream?: components["schemas"]["ModelUpstream"] | null;
             /** Plugins */
             plugins: components["schemas"]["AgentPlugin"][];
             /** Allowed Tools */
@@ -18085,7 +18096,8 @@ export interface components {
         };
         /**
          * ModelUpstream
-         * @description Where the runner's model proxy sends model calls.
+         * @description Where the runner's model proxy sends model calls. imbi-api derives
+         *     it from the AI provider of the task (ADR 0022 amendment).
          */
         ModelUpstream: {
             /**
@@ -22545,21 +22557,14 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /**
-             * Binding Id
-             * Format: uuid
-             */
-            binding_id: string;
-            /**
-             * Grant Id
-             * Format: uuid
-             */
-            grant_id: string;
-            /**
-             * Provider Id
-             * Format: uuid
-             */
-            provider_id: string;
+            /** Binding Id */
+            binding_id: string | null;
+            /** Grant Id */
+            grant_id: string | null;
+            /** Provider Id */
+            provider_id: string | null;
+            /** Ai Provider Id */
+            ai_provider_id?: string | null;
             /** Reference */
             reference: string;
             /** Agent Id */

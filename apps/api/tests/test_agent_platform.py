@@ -1113,37 +1113,14 @@ class NarrowingTests(unittest.TestCase):
         )
         self.assertEqual(merged.builtin_tools, ['Skill'])
 
-    def test_merge_uses_the_agent_model_key(self) -> None:
-        config = platform.AgentPlatformConfig(
-            model_upstream=platform.ModelUpstream(
-                kind='litellm',
-                base_url='https://llm.example.com',
-                key_ref='secret://anthropic/org#api-key',
-            )
+    def test_old_stored_upstream_is_ignored(self) -> None:
+        config = platform.AgentPlatformConfig.model_validate(
+            {'model_upstream': {'kind': 'litellm', 'key_ref': 'secret://a/b'}}
         )
-        merged = platform.merge(config, models.AgentSettings())
-        self.assertEqual(
-            merged.model_upstream.key_ref, 'secret://anthropic/org#api-key'
+        settings = models.AgentSettings.model_validate(
+            {'model_key_ref': 'secret://anthropic/triage#api-key'}
         )
-        merged = platform.merge(
-            config,
-            models.AgentSettings(
-                model_key_ref='secret://anthropic/triage#api-key'
-            ),
-        )
-        self.assertEqual(
-            merged.model_upstream.key_ref,
-            'secret://anthropic/triage#api-key',
-        )
-        # Only the key changes; the upstream stays the organization's.
-        self.assertEqual(merged.model_upstream.kind, 'litellm')
-        self.assertEqual(
-            str(merged.model_upstream.base_url), 'https://llm.example.com/'
-        )
-        # The organization's configuration is not changed.
-        self.assertEqual(
-            config.model_upstream.key_ref, 'secret://anthropic/org#api-key'
-        )
+        self.assertIsNone(platform.merge(config, settings).model_upstream)
 
 
 HOOKS = {'PreToolUse': [{'hooks': [{'type': 'command', 'command': 'audit'}]}]}
@@ -1340,15 +1317,26 @@ class ClaudeSettingsTests(unittest.TestCase):
 
 
 class ModelUpstreamTests(unittest.TestCase):
-    def test_http_base_url_needs_the_flag(self) -> None:
-        def insecure(**data: typing.Any) -> bool:
-            return platform.ModelUpstream.model_validate(data).insecure()
+    def provider(self, driver: str, base_url: str | None) -> typing.Any:
+        return mock.Mock(driver=driver, base_url=base_url)
 
-        url = 'http://litellm.imbi:4000'
-        self.assertTrue(insecure(base_url=url))
-        self.assertFalse(insecure(base_url=url, allow_insecure_http=True))
-        self.assertFalse(insecure(base_url='https://llm.example.com'))
-        self.assertFalse(insecure())
+    def test_anthropic_provider(self) -> None:
+        self.assertEqual(
+            platform.upstream(self.provider('anthropic', None)),
+            platform.ModelUpstream(
+                kind='anthropic',
+                base_url='https://api.anthropic.com',
+                key_ref='secret://imbi/model',
+            ),
+        )
+
+    def test_gateway_url_loses_its_v1(self) -> None:
+        upstream = platform.upstream(
+            self.provider('openai_compatible', 'http://litellm:4000/v1/')
+        )
+        self.assertEqual(upstream.kind, 'litellm')
+        self.assertEqual(upstream.base_url, 'http://litellm:4000')
+        self.assertFalse(upstream.allow_insecure_http)
 
 
 class PinTests(unittest.TestCase):

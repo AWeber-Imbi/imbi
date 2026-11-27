@@ -805,13 +805,14 @@ async def _identity(
                 config, settings, bundle.snapshot.get('tools') or {}
             ).model_copy(
                 update={
+                    'model_upstream': platform.upstream(model.provider),
                     # What the agent may request comes from its grants,
                     # not from a list in the agent (#445).
                     'secrets': await _secret_references(
                         secrets,
                         task,
                         [p['project_id'] for p in task['projects']],
-                    )
+                    ),
                 }
             ),
             'repositories': await _repositories(db, store, task, settings),
