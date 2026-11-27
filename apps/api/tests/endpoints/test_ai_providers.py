@@ -1270,6 +1270,16 @@ class ServiceTokenTestCase(AIProviderTestBase):
         self.route_for([ORG_ID])
         self.assertEqual(self.post_for(user=None).status_code, 422)
 
+    def test_an_organization_service_account_is_refused(self) -> None:
+        # An automation account of an organization, even with the
+        # permission, cannot name a user of another organization.
+        self.auth_context.service_account = models.ServiceAccount(
+            slug='acme-deploy-bot', display_name='Deploy bot'
+        )
+        self.route_for([ORG_ID])
+        self.assertEqual(self.post_for().status_code, 404)
+        self.assertEqual(self.exchanger.seen, [])
+
     def test_a_named_provider_needs_a_service(self) -> None:
         self.auth_context = permissions.AuthContext(
             user=self.user, auth_method='jwt'

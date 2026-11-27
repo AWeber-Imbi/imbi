@@ -47,6 +47,7 @@ from imbi.api.llm import tokens
 from imbi.api.secret_broker import identity
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
+from imbi.common.auth import permissions as common_permissions
 from imbi.common.auth.encryption import (
     encrypt_config_value,
 )
@@ -1048,8 +1049,15 @@ async def service_token(
     return ServiceToken(token=token.token, expires_at=token.expires_at)
 
 
-#: The service account of imbi-slackbot.
-SLACKBOT_ACCOUNT = 'imbi-slackbot'
+#: The services that may ask for the token of a catalog provider for a
+#: user. Each is installation-wide, not an account of one organization:
+#: a service account that an organization admin makes is not one.
+_USER_PROVIDER_SERVICES = frozenset(
+    {
+        common_permissions.ASSISTANT_ACCOUNT,
+        common_permissions.SLACKBOT_ACCOUNT,
+    }
+)
 
 #: The organization ``org_id`` when a Slack workspace is linked to it.
 _SLACK_ORG_QUERY: typing.LiteralString = """
@@ -1066,7 +1074,10 @@ async def _user_provider(
     user: str | None,
 ) -> models.AIProvider:
     """The catalog provider ``ref`` that a service calls for ``user``."""
-    if auth.service_account is None:
+    if (
+        auth.service_account is None
+        or auth.service_account.slug not in _USER_PROVIDER_SERVICES
+    ):
         raise fastapi.HTTPException(
             status_code=404, detail='No AI provider is set for this caller'
         )
@@ -1088,9 +1099,12 @@ async def _user_provider(
             status_code=403,
             detail=f'AI provider {ref!r} is not an anthropic provider',
         )
-    if auth.service_account.slug == SLACKBOT_ACCOUNT and not (
-        await db.execute(
-            _SLACK_ORG_QUERY, {'org_id': node.organization.id}, ['id']
+    if (
+        auth.service_account.slug == common_permissions.SLACKBOT_ACCOUNT
+        and not (
+            await db.execute(
+                _SLACK_ORG_QUERY, {'org_id': node.organization.id}, ['id']
+            )
         )
     ):
         # The slackbot works in the organization of its Slack workspace
