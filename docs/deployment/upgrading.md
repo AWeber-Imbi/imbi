@@ -93,21 +93,22 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 
     The `imbi.api.backfill_embeddings` script is removed: use **Reindex
     Search** (`search-reindex`).
-    imbi-api no longer gives an id to organizations and users that have
-    none, or links old user documents to an organization, at startup.
-    imbi-api 2.65.0 does both when it starts, so start it one time
-    before you upgrade. Then examine its startup log for
-    `Failed to give ids to organizations and users` and
-    `Failed to link user documents to organizations`. If one of these
-    messages shows, start 2.65.0 again: the two backfills do not change
-    a record that they updated before. A user document that no rule
-    can link to an organization stays unlinked after each start.
-2. **Before you upgrade from 2.64.0 or 2.65.0**, if you did not run
+2. **Before you upgrade from 2.65.0 or an older release**, examine the
+   startup log of imbi-api 2.65.0. imbi-api no longer gives an id to
+   organizations and users that have none, or links old user documents
+   to an organization, at startup. imbi-api 2.65.0 does both when it
+   starts. If its startup log shows
+   `Failed to give ids to organizations and users` or
+   `Failed to link user documents to organizations`, start 2.65.0
+   again before you upgrade: the two backfills do not change a record
+   that they updated before. A user document that no rule can link to
+   an organization stays unlinked after each start.
+3. **Before you upgrade from 2.64.0 or 2.65.0**, if you did not run
    **Purge Agent Task Entries from Operations Log**
    (`opslog-agent-task-purge`), run it on 2.65.0. The operations log no
    longer accepts the `Agent Task` entry type. A retained `Agent Task`
    entry makes the operations log fail to load.
-3. Run `imbi-api setup-permissions`. It adds
+4. Run `imbi-api setup-permissions`. It adds
    `admin:maintenance:deployment-sweep` and gives it to the
    `imbi-scheduler` role. imbi-scheduler now creates the
    `deployment-sweep` system task, which runs **Close Out Stuck
