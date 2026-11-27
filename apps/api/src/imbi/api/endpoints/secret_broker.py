@@ -32,6 +32,7 @@ from imbi.api.secret_broker import (
     audit,
     broker,
     identity,
+    model_key,
     providers,
     store,
 )
@@ -396,9 +397,13 @@ class SecretProviderLease(pydantic.BaseModel):
 
 class SecretResolution(pydantic.BaseModel):
     id: uuid.UUID
-    binding_id: uuid.UUID
-    grant_id: uuid.UUID
-    provider_id: uuid.UUID
+    #: ``None`` for a model key resolution (``secret://imbi/model``):
+    #: it has no binding, grant, or secret provider, and
+    #: ``ai_provider_id`` is the AI provider of the task.
+    binding_id: uuid.UUID | None
+    grant_id: uuid.UUID | None
+    provider_id: uuid.UUID | None
+    ai_provider_id: str | None = None
     reference: str
     agent_id: str
     project_ids: list[str]
@@ -954,6 +959,11 @@ async def create_binding(
     """
     try:
         reference = broker.parse_reference(data.reference, field=False)
+        if reference.scope == model_key.SCOPE:
+            raise providers.BrokerError(
+                'invalid_secret_reference',
+                hint=f'the {model_key.SCOPE} scope is reserved',
+            )
     except providers.BrokerError as err:
         raise broker_error(err) from None
     values = data.model_dump()

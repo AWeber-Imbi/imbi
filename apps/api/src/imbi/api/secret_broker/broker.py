@@ -45,7 +45,7 @@ import psycopg.errors
 import psycopg_pool
 from psycopg import rows
 
-from imbi.api.secret_broker import audit, providers
+from imbi.api.secret_broker import audit, model_key, providers
 from imbi.api.tickets import log
 from imbi.api.tickets import store as task_store
 from imbi.common import settings
@@ -551,6 +551,45 @@ def _check_provider(provider: Row | None, binding: Row) -> Row:
     return provider
 
 
+async def _pinned_provider(conn: Conn, task_id: uuid.UUID) -> str | None:
+    """Return the AI provider id that the last claim pinned on a task."""
+    row = await _fetch_one(
+        conn,
+        'SELECT ai_provider_id FROM tickets.tickets WHERE id = %s',
+        (task_id,),
+    )
+    return None if row is None else row['ai_provider_id']
+
+
+async def _model_key_decision(
+    conn: Conn, task_id: uuid.UUID, request: ResolutionRequest
+) -> Decision:
+    """The decision for :data:`model_key.REFERENCE`: the AI provider that
+    the claim pinned on the task. No binding and no grant apply; the
+    claim authorized the model (ADR 0022 amendment).
+
+    Raises:
+        BrokerError: Another purpose or delivery mode, or a task with no
+            pinned provider.
+
+    """
+    if request.purpose != model_key.PURPOSE:
+        raise providers.BrokerError(
+            'secret_access_denied', 'model_key_purpose'
+        )
+    if request.delivery_mode != 'file_descriptor':
+        raise providers.BrokerError(
+            'delivery_mode_not_allowed', 'setup_purpose_file_descriptor_only'
+        )
+    if request.ttl_seconds < 1 or request.ttl_seconds > MAX_TTL_SECONDS:
+        raise providers.BrokerError('requested_ttl_too_large')
+    ai_provider_id = await _pinned_provider(conn, task_id)
+    if ai_provider_id is None:
+        raise providers.BrokerError('secret_access_denied', 'model_not_pinned')
+    binding, provider = model_key.decision_rows(ai_provider_id)
+    return Decision(binding, provider, {'id': None})
+
+
 async def evaluate(
     conn: Conn,
     organization_id: str,
@@ -699,7 +738,7 @@ def _event(
         project_id=','.join(row.get('project_ids') or ()),
         task_id=text('task_id'),
         runner_id=text('runner_id'),
-        provider_id=text('provider_id'),
+        provider_id=text('provider_id') or text('ai_provider_id'),
         binding_id=text('binding_id'),
         grant_id=text('grant_id'),
         resolution_id=text('id'),
@@ -947,32 +986,39 @@ class Broker:
                 return _created(repeated, handle), await _write(
                     conn, 'secret_resolution_allowed', repeated
                 )
-            decision = await evaluate(
-                conn,
-                context.organization_id,
-                context.agent_id,
-                context.project_ids,
-                reference,
-                request.purpose,
-                request.delivery_mode,
-                request.ttl_seconds,
-                target,
-            )
+            if str(reference) == model_key.REFERENCE:
+                decision = await _model_key_decision(
+                    conn, context.task_id, request
+                )
+            else:
+                decision = await evaluate(
+                    conn,
+                    context.organization_id,
+                    context.agent_id,
+                    context.project_ids,
+                    reference,
+                    request.purpose,
+                    request.delivery_mode,
+                    request.ttl_seconds,
+                    target,
+                )
             row = await _fetch_one(
                 conn,
                 'INSERT INTO secrets.resolutions (id, organization_id,'
-                ' binding_id, grant_id, provider_id, reference, field,'
-                ' agent_id, project_ids, task_id, runner_id, purpose,'
-                ' delivery_mode, delivery_target, ttl_seconds, handle_hash,'
-                ' idempotency_key, repository, expires_at) VALUES (%s, %s,'
-                ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
-                ' %s, %s, NOW() + make_interval(secs => %s)) RETURNING *',
+                ' binding_id, grant_id, provider_id, ai_provider_id,'
+                ' reference, field, agent_id, project_ids, task_id,'
+                ' runner_id, purpose, delivery_mode, delivery_target,'
+                ' ttl_seconds, handle_hash, idempotency_key, repository,'
+                ' expires_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s,'
+                ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
+                ' NOW() + make_interval(secs => %s)) RETURNING *',
                 (
                     uuid.uuid4(),
                     context.organization_id,
                     decision.binding['id'],
                     decision.grant['id'],
                     decision.provider['id'],
+                    decision.binding['locator'].get('ai_provider_id'),
                     str(reference),
                     reference.field,
                     context.agent_id,
@@ -1132,6 +1178,18 @@ class Broker:
                 runner_id=row['runner_id'],
             ),
         )
+        if row['ai_provider_id'] is not None:
+            # The task must still have the provider: a later claim can
+            # pin another one.
+            if (
+                await _pinned_provider(conn, row['task_id'])
+                != (row['ai_provider_id'])
+            ):
+                raise providers.BrokerError(
+                    'secret_access_denied', 'ai_provider_changed'
+                )
+            binding, provider = model_key.decision_rows(row['ai_provider_id'])
+            return Decision(binding, provider, {'id': None})
         reference = parse_reference(row['reference'])
         binding = _check_binding(
             await _fetch_one(
@@ -1189,7 +1247,14 @@ class Broker:
 
         Return the material and its members (:func:`env_members`).
         """
-        plugin = providers.get(decision.provider['type'])
+        if decision.provider['type'] == model_key.TYPE:
+            from imbi.api.secret_broker import store
+
+            plugin: providers.Provider = model_key.ModelKeyProvider(
+                store.SecretStore(self._pool)
+            )
+        else:
+            plugin = providers.get(decision.provider['type'])
         config = decision.provider['config']
         try:
             material = await plugin.resolve(

@@ -7,6 +7,23 @@
 #
 # The schema name is fixed: `secrets`.
 
+# A model key resolution has no binding, grant, or secret provider (ADR
+# 0022 amendment). An install made before it has NOT NULL on the three
+# columns. A pod of the previous release always sets them.
+[[steps]]
+name = "resolutions-model-key-nullable"
+when = """
+SELECT EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'secrets'
+                  AND table_name = 'resolutions'
+                  AND column_name IN ('binding_id', 'grant_id', 'provider_id')
+                  AND is_nullable = 'NO')
+"""
+sql = """
+ALTER TABLE secrets.resolutions ALTER COLUMN binding_id DROP NOT NULL,
+  ALTER COLUMN grant_id DROP NOT NULL, ALTER COLUMN provider_id DROP NOT NULL;
+"""
+
 # An adapter to an external secret system. `capabilities` is a snapshot
 # of the provider type's capabilities when the row was written.
 [[tables]]
@@ -122,9 +139,13 @@ name = "resolutions"
 [tables.columns]
 id = "UUID NOT NULL"
 organization_id = "TEXT NOT NULL"
-binding_id = "UUID NOT NULL"
-grant_id = "UUID NOT NULL"
-provider_id = "UUID NOT NULL"
+# NULL for a model key resolution (`secret://imbi/model`, ADR 0022
+# amendment): it has no binding and no grant, and `ai_provider_id` holds
+# the AI provider (a graph node id) that the claim pinned on the task.
+binding_id = "UUID"
+grant_id = "UUID"
+provider_id = "UUID"
+ai_provider_id = "TEXT"
 reference = "TEXT NOT NULL"
 field = "TEXT"
 agent_id = "TEXT NOT NULL"
