@@ -263,7 +263,9 @@ async def _list_vertex(
     )
     found: list[DiscoveredModel] = []
     token = ''
-    while len(found) < MAX_MODELS:
+    seen: set[str] = set()
+    # Count pages, not kept models: most models are not Gemini.
+    for _page in range(MAX_MODELS // 100 + 1):
         try:
             payload = await _get_json(
                 f'{url}?pageSize=100&pageToken={token}', headers, 'vertex'
@@ -286,8 +288,9 @@ async def _list_vertex(
             'dict[str, object]', payload if isinstance(payload, dict) else {}
         )
         token = urllib.parse.quote(str(page.get('nextPageToken') or ''))
-        if not token:
+        if not token or token in seen or len(found) >= MAX_MODELS:
             break
+        seen.add(token)
     return found[:MAX_MODELS]
 
 

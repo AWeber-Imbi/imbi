@@ -405,6 +405,21 @@ class ListModelsTestCase(unittest.IsolatedAsyncioTestCase):
             [m.model_id for m in found], ['gemini-2.5-pro', 'gemini-3-flash']
         )
 
+    async def test_vertex_stops_on_a_repeated_token(self) -> None:
+        """A provider that repeats its page token does not loop."""
+        calls: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request.url.params['pageToken'])
+            return httpx.Response(
+                200, json={'publisherModels': [], 'nextPageToken': 'same'}
+            )
+
+        with _transport(handler):
+            found = await discovery.list_models('vertex', 'gk', None)
+        self.assertEqual(found, [])
+        self.assertEqual(calls, ['', 'same'])
+
     async def test_vertex_refused_key_says_add_by_id(self) -> None:
         """A 403 for an express key tells the admin what to do."""
 
