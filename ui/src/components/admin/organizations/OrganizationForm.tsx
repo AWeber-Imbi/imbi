@@ -10,6 +10,7 @@ import type { Organization, OrganizationCreate } from '@/types'
 
 import { Button } from '../../ui/button'
 import { Card, CardContent } from '../../ui/card'
+import { FormField } from '../../ui/form-field'
 import { IconUpload } from '../../ui/icon-upload'
 import { Input } from '../../ui/input'
 
@@ -36,12 +37,19 @@ export function OrganizationForm({
     organization?.description || '',
   )
   const [icon, setIcon] = useState(organization?.icon || '')
+  const [slackTeamId, setSlackTeamId] = useState(
+    organization?.slack_team_id || '',
+  )
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   const validate = () => {
     const newErrors: Record<string, string> = {}
     if (!name.trim()) newErrors.name = 'Organization name is required'
     if (!slug.trim()) newErrors.slug = 'Slug is required'
+    if (slackTeamId.trim() && !/^[A-Z0-9]+$/.test(slackTeamId.trim())) {
+      newErrors.slackTeamId =
+        'A Slack team ID has only capital letters and numbers, for example T012AB3CD'
+    }
     if (slug && !/^[a-z0-9][a-z0-9-]{0,62}$/.test(slug)) {
       newErrors.slug =
         'Slug must be 1 to 63 characters, lowercase, start with a letter or number, and can only contain letters, numbers, and hyphens'
@@ -58,6 +66,7 @@ export function OrganizationForm({
       description: description.trim() || null,
       icon: icon.trim() || null,
       name: name.trim(),
+      slack_team_id: slackTeamId.trim() || null,
       slug: slug.trim(),
     })
   }
@@ -191,6 +200,23 @@ export function OrganizationForm({
               </Label>
               <IconUpload onChange={setIcon} value={icon} />
             </div>
+
+            <FormField
+              description="The Slack bot serves only the members of this organization, in the workspace with this ID. Empty: no Slack workspace."
+              error={errors.slackTeamId}
+              htmlFor="org-slack-team-id"
+              label="Slack team ID"
+              touched
+            >
+              <Input
+                className="font-mono"
+                disabled={isLoading}
+                id="org-slack-team-id"
+                onChange={(e) => setSlackTeamId(e.target.value)}
+                placeholder="T012AB3CD"
+                value={slackTeamId}
+              />
+            </FormField>
           </CardContent>
         </Card>
       </form>

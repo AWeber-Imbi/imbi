@@ -46,7 +46,6 @@ class Prefs:
     """The Home tab preferences of a user, with ``version`` 0 when the
     API has none stored."""
 
-    org_slug: str | None = None
     order: list[SectionKey] = dataclasses.field(
         default_factory=lambda: list(DEFAULT_ORDER)
     )
@@ -62,7 +61,6 @@ class Prefs:
     def value(self) -> dict[str, typing.Any]:
         """Return the ``value`` body of a write."""
         return {
-            'org_slug': self.org_slug,
             'order': self.order,
             'sections': {k: {'display': v} for k, v in self.sections.items()},
             'hide_empty': self.hide_empty,
@@ -82,7 +80,6 @@ def parse(body: dict[str, typing.Any]) -> Prefs:
     )
     sections: dict[str, dict[str, Display]] = value.get('sections') or {}
     return Prefs(
-        org_slug=value.get('org_slug'),
         order=order,
         sections={
             k: v['display']

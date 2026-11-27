@@ -6,6 +6,8 @@ import { AlertCircle, KeyRound, Plug, ShieldCheck, Unlock } from 'lucide-react'
 import { ApiError } from '@/api/client'
 import { testMcpServer, testMcpServerConfig } from '@/api/endpoints'
 import { FormHeader } from '@/components/admin/form-header'
+import { BindingReferenceSelect } from '@/components/admin/secrets/BindingReferenceSelect'
+import type { SecretBinding } from '@/components/admin/secrets/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Input } from '@/components/ui/input'
@@ -18,6 +20,8 @@ import {
 } from '@/components/ui/segmented-control'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { useOrganization } from '@/contexts/OrganizationContext'
+import { queryKeys } from '@/lib/queryKeys'
 import { slugify } from '@/lib/utils'
 import type {
   MCPServer,
@@ -46,6 +50,7 @@ interface FormState {
   oauthCleared: boolean
   oauthClientId: string
   oauthEditing: boolean
+  oauthRef: string
   oauthScope: string
   oauthTokenUrl: string
   oauthValue: string
@@ -54,6 +59,7 @@ interface FormState {
   staticCleared: boolean
   staticEditing: boolean
   staticHeader: string
+  staticRef: string
   staticValue: string
   timeout: number
   toolPrefix: string
@@ -79,6 +85,7 @@ export function McpServerForm({
 }: McpServerFormProps) {
   const isEditing = !!server
   const queryClient = useQueryClient()
+  const orgSlug = useOrganization().selectedOrganization?.slug
   const [s, setS] = useState<FormState>(() => initialState(server))
   const [errors, setErrors] = useState<Record<string, string>>({})
   // Tool names discovered by the last connection test, offered as a
@@ -100,7 +107,7 @@ export function McpServerForm({
     if (Object.keys(found).length > 0) return
     if (isEditing && server) {
       onSave({
-        data: buildUpdate(s),
+        data: buildUpdate(s, server),
         id: server.id,
         mode: 'edit',
       })
@@ -110,12 +117,15 @@ export function McpServerForm({
   }
 
   const runTest = async () => {
+    if (!orgSlug) throw new Error('Select an organization first')
     if (isEditing && server) {
-      const result = await testMcpServer(server.id)
-      await queryClient.invalidateQueries({ queryKey: ['mcp-servers'] })
+      const result = await testMcpServer(orgSlug, server.id)
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.mcpServers(orgSlug),
+      })
       return result
     }
-    return testMcpServerConfig(buildCreate(s) as MCPServerTestConfig)
+    return testMcpServerConfig(orgSlug, buildCreate(s) as MCPServerTestConfig)
   }
 
   const prefix = s.toolPrefix.trim() || s.slug.trim() || '…'
@@ -335,35 +345,47 @@ export function McpServerForm({
               </Field>
               <Field
                 error={errors.staticValue}
-                help="Encrypted and write-only — never returned by the API."
+                help="A stored value is encrypted and write-only — never returned by the API. A secret binding must list this server."
                 label="Header value"
                 required={!server?.has_static_value}
               >
-                <SecretField
-                  cleared={s.staticCleared}
-                  editing={s.staticEditing}
-                  onCancel={() =>
-                    set({ staticEditing: false, staticValue: '' })
-                  }
-                  onChange={(v) => set({ staticValue: v })}
-                  onClear={() =>
-                    set({
-                      staticCleared: true,
-                      staticEditing: false,
-                      staticValue: '',
-                    })
-                  }
-                  onStart={() =>
-                    set({
-                      staticCleared: false,
-                      staticEditing: true,
-                      staticValue: '',
-                    })
-                  }
-                  placeholder="Bearer ghp_…"
-                  present={!!server?.has_static_value}
-                  value={s.staticValue}
-                />
+                {orgSlug && (
+                  <BindingReferenceSelect
+                    emptyLabel="Stored value"
+                    filter={canServeMcp}
+                    label="Header value source"
+                    onChange={(ref) => set({ staticRef: ref ?? '' })}
+                    orgSlug={orgSlug}
+                    value={s.staticRef || null}
+                  />
+                )}
+                {!s.staticRef && (
+                  <SecretField
+                    cleared={s.staticCleared}
+                    editing={s.staticEditing}
+                    onCancel={() =>
+                      set({ staticEditing: false, staticValue: '' })
+                    }
+                    onChange={(v) => set({ staticValue: v })}
+                    onClear={() =>
+                      set({
+                        staticCleared: true,
+                        staticEditing: false,
+                        staticValue: '',
+                      })
+                    }
+                    onStart={() =>
+                      set({
+                        staticCleared: false,
+                        staticEditing: true,
+                        staticValue: '',
+                      })
+                    }
+                    placeholder="Bearer ghp_…"
+                    present={!!server?.has_static_value}
+                    value={s.staticValue}
+                  />
+                )}
               </Field>
             </>
           )}
@@ -388,32 +410,46 @@ export function McpServerForm({
               </Field>
               <Field
                 error={errors.oauthValue}
-                help="Encrypted and write-only — never returned by the API."
+                help="A stored value is encrypted and write-only — never returned by the API. A secret binding must list this server."
                 label="Client secret"
                 required={!server?.has_oauth_client_secret}
               >
-                <SecretField
-                  cleared={s.oauthCleared}
-                  editing={s.oauthEditing}
-                  onCancel={() => set({ oauthEditing: false, oauthValue: '' })}
-                  onChange={(v) => set({ oauthValue: v })}
-                  onClear={() =>
-                    set({
-                      oauthCleared: true,
-                      oauthEditing: false,
-                      oauthValue: '',
-                    })
-                  }
-                  onStart={() =>
-                    set({
-                      oauthCleared: false,
-                      oauthEditing: true,
-                      oauthValue: '',
-                    })
-                  }
-                  present={!!server?.has_oauth_client_secret}
-                  value={s.oauthValue}
-                />
+                {orgSlug && (
+                  <BindingReferenceSelect
+                    emptyLabel="Stored value"
+                    filter={canServeMcp}
+                    label="Client secret source"
+                    onChange={(ref) => set({ oauthRef: ref ?? '' })}
+                    orgSlug={orgSlug}
+                    value={s.oauthRef || null}
+                  />
+                )}
+                {!s.oauthRef && (
+                  <SecretField
+                    cleared={s.oauthCleared}
+                    editing={s.oauthEditing}
+                    onCancel={() =>
+                      set({ oauthEditing: false, oauthValue: '' })
+                    }
+                    onChange={(v) => set({ oauthValue: v })}
+                    onClear={() =>
+                      set({
+                        oauthCleared: true,
+                        oauthEditing: false,
+                        oauthValue: '',
+                      })
+                    }
+                    onStart={() =>
+                      set({
+                        oauthCleared: false,
+                        oauthEditing: true,
+                        oauthValue: '',
+                      })
+                    }
+                    present={!!server?.has_oauth_client_secret}
+                    value={s.oauthValue}
+                  />
+                )}
               </Field>
               <Field help="Optional. Space-separated." label="Scope">
                 <Input
@@ -502,28 +538,50 @@ function buildCreate(s: FormState): MCPServerCreate {
     name: s.name.trim(),
     slug: s.slug.trim(),
   }
-  if (s.authType === 'static' && s.staticValue) {
-    data.static_value = s.staticValue
+  if (s.authType === 'static') {
+    if (s.staticRef) data.static_value_ref = s.staticRef
+    else if (s.staticValue) data.static_value = s.staticValue
   }
-  if (s.authType === 'oauth_client_credentials' && s.oauthValue) {
-    data.oauth_client_secret = s.oauthValue
+  if (s.authType === 'oauth_client_credentials') {
+    if (s.oauthRef) data.oauth_client_secret_ref = s.oauthRef
+    else if (s.oauthValue) data.oauth_client_secret = s.oauthValue
   }
   return data
 }
 
 // Secret rules: a freshly typed value is sent; an explicit clear sends null;
 // an untouched secret is omitted so the stored ciphertext survives.
-function buildUpdate(s: FormState): MCPServerUpdate {
+// A secret is a stored value or a binding reference, never both: a new
+// reference clears the stored value, and a new value clears the reference.
+// fallow-ignore-next-line complexity
+function buildUpdate(s: FormState, server: MCPServer): MCPServerUpdate {
   const data: MCPServerUpdate = {
     ...baseFields(s),
     name: s.name.trim(),
     slug: s.slug.trim(),
   }
-  if (s.staticValue) data.static_value = s.staticValue
-  else if (s.staticCleared) data.static_value = null
-  if (s.oauthValue) data.oauth_client_secret = s.oauthValue
-  else if (s.oauthCleared) data.oauth_client_secret = null
+  if (s.staticRef) {
+    data.static_value_ref = s.staticRef
+    if (server.has_static_value) data.static_value = null
+  } else {
+    if (server.static_value_ref) data.static_value_ref = null
+    if (s.staticValue) data.static_value = s.staticValue
+    else if (s.staticCleared) data.static_value = null
+  }
+  if (s.oauthRef) {
+    data.oauth_client_secret_ref = s.oauthRef
+    if (server.has_oauth_client_secret) data.oauth_client_secret = null
+  } else {
+    if (server.oauth_client_secret_ref) data.oauth_client_secret_ref = null
+    if (s.oauthValue) data.oauth_client_secret = s.oauthValue
+    else if (s.oauthCleared) data.oauth_client_secret = null
+  }
   return data
+}
+
+// The broker refuses a dynamic binding for an MCP server.
+function canServeMcp(binding: SecretBinding): boolean {
+  return binding.credential_class !== 'dynamic'
 }
 
 function Field({
@@ -559,12 +617,18 @@ function Field({
 
 function hasOauthSecret(s: FormState, server: MCPServer | null): boolean {
   return (
-    !!s.oauthValue || (!!server?.has_oauth_client_secret && !s.oauthCleared)
+    !!s.oauthRef ||
+    !!s.oauthValue ||
+    (!!server?.has_oauth_client_secret && !s.oauthCleared)
   )
 }
 
 function hasStaticSecret(s: FormState, server: MCPServer | null): boolean {
-  return !!s.staticValue || (!!server?.has_static_value && !s.staticCleared)
+  return (
+    !!s.staticRef ||
+    !!s.staticValue ||
+    (!!server?.has_static_value && !s.staticCleared)
+  )
 }
 
 // fallow-ignore-next-line complexity
@@ -580,6 +644,7 @@ function initialState(server: MCPServer | null): FormState {
     oauthCleared: false,
     oauthClientId: server?.oauth_client_id ?? '',
     oauthEditing: false,
+    oauthRef: server?.oauth_client_secret_ref ?? '',
     oauthScope: server?.oauth_scope ?? '',
     oauthTokenUrl: server?.oauth_token_url ?? '',
     oauthValue: '',
@@ -588,6 +653,7 @@ function initialState(server: MCPServer | null): FormState {
     staticCleared: false,
     staticEditing: false,
     staticHeader: server?.static_header ?? 'Authorization',
+    staticRef: server?.static_value_ref ?? '',
     staticValue: '',
     timeout: server?.timeout ?? 30,
     toolPrefix: server?.tool_prefix ?? '',

@@ -239,6 +239,29 @@ describe('BindingsTab', () => {
     )
   })
 
+  it('does not send an unchanged MCP server list', async () => {
+    const pinned = { id: 'srv-1', token_url: null, url: 'https://mcp.test/' }
+    vi.mocked(listSecretBindings).mockResolvedValue([
+      {
+        ...key,
+        mcp_server_usage: { servers: [pinned] },
+        provider_key_usage: null,
+      },
+    ] as never)
+    render(<BindingsTab orgSlug="acme" />)
+    const edits = await screen.findAllByRole('button', { name: 'Edit' })
+    fireEvent.click(edits[0])
+    fireEvent.change(screen.getByLabelText(/Description/), {
+      target: { value: 'new' },
+    })
+    await save()
+    await waitFor(() =>
+      expect(updateSecretBinding).toHaveBeenCalledWith('acme', 'key-1', {
+        description: 'new',
+      }),
+    )
+  })
+
   it('drops saved consumers of deleted bindings', async () => {
     vi.mocked(listSecretBindings).mockResolvedValue([
       { ...key, provider_key_usage: { ...usage, consumers: ['gone'] } },

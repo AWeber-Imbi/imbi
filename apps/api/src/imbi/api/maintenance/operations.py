@@ -1105,6 +1105,51 @@ async def execute_cve_sync(
     return 'succeeded'
 
 
+async def enumerate_one_run(db: graph.Graph) -> list[str]:
+    """One item per run, for an operation that works on the whole graph."""
+    return ['all']
+
+
+async def execute_mcp_server_org_backfill(
+    db: graph.Graph,
+    client: valkey.Valkey,
+    item_id: str,
+    *,
+    ctx: log.MaintenanceContext,
+) -> ExecuteOutcome:
+    """Link the MCP servers that have no organization."""
+    from imbi.api import mcp_server_orgs
+
+    linked = await mcp_server_orgs.backfill(db)
+    ctx.log.record(
+        'succeeded',
+        'mcp-server-org-backfill',
+        f'Linked {linked} MCP servers to an organization',
+        linked=linked,
+    )
+    return 'succeeded'
+
+
+async def execute_conversation_org_backfill(
+    db: graph.Graph,
+    client: valkey.Valkey,
+    item_id: str,
+    *,
+    ctx: log.MaintenanceContext,
+) -> ExecuteOutcome:
+    """Put the conversations that have no organization in one."""
+    from imbi.api import conversation_orgs
+
+    changed = await conversation_orgs.backfill(db)
+    ctx.log.record(
+        'succeeded',
+        'conversation-org-backfill',
+        f'Put {changed} conversations in an organization',
+        changed=changed,
+    )
+    return 'succeeded'
+
+
 async def enumerate_ai_model_calls_prune(db: graph.Graph) -> list[str]:
     """One item per run: the delete of the old AI model call rows."""
     return ['older-than-retention']

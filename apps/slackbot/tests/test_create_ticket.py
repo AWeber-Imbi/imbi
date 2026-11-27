@@ -10,7 +10,9 @@ from apps.slackbot.tests import helpers
 from imbi.slackbot import create_ticket as ct
 from imbi.slackbot import identity
 
-USER = identity.ImbiUser('ada@example.com', 'Ada')
+USER = identity.ImbiUser(
+    'ada@example.com', 'Ada', org_slug='acme', org_id='org-1'
+)
 
 SECTIONS = [
     {
@@ -32,7 +34,7 @@ SECTIONS = [
 def meta(**kw: typing.Any) -> dict[str, typing.Any]:
     return {
         'org': 'acme',
-        'orgs': [['acme', 'Acme', True]],
+        'manage': True,
         'me': ['ada@example.com', 'Ada'],
         'roles': 0,
         'extra': {},
@@ -65,7 +67,6 @@ class FormViewTests(helpers.TestCase):
         blocks = blocks_by_id(view)
         self.assertIn(ct.AGENT, blocks)
         self.assertNotIn(ct.PERSON, blocks)
-        self.assertNotIn(ct.ORG, blocks)
         self.assertEqual(
             blocks[ct.OWNER]['element']['initial_option']['value'],
             'ada@example.com',
@@ -85,14 +86,9 @@ class FormViewTests(helpers.TestCase):
             blocks[ct.KIND]['element']['initial_option']['value'], 'person'
         )
 
-    def test_org_select_with_two_orgs(self) -> None:
-        orgs = [['acme', 'Acme', True], ['beta', 'Beta', False]]
-        view = ct.form_view(meta(org='beta', orgs=orgs), {}, [])
-        blocks = blocks_by_id(view)
-        self.assertEqual(
-            blocks[ct.ORG]['element']['initial_option']['value'], 'beta'
-        )
-        # No ticket:manage in beta: the owner is the user.
+    def test_owner_is_the_user_without_manage(self) -> None:
+        blocks = blocks_by_id(ct.form_view(meta(manage=False), {}, []))
+        # No ticket:manage: the owner is the user.
         self.assertNotIn(ct.OWNER, blocks)
 
     def test_values_are_kept(self) -> None:
@@ -245,13 +241,6 @@ class StateTests(helpers.TestCase):
             set(ct.check(meta(roles=2), values)),
             {ct.DUE, ct.ROLE_PERSON + '0', ct.ROLE_NAME + '1', ct.PARENT},
         )
-
-    def test_check_org_change_pending(self) -> None:
-        orgs = [['acme', 'Acme', True], ['beta', 'Beta', True]]
-        values = {ct.ORG: opt('Beta', 'beta')}
-        self.assertEqual(set(ct.check(meta(orgs=orgs), values)), {ct.ORG})
-        values = {ct.ORG: opt('Acme', 'acme')}
-        self.assertEqual(ct.check(meta(orgs=orgs), values), {})
 
     def test_roles(self) -> None:
         values = {
@@ -623,39 +612,6 @@ class ListenerTests(ApiTestCase):
         key = orjson.loads(self.shown()['private_metadata'])['key']
         self.assertTrue(key.startswith('slack:'))
 
-    async def test_open_form_preselects_the_org(self) -> None:
-        orgs = [
-            {
-                'organization_slug': slug,
-                'organization_name': slug.title(),
-                'permissions': ['ticket:manage'],
-            }
-            for slug in ('acme', 'beta')
-        ]
-        self.route('GET', '/users/me', 200, {'organizations': orgs})
-        self.route(
-            'GET',
-            '/organizations/beta/tickets/schema',
-            200,
-            {'sections': [], 'filterable': []},
-        )
-        for org, expected in (('beta', 'beta'), (None, 'acme'), ('x', 'acme')):
-            with self.api():
-                await ct.open_form(self.slack, 't', 'U1', org=org)
-            meta = orjson.loads(self.shown()['private_metadata'])
-            self.assertEqual(expected, meta['org'], org)
-            ct._cache.clear()
-
-    async def test_command_without_orgs(self) -> None:
-        self.route('GET', '/users/me', 200, {'organizations': []})
-        with self.api():
-            await ct.on_command(
-                mock.AsyncMock(),
-                {'trigger_id': 't', 'user_id': 'U1'},
-                self.slack,
-            )
-        self.assertIn(ct._NO_ORG, str(self.shown()))
-
     async def test_command_when_imbi_fails(self) -> None:
         self.route('GET', '/users/me', 500, {})
         with self.api():
@@ -698,57 +654,6 @@ class ListenerTests(ApiTestCase):
             )
         self.assertIn(ct.PERSON, blocks_by_id(self.shown()))
         self.assertEqual(self.slack.views_update.call_args.kwargs['hash'], 'h')
-
-    async def test_org_change_clears_org_values(self) -> None:
-        orgs = [['acme', 'Acme', True], ['beta', 'Beta', True]]
-        view = {
-            'private_metadata': orjson.dumps(meta(orgs=orgs)).decode(),
-            'blocks': [],
-            'state': {
-                'values': {
-                    ct.ORG: {
-                        ct.ORG: {
-                            'type': 'static_select',
-                            'selected_option': opt('Beta', 'beta'),
-                        }
-                    },
-                    ct.AGENT: {
-                        ct.AGENT: {
-                            'type': 'external_select',
-                            'selected_option': opt('A', 'a'),
-                        }
-                    },
-                    ct.DESCRIPTION: {
-                        ct.DESCRIPTION: {
-                            'type': 'plain_text_input',
-                            'value': 'keep',
-                        }
-                    },
-                }
-            },
-        }
-        self.route(
-            'GET', '/organizations/beta/tickets/schema', 200, {'sections': []}
-        )
-        with self.api():
-            await ct.on_action(
-                mock.AsyncMock(),
-                self.body(view, actions=[{'action_id': ct.ORG}]),
-                self.slack,
-            )
-        shown = self.shown()
-        self.assertEqual(
-            orjson.loads(shown['private_metadata'])['org'], 'beta'
-        )
-        blocks = blocks_by_id(shown)
-        # A new block id, so Slack does not keep the old agent.
-        self.assertNotIn(ct.AGENT, blocks)
-        agent = blocks[ct.AGENT + '@1']['element']
-        self.assertEqual(agent['action_id'], ct.AGENT)
-        self.assertNotIn('initial_option', agent)
-        self.assertEqual(
-            blocks[ct.DESCRIPTION]['element']['initial_value'], 'keep'
-        )
 
     async def test_new_prerequisite_gates_after_rebuild(self) -> None:
         old = ct.form_view(meta(), {ct.REQUIRES: [opt('T-1'), opt('T-2')]}, [])
@@ -807,7 +712,7 @@ class ListenerTests(ApiTestCase):
 
     async def test_submit_with_problems(self) -> None:
         view = {
-            'private_metadata': orjson.dumps(meta(gen=1)).decode(),
+            'private_metadata': orjson.dumps(meta()).decode(),
             'state': {
                 'values': {
                     ct.DUE: {
@@ -816,13 +721,13 @@ class ListenerTests(ApiTestCase):
                             'selected_date': '2000-01-01',
                         }
                     },
-                    ct.PARENT + '@1': {
+                    ct.PARENT: {
                         ct.PARENT: {
                             'type': 'external_select',
                             'selected_option': opt('T-1'),
                         }
                     },
-                    ct.REQUIRES + '@1': {
+                    ct.REQUIRES: {
                         ct.REQUIRES: {
                             'type': 'multi_external_select',
                             'selected_options': [opt('T-1')],
@@ -836,7 +741,7 @@ class ListenerTests(ApiTestCase):
             await ct.on_submit(ack, self.body(view), self.slack)
         self.assertEqual(ack.call_args.kwargs['response_action'], 'errors')
         self.assertEqual(
-            set(ack.call_args.kwargs['errors']), {ct.DUE, ct.PARENT + '@1'}
+            set(ack.call_args.kwargs['errors']), {ct.DUE, ct.PARENT}
         )
         self.slack.views_update.assert_not_awaited()
 
@@ -896,7 +801,7 @@ class RegisterTests(helpers.TestCase):
         ct.register(app)
         app.command.assert_called_once_with(ct.COMMAND)
         app.view.assert_called_once_with(ct.CALLBACK_ID)
-        for action in (ct.ORG, ct.KIND, ct.ROLE_ADD, ct.REQUIRES):
+        for action in (ct.KIND, ct.ROLE_ADD, ct.REQUIRES):
             self.assertTrue(ct.DISPATCH.match(action))
         for action in (ct.AGENT, ct.ROLE_PERSON + '2', ct.PARENT):
             self.assertTrue(ct.SEARCH.match(action))

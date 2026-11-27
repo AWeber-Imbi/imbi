@@ -9,10 +9,12 @@ import type {
 const ASSISTANT_BASE_URL = '/assistant'
 
 async function assistantFetch<T>(
-  path: string,
+  orgSlug: string,
+  relativePath: string,
   options: RequestInit = {},
   signal?: AbortSignal,
 ): Promise<T> {
+  const path = orgPath(orgSlug, relativePath)
   const response = await withAuthRetry(
     path,
     (token) =>
@@ -41,13 +43,17 @@ async function assistantFetch<T>(
 }
 
 // REST endpoints
-export const createConversation = (data?: CreateConversationRequest) =>
-  assistantFetch<Conversation>('/conversations', {
+export const createConversation = (
+  orgSlug: string,
+  data?: CreateConversationRequest,
+) =>
+  assistantFetch<Conversation>(orgSlug, '/conversations', {
     body: JSON.stringify(data ?? {}),
     method: 'POST',
   })
 
 export const listConversations = (
+  orgSlug: string,
   params?: {
     include_archived?: boolean
     limit?: number
@@ -64,37 +70,52 @@ export const listConversations = (
       ).toString()
     : ''
   return assistantFetch<Conversation[]>(
+    orgSlug,
     `/conversations${searchParams}`,
     {},
     signal,
   )
 }
 
-export const getConversation = (id: string, signal?: AbortSignal) =>
+export const getConversation = (
+  orgSlug: string,
+  id: string,
+  signal?: AbortSignal,
+) =>
   assistantFetch<ConversationWithMessages>(
+    orgSlug,
     `/conversations/${encodeURIComponent(id)}`,
     {},
     signal,
   )
 
-export const deleteConversation = (id: string) =>
-  assistantFetch<void>(`/conversations/${id}`, { method: 'DELETE' })
+export const deleteConversation = (orgSlug: string, id: string) =>
+  assistantFetch<void>(orgSlug, `/conversations/${id}`, { method: 'DELETE' })
 
 export const updateConversation = (
+  orgSlug: string,
   id: string,
   data: UpdateConversationRequest,
 ) =>
-  assistantFetch<Conversation>(`/conversations/${id}`, {
+  assistantFetch<Conversation>(orgSlug, `/conversations/${id}`, {
     body: JSON.stringify(data),
     method: 'PATCH',
   })
 
 // The conversation every browser shows; null means a new one.
-export const getCurrentConversation = (signal?: AbortSignal) =>
-  assistantFetch<Conversation | null>('/current-conversation', {}, signal)
+export const getCurrentConversation = (orgSlug: string, signal?: AbortSignal) =>
+  assistantFetch<Conversation | null>(
+    orgSlug,
+    '/current-conversation',
+    {},
+    signal,
+  )
 
-export const setCurrentConversation = (conversationId: null | string) =>
-  assistantFetch<void>('/current-conversation', {
+export const setCurrentConversation = (
+  orgSlug: string,
+  conversationId: null | string,
+) =>
+  assistantFetch<void>(orgSlug, '/current-conversation', {
     body: JSON.stringify({ conversation_id: conversationId }),
     method: 'PUT',
   })
@@ -114,12 +135,13 @@ export type SSEEventHandler = {
 }
 
 export async function sendMessageSSE(
+  orgSlug: string,
   conversationId: string,
   content: string,
   handlers: SSEEventHandler,
   signal?: AbortSignal,
 ): Promise<void> {
-  const path = `/conversations/${conversationId}/messages`
+  const path = orgPath(orgSlug, `/conversations/${conversationId}/messages`)
   const url = `${ASSISTANT_BASE_URL}${path}`
 
   const response = await withAuthRetry(path, (token) =>
@@ -214,4 +236,9 @@ export async function sendMessageSSE(
   } finally {
     reader.releaseLock()
   }
+}
+
+// Every conversation is in one organization.
+function orgPath(orgSlug: string, path: string): string {
+  return `/organizations/${encodeURIComponent(orgSlug)}${path}`
 }

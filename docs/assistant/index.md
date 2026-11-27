@@ -22,7 +22,7 @@ The tools come from four sources:
 | imbi-api | One tool for each operation in the imbi-api OpenAPI spec. The auth, MFA, status, and thumbnail routes, and the operations that imbi-api marks as not for AI, are not tools |
 | The assistant | `refresh_openapi_spec`: reads the spec again and reconnects to the MCP servers |
 | The browser | `navigate_to` opens a page of the UI. `refresh_data` reloads the data on the page. The UI runs these tools, not the server |
-| MCP servers | The tools of each enabled MCP server at **Admin > Global Admin > Assistant > MCP Servers** |
+| MCP servers | The tools of each enabled MCP server at **Admin > &lt;Org&gt; Admin > MCP Servers** |
 
 The assistant calls imbi-api with the token of the person who sent the
 message. So imbi-api applies that person's permissions to each tool call.
@@ -36,12 +36,20 @@ assistant reads the URL patterns from `llms.txt` of the UI at startup.
 ## Conversations
 
 The assistant stores each conversation and its messages in the graph. A
-conversation belongs to one user. Other users cannot read it.
+conversation belongs to one user and is in one organization: the
+organization that is selected when the conversation starts. Other users
+cannot read it. The assistant shows only the conversations of the
+selected organization, and you must be a member of it.
 
-Each user has one current conversation. Every browser that has the UI open
-shows it, and a reload opens it again. When you open a conversation, start
-a new one, or send the first message of a new one, all your browsers
-change to it. Other browsers show a new message after the assistant saves
+Conversations made before conversations had an organization go to your
+organization when an admin runs **Put Assistant Conversations in an
+Organization** after the upgrade. If you are in more than one, they go
+to the first by slug.
+
+Each user has one current conversation in each organization. Every
+browser that has the UI open shows it, and a reload opens it again. When
+you open a conversation, start a new one, or send the first message of a
+new one, all your browsers change to it. Other browsers show a new message after the assistant saves
 it. They do not show the answer while it streams.
 
 A conversation has a model. A new conversation uses the first of these that
@@ -116,8 +124,9 @@ return `503`.
 
 ## Endpoints
 
-The paths are relative to the path of `IMBI_ASSISTANT_URL`, for example
-`/assistant`.
+The paths are relative to the path of `IMBI_ASSISTANT_URL` plus
+`/organizations/{org_slug}`, for example `/assistant/organizations/acme`.
+Each route returns `403` when you are not a member of the organization.
 
 | Method | Path | What it does |
 |---|---|---|
@@ -129,7 +138,7 @@ The paths are relative to the path of `IMBI_ASSISTANT_URL`, for example
 | `POST` | `/conversations/{id}/messages` | Sends a message. The answer is a `text/event-stream` |
 | `GET` | `/current-conversation` | Gets your current conversation, or `null` |
 | `PUT` | `/current-conversation` | Sets your current conversation. `null` starts a new one |
-| `GET` | `/status` | The health check. It has no prefix |
+| `GET` | `/status` | The health check. It has no prefix and no organization |
 
 To show the assistant in the **System health** card of the Admin overview,
 set `IMBI_INTERNAL_ASSISTANT_URL` on imbi-api, for example

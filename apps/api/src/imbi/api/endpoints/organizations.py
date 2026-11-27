@@ -49,6 +49,7 @@ from .events import events_project_router
 from .integration_workflow_steps import integration_workflow_steps_router
 from .integrations import integrations_router
 from .link_definitions import link_definitions_router
+from .mcp_servers import mcp_servers_router
 from .operations_log import (
     operations_log_org_router,
     operations_log_project_router,
@@ -244,6 +245,10 @@ organizations_router.include_router(
     agents_router,
     prefix='/{org_slug}/agents',
 )
+organizations_router.include_router(
+    mcp_servers_router,
+    prefix='/{org_slug}/mcp-servers',
+)
 # ADR 0028: tickets at /tickets, with ticket operation ids.
 organizations_router.include_router(
     tickets_router,
@@ -378,12 +383,28 @@ organizations_router.include_router(
 )
 
 
+def _check_slack_team_id(
+    auth: permissions.AuthContext, old: str | None, new: str | None
+) -> None:
+    """Only an install admin can set or change ``slack_team_id``.
+
+    The team ID picks the organization of a Slack workspace's bot. An
+    organization admin who could set it could take another
+    organization's workspace.
+    """
+    if old != new and not auth.is_admin:
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail='Only an install admin can set the Slack team ID',
+        )
+
+
 @organizations_router.post('/', status_code=201)
 async def create_organization(
     org: models.Organization,
     request: fastapi.Request,
     db: graph.Pool,
-    _auth: typing.Annotated[
+    auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
             permissions.require_permission('organization:create'),
@@ -402,6 +423,7 @@ async def create_organization(
         409: Organization with slug already exists.
 
     """
+    _check_slack_team_id(auth, None, org.slack_team_id)
     now = datetime.datetime.now(datetime.UTC)
     org.created_at = now
     org.updated_at = now
@@ -582,6 +604,8 @@ async def _persist_organization(
     org: models.Organization,
     request: fastapi.Request,
     db: graph.Pool,
+    *,
+    keep_team_id: bool,
 ) -> dict[str, typing.Any]:
     """Execute the Cypher SET + count queries to update an organization.
 
@@ -592,6 +616,9 @@ async def _persist_organization(
             taken ``original_slug`` since is not changed.
         org: Validated organization model with updated fields.
         db: Graph database connection.
+        keep_team_id: Keep the stored ``slack_team_id``. Set for a
+            caller who cannot change it, so a write from an older read
+            cannot restore a value that an install admin changed.
 
     Returns:
         Organization dict with relationship counts.
@@ -621,6 +648,8 @@ async def _persist_organization(
             ' n.description = {description},'
             ' n.icon = {icon},'
             ' n.tag_formats = {tag_formats},'
+            ' n.slack_team_id = CASE WHEN {keep_team_id}'
+            ' THEN n.slack_team_id ELSE {slack_team_id} END,'
             ' n.updated_at = {updated_at},'
             ' n.previous_slugs = {previous_slugs}'
             ' RETURN n'
@@ -633,6 +662,8 @@ async def _persist_organization(
             ' n.description = {description},'
             ' n.icon = {icon},'
             ' n.tag_formats = {tag_formats},'
+            ' n.slack_team_id = CASE WHEN {keep_team_id}'
+            ' THEN n.slack_team_id ELSE {slack_team_id} END,'
             ' n.updated_at = {updated_at}'
             ' RETURN n'
         )
@@ -644,6 +675,8 @@ async def _persist_organization(
         'description': props.get('description'),
         'icon': props.get('icon'),
         'tag_formats': props.get('tag_formats', []),
+        'slack_team_id': props.get('slack_team_id'),
+        'keep_team_id': keep_team_id,
         'updated_at': props['updated_at'],
         'org_id': org_id,
     }
@@ -669,7 +702,8 @@ async def _persist_organization(
         return renamed
 
     with conflict_on_unique_violation(
-        f'Organization with slug {org.slug!r} already exists',
+        f'Another organization has the slug {org.slug!r} or the Slack '
+        f'team id {org.slack_team_id!r}',
     ):
         if previous_slugs is None:
             records = await db.execute(update_query, params)
@@ -730,7 +764,7 @@ async def patch_organization(
     operations: list[json_patch.PatchOperation],
     request: fastapi.Request,
     db: graph.Pool,
-    _auth: typing.Annotated[
+    auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
             permissions.require_permission('organization:update'),
@@ -748,6 +782,8 @@ async def patch_organization(
 
     Raises:
         400: Invalid patch, read-only path, or validation error.
+        403: The caller is not an install admin and the patch changes
+            ``slack_team_id``.
         404: Organization not found.
         409: Slug rename conflicts with existing organization.
         422: Patch test operation failed.
@@ -774,9 +810,12 @@ async def patch_organization(
             detail=f'Validation error: {e.errors()}',
         ) from e
 
+    _check_slack_team_id(auth, existing.slack_team_id, org.slack_team_id)
     org.created_at = existing.created_at
     org.updated_at = datetime.datetime.now(datetime.UTC)
-    return await _persist_organization(slug, existing.id, org, request, db)
+    return await _persist_organization(
+        slug, existing.id, org, request, db, keep_team_id=not auth.is_admin
+    )
 
 
 @organizations_router.get('/{slug}/members', name='list_organization_members')

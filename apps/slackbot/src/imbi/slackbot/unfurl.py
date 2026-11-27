@@ -326,15 +326,13 @@ async def handle(event: Json, client: SlackClient) -> None:
     user = await identity.resolve(client, event.get('user') or '')
     if user is None:
         return
+    # Only links of the workspace's organization unfurl.
     async with identity.api_client(user) as imbi:
-        orgs: list[Json] = []
-        if any(isinstance(item, Project) for _, item in urls):
-            orgs = await _get(imbi, '/organizations/') or []
         cards = await asyncio.gather(
             *(
-                _ticket_card(imbi, item, url)
+                _ticket_card(imbi, item, url, user.org_slug)
                 if isinstance(item, Ticket)
-                else _project_card(imbi, item, url, orgs)
+                else _project_card(imbi, item, url, user.org_slug)
                 for url, item in urls
             )
         )
@@ -365,32 +363,29 @@ async def _external(client: SlackClient, channel: str) -> bool:
     return bool(info.get('is_ext_shared') or info.get('is_pending_ext_shared'))
 
 
-async def _ticket_card(imbi: api.Imbi, item: Ticket, url: str) -> Json | None:
+async def _ticket_card(
+    imbi: api.Imbi, item: Ticket, url: str, org: str
+) -> Json | None:
+    if item.org != org:
+        return None
     path = f'/organizations/{item.org}/tickets/{item.short_id}'
     ticket = await _get(imbi, path)
     return ticket_entity(ticket, url, item.org) if ticket else None
 
 
 async def _project_card(
-    imbi: api.Imbi, item: Project, url: str, orgs: list[Json]
+    imbi: api.Imbi, item: Project, url: str, org: str
 ) -> Json | None:
-    # ponytail: the project URL carries no org, so ask every org. A miss
-    # costs one graph query. Upstream fix: an org-free project lookup in
-    # imbi-api, or the org slug in project URLs.
-    # The list endpoint alone carries the PR counts and drift data.
+    # The project URL carries no org; the workspace's org is the only
+    # one that can unfurl. The list endpoint alone carries the PR
+    # counts and drift data.
     params = {
         'slim': 'true',
         'include_archived': 'true',
         'project_id': item.project_id,
     }
-    results = await asyncio.gather(
-        *(
-            _get(imbi, f'/organizations/{org["slug"]}/projects/', params)
-            for org in orgs
-        )
-    )
-    found = next((r[0] for r in results if r), None)
-    return project_entity(found, url) if found else None
+    found = await _get(imbi, f'/organizations/{org}/projects/', params)
+    return project_entity(found[0], url) if found else None
 
 
 async def _get(

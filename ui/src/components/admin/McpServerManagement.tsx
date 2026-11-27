@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { KeyRound, ScrollText, Server, ShieldCheck, Unlock } from 'lucide-react'
+import { KeyRound, Server, ShieldCheck, Unlock } from 'lucide-react'
 
 import {
   createMcpServer,
@@ -10,17 +10,17 @@ import {
   updateMcpServer,
 } from '@/api/endpoints'
 import { AdminTable } from '@/components/ui/admin-table'
-import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   SegmentedControl,
   SegmentedControlItem,
 } from '@/components/ui/segmented-control'
 import { Switch } from '@/components/ui/switch'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAdminCrud } from '@/hooks/useAdminCrud'
 import { useAdminNav } from '@/hooks/useAdminNav'
-import type { MCPServer, MCPServerUpdate } from '@/types'
+import { queryKeys } from '@/lib/queryKeys'
+import type { MCPServer, MCPServerCreate, MCPServerUpdate } from '@/types'
 
 import { AdminSection } from './AdminSection'
 import {
@@ -28,20 +28,21 @@ import {
   type McpServerSaveData,
 } from './mcp-servers/McpServerForm'
 import { McpServerStatusPill } from './mcp-servers/McpServerStatusPill'
-import { ServicePromptTab } from './ServicePromptTab'
-
-type AssistantTab = 'mcp' | 'prompt'
 
 type Filter = 'all' | 'disabled' | 'enabled' | 'issues'
 
-const MCP_SERVERS_KEY = ['mcp-servers']
-
-export function AssistantManagement() {
+export function McpServerManagement() {
+  const { selectedOrganization } = useOrganization()
+  const orgSlug = selectedOrganization?.slug
+  const queryKey = queryKeys.mcpServers(orgSlug)
+  const org = () => {
+    if (!orgSlug) throw new Error('No organization selected')
+    return orgSlug
+  }
   const { editPath, goToCreate, goToList, slug, viewMode } = useAdminNav()
   const queryClient = useQueryClient()
   const [searchQuery, setSearchQuery] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
-  const [tab, setTab] = useState<AssistantTab>('mcp')
 
   const {
     createMutation,
@@ -52,25 +53,24 @@ export function AssistantManagement() {
     updateMutation,
   } = useAdminCrud<
     MCPServer,
-    Parameters<typeof createMcpServer>[0],
+    MCPServerCreate,
     { data: MCPServerUpdate; id: string },
     string
   >({
-    createFn: createMcpServer,
+    createFn: (data) => createMcpServer(org(), data),
     deleteErrorLabel: 'MCP server',
-    deleteFn: deleteMcpServer,
-    listFn: listMcpServers,
+    deleteFn: (id) => deleteMcpServer(org(), id),
+    listFn: orgSlug ? (signal) => listMcpServers(orgSlug, signal) : null,
     onMutationSuccess: goToList,
-    queryKey: MCP_SERVERS_KEY,
-    updateFn: ({ data, id }) => updateMcpServer(id, data),
+    queryKey,
+    updateFn: ({ data, id }) => updateMcpServer(org(), id, data),
   })
 
   // Inline enable/disable from the list, without leaving the list view.
   const toggleMutation = useMutation({
     mutationFn: ({ enabled, id }: { enabled: boolean; id: string }) =>
-      updateMcpServer(id, { enabled }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: MCP_SERVERS_KEY }),
+      updateMcpServer(org(), id, { enabled }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
   })
 
   const selectedServer = useMemo(
@@ -123,25 +123,7 @@ export function AssistantManagement() {
 
   return (
     <div className="space-y-6">
-      <Tabs onValueChange={(v) => setTab(v as AssistantTab)} value={tab}>
-        <TabsList>
-          <TabsTrigger value="mcp">
-            <Server className="mr-2 size-4" />
-            MCP Servers
-            <Badge className="ml-2" variant="neutral">
-              {servers.length}
-            </Badge>
-          </TabsTrigger>
-          <TabsTrigger value="prompt">
-            <ScrollText className="mr-2 size-4" />
-            Prompt
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
-
-      {tab === 'prompt' ? (
-        <ServicePromptTab label="Assistant" service="imbi-assistant" />
-      ) : servers.length === 0 && !isLoading && !error ? (
+      {servers.length === 0 && !isLoading && !error ? (
         <McpEmptyState onCreate={goToCreate} />
       ) : (
         <AdminSection

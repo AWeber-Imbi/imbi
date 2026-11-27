@@ -54,6 +54,7 @@ def _make_conversation(
     return models.Conversation(
         id=conv_id,
         user_email='test@example.com',
+        org_id='org-1',
         title='Test Conversation',
         created_at=now,
         updated_at=now,
@@ -432,12 +433,13 @@ class CreateConversationEndpointTestCase(
             ),
         ):
             result = await endpoints.create_conversation(
-                db=db, auth_ctx=auth_ctx, body=None
+                org_id='org-1', db=db, auth_ctx=auth_ctx, body=None
             )
         self.assertEqual(result.id, 'conv-123')
         mock_create.assert_called_once_with(
             mock.ANY,
             user_email='test@example.com',
+            org_id='org-1',
             model='claude-sonnet-4-6',
         )
 
@@ -488,6 +490,7 @@ class CreateConversationEndpointTestCase(
                 mock_create.reset_mock()
                 try:
                     await endpoints.create_conversation(
+                        org_id='org-1',
                         db=db,
                         auth_ctx=_make_auth_context(is_admin=is_admin),
                         body=models.CreateConversationRequest(model=model),
@@ -524,6 +527,7 @@ class CreateConversationEndpointTestCase(
             ) as load,
         ):
             await endpoints.create_conversation(
+                org_id='org-1',
                 db=mock.AsyncMock(),
                 auth_ctx=_make_auth_context(is_admin=True),
                 body=None,
@@ -534,6 +538,7 @@ class CreateConversationEndpointTestCase(
         mock_create.assert_called_once_with(
             mock.ANY,
             user_email='test@example.com',
+            org_id='org-1',
             model='claude-opus-5-5',
         )
 
@@ -554,11 +559,12 @@ class CreateConversationEndpointTestCase(
         db = mock.AsyncMock()
         with mock.patch.dict('os.environ', {}, clear=True):
             await endpoints.create_conversation(
-                db=db, auth_ctx=auth_ctx, body=body
+                org_id='org-1', db=db, auth_ctx=auth_ctx, body=body
             )
         mock_create.assert_called_once_with(
             mock.ANY,
             user_email='test@example.com',
+            org_id='org-1',
             model='claude-opus-4-20250514',
         )
 
@@ -576,7 +582,9 @@ class ListConversationsEndpointTestCase(
         auth_ctx = _make_auth_context()
         mock_list.return_value = [_make_conversation()]
         db = mock.AsyncMock()
-        result = await endpoints.list_conversations(db=db, auth_ctx=auth_ctx)
+        result = await endpoints.list_conversations(
+            org_id='org-1', db=db, auth_ctx=auth_ctx
+        )
         self.assertEqual(len(result), 1)
 
     @mock.patch(
@@ -589,10 +597,13 @@ class ListConversationsEndpointTestCase(
         auth_ctx = _make_auth_context()
         mock_list.return_value = []
         db = mock.AsyncMock()
-        await endpoints.list_conversations(db=db, auth_ctx=auth_ctx, limit=500)
+        await endpoints.list_conversations(
+            org_id='org-1', db=db, auth_ctx=auth_ctx, limit=500
+        )
         mock_list.assert_called_once_with(
             mock.ANY,
             user_email='test@example.com',
+            org_id='org-1',
             limit=100,
             offset=0,
             include_archived=False,
@@ -609,6 +620,7 @@ class ListConversationsEndpointTestCase(
         mock_list.return_value = []
         db = mock.AsyncMock()
         await endpoints.list_conversations(
+            org_id='org-1',
             db=db,
             auth_ctx=auth_ctx,
             limit=-5,
@@ -617,6 +629,7 @@ class ListConversationsEndpointTestCase(
         mock_list.assert_called_once_with(
             mock.ANY,
             user_email='test@example.com',
+            org_id='org-1',
             limit=1,
             offset=0,
             include_archived=False,
@@ -642,6 +655,7 @@ class GetConversationEndpointTestCase(
         mock_msgs.return_value = []
         db = mock.AsyncMock()
         result = await endpoints.get_conversation(
+            org_id='org-1',
             conversation_id='conv-123',
             db=db,
             auth_ctx=auth_ctx,
@@ -663,6 +677,7 @@ class GetConversationEndpointTestCase(
             fastapi.HTTPException,
         ) as ctx:
             await endpoints.get_conversation(
+                org_id='org-1',
                 conversation_id='missing',
                 db=db,
                 auth_ctx=auth_ctx,
@@ -683,7 +698,9 @@ class CurrentConversationEndpointTestCase(
             mock.AsyncMock(return_value=None),
         ):
             result = await endpoints.get_current_conversation(
-                db=mock.AsyncMock(), auth_ctx=_make_auth_context()
+                org_id='org-1',
+                db=mock.AsyncMock(),
+                auth_ctx=_make_auth_context(),
             )
         self.assertIsNone(result)
 
@@ -693,6 +710,7 @@ class CurrentConversationEndpointTestCase(
         mock_get.return_value = None
         with self.assertRaises(fastapi.HTTPException) as ctx:
             await endpoints.set_current_conversation(
+                org_id='org-1',
                 body=models.SetCurrentConversationRequest(
                     conversation_id='other-users'
                 ),
@@ -706,12 +724,15 @@ class CurrentConversationEndpointTestCase(
         self, mock_get: mock.AsyncMock, mock_set: mock.AsyncMock
     ) -> None:
         await endpoints.set_current_conversation(
+            org_id='org-1',
             body=models.SetCurrentConversationRequest(),
             db=mock.AsyncMock(),
             auth_ctx=_make_auth_context(),
         )
         mock_get.assert_not_awaited()
-        mock_set.assert_awaited_once_with(mock.ANY, 'test@example.com', None)
+        mock_set.assert_awaited_once_with(
+            mock.ANY, 'test@example.com', 'org-1', None
+        )
 
 
 class DeleteConversationEndpointTestCase(
@@ -728,12 +749,13 @@ class DeleteConversationEndpointTestCase(
         mock_delete.return_value = True
         db = mock.AsyncMock()
         await endpoints.delete_conversation(
+            org_id='org-1',
             conversation_id='conv-123',
             db=db,
             auth_ctx=auth_ctx,
         )
         mock_delete.assert_called_once_with(
-            mock.ANY, 'conv-123', 'test@example.com'
+            mock.ANY, 'conv-123', 'test@example.com', 'org-1'
         )
 
     @mock.patch(
@@ -750,6 +772,7 @@ class DeleteConversationEndpointTestCase(
             fastapi.HTTPException,
         ) as ctx:
             await endpoints.delete_conversation(
+                org_id='org-1',
                 conversation_id='missing',
                 db=db,
                 auth_ctx=auth_ctx,
@@ -779,6 +802,7 @@ class UpdateConversationEndpointTestCase(
         body = models.UpdateConversationRequest(title='Updated Title')
         db = mock.AsyncMock()
         result = await endpoints.update_conversation(
+            org_id='org-1',
             conversation_id='conv-123',
             body=body,
             db=db,
@@ -806,6 +830,7 @@ class UpdateConversationEndpointTestCase(
         )
         db = mock.AsyncMock()
         await endpoints.update_conversation(
+            org_id='org-1',
             conversation_id='conv-123',
             body=body,
             db=db,
@@ -835,6 +860,7 @@ class UpdateConversationEndpointTestCase(
             fastapi.HTTPException,
         ) as ctx:
             await endpoints.update_conversation(
+                org_id='org-1',
                 conversation_id='missing',
                 body=body,
                 db=db,
@@ -870,15 +896,14 @@ class SendMessageEndpointTestCase(
     def setUp(self) -> None:
         self._original_client = client._client
         self._original_manager = mcp._manager
-        self._original_ext = external_mcp._manager
         mcp._manager = _make_mock_mcp_manager()
-        external_mcp._manager = _make_mock_external_manager()
+        external_mcp._managers['org-1'] = _make_mock_external_manager()
         settings._assistant_settings = None
 
     def tearDown(self) -> None:
         client._client = self._original_client
         mcp._manager = self._original_manager
-        external_mcp._manager = self._original_ext
+        external_mcp._managers.clear()
         settings._assistant_settings = None
 
     async def test_send_message_assistant_unavailable(
@@ -892,6 +917,7 @@ class SendMessageEndpointTestCase(
             fastapi.HTTPException,
         ) as ctx:
             await endpoints.send_message(
+                org_id='org-1',
                 conversation_id='conv-123',
                 body=body,
                 db=db,
@@ -915,6 +941,7 @@ class SendMessageEndpointTestCase(
             fastapi.HTTPException,
         ) as ctx:
             await endpoints.send_message(
+                org_id='org-1',
                 conversation_id='missing',
                 body=body,
                 db=db,
@@ -944,6 +971,7 @@ class SendMessageEndpointTestCase(
             fastapi.HTTPException,
         ) as ctx:
             await endpoints.send_message(
+                org_id='org-1',
                 conversation_id='conv-123',
                 body=body,
                 db=db,
@@ -1001,6 +1029,7 @@ class SendMessageEndpointTestCase(
 
         db = mock.AsyncMock()
         result = await endpoints.send_message(
+            org_id='org-1',
             conversation_id='conv-123',
             body=body,
             db=db,
@@ -1033,6 +1062,7 @@ class SendMessageEndpointTestCase(
             self.assertRaises(fastapi.HTTPException) as ctx,
         ):
             await endpoints.send_message(
+                org_id='org-1',
                 conversation_id='conv-123',
                 body=models.SendMessageRequest(content='Hello'),
                 db=mock.AsyncMock(),
@@ -1087,15 +1117,14 @@ class StreamResponseTestCase(
     def setUp(self) -> None:
         self._original_client = client._client
         self._original_manager = mcp._manager
-        self._original_ext = external_mcp._manager
         mcp._manager = _make_mock_mcp_manager()
-        external_mcp._manager = _make_mock_external_manager()
+        external_mcp._managers['org-1'] = _make_mock_external_manager()
         settings._assistant_settings = None
 
     def tearDown(self) -> None:
         client._client = self._original_client
         mcp._manager = self._original_manager
-        external_mcp._manager = self._original_ext
+        external_mcp._managers.clear()
         settings._assistant_settings = None
 
     @staticmethod
@@ -1153,6 +1182,7 @@ class StreamResponseTestCase(
         ):
             chunks = []
             async for chunk in endpoints._stream_response(
+                org_id='org-1',
                 db=db,
                 conversation_id='conv-123',
                 auth_ctx=auth_ctx,
@@ -1215,6 +1245,7 @@ class StreamResponseTestCase(
         ):
             chunks = []
             async for chunk in endpoints._stream_response(
+                org_id='org-1',
                 db=db,
                 conversation_id='conv-123',
                 auth_ctx=auth_ctx,
@@ -1357,6 +1388,7 @@ class StreamResponseTestCase(
         db = mock.AsyncMock()
         chunks = []
         async for chunk in endpoints._stream_response(
+            org_id='org-1',
             db=db,
             conversation_id='conv-123',
             auth_ctx=auth_ctx,
@@ -1380,12 +1412,11 @@ class BuildToolsAndSystemTestCase(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self) -> None:
         self._original_manager = mcp._manager
-        self._original_ext = external_mcp._manager
         settings._assistant_settings = None
 
     def tearDown(self) -> None:
         mcp._manager = self._original_manager
-        external_mcp._manager = self._original_ext
+        external_mcp._managers.clear()
         settings._assistant_settings = None
 
     async def test_external_tools_included(self) -> None:
@@ -1400,31 +1431,50 @@ class BuildToolsAndSystemTestCase(unittest.IsolatedAsyncioTestCase):
         ]
         ext_manager.get_tool_names.return_value = ['mcp_svc_thing']
         mcp._manager = mcp_manager
-        external_mcp._manager = ext_manager
+        external_mcp._managers['org-1'] = ext_manager
         missing = mock.AsyncMock(side_effect=resolve.PromptNotFound('x'))
         with (
             mock.patch.dict('os.environ', {}, clear=True),
             mock.patch.object(resolve, 'resolve', missing),
         ):
             tools, system = await endpoints._build_tools_and_system(
-                mock.AsyncMock(), mcp_manager, _make_auth_context()
+                mock.AsyncMock(), mcp_manager, _make_auth_context(), 'org-1'
             )
         assert tools is not None
         names = [t['name'] for t in tools]
         self.assertIn('mcp_svc_thing', names)
         self.assertIn('mcp_svc_thing', system.text)
 
+    async def test_uses_the_manager_of_the_conversations_org(self) -> None:
+        mcp_manager = _make_mock_mcp_manager()
+        mcp._manager = mcp_manager
+        get_manager = mock.AsyncMock(
+            return_value=_make_mock_external_manager()
+        )
+        db = mock.AsyncMock()
+        missing = mock.AsyncMock(side_effect=resolve.PromptNotFound('x'))
+        with (
+            mock.patch.dict('os.environ', {}, clear=True),
+            mock.patch.object(resolve, 'resolve', missing),
+            mock.patch.object(
+                endpoints.external_mcp, 'get_manager', get_manager
+            ),
+        ):
+            await endpoints._build_tools_and_system(
+                db, mcp_manager, _make_auth_context(), 'org-2'
+            )
+        get_manager.assert_awaited_once_with(db, 'org-2')
+
 
 class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):
     """_dispatch_tool_uses routes to the external manager."""
 
     def setUp(self) -> None:
-        self._original_ext = external_mcp._manager
-        external_mcp._manager = _make_mock_external_manager()
+        external_mcp._managers['org-1'] = _make_mock_external_manager()
         settings._assistant_settings = None
 
     def tearDown(self) -> None:
-        external_mcp._manager = self._original_ext
+        external_mcp._managers.clear()
         settings._assistant_settings = None
 
     async def test_external_tool_routed(self) -> None:
@@ -1446,6 +1496,7 @@ class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):
             auth_token=None,
             rebuild={},
             db=mock.MagicMock(),
+            org_id='org-1',
         ):
             chunks.append(chunk)
         ext_manager.execute_tool.assert_awaited_once_with(
@@ -1473,6 +1524,7 @@ class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):
             auth_token='tok',
             rebuild={},
             db=mock.MagicMock(),
+            org_id='org-1',
         ):
             pass
         mcp_manager.execute_tool.assert_awaited_once_with(
@@ -1503,6 +1555,7 @@ class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):
                 auth_token=None,
                 rebuild=rebuild,
                 db=mock.MagicMock(),
+                org_id='org-1',
             ):
                 pass
         mcp_manager.reinitialize.assert_awaited_once()
@@ -1543,6 +1596,7 @@ class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):
             auth_token=None,
             rebuild=rebuild,
             db=mock.MagicMock(),
+            org_id='org-1',
         ):
             pass
         self.assertNotIn('tools', rebuild)
@@ -1577,6 +1631,7 @@ class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):
             auth_token=None,
             rebuild=rebuild,
             db=mock.MagicMock(),
+            org_id='org-1',
         ):
             chunks.append(chunk)
         # The stream continues with a tool_result rather than aborting.
@@ -1619,6 +1674,7 @@ class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):
             auth_token=None,
             rebuild=rebuild,
             db=mock.MagicMock(),
+            org_id='org-1',
         ):
             pass
         self.assertIn('tools', rebuild)
@@ -1655,6 +1711,7 @@ class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):
             auth_token=None,
             rebuild={},
             db=mock.MagicMock(),
+            org_id='org-1',
         ):
             pass
         self.assertEqual(len(tool_results), 1)
@@ -1680,6 +1737,7 @@ class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):
             auth_token=None,
             rebuild={},
             db=mock.MagicMock(),
+            org_id='org-1',
         ):
             pass
         self.assertEqual(len(tool_results), 1)
@@ -1702,6 +1760,7 @@ class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):
             auth_token=None,
             rebuild={},
             db=mock.MagicMock(),
+            org_id='org-1',
         ):
             pass
         self.assertEqual(len(tool_results), 1)
@@ -1726,6 +1785,7 @@ class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):
             auth_token=None,
             rebuild={},
             db=mock.MagicMock(),
+            org_id='org-1',
         ):
             chunks.append(chunk)
         self.assertTrue(any('event: client_action' in c for c in chunks))
@@ -1775,3 +1835,31 @@ class ToolResultTruncationTestCase(unittest.TestCase):
         content = 'x' * 10_000
         block = endpoints._tool_result_block('t1', content, False)
         self.assertEqual(block['content'], content)
+
+
+@mock.patch('imbi.common.graph.parse_agtype', side_effect=lambda x: x)
+class MemberOrgIdTestCase(unittest.IsolatedAsyncioTestCase):
+    async def call(self, rows: list[dict[str, object]]) -> str:
+        db = mock.AsyncMock()
+        db.execute.return_value = rows
+        return await endpoints.member_org_id(
+            org_slug='acme', db=db, auth_ctx=_make_auth_context()
+        )
+
+    async def test_member_gets_the_id(self, _: object) -> None:
+        self.assertEqual(
+            await self.call([{'id': 'org-1', 'member': True}]), 'org-1'
+        )
+
+    async def test_non_member_is_403(self, _: object) -> None:
+        with self.assertRaises(fastapi.HTTPException) as ctx:
+            await self.call([{'id': 'org-1', 'member': False}])
+        self.assertEqual(ctx.exception.status_code, 403)
+
+    async def test_unknown_or_id_less_organization_is_404(
+        self, _: object
+    ) -> None:
+        for rows in ([], [{'id': None, 'member': True}]):
+            with self.assertRaises(fastapi.HTTPException) as ctx:
+                await self.call(rows)
+            self.assertEqual(ctx.exception.status_code, 404)

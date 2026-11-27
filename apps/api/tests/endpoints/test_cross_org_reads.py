@@ -4,13 +4,17 @@ The user is a member of ``org`` and ``other_org``, not of
 ``foreign_org``.
 """
 
+import json
 import typing
+import uuid
 from unittest import mock
 
 import httpx
 
 from apps.api.tests.endpoints import test_agent_tasks
+from imbi.api import conversation_orgs, mcp_server_orgs, secret_broker
 from imbi.api.endpoints import plugin_edges
+from imbi.common import graph
 
 STAMP = '2026-10-15T00:00:00+00:00'
 
@@ -229,3 +233,110 @@ class PluginEdgeTargetTests(CrossOrgTestCase):
                     ),
                     expected,
                 )
+
+
+class MCPServerTests(CrossOrgTestCase):
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        # No secret references here: the store is never read.
+        self.test_app.dependency_overrides[secret_broker._inject_store] = (
+            lambda: mock.AsyncMock()
+        )
+        self.permissions |= {
+            'mcp_server:create',
+            'mcp_server:delete',
+            'mcp_server:read',
+            'mcp_server:update',
+        }
+
+    async def create(self, org: str, slug: str) -> str:
+        response = await self.client.post(
+            f'/organizations/{org}/mcp-servers/',
+            json={'name': slug, 'slug': slug, 'url': 'https://mcp.test'},
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        server = str(response.json()['id'])
+        self.made.append(server)
+        return server
+
+    async def test_only_the_organization_it_was_made_in(self) -> None:
+        slug = f'mcp-{self.org}'
+        server = await self.create(self.org, slug)
+        base = f'/organizations/{self.other_org}/mcp-servers'
+        own = await self.get(f'/organizations/{self.org}/mcp-servers/{server}')
+        self.assertEqual(own.status_code, 200, own.text)
+        other = await self.get(f'{base}/{server}')
+        self.assertEqual(other.status_code, 404, other.text)
+        listed = await self.get(f'{base}/')
+        self.assertNotIn(server, {s['id'] for s in listed.json()})
+        patched = await self.client.patch(
+            f'{base}/{server}', json={'name': 'Taken'}
+        )
+        self.assertEqual(patched.status_code, 404, patched.text)
+        deleted = await self.client.delete(f'{base}/{server}')
+        self.assertEqual(deleted.status_code, 404, deleted.text)
+        # Slugs are unique per organization, not across the install.
+        await self.create(self.other_org, slug)
+        again = await self.client.post(
+            f'/organizations/{self.org}/mcp-servers/',
+            json={'name': slug, 'slug': slug, 'url': 'https://mcp.test'},
+        )
+        self.assertEqual(again.status_code, 409, again.text)
+
+    async def test_backfill_link(self) -> None:
+        server = f'mcp-legacy-{self.org}'
+        await self.node(
+            'CREATE (s:MCPServer {{id: {id}, slug: {id}, name: {id},'
+            ' url: "https://mcp.test", enabled: true}}) RETURN 1 AS ok',
+            id=server,
+        )
+        # The test graph has many organizations: the server stays.
+        with self.assertLogs('imbi.api.mcp_server_orgs', 'WARNING') as logs:
+            await mcp_server_orgs.backfill(self.graph)
+        self.assertTrue(any(server in line for line in logs.output))
+        records = await self.graph.execute(
+            'MATCH (o:Organization {{slug: {slug}}}) RETURN o.id AS id',
+            {'slug': self.org},
+            ['id'],
+        )
+        org_id = json.loads(str(records[0]['id']))
+        await self.graph.execute(
+            mcp_server_orgs._LINK, {'org': org_id}, ['id']
+        )
+        listed = await self.get(f'/organizations/{self.org}/mcp-servers/')
+        self.assertIn(server, {s['id'] for s in listed.json()})
+
+
+class ConversationBackfillTests(CrossOrgTestCase):
+    async def conversation(self, email: str) -> str:
+        conversation = f'conv-{uuid.uuid4().hex[:10]}'
+        await self.node(
+            'CREATE (c:Conversation {{id: {id}, user_email: {email},'
+            ' model: "m", is_archived: false, created_at: {stamp},'
+            ' updated_at: {stamp}}}) RETURN 1 AS ok',
+            id=conversation,
+            email=email,
+            stamp=STAMP,
+        )
+        return conversation
+
+    async def org_of(self, conversation: str) -> str | None:
+        records = await self.graph.execute(
+            'MATCH (c:Conversation {{id: {id}}}) RETURN c.org_id AS org',
+            {'id': conversation},
+            ['org'],
+        )
+        org = graph.parse_agtype(records[0]['org'])
+        return None if org is None else str(org)
+
+    async def test_rules(self) -> None:
+        single = await self.conversation(self.member)
+        # self.email is in two organizations: the first by slug wins.
+        two = await self.conversation(self.email)
+        nobody = await self.conversation(f'nobody-{self.org}@example.com')
+        with self.assertLogs('imbi.api.conversation_orgs', 'INFO') as logs:
+            await conversation_orgs.backfill(self.graph)
+        self.assertEqual(await self.org_of(single), self.org)
+        self.assertEqual(await self.org_of(two), min(self.org, self.other_org))
+        self.assertIsNone(await self.org_of(nobody))
+        self.assertTrue(any('nobody-' in line for line in logs.output))

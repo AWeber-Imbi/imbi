@@ -5,6 +5,11 @@ opens a streamable-HTTP MCP session per enabled server, discovers
 their tools, and exposes them in Anthropic tool format for the
 Claude integrations of the assistant and the Slack bot.
 
+An MCP server belongs to one organization. Each organization has its
+own :class:`ExternalMCPManager`, made on the first turn in that
+organization (:func:`get_manager`), so a turn sees only the servers of
+its own organization.
+
 This is additive to each service's ``mcp`` module (which builds tools
 from the Imbi OpenAPI spec); the two managers run side by side.
 
@@ -28,7 +33,7 @@ from mcp import types as mcp_types
 from mcp.client import streamable_http
 from mcp.shared._httpx_utils import create_mcp_http_client
 
-from imbi.common import graph
+from imbi.common import api, graph
 from imbi.common import models as common_models
 from imbi.common.auth.encryption import decrypt_config_value
 
@@ -52,13 +57,14 @@ _RECONNECT_DELAY = 60.0
 
 async def get_enabled_mcp_servers(
     db: graph.Graph,
+    org_id: str,
 ) -> list[common_models.MCPServer]:
-    """Return all enabled external MCP server nodes."""
+    """Return the enabled external MCP server nodes of an organization."""
     query = """
-    MATCH (s:MCPServer {{enabled: true}})
+    MATCH (s:MCPServer {{enabled: true, org_id: {org_id}}})
     RETURN s
     """
-    records = await db.execute(query, {}, ['s'])
+    records = await db.execute(query, {'org_id': org_id}, ['s'])
     servers: list[common_models.MCPServer] = []
     for record in records:
         data = graph.parse_agtype(record['s'])
@@ -132,19 +138,114 @@ class OAuthClientCredentialsAuth(httpx2.Auth):
         yield request
 
 
-def _build_auth(
+#: Gets the values of a server's secret references (``static_value``,
+#: ``oauth_client_secret``) from imbi-api. The service sets it at start.
+CredentialResolver = typing.Callable[
+    [common_models.MCPServer],
+    typing.Awaitable[dict[str, str | None]],
+]
+_credential_resolver: CredentialResolver | None = None
+
+
+def _destination(
+    server: common_models.MCPServer,
+) -> tuple[str, str | None, str, bool]:
+    """Where a connection sends a secret, and how: imbi-api gives the
+    secret only when these are the saved values."""
+    return (
+        str(server.url),
+        str(server.oauth_token_url) if server.oauth_token_url else None,
+        server.auth_type,
+        server.verify_ssl,
+    )
+
+
+def set_credential_resolver(resolver: CredentialResolver | None) -> None:
+    """Set how a connection gets the secrets of a server's references."""
+    global _credential_resolver
+    _credential_resolver = resolver
+
+
+def install_credential_resolver(api_url: str, api_token: str) -> None:
+    """Get the secrets of the servers' bindings from imbi-api with the
+    API key of this service's account (``POST
+    /mcp-servers/{id}/credentials``). With no key, servers that use a
+    binding connect without the secret."""
+    if not api_token:
+        LOGGER.info(
+            'No API token: MCP servers that use a secret binding cannot '
+            'get the secret'
+        )
+        set_credential_resolver(None)
+        return
+
+    async def resolve(
+        server: common_models.MCPServer,
+    ) -> dict[str, str | None]:
+        async with api.Imbi(
+            base_url=api_url, token=api_token, timeout=float(server.timeout)
+        ) as client:
+            # The URLs this connection uses: imbi-api refuses the secret
+            # when they are not the saved ones.
+            url, token_url, auth_type, verify_ssl = _destination(server)
+            response = await client.post(
+                f'/mcp-servers/{server.id}/credentials',
+                json={
+                    'url': url,
+                    'oauth_token_url': token_url,
+                    'auth_type': auth_type,
+                    'verify_ssl': verify_ssl,
+                },
+            )
+        response.raise_for_status()
+        return typing.cast('dict[str, str | None]', response.json())
+
+    set_credential_resolver(resolve)
+
+
+async def _referenced_secrets(
+    server: common_models.MCPServer,
+) -> dict[str, str | None]:
+    """Return the values of a server's secret references. With no
+    resolver or on a failure, log it and return none: the connection
+    then fails as with a missing secret."""
+    if not (server.static_value_ref or server.oauth_client_secret_ref):
+        return {}
+    if _credential_resolver is None:
+        LOGGER.warning(
+            'MCP server %r uses a secret binding, but this service has no '
+            'API token to get it',
+            server.slug,
+        )
+        return {}
+    try:
+        return await _credential_resolver(server)
+    except Exception:
+        LOGGER.exception(
+            'Could not get the secrets of MCP server %r', server.slug
+        )
+        return {}
+
+
+async def _build_auth(
     server: common_models.MCPServer,
 ) -> tuple[dict[str, str] | None, httpx2.Auth | None]:
     """Build the headers and httpx auth for a server.
 
-    Decrypts any ``*_encrypted`` secrets at connect time.
+    Decrypts any ``*_encrypted`` secrets, and gets the values of any
+    secret references, at connect time.
 
     Returns:
         Tuple of (static headers or None, httpx2.Auth or None).
 
     """
+    referenced = await _referenced_secrets(server)
     if server.auth_type == 'static':
-        value = decrypt_config_value(server.static_value_encrypted)
+        value = (
+            referenced.get('static_value')
+            if server.static_value_ref
+            else decrypt_config_value(server.static_value_encrypted)
+        )
         if server.static_header and value is not None:
             return {server.static_header: value}, None
         LOGGER.warning(
@@ -153,7 +254,11 @@ def _build_auth(
         )
         return None, None
     if server.auth_type == 'oauth_client_credentials':
-        secret = decrypt_config_value(server.oauth_client_secret_encrypted)
+        secret = (
+            referenced.get('oauth_client_secret')
+            if server.oauth_client_secret_ref
+            else decrypt_config_value(server.oauth_client_secret_encrypted)
+        )
         if (
             server.oauth_token_url
             and server.oauth_client_id
@@ -191,12 +296,13 @@ def _mcp_tool_to_anthropic(
 
 
 class ExternalMCPManager:
-    """Manages streamable-HTTP connections to external MCP servers
-    and exposes their tools to a Claude integration.
+    """Manages streamable-HTTP connections to the external MCP servers
+    of one organization and exposes their tools to a Claude integration.
 
     """
 
-    def __init__(self) -> None:
+    def __init__(self, org_id: str) -> None:
+        self._org_id = org_id
         self._tasks: list[asyncio.Task[None]] = []
         self._sessions: dict[str, mcp.ClientSession] = {}
         # server slug -> task that holds the latest session open
@@ -210,7 +316,7 @@ class ExternalMCPManager:
         self._reconnect_after: dict[str, float] = {}
         # server slug -> lock that serializes reconnects to that server
         self._reconnect_locks: dict[str, asyncio.Lock] = {}
-        # slugs of connected servers that an admin disabled since startup
+        # slugs of connected servers that an admin disabled since connecting
         self._disabled: set[str] = set()
         # number of the newest sync_enabled read, so a slow, older read
         # cannot replace the result of a newer one
@@ -225,22 +331,25 @@ class ExternalMCPManager:
         self._initialized = False
 
     async def initialize(self, db: graph.Graph) -> None:
-        """Connect to every enabled MCP server and discover tools.
+        """Connect to every enabled MCP server of the organization and
+        discover tools.
 
         Per-server connect failures are logged and skipped so a single
-        bad server cannot prevent startup.
+        bad server cannot stop the others.
 
         Args:
             db: Open graph connection used to read MCPServer nodes.
 
         """
-        servers = await get_enabled_mcp_servers(db)
-        # Connect in parallel, so startup waits for the slowest server,
+        servers = await get_enabled_mcp_servers(db, self._org_id)
+        # Connect in parallel, so the first turn waits for the slowest server,
         # not for the sum of all the timeouts.
         await asyncio.gather(*(self._connect_server(s) for s in servers))
         self._initialized = True
         LOGGER.info(
-            'External MCP initialization complete: %d servers, %d tools',
+            'External MCP initialization complete for organization %s: '
+            '%d servers, %d tools',
+            self._org_id,
             len(self._sessions),
             len(self._tools),
         )
@@ -305,7 +414,7 @@ class ExternalMCPManager:
         server: common_models.MCPServer,
     ) -> mcp.ClientSession:
         """Open and initialize a streamable-HTTP session."""
-        auth_headers, http_auth = _build_auth(server)
+        auth_headers, http_auth = await _build_auth(server)
         headers = server.request_headers(auth_headers)
         timeout = httpx2.Timeout(float(server.timeout))
         if server.verify_ssl:
@@ -459,11 +568,19 @@ class ExternalMCPManager:
             LOGGER.error('No graph to read the enabled MCP servers')
         else:
             try:
-                servers = await get_enabled_mcp_servers(db)
+                servers = await get_enabled_mcp_servers(db, self._org_id)
             except Exception:
                 LOGGER.exception('Failed to read the enabled MCP servers')
             else:
-                enabled = {s.slug for s in servers}
+                # A server whose destination or TLS check changed after
+                # it connected stops: its open session still uses the old
+                # values. It comes back at the next reinitialize.
+                enabled = {
+                    s.slug
+                    for s in servers
+                    if s.slug not in self._servers
+                    or _destination(s) == _destination(self._servers[s.slug])
+                }
                 failed = False
         self._read_failed.set(failed)
         if seq == self._sync_seq:
@@ -613,83 +730,77 @@ class ExternalMCPManager:
         return self._initialized
 
 
-# --- Module-level singleton ---
+# --- Module-level managers, one for each organization ---
 
-_manager: ExternalMCPManager | None = None
-
-
-async def initialize(db: graph.Graph) -> None:
-    """Initialize the module-level external MCP manager."""
-    global _manager
-    if _manager is not None:
-        await _manager.aclose()
-    _manager = ExternalMCPManager()
-    try:
-        await _manager.initialize(db)
-    except Exception:
-        LOGGER.exception('Failed to initialize external MCP servers')
-        _manager = ExternalMCPManager()
+# ponytail: a manager stays open for the life of the process, also for
+# an idle organization; evict idle managers if the number of
+# organizations grows large.
+_managers: dict[str, ExternalMCPManager] = {}
+_locks: dict[str, asyncio.Lock] = {}
 
 
-@contextlib.asynccontextmanager
-async def lifespan() -> collections.abc.AsyncGenerator[None]:
-    """Connect to the configured servers for the life of the app.
+async def get_manager(db: graph.Graph, org_id: str) -> ExternalMCPManager:
+    """Return the manager of an organization, connecting it first when
+    this is the organization's first turn.
 
-    Must run after :func:`imbi.common.graph.graph_lifespan`. A failure
-    to read the servers is logged and leaves an empty manager, so it
-    does not stop the service.
+    A failure to read the servers gives an empty manager that is not
+    kept, so the next turn tries again.
 
     """
-    global _manager
-    db = graph.Graph()
-    # The outer finally also closes the manager when startup is
-    # cancelled, for example during db.close().
-    try:
+    manager = _managers.get(org_id)
+    if manager is not None:
+        return manager
+    async with _locks.setdefault(org_id, asyncio.Lock()):
+        manager = _managers.get(org_id)
+        if manager is not None:
+            return manager
+        manager = ExternalMCPManager(org_id)
         try:
-            await db.open()
-            try:
-                await initialize(db)
-            finally:
-                await db.close()
+            await manager.initialize(db)
+        except asyncio.CancelledError:
+            await manager.aclose()
+            raise
         except Exception:
-            LOGGER.exception('Failed to initialize external MCP servers')
-            # An empty manager, so that request handling can still get one.
-            _manager = _manager or ExternalMCPManager()
-        yield
-    finally:
-        await aclose()
+            LOGGER.exception(
+                'Failed to initialize the MCP servers of organization %s',
+                org_id,
+            )
+            await manager.aclose()
+            return ExternalMCPManager(org_id)
+        _managers[org_id] = manager
+        return manager
 
 
-async def reinitialize(db: graph.Graph) -> tuple[bool, int]:
-    """Rebuild connections from the current graph state.
+async def reinitialize(db: graph.Graph, org_id: str) -> tuple[bool, int]:
+    """Rebuild the connections of an organization from the graph.
 
     Returns:
         Tuple of (success, tool_count).
 
     """
-    await initialize(db)
-    manager = get_manager()
+    async with _locks.setdefault(org_id, asyncio.Lock()):
+        old = _managers.pop(org_id, None)
+    if old is not None:
+        await old.aclose()
+    manager = await get_manager(db, org_id)
     return manager.is_initialized, len(manager.get_tools())
 
 
+@contextlib.asynccontextmanager
+async def lifespan() -> collections.abc.AsyncGenerator[None]:
+    """Close the connections of every organization at shutdown. The
+    connections themselves open on each organization's first turn."""
+    try:
+        yield
+    finally:
+        await aclose()
+
+
 async def aclose() -> None:
-    """Close the module-level external MCP manager."""
-    global _manager
-    if _manager is not None:
-        await _manager.aclose()
-        _manager = None
-
-
-def get_manager() -> ExternalMCPManager:
-    """Get the external MCP manager singleton.
-
-    Returns:
-        The initialized ExternalMCPManager.
-
-    Raises:
-        RuntimeError: If not yet initialized.
-
-    """
-    if _manager is None:
-        raise RuntimeError('External MCP manager not initialized')
-    return _manager
+    """Close the managers of every organization."""
+    managers = list(_managers.values())
+    _managers.clear()
+    _locks.clear()
+    await asyncio.gather(
+        *(m.aclose() for m in managers), return_exceptions=True
+    )

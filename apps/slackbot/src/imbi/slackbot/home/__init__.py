@@ -39,7 +39,6 @@ _VERBS = {
     'up': 'move up',
     'down': 'move down',
     'expand': 'expand',
-    'org': 'change the organization of',
     'customize': 'save',
 }
 
@@ -153,7 +152,7 @@ async def _build(
     try:
         async with identity.api_client(user) as client:
             gathered, preferences = await sources.gather(
-                client, user.email, preferences
+                client, user.email, user.org_slug, preferences
             )
     except Exception:
         LOGGER.exception('Could not gather the Home tab of %s', user.email)
@@ -205,11 +204,7 @@ async def handle_action(slack: SlackClient, body: Body) -> None:
     else:
 
         def apply(current: prefs.Prefs) -> None:
-            if verb == 'org':
-                current.org_slug = sources.dig(
-                    action, 'selected_option', 'value'
-                )
-            elif verb in ('up', 'down'):
+            if verb in ('up', 'down'):
                 prefs.move(current, key, -1 if verb == 'up' else 1)
             else:
                 display: dict[str, prefs.Display] = {
@@ -232,14 +227,9 @@ async def handle_action(slack: SlackClient, body: Body) -> None:
 
 
 async def _new_ticket(slack: SlackClient, body: Body) -> None:
-    """Open the modal of the ``/create-ticket`` command, on the org that
-    the Home tab shows (the button value)."""
-    action: Body = body['actions'][0]
+    """Open the modal of the ``/create-ticket`` command."""
     await create_ticket.open_form(
-        slack,
-        body['trigger_id'],
-        body['user']['id'],
-        org=action.get('value') or None,
+        slack, body['trigger_id'], body['user']['id']
     )
 
 

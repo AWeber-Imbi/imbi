@@ -16,8 +16,6 @@ class AppTests(helpers.TestCase):
         self.assertIsInstance(app_instance, fastapi.FastAPI)
 
     @mock.patch('imbi.assistant.links.initialize')
-    @mock.patch('imbi.common.external_mcp.initialize')
-    @mock.patch('imbi.common.external_mcp.graph.Graph')
     @mock.patch('imbi.assistant.client.aclose')
     @mock.patch('imbi.assistant.client.initialize')
     @mock.patch('imbi.common.graph.graph_lifespan')
@@ -26,11 +24,8 @@ class AppTests(helpers.TestCase):
         _graph_lifespan: mock.MagicMock,
         _client_init: mock.AsyncMock,
         _client_close: mock.AsyncMock,
-        _graph_cls: mock.MagicMock,
-        _ext_init: mock.AsyncMock,
         _links_init: mock.AsyncMock,
     ) -> None:
-        _graph_cls.return_value = mock.AsyncMock()
         start_time = datetime.datetime.now(datetime.UTC)
         with fastapi.testclient.TestClient(
             imbi.assistant.app.create_app()
@@ -49,8 +44,6 @@ class AppTests(helpers.TestCase):
         self.assertEqual(imbi.assistant.version, body['version'])
 
     @mock.patch('imbi.assistant.links.initialize')
-    @mock.patch('imbi.common.external_mcp.initialize')
-    @mock.patch('imbi.common.external_mcp.graph.Graph')
     @mock.patch('imbi.assistant.client.aclose')
     @mock.patch('imbi.assistant.client.initialize')
     @mock.patch('imbi.common.graph.graph_lifespan')
@@ -59,11 +52,8 @@ class AppTests(helpers.TestCase):
         _graph_lifespan: mock.MagicMock,
         _client_init: mock.AsyncMock,
         _client_close: mock.AsyncMock,
-        _graph_cls: mock.MagicMock,
-        _ext_init: mock.AsyncMock,
         _links_init: mock.AsyncMock,
     ) -> None:
-        _graph_cls.return_value = mock.AsyncMock()
         with (
             self.override_environment(ENVIRONMENT='testing'),
             fastapi.testclient.TestClient(

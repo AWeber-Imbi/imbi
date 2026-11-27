@@ -11,7 +11,7 @@ import urllib.parse
 import fastapi
 import psycopg
 
-from imbi.api.auth import permissions
+from imbi.api.auth import internal_services, permissions
 from imbi.common import graph
 from imbi.common import models as common_models
 from imbi.common import patch as json_patch
@@ -26,6 +26,35 @@ from imbi.common.plugins.base import (
 LOGGER = logging.getLogger(__name__)
 
 T = typing.TypeVar('T')
+
+
+_INTERNAL_SLUGS = frozenset(
+    s.slug for s in internal_services.INTERNAL_SERVICES
+)
+
+
+async def guard_internal_service_accounts(
+    request: fastapi.Request,
+    auth: typing.Annotated[
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
+    ],
+) -> None:
+    """Only an install admin can change an internal service account.
+
+    Routes such as the MCP server credentials trust imbi-assistant and
+    imbi-slackbot by slug. An org admin who could add a key, change a
+    membership, or delete such an account could act as it.
+    """
+    if (
+        request.method not in ('GET', 'HEAD')
+        and request.path_params.get('slug') in _INTERNAL_SLUGS
+        and not auth.is_admin
+    ):
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail='Only an install admin can change an internal service '
+            'account',
+        )
 
 
 async def fetch_or_404(

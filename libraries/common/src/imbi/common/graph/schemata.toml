@@ -1,3 +1,8 @@
+# Indexes that the initializer drops, because a later schema replaced
+# them. ``mcpserver_slug_unique_idx``: MCP server slugs are now unique
+# per organization.
+retired_indexes = ["mcpserver_slug_unique_idx"]
+
 [[extensions]]
 name = "age"
 
@@ -321,9 +326,17 @@ vlabel = "LinkDefinition"
 attributes = ["slug"]
 unique = true
 
+# One organization per Slack workspace.
+[[vlabel_indexes]]
+vlabel = "Organization"
+attributes = ["slack_team_id"]
+unique = true
+
+# ``MCPServer`` slugs are unique per organization, like ``Agent`` slugs.
+# The global unique slug index is in ``retired_indexes``.
 [[vlabel_indexes]]
 vlabel = "MCPServer"
-attributes = ["slug"]
+attributes = ["org_id", "slug"]
 unique = true
 
 [[vlabel_indexes]]

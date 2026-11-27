@@ -8,8 +8,8 @@ import psycopg.errors
 from fastapi.testclient import TestClient
 
 from apps.api.tests import support
-from imbi.api import models
-from imbi.api.auth import permissions
+from imbi.api import models, secret_broker
+from imbi.api.auth import organizations, permissions
 from imbi.api.mcp_test import ConnectionTestResult
 from imbi.common import graph
 
@@ -48,6 +48,17 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
             self.mock_db
         )
 
+        self.test_app.dependency_overrides[organizations.member_org_id] = (
+            lambda: 'org-1'
+        )
+        self.mock_secrets = mock.AsyncMock()
+        self.mock_broker = mock.AsyncMock()
+        self.test_app.dependency_overrides[secret_broker._inject_store] = (
+            lambda: self.mock_secrets
+        )
+        self.test_app.dependency_overrides[secret_broker.get_broker] = (
+            lambda: self.mock_broker
+        )
         self.client = TestClient(self.test_app)
 
     def _server_props(self, **overrides: typing.Any) -> dict[str, typing.Any]:
@@ -97,7 +108,7 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
             ) as enc,
         ):
             response = self.client.post(
-                '/mcp-servers/',
+                '/organizations/acme/mcp-servers/',
                 json={
                     'name': 'Example',
                     'slug': 'example',
@@ -119,15 +130,78 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
             persisted['static_value_encrypted'], 'enc:super-secret'
         )
         self.assertNotIn('static_value', persisted)
+        # The server belongs to the organization in the path.
+        self.assertEqual(persisted['org_id'], 'org-1')
+        self.assertIn(
+            '-[:BELONGS_TO]->(o)', self.mock_db.execute.call_args.args[0]
+        )
         # Response never leaks plaintext or ciphertext.
         self.assertNotIn('static_value', data)
         self.assertNotIn('static_value_encrypted', data)
         self.assertNotIn('oauth_client_secret', data)
         self.assertNotIn('oauth_client_secret_encrypted', data)
 
+    def test_create_with_a_secret_reference(self) -> None:
+        """A binding reference of the org replaces the stored value."""
+        ref = 'secret://production/mcp/token'
+        self.mock_secrets.binding_by_reference.return_value = {'id': 'b-1'}
+        self.mock_db.execute.return_value = [
+            {
+                'n': self._server_props(
+                    auth_type='static',
+                    static_header='Authorization',
+                    static_value_ref=ref,
+                )
+            }
+        ]
+        body = {
+            'name': 'Example',
+            'slug': 'example',
+            'url': 'https://mcp.example.com',
+            'auth_type': 'static',
+            'static_header': 'Authorization',
+            'static_value_ref': ref,
+        }
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.post(
+                '/organizations/acme/mcp-servers/', json=body
+            )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(response.json()['static_value_ref'], ref)
+        self.assertEqual(
+            self.mock_db.execute.call_args.args[1]['static_value_ref'], ref
+        )
+        self.mock_secrets.binding_by_reference.assert_awaited_once_with(
+            'org-1', ref
+        )
+        for change, why in (
+            ({'static_value_ref': 'not a ref'}, 'does not parse'),
+            ({'static_value': 'x'}, 'value and a reference'),
+        ):
+            with self.subTest(why=why):
+                response = self.client.post(
+                    '/organizations/acme/mcp-servers/', json=body | change
+                )
+                self.assertEqual(response.status_code, 400, response.text)
+        # No binding with the reference in the organization.
+        self.mock_secrets.binding_by_reference.return_value = None
+        response = self.client.post(
+            '/organizations/acme/mcp-servers/', json=body
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+        # An unsaved configuration cannot test a reference.
+        response = self.client.post(
+            '/organizations/acme/mcp-servers/test', json=body
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+
     def test_create_validation_error(self) -> None:
         """Missing required fields return 422."""
-        response = self.client.post('/mcp-servers/', json={})
+        response = self.client.post(
+            '/organizations/acme/mcp-servers/', json={}
+        )
         self.assertEqual(response.status_code, 422)
 
     def test_create_slug_conflict(self) -> None:
@@ -144,7 +218,7 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
             ),
         ):
             response = self.client.post(
-                '/mcp-servers/',
+                '/organizations/acme/mcp-servers/',
                 json={
                     'name': 'Example',
                     'slug': 'example',
@@ -161,7 +235,7 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
             side_effect=lambda v: None if v is None else f'enc:{v}',
         ):
             response = self.client.post(
-                '/mcp-servers/',
+                '/organizations/acme/mcp-servers/',
                 json={
                     'name': 'Example',
                     'slug': 'example',
@@ -180,7 +254,7 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
             side_effect=lambda v: None if v is None else f'enc:{v}',
         ):
             response = self.client.post(
-                '/mcp-servers/',
+                '/organizations/acme/mcp-servers/',
                 json={
                     'name': 'Example',
                     'slug': 'example',
@@ -207,7 +281,7 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
                 oauth_client_secret_encrypted='enc:def',
             ),
         ]
-        response = self.client.get('/mcp-servers/')
+        response = self.client.get('/organizations/acme/mcp-servers/')
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(len(data), 2)
@@ -218,23 +292,30 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
         for item in data:
             self.assertNotIn('static_value_encrypted', item)
             self.assertNotIn('oauth_client_secret_encrypted', item)
+        self.assertEqual(
+            self.mock_db.match.call_args.args[1], {'org_id': 'org-1'}
+        )
 
     def test_get_success(self) -> None:
         """Fetching by id returns the server."""
         self.mock_db.match.return_value = [
             self._model(static_value_encrypted='enc:abc')
         ]
-        response = self.client.get('/mcp-servers/srv-1')
+        response = self.client.get('/organizations/acme/mcp-servers/srv-1')
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data['id'], 'srv-1')
         self.assertTrue(data['has_static_value'])
         self.assertNotIn('static_value_encrypted', data)
+        self.assertEqual(
+            self.mock_db.match.call_args.args[1],
+            {'id': 'srv-1', 'org_id': 'org-1'},
+        )
 
     def test_get_not_found(self) -> None:
         """Fetching a missing id returns 404."""
         self.mock_db.match.return_value = []
-        response = self.client.get('/mcp-servers/missing')
+        response = self.client.get('/organizations/acme/mcp-servers/missing')
         self.assertEqual(response.status_code, 404)
 
     # -- Update --------------------------------------------------------
@@ -249,7 +330,8 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
             'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
-                '/mcp-servers/srv-1', json={'name': 'Renamed'}
+                '/organizations/acme/mcp-servers/srv-1',
+                json={'name': 'Renamed'},
             )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['name'], 'Renamed')
@@ -265,7 +347,8 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
             'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
-                '/mcp-servers/srv-1', json={'extra_headers': headers}
+                '/organizations/acme/mcp-servers/srv-1',
+                json={'extra_headers': headers},
             )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['extra_headers'], headers)
@@ -290,7 +373,8 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
             ) as enc,
         ):
             response = self.client.patch(
-                '/mcp-servers/srv-1', json={'name': 'Renamed'}
+                '/organizations/acme/mcp-servers/srv-1',
+                json={'name': 'Renamed'},
             )
         self.assertEqual(response.status_code, 200)
         # Secret was not re-encrypted since it was omitted.
@@ -317,7 +401,8 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
             ) as enc,
         ):
             response = self.client.patch(
-                '/mcp-servers/srv-1', json={'static_value': None}
+                '/organizations/acme/mcp-servers/srv-1',
+                json={'static_value': None},
             )
         self.assertEqual(response.status_code, 200)
         enc.assert_called_once_with(None)
@@ -343,7 +428,8 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
             ) as enc,
         ):
             response = self.client.patch(
-                '/mcp-servers/srv-1', json={'static_value': 'new'}
+                '/organizations/acme/mcp-servers/srv-1',
+                json={'static_value': 'new'},
             )
         self.assertEqual(response.status_code, 200)
         enc.assert_called_once_with('new')
@@ -362,7 +448,7 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
             side_effect=lambda v: None if v is None else f'enc:{v}',
         ):
             response = self.client.patch(
-                '/mcp-servers/srv-1',
+                '/organizations/acme/mcp-servers/srv-1',
                 json={'auth_type': 'oauth_client_credentials'},
             )
         self.assertEqual(response.status_code, 400)
@@ -373,7 +459,7 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
         """Patching a missing id returns 404."""
         self.mock_db.match.return_value = []
         response = self.client.patch(
-            '/mcp-servers/missing', json={'name': 'X'}
+            '/organizations/acme/mcp-servers/missing', json={'name': 'X'}
         )
         self.assertEqual(response.status_code, 404)
 
@@ -385,7 +471,7 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
             'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
-                '/mcp-servers/srv-1', json={'slug': 'taken'}
+                '/organizations/acme/mcp-servers/srv-1', json={'slug': 'taken'}
             )
         self.assertEqual(response.status_code, 409)
         self.assertIn('already exists', response.json()['detail'])
@@ -395,13 +481,15 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
     def test_delete_success(self) -> None:
         """Deleting an existing server returns 204."""
         self.mock_db.execute.return_value = [{'n': self._server_props()}]
-        response = self.client.delete('/mcp-servers/srv-1')
+        response = self.client.delete('/organizations/acme/mcp-servers/srv-1')
         self.assertEqual(response.status_code, 204)
 
     def test_delete_not_found(self) -> None:
         """Deleting a missing server returns 404."""
         self.mock_db.execute.return_value = []
-        response = self.client.delete('/mcp-servers/missing')
+        response = self.client.delete(
+            '/organizations/acme/mcp-servers/missing'
+        )
         self.assertEqual(response.status_code, 404)
 
     # -- Connection test -----------------------------------------------
@@ -429,7 +517,9 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
                 return_value=result,
             ) as tested,
         ):
-            response = self.client.post('/mcp-servers/srv-1/test')
+            response = self.client.post(
+                '/organizations/acme/mcp-servers/srv-1/test'
+            )
         self.assertEqual(response.status_code, 200)
         tested.assert_awaited_once()
         data = response.json()
@@ -467,7 +557,9 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
                 return_value=result,
             ),
         ):
-            response = self.client.post('/mcp-servers/srv-1/test')
+            response = self.client.post(
+                '/organizations/acme/mcp-servers/srv-1/test'
+            )
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertFalse(data['ok'])
@@ -479,7 +571,9 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
     def test_test_saved_server_not_found(self) -> None:
         """Testing a missing id returns 404."""
         self.mock_db.match.return_value = []
-        response = self.client.post('/mcp-servers/missing/test')
+        response = self.client.post(
+            '/organizations/acme/mcp-servers/missing/test'
+        )
         self.assertEqual(response.status_code, 404)
 
     def test_test_config_does_not_persist(self) -> None:
@@ -503,7 +597,7 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
             ),
         ):
             response = self.client.post(
-                '/mcp-servers/test',
+                '/organizations/acme/mcp-servers/test',
                 json={'url': 'https://mcp.example.com', 'auth_type': 'none'},
             )
         self.assertEqual(response.status_code, 200)
@@ -519,7 +613,7 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
             side_effect=lambda v: None if v is None else f'enc:{v}',
         ):
             response = self.client.post(
-                '/mcp-servers/test',
+                '/organizations/acme/mcp-servers/test',
                 json={
                     'url': 'https://mcp.example.com',
                     'auth_type': 'static',
@@ -539,7 +633,7 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
             'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
-                '/mcp-servers/srv-1/status',
+                '/organizations/acme/mcp-servers/srv-1/status',
                 json={'status': 'degraded', 'error': 'tool call failed'},
             )
         self.assertEqual(response.status_code, 200)
@@ -566,7 +660,7 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
             'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
-                '/mcp-servers/srv-1/status',
+                '/organizations/acme/mcp-servers/srv-1/status',
                 json={'status': 'degraded', 'error': 'tool call failed'},
             )
         self.assertEqual(response.status_code, 200)
@@ -576,7 +670,8 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
         """Reporting status for a missing id returns 404."""
         self.mock_db.match.return_value = []
         response = self.client.post(
-            '/mcp-servers/missing/status', json={'status': 'healthy'}
+            '/organizations/acme/mcp-servers/missing/status',
+            json={'status': 'healthy'},
         )
         self.assertEqual(response.status_code, 404)
 
@@ -613,17 +708,28 @@ class MCPServerPermissionTestCase(support.SharedAppTestCase):
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
             self.mock_db
         )
+        self.test_app.dependency_overrides[organizations.member_org_id] = (
+            lambda: 'org-1'
+        )
+        self.mock_secrets = mock.AsyncMock()
+        self.mock_broker = mock.AsyncMock()
+        self.test_app.dependency_overrides[secret_broker._inject_store] = (
+            lambda: self.mock_secrets
+        )
+        self.test_app.dependency_overrides[secret_broker.get_broker] = (
+            lambda: self.mock_broker
+        )
         self.client = TestClient(self.test_app)
 
     def test_list_denied(self) -> None:
         """Reading without mcp_server:read is forbidden."""
-        response = self.client.get('/mcp-servers/')
+        response = self.client.get('/organizations/acme/mcp-servers/')
         self.assertEqual(response.status_code, 403)
 
     def test_create_denied(self) -> None:
         """Creating without mcp_server:create is forbidden."""
         response = self.client.post(
-            '/mcp-servers/',
+            '/organizations/acme/mcp-servers/',
             json={
                 'name': 'Example',
                 'slug': 'example',
@@ -634,32 +740,35 @@ class MCPServerPermissionTestCase(support.SharedAppTestCase):
 
     def test_delete_denied(self) -> None:
         """Deleting without mcp_server:delete is forbidden."""
-        response = self.client.delete('/mcp-servers/srv-1')
+        response = self.client.delete('/organizations/acme/mcp-servers/srv-1')
         self.assertEqual(response.status_code, 403)
 
     def test_read_allowed_with_permission(self) -> None:
         """Granting mcp_server:read permits listing."""
         self.auth_context.permissions = {'mcp_server:read'}
         self.mock_db.match.return_value = []
-        response = self.client.get('/mcp-servers/')
+        response = self.client.get('/organizations/acme/mcp-servers/')
         self.assertEqual(response.status_code, 200)
 
     def test_test_config_denied(self) -> None:
         """Testing an unsaved config without mcp_server:create is forbidden."""
         response = self.client.post(
-            '/mcp-servers/test',
+            '/organizations/acme/mcp-servers/test',
             json={'url': 'https://mcp.example.com', 'auth_type': 'none'},
         )
         self.assertEqual(response.status_code, 403)
 
     def test_test_denied(self) -> None:
         """Testing without mcp_server:update is forbidden."""
-        response = self.client.post('/mcp-servers/srv-1/test')
+        response = self.client.post(
+            '/organizations/acme/mcp-servers/srv-1/test'
+        )
         self.assertEqual(response.status_code, 403)
 
     def test_status_report_denied(self) -> None:
         """Reporting status without mcp_server:update is forbidden."""
         response = self.client.post(
-            '/mcp-servers/srv-1/status', json={'status': 'healthy'}
+            '/organizations/acme/mcp-servers/srv-1/status',
+            json={'status': 'healthy'},
         )
         self.assertEqual(response.status_code, 403)

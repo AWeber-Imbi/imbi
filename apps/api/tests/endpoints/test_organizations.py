@@ -448,6 +448,56 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(data['name'], 'Eng Dept')
         self.assertIn('relationships', data)
 
+    def test_patch_organization_slack_team_id(self) -> None:
+        """The Slack team id is saved, and a taken one is a 409."""
+        self.mock_db.match.return_value = [self.test_org]
+        self.mock_db.execute.side_effect = [
+            [{'n': 'true'}],
+            [{'team_count': 0, 'member_count': 0, 'project_count': 0}],
+        ]
+        patch = [{'op': 'add', 'path': '/slack_team_id', 'value': 'T012AB3CD'}]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.patch(
+                '/organizations/engineering', json=patch
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['slack_team_id'], 'T012AB3CD')
+        query, params = self.mock_db.execute.call_args_list[0].args[:2]
+        self.assertIn('ELSE {slack_team_id} END', query)
+        self.assertFalse(params['keep_team_id'])
+        self.assertEqual(params['slack_team_id'], 'T012AB3CD')
+
+        self.mock_db.execute.side_effect = [
+            psycopg.errors.UniqueViolation('Duplicate')
+        ]
+        response = self.client.patch('/organizations/engineering', json=patch)
+        self.assertEqual(response.status_code, 409)
+
+        bad = [{'op': 'add', 'path': '/slack_team_id', 'value': 'not a team'}]
+        response = self.client.patch('/organizations/engineering', json=bad)
+        self.assertEqual(response.status_code, 400)
+
+    def test_slack_team_id_needs_install_admin(self) -> None:
+        """An org-level admin cannot set the Slack team id."""
+        self.admin_user.is_admin = False
+        self.mock_db.match.return_value = [self.test_org]
+        patch = [{'op': 'add', 'path': '/slack_team_id', 'value': 'T012AB3CD'}]
+        response = self.client.patch('/organizations/engineering', json=patch)
+        self.assertEqual(response.status_code, 403, response.text)
+        response = self.client.post(
+            '/organizations/',
+            json={
+                'name': 'Other',
+                'slug': 'other',
+                'slack_team_id': 'T012AB3CD',
+            },
+        )
+        self.assertEqual(response.status_code, 403, response.text)
+        self.mock_db.execute.assert_not_called()
+        self.mock_db.create.assert_not_called()
+
     def test_patch_organization_not_found(self) -> None:
         """Test patching non-existent organization returns 404."""
         self.mock_db.match.return_value = []

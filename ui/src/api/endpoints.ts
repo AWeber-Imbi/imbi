@@ -1950,40 +1950,54 @@ export const deleteWebhook = (orgSlug: string, slug: string) =>
     `/organizations/${encodeURIComponent(orgSlug)}/webhooks/${encodeURIComponent(slug)}`,
   )
 
-// Admin - MCP Servers (global Assistant configuration)
+// Admin - MCP Servers (the Assistant servers of an organization)
+const mcpServersPath = (orgSlug: string) =>
+  `/organizations/${encodeURIComponent(orgSlug)}/mcp-servers`
+
 export const listMcpServers = async (
+  orgSlug: string,
   signal?: AbortSignal,
 ): Promise<MCPServer[]> => {
   const response = await apiClient.get<MCPServer[]>(
-    '/mcp-servers/',
+    `${mcpServersPath(orgSlug)}/`,
     undefined,
     signal,
   )
   return Array.isArray(response) ? response : []
 }
 
-export const createMcpServer = (data: MCPServerCreate) =>
-  apiClient.post<MCPServer>('/mcp-servers/', data)
+export const createMcpServer = (orgSlug: string, data: MCPServerCreate) =>
+  apiClient.post<MCPServer>(`${mcpServersPath(orgSlug)}/`, data)
 
 // The MCP update endpoint takes a partial object (exclude_unset semantics),
 // not RFC-6902 json-patch — send only the changed fields.
-export const updateMcpServer = (id: string, data: MCPServerUpdate) =>
-  apiClient.patch<MCPServer>(`/mcp-servers/${encodeURIComponent(id)}`, data)
+export const updateMcpServer = (
+  orgSlug: string,
+  id: string,
+  data: MCPServerUpdate,
+) =>
+  apiClient.patch<MCPServer>(
+    `${mcpServersPath(orgSlug)}/${encodeURIComponent(id)}`,
+    data,
+  )
 
-export const deleteMcpServer = (id: string) =>
-  apiClient.delete<void>(`/mcp-servers/${encodeURIComponent(id)}`)
+export const deleteMcpServer = (orgSlug: string, id: string) =>
+  apiClient.delete<void>(`${mcpServersPath(orgSlug)}/${encodeURIComponent(id)}`)
 
 // Test a saved server using its stored configuration and secrets; the
 // result is persisted onto the server (status, last_tested_at, …).
-export const testMcpServer = (id: string) =>
+export const testMcpServer = (orgSlug: string, id: string) =>
   apiClient.post<MCPServerTestResult>(
-    `/mcp-servers/${encodeURIComponent(id)}/test`,
+    `${mcpServersPath(orgSlug)}/${encodeURIComponent(id)}/test`,
   )
 
 // Test an unsaved configuration (create form); secrets are sent as
 // plaintext and nothing is persisted.
-export const testMcpServerConfig = (data: MCPServerTestConfig) =>
-  apiClient.post<MCPServerTestResult>('/mcp-servers/test', data)
+export const testMcpServerConfig = (
+  orgSlug: string,
+  data: MCPServerTestConfig,
+) =>
+  apiClient.post<MCPServerTestResult>(`${mcpServersPath(orgSlug)}/test`, data)
 
 // Admin - AI providers and models (org-scoped LLM catalog)
 

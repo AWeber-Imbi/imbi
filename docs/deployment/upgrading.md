@@ -173,6 +173,34 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    (no Anthropic key, an error, or an empty reply). The agent create,
    update, and patch API no longer take `description`; a sent value is
    ignored.
+6. **Before you deploy imbi-slackbot**, link its Slack workspace to an
+   organization: enter the workspace's team ID in **Slack team ID** of
+   the organization (see
+   [Link a Slack workspace](../admin/users-teams-organizations.md#link-a-slack-workspace)).
+   The bot now serves only the members of that organization. Until an
+   organization has the team ID, the bot answers no one.
+7. MCP servers and assistant conversations now belong to an
+   organization. After you deploy imbi-api, run **Link MCP Servers to an
+   Organization** (`mcp-server-org-backfill`) and **Put Assistant
+   Conversations in an Organization** (`conversation-org-backfill`) one
+   time each. Until then, no organization shows the older servers and
+   conversations.
+    - When the install has one organization, each MCP server goes to
+      it. Otherwise imbi-api logs each server and moves none: create
+      them again in the correct organization (**Admin > &lt;Org&gt;
+      Admin > MCP Servers**).
+    - Each conversation goes to the organization of its owner, or the
+      first by slug when the owner is in more than one.
+    - After the backfill, and after you create the servers again in an
+      install with more than one organization, restart imbi-assistant
+      and imbi-slackbot. An organization loads its MCP servers at its
+      first turn and keeps that list until a restart.
+6. Run `imbi-api setup-permissions`. It adds `mcp_server:credential` and
+   gives it to the `imbi-assistant` and `imbi-slackbot` roles. An MCP
+   server can now take its secret from a secret binding (see
+   [A binding for MCP servers](../admin/secrets.md#a-binding-for-mcp-servers)).
+   To use one, set `IMBI_ASSISTANT_API_TOKEN` and `IMBI_SLACKBOT_API_TOKEN`
+   to API keys of those service accounts.
 
 ## 2.65.0
 

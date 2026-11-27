@@ -249,8 +249,12 @@ async def _process(
         token = identity.mint_token(user)
         manager = mcp.get_manager()
         tools = manager.get_tools() or None
-        external = external_mcp.get_manager()
         db = identity.get_graph()
+        external = (
+            await external_mcp.get_manager(db, user.org_id)
+            if db is not None
+            else external_mcp.ExternalMCPManager(user.org_id)
+        )
         _, skill_list = await asyncio.gather(
             external.sync_enabled(db), skills.list_skills(db)
         )
@@ -285,6 +289,7 @@ async def _process(
             on_status=reporter.update,
             temperature=prompt.temperature,
             idempotency_prefix=f'slack:{channel}:{turn_id or ts}',
+            external=external,
             tracking=client.tracking(
                 user.email, f'slack:{channel}:{thread_ts}'
             ),
@@ -427,6 +432,7 @@ async def initialize() -> None:
     auth = await _app.client.auth_test()  # pyright: ignore[reportUnknownMemberType]
     _bot_user_id = str(auth['user_id'])  # pyright: ignore[reportUnknownArgumentType]
     _bot_id = str(auth.get('bot_id') or '')  # pyright: ignore[reportUnknownArgumentType, reportUnknownMemberType]
+    identity.set_team_id(auth.get('team_id') or None)  # pyright: ignore[reportUnknownArgumentType, reportUnknownMemberType]
     LOGGER.info('Connected to Slack as bot user %s', _bot_user_id)
 
     _handler = AsyncSocketModeHandler(_app, slackbot_settings.slack_app_token)
@@ -455,4 +461,5 @@ async def aclose() -> None:
     _form_store = None
     _bot_user_id = None
     _bot_id = ''
+    identity.set_team_id(None)
     identity.clear_cache()

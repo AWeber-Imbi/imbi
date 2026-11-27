@@ -29,14 +29,55 @@ if typing.TYPE_CHECKING:
 
 LOGGER = logging.getLogger(__name__)
 
-assistant_router = fastapi.APIRouter(
-    tags=['Assistant'],
-)
-
 AuthDep = typing.Annotated[
     auth.AuthContext,
     fastapi.Depends(auth.get_current_user),
 ]
+
+_ORG_MEMBER_QUERY: typing.LiteralString = """
+MATCH (o:Organization {{slug: {org_slug}}})
+OPTIONAL MATCH (u:User {{email: {email}}})-[:MEMBER_OF]->(o)
+RETURN o.id AS id, u IS NOT NULL AS member
+"""
+
+
+async def member_org_id(
+    org_slug: str, db: graph.Pool, auth_ctx: AuthDep
+) -> str:
+    """Return the id of the organization when the user is a member.
+
+    Raises:
+        403: The user is not a member of the organization.
+        404: No such organization, or it has no id yet.
+
+    """
+    records = await db.execute(
+        _ORG_MEMBER_QUERY,
+        {'org_slug': org_slug, 'email': auth_ctx.require_user.email},
+        ['id', 'member'],
+    )
+    org_id = graph.parse_agtype(records[0]['id']) if records else None
+    if not org_id:
+        raise fastapi.HTTPException(
+            status_code=404, detail='Organization not found'
+        )
+    if not graph.parse_agtype(records[0]['member']):
+        raise fastapi.HTTPException(
+            status_code=403, detail='Not a member of the organization'
+        )
+    return str(org_id)
+
+
+OrgId = typing.Annotated[str, fastapi.Depends(member_org_id)]
+
+# Every route is in one organization, and checks that the user is a
+# member of it. FastAPI caches the dependency, so a route that takes
+# ``OrgId`` too does not run the query again.
+assistant_router = fastapi.APIRouter(
+    prefix='/organizations/{org_slug}',
+    tags=['Assistant'],
+    dependencies=[fastapi.Depends(member_org_id)],
+)
 
 
 def _require_assistant() -> None:
@@ -71,6 +112,7 @@ async def _check_model(
     status_code=201,
 )
 async def create_conversation(
+    org_id: OrgId,
     db: graph.Pool,
     auth_ctx: AuthDep,
     body: models.CreateConversationRequest | None = None,
@@ -94,6 +136,7 @@ async def create_conversation(
     conv = await age_ops.create_conversation(
         db,
         user_email=auth_ctx.require_user.email,
+        org_id=org_id,
         model=model,
     )
     return models.conversation_to_response(conv)
@@ -104,6 +147,7 @@ async def create_conversation(
     response_model=list[models.ConversationResponse],
 )
 async def list_conversations(
+    org_id: OrgId,
     db: graph.Pool,
     auth_ctx: AuthDep,
     limit: int = 20,
@@ -116,6 +160,7 @@ async def list_conversations(
     convs = await age_ops.list_conversations(
         db,
         user_email=auth_ctx.require_user.email,
+        org_id=org_id,
         limit=limit,
         offset=offset,
         include_archived=include_archived,
@@ -129,12 +174,13 @@ async def list_conversations(
 )
 async def get_conversation(
     conversation_id: str,
+    org_id: OrgId,
     db: graph.Pool,
     auth_ctx: AuthDep,
 ) -> models.ConversationWithMessagesResponse:
     """Get a conversation with its messages."""
     conv = await age_ops.get_conversation(
-        db, conversation_id, auth_ctx.require_user.email
+        db, conversation_id, auth_ctx.require_user.email, org_id
     )
     if not conv:
         raise fastapi.HTTPException(
@@ -155,12 +201,13 @@ async def get_conversation(
 )
 async def delete_conversation(
     conversation_id: str,
+    org_id: OrgId,
     db: graph.Pool,
     auth_ctx: AuthDep,
 ) -> None:
     """Delete a conversation and its messages."""
     deleted = await age_ops.delete_conversation(
-        db, conversation_id, auth_ctx.require_user.email
+        db, conversation_id, auth_ctx.require_user.email, org_id
     )
     if not deleted:
         raise fastapi.HTTPException(
@@ -175,6 +222,7 @@ async def delete_conversation(
 )
 async def update_conversation(
     conversation_id: str,
+    org_id: OrgId,
     body: models.UpdateConversationRequest,
     db: graph.Pool,
     auth_ctx: AuthDep,
@@ -185,6 +233,7 @@ async def update_conversation(
             db,
             conversation_id,
             auth_ctx.require_user.email,
+            org_id,
             body.title,
         )
     if body.is_archived is True:
@@ -192,10 +241,11 @@ async def update_conversation(
             db,
             conversation_id,
             auth_ctx.require_user.email,
+            org_id,
         )
 
     conv = await age_ops.get_conversation(
-        db, conversation_id, auth_ctx.require_user.email
+        db, conversation_id, auth_ctx.require_user.email, org_id
     )
     if not conv:
         raise fastapi.HTTPException(
@@ -213,18 +263,20 @@ async def update_conversation(
     response_model=models.ConversationResponse | None,
 )
 async def get_current_conversation(
+    org_id: OrgId,
     db: graph.Pool,
     auth_ctx: AuthDep,
 ) -> models.ConversationResponse | None:
     """Get the user's current conversation, or null for a new one."""
     conv = await age_ops.get_current_conversation(
-        db, auth_ctx.require_user.email
+        db, auth_ctx.require_user.email, org_id
     )
     return models.conversation_to_response(conv) if conv else None
 
 
 @assistant_router.put('/current-conversation', status_code=204)
 async def set_current_conversation(
+    org_id: OrgId,
     body: models.SetCurrentConversationRequest,
     db: graph.Pool,
     auth_ctx: AuthDep,
@@ -232,13 +284,15 @@ async def set_current_conversation(
     """Set the user's current conversation; null starts a new one."""
     email = auth_ctx.require_user.email
     if body.conversation_id is not None and not (
-        await age_ops.get_conversation(db, body.conversation_id, email)
+        await age_ops.get_conversation(db, body.conversation_id, email, org_id)
     ):
         raise fastapi.HTTPException(
             status_code=404,
             detail='Conversation not found',
         )
-    await age_ops.set_current_conversation(db, email, body.conversation_id)
+    await age_ops.set_current_conversation(
+        db, email, org_id, body.conversation_id
+    )
 
 
 # --- SSE Streaming ---
@@ -400,11 +454,13 @@ async def _build_tools_and_system(
     db: graph.Graph,
     mcp_manager: mcp.MCPManager,
     auth_ctx: auth.AuthContext,
+    org_id: str,
 ) -> tuple[list[dict[str, typing.Any]] | None, prompt_system.SystemPrompt]:
     """Build the Anthropic tool payload and system prompt from
-    the current MCP, server, and client tool sets.
+    the current MCP, server, and client tool sets. The external MCP
+    tools are those of the conversation's organization.
     """
-    ext_manager = external_mcp.get_manager()
+    ext_manager = await external_mcp.get_manager(db, org_id)
     await ext_manager.sync_enabled(db)
     all_tools = (
         mcp_manager.get_tools()
@@ -523,6 +579,7 @@ async def _run_server_tool(
     auth_ctx: auth.AuthContext,
     rebuild: dict[str, typing.Any],
     db: graph.Graph,
+    org_id: str,
 ) -> collections.abc.AsyncIterator[str]:
     """Handle the refresh-all-tool-sources server tool.
 
@@ -550,7 +607,9 @@ async def _run_server_tool(
     external_count: int
     external_error: str | None = None
     try:
-        external_success, external_count = await external_mcp.reinitialize(db)
+        external_success, external_count = await external_mcp.reinitialize(
+            db, org_id
+        )
     except Exception as exc:
         LOGGER.exception('External MCP refresh failed')
         external_success, external_count = False, 0
@@ -560,7 +619,7 @@ async def _run_server_tool(
     # cleanly.
     if openapi_success or external_success:
         tools, prompt = await _build_tools_and_system(
-            db, mcp_manager, auth_ctx
+            db, mcp_manager, auth_ctx, org_id
         )
         rebuild['tools'], rebuild['system'] = tools, prompt.text
     payload: dict[str, typing.Any] = {
@@ -613,6 +672,7 @@ async def _dispatch_tool_uses(
     auth_token: str | None,
     rebuild: dict[str, typing.Any],
     db: graph.Graph,
+    org_id: str,
 ) -> collections.abc.AsyncIterator[str]:
     """Dispatch each tool_use block to the owning handler.
 
@@ -623,13 +683,13 @@ async def _dispatch_tool_uses(
     for tb in tool_use_blocks:
         if mcp.is_server_tool(tb['name']):
             async for chunk in _run_server_tool(
-                mcp_manager, tb, tool_results, auth_ctx, rebuild, db
+                mcp_manager, tb, tool_results, auth_ctx, rebuild, db, org_id
             ):
                 yield chunk
-            # external_mcp.reinitialize() replaces the module singleton,
-            # so re-read it before routing any later tool_use blocks in
-            # this same dispatch.
-            ext_manager = external_mcp.get_manager()
+            # external_mcp.reinitialize() replaces the organization's
+            # manager, so re-read it before routing any later tool_use
+            # blocks in this same dispatch.
+            ext_manager = await external_mcp.get_manager(db, org_id)
         elif client_tools.is_client_tool(tb['name']):
             yield _client_tool_event(tb, tool_results)
         elif ext_manager.has_tool(tb['name']):
@@ -681,6 +741,7 @@ async def _persist_tool_round(
 async def _stream_response(
     db: graph.Graph,
     conversation_id: str,
+    org_id: str,
     auth_ctx: auth.AuthContext,
     api_messages: list[dict[str, typing.Any]],
     system: str,
@@ -709,8 +770,8 @@ async def _stream_response(
 
     for _round in range(max_rounds):
         # Re-read each round in case a prior refresh replaced the
-        # external MCP singleton.
-        ext_manager = external_mcp.get_manager()
+        # organization's external MCP manager.
+        ext_manager = await external_mcp.get_manager(db, org_id)
         state = {
             'text': '',
             'stop_reason': None,
@@ -766,6 +827,7 @@ async def _stream_response(
             auth_token,
             rebuild,
             db,
+            org_id,
         ):
             yield chunk
         if 'tools' in rebuild:
@@ -821,6 +883,7 @@ async def _stream_response(
             db,
             conversation_id,
             auth_ctx.require_user.email,
+            org_id,
             title,
         )
         yield _sse_event('title_updated', {'title': title})
@@ -849,6 +912,7 @@ def _prompt_params(
 )
 async def send_message(
     conversation_id: str,
+    org_id: OrgId,
     body: models.SendMessageRequest,
     db: graph.Pool,
     auth_ctx: AuthDep,
@@ -860,7 +924,7 @@ async def send_message(
     _require_assistant()
 
     conv = await age_ops.get_conversation(
-        db, conversation_id, auth_ctx.require_user.email
+        db, conversation_id, auth_ctx.require_user.email, org_id
     )
     if not conv:
         raise fastapi.HTTPException(
@@ -896,7 +960,9 @@ async def send_message(
     ]
 
     mcp_manager = mcp.get_manager()
-    tools, prompt = await _build_tools_and_system(db, mcp_manager, auth_ctx)
+    tools, prompt = await _build_tools_and_system(
+        db, mcp_manager, auth_ctx, org_id
+    )
 
     is_first_exchange = len(all_msgs) <= 2
     auth_token = credentials.credentials if credentials else None
@@ -908,6 +974,7 @@ async def send_message(
         _stream_response(
             db=db,
             conversation_id=conversation_id,
+            org_id=org_id,
             auth_ctx=auth_ctx,
             api_messages=api_messages,
             system=prompt.text,

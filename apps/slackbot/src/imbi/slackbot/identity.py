@@ -7,6 +7,11 @@ shared ``IMBI_AUTH_JWT_SECRET`` — identical to the token the Imbi API
 issues at login — so every tool call the bot makes on the user's behalf
 is authorized as, and limited to, that user.
 
+The bot serves one Slack workspace, and the workspace belongs to one
+Imbi organization: the one whose ``slack_team_id`` is the workspace's
+team id. A Slack user resolves only when the Imbi user is a member of
+that organization, and everything the bot does for them is in it.
+
 Resolutions (including "no matching Imbi user") are cached with a TTL to
 avoid hitting Slack and the graph on every message.
 
@@ -32,9 +37,16 @@ SlackClient = typing.Any
 
 LOGGER = logging.getLogger(__name__)
 
+# The user, and the slug of the workspace's organization when the user
+# is a member of it.
 _USER_QUERY = """
 MATCH (u:User {{email: {email}}})
-RETURN u
+OPTIONAL MATCH (u)-[:MEMBER_OF]->(o:Organization {{slack_team_id: {team_id}}})
+RETURN u, o.slug AS slug, o.id AS org_id
+"""
+_WORKSPACE_ORG_QUERY = """
+MATCH (o:Organization {{slack_team_id: {team_id}}})
+RETURN o.slug AS slug
 """
 
 
@@ -44,6 +56,10 @@ class ImbiUser:
 
     email: str
     display_name: str
+    #: The slug of the organization of the Slack workspace.
+    org_slug: str
+    #: The id of that organization.
+    org_id: str
     is_admin: bool = False
     #: The IANA time zone of the Slack user (``users.info`` ``tz``).
     tz: str | None = None
@@ -60,6 +76,17 @@ class _CacheEntry:
 # Shared graph instance captured at startup via ``graph.set_on_startup``.
 _graph: graph.Graph | None = None
 _cache: dict[str, _CacheEntry] = {}
+# The team id of the Slack workspace, from ``auth.test`` at startup.
+_team_id: str | None = None
+# The workspace's organization slug, and when to read it again.
+_workspace_org: tuple[str | None, datetime.datetime] | None = None
+
+
+def set_team_id(team_id: str | None) -> None:
+    """Set the team id of the Slack workspace that the bot serves."""
+    global _team_id, _workspace_org
+    _team_id = team_id
+    _workspace_org = None
 
 
 def set_graph(db: graph.Graph) -> None:
@@ -80,7 +107,9 @@ async def on_graph_ready(db: graph.Graph) -> None:
 
 def clear_cache() -> None:
     """Drop all cached resolutions (used by tests and on shutdown)."""
+    global _workspace_org
     _cache.clear()
+    _workspace_org = None
 
 
 async def _slack_email(
@@ -100,7 +129,11 @@ async def _load_imbi_user(email: str) -> ImbiUser | None:
     """Look up an active Imbi ``User`` node by email."""
     if _graph is None:
         raise RuntimeError('Graph connection not initialized')
-    records = await _graph.execute(_USER_QUERY, {'email': email}, ['u'])
+    records = await _graph.execute(
+        _USER_QUERY,
+        {'email': email, 'team_id': _team_id or ''},
+        ['u', 'slug', 'org_id'],
+    )
     if not records:
         return None
     raw = graph.parse_agtype(records[0]['u'])
@@ -109,11 +142,50 @@ async def _load_imbi_user(email: str) -> ImbiUser | None:
     data = typing.cast('dict[str, typing.Any]', raw)
     if not data.get('is_active', True):
         return None
+    org_slug = graph.parse_agtype(records[0]['slug'])
+    org_id = graph.parse_agtype(records[0]['org_id'])
+    if not org_slug or not org_id:
+        LOGGER.info(
+            '%s is not a member of the organization of Slack workspace %s',
+            email,
+            _team_id,
+        )
+        return None
     return ImbiUser(
         email=email,
         display_name=str(data.get('display_name') or email),
         is_admin=bool(data.get('is_admin', False)),
+        org_slug=str(org_slug),
+        org_id=str(org_id),
     )
+
+
+async def workspace_org_slug(
+    *, now: datetime.datetime | None = None
+) -> str | None:
+    """Return the slug of the organization of the Slack workspace, or
+    ``None`` when no organization has its team id. A found slug is kept
+    for the identity cache TTL; ``None`` is not kept, so a workspace
+    linked later takes effect at the next request."""
+    global _workspace_org
+    now = now or datetime.datetime.now(datetime.UTC)
+    if _workspace_org is not None and _workspace_org[1] > now:
+        return _workspace_org[0]
+    if _graph is None or not _team_id:
+        return None
+    records = await _graph.execute(
+        _WORKSPACE_ORG_QUERY, {'team_id': _team_id}, ['slug']
+    )
+    slug = str(graph.parse_agtype(records[0]['slug'])) if records else None
+    if slug is None:
+        LOGGER.warning(
+            'Slack workspace %s is not linked to an Imbi organization',
+            _team_id,
+        )
+        return None
+    ttl = settings.get_slackbot_settings().identity_cache_ttl
+    _workspace_org = (slug, now + datetime.timedelta(seconds=ttl))
+    return slug
 
 
 async def resolve(
@@ -155,9 +227,11 @@ async def resolve(
 
 
 NO_USER_MESSAGE = (
-    "I couldn't match your Slack account to an Imbi user. Imbi matches "
-    'you by your email address — ask an Imbi administrator to make sure '
-    'your account exists and is active.'
+    "I couldn't match your Slack account to an Imbi user in the "
+    'organization of this Slack workspace. Imbi matches you by your email '
+    'address — ask an Imbi administrator to make sure your account exists, '
+    'is active, and is a member of that organization, and that the '
+    'organization is linked to this workspace.'
 )
 
 

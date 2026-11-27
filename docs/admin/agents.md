@@ -199,7 +199,7 @@ on, when:
 - The agent turns off a server that the pinned plugin does not have.
 
 **Tools** lists two groups: **Built-in** and **Imbi**. The MCP
-servers in **Admin > Global Admin > Assistant > MCP Servers** are for the
+servers in **Admin > &lt;Org&gt; Admin > MCP Servers** are for the
 assistant only and are not in this list. To give the agent other MCP
 servers, select a plugin that brings them.
 

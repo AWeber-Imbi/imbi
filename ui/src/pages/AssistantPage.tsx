@@ -11,6 +11,7 @@ import {
 import { Navigation } from '@/components/Navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { useOrganization } from '@/contexts/OrganizationContext'
 import {
   assistantReturnPath,
   newAssistantConversation,
@@ -28,24 +29,35 @@ export function AssistantPage() {
   const navigate = useNavigate()
   const currentId = useAssistantStore((s) => s.currentConversationId)
   const setPanelOpen = useAssistantStore((s) => s.setExpanded)
+  const orgSlug = useOrganization().selectedOrganization?.slug
   const { data: conversations = [], isLoading } = useAssistantConversations()
   const [filter, setFilter] = useState('')
   const [loadError, setLoadError] = useState(false)
   const title = conversations.find((c) => c.id === currentId)?.title
   usePageTitle(title || 'Assistant')
 
+  // A routed conversation belongs to the organization it opened in.
+  const openedOrgRef = useRef(orgSlug)
   useEffect(() => {
     setLoadError(false)
+    if (!orgSlug) return
+    const switched = !!openedOrgRef.current && openedOrgRef.current !== orgSlug
+    openedOrgRef.current = orgSlug
+    if (switched) {
+      // Do not open the previous organization's conversation in this one.
+      if (conversationId) navigate('/assistant', { replace: true })
+      return
+    }
     if (!conversationId) return
     // A later conversation replaces this load; ignore its failure.
     let replaced = false
-    openAssistantConversation(conversationId).catch(() => {
+    openAssistantConversation(orgSlug, conversationId).catch(() => {
       if (!replaced) setLoadError(true)
     })
     return () => {
       replaced = true
     }
-  }, [conversationId])
+  }, [conversationId, navigate, orgSlug])
 
   // A first message creates the conversation; put its id in the URL.
   // Reads the param through a ref so that opening another conversation
@@ -86,7 +98,7 @@ export function AssistantPage() {
           <Button
             asChild
             className="bg-action text-action-foreground hover:bg-action-hover"
-            onClick={newAssistantConversation}
+            onClick={() => orgSlug && newAssistantConversation(orgSlug)}
           >
             <Link to="/assistant">
               <SquarePen className="size-4" />

@@ -129,6 +129,45 @@ class ServiceAccountsEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 409)
         self.assertIn('already exists', response.json()['detail'])
 
+    def test_create_service_account_reserved_slug(self) -> None:
+        """The slug of an internal service cannot be taken."""
+        response = self.client.post(
+            '/service-accounts',
+            json={
+                'slug': 'imbi-assistant',
+                'display_name': 'Not The Assistant',
+                'organization_slug': 'acme-corp',
+                'role_slug': 'admin',
+            },
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+        self.mock_db.create.assert_not_called()
+
+    def test_internal_account_changes_need_install_admin(self) -> None:
+        """An org admin cannot add a key to, change, or delete an
+        internal service account."""
+        self.test_user.is_admin = False
+        self.auth_context.permissions = {
+            'service_account:update',
+            'service_account:delete',
+        }
+        base = '/service-accounts/imbi-assistant'
+        for method, path, body in (
+            ('POST', f'{base}/api-keys', {'name': 'k'}),
+            ('POST', f'{base}/client-credentials', {'name': 'c'}),
+            ('PATCH', base, []),
+            ('DELETE', base, None),
+            (
+                'POST',
+                f'{base}/organizations',
+                {'organization_slug': 'acme', 'role_slug': 'admin'},
+            ),
+        ):
+            with self.subTest(method=method, path=path):
+                response = self.client.request(method, path, json=body)
+                self.assertEqual(response.status_code, 403, response.text)
+        self.mock_db.execute.assert_not_called()
+
     def test_list_service_accounts(self) -> None:
         """Test listing service accounts returns list."""
         mock_accounts = [

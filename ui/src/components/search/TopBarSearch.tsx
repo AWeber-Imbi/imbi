@@ -113,7 +113,7 @@ export function TopBarSearch() {
     if (!text) return
     // The visible hits: confident, navigable, one per node.
     const top3 = hits.slice(0, 3).map((h) => h.result)
-    newAssistantConversation()
+    if (orgSlug) newAssistantConversation(orgSlug)
     setPanelOpen(true)
     void send(buildSearchContext(text, top3), text)
     setInput('')

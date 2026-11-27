@@ -18,23 +18,30 @@ class FakeSlack:
 
 
 class FakeGraph:
-    def __init__(self, records: list) -> None:
+    def __init__(self, records: list, workspace: list | None = None) -> None:
         self._records = records
+        self._workspace = (
+            [{'slug': 'acme'}] if workspace is None else workspace
+        )
         self.calls = 0
 
     async def execute(self, query, params, columns) -> list:
         self.calls += 1
+        if query is identity._WORKSPACE_ORG_QUERY:
+            return self._workspace
         return self._records
 
 
-def _user_records(**fields) -> list:
-    return [{'u': fields}]
+def _user_records(slug: str | None = 'acme', **fields) -> list:
+    """A user row; ``slug`` is the workspace org when a member."""
+    return [{'u': fields, 'slug': slug, 'org_id': slug and 'org-1'}]
 
 
 class IdentityTestCase(helpers.TestCase):
     def setUp(self) -> None:
         super().setUp()
         identity.clear_cache()
+        identity.set_team_id('T1')
         settings._slackbot_settings = None
         self._passthrough = mock.patch.object(
             identity.graph, 'parse_agtype', side_effect=lambda v: v
@@ -45,6 +52,7 @@ class IdentityTestCase(helpers.TestCase):
         self._passthrough.stop()
         identity.clear_cache()
         identity._graph = None
+        identity.set_team_id(None)
         settings._slackbot_settings = None
         super().tearDown()
 
@@ -63,6 +71,39 @@ class IdentityTestCase(helpers.TestCase):
         self.assertEqual('ada@example.com', user.email)
         self.assertEqual('Ada', user.display_name)
         self.assertTrue(user.is_admin)
+        self.assertEqual('acme', user.org_slug)
+        self.assertEqual('org-1', user.org_id)
+
+    async def test_resolve_needs_the_workspace_org(self) -> None:
+        # Not a member of the organization with the workspace's team id
+        # (or no organization has it): the query gives no slug.
+        identity.set_graph(
+            FakeGraph(
+                _user_records(slug=None, is_active=True, display_name='Ada')
+            )
+        )
+        self.assertIsNone(
+            await identity.resolve(FakeSlack('ada@example.com'), 'U1')
+        )
+
+    async def test_workspace_org_slug_is_cached(self) -> None:
+        graph = FakeGraph([])
+        identity.set_graph(graph)
+        now = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+        self.assertEqual('acme', await identity.workspace_org_slug(now=now))
+        self.assertEqual('acme', await identity.workspace_org_slug(now=now))
+        self.assertEqual(1, graph.calls)
+        later = now + datetime.timedelta(seconds=901)
+        await identity.workspace_org_slug(now=later)
+        self.assertEqual(2, graph.calls)
+
+    async def test_unlinked_workspace_has_no_org(self) -> None:
+        graph = FakeGraph([], workspace=[])
+        identity.set_graph(graph)
+        self.assertIsNone(await identity.workspace_org_slug())
+        # Not cached: a workspace linked later takes effect at once.
+        self.assertIsNone(await identity.workspace_org_slug())
+        self.assertEqual(2, graph.calls)
 
     async def test_resolve_is_cached(self) -> None:
         graph = FakeGraph(_user_records(is_active=True, display_name='Ada'))
@@ -128,7 +169,12 @@ class IdentityTestCase(helpers.TestCase):
 
     def test_mint_token(self) -> None:
         token = identity.mint_token(
-            identity.ImbiUser(email='a@example.com', display_name='A')
+            identity.ImbiUser(
+                email='a@example.com',
+                display_name='A',
+                org_slug='acme',
+                org_id='org-1',
+            )
         )
         claims = core.verify_token(token)
         self.assertEqual('a@example.com', claims['sub'])

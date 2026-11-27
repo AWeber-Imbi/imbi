@@ -65,6 +65,8 @@ The page has two tabs: **Operations** and **Activity**.
 | **Sync CVE Catalog** | `cve-sync` | Import the CVE List (CVEProject/cvelistV5) into the CVE catalog that advisories read severity and descriptions from. Only records that changed since the last import are written. The first run imports every record and needs about 1.5 GB of temporary disk. The scheduler runs this daily at 01:30 UTC. |
 | **Prune AI Model Calls** | `ai-model-calls-prune` | Delete the records of AI model calls (prompt runs and workflow LLM Call steps) older than 90 days. The scheduler runs this daily at 02:30 UTC. |
 | **Prune Plugin Step Calls** | `plugin-step-calls-prune` | Delete the records of plugin workflow step calls older than 90 days. The records of a workflow run that is still open stay until the run closes. The scheduler runs this daily at 02:45 UTC. |
+| **Link MCP Servers to an Organization** | `mcp-server-org-backfill` | Link each MCP server that has no organization (one made before MCP servers had an organization) to the organization, when the install has exactly one. With more than one organization it links none and logs each server. Run it one time after the upgrade. Safe to re-run. |
+| **Put Assistant Conversations in an Organization** | `conversation-org-backfill` | Put each assistant conversation that has no organization in its owner's organization: the only one, else the first by slug. A conversation of a user in no organization stays without one and is logged. Run it one time after the upgrade. Safe to re-run. |
 
 <!-- END GENERATED -->
 

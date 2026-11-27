@@ -1392,11 +1392,13 @@ export interface MCPServerCreate {
   name: string
   oauth_client_id?: null | string
   oauth_client_secret?: null | string
+  oauth_client_secret_ref?: null | string
   oauth_scope?: null | string
   oauth_token_url?: null | string
   slug: string
   static_header?: null | string
   static_value?: null | string
+  static_value_ref?: null | string
   timeout?: number
   tool_prefix?: null | string
   url: string
@@ -1453,6 +1455,7 @@ export interface OrganizationCreate {
   description?: null | string
   icon?: null | string
   name: string
+  slack_team_id?: null | string
   slug: string
 }
 

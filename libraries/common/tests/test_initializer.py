@@ -58,6 +58,21 @@ class BackfillTagOrgIdTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any('SET t.org_id' in q for q in executed(cur)))
 
 
+class DropRetiredIndexesTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_each_retired_index_is_dropped(self) -> None:
+        cur = cursor(index_exists=True, duplicates=[])
+        await initializer._drop_retired_indexes(
+            cur, 'imbi', {'retired_indexes': ['mcpserver_slug_unique_idx']}
+        )
+        self.assertEqual(
+            executed(cur),
+            [
+                "Composed([SQL('DROP INDEX IF EXISTS '), Identifier('imbi'),"
+                " SQL('.'), Identifier('mcpserver_slug_unique_idx')])"
+            ],
+        )
+
+
 class InitializeLockTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_ddl_runs_under_an_advisory_lock(self) -> None:
         """Services that start together must not race on the DDL.
@@ -75,6 +90,7 @@ class InitializeLockTestCase(unittest.IsolatedAsyncioTestCase):
             '_create_graph',
             '_create_vlabels',
             '_backfill_tag_org_id',
+            '_drop_retired_indexes',
             '_create_vlabel_indexes',
             '_create_embeddings_table',
             '_create_functions',

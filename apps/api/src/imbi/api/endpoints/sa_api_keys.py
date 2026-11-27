@@ -14,7 +14,7 @@ import fastapi
 
 from imbi.api import models, settings
 from imbi.api.auth import permissions
-from imbi.api.endpoints import api_keys
+from imbi.api.endpoints import _helpers, api_keys
 from imbi.api.endpoints._credentials import (
     compute_expires_at,
     create_service_account_owned_node,
@@ -27,6 +27,7 @@ LOGGER = logging.getLogger(__name__)
 sa_api_keys_router = fastapi.APIRouter(
     prefix='/service-accounts/{slug}/api-keys',
     tags=['Service Account API Keys'],
+    dependencies=[fastapi.Depends(_helpers.guard_internal_service_accounts)],
 )
 
 

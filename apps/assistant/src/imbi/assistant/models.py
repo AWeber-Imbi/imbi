@@ -16,6 +16,10 @@ class Conversation(pydantic.BaseModel):
 
     id: str = pydantic.Field(default_factory=lambda: str(uuid.uuid4()))
     user_email: str
+    #: The organization the conversation is in. Every query matches on
+    #: it, so an older conversation without one (see
+    #: ``imbi.api.conversation_orgs``) never loads.
+    org_id: str
     title: str | None = None
     created_at: datetime.datetime
     updated_at: datetime.datetime

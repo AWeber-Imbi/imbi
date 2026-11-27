@@ -13,6 +13,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { useOrganization } from '@/contexts/OrganizationContext'
 import {
   newAssistantConversation,
   openAssistantConversation,
@@ -41,6 +42,7 @@ export function AssistantPanel() {
   const isOpen = useAssistantStore((s) => s.isExpanded)
   const setOpen = useAssistantStore((s) => s.setExpanded)
   const conversationId = useAssistantStore((s) => s.currentConversationId)
+  const orgSlug = useOrganization().selectedOrganization?.slug
   // The full-page assistant shows the same conversation.
   const onAssistantPage = pathname.startsWith('/assistant')
   const visible = isOpen && !onAssistantPage
@@ -113,7 +115,8 @@ export function AssistantPanel() {
               <DropdownMenuItem
                 key={c.id}
                 onClick={() =>
-                  openAssistantConversation(c.id).catch(() =>
+                  orgSlug &&
+                  openAssistantConversation(orgSlug, c.id).catch(() =>
                     toast.error('Could not open that conversation.'),
                   )
                 }
@@ -128,7 +131,7 @@ export function AssistantPanel() {
         </DropdownMenu>
         <Button
           aria-label="New conversation"
-          onClick={newAssistantConversation}
+          onClick={() => orgSlug && newAssistantConversation(orgSlug)}
           size="icon"
           title="New conversation"
           variant="ghost"

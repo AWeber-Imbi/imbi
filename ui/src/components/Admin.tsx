@@ -21,6 +21,7 @@ import {
   MessagesSquare,
   Network,
   Puzzle,
+  Server,
   Shield,
   SlidersHorizontal,
   StickyNote,
@@ -37,7 +38,6 @@ import { Button } from '@/components/ui/button'
 import { useOrganization } from '@/contexts/OrganizationContext'
 
 import { AdminOverview } from './admin/AdminOverview'
-import { AssistantManagement } from './admin/AssistantManagement'
 import { AuthProvidersManagement } from './admin/AuthProvidersManagement'
 import { BlueprintManagement } from './admin/BlueprintManagement'
 import { DefaultSettingsManagement } from './admin/DefaultSettingsManagement'
@@ -47,6 +47,7 @@ import { GraphQueryManagement } from './admin/GraphQueryManagement'
 import { IntegrationsManagement } from './admin/integrations/IntegrationsManagement'
 import { LinkDefinitionManagement } from './admin/LinkDefinitionManagement'
 import { MaintenanceManagement } from './admin/MaintenanceManagement'
+import { McpServerManagement } from './admin/McpServerManagement'
 import { OrganizationManagement } from './admin/OrganizationManagement'
 import { PluginsManagement } from './admin/PluginsManagement'
 import { ProjectTypeManagement } from './admin/ProjectTypeManagement'
@@ -185,6 +186,15 @@ const SECTIONS: SectionDef[] = [
     scope: 'org',
   },
   {
+    component: McpServerManagement,
+    description: 'MCP servers whose tools the assistant and Slack bot use',
+    group: 'Connections',
+    icon: Server,
+    id: 'mcp-servers',
+    label: 'MCP Servers',
+    scope: 'org',
+  },
+  {
     component: UserManagement,
     description: 'Manage user accounts and administrators',
     group: 'Access',
@@ -240,7 +250,7 @@ const SECTIONS: SectionDef[] = [
   },
   {
     component: AssistantManagement,
-    description: 'Configure the AI assistant and its MCP servers',
+    description: 'Configure the AI assistant prompt and model',
     group: 'AI',
     icon: MessagesSquare,
     id: 'assistant',
@@ -479,6 +489,10 @@ export function Admin() {
       </div>
     </div>
   )
+}
+
+function AssistantManagement() {
+  return <ServicePromptTab label="Assistant" service="imbi-assistant" />
 }
 
 function SlackbotManagement() {

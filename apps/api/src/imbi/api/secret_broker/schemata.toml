@@ -66,6 +66,10 @@ grantable = "BOOLEAN NOT NULL DEFAULT FALSE"
 # imbi-api reads such a binding, for the listed consumer bindings; no
 # grant gives it to a task.
 provider_key_usage = "JSONB"
+# The MCP servers that may use the binding as their credential:
+# {"servers": [<MCPServer id>, ...]}. Only imbi-api reads it, for the
+# assistant and the Slack bot of the server's organization.
+mcp_server_usage = "JSONB"
 created_by = "TEXT NOT NULL"
 created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 updated_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"

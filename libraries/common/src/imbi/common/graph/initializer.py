@@ -44,6 +44,11 @@ async def initialize() -> None:
                 schemata,
             )
             await _backfill_tag_org_id(cursor, postgres.graph_name)
+            await _drop_retired_indexes(
+                cursor,
+                postgres.graph_name,
+                schemata,
+            )
             await _create_vlabel_indexes(
                 cursor,
                 postgres.graph_name,
@@ -150,6 +155,21 @@ async def _backfill_tag_org_id(
             ' $$) AS (n agtype)',
         ).format(graph=sql.Literal(graph_name)),
     )
+
+
+async def _drop_retired_indexes(
+    cursor: psycopg.AsyncCursor[typing.Any],
+    graph_name: str,
+    schemata: dict[str, typing.Any],
+) -> None:
+    """Drop the indexes that a later schema replaced."""
+    for idx_name in schemata.get('retired_indexes', []):
+        await cursor.execute(
+            sql.SQL('DROP INDEX IF EXISTS {schema}.{idx_name}').format(
+                schema=sql.Identifier(graph_name),
+                idx_name=sql.Identifier(idx_name),
+            ),
+        )
 
 
 async def _create_vlabel_indexes(

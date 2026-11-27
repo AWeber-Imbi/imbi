@@ -116,6 +116,14 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'delete',
         'Delete MCP servers',
     ),
+    # Only the imbi-assistant and imbi-slackbot service roles have it:
+    # it reads the secrets of an MCP server's bindings.
+    (
+        'mcp_server:credential',
+        'mcp_server',
+        'credential',
+        'Get the secret values of MCP servers that use secret bindings',
+    ),
     # AI provider and model catalog. ``credentials`` is deliberately
     # separate from ``update``: adjusting a model's temperature must not
     # imply the right to replace the organization's production API key.
@@ -1150,18 +1158,18 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
         common_permissions.ASSISTANT_ACCOUNT,
         'Imbi Assistant',
         'Service role for imbi-assistant: get the token of its AI '
-        'provider (WIF plan 4.6)',
+        'provider (WIF plan 4.6) and the credentials of MCP servers',
         900,
-        ['ai_provider:token'],
+        ['ai_provider:token', 'mcp_server:credential'],
         False,
     ),
     (
         common_permissions.SLACKBOT_ACCOUNT,
         'Imbi Slackbot',
         'Service role for imbi-slackbot: get the token of its AI '
-        'provider (WIF plan 4.6)',
+        'provider (WIF plan 4.6) and the credentials of MCP servers',
         900,
-        ['ai_provider:token'],
+        ['ai_provider:token', 'mcp_server:credential'],
         False,
     ),
 ]

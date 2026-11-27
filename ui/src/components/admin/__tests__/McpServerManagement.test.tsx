@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { render, screen, waitFor } from '@/test/utils'
 import type { MCPServer } from '@/types'
@@ -11,6 +11,11 @@ vi.mock('@/api/endpoints', () => ({
   testMcpServer: vi.fn(),
   testMcpServerConfig: vi.fn(),
   updateMcpServer: vi.fn(),
+}))
+
+// fallow-ignore-next-line unresolved-import
+vi.mock('@/contexts/OrganizationContext', () => ({
+  useOrganization: () => ({ selectedOrganization: { slug: 'acme' } }),
 }))
 
 const sampleServer = (overrides: Partial<MCPServer> = {}): MCPServer => ({
@@ -32,22 +37,18 @@ const sampleServer = (overrides: Partial<MCPServer> = {}): MCPServer => ({
   ...overrides,
 })
 
-describe('AssistantManagement', () => {
-  // Load the component once, outside the 5 s test timeout. On CI the
-  // cold import of the CodeMirror prompt editor takes longer than that.
-  beforeAll(async () => {
-    await import('../AssistantManagement')
-  }, 60_000)
-
-  it('lists configured servers with status and the sub-tabs', async () => {
+describe('McpServerManagement', () => {
+  it('lists the servers of the organization with status', async () => {
     const endpoints = await import('@/api/endpoints')
     vi.mocked(endpoints.listMcpServers).mockResolvedValue([sampleServer()])
-    const { AssistantManagement } = await import('../AssistantManagement')
-    render(<AssistantManagement />)
+    const { McpServerManagement } = await import('../McpServerManagement')
+    render(<McpServerManagement />)
 
     await waitFor(() => expect(screen.getByText('GitHub')).toBeInTheDocument())
-    expect(screen.getByText('MCP Servers')).toBeInTheDocument()
-    expect(screen.getByText('Prompt')).toBeInTheDocument()
+    expect(endpoints.listMcpServers).toHaveBeenCalledWith(
+      'acme',
+      expect.anything(),
+    )
     expect(screen.getByText('Healthy')).toBeInTheDocument()
     expect(screen.getByText('mcp.github.com/v1/stream')).toBeInTheDocument()
     expect(
@@ -58,8 +59,8 @@ describe('AssistantManagement', () => {
   it('renders an empty state when no servers are configured', async () => {
     const endpoints = await import('@/api/endpoints')
     vi.mocked(endpoints.listMcpServers).mockResolvedValue([])
-    const { AssistantManagement } = await import('../AssistantManagement')
-    render(<AssistantManagement />)
+    const { McpServerManagement } = await import('../McpServerManagement')
+    render(<McpServerManagement />)
 
     await waitFor(() =>
       expect(screen.getByText('No MCP servers configured')).toBeInTheDocument(),
@@ -71,8 +72,8 @@ describe('AssistantManagement', () => {
     vi.mocked(endpoints.listMcpServers).mockResolvedValue([
       sampleServer({ enabled: false, status: 'healthy' }),
     ])
-    const { AssistantManagement } = await import('../AssistantManagement')
-    render(<AssistantManagement />)
+    const { McpServerManagement } = await import('../McpServerManagement')
+    render(<McpServerManagement />)
 
     // "Disabled" also labels a filter chip (a <button>); scope to the
     // status pill, which is a <div>.

@@ -15,13 +15,15 @@ LOGGER = logging.getLogger(__name__)
 async def create_conversation(
     db: graph.Graph,
     user_email: str,
+    org_id: str,
     model: str,
 ) -> models.Conversation:
-    """Create a new conversation."""
+    """Create a new conversation in an organization."""
     now = datetime.datetime.now(datetime.UTC)
     conversation = models.Conversation(
         id=str(uuid.uuid4()),
         user_email=user_email,
+        org_id=org_id,
         created_at=now,
         updated_at=now,
         model=model,
@@ -30,6 +32,7 @@ async def create_conversation(
     CREATE (c:Conversation {{
         id: {id},
         user_email: {user_email},
+        org_id: {org_id},
         title: {title},
         created_at: {created_at},
         updated_at: {updated_at},
@@ -41,6 +44,7 @@ async def create_conversation(
     params = {
         'id': conversation.id,
         'user_email': user_email,
+        'org_id': org_id,
         'title': conversation.title,
         'created_at': now.isoformat(),
         'updated_at': now.isoformat(),
@@ -75,16 +79,19 @@ async def get_conversation(
     db: graph.Graph,
     conversation_id: str,
     user_email: str,
+    org_id: str,
 ) -> models.Conversation | None:
-    """Get a conversation by ID, enforcing user ownership."""
+    """Get a conversation by ID, enforcing user ownership and the
+    organization."""
     query = """
     MATCH (c:Conversation {{id: {id},
-                            user_email: {user_email}}})
+                            user_email: {user_email},
+                            org_id: {org_id}}})
     RETURN c
     """
     records = await db.execute(
         query,
-        {'id': conversation_id, 'user_email': user_email},
+        {'id': conversation_id, 'user_email': user_email, 'org_id': org_id},
         ['c'],
     )
     if not records:
@@ -97,20 +104,23 @@ async def get_conversation(
 async def list_conversations(
     db: graph.Graph,
     user_email: str,
+    org_id: str,
     limit: int = 20,
     offset: int = 0,
     include_archived: bool = False,
 ) -> list[models.Conversation]:
-    """List conversations for a user."""
+    """List the conversations of a user in an organization."""
     if include_archived:
         query = """
-        MATCH (c:Conversation {{user_email: {user_email}}})
+        MATCH (c:Conversation {{user_email: {user_email},
+                                org_id: {org_id}}})
         RETURN c
         ORDER BY c.updated_at DESC
         """
     else:
         query = """
         MATCH (c:Conversation {{user_email: {user_email},
+                                org_id: {org_id},
                                 is_archived: false}})
         RETURN c
         ORDER BY c.updated_at DESC
@@ -119,7 +129,7 @@ async def list_conversations(
     # fetch all and slice in Python.
     records = await db.execute(
         query,
-        {'user_email': user_email},
+        {'user_email': user_email, 'org_id': org_id},
         ['c'],
     )
     conversations: list[models.Conversation] = []
@@ -253,13 +263,15 @@ async def update_conversation_title(
     db: graph.Graph,
     conversation_id: str,
     user_email: str,
+    org_id: str,
     title: str,
 ) -> bool:
     """Update a conversation's title."""
     now = datetime.datetime.now(datetime.UTC)
     query = """
     MATCH (c:Conversation {{id: {id},
-                            user_email: {user_email}}})
+                            user_email: {user_email},
+                            org_id: {org_id}}})
     SET c.title = {title},
         c.updated_at = {updated_at}
     RETURN c.id AS id
@@ -269,6 +281,7 @@ async def update_conversation_title(
         {
             'id': conversation_id,
             'user_email': user_email,
+            'org_id': org_id,
             'title': title,
             'updated_at': now.isoformat(),
         },
@@ -281,12 +294,14 @@ async def archive_conversation(
     db: graph.Graph,
     conversation_id: str,
     user_email: str,
+    org_id: str,
 ) -> bool:
     """Archive a conversation."""
     now = datetime.datetime.now(datetime.UTC)
     query = """
     MATCH (c:Conversation {{id: {id},
-                            user_email: {user_email}}})
+                            user_email: {user_email},
+                            org_id: {org_id}}})
     SET c.is_archived = true,
         c.updated_at = {updated_at}
     RETURN c.id AS id
@@ -296,6 +311,7 @@ async def archive_conversation(
         {
             'id': conversation_id,
             'user_email': user_email,
+            'org_id': org_id,
             'updated_at': now.isoformat(),
         },
         ['id'],
@@ -307,18 +323,21 @@ async def delete_conversation(
     db: graph.Graph,
     conversation_id: str,
     user_email: str,
+    org_id: str,
 ) -> bool:
     """Delete a conversation and all its messages."""
     # Check existence first — count after DETACH DELETE
     # is undefined in openCypher / AGE.
     check = """
     MATCH (c:Conversation {{id: {id},
-                            user_email: {user_email}}})
+                            user_email: {user_email},
+                            org_id: {org_id}}})
     RETURN c.id AS id
     """
     params = {
         'id': conversation_id,
         'user_email': user_email,
+        'org_id': org_id,
     }
     found = await db.execute(check, params, ['id'])
     if not found:
@@ -326,7 +345,8 @@ async def delete_conversation(
 
     delete_query = """
     MATCH (c:Conversation {{id: {id},
-                            user_email: {user_email}}})
+                            user_email: {user_email},
+                            org_id: {org_id}}})
     OPTIONAL MATCH (c)-[:CONTAINS]->(m:Message)
     DETACH DELETE c, m
     RETURN 1 AS ok
@@ -343,14 +363,19 @@ async def delete_conversation(
 async def get_current_conversation(
     db: graph.Graph,
     user_email: str,
+    org_id: str,
 ) -> models.Conversation | None:
-    """Get the conversation the user has open in every browser."""
+    """Get the conversation of the organization that the user has
+    open in every browser."""
     query = """
     MATCH (c:Conversation {{user_email: {user_email},
+                            org_id: {org_id},
                             is_current: true}})
     RETURN c
     """
-    records = await db.execute(query, {'user_email': user_email}, ['c'])
+    records = await db.execute(
+        query, {'user_email': user_email, 'org_id': org_id}, ['c']
+    )
     if not records:
         return None
     return models.Conversation(**graph.parse_agtype(records[0]['c']))
@@ -359,9 +384,11 @@ async def get_current_conversation(
 async def set_current_conversation(
     db: graph.Graph,
     user_email: str,
+    org_id: str,
     conversation_id: str | None,
 ) -> None:
-    """Make ``conversation_id`` the user's only current conversation.
+    """Make ``conversation_id`` the user's only current conversation
+    in the organization.
 
     ``None`` clears the flag, so every browser shows a new, empty
     conversation. Calls for one user run one at a time under an
@@ -369,13 +396,17 @@ async def set_current_conversation(
     flagged.
     """
     query = """
-    MATCH (c:Conversation {{user_email: {user_email}}})
+    MATCH (c:Conversation {{user_email: {user_email}, org_id: {org_id}}})
     WHERE c.is_current = true OR c.id = {id}
     SET c.is_current = (c.id = {id})
     RETURN c.id AS id
     """
-    params = {'user_email': user_email, 'id': conversation_id or ''}
+    params = {
+        'user_email': user_email,
+        'org_id': org_id,
+        'id': conversation_id or '',
+    }
     await db.locked(
-        f'current-conversation:{user_email}',
+        f'current-conversation:{user_email}:{org_id}',
         lambda execute: execute(query, params, ['id']),
     )

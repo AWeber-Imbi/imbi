@@ -2,7 +2,7 @@ import { useState } from 'react'
 
 import { useQuery } from '@tanstack/react-query'
 
-import { checkSecretLocator } from '@/api/endpoints'
+import { checkSecretLocator, listMcpServers } from '@/api/endpoints'
 import { toTitleCase } from '@/components/admin/blueprints/blueprint-schema-utils'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -114,10 +114,24 @@ export function BindingDialog({
     host: usage?.host ?? '',
     locator: original ? JSON.stringify(original.locator, null, 2) : '{}',
     max_ttl_seconds: String(original?.max_ttl_seconds ?? 900),
+    mcp_servers: (
+      (
+        original?.mcp_server_usage as
+          | null
+          | undefined
+          | { servers?: { id: string }[] }
+      )?.servers ?? []
+    ).map((server) => server.id),
     path: '',
     provider_id: original?.provider_id ?? '',
   }))
   type Form = typeof form
+  // The MCP servers that may use the binding as their credential.
+  const mcpServersQuery = useQuery({
+    queryFn: ({ signal }) => listMcpServers(orgSlug, signal),
+    queryKey: ['mcp-servers', orgSlug],
+  })
+  const forMcp = form.credential_class !== 'dynamic'
   const set = <K extends keyof Form>(key: K, value: Form[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }))
 
@@ -195,6 +209,10 @@ export function BindingDialog({
       grantable: form.grantable,
       locator: JSON.parse(form.locator) as unknown,
       max_ttl_seconds: ttl,
+      mcp_server_usage:
+        forMcp && form.mcp_servers.length
+          ? { servers: [...form.mcp_servers].sort() }
+          : null,
     }
     if (keyClass) {
       body.provider_key_usage = keyUsed
@@ -218,6 +236,17 @@ export function BindingDialog({
       if (!form.grantable) delete body.grantable
       return onSubmit({ ...body, provider_id: form.provider_id, reference })
     }
+    // The saved list holds each server with its pinned URLs, so compare
+    // the ids only. An unchanged list is not sent: the API keeps the pins.
+    const savedIds = (
+      (original.mcp_server_usage as null | { servers?: { id: string }[] })
+        ?.servers ?? []
+    )
+      .map((server) => server.id)
+      .sort()
+    const mcpUsage = body.mcp_server_usage as null | { servers: string[] }
+    if ((mcpUsage?.servers ?? []).join() === savedIds.join())
+      delete body.mcp_server_usage
     const changed = changedFields(body, original)
     if (!Object.keys(changed).length) return onClose()
     onSubmit(changed)
@@ -407,6 +436,29 @@ export function BindingDialog({
               teams
             </span>
           </label>
+          {forMcp && !!mcpServersQuery.data?.length && (
+            <ChipGroup
+              hint="the assistant and the Slack bot can use it as the server's credential"
+              label="MCP servers"
+              required={false}
+            >
+              {mcpServersQuery.data.map((server) => (
+                <Chip
+                  checked={form.mcp_servers.includes(server.id)}
+                  key={server.id}
+                  label={server.name}
+                  onChange={(on) =>
+                    set(
+                      'mcp_servers',
+                      on
+                        ? [...form.mcp_servers, server.id]
+                        : form.mcp_servers.filter((id) => id !== server.id),
+                    )
+                  }
+                />
+              ))}
+            </ChipGroup>
+          )}
           {keyClass && (
             <fieldset className="border-tertiary space-y-3 rounded-lg border p-3.5">
               <legend className="px-1 text-sm font-medium">

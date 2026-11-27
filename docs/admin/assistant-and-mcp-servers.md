@@ -1,15 +1,14 @@
 # Assistant and MCP Servers
 
-**Admin > Global Admin > Assistant** configures the AI assistant
-(imbi-assistant) and the external MCP servers. The **Admin** item shows
-only for platform administrators. The page has two tabs:
+Two admin pages configure the AI assistant (imbi-assistant):
 
-| Tab | What it configures |
-|---|---|
-| **MCP Servers** | The external MCP servers. The assistant and the Slack bot use their tools |
-| **Prompt** | The system prompt, the model, and the model parameters of the assistant |
+| Page | What it configures | Scope |
+|---|---|---|
+| **Admin > Global Admin > Assistant** | The system prompt, the model, and the model parameters of the assistant | Every organization |
+| **Admin > &lt;Org&gt; Admin > MCP Servers** | The external MCP servers. The assistant and the Slack bot use their tools | One organization |
 
-These settings are global. They apply to every organization.
+An MCP server belongs to one organization. Its slug is unique in that
+organization. Only the members of the organization see it.
 
 ## Permissions
 
@@ -21,15 +20,17 @@ These settings are global. They apply to every organization.
 | `mcp_server:read` | View MCP servers | `admin` |
 | `mcp_server:update` | Update MCP servers | `admin` |
 | `mcp_server:delete` | Delete MCP servers | `admin` |
+| `mcp_server:credential` | Get the secret values of MCP servers that use secret bindings | `admin`, `imbi-assistant`, `imbi-slackbot` |
 
 <!-- END GENERATED -->
 
-`mcp_server:update` also lets you test a server. The **Prompt** tab uses
-the prompt permissions. See [Prompts](prompts.md).
+The API checks these permissions in the organization of the server.
+`mcp_server:update` also lets you test a server. The **Assistant** page
+uses the prompt permissions. See [Prompts](prompts.md).
 
 ## The assistant prompt
 
-The **Prompt** tab edits the prompt `imbi-assistant/system` in the
+The **Assistant** page edits the prompt `imbi-assistant/system` in the
 [prompt CMS](prompts.md). The prompt holds the system prompt, the model,
 and the model parameters.
 
@@ -41,7 +42,7 @@ imbi-assistant reads the prompt from the reference in
    prompt.
 3. If neither label exists, the assistant uses its built-in prompt.
 
-If the prompt does not exist, the tab shows **Create assistant prompt**
+If the prompt does not exist, the page shows **Create assistant prompt**
 (needs `prompt:create`). You can also run `imbi-api setup-prompts`. For
 versions, labels, the environment override, and the model settings, see
 [Prompts](prompts.md).
@@ -49,10 +50,14 @@ versions, labels, the environment override, and the model settings, see
 ## MCP servers
 
 An MCP server gives tools to the assistant and the
-[Slack bot](../slackbot/index.md). imbi-assistant and imbi-slackbot use
-every enabled server. When you disable a server, both services stop
-using it at the next message. imbi-slackbot connects to the servers at
-startup, so restart it after you add a server or change its settings.
+[Slack bot](../slackbot/index.md). A conversation uses only the enabled
+servers of its organization: in the assistant, the organization of the
+conversation; in Slack, the organization of the workspace. Each service
+connects to the servers of an organization at the first message in that
+organization. When you disable a server, both services stop using it at
+the next message. After you add a server or change its settings, ask the
+assistant to refresh its tools (the assistant only), or restart
+imbi-slackbot.
 Imbi connects to the server over streamable HTTP. The
 tool names in the assistant are `mcp_<tool prefix>_<tool>`. If the
 connection to a server fails, the next call to one of its tools opens
@@ -63,8 +68,9 @@ not use these servers. See
 
 ### Add an MCP server
 
-1. Open **Admin > Global Admin > Assistant**.
-2. On the **MCP Servers** tab, click **Add MCP Server**.
+1. Select the organization, then open
+   **Admin > &lt;Org&gt; Admin > MCP Servers**.
+2. Click **Add MCP Server**.
 3. Enter the fields in the tables below.
 4. Optional: click **Test connection**.
 5. Click **Create Server**.
@@ -100,6 +106,18 @@ them. The API never returns them. It returns only whether a value is set.
 The assistant uses these stored values. See
 [MCP servers and agents](#mcp-servers-and-agents).
 
+The header value or the client secret can instead come from a secret
+binding of the organization: select the binding as its source. The
+binding must also list the server (see
+[A binding for MCP servers](secrets.md#a-binding-for-mcp-servers)), and
+imbi-assistant and imbi-slackbot must have their API tokens
+(`IMBI_ASSISTANT_API_TOKEN`, `IMBI_SLACKBOT_API_TOKEN`). They get the
+value from imbi-api each time they connect. **Test connection** works
+only for a saved server that uses a binding. After you change the URL,
+the token URL, the auth type, or **Verify SSL** of such a server, a user
+with `secret_binding:write` must remove the server from the binding,
+save, add it again, and save, before the server can get the secret.
+
 **Ignored tools**
 
 Add a tool name to hide that tool. The list offers the tools that the
@@ -112,6 +130,16 @@ Each server has a status: `unknown`, `healthy`, `degraded`, or
 tools, and saves the status, the latency, the tool count, and the error.
 The **With issues** filter shows the servers that are `degraded` or
 `unreachable`.
+
+### Servers made before organizations
+
+Before servers belonged to an organization, they were global. Run
+**Link MCP Servers to an Organization** (`mcp-server-org-backfill`) one
+time after the upgrade. When the install has one organization, it moves
+each of these servers to that organization. When the install has more
+than one organization, it moves none and logs a warning for each.
+No organization shows such a server. Create it again in the correct
+organization.
 
 ## MCP servers and agents
 
