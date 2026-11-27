@@ -184,7 +184,9 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    Organization** (`mcp-server-org-backfill`) and **Put Assistant
    Conversations in an Organization** (`conversation-org-backfill`) one
    time each. Until then, no organization shows the older servers and
-   conversations.
+   conversations. Then restart imbi-assistant and imbi-slackbot, so they
+   load the MCP servers that the backfill linked. A turn that runs before
+   the backfill keeps an empty MCP server list until the restart.
     - When the install has one organization, each MCP server goes to
       it. Otherwise imbi-api logs each server and moves none: create
       them again in the correct organization (**Admin > &lt;Org&gt;
