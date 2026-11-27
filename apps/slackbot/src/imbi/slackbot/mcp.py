@@ -15,7 +15,7 @@ import logging
 import typing
 
 import fastmcp
-import httpx
+import httpx2
 
 from imbi.common.mcp import exclude_non_ai_tools, excluded_route_maps
 from imbi.slackbot import settings
@@ -35,9 +35,7 @@ def _mcp_tool_to_anthropic(
         Dict with ``name``, ``description``, and ``input_schema`` keys.
 
     """
-    schema: dict[str, typing.Any] = (
-        tool.inputSchema if hasattr(tool, 'inputSchema') else {}
-    )
+    schema: dict[str, typing.Any] = getattr(tool, 'input_schema', {})
     return {
         'name': tool.name,
         'description': tool.description or '',
@@ -55,7 +53,7 @@ class MCPManager:
         self._server: fastmcp.FastMCP | None = None
         self._client: fastmcp.Client[typing.Any] | None = None
         self._tools: list[dict[str, typing.Any]] = []
-        self._http_client: httpx.AsyncClient | None = None
+        self._http_client: httpx2.AsyncClient | None = None
         self._initialized = False
         # The HTTP client is shared across concurrent Slack event
         # handlers and FastMCP's call_tool has no per-call header
@@ -75,12 +73,12 @@ class MCPManager:
         spec_url = f'{api_url.rstrip("/")}/openapi.json'
         LOGGER.info('Fetching OpenAPI spec from %s', spec_url)
 
-        async with httpx.AsyncClient(timeout=30) as tmp:
+        async with httpx2.AsyncClient(timeout=30) as tmp:
             response = await tmp.get(spec_url)
             response.raise_for_status()
             spec = response.json()
 
-        self._http_client = httpx.AsyncClient(
+        self._http_client = httpx2.AsyncClient(
             base_url=api_url,
             timeout=30,
         )

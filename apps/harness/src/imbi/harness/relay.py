@@ -27,7 +27,6 @@ and nothing stays open when the runner fences and exits.
 
 import contextlib
 import dataclasses
-import datetime
 import json
 import logging
 import time
@@ -35,7 +34,7 @@ import typing
 import uuid
 
 import claude_agent_sdk as sdk
-import httpx
+import httpx2
 import jwt
 from mcp import types
 from mcp.client import session as mcp_session
@@ -71,7 +70,7 @@ def mapped(tool_map: Body) -> set[str]:
     }
 
 
-class Bearer(httpx.Auth):
+class Bearer(httpx2.Auth):
     """The current token on each request: a renewed token applies at
     once."""
 
@@ -79,8 +78,8 @@ class Bearer(httpx.Auth):
         self.token = token
 
     def auth_flow(
-        self, request: httpx.Request
-    ) -> abc.Generator[httpx.Request, httpx.Response]:
+        self, request: httpx2.Request
+    ) -> abc.Generator[httpx2.Request, httpx2.Response]:
         request.headers['Authorization'] = f'Bearer {self.token()}'
         yield request
 
@@ -104,7 +103,7 @@ class Relay:
     def __init__(
         self,
         url: str,
-        auth: httpx.Auth | None,
+        auth: httpx2.Auth | None,
         tool_map: Body,
         *,
         stopped: abc.Callable[[], bool] = lambda: False,
@@ -120,19 +119,21 @@ class Relay:
     async def _session(
         self,
     ) -> abc.AsyncGenerator[mcp_session.ClientSession]:
-        # No redirects: the token goes to the configured origin only.
+        # The SDK follows a redirect only on the same origin, so the
+        # token goes to the configured origin only.
         async with (
-            httpx.AsyncClient(
+            httpx2.AsyncClient(
                 auth=self.auth,
-                follow_redirects=False,
                 # Past the call deadline, so that the deadline decides.
-                timeout=httpx.Timeout(
+                timeout=httpx2.Timeout(
                     safeguards.CALL_TIMEOUT + 10, connect=10
                 ),
             ) as client,
+            # No SSE event cap, as with mcp 1: the SDK default of 1 MiB
+            # fails a large result.
             streamable_http.streamable_http_client(
-                self.url, http_client=client
-            ) as (read, write, _),
+                self.url, http_client=client, max_sse_event_size=None
+            ) as (read, write),
             mcp_session.ClientSession(read, write) as session,
         ):
             await session.initialize()
@@ -151,14 +152,14 @@ class Relay:
                 or not safeguards.TOOL_NAME.fullmatch(tool.name)
             ):
                 continue
-            properties: Body = tool.inputSchema.get('properties') or {}
+            properties: Body = tool.input_schema.get('properties') or {}
             annotations = tool.annotations
             description = tool.description or tool.name
             self.tools[tool.name] = _Tool(
                 name=tool.name,
                 description=description,
-                schema=tool.inputSchema,
-                read_only=bool(annotations and annotations.readOnlyHint),
+                schema=tool.input_schema,
+                read_only=bool(annotations and annotations.read_only_hint),
                 idempotency_key=next(
                     (k for k in _IDEMPOTENCY_KEYS if k in properties), None
                 ),
@@ -178,8 +179,8 @@ class Relay:
 
     def sdk_tools(self) -> list[sdk.SdkMcpTool[typing.Any]]:
         def make(tool: _Tool) -> sdk.SdkMcpTool[typing.Any]:
-            # The CLI runs tools with readOnlyHint in parallel (#899).
-            hints = types.ToolAnnotations(readOnlyHint=True)
+            # The CLI runs tools with read_only_hint in parallel (#899).
+            hints = types.ToolAnnotations(read_only_hint=True)
 
             @sdk.tool(
                 tool.name,
@@ -226,7 +227,7 @@ class Relay:
                 jti = self._jti()
                 try:
                     result = await self._until_stopped(name, arguments)
-                    status = 'error' if result.isError else 'ok'
+                    status = 'error' if result.is_error else 'ok'
                     break
                 except Unavailable:
                     if attempt == retries:
@@ -268,9 +269,7 @@ class Relay:
                 return await session.call_tool(
                     name,
                     arguments,
-                    read_timeout_seconds=datetime.timedelta(
-                        seconds=safeguards.CALL_TIMEOUT + 10
-                    ),
+                    read_timeout_seconds=safeguards.CALL_TIMEOUT + 10,
                 )
         except safeguards.ERRORS as error:
             raise Unavailable(safeguards.reason(error)) from error

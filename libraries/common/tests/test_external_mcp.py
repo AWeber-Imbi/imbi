@@ -9,7 +9,7 @@ import unittest
 from unittest import mock
 
 import anyio
-import httpx
+import httpx2
 
 from imbi.common import external_mcp
 from imbi.common import models as common_models
@@ -35,7 +35,7 @@ def _make_tool(
     tool = mock.MagicMock()
     tool.name = name
     tool.description = description
-    tool.inputSchema = schema if schema is not None else {'type': 'object'}
+    tool.input_schema = schema if schema is not None else {'type': 'object'}
     return tool
 
 
@@ -134,10 +134,10 @@ class OAuthClientCredentialsAuthTestCase(
         mock_client.__aenter__.return_value = mock_client
 
         with mock.patch(
-            'imbi.common.external_mcp.httpx.AsyncClient',
+            'imbi.common.external_mcp.httpx2.AsyncClient',
             return_value=mock_client,
         ):
-            request = httpx.Request('GET', 'https://mcp.example.com')
+            request = httpx2.Request('GET', 'https://mcp.example.com')
             flow = auth.async_auth_flow(request)
             sent = await flow.__anext__()
             self.assertEqual(sent.headers['Authorization'], 'Bearer tok-123')
@@ -299,7 +299,7 @@ class ExecuteToolTestCase(unittest.IsolatedAsyncioTestCase):
         block.text = '{"ok": true}'
         call_result = mock.MagicMock()
         call_result.content = [block]
-        call_result.isError = False
+        call_result.is_error = False
         session.call_tool.return_value = call_result
         manager._sessions['svc'] = session
         manager._tool_routes['mcp_svc_thing'] = ('svc', 'thing')
@@ -317,7 +317,7 @@ class ExecuteToolTestCase(unittest.IsolatedAsyncioTestCase):
         block.text = 'kaboom'
         call_result = mock.MagicMock()
         call_result.content = [block]
-        call_result.isError = True
+        call_result.is_error = True
         session.call_tool.return_value = call_result
         manager._sessions['svc'] = session
         manager._tool_routes['mcp_svc_thing'] = ('svc', 'thing')
@@ -352,7 +352,7 @@ class ReconnectTestCase(unittest.IsolatedAsyncioTestCase):
         block = mock.MagicMock()
         block.text = 'ok'
         self.session.call_tool.return_value = mock.MagicMock(
-            content=[block], isError=False
+            content=[block], is_error=False
         )
 
     async def test_reconnects_and_retries_call(self) -> None:
@@ -446,7 +446,6 @@ class OpenSessionTestCase(unittest.IsolatedAsyncioTestCase):
         transport.__aenter__.return_value = (
             mock.MagicMock(),
             mock.MagicMock(),
-            mock.MagicMock(),
         )
         with (
             mock.patch(
@@ -477,7 +476,7 @@ class OpenSessionTestCase(unittest.IsolatedAsyncioTestCase):
         await self._run(_make_server(verify_ssl=True))
         mock_factory.assert_called_once()
 
-    @mock.patch('imbi.common.external_mcp.httpx.AsyncClient')
+    @mock.patch('imbi.common.external_mcp.httpx2.AsyncClient')
     async def test_no_verify_ssl(self, mock_client: mock.MagicMock) -> None:
         await self._run(_make_server(verify_ssl=False))
         mock_client.assert_called_once()
@@ -485,12 +484,12 @@ class OpenSessionTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_initialize_failure_propagates(self) -> None:
         manager = external_mcp.ExternalMCPManager()
         transport = mock.MagicMock()
-        transport.__aenter__.side_effect = httpx.ConnectError('refused')
+        transport.__aenter__.side_effect = httpx2.ConnectError('refused')
         with mock.patch(
             'imbi.common.external_mcp.streamable_http.streamable_http_client',
             return_value=transport,
         ):
-            with self.assertRaises(httpx.ConnectError):
+            with self.assertRaises(httpx2.ConnectError):
                 await manager._open_session(_make_server())
         self.assertEqual(manager._sessions, {})
 
@@ -503,23 +502,23 @@ class SessionIsolationTestCase(unittest.IsolatedAsyncioTestCase):
 
         async def bad_gateway() -> None:
             await fail.wait()
-            request = httpx.Request('POST', 'https://mcp.example.com/mcp')
-            raise httpx.HTTPStatusError(
+            request = httpx2.Request('POST', 'https://mcp.example.com/mcp')
+            raise httpx2.HTTPStatusError(
                 '502 Bad Gateway',
                 request=request,
-                response=httpx.Response(502, request=request),
+                response=httpx2.Response(502, request=request),
             )
 
         @contextlib.asynccontextmanager
         async def fake_transport(
             *_args: object, **_kwargs: object
-        ) -> collections.abc.AsyncGenerator[tuple[object, object, object]]:
+        ) -> collections.abc.AsyncGenerator[tuple[object, object]]:
             # Mirrors streamable_http_client: a task group whose child
             # raises from handle_request_async on a 502.
             async with anyio.create_task_group() as tg:
                 tg.start_soon(bad_gateway)
                 try:
-                    yield mock.MagicMock(), mock.MagicMock(), mock.MagicMock()
+                    yield mock.MagicMock(), mock.MagicMock()
                 finally:
                     tg.cancel_scope.cancel()
 

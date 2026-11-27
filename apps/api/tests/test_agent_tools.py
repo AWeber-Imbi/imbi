@@ -5,7 +5,7 @@ import typing
 import unittest
 from unittest import mock
 
-import httpx
+import httpx2
 from mcp import types as mcp_types
 
 from imbi.api import agent_tools, app
@@ -151,13 +151,13 @@ class CatalogTestCase(unittest.IsolatedAsyncioTestCase):
         )
 
     def test_error_codes(self) -> None:
-        request = httpx.Request('POST', 'https://mcp.example.com/mcp')
+        request = httpx2.Request('POST', 'https://mcp.example.com/mcp')
 
-        def status(code: int) -> httpx.HTTPStatusError:
-            return httpx.HTTPStatusError(
+        def status(code: int) -> httpx2.HTTPStatusError:
+            return httpx2.HTTPStatusError(
                 'bad token',
                 request=request,
-                response=httpx.Response(code, request=request),
+                response=httpx2.Response(code, request=request),
             )
 
         wrapped = RuntimeError('session failed')
@@ -167,7 +167,7 @@ class CatalogTestCase(unittest.IsolatedAsyncioTestCase):
             (ExceptionGroup('task group', [status(401)]), 'auth_failed'),
             (wrapped, 'auth_failed'),
             (status(500), 'unreachable'),
-            (httpx.ReadTimeout('slow', request=request), 'timeout'),
+            (httpx2.ReadTimeout('slow', request=request), 'timeout'),
             (ExceptionGroup('task group', [ValueError('x')]), 'unreachable'),
         ):
             with self.subTest(err=err):

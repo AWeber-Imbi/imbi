@@ -16,7 +16,7 @@ from unittest import mock
 import jwt
 import uvicorn
 from mcp import types as mcp_types
-from mcp.server import fastmcp
+from mcp.server import mcpserver
 
 from imbi.harness import relay, safeguards
 
@@ -24,10 +24,10 @@ SEEN: list[str] = []
 CALLS: list[tuple[str, dict[str, typing.Any]]] = []
 
 
-def _server() -> fastmcp.FastMCP:
-    mcp = fastmcp.FastMCP('imbi', stateless_http=True, json_response=True)
+def _server() -> mcpserver.MCPServer:
+    mcp = mcpserver.MCPServer('imbi')
 
-    @mcp.tool(annotations=mcp_types.ToolAnnotations(readOnlyHint=True))
+    @mcp.tool(annotations=mcp_types.ToolAnnotations(read_only_hint=True))
     def list_projects(org: str) -> str:
         """List the projects."""
         CALLS.append(('list_projects', {'org': org}))
@@ -91,7 +91,11 @@ class _ServerTestCase(unittest.IsolatedAsyncioTestCase):
     @classmethod
     def setUpClass(cls) -> None:
         port = _free_port()
-        app = _Headers(_server().streamable_http_app())
+        app = _Headers(
+            _server().streamable_http_app(
+                stateless_http=True, json_response=True
+            )
+        )
         cls.server = uvicorn.Server(
             uvicorn.Config(app, host='127.0.0.1', port=port, log_level='error')
         )
@@ -150,7 +154,7 @@ class RelayTestCase(_ServerTestCase):
         self.assertEqual(len(self.relay.sdk_tools()), 4)
         hints = {t.name: t.annotations for t in self.relay.sdk_tools()}
         read_hint = hints['list_projects']
-        self.assertTrue(read_hint and read_hint.readOnlyHint)
+        self.assertTrue(read_hint and read_hint.read_only_hint)
         self.assertIsNone(hints['update_project'])
         self.assertTrue(all(h == f'Bearer {self.token}' for h in SEEN))
 

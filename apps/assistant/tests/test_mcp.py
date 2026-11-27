@@ -8,7 +8,7 @@ import typing
 import unittest
 from unittest import mock
 
-import httpx
+import httpx2
 
 from imbi.assistant import mcp, settings
 from imbi.common.mcp import exclude_non_ai_tools
@@ -21,7 +21,7 @@ class MCPToolToAnthropicTestCase(unittest.TestCase):
         tool = mock.MagicMock()
         tool.name = 'list_projects'
         tool.description = 'List all projects'
-        tool.inputSchema = {
+        tool.input_schema = {
             'type': 'object',
             'properties': {'limit': {'type': 'integer'}},
         }
@@ -84,7 +84,7 @@ class MCPManagerTestCase(unittest.IsolatedAsyncioTestCase):
         await manager.aclose()
         self.assertFalse(manager.is_initialized)
 
-    @mock.patch('imbi.assistant.mcp.httpx.AsyncClient')
+    @mock.patch('imbi.assistant.mcp.httpx2.AsyncClient')
     @mock.patch('imbi.assistant.mcp.fastmcp.Client')
     @mock.patch('imbi.assistant.mcp.fastmcp.FastMCP.from_openapi')
     async def test_initialize_success(
@@ -129,7 +129,7 @@ class MCPManagerTestCase(unittest.IsolatedAsyncioTestCase):
             mock_tool = mock.MagicMock()
             mock_tool.name = 'get_projects'
             mock_tool.description = 'Get projects'
-            mock_tool.inputSchema = {
+            mock_tool.input_schema = {
                 'type': 'object',
                 'properties': {},
             }
@@ -157,7 +157,7 @@ class MCPManagerTestCase(unittest.IsolatedAsyncioTestCase):
             await manager.aclose()
             self.assertFalse(manager.is_initialized)
 
-    @mock.patch('imbi.assistant.mcp.httpx.AsyncClient')
+    @mock.patch('imbi.assistant.mcp.httpx2.AsyncClient')
     @mock.patch('imbi.assistant.mcp.fastmcp.Client')
     @mock.patch('imbi.assistant.mcp.fastmcp.FastMCP.from_openapi')
     async def test_initialize_passes_ai_exclusion_hook(
@@ -207,7 +207,7 @@ class MCPManagerTestCase(unittest.IsolatedAsyncioTestCase):
 
             await manager.aclose()
 
-    @mock.patch('imbi.assistant.mcp.httpx.AsyncClient')
+    @mock.patch('imbi.assistant.mcp.httpx2.AsyncClient')
     @mock.patch('imbi.assistant.mcp.fastmcp.Client')
     @mock.patch('imbi.assistant.mcp.fastmcp.FastMCP.from_openapi')
     async def test_execute_tool_success(
@@ -283,7 +283,7 @@ class MCPManagerTestCase(unittest.IsolatedAsyncioTestCase):
 
             await manager.aclose()
 
-    @mock.patch('imbi.assistant.mcp.httpx.AsyncClient')
+    @mock.patch('imbi.assistant.mcp.httpx2.AsyncClient')
     @mock.patch('imbi.assistant.mcp.fastmcp.Client')
     @mock.patch('imbi.assistant.mcp.fastmcp.FastMCP.from_openapi')
     async def test_execute_tool_error(
@@ -352,7 +352,7 @@ class MCPManagerTestCase(unittest.IsolatedAsyncioTestCase):
 
             await manager.aclose()
 
-    @mock.patch('imbi.assistant.mcp.httpx.AsyncClient')
+    @mock.patch('imbi.assistant.mcp.httpx2.AsyncClient')
     @mock.patch('imbi.assistant.mcp.fastmcp.Client')
     @mock.patch('imbi.assistant.mcp.fastmcp.FastMCP.from_openapi')
     async def test_execute_tool_4xx_detail_propagates(
@@ -468,7 +468,7 @@ class ExecuteToolAuthIsolationTestCase(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(setattr, settings, '_assistant_settings', None)
         self.seen: dict[str, str | None] = {}
         self.b_started = asyncio.Event()
-        transport = httpx.MockTransport(self._handle)
+        transport = httpx2.MockTransport(self._handle)
         patches = [
             mock.patch.dict(
                 os.environ,
@@ -476,8 +476,8 @@ class ExecuteToolAuthIsolationTestCase(unittest.IsolatedAsyncioTestCase):
                 clear=True,
             ),
             mock.patch(
-                'imbi.assistant.mcp.httpx.AsyncClient',
-                functools.partial(httpx.AsyncClient, transport=transport),
+                'imbi.assistant.mcp.httpx2.AsyncClient',
+                functools.partial(httpx2.AsyncClient, transport=transport),
             ),
         ]
         for patch in patches:
@@ -487,18 +487,18 @@ class ExecuteToolAuthIsolationTestCase(unittest.IsolatedAsyncioTestCase):
         await self.manager.initialize()
         self.addAsyncCleanup(self.manager.aclose)
 
-    async def _handle(self, request: httpx.Request) -> httpx.Response:
+    async def _handle(self, request: httpx2.Request) -> httpx2.Response:
         if request.url.path == '/openapi.json':
-            return httpx.Response(200, json=self.SPEC)
+            return httpx2.Response(200, json=self.SPEC)
         caller = request.url.path.rsplit('/', 1)[-1]
         if caller == 'bad':
-            return httpx.Response(400, json={'detail': 'Bad Request'})
+            return httpx2.Response(400, json={'detail': 'Bad Request'})
         self.seen[caller] = request.headers.get('authorization')
         if caller == 'a':
             await asyncio.wait_for(self.b_started.wait(), timeout=5)
         else:
             self.b_started.set()
-        return httpx.Response(200, json={'caller': caller})
+        return httpx2.Response(200, json={'caller': caller})
 
     async def _call(self, caller: str, token: str | None) -> None:
         content, is_error = await self.manager.execute_tool(

@@ -14,7 +14,7 @@ import re
 import time
 import typing
 
-import httpx
+import httpx2
 from mcp import types
 from mcp.shared import exceptions as mcp_exceptions
 
@@ -29,7 +29,7 @@ RESULT_LIMIT = 256 * 1024
 TOOL_NAME = re.compile(r'[A-Za-z0-9_-]{1,64}')
 #: The errors of an MCP client session whose server is not reached or
 #: dropped the session.
-ERRORS = (httpx.HTTPError, OSError, ExceptionGroup, mcp_exceptions.McpError)
+ERRORS = (httpx2.HTTPError, OSError, ExceptionGroup, mcp_exceptions.MCPError)
 _UNTRUSTED_TAG = re.compile(r'<\s*/?\s*untrusted', re.IGNORECASE)
 
 type Body = dict[str, typing.Any]
@@ -76,9 +76,11 @@ def text(result: types.CallToolResult | None) -> str:
         if isinstance(block, types.TextContent):
             parts.append(block.text)
         else:
-            parts.append(json.dumps(block.model_dump(mode='json')))
-    if not parts and result.structuredContent is not None:
-        parts.append(json.dumps(result.structuredContent))
+            parts.append(
+                json.dumps(block.model_dump(mode='json', by_alias=True))
+            )
+    if not parts and result.structured_content is not None:
+        parts.append(json.dumps(result.structured_content))
     return '\n'.join(parts)
 
 

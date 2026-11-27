@@ -5,7 +5,7 @@ import unittest
 from unittest import mock
 
 import fastmcp
-import httpx
+import httpx2
 import jwt
 from fastmcp.server.auth.auth import AccessToken, RemoteAuthProvider
 from fastmcp.server.providers.openapi import MCPType
@@ -75,32 +75,34 @@ def _minimal_openapi_spec() -> dict[str, object]:
 class CreateServerTests(unittest.TestCase):
     def setUp(self) -> None:
         spec = _minimal_openapi_spec()
-        self.mock_response = httpx.Response(
+        self.mock_response = httpx2.Response(
             200,
             content=json.dumps(spec).encode(),
             headers={'content-type': 'application/json'},
-            request=httpx.Request('GET', 'http://localhost:8000/openapi.json'),
+            request=httpx2.Request(
+                'GET', 'http://localhost:8000/openapi.json'
+            ),
         )
 
-    @mock.patch('imbi.mcp.server.httpx.get')
+    @mock.patch('imbi.mcp.server.httpx2.get')
     def test_returns_fastmcp_instance(self, mock_get: mock.Mock) -> None:
         mock_get.return_value = self.mock_response
         mcp = server.create_server('http://localhost:8000')
         self.assertIsInstance(mcp, fastmcp.FastMCP)
 
-    @mock.patch('imbi.mcp.server.httpx.get')
+    @mock.patch('imbi.mcp.server.httpx2.get')
     def test_server_name(self, mock_get: mock.Mock) -> None:
         mock_get.return_value = self.mock_response
         mcp = server.create_server('http://localhost:8000')
         self.assertEqual('Imbi', mcp.name)
 
-    @mock.patch('imbi.mcp.server.httpx.get')
+    @mock.patch('imbi.mcp.server.httpx2.get')
     def test_server_version(self, mock_get: mock.Mock) -> None:
         mock_get.return_value = self.mock_response
         mcp = server.create_server('http://localhost:8000')
         self.assertEqual(imbi.mcp.version, mcp.version)
 
-    @mock.patch('imbi.mcp.server.httpx.get')
+    @mock.patch('imbi.mcp.server.httpx2.get')
     def test_status_custom_route(self, mock_get: mock.Mock) -> None:
         mock_get.return_value = self.mock_response
         mcp = server.create_server('http://localhost:8000')
@@ -116,7 +118,7 @@ class CreateServerTests(unittest.TestCase):
             response.json(),
         )
 
-    @mock.patch('imbi.mcp.server.httpx.get')
+    @mock.patch('imbi.mcp.server.httpx2.get')
     def test_status_fails_after_lifespan_exit(
         self, mock_get: mock.Mock
     ) -> None:
@@ -130,7 +132,7 @@ class CreateServerTests(unittest.TestCase):
         self.assertEqual(503, response.status_code)
         self.assertEqual('failing', response.json()['status'])
 
-    @mock.patch('imbi.mcp.server.httpx.get')
+    @mock.patch('imbi.mcp.server.httpx2.get')
     def test_status_custom_route_with_auth_enabled(
         self, mock_get: mock.Mock
     ) -> None:
@@ -152,7 +154,7 @@ class CreateServerTests(unittest.TestCase):
             response.json(),
         )
 
-    @mock.patch('imbi.mcp.server.httpx.get')
+    @mock.patch('imbi.mcp.server.httpx2.get')
     def test_fetches_spec_from_api_url(self, mock_get: mock.Mock) -> None:
         mock_get.return_value = self.mock_response
         server.create_server('http://example:9000')
@@ -160,7 +162,7 @@ class CreateServerTests(unittest.TestCase):
             'http://example:9000/openapi.json', timeout=30
         )
 
-    @mock.patch('imbi.mcp.server.httpx.get')
+    @mock.patch('imbi.mcp.server.httpx2.get')
     def test_strips_trailing_slash(self, mock_get: mock.Mock) -> None:
         mock_get.return_value = self.mock_response
         server.create_server('http://example:9000/')
@@ -168,7 +170,7 @@ class CreateServerTests(unittest.TestCase):
             'http://example:9000/openapi.json', timeout=30
         )
 
-    @mock.patch('imbi.mcp.server.httpx.get')
+    @mock.patch('imbi.mcp.server.httpx2.get')
     @mock.patch('fastmcp.FastMCP.from_openapi')
     def test_route_maps_exclude_auth_and_status(
         self, mock_from_openapi: mock.Mock, mock_get: mock.Mock
@@ -189,14 +191,16 @@ class CreateServerTests(unittest.TestCase):
 class CreateServerExcludesConfigTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         spec = _minimal_openapi_spec()
-        self.mock_response = httpx.Response(
+        self.mock_response = httpx2.Response(
             200,
             content=json.dumps(spec).encode(),
             headers={'content-type': 'application/json'},
-            request=httpx.Request('GET', 'http://localhost:8000/openapi.json'),
+            request=httpx2.Request(
+                'GET', 'http://localhost:8000/openapi.json'
+            ),
         )
 
-    @mock.patch('imbi.mcp.server.httpx.get')
+    @mock.patch('imbi.mcp.server.httpx2.get')
     async def test_flagged_endpoint_not_exposed(
         self, mock_get: mock.Mock
     ) -> None:
@@ -210,7 +214,7 @@ class CreateServerExcludesConfigTests(unittest.IsolatedAsyncioTestCase):
         # processed rather than wholesale rejected.
         self.assertIn('list_projects', names)
 
-    @mock.patch('imbi.mcp.server.httpx.get')
+    @mock.patch('imbi.mcp.server.httpx2.get')
     async def test_reads_become_tools_not_resources(
         self, mock_get: mock.Mock
     ) -> None:
@@ -232,7 +236,7 @@ class CreateServerExcludesConfigTests(unittest.IsolatedAsyncioTestCase):
 
 class InjectAuthTests(unittest.IsolatedAsyncioTestCase):
     async def test_injects_authorization_header(self) -> None:
-        request = httpx.Request('GET', 'http://localhost/')
+        request = httpx2.Request('GET', 'http://localhost/')
         with mock.patch(
             'imbi.mcp.server.get_http_headers',
             return_value={'authorization': 'Bearer test-jwt'},
@@ -244,7 +248,7 @@ class InjectAuthTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_no_header_when_absent(self) -> None:
-        request = httpx.Request('GET', 'http://localhost/')
+        request = httpx2.Request('GET', 'http://localhost/')
         with mock.patch(
             'imbi.mcp.server.get_http_headers',
             return_value={},
@@ -255,7 +259,7 @@ class InjectAuthTests(unittest.IsolatedAsyncioTestCase):
     async def test_calls_get_http_headers_with_include(
         self,
     ) -> None:
-        request = httpx.Request('GET', 'http://localhost/')
+        request = httpx2.Request('GET', 'http://localhost/')
         with mock.patch(
             'imbi.mcp.server.get_http_headers',
             return_value={},
@@ -358,20 +362,22 @@ class BuildAuthTests(unittest.TestCase):
 class CreateServerAuthTests(unittest.TestCase):
     def setUp(self) -> None:
         spec = _minimal_openapi_spec()
-        self.mock_response = httpx.Response(
+        self.mock_response = httpx2.Response(
             200,
             content=json.dumps(spec).encode(),
             headers={'content-type': 'application/json'},
-            request=httpx.Request('GET', 'http://localhost:8000/openapi.json'),
+            request=httpx2.Request(
+                'GET', 'http://localhost:8000/openapi.json'
+            ),
         )
 
-    @mock.patch('imbi.mcp.server.httpx.get')
+    @mock.patch('imbi.mcp.server.httpx2.get')
     def test_auth_disabled_by_default(self, mock_get: mock.Mock) -> None:
         mock_get.return_value = self.mock_response
         mcp = server.create_server('http://localhost:8000')
         self.assertIsNone(mcp.auth)
 
-    @mock.patch('imbi.mcp.server.httpx.get')
+    @mock.patch('imbi.mcp.server.httpx2.get')
     def test_auth_enabled_when_configured(self, mock_get: mock.Mock) -> None:
         mock_get.return_value = self.mock_response
         mcp = server.create_server(
@@ -385,16 +391,18 @@ class CreateServerAuthTests(unittest.TestCase):
 class AccessLogContextWiringTests(unittest.TestCase):
     """The tool-name access-log middleware is installed."""
 
-    @mock.patch('imbi.mcp.server.httpx.get')
+    @mock.patch('imbi.mcp.server.httpx2.get')
     def test_access_log_context_middleware_is_registered(
         self, mock_get: mock.Mock
     ) -> None:
         spec = _minimal_openapi_spec()
-        mock_get.return_value = httpx.Response(
+        mock_get.return_value = httpx2.Response(
             200,
             content=json.dumps(spec).encode(),
             headers={'content-type': 'application/json'},
-            request=httpx.Request('GET', 'http://localhost:8000/openapi.json'),
+            request=httpx2.Request(
+                'GET', 'http://localhost:8000/openapi.json'
+            ),
         )
         mcp = server.create_server('http://localhost:8000')
         self.assertTrue(
