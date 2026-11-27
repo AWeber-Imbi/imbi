@@ -191,14 +191,13 @@ class ServiceTokenTestCase(unittest.IsolatedAsyncioTestCase):
             'http://imbi-api:8000', 'ik_1_s', provider='acme/claude', user='a'
         )
         await source.get()
-        source.user = 'b'
         source.invalidate('tok')
         await source.get()
         self.assertEqual(
             [json.loads(r.content) for r in self.requests],
             [
                 {'failed': None, 'provider': 'acme/claude', 'user': 'a'},
-                {'failed': 'tok', 'provider': 'acme/claude', 'user': 'b'},
+                {'failed': 'tok', 'provider': 'acme/claude', 'user': 'a'},
             ],
         )
 

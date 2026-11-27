@@ -190,7 +190,8 @@ class ServiceToken:
     ``provider``, imbi-api finds the AI Provider from that account.
     With ``provider`` (``<org-slug>/<provider-slug>``), imbi-api gives
     the token of that provider when it is in an organization of
-    :attr:`user`, the user the service calls the model for.
+    ``user``, the user the service calls the model for. A source with a
+    provider serves that one user only.
     """
 
     def __init__(
@@ -203,8 +204,7 @@ class ServiceToken:
         self._url = f'{api_url.rstrip("/")}/ai-providers/token'
         self._api_token = api_token
         self._provider = provider
-        #: The user of the last call; imbi-api checks it at each renewal.
-        self.user = user
+        self._user = user
         self._cache = TokenCache()
         self._failed: str | None = None
 
@@ -221,7 +221,7 @@ class ServiceToken:
             async with httpx.AsyncClient(timeout=10) as client:
                 payload: dict[str, str | None] = {'failed': self._failed}
                 if self._provider is not None:
-                    payload |= {'provider': self._provider, 'user': self.user}
+                    payload |= {'provider': self._provider, 'user': self._user}
                 response = await client.post(
                     self._url,
                     json=payload,

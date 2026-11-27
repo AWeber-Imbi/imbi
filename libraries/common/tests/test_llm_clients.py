@@ -81,20 +81,37 @@ class ProviderClientsTestCase(unittest.IsolatedAsyncioTestCase):
                 raised.exception.reason, 'provider_credentials_unavailable'
             )
 
-    def test_one_client_for_each_provider(self) -> None:
+    def test_one_client_for_each_provider_and_user(self) -> None:
+        # Two users, interleaved: each keeps a client whose token is
+        # minted for that user only.
         found = _clients('ik_1_s')
         provider = _provider(workload_identity=WIF)
-        first = found.get(provider, 'ada@x')
-        self.assertIs(found.get(provider, 'bob@x'), first)
-        # The renewal names the user of the latest call.
-        source = found._clients['prv-1'][1]
-        assert source is not None
-        self.assertEqual(source.user, 'bob@x')
+        with mock.patch.object(
+            tokens, 'ServiceToken', wraps=tokens.ServiceToken
+        ) as source:
+            ada = found.get(provider, 'ada@x')
+            bob = found.get(provider, 'bob@x')
+            self.assertIs(found.get(provider, 'ada@x'), ada)
+            self.assertIs(found.get(provider, 'bob@x'), bob)
+        self.assertIsNot(ada, bob)
+        self.assertEqual(
+            [c.kwargs['user'] for c in source.call_args_list],
+            ['ada@x', 'bob@x'],
+        )
         other = found.get(
-            _provider(id='prv-2', slug='other', **{'workload_identity': WIF}),
+            _provider(id='prv-2', slug='other', workload_identity=WIF),
             'ada@x',
         )
-        self.assertIsNot(other, first)
+        self.assertIsNot(other, ada)
+
+    def test_the_cache_is_bounded(self) -> None:
+        found = _clients(api_key='sk-env')
+        provider = _provider()
+        first = found.get(provider, 'u0')
+        with mock.patch.object(clients, 'MAX_CLIENTS', 2):
+            found.get(provider, 'u1')
+            found.get(provider, 'u2')
+            self.assertIsNot(found.get(provider, 'u0'), first)
 
 
 class FetchProviderTestCase(unittest.IsolatedAsyncioTestCase):

@@ -12,6 +12,7 @@ credential of a provider is, in this order:
 With neither, the provider cannot be used.
 """
 
+import collections
 import typing
 
 import anthropic
@@ -67,8 +68,17 @@ async def fetch_provider(db: graph.Graph, ref: str) -> models.AIProvider:
     return provider
 
 
+#: The most clients that :class:`ProviderClients` keeps.
+MAX_CLIENTS = 256
+
+
 class ProviderClients:
-    """The cached clients of one service, one for each provider."""
+    """The cached clients of one service, one for each provider and user.
+
+    A workload identity token is minted for one user (imbi-api checks the
+    organizations of that user), so a client is never shared between
+    users.
+    """
 
     def __init__(
         self,
@@ -82,16 +92,12 @@ class ProviderClients:
         self._api_token = api_token
         self._api_key = api_key
         self._client_class = client_class
-        #: By provider id: the client, the token source, and the
+        #: By provider id and user, oldest use first: the client and the
         #: settings it was made with.
-        self._clients: dict[
-            str,
-            tuple[
-                anthropic.AsyncAnthropic,
-                tokens.ServiceToken | None,
-                tuple[str, bool, str | None],
-            ],
-        ] = {}
+        self._clients: collections.OrderedDict[
+            tuple[str, str],
+            tuple[anthropic.AsyncAnthropic, tuple[str, bool, str | None]],
+        ] = collections.OrderedDict()
 
     def get(
         self, provider: models.AIProvider, user: str
@@ -105,18 +111,16 @@ class ProviderClients:
         ref = provider_ref(provider)
         wif = provider.workload_identity is not None
         settings = (ref, wif, provider.base_url)
-        found = self._clients.get(provider.id)
-        if found is not None and found[2] == settings:
-            if found[1] is not None:
-                found[1].user = user
+        key = (provider.id, user)
+        found = self._clients.get(key)
+        if found is not None and found[1] == settings:
+            self._clients.move_to_end(key)
             return found[0]
-        source: tokens.ServiceToken | None = None
         if wif and self._api_token:
-            source = tokens.ServiceToken(
-                self._api_url, self._api_token, provider=ref, user=user
-            )
             client = tokens.bearer_client(
-                source,
+                tokens.ServiceToken(
+                    self._api_url, self._api_token, provider=ref, user=user
+                ),
                 client_class=self._client_class,
                 base_url=provider.base_url,
             )
@@ -131,12 +135,16 @@ class ProviderClients:
                 f'AI provider {ref!r} has no workload identity this service '
                 'can use, and ANTHROPIC_API_KEY is not set',
             )
-        # ponytail: a replaced client is not closed; its connections
-        # close when it is collected. Close it if providers change often.
-        self._clients[provider.id] = (client, source, settings)
+        # ponytail: a replaced or dropped client is not closed, because a
+        # turn can still use it; its connections close when it is
+        # collected. Close it after its last use if that leaks sockets.
+        self._clients[key] = (client, settings)
+        self._clients.move_to_end(key)
+        while len(self._clients) > MAX_CLIENTS:
+            self._clients.popitem(last=False)
         return client
 
     async def aclose(self) -> None:
-        for client, _source, _settings in self._clients.values():
+        for client, _settings in self._clients.values():
             await client.close()
         self._clients.clear()
