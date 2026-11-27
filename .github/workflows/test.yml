@@ -22,7 +22,7 @@ jobs:
   ci:
     name: "CI"
     # The tests run with pytest -n auto, so more cores make this job faster.
-    runs-on: "blacksmith-16vcpu-ubuntu-2404-arm"
+    runs-on: "blacksmith-16vcpu-ubuntu-2404"
     steps:
       - uses: "actions/checkout@v7"
         with:
